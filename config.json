@@ -1,0 +1,159 @@
+{
+  "meta": {
+    "project": "EVOLUTIONARY TRADING ALGO",
+    "version": "0.1.0",
+    "owner": "Edward Avila",
+    "region": "US-GA",
+    "created": "2026-04-16",
+    "blueprint_sections": 39,
+    "target_completion_weeks": 16
+  },
+
+  "funnel": {
+    "pieces": 4,
+    "engine": ["mnq", "nq"],
+    "turbo": ["crypto_seed", "eth_perp", "sol_perp", "xrp_perp"],
+    "multiplier": "staking",
+    "sweep_policy": {
+      "mnq_baseline_usd": 5500,
+      "mnq_starting_capital_usd": 5000,
+      "nq_baseline_usd": 12000,
+      "crypto_seed_baseline_usd": 2000,
+      "eth_perp_baseline_usd": 3000,
+      "sol_perp_baseline_usd": 3000,
+      "xrp_perp_baseline_usd": 2000,
+      "sweep_trigger": "daily_close_equity > baseline * 1.10",
+      "sweep_split_pct": {"cold_wallet_stake": 60, "reinvest_seed": 30, "reserve_usdt": 10}
+    }
+  },
+
+  "risk": {
+    "futures": {
+      "per_trade_risk_pct": 1.0,
+      "daily_loss_cap_pct": 2.5,
+      "max_drawdown_kill_pct": 8.0,
+      "max_leverage": 5
+    },
+    "crypto_seed": {
+      "per_grid_level_pct": 0.37,
+      "grid_levels": 40,
+      "grid_spacing": "geometric",
+      "max_drawdown_tolerance_pct": 30
+    },
+    "perp_casino": {
+      "per_trade_risk_pct": 3.0,
+      "daily_loss_cap_pct": 6.0,
+      "max_drawdown_kill_pct": 20.0,
+      "max_leverage_by_confluence": {
+        "9_to_10": 75,
+        "7_to_8": 20,
+        "5_to_6": 10,
+        "below_5": 0
+      },
+      "margin_mode": "isolated",
+      "liq_distance_atr_multiple": 3.0,
+      "maint_margin_rate": 0.005,
+      "safety_buffer_pct": 20
+    }
+  },
+
+  "confluence_rubric": {
+    "scale": "0-10",
+    "leverage_ramp_threshold": 9,
+    "factors": {
+      "trend_bias_htf": {"weight": 3.0, "inputs": ["daily_ema_slope", "4h_structure"]},
+      "volatility_regime": {"weight": 2.0, "inputs": ["atr_percentile_rank"], "sweet_spot": "30-70"},
+      "funding_skew": {"weight": 2.0, "inputs": ["bybit_funding_rate"], "edge": "contrarian_extreme"},
+      "onchain_activity": {"weight": 1.5, "inputs": ["glassnode_active_addr_delta", "blockscout_transfers"]},
+      "sentiment": {"weight": 1.5, "inputs": ["lunarcrush_galaxy_score", "fear_greed_divergence"]}
+    }
+  },
+
+  "sessions": {
+    "timezone": "America/New_York",
+    "top_down_windows": [
+      {"name": "asia_close_bias", "time": "02:45-03:00"},
+      {"name": "london_open_htf", "time": "03:00-03:30"},
+      {"name": "ny_premarket", "time": "08:00-09:30"},
+      {"name": "ny_open_htf", "time": "09:30-10:00"},
+      {"name": "ny_lunch_reset", "time": "12:00-13:00"},
+      {"name": "ny_close_htf", "time": "15:45-16:00"}
+    ],
+    "news_blackout_minutes_before": 15,
+    "news_blackout_minutes_after": 30,
+    "high_impact_tags": ["FOMC", "CPI", "PCE", "NFP", "GDP", "PPI", "ISM", "FED_SPEAK"]
+  },
+
+  "execution": {
+    "futures": {
+      "broker_primary": "tradovate",
+      "broker_backup": "ibkr",
+      "data_primary": "databento",
+      "data_backup": "ninjatrader",
+      "storage": "arcticdb",
+      "vps_region": "chicago"
+    },
+    "crypto": {
+      "exchange_primary": "bybit",
+      "exchange_backups": ["okx", "bitget"],
+      "ws_lib_primary": "ccxt.pro",
+      "ws_lib_native": "websockets",
+      "l2_capture": "snapshot_plus_delta_50_levels",
+      "funding_sample_seconds": 60,
+      "storage_hot": "arcticdb_lmdb",
+      "storage_cold": "parquet",
+      "vps_region": "singapore"
+    }
+  },
+
+  "staking": {
+    "allocation_pct": {
+      "eth_liquid": 40,
+      "sol_liquid": 30,
+      "xrp_yield": 15,
+      "stable_yield": 15
+    },
+    "providers": {
+      "eth": {"primary": "lido", "token": "wstETH", "restake": "eigenlayer_optional", "target_apy_pct": 3.8},
+      "sol": {"primary": "jito", "token": "JitoSOL", "target_apy_pct": 6.5},
+      "xrp": {"primary": "flare", "token": "sFLR_FAssets", "target_apy_pct": 4.5},
+      "stable": {"primary": "ethena", "token": "sUSDe", "target_apy_pct": 7.0}
+    },
+    "custody": "ledger_stax",
+    "signing": "rabby",
+    "bridge": "across_protocol",
+    "diversification_cap_pct": 40
+  },
+
+  "brain": {
+    "regime_classifier": "random_forest_v1",
+    "rl_algo": "ppo_sac_hybrid",
+    "multi_agent_roles": ["macro_guardian", "regime_detector", "risk_advocate", "execution_optimizer", "staking_allocator", "supervisor_llm"],
+    "training_data_years": 10,
+    "online_finetune_hours": 24
+  },
+
+  "firm_integration": {
+    "board_agents": ["quant", "red_team", "risk", "macro", "micro", "pm"],
+    "kill_log_path": "eta_engine/docs/kill_log.json",
+    "decision_gates": ["spec_approve", "backtest_approve", "paper_approve", "live_approve"]
+  },
+
+  "compliance": {
+    "jurisdiction": "US_GA",
+    "futures_tax_treatment": "60_40",
+    "crypto_staking_tax": "ordinary_income_on_receipt",
+    "ledger_export_targets": ["koinly", "cointracker", "tokentax"]
+  },
+
+  "monitoring": {
+    "dashboard": "grafana_plus_streamlit",
+    "alerts": {
+      "critical": ["sms", "call", "telegram"],
+      "normal": ["telegram", "discord"],
+      "info": ["email"]
+    },
+    "heartbeat_seconds": 30,
+    "self_heal": true
+  }
+}

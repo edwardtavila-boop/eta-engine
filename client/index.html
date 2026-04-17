@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Evolutionary Trading Algo</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>EVOLUTIONARY TRADING ALGO</h1>
+      <div class="tenant-banner">
+        <span id="tenant-id">unbound</span>
+        <span class="sep">//</span>
+        <span id="tier">-</span>
+        <span class="sep">//</span>
+        <span id="conn-state" class="offline">OFFLINE</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel" id="bots-panel">
+        <h2>Bots</h2>
+        <ul id="bots-list"><li class="empty">awaiting bundle</li></ul>
+        <div class="bot-actions">
+          <button id="btn-start">START</button>
+          <button id="btn-stop">STOP</button>
+          <button id="btn-reset">RESET</button>
+        </div>
+      </section>
+
+      <section class="panel" id="status-panel">
+        <h2>Live Status</h2>
+        <table id="status-table">
+          <tr><td>Equity</td><td id="stat-equity">-</td></tr>
+          <tr><td>Daily PnL</td><td id="stat-daily-pnl">-</td></tr>
+          <tr><td>Regime</td><td id="stat-regime">-</td></tr>
+          <tr><td>Session Phase</td><td id="stat-session">-</td></tr>
+          <tr><td>Confidence</td><td id="stat-confidence">-</td></tr>
+          <tr><td>Kill Switch</td><td id="stat-kill">-</td></tr>
+        </table>
+      </section>
+
+      <section class="panel" id="jarvis-panel">
+        <h2>Ask Jarvis</h2>
+        <input
+          id="jarvis-input"
+          type="text"
+          placeholder="What's the current MNQ confidence score?"
+        />
+        <button id="btn-ask">ASK</button>
+        <div id="jarvis-answer" class="answer">-</div>
+      </section>
+
+      <section class="panel" id="log-panel">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <footer>
+      <small id="disclaimer">
+        Educational automation tool. Not financial advice. You control your
+        funds and risk.
+      </small>
+    </footer>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

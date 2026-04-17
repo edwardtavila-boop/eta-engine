@@ -1,0 +1,58 @@
+{
+  "tweaks_full_winner": [
+    {
+      "bot": "crypto_seed",
+      "source": "dual_fine_tune_v0_1_30_crypto_seed_full_winner",
+      "reason": "gate-pass: exp=+0.628R dd=0.02% stability=0.032",
+      "risk_tag": "AGGRESSIVE",
+      "proposal": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expected_expectancy_r": 0.6283,
+      "expected_dd_pct": 0.024,
+      "gate_pass": true
+    }
+  ],
+  "tweaks_proposed": [
+    {
+      "bot": "crypto_seed",
+      "source": "dual_fine_tune_v0_1_30_crypto_seed_glide_step",
+      "reason": "gate-pass: exp=+0.603R dd=0.02% stability=0.032",
+      "risk_tag": "MODERATE",
+      "proposal": {
+        "grid_n_levels": 54,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expected_expectancy_r": 0.6025,
+      "expected_dd_pct": 0.024,
+      "gate_pass": true
+    }
+  ],
+  "applied": {
+    "crypto_seed": {
+      "applied": true,
+      "reason": "applied (MODERATE): gate-pass: exp=+0.603R dd=0.02% stability=0.032",
+      "new_config": {
+        "grid_n_levels": 54,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "rejected_params": []
+    }
+  }
+}

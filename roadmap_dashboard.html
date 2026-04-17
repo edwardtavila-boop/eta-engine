@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EVOLUTIONARY TRADING ALGO — Live Roadmap</title>
+<style>
+  :root {
+    --bg: #07090d;
+    --bg2: #0d1117;
+    --panel: #11161d;
+    --border: #1f2631;
+    --border2: #2b3442;
+    --text: #e7ecf2;
+    --dim: #7c8493;
+    --mute: #4c5564;
+    --accent: #00ffa3;
+    --accent2: #00d1ff;
+    --warn: #ffb020;
+    --err: #ff4757;
+    --pink: #ff3ea5;
+    --grid-red: #5a0f1a;
+    --grid-green: #0a3d26;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.4; }
+  .mono { font-family: "JetBrains Mono", "SF Mono", "Consolas", "Courier New", monospace; font-variant-numeric: tabular-nums; }
+  body { padding: 14px; }
+  .grid { display: grid; gap: 10px; }
+  .col-12 { grid-template-columns: repeat(12, 1fr); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
+  .panel h3 { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; color: var(--dim); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+
+  /* HEADER */
+  .hdr { display: flex; justify-content: space-between; align-items: center; padding: 6px 4px 12px; border-bottom: 1px solid var(--border2); margin-bottom: 12px; }
+  .hdr h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.18em; color: var(--accent); }
+  .hdr h1 span { color: var(--text); font-weight: 500; }
+  .hdr .stats { display: flex; gap: 18px; font-size: 11px; color: var(--dim); letter-spacing: 0.06em; }
+  .hdr .stats b { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 5px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* PROGRESS BAR */
+  .bigbar { height: 38px; background: var(--bg2); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; position: relative; }
+  .bigbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%); transition: width 0.6s; }
+  .bigbar-label { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; color: var(--text); mix-blend-mode: difference; }
+
+  /* FUNNEL DIAGRAM */
+  .funnel { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+  .funnel-piece { background: var(--bg2); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; position: relative; }
+  .funnel-piece .lbl { font-size: 9px; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
+  .funnel-piece .name { font-size: 13px; font-weight: 600; color: var(--text); margin: 2px 0 4px; }
+  .funnel-piece .val { font-size: 11px; color: var(--accent); }
+  .funnel-piece .tag { font-size: 9px; color: var(--mute); margin-top: 4px; }
+  .funnel-piece.engine { border-left: 3px solid var(--accent2); }
+  .funnel-piece.casino { border-left: 3px solid var(--pink); }
+  .funnel-piece.vault { border-left: 3px solid var(--accent); }
+
+  /* PHASE TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { text-align: left; padding: 5px 6px; font-weight: 600; letter-spacing: 0.08em; color: var(--dim); border-bottom: 1px solid var(--border); font-size: 9px; text-transform: uppercase; }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:hover td { background: var(--bg2); }
+  .bar { display: inline-block; height: 6px; width: 60px; background: var(--border); border-radius: 2px; overflow: hidden; vertical-align: middle; }
+  .bar-fill { height: 100%; background: var(--accent2); }
+  .status-done { color: var(--accent); }
+  .status-prog { color: var(--warn); }
+  .status-pend { color: var(--mute); }
+  .pill { display: inline-block; padding: 1px 6px; font-size: 9px; border-radius: 2px; letter-spacing: 0.06em; font-weight: 600; }
+  .pill.done { background: rgba(0,255,163,0.12); color: var(--accent); }
+  .pill.prog { background: rgba(255,176,32,0.15); color: var(--warn); }
+  .pill.pend { background: rgba(124,132,147,0.12); color: var(--mute); }
+
+  /* BOT STATUS */
+  .bots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .bot { background: var(--bg2); border: 1px solid var(--border); border-radius: 3px; padding: 10px; }
+  .bot h4 { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; color: var(--text); margin-bottom: 6px; }
+  .bot .row { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
+  .bot .row .k { color: var(--dim); font-size: 10px; }
+  .bot .row .v { color: var(--text); }
+  .bot.scaffold { border-top: 2px solid var(--warn); }
+  .bot.design { border-top: 2px solid var(--mute); }
+  .bot.paper { border-top: 2px solid var(--accent); }
+
+  /* MCP CHIPS */
+  .mcps { display: flex; flex-wrap: wrap; gap: 5px; }
+  .mcp { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; letter-spacing: 0.04em; }
+  .mcp.up { background: rgba(0,255,163,0.1); color: var(--accent); border: 1px solid rgba(0,255,163,0.25); }
+  .mcp.auth { background: rgba(255,176,32,0.1); color: var(--warn); border: 1px solid rgba(255,176,32,0.25); }
+  .mcp.down { background: rgba(255,71,87,0.1); color: var(--err); border: 1px solid rgba(255,71,87,0.25); }
+
+  /* CONFLUENCE RUBRIC */
+  .rubric { display: grid; grid-template-columns: 2fr 1fr 3fr; gap: 4px 10px; font-size: 11px; }
+  .rubric .hd { color: var(--dim); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 3px; }
+  .rubric .wt { color: var(--accent); text-align: right; }
+
+  /* ALLOC BARS */
+  .alloc { height: 10px; display: flex; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+  .alloc div { height: 100%; text-align: center; font-size: 9px; color: var(--bg); font-weight: 700; line-height: 10px; }
+  .alloc-eth  { background: #627eea; }
+  .alloc-sol  { background: #9945ff; }
+  .alloc-xrp  { background: #23292f; color: var(--text); }
+  .alloc-stab { background: #26a17b; }
+
+  /* KPI TILES */
+  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .kpi { background: var(--bg2); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; }
+  .kpi .k { font-size: 9px; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
+  .kpi .v { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 2px; }
+  .kpi .v.g { color: var(--accent); }
+  .kpi .v.w { color: var(--warn); }
+
+  /* SKILLS */
+  .skills { display: flex; flex-wrap: wrap; gap: 4px; }
+  .skill { font-size: 10px; padding: 2px 7px; background: var(--bg2); color: var(--accent2); border: 1px solid var(--border); border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>EVOLUTIONARY TRADING ALGO <span>// LIVE ROADMAP</span></h1>
+  <div class="stats mono">
+    <span><span class="dot"></span>LIVE</span>
+    <span>VER <b>0.1.7</b></span>
+    <span>WEEK <b>3/16</b></span>
+    <span>UPDATED <b>2026-04-16 23:30 EDT</b></span>
+  </div>
+</div>
+
+<!-- DECISIONS LOCKED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.10), transparent);">
+  <h3>Operator Decisions Locked — APEX_DECISIONS_v1 (11 sections · 25 items)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">DECISIONS v1 LOCKED</span>
+    <span><span style="color:var(--dim)">Acct:</span> <b>Apex Eval</b></span>
+    <span><span style="color:var(--dim)">First:</span> <b>MNQ · 1 ct</b></span>
+    <span><span style="color:var(--dim)">DD trip:</span> <b>$500 (10%)</b></span>
+    <span><span style="color:var(--dim)">Duration:</span> <b>30 trades OR 14d</b></span>
+    <span><span style="color:var(--dim)">Go phrase:</span> <b>"GO APEX MNQ LIVE-TINY"</b></span>
+    <span><span style="color:var(--dim)">Weekly:</span> <b>Sun 20:00 ET</b></span>
+    <span><span style="color:var(--dim)">Alerts:</span> <b>Pushover + email + SMS</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">docs/decisions_v1.json · configs/*.yaml · .env.example</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(4,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> Tier-1 blockers (8 of 8)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> Tier-2 blockers (5 of 5)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> Tier-3 cadence (4 of 4)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> Tier-4/5 strategic (8 of 8)</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Remaining gate to live MNQ: populate .env with real Tradovate creds. Type "GO APEX MNQ LIVE-TINY" through scripts/go_trigger.py to flip.
+  </div>
+</div>
+
+<!-- EXCHANGE APIS + ALERTS WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,209,255,0.10), transparent);">
+  <h3>Exchange APIs + Alerts Wired — Real aiohttp HTTP + HMAC across 3 venues + 6 alert channels</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Tradovate:</span> <b class="status-done">OAuth2 + OSO bracket (17 tests)</b></span>
+    <span><span style="color:var(--dim)">Bybit:</span> <b class="status-done">v5 HMAC-SHA256 (13 tests)</b></span>
+    <span><span style="color:var(--dim)">OKX:</span> <b class="status-done">v5 HMAC+b64 (14 tests)</b></span>
+    <span><span style="color:var(--dim)">Async alerts:</span> <b class="status-done">Telegram/Discord/Slack</b></span>
+    <span><span style="color:var(--dim)">Sync alerts:</span> <b class="status-done">Pushover/SMTP/Twilio</b></span>
+    <span><span style="color:var(--dim)">Retry:</span> <b class="status-done">single on transient</b></span>
+    <span><span style="color:var(--dim)">Creds-less:</span> <b class="status-done">mock fallback</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">venues/{tradovate,bybit,okx}.py · obs/{alerts,alert_dispatcher}.py</span>
+  </div>
+</div>
+
+<!-- LIVE RUNTIME WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(120,255,180,0.08), transparent);">
+  <h3>Live Runtime Wired — Kill-Switch + Alert Dispatcher + run_eta_live</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Loop:</span> <b class="status-done">scripts/run_eta_live.py</b></span>
+    <span><span style="color:var(--dim)">Policy:</span> <b class="status-done">core/kill_switch_runtime.py</b></span>
+    <span><span style="color:var(--dim)">Alerts:</span> <b class="status-done">obs/alert_dispatcher.py</b></span>
+    <span><span style="color:var(--dim)">Default:</span> <b class="status-done">--dry-run (MockRouter)</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">243 new · 604/604 total</b></span>
+    <span><span style="color:var(--dim)">Blocker:</span> <b class="status-prog">user .env creds</b></span>
+  </div>
+</div>
+
+<!-- DATA STACK WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(255,200,0,0.08), transparent);">
+  <h3>Data Stack Wired — Bybit Websockets + DataBento Historical SDK</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Bybit WS:</span> <b class="status-done">real websockets.connect + async-for recv (6 tests)</b></span>
+    <span><span style="color:var(--dim)">DataBento:</span> <b class="status-done">Historical.timeseries.get_range + lazy SDK (9 tests)</b></span>
+    <span><span style="color:var(--dim)">Reconnect:</span> <b class="status-done">1s→60s exp-backoff (cap 10)</b></span>
+    <span><span style="color:var(--dim)">Recovery:</span> <b class="status-done">run_once() + stop_on_clean_close</b></span>
+    <span><span style="color:var(--dim)">Schemas:</span> <b class="status-done">ohlcv-{1s,1m,5m,1h} · trades · mbp-{1,10}</b></span>
+    <span><span style="color:var(--dim)">Billing:</span> <b class="status-done">forecast cost accrual pre-fetch</b></span>
+    <span><span style="color:var(--dim)">Fixed-point:</span> <b class="status-done">÷1e9 px scale</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">data/bybit_ws.py · data/databento_client.py</span>
+  </div>
+</div>
+
+<!-- BOTS ROUTED WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--good); background: linear-gradient(90deg, rgba(0,230,118,0.08), transparent);">
+  <h3>Bots Routed — 6-Bot Router Injection + OrderRequest Pipeline</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">MNQ:</span> <b class="status-done">7 TODOs wired · trailing peak dict · 4 setups · stop_distance meta</b></span>
+    <span><span style="color:var(--dim)">NQ:</span> <b class="status-done">POINT_VALUE_USD=$20 override · inherits MnqBot</b></span>
+    <span><span style="color:var(--dim)">ETH:</span> <b class="status-done">LEV_TIERS class-attr · linear-perp sizing · router path</b></span>
+    <span><span style="color:var(--dim)">SOL:</span> <b class="status-done">4.5·ATR liq · **kwargs fwd</b></span>
+    <span><span style="color:var(--dim)">XRP:</span> <b class="status-done">50x cap · 0.008 slippage · ADX≥30</b></span>
+    <span><span style="color:var(--dim)">CryptoSeed:</span> <b class="status-done">grid orders cached · directional overlay only routes</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">+20 test_bots_mnq.py</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">bots/{mnq,nq,eth_perp,sol_perp,xrp_perp,crypto_seed}/bot.py</span>
+  </div>
+</div>
+
+<!-- STAKING WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(255,110,64,0.08), transparent);">
+  <h3>Staking Wired — 4 Adapters + DefiLlama APY Tracker + On-Chain Read Path (NEW)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Lido:</span> <b class="status-done">ETH→wstETH · +EigenLayer restake (+1.5%)</b></span>
+    <span><span style="color:var(--dim)">Jito:</span> <b class="status-done">SOL→JitoSOL · solana-py lazy</b></span>
+    <span><span style="color:var(--dim)">Flare:</span> <b class="status-done">FLR→sFLR · FTSO delegate</b></span>
+    <span><span style="color:var(--dim)">Ethena:</span> <b class="status-done">USDT→sUSDe · 7d cooldown</b></span>
+    <span><span style="color:var(--dim)">APY:</span> <b class="status-done">DefiLlama 5-min cache</b></span>
+    <span><span style="color:var(--dim)">Balance:</span> <b class="status-done">ERC-20 balanceOf via web3 (lazy)</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">+27 test_staking_adapters.py</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">staking/{web3_client,apy_tracker,lido,jito,flare,ethena}.py</span>
+  </div>
+</div>
+
+<!-- PORTFOLIO RISK BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent2); background: linear-gradient(90deg, rgba(0,209,255,0.08), transparent);">
+  <h3>Portfolio Risk Wired — VaR/CVaR + Correlation Brake + Central Dashboard</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">VaR:</span> <b class="status-done">historical + parametric (scipy.norm)</b></span>
+    <span><span style="color:var(--dim)">CVaR:</span> <b class="status-done">expected shortfall ≥ VaR</b></span>
+    <span><span style="color:var(--dim)">Brake:</span> <b class="status-done">max corr &gt; 0.70 → size ×0.5</b></span>
+    <span><span style="color:var(--dim)">Eff-N:</span> <b class="status-done">N/(1+(N-1)·ρ) in portfolio_corr</b></span>
+    <span><span style="color:var(--dim)">Dashboard:</span> <b class="status-done">PortfolioState → JSON snapshot</b></span>
+    <span><span style="color:var(--dim)">Health:</span> <b class="status-done">OK/WATCH/PAUSE/KILL rollup</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">+35 test_{portfolio_risk,portfolio_correlation,central_dashboard}.py</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">core/portfolio_risk.py · backtest/portfolio_correlation.py · funnel/central_dashboard.py</span>
+  </div>
+</div>
+
+<!-- ADVERSARIAL WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.10), transparent);">
+  <h3>Adversarial Wired — Stop-Hunt · Stress Replay · Tail Hedge · Smart Routing · Grafana (NEW)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">StopHunt:</span> <b class="status-done">ghost-trader worst-bar penetration → robustness_score</b></span>
+    <span><span style="color:var(--dim)">Stress:</span> <b class="status-done">2008 grind · 2020 flash · 2022 regime</b></span>
+    <span><span style="color:var(--dim)">Hedge:</span> <b class="status-done">Black-Scholes OTM put + inverse-perp short</b></span>
+    <span><span style="color:var(--dim)">Router:</span> <b class="status-done">iceberg · TWAP · post-only (would-cross check)</b></span>
+    <span><span style="color:var(--dim)">Grafana:</span> <b class="status-done">10-panel JSON · schema 38 · $datasource templated</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">+44 test_{stop_hunt_sim,stress_scenarios,tail_hedge,smart_router,grafana_dashboard}.py</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">backtest/{stop_hunt_sim,stress_scenarios}.py · core/{tail_hedge,smart_router}.py · obs/grafana_dashboard.py</span>
+  </div>
+</div>
+
+<!-- OPS + HARDENING WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.10), transparent);">
+  <h3>Ops + Hardening Wired — Prometheus · VPS Runbook · Cold-Wallet Sweep (NEW)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Prometheus:</span> <b class="status-done">aiohttp /metrics + /health on 127.0.0.1:9115</b></span>
+    <span><span style="color:var(--dim)">AppKey:</span> <b class="status-done">typed web.AppKey[MetricsRegistry]</b></span>
+    <span><span style="color:var(--dim)">UFW:</span> <b class="status-done">deny-all + SSH from operator_ip · Prom loopback-only</b></span>
+    <span><span style="color:var(--dim)">SSHD:</span> <b class="status-done">keys-only · no root · no X11 · 3 max auth</b></span>
+    <span><span style="color:var(--dim)">Systemd:</span> <b class="status-done">NoNewPrivileges · ProtectSystem=strict · MemDenyWX</b></span>
+    <span><span style="color:var(--dim)">Runbook:</span> <b class="status-done">7-section operator checklist</b></span>
+    <span><span style="color:var(--dim)">ColdSweep:</span> <b class="status-done">Ledger-audited · no private key in bot · drift check</b></span>
+    <span><span style="color:var(--dim)">Tests:</span> <b class="status-done">+39 test_{prometheus_exporter,vps_hardening,cold_wallet_sweep}.py</b></span>
+    <span style="margin-left:auto; color:var(--dim); font-size:10px;">obs/{prometheus_exporter,vps_hardening}.py · funnel/cold_wallet_sweep.py</span>
+  </div>
+</div>
+
+<!-- PREFLIGHT v3 · 14-GATE BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent2); background: linear-gradient(90deg, rgba(0,209,255,0.06), transparent);">
+  <h3>Preflight Dryrun v3 — 14-Gate (13/14 GO · waiting on creds)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Verdict:</span> <b class="status-done">GO</b></span>
+    <span><span style="color:var(--dim)">Passed:</span> <b class="status-done">13/14</b></span>
+    <span><span style="color:var(--dim)">Required RED:</span> <b class="status-done">0</b></span>
+    <span><span style="color:var(--dim)">Optional FAIL:</span> <b class="status-prog">1</b> <span style="color:var(--dim)">(tradovate_creds — .env pending)</span></span>
+    <span><span style="color:var(--dim)">New gates:</span> <b>decisions_locked · env_template · go_trigger_armed</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/preflight_dryrun_report.json</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(5,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present (4 entries)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> paper_run_report</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> firm_verdict (v2 GO)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9 · 96%)</span>
+    <span><span class="pill prog" style="font-size:9px;">!</span> tradovate_creds (opt)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> risk_sizing (3/6/20)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> telemetry_channels</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> venue_health (4/4 yaml)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> pytest_green (604/604)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> decisions_locked (v1)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> env_template (9 keys)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> go_trigger_armed</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> abort_on_red_loop</span>
+  </div>
+</div>
+
+<!-- FIRM BOARD v2 VERDICT BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.14), transparent);">
+  <h3>Firm Board Verdict — APEX_PAPER_RESULTS_v2 (JUMP-DIFFUSION · HONEST SPLIT)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">FINAL: GO (v2 · SPLIT HELD)</span>
+    <span style="color:var(--dim)">|</span>
+    <span><span style="color:var(--dim)">Quant:</span> <span class="status-done">GO</span></span>
+    <span><span style="color:var(--dim)">RedTeam:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Risk:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Macro:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Micro:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">PM:</span> <span class="status-done">GO</span></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">kill_log.json · 2026-04-16 21:15 EDT · 4 entries · parent_spec=v1</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:flex; gap:14px; flex-wrap:wrap;">
+    <span><span class="pill done" style="font-size:10px; padding:2px 7px;">TIER A · LIVE-TINY (held from v1)</span> MNQ 0.473R · NQ 0.607R · paper gate CLEARED</span>
+    <span style="color:var(--dim)">|</span>
+    <span><span class="pill prog" style="font-size:10px; padding:2px 7px;">TIER B · HOLD AT PAPER (v2 honest)</span> eth 0.399R PASS · sol 0.339R PASS · crypto 0.136R FAIL · xrp 0.220R FAIL · <span style="color:var(--warn)">seed-fragile (eth 4/5, sol 2/5) → real Bybit bars only gate</span></span>
+  </div>
+</div>
+
+<!-- FIRM BOARD VERDICT BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.08), transparent);">
+  <h3>Firm Board Verdict — APEX Paper Results v1 (LATEST · Split Promotion)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">FINAL: GO (SPLIT)</span>
+    <span style="color:var(--dim)">|</span>
+    <span><span style="color:var(--dim)">Quant:</span> <span class="status-done">GO</span></span>
+    <span><span style="color:var(--dim)">RedTeam:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Risk:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Macro:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">Micro:</span> <span class="status-done">CONTINUE</span></span>
+    <span><span style="color:var(--dim)">PM:</span> <span class="status-done">GO</span></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">kill_log.json · 2026-04-16 18:38 EDT · 3rd spec in history</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:flex; gap:14px; flex-wrap:wrap;">
+    <span><span class="pill done" style="font-size:10px; padding:2px 7px;">TIER A → LIVE-TINY</span> MNQ +0.473R · NQ +0.607R · <b>paper gate CLEARED</b></span>
+    <span style="color:var(--dim)">|</span>
+    <span><span class="pill prog" style="font-size:10px; padding:2px 7px;">TIER B → HOLD AT PAPER</span> crypto_seed +0.149R · ETH +0.161R · SOL +0.146R · XRP +0.176R · <span style="color:var(--warn)">need real Bybit paper bars</span></span>
+  </div>
+</div>
+
+<!-- PIPELINE WIRED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent2); background: linear-gradient(90deg, rgba(0,209,255,0.05), transparent);">
+  <h3>Signal Pipeline — End-to-End Wired &amp; Tested</h3>
+  <div class="mono" style="display:flex; gap:8px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done">BarData</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">5 Features</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">Confluence 0-10</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">Risk Engine</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">OrderRequest</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">Bybit v5 / Tradovate OAuth</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">Circuit Breaker</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">Walk-Forward</span>
+    <span style="color:var(--dim)">→</span>
+    <span class="pill done">DSR + PSR</span>
+    <span class="pill done">Paper Run 4wk</span>
+    <span class="pill done">Jump-Diff v2</span>
+    <span class="pill done">Preflight 10g</span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">604 tests · 17/17 verify · venues HTTP wired · alerts HTTP wired · data stack wired · 6 bots routed · staking wired · tax auto · paper v1+v2 · preflight · weekly cadence</span>
+  </div>
+</div>
+
+<!-- STREAM A/B/C LANDED BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--warn); background: linear-gradient(90deg, rgba(255,176,32,0.05), transparent);">
+  <h3>Stream A/B/C — Parallel Landing (Venues · Obs · Data · Tax · WF)</h3>
+  <div class="mono" style="display:flex; gap:10px; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">STREAM A ·</span> <b class="status-done">Bybit HMAC</b> + <b class="status-done">Tradovate OAuth</b> + <b class="status-done">Router Circuit Breaker</b></span>
+    <span style="color:var(--dim)">|</span>
+    <span><span style="color:var(--dim)">STREAM B ·</span> <b class="status-done">obs/metrics</b> + <b class="status-done">obs/alerts</b> + <b class="status-done">obs/logger</b> + <b class="status-done">obs/heartbeat</b> + <b class="status-done">secrets</b> + <b class="status-done">CI/CD</b></span>
+    <span style="color:var(--dim)">|</span>
+    <span><span style="color:var(--dim)">STREAM C ·</span> <b class="status-done">data×9</b> + <b class="status-done">tax×5</b> + <b class="status-done">walk_forward</b> + <b class="status-done">deflated_sharpe</b></span>
+  </div>
+</div>
+
+<!-- PAPER RUN HARNESS v1 BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--pink); background: linear-gradient(90deg, rgba(255,62,165,0.08), transparent);">
+  <h3>Paper Run Harness v1 — 4-Week Synthetic (GBM) · All 6 Bots</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Bots:</span> <b>6</b></span>
+    <span><span style="color:var(--dim)">Trades:</span> <b>973</b></span>
+    <span><span style="color:var(--dim)">Portfolio:</span> <b class="status-done">$27k → $46.97k (+73.96%)</b></span>
+    <span><span style="color:var(--dim)">Blended Exp:</span> <b class="status-done">+0.277R</b></span>
+    <span><span style="color:var(--dim)">Blended Win:</span> <b>51.1%</b></span>
+    <span><span style="color:var(--dim)">Max DD:</span> <b>15.55%</b></span>
+    <span><span style="color:var(--dim)">Kills:</span> <b class="status-done">0</b></span>
+    <span><span style="color:var(--dim)">Gate:</span> <b class="status-done">2/6 PASS</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/paper_run_{report.json,tearsheet.txt}</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(6,1fr); gap:6px;">
+    <span><b>MNQ</b> 168t · <span class="status-done">+0.473R</span> · PASS</span>
+    <span><b>NQ</b> 140t · <span class="status-done">+0.607R</span> · PASS</span>
+    <span><b>SEED</b> 161t · <span class="status-prog">+0.149R</span> · FAIL</span>
+    <span><b>ETH</b> 168t · <span class="status-prog">+0.161R</span> · FAIL</span>
+    <span><b>SOL</b> 168t · <span class="status-prog">+0.146R</span> · FAIL</span>
+    <span><b>XRP</b> 168t · <span class="status-prog">+0.176R</span> · FAIL</span>
+  </div>
+</div>
+
+<!-- PAPER RUN HARNESS v2 BANNER (JUMP-DIFFUSION) -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent2); background: linear-gradient(90deg, rgba(0,209,255,0.10), transparent);">
+  <h3>Paper Run v2c — Jump-Diffusion + Regime Switching · Tier-B Re-Test</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Bar model:</span> <b>synthetic_bars_jump</b></span>
+    <span><span style="color:var(--dim)">Overrides:</span> <b>tier_b_jump_overrides_v2c.json</b></span>
+    <span><span style="color:var(--dim)">Tier-B:</span> <b class="status-done">2/4 PASS</b></span>
+    <span><span style="color:var(--dim)">Robustness seeds:</span> <b>7/19/31/43/51</b></span>
+    <span><span style="color:var(--dim)">eth fragility:</span> <b class="status-prog">4/5</b></span>
+    <span><span style="color:var(--dim)">sol fragility:</span> <b class="status-prog">2/5</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/paper_run_report_v2c.json · firm_spec_paper_results_v2.json</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(4,1fr); gap:6px;">
+    <span><b>CRYPTO SEED</b> · <span class="status-prog">+0.136R</span> · DD 4.3% · FAIL</span>
+    <span><b>ETH PERP</b> · <span class="status-done">+0.399R</span> · DD 9.1% · PASS</span>
+    <span><b>SOL PERP</b> · <span class="status-done">+0.339R</span> · DD 7.8% · PASS</span>
+    <span><b>XRP PERP</b> · <span class="status-prog">+0.220R</span> · DD 12.2% · FAIL</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--warn);">
+    HONEST FINDING: 2/4 Tier-B bots pass jump-diffusion gate but seed 43 tripped eth DD kill at 21% — synthetic edge is seed-fragile. No Tier-B promotion until real Bybit paper bars confirm.
+  </div>
+</div>
+
+<!-- LIVE-TINY PREFLIGHT DRYRUN BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.06), transparent);">
+  <h3>Live-Tiny Preflight Dryrun — 10-Gate Abort-on-Red (GO)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Verdict:</span> <b class="status-done">GO</b></span>
+    <span><span style="color:var(--dim)">Passed:</span> <b class="status-done">8/10</b></span>
+    <span><span style="color:var(--dim)">Warn:</span> <b class="status-prog">2</b> <span style="color:var(--dim)">(tradovate_creds, venue_health — staged)</span></span>
+    <span><span style="color:var(--dim)">Injection-tested:</span> <b class="status-done">abort on RED verified</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/preflight_dryrun_{report.json,log.txt}</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(5,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> paper_run_report</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> firm_board_verdict (GO)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9)</span>
+    <span><span class="pill prog" style="font-size:9px;">!</span> tradovate_creds (staged)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> risk_sizing (3%/6%/20%)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> telemetry_channels</span>
+    <span><span class="pill prog" style="font-size:9px;">!</span> venue_health (demo ok)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> pytest_green (276/276)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> abort_on_red_loop</span>
+  </div>
+</div>
+
+<!-- SWEEP SIMULATION BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--pink); background: linear-gradient(90deg, rgba(255,62,165,0.05), transparent);">
+  <h3>Sweep Simulation — 12-Week Portfolio Compounding Path (60/30/10)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Start:</span> <b>$27,000</b></span>
+    <span><span style="color:var(--dim)">End (12w):</span> <b class="status-done">$104,400</b></span>
+    <span><span style="color:var(--dim)">Return:</span> <b class="status-done">+286.7%</b></span>
+    <span><span style="color:var(--dim)">Rebalance:</span> <b>every 4w</b></span>
+    <span><span style="color:var(--dim)">Alloc:</span> <b>mnq 60% · perp 30% · grid 10%</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/sweep_simulation_report.json · expected-value model · paper expectancy</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Planning model only — not a promise. Uses paper-run blended R-expectancy per bucket, trades-per-week, and rebalance cadence to project compounding. Real results will differ.
+  </div>
+</div>
+
+<!-- WEEKLY FIRM REVIEW CADENCE BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--warn); background: linear-gradient(90deg, rgba(255,176,32,0.05), transparent);">
+  <h3>Weekly Firm Review Cadence — Auto-Engage Board on Latest Spec</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
+    <span><span style="color:var(--dim)">Script:</span> <b>scripts/weekly_review.py</b></span>
+    <span><span style="color:var(--dim)">Latest run:</span> <b>2026-W16</b></span>
+    <span><span style="color:var(--dim)">Spec chain:</span> <b>v2 → v1 (parent)</b></span>
+    <span><span style="color:var(--dim)">Verdict:</span> <b class="status-done">GO</b></span>
+    <span><span style="color:var(--dim)">Kill log @ review:</span> <b>4</b></span>
+    <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/weekly_review_{log.json,latest.json,latest.txt}</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Auto-picks latest firm_spec_paper_results_*.json, follows parent_spec chain for metric fallback, engages 6-agent Firm board, appends to immutable weekly_review_log.json. Runs Tier A and Tier B independently.
+  </div>
+</div>
+
+<!-- OVERALL PROGRESS -->
+<div class="panel" style="margin-bottom:10px">
+  <h3>Overall Progress → Live</h3>
+  <div class="bigbar">
+    <div class="bigbar-fill" style="width:88%"></div>
+    <div class="bigbar-label mono">
+      <span>DECISIONS v1 LOCKED · CONFIGS WIRED · GO TRIGGER ARMED · PREFLIGHT 12/13 GO · WAITING ON .env</span>
+      <span>88% COMPLETE / TRADOVATE CREDS = LAST STEP</span>
+    </div>
+  </div>
+</div>
+
+<!-- KPI ROW -->
+<div class="kpis" style="margin-bottom:10px">
+  <div class="kpi"><div class="k">Tests</div><div class="v g mono">604/604</div></div>
+  <div class="kpi"><div class="k">Verify All</div><div class="v g mono">17/17</div></div>
+  <div class="kpi"><div class="k">Preflight</div><div class="v g mono">13/14 GO</div></div>
+  <div class="kpi"><div class="k">Decisions</div><div class="v g mono">v1 LOCKED</div></div>
+  <div class="kpi"><div class="k">Firm v2</div><div class="v g mono">GO</div></div>
+  <div class="kpi"><div class="k">Go Trigger</div><div class="v g mono">ARMED</div></div>
+</div>
+
+<!-- FUNNEL -->
+<div class="panel" style="margin-bottom:10px">
+  <h3>The Funnel — 4-Piece Machine + Staking Multiplier</h3>
+  <div class="funnel">
+    <div class="funnel-piece engine">
+      <div class="lbl">PIECE 1 · ENGINE</div>
+      <div class="name">MNQ</div>
+      <div class="val mono">$5,000 → $5,500</div>
+      <div class="tag">tight 1-2% · max 5x · paper-ready</div>
+    </div>
+    <div class="funnel-piece engine">
+      <div class="lbl">PIECE 2 · ENGINE</div>
+      <div class="name">NQ HYBRID</div>
+      <div class="val mono">hybrid from MNQ</div>
+      <div class="tag">scale from MNQ after proof · baseline $12k</div>
+    </div>
+    <div class="funnel-piece casino">
+      <div class="lbl">PIECE 3 · TURBO SEED</div>
+      <div class="name">CRYPTO SEED</div>
+      <div class="val mono">$0 → $2,000</div>
+      <div class="tag">grid + directional · Bybit · 40 levels geo</div>
+    </div>
+    <div class="funnel-piece casino">
+      <div class="lbl">PIECE 4 · CASINO</div>
+      <div class="name">ETH / SOL / XRP PERPS</div>
+      <div class="val mono">$0 → $3k / $3k / $2k</div>
+      <div class="tag">up to 75x at confluence 9+ · isolated</div>
+    </div>
+    <div class="funnel-piece vault">
+      <div class="lbl">MULTIPLIER</div>
+      <div class="name">COLD + STAKE</div>
+      <div class="val mono">60% → stake</div>
+      <div class="tag">Lido / Jito / Flare / Ethena · Ledger Stax</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASES + BOTS -->
+<div class="grid col-12" style="margin-bottom:10px">
+  <div class="panel" style="grid-column: span 8;">
+    <h3>Roadmap Phases — P0 → P12</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Phase</th><th>Weeks</th><th>Progress</th><th>Status</th></tr></thead>
+      <tbody class="mono">
+        <tr><td>P0</td><td>Scaffold &amp; Blueprint Lock</td><td>1</td><td><span class="bar"><span class="bar-fill" style="width:100%;background:var(--accent)"></span></span> 100%</td><td><span class="pill done">DONE</span></td></tr>
+        <tr><td>P1</td><td>Strategy &amp; Research (Brain)</td><td>3</td><td><span class="bar"><span class="bar-fill" style="width:60%"></span></span> 60%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P2</td><td>Data Infrastructure (Fuel)</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:82%"></span></span> 82%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P3</td><td>Backtest + MC Validation (Proof)</td><td>3</td><td><span class="bar"><span class="bar-fill" style="width:70%"></span></span> 70%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P4</td><td>Risk Framework (Shield)</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:75%"></span></span> 75%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P5</td><td>Broker / Exchange Exec</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:70%"></span></span> 70%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P6</td><td>Profit Funnel + Baseline</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:65%"></span></span> 65%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P7</td><td>Exec / Monitoring / Ops</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:85%"></span></span> 85%</td><td><span class="pill prog">RUNTIME + ALERTS + HEARTBEAT WIRED</span></td></tr>
+        <tr><td>P8</td><td>Security / Compliance / Legal</td><td>1</td><td><span class="bar"><span class="bar-fill" style="width:55%"></span></span> 55%</td><td><span class="pill prog">ENTITY: PERSONAL SSN</span></td></tr>
+        <tr><td>P9</td><td>Deployment &amp; Phased Rollout</td><td>4</td><td><span class="bar"><span class="bar-fill" style="width:90%"></span></span> 90%</td><td><span class="pill prog">RUNTIME WIRED · .env PENDING</span></td></tr>
+        <tr><td>P10</td><td>AI / ML Layer (RL + MAS)</td><td>3</td><td><span class="bar"><span class="bar-fill" style="width:30%"></span></span> 30%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P11</td><td>Staking Compounding Layer</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:55%"></span></span> 55%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
+        <tr><td>P12</td><td>Final Opt + Master Tweaks (OPEN)</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:20%"></span></span> 20%</td><td><span class="pill prog">HARNESS OPEN</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="grid-column: span 4;">
+    <h3>Bot Status</h3>
+    <div class="bots" style="grid-template-columns: 1fr;">
+      <div class="bot paper">
+        <h4>MNQ · ENGINE · TIER A</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--accent)">paper_cleared</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$5,000 → $10,912.90 (+118.3%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--accent)">168 trd · +0.473R · 58.9% · DD 6.83%</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--accent)">live_tiny_1_contract</span></div>
+      </div>
+      <div class="bot paper">
+        <h4>NQ · ENGINE · TIER A</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--accent)">paper_cleared</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$12,000 → $23,496.88 (+95.8%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--accent)">140 trd · +0.607R · 64.3% · DD 3.94%</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--accent)">live_tiny_1_contract</span></div>
+      </div>
+      <div class="bot scaffold">
+        <h4>CRYPTO SEED · TIER B</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--warn)">held_at_paper</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$2,000 → $2,247.88 (+12.4%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--warn)">161 trd · +0.149R · FAIL (&lt;0.30R)</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--warn)">rerun_on_real_bybit_bars</span></div>
+      </div>
+      <div class="bot scaffold" style="border-top-color:var(--pink)">
+        <h4>ETH PERP · TIER B</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--warn)">held_at_paper</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$3,000 → $3,878.29 (+29.3%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--warn)">168 trd · +0.161R · FAIL (&lt;0.30R)</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--warn)">rerun_on_real_bybit_bars</span></div>
+      </div>
+      <div class="bot scaffold" style="border-top-color:var(--pink)">
+        <h4>SOL PERP · TIER B</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--warn)">held_at_paper</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$3,000 → $3,782.81 (+26.1%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--warn)">168 trd · +0.146R · FAIL (&lt;0.30R)</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--warn)">rerun_on_real_bybit_bars</span></div>
+      </div>
+      <div class="bot scaffold" style="border-top-color:var(--pink)">
+        <h4>XRP PERP · TIER B</h4>
+        <div class="row"><span class="k">PHASE</span><span class="v mono" style="color:var(--warn)">held_at_paper</span></div>
+        <div class="row"><span class="k">EQUITY</span><span class="v mono">$2,000 → $2,650.73 (+32.5%)</span></div>
+        <div class="row"><span class="k">PAPER</span><span class="v mono" style="color:var(--warn)">168 trd · +0.176R · FAIL (&lt;0.30R + DD 15.55%)</span></div>
+        <div class="row"><span class="k">NEXT</span><span class="v mono" style="color:var(--warn)">rerun_on_real_bybit_bars + dd_review</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFLUENCE + STAKING -->
+<div class="grid col-12" style="margin-bottom:10px">
+  <div class="panel" style="grid-column: span 6;">
+    <h3>Confluence Rubric — 0-10 Leverage Ramp</h3>
+    <div class="rubric mono">
+      <div class="hd">FACTOR</div><div class="hd wt">WEIGHT</div><div class="hd">SIGNAL</div>
+      <div>Trend bias (HTF EMA slope + 4h struct)</div><div class="wt">3.0</div><div>aligned = 3.0</div>
+      <div>Volatility regime (ATR percentile)</div><div class="wt">2.0</div><div>30-70th = 2.0</div>
+      <div>Funding skew (contrarian extreme)</div><div class="wt">2.0</div><div>&gt;0.05% opp = 2.0</div>
+      <div>On-chain activity Δ</div><div class="wt">1.5</div><div>+1σ = 1.5</div>
+      <div>Sentiment (LunarCrush + F&amp;G div)</div><div class="wt">1.5</div><div>extreme contra = 1.5</div>
+      <div style="border-top:1px solid var(--border); padding-top:4px; margin-top:2px; grid-column: 1 / -1;">
+        <span style="color:var(--dim)">LEVERAGE RAMP:</span>
+        <span style="color:var(--accent)"> 9+ → 50-100x</span>
+        <span style="color:var(--warn)"> · 7-8 → 20x</span>
+        <span style="color:var(--accent2)"> · 5-6 → 10x</span>
+        <span style="color:var(--err)"> · &lt;5 → NO TRADE</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column: span 6;">
+    <h3>Staking Allocation — Cold Wallet Multiplier</h3>
+    <div class="alloc" style="margin: 6px 0 8px;">
+      <div class="alloc-eth" style="width:40%">ETH 40%</div>
+      <div class="alloc-sol" style="width:30%">SOL 30%</div>
+      <div class="alloc-xrp" style="width:15%">XRP 15%</div>
+      <div class="alloc-stab" style="width:15%">STAB 15%</div>
+    </div>
+    <table>
+      <thead><tr><th>Asset</th><th>Token</th><th>Provider</th><th>APY</th></tr></thead>
+      <tbody class="mono">
+        <tr><td>ETH</td><td>wstETH</td><td>Lido + EigenLayer opt</td><td class="status-done">3.8%</td></tr>
+        <tr><td>SOL</td><td>JitoSOL</td><td>Jito (MEV-boosted)</td><td class="status-done">6.5%</td></tr>
+        <tr><td>XRP</td><td>sFLR / FAssets</td><td>Flare Network</td><td class="status-done">4.5%</td></tr>
+        <tr><td>USDT</td><td>sUSDe</td><td>Ethena (funding native)</td><td class="status-done">7.0%</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MCPs + SKILLS + FIRM -->
+<div class="grid col-12">
+  <div class="panel" style="grid-column: span 4;">
+    <h3>MCP Connections</h3>
+    <div class="mcps">
+      <span class="mcp up">✓ tradingview</span>
+      <span class="mcp up">✓ tradingview-jackson</span>
+      <span class="mcp up">✓ blockscout</span>
+      <span class="mcp up">✓ lunarcrush</span>
+      <span class="mcp up">✓ drawio</span>
+      <span class="mcp auth">! jotform (auth)</span>
+      <span class="mcp auth">! amplitude (auth)</span>
+      <span class="mcp auth">! coupler (auth)</span>
+      <span class="mcp down">✗ github copilot</span>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column: span 4;">
+    <h3>Skills Engaged</h3>
+    <div class="skills">
+      <span class="skill">firm:the-firm</span>
+      <span class="skill">superpowers:writing-plans</span>
+      <span class="skill">superpowers:executing-plans</span>
+      <span class="skill">superpowers:dispatching-parallel-agents</span>
+      <span class="skill">web-artifacts-builder</span>
+      <span class="skill">bot-status</span>
+      <span class="skill">board-start</span>
+      <span class="skill">python-pro</span>
+      <span class="skill">test-master</span>
+      <span class="skill">secure-code-guardian</span>
+      <span class="skill">architecture-designer</span>
+    </div>
+  </div>
+
+  <div class="panel" style="grid-column: span 4;">
+    <h3>Firm Board Gates</h3>
+    <table>
+      <tbody class="mono">
+        <tr><td>Spec Approve</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Backtest Approve</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Paper Promotion (v1)</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Paper Results v1 (Tier A)</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Paper Results v1 (Tier B)</td><td><span class="pill prog">HOLD</span></td></tr>
+        <tr><td>Paper Results v2 (Jump)</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Preflight Dryrun</td><td><span class="pill done">GO</span></td></tr>
+        <tr><td>Live-Tiny (Tier A)</td><td><span class="pill pend">CREDS</span></td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:10px; color:var(--dim); margin-top:6px; line-height:1.5;">
+      6-agent round-robin: Quant → Red Team → Risk → Macro → Micro → PM. <span style="color:var(--accent)">CRYPTO_PERP v1 GO'd 17:17. APEX_PAPER_PROMOTION v1 GO'd 18:28. APEX_PAPER_RESULTS v1 GO'd 18:38 (SPLIT). APEX_PAPER_RESULTS_v2 GO'd 21:15 (JUMP · SPLIT HELD).</span>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center; font-size:9px; color:var(--mute); margin-top:14px; letter-spacing:0.12em;">
+  EVOLUTIONARY TRADING ALGO v0.1.14 · Decisions v1 locked · Live Runtime Wired · Exchange APIs Wired (Tradovate + Bybit + OKX aiohttp + HMAC) · Alerts Wired (aiohttp async + stdlib sync) · Data Stack Wired (Bybit WS + DataBento SDK) · Bots Routed (6 bots · OrderRequest pipeline) · Staking Wired (Lido/Jito/Flare/Ethena + DefiLlama APY) · Portfolio-Risk Wired (VaR/CVaR + correlation brake + central dashboard) · Adversarial Wired (stop-hunt + stress replay + tail hedge + smart router + Grafana) · Ops + Hardening Wired (Prometheus /metrics + VPS runbook + cold-wallet Ledger sweep) · Preflight 13/14 GO · 604/604 tests · Go phrase "GO APEX MNQ LIVE-TINY" armed · Awaiting .env creds
+</div>
+
+</body>
+</html>

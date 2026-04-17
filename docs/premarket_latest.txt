@@ -1,0 +1,62 @@
+========================================================================
+EVOLUTIONARY TRADING ALGO  //  PRE-MARKET BRIEFING  (Jarvis v2)
+ts: 2026-04-17T16:25:28.458259+00:00
+session: LUNCH
+========================================================================
+
+ACTION:       TRADE
+REASON:       all gates green
+CONFIDENCE:   80%
+
+STRESS
+  composite:   0%   binding: macro_event
+    macro_event     raw=0.00  w=0.25  ctr=0.000  (no event)
+    equity_dd       raw=0.00  w=0.25  ctr=0.000  (dd 0.00%)
+    open_risk       raw=0.00  w=0.15  ctr=0.000  (0.00R)
+    regime_risk     raw=0.00  w=0.10  ctr=0.000  (UNKNOWN)
+    override_rate   raw=0.00  w=0.10  ctr=0.000  (0 in 24h)
+    autopilot       raw=0.00  w=0.07  ctr=0.000  (ACTIVE)
+    correlations    raw=0.00  w=0.05  ctr=0.000  (clear)
+    macro_bias      raw=0.00  w=0.03  ctr=0.000  (neutral)
+
+SIZING
+  size_mult:   70%   (stress low -- full size authorized; session=LUNCH x0.70)
+
+MARGINS TO NEXT TIER
+  dd->REDUCE:      +2.00%   dd->STAND_ASIDE: +3.00%   dd->KILL: +5.00%
+  overrides->REVIEW: +3   open_risk->CAP:    +3.00R
+
+JARVIS SAYS
+  Jarvis says TRADE (confidence 80%) because all gates green. Composite stress is 0%, dominated by macro_event. DD headroom: 2.00% before REDUCE, 3.00% before STAND_ASIDE. Session LUNCH. Suggested size 70%.
+
+PLAYBOOK
+  - take only A+ setups that pass the full checklist
+  - size per Kelly cap + sizing_hint.size_mult
+  - journal decision rationale before entry
+  - binding constraint: macro_event
+  - lunch chop: fade only, no trend continuation trades
+
+REGIME
+  current:     UNKNOWN (conf 50%)
+  flipped:     False
+
+MACRO
+  bias:        neutral
+
+EQUITY / RISK
+  equity:      $0.00
+  pnl today:   $+0.00
+  dd today:    0.00%
+  positions:   0
+  open risk:   0.00R
+
+JOURNAL (24h)
+  kill:        False
+  mode:        ACTIVE
+  executed:    0
+  blocked:     0
+  overrides:   0
+  corr alert:  False
+
+NOTES
+  - no premarket_inputs.json found -- stub snapshot

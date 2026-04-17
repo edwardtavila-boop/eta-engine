@@ -1,0 +1,77 @@
+{
+  "kind": "apex_paper_run_report",
+  "generated_at": "2026-04-16T22:53:06.336092+00:00",
+  "label": "robust_43",
+  "bar_mode": "jump",
+  "weeks": 4,
+  "seed": 43,
+  "requirements": {
+    "min_weeks": 4,
+    "min_trades_per_bot": 30,
+    "expectancy_r_required": 0.3,
+    "max_dd_during_paper_pct": 15.0,
+    "kill_switch_rate_max": 1.0,
+    "telemetry_gap_tolerance_minutes": 5
+  },
+  "per_bot": [
+    {
+      "bot": "eth_perp",
+      "symbol": "ETHUSDT",
+      "n_trades": 168,
+      "win_rate": 0.4286,
+      "expectancy_r": 0.0714,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.1096,
+      "max_dd_pct": 21.2276,
+      "total_return_pct": 11.3093,
+      "final_equity_usd": 3339.28,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 0.9137,
+      "sortino": 12357.8461,
+      "killed": true,
+      "kill_events": 1,
+      "telemetry_gaps": 0,
+      "gate_pass": false,
+      "gate_failures": [
+        "expectancy_r=0.071 < required=0.3",
+        "max_dd_pct=21.23 > max=15.0",
+        "kill_switch_rate=1.07/mo > max=1.0"
+      ]
+    },
+    {
+      "bot": "sol_perp",
+      "symbol": "SOLUSDT",
+      "n_trades": 168,
+      "win_rate": 0.5238,
+      "expectancy_r": 0.3095,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.6533,
+      "max_dd_pct": 10.9649,
+      "total_return_pct": 65.8907,
+      "final_equity_usd": 4976.72,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 3.9234,
+      "sortino": 63141.5292,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": true,
+      "gate_failures": []
+    }
+  ],
+  "aggregate": {
+    "total_bots": 2,
+    "bots_gate_pass": 1,
+    "total_trades": 336,
+    "total_final_equity_usd": 8316.0,
+    "total_starting_equity_usd": 6000.0,
+    "blended_expectancy_r": 0.1905,
+    "blended_win_rate": 0.4762,
+    "blended_max_dd_pct": 21.2276,
+    "any_killed": true,
+    "promotion_verdict": "MODIFY",
+    "verdict_reason": "1 bot(s) hit DD kill during paper"
+  }
+}

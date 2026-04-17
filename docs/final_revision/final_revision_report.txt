@@ -1,0 +1,52 @@
+========================================================================
+EVOLUTIONARY TRADING ALGO -- FINAL REVISION REPORT (PRE-ROLLOUT)
+========================================================================
+Generated: 2026-04-17T16:41:14.336015+00:00
+
+-- JARVIS CONTEXT ----------------------------------------------------
+Action:     TRADE
+Reason:     all gates green
+
+Explanation:
+  Jarvis says TRADE (confidence 80%) because all gates green. Composite stress is 0%, dominated by macro_event. DD headroom: 2.00% before REDUCE, 3.00% before STAND_ASIDE. Session LUNCH. Suggested size 70%.
+
+-- PRINCIPLES CHECKLIST ----------------------------------------------
+Score:          1.000
+Letter grade:   A+
+Discipline:     10.000
+Critical gaps:  0
+
+-- BASEMENT-LEVEL PARAMETER SWEEP ------------------------------------
+Candidates evaluated: 192
+Gate-pass count:      169
+Pareto frontier:      1
+Winner params: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+  expectancy_r=1.400  max_dd_pct=0.005  win_rate=0.620  stability=0.019
+
+Top 5 ranked:
+  #1: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+        expect=1.400  dd=0.005  wr=0.620  stab=0.019  gate=True
+  #2: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 2}
+        expect=1.370  dd=0.005  wr=0.620  stab=0.019  gate=True
+  #3: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 2.0, 'max_open_positions': 1}
+        expect=1.350  dd=0.010  wr=0.620  stab=0.019  gate=True
+  #4: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 2.0, 'max_open_positions': 2}
+        expect=1.320  dd=0.010  wr=0.620  stab=0.019  gate=True
+  #5: {'confluence_threshold': 7, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+        expect=1.240  dd=0.005  wr=0.580  stab=0.019  gate=True
+
+-- MASTER TWEAK PROPOSALS (SAFE + MODERATE) --------------------------
+Proposed: 1
+  * [MODERATE] mnq_apex: {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 2.68, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}  gate-pass: exp=+1.202R dd=0.01% stability=0.019
+
+Applied result:
+  * mnq_apex: applied=True  new={'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 2.68, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+        reason:   applied (MODERATE): gate-pass: exp=+1.202R dd=0.01% stability=0.019
+
+-- READY FOR ROLLOUT ? -----------------------------------------------
+READY: True
+
+External gate: P9_ROLLOUT funding ($1000 Tradovate balance).
+  All code is ready; awaiting funded account for API credentials.
+
+========================================================================

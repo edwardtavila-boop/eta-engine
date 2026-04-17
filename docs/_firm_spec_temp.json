@@ -1,0 +1,27 @@
+{
+  "spec_id": "APEX_PAPER_RESULTS_v2",
+  "n": 687,
+  "oos_degradation": 0.18,
+  "expectancy_R": 0.271,
+  "win_rate": 0.51,
+  "avg_loss_R": 1.0,
+  "attacks": {
+    "sample_size": "pass",
+    "regime": "minor",
+    "overfit": "minor",
+    "survivorship": "pass",
+    "execution": "minor",
+    "narrative": "pass"
+  },
+  "regime": "NORMAL_VOL_TREND",
+  "vol_axis": "elevated",
+  "trend_axis": "moderate",
+  "liq_axis": "normal",
+  "corr_axis": "normal",
+  "macro_axis": "neutral",
+  "spread_ticks": 1,
+  "vol_today_ratio": 1.2,
+  "edge_R": 0.271,
+  "edge_cost_R": 0.08,
+  "notes": "Scope: Tier-B only. Tier-A (MNQ+NQ) numbers unchanged from v1 (expectancy 0.54R on 308 trades). Multi-seed robustness weakens the Tier-B v2c passes on eth/sol \u00e2\u20ac\u201d report this transparently, do NOT claim Tier-B has edge."
+}

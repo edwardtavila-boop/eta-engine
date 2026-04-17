@@ -1,0 +1,116 @@
+{
+  "ts": "2026-04-17T16:25:28.458259Z",
+  "macro": {
+    "vix_level": null,
+    "next_event_label": null,
+    "hours_until_next_event": null,
+    "macro_bias": "neutral"
+  },
+  "equity": {
+    "account_equity": 0.0,
+    "daily_pnl": 0.0,
+    "daily_drawdown_pct": 0.0,
+    "open_positions": 0,
+    "open_risk_r": 0.0
+  },
+  "regime": {
+    "regime": "UNKNOWN",
+    "confidence": 0.5,
+    "previous_regime": null,
+    "flipped_recently": false
+  },
+  "journal": {
+    "kill_switch_active": false,
+    "autopilot_mode": "ACTIVE",
+    "overrides_last_24h": 0,
+    "blocked_last_24h": 0,
+    "executed_last_24h": 0,
+    "correlations_alert": false
+  },
+  "suggestion": {
+    "action": "TRADE",
+    "reason": "all gates green",
+    "confidence": 0.8,
+    "warnings": []
+  },
+  "notes": [
+    "no premarket_inputs.json found -- stub snapshot"
+  ],
+  "stress_score": {
+    "composite": 0.0,
+    "components": [
+      {
+        "name": "macro_event",
+        "value": 0.0,
+        "weight": 0.25,
+        "note": "no event"
+      },
+      {
+        "name": "equity_dd",
+        "value": 0.0,
+        "weight": 0.25,
+        "note": "dd 0.00%"
+      },
+      {
+        "name": "open_risk",
+        "value": 0.0,
+        "weight": 0.15,
+        "note": "0.00R"
+      },
+      {
+        "name": "regime_risk",
+        "value": 0.0,
+        "weight": 0.1,
+        "note": "UNKNOWN"
+      },
+      {
+        "name": "override_rate",
+        "value": 0.0,
+        "weight": 0.1,
+        "note": "0 in 24h"
+      },
+      {
+        "name": "autopilot",
+        "value": 0.0,
+        "weight": 0.07,
+        "note": "ACTIVE"
+      },
+      {
+        "name": "correlations",
+        "value": 0.0,
+        "weight": 0.05,
+        "note": "clear"
+      },
+      {
+        "name": "macro_bias",
+        "value": 0.0,
+        "weight": 0.03,
+        "note": "neutral"
+      }
+    ],
+    "binding_constraint": "macro_event"
+  },
+  "session_phase": "LUNCH",
+  "sizing_hint": {
+    "size_mult": 0.7,
+    "reason": "stress low -- full size authorized; session=LUNCH x0.70",
+    "kelly_cap": null
+  },
+  "alerts": [],
+  "margins": {
+    "dd_to_reduce": 0.02,
+    "dd_to_stand_aside": 0.03,
+    "dd_to_kill": 0.05,
+    "overrides_to_review": 3,
+    "open_risk_to_cap_r": 3.0
+  },
+  "trajectory": null,
+  "playbook": [
+    "take only A+ setups that pass the full checklist",
+    "size per Kelly cap + sizing_hint.size_mult",
+    "journal decision rationale before entry",
+    "binding constraint: macro_event",
+    "lunch chop: fade only, no trend continuation trades"
+  ],
+  "explanation": "Jarvis says TRADE (confidence 80%) because all gates green. Composite stress is 0%, dominated by macro_event. DD headroom: 2.00% before REDUCE, 3.00% before STAND_ASIDE. Session LUNCH. Suggested size 70%."
+}

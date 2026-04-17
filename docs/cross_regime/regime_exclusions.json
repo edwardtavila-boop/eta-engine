@@ -1,0 +1,10 @@
+{
+  "spec_id": "REGIME_EXCLUSION_v1",
+  "generated_at_utc": "2026-04-17T23:15:04.257965+00:00",
+  "source": "cross_regime_validation 2026-04-17",
+  "excluded_regimes": {
+    "HIGH_VOL": "OOS sign-flip: IS +0.216R -> OOS -0.559R (cross_regime_validation 2026-04-17). Re-enable only after re-validation passes (deg <= 60% AND OOS exp >= 0.15R AND OOS trades >= 20).",
+    "CRISIS": "Crisis regime: macro=crisis or vol>0.85+liquidity<0.2. Spreads blow out, fills become unmodellable. No live strategy is permitted to size into this regime."
+  },
+  "notes": "Add a regime by inserting `\"<LABEL>\": \"<reason>\"` under excluded_regimes. Remove a regime by deleting its key. The loader picks up edits on next call -- no restart needed."
+}

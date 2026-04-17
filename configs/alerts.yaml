@@ -1,0 +1,53 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/alerts.yaml
+# Alerting channels — decision #17
+# Primary: Pushover mobile push. Secondary: email digest. Escalation: SMS on kill.
+
+channels:
+  pushover:
+    enabled: true
+    env_keys:
+      user:  PUSHOVER_USER
+      token: PUSHOVER_TOKEN
+    priority_map:
+      info:     0   # quiet
+      warn:     1   # high priority
+      critical: 2   # emergency, repeat until ack
+
+  email:
+    enabled: true
+    env_keys:
+      smtp_host: SMTP_HOST
+      smtp_port: SMTP_PORT
+      smtp_user: SMTP_USER
+      smtp_pass: SMTP_PASS
+    to:   "edward.t.avila@gmail.com"
+    from: "eta-engine@thefirm.local"
+    digest_schedule_et: "08:00"
+
+  sms:
+    enabled: false   # activated on live-tiny flip via go_trigger.py
+    env_keys:
+      twilio_sid:   TWILIO_SID
+      twilio_token: TWILIO_TOKEN
+      from_number:  TWILIO_FROM
+    to_number: "+1XXXXXXXXXX"   # populate on go-live
+
+# Routing — which events go to which channel
+routing:
+  events:
+    bot_entry:         { level: info,     channels: [pushover] }
+    bot_exit_win:      { level: info,     channels: [pushover] }
+    bot_exit_loss:     { level: info,     channels: [pushover] }
+    circuit_trip:      { level: warn,     channels: [pushover, email] }
+    dd_trip_wire_hit:  { level: critical, channels: [pushover, email, sms] }
+    apex_rule_violate: { level: critical, channels: [pushover, email, sms] }
+    kill_switch:       { level: critical, channels: [pushover, email, sms] }
+    firm_red_gate:     { level: warn,     channels: [pushover, email] }
+    preflight_fail:    { level: warn,     channels: [pushover, email] }
+    weekly_review:     { level: info,     channels: [email] }
+
+# Rate limits
+rate_limit:
+  info_per_minute: 10
+  warn_per_minute: 5
+  critical_per_minute: 0   # 0 = unthrottled (always send)

@@ -1,0 +1,20 @@
+EVOLUTIONARY TRADING ALGO -- Weekly Principles Checklist
+================================================================================
+Period: 2026-W16   Generated: 2026-04-17T15:53:39.972024+00:00
+Score: 80%   Letter: B   Discipline: 8/10
+--------------------------------------------------------------------------------
+  [Y] a_plus_only            -- Did I pass on B-grade setups?
+  [Y] process_over_outcome   -- Did I follow my checklist on every trade?
+  [Y] decision_log           -- Did every trade get a journaled rationale?
+  [Y] consult_jarvis         -- Did I consult the Jarvis snapshot before entries?
+  [Y] never_autopilot        -- Did I ack all watchdog prompts in time?
+  [Y] cadence_of_review      -- Did I run the weekly review on schedule?
+  [ ] stress_testing         -- Did I stress-test before any size/parameter change?
+  [Y] risk_discipline        -- Did I stay under the daily DD limit?
+  [Y] override_discipline    -- Did I keep override_rate <= 10%?
+  [ ] continuous_learning    -- Did I extract a written lesson from every loser?
+--------------------------------------------------------------------------------
+CRITICAL GAPS:
+  - stress_testing
+  - continuous_learning
+================================================================================

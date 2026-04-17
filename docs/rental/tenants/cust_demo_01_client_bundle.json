@@ -1,0 +1,29 @@
+{
+  "tenant_id": "cust_demo_01",
+  "tier": "PRO",
+  "ws_url": "wss://api.evolutionarytradingalgo.local/ws",
+  "client_version_min": "0.1.0",
+  "supported_client_commands": [
+    "BOT_RESET",
+    "BOT_START",
+    "BOT_STOP",
+    "FETCH_DAILY_REPORT",
+    "FETCH_LOGS",
+    "HELLO",
+    "PING",
+    "QUERY_JARVIS",
+    "SUBSCRIBE_STATUS",
+    "UNSUBSCRIBE_STATUS"
+  ],
+  "supported_server_messages": [
+    "DAILY_REPORT",
+    "ERROR",
+    "HELLO_OK",
+    "JARVIS_ANSWER",
+    "LOG_CHUNK",
+    "PONG",
+    "STATUS"
+  ],
+  "docs_url": "https://evolutionarytradingalgo.local/docs/desktop-client",
+  "disclaimer": "Educational automation tool. Not financial advice. You control your own funds and risk. Past performance is not indicative of future results. Trading involves substantial risk of loss."
+}

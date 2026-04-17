@@ -1,0 +1,167 @@
+{
+  "kind": "apex_live_tiny_preflight_dryrun",
+  "generated_at_utc": "2026-04-17T02:40:06.079437+00:00",
+  "injected_failures": [],
+  "overall": "GO",
+  "gates": [
+    {
+      "name": "kill_log_present",
+      "required": true,
+      "status": "PASS",
+      "detail": "4 kill-log entries",
+      "evidence": {
+        "count": 4
+      }
+    },
+    {
+      "name": "paper_run_report",
+      "required": true,
+      "status": "PASS",
+      "detail": "Tier-A mnq=True nq=True",
+      "evidence": {
+        "passes": {
+          "mnq": true,
+          "nq": true,
+          "crypto_seed": false,
+          "eth_perp": false,
+          "sol_perp": false,
+          "xrp_perp": false
+        }
+      }
+    },
+    {
+      "name": "firm_board_verdict",
+      "required": true,
+      "status": "PASS",
+      "detail": "Firm latest verdict: GO (APEX_PAPER_RESULTS_v2)",
+      "evidence": {
+        "verdict": "GO",
+        "spec_id": "APEX_PAPER_RESULTS_v2"
+      }
+    },
+    {
+      "name": "roadmap_state",
+      "required": true,
+      "status": "PASS",
+      "detail": "phase=P9_ROLLOUT progress=91%",
+      "evidence": {
+        "phase": "P9_ROLLOUT",
+        "progress": 91
+      }
+    },
+    {
+      "name": "tradovate_creds",
+      "required": false,
+      "status": "FAIL",
+      "detail": "creds missing \u2014 live-tiny cannot start",
+      "evidence": {
+        "client_id_set": false,
+        "secret_set": false
+      }
+    },
+    {
+      "name": "risk_sizing",
+      "required": true,
+      "status": "PASS",
+      "detail": "per_trade=3.0% daily_cap=6.0% dd_kill=20.0% tier_A_cap=$17000",
+      "evidence": {
+        "per_trade_risk_pct": 3.0,
+        "daily_loss_cap_pct": 6.0,
+        "max_drawdown_kill_pct": 20.0,
+        "tier_A_capital_usd": 17000
+      }
+    },
+    {
+      "name": "telemetry_channels",
+      "required": false,
+      "status": "PASS",
+      "detail": "telemetry/=False  alerts/=False",
+      "evidence": {}
+    },
+    {
+      "name": "venue_health",
+      "required": false,
+      "status": "PASS",
+      "detail": "configs/ has 4/4 venue+alert+kill files",
+      "evidence": {
+        "present": [
+          "tradovate.yaml",
+          "bybit.yaml",
+          "alerts.yaml",
+          "kill_switch.yaml"
+        ],
+        "missing": []
+      }
+    },
+    {
+      "name": "pytest_green",
+      "required": true,
+      "status": "PASS",
+      "detail": "13 passed in 0.28s",
+      "evidence": {
+        "returncode": 0
+      }
+    },
+    {
+      "name": "decisions_locked",
+      "required": true,
+      "status": "PASS",
+      "detail": "APEX_DECISIONS_v1 locked, 11 sections",
+      "evidence": {
+        "spec_id": "APEX_DECISIONS_v1",
+        "sections": [
+          "authority_note",
+          "decided_by",
+          "generated_at_utc",
+          "kind",
+          "provenance",
+          "spec_id",
+          "tier_1_live_tiny_blockers",
+          "tier_2_tier_b_blockers",
+          "tier_3_operational_cadence",
+          "tier_4_compounding",
+          "tier_5_strategic"
+        ]
+      }
+    },
+    {
+      "name": "env_template",
+      "required": true,
+      "status": "PASS",
+      "detail": ".env.example present with all 9 required keys",
+      "evidence": {
+        "missing_keys": []
+      }
+    },
+    {
+      "name": "go_trigger_armed",
+      "required": true,
+      "status": "PASS",
+      "detail": "go_trigger.py + schedule_weekly_review.py both present",
+      "evidence": {}
+    },
+    {
+      "name": "runtime_wired",
+      "required": true,
+      "status": "PASS",
+      "detail": "kill_switch + alerts + run_eta_live all importable",
+      "evidence": {
+        "files": [
+          "alert_dispatcher.py",
+          "kill_switch_runtime.py",
+          "run_eta_live.py"
+        ]
+      }
+    },
+    {
+      "name": "abort_on_red_loop",
+      "required": true,
+      "status": "PASS",
+      "detail": "No required RED gates \u2014 abort wiring idle (correct)",
+      "evidence": {
+        "red_required": []
+      }
+    }
+  ],
+  "red_required_reasons": []
+}

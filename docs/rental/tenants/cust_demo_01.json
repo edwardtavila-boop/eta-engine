@@ -1,0 +1,24 @@
+{
+  "tenant_id": "cust_demo_01",
+  "email": "demo@example.com",
+  "tier": "PRO",
+  "status": "ACTIVE",
+  "created_utc": "2026-04-17T20:17:49.359520+00:00",
+  "entitlement": {
+    "bot_skus": [
+      "BTC_SEED",
+      "ETH_PERP"
+    ],
+    "expires_utc": "2026-07-17T20:17:49.359499+00:00",
+    "max_concurrent_positions": 6,
+    "max_equity_managed_usd": 75000,
+    "includes_custom_tweaks": false
+  },
+  "subscription": {
+    "cycle": "QUARTERLY",
+    "status": "ACTIVE",
+    "current_period_end": "2026-07-17T20:17:49.359536+00:00",
+    "price_paid_usd": 259.0
+  },
+  "planned_containers": []
+}

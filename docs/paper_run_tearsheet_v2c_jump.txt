@@ -1,0 +1,19 @@
+EVOLUTIONARY TRADING ALGO -- Paper Run Tearsheet  (v2c_jump, jump)
+================================================================================================
+Weeks: 4    Seed: 11    Generated: 2026-04-16T22:52:53.764630+00:00
+------------------------------------------------------------------------------------------------
+BOT          SYM          TRD   WIN%   EXP_R     PF    DD%     RET%     EQ_END  KILL   GATE
+------------------------------------------------------------------------------------------------
+crypto_seed  BTCUSDT      183  45.4%   0.136   1.24 13.14%   20.89%    2417.90     -   FAIL
+eth_perp     ETHUSDT      168  56.0%   0.399   1.89  8.68%   92.67%    5780.06     -   PASS
+sol_perp     SOLUSDT      168  53.6%   0.339   1.69  6.34%   74.38%    5231.27     -   PASS
+xrp_perp     XRPUSDT      168  48.8%   0.220   1.43  9.56%   33.29%    2665.82     -   FAIL
+------------------------------------------------------------------------------------------------
+Aggregate: bots=4 pass=2/4 trades=687 equity=$10,000 -> $16,095
+Blended: expectancy=0.271R  winrate=50.8%  max_dd=13.14%
+Promotion verdict: MODIFY  (Bots failing gate: crypto_seed, xrp_perp)
+================================================================================================
+[crypto_seed] fails:
+   - expectancy_r=0.136 < required=0.3
+[xrp_perp] fails:
+   - expectancy_r=0.220 < required=0.3

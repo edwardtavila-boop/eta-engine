@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "description": "Kill log for The Firm board decisions on EVOLUTIONARY TRADING ALGO strategies",
+    "created": "2026-04-16",
+    "version": "0.1.0"
+  },
+  "entries": [
+    {
+      "timestamp": "2026-04-16T21:17:15.488180+00:00",
+      "spec_id": "CRYPTO_PERP_ETH_SOL_XRP_v1",
+      "verdict": {
+        "spec_id": "CRYPTO_PERP_ETH_SOL_XRP_v1",
+        "final_verdict": "GO",
+        "lines_count": 6,
+        "posted": 6,
+        "failed": 0,
+        "dry_run": true,
+        "verdicts": {
+          "quant": "GO",
+          "redteam": "MODIFY",
+          "risk": "CONTINUE",
+          "macro": "CONTINUE",
+          "micro": "CONTINUE",
+          "pm": "GO"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-16T22:28:51.438286+00:00",
+      "spec_id": "APEX_PAPER_PROMOTION_v1",
+      "verdict": {
+        "spec_id": "APEX_PAPER_PROMOTION_v1",
+        "final_verdict": "GO",
+        "lines_count": 6,
+        "posted": 6,
+        "failed": 0,
+        "dry_run": true,
+        "verdicts": {
+          "quant": "GO",
+          "redteam": "CONTINUE",
+          "risk": "CONTINUE",
+          "macro": "CONTINUE",
+          "micro": "CONTINUE",
+          "pm": "GO"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-16T22:36:33.675055+00:00",
+      "spec_id": "APEX_PAPER_RESULTS_v1",
+      "verdict": {
+        "spec_id": "APEX_PAPER_RESULTS_v1",
+        "final_verdict": "GO",
+        "lines_count": 6,
+        "posted": 6,
+        "failed": 0,
+        "dry_run": true,
+        "verdicts": {
+          "quant": "GO",
+          "redteam": "CONTINUE",
+          "risk": "CONTINUE",
+          "macro": "CONTINUE",
+          "micro": "CONTINUE",
+          "pm": "GO"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-04-16T23:00:54.000636+00:00",
+      "spec_id": "APEX_PAPER_RESULTS_v2",
+      "verdict": {
+        "spec_id": "APEX_PAPER_RESULTS_v2",
+        "final_verdict": "GO",
+        "lines_count": 6,
+        "posted": 6,
+        "failed": 0,
+        "dry_run": true,
+        "verdicts": {
+          "quant": "GO",
+          "redteam": "CONTINUE",
+          "risk": "CONTINUE",
+          "macro": "CONTINUE",
+          "micro": "CONTINUE",
+          "pm": "GO"
+        }
+      }
+    }
+  ]
+}

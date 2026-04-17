@@ -1,0 +1,60 @@
+{
+  "ts": "2026-04-17T16:41:14.322146Z",
+  "period_label": "pre-rollout-final-revision",
+  "answers": [
+    {
+      "index": 0,
+      "yes": true,
+      "note": "Confluence threshold set to A+ only; B/C/D/F suppressed"
+    },
+    {
+      "index": 1,
+      "yes": true,
+      "note": "Decision journal mandatory per trade; graded post-close"
+    },
+    {
+      "index": 2,
+      "yes": true,
+      "note": "obs/decision_journal.py append-only JSONL active"
+    },
+    {
+      "index": 3,
+      "yes": true,
+      "note": "JarvisContext.tick() pulled before each session + on regime flip"
+    },
+    {
+      "index": 4,
+      "yes": true,
+      "note": "AutopilotWatchdog REQUIRE_ACK on stale positions"
+    },
+    {
+      "index": 5,
+      "yes": true,
+      "note": "Sun 20:00 ET weekly; 1st of month monthly deep review"
+    },
+    {
+      "index": 6,
+      "yes": true,
+      "note": "StressScore composite + regime-conditioned synthetic replay"
+    },
+    {
+      "index": 7,
+      "yes": true,
+      "note": "MaxDailyDD 3%, per-trade 1R cap, kill_switch wired"
+    },
+    {
+      "index": 8,
+      "yes": true,
+      "note": "gate_override_telemetry tracks rate; >=3/day => REVIEW"
+    },
+    {
+      "index": 9,
+      "yes": true,
+      "note": "rationale_miner + exit_quality feed weekly review"
+    }
+  ],
+  "score": 1.0,
+  "letter_grade": "A+",
+  "discipline_score": 10,
+  "critical_gaps": []
+}

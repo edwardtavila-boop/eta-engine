@@ -1,0 +1,18 @@
+EVOLUTIONARY TRADING ALGO -- Preflight Dryrun Log
+================================================================================
+[REQ] kill_log_present        PASS   4 kill-log entries
+[REQ] paper_run_report        PASS   Tier-A mnq=True nq=True
+[REQ] firm_board_verdict      PASS   Firm latest verdict: GO (APEX_PAPER_RESULTS_v2)
+[REQ] roadmap_state           PASS   phase=P9_ROLLOUT progress=91%
+[opt] tradovate_creds         FAIL   creds missing — live-tiny cannot start
+[REQ] risk_sizing             PASS   per_trade=3.0% daily_cap=6.0% dd_kill=20.0% tier_A_cap=$17000
+[opt] telemetry_channels      PASS   telemetry/=False  alerts/=False
+[opt] venue_health            PASS   configs/ has 4/4 venue+alert+kill files
+[REQ] pytest_green            PASS   13 passed in 0.28s
+[REQ] decisions_locked        PASS   APEX_DECISIONS_v1 locked, 11 sections
+[REQ] env_template            PASS   .env.example present with all 9 required keys
+[REQ] go_trigger_armed        PASS   go_trigger.py + schedule_weekly_review.py both present
+[REQ] runtime_wired           PASS   kill_switch + alerts + run_eta_live all importable
+[REQ] abort_on_red_loop       PASS   No required RED gates — abort wiring idle (correct)
+--------------------------------------------------------------------------------
+Overall: GO

@@ -1,0 +1,97 @@
+{
+  "tiers": [
+    {
+      "id": "TRIAL",
+      "display_name": "Apex 7-Day Trial (paper only)",
+      "monthly_usd": 0.0,
+      "quarterly_usd": 0.0,
+      "annual_usd": 0.0,
+      "bot_skus": [
+        "BTC_SEED"
+      ],
+      "recommended_min_capital_usd": 0,
+      "max_concurrent_positions": 1,
+      "max_equity_managed_usd": 0,
+      "includes_custom_tweaks": false,
+      "includes_priority_retrain": false,
+      "trial_days": 7,
+      "description": "Paper-trade BTC Seed for 7 days. No live orders, full dashboard access, auto-expires back to guest state at day 8."
+    },
+    {
+      "id": "STARTER",
+      "display_name": "Apex Starter",
+      "monthly_usd": 49.0,
+      "quarterly_usd": 129.0,
+      "annual_usd": 469.0,
+      "bot_skus": [
+        "BTC_SEED"
+      ],
+      "recommended_min_capital_usd": 2000,
+      "max_concurrent_positions": 3,
+      "max_equity_managed_usd": 25000,
+      "includes_custom_tweaks": false,
+      "includes_priority_retrain": false,
+      "trial_days": 0,
+      "description": "Single-bot rental: BTC grid + directional overlay on your Bybit/OKX account."
+    },
+    {
+      "id": "PRO",
+      "display_name": "Apex Pro",
+      "monthly_usd": 99.0,
+      "quarterly_usd": 259.0,
+      "annual_usd": 949.0,
+      "bot_skus": [
+        "BTC_SEED",
+        "ETH_PERP"
+      ],
+      "recommended_min_capital_usd": 5000,
+      "max_concurrent_positions": 6,
+      "max_equity_managed_usd": 75000,
+      "includes_custom_tweaks": false,
+      "includes_priority_retrain": false,
+      "trial_days": 0,
+      "description": "BTC Seed + ETH Perps. Shared Apex Governor, correlation guard, vol-scaling."
+    },
+    {
+      "id": "PORTFOLIO",
+      "display_name": "Apex Portfolio",
+      "monthly_usd": 179.0,
+      "quarterly_usd": 479.0,
+      "annual_usd": 1699.0,
+      "bot_skus": [
+        "BTC_SEED",
+        "ETH_PERP",
+        "SOL_PERP",
+        "STAKING_SWEEP"
+      ],
+      "recommended_min_capital_usd": 15000,
+      "max_concurrent_positions": 10,
+      "max_equity_managed_usd": 250000,
+      "includes_custom_tweaks": true,
+      "includes_priority_retrain": false,
+      "trial_days": 0,
+      "description": "Full Layer 2 + Layer 3 + Layer 4. Custom risk tweaks unlocked. Profit sweeps to staking automatically enabled."
+    },
+    {
+      "id": "ELITE",
+      "display_name": "Apex Elite",
+      "monthly_usd": 299.0,
+      "quarterly_usd": 799.0,
+      "annual_usd": 2799.0,
+      "bot_skus": [
+        "BTC_SEED",
+        "ETH_PERP",
+        "MNQ_APEX",
+        "SOL_PERP",
+        "STAKING_SWEEP"
+      ],
+      "recommended_min_capital_usd": 50000,
+      "max_concurrent_positions": 20,
+      "max_equity_managed_usd": null,
+      "includes_custom_tweaks": true,
+      "includes_priority_retrain": true,
+      "trial_days": 0,
+      "description": "Every bot, including MNQ Apex futures. Priority retraining slot, private Discord channel, monthly tuning review."
+    }
+  ]
+}

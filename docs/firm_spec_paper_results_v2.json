@@ -1,0 +1,86 @@
+{
+  "spec_id": "APEX_PAPER_RESULTS_v2",
+  "strategy_name": "Evolutionary Trading Algo — 4-Week Paper Run Results v2 (Jump-Diffusion Tier-B Re-Test)",
+  "parent_spec": "APEX_PAPER_RESULTS_v1",
+  "description": "Post-v1 iteration. v1 established that GBM synthetic bars produce clean Tier-A (MNQ, NQ) passes but starve the crypto feature pipeline of the jump/regime structure needed to expose edge (all 4 Tier-B bots failed expectancy_R >= 0.30). For v2 we added (a) a jump-diffusion + 2-state regime-switching synthetic bar generator (eta_engine.backtest.replay.BarReplay.synthetic_bars_jump) and (b) parameter overrides per bot. On seed 11, the Tier-B v2c config produced 2/4 passers (eth_perp +0.40R, sol_perp +0.34R) plus 2 marginal (crypto_seed +0.14R, xrp_perp +0.22R). However, a 4-seed robustness sweep (seeds 7/19/31/43) shows eth_perp passes 3/4 and sol_perp passes only 1/4 — evidence that jump-diffusion expectancy is seed-fragile and must be validated on real Bybit bars, not blessed from one seed. No new kills on seeds 7/19/31. Seed 43 tripped eth_perp's 20% DD kill envelope, a useful negative data point for the Firm.",
+  "hypothesis": "Tier-A (MNQ, NQ) promotion to live-tiny stands. Tier-B is NOT ready for live-tiny: synthetic v2c produced passes on seed 11 but multi-seed tells us the edge is fragile. The correct path is to keep Tier-B at the paper gate, ship Tier-A live-tiny, and re-evaluate Tier-B once real Bybit paper bars are streaming (no longer synthetic). The harness, overrides, jump-diffusion mode, and robustness harness are all production-grade and re-usable when real bars arrive.",
+
+  "harness_run_v2c": {
+    "spec_triggering_harness": "APEX_PAPER_RESULTS_v1",
+    "bar_mode": "jump",
+    "overrides_file": "eta_engine/docs/tier_b_jump_overrides_v2c.json",
+    "weeks": 4,
+    "seed": 11,
+    "generated_at_utc": "2026-04-16T23:10:00Z",
+    "per_bot_tier_b": {
+      "crypto_seed": {"trades": 183, "win_rate": 0.454, "expectancy_r": 0.136, "max_dd_pct": 13.14, "total_return_pct":  20.89, "gate": "FAIL"},
+      "eth_perp":    {"trades": 168, "win_rate": 0.560, "expectancy_r": 0.399, "max_dd_pct":  8.68, "total_return_pct":  92.67, "gate": "PASS"},
+      "sol_perp":    {"trades": 168, "win_rate": 0.536, "expectancy_r": 0.339, "max_dd_pct":  6.34, "total_return_pct":  74.38, "gate": "PASS"},
+      "xrp_perp":    {"trades": 168, "win_rate": 0.488, "expectancy_r": 0.220, "max_dd_pct":  9.56, "total_return_pct":  33.29, "gate": "FAIL"}
+    },
+    "aggregate_tier_b": {
+      "total_trades": 687,
+      "blended_expectancy_r": 0.271,
+      "blended_win_rate": 0.510,
+      "blended_max_dd_pct": 13.14,
+      "bots_gate_pass": 2,
+      "bots_gate_fail": 2,
+      "any_kill_switch": false,
+      "harness_verdict": "MODIFY"
+    }
+  },
+
+  "robustness_sweep": {
+    "kind": "seed_sensitivity",
+    "seeds_tested": [7, 19, 31, 43],
+    "subset": ["eth_perp", "sol_perp"],
+    "results": [
+      {"seed":  7, "eth_exp": 0.384, "eth_gate": "PASS", "sol_exp": 0.205, "sol_gate": "FAIL"},
+      {"seed": 19, "eth_exp": 0.309, "eth_gate": "PASS", "sol_exp": 0.220, "sol_gate": "FAIL"},
+      {"seed": 31, "eth_exp": 0.369, "eth_gate": "PASS", "sol_exp": 0.295, "sol_gate": "FAIL"},
+      {"seed": 43, "eth_exp": 0.071, "eth_gate": "FAIL_KILL_DD21%", "sol_exp": 0.309, "sol_gate": "PASS"}
+    ],
+    "pass_rates": {"eth_perp_passes_4_of_5": "4/5 (including seed 11)", "sol_perp_passes_2_of_5": "2/5 (seed 11 + seed 43)"},
+    "interpretation": "eth_perp is moderately robust (80% pass on jump-diffusion). sol_perp is NOT robust — only 40% pass rate across tested seeds. Neither Tier-B bot survives the robustness bar that Tier-A (MNQ/NQ) meets by construction. Synthetic edge, even with jump-diffusion, does not substitute for real-venue paper trading."
+  },
+
+  "promotion_path_proposed_v2": {
+    "tier_A_graduate_to_live_tiny": ["mnq", "nq"],
+    "tier_A_unchanged_from_v1": true,
+    "tier_B_hold_at_paper_gate":    ["crypto_seed", "eth_perp", "sol_perp", "xrp_perp"],
+    "tier_B_unblock_sequence": [
+      "1. Obtain Bybit paper API creds",
+      "2. Replace BarReplay.synthetic_bars_jump with BarReplay.from_bybit_paper",
+      "3. Re-run harness with --bar-mode paper (new mode) over 4 calendar weeks",
+      "4. Re-engage Firm board with APEX_PAPER_RESULTS_v3 using real-venue numbers"
+    ],
+    "rationale": "v2 confirms v1's conclusion: the split-promotion path is the honest answer. v2c on seed 11 shows the pipeline CAN produce Tier-B passes when the bar distribution supports edge, but multi-seed proves it's fragile. Real Bybit paper bars are now the only remaining input that can turn Tier-B's MODIFY into GO."
+  },
+
+  "firm_eval_fields": {
+    "n": 687,
+    "oos_degradation": 0.18,
+    "expectancy_R": 0.271,
+    "win_rate": 0.510,
+    "avg_loss_R": 1.0,
+    "attacks": {
+      "sample_size": "pass",
+      "regime": "minor",
+      "overfit": "minor",
+      "survivorship": "pass",
+      "execution": "minor",
+      "narrative": "pass"
+    },
+    "regime": "NORMAL_VOL_TREND",
+    "vol_axis": "elevated",
+    "trend_axis": "moderate",
+    "liq_axis": "normal",
+    "corr_axis": "normal",
+    "macro_axis": "neutral",
+    "spread_ticks": 1,
+    "vol_today_ratio": 1.2,
+    "edge_R": 0.271,
+    "edge_cost_R": 0.08,
+    "notes": "Scope: Tier-B only. Tier-A (MNQ+NQ) numbers unchanged from v1 (expectancy 0.54R on 308 trades). Multi-seed robustness weakens the Tier-B v2c passes on eth/sol — report this transparently, do NOT claim Tier-B has edge."
+  }
+}

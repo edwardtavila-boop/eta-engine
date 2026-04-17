@@ -1,0 +1,84 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/bybit.yaml
+# Bybit v5 venue configuration — Tier-B bots (crypto_seed + eth/sol/xrp perps)
+# Decisions source: docs/decisions_v1.json (APEX_DECISIONS_v1)
+
+venue: bybit
+environment: testnet   # testnet | mainnet_paper | mainnet_live
+
+# Auth — read from env (see .env.example)
+auth:
+  env_keys:
+    api_key:    BYBIT_API_KEY
+    api_secret: BYBIT_API_SECRET
+    testnet:    BYBIT_TESTNET   # "1" | "0"
+  urls:
+    testnet_rest: "https://api-testnet.bybit.com"
+    mainnet_rest: "https://api.bybit.com"
+    testnet_ws:   "wss://stream-testnet.bybit.com/v5"
+    mainnet_ws:   "wss://stream.bybit.com/v5"
+
+# Rollout plan (decision #9)
+rollout:
+  phase_1:
+    env: testnet
+    duration_weeks: 4
+    gate: "min_trades>=80 AND expectancy_r>=0.30 AND max_dd_pct<=15"
+  phase_2:
+    env: mainnet_paper
+    duration_weeks: 4
+    gate: "firm_board_re_engage GO"
+  phase_3:
+    env: mainnet_live
+    capital_usd: 50           # ultra-tiny first trade
+    scale_plan: "double_every_10_trades_if_green"
+
+# Subaccount layout (decision #10)
+subaccounts:
+  testnet: { main: true }     # single main for testnet
+  mainnet_plan:
+    crypto_seed: "sub-apex-seed"
+    eth_perp:    "sub-apex-eth"
+    sol_perp:    "sub-apex-sol"
+    xrp_perp:    "sub-apex-xrp"
+
+# Instruments
+instruments:
+  crypto_seed:
+    type: spot_grid
+    base: BTC
+    quote: USDT
+    grid_levels: 40
+    grid_geo: true
+    active: true
+  eth_perp:
+    symbol: ETHUSDT
+    leverage_max: 20
+    active: true
+  sol_perp:
+    symbol: SOLUSDT
+    leverage_max: 20
+    active: true
+  xrp_perp:
+    symbol: XRPUSDT
+    leverage_max: 10
+    active: true
+
+# Funding-rate veto (decision #13)
+funding_veto:
+  soft_threshold_bps: 20
+  soft_action: "halve_size"
+  hard_threshold_bps: 50
+  hard_action: "flatten_and_pause_6h"
+
+# Per-bot sizing
+sizing:
+  crypto_seed: { bucket_usd: 2000, risk_per_trade_pct: 1.0, max_open_grids: 40 }
+  eth_perp:    { bucket_usd: 3000, risk_per_trade_pct: 1.0, max_concurrent: 2 }
+  sol_perp:    { bucket_usd: 3000, risk_per_trade_pct: 1.0, max_concurrent: 2 }
+  xrp_perp:    { bucket_usd: 2000, risk_per_trade_pct: 1.0, max_concurrent: 2 }
+
+# Reconciliation
+reconciliation:
+  on_reconnect: "verify_position_and_open_orders_before_new_entries"
+  idempotency_key_prefix: "apex-crypto-"
+  stale_order_timeout_sec: 60

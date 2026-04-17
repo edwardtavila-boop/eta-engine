@@ -1,0 +1,100 @@
+{
+  "spec_id": "CRYPTO_PERP_ETH_SOL_XRP_v1",
+  "strategy_name": "Evolutionary Trading Algo — Casino Perp Layer",
+  "description": "High-risk directional + grid hybrid on ETH/SOL/XRP perpetual futures. Casino-tier leverage (up to 75x at confluence 9+) gated by 5-factor confluence scoring. Isolated margin. Dynamic sizing keeps liquidation distance > 3x ATR. Funded purely from MNQ/NQ excess profits (house money). Baseline equity protection with auto-sweep to cold wallet.",
+
+  "hypothesis": "Crypto perps offer asymmetric reward when confluence of HTF trend alignment, optimal volatility regime, contrarian funding rates, elevated on-chain activity, and extreme sentiment divergence are simultaneously present. By restricting max leverage to only peak-confluence moments and running on house money, the expected value is strongly positive even with a sub-50% win rate, because R-multiples are large when all factors align.",
+
+  "assets": ["ETHUSDT", "SOLUSDT", "XRPUSDT"],
+  "exchange": "bybit",
+  "margin_mode": "isolated",
+
+  "entries": {
+    "trend_follow": "Enter on pullback to 21EMA in direction of 4H bias when confluence > 7",
+    "breakout": "Enter on break of 4H structure level with momentum confirmation when confluence > 8",
+    "mean_revert": "Fade extreme move to Bollinger 2.5σ when funding rate is extremely contrarian and confluence > 7",
+    "grid_overlay": "Crypto seed only — 40-level geometric grid as base, directional overlay when confluence > 7"
+  },
+
+  "exits": {
+    "tp1": "1.5R partial close (50%)",
+    "tp2": "3.0R full close or trailing ATR stop",
+    "sl": "ATR-based, minimum distance = 1.5 ATR",
+    "time_exit": "If no TP hit within 48 bars (5m), close at market",
+    "kill_switch": "Daily loss > 6% OR max DD > 20% → halt all crypto bots for 24h"
+  },
+
+  "confluence_scorer": {
+    "total_weight": 10.0,
+    "factors": {
+      "trend_bias_htf": {"weight": 3.0, "signal": "Daily+4H EMA slope aligned with trade direction"},
+      "volatility_regime": {"weight": 2.0, "signal": "ATR percentile rank 30-70th (not too quiet, not too wild)"},
+      "funding_skew": {"weight": 2.0, "signal": "Funding rate > 0.05% opposite to trade (contrarian edge)"},
+      "onchain_activity": {"weight": 1.5, "signal": "Active address delta > +1σ from 30d mean (Blockscout/Glassnode)"},
+      "sentiment": {"weight": 1.5, "signal": "LunarCrush galaxy score divergence from price (extreme contrarian)"}
+    },
+    "leverage_ramp": {
+      "9_to_10": "50-75x (max casino)",
+      "7_to_8": "20x",
+      "5_to_6": "10x",
+      "below_5": "NO TRADE"
+    }
+  },
+
+  "risk_management": {
+    "per_trade_risk_pct": 3.0,
+    "daily_loss_cap_pct": 6.0,
+    "max_drawdown_kill_pct": 20.0,
+    "liquidation_proof_formula": "max_leverage = price / (3.0 * ATR_14_5m * 1.20 + price * 0.005). Reject if < 5.",
+    "margin_mode": "isolated",
+    "baseline_equity": {"eth": 3000, "sol": 3000, "xrp": 2000},
+    "excess_sweep": "60% cold wallet stake, 30% reinvest seed, 10% USDT reserve",
+    "fractional_kelly": "f* = 0.25 * (p*b - q) / b where p=win_rate, b=avg_win/avg_loss, q=1-p"
+  },
+
+  "backtest_requirements": {
+    "n": 250,
+    "oos_degradation_max": 0.25,
+    "walk_forward": "anchored + rolling, 70/30 IS/OOS",
+    "monte_carlo": "permuted + bootstrapped, 95% beat threshold",
+    "stress_scenarios": ["2022_crypto_crash", "2020_vol_spike", "2024_etf_pump", "synthetic_50pct_gap"],
+    "deflated_sharpe_min": 1.2,
+    "paper_trade_months_min": 3
+  },
+
+  "expected_metrics": {
+    "expectancy_R": 0.55,
+    "win_rate": 0.42,
+    "avg_win_R": 2.8,
+    "avg_loss_R": 1.2,
+    "profit_factor_target": 1.6,
+    "sharpe_target": 1.5,
+    "max_dd_expected_pct": 15
+  },
+
+  "firm_eval_fields": {
+    "n": 250,
+    "oos_degradation": 0.25,
+    "expectancy_R": 0.55,
+    "win_rate": 0.42,
+    "avg_loss_R": 1.2,
+    "attacks": {
+      "sample_size": "pass",
+      "regime": "minor",
+      "overfit": "pass",
+      "survivorship": "pass",
+      "execution": "critical",
+      "narrative": "minor"
+    },
+    "regime": "ELEVATED_VOL_TREND",
+    "vol_axis": "elevated",
+    "trend_axis": "strong",
+    "liq_axis": "thin",
+    "corr_axis": "elevated",
+    "macro_axis": "reflation",
+    "spread_ticks": 3,
+    "vol_today_ratio": 1.35,
+    "edge_R": 0.68,
+    "edge_cost_R": 0.18
+  }
+}

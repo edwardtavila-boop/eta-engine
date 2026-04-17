@@ -1,0 +1,7 @@
+Jarvis says TRADE (confidence 80%) because all gates green. Composite stress is 0%, dominated by macro_event. DD headroom: 2.00% before REDUCE, 3.00% before STAND_ASIDE. Session LUNCH. Suggested size 70%.
+
+- take only A+ setups that pass the full checklist
+- size per Kelly cap + sizing_hint.size_mult
+- journal decision rationale before entry
+- binding constraint: macro_event
+- lunch chop: fade only, no trend continuation trades

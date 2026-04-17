@@ -1,0 +1,42 @@
+{
+  "crypto_seed": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.008,
+    "jump_intensity": 0.045,
+    "jump_mean": 0.0,
+    "jump_vol": 0.022,
+    "regime_persist": 28,
+    "bull_drift_boost": 0.0030,
+    "bear_drift_penalty": 0.0030
+  },
+  "eth_perp": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.01,
+    "jump_intensity": 0.050,
+    "jump_mean": 0.0,
+    "jump_vol": 0.024,
+    "regime_persist": 28,
+    "bull_drift_boost": 0.0030,
+    "bear_drift_penalty": 0.0030
+  },
+  "sol_perp": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.01,
+    "jump_intensity": 0.040,
+    "jump_mean": 0.0,
+    "jump_vol": 0.025,
+    "regime_persist": 32,
+    "bull_drift_boost": 0.0025,
+    "bear_drift_penalty": 0.0025
+  },
+  "xrp_perp": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.008,
+    "jump_intensity": 0.055,
+    "jump_mean": 0.0,
+    "jump_vol": 0.028,
+    "regime_persist": 28,
+    "bull_drift_boost": 0.0030,
+    "bear_drift_penalty": 0.0030
+  }
+}

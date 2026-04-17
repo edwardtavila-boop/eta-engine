@@ -1,0 +1,139 @@
+{
+  "kind": "apex_sweep_simulation",
+  "generated_at_utc": "2026-04-16T22:56:37.127069+00:00",
+  "inputs": {
+    "start_equity": 27000.0,
+    "weeks": 12,
+    "rebalance_every_weeks": 4,
+    "allocations": {
+      "mnq_compounder": 0.6,
+      "perp_basket": 0.3,
+      "grid_seed": 0.1
+    },
+    "bucket_params": {
+      "mnq_compounder": {
+        "tpw": 30,
+        "wr": 0.59,
+        "exp_r": 0.47,
+        "risk": 0.01
+      },
+      "perp_basket": {
+        "tpw": 42,
+        "wr": 0.5,
+        "exp_r": 0.3,
+        "risk": 0.008
+      },
+      "grid_seed": {
+        "tpw": 40,
+        "wr": 0.46,
+        "exp_r": 0.15,
+        "risk": 0.005
+      }
+    }
+  },
+  "timeline": [
+    {
+      "week": 1,
+      "total": 30181.68,
+      "mnq": 18484.2,
+      "perp": 8916.48,
+      "grid": 2781.0
+    },
+    {
+      "week": 2,
+      "total": 33770.16,
+      "mnq": 21090.47,
+      "perp": 9815.26,
+      "grid": 2864.43
+    },
+    {
+      "week": 3,
+      "total": 37819.23,
+      "mnq": 24064.23,
+      "perp": 10804.64,
+      "grid": 2950.36
+    },
+    {
+      "week": 4,
+      "total": 42389.91,
+      "mnq": 25433.94,
+      "perp": 12716.97,
+      "grid": 4238.99
+    },
+    {
+      "week": 5,
+      "total": 47385.13,
+      "mnq": 29020.13,
+      "perp": 13998.84,
+      "grid": 4366.16
+    },
+    {
+      "week": 6,
+      "total": 53019.04,
+      "mnq": 33111.97,
+      "perp": 15409.93,
+      "grid": 4497.15
+    },
+    {
+      "week": 7,
+      "total": 59376.06,
+      "mnq": 37780.76,
+      "perp": 16963.25,
+      "grid": 4632.06
+    },
+    {
+      "week": 8,
+      "total": 66552.0,
+      "mnq": 39931.2,
+      "perp": 19965.6,
+      "grid": 6655.2
+    },
+    {
+      "week": 9,
+      "total": 74394.49,
+      "mnq": 45561.5,
+      "perp": 21978.13,
+      "grid": 6854.86
+    },
+    {
+      "week": 10,
+      "total": 83239.71,
+      "mnq": 51985.67,
+      "perp": 24193.53,
+      "grid": 7060.5
+    },
+    {
+      "week": 11,
+      "total": 93220.21,
+      "mnq": 59315.65,
+      "perp": 26632.24,
+      "grid": 7272.32
+    },
+    {
+      "week": 12,
+      "total": 104486.42,
+      "mnq": 62691.85,
+      "perp": 31345.92,
+      "grid": 10448.64
+    }
+  ],
+  "buckets_final": {
+    "mnq_compounder": {
+      "equity": 62691.85,
+      "trades": 360,
+      "pnl_cum": 56679.14
+    },
+    "perp_basket": {
+      "equity": 31345.92,
+      "trades": 504,
+      "pnl_cum": 19101.08
+    },
+    "grid_seed": {
+      "equity": 10448.64,
+      "trades": 480,
+      "pnl_cum": 1706.19
+    }
+  },
+  "total_final": 104486.42,
+  "total_return_pct": 286.9867
+}

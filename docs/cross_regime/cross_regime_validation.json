@@ -1,0 +1,147 @@
+{
+  "spec_id": "CROSS_REGIME_OOS_v1",
+  "generated_at_utc": "2026-04-17T23:37:04.980453+00:00",
+  "gate_config": {
+    "max_degradation": 0.6,
+    "live_trade_expectancy_r": 0.15,
+    "live_trade_min_trades": 20,
+    "is_fraction": 0.7
+  },
+  "per_regime": {
+    "TRENDING": {
+      "expected_label": "TRENDING",
+      "classifier_label_for_axes": "TRENDING",
+      "label_axes_agree": true,
+      "is": {
+        "trades": 55,
+        "expectancy_r": 0.9648,
+        "win_rate": 0.7818,
+        "profit_factor": 5.3882,
+        "sharpe": 14.9391,
+        "max_dd_pct": 1.99,
+        "total_return_pct": 69.09
+      },
+      "oos": {
+        "trades": 23,
+        "expectancy_r": 1.0115,
+        "win_rate": 0.8261,
+        "profit_factor": 6.9348,
+        "sharpe": 16.42,
+        "max_dd_pct": 1.0,
+        "total_return_pct": 25.9148
+      },
+      "degradation_r": -0.0484
+    },
+    "RANGING": {
+      "expected_label": "RANGING",
+      "classifier_label_for_axes": "RANGING",
+      "label_axes_agree": true,
+      "is": {
+        "trades": 39,
+        "expectancy_r": 0.1086,
+        "win_rate": 0.4359,
+        "profit_factor": 1.1806,
+        "sharpe": 1.3851,
+        "max_dd_pct": 4.9721,
+        "total_return_pct": 4.0183
+      },
+      "oos": {
+        "trades": 11,
+        "expectancy_r": 0.0694,
+        "win_rate": 0.4545,
+        "profit_factor": 1.1148,
+        "sharpe": 0.8844,
+        "max_dd_pct": 2.4995,
+        "total_return_pct": 0.6884
+      },
+      "degradation_r": 0.361
+    },
+    "HIGH_VOL": {
+      "expected_label": "HIGH_VOL",
+      "classifier_label_for_axes": "HIGH_VOL",
+      "label_axes_agree": true,
+      "is": {
+        "trades": 44,
+        "expectancy_r": 0.2159,
+        "win_rate": 0.4773,
+        "profit_factor": 1.4213,
+        "sharpe": 2.7418,
+        "max_dd_pct": 5.852,
+        "total_return_pct": 9.5877
+      },
+      "oos": {
+        "trades": 14,
+        "expectancy_r": -0.5586,
+        "win_rate": 0.2143,
+        "profit_factor": 0.2858,
+        "sharpe": -9.5695,
+        "max_dd_pct": 7.7598,
+        "total_return_pct": -7.5945
+      },
+      "degradation_r": 3.5873
+    },
+    "LOW_VOL": {
+      "expected_label": "LOW_VOL",
+      "classifier_label_for_axes": "LOW_VOL",
+      "label_axes_agree": true,
+      "is": {
+        "trades": 41,
+        "expectancy_r": 0.3659,
+        "win_rate": 0.5366,
+        "profit_factor": 1.8226,
+        "sharpe": 4.6645,
+        "max_dd_pct": 3.9404,
+        "total_return_pct": 15.7942
+      },
+      "oos": {
+        "trades": 17,
+        "expectancy_r": 0.073,
+        "win_rate": 0.4118,
+        "profit_factor": 1.116,
+        "sharpe": 0.9321,
+        "max_dd_pct": 5.1475,
+        "total_return_pct": 1.1235
+      },
+      "degradation_r": 0.8005
+    }
+  },
+  "gate_result": {
+    "live_tradeable_regimes": [
+      "TRENDING"
+    ],
+    "non_tradeable_regimes": [
+      {
+        "regime": "RANGING",
+        "reasons": [
+          "OOS exp +0.069R < 0.15R",
+          "OOS trades 11 < 20"
+        ]
+      },
+      {
+        "regime": "HIGH_VOL",
+        "reasons": [
+          "OOS exp -0.559R < 0.15R",
+          "OOS trades 14 < 20",
+          "degradation +358.7% > 60%"
+        ]
+      },
+      {
+        "regime": "LOW_VOL",
+        "reasons": [
+          "OOS exp +0.073R < 0.15R",
+          "OOS trades 17 < 20",
+          "degradation +80.0% > 60%"
+        ]
+      }
+    ],
+    "overfit_red_flags": [
+      "HIGH_VOL: IS +0.216R -> OOS -0.559R (sign flip, deg +358.7%) -- exclude this regime"
+    ],
+    "any_live_tradeable": true,
+    "no_overfit_collapse": false,
+    "reasons": [
+      "HIGH_VOL: IS +0.216R -> OOS -0.559R (sign flip, deg +358.7%) -- exclude this regime"
+    ]
+  },
+  "passed": false
+}

@@ -1,0 +1,106 @@
+[
+  {
+    "generated_at_utc": "2026-04-16T22:56:33.056554+00:00",
+    "week_of": "2026-W16",
+    "spec_id": "APEX_PAPER_RESULTS_v2",
+    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "tier": "A",
+    "bots_in_scope": [
+      "mnq",
+      "nq"
+    ],
+    "trades": 0,
+    "blended_expectancy_r": 0.0,
+    "blended_dd_pct": 0.0,
+    "firm_verdict": "SKIPPED",
+    "quant_vote": "UNKNOWN",
+    "risk_vote": "UNKNOWN",
+    "redteam_vote": "UNKNOWN",
+    "macro_vote": "UNKNOWN",
+    "micro_vote": "UNKNOWN",
+    "pm_vote": "UNKNOWN",
+    "actions_required": [
+      "Verdict SKIPPED unrecognized \u2014 manual triage required"
+    ],
+    "kill_log_entries_at_time": 3
+  },
+  {
+    "generated_at_utc": "2026-04-16T22:56:33.056554+00:00",
+    "week_of": "2026-W16",
+    "spec_id": "APEX_PAPER_RESULTS_v2",
+    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "tier": "B",
+    "bots_in_scope": [
+      "crypto_seed",
+      "eth_perp",
+      "sol_perp",
+      "xrp_perp"
+    ],
+    "trades": 687,
+    "blended_expectancy_r": 0.271,
+    "blended_dd_pct": 13.14,
+    "firm_verdict": "SKIPPED",
+    "quant_vote": "UNKNOWN",
+    "risk_vote": "UNKNOWN",
+    "redteam_vote": "UNKNOWN",
+    "macro_vote": "UNKNOWN",
+    "micro_vote": "UNKNOWN",
+    "pm_vote": "UNKNOWN",
+    "actions_required": [
+      "Verdict SKIPPED unrecognized \u2014 manual triage required"
+    ],
+    "kill_log_entries_at_time": 3
+  },
+  {
+    "generated_at_utc": "2026-04-16T22:57:59.866415+00:00",
+    "week_of": "2026-W16",
+    "spec_id": "APEX_PAPER_RESULTS_v2",
+    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "tier": "A",
+    "bots_in_scope": [
+      "mnq",
+      "nq"
+    ],
+    "trades": 308,
+    "blended_expectancy_r": 0.5339,
+    "blended_dd_pct": 6.83,
+    "firm_verdict": "SKIPPED",
+    "quant_vote": "UNKNOWN",
+    "risk_vote": "UNKNOWN",
+    "redteam_vote": "UNKNOWN",
+    "macro_vote": "UNKNOWN",
+    "micro_vote": "UNKNOWN",
+    "pm_vote": "UNKNOWN",
+    "actions_required": [
+      "Verdict SKIPPED unrecognized \u2014 manual triage required"
+    ],
+    "kill_log_entries_at_time": 3
+  },
+  {
+    "generated_at_utc": "2026-04-16T22:57:59.866415+00:00",
+    "week_of": "2026-W16",
+    "spec_id": "APEX_PAPER_RESULTS_v2",
+    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "tier": "B",
+    "bots_in_scope": [
+      "crypto_seed",
+      "eth_perp",
+      "sol_perp",
+      "xrp_perp"
+    ],
+    "trades": 687,
+    "blended_expectancy_r": 0.271,
+    "blended_dd_pct": 13.14,
+    "firm_verdict": "SKIPPED",
+    "quant_vote": "UNKNOWN",
+    "risk_vote": "UNKNOWN",
+    "redteam_vote": "UNKNOWN",
+    "macro_vote": "UNKNOWN",
+    "micro_vote": "UNKNOWN",
+    "pm_vote": "UNKNOWN",
+    "actions_required": [
+      "Verdict SKIPPED unrecognized \u2014 manual triage required"
+    ],
+    "kill_log_entries_at_time": 3
+  }
+]

@@ -1,0 +1,39 @@
+========================================================================
+EVOLUTIONARY TRADING ALGO -- DUAL FINE-TUNE REPORT (MNQ + BTC)
+========================================================================
+Generated: 2026-04-17T17:07:21.878856+00:00
+
+-- JARVIS CONTEXT ----------------------------------------------------
+Action:  TRADE
+Reason:  all gates green
+Brief:   Jarvis says TRADE (confidence 80%) because all gates green. Composite stress is 0%, dominated by macro_event. DD headroom: 2.00% before REDUCE, 3.00% before STAND_ASIDE. Session LUNCH. Suggested size 70%.
+
+-- MNQ (apex_engine) ---------------------------------------------------
+candidates: 192  gate-pass: 169  pareto: 1
+winner:     {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 3.0, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+            exp=1.400  dd=0.0050  wr=0.620  stab=0.019
+glide:      {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 2.68, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+            exp=1.202  dd=0.0050  wr=0.620  gate=True
+tweak:      [MODERATE] -> {'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 2.68, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+            gate-pass: exp=+1.202R dd=0.01% stability=0.019
+applied:    mnq_apex: True  new={'confluence_threshold': 8, 'stop_atr_mult': 1.0, 'tp_atr_mult': 2.68, 'daily_dd_cap_pct': 3.0, 'max_open_positions': 1}
+            reason: applied (MODERATE): gate-pass: exp=+1.202R dd=0.01% stability=0.019
+
+-- BTC (crypto_seed) ---------------------------------------------------
+candidates: 576  gate-pass: 576  pareto: 6
+winner:     {'grid_n_levels': 60, 'grid_usable_ratio': 0.9, 'overlay_confluence_threshold': 8.0, 'overlay_tp_r_mult': 2.0, 'risk_per_trade_pct': 0.5, 'max_leverage': 2.0, 'daily_loss_cap_pct': 3.0}
+            exp=0.628  dd=0.0240  wr=0.600  stab=0.032
+glide:      {'grid_n_levels': 54, 'grid_usable_ratio': 0.9, 'overlay_confluence_threshold': 8.0, 'overlay_tp_r_mult': 2.0, 'risk_per_trade_pct': 0.5, 'max_leverage': 2.0, 'daily_loss_cap_pct': 3.0}
+            exp=0.603  dd=0.0240  wr=0.600  gate=True
+tweak:      [MODERATE] -> {'grid_n_levels': 54, 'grid_usable_ratio': 0.9, 'overlay_confluence_threshold': 8.0, 'overlay_tp_r_mult': 2.0, 'risk_per_trade_pct': 0.5, 'max_leverage': 2.0, 'daily_loss_cap_pct': 3.0}
+            gate-pass: exp=+0.603R dd=0.02% stability=0.032
+applied:    crypto_seed: True  new={'grid_n_levels': 54, 'grid_usable_ratio': 0.9, 'overlay_confluence_threshold': 8.0, 'overlay_tp_r_mult': 2.0, 'risk_per_trade_pct': 0.5, 'max_leverage': 2.0, 'daily_loss_cap_pct': 3.0}
+            reason: applied (MODERATE): gate-pass: exp=+0.603R dd=0.02% stability=0.032
+
+-- READY ------------------------------------------------------------
+MNQ glide-step applied: True
+BTC glide-step applied: True
+Jarvis action:          TRADE
+READY for rollout:      True
+
+========================================================================

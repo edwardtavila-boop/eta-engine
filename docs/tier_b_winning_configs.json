@@ -1,0 +1,26 @@
+{
+  "crypto_seed": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.005,
+    "expected_expectancy_r": 0.1456,
+    "expected_gate_pass": false
+  },
+  "eth_perp": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.005,
+    "expected_expectancy_r": 0.2351,
+    "expected_gate_pass": false
+  },
+  "sol_perp": {
+    "confluence_threshold": 4.5,
+    "risk_per_trade_pct": 0.005,
+    "expected_expectancy_r": 0.2798,
+    "expected_gate_pass": false
+  },
+  "xrp_perp": {
+    "confluence_threshold": 6.5,
+    "risk_per_trade_pct": 0.005,
+    "expected_expectancy_r": 0.0863,
+    "expected_gate_pass": false
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "collector_stats": {
+    "mnq_ticks": 50,
+    "btc_ticks": 50,
+    "jarvis_ticks": 8,
+    "started_utc": "2026-04-17T20:10:42.360860+00:00",
+    "last_mnq_ts": "2026-04-17T20:10:43.181790+00:00",
+    "last_btc_ts": "2026-04-17T20:10:43.182351+00:00",
+    "last_jarvis_ts": "2026-04-17T20:10:45.917965+00:00",
+    "errors": []
+  },
+  "out_dir": "docs\\live_data",
+  "files": {
+    "mnq": "docs\\live_data\\live_ticks_mnq.jsonl",
+    "btc": "docs\\live_data\\live_ticks_btc.jsonl",
+    "jarvis": "docs\\live_data\\live_jarvis.jsonl"
+  }
+}

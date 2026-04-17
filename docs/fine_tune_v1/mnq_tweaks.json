@@ -1,0 +1,52 @@
+{
+  "tweaks_full_winner": [
+    {
+      "bot": "mnq_apex",
+      "source": "dual_fine_tune_v0_1_30_mnq_apex_full_winner",
+      "reason": "gate-pass: exp=+1.400R dd=0.01% stability=0.019",
+      "risk_tag": "AGGRESSIVE",
+      "proposal": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "expected_expectancy_r": 1.4,
+      "expected_dd_pct": 0.005,
+      "gate_pass": true
+    }
+  ],
+  "tweaks_proposed": [
+    {
+      "bot": "mnq_apex",
+      "source": "dual_fine_tune_v0_1_30_mnq_apex_glide_step",
+      "reason": "gate-pass: exp=+1.202R dd=0.01% stability=0.019",
+      "risk_tag": "MODERATE",
+      "proposal": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 2.68,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "expected_expectancy_r": 1.2016,
+      "expected_dd_pct": 0.005,
+      "gate_pass": true
+    }
+  ],
+  "applied": {
+    "mnq_apex": {
+      "applied": true,
+      "reason": "applied (MODERATE): gate-pass: exp=+1.202R dd=0.01% stability=0.019",
+      "new_config": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 2.68,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "rejected_params": []
+    }
+  }
+}

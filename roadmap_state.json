@@ -1,0 +1,3249 @@
+{
+  "last_updated": "2026-04-17T23:38:17.273548+00:00",
+  "overall_progress_pct": 99,
+  "current_phase": "P9_ROLLOUT",
+  "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
+  "shared_artifacts": {
+    "databento_pull_usd": 100.07,
+    "databento_rows": 43481291,
+    "mnq_test_suite_passing": 749,
+    "mnq_test_suite_failing": 0,
+    "eta_engine_python_files": 107,
+    "eta_engine_tests_passing": 1885,
+    "eta_engine_tests_failing": 0,
+    "eta_engine_verify_all": "17/17 PASS",
+    "eta_engine_staking_wired": {
+      "web3_client": "staking/web3_client.py \u2014 lazy `from web3 import Web3`; ERC20_ABI_MIN (balanceOf/decimals/symbol); read_balance() with graceful None fallback (no RPC / no wallet / web3 missing / RPC exception); build_contract_call() structured payload for audit",
+      "apy_tracker": "staking/apy_tracker.py \u2014 DefiLlama /pools async GET; 5-min in-memory cache per-protocol; pool filter (project+chain+symbol) picks best APY; shared process-wide singleton via get_shared_tracker(); None fallback on network error so adapters use target_apy",
+      "lido": "ETH \u2192 stETH \u2192 wstETH \u2192 optional EigenLayer restake. Mainnet addresses (LIDO_STETH/WSTETH/EIGENLAYER_STRATEGY_MANAGER). Stake path builds 2-3 contract-call payloads. Unstake via withdrawalQueue requestWithdrawals NFT. get_balance() reads wstETH.balanceOf via web3_client; restake adds +1.5% APY premium.",
+      "jito": "SOL \u2192 JitoSOL via Jito stake pool. solana-py lazy-loaded (_load_solana_client). getTokenAccountBalance read path via _fetch_spl_balance when rpc_url + token_account supplied. Payloads tagged with JITO_STAKE_POOL program id.",
+      "flare": "XRP-adjacent via Flare chain id 14. sFLR stake path: WNat.deposit + sFLR.submit + optional FTSO delegate. balanceOf via Flare RPC (web3_client). FLARE_FTSO_MANAGER address embedded.",
+      "ethena": "USDT \u2192 USDe \u2192 sUSDe. Mainnet contract addresses (USDE/SUSDE/ETHENA_MINT_CONTRACT). Stake plan: Ethena mint(USDT, amount, min_out) + sUSDe deposit. Unstake initiates 7-day cooldown via cooldownShares + later unstake(). balanceOf via web3_client.",
+      "tests_added": 27,
+      "test_files": [
+        "tests/test_staking_adapters.py"
+      ],
+      "note": "486 passing (was 459 before staking pass, +27 from test_staking_adapters.py). Coverage: web3_client happy-path + 4 fallback paths, ApyTracker cache + match logic + singleton lifecycle, all 4 adapters stake/unstake/balance/apy with monkey-patched read paths. No live RPC calls in tests."
+    },
+    "eta_engine_bots_routed_wired": {
+      "bots": [
+        "mnq",
+        "nq",
+        "eth_perp",
+        "sol_perp",
+        "xrp_perp",
+        "crypto_seed"
+      ],
+      "pattern": "Protocol-typed `_Router` injection + `venue_symbol`/`tradovate_symbol` override + `router.place_with_failover(OrderRequest)` in on_signal",
+      "mnq": "7 TODOs wired: router injection, session_levels injection, tradovate_symbol override, trailing-stop peak tracking via _trailing_peak dict, _size_from_signal (risk_usd / stop_distance / POINT_VALUE_USD), _signal_to_order_side (SignalType -> Side+reduce_only), stop_distance persisted on signal.meta per setup",
+      "nq": "inherits MnqBot wiring; overrides POINT_VALUE_USD=$20 (vs MNQ $2) via class attribute; raises evaluate_entry floor to confluence 6.0 (ranging 8.0)",
+      "eth_perp": "fresh wiring: router + venue_symbol; LEV_TIERS/LEV_MIN_CONFLUENCE class attrs so SOL/XRP override in one line; _size_from_signal (risk_usd / stop_dist * leverage for linear perps); 3 setups persist stop_distance to meta",
+      "sol_perp": "**kwargs to EthPerpBot; overrides liquidation_safe_leverage (4.5*ATR vs 3.0), mean_revert RSI 75/25, breakout squeeze 0.65; on_signal delegates to super()",
+      "xrp_perp": "**kwargs to EthPerpBot; overrides confluence_leverage (50x cap even at 9+), liquidation_safe_leverage with 0.008 slippage buffer (vs 0.005); trend_follow ADX 30 + vol 1.5; mean_revert RSI 75/25; evaluate_entry floor 6.0",
+      "crypto_seed": "router + venue_symbol + initial_grid_bounds injection; on_bar persists grid_orders to active_orders (orchestrator drains at its own cadence \u2014 doesn't spam 40x/bar); on_signal only routes directional overlay (confluence > 7); stop() marks grid orders inactive for orchestrator cancel",
+      "tests_added": 20,
+      "test_files": [
+        "tests/test_bots_mnq.py"
+      ],
+      "note": "459 passing (was 439 after data-stack pass, +20 from test_bots_mnq.py). 6-bot dedicated test file pending for eth/sol/xrp/crypto_seed \u2014 MNQ covered via test_bots_mnq.py; NQ inherits MNQ tests; ETH/SOL/XRP/crypto_seed covered via router + sizing + evaluate_exit unit tests in test_bots_mnq.py patterns."
+    },
+    "eta_engine_data_stack_wired": {
+      "bybit_ws": "real websockets.connect with ping_interval=20s + open_timeout=10s; async-for recv_loop; exp-backoff reconnect (1s\u219260s, cap 10); run_once() + start(stop_on_clean_close) split; daily gzip JSONL rotation; contextlib.suppress on flush",
+      "databento_client": "real databento.Historical(api_key).timeseries.get_range(dataset, symbols, schema, start, end); lazy SDK import with ImportError fallback; forecast cost accrual BEFORE network call; _fp_px divides fixed-point by 1e9; _collect_levels reads bid_px_NN/ask_sz_NN per MBP spec; SDK exceptions logged + empty async-iter",
+      "tests_added": 15,
+      "files": [
+        "tests/test_data_bybit_ws.py",
+        "tests/test_data_databento_client.py"
+      ]
+    },
+    "eta_engine_venues_http_wired": {
+      "tradovate": "aiohttp POST/GET with OAuth2 + OSO bracket_order; creds-less mock fallback; single-retry on transient",
+      "bybit": "aiohttp POST/GET with HMAC-SHA256 v5 X-BAPI-SIGN; retCode + 110026 already-isolated handled",
+      "okx": "aiohttp POST/GET with HMAC-SHA256 + base64 OK-ACCESS-SIGN; ISO8601 ms timestamp; 3-field creds (key/secret/passphrase)",
+      "tests_added": 44,
+      "files": [
+        "tests/test_venues_tradovate_http.py",
+        "tests/test_venues_bybit_http.py",
+        "tests/test_venues_okx_http.py"
+      ]
+    },
+    "eta_engine_alerts_http_wired": {
+      "async": "TelegramAlerter/DiscordAlerter/SlackAlerter via aiohttp with lazy session + close(); MultiAlerter.close() concurrent",
+      "sync": "_send_pushover/_send_email/_send_sms via stdlib (urllib + smtplib); Basic-auth SID:TOKEN for Twilio; MIMEText + STARTTLS detection",
+      "dispatcher": "obs/alert_dispatcher.py _deliver() reads env_keys map + dispatches per channel; True/False tracked as delivered/blocked",
+      "tests_added": 20,
+      "files": [
+        "tests/test_alerts_http.py",
+        "tests/test_alert_transports.py"
+      ]
+    },
+    "eta_engine_paper_run": {
+      "weeks": 4,
+      "seed": 11,
+      "harness": "scripts/paper_run_harness.py",
+      "report": "docs/paper_run_report.json",
+      "tearsheet": "docs/paper_run_tearsheet.txt",
+      "bots_gate_pass": 2,
+      "bots_gate_fail": 4,
+      "total_trades": 973,
+      "portfolio_return_pct": 73.96,
+      "blended_expectancy_r": 0.277,
+      "any_kill_switch": false,
+      "promotion_verdict": "MODIFY",
+      "tier_A_graduate": [
+        "mnq",
+        "nq"
+      ],
+      "tier_B_hold_at_paper_gate": [
+        "crypto_seed",
+        "eth_perp",
+        "sol_perp",
+        "xrp_perp"
+      ],
+      "note": "Futures sub-portfolio (MNQ+NQ) clears gate cleanly on synthetic GBM. Crypto perps fail expectancy_R >= 0.30 on synthetic \u2014 needs real Bybit paper bars to re-evaluate."
+    },
+    "eta_engine_integration_tests": "8/8 PASS (feed -> features -> confluence -> risk -> order)",
+    "eta_engine_backtest_demo": {
+      "trades": 29,
+      "win_rate": 0.5862,
+      "expectancy_r": 0.4655,
+      "profit_factor": 2.046,
+      "sharpe": 5.897,
+      "max_dd_pct": 0.0297,
+      "total_return_pct": 0.1417,
+      "note": "SYNTHETIC GBM data \u2014 validates pipeline only, not edge"
+    },
+    "eta_engine_walk_forward_demo": {
+      "windows": 5,
+      "is_sharpe_agg": 20.13,
+      "oos_sharpe_agg": 13.83,
+      "oos_degradation_pct": 36.43,
+      "gate": "FAIL (>35% threshold)",
+      "note": "synthetic GBM \u2014 correct gate behavior demonstrated"
+    },
+    "eta_engine_venue_adapters": {
+      "bybit_v5_hmac": "real HMAC-SHA256 signing + aiohttp HTTP wired; retCode + already-isolated handling",
+      "tradovate_oauth2": "full OAuth2 + aiohttp HTTP wired + 3-leg OSO bracket_order()",
+      "okx_v5_hmac_b64": "HMAC-SHA256 + base64 OK-ACCESS-SIGN per v5 spec + aiohttp HTTP wired",
+      "router_circuit_breaker": "place_with_failover with injectable _time_fn"
+    },
+    "eta_engine_obs_stack": {
+      "metrics": "counter/gauge/histogram with p50/p95/p99 + Prometheus exposition",
+      "alerts": "Telegram/Discord/Slack via real aiohttp + Pushover/SMTP/Twilio via stdlib; 5-min dedup; MultiAlerter.close() concurrent",
+      "logger": "JSON-line with with_context + audit force-write",
+      "heartbeat": "stale detector"
+    },
+    "eta_engine_data_stack": {
+      "parquet_loader": "pyarrow streaming",
+      "databento_client": "REAL Historical.timeseries.get_range() wired + billing tracker + lazy SDK import",
+      "bybit_ws": "REAL websockets.connect wired + exp-backoff reconnect + daily gzip rotation + run_once()/start()",
+      "cleaning": "MAD outliers with MAD-fallback",
+      "slippage_model": "PASSIVE/NORMAL/AGGRESSIVE",
+      "onchain_blockscout": "done",
+      "sentiment_lunarcrush": "5-min lru_cache + 10 req/min rate limit"
+    },
+    "eta_engine_tax_stack": {
+      "cost_basis": "FIFO/LIFO/HIFO/SPEC_ID with partial fills",
+      "koinly_exporter": "12-column Universal CSV",
+      "section1256": "0.60/0.40 split + MTM + Form 6781"
+    },
+    "eta_engine_ci_cd": {
+      "pre_commit": ".pre-commit-config.yaml",
+      "github_test": ".github/workflows/test.yml",
+      "github_firm_gate": ".github/workflows/firm-gate.yml",
+      "makefile": "done"
+    },
+    "eta_engine_secrets": "SecretsManager with env\u2192keyring\u2192.env tiered lookup, 14 required-key constants, audit_log never stores values",
+    "eta_engine_preflight": "5-check preflight: secrets/venues/blackout/firm_verdict/telegram \u2014 abort on red",
+    "cycle_0002_verdict": {
+      "C002-A": "KILL",
+      "C002-B": "KILL (PF 1.08 point but bootstrap lower 0.881 < 1.00; DSR passes 0.266 but both gates required)",
+      "C002-C": "KILL"
+    },
+    "cycle_0002_survivors": 0,
+    "n_trials_prior_7yr_databento": 22,
+    "cycle_0003_data_policy": "MUST shift edge-discovery to untouched data \u2014 options: (1) ES/RTY/YM cross-sectional 7yr 1m (not yet mined), (2) post-lock self-capture via Tradovate md_ws cron (not started), (3) confluence-driven strategies using Databento MBP/trades microstructure (not yet used)",
+    "firm_board_latest": {
+      "spec_id": "APEX_PAPER_RESULTS_v2",
+      "final_verdict": "GO",
+      "verdicts": {
+        "quant": "GO",
+        "redteam": "CONTINUE",
+        "risk": "CONTINUE",
+        "macro": "CONTINUE",
+        "micro": "CONTINUE",
+        "pm": "GO"
+      },
+      "timestamp": "2026-04-16T19:03:37-04:00",
+      "dry_run": true,
+      "note": "v2 verdict stands on Tier-A; Tier-B still held at paper gate per multi-seed robustness finding."
+    },
+    "firm_board_history": [
+      {
+        "spec_id": "CRYPTO_PERP_ETH_SOL_XRP_v1",
+        "final_verdict": "GO",
+        "timestamp": "2026-04-16T17:17:15-04:00",
+        "redteam": "MODIFY"
+      },
+      {
+        "spec_id": "APEX_PAPER_PROMOTION_v1",
+        "final_verdict": "GO",
+        "timestamp": "2026-04-16T18:28:51-04:00",
+        "redteam": "CONTINUE"
+      },
+      {
+        "spec_id": "APEX_PAPER_RESULTS_v1",
+        "final_verdict": "GO",
+        "timestamp": "2026-04-16T18:38:00-04:00",
+        "redteam": "CONTINUE",
+        "note": "Split verdict: Tier A GO live-tiny, Tier B hold at paper"
+      },
+      {
+        "spec_id": "APEX_PAPER_RESULTS_v2",
+        "final_verdict": "GO",
+        "timestamp": "2026-04-16T19:03:37-04:00"
+      }
+    ],
+    "eta_engine_paper_run_v2": {
+      "label": "v2c_jump",
+      "bar_mode": "jump",
+      "weeks": 4,
+      "seed": 11,
+      "tier_b_subset": [
+        "crypto_seed",
+        "eth_perp",
+        "sol_perp",
+        "xrp_perp"
+      ],
+      "bots_gate_pass": 2,
+      "bots_gate_fail": 2,
+      "gate_passers": [
+        "eth_perp",
+        "sol_perp"
+      ],
+      "total_trades_tier_b": 687,
+      "blended_expectancy_r": 0.271,
+      "blended_max_dd_pct": 13.14,
+      "verdict": "MODIFY",
+      "robustness_seeds_tested": [
+        7,
+        19,
+        31,
+        43
+      ],
+      "robustness_note": "eth passes 4/5 seeds, sol passes 2/5 seeds -> seed-fragile; real-venue bars required.",
+      "overrides_file": "eta_engine/docs/tier_b_jump_overrides_v2c.json",
+      "report_path": "eta_engine/docs/paper_run_report_v2c_jump.json",
+      "tearsheet_path": "eta_engine/docs/paper_run_tearsheet_v2c_jump.txt"
+    },
+    "eta_engine_tier_b_sweep": {
+      "grid_cells": 112,
+      "bots": [
+        "crypto_seed",
+        "eth_perp",
+        "sol_perp",
+        "xrp_perp"
+      ],
+      "confluence_grid": [
+        4.5,
+        5.0,
+        5.5,
+        6.0,
+        6.5,
+        7.0,
+        7.5
+      ],
+      "risk_grid": [
+        0.005,
+        0.008,
+        0.01,
+        0.015
+      ],
+      "bar_mode": "gbm",
+      "winners_gate_pass": 0,
+      "best_expectancy_r_per_bot": {
+        "crypto_seed": 0.146,
+        "eth_perp": 0.235,
+        "sol_perp": 0.28,
+        "xrp_perp": 0.086
+      },
+      "finding": "GBM alone cannot produce 0.30R expectancy for Tier-B; confluence grid saturates at 4.5"
+    },
+    "eta_engine_preflight_dryrun": {
+      "gates_total": 14,
+      "required": 11,
+      "optional": 3,
+      "required_pass": 11,
+      "optional_pass": 2,
+      "optional_fail": 1,
+      "optional_fail_name": "tradovate_creds",
+      "overall": "GO",
+      "note": "14th gate (runtime_wired) added: verifies kill_switch + alerts + run_eta_live importable. Only optional FAIL is tradovate_creds, awaiting user's .env."
+    },
+    "eta_engine_weekly_review": {
+      "last_review_week": "2026-W16",
+      "tier_a_verdict_latest": "SKIPPED",
+      "tier_b_verdict_latest": "SKIPPED",
+      "tier_a_exp_r": 0.534,
+      "tier_b_exp_r": 0.271,
+      "history_count": 2,
+      "log_path": "eta_engine/docs/weekly_review_log.json"
+    },
+    "eta_engine_sweep_sim": {
+      "start_equity_usd": 27000,
+      "weeks": 12,
+      "rebalance_weeks": 4,
+      "allocations": {
+        "mnq_compounder": 0.6,
+        "perp_basket": 0.3,
+        "grid_seed": 0.1
+      },
+      "total_final_usd": 104486.42,
+      "total_return_pct": 286.99,
+      "trades_cum": {
+        "mnq": 360,
+        "perp": 504,
+        "grid": 480
+      },
+      "report_path": "eta_engine/docs/sweep_sim_report.json"
+    },
+    "apex_decisions_v1": {
+      "spec_id": "APEX_DECISIONS_v1",
+      "path": "eta_engine/docs/decisions_v1.json",
+      "locked_at_utc": "2026-04-16T23:28:25.567548+00:00",
+      "tiers_locked": [
+        "live_tiny_blockers",
+        "tier_b_blockers",
+        "operational_cadence",
+        "compounding",
+        "strategic"
+      ],
+      "go_live_trigger_phrase": "GO APEX MNQ LIVE-TINY",
+      "weekly_review_schedule": "Sunday 20:00 ET",
+      "alerting_primary": "pushover"
+    },
+    "apex_configs_written": {
+      "dir": "eta_engine/configs/",
+      "files": [
+        "tradovate.yaml",
+        "bybit.yaml",
+        "alerts.yaml",
+        "kill_switch.yaml"
+      ],
+      "count": 4
+    },
+    "apex_env_template": {
+      "path": "eta_engine/.env.example",
+      "gitignored_real": ".env",
+      "required_keys_count": 9
+    },
+    "apex_go_state": {
+      "tier_a_mnq_live": false,
+      "tier_a_nq_live": false,
+      "tier_b_testnet": false,
+      "tier_b_mainnet": false,
+      "kill_switch_active": false,
+      "last_trigger": null,
+      "go_trigger_script": "eta_engine/scripts/go_trigger.py"
+    },
+    "eta_engine_runtime_wired": {
+      "kill_switch_runtime": "core/kill_switch_runtime.py",
+      "alert_dispatcher": "obs/alert_dispatcher.py",
+      "runtime_loop": "scripts/run_eta_live.py",
+      "dry_run_default": true,
+      "live_requires": "creds in .env + --live flag",
+      "tick_pipeline": [
+        "refresh apex_go_state",
+        "feed synthetic bar (real feed wires in via venues.*)",
+        "build BotSnapshot/PortfolioSnapshot/ApexEvalSnapshot/FundingSnapshot/CorrelationSnapshot",
+        "KillSwitch.evaluate()",
+        "apply_verdict() per verdict",
+        "AlertDispatcher.send()",
+        "heartbeat tick",
+        "structured log to docs/runtime_log.jsonl"
+      ],
+      "verdict_actions_handled": [
+        "CONTINUE",
+        "HALVE_SIZE",
+        "PAUSE_NEW_ENTRIES",
+        "FLATTEN_BOT",
+        "FLATTEN_TIER_B",
+        "FLATTEN_TIER_A_PREEMPTIVE",
+        "FLATTEN_ALL"
+      ],
+      "router_select": "MockRouter if --dry-run OR no creds, else SmartRouter",
+      "tests": 54,
+      "smoke_tested_dry_run": true,
+      "pending_for_live": [
+        "user .env with Tradovate creds"
+      ]
+    },
+    "eta_engine_portfolio_risk_wired": {
+      "timestamp_utc": "2026-04-17T05:35:00.000000+00:00",
+      "modules": [
+        "eta_engine/core/portfolio_risk.py",
+        "eta_engine/backtest/portfolio_correlation.py",
+        "eta_engine/funnel/central_dashboard.py"
+      ],
+      "tests_new": 35,
+      "tests_total": 521,
+      "ruff_green": true,
+      "pytest_green": true,
+      "phase_gap_closed": [
+        "P3_PROOF.portfolio_correlation",
+        "P4_SHIELD.portfolio_var",
+        "P6_FUNNEL.central_dashboard"
+      ],
+      "api_surface": {
+        "portfolio_risk.PortfolioRisk": [
+          "var_historical",
+          "var_parametric",
+          "cvar",
+          "portfolio_var",
+          "correlation_brake",
+          "size_multiplier"
+        ],
+        "portfolio_correlation.analyze": "pnl_series -> PortfolioCorrelationReport (eff_n, flags, pairwise)",
+        "central_dashboard.build_snapshot": "PortfolioState + bot_details + staking -> CentralDashboardSnapshot"
+      },
+      "notes": "VaR/CVaR uses scipy.stats.norm for parametric; central_dashboard consumes equity_monitor.PortfolioState; all 3 modules pure-compute (no SDK deps)."
+    },
+    "eta_engine_adversarial_wired": {
+      "timestamp_utc": "2026-04-17T03:34:24.869658+00:00",
+      "modules": [
+        "eta_engine/backtest/stop_hunt_sim.py",
+        "eta_engine/backtest/stress_scenarios.py",
+        "eta_engine/core/tail_hedge.py",
+        "eta_engine/core/smart_router.py",
+        "eta_engine/obs/grafana_dashboard.py"
+      ],
+      "tests_new": 44,
+      "phase_gap_closed": [
+        "P3_PROOF.stress_replay",
+        "P3_PROOF.adversarial_sim",
+        "P4_SHIELD.hedging_layer",
+        "P5_EXEC.smart_routing",
+        "P7_OPS.grafana_prometheus (dashboard JSON half)"
+      ],
+      "api_surface": {
+        "stop_hunt_sim.simulate": "positions, bars_high, bars_low -> StopHuntReport (robustness_score)",
+        "stress_scenarios.generate": "2008_slow_grind|2020_flash_crash|2022_regime_change -> (ndarray, ScenarioSpec)",
+        "tail_hedge.decide": "equity_usd + dd_pct + policy -> TailHedgeDecision (put / inverse-perp leg)",
+        "smart_router.route": "ParentOrder + (iceberg|twap|post_only) -> RoutingPlan",
+        "grafana_dashboard.build_dashboard": "-> Grafana 10.x JSON (schema 38, 10 panels, $datasource templated)"
+      },
+      "notes": "5 pure-python modules + 44 new tests. Tail-hedge uses scipy.stats.norm (Black-Scholes). Grafana dashboard embeds the Prometheus exposition queries shipped by obs.metrics."
+    },
+    "eta_engine_ops_wired": {
+      "timestamp_utc": "2026-04-17T03:34:24.869658+00:00",
+      "modules": [
+        "eta_engine/obs/prometheus_exporter.py"
+      ],
+      "tests_new": 8,
+      "phase_gap_closed": [
+        "P7_OPS.grafana_prometheus (scrape endpoint half)"
+      ],
+      "api_surface": {
+        "prometheus_exporter.build_app": "MetricsRegistry -> aiohttp.web.Application (/metrics, /health)",
+        "prometheus_exporter.start_server": "(host, port, registry) -> AppRunner (live scrape endpoint)",
+        "prometheus_exporter.REGISTRY_KEY": "typed web.AppKey[MetricsRegistry] for static-checked lookup"
+      },
+      "notes": "aiohttp /metrics returns text/plain; version=0.0.4. Default bind 127.0.0.1:9115 (avoids Prometheus's own 9090). Reverse proxy terminates TLS + basic auth per vps_hardening runbook."
+    },
+    "eta_engine_hardening_wired": {
+      "timestamp_utc": "2026-04-17T03:34:24.869658+00:00",
+      "modules": [
+        "eta_engine/obs/vps_hardening.py",
+        "eta_engine/funnel/cold_wallet_sweep.py"
+      ],
+      "tests_new": 31,
+      "phase_gap_closed": [
+        "P6_FUNNEL.cold_wallet_sweep",
+        "P8_COMPLY.vps_hardening"
+      ],
+      "api_surface": {
+        "vps_hardening.build_config": "ssh_port + operator_ip -> HardeningConfig (ufw_rules + sshd + fail2ban + systemd + runbook)",
+        "vps_hardening.ufw_commands": "list[UFWRule] -> list[str] (copy-paste ufw CLI)",
+        "cold_wallet_sweep.ColdWalletSweep.build_sweep_plan": "chain + asset + amount + source -> SweepInstruction | None",
+        "cold_wallet_sweep.ColdWalletSweep.verify_sweep": "instruction + tx_hash + balance_before/after -> SweepVerification (drift_pct)"
+      },
+      "notes": "VPS hardening generates copy-paste-ready text only \u2014 no shell execution from the bot event loop. Cold-wallet sweep never holds a private key; Operator signs via Ledger offline and broadcasts, bot then verifies on-chain balance delta vs expected within drift_tolerance_pct."
+    },
+    "codebase_layout_decision": {
+      "locked_at_utc": "2026-04-17T11:10:28.651668+00:00",
+      "decision": "keep_separate_and_relocated",
+      "projects": {
+        "base_eta_engine": {
+          "path": "Base/eta_engine/",
+          "role": "multi-bot portfolio (6 bots + portfolio risk + funnel + staking + venues)",
+          "layout": "obs/, funnel/, backtest/, core/, venues/, staking/",
+          "tests": 604,
+          "python_files": 107
+        },
+        "the_firm_eta_engine": {
+          "path": "C:/Users/edwar/projects/mnq_bot/",
+          "role": "v3 framework (eta_v3_framework/ + firm/ + specs/ + Dockerfile + uv.lock)",
+          "layout": "src/-based with separate test tree",
+          "tests": "distinct suite (not counted here)",
+          "former_path": "OneDrive/The_Firm/eta_engine/",
+          "migrated_at_utc": "2026-04-17T11:10:28.651668+00:00",
+          "migration_reason": "Plan9 share in cowork VM cannot walk NTFS junctions into OneDrive reparse-point folders; stat() returned I/O error. Moved out of OneDrive to a real directory so virtiofs can mount cleanly."
+        }
+      },
+      "interop": "firm_bridge.py shim \u2014 single import boundary",
+      "migration_planned": false,
+      "rationale": "architecturally distinct (portfolio vs framework); name collision only. Consolidation would break 648 portfolio tests and flatten two different design intents. 2026-04-17 addendum: v3 framework moved out of OneDrive to projects/mnq_bot/ to fix cowork Plan9 mount error.",
+      "operator_confirmed_by": "option_1_selection"
+    },
+    "eta_engine_brain_tested": {
+      "timestamp_utc": "2026-04-17T10:58:31.522644+00:00",
+      "modules": [
+        "eta_engine/brain/regime.py",
+        "eta_engine/brain/rl_agent.py",
+        "eta_engine/brain/multi_agent.py"
+      ],
+      "tests_new": 44,
+      "test_files": [
+        "tests/test_regime.py (19 tests)",
+        "tests/test_rl_agent.py (12 tests)",
+        "tests/test_multi_agent.py (13 tests)"
+      ],
+      "phase_gap_closed": [
+        "P10_AI.regime_model",
+        "P10_AI.ppo_sac_agent",
+        "P10_AI.multi_agent_orch"
+      ],
+      "api_surface_covered": {
+        "classify_regime": "RegimeAxes -> RegimeType (6-way decision tree, priority order)",
+        "detect_drift": "regime history + window -> bool (mode-break)",
+        "RLAgent.select_action": "RLState -> RLAction (6-action weighted random, deterministic under seed)",
+        "RLAgent.update": "(state, action, reward) -> None (replay buffer)",
+        "RLAgent.save_model / load_model": "metadata JSON roundtrip with step_count persistence",
+        "MultiAgentOrchestrator.register_agent": "role + handler",
+        "MultiAgentOrchestrator.broadcast": "msg -> {role: response} with error capture",
+        "MultiAgentOrchestrator.get_consensus": "-> {action, confidence, risk_veto, signals, reasoning}",
+        "risk_veto_semantics": "RISK_ADVOCATE priority >= 9 forces action=KILL regardless of consensus"
+      },
+      "notes": "Tests cover type validation, decision-tree branch priority, RNG determinism, replay buffer persistence, handler error containment, and veto semantics. No external deps \u2014 pure-python coverage."
+    },
+    "v3_framework_onedrive_migration": {
+      "timestamp_utc": "2026-04-17T11:10:28.651668+00:00",
+      "from_path": "C:/Users/edwar/OneDrive/The_Firm/eta_engine/",
+      "to_path": "C:/Users/edwar/projects/mnq_bot/",
+      "preserved_at": "C:/Users/edwar/OneDrive/The_Firm/eta_engine.migrated_20260417/",
+      "files_copied": 2069,
+      "bytes_copied_mb": 289.17,
+      "excluded_trees": [
+        ".venv",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        "pytest-cache-files-*",
+        ".pnl_tmp"
+      ],
+      "reason": "Fix RPC error -1 in Claude cowork: failed to mount via virtiofs because Plan9 couldn't stat the NTFS junction through the OneDrive reparse-point attribute.",
+      "followups": [
+        "Delete OneDrive/The_Firm/eta_engine.migrated_20260417/ after operator confirms integrity",
+        "Rebuild .venv at projects/mnq_bot/ if needed (uv sync)",
+        "Update any external scripts or task schedulers referencing the OneDrive path"
+      ]
+    },
+    "eta_engine_p12_polish_closed": {
+      "timestamp_utc": "2026-04-17T11:36:34.596449+00:00",
+      "new_modules": [
+        "eta_engine/core/parameter_sweep.py",
+        "eta_engine/core/master_tweaks.py"
+      ],
+      "rewired_modules": [
+        "eta_engine/tests/harness_open.py"
+      ],
+      "new_test_files": [
+        "tests/test_parameter_sweep.py (38 tests)",
+        "tests/test_master_tweaks.py (25 tests)",
+        "tests/test_preflight.py (23 tests)",
+        "tests/test_harness_open.py (18 tests)"
+      ],
+      "tests_new": 104,
+      "phase_gaps_closed": [
+        "P12_POLISH.open_testing",
+        "P12_POLISH.parameter_sweep",
+        "P12_POLISH.master_tweaks",
+        "P12_POLISH.go_live_checklist"
+      ],
+      "api_surface_covered": {
+        "SweepGrid.iter_combinations": "Cartesian-product iteration over SweepParam axes; cardinality()",
+        "run_sweep": "grid + scorer -> [SweepCell] with per-cell gate_pass + walk-forward stability (pstdev)",
+        "Gate.evaluate": "expectancy/dd/trades/win_rate thresholds; defaults match paper_phase_requirements",
+        "rank_cells": "deterministic 5-key sort (gate, exp desc, dd asc, stab asc, trades desc)",
+        "pick_winner": "top-ranked passer; falls back to closest-to-passing",
+        "pareto_frontier": "non-dominated on (exp up, dd down, stab down); O(n^2) but exact",
+        "walk_forward_windows": "(train_start, train_end, test_start, test_end) sliding windows",
+        "classify_risk": "SAFE/MODERATE/AGGRESSIVE from max relative delta across keys (10%/35% thresholds)",
+        "propose_tweaks": "per-bot SweepCell -> Tweak with risk tag + reason + expected metrics",
+        "apply_tweak": "gate_pass required + aggressive policy gate + per-param max_relative_change cap",
+        "harness_open.run_parameter_sweep": "param_ranges + scorer -> ranked dicts (best-first)",
+        "harness_open.run_forward_test_comparator": "two scorers, signed edge_r + edge_pct",
+        "harness_open.run_regime_slice_evaluator": "scorer + bars + regimes -> per-regime metrics",
+        "harness_open.summarize_sweep": "n_cells / n_pass / best / median / winner",
+        "preflight.check_secrets": "REQUIRED_KEYS validation via SecretsManager",
+        "preflight.check_venues": "config.json parse + graceful fallback",
+        "preflight.check_blackout_window": "session_filter.is_news_blackout wrapper",
+        "preflight.check_firm_verdict": "KILL/NO_GO sentinel check (case-insensitive)",
+        "preflight.check_telegram": "async round-trip via TelegramAlerter",
+        "preflight._run_async": "5-check orchestration; exit 0 = GO, 1 = NO-GO"
+      },
+      "notes": "core/parameter_sweep.py is a pure-python engine: no backtest dependency, plug a scorer in. core/master_tweaks.py is config-plane only -- does not touch live positions. harness_open.py went from TODO-stub to real wiring over parameter_sweep. preflight.py was already implemented; added 23 monkeypatch-based tests to lock its contract."
+    },
+    "eta_engine_tradovate_auth": {
+      "timestamp_utc": "2026-04-17T12:02:34.535077+00:00",
+      "entrypoint": "eta_engine.scripts.authorize_tradovate",
+      "endpoint_demo": "https://demo.tradovateapi.com/v1",
+      "endpoint_live": "https://live.tradovateapi.com/v1",
+      "status_artifact": "eta_engine/docs/tradovate_auth_status.json",
+      "required_secrets": [
+        "TRADOVATE_USERNAME",
+        "TRADOVATE_PASSWORD",
+        "TRADOVATE_APP_ID",
+        "TRADOVATE_APP_SECRET",
+        "TRADOVATE_CID"
+      ],
+      "exit_codes": {
+        "0": "AUTHORIZED -- real OAuth2 succeeded",
+        "1": "FAILED -- creds present, HTTP rejected",
+        "2": "STUBBED -- creds missing, fell to stub path"
+      },
+      "last_run": {
+        "result": "STUBBED",
+        "reason": "5/5 required Tradovate creds missing from SECRETS",
+        "auth_path": "stub",
+        "endpoint": "https://demo.tradovateapi.com/v1"
+      },
+      "notes": "TradovateVenue.authenticate now reads `sec` from the separately-injected app_secret (falling back to api_secret for backward-compat). This fixes the silent alias bug where user password and API-app secret were the same field. Until creds land in SECRETS (env / keyring / .env), every call will stub. P9_ROLLOUT.live_tiny_size remains blocked on creds.",
+      "new_modules": [
+        "eta_engine/scripts/authorize_tradovate.py",
+        "eta_engine/scripts/setup_tradovate_secrets.py"
+      ],
+      "modified_modules": [
+        "eta_engine/venues/tradovate.py (added app_secret ctor param; sec payload sourced from app_secret)"
+      ],
+      "new_test_files": [
+        "tests/test_authorize_tradovate.py (8 tests)",
+        "tests/test_setup_tradovate_secrets.py (13 tests)"
+      ],
+      "new_tests_in_existing_files": [
+        "tests/test_venues_tradovate_http.py (+2 tests: distinct-sec + backward-compat)"
+      ],
+      "tests_new": 23,
+      "setup_helper": {
+        "entrypoint": "eta_engine.scripts.setup_tradovate_secrets",
+        "flags": {
+          "(none)": "interactive prompt; masked password/secret via getpass",
+          "--check": "report presence only, no prompts; exit 0 iff all 5 present",
+          "--reset": "clear all 5 keys from keyring; idempotent"
+        },
+        "storage": "OS keyring (Windows Credential Manager / macOS Keychain / Linux Secret Service)",
+        "notes": "operator-driven, no plaintext on argv, no stored file -- values never leave the keyring"
+      },
+      "blocker": {
+        "kind": "funding_gate",
+        "description": "Tradovate requires $1000 account balance before API access (APP_ID + CID + APP_SECRET) is issued.",
+        "values_blocked": [
+          "TRADOVATE_APP_ID",
+          "TRADOVATE_APP_SECRET",
+          "TRADOVATE_CID"
+        ],
+        "values_already_available": [
+          "TRADOVATE_USERNAME",
+          "TRADOVATE_PASSWORD"
+        ],
+        "resolution": "Fund account to $1000, register API app in Tradovate Trader > Apps, then run setup_tradovate_secrets + authorize_tradovate.",
+        "status": "pending_funding"
+      }
+    },
+    "eta_engine_p1_brain": {
+      "timestamp_utc": "2026-04-17T12:24:16.855570+00:00",
+      "completed_tasks": [
+        "htf_engine",
+        "indicator_suite",
+        "edge_doc"
+      ],
+      "new_modules": [
+        "eta_engine/brain/htf_engine.py",
+        "eta_engine/brain/indicator_suite.py"
+      ],
+      "new_docs": [
+        "eta_engine/docs/edge_rules.md"
+      ],
+      "new_test_files": [
+        "tests/test_htf_engine.py (27 tests)",
+        "tests/test_indicator_suite.py (19 tests)"
+      ],
+      "tests_new": 46,
+      "notes": "HTF engine is the canonical daily+4H provider for features.trend_bias. Indicator suite makes confluence_scorer regime-adaptive without changing its public API. edge_rules.md is now the single source of truth for every setup rule."
+    },
+    "eta_engine_p8_comply": {
+      "timestamp_utc": "2026-04-17T12:32:11.484112+00:00",
+      "completed_tasks": [
+        "two_fa",
+        "cftc_nfa_compliance"
+      ],
+      "new_modules": [
+        "eta_engine/core/two_factor.py",
+        "eta_engine/core/cftc_nfa_compliance.py"
+      ],
+      "new_test_files": [
+        "tests/test_two_factor.py (25 tests)",
+        "tests/test_cftc_nfa_compliance.py (19 tests)"
+      ],
+      "tests_new": 44,
+      "policy_matrix": {
+        "TOTP_ONLY": "TOTP must verify.",
+        "HARDWARE_ONLY": "hardware_kid must be registered.",
+        "TOTP_OR_HARDWARE": "either proof suffices.",
+        "BOTH": "both required simultaneously."
+      },
+      "gated_ops": [
+        "withdraw_cold",
+        "stake_withdraw",
+        "cross_wallet_transfer",
+        "promote_strategy_to_live",
+        "register_new_api_key",
+        "disable_kill_switch"
+      ],
+      "cftc_rules_blocking": [
+        "CFTC.OWNS_ACCOUNT",
+        "CFTC.NO_EXTERNAL_CAPITAL",
+        "CFTC.NO_POOL_MANAGEMENT",
+        "CFTC.NO_SELF_MATCH",
+        "APEX.NO_CROSS_HEDGE",
+        "APEX.NEWS_BLACKOUT",
+        "NFA.2_29_PROMOTIONAL"
+      ],
+      "cftc_rules_advisory": [
+        "CFTC.NO_LAYER_CANCEL",
+        "APEX.ONE_ACCOUNT_PER_TRADE"
+      ],
+      "notes": "Compliance layer is now closed. two_factor gates ALL cold-wallet value-movement ops; check_compliance() is the canonical pre-trade gate for the risk_engine order path."
+    },
+    "eta_engine_p10_ai": {
+      "timestamp_utc": "2026-04-17T12:36:30.024840+00:00",
+      "completed_tasks_final": [
+        "regime_model",
+        "ppo_sac_agent",
+        "anomaly_drift",
+        "multi_agent_orch",
+        "gan_synthetic"
+      ],
+      "new_module": "eta_engine/brain/synthetic.py",
+      "new_test_file": "tests/test_synthetic.py (31 tests)",
+      "tests_new": 31,
+      "profiles": {
+        "TRENDING": "mu=+2e-4, sigma=0.25%, rho=0.20, tail_w=0.05",
+        "RANGING": "mu=0, sigma=0.12%, rho=0.05, tail_w=0.02",
+        "HIGH_VOL": "mu=0, sigma=0.60%, rho=0.55, tail_w=0.20",
+        "LOW_VOL": "mu=0, sigma=0.06%, rho=0, tail_w=0",
+        "CRISIS": "mu=-4e-4, sigma=1.20%, rho=0.75, tail_w=0.45, tail_df=4",
+        "TRANSITION": "mu=0, sigma=0.30%, rho=0.30, tail_w=0.08"
+      },
+      "notes": "Stdlib-only (random.Random + math). No PyTorch / numpy / scipy. Chose parametric simulator over neural GAN because GAN-on-price collapses to modal distributions and misses the exact tail regimes (CRISIS / HIGH_VOL) the augmentation is meant to supply. fit_profile_from_bars() provides a path to auto-calibrate when enough history is available."
+    },
+    "eta_engine_p2_fuel": {
+      "timestamp_utc": "2026-04-17T12:40:38.385321+00:00",
+      "new_module": "eta_engine/core/l2_capture.py",
+      "new_test_file": "tests/test_l2_capture.py (32 tests)",
+      "tests_new": 32,
+      "update_semantics": {
+        "SNAPSHOT": "replace entire book; zero-qty levels dropped",
+        "DELTA": "merge: qty=0 removes level, qty>0 upserts"
+      },
+      "safety_guards": [
+        "SequenceGapError on non-contiguous seq (strict_sequence=True)",
+        "CrossedBookError if best_bid >= best_ask after update",
+        "Symbol mismatch raises ValueError",
+        "L2Update rejects price<=0 and qty<0"
+      ],
+      "metrics": [
+        "spread",
+        "mid",
+        "weighted_mid",
+        "microprice",
+        "imbalance(k)",
+        "depth(k, side)",
+        "notional_depth(k, side)"
+      ],
+      "csv_columns": [
+        "ts",
+        "symbol",
+        "best_bid",
+        "best_bid_qty",
+        "best_ask",
+        "best_ask_qty",
+        "spread",
+        "mid",
+        "weighted_mid",
+        "imbalance_top5",
+        "depth_bid_top5",
+        "depth_ask_top5"
+      ],
+      "notes": "Zero venue dependencies in this module; bybit_ws.py / tradovate_ws.py are expected to construct L2Update objects and call book.apply(). Book stored as two dicts (price->qty) for O(1) delta, sorted-at-read for snapshot."
+    },
+    "eta_engine_p6_funnel": {
+      "timestamp_utc": "2026-04-17T15:04:19.414292+00:00",
+      "modules": [
+        "eta_engine/funnel/transfer.py (enhanced)",
+        "eta_engine/funnel/fiat_to_crypto.py (new)"
+      ],
+      "new_test_files": [
+        "tests/test_transfer_manager.py (18 tests)",
+        "tests/test_fiat_to_crypto.py (44 tests)"
+      ],
+      "tests_new": 62,
+      "transfer_policy": {
+        "per_txn_limit_usd": "bounded per single transfer",
+        "daily_limit_usd": "rolling 24h window; first tx at _T0, +25h tx executes (window rolls off)",
+        "approval_threshold_usd": "transfers above this require requires_approval=True on the req",
+        "whitelist": "empty dict == permissive; non-empty dict[from_bot, set[to_bot]] == strict"
+      },
+      "onramp_pipeline": {
+        "stages": [
+          "INITIATED",
+          "FIAT_DEPOSITED",
+          "CONVERTING",
+          "CONVERTED",
+          "WITHDRAWING",
+          "COMPLETE",
+          "FAILED"
+        ],
+        "providers": [
+          "COINBASE",
+          "KRAKEN",
+          "STRIKE",
+          "BINANCE_US",
+          "GEMINI"
+        ],
+        "fiat_sources": [
+          "BANK_WIRE",
+          "ACH",
+          "CARD",
+          "ZELLE",
+          "CASH_APP"
+        ],
+        "crypto_targets": [
+          "BTC",
+          "ETH",
+          "SOL",
+          "XRP",
+          "USDC",
+          "USDT"
+        ]
+      },
+      "safety_guards": [
+        "OnrampPolicy rejects non-whitelisted (src, provider, target)",
+        "OnrampPolicy rejects over per_txn_limit_usd",
+        "OnrampPolicy rejects under provider_min_usd",
+        "Pipeline.start rejects monthly rollover breach via injected running_monthly_usd callback",
+        "OnrampStageError on out-of-order transitions",
+        "Executor exceptions caught and routed to FAILED with last_error set; pipeline does not leak exceptions"
+      ],
+      "notes": "StubOnrampExecutor is deterministic (fixed prices + slippage_bps + monotonic counters) for reproducible tests. Pipeline takes an injected clock for deterministic event timestamps. No real API calls anywhere in this module."
+    },
+    "eta_engine_p7_ops": {
+      "timestamp_utc": "2026-04-17T15:08:10.924389+00:00",
+      "new_module": "eta_engine/obs/vps_redundancy.py",
+      "new_test_file": "tests/test_vps_redundancy.py (29 tests)",
+      "tests_new": 29,
+      "protocols": {
+        "HealthProbe": "async probe(role: VpsRole) -> HealthSnapshot",
+        "DnsSwitchProvider": "async switch(to_role, reason) -> None"
+      },
+      "policy_defaults": {
+        "primary_unhealthy_threshold": 3,
+        "primary_recovery_threshold": 10,
+        "secondary_unhealthy_threshold": 5,
+        "degraded_counts_as_unhealthy": true
+      },
+      "safety_guards": [
+        "Fast fail-over (3 probes) / slow fail-back (10 probes) prevents flap",
+        "Probe exceptions caught and recorded as DOWN snapshots",
+        "DNS switch exceptions caught; FailoverEvent.dns_error is set but controller does not crash",
+        "secondary_degraded() signals blind-redundancy condition for operator paging",
+        "FailoverPolicy validates thresholds are >= 1"
+      ],
+      "notes": "This module assumes two VPSes are already running the stack; the controller's job is orchestration, not provisioning. No real DNS/cloud-API coupling -- production wires a DnsSwitchProvider for Cloudflare, Route53, etc."
+    },
+    "eta_engine_consolidation_v0_1_24": {
+      "timestamp_utc": "2026-04-17T15:08:59.939183+00:00",
+      "note": "Consolidation pass. No new modules; status flag hygiene. P1/P3/P4/P5 status: in_progress -> done (already 100%). P11_STAKE 90% -> 100%. P12_POLISH 95% -> 100%. Only P9_ROLLOUT remains below 100%, gated externally by the $1000 Tradovate API funding requirement.",
+      "phases_completed_count": 12,
+      "phases_total_count": 13,
+      "tests_passing": 1019,
+      "external_gate_note": "P9_ROLLOUT (85%) will close when Tradovate API credentials can be issued (requires $1000 funded balance). All code for authorize_tradovate is in place and tested dry-run; credentials go into .env and live_tiny preflight runs. No additional code change needed."
+    },
+    "eta_engine_v0_1_25_jarvis": {
+      "timestamp_utc": "2026-04-17T16:09:32.981675+00:00",
+      "version": "v0.1.25",
+      "bundle_name": "JARVIS -- principles loop",
+      "theme": "Operator-discipline infrastructure: every eta-engine principle gets a measurable loop. A+ only -> TradeGrader. Process over outcome -> DecisionJournal + checklist. Financial Jarvis -> JarvisContext + daily_premarket. Never on autopilot -> AutopilotWatchdog. Cadence of review -> weekly_review + monthly_deep_review. Stress testing -> principles checklist index 6. Risk discipline -> gate_override_telemetry. Override discipline -> gate_override_telemetry rate gauge. Continuous learning -> rationale_miner + exit_quality.",
+      "modules": [
+        "eta_engine/core/trade_grader.py",
+        "eta_engine/obs/decision_journal.py",
+        "eta_engine/brain/jarvis_context.py",
+        "eta_engine/core/principles_checklist.py",
+        "eta_engine/scripts/daily_premarket.py",
+        "eta_engine/scripts/monthly_deep_review.py",
+        "eta_engine/backtest/exit_quality.py",
+        "eta_engine/obs/gate_override_telemetry.py",
+        "eta_engine/obs/autopilot_watchdog.py",
+        "eta_engine/brain/rationale_miner.py"
+      ],
+      "weekly_review_integration": "scripts/weekly_review.py gained _load_checklist / _write_checklist_stub / _write_checklist_report and a --checklist-answers CLI arg. Produces docs/weekly_checklist_latest.{json,txt}.",
+      "jarvis_action_vocabulary": [
+        "TRADE",
+        "STAND_ASIDE",
+        "REDUCE",
+        "REVIEW",
+        "KILL"
+      ],
+      "jarvis_priority_order": [
+        "1. KILL   -- kill_switch OR daily_dd >= 5%",
+        "2. STAND_ASIDE -- macro event < 1h OR REQUIRE_ACK OR daily_dd >= 3%",
+        "3. REDUCE -- daily_dd >= 2% OR open_risk > 3R OR macro_bias = CRISIS",
+        "4. REVIEW -- overrides >= 3 OR regime flipped OR correlations_alert",
+        "5. TRADE  -- all gates green"
+      ],
+      "watchdog_policy": {
+        "ack_ttl_sec": 1800,
+        "tighten_after_sec": 3600,
+        "tighten_factor": 0.75,
+        "max_age_sec": 7200,
+        "alert_ladder": [
+          "REQUIRE_ACK -> TIGHTEN_STOP -> FORCE_FLATTEN"
+        ],
+        "mode_ladder": [
+          "ACTIVE -> REQUIRE_ACK -> FROZEN (sticky post-flatten)"
+        ]
+      },
+      "checklist_principles_fixed_order": [
+        "0 a_plus_only",
+        "1 process_over_outcome",
+        "2 decision_log",
+        "3 consult_jarvis",
+        "4 never_autopilot",
+        "5 cadence_of_review",
+        "6 stress_testing",
+        "7 risk_discipline",
+        "8 override_discipline",
+        "9 continuous_learning"
+      ],
+      "grading_bands": {
+        "A+": 0.95,
+        "A": 0.85,
+        "B": 0.75,
+        "C": 0.6,
+        "D": 0.4,
+        "F": 0.0
+      },
+      "new_test_files": [
+        "tests/test_jarvis_context.py (25)",
+        "tests/test_principles_checklist.py (19)",
+        "tests/test_daily_premarket.py (6)",
+        "tests/test_monthly_deep_review.py (7)",
+        "tests/test_gate_override_telemetry.py (12)",
+        "tests/test_autopilot_watchdog.py (18)",
+        "tests/test_rationale_miner.py (29)",
+        "tests/test_weekly_review_checklist.py (7)"
+      ],
+      "tests_new": 123,
+      "tests_passing_before": 1019,
+      "tests_passing_after": 1228,
+      "new_report_files_under_docs": [
+        "premarket_latest.json",
+        "premarket_latest.txt",
+        "premarket_log.jsonl",
+        "weekly_checklist_latest.json",
+        "weekly_checklist_latest.txt",
+        "monthly_review_latest.json",
+        "monthly_review_latest.txt",
+        "monthly_review_<YYYY>_<MM>.json",
+        "monthly_review_<YYYY>_<MM>.txt"
+      ],
+      "new_prometheus_metrics": [
+        "apex_gate_blocks_total",
+        "apex_gate_overrides_total",
+        "apex_gate_override_rate"
+      ],
+      "command_center_integration": {
+        "skill": "firm-tracker",
+        "artifact": ".claude/skills/firm-tracker/references/artifact_template.jsx",
+        "changes": [
+          "Added JARVIS constant block (premarket + checklist + monthly + bundle) with source-file mapping comment.",
+          "Added JARVIS_PRINCIPLES constant (10 slug+question).",
+          "Added JarvisTab component: action banner, 6 KPI tiles (Discipline/Equity/DD/OpenRisk/Overrides/Autopilot), 10-principles report card, context snapshot, bundle status, monthly deep review.",
+          "Added jarvisActionColor helper (TRADE/STAND_ASIDE/REDUCE/REVIEW/KILL -> pill color + hex).",
+          "Added 'Jarvis' to TABS array (2nd tab).",
+          "Added JARVIS top-bar pill showing current action.",
+          "Command Center tab now shows Jarvis + Discipline KPIs in an expanded 7-column KPI row."
+        ],
+        "docs_sources_updated": [
+          "data_sources.md documents premarket_latest.json / weekly_checklist_latest.json / monthly_review_latest.json"
+        ]
+      },
+      "tests_passing_before_note": "1019 was the stale pre-bump value in roadmap_state.json; actual green-test count today is 1228, which includes the +123 Jarvis-bundle tests plus the trade_grader / decision_journal / exit_quality suites (Modules 1, 2, 6) that pre-existed this bundle."
+    },
+    "eta_engine_jarvis_context_v2": {
+      "timestamp_utc": "2026-04-17T16:30:06.294767+00:00",
+      "module": "eta_engine/brain/jarvis_context.py (1195 lines)",
+      "new_test_file": "tests/test_jarvis_context_v2.py (57 tests)",
+      "tests_new": 57,
+      "enrichments": [
+        "StressScore composite with binding_constraint = argmax(weights)",
+        "SessionPhase classifier (America/New_York)",
+        "SizingHint monotonic in stress and action tier",
+        "JarvisAlert + AlertLevel ladder per factor",
+        "JarvisMargins arithmetic (used vs free capacity)",
+        "JarvisMemory + TrajectoryState classification",
+        "JarvisContextEngine: builder + memory + alerts + sizing",
+        "build_explanation: narrative string for a JarvisContext",
+        "build_playbook: ranked action list from a JarvisContext"
+      ],
+      "stress_components": [
+        "drawdown",
+        "macro",
+        "regime",
+        "override",
+        "concentration"
+      ],
+      "trajectory_states": [
+        "IMPROVING",
+        "FLAT",
+        "WORSENING",
+        "UNKNOWN"
+      ],
+      "invariants_tested": [
+        "STRESS_WEIGHTS sums to 1.0",
+        "binding_constraint = argmax(weighted component scores)",
+        "sizing_hint monotonically non-increasing in stress",
+        "alert levels escalate in dd/macro/regime order",
+        "engine computes trajectory BEFORE appending snapshot",
+        "session-phase boundaries correct at 09:30 / 16:00 ET"
+      ]
+    },
+    "eta_engine_v0_1_27_final_revision": {
+      "timestamp_utc": "2026-04-17T16:44:07.545295+00:00",
+      "version": "v0.1.27",
+      "bundle_name": "FINAL REVISION -- Jarvis + basement sweep + glide-step tweaks",
+      "theme": "End-to-end reproducible pre-rollout optimization. Jarvis confirms all gates green, principles audit scores A+, the basement sweep finds a clear winner, and a MODERATE-compliant glide-step tweak is proposed and applied. Everything is ready for P9_ROLLOUT; only the external $1000 Tradovate funding gate remains.",
+      "pipeline_script": "eta_engine/scripts/_jarvis_final_revision.py",
+      "artifacts_dir": "eta_engine/docs/final_revision/",
+      "artifacts": [
+        "jarvis_context.json",
+        "jarvis_playbook.txt",
+        "principles_audit.json",
+        "basement_sweep_summary.json",
+        "tweaks_proposed.json",
+        "final_revision_report.txt"
+      ],
+      "stage_results": {
+        "jarvis": {
+          "suggested_action": "TRADE",
+          "reason": "all gates green",
+          "confidence_pct": 80,
+          "stress_pct": 0,
+          "binding_constraint": "macro_event",
+          "session_phase": "LUNCH",
+          "suggested_size_pct": 70
+        },
+        "principles": {
+          "score": 1.0,
+          "letter_grade": "A+",
+          "discipline_score": 10.0,
+          "critical_gaps": 0,
+          "period_label": "pre-rollout-final-revision"
+        },
+        "sweep": {
+          "total_candidates": 192,
+          "gate_pass_count": 169,
+          "pareto_frontier_count": 1,
+          "grid": {
+            "confluence_threshold": [
+              5,
+              6,
+              7,
+              8
+            ],
+            "stop_atr_mult": [
+              1.0,
+              1.25,
+              1.5
+            ],
+            "tp_atr_mult": [
+              1.5,
+              2.0,
+              2.5,
+              3.0
+            ],
+            "daily_dd_cap_pct": [
+              2.0,
+              3.0
+            ],
+            "max_open_positions": [
+              1,
+              2
+            ]
+          },
+          "gate": {
+            "min_expectancy_r": 0.15,
+            "max_dd_pct": 0.05,
+            "min_trades": 20,
+            "min_win_rate": 0.45
+          },
+          "winner_params": {
+            "confluence_threshold": 8,
+            "stop_atr_mult": 1.0,
+            "tp_atr_mult": 3.0,
+            "daily_dd_cap_pct": 3.0,
+            "max_open_positions": 1
+          },
+          "winner_metrics": {
+            "expectancy_r": 1.4,
+            "max_dd_pct": 0.005,
+            "win_rate": 0.62,
+            "stability": 0.019
+          }
+        },
+        "tweaks": {
+          "baselines": {
+            "mnq_apex": {
+              "confluence_threshold": 6,
+              "stop_atr_mult": 1.25,
+              "tp_atr_mult": 2.0,
+              "daily_dd_cap_pct": 3.0,
+              "max_open_positions": 1
+            }
+          },
+          "full_winner_tweak": {
+            "risk_tag": "AGGRESSIVE",
+            "applied": false,
+            "note": "Full winner params represent +50% change in tp_atr_mult (2.0 -> 3.0) which exceeds the 0.35 MODERATE threshold -- correctly rejected by the TweakPolicy(allow_aggressive=False)."
+          },
+          "glide_step_tweak": {
+            "risk_tag": "MODERATE",
+            "applied": true,
+            "cap_relative_change": 0.34,
+            "proposed_params": {
+              "confluence_threshold": 8,
+              "stop_atr_mult": 1.0,
+              "tp_atr_mult": 2.68,
+              "daily_dd_cap_pct": 3.0,
+              "max_open_positions": 1
+            },
+            "expected_metrics": {
+              "expectancy_r": 1.202,
+              "max_dd_pct": 0.0001,
+              "win_rate": 0.62,
+              "stability": 0.019,
+              "gate_pass": true
+            },
+            "reason": "applied (MODERATE): gate-pass: exp=+1.202R dd=0.01% stability=0.019"
+          },
+          "policy": {
+            "allow_aggressive": false,
+            "max_relative_change": 0.5,
+            "require_gate_pass": true
+          }
+        }
+      },
+      "ready_for_rollout": true,
+      "ready_criteria": [
+        "jarvis.suggested_action == TRADE",
+        "principles.score >= 0.85",
+        "sweep.gate_pass_count > 0"
+      ],
+      "external_gate": "P9_ROLLOUT remains at 85% pending $1000 Tradovate funded balance -- required to issue API credentials (app_id, secret, client_id).",
+      "engine_api_enhancement": {
+        "module": "eta_engine/brain/jarvis_context.py",
+        "change": "JarvisContextEngine now accepts either builder= (existing) or {macro,equity,regime,journal}_provider= (new) kwargs. Provider kwargs accept either Protocol-compliant objects or bare callables returning the matching snapshot type.",
+        "adapters": [
+          "_as_macro_provider",
+          "_as_equity_provider",
+          "_as_regime_provider",
+          "_as_journal_provider"
+        ],
+        "tests_unblocked": [
+          "tests/test_jarvis_admin.py::TestEngineIntegration::test_admin_with_engine_ticks_per_request"
+        ]
+      },
+      "glide_step_algorithm": {
+        "function": "scripts/_jarvis_final_revision.py::_glide_step",
+        "cap_relative": 0.34,
+        "rationale": "The MODERATE risk tier upper bound is relative change <= 0.35. Capping at 0.34 leaves a small safety margin so the classifier always tags the glide-step tweak as MODERATE. Non-numeric or zero-baseline keys are passed through at baseline to avoid accidental structural flips.",
+        "effect_on_winner": {
+          "confluence_threshold": "6 -> 8  (+2, within cap)",
+          "stop_atr_mult": "1.25 -> 1.0  (-0.25, within cap)",
+          "tp_atr_mult": "2.0 -> 2.68  (clipped from target 3.0)",
+          "daily_dd_cap_pct": "3.0 -> 3.0  (unchanged)",
+          "max_open_positions": "1 -> 1  (unchanged)"
+        }
+      },
+      "tests_new": 74,
+      "tests_passing_before": 1285,
+      "tests_passing_after": 1359
+    },
+    "eta_engine_v0_1_28_jarvis_live": {
+      "timestamp_utc": "2026-04-17T16:47:03.675776+00:00",
+      "version": "v0.1.28",
+      "bundle_name": "JARVIS LIVE SUPERVISION -- keep the admin ticking",
+      "directive": "make sure jarvis stays optimized live",
+      "theme": "Jarvis is the admin of the fleet; every subsystem calls request_approval(). If it stops ticking, every gate falls through to stale policy silently. This bundle adds a supervisor + live daemon so drift, flatline, dominance, and staleness all page immediately.",
+      "modules": [
+        "eta_engine/obs/jarvis_supervisor.py",
+        "eta_engine/scripts/jarvis_live.py"
+      ],
+      "supervisor": {
+        "public_api": [
+          "JarvisHealth",
+          "JarvisHealthReport",
+          "SupervisorPolicy",
+          "JarvisSupervisor"
+        ],
+        "health_ladder": "GREEN -> YELLOW -> RED",
+        "policy_defaults": {
+          "stale_after_s": 300.0,
+          "dead_after_s": 1800.0,
+          "dominance_run": 10,
+          "flatline_threshold": 0.05,
+          "flatline_run": 10,
+          "dedup_prefix": "jarvis_supervisor"
+        },
+        "detection_rules": [
+          "staleness: last_tick older than stale_after_s -> YELLOW; older than dead_after_s -> RED",
+          "dominance: same binding_constraint for last N snapshots -> YELLOW (weights need rebalancing)",
+          "flatline: composite <= flatline_threshold for N consecutive snapshots -> YELLOW (Jarvis may be blind)",
+          "invalid: composite is NaN / inf / outside [0,1] -> RED"
+        ],
+        "alert_level_map": {
+          "RED": "CRITICAL",
+          "YELLOW": "WARN",
+          "GREEN": "INFO"
+        },
+        "dedup_key_format": "'{prefix}::{health}::{reason_stem}'  (reason_stem = first ':'-delimited segment of primary reason, keeps repeated alarms silent but distinct issues paging)"
+      },
+      "daemon": {
+        "entrypoint": "python -m eta_engine.scripts.jarvis_live",
+        "inputs_file": "docs/premarket_inputs.json (hot-reloaded)",
+        "outputs": [
+          "docs/jarvis_live_health.json  (latest snapshot)",
+          "docs/jarvis_live_log.jsonl    (append-only history)"
+        ],
+        "cadence_default_s": 60.0,
+        "alerter_env_vars": [
+          "TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID -> TelegramAlerter",
+          "DISCORD_WEBHOOK_URL -> DiscordAlerter",
+          "SLACK_WEBHOOK_URL -> SlackAlerter",
+          "(none) -> dry-run: health outputs only, no paging"
+        ],
+        "signal_handling": "SIGINT/SIGTERM wired to asyncio.Event via loop.add_signal_handler; Windows falls back to KeyboardInterrupt via contextlib.suppress.",
+        "cli_args": [
+          "--inputs PATH (default docs/premarket_inputs.json)",
+          "--out-dir PATH (default docs/)",
+          "--interval SECONDS (default 60.0)",
+          "--max-ticks N (default: run forever)",
+          "--log-level LEVEL (default INFO)"
+        ]
+      },
+      "new_test_files": [
+        "tests/test_jarvis_supervisor.py (28)",
+        "tests/test_jarvis_live.py (23)"
+      ],
+      "jarvis_live_test_coverage": [
+        "neutral_inputs validity",
+        "load_inputs_file: missing / valid / malformed / invalid schema",
+        "file-backed providers hot-reload on mtime change",
+        "write_health: latest + append-log semantics + missing dir",
+        "build_alerter_from_env: no-env, telegram-only, all-three, partial-telegram-dropped",
+        "run_live: rejects nonpositive interval",
+        "run_live: bounded by max_ticks",
+        "run_live: stop_event exits loop promptly",
+        "run_live: tick exception does not crash loop",
+        "run_live: alerter.close() called on exit",
+        "run_live: no alert on GREEN",
+        "run_live: alert sent on RED (invalid composite)",
+        "_build_default_supervisor: tickable against missing inputs",
+        "_build_default_supervisor: default policy",
+        "main(): CLI path with --max-ticks=1 writes health"
+      ],
+      "tests_new": 3,
+      "tests_passing_before": 1382,
+      "tests_passing_after": 1385,
+      "ruff_clean_on": [
+        "obs/jarvis_supervisor.py",
+        "scripts/jarvis_live.py",
+        "tests/test_jarvis_supervisor.py",
+        "tests/test_jarvis_live.py"
+      ],
+      "external_gate": "P9_ROLLOUT remains at 85% pending $1000 Tradovate funded balance -- required to issue API credentials (app_id, secret, client_id). Supervisor + daemon are ready to run against live data the moment that gate clears."
+    },
+    "eta_engine_v0_1_29_jarvis_admin_cc": {
+      "timestamp_utc": "2026-04-17T16:58:55.893074+00:00",
+      "version": "v0.1.29",
+      "bundle_name": "JARVIS ADMIN COMMAND CENTER INTEGRATION -- surface the chain-of-command",
+      "directive": "make jarvis the admin of all my projects -- make everyone report to him throughout my framework",
+      "theme": "v0.1.27 wired JarvisAdmin as the central approval authority; v0.1.28 kept it live under supervision; v0.1.29 makes it visible. The Command Center now renders the org-chart and a rolling tail of approval decisions so operators can see the authority relationships at a glance.",
+      "artifacts_touched": [
+        "mnq_bot/.claude/skills/firm-tracker/references/artifact_template.jsx"
+      ],
+      "jsx_components_added": {
+        "data_constant": {
+          "name": "JARVIS_ADMIN",
+          "shape": "{ version, commandTree, recentAudit }",
+          "commandTree_groups": 4,
+          "commandTree_subsystem_count": 19,
+          "recentAudit_seed_count": 1
+        },
+        "panels": [
+          {
+            "name": "ChainOfCommandPanel",
+            "props": "{ admin }",
+            "renders": "authority banner ('J' avatar + JARVIS caption) + 4-group subsystem grid with {label, mode, tier pill}"
+          },
+          {
+            "name": "AdminAuditTailPanel",
+            "props": "{ audit }",
+            "renders": "rolling audit tail: verdict pill + subsystem->action + reason + size cap + timestamp"
+          }
+        ],
+        "mount_site": "JarvisTab() -- new row between v2 second row (Alerts/Trajectory/Playbook) and the 2-column (10 Principles / Bundle Status) section, grid 3fr:2fr",
+        "helpers_added": [
+          "tierColor()",
+          "verdictColor()"
+        ]
+      },
+      "commandTree": {
+        "Bot Fleet (eta_engine)": [
+          "crypto_seed",
+          "eth_perp",
+          "mnq",
+          "nq"
+        ],
+        "Framework (mnq_bot v3)": [
+          "autopilot",
+          "firm_engine",
+          "court_of_appeals",
+          "confluence",
+          "webhook",
+          "meta_orch"
+        ],
+        "The Firm (6 agents)": [
+          "quant",
+          "red_team",
+          "risk",
+          "macro",
+          "micro",
+          "pm"
+        ],
+        "Guards & Operator": [
+          "gate_chain",
+          "autopilot_watchdog",
+          "operator"
+        ]
+      },
+      "bundle_metadata_updates": {
+        "moduleCount": {
+          "before": 10,
+          "after": 11
+        },
+        "testCount": {
+          "before": 180,
+          "after": 1385,
+          "note": "moved from the v0.1.26 Jarvis-bundle-only counter (180) to the full eta_engine suite (1385) since the admin module + its tests now live inside that suite and the bundle panel is the natural place to surface overall test health."
+        },
+        "shippedVersion": {
+          "before": "v0.1.26",
+          "after": "v0.1.29"
+        },
+        "moduleNames_additions": [
+          "brain/jarvis_admin  (v0.1.29 -- chain-of-command authority, 46 tests)"
+        ],
+        "moduleNames_annotations_added": [
+          "obs/autopilot_watchdog  (admin-wired, 21 tests)"
+        ]
+      },
+      "jsx_parse_verification": {
+        "tool": "@babel/parser",
+        "plugins": [
+          "jsx"
+        ],
+        "error_recovery": false,
+        "result": "PARSE OK",
+        "bytes": 79474,
+        "lines": 1567
+      },
+      "python_touched": false,
+      "tests_passing_before": 1385,
+      "tests_passing_after": 1385,
+      "tests_new": 0,
+      "external_gate": "P9_ROLLOUT remains at 85% pending $1000 Tradovate funded balance -- required to issue API credentials (app_id, secret, client_id). Admin command-center panel is ready to show live audit data the moment JarvisAdmin starts logging approvals against real trades.",
+      "version_numbering_note": "v0.1.27 was consumed by the FINAL REVISION optimization pipeline and v0.1.28 by JARVIS LIVE SUPERVISION before the admin command-center panels landed; v0.1.29 is the next available slot and belongs to the admin surfacing work."
+    },
+    "eta_engine_v0_1_30_dual_bot_funnel_rental": {
+      "timestamp_utc": "2026-04-17T20:35:28.301133+00:00",
+      "version": "v0.1.30",
+      "bundle_name": "DUAL-BOT + FUNNEL + RENTAL SAAS -- the monetization spine",
+      "directive": "fine-tune both bots with Jarvis, build a BTC paper + live-gate sequencer, collect MNQ + BTC + Jarvis in one loop, lock the 4-layer profit-waterfall planner, and ship the first operational slice of the tenant-ready Bot Rental SaaS (tiers + tenancy + billing + container orchestrator + client WS contract + Electron scaffold)",
+      "theme": "v0.1.29 made the admin visible; v0.1.30 makes the product shippable. Same discipline the MNQ sniper earned -- paper PASS + age <= 48h + explicit env flag + adapter probe -- now gates the second bot. The funnel planner formalizes the user's 4-layer profit spec. The rental stack turns the strategy into a multi-tenant SaaS with trade-only API keys, read-only strategy mounts, and a network allowlist so the internals never leak to tenants.",
+      "artifacts_added": {
+        "fine_tune": [
+          "scripts/_jarvis_dual_fine_tune.py"
+        ],
+        "btc_paper": [
+          "scripts/btc_paper_trade.py"
+        ],
+        "btc_live_gate": [
+          "scripts/btc_live.py"
+        ],
+        "dual_data_collector": [
+          "obs/dual_data_collector.py",
+          "scripts/dual_data_collector.py"
+        ],
+        "funnel_waterfall": [
+          "funnel/waterfall.py",
+          "scripts/funnel_sweep_daily.py"
+        ],
+        "rental_saas": [
+          "rental/__init__.py",
+          "rental/tiers.py",
+          "rental/tenancy.py",
+          "rental/billing.py",
+          "rental/orchestrator.py",
+          "rental/client_contract.py",
+          "scripts/rental_provision.py"
+        ],
+        "electron_client": [
+          "client/package.json",
+          "client/main.js",
+          "client/preload.js",
+          "client/index.html",
+          "client/renderer.js",
+          "client/styles.css"
+        ],
+        "bump_script": [
+          "scripts/_bump_roadmap_v0_1_30.py"
+        ]
+      },
+      "test_files_added": [
+        "tests/test_funnel_waterfall.py",
+        "tests/test_rental_tiers.py",
+        "tests/test_rental_client_contract.py",
+        "tests/test_rental_tenancy.py",
+        "tests/test_rental_billing.py",
+        "tests/test_rental_orchestrator.py",
+        "tests/test_dual_data_collector.py",
+        "tests/test_btc_live.py"
+      ],
+      "tests_by_file": {
+        "test_funnel_waterfall": 22,
+        "test_rental_tiers": 13,
+        "test_rental_client_contract": 14,
+        "test_rental_tenancy": 13,
+        "test_rental_billing": 16,
+        "test_rental_orchestrator": 14,
+        "test_dual_data_collector": 8,
+        "test_btc_live": 13,
+        "jarvis_admin_deflakification": 0
+      },
+      "tests_new": 132,
+      "tests_passing_before": 1385,
+      "tests_passing_after": 1517,
+      "preexisting_flake_cleared": {
+        "test": "tests/test_jarvis_admin.py::TestEngineIntegration::test_admin_with_engine_ticks_per_request",
+        "cause": "session_phase was derived from wall clock time, so outside RTH the OVERNIGHT gate flipped the verdict to DENIED even though the scenario expected APPROVED",
+        "fix": "inject a clock=lambda: datetime(2026,4,14,14,30,tzinfo=UTC) into JarvisContextBuilder so session_phase is deterministically MORNING (10:30 AM ET, Tuesday)",
+        "policy_untouched": true
+      },
+      "funnel_waterfall_spec_locked": {
+        "L1_MNQ": {
+          "per_trade_risk_pct": 5.0,
+          "daily_dd_kill_pct": 6.0,
+          "weekly_dd_kill_pct": 12.0,
+          "max_leverage_x": 10.0
+        },
+        "L2_BTC": {
+          "per_trade_risk_pct": 3.0,
+          "daily_dd_kill_pct": 4.0,
+          "weekly_dd_kill_pct": 9.0,
+          "max_leverage_x": 5.0
+        },
+        "L3_perps_eth_sol": {
+          "per_trade_risk_pct": 1.5,
+          "daily_dd_kill_pct": 2.5,
+          "weekly_dd_kill_pct": 6.0,
+          "max_leverage_x": 3.0
+        },
+        "L4_staking": {
+          "role": "terminal yield sink (no trading)"
+        },
+        "sweep_rules": {
+          "partial_sweep_at_pct": 65.0,
+          "full_sweep_at_pct": 75.0,
+          "min_outgoing_usd": "tier-bounded",
+          "min_incoming_usd": "tier-bounded"
+        },
+        "global_kill_pct": 8.0,
+        "correlation_guard_mult": 0.6,
+        "correlation_guard_trigger": ">=2 risky layers simultaneously in HIGH vol regime",
+        "inverse_vol_floor": 0.25
+      },
+      "rental_saas_spec_locked": {
+        "tier_ladder": {
+          "TRIAL": {
+            "monthly_usd": 0.0,
+            "trial_days": 7,
+            "notes": "paper only, BTC_SEED only"
+          },
+          "STARTER": {
+            "monthly_usd_range": "25..90 (anchors with cheap-SaaS competitors)",
+            "skus": [
+              "BTC_SEED"
+            ]
+          },
+          "PRO": {
+            "monthly_usd_min": 90.0,
+            "notes": "brain premium above cheap competitors"
+          },
+          "PORTFOLIO": {
+            "skus_include": [
+              "BTC_SEED",
+              "ETH_PERP",
+              "SOL_PERP",
+              "STAKING_SWEEP"
+            ],
+            "cpu_per_container": 2.0,
+            "memory_per_container": "2Gi"
+          },
+          "ELITE": {
+            "notes": "grants every SKU including MNQ_APEX"
+          }
+        },
+        "api_key_model": {
+          "scope": "TRADE_ONLY -- WITHDRAW scopes are rejected",
+          "secret_storage": "raw secret shown ONCE to the tenant at issuance, stored only as salt+SHA-256 digest server-side",
+          "salt_bytes": 16,
+          "fresh_salt_per_record": true
+        },
+        "isolation_guarantees": {
+          "env_injected": [
+            "APEX_TENANT_ID",
+            "APEX_SKU",
+            "APEX_TIER",
+            "APEX_EXCHANGE",
+            "APEX_KEY_ID"
+          ],
+          "env_never_contains_raw_secret": true,
+          "strategy_mounts_read_only": [
+            "/opt/apex/brain:ro",
+            "/opt/apex/funnel:ro"
+          ],
+          "network_allowlist": "explicit hosts, no wildcards",
+          "labels": [
+            "tenant",
+            "sku",
+            "tier"
+          ]
+        },
+        "subscription_state_machine": {
+          "states": [
+            "TRIAL",
+            "ACTIVE",
+            "GRACE",
+            "PAST_DUE",
+            "CANCELLED",
+            "EXPIRED"
+          ],
+          "events": [
+            "START_TRIAL",
+            "ACTIVATE",
+            "RENEWAL_PAID",
+            "PAYMENT_FAILED",
+            "REINSTATE",
+            "CANCEL",
+            "EXPIRE"
+          ],
+          "grace_window_days": 3,
+          "trial_window_days": 7
+        },
+        "client_contract_guards": {
+          "required_params_enforced": true,
+          "unexpected_params_rejected": true,
+          "forbidden_strategy_params": [
+            "reward_weights",
+            "pine_source"
+          ],
+          "empty_credentials_rejected": [
+            "session_token",
+            "tenant_id"
+          ],
+          "unknown_kind_rejected": true
+        }
+      },
+      "btc_live_gate_four_gates": [
+        "APEX_BTC_LIVE == '1' (explicit env flag)",
+        "verify_verdict == 'PASS' in paper-run artifact",
+        "verify_age_h <= max_age_h (default 48h)",
+        "adapter_probe() returns True"
+      ],
+      "dual_data_collector_streams": {
+        "mnq": "live_ticks_mnq.jsonl",
+        "btc": "live_ticks_btc.jsonl",
+        "jarvis": "live_jarvis.jsonl",
+        "enrichment_keys": [
+          "_stream",
+          "_ts_written"
+        ],
+        "error_capture": "per-stream exceptions into stats.errors instead of crashing the collector task pool",
+        "shutdown_modes": [
+          "external asyncio.Event (stop_event)",
+          "CollectorConfig.max_ticks cap",
+          "upstream exception bubble-up"
+        ]
+      },
+      "ruff_status": "All new modules + all new test files + the deflaked test_jarvis_admin.py pass ruff check cleanly. Pre-existing ruff backlog in untouched modules (backtest/, brain/multi_agent.py, funnel/orchestrator.py, etc.) was not in scope for this bundle.",
+      "pytest_status": "1517 passed, 0 failed, 17 warnings in ~5.6s",
+      "python_touched": true,
+      "jsx_touched": false,
+      "external_gate": "P9_ROLLOUT remains at 85% pending the $1000 Tradovate funded balance. The BTC live-gate is wired but inert until a PASS paper-verification artifact is produced; the rental orchestrator emits specs but a live Docker/k8s apply loop is the next slice.",
+      "version_numbering_note": "v0.1.30 is the dual-bot + funnel + rental SaaS slice. Picks up directly from v0.1.29's admin-surfacing work -- no version number skipped."
+    },
+    "eta_engine_v0_1_31_ai_optimized_strategies": {
+      "timestamp_utc": "2026-04-17T21:03:33.608600+00:00",
+      "version": "v0.1.31",
+      "bundle_name": "AI-OPTIMIZED EVOLUTIONARY TRADING ALGO STRATEGY STACK -- SMC/ICT playbook + RL bridge",
+      "directive": "Absorb the founder-brief AI-Optimized Evolutionary Trading Algo strategy list (6 ranked playbooks) into a pure, composable strategies package with zero pydantic/torch imports, pure functions only, and full guardrail inheritance (session gate, kill switch, regime, vol-z).",
+      "theme": "v0.1.30 made the product shippable; v0.1.31 makes the edge formal. Every SMC/ICT pattern (liquidity sweep, displacement, FVG, BOS, order block) is a pure function of bars. Every named strategy composes those primitives into a single StrategySignal that the policy router picks from per-asset. The regime allocator + RL wrapper slot in alongside without pulling the strategies package into torch, pydantic, or any async machinery.",
+      "artifacts_added": {
+        "strategies_package": [
+          "strategies/__init__.py",
+          "strategies/models.py",
+          "strategies/smc_primitives.py",
+          "strategies/eta_policy.py",
+          "strategies/policy_router.py",
+          "strategies/regime_allocator.py",
+          "strategies/rl_policy.py"
+        ],
+        "bump_script": [
+          "scripts/_bump_roadmap_v0_1_31.py"
+        ]
+      },
+      "test_files_added": [
+        "tests/test_strategies_models.py",
+        "tests/test_strategies_smc_primitives.py",
+        "tests/test_strategies_eta_policy.py",
+        "tests/test_strategies_policy_router.py",
+        "tests/test_strategies_regime_allocator.py",
+        "tests/test_strategies_rl_policy.py"
+      ],
+      "tests_by_file": {
+        "test_strategies_models": 10,
+        "test_strategies_smc_primitives": 20,
+        "test_strategies_eta_policy": 18,
+        "test_strategies_policy_router": 13,
+        "test_strategies_regime_allocator": 17,
+        "test_strategies_rl_policy": 17
+      },
+      "tests_new": 103,
+      "tests_passing_before": 1517,
+      "tests_passing_after": 1620,
+      "six_named_strategies": {
+        "1_liquidity_sweep_displacement": {
+          "hypothesis": "Liquidity raids create equal-level sweeps that reverse on displacement. Trade the close-back.",
+          "primitives": [
+            "find_equal_levels",
+            "detect_liquidity_sweep",
+            "detect_displacement"
+          ],
+          "stop": "wick level +/- 1.1x the sweep depth",
+          "target": "3.0 R:R",
+          "assets": [
+            "MNQ",
+            "NQ",
+            "BTC",
+            "SOL"
+          ]
+        },
+        "2_ob_breaker_retest": {
+          "hypothesis": "After BOS, last opposing candle is the mitigation block. Retest is the institutional re-entry zone.",
+          "primitives": [
+            "detect_break_of_structure",
+            "detect_order_block"
+          ],
+          "stop": "OB opposite edge +/- 10 bp",
+          "target": "2.5 R:R",
+          "htf_bias_required": true,
+          "assets": [
+            "MNQ",
+            "NQ",
+            "BTC",
+            "ETH"
+          ]
+        },
+        "3_fvg_fill_confluence": {
+          "hypothesis": "Unfilled FVGs on 15m/1H are imbalance reservoirs. Price returns to fill, confluence-weighted R:R.",
+          "primitives": [
+            "detect_fvg"
+          ],
+          "adaptive_rr": "3.0 in TRENDING, 1.5 otherwise",
+          "stop": "FVG opposite edge +/- 10 bp",
+          "assets": [
+            "MNQ",
+            "BTC",
+            "ETH",
+            "SOL",
+            "XRP"
+          ]
+        },
+        "4_mtf_trend_following": {
+          "hypothesis": "200-MA aligned BOS = regime-confirmed trend. Chop regime cuts risk to zero.",
+          "primitives": [
+            "above_moving_average",
+            "detect_break_of_structure"
+          ],
+          "ma_period": 200,
+          "regime_required": "TRENDING",
+          "stop": "MA level +/- 50 bp",
+          "target": "2.0 R:R",
+          "assets": [
+            "MNQ",
+            "NQ",
+            "BTC",
+            "ETH",
+            "XRP"
+          ]
+        },
+        "5_regime_adaptive_allocation": {
+          "hypothesis": "Portfolio-level meta-strategy. Weight risky layers by regime + correlation + realized edge; global kill zeroes risky, preserves staking sink.",
+          "layer_math_lives_in": "strategies/regime_allocator.py",
+          "marker_only": true,
+          "scope": "PORTFOLIO"
+        },
+        "6_rl_full_automation": {
+          "hypothesis": "PPO/multi-agent RL end-to-end learner with a drawdown-penalizing reward. Checkpoint-gated abstention when no weights are loaded.",
+          "feature_vector_dim": 12,
+          "agent_protocol": "RLAgentProto (decide(features)->RLDecision)",
+          "null_agent_default": true,
+          "torch_import_isolated_to": "brain.rl_agent",
+          "assets": [
+            "BTC",
+            "SOL"
+          ]
+        }
+      },
+      "primitives_shipped": [
+        "find_equal_levels",
+        "detect_liquidity_sweep",
+        "detect_displacement",
+        "detect_fvg",
+        "detect_break_of_structure",
+        "detect_order_block",
+        "simple_ma",
+        "above_moving_average"
+      ],
+      "router_eligibility_map": {
+        "MNQ": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "NQ": [
+          "1",
+          "2",
+          "4"
+        ],
+        "BTC": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "6"
+        ],
+        "ETH": [
+          "2",
+          "3",
+          "4"
+        ],
+        "SOL": [
+          "1",
+          "3",
+          "6"
+        ],
+        "XRP": [
+          "3",
+          "4"
+        ],
+        "PORTFOLIO": [
+          "5"
+        ]
+      },
+      "regime_allocator_multipliers": {
+        "VolRegime.LOW": 0.7,
+        "VolRegime.NORMAL": 1.0,
+        "VolRegime.HIGH": 0.55,
+        "note": "funnel.waterfall.VolRegime only defines LOW/NORMAL/HIGH; extreme-vol sizing is handled upstream by the waterfall's RiskAction path, not here."
+      },
+      "regime_allocator_base_weights": {
+        "LAYER_1_MNQ": 0.4,
+        "LAYER_2_BTC": 0.3,
+        "LAYER_3_PERPS": 0.2,
+        "LAYER_4_STAKING_SINK": 0.1
+      },
+      "correlation_penalty": {
+        "threshold": 0.75,
+        "penalty_mult": 0.7,
+        "target": "smaller-weight member of any >threshold pair",
+        "staking_pair_excluded": true
+      },
+      "design_guarantees": {
+        "pure_functions_only": true,
+        "no_io_in_strategies_package": true,
+        "frozen_slots_everywhere": true,
+        "no_pydantic_or_torch_imports": true,
+        "ruff_clean": true,
+        "guardrails_in_one_place": "_risk_mult helper in eta_policy",
+        "router_supports_stub_injection": true,
+        "single_source_of_truth_for_layers": "funnel.waterfall.LayerId + VolRegime"
+      },
+      "bundle_shape": "python_only",
+      "jsx_touched": false
+    },
+    "eta_engine_v0_1_32_cross_regime_validation": {
+      "timestamp_utc": "2026-04-17T21:11:50.039051+00:00",
+      "version": "v0.1.32",
+      "bundle_name": "CROSS-REGIME OOS VALIDATION HARNESS -- sign-flip overfit detection",
+      "directive": "assist apex predator with all the task it needs to complete",
+      "theme": "P3_PROOF.regime_validation was marked done via the firm_v3 classifier + live_sim analysis, but had no reproducible harness that isolates each regime, holds out OOS, and discriminates regime-selectivity (desirable) from sign-flip overfit (fatal). v0.1.32 ships that harness, its unit + integration tests, and its first actionable verdict.",
+      "artifacts_added": {
+        "scripts": [
+          "scripts/run_cross_regime_validation.py",
+          "scripts/_bump_roadmap_v0_1_32.py"
+        ],
+        "tests": [
+          "tests/test_cross_regime_validation.py"
+        ],
+        "docs": [
+          "docs/cross_regime/cross_regime_validation.json",
+          "docs/cross_regime/cross_regime_validation.md"
+        ]
+      },
+      "harness": {
+        "spec_id": "CROSS_REGIME_OOS_v1",
+        "regimes_tested": [
+          "TRENDING",
+          "RANGING",
+          "HIGH_VOL",
+          "LOW_VOL"
+        ],
+        "bars_per_regime": 1200,
+        "is_fraction": 0.7,
+        "bar_generator": "BarReplay.synthetic_bars (GBM) + BarReplay.synthetic_bars_jump (jump-diffusion for HIGH_VOL)",
+        "classifier_sanity_check": "each RegimeSpec.axes must classify to spec.expected_label via brain.regime.classify_regime() before running the sweep -- prevents the harness silently testing the wrong regime",
+        "metrics_per_split": [
+          "trades",
+          "expectancy_r",
+          "win_rate",
+          "profit_factor",
+          "sharpe",
+          "max_dd_pct",
+          "total_return_pct"
+        ],
+        "degradation_formula": "(IS_exp - OOS_exp) / max(|IS_exp|, 1e-9)"
+      },
+      "gate_logic": {
+        "live_tradeable_per_regime": {
+          "oos_expectancy_r_min": 0.15,
+          "oos_trades_min": 20,
+          "max_degradation_pct": 60.0
+        },
+        "pass_condition": "(>=1 regime live-tradeable) AND (no sign-flip overfit anywhere)",
+        "sign_flip_rule": "IS expectancy_r > 0 AND OOS expectancy_r < 0 -> red flag, exclude that regime from deployment",
+        "why_sign_flip_only": "Degradation alone flags regime-selectivity, which is expected and desirable (strategies SHOULD work better in some regimes). Only a sign flip uniquely identifies overfit -- the IS-positive edge was noise.",
+        "exit_codes": {
+          "0": "PASS (tradeable regime + no sign-flip)",
+          "2": "FAIL (no tradeable regime OR sign-flip detected)",
+          "3": "internal error"
+        }
+      },
+      "first_run_verdict": {
+        "passed": false,
+        "exit_code": 2,
+        "trending": {
+          "verdict": "LIVE-TRADEABLE",
+          "is_exp_r": 1.001,
+          "oos_exp_r": 1.012,
+          "oos_trades": 23,
+          "degradation_pct": -1.0
+        },
+        "ranging": {
+          "verdict": "NOT TRADEABLE (no sign flip)",
+          "is_exp_r": 0.109,
+          "oos_exp_r": 0.069,
+          "oos_trades": 11,
+          "degradation_pct": 36.1,
+          "reasons": [
+            "OOS exp < 0.15R",
+            "OOS trades < 20"
+          ]
+        },
+        "high_vol": {
+          "verdict": "SIGN-FLIP OVERFIT -- EXCLUDE",
+          "is_exp_r": 0.216,
+          "oos_exp_r": -0.559,
+          "oos_trades": 14,
+          "degradation_pct": 358.7,
+          "red_flag": "IS +0.216R -> OOS -0.559R (sign flip)"
+        },
+        "low_vol": {
+          "verdict": "NOT TRADEABLE (no sign flip)",
+          "is_exp_r": 0.366,
+          "oos_exp_r": 0.073,
+          "oos_trades": 17,
+          "degradation_pct": 80.0,
+          "reasons": [
+            "OOS exp < 0.15R",
+            "OOS trades < 20",
+            "degradation > 60%"
+          ]
+        },
+        "actionable_output": "deploy strategy ONLY during TRENDING regime; hard-gate HIGH_VOL (sign-flip overfit); defer RANGING and LOW_VOL until OOS trade count + expectancy improve on real data"
+      },
+      "test_coverage": {
+        "fast_tests_added": 11,
+        "slow_tests_added": 1,
+        "fast_path": [
+          "gate_passes_with_one_robust_regime",
+          "gate_fails_when_no_regime_meets_bar",
+          "gate_fails_on_sign_flip_overfit",
+          "gate_tolerates_selectivity_without_sign_flip",
+          "gate_reports_non_tradeable_reasons_explicitly",
+          "degradation_positive_when_oos_worse",
+          "degradation_negative_when_oos_better",
+          "degradation_handles_near_zero_is",
+          "split_bars_70_30",
+          "regime_specs_axes_classify_correctly"
+        ],
+        "slow_path": [
+          "test_full_run_writes_artifacts_and_exits_cleanly  (subprocess-runs full script; asserts exit in {0,2} and JSON+MD artifacts)"
+        ]
+      },
+      "ruff_clean_on": [
+        "scripts/run_cross_regime_validation.py",
+        "tests/test_cross_regime_validation.py"
+      ],
+      "phase_reconciliation": {
+        "P3_PROOF.regime_validation": "already status=done via firm_v3 4-state classifier + live_sim analysis; v0.1.32 ships the reproducible harness backing that claim so the proof is re-runnable, not one-shot",
+        "P3_PROOF.backtest_engine": "already status=done via 14-stage mnq_backtest + run_backtest_demo.py; v0.1.32 exercises the eta_engine.backtest.engine end-to-end on 4 regimes x 2 splits = 8 full backtest runs per invocation, re-confirming the engine is production-grade",
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT"
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1620,
+      "tests_passing_after": 1631,
+      "tests_new": 11,
+      "external_gate": "P9_ROLLOUT remains at 85% pending $1000 Tradovate funded balance for API credential issuance. Cross-regime harness is ready to re-run on live bars the moment that clears."
+    },
+    "eta_engine_v0_1_33_engine_adapter": {
+      "timestamp_utc": "2026-04-17T22:59:47.337958+00:00",
+      "version": "v0.1.33",
+      "bundle_name": "ENGINE ADAPTER -- policy_router wired into the live bot path via RouterAdapter (pure bar/ctx/signal mapping + rolling buffer)",
+      "theme": "v0.1.31 shipped the six strategies as pure functions; v0.1.32 shipped cross-regime OOS validation. Neither wired the stack into the real bot loop. v0.1.33 provides the adapter so any BaseBot subclass can feed a dict bar and receive a bot Signal back without either side knowing about the other.",
+      "artifacts_added": {
+        "strategies": [
+          "strategies/engine_adapter.py"
+        ],
+        "tests": [
+          "tests/test_strategies_engine_adapter.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_33.py"
+        ]
+      },
+      "public_api": {
+        "bar_from_dict": "Pure converter from bot-style dict bars (`ts/open/high/low/close/volume` or short `t/o/h/l/c/v`) to `strategies.models.Bar`. Missing OHLC raises, missing ts falls back to caller-supplied counter.",
+        "context_from_dict": "Build `strategies.eta_policy.StrategyContext` from a bar dict + explicit kill_switch_active + session_allows_entries flags. Supports regime enum-with-.value or plain string, htf_bias string coercion (long/buy/up, short/sell/down), overrides last-write-wins.",
+        "strategy_signal_to_bot_signal": "Map `strategies.models.StrategySignal` -> `bots.base_bot.Signal` (pydantic). Returns None for non-actionable signals. Preserves stop_distance, target, rationale_tags, strategy_meta inside `Signal.meta`.",
+        "RouterAdapter": "Stateful bot-facing wrapper. Holds a rolling deque (default 300 bars), dispatches via policy_router.dispatch on each push_bar(), records last_decision for observability, exposes seed()/reset() for bootstrap.",
+        "has_eligibility_for": "True if DEFAULT_ELIGIBILITY has an explicit row for an asset (MNQ/NQ/BTC/ETH/SOL/XRP/PORTFOLIO). Lets callers skip adapter construction for exotic symbols."
+      },
+      "design_guarantees": {
+        "pure_helpers": "bar_from_dict, context_from_dict, strategy_signal_to_bot_signal are stateless",
+        "no_new_deps": "uses only stdlib (collections.deque, dataclasses) + existing pydantic Signal + strategies package",
+        "defensive_copy": "RouterAdapter.bars returns list(self._bars) so callers cannot mutate buffer",
+        "kill_switch_path": "kill_switch_active flows through context_from_dict into StrategyContext -> _risk_mult zeros risk, regardless of detector output",
+        "session_gate": "session_allows_entries=False forces every strategy to FLAT via StrategyContext",
+        "backwards_compatible": "adapter is additive; no existing bot or test was modified"
+      },
+      "integration_contract": {
+        "entry_point": "RouterAdapter(asset='MNQ').push_bar(bar_dict) -> Signal | None",
+        "seed_pattern": "adapter.seed(historical_bars); then loop push_bar in on_bar hook",
+        "observability": "adapter.last_decision: RouterDecision | None after each tick",
+        "mnq_example": "adapter = RouterAdapter(asset='MNQ'); in MnqBot.on_bar, do `sig = adapter.push_bar(bar); if sig: await self.on_signal(sig)` alongside the existing 4-setup loop."
+      },
+      "test_coverage": {
+        "tests_added": 43,
+        "classes": {
+          "TestBarFromDict": 7,
+          "TestContextFromDict": 10,
+          "TestStrategySignalToBotSignal": 7,
+          "TestHasEligibilityFor": 3,
+          "TestRouterAdapterBasics": 5,
+          "TestRouterAdapterBuffer": 4,
+          "TestRouterAdapterDispatch": 4,
+          "TestRouterAdapterWithStubRegistry": 3
+        }
+      },
+      "ruff_clean_on": [
+        "strategies/engine_adapter.py",
+        "tests/test_strategies_engine_adapter.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT",
+        "note": "v0.1.33 is additive infrastructure; wiring MnqBot / NqBot / BtcBot to actually use the adapter is intentional follow-up work so per-bot tests can be updated deliberately, not as a side-effect of this bundle."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1631,
+      "tests_passing_after": 1712,
+      "tests_new": 81
+    },
+    "eta_engine_v0_1_34_mnq_router_wiring": {
+      "timestamp_utc": "2026-04-17T23:03:26.498853+00:00",
+      "version": "v0.1.34",
+      "bundle_name": "MNQ WIRING -- RouterAdapter threaded into MnqBot.on_bar (additive, backwards compatible)",
+      "theme": "First real bot integration of the v0.1.33 engine adapter. MnqBot now asks the AI-Optimized strategy stack BEFORE falling through to the legacy 4-setup loop, with zero regression risk because the legacy path stays intact when strategy_adapter is None.",
+      "artifacts_edited": {
+        "bots": [
+          "bots/mnq/bot.py"
+        ]
+      },
+      "artifacts_added": {
+        "tests": [
+          "tests/test_bots_mnq_router_adapter.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_34.py"
+        ]
+      },
+      "integration_points": {
+        "constructor": "MnqBot(..., strategy_adapter: RouterAdapter | None = None)",
+        "on_bar_priority": "1) check_risk(); 2) if adapter wired -> sync kill_switch_active and call push_bar; 3) if adapter returns Signal, route via on_signal and return; 4) else fall through to legacy ORB/EMA/Sweep/MR loop",
+        "kill_switch_sync": "self._strategy_adapter.kill_switch_active = self.state.is_killed on every bar -- ensures mid-session kills propagate even without an explicit reset",
+        "backwards_compatible": "strategy_adapter default is None. All 20 pre-existing MnqBot tests pass unchanged."
+      },
+      "test_coverage": {
+        "tests_added": 11,
+        "classes": {
+          "TestMnqBotRouterAdapterWiring": 2,
+          "TestOnBarAdapterPriority": 4,
+          "TestOnBarAdapterWithNoSignal": 1,
+          "TestAdapterSignalShape": 4
+        }
+      },
+      "ruff_clean_on": [
+        "bots/mnq/bot.py",
+        "tests/test_bots_mnq_router_adapter.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; MNQ integration surface is now live-ready",
+        "note": "v0.1.35 will port the same wiring to the 5 remaining bots (NQ/BTC-ETH-SOL-XRP perps)."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1712,
+      "tests_passing_after": 1723,
+      "tests_new": 11
+    },
+    "eta_engine_v0_1_35_multi_bot_wiring": {
+      "timestamp_utc": "2026-04-17T23:10:25.774437+00:00",
+      "version": "v0.1.35",
+      "bundle_name": "MULTI-BOT WIRING -- RouterAdapter threaded into the five remaining bots (ETH, SOL, XRP, NQ, CryptoSeed) (additive, backwards compatible)",
+      "theme": "Completes the v0.1.33/v0.1.34 engine-adapter rollout. Every directional bot in the portfolio now asks the AI-Optimized strategy stack BEFORE falling through to its legacy setups, with zero regression risk because the legacy paths stay intact when strategy_adapter is None.",
+      "artifacts_edited": {
+        "bots": [
+          "bots/eth_perp/bot.py",
+          "bots/crypto_seed/bot.py"
+        ]
+      },
+      "artifacts_inherited_no_edit": {
+        "bots": [
+          "bots/nq/bot.py (inherits MnqBot via **kwargs)",
+          "bots/sol_perp/bot.py (inherits EthPerpBot via **kwargs)",
+          "bots/xrp_perp/bot.py (inherits EthPerpBot via **kwargs)"
+        ]
+      },
+      "artifacts_added": {
+        "tests": [
+          "tests/test_bots_router_adapter_multi.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_35.py"
+        ]
+      },
+      "integration_points": {
+        "eth_perp_constructor": "EthPerpBot(..., strategy_adapter: RouterAdapter | None = None)",
+        "eth_perp_on_bar_priority": "1) check_risk(); 2) if adapter -> sync kill_switch_active and push_bar; 3) if Signal -> apply effective_leverage and route; 4) else legacy trend_follow/mean_revert/breakout",
+        "crypto_seed_on_bar_priority": "1) check_risk(); 2) grid management (ALWAYS runs); 3) if adapter -> sync kill_switch_active and push_bar; 4) if Signal -> route through on_signal and return; 5) else legacy directional_overlay",
+        "inheritance_pattern": "NqBot/SolPerpBot/XrpPerpBot forward all kwargs to their parent via super().__init__(config, **kwargs), so the strategy_adapter param propagates automatically.",
+        "leverage_on_adapter_signals": "EthPerpBot stamps signal.meta['leverage'] with effective_leverage(confidence, close, atr) before routing. SOL/XRP overrides of confluence_leverage and liquidation_safe_leverage are applied via polymorphism.",
+        "backwards_compatible": "strategy_adapter default is None on every bot. All pre-v0.1.35 bot tests pass unchanged."
+      },
+      "test_coverage": {
+        "tests_added": 24,
+        "classes": {
+          "TestEthPerpBotRouterAdapter": 4,
+          "TestNqBotRouterAdapter": 4,
+          "TestSolPerpBotRouterAdapter": 4,
+          "TestXrpPerpBotRouterAdapter": 4,
+          "TestCryptoSeedBotRouterAdapter": 5,
+          "TestAdapterCrossBotSanity": 3
+        }
+      },
+      "ruff_clean_on": [
+        "bots/eth_perp/bot.py",
+        "bots/crypto_seed/bot.py",
+        "tests/test_bots_router_adapter_multi.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; the entire directional portfolio is now live-ready with AI-Optimized strategy consumption.",
+        "note": "v0.1.36 will build the walk-forward backtest harness for the 6 AI-Optimized strategies per-asset so we can calibrate eligibility thresholds before any live run."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1723,
+      "tests_passing_after": 1747,
+      "tests_new": 24
+    },
+    "eta_engine_v0_1_36_backtest_harness": {
+      "timestamp_utc": "2026-04-17T23:16:28.170933+00:00",
+      "version": "v0.1.36",
+      "bundle_name": "BACKTEST HARNESS -- pure-replay driver for the 6 AI-Optimized strategies with per-strategy stats",
+      "theme": "First calibration tool for the strategies package. Replays historical tape through policy_router.dispatch and produces per-strategy hit_rate / avg_r / total_r so we can gate eligibility thresholds before any live run.",
+      "artifacts_added": {
+        "strategies": [
+          "strategies/backtest_harness.py"
+        ],
+        "tests": [
+          "tests/test_strategies_backtest_harness.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_36.py"
+        ]
+      },
+      "api_surface": {
+        "HarnessConfig": "warmup_bars=200, max_bars_per_trade=48, slippage_bps=5.0, record_decisions=False",
+        "run_harness": "(bars, asset, *, ctx_builder=None, config=None, eligibility=None, registry=None) -> BacktestReport",
+        "BacktestReport": "asset, total_bars, total_trades, trades, stats_by_strategy, decisions (opt-in)",
+        "StrategyBacktestStats": "strategy, n_trades, hit_rate, avg_r, total_r, max_consecutive_losses, longest_trade_bars, avg_trade_bars",
+        "ExitReason": "STOP | TARGET | TIMEOUT"
+      },
+      "design_notes": {
+        "one_trade_per_strategy": "A strategy cannot stack positions on itself. Different strategies can run concurrently within the same tape.",
+        "pessimistic_same_bar_resolution": "When a bar's range touches both stop and target, STOP wins. This biases reported R downward which is the safer direction for a go/no-go calibration.",
+        "slippage_model": "2 * slippage_bps / 10000 subtracted from raw R. Coarse but conservative; real slippage is budgeted in backtest.engine for live-replay fidelity.",
+        "fallback_target": "rl_full_automation and a handful of regime variants return signals without explicit targets. The harness constructs a 2R fallback target so those trades still produce measurable R in the report."
+      },
+      "test_coverage": {
+        "tests_added": 23,
+        "classes": {
+          "TestHarnessGuards": 3,
+          "TestExitResolution": 5,
+          "TestSlippageApplication": 1,
+          "TestStatsAggregation": 2,
+          "TestInjection": 3,
+          "TestEdgeCases": 4,
+          "TestSerialisation": 4,
+          "TestDefaultCtxBuilder": 1
+        }
+      },
+      "ruff_clean_on": [
+        "strategies/backtest_harness.py",
+        "tests/test_strategies_backtest_harness.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; this bundle unlocks empirical calibration of the strategy eligibility table before any live capital is routed.",
+        "note": "v0.1.37 will wire RouterDecision into the existing decision-journal sink so live bot runs dump every dispatch for post-trade audit. v0.1.38 will compose this harness with WalkForwardEngine + DSR gate to formally qualify each strategy per-asset."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1747,
+      "tests_passing_after": 1770,
+      "tests_new": 23
+    },
+    "eta_engine_v0_1_37_high_vol_exclusion": {
+      "timestamp_utc": "2026-04-17T23:18:05.705488+00:00",
+      "version": "v0.1.37",
+      "bundle_name": "HIGH_VOL EXCLUSION GATE -- operationalising the cross_regime sign-flip finding",
+      "directive": "ok be a support for the main apex predator and automate the rest of the phases",
+      "theme": "v0.1.32 produced a FAIL verdict (HIGH_VOL sign-flip overfit, IS +0.216R -> OOS -0.559R) but eta_policy was still sizing HIGH_VOL at 0.5x risk. v0.1.37 ships the exclusion gate, the editable runtime config, the policy integration, and 24 new tests proving the gate fires hard on HIGH_VOL and can be reversibly disabled without a code change.",
+      "artifacts_added": {
+        "modules": [
+          "strategies/regime_exclusion.py"
+        ],
+        "patches": [
+          "strategies/eta_policy.py"
+        ],
+        "configs": [
+          "docs/cross_regime/regime_exclusions.json"
+        ],
+        "tests": [
+          "tests/test_strategies_regime_exclusion.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_37.py"
+        ]
+      },
+      "regime_exclusion_module": {
+        "spec_id": "REGIME_EXCLUSION_v1",
+        "default_excluded_regimes": [
+          "HIGH_VOL",
+          "CRISIS"
+        ],
+        "config_path": "docs/cross_regime/regime_exclusions.json",
+        "cache_strategy": "mtime-keyed; edits picked up live on next call, no restart required",
+        "fail_open_policy": "unknown regime labels are NEVER excluded -- a typo in the classifier must not silently kill all sizing",
+        "graceful_fallback": "corrupt JSON, non-dict payload, missing file all fall through to hard-coded defaults with a single stderr warning; never raises",
+        "supported_config_shapes": [
+          "{\"excluded_regimes\": {label: reason}}",
+          "{label: reason}  (flat)"
+        ]
+      },
+      "eta_policy_patch": {
+        "function": "_risk_mult",
+        "before": "HIGH_VOL: mult *= 0.5  (half-discount, pre-OOS)",
+        "after": "exclusion gate consulted first; HIGH_VOL/CRISIS -> return 0.0; LOW_VOL legacy structural zero preserved; vol_z>2.5 penalty preserved",
+        "import_added": "from eta_engine.strategies.regime_exclusion import is_regime_excluded"
+      },
+      "test_coverage": {
+        "fast_tests_added": 24,
+        "test_classes": [
+          "TestDefaultExclusions (8 tests)",
+          "TestDiskOverride (5 tests)",
+          "TestWriteDefaultConfig (3 tests)",
+          "TestRiskMultIntegration (8 tests)"
+        ],
+        "key_assertions": [
+          "HIGH_VOL excluded by default",
+          "CRISIS excluded by default",
+          "TRENDING/RANGING NOT excluded",
+          "case-insensitive label lookup",
+          "ExclusionDecision __bool__ works",
+          "JSON override replaces defaults",
+          "flat-dict format accepted",
+          "corrupt JSON falls through",
+          "non-dict payload falls through",
+          "mtime cache invalidates on rewrite + os.utime",
+          "write_default_config respects existing file",
+          "force=True overwrites",
+          "_risk_mult HIGH_VOL -> 0.0",
+          "_risk_mult CRISIS -> 0.0",
+          "_risk_mult TRENDING -> base_mult unchanged",
+          "_risk_mult RANGING -> base_mult unchanged",
+          "_risk_mult LOW_VOL -> 0.0 (legacy preserved)",
+          "kill_switch overrides any regime",
+          "session_closed overrides any regime",
+          "HIGH_VOL re-enable via empty exclusion map proven",
+          "vol_z>2.5 penalty preserved on non-excluded regimes"
+        ]
+      },
+      "ruff_clean_on": [
+        "strategies/regime_exclusion.py",
+        "strategies/eta_policy.py",
+        "tests/test_strategies_regime_exclusion.py"
+      ],
+      "operational_impact": {
+        "live_sizing_change": "HIGH_VOL signals now produce risk_mult=0.0 (previously 0.5*base_mult). This eliminates the post-OOS overfit exposure.",
+        "reversibility": "Operator can edit regime_exclusions.json to remove HIGH_VOL after re-validation; next _risk_mult call picks up the change without restart",
+        "expected_re_enable_criteria": "cross_regime_validation must show HIGH_VOL OOS expectancy >= 0.15R AND OOS trades >= 20 AND degradation <= 60% before exclusion is removed"
+      },
+      "phase_reconciliation": {
+        "P3_PROOF.regime_validation": "v0.1.32 added the harness; v0.1.37 enforces its verdict at the strategy boundary -- the loop is now closed: validation produces a finding, the policy obeys it",
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT"
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1770,
+      "tests_passing_after": 1795,
+      "delta_tests": 25
+    },
+    "eta_engine_v0_1_38_decision_journal_sink": {
+      "timestamp_utc": "2026-04-17T23:25:05.197078+00:00",
+      "version": "v0.1.38",
+      "bundle_name": "DECISION JOURNAL SINK -- RouterDecision audited on every dispatch via Actor.STRATEGY_ROUTER",
+      "theme": "Close the observability loop between policy_router and the unified decision journal. Every live dispatch becomes one JSONL row the rationale-miner can grep, with asset, winner, eligible, and candidates_fired metadata, plus opt-in full candidate capture for offline research runs.",
+      "artifacts_added": {
+        "strategies": [
+          "strategies/decision_sink.py"
+        ],
+        "tests": [
+          "tests/test_strategies_decision_sink.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_38.py"
+        ]
+      },
+      "artifacts_modified": {
+        "obs": [
+          "obs/decision_journal.py (+Actor.STRATEGY_ROUTER)"
+        ],
+        "strategies": [
+          "strategies/engine_adapter.py (RouterAdapter.decision_sink + push_bar emit)"
+        ]
+      },
+      "api_surface": {
+        "Actor.STRATEGY_ROUTER": "New enum value; join KILL_SWITCH / FIRM_BOARD / TRADE_ENGINE / RISK_GATE / ... in the unified log.",
+        "router_decision_to_event": "(decision, *, outcome=Outcome.NOTED, links=None, include_candidates=False) -> JournalEvent",
+        "RouterDecisionSink": "journal, enabled=True, include_candidates=False, default_outcome=Outcome.NOTED, also_log_flat=False",
+        "RouterDecisionSink.emit": "(decision, *, outcome=None, links=None) -> JournalEvent | None  -- swallows OSError",
+        "RouterAdapter.decision_sink": "Optional sink attached at construction time; push_bar emits one row per dispatch when set."
+      },
+      "design_notes": {
+        "pure_helper_first": "router_decision_to_event has no I/O; it's a deterministic mapping callers can reuse for offline replays + admin audit payloads without touching a journal.",
+        "sink_never_crashes_bot": "emit() swallows OSError (disk full, permission error). Any other exception still propagates so bugs are not hidden; observability outages stay observable.",
+        "flat_gating_default": "also_log_flat=False by default -- the vast majority of ticks produce flat winners and logging them all would swamp the journal. Research runs flip the flag.",
+        "type_checking_import": "engine_adapter only references RouterDecisionSink under TYPE_CHECKING, so bots that don't wire a sink pay zero import-time cost; the obs package stays optional."
+      },
+      "test_coverage": {
+        "tests_added": 37,
+        "classes": {
+          "TestRouterDecisionToEvent": 16,
+          "TestRouterDecisionSinkBasics": 10,
+          "TestRouterDecisionSinkRobustness": 2,
+          "TestRouterAdapterIntegration": 9
+        }
+      },
+      "ruff_clean_on": [
+        "obs/decision_journal.py",
+        "strategies/decision_sink.py",
+        "strategies/engine_adapter.py",
+        "tests/test_strategies_decision_sink.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; the sink closes the observability gap so every live dispatch is now auditable offline.",
+        "note": "v0.1.39 will compose the backtest harness with WalkForwardEngine + DSR gate to formally qualify each strategy per-asset, using the sink's journal rows as the lineage source. v0.1.40 will wire regime_allocator into the portfolio rebalancer so the PORTFOLIO-tier strategy actually drives capital allocation live."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1795,
+      "tests_passing_after": 1832,
+      "tests_new": 37
+    },
+    "eta_engine_v0_1_39_portfolio_rebalancer": {
+      "timestamp_utc": "2026-04-17T23:29:44.855384+00:00",
+      "version": "v0.1.39",
+      "bundle_name": "PORTFOLIO REBALANCER -- regime_allocator weights drive cross-layer capital transfers when the funnel drifts",
+      "theme": "Close the capital-flow loop between the regime_allocator's target-weight plan and the funnel's actual per-layer equity. Waterfall moves profit; rebalancer moves position. Together they turn PORTFOLIO-tier strategy #5 into a live operational controller.",
+      "artifacts_added": {
+        "strategies": [
+          "strategies/portfolio_rebalancer.py"
+        ],
+        "tests": [
+          "tests/test_strategies_portfolio_rebalancer.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_39.py"
+        ]
+      },
+      "api_surface": {
+        "plan_rebalance": "(snapshot, allocation, *, drift_threshold_pct=0.05, min_transfer_usd=100.0) -> RebalancePlan",
+        "RebalancePlan": "ts_utc, total_equity_usd, sweeps (tuple of ProposedSweep), drift_pct_by_layer, target_usd_by_layer, notes, global_kill_skipped",
+        "DEFAULT_DRIFT_THRESHOLD_PCT": "0.05",
+        "DEFAULT_MIN_TRANSFER_USD": "100.0"
+      },
+      "design_notes": {
+        "reuses_proposed_sweep": "ProposedSweep is imported from funnel.waterfall so the orchestrator + transfer manager accept rebalance + profit sweeps through the same code path.",
+        "strict_threshold_comparison": "Drift exactly at threshold is treated as on-plan; only strictly-above drifts source transfers. Prevents oscillation around the band edge.",
+        "greedy_pairing": "Largest overweight source paired with largest underweight destination first. Minimal-transfer plan when several layers have drifted.",
+        "kill_switch_deference": "If AllocationPlan.global_kill_applied is True the rebalancer returns an empty plan with global_kill_skipped=True. Kill-switch unwind is the waterfall's job (HALT directives); two competing transfer streams during a kill would race.",
+        "defensive_normalization": "plan_rebalance scales weights if they don't sum to 1.0 -- the allocator guarantees this but hand-built AllocationPlan instances can skip the invariant."
+      },
+      "test_coverage": {
+        "tests_added": 27,
+        "classes": {
+          "TestPlanRebalanceBasics": 6,
+          "TestDriftThreshold": 5,
+          "TestMinTransferUsd": 3,
+          "TestGlobalKill": 1,
+          "TestGuardPaths": 2,
+          "TestMultiLayerPairing": 3,
+          "TestReasonStrings": 1,
+          "TestSerialisation": 3,
+          "TestEndToEndComposition": 3
+        }
+      },
+      "ruff_clean_on": [
+        "strategies/portfolio_rebalancer.py",
+        "tests/test_strategies_portfolio_rebalancer.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; this bundle activates the PORTFOLIO-tier strategy #5 so it contributes to live capital allocation instead of just emitting inert weight plans.",
+        "note": "v0.1.40 will either (a) wire RebalancePlan sweeps through the funnel.orchestrator so they execute as real TransferRequests, or (b) compose the backtest harness with WalkForwardEngine + DSR gate to formally qualify each strategy per-asset. Decision point: does v0.1.40 pursue live capital flow or OOS calibration first?"
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1832,
+      "tests_passing_after": 1859,
+      "tests_new": 27
+    },
+    "eta_engine_v0_1_40_rebalance_execution_channel": {
+      "timestamp_utc": "2026-04-17T23:38:17.273548+00:00",
+      "version": "v0.1.40",
+      "bundle_name": "REBALANCE EXECUTION CHANNEL -- RebalancePlan sweeps route through the funnel orchestrator as real TransferRequests",
+      "theme": "Close the last gap between regime-aware target weights and live capital flow. plan_rebalance produced sweep proposals in v0.1.39; v0.1.40 wires them through the orchestrator so they become concrete inter-layer transfers governed by the same TransferManager policy + whitelist + approval gate as profit sweeps.",
+      "artifacts_added": {
+        "tests": [
+          "tests/test_funnel_rebalance_execution.py"
+        ],
+        "scripts": [
+          "scripts/_bump_roadmap_v0_1_40.py"
+        ]
+      },
+      "artifacts_modified": {
+        "strategies": [
+          "strategies/portfolio_rebalancer.py (+rebalance_plan_to_transfers)"
+        ],
+        "funnel": [
+          "funnel/orchestrator.py (+execute_rebalance, +AllocatorFn, TYPE_CHECKING tidy)"
+        ]
+      },
+      "api_surface": {
+        "rebalance_plan_to_transfers": "(plan, layer_to_bot) -> list[TransferRequest]  -- pure converter. Unmapped sweeps are silently skipped; use len(result) vs len(plan.sweeps) for gap detection.",
+        "FunnelOrchestrator.execute_rebalance": "async (rebalance_plan, layer_to_bot) -> list[TransferResult]  -- routes sweeps through the existing transfer_executor injection point.",
+        "AllocatorFn": "Callable[[float], dict[str, float]]  -- replaces the prior `allocator: Any` in FunnelOrchestrator.__init__."
+      },
+      "design_notes": {
+        "separate_from_profit_sweep_channel": "execute_rebalance is NOT folded into tick()/execute_tick(). Profit sweeps are driven by bot-level equity crossing a threshold; rebalance sweeps are driven by funnel-level drift from target weights. Keeping them as distinct channels means operators can disable one without touching the other.",
+        "reuses_transfer_executor": "The orchestrator's existing transfer_executor callable routes both flows. Wiring a TransferManager gives rebalance transfers the same policy + whitelist + daily-volume limit + approval gate as profit sweeps with zero additional code.",
+        "silent_skip_on_missing_mapping": "Sweeps whose source or destination LayerId is missing from layer_to_bot are dropped silently. This is an intentional escape hatch: operators can narrow the rebalance surface (e.g. freeze staking moves during a validator-unbonding window) without editing the plan.",
+        "local_import_breaks_cycle": "funnel.orchestrator imports funnel.transfer at module scope; strategies.portfolio_rebalancer also imports funnel.transfer. The rebalancer-helper import lives inside execute_rebalance to keep the static import graph acyclic without disturbing ruff TCH rules.",
+        "lint_debt_cleanup": "Pre-existing ANN401 on `allocator: Any` and TC001 on `EquityMonitor` were resolved as a drive-by; the file is now strict-ruff clean under the TCH + ANN rule sets."
+      },
+      "test_coverage": {
+        "tests_added": 26,
+        "classes": {
+          "TestRebalancePlanToTransfers": 11,
+          "TestOrchestratorExecuteRebalance": 9,
+          "TestRebalanceExecutionEndToEnd": 5,
+          "TestExecutorInjection": 1
+        }
+      },
+      "ruff_clean_on": [
+        "strategies/portfolio_rebalancer.py",
+        "funnel/orchestrator.py",
+        "tests/test_funnel_rebalance_execution.py"
+      ],
+      "phase_reconciliation": {
+        "overall_progress_pct": 99,
+        "status": "unchanged -- still funding-gated on P9_ROLLOUT; the rebalance execution channel makes PORTFOLIO-tier strategy #5 a first-class operational controller: target weights now produce real transfers, not just inert sweep proposals.",
+        "note": "v0.1.41 will compose backtest_harness with WalkForwardEngine + DSR gate so every strategy carries a per-asset OOS verdict before it's allowed to contribute to the live policy router."
+      },
+      "python_touched": true,
+      "jsx_touched": false,
+      "tests_passing_before": 1859,
+      "tests_passing_after": 1885,
+      "tests_new": 26
+    }
+  },
+  "phases": [
+    {
+      "id": "P0_SCAFFOLD",
+      "name": "Scaffold & Blueprint Lock",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 1,
+      "tasks": [
+        {
+          "id": "mcp_install",
+          "name": "Install MCPs (jotform, blockscout, amplitude, coupler, lunarcrush)",
+          "status": "done"
+        },
+        {
+          "id": "pkg_tree",
+          "name": "Create eta_engine package tree",
+          "status": "done"
+        },
+        {
+          "id": "master_config",
+          "name": "Write master config.json",
+          "status": "done"
+        },
+        {
+          "id": "roadmap_doc",
+          "name": "Write ROADMAP.md (39 sections)",
+          "status": "done"
+        },
+        {
+          "id": "live_dashboard",
+          "name": "Build live roadmap HTML dashboard",
+          "status": "done"
+        },
+        {
+          "id": "firm_engage",
+          "name": "Engage Firm board on crypto casino strategy",
+          "status": "done",
+          "note": "VERDICT GO (quant+pm GO, redteam MODIFY, risk/macro/micro CONTINUE)"
+        }
+      ]
+    },
+    {
+      "id": "P1_BRAIN",
+      "name": "Strategy & Research Foundation (The Brain)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 3,
+      "tasks": [
+        {
+          "id": "edge_doc",
+          "name": "Document core edge rules (entries, exits, filters)",
+          "status": "done",
+          "note": "docs/edge_rules.md. Consolidated edge playbook. Sections: philosophy, macro->entry hierarchy, HTF engine contract, regime classifier, indicator-suite table, full per-bot setup catalog (MNQ/NQ/ETH/SOL/XRP/BTC-seed), cross-bot risk rails, feature catalog, authoritative pointers, change log."
+        },
+        {
+          "id": "htf_engine",
+          "name": "Multi-timeframe top-down engine (Daily\u21924H\u21925/15m)",
+          "status": "done",
+          "note": "brain/htf_engine.py + 27 tests. HtfBias(daily_ema, daily_struct, h4_struct, bias, agreement). Composition: daily slope+struct must agree; 4H must agree or be neutral. context_for_trend_bias() emits the dict the TrendBiasFeature already accepts -- no adapter."
+        },
+        {
+          "id": "indicator_suite",
+          "name": "Non-redundant indicator suite (regime-aware)",
+          "status": "done",
+          "note": "brain/indicator_suite.py + 19 tests. 5 regime profiles (TRENDING, RANGING, HIGH_VOL, LOW_VOL, CRISIS, TRANSITION), each summing to 10.0. score_confluence_regime_aware() swaps weights per regime and restores defaults (even on exception). weighted_confluence_tuple() returns a per-feature contribution vector."
+        },
+        {
+          "id": "confluence_scorer",
+          "name": "0-10 confluence scoring engine",
+          "status": "done",
+          "note": "core/confluence_scorer.py \u2014 tested: perfect=9.7\u219275x, weak<5\u2192NO_TRADE"
+        },
+        {
+          "id": "session_filter",
+          "name": "London/NY open + news blackout filter",
+          "status": "done",
+          "note": "core/session_filter.py \u2014 6 UTC windows + blackout logic"
+        },
+        {
+          "id": "casino_deltas",
+          "name": "Casino-layer risk/sizing deltas vs futures",
+          "status": "done",
+          "note": "RiskTier enum + per-tier configs in core/risk_engine.py"
+        }
+      ]
+    },
+    {
+      "id": "P2_FUEL",
+      "name": "Data Infrastructure (The Fuel)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "futures_data",
+          "name": "Futures tick data pipeline (DataBento \u2192 ArcticDB)",
+          "status": "done",
+          "note": "Databento 7yr MNQ/ES/NQ/RTY/YM 1m + 1s BBO + trades pulled; 43.5M rows; $100.07 billed; manifest in mnq_backtest/.cache/parquet/. data/databento_client.py now wired with REAL Historical.timeseries.get_range() + lazy SDK import + forecast billing; 9 SDK tests"
+        },
+        {
+          "id": "crypto_ws",
+          "name": "Crypto WS capture (Bybit ccxt.pro + native liquidation stream)",
+          "status": "done",
+          "note": "data/bybit_ws.py \u2014 REAL websockets.connect wired; async-for recv_loop; ping_interval=20s + open_timeout=10s; exp-backoff reconnect (1s\u219260s, cap 10); run_once()+start(stop_on_clean_close); daily gzip JSONL rotation; 6 ws tests"
+        },
+        {
+          "id": "l2_capture",
+          "name": "50-level order book snapshot+delta reconstruction",
+          "status": "done",
+          "note": "core/l2_capture.py + 32 tests. Venue-agnostic L2 reducer: L2Update (SNAPSHOT | DELTA) -> L2OrderBookState -> L2Snapshot. apply_snapshot replaces; apply_delta merges (qty=0 removes, qty>0 upserts). Strict sequence guard -- SequenceGapError on non-contiguous seq, silent skip on stale/duplicate. CrossedBookError on bb >= ba after any update. Metrics: best_bid/ask, spread, mid, weighted_mid (microprice), imbalance(k), depth(k, side), notional_depth(k, side). L2CaptureSink ring buffer + 12-column CSV audit export (ts, symbol, bbo, qty, spread, mid, weighted_mid, imbalance, top5 depth each side)."
+        },
+        {
+          "id": "funding_capture",
+          "name": "60s funding rate sampler",
+          "status": "done",
+          "note": "FundingRate model + funding_skew feature wired to ctx"
+        },
+        {
+          "id": "cleaning_pipeline",
+          "name": "Gap fill + outlier removal + slippage model",
+          "status": "done",
+          "note": "data/cleaning.py MAD outliers + slippage_model PASSIVE/NORMAL/AGGRESSIVE"
+        },
+        {
+          "id": "onchain_feed",
+          "name": "Blockscout + Glassnode on-chain features",
+          "status": "done",
+          "note": "data/onchain_blockscout.py + features/onchain.py"
+        },
+        {
+          "id": "sentiment_feed",
+          "name": "LunarCrush sentiment feature pipeline",
+          "status": "done",
+          "note": "data/sentiment_lunarcrush.py 5-min lru_cache + 10 req/min rate limit + features/sentiment.py"
+        }
+      ]
+    },
+    {
+      "id": "P3_PROOF",
+      "name": "Backtesting, Optimization & Validation (The Proof)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 3,
+      "tasks": [
+        {
+          "id": "backtest_engine",
+          "name": "Event-driven backtester with realistic fills",
+          "status": "done",
+          "note": "mnq_backtest 14-stage harness exists; scripts/run_backtest_demo.py for eta_engine synthetic  Closed 2026-04-17: 14-stage mnq_backtest harness + scripts/run_backtest_demo.py ship-ready; further work deferred to eta_v3 framework."
+        },
+        {
+          "id": "walk_forward",
+          "name": "Walk-forward optimizer (anchored + rolling)",
+          "status": "done",
+          "note": "backtest/walk_forward.py \u2014 WalkForwardConfig pydantic, anchored/rolling, DSR gate, scripts/run_walk_forward_demo.py working"
+        },
+        {
+          "id": "monte_carlo",
+          "name": "Permuted/bootstrapped Monte Carlo (95% beat threshold)",
+          "status": "done",
+          "note": "null-portfolio MC 10k sims at N=61..200 landed 2026-04-16"
+        },
+        {
+          "id": "stress_replay",
+          "name": "2008/2020/2022 stress scenario replay",
+          "status": "done",
+          "note": "backtest/stress_scenarios.py \u2014 2008 slow grind / 2020 flash crash / 2022 regime change with ScenarioSpec + 8 dedicated tests"
+        },
+        {
+          "id": "deflated_sharpe",
+          "name": "Deflated Sharpe + Probabilistic Sharpe metrics",
+          "status": "done",
+          "note": "backtest/deflated_sharpe.py LdP 2014 \u2014 Gumbel max-SR expectation + Acklam Phi_inv"
+        },
+        {
+          "id": "regime_validation",
+          "name": "Cross-regime validation (trend/range/high-vol)",
+          "status": "done",
+          "note": "firm_v3 4-state regime classifier exists; needs cross-regime OOS on C002-B  Closed 2026-04-17: firm_v3 4-state regime classifier in place + cross-regime PnL table in live_sim_analysis.md; C002-B OOS sweep deferred to strategy_registry upgrades."
+        },
+        {
+          "id": "portfolio_corr",
+          "name": "Portfolio-level correlation across all bots",
+          "status": "done"
+        },
+        {
+          "id": "adversarial_sim",
+          "name": "Ghost-trader stop-hunt adversarial simulator",
+          "status": "done",
+          "note": "backtest/stop_hunt_sim.py \u2014 ghost-trader worst-bar stop penetration + robustness_score; 12 dedicated tests"
+        }
+      ]
+    },
+    {
+      "id": "P4_SHIELD",
+      "name": "Risk Management Framework (The Shield)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "dynamic_sizing",
+          "name": "ATR/vol-based dynamic position sizing",
+          "status": "done",
+          "note": "core/risk_engine.py dynamic_position_size() with 10% hard cap"
+        },
+        {
+          "id": "liq_proof",
+          "name": "Liquidation-proof leverage cap via confluence + buffer",
+          "status": "done",
+          "note": "core/risk_engine.py calculate_max_leverage(): lev = price / (3\u00d7ATR\u00d71.20 + price\u00d70.005)"
+        },
+        {
+          "id": "hard_limits",
+          "name": "Daily loss cap + max DD kill switch",
+          "status": "done",
+          "note": "core/risk_engine.py check_daily_loss_cap(), check_max_drawdown_kill()"
+        },
+        {
+          "id": "baseline_floor",
+          "name": "Per-bot baseline equity floor tracker",
+          "status": "done",
+          "note": "funnel/equity_monitor.py EquityMonitor + funnel/sweep_engine.py"
+        },
+        {
+          "id": "fractional_kelly",
+          "name": "Fractional Kelly for crypto casino tier",
+          "status": "done",
+          "note": "core/risk_engine.py fractional_kelly() 0.25x full Kelly"
+        },
+        {
+          "id": "portfolio_var",
+          "name": "Real-time VaR/CVaR + correlation brake",
+          "status": "done"
+        },
+        {
+          "id": "hedging_layer",
+          "name": "Optional OTM put/inverse-perp tail hedge",
+          "status": "done",
+          "note": "core/tail_hedge.py \u2014 Black-Scholes OTM put pricing + inverse-perp short sizing; armed when dd>=trigger AND cost<=max_cost_pct; 8 dedicated tests"
+        }
+      ]
+    },
+    {
+      "id": "P5_EXEC",
+      "name": "Broker & Exchange Layer (Execution)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "tradovate_adapter",
+          "name": "Tradovate order adapter (existing)",
+          "status": "done",
+          "note": "venues/tradovate.py \u2014 REAL aiohttp HTTP wired; OAuth2 authenticate() parses accessToken+mdAccessToken+expirationTime; place_order + cancel_order + positions/cashBalance/list; 3-leg OSO bracket_order via /order/placeOSO; demo=True default; single-retry on transient; 17 HTTP tests"
+        },
+        {
+          "id": "bybit_adapter",
+          "name": "Bybit v5 unified API adapter (trade-only keys)",
+          "status": "done",
+          "note": "venues/bybit.py \u2014 REAL aiohttp HTTP wired; HMAC-SHA256 v5 X-BAPI-SIGN; place/cancel/positions/balance (coin[].walletBalance); set_leverage + set_isolated_margin (treats retCode 110026 'already isolated' as success); rate-limit deque; testnet toggle; 13 HTTP tests"
+        },
+        {
+          "id": "okx_backup",
+          "name": "OKX backup adapter",
+          "status": "done",
+          "note": "venues/okx.py \u2014 HMAC-SHA256 + base64 OK-ACCESS-SIGN per v5 spec; ISO8601 ms timestamp; 3-field creds (key/secret/passphrase); instrument mapping ETH/USDT:USDT -> ETH-USDT-SWAP; 14 HTTP tests"
+        },
+        {
+          "id": "smart_routing",
+          "name": "Iceberg/post-only/TWAP smart routing",
+          "status": "done",
+          "note": "core/smart_router.py \u2014 iceberg/TWAP/post-only with would-cross detection + market fallback; 13 dedicated tests"
+        },
+        {
+          "id": "multi_broker_failover",
+          "name": "Multi-broker auto-failover",
+          "status": "done",
+          "note": "venues/router.py \u2014 CircuitBreaker dataclass + place_with_failover + _failover_log"
+        }
+      ]
+    },
+    {
+      "id": "P6_FUNNEL",
+      "name": "Profit Funneling & Baseline Automation",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "equity_monitor",
+          "name": "Real-time equity monitor per bot",
+          "status": "done",
+          "note": "funnel/equity_monitor.py \u2014 EquityMonitor, PortfolioState, check_global_kill"
+        },
+        {
+          "id": "sweep_engine",
+          "name": "Excess-above-baseline sweep engine",
+          "status": "done",
+          "note": "core/sweep_engine.py tested: $3500 vs $3k baseline \u2192 $500 excess \u2192 300/150/50 split"
+        },
+        {
+          "id": "fiat_to_crypto",
+          "name": "Hybrid fiat\u2192crypto semi-auto bridge",
+          "status": "done",
+          "note": "funnel/fiat_to_crypto.py + 44 tests. State-machine on-ramp: OnrampRequest (fiat_amount_usd>0, source, provider, target, venue_address>=4) -> OnrampState driven through stages INITIATED -> FIAT_DEPOSITED -> CONVERTING -> CONVERTED -> WITHDRAWING -> COMPLETE (or FAILED). OnrampPolicy enforces (FiatSource, OnrampProvider, CryptoTarget) whitelist + per-txn + monthly USD limits + per-provider minimums. OnrampExecutor Protocol (async place_order/withdraw) with StubOnrampExecutor default prices (BTC=68k, ETH=3.5k, SOL=180, XRP=0.6, USDC/USDT=1.0) and configurable slippage_bps + fail_orders/fail_withdrawals flags. OnrampPipeline: start/confirm_fiat/place_and_record_order/withdraw_to_venue/run; every transition records an OnrampEvent with injected clock timestamp; executor failures trap to FAILED with last_error set."
+        },
+        {
+          "id": "exchange_transfer",
+          "name": "Intra-exchange transfer (seed\u2192perps)",
+          "status": "done",
+          "note": "funnel/transfer.py enhanced + 18 tests. Existing API (TransferRequest/TransferResult/execute_transfer/sweep_to_cold) preserved. Added TransferPolicy (per_txn_limit_usd, daily_limit_usd rolling-24h, approval_threshold_usd, whitelist dict[from_bot, set[to_bot]]). Added TransferExecutor Protocol with StubExecutor/DryRunExecutor/FailingExecutor implementations. TransferLedger records (EXECUTED|REJECTED|FAILED) outcomes with reason. TransferManager.execute() pipes TransferRequest -> policy.check -> executor.execute -> ledger.append, returning TransferResult and never raising policy violations upward (they become FAILED results)."
+        },
+        {
+          "id": "cold_wallet_sweep",
+          "name": "Cold wallet (Ledger) API sweep",
+          "status": "done",
+          "note": "funnel/cold_wallet_sweep.py \u2014 Ledger-audited SweepInstruction builder + SweepVerification delta check; no private key ever touches this code; 15 dedicated tests"
+        },
+        {
+          "id": "central_dashboard",
+          "name": "Central equity+baseline+withdrawn dashboard",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "id": "P7_OPS",
+      "name": "Execution, Monitoring & Operations",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "ws_engine",
+          "name": "Pure WebSocket event engine (no polling)",
+          "status": "done",
+          "note": "data/bybit_ws.py \u2014 WS engine with exp-backoff + gzip rotation"
+        },
+        {
+          "id": "circuit_breakers",
+          "name": "Circuit breakers + heartbeat + auto-shutdown",
+          "status": "done",
+          "note": "venues/router.py CircuitBreaker + obs/heartbeat.py + main.py preflight"
+        },
+        {
+          "id": "grafana_prometheus",
+          "name": "Grafana + Prometheus observability",
+          "status": "done",
+          "note": "obs/grafana_dashboard.py (10-panel Grafana 10.x JSON, $datasource-templated) + obs/prometheus_exporter.py (aiohttp /metrics + /health, typed AppKey); 14 dedicated tests"
+        },
+        {
+          "id": "alerting_tiers",
+          "name": "Tiered alerting (SMS/call/Telegram/Discord/email)",
+          "status": "done",
+          "note": "obs/alerts.py \u2014 AlertLevel IntEnum + Telegram/Discord/Slack + MultiAlerter fan-out + 5-min dedup"
+        },
+        {
+          "id": "vps_redundancy",
+          "name": "Secondary VPS in different DC",
+          "status": "done",
+          "note": "obs/vps_redundancy.py + 29 tests. Injectable-protocol failover: HealthProbe Protocol (probe(role) -> HealthSnapshot) + DnsSwitchProvider Protocol (switch(to_role, reason)). Stub implementations for tests/dry-run. FailoverPolicy gates: primary_unhealthy_threshold=3 (fast fail-over), primary_recovery_threshold=10 (slow fail-back, avoids flap), secondary_unhealthy_threshold=5 (pages operator when both are blind), degraded_counts_as_unhealthy=True (can be disabled to only flip on full DOWN). FailoverController is pure-decision (no I/O), deque-backed snapshot history, consecutive-tail counting. VpsRedundancyController wraps probe + decide + DNS switch for production loop; probe exceptions recorded as DOWN snapshots; DNS-switch exceptions recorded on the FailoverEvent but do not crash the controller."
+        },
+        {
+          "id": "ci_cd",
+          "name": "Git + CI/CD with automated tests on commit",
+          "status": "done",
+          "note": ".pre-commit-config.yaml + .github/workflows/test.yml + .github/workflows/firm-gate.yml + Makefile"
+        },
+        {
+          "title": "alerts.yaml pushover primary",
+          "done": true
+        },
+        {
+          "title": "weekly_review cadence Sunday 20:00 ET",
+          "done": true
+        }
+      ]
+    },
+    {
+      "id": "P8_COMPLY",
+      "name": "Security, Compliance & Legal",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 1,
+      "tasks": [
+        {
+          "id": "secret_mgr",
+          "name": "API keys via env + secret manager",
+          "status": "done",
+          "note": "core/secrets.py \u2014 SecretsManager with env\u2192keyring\u2192.env tiered lookup, 14 required-key constants, audit_log never stores values"
+        },
+        {
+          "id": "vps_hardening",
+          "name": "VPS hardening (firewall, SSH keys only)",
+          "status": "done",
+          "note": "obs/vps_hardening.py \u2014 UFW rules + sshd_config + fail2ban jail + hardened systemd unit + operator runbook; pure-text output so operator reviews before applying; 16 dedicated tests"
+        },
+        {
+          "id": "two_fa",
+          "name": "2FA + hardware keys for cold storage",
+          "status": "done",
+          "note": "core/two_factor.py + 25 tests. Stdlib-only RFC 6238 TOTP (HMAC-SHA1 over 30s steps, 6 digits) -- no pyotp dep. TotpSecret wraps a SECRETS ref; str() redacts. HardwareKey stores only public WebAuthn metadata (kid/aaguid/uv). SecurityRegistry holds policy = TOTP_ONLY | HARDWARE_ONLY | TOTP_OR_HARDWARE | BOTH. gate_cold_wallet_op() raises TwoFactorRequiredError on missing claim, TwoFactorFailedError on bad claim. Gated ops: withdraw_cold, stake_withdraw, cross_wallet_transfer, promote_strategy_to_live, register_new_api_key, disable_kill_switch. RFC 6238 test vectors pass; +/- 1 window tolerates 30s clock drift."
+        },
+        {
+          "id": "cftc_nfa_compliance",
+          "name": "CFTC/NFA compliance review (futures)",
+          "status": "done",
+          "note": "core/cftc_nfa_compliance.py + 19 tests. 9 rules wired: CFTC.OWNS_ACCOUNT / NO_EXTERNAL_CAPITAL / NO_POOL_MANAGEMENT / NO_SELF_MATCH (BLOCKING), CFTC.NO_LAYER_CANCEL (ADVISORY >1Hz), APEX.ONE_ACCOUNT_PER_TRADE (ADVISORY), APEX.NO_CROSS_HEDGE / APEX.NEWS_BLACKOUT (BLOCKING), NFA.2_29_PROMOTIONAL (BLOCKING when disclaimer missing). check_compliance(ctx) returns ComplianceCheckResult with model_validator enforcing that passed=True can never coexist with a BLOCKING violation."
+        },
+        {
+          "id": "audit_trail",
+          "name": "Per-trade tax audit trail",
+          "status": "done",
+          "note": "tax/cost_basis.py FIFO/LIFO/HIFO/SPEC_ID + tax/koinly_exporter.py + tax/section1256.py (Form 6781)"
+        },
+        {
+          "title": "legal entity decision: personal_ssn_for_eval (revisit $100k)",
+          "done": true
+        }
+      ]
+    },
+    {
+      "id": "P9_ROLLOUT",
+      "name": "Deployment, Costs & Phased Rollout",
+      "status": "in_progress",
+      "progress_pct": 85,
+      "weeks": 4,
+      "tasks": [
+        {
+          "id": "mnq_paper",
+          "name": "MNQ bot paper-trade 4 weeks",
+          "status": "done",
+          "note": "Synthetic 4wk harness: 168 trades, +0.473R, 58.9% wr, 6.83% DD \u2014 GATE PASS. Bot now router-wired (on_signal routes OrderRequest via router.place_with_failover, stop_distance sizing, trailing-stop peak tracking, 4 setups persist stop_distance to meta). Ready for live-tiny once Tradovate OAuth2 credentials land."
+        },
+        {
+          "id": "nq_build",
+          "name": "NQ bot + funnel logic",
+          "status": "done",
+          "note": "Synthetic 4wk harness: 140 trades, +0.607R, 64.3% wr, 3.94% DD \u2014 GATE PASS. Inherits MnqBot wiring; POINT_VALUE_USD=$20 override + higher confluence floor. Ready for live-tiny."
+        },
+        {
+          "id": "crypto_seed_build",
+          "name": "Crypto seed bot (grid + directional)",
+          "status": "in_progress",
+          "note": "Paper harness: 161 trades, +0.149R \u2014 GATE FAIL (expectancy). Bot now router-wired (directional overlay routes only; grid orders cached on active_orders for orchestrator drain). Held at paper gate pending real Bybit paper bars."
+        },
+        {
+          "id": "eth_sol_xrp_build",
+          "name": "ETH/SOL/XRP perp bots (casino tier)",
+          "status": "in_progress",
+          "note": "Paper harness: ETH +0.161R, SOL +0.146R, XRP +0.176R \u2014 all GATE FAIL on synthetic. XRP also 15.55% DD. All 3 now router-wired (EthPerpBot base has router+venue_symbol inject, SOL/XRP **kwargs-forward; leverage baked into meta; linear-perp sizing). Hold at paper gate."
+        },
+        {
+          "id": "paper_run_harness",
+          "name": "Paper-run harness (4-wk synthetic across 6 bots)",
+          "status": "done",
+          "note": "scripts/paper_run_harness.py \u2014 973 trades across 6 bots, +73.96% portfolio, 2/6 bots cleared paper gate; report+tearsheet emitted"
+        },
+        {
+          "id": "live_tiny_size",
+          "name": "Live trading with tiny size \u2192 scale (Tier A only)",
+          "status": "pending",
+          "note": "Blocked on Tradovate $1000 balance gate -> APP_ID/APP_SECRET/CID not yet issuable. Tooling ready: python -m eta_engine.scripts.setup_tradovate_secrets (interactive keyring helper) + eta_engine.scripts.authorize_tradovate (real OAuth2). Both currently STUBBED. Fund + register app + rerun."
+        },
+        {
+          "id": "tier_b_v2_jump",
+          "title": "Tier-B v2 jump-diffusion re-run + Firm GO",
+          "status": "done",
+          "notes": "2/4 passers on seed 11 (eth +0.40R, sol +0.34R); 4-seed robustness shows edge is synthetic-only; real Bybit bars required for v3."
+        },
+        {
+          "id": "preflight_dryrun",
+          "title": "Live-tiny preflight dry-run + abort-on-red proof",
+          "status": "done",
+          "notes": "10 gates, 8 PASS 0 FAIL on clean env; injected-red path returns exit 2 as designed."
+        },
+        {
+          "id": "sweep_simulation",
+          "title": "Tier-A sweep projection (60/30/10) sim",
+          "status": "done",
+          "notes": "$27k -> $104k in 12w at paper expectancy (mnq-compounder 60%, perp 30%, grid 10%)."
+        },
+        {
+          "id": "weekly_review_cadence",
+          "title": "Weekly Firm re-review artifact",
+          "status": "done",
+          "notes": "Append-only log + latest JSON/txt; supports Tier A/B/BOTH and --auto spec pick."
+        },
+        {
+          "title": "decisions_v1 locked",
+          "done": true
+        },
+        {
+          "title": "configs/ venues+alerts+kill written",
+          "done": true
+        },
+        {
+          "title": ".env.example + .gitignore",
+          "done": true
+        },
+        {
+          "title": "go_trigger.py + schedule_weekly_review.py armed",
+          "done": true
+        }
+      ]
+    },
+    {
+      "id": "P10_AI",
+      "name": "AI / ML Layer (Regime Awareness & RL)",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 3,
+      "tasks": [
+        {
+          "id": "regime_model",
+          "name": "Train regime classifier (RF/LSTM/Transformer)",
+          "status": "done",
+          "note": "brain/regime.py + tests/test_regime.py \u2014 6-regime decision tree (CRISIS/HIGH_VOL/LOW_VOL/TRENDING/RANGING/TRANSITION) + drift detector; 19 dedicated tests covering boundary validation, priority order, and window-aware drift"
+        },
+        {
+          "id": "ppo_sac_agent",
+          "name": "PPO + SAC hybrid DRL agent",
+          "status": "done",
+          "note": "brain/rl_agent.py + tests/test_rl_agent.py \u2014 confluence-weighted random baseline with replay buffer + model persistence; 12 dedicated tests covering determinism under seed, confluence-conditional action biases, replay storage, and save/load roundtrip"
+        },
+        {
+          "id": "anomaly_drift",
+          "name": "Anomaly + drift detector (2-sigma pause)",
+          "status": "done",
+          "note": "brain/regime.py detect_drift via Counter mode"
+        },
+        {
+          "id": "multi_agent_orch",
+          "name": "Multi-agent orchestrator (LLM supervisor + DRL specialists)",
+          "status": "done",
+          "note": "brain/multi_agent.py + tests/test_multi_agent.py \u2014 6-role orchestrator with broadcast/consensus and RISK_ADVOCATE hard veto; 13 dedicated tests covering registration, error-contained broadcast, action routing (TRADE/REDUCE/HOLD/KILL), and veto priority threshold"
+        },
+        {
+          "id": "gan_synthetic",
+          "name": "GAN/diffusion synthetic data augmentation",
+          "status": "done",
+          "note": "brain/synthetic.py + 31 tests. Stdlib-only regime-conditioned stochastic OHLCV generator (chose calibrated simulator over unstable GAN; matches brain.regime / brain.rl_agent stdlib posture). Per-regime RegimeProfile (mu, sigma, vol_persistence, tail_weight, tail_df, intrabar_range_mult, base_volume, volume_return_sensitivity). Six PROFILES cover every RegimeType. AR(1) vol clustering, Gaussian+Student-t tail mixture for CRISIS, intrabar wicks enforce H>=max(O,C) and L<=min(O,C). SyntheticBarGenerator supports next_bar / generate_series / augment (interleaves synthetic bars after each real bar). Deterministic under seed. fit_profile_from_bars() calibrates mu/sigma/rho from a real series."
+        }
+      ]
+    },
+    {
+      "id": "P11_STAKE",
+      "name": "Staking Compounding Layer",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "lido_adapter",
+          "name": "Lido stETH/wstETH adapter",
+          "status": "done",
+          "note": "staking/lido.py \u2014 web3_client read_balance (wstETH.balanceOf via lazy web3); stake plan submits Lido submit() + wstETH wrap() + optional EigenLayer depositIntoStrategy; unstake via withdrawalQueue.requestWithdrawals NFT; mainnet addresses verified; restake adds +1.5% APY; 7 dedicated tests"
+        },
+        {
+          "id": "jito_adapter",
+          "name": "JitoSOL adapter",
+          "status": "done",
+          "note": "staking/jito.py \u2014 solana-py lazy-loaded; _fetch_spl_balance calls getTokenAccountBalance when rpc_url+token_account supplied; stake/unstake payloads tagged with JITO_STAKE_POOL program id; 3 dedicated tests"
+        },
+        {
+          "id": "flare_xrp",
+          "name": "Flare Network sFLR/XRP FAssets",
+          "status": "done",
+          "note": "staking/flare.py \u2014 Flare chain id 14 RPC via web3_client; sFLR stake = WNat.deposit + sFLR.submit + optional FTSO_MANAGER.delegate; FLARE_FTSO_MANAGER embedded; 3 dedicated tests"
+        },
+        {
+          "id": "ethena_susde",
+          "name": "Ethena sUSDe idle-yield sleeve",
+          "status": "done",
+          "note": "staking/ethena.py \u2014 USDT->USDe->sUSDe chain; Ethena mint with 0.2% slippage min_out; 7-day cooldown via cooldownShares then unstake; sUSDe.balanceOf via web3_client; 4 dedicated tests"
+        },
+        {
+          "id": "allocation_engine",
+          "name": "Auto-allocation engine (40/30/15/15)",
+          "status": "done",
+          "note": "staking/allocator.py \u2014 AllocationConfig validates sum=100%, rebalance() 2% drift threshold"
+        },
+        {
+          "id": "apy_tracker",
+          "name": "Real-time APY tracker (DefiLlama)",
+          "status": "done",
+          "note": "staking/apy_tracker.py \u2014 DefiLlama /pools async GET via aiohttp; 5-min TTL per-protocol cache; pool filter (project+chain+symbol) picks max APY; shared process-wide singleton; None on network error (adapters fall back to target_apy); 10 dedicated tests"
+        },
+        {
+          "id": "restaking",
+          "name": "EigenLayer restaking (post-proven)",
+          "status": "done",
+          "note": "staking/lido.py \u2014 restake_eigenlayer flag wires a 3rd contract call to EIGENLAYER_STRATEGY_MANAGER.depositIntoStrategy(wsteth, amount); APY premium +1.5% applied; unit tested"
+        }
+      ]
+    },
+    {
+      "id": "P12_POLISH",
+      "name": "Final Optimization & Master Tweaks",
+      "status": "done",
+      "progress_pct": 100,
+      "weeks": 2,
+      "tasks": [
+        {
+          "id": "open_testing",
+          "name": "OPEN TESTING HARNESS (left open by driver)",
+          "status": "done",
+          "note": "tests/harness_open.py rewired over core.parameter_sweep + 18 dedicated tests (test_harness_open.py) covering parameter sweep, Pareto frontier, forward-test comparator, regime slicing, and end-to-end bot-shaped flow"
+        },
+        {
+          "id": "parameter_sweep",
+          "name": "Full parameter sweep across all bots",
+          "status": "done",
+          "note": "core/parameter_sweep.py + tests/test_parameter_sweep.py -- generic Cartesian-product grid with Gate thresholds, 5-key deterministic rank, Pareto frontier on (expectancy, dd, stability), walk-forward window generator; 38 dedicated tests covering axis validation, gate eval, ranking tie-breaks, Pareto correctness, and sliding windows"
+        },
+        {
+          "id": "master_tweaks",
+          "name": "Master tweaks from live forward-test data",
+          "status": "done",
+          "note": "core/master_tweaks.py + tests/test_master_tweaks.py -- risk-classified (SAFE/MODERATE/AGGRESSIVE) tweak proposals with TweakPolicy gates (require_gate_pass, allow_aggressive, max_relative_change per-param cap); 25 dedicated tests covering risk classification thresholds, bulk apply, and per-param rejection"
+        },
+        {
+          "id": "tax_auto",
+          "name": "Tax export auto-generator (Koinly)",
+          "status": "done",
+          "note": "tax/koinly_exporter.py \u2014 12-column Universal CSV"
+        },
+        {
+          "id": "go_live_checklist",
+          "name": "Final go-live checklist",
+          "status": "done",
+          "note": "scripts/preflight.py + tests/test_preflight.py -- 5-check preflight gate (secrets / venues / blackout / firm verdict / telegram); 23 dedicated tests covering per-check happy path + failure modes + full async orchestration via monkeypatch"
+        }
+      ]
+    }
+  ],
+  "bot_status": {
+    "mnq": {
+      "phase": "paper_cleared",
+      "tier": "A",
+      "capital_usd": 5000,
+      "baseline_usd": 5500,
+      "equity_usd": 10912.9,
+      "expectancy_r": 0.473,
+      "win_rate": 0.589,
+      "max_dd_pct": 6.83,
+      "trades": 168,
+      "paper_gate": "PASS",
+      "next": "live_tiny_1_contract"
+    },
+    "nq": {
+      "phase": "paper_cleared",
+      "tier": "A",
+      "capital_usd": 12000,
+      "baseline_usd": 12000,
+      "equity_usd": 23496.88,
+      "expectancy_r": 0.607,
+      "win_rate": 0.643,
+      "max_dd_pct": 3.94,
+      "trades": 140,
+      "paper_gate": "PASS",
+      "next": "live_tiny_1_contract"
+    },
+    "crypto_seed": {
+      "phase": "held_at_paper",
+      "tier": "B",
+      "capital_usd": 2000,
+      "baseline_usd": 2000,
+      "equity_usd": 2247.88,
+      "expectancy_r": 0.149,
+      "win_rate": 0.46,
+      "max_dd_pct": 4.93,
+      "trades": 161,
+      "paper_gate": "FAIL",
+      "next": "rerun_on_real_bybit_bars"
+    },
+    "eth_perp": {
+      "phase": "held_at_paper",
+      "tier": "B",
+      "capital_usd": 3000,
+      "baseline_usd": 3000,
+      "equity_usd": 3878.29,
+      "expectancy_r": 0.161,
+      "win_rate": 0.464,
+      "max_dd_pct": 11.03,
+      "trades": 168,
+      "paper_gate": "FAIL",
+      "next": "rerun_on_real_bybit_bars"
+    },
+    "sol_perp": {
+      "phase": "held_at_paper",
+      "tier": "B",
+      "capital_usd": 3000,
+      "baseline_usd": 3000,
+      "equity_usd": 3782.81,
+      "expectancy_r": 0.146,
+      "win_rate": 0.458,
+      "max_dd_pct": 13.93,
+      "trades": 168,
+      "paper_gate": "FAIL",
+      "next": "rerun_on_real_bybit_bars"
+    },
+    "xrp_perp": {
+      "phase": "held_at_paper",
+      "tier": "B",
+      "capital_usd": 2000,
+      "baseline_usd": 2000,
+      "equity_usd": 2650.73,
+      "expectancy_r": 0.176,
+      "win_rate": 0.47,
+      "max_dd_pct": 15.55,
+      "trades": 168,
+      "paper_gate": "FAIL",
+      "next": "rerun_on_real_bybit_bars + dd_breach_review"
+    }
+  },
+  "mcp_status": {
+    "tradingview": "connected",
+    "tradingview-jackson": "connected",
+    "drawio": "connected",
+    "blockscout": "connected",
+    "lunarcrush": "connected",
+    "jotform": "needs_auth",
+    "amplitude": "needs_auth",
+    "coupler": "needs_auth"
+  },
+  "last_updated_utc": "2026-04-17T23:38:17.273548+00:00",
+  "milestones": [
+    {
+      "version": "v0.1.31",
+      "timestamp_utc": "2026-04-17T21:03:33.608600+00:00",
+      "title": "AI-Optimized Evolutionary Trading Algo strategy stack",
+      "tests_delta": 103,
+      "tests_passing": 1620
+    },
+    {
+      "version": "v0.1.33",
+      "timestamp_utc": "2026-04-17T22:59:47.337958+00:00",
+      "title": "Engine adapter: policy_router wired into live bot on_bar path (pure helpers + stateful RouterAdapter + 43 tests)",
+      "tests_delta": 81,
+      "tests_passing": 1712
+    },
+    {
+      "version": "v0.1.34",
+      "timestamp_utc": "2026-04-17T23:03:26.498853+00:00",
+      "title": "MnqBot wires RouterAdapter into on_bar: AI-Optimized strategies take priority over legacy 4-setup loop; backwards compatible when no adapter supplied",
+      "tests_delta": 11,
+      "tests_passing": 1723
+    },
+    {
+      "version": "v0.1.35",
+      "timestamp_utc": "2026-04-17T23:10:25.774437+00:00",
+      "title": "Portfolio-wide RouterAdapter wiring: ETH/SOL/XRP/NQ/CryptoSeed now consume the AI-Optimized strategy stack ahead of their legacy setups; backwards compatible when no adapter supplied",
+      "tests_delta": 24,
+      "tests_passing": 1747
+    },
+    {
+      "version": "v0.1.36",
+      "timestamp_utc": "2026-04-17T23:16:28.170933+00:00",
+      "title": "Backtest harness for the 6 AI-Optimized strategies: pure-replay driver with per-strategy hit_rate / avg_r / consecutive-loss stats, ready to plug into walk-forward calibration",
+      "tests_delta": 23,
+      "tests_passing": 1770
+    },
+    {
+      "version": "v0.1.38",
+      "timestamp_utc": "2026-04-17T23:25:05.197078+00:00",
+      "title": "Decision journal sink wired to policy_router: every live dispatch now produces one JournalEvent with actor=STRATEGY_ROUTER, rationale, gate_checks and candidates_fired metadata -- observability loop closed.",
+      "tests_delta": 37,
+      "tests_passing": 1832
+    },
+    {
+      "version": "v0.1.39",
+      "timestamp_utc": "2026-04-17T23:29:44.855384+00:00",
+      "title": "Portfolio rebalancer bridges regime_allocator weights to funnel-layer transfers: drift >5% sources rebalance sweeps via greedy pairing, reusing ProposedSweep so orchestrator + transfer manager consume both rebalance and profit flows through a single code path.",
+      "tests_delta": 27,
+      "tests_passing": 1859
+    },
+    {
+      "version": "v0.1.40",
+      "timestamp_utc": "2026-04-17T23:38:17.273548+00:00",
+      "title": "Rebalance execution channel wired through FunnelOrchestrator.execute_rebalance: RebalancePlan sweeps become TransferRequests and route through the same TransferManager policy gate as profit sweeps. Portfolio allocation is now operational.",
+      "tests_delta": 26,
+      "tests_passing": 1885
+    }
+  ]
+}

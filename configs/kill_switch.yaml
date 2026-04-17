@@ -1,0 +1,76 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/kill_switch.yaml
+# Kill-switch hierarchy — decisions #4, #12, #13, #16
+# Cascading: most-specific trigger first, most-destructive action last.
+
+# Global hard kill — no exceptions, flattens everything
+global:
+  daily_loss_cap_pct_of_portfolio: 6.0
+  max_drawdown_kill_pct_of_portfolio: 20.0
+  action: "flatten_all_venues_and_pause_until_manual_resume"
+
+# Tier-A (MNQ + NQ)
+tier_a:
+  per_bucket:
+    mnq:
+      max_loss_usd: 500               # decision #4 — 10% of $5k bucket
+      consecutive_losses: 3
+      action: "flatten_bot_and_pause_until_next_session"
+    nq:
+      max_loss_usd: 1200              # 10% of $12k bucket (post-activation)
+      consecutive_losses: 3
+      action: "flatten_bot_and_pause_until_next_session"
+  apex_eval_preemptive:
+    trigger: "trailing_balance_within_usd_of_apex_dd_limit"
+    cushion_usd: 500
+    action: "flatten_all_tier_a_and_alert_critical"
+    note: "trips before Apex's $2,500 trailing DD to preserve eval"
+
+# Tier-B (crypto)
+tier_b:
+  per_bucket:
+    crypto_seed:
+      max_loss_pct: 10
+      action: "halt_new_grids_and_alert"
+    eth_perp:
+      max_loss_pct: 15
+      max_dd_pct: 20
+      action: "flatten_bot_and_pause_24h"
+    sol_perp:
+      max_loss_pct: 15
+      max_dd_pct: 20
+      action: "flatten_bot_and_pause_24h"
+    xrp_perp:
+      max_loss_pct: 15
+      max_dd_pct: 20
+      action: "flatten_bot_and_pause_24h"
+  correlation_kill:
+    # Decision #12: scope=tier_b_only_flatten
+    enabled: true
+    window_minutes: 60
+    threshold_abs_corr: 0.85
+    pairs_required: 4                 # all of BTC-ETH-SOL-XRP move together
+    action: "flatten_tier_b_only_leave_tier_a_untouched"
+    cooldown_minutes: 240
+  funding_veto:
+    # Decision #13
+    soft_threshold_bps: 20
+    soft_action: "halve_new_entry_size"
+    hard_threshold_bps: 50
+    hard_action: "flatten_and_no_new_entries_6h"
+
+# Kill-log review SLA — decision #16
+review_sla:
+  on_tier_a_kill:
+    pause_until_reviewed: true
+    max_hours: 24
+    requires: "operator_manual_resume"
+  on_tier_b_kill:
+    pause_until: "next_weekly_review"
+  on_2_kills_in_7_days:
+    action: "full_firm_board_re_engage_before_any_resume"
+
+# Manual operator kills — always available
+operator:
+  kill_phrase: "KILL APEX NOW"
+  resume_phrase: "RESUME APEX {TIER}"
+  script: "eta_engine/scripts/go_trigger.py"

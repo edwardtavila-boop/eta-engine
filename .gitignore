@@ -1,0 +1,44 @@
+# EVOLUTIONARY TRADING ALGO  //  .gitignore
+# Never commit real secrets.
+.env
+.env.local
+.env.*.local
+.env.tradovate
+.env.tradovate.*
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+
+# Venv
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Artifacts that are transient (keep committed reports)
+/tmp/
+/logs/runtime/
+
+# OneDrive lock files
+*.~lock.*

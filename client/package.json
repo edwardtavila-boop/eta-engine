@@ -1,0 +1,42 @@
+{
+  "name": "eta-engine-client",
+  "version": "0.1.0",
+  "description": "EVOLUTIONARY TRADING ALGO downloadable client -- thin WS dashboard for rented bots.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-builder --publish never",
+    "package:win": "electron-builder --win --publish never",
+    "package:mac": "electron-builder --mac --publish never",
+    "package:linux": "electron-builder --linux --publish never"
+  },
+  "keywords": ["apex", "trading", "dashboard"],
+  "author": "The Firm",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "build": {
+    "appId": "com.evolutionarytradingalgo.client",
+    "productName": "Evolutionary Trading Algo",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": { "target": ["nsis"] },
+    "mac": { "target": ["dmg"] },
+    "linux": { "target": ["AppImage"] }
+  }
+}

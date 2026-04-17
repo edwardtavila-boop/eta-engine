@@ -1,0 +1,122 @@
+{
+  "kind": "apex_paper_run_report",
+  "generated_at": "2026-04-16T22:52:15.038933+00:00",
+  "label": "v2_jump",
+  "bar_mode": "jump",
+  "weeks": 4,
+  "seed": 11,
+  "requirements": {
+    "min_weeks": 4,
+    "min_trades_per_bot": 30,
+    "expectancy_r_required": 0.3,
+    "max_dd_during_paper_pct": 15.0,
+    "kill_switch_rate_max": 1.0,
+    "telemetry_gap_tolerance_minutes": 5
+  },
+  "per_bot": [
+    {
+      "bot": "crypto_seed",
+      "symbol": "BTCUSDT",
+      "n_trades": 191,
+      "win_rate": 0.4817,
+      "expectancy_r": 0.1984,
+      "avg_win_r": 1.488,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.3849,
+      "max_dd_pct": 16.1426,
+      "total_return_pct": 43.8825,
+      "final_equity_usd": 2877.65,
+      "starting_equity_usd": 2000.0,
+      "sharpe": 2.5217,
+      "sortino": 24530.813,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": false,
+      "gate_failures": [
+        "expectancy_r=0.198 < required=0.3",
+        "max_dd_pct=16.14 > max=15.0"
+      ]
+    },
+    {
+      "bot": "eth_perp",
+      "symbol": "ETHUSDT",
+      "n_trades": 168,
+      "win_rate": 0.4702,
+      "expectancy_r": 0.1756,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.3043,
+      "max_dd_pct": 8.6483,
+      "total_return_pct": 32.5407,
+      "final_equity_usd": 3976.22,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 2.2273,
+      "sortino": 37429.2612,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": false,
+      "gate_failures": [
+        "expectancy_r=0.176 < required=0.3"
+      ]
+    },
+    {
+      "bot": "sol_perp",
+      "symbol": "SOLUSDT",
+      "n_trades": 168,
+      "win_rate": 0.5357,
+      "expectancy_r": 0.3393,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.6947,
+      "max_dd_pct": 6.3415,
+      "total_return_pct": 74.3757,
+      "final_equity_usd": 5231.27,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 4.3069,
+      "sortino": 77059.6006,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": true,
+      "gate_failures": []
+    },
+    {
+      "bot": "xrp_perp",
+      "symbol": "XRPUSDT",
+      "n_trades": 168,
+      "win_rate": 0.4524,
+      "expectancy_r": 0.131,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.2133,
+      "max_dd_pct": 10.3733,
+      "total_return_pct": 18.2445,
+      "final_equity_usd": 2364.89,
+      "starting_equity_usd": 2000.0,
+      "sharpe": 1.6654,
+      "sortino": 13007.2244,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": false,
+      "gate_failures": [
+        "expectancy_r=0.131 < required=0.3"
+      ]
+    }
+  ],
+  "aggregate": {
+    "total_bots": 4,
+    "bots_gate_pass": 1,
+    "total_trades": 695,
+    "total_final_equity_usd": 14450.03,
+    "total_starting_equity_usd": 10000.0,
+    "blended_expectancy_r": 0.2107,
+    "blended_win_rate": 0.4849,
+    "blended_max_dd_pct": 16.1426,
+    "any_killed": false,
+    "promotion_verdict": "MODIFY",
+    "verdict_reason": "Bots failing gate: crypto_seed, eth_perp, xrp_perp"
+  }
+}

@@ -1,0 +1,305 @@
+{
+  "timestamp_utc": "2026-04-17T21:09:10.936054+00:00",
+  "schema_version": "1.0",
+  "venues": [
+    {
+      "name": "tradovate",
+      "kind": "futures",
+      "module": "eta_engine.venues.tradovate",
+      "asset_classes": [
+        "MNQ",
+        "NQ"
+      ],
+      "status": "NEEDS_FUNDING",
+      "notes": "OAuth2 creds blocked on $1000 funded balance. Helpers: setup_tradovate_secrets + authorize_tradovate (stubbed)."
+    },
+    {
+      "name": "bybit",
+      "kind": "perps_cex",
+      "module": "eta_engine.venues.bybit",
+      "asset_classes": [
+        "ETH-PERP",
+        "SOL-PERP",
+        "XRP-PERP"
+      ],
+      "status": "READY",
+      "notes": ""
+    },
+    {
+      "name": "okx",
+      "kind": "spot_cex",
+      "module": "eta_engine.venues.okx",
+      "asset_classes": [
+        "spot"
+      ],
+      "status": "READY",
+      "notes": ""
+    },
+    {
+      "name": "coinbase",
+      "kind": "onramp",
+      "module": "eta_engine.funnel.fiat_to_crypto",
+      "asset_classes": [
+        "BTC",
+        "ETH",
+        "USDC"
+      ],
+      "status": "READY",
+      "notes": "ACH onramp; stub executor used in tests."
+    },
+    {
+      "name": "kraken",
+      "kind": "onramp",
+      "module": "eta_engine.funnel.fiat_to_crypto",
+      "asset_classes": [
+        "USDC",
+        "USDT"
+      ],
+      "status": "READY",
+      "notes": "Bank-wire onramp for stables."
+    },
+    {
+      "name": "ledger_cold",
+      "kind": "cold_wallet",
+      "module": "eta_engine.funnel.cold_wallet_sweep",
+      "asset_classes": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "stablecoins"
+      ],
+      "status": "READY",
+      "notes": "Air-gapped custody sink for waterfall sweeps."
+    }
+  ],
+  "bots": [
+    {
+      "name": "mnq",
+      "module": "eta_engine.bots.mnq.mnq_bot",
+      "venue": "tradovate",
+      "funnel_layer": "LAYER_1_MNQ",
+      "risk_tier": "A",
+      "status": "PAPER",
+      "notes": "Router-wired; 168 trades +0.473R paper; live-tiny blocked on funding."
+    },
+    {
+      "name": "nq",
+      "module": "eta_engine.bots.nq.nq_bot",
+      "venue": "tradovate",
+      "funnel_layer": "LAYER_1_MNQ",
+      "risk_tier": "A",
+      "status": "PAPER",
+      "notes": "Inherits mnq; $20 point value; 140 trades +0.607R paper."
+    },
+    {
+      "name": "crypto_seed",
+      "module": "eta_engine.bots.crypto_seed.crypto_seed_bot",
+      "venue": "bybit",
+      "funnel_layer": "LAYER_2_BTC",
+      "risk_tier": "SEED",
+      "status": "PAPER",
+      "notes": "Grid + directional overlay; 161 trades +0.149R, gate FAIL pending real bars."
+    },
+    {
+      "name": "eth_perp",
+      "module": "eta_engine.bots.eth_perp.eth_perp_bot",
+      "venue": "bybit",
+      "funnel_layer": "LAYER_3_PERPS",
+      "risk_tier": "CASINO",
+      "status": "PAPER",
+      "notes": "Router-wired; paper +0.161R, gate FAIL pending real bars."
+    },
+    {
+      "name": "sol_perp",
+      "module": "eta_engine.bots.sol_perp.sol_perp_bot",
+      "venue": "bybit",
+      "funnel_layer": "LAYER_3_PERPS",
+      "risk_tier": "CASINO",
+      "status": "PAPER",
+      "notes": "Inherits eth_perp; paper +0.146R."
+    },
+    {
+      "name": "xrp_perp",
+      "module": "eta_engine.bots.xrp_perp.xrp_perp_bot",
+      "venue": "bybit",
+      "funnel_layer": "LAYER_3_PERPS",
+      "risk_tier": "CASINO",
+      "status": "PAPER",
+      "notes": "Inherits eth_perp; paper +0.176R, 15.55% DD."
+    }
+  ],
+  "funnel_layers": [
+    {
+      "layer_id": "LAYER_1_MNQ",
+      "label": "MNQ futures compounder",
+      "sweep_out_pct": 0.5,
+      "min_outgoing_usd": 100.0,
+      "min_incoming_usd": 0.0,
+      "max_position_pct_per_trade": 0.01,
+      "daily_loss_cap_pct": 0.03,
+      "drawdown_kill_pct": 0.08,
+      "leverage_cap": 10.0,
+      "notes": "Tier A; 60% of profit stack."
+    },
+    {
+      "layer_id": "LAYER_2_BTC",
+      "label": "BTC spot / grid seed",
+      "sweep_out_pct": 0.4,
+      "min_outgoing_usd": 200.0,
+      "min_incoming_usd": 50.0,
+      "max_position_pct_per_trade": 0.02,
+      "daily_loss_cap_pct": 0.04,
+      "drawdown_kill_pct": 0.1,
+      "leverage_cap": 3.0,
+      "notes": "Tier B/seed; 10% of stack."
+    },
+    {
+      "layer_id": "LAYER_3_PERPS",
+      "label": "ETH/SOL/XRP perps (casino tier)",
+      "sweep_out_pct": 0.3,
+      "min_outgoing_usd": 500.0,
+      "min_incoming_usd": 100.0,
+      "max_position_pct_per_trade": 0.03,
+      "daily_loss_cap_pct": 0.05,
+      "drawdown_kill_pct": 0.15,
+      "leverage_cap": 5.0,
+      "notes": "Casino tier; 30% of stack; high DD tolerance."
+    },
+    {
+      "layer_id": "LAYER_4_STAKING",
+      "label": "Staking compound (terminal yield)",
+      "sweep_out_pct": 0.0,
+      "min_outgoing_usd": 1000000.0,
+      "min_incoming_usd": 250.0,
+      "max_position_pct_per_trade": 1.0,
+      "daily_loss_cap_pct": 1.0,
+      "drawdown_kill_pct": 1.0,
+      "leverage_cap": 1.0,
+      "notes": "Terminal layer; no outflow except manual withdrawal."
+    }
+  ],
+  "onramp_routes": [
+    {
+      "fiat_source": "ACH",
+      "provider": "COINBASE",
+      "crypto_target": "BTC",
+      "per_txn_limit_usd": 10000.0,
+      "monthly_limit_usd": 50000.0
+    },
+    {
+      "fiat_source": "ACH",
+      "provider": "COINBASE",
+      "crypto_target": "ETH",
+      "per_txn_limit_usd": 10000.0,
+      "monthly_limit_usd": 50000.0
+    },
+    {
+      "fiat_source": "BANK_WIRE",
+      "provider": "KRAKEN",
+      "crypto_target": "USDC",
+      "per_txn_limit_usd": 10000.0,
+      "monthly_limit_usd": 50000.0
+    }
+  ],
+  "staking": [
+    {
+      "protocol": "Lido",
+      "module": "eta_engine.staking.lido",
+      "chain": "ethereum",
+      "asset_in": "ETH",
+      "asset_out": "wstETH",
+      "target_apy_pct": 3.2,
+      "notes": "Optional EigenLayer restake adds ~+1.5% APY."
+    },
+    {
+      "protocol": "Jito",
+      "module": "eta_engine.staking.jito",
+      "chain": "solana",
+      "asset_in": "SOL",
+      "asset_out": "JitoSOL",
+      "target_apy_pct": 7.5,
+      "notes": ""
+    },
+    {
+      "protocol": "Flare",
+      "module": "eta_engine.staking.flare",
+      "chain": "flare",
+      "asset_in": "FLR",
+      "asset_out": "sFLR",
+      "target_apy_pct": 4.1,
+      "notes": "FTSO delegation optional for +reward share."
+    },
+    {
+      "protocol": "Ethena",
+      "module": "eta_engine.staking.ethena",
+      "chain": "ethereum",
+      "asset_in": "USDT",
+      "asset_out": "sUSDe",
+      "target_apy_pct": 12.0,
+      "notes": "7-day cooldown on unstake."
+    }
+  ],
+  "observability": [
+    {
+      "name": "JarvisSupervisor",
+      "module": "eta_engine.obs.jarvis_supervisor",
+      "kind": "supervisor",
+      "status": "ACTIVE",
+      "notes": "Health watchdog around JarvisContextEngine. Runs at 60s cadence via scripts.jarvis_live."
+    },
+    {
+      "name": "TelegramAlerter",
+      "module": "eta_engine.obs.alerts.TelegramAlerter",
+      "kind": "alerter",
+      "status": "DRY_RUN",
+      "notes": "Becomes ACTIVE when TELEGRAM_BOT_TOKEN+CHAT_ID are set."
+    },
+    {
+      "name": "DiscordAlerter",
+      "module": "eta_engine.obs.alerts.DiscordAlerter",
+      "kind": "alerter",
+      "status": "DRY_RUN",
+      "notes": "Becomes ACTIVE when DISCORD_WEBHOOK_URL is set."
+    },
+    {
+      "name": "SlackAlerter",
+      "module": "eta_engine.obs.alerts.SlackAlerter",
+      "kind": "alerter",
+      "status": "DRY_RUN",
+      "notes": "Becomes ACTIVE when SLACK_WEBHOOK_URL is set."
+    },
+    {
+      "name": "GateOverrideTelemetry",
+      "module": "eta_engine.obs.gate_override_telemetry",
+      "kind": "telemetry",
+      "status": "ACTIVE",
+      "notes": "Prometheus counters: blocks / overrides / override_rate."
+    },
+    {
+      "name": "DecisionJournal",
+      "module": "eta_engine.obs.decision_journal",
+      "kind": "journal",
+      "status": "ACTIVE",
+      "notes": "Append-only JSONL decision log under docs/decision_journal.jsonl."
+    },
+    {
+      "name": "AutopilotWatchdog",
+      "module": "eta_engine.obs.autopilot_watchdog",
+      "kind": "supervisor",
+      "status": "ACTIVE",
+      "notes": "REQUIRE_ACK -> TIGHTEN_STOP -> FORCE_FLATTEN ladder."
+    }
+  ],
+  "summary": {
+    "venues_total": 6,
+    "bots_total": 6,
+    "bots_paper": 6,
+    "bots_live": 0,
+    "bots_blocked": 0,
+    "funnel_layers": 4,
+    "onramp_routes": 3,
+    "staking_protocols": 4,
+    "observability_surfaces": 7,
+    "alerters_active": 0
+  }
+}

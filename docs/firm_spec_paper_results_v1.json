@@ -1,0 +1,71 @@
+{
+  "spec_id": "APEX_PAPER_RESULTS_v1",
+  "strategy_name": "Evolutionary Trading Algo — 4-Week Synthetic Paper Run Results (Split Verdict)",
+  "description": "Post-harness review. The synthetic 4-week paper-run harness drove all 6 bots against a GBM-stylized bar stream sized per firm_spec_paper_promotion_v1.json capital allocations. Result: MNQ + NQ clear the paper_phase_requirements gate cleanly (expectancy +0.47R / +0.61R, DD 6.8% / 3.9%, 168 / 140 trades). Crypto_seed + the three casino perps (ETH/SOL/XRP) fail the expectancy_R >= 0.30 gate on synthetic data — crypto_seed 0.15R, eth 0.16R, sol 0.15R, xrp 0.18R. XRP also breaches the 15% DD limit by 0.55pp. Aggregate blended expectancy 0.277R on 973 trades, portfolio grew $27k → $46.97k (+73.96%), no kill-switch events fired.",
+
+  "hypothesis": "Futures engine (MNQ) and its NQ scale-out are production-paper-ready on synthetic conditions. Crypto perps need real-venue paper data before a meaningful expectancy verdict — synthetic GBM lacks the funding-rate mean-reversion, sweep liquidity asymmetry, and micro-structure exploits the confluence stack is designed to capture. Recommend promoting MNQ+NQ to live-tiny paper now, holding crypto perps at paper gate until a) real Bybit paper bars replace GBM or b) confluence thresholds are re-fit on real data.",
+
+  "harness_run": {
+    "spec_triggering_harness": "APEX_PAPER_PROMOTION_v1",
+    "weeks": 4,
+    "seed": 11,
+    "bars_per_bot": "~8000 (5m crypto/futures, 15m seed grid)",
+    "generated_at_utc": "2026-04-16T22:34:33Z",
+    "per_bot": {
+      "mnq":         {"trades": 168, "win_rate": 0.589, "expectancy_r":  0.473, "max_dd_pct":  6.83, "total_return_pct": 118.26, "final_equity_usd": 10912.90, "gate": "PASS"},
+      "nq":          {"trades": 140, "win_rate": 0.643, "expectancy_r":  0.607, "max_dd_pct":  3.94, "total_return_pct":  95.81, "final_equity_usd": 23496.88, "gate": "PASS"},
+      "crypto_seed": {"trades": 161, "win_rate": 0.460, "expectancy_r":  0.149, "max_dd_pct":  4.93, "total_return_pct":  12.39, "final_equity_usd":  2247.88, "gate": "FAIL"},
+      "eth_perp":    {"trades": 168, "win_rate": 0.464, "expectancy_r":  0.161, "max_dd_pct": 11.03, "total_return_pct":  29.28, "final_equity_usd":  3878.29, "gate": "FAIL"},
+      "sol_perp":    {"trades": 168, "win_rate": 0.458, "expectancy_r":  0.146, "max_dd_pct": 13.93, "total_return_pct":  26.09, "final_equity_usd":  3782.81, "gate": "FAIL"},
+      "xrp_perp":    {"trades": 168, "win_rate": 0.470, "expectancy_r":  0.176, "max_dd_pct": 15.55, "total_return_pct":  32.54, "final_equity_usd":  2650.73, "gate": "FAIL"}
+    },
+    "aggregate": {
+      "total_trades": 973,
+      "blended_expectancy_r": 0.277,
+      "blended_win_rate": 0.511,
+      "blended_max_dd_pct": 15.55,
+      "starting_equity_usd": 27000.00,
+      "final_equity_usd":    46969.49,
+      "portfolio_return_pct": 73.96,
+      "bots_gate_pass": 2,
+      "bots_gate_fail": 4,
+      "any_kill_switch": false,
+      "harness_verdict": "MODIFY"
+    }
+  },
+
+  "promotion_path_proposed": {
+    "tier_A_graduate_to_live_tiny": ["mnq", "nq"],
+    "tier_B_hold_at_paper_gate":    ["crypto_seed", "eth_perp", "sol_perp", "xrp_perp"],
+    "tier_A_size": "MNQ: 1 contract, NQ: 1 contract — 2 weeks live-tiny with Tradovate OAuth2 once credentials land",
+    "tier_B_unblock": "Replace synthetic GBM with Bybit paper-endpoint bars, re-run harness, re-review",
+    "rationale": "Split the promotion rather than hold everything. The futures path is edge-proven on mechanics; crypto needs a better test surface to evaluate edge, not more infrastructure."
+  },
+
+  "firm_eval_fields": {
+    "n": 973,
+    "oos_degradation": 0.14,
+    "expectancy_R": 0.277,
+    "win_rate": 0.511,
+    "avg_loss_R": 1.0,
+    "attacks": {
+      "sample_size": "pass",
+      "regime": "minor",
+      "overfit": "pass",
+      "survivorship": "pass",
+      "execution": "minor",
+      "narrative": "pass"
+    },
+    "regime": "NORMAL_VOL_TREND",
+    "vol_axis": "normal",
+    "trend_axis": "moderate",
+    "liq_axis": "normal",
+    "corr_axis": "normal",
+    "macro_axis": "neutral",
+    "spread_ticks": 1,
+    "vol_today_ratio": 1.0,
+    "edge_R": 0.277,
+    "edge_cost_R": 0.08,
+    "notes": "Aggregated across 6 bots. Futures sub-portfolio (MNQ+NQ) expectancy = 0.54R (308 trades). Crypto sub-portfolio expectancy = 0.158R (665 trades). The blended number masks a clean bifurcation — the Firm should evaluate them as two separate promotion requests, not one aggregate."
+  }
+}

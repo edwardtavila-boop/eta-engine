@@ -1,0 +1,163 @@
+{
+  "spec_id": "APEX_DECISIONS_v1",
+  "kind": "live_rollout_decisions",
+  "generated_at_utc": "2026-04-16T21:15:00+00:00",
+  "decided_by": "edward.t.avila@gmail.com",
+  "authority_note": "Defaults recommended by Claude, locked by operator with 'lets do as you recommend'",
+  "tier_1_live_tiny_blockers": {
+    "1_account_type": {
+      "decision": "APEX_TRADER_FUNDING_EVAL",
+      "rationale": "Smallest blast radius — trades on Apex capital, max $2.5k loss vs personal account",
+      "constraints": {
+        "trailing_drawdown_usd": 2500,
+        "daily_loss_limit_usd": 1500,
+        "profit_target_usd": 2500,
+        "min_trading_days": 7,
+        "consistency_rule_pct": 30
+      }
+    },
+    "2_tradovate_creds_required": [
+      "TRADOVATE_CLIENT_ID",
+      "TRADOVATE_CLIENT_SECRET",
+      "TRADOVATE_USERNAME",
+      "TRADOVATE_PASSWORD",
+      "TRADOVATE_DEVICE_ID",
+      "TRADOVATE_ACCOUNT_ID"
+    ],
+    "3_first_contract_scope": {
+      "bots": ["mnq"],
+      "contracts_per_entry": 1,
+      "symbol": "MNQ",
+      "exchange": "CME",
+      "nq_activation": "after_mnq_30_trades_green"
+    },
+    "4_live_tiny_dd_trip_wire": {
+      "max_loss_usd": 500,
+      "as_pct_of_mnq_bucket": 10.0,
+      "apex_cushion_usd": 2000,
+      "note": "10% bucket DD trips BEFORE Apex $2.5k trailing, protecting eval"
+    },
+    "5_live_tiny_duration": {
+      "kill_condition_whichever_first": ["30_trades", "14_days"],
+      "on_complete_if_green": "evaluate_for_nq_addition_and_size_step",
+      "on_complete_if_red": "flatten_and_return_to_paper_gate"
+    },
+    "6_configs_layout": {
+      "required_files": [
+        "configs/tradovate.yaml",
+        "configs/bybit.yaml",
+        "configs/alerts.yaml",
+        "configs/kill_switch.yaml"
+      ],
+      "status": "written_in_this_decision_batch"
+    },
+    "7_secrets_store_v1": {
+      "store": "dotenv_in_repo_root",
+      "path": ".env",
+      "template": ".env.example",
+      "gitignored": true,
+      "migration_plan": "move_to_1password_cli_post_apex_pass"
+    },
+    "8_go_live_trigger": {
+      "mechanism": "manual_typed_confirmation",
+      "phrase": "GO APEX MNQ LIVE-TINY",
+      "script": "eta_engine/scripts/go_trigger.py",
+      "no_auto_promote": true
+    }
+  },
+  "tier_2_tier_b_blockers": {
+    "9_bybit_environment": {
+      "phase_1": "testnet_4_weeks",
+      "phase_2": "mainnet_paper_if_phase_1_green",
+      "phase_3": "mainnet_live_tiny_after_firm_go",
+      "BYBIT_TESTNET_flag": true
+    },
+    "10_bybit_subaccount_split": {
+      "decision": "single_main_for_testnet",
+      "mainnet_plan": "per_bot_subs_{seed,eth,sol,xrp}",
+      "rationale": "simplicity for testnet, isolation for mainnet"
+    },
+    "11_tier_b_retest_window": {
+      "real_bars_weeks": 4,
+      "min_trades_per_bot": 80,
+      "gate": "blended_expectancy_r>=0.30 AND max_dd_pct<=15"
+    },
+    "12_tier_b_kill_switch": {
+      "scope": "tier_b_only_flatten",
+      "tier_a_untouched": true,
+      "correlation_trigger": "abs(corr_1h_btc_eth_sol_xrp_4_of_4)>=0.85",
+      "cooldown_minutes": 240
+    },
+    "13_funding_rate_veto": {
+      "soft_veto_bps": 20,
+      "soft_action": "halve_position_size",
+      "hard_veto_bps": 50,
+      "hard_action": "flatten_and_no_new_entries_6h"
+    }
+  },
+  "tier_3_operational_cadence": {
+    "14_weekly_review_schedule": {
+      "cron": "0 20 * * 0",
+      "tz": "America/New_York",
+      "human": "Sunday 20:00 ET",
+      "script": "eta_engine/scripts/schedule_weekly_review.py"
+    },
+    "15_firm_board_re_engage_triggers": [
+      "weekly_review_cadence",
+      "any_required_RED_preflight_gate",
+      "new_paper_or_live_spec_version",
+      "kill_log_add_from_tier_a"
+    ],
+    "16_kill_log_review_sla": {
+      "on_any_tier_a_kill": "pause_24h_review_required",
+      "on_tier_b_kill": "pause_until_next_weekly_review",
+      "on_2_kills_7d": "full_firm_board_re_engage"
+    },
+    "17_alerting_channels": {
+      "primary": "pushover_mobile_push",
+      "secondary": "email_digest_daily",
+      "escalation": "phone_sms_on_kill_or_red_gate",
+      "required_env": ["PUSHOVER_USER", "PUSHOVER_TOKEN"]
+    }
+  },
+  "tier_4_compounding": {
+    "18_staking_trigger": {
+      "cadence": "monthly_last_friday",
+      "sweep_pct_of_monthly_pnl": 60,
+      "min_sweep_usd": 500,
+      "destination": "cold_wallet_ledger_stax"
+    },
+    "19_ledger_device": {
+      "decision": "DEFER_TO_USER",
+      "options": ["ledger_stax", "ledger_flex", "ledger_nano_x"],
+      "note": "not my call — pick hardware"
+    },
+    "20_validators_locked": {
+      "eth_wsteth": {"provider": "Lido", "apy_bps": 380, "lockup": "liquid"},
+      "sol_jito": {"provider": "Jito", "apy_bps": 650, "lockup": "liquid"},
+      "xrp_flare": {"provider": "Flare Network sFLR", "apy_bps": 450, "lockup": "liquid"},
+      "usd_ethena": {"provider": "Ethena sUSDe", "apy_bps": 700, "lockup": "liquid"}
+    },
+    "21_stake_lockup_tolerance": "liquid_only"
+  },
+  "tier_5_strategic": {
+    "22_p10_ai_priority": "FROZEN_UNTIL_LIVE_TINY_PASSES",
+    "23_legal_entity": "personal_ssn_for_eval",
+    "23_legal_revisit_trigger": "account_size_reaches_100k_OR_post_apex_pass",
+    "24_tax_defaults": {
+      "futures_1256_60_40": true,
+      "mtm_475_election": false,
+      "state": "DEFER_TO_USER_CPA"
+    },
+    "25_capacity_cap": {
+      "per_bot_usd": 500000,
+      "review_threshold_usd": 250000,
+      "portfolio_hard_cap_usd": 2000000
+    }
+  },
+  "provenance": {
+    "recommendation_source": "claude_session_2026-04-16",
+    "operator_confirm": "lets do as you recommend",
+    "review_policy": "revisit_quarterly_or_on_red_gate"
+  }
+}

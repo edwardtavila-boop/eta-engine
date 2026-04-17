@@ -1,0 +1,59 @@
+========================================================================
+EVOLUTIONARY TRADING ALGO  //  INTEGRATIONS MAP  (schema v1.0)
+ts: 2026-04-17T21:09:10.936054+00:00
+========================================================================
+
+SUMMARY
+  venues=6  bots=6 (paper=6/live=0/blocked=0)  layers=4  staking=4
+
+VENUES
+  tradovate    futures      [NEEDS_FUNDING] assets=MNQ,NQ
+    - OAuth2 creds blocked on $1000 funded balance. Helpers: setup_tradovate_secrets + authorize_tradovate (stubbed).
+  bybit        perps_cex    [READY        ] assets=ETH-PERP,SOL-PERP,XRP-PERP
+  okx          spot_cex     [READY        ] assets=spot
+  coinbase     onramp       [READY        ] assets=BTC,ETH,USDC
+    - ACH onramp; stub executor used in tests.
+  kraken       onramp       [READY        ] assets=USDC,USDT
+    - Bank-wire onramp for stables.
+  ledger_cold  cold_wallet  [READY        ] assets=BTC,ETH,SOL,stablecoins
+    - Air-gapped custody sink for waterfall sweeps.
+
+BOTS  (venue -> funnel layer, risk tier)
+  mnq          -> tradovate  LAYER_1_MNQ      tier=A      [PAPER]
+    - Router-wired; 168 trades +0.473R paper; live-tiny blocked on funding.
+  nq           -> tradovate  LAYER_1_MNQ      tier=A      [PAPER]
+    - Inherits mnq; $20 point value; 140 trades +0.607R paper.
+  crypto_seed  -> bybit      LAYER_2_BTC      tier=SEED   [PAPER]
+    - Grid + directional overlay; 161 trades +0.149R, gate FAIL pending real bars.
+  eth_perp     -> bybit      LAYER_3_PERPS    tier=CASINO [PAPER]
+    - Router-wired; paper +0.161R, gate FAIL pending real bars.
+  sol_perp     -> bybit      LAYER_3_PERPS    tier=CASINO [PAPER]
+    - Inherits eth_perp; paper +0.146R.
+  xrp_perp     -> bybit      LAYER_3_PERPS    tier=CASINO [PAPER]
+    - Inherits eth_perp; paper +0.176R, 15.55% DD.
+
+FUNNEL LAYERS  (sweep_out_pct, min_outgoing, kill_dd)
+  LAYER_1_MNQ      sweep= 50%  min_out=$       100  kill_dd=   8%  lev=10.0x   MNQ futures compounder
+  LAYER_2_BTC      sweep= 40%  min_out=$       200  kill_dd=  10%  lev= 3.0x   BTC spot / grid seed
+  LAYER_3_PERPS    sweep= 30%  min_out=$       500  kill_dd=  15%  lev= 5.0x   ETH/SOL/XRP perps (casino tier)
+  LAYER_4_STAKING  sweep=  0%  min_out=$ 1,000,000  kill_dd= 100%  lev= 1.0x   Staking compound (terminal yield)
+
+ONRAMP ROUTES  (fiat -> provider -> crypto)
+  ACH        -> COINBASE   -> BTC     per-txn=$  10,000  monthly=$    50,000
+  ACH        -> COINBASE   -> ETH     per-txn=$  10,000  monthly=$    50,000
+  BANK_WIRE  -> KRAKEN     -> USDC    per-txn=$  10,000  monthly=$    50,000
+
+STAKING  (protocol -> asset, target APY)
+  Lido     ethereum   ETH    -> wstETH     apy= 3.20%
+  Jito     solana     SOL    -> JitoSOL    apy= 7.50%
+  Flare    flare      FLR    -> sFLR       apy= 4.10%
+  Ethena   ethereum   USDT   -> sUSDe      apy=12.00%
+
+OBSERVABILITY
+  JarvisSupervisor         supervisor   [ACTIVE]
+  TelegramAlerter          alerter      [DRY_RUN]
+  DiscordAlerter           alerter      [DRY_RUN]
+  SlackAlerter             alerter      [DRY_RUN]
+  GateOverrideTelemetry    telemetry    [ACTIVE]
+  DecisionJournal          journal      [ACTIVE]
+  AutopilotWatchdog        supervisor   [ACTIVE]

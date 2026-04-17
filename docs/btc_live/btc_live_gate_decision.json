@@ -1,0 +1,11 @@
+{
+  "allow_live": false,
+  "mode": "PAPER",
+  "reasons": [
+    "paper requested (no --live flag)",
+    "APEX_BTC_LIVE env flag not '1' (got '')"
+  ],
+  "verify_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\btc_paper\\btc_paper_run_latest.json",
+  "verify_verdict": "PASS",
+  "verify_age_h": 0.06818991083333333
+}

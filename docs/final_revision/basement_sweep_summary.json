@@ -1,0 +1,108 @@
+{
+  "total_candidates": 192,
+  "gate_pass_count": 169,
+  "pareto_frontier_count": 1,
+  "top_5_ranked": [
+    {
+      "params": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "expectancy_r": 1.4,
+      "max_dd_pct": 0.005,
+      "win_rate": 0.62,
+      "n_trades": 20,
+      "stability": 0.019203,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 2
+      },
+      "expectancy_r": 1.37,
+      "max_dd_pct": 0.005,
+      "win_rate": 0.62,
+      "n_trades": 20,
+      "stability": 0.019203,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 2.0,
+        "max_open_positions": 1
+      },
+      "expectancy_r": 1.35,
+      "max_dd_pct": 0.01,
+      "win_rate": 0.62,
+      "n_trades": 20,
+      "stability": 0.019203,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 2.0,
+        "max_open_positions": 2
+      },
+      "expectancy_r": 1.32,
+      "max_dd_pct": 0.01,
+      "win_rate": 0.62,
+      "n_trades": 20,
+      "stability": 0.019203,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "confluence_threshold": 7,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "expectancy_r": 1.24,
+      "max_dd_pct": 0.005,
+      "win_rate": 0.58,
+      "n_trades": 25,
+      "stability": 0.019203,
+      "gate_pass": true
+    }
+  ],
+  "pareto_frontier": [
+    {
+      "params": {
+        "confluence_threshold": 8,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0,
+        "daily_dd_cap_pct": 3.0,
+        "max_open_positions": 1
+      },
+      "expectancy_r": 1.4,
+      "max_dd_pct": 0.005
+    }
+  ],
+  "winner": {
+    "params": {
+      "confluence_threshold": 8,
+      "stop_atr_mult": 1.0,
+      "tp_atr_mult": 3.0,
+      "daily_dd_cap_pct": 3.0,
+      "max_open_positions": 1
+    },
+    "expectancy_r": 1.4,
+    "max_dd_pct": 0.005,
+    "win_rate": 0.62,
+    "stability": 0.019203
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "kind": "apex_paper_run_report",
+  "generated_at": "2026-04-16T22:53:04.331189+00:00",
+  "label": "robust_19",
+  "bar_mode": "jump",
+  "weeks": 4,
+  "seed": 19,
+  "requirements": {
+    "min_weeks": 4,
+    "min_trades_per_bot": 30,
+    "expectancy_r_required": 0.3,
+    "max_dd_during_paper_pct": 15.0,
+    "kill_switch_rate_max": 1.0,
+    "telemetry_gap_tolerance_minutes": 5
+  },
+  "per_bot": [
+    {
+      "bot": "eth_perp",
+      "symbol": "ETHUSDT",
+      "n_trades": 168,
+      "win_rate": 0.5238,
+      "expectancy_r": 0.3095,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.6339,
+      "max_dd_pct": 10.4996,
+      "total_return_pct": 65.8927,
+      "final_equity_usd": 4976.78,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 3.9236,
+      "sortino": 73786.6008,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": true,
+      "gate_failures": []
+    },
+    {
+      "bot": "sol_perp",
+      "symbol": "SOLUSDT",
+      "n_trades": 168,
+      "win_rate": 0.4881,
+      "expectancy_r": 0.2202,
+      "avg_win_r": 1.5,
+      "avg_loss_r": 1.0,
+      "profit_factor": 1.4452,
+      "max_dd_pct": 10.2326,
+      "total_return_pct": 42.8383,
+      "final_equity_usd": 4285.15,
+      "starting_equity_usd": 3000.0,
+      "sharpe": 2.7894,
+      "sortino": 42295.9789,
+      "killed": false,
+      "kill_events": 0,
+      "telemetry_gaps": 0,
+      "gate_pass": false,
+      "gate_failures": [
+        "expectancy_r=0.220 < required=0.3"
+      ]
+    }
+  ],
+  "aggregate": {
+    "total_bots": 2,
+    "bots_gate_pass": 1,
+    "total_trades": 336,
+    "total_final_equity_usd": 9261.93,
+    "total_starting_equity_usd": 6000.0,
+    "blended_expectancy_r": 0.2648,
+    "blended_win_rate": 0.506,
+    "blended_max_dd_pct": 10.4996,
+    "any_killed": false,
+    "promotion_verdict": "MODIFY",
+    "verdict_reason": "Bots failing gate: sol_perp"
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "bot": "crypto_seed",
+  "total_candidates": 576,
+  "gate_pass_count": 576,
+  "pareto_frontier_count": 6,
+  "top_5_ranked": [
+    {
+      "params": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expectancy_r": 0.6283,
+      "max_dd_pct": 0.024,
+      "win_rate": 0.6,
+      "n_trades": 240,
+      "stability": 0.031623,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.75,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expectancy_r": 0.6283,
+      "max_dd_pct": 0.024,
+      "win_rate": 0.6,
+      "n_trades": 240,
+      "stability": 0.031623,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 3.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expectancy_r": 0.6283,
+      "max_dd_pct": 0.028,
+      "win_rate": 0.6,
+      "n_trades": 240,
+      "stability": 0.031623,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.75,
+        "max_leverage": 3.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expectancy_r": 0.6283,
+      "max_dd_pct": 0.028,
+      "win_rate": 0.6,
+      "n_trades": 240,
+      "stability": 0.031623,
+      "gate_pass": true
+    },
+    {
+      "params": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 7.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expectancy_r": 0.6097,
+      "max_dd_pct": 0.024,
+      "win_rate": 0.55,
+      "n_trades": 250,
+      "stability": 0.031623,
+      "gate_pass": true
+    }
+  ],
+  "winner_params": {
+    "grid_n_levels": 60,
+    "grid_usable_ratio": 0.9,
+    "overlay_confluence_threshold": 8.0,
+    "overlay_tp_r_mult": 2.0,
+    "risk_per_trade_pct": 0.5,
+    "max_leverage": 2.0,
+    "daily_loss_cap_pct": 3.0
+  },
+  "winner_metrics": {
+    "expectancy_r": 0.6283,
+    "max_dd_pct": 0.024,
+    "win_rate": 0.6,
+    "n_trades": 240,
+    "stability": 0.031623
+  },
+  "glide_params": {
+    "grid_n_levels": 54,
+    "grid_usable_ratio": 0.9,
+    "overlay_confluence_threshold": 8.0,
+    "overlay_tp_r_mult": 2.0,
+    "risk_per_trade_pct": 0.5,
+    "max_leverage": 2.0,
+    "daily_loss_cap_pct": 3.0
+  },
+  "glide_metrics": {
+    "expectancy_r": 0.6025,
+    "max_dd_pct": 0.024,
+    "win_rate": 0.6,
+    "n_trades": 216,
+    "stability": 0.0316,
+    "gate_pass": true
+  },
+  "tweaks_full_winner": [
+    {
+      "bot": "crypto_seed",
+      "source": "dual_fine_tune_v0_1_30_crypto_seed_full_winner",
+      "reason": "gate-pass: exp=+0.628R dd=0.02% stability=0.032",
+      "risk_tag": "AGGRESSIVE",
+      "proposal": {
+        "grid_n_levels": 60,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expected_expectancy_r": 0.6283,
+      "expected_dd_pct": 0.024,
+      "gate_pass": true
+    }
+  ],
+  "tweaks_proposed": [
+    {
+      "bot": "crypto_seed",
+      "source": "dual_fine_tune_v0_1_30_crypto_seed_glide_step",
+      "reason": "gate-pass: exp=+0.603R dd=0.02% stability=0.032",
+      "risk_tag": "MODERATE",
+      "proposal": {
+        "grid_n_levels": 54,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "expected_expectancy_r": 0.6025,
+      "expected_dd_pct": 0.024,
+      "gate_pass": true
+    }
+  ],
+  "applied": {
+    "crypto_seed": {
+      "applied": true,
+      "reason": "applied (MODERATE): gate-pass: exp=+0.603R dd=0.02% stability=0.032",
+      "new_config": {
+        "grid_n_levels": 54,
+        "grid_usable_ratio": 0.9,
+        "overlay_confluence_threshold": 8.0,
+        "overlay_tp_r_mult": 2.0,
+        "risk_per_trade_pct": 0.5,
+        "max_leverage": 2.0,
+        "daily_loss_cap_pct": 3.0
+      },
+      "rejected_params": []
+    }
+  }
+}

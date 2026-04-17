@@ -1,0 +1,21 @@
+{
+  "period": "2026_04",
+  "generated_at_utc": "2026-04-17T15:53:28.765507+00:00",
+  "grading": {
+    "n": 0,
+    "distribution": {},
+    "mean_total": null
+  },
+  "exit_quality": {
+    "n": 0
+  },
+  "rationales": {
+    "n": 0
+  },
+  "proposed_tweaks": [],
+  "inputs": {
+    "trades_path": null,
+    "mae_mfe_path": null,
+    "rationales_path": null
+  }
+}
