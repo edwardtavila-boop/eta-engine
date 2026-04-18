@@ -86,6 +86,8 @@ SENTINELS: list[tuple[str, list[str], bool]] = [
     ("complexity",       ["scripts/_complexity_hotspots.py", "--threshold", "20", "--top", "10"], True),
     ("strategy-pairing", ["scripts/_strategy_test_pairing.py"],      True),
     ("orphan-files",     ["scripts/_orphan_files.py"],               True),
+    ("import-graph",     ["scripts/_import_graph.py"],               True),
+    ("long-tests",       ["scripts/_long_test_finder.py", "--top", "10", "--max-yellow-ms", "500"], False),
 ]
 
 
