@@ -1,0 +1,36 @@
+{
+  "per_bot": {
+    "mnq": {
+      "sharpe": 6.0897,
+      "sortino": 153018.0856,
+      "expectancy_r": 0.4732
+    },
+    "nq": {
+      "sharpe": 8.017,
+      "sortino": 417486.0036,
+      "expectancy_r": 0.6071
+    },
+    "crypto_seed": {
+      "sharpe": 1.8935,
+      "sortino": 8502.6159,
+      "expectancy_r": 0.1491
+    },
+    "eth_perp": {
+      "sharpe": 2.0401,
+      "sortino": 28427.2068,
+      "expectancy_r": 0.1607
+    },
+    "sol_perp": {
+      "sharpe": 1.853,
+      "sortino": 31834.0124,
+      "expectancy_r": 0.1458
+    },
+    "xrp_perp": {
+      "sharpe": 2.2271,
+      "sortino": 25014.834,
+      "expectancy_r": 0.1756
+    }
+  },
+  "samples": 1,
+  "last_updated": "2026-04-18T01:43:34.887881+00:00"
+}

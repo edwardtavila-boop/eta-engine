@@ -40,5 +40,13 @@ Thumbs.db
 /tmp/
 /logs/runtime/
 
+# Rotating state-file snapshots (managed by scripts/_backup_state.py)
+docs/_backups/
+
+# Synthetic artifacts created by smoke runs of monitor scripts
+docs/_synth_*.json
+docs/_baseline_test.json
+docs/_synthetic_drop.json
+
 # OneDrive lock files
 *.~lock.*
