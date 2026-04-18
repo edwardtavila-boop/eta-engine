@@ -1,6 +1,6 @@
 {
   "spec_id": "CROSS_REGIME_OOS_v1",
-  "generated_at_utc": "2026-04-18T01:18:00.121995+00:00",
+  "generated_at_utc": "2026-04-18T01:21:22.689348+00:00",
   "gate_config": {
     "max_degradation": 0.6,
     "live_trade_expectancy_r": 0.15,

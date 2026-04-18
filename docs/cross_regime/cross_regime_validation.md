@@ -1,6 +1,6 @@
 # APEX PREDATOR — Cross-regime OOS validation
 
-_generated_: `2026-04-18T01:18:00.121995+00:00`
+_generated_: `2026-04-18T01:21:22.689348+00:00`
 
 ## Verdict: FAIL
 
