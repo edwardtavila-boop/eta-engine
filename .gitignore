@@ -47,6 +47,21 @@ docs/_backups/
 docs/_synth_*.json
 docs/_baseline_test.json
 docs/_synthetic_drop.json
+docs/_p9_dump.json
+
+# Timestamped runtime artifacts (pattern: *_YYYYMMDDTHHMMSSZ.json).
+# Keep committed: README.md, *_latest.json, *_decisions.jsonl. The per-run
+# timestamped snapshots are regenerated on every bot/script invocation and
+# do not belong in git history -- they balloon the working tree into
+# hundreds of untracked files.
+docs/broker_connections/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
+docs/btc_live/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
+docs/btc_live/**/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
+docs/btc_paper/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
+docs/btc_inventory/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
 
 # OneDrive lock files
 *.~lock.*
+
+# Local cache directory (model weights, parquet shards, etc.)
+.cache/
