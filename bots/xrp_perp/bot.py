@@ -19,6 +19,7 @@ from apex_predator.bots.base_bot import (
 )
 from apex_predator.bots.eth_perp.bot import EthPerpBot
 from apex_predator.brain.jarvis_admin import SubsystemId
+from apex_predator.venues.base import OrderRequest, OrderType, Side
 
 logger = logging.getLogger(__name__)
 
@@ -138,13 +139,42 @@ class XrpPerpBot(EthPerpBot):
         await super().stop()
 
     async def on_signal(self, signal: Signal) -> Any:  # noqa: ANN401 - inherits OrderResult | None
-        """Delegate to :class:`EthPerpBot.on_signal` — router path handles XRP routing.
-
-        Note: XRP's thinner book should use limit-orders via urgency=low at the
-        router layer (TODO: router should pick POST_ONLY for XRP), but the
-        current router sends MARKET. Slippage is budgeted via _XRP_SLIPPAGE_BUFFER.
+        """Delegate to :class:`EthPerpBot.on_signal` — the parent calls
+        :meth:`_build_order_request`, which we override below so XRP's
+        thin-book orders go out as POST_ONLY at signal.price with urgency=low.
+        The _XRP_SLIPPAGE_BUFFER still backstops the liq math in case a
+        POST_ONLY doesn't fill and a fallback market is taken.
         """
         return await super().on_signal(signal)
+
+    def _build_order_request(
+        self,
+        signal: Signal,
+        side: Side,
+        qty: float,
+        reduce_only: bool,
+    ) -> tuple[OrderRequest, str]:
+        """XRP override — POST_ONLY at signal.price, urgency=low.
+
+        Thin books punish takers with 2-3× the queue-normal slippage.
+        Paying the spread here is worth more than the occasional missed
+        fill; the next bar regenerates a signal if the entry was still
+        warranted. For CLOSE_* signals we still use POST_ONLY but at a
+        price that crosses (bid for buy-to-close, ask for sell-to-close)
+        so exits don't get stranded on a ledge.
+        """
+        limit_price = float(signal.price)
+        return (
+            OrderRequest(
+                symbol=self._venue_symbol,
+                side=side,
+                qty=qty,
+                order_type=OrderType.POST_ONLY,
+                price=limit_price,
+                reduce_only=reduce_only,
+            ),
+            "low",
+        )
 
     # ── Entry requires stronger confluence for XRP ──
 

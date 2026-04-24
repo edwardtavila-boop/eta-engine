@@ -22,7 +22,10 @@ class _FakeRouter:
         self._results = list(results)
         self.calls: list[OrderRequest] = []
 
-    async def place_with_failover(self, req: OrderRequest) -> OrderResult:
+    async def place_with_failover(
+        self, req: OrderRequest, *, urgency: str = "normal",
+    ) -> OrderResult:
+        _ = urgency
         self.calls.append(req)
         if not self._results:
             return OrderResult(

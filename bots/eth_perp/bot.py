@@ -104,7 +104,12 @@ _LEV_MIN_CONFLUENCE: float = 5.0
 
 
 class _Router(Protocol):
-    async def place_with_failover(self, req: OrderRequest) -> OrderResult: ...
+    async def place_with_failover(
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
+    ) -> OrderResult: ...
 
 
 class EthPerpBot(BaseBot):
@@ -518,14 +523,9 @@ class EthPerpBot(BaseBot):
             )
             return None
         side, reduce_only = self._signal_to_order_side(signal.type)
-        req = OrderRequest(
-            symbol=self._venue_symbol,
-            side=side,
-            qty=qty,
-            reduce_only=reduce_only,
-        )
+        req, urgency = self._build_order_request(signal, side, qty, reduce_only)
         try:
-            result = await self._router.place_with_failover(req)
+            result = await self._router.place_with_failover(req, urgency=urgency)
         except Exception as e:  # noqa: BLE001 - router logs & alerts internally
             logger.error("%s route failed: %s", self.config.name, e)
             self._record_event(
@@ -594,6 +594,27 @@ class EthPerpBot(BaseBot):
         if sig_type is SignalType.CLOSE_SHORT:
             return Side.BUY, True
         return Side.BUY, False
+
+    def _build_order_request(
+        self,
+        signal: Signal,
+        side: Side,
+        qty: float,
+        reduce_only: bool,
+    ) -> tuple[OrderRequest, str]:
+        """Build the OrderRequest + urgency for a routed signal.
+
+        Default is a MARKET order at normal urgency (ETH/SOL on a
+        deep book). Subclasses that trade thin books (XRP) override
+        this to prefer POST_ONLY at signal.price with low urgency.
+        """
+        req = OrderRequest(
+            symbol=self._venue_symbol,
+            side=side,
+            qty=qty,
+            reduce_only=reduce_only,
+        )
+        return req, "normal"
 
     # ── Decision Logic ──
 

@@ -101,7 +101,10 @@ class _PhaseRouter:
     def __init__(self) -> None:
         self.orders: list[OrderRequest] = []
 
-    async def place_with_failover(self, req: OrderRequest) -> OrderResult:
+    async def place_with_failover(
+        self, req: OrderRequest, *, urgency: str = "normal",
+    ) -> OrderResult:
+        _ = urgency
         self.orders.append(req)
         return OrderResult(
             order_id=f"E2E-{len(self.orders):04d}",

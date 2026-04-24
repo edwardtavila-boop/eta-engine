@@ -18,6 +18,11 @@ from __future__ import annotations
 
 import pytest
 
+from apex_predator.bots.base_bot import Fill, Signal, SignalType
+from apex_predator.bots.btc_hybrid.profile import (
+    DEFAULT_BTC_PROFILE_PATH,
+    load_btc_hybrid_profile,
+)
 from apex_predator.bots.crypto_seed.bot import CryptoSeedBot
 from apex_predator.bots.eth_perp.bot import EthPerpBot
 from apex_predator.bots.nq.bot import NqBot
@@ -25,7 +30,7 @@ from apex_predator.bots.sol_perp.bot import SolPerpBot
 from apex_predator.bots.xrp_perp.bot import XrpPerpBot
 from apex_predator.strategies.engine_adapter import RouterAdapter
 from apex_predator.strategies.models import Bar, Side, StrategyId, StrategySignal
-from apex_predator.venues.base import OrderRequest, OrderResult, OrderStatus
+from apex_predator.venues.base import OrderRequest, OrderResult, OrderStatus, OrderType
 from apex_predator.venues.base import Side as VenueSide
 
 # ---------------------------------------------------------------------------
@@ -37,9 +42,16 @@ class _FakeRouter:
     def __init__(self, results: list[OrderResult | Exception] | None = None) -> None:
         self._results = list(results or [])
         self.calls: list[OrderRequest] = []
+        self.urgencies: list[str] = []
 
-    async def place_with_failover(self, req: OrderRequest) -> OrderResult:
+    async def place_with_failover(
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
+    ) -> OrderResult:
         self.calls.append(req)
+        self.urgencies.append(urgency)
         if not self._results:
             return OrderResult(
                 order_id="FAKE-EMPTY",
@@ -147,6 +159,23 @@ def _sol_trend_bar() -> dict[str, float]:
     }
 
 
+def _sol_ranging_bar() -> dict[str, float]:
+    return {
+        "open": 150.0,
+        "high": 150.8,
+        "low": 148.8,
+        "close": 148.9,
+        "volume": 45_000,
+        "avg_volume": 12_000,
+        "adx_14": 14.0,
+        "bb_upper": 151.5,
+        "bb_lower": 149.0,
+        "rsi_14": 21.0,
+        "atr_14": 1.1,
+        "avg_atr_50": 1.4,
+    }
+
+
 def _xrp_trend_bar() -> dict[str, float]:
     return {
         "open": 0.60,
@@ -176,6 +205,16 @@ def _seed_bar() -> dict[str, float]:
         "ema_9": 60_200,
         "ema_21": 60_000,
         "atr_14": 120.0,
+        "avg_atr_50": 110.0,
+        "adx_14": 34.0,
+        "session_phase": "OPEN_DRIVE",
+        "timeframe_minutes": 1.0,
+        "timeframe_label": "M1",
+        "microstructure_score": 8.0,
+        "pattern_edge_score": 8.0,
+        "spread_bps": 1.25,
+        "book_imbalance": 0.12,
+        "spread_regime": "TIGHT",
     }
 
 
@@ -324,6 +363,20 @@ class TestSolPerpBotRouterAdapter:
         assert router.calls[0].side is VenueSide.BUY
 
     @pytest.mark.asyncio
+    async def test_ranging_overlay_flips_adapter_long_to_short(self) -> None:
+        router = _FakeRouter(
+            [OrderResult(order_id="S-2", status=OrderStatus.FILLED, filled_qty=2.0)],
+        )
+        adapter = _stub_long_adapter(
+            asset="SOLUSDT", entry=149.0, stop=147.5, target=152.0,
+        )
+        bot = SolPerpBot(router=router, strategy_adapter=adapter)
+        await bot.on_bar(_sol_ranging_bar())
+        assert len(router.calls) == 1
+        assert router.calls[0].side is VenueSide.SELL
+        assert router.calls[0].symbol == "SOLUSDT"
+
+    @pytest.mark.asyncio
     async def test_adapter_flat_falls_through_to_legacy(self) -> None:
         router = _FakeRouter(
             [OrderResult(order_id="SL-1", status=OrderStatus.FILLED, filled_qty=1.0)],
@@ -333,6 +386,16 @@ class TestSolPerpBotRouterAdapter:
         await bot.on_bar(_sol_trend_bar())
         # Legacy trend_follow should still fire with this bar
         assert len(router.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_ranging_legacy_mean_revert_flips_to_short(self) -> None:
+        router = _FakeRouter(
+            [OrderResult(order_id="SL-2", status=OrderStatus.FILLED, filled_qty=1.0)],
+        )
+        bot = SolPerpBot(router=router)
+        await bot.on_bar(_sol_ranging_bar())
+        assert len(router.calls) == 1
+        assert router.calls[0].side is VenueSide.SELL
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +436,42 @@ class TestXrpPerpBotRouterAdapter:
         await bot.on_bar(_xrp_trend_bar())
         # Legacy trend_follow fires
         assert len(router.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_xrp_routes_post_only_with_low_urgency(self) -> None:
+        """XRP should prefer POST_ONLY @ signal.price + urgency=low.
+
+        Thin-book instrument -- avoid paying the taker spread.
+        ETH/SOL, by contrast, remain on MARKET + urgency=normal.
+        """
+        router = _FakeRouter(
+            [OrderResult(order_id="XP-1", status=OrderStatus.FILLED, filled_qty=10.0)],
+        )
+        adapter = _stub_long_adapter(
+            asset="XRPUSDT", entry=0.619, stop=0.615, target=0.640,
+        )
+        bot = XrpPerpBot(router=router, strategy_adapter=adapter)
+        await bot.on_bar(_xrp_trend_bar())
+        assert len(router.calls) == 1
+        req = router.calls[0]
+        assert req.order_type is OrderType.POST_ONLY
+        assert req.price is not None and req.price > 0.0
+        assert router.urgencies == ["low"]
+
+    @pytest.mark.asyncio
+    async def test_eth_still_routes_market_with_normal_urgency(self) -> None:
+        """Sanity: the XRP override didn't accidentally change ETH."""
+        router = _FakeRouter(
+            [OrderResult(order_id="E-UR", status=OrderStatus.FILLED, filled_qty=0.5)],
+        )
+        adapter = _stub_long_adapter(
+            asset="ETHUSDT", entry=3018.0, stop=3010.0, target=3050.0,
+        )
+        bot = EthPerpBot(router=router, strategy_adapter=adapter)
+        await bot.on_bar(_eth_trend_bar())
+        assert len(router.calls) == 1
+        assert router.calls[0].order_type is OrderType.MARKET
+        assert router.urgencies == ["normal"]
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +546,172 @@ class TestCryptoSeedBotRouterAdapter:
         # But grid still got evaluated
         assert len(bot.grid_state.active_orders) > 0
 
+    def test_runtime_snapshot_tracks_seed_history(self) -> None:
+        bot = CryptoSeedBot()
+        bot.seed_history(
+            [
+                {"bar_idx": 1, "close": 60_000.0, "high": 60_010.0, "low": 59_990.0, "volume": 10.0},
+                {"bar_idx": 2, "close": 60_020.0, "high": 60_030.0, "low": 60_010.0, "volume": 12.0},
+                {"bar_idx": 3, "close": 60_040.0, "high": 60_050.0, "low": 60_020.0, "volume": 14.0},
+                {"bar_idx": 4, "close": 60_060.0, "high": 60_070.0, "low": 60_030.0, "volume": 16.0},
+            ],
+        )
+        bot.init_grid(price_high=61_000.0, price_low=59_000.0)
+        snapshot = bot.runtime_snapshot
+        assert snapshot["mode"] == "SEED"
+        assert snapshot["recent_bar_count"] == 4
+        assert snapshot["risk_lockout_active"] is False
+        assert snapshot["throttle_mult"] == pytest.approx(1.0)
+
+    @pytest.mark.asyncio
+    async def test_runtime_snapshot_tracks_temporal_fields(self) -> None:
+        bot = CryptoSeedBot()
+        bot.init_grid(price_high=61_000.0, price_low=59_000.0)
+        await bot.on_bar(
+            {
+                "open": 60_000.0,
+                "high": 60_050.0,
+                "low": 59_980.0,
+                "close": 60_020.0,
+                "volume": 18.0,
+                "avg_volume": 12.0,
+                "confluence_score": 0.0,
+                "ema_9": 60_020.0,
+                "ema_21": 60_020.0,
+                "adx_14": 20.0,
+                "atr_14": 110.0,
+                "avg_atr_50": 100.0,
+                "session_phase": "OPEN_DRIVE",
+                "timeframe_minutes": 1.0,
+                "timeframe_label": "M1",
+                "microstructure_score": 8.0,
+                "pattern_edge_score": 7.5,
+                "spread_bps": 1.25,
+                "book_imbalance": 0.10,
+                "spread_regime": "TIGHT",
+                "order_book_quality": 8.8,
+            },
+        )
+        snapshot = bot.runtime_snapshot
+        assert snapshot["session_phase"] == "OPEN_DRIVE"
+        assert snapshot["timeframe_label"] == "M1"
+        assert snapshot["timeframe_minutes"] == pytest.approx(1.0)
+        assert snapshot["session_timeframe_key"] == "OPEN_DRIVE::M1"
+        assert snapshot["microstructure_score"] == pytest.approx(8.0)
+        assert snapshot["pattern_edge_score"] == pytest.approx(7.5)
+        assert snapshot["spread_bps"] == pytest.approx(1.25)
+        assert snapshot["book_imbalance"] == pytest.approx(0.10)
+        assert snapshot["spread_regime"] == "TIGHT"
+        assert snapshot["order_book_quality_bucket"] == "Q8_10"
+
+    @pytest.mark.asyncio
+    async def test_profile_biases_drive_temporal_size_mult(self) -> None:
+        profile = load_btc_hybrid_profile(DEFAULT_BTC_PROFILE_PATH)
+        bot = CryptoSeedBot(profile=profile)
+        bot.init_grid(price_high=61_000.0, price_low=59_000.0)
+        await bot.on_bar(
+            {
+                "open": 60_000.0,
+                "high": 60_050.0,
+                "low": 59_980.0,
+                "close": 60_020.0,
+                "volume": 18.0,
+                "avg_volume": 12.0,
+                "confluence_score": 0.0,
+                "ema_9": 60_020.0,
+                "ema_21": 60_020.0,
+                "adx_14": 20.0,
+                "atr_14": 110.0,
+                "avg_atr_50": 100.0,
+                "session_phase": "OPEN_DRIVE",
+                "timeframe_minutes": 1.0,
+                "timeframe_label": "M1",
+                "microstructure_score": 8.0,
+                "pattern_edge_score": 7.5,
+                "spread_bps": 1.25,
+                "book_imbalance": 0.10,
+                "spread_regime": "TIGHT",
+                "order_book_quality": 8.8,
+            },
+        )
+        snapshot = bot.runtime_snapshot
+        assert snapshot["session_size_bias"] > 0.0
+        assert snapshot["timeframe_size_bias"] > 0.0
+        assert snapshot["session_timeframe_size_bias"] > 0.0
+        assert snapshot["spread_size_bias"] > 0.0
+        assert snapshot["order_book_quality_bucket"] == "Q8_10"
+        assert snapshot["temporal_size_mult"] > 0.0
+
+    @pytest.mark.asyncio
+    async def test_loss_lockout_blocks_directional_overlay(self) -> None:
+        router = _FakeRouter()
+        bot = CryptoSeedBot(router=router)
+        bot._loss_streak = 3
+        bot._current_bar_idx = 10
+        bot._enter_loss_lockout()
+        signal = Signal(
+            type=SignalType.LONG,
+            symbol="BTCUSDT",
+            price=60_250.0,
+            confidence=8.5,
+        )
+        result = await bot.on_signal(signal)
+        assert result is None
+        assert router.calls == []
+
+    @pytest.mark.asyncio
+    async def test_directional_overlay_throttles_with_inventory_skew(self) -> None:
+        router = _FakeRouter(
+            [OrderResult(order_id="BTC-2", status=OrderStatus.FILLED, filled_qty=0.001)],
+        )
+        bot = CryptoSeedBot(router=router)
+        bot.grid_state.filled_buys = 3
+        bot.grid_state.filled_sells = 1
+        signal = Signal(
+            type=SignalType.LONG,
+            symbol="BTCUSDT",
+            price=60_250.0,
+            confidence=8.5,
+        )
+        result = await bot.on_signal(signal)
+        assert result is not None
+        assert len(router.calls) == 1
+        expected_qty = round((bot.state.equity * (bot.config.risk_per_trade_pct / 100.0)) / signal.price, 6)
+        assert router.calls[0].qty < expected_qty
+
+    @pytest.mark.asyncio
+    async def test_seed_grid_fill_survives_refresh_snapshot(self) -> None:
+        bot = CryptoSeedBot()
+        bot.init_grid(price_high=61_000.0, price_low=59_000.0)
+        await bot.on_bar(_seed_bar())
+        filled = next(order for order in bot.grid_state.active_orders if order.side == "BUY")
+        bot.record_fill(
+            Fill(
+                symbol="BTCUSDT",
+                side="BUY",
+                price=filled.price,
+                size=filled.size,
+                fee=0.0,
+                realized_pnl=0.0,
+            ),
+            order_id=filled.order_id,
+            side=VenueSide.BUY,
+        )
+        await bot.on_bar({
+            "open": 60_000,
+            "high": 60_010,
+            "low": 59_990,
+            "close": 60_000,
+            "volume": 1,
+            "avg_volume": 1,
+            "confluence_score": 0.0,
+            "ema_9": 60_000,
+            "ema_21": 60_000,
+        })
+        snapshot = next(order for order in bot.grid_state.active_orders if order.price == filled.price)
+        assert snapshot.is_active is False
+        assert snapshot.status_hint == "FILLED"
+
 
 # ---------------------------------------------------------------------------
 # Cross-bot sanity -- all adapter-wired bots share the same flat behaviour
@@ -462,6 +727,7 @@ class TestAdapterCrossBotSanity:
         pairs = [
             (EthPerpBot(), _eth_trend_bar()),
             (NqBot(), _orb_bar_long()),
+            (CryptoSeedBot(), _seed_bar()),
             (SolPerpBot(), _sol_trend_bar()),
             (XrpPerpBot(), _xrp_trend_bar()),
         ]
