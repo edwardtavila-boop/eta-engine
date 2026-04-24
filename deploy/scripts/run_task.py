@@ -31,10 +31,31 @@ from pathlib import Path
 
 from apex_predator.brain.avengers import (
     TASK_OWNERS,
-    AlertLevel,
     BackgroundTask,
-    push,
 )
+
+# brain.avengers.push may or may not be exported (depends on whether the
+# push subsystem has been committed). Fall back to the Telegram adapter
+# for critical alerts; noop if even that's missing.
+try:
+    from apex_predator.brain.avengers import AlertLevel, push  # type: ignore[attr-defined]
+    _HAS_PUSH = True
+except ImportError:
+    _HAS_PUSH = False
+
+    class _AlertLevelStub:
+        CRITICAL = "CRITICAL"
+        WARN = "WARN"
+        INFO = "INFO"
+
+    AlertLevel = _AlertLevelStub()  # type: ignore[misc]
+
+    def push(level: object, title: str, body: str) -> None:  # type: ignore[misc]
+        try:
+            from apex_predator.deploy.scripts.telegram_alerts import send_from_env
+            send_from_env(f"*{title}*\n{body}", priority=str(level))
+        except Exception:  # noqa: BLE001
+            pass
 
 logger = logging.getLogger("deploy.run_task")
 
