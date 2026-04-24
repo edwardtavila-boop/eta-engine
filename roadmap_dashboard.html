@@ -120,9 +120,51 @@
   <h1>EVOLUTIONARY TRADING ALGO <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.60</b></span>
-    <span>TESTS <b>3881 ✓</b></span>
+    <span>VER <b>0.1.62</b></span>
+    <span>TESTS <b>3920 ✓</b></span>
     <span>UPDATED <b>2026-04-24</b></span>
+  </div>
+</div>
+
+<!-- v0.1.62 BROKER-EQUITY-ADAPTER PROTOCOL BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.10), transparent);">
+  <h3>v0.1.62 — Broker-Equity-Adapter Protocol Scaffolding · 3920 tests passing (+24 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.62 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>R1 contract layer for v0.2.x wiring</b></span>
+    <span><span style="color:var(--dim)">New module:</span> <b>core/broker_equity_adapter.py</b></span>
+    <span><span style="color:var(--dim)">Runtime:</span> <b>NO behaviour change</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/broker_equity_adapter.py · tests/test_broker_equity_adapter.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>BrokerEquityAdapter</b> — runtime_checkable Protocol (name + async get_net_liquidation)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>NullBrokerEquityAdapter</b> — paper / dry-run / dormant-broker stub returning None</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>make_poller_for(adapter)</b> — factory; TypeError on miswiring; does NOT auto-start</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>IBKR + Tastytrade already fit</b> — structural typing, zero churn to production venues</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Locks the v0.1.59 R1 reconciler contract before v0.2.x supervisor rewires. Tradovate (DORMANT until funding clears) auto-fits the moment it gets an async get_net_liquidation method.
+  </div>
+</div>
+
+<!-- v0.1.61 AUDIT-LOG FSYNC CHAOS DRILL BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--warn); background: linear-gradient(90deg, rgba(255,200,0,0.10), transparent);">
+  <h3>v0.1.61 — Audit-Log fsync Chaos Drill · 3889 tests passing (+8 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.61 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>R3 fsync failure observability</b></span>
+    <span><span style="color:var(--dim)">Before:</span> <b>DEBUG silent-swallow</b></span>
+    <span><span style="color:var(--dim)">After:</span> <b>WARNING + cumulative counter</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/trailing_dd_tracker.py · tests/test_trailing_dd_tracker.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>fsync_failure_count</b> — public attr, cumulative across recovery (no reset on heal)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>last_fsync_error</b> — JSON-serialisable str for future health endpoint</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>Runtime continuity preserved</b> — tracker does NOT raise, write still hits OS cache</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>8 chaos tests</b> — single/multi-failure · recovery-invariant · full freeze+breach scenario</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Covers OneDrive reparse-points / CloudFiles / network-share volumes where fsync silently no-ops or fails under load. Health probes can now detect degraded durability without log-grep.
   </div>
 </div>
 
