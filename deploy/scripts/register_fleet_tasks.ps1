@@ -23,6 +23,7 @@
 param(
     [string]$McpRoot = "C:\eta_engine",
     [string]$PythonExe = "C:\eta_engine\.venv\Scripts\python.exe",
+    [string]$RunAsUser = "",  # e.g. "trader"; auto-detects from Apex-Dashboard if empty
     [switch]$BtcAutoSubmit,
     [string]$PaperLaneAnchorPrice = "90000",
     [switch]$RegisterMnqSupervisor,
@@ -30,6 +31,20 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Auto-detect the principal from an existing Apex-* task so we run
+# under the same identity as Apex-Dashboard (the operator-chosen
+# runtime account, typically 'trader' on this VPS).
+if (-not $RunAsUser) {
+    $existingDashboard = Get-ScheduledTask -TaskName "Apex-Dashboard" -ErrorAction SilentlyContinue
+    if ($existingDashboard) {
+        $RunAsUser = $existingDashboard.Principal.UserId
+        Write-Host "Auto-detected RunAsUser from Apex-Dashboard: $RunAsUser"
+    } else {
+        $RunAsUser = "Administrator"
+        Write-Host "No Apex-Dashboard task found; defaulting RunAsUser to Administrator"
+    }
+}
 
 function Register-ApexTask {
     param(
@@ -77,11 +92,25 @@ function Register-ApexTask {
         -RestartInterval (New-TimeSpan -Minutes 1) `
         -ExecutionTimeLimit (New-TimeSpan -Hours 0)  # 0 = unlimited
 
-    # S4U principal: runs Administrator without password prompt
+    # Match whatever principal Apex-Dashboard uses. 'trader' on this
+    # VPS; fallback 'Administrator' for clean boxes. LogonType follows
+    # what works for the same account -- Interactive/S4U are both
+    # valid depending on operator policy, but auto-detect from the
+    # existing Apex-Dashboard task when possible.
+    $dashPrincipal = (
+        Get-ScheduledTask -TaskName "Apex-Dashboard" -ErrorAction SilentlyContinue
+    )
+    if ($dashPrincipal) {
+        $logonType = $dashPrincipal.Principal.LogonType
+        $runLevel = $dashPrincipal.Principal.RunLevel
+    } else {
+        $logonType = "S4U"
+        $runLevel = "Highest"
+    }
     $principal = New-ScheduledTaskPrincipal `
-        -UserId "Administrator" `
-        -LogonType S4U `
-        -RunLevel Highest
+        -UserId $RunAsUser `
+        -LogonType $logonType `
+        -RunLevel $runLevel
 
     Register-ScheduledTask `
         -TaskName $Name `
