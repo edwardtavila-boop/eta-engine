@@ -136,6 +136,13 @@
       <div id="personas-grid" class="tasks-grid">Loading…</div>
     </div>
 
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>JARVIS Decision Log
+        <span class="mono" id="jarvis-summary" style="font-size: 0.75em; opacity: 0.7; margin-left: 12px;"></span>
+      </h3>
+      <div id="jarvis-decisions" class="mono" style="font-size: 0.85em; max-height: 320px; overflow-y: auto;">Loading…</div>
+    </div>
+
     <div class="card" style="grid-column: 1 / -1;" id="error-card" hidden>
       <h3 class="error">⚠ Connection issue</h3>
       <div class="metric mono error" id="error-text"></div>
@@ -270,6 +277,60 @@
         } catch (_e) {
           document.getElementById('personas-grid').textContent =
             '(training module not deployed yet)';
+        }
+
+        // JARVIS Decision Log
+        try {
+          const [jDecisions, jSummary] = await Promise.all([
+            fetchJson('/api/jarvis/decisions?n=20'),
+            fetchJson('/api/jarvis/summary?window=500'),
+          ]);
+
+          // Summary badge
+          const totals = jSummary.by_verdict || {};
+          const approved = totals.APPROVED || 0;
+          const conditional = totals.CONDITIONAL || 0;
+          const denied = totals.DENIED || 0;
+          const deferred = totals.DEFERRED || 0;
+          document.getElementById('jarvis-summary').innerHTML =
+            `${jSummary.total} decisions · ` +
+            `<span style="color: #4ade80;">${approved} approved</span> · ` +
+            `<span style="color: #fbbf24;">${conditional} conditional</span> · ` +
+            `<span style="color: #f87171;">${denied} denied</span> · ` +
+            `<span style="color: #94a3b8;">${deferred} deferred</span>`;
+
+          const verdictColor = {
+            APPROVED: 'green', CONDITIONAL: 'purple',
+            DENIED: 'red', DEFERRED: 'blue',
+          };
+
+          const decisionsEl = document.getElementById('jarvis-decisions');
+          if (!jDecisions.decisions || jDecisions.decisions.length === 0) {
+            decisionsEl.textContent = jDecisions.note || '(no decisions yet)';
+          } else {
+            decisionsEl.innerHTML = jDecisions.decisions.map(d => {
+              const col = verdictColor[d.verdict] || 'blue';
+              const ts = d.ts ? new Date(d.ts).toLocaleTimeString() : '?';
+              const cap = d.size_cap_mult !== null && d.size_cap_mult !== undefined
+                ? ` cap=${Number(d.size_cap_mult).toFixed(2)}`
+                : '';
+              const stress = d.stress_composite !== null && d.stress_composite !== undefined
+                ? ` stress=${Number(d.stress_composite).toFixed(2)}`
+                : '';
+              return `
+                <div style="padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; gap: 0.6rem; align-items: baseline;">
+                  <span style="opacity: 0.6; width: 5rem;">${ts}</span>
+                  <span class="badge ${col}" style="min-width: 5rem; text-align: center;">${d.verdict || '?'}</span>
+                  <span style="opacity: 0.8; min-width: 9rem;">${d.subsystem || '?'}</span>
+                  <span style="opacity: 0.7; min-width: 7rem;">${d.action || '?'}</span>
+                  <span style="color: var(--muted); flex: 1;">${d.reason_code || ''}${cap}${stress}</span>
+                </div>`;
+            }).join('');
+          }
+        } catch (_e) {
+          document.getElementById('jarvis-decisions').textContent =
+            '(no jarvis audit log yet)';
+          document.getElementById('jarvis-summary').textContent = '';
         }
 
         document.getElementById('error-card').hidden = true;

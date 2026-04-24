@@ -18,6 +18,7 @@ from apex_predator.bots.base_bot import (
     Tier,
 )
 from apex_predator.bots.eth_perp.bot import EthPerpBot
+from apex_predator.brain.jarvis_admin import SubsystemId
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +47,22 @@ _XRP_SLIPPAGE_BUFFER: float = 0.008
 
 
 class XrpPerpBot(EthPerpBot):
-    """XRP perp bot — thinner liquidity requires tighter leverage caps.
+    """XRP perp bot -- thinner liquidity requires tighter leverage caps.
 
-    Inherits ETH's 3 setups. Overrides leverage gating (50x max),
-    liquidation calc (wider fee buffer), and entry evaluation.
+    Inherits ETH's 3 setups AND the JARVIS gate, router path, journal,
+    and lifecycle from :class:`EthPerpBot`. Overrides only the
+    instrument-specific leverage gating (50x max), liquidation calc
+    (wider fee buffer), and evaluation thresholds.
     """
+
+    # Distinct audit identity -- XRP flow filters separately in the
+    # jarvis_audit.jsonl log.
+    SUBSYSTEM: SubsystemId = SubsystemId.BOT_XRP_PERP
 
     def __init__(
         self,
         config: BotConfig | None = None,
-        **kwargs: Any,  # noqa: ANN401 - forwards router/venue_symbol to EthPerpBot
+        **kwargs: Any,  # noqa: ANN401 - forwards router/jarvis/... to EthPerpBot
     ) -> None:
         super().__init__(config or XRP_CONFIG, **kwargs)
 
@@ -116,10 +123,19 @@ class XrpPerpBot(EthPerpBot):
     # ── Lifecycle ──
 
     async def start(self) -> None:
-        logger.info("XRP Perp bot starting | capital=$%.2f", self.config.starting_capital_usd)
+        # Delegate to EthPerpBot.start so the JARVIS STRATEGY_DEPLOY
+        # gate + journal writes happen consistently.
+        await super().start()
+        if self.state.is_paused:
+            return
+        logger.info(
+            "XRP Perp bot armed | capital=$%.2f",
+            self.config.starting_capital_usd,
+        )
 
     async def stop(self) -> None:
         logger.info("XRP Perp bot stopping | equity=$%.2f", self.state.equity)
+        await super().stop()
 
     async def on_signal(self, signal: Signal) -> Any:  # noqa: ANN401 - inherits OrderResult | None
         """Delegate to :class:`EthPerpBot.on_signal` — router path handles XRP routing.

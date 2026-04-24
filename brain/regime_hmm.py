@@ -86,6 +86,58 @@ class HMMFitResult:
     transition_matrix: list[list[float]] = field(default_factory=list)
     log_likelihood_history: list[float] = field(default_factory=list)
 
+    # ------------------------------------------------------------------
+    # Model-selection helpers
+    # ------------------------------------------------------------------
+    def n_parameters(self) -> int:
+        """Free-parameter count for BIC/AIC.
+
+        For a K-state Gaussian HMM:
+
+          * K means          (emission)
+          * K variances      (emission)
+          * (K - 1) initial  (simplex -> one constraint)
+          * K * (K - 1) transitions  (each row is a simplex)
+
+        Total = ``2*K^2 + K - 1`` for K >= 1.
+        Note: K=1 collapses to ``2`` (mean + variance, no transitions).
+        """
+        k = len(self.means)
+        if k == 0:
+            return 0
+        if k == 1:
+            return 2
+        return 2 * k + (k - 1) + k * (k - 1)
+
+    def aic(self) -> float:
+        """Akaike Information Criterion on the final-iteration log-likelihood.
+
+        ``AIC = 2k - 2 * log L``. Lower is better. Does NOT scale with
+        sample size; use :meth:`bic` if you want a penalty that grows with
+        more data.
+        """
+        if not self.log_likelihood_history:
+            raise ValueError("log_likelihood_history is empty; cannot compute AIC")
+        return 2.0 * self.n_parameters() - 2.0 * self.log_likelihood_history[-1]
+
+    def bic(self, n_obs: int) -> float:
+        """Bayesian Information Criterion on the final-iteration log-likelihood.
+
+        ``BIC = k * ln(n_obs) - 2 * log L``. Lower is better. BIC dominates
+        AIC for model selection at realistic sample sizes (e.g. n_obs > ~7
+        for any K) because ``ln(n_obs) > 2`` and so the penalty on extra
+        parameters is stronger. Use this to pick ``n_states`` on historical
+        data: refit at K=1..4, pick the K with the smallest BIC.
+        """
+        if n_obs <= 0:
+            raise ValueError(f"n_obs must be > 0, got {n_obs}")
+        if not self.log_likelihood_history:
+            raise ValueError("log_likelihood_history is empty; cannot compute BIC")
+        return (
+            self.n_parameters() * math.log(n_obs)
+            - 2.0 * self.log_likelihood_history[-1]
+        )
+
 
 # ---------------------------------------------------------------------------
 # Main class
@@ -548,6 +600,27 @@ def _m_step_emissions(
 # Regime label mapper
 # ---------------------------------------------------------------------------
 
+_MIN_ABS_DRIFT = 1e-5
+"""Absolute-drift floor for TRENDING classification (risk-advocate blocker #2).
+
+On 5m returns, per-bar drift of ``1e-5`` is on the order of the smallest
+price tick as a fraction of price. Anything below that is statistical
+noise, not a tradeable trend -- regardless of how the model's own sigma
+estimate makes the ratio look. Without this floor, a pathologically-tight
+low-vol state can appear as TRENDING when both mean and sigma are below
+the one-bar-noise scale of the underlying returns.
+"""
+
+_MIN_SIGMA_FOR_TRENDING = 1e-5
+"""Minimum sigma (not variance) for a state to be eligible for TRENDING.
+
+A state sitting near the variance floor (see ``_VAR_FLOOR = 1e-12``) has
+no usable noise estimate; ``|mean|/sigma`` is meaningless. This floor --
+one order of magnitude above ``sqrt(_VAR_FLOOR)`` -- keeps the relative
+test honest.
+"""
+
+
 def map_to_regime_labels(
     means: list[float],
     variances: list[float],
@@ -556,8 +629,16 @@ def map_to_regime_labels(
 
     Heuristic (state i evaluated in isolation, then ranked):
 
-      1. If ``|mean_i| / sigma_i > 0.5`` the drift is large relative to
-         noise -> ``TRENDING``.
+      1. A state is ``TRENDING`` iff ALL of:
+
+           * ``|mean_i| > 1e-5`` (absolute drift floor -- see
+             ``_MIN_ABS_DRIFT``; prevents the microscopic-mean /
+             microscopic-sigma trap)
+           * ``sigma_i > 1e-5`` (noise is measurable, not degenerate)
+           * ``|mean_i| / sigma_i > 0.5`` (drift dominates one-bar noise)
+
+         Both the absolute and relative conditions must hold.
+
       2. Among the remaining (non-trending) states:
 
          * the one with the smallest ``sigma`` becomes ``LOW_VOL``,
@@ -586,7 +667,12 @@ def map_to_regime_labels(
 
     vols = [math.sqrt(max(v, 0.0)) for v in variances]
     trend_flags = [
-        abs(means[i]) / max(vols[i], 1e-12) > 0.5 for i in range(k)
+        (
+            abs(means[i]) > _MIN_ABS_DRIFT
+            and vols[i] > _MIN_SIGMA_FOR_TRENDING
+            and abs(means[i]) / max(vols[i], 1e-12) > 0.5
+        )
+        for i in range(k)
     ]
 
     labels: list[RegimeType] = [RegimeType.TRANSITION] * k
@@ -607,3 +693,61 @@ def map_to_regime_labels(
     if max_i != min_i and vols[max_i] > vols[min_i]:
         labels[max_i] = RegimeType.HIGH_VOL
     return labels
+
+
+# ---------------------------------------------------------------------------
+# Canonical state ordering -- risk-advocate blocker #1
+# ---------------------------------------------------------------------------
+
+def canonicalize_states(result: HMMFitResult) -> HMMFitResult:
+    """Re-order HMM states so state 0 is always the lowest-variance regime.
+
+    Why
+    ---
+    EM has no intrinsic notion of "state 0" vs "state 1". On a sliding-
+    window refit the label-switching symmetry can flip arbitrarily: what
+    was state 0 (calm) at time ``t`` can come back as state 1 at ``t+1``.
+    Downstream consumers that key on integer state IDs see a sudden
+    catastrophic "regime change" that is in fact nothing but a label swap.
+
+    The fix: sort states by variance ascending. State 0 is ALWAYS the
+    calmest regime, state K-1 is ALWAYS the most turbulent. The
+    transition matrix, initial distribution, and emission parameters are
+    all permuted atomically to preserve the joint distribution.
+
+    Notes
+    -----
+    * ``log_likelihood_history`` is a per-iteration scalar of the whole
+      model and is NOT permuted.
+    * The input ``result`` is not mutated; a fresh :class:`HMMFitResult`
+      is returned.
+    """
+    k = len(result.variances)
+    if k <= 1:
+        # Deep-copy-ish clone so callers can't accidentally alias the input.
+        return HMMFitResult(
+            means=list(result.means),
+            variances=list(result.variances),
+            initial_probs=list(result.initial_probs),
+            transition_matrix=[list(row) for row in result.transition_matrix],
+            log_likelihood_history=list(result.log_likelihood_history),
+        )
+
+    # Permutation p: new_idx -> old_idx, sorted by variance ascending.
+    p = sorted(range(k), key=lambda i: result.variances[i])
+
+    new_means = [result.means[p[i]] for i in range(k)]
+    new_variances = [result.variances[p[i]] for i in range(k)]
+    new_initial = [result.initial_probs[p[i]] for i in range(k)]
+    # Transition matrix needs BOTH axes permuted.
+    new_trans = [
+        [result.transition_matrix[p[i]][p[j]] for j in range(k)]
+        for i in range(k)
+    ]
+    return HMMFitResult(
+        means=new_means,
+        variances=new_variances,
+        initial_probs=new_initial,
+        transition_matrix=new_trans,
+        log_likelihood_history=list(result.log_likelihood_history),
+    )

@@ -225,6 +225,120 @@ def persona_eval(persona: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@app.get("/api/jarvis/decisions")
+def jarvis_decisions(n: int = 20, subsystem: str | None = None) -> dict:
+    """Tail the last N JARVIS audit-log decisions.
+
+    Source is the JSONL file JarvisAdmin writes on every
+    ``request_approval`` / ``select_llm_tier`` call. Consumed by the
+    status page 'JARVIS Decision Log' card for real-time visibility
+    into what JARVIS is approving/denying across the fleet.
+
+    Query params:
+      * n: how many of the most recent records to return (default 20)
+      * subsystem: optional filter like "bot.mnq" or "bot.btc_hybrid"
+    """
+    audit_path = STATE_DIR / "jarvis_audit.jsonl"
+    if not audit_path.exists():
+        return {
+            "decisions": [],
+            "total": 0,
+            "source": str(audit_path),
+            "note": "no jarvis audit log yet -- no bots have asked for approval",
+        }
+    lines: list[str] = []
+    try:
+        with audit_path.open("r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"cannot read audit log: {exc}") from exc
+
+    # Parse bottom-up so the most recent are first. Keep only valid JSON.
+    decisions: list[dict] = []
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if subsystem is not None:
+            sub = rec.get("request", {}).get("subsystem")
+            if sub != subsystem:
+                continue
+        decisions.append({
+            "ts": rec.get("ts"),
+            "subsystem": rec.get("request", {}).get("subsystem"),
+            "action": rec.get("request", {}).get("action"),
+            "verdict": rec.get("response", {}).get("verdict"),
+            "reason_code": rec.get("response", {}).get("reason_code"),
+            "reason": rec.get("response", {}).get("reason"),
+            "size_cap_mult": rec.get("response", {}).get("size_cap_mult"),
+            "stress_composite": rec.get("stress_composite"),
+            "session_phase": rec.get("session_phase"),
+            "jarvis_action": rec.get("jarvis_action"),
+        })
+        if len(decisions) >= max(1, min(n, 500)):
+            break
+
+    return {
+        "decisions": decisions,
+        "total": len(lines),
+        "returned": len(decisions),
+        "source": str(audit_path),
+        "filter": {"subsystem": subsystem} if subsystem else None,
+    }
+
+
+@app.get("/api/jarvis/summary")
+def jarvis_summary(window: int = 500) -> dict:
+    """Rolling-window summary of JARVIS decisions: counts by subsystem + verdict.
+
+    Gives the operator panel a one-shot health snapshot: "how many
+    orders did JARVIS gate in the last 500 decisions, split across
+    each bot and each verdict?"
+    """
+    audit_path = STATE_DIR / "jarvis_audit.jsonl"
+    if not audit_path.exists():
+        return {"window": window, "total": 0, "by_subsystem": {}, "by_verdict": {}}
+    try:
+        with audit_path.open("r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"cannot read audit log: {exc}") from exc
+
+    tail = lines[-window:] if window > 0 else lines
+    by_subsystem: dict[str, int] = {}
+    by_verdict: dict[str, int] = {}
+    by_sub_verdict: dict[str, dict[str, int]] = {}
+    processed = 0
+    for raw in tail:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        sub = rec.get("request", {}).get("subsystem", "unknown")
+        verdict = rec.get("response", {}).get("verdict", "unknown")
+        by_subsystem[sub] = by_subsystem.get(sub, 0) + 1
+        by_verdict[verdict] = by_verdict.get(verdict, 0) + 1
+        sub_v = by_sub_verdict.setdefault(sub, {})
+        sub_v[verdict] = sub_v.get(verdict, 0) + 1
+        processed += 1
+    return {
+        "window": window,
+        "total": processed,
+        "by_subsystem": by_subsystem,
+        "by_verdict": by_verdict,
+        "by_sub_verdict": by_sub_verdict,
+    }
+
+
 @app.get("/api/tasks")
 def list_tasks() -> dict:
     """Return the 12 BackgroundTask names + owners + cadences."""

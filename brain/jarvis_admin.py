@@ -88,10 +88,11 @@ class SubsystemId(StrEnum):
     BOT_NQ              = "bot.nq"
     # L2 / BTC hybrid (grid-in-range + directional-on-trend)
     BOT_BTC_HYBRID      = "bot.btc_hybrid"
-    # L3 / multi-perp alpha desk  (BTC, ETH, SOL)
+    # L3 / multi-perp alpha desk  (BTC, ETH, SOL, XRP)
     BOT_BTC_PERP        = "bot.btc_perp"
     BOT_ETH_PERP        = "bot.eth_perp"
     BOT_SOL_PERP        = "bot.sol_perp"
+    BOT_XRP_PERP        = "bot.xrp_perp"
     # L4 / yield infrastructure -- aggregator that submits per-protocol
     # PROTOCOL_EXPOSURE requests; specific protocol disambiguated in payload.
     BOT_YIELD_VAULT     = "bot.yield_vault"
@@ -130,6 +131,7 @@ CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset({
     SubsystemId.BOT_BTC_PERP,
     SubsystemId.BOT_ETH_PERP,
     SubsystemId.BOT_SOL_PERP,
+    SubsystemId.BOT_XRP_PERP,
     SubsystemId.BOT_YIELD_VAULT,
 })
 

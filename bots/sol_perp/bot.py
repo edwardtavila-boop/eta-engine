@@ -13,11 +13,13 @@ from typing import Any
 from apex_predator.bots.base_bot import (
     BotConfig,
     MarginMode,
+    RegimeType,
     Signal,
     SignalType,
     Tier,
 )
 from apex_predator.bots.eth_perp.bot import EthPerpBot
+from apex_predator.brain.jarvis_admin import SubsystemId
 
 logger = logging.getLogger(__name__)
 
@@ -39,18 +41,29 @@ SOL_VOL_FACTOR: float = 1.5
 
 
 class SolPerpBot(EthPerpBot):
-    """SOL perp bot — inherits ETH pattern, recalibrated for SOL volatility.
+    """SOL perp bot -- inherits ETH pattern, recalibrated for SOL volatility.
+
+    JARVIS wiring + router path + leverage gate are all inherited from
+    :class:`EthPerpBot`. This class only overrides the per-instrument
+    tuning (ATR buffer, RSI thresholds, ranging-regime flip) and the
+    audit subsystem identity.
 
     Key differences from ETH:
     - Liquidation distance uses 4.5 * ATR (vs 3.0) due to SOL's fatter tails
     - Squeeze ratio threshold loosened to 0.65 (SOL compresses less before moves)
     - Mean reversion RSI thresholds widened (75/25 vs 70/30)
+    - Directional signals flip in RANGING regime so chop can be traded
+      as a contrarian overlay instead of a trend-chasing drag.
     """
+
+    # Distinct audit identity so operator can filter SOL flow in the
+    # jarvis_audit.jsonl log even though the code path is shared.
+    SUBSYSTEM: SubsystemId = SubsystemId.BOT_SOL_PERP
 
     def __init__(
         self,
         config: BotConfig | None = None,
-        **kwargs: Any,  # noqa: ANN401 - forwards router/venue_symbol to EthPerpBot
+        **kwargs: Any,  # noqa: ANN401 - forwards router/jarvis/... to EthPerpBot
     ) -> None:
         super().__init__(config or SOL_CONFIG, **kwargs)
 
@@ -99,13 +112,61 @@ class SolPerpBot(EthPerpBot):
             return Signal(type=direction, symbol=self.config.symbol, price=bar["close"], confidence=7.5)
         return None
 
+    def _prepare_signal_for_routing(
+        self,
+        signal: Signal,
+        bar: dict[str, Any],
+        regime: RegimeType,
+    ) -> Signal:
+        """Flip directional bias in SOL ranging regimes.
+
+        The SOL redesign track treats RANGING ADX conditions as contrarian
+        territory. We keep the rest of the ETH routing pipeline intact and only
+        invert long/short signals here so retrospective tracking and router
+        sizing both see the final direction.
+        """
+        if regime is not RegimeType.RANGING:
+            return signal
+        if signal.type not in (SignalType.LONG, SignalType.SHORT):
+            return signal
+        flipped_type = (
+            SignalType.SHORT
+            if signal.type is SignalType.LONG
+            else SignalType.LONG
+        )
+        meta = dict(signal.meta)
+        meta["regime_overlay"] = "SOL_RANGING_FLIP"
+        meta["regime_overlay_adx"] = round(float(bar.get("adx_14", 0.0)), 2)
+        meta["regime_overlay_source"] = "sol_perp"
+        logger.info(
+            "SOL ranging overlay flipped %s -> %s (adx=%.1f)",
+            signal.type.value,
+            flipped_type.value,
+            float(bar.get("adx_14", 0.0)),
+        )
+        return signal.model_copy(
+            update={"type": flipped_type, "meta": meta},
+        )
+
     # ── Lifecycle ──
 
     async def start(self) -> None:
-        logger.info("SOL Perp bot starting | capital=$%.2f", self.config.starting_capital_usd)
+        # Delegate to EthPerpBot.start so the JARVIS STRATEGY_DEPLOY
+        # gate + journal writes happen consistently. If JARVIS refuses
+        # the strategy, super() sets is_paused and we short-circuit.
+        await super().start()
+        if self.state.is_paused:
+            return
+        logger.info(
+            "SOL Perp bot armed | capital=$%.2f",
+            self.config.starting_capital_usd,
+        )
 
     async def stop(self) -> None:
         logger.info("SOL Perp bot stopping | equity=$%.2f", self.state.equity)
+        # Delegate the cleanup (journal write + _active_entries clear)
+        # to the parent so subclass + parent stay in sync automatically.
+        await super().stop()
 
     async def on_signal(self, signal: Signal) -> Any:  # noqa: ANN401 - inherits OrderResult | None
         """Delegate to :class:`EthPerpBot.on_signal` — router path handles SOL routing."""
