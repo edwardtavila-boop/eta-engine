@@ -144,7 +144,10 @@
   </footer>
 
   <script>
-    const API = 'https://jarvis.evolutionarytradingalgo.live';
+    // Same-origin when served from /status, cross-origin for preview
+    const API = location.host.endsWith('evolutionarytradingalgo.live')
+      ? ''                                     // same-origin
+      : 'https://jarvis.evolutionarytradingalgo.live';    // local preview
 
     function setBadge(el, text, color) {
       el.className = `badge ${color}`;

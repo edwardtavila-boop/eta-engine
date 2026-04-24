@@ -30,6 +30,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 
 # State/log dirs: Windows defaults; overridable via env
 if os.name == "nt":
@@ -70,6 +71,34 @@ def _read_json(name: str) -> dict:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+_STATUS_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> HTMLResponse:
+    """Serve the status page at the root URL."""
+    if _STATUS_PAGE.exists():
+        return HTMLResponse(_STATUS_PAGE.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        "<h1>Evolutionary Trading Algo</h1><p>Status page not bundled. "
+        "See /health or /api/dashboard.</p>",
+    )
+
+
+@app.get("/status", response_class=HTMLResponse)
+def status_page() -> HTMLResponse:
+    """Alias for /."""
+    return root()
+
+
+@app.get("/favicon.ico", response_model=None)
+def favicon() -> FileResponse | HTMLResponse:
+    fav = _STATUS_PAGE.parent / "favicon.ico"
+    if fav.exists():
+        return FileResponse(str(fav))
+    return HTMLResponse(status_code=204)
+
 
 @app.get("/health")
 def health() -> dict:
