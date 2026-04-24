@@ -467,11 +467,13 @@ def _task_self_test(state_dir: Path) -> dict:
     except (urllib.error.URLError, TimeoutError) as exc:
         report["checks"]["local_health"] = {"ok": False, "error": str(exc)[:100]}
 
-    # 2. public tunnel endpoint
+    # 2. public tunnel endpoint (with UA -- Cloudflare rejects empty UA)
     try:
-        with urllib.request.urlopen(
-            "https://jarvis.apexpredator.live/health", timeout=10,
-        ) as resp:
+        req = urllib.request.Request(
+            "https://jarvis.apexpredator.live/health",
+            headers={"User-Agent": "apex-self-test/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
             report["checks"]["public_tunnel"] = {
                 "status": resp.status, "ok": resp.status == 200,
             }
