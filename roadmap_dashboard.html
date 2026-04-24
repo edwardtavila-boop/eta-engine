@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>APEX PREDATOR — Live Roadmap</title>
+  <title>APEX PREDATOR - Live Roadmap</title>
 <style>
   :root {
     --bg: #07090d;
@@ -120,9 +120,30 @@
   <h1>APEX PREDATOR <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.7</b></span>
-    <span>WEEK <b>3/16</b></span>
-    <span>UPDATED <b>2026-04-16 23:30 EDT</b></span>
+    <span>VER <b>0.1.59</b></span>
+    <span>TESTS <b>3827 ✓</b></span>
+    <span>UPDATED <b>2026-04-24</b></span>
+  </div>
+</div>
+
+<!-- v0.1.59 RESIDUAL-RISK CLOSURE BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--pink); background: linear-gradient(90deg, rgba(255,62,165,0.10), transparent);">
+  <h3>v0.1.59 — Apex Eval Residual-Risk Closure (R1/R2/R3/R4) · 3827 tests passing (+92)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.59 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>Red Team residual findings from v0.1.58</b></span>
+    <span><span style="color:var(--dim)">Closed:</span> <b>R2 · R3 · R4</b></span>
+    <span><span style="color:var(--dim)">Scaffolded:</span> <b>R1 (enforcement → v0.2.x)</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">docs/red_team_d2_d3_review.md · roadmap_state.json</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>R2 tick-cadence validator</b> — tick·max_move·safety ≤ cushion · default 5.0s → 1.0s · live-mode guard</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>R3 immutable audit log</b> — append-only JSONL · fsync per event · reset requires operator + ack</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>R4 CME-calendar session-day</b> — Good Friday via dateutil.easter + fixed-date closures</span>
+    <span><span class="pill" style="font-size:9px; background:var(--warn); color:var(--bg);">⚠</span> <b>R1 broker-MTM reconciler</b> — scaffolded (21 tests); broker-adapter wiring deferred to v0.2.x</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Full regression: 3827 passed, 3 skipped (+92 from v0.1.58 baseline of 3735). Ruff clean on all touched files. Commit 66c391c.
   </div>
 </div>
 
@@ -284,7 +305,7 @@
     <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present (4 entries)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> paper_run_report</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> firm_verdict (v2 GO)</span>
-    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9 · 96%)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9 · 100%)</span>
     <span><span class="pill prog" style="font-size:9px;">!</span> tradovate_creds (opt)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> risk_sizing (3/6/20)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> telemetry_channels</span>
@@ -428,11 +449,11 @@
 
 <!-- LIVE-TINY PREFLIGHT DRYRUN BANNER -->
 <div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.06), transparent);">
-  <h3>Live-Tiny Preflight Dryrun — 10-Gate Abort-on-Red (GO)</h3>
+  <h3>Live-Tiny Preflight Dryrun - GO</h3>
   <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap: wrap;">
     <span><span style="color:var(--dim)">Verdict:</span> <b class="status-done">GO</b></span>
-    <span><span style="color:var(--dim)">Passed:</span> <b class="status-done">8/10</b></span>
-    <span><span style="color:var(--dim)">Warn:</span> <b class="status-prog">2</b> <span style="color:var(--dim)">(tradovate_creds, venue_health — staged)</span></span>
+    <span><span style="color:var(--dim)">Visible required:</span> <b class="status-done">7 shown / 11 required</b></span>
+    <span><span style="color:var(--dim)">Visible optional:</span> <b class="status-done">2 PASS</b> <span style="color:var(--dim)">/</span> <b class="status-prog">1 SKIP</b></span>
     <span><span style="color:var(--dim)">Injection-tested:</span> <b class="status-done">abort on RED verified</b></span>
     <span style="color:var(--dim); font-size:10px; margin-left:auto;">docs/preflight_dryrun_{report.json,log.txt}</span>
   </div>
@@ -440,11 +461,11 @@
     <span><span class="pill done" style="font-size:9px;">✓</span> kill_log_present</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> paper_run_report</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> firm_board_verdict (GO)</span>
-    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9)</span>
-    <span><span class="pill prog" style="font-size:9px;">!</span> tradovate_creds (staged)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> roadmap_state (P9 · 100%)</span>
+    <span><span class="pill prog" style="font-size:9px;">!</span> tradovate_creds (SKIP)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> risk_sizing (3%/6%/20%)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> telemetry_channels</span>
-    <span><span class="pill prog" style="font-size:9px;">!</span> venue_health (demo ok)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> venue_health (4/4)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> pytest_green (276/276)</span>
     <span><span class="pill done" style="font-size:9px;">✓</span> abort_on_red_loop</span>
   </div>
@@ -557,7 +578,7 @@
         <tr><td>P6</td><td>Profit Funnel + Baseline</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:65%"></span></span> 65%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
         <tr><td>P7</td><td>Exec / Monitoring / Ops</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:85%"></span></span> 85%</td><td><span class="pill prog">RUNTIME + ALERTS + HEARTBEAT WIRED</span></td></tr>
         <tr><td>P8</td><td>Security / Compliance / Legal</td><td>1</td><td><span class="bar"><span class="bar-fill" style="width:55%"></span></span> 55%</td><td><span class="pill prog">ENTITY: PERSONAL SSN</span></td></tr>
-        <tr><td>P9</td><td>Deployment &amp; Phased Rollout</td><td>4</td><td><span class="bar"><span class="bar-fill" style="width:90%"></span></span> 90%</td><td><span class="pill prog">RUNTIME WIRED · .env PENDING</span></td></tr>
+        <tr><td>P9</td><td>Deployment &amp; Phased Rollout</td><td>4</td><td><span class="bar"><span class="bar-fill" style="width:100%;background:var(--accent)"></span></span> 100%</td><td><span class="pill done">CANONICAL REAL-GATE · 6/6</span></td></tr>
         <tr><td>P10</td><td>AI / ML Layer (RL + MAS)</td><td>3</td><td><span class="bar"><span class="bar-fill" style="width:30%"></span></span> 30%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
         <tr><td>P11</td><td>Staking Compounding Layer</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:55%"></span></span> 55%</td><td><span class="pill prog">IN PROGRESS</span></td></tr>
         <tr><td>P12</td><td>Final Opt + Master Tweaks (OPEN)</td><td>2</td><td><span class="bar"><span class="bar-fill" style="width:20%"></span></span> 20%</td><td><span class="pill prog">HARNESS OPEN</span></td></tr>
