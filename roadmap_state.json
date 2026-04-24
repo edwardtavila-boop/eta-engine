@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-24T21:32:25.744229+00:00",
+  "last_updated": "2026-04-24T21:57:06.088224+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "apex_predator_python_files": 107,
-    "apex_predator_tests_passing": 3881,
+    "apex_predator_tests_passing": 3920,
     "apex_predator_tests_failing": 0,
     "apex_predator_verify_all": "17/17 PASS",
     "apex_predator_staking_wired": {
@@ -3876,6 +3876,79 @@
       "residual_delta_note": "Full-regression delta > bundle-scope delta because several untracked test files in tests/ (added during earlier BTC / avengers / broker-paper work, not yet committed) now run under the full pytest collection. They are NOT part of v0.1.60 scope and will be attributed to their own future bundles. v0.1.60's specific new tests are the 12 in test_preflight.py.",
       "ruff_green_new_code": true,
       "pre_existing_lint_debt": "The full-repo ruff run reports 457 errors across other modules -- unchanged from v0.1.59. The two files touched in this bundle (scripts/preflight.py, tests/test_preflight.py) are both ruff-green."
+    },
+    "apex_predator_v0_1_61_audit_log_chaos_drill": {
+      "timestamp_utc": "2026-04-24T21:44:37.817571+00:00",
+      "version": "v0.1.61",
+      "bundle_name": "AUDIT-LOG FSYNC CHAOS DRILL -- upgrade silent DEBUG-level fsync-failure swallow to WARNING + per-log counter; lock the degraded-durability behaviour in with 8 chaos tests.",
+      "theme": "v0.1.59 R3 closure added fsync-per-append but swallowed OSError at DEBUG level. In a OneDrive / reparse-point / network-share environment that's effectively invisible. v0.1.60 preflight catches the boot-time case; v0.1.61 handles mid-session degradation -- WARN + counter means a health probe can pause or alert without log-diving.",
+      "operator_directive_quote": "continue all.",
+      "modules_modified": [
+        "apex_predator/core/trailing_dd_tracker.py (TrailingDDAuditLog: new public attrs fsync_failure_count + last_fsync_error; append() fsync-except upgraded from DEBUG silent-swallow to WARNING + counter increment + error-text capture)"
+      ],
+      "tests_added": [
+        "apex_predator/tests/test_trailing_dd_tracker.py (NEW TestAuditLogFsyncChaos class, 8 tests: counter initialisation, single-failure increment, write-still-persists, multi-failure accumulation, counter-survives-recovery invariant, WARNING-log emission, full chaos scenario with freeze + breach under fsync-wedge, state-file-vs-audit-log fsync independence)"
+      ],
+      "behaviour_change": {
+        "before": "fsync OSError -> log.debug 'audit fsync failed (continuing)' -- invisible in production.",
+        "after": "fsync OSError -> log.warning with path + count + err + explicit durability caveat. Counter + last-error exposed as public attrs for health probes.",
+        "runtime_semantics_unchanged": "Tracker still does NOT raise on fsync failure. The write already hit the OS cache before fsync fired, so runtime continuity is preserved. R3's hard invariant -- the frozen floor -- is guarded by the state file, not the audit log."
+      },
+      "design_choices": {
+        "warning_not_error": "The write is in the OS buffer cache; we have degraded-but-functional durability. WARNING accurately reflects 'degraded, keep watching'; ERROR would imply immediate action required.",
+        "no_raise": "Raising would halt the tracker mid-runtime, which is strictly worse: no floor enforcement at all vs degraded-durability. The frozen-floor invariant is protected by the state file path.",
+        "counter_cumulative_across_recovery": "If fsync fails twice then starts working, the counter stays at 2. Rationale: operator needs to know durability WAS degraded even if healthy now. Clearing on recovery would hide a transient volume fault that may recur.",
+        "counter_as_public_attr": "Not a method. Keeps it a value type -- snapshot into a health dict without lifecycle concerns. ``last_fsync_error`` is a str (not an exception) so the attr is JSON-serialisable for a future health endpoint."
+      },
+      "chaos_scenarios_covered": [
+        "Transient OS-level OSError on os.fsync during append.",
+        "Persistent fsync failure across multiple appends.",
+        "Recovery after a run of failures (counter does not reset).",
+        "Full runtime scenario: freeze event + breach event while audit fsync is wedged; tracker continues enforcing the floor.",
+        "State file + audit log independent fsync paths -- both degrade gracefully under os.fsync failure."
+      ],
+      "tests_passing_before": 3881,
+      "tests_passing_after": 3889,
+      "tests_added_in_this_bundle": 8,
+      "ruff_green_touched_files": true,
+      "pre_existing_flaky_dashboard_test": "test_dashboard_api.py::TestDashboardAPI::test_btc_lanes_empty_when_fleet_dir_absent reads from the real docs/btc_live/broker_fleet instead of tmp_path. Pre-existing test-isolation bug; unrelated to this bundle. Tracked for a dedicated cleanup pass."
+    },
+    "apex_predator_v0_1_62_broker_equity_adapter_protocol": {
+      "timestamp_utc": "2026-04-24T21:57:06.088224+00:00",
+      "version": "v0.1.62",
+      "bundle_name": "BROKER-EQUITY-ADAPTER PROTOCOL SCAFFOLDING -- formalise the v0.1.59 R1 contract via a runtime-checkable Protocol + NullBrokerEquityAdapter stub + make_poller_for factory.",
+      "theme": "v0.1.59 shipped the reconciler and async->sync poller, but the adapter contract was implicit. v0.1.62 lifts it to a typed Protocol so that wiring a third broker (Tradovate when funding clears, paper-mode stubs, or test fakes) becomes a structural-fit check rather than a code-archaeology exercise. No runtime behaviour changes.",
+      "operator_directive_quote": "continue all.",
+      "modules_added": [
+        "apex_predator/core/broker_equity_adapter.py (BrokerEquityAdapter Protocol + NullBrokerEquityAdapter stub + make_poller_for factory)."
+      ],
+      "tests_added": [
+        "apex_predator/tests/test_broker_equity_adapter.py (NEW, 24 tests across 4 sections: protocol structural fit, null-adapter behaviour, factory contract, end-to-end adapter->poller->reconciler smoke)."
+      ],
+      "design_choices": {
+        "structural_protocol_not_abc": "Inheritance would force every venue to subclass a new base, churn-risking the production adapter files. Structural fit means IBKR and Tastytrade are already compliant -- the protocol is a check over their existing surface, not a new requirement.",
+        "runtime_checkable_for_loud_failure": "The factory uses isinstance() to catch obvious miswiring (router, config dict, wrong venue) at boot. PEP 544 only verifies attribute presence -- signature correctness stays a static-analysis / test concern, which is fine for catching the miswiring class of bugs.",
+        "narrow_protocol_surface": "Two members only: name + get_net_liquidation. The reconciler does not need place_order / cancel_order. Narrow surface keeps paper / test stubs cheap to write.",
+        "null_adapter_not_none_handling": "Consumers that want 'no broker source' pass NullBrokerEquityAdapter(). Every wiring path hands the reconciler a real source object; the no-data semantics live inside the source itself, not in every call site.",
+        "factory_raises_typeerror": "Miswiring is an operator-blocking bug, not a runtime degradation. Fail fast at boot beats silently producing a poller bound to nothing.",
+        "factory_does_not_start_poller": "Lifecycle ownership stays with the caller (the supervisor). The factory is construction; start()/stop() remains the supervisor's job."
+      },
+      "scope_exclusions": {
+        "supervisor_wiring_unchanged": "v0.1.62 does not touch any code that decides whether to wire IBKR, Tastytrade, or nothing. v0.2.x will route through make_poller_for once the broker-selection policy is in place.",
+        "no_runtime_behaviour_change": "BrokerEquityReconciler and BrokerEquityPoller are unchanged. They already accept the right callables; the contract layer only formalises that fact.",
+        "no_multi_broker_fanout": "Apex evals are single-account. Cross-broker drift checking is deferred until we genuinely run multi-broker."
+      },
+      "production_venues_protocol_status": {
+        "IbkrClientPortalVenue": "Already satisfies. Pinned by test_ibkr_adapter_satisfies_protocol.",
+        "TastytradeVenue": "Already satisfies. Pinned by test_tastytrade_venue_satisfies_protocol.",
+        "TradovateVenue": "DORMANT (operator mandate 2026-04-24). When funding clears, add get_net_liquidation() async method and the protocol fit is automatic; no broker_equity_adapter changes needed."
+      },
+      "tests_passing_before": 3889,
+      "tests_passing_after": 3920,
+      "tests_added_in_this_bundle": 24,
+      "tests_delta_residual_from_other_modules": 7,
+      "ruff_green_touched_files": true,
+      "pre_existing_flaky_dashboard_test": "test_dashboard_api.py::test_btc_lanes_empty_when_fleet_dir_absent reads from the real docs/btc_live/broker_fleet instead of tmp_path. Pre-existing test-isolation bug; unrelated to this bundle. Tracked for a dedicated cleanup pass."
     }
   },
   "phases": [
@@ -4876,7 +4949,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-24T21:32:25.744229+00:00",
+  "last_updated_utc": "2026-04-24T21:57:06.088224+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5073,6 +5146,20 @@
       "title": "Preflight-hardening on v0.1.59 closures. R2 tick-cadence and R3 audit-log fsync invariants now surfaced at preflight so the operator validates the config BEFORE live startup instead of discovering the mis-config at the first tick. +12 preflight tests. Preflight now covers 7 checks (was 5).",
       "tests_delta": 12,
       "tests_passing": 3881
+    },
+    {
+      "version": "v0.1.61",
+      "timestamp_utc": "2026-04-24T21:44:37.817571+00:00",
+      "title": "Audit-log fsync chaos drill. v0.1.59 R3 closure upgraded from DEBUG silent-swallow to WARNING + per-log counter. 8 new chaos tests lock the degraded-durability behaviour in. Tracker still does NOT halt on fsync failure -- runtime continuity preserved while operator gains a health-probe signal for degraded volumes.",
+      "tests_delta": 8,
+      "tests_passing": 3889
+    },
+    {
+      "version": "v0.1.62",
+      "timestamp_utc": "2026-04-24T21:57:06.088224+00:00",
+      "title": "Broker-equity-adapter protocol scaffolding. Runtime-checkable Protocol + NullBrokerEquityAdapter stub + make_poller_for factory. No runtime behaviour change; v0.2.x supervisor rewiring lands on this contract.",
+      "tests_delta": 24,
+      "tests_passing": 3920
     }
   ]
 }
