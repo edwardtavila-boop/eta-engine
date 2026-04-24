@@ -10,9 +10,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from apex_predator.venues import (
     BybitVenue,
+    IbkrClientPortalVenue,
     OkxVenue,
     OrderRequest,
     OrderResult,
@@ -20,6 +22,7 @@ from apex_predator.venues import (
     OrderType,
     Side,
     SmartRouter,
+    TastytradeVenue,
     TradovateVenue,
 )
 from apex_predator.venues.router import CircuitBreaker
@@ -34,7 +37,7 @@ class TestOrderRequest:
         assert req.reduce_only is False
 
     def test_qty_must_be_positive(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             OrderRequest(symbol="ETH/USDT:USDT", side=Side.BUY, qty=0.0)
 
     def test_default_market(self) -> None:
@@ -160,10 +163,25 @@ class TestSmartRouter:
         assert isinstance(router.choose_venue("ETH/USDT:USDT", 0.5), BybitVenue)
         assert isinstance(router.choose_venue("BTCUSDT", 1.0), BybitVenue)
 
-    def test_futures_routes_to_tradovate(self) -> None:
+    def test_crypto_routes_to_okx_when_pinned(self) -> None:
+        router = SmartRouter(preferred_crypto_venue="okx")
+        assert isinstance(router.choose_venue("ETH/USDT:USDT", 0.5), OkxVenue)
+        assert isinstance(router.choose_venue("BTCUSDT", 1.0), OkxVenue)
+
+    def test_futures_routes_to_ibkr_by_default(self) -> None:
+        # Broker dormancy mandate 2026-04-24: IBKR is the active default
+        # futures venue. Tradovate is DORMANT. See venues/router.py.
         router = SmartRouter()
-        assert isinstance(router.choose_venue("MNQM5", 1), TradovateVenue)
-        assert isinstance(router.choose_venue("NQM6", 1), TradovateVenue)
+        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
+        assert isinstance(router.choose_venue("NQM6", 1), IbkrClientPortalVenue)
+
+    def test_futures_routes_to_ibkr_when_pinned(self) -> None:
+        router = SmartRouter(preferred_futures_venue="ibkr")
+        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
+
+    def test_futures_routes_to_tastytrade_when_pinned(self) -> None:
+        router = SmartRouter(preferred_futures_venue="tastytrade")
+        assert isinstance(router.choose_venue("MNQM5", 1), TastytradeVenue)
 
     @pytest.mark.asyncio
     async def test_place_with_failover_primary(self) -> None:

@@ -86,8 +86,11 @@
 
   "execution": {
     "futures": {
-      "broker_primary": "tradovate",
-      "broker_backup": "ibkr",
+      "broker_primary": "ibkr",
+      "broker_backup": "tastytrade",
+      "broker_backups": ["tastytrade"],
+      "broker_dormant": ["tradovate"],
+      "broker_dormant_reason": "funding-blocked (operator mandate 2026-04-24); tradovate comes back online when funding clears",
       "data_primary": "databento",
       "data_backup": "ninjatrader",
       "storage": "arcticdb",
