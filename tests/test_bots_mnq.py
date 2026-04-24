@@ -254,3 +254,519 @@ async def test_on_bar_orb_long_routes_to_router() -> None:
     await bot.on_bar(bar)
     assert len(router.calls) == 1
     assert router.calls[0].side is Side.BUY
+
+
+# --------------------------------------------------------------------------- #
+# JARVIS takeover integration
+# --------------------------------------------------------------------------- #
+# These tests exercise the MNQ bot with a live JarvisAdmin so every
+# risk-adding action flows through the admin gate. Pattern mirrors the
+# BTC hybrid bot's TestJarvisGating (tests/test_bots_btc_hybrid.py).
+
+from datetime import UTC, datetime  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+from apex_predator.brain.jarvis_admin import (  # noqa: E402
+    ActionType,
+    JarvisAdmin,
+    SubsystemId,
+    Verdict,
+    make_action_request,
+)
+from apex_predator.brain.jarvis_context import (  # noqa: E402
+    EquitySnapshot,
+    JournalSnapshot,
+    MacroSnapshot,
+    RegimeSnapshot,
+    build_snapshot,
+)
+from apex_predator.brain.model_policy import ModelTier, TaskCategory  # noqa: E402
+from apex_predator.obs.decision_journal import DecisionJournal, Outcome  # noqa: E402
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _midday_ts() -> datetime:
+    return datetime(2026, 4, 15, 12, 0, tzinfo=_ET).astimezone(UTC)
+
+
+def _trade_ctx():  # type: ignore[no-untyped-def]
+    return build_snapshot(
+        macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
+        equity=EquitySnapshot(
+            account_equity=50_000.0, daily_pnl=0.0,
+            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+        ),
+        regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
+        journal=JournalSnapshot(),
+        ts=_midday_ts(),
+    )
+
+
+def _kill_ctx():  # type: ignore[no-untyped-def]
+    return build_snapshot(
+        macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
+        equity=EquitySnapshot(
+            account_equity=50_000.0, daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+        ),
+        regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
+        journal=JournalSnapshot(kill_switch_active=True),
+        ts=_midday_ts(),
+    )
+
+
+def _reduce_ctx():  # type: ignore[no-untyped-def]
+    return build_snapshot(
+        macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
+        equity=EquitySnapshot(
+            account_equity=50_000.0, daily_pnl=-1_250.0,
+            daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+        ),
+        regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
+        journal=JournalSnapshot(),
+        ts=_midday_ts(),
+    )
+
+
+class TestJarvisGating:
+    """MNQ bot + JarvisAdmin: every order gates through JARVIS."""
+
+    def test_bot_subsystem_id_is_mnq(self) -> None:
+        bot = MnqBot()
+        assert bot.SUBSYSTEM == SubsystemId.BOT_MNQ
+
+    @pytest.mark.asyncio
+    async def test_start_asks_for_strategy_deploy_under_trade(self) -> None:
+        jarvis = JarvisAdmin()
+        bot = MnqBot(jarvis=jarvis, provide_ctx=_trade_ctx)
+        await bot.start()
+        assert bot.state.is_paused is False
+
+    @pytest.mark.asyncio
+    async def test_start_refused_under_kill(self) -> None:
+        """Kill-switch context must refuse STRATEGY_DEPLOY."""
+        jarvis = JarvisAdmin()
+        bot = MnqBot(jarvis=jarvis, provide_ctx=_kill_ctx)
+        await bot.start()
+        assert bot.state.is_paused is True
+
+    @pytest.mark.asyncio
+    async def test_order_place_denied_under_kill(self) -> None:
+        jarvis = JarvisAdmin()
+        router = _FakeRouter([])
+        bot = MnqBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
+        sig = Signal(
+            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+        )
+        result = await bot.on_signal(sig)
+        assert result is None
+        # Router MUST NOT have been called -- JARVIS denied upstream.
+        assert router.calls == []
+
+    @pytest.mark.asyncio
+    async def test_conditional_size_cap_shrinks_qty(self) -> None:
+        """REDUCE tier caps size at <=0.5 -- the bot must apply it."""
+        jarvis = JarvisAdmin()
+        router = _FakeRouter([
+            OrderResult(order_id="R-1", status=OrderStatus.FILLED,
+                         filled_qty=2.0, avg_price=25_000.0),
+        ])
+        bot = MnqBot(jarvis=jarvis, provide_ctx=_reduce_ctx, router=router)
+        sig = Signal(
+            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            confidence=7.0,
+            meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+        )
+        result = await bot.on_signal(sig)
+        # base qty would be $50 / ($10/c) = 5; cap=0.5 -> 2.
+        assert result is not None
+        assert router.calls[0].qty <= 3.0  # 5 * 0.5 -> int(2.5) = 2, allow drift
+        assert router.calls[0].qty >= 1.0
+
+        # Sanity: the admin itself returned CONDITIONAL for this ctx.
+        req = make_action_request(
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
+            side="LONG", symbol="MNQ", price=25_000.0, confidence=7.0,
+        )
+        resp = jarvis.request_approval(req, ctx=_reduce_ctx())
+        assert resp.verdict == Verdict.CONDITIONAL
+        assert resp.size_cap_mult is not None
+        assert resp.size_cap_mult <= 0.5
+
+    @pytest.mark.asyncio
+    async def test_close_signals_bypass_jarvis_order_gate(self) -> None:
+        """CLOSE_LONG / CLOSE_SHORT must always proceed even when JARVIS
+        would refuse an entry. Exits reduce risk -- the gate is for
+        entries only."""
+        jarvis = JarvisAdmin()
+        router = _FakeRouter([
+            OrderResult(order_id="C-1", status=OrderStatus.FILLED,
+                         filled_qty=2.0, avg_price=25_000.0),
+        ])
+        bot = MnqBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
+        sig = Signal(
+            type=SignalType.CLOSE_LONG, symbol="MNQ", price=25_100.0,
+            size=2.0, meta={},
+        )
+        result = await bot.on_signal(sig)
+        assert result is not None
+        assert router.calls[0].reduce_only is True
+        assert router.calls[0].side is Side.SELL
+
+    @pytest.mark.asyncio
+    async def test_journal_records_start_and_order_events(
+        self, tmp_path,  # type: ignore[no-untyped-def]
+    ) -> None:
+        journal = DecisionJournal(tmp_path / "mnq.jsonl")
+        jarvis = JarvisAdmin()
+        router = _FakeRouter([
+            OrderResult(order_id="J-1", status=OrderStatus.FILLED,
+                         filled_qty=5.0, avg_price=25_000.0),
+        ])
+        bot = MnqBot(
+            jarvis=jarvis, provide_ctx=_trade_ctx,
+            router=router, journal=journal,
+        )
+        await bot.start()
+        await bot.on_signal(Signal(
+            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+        ))
+        await bot.stop()
+        events = journal.read_all()
+        intents = [e.intent for e in events]
+        assert "mnq_start" in intents
+        assert "mnq_order_routed" in intents
+        assert "mnq_stop" in intents
+        executed = [e for e in events if e.outcome == Outcome.EXECUTED]
+        assert len(executed) >= 2  # start + order_routed
+
+    @pytest.mark.asyncio
+    async def test_journal_records_blocked_order(
+        self, tmp_path,  # type: ignore[no-untyped-def]
+    ) -> None:
+        journal = DecisionJournal(tmp_path / "mnq_blocked.jsonl")
+        jarvis = JarvisAdmin()
+        bot = MnqBot(
+            jarvis=jarvis, provide_ctx=_kill_ctx,
+            router=_FakeRouter([]), journal=journal,
+        )
+        await bot.on_signal(Signal(
+            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+        ))
+        events = journal.read_all()
+        blocked = [e for e in events if e.outcome == Outcome.BLOCKED]
+        assert len(blocked) == 1
+        assert blocked[0].intent == "mnq_order_blocked"
+
+    def test_pick_model_tier_without_jarvis_returns_sonnet(self) -> None:
+        bot = MnqBot()
+        assert bot.pick_model_tier(TaskCategory.REFACTOR) == ModelTier.SONNET
+
+    def test_pick_model_tier_with_jarvis_routes_per_policy(self) -> None:
+        jarvis = JarvisAdmin()
+        bot = MnqBot(jarvis=jarvis)
+        assert bot.pick_model_tier(TaskCategory.RED_TEAM_SCORING) == ModelTier.OPUS
+        assert bot.pick_model_tier(TaskCategory.REFACTOR) == ModelTier.SONNET
+        assert bot.pick_model_tier(TaskCategory.COMMIT_MESSAGE) == ModelTier.HAIKU
+
+    @pytest.mark.asyncio
+    async def test_no_jarvis_preserves_legacy_behavior(self) -> None:
+        """When jarvis is None, on_signal routes without gating (legacy)."""
+        router = _FakeRouter([
+            OrderResult(order_id="L-1", status=OrderStatus.FILLED,
+                         filled_qty=5.0, avg_price=25_000.0),
+        ])
+        bot = MnqBot(router=router)  # no jarvis
+        sig = Signal(
+            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+        )
+        result = await bot.on_signal(sig)
+        assert result is not None
+        assert len(router.calls) == 1
+
+
+class TestNqJarvisIntegration:
+    """NQ bot inherits JARVIS gating from MnqBot -- verify parity."""
+
+    def test_nq_subsystem_id(self) -> None:
+        from apex_predator.bots.nq.bot import NqBot
+        assert NqBot().SUBSYSTEM == SubsystemId.BOT_NQ
+
+    @pytest.mark.asyncio
+    async def test_nq_start_gates_through_jarvis(self) -> None:
+        from apex_predator.bots.nq.bot import NqBot
+        jarvis = JarvisAdmin()
+        bot = NqBot(jarvis=jarvis, provide_ctx=_kill_ctx)
+        await bot.start()
+        assert bot.state.is_paused is True
+
+    @pytest.mark.asyncio
+    async def test_nq_start_approved_under_trade(self) -> None:
+        from apex_predator.bots.nq.bot import NqBot
+        jarvis = JarvisAdmin()
+        bot = NqBot(jarvis=jarvis, provide_ctx=_trade_ctx)
+        await bot.start()
+        assert bot.state.is_paused is False
+        await bot.stop()
+
+
+class TestKillSwitchLatchGating:
+    """Persistent kill-switch latch must block boot until the operator clears it."""
+
+    @pytest.mark.asyncio
+    async def test_armed_latch_allows_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from apex_predator.core.kill_switch_latch import KillSwitchLatch
+        latch = KillSwitchLatch(tmp_path / "latch.json")
+        # ARMED by default -- no file means no trip.
+        bot = MnqBot(kill_switch_latch=latch)
+        await bot.start()
+        assert bot.state.is_paused is False
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_tripped_latch_blocks_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        from apex_predator.core.kill_switch_latch import KillSwitchLatch
+        from apex_predator.core.kill_switch_runtime import (
+            KillAction,
+            KillSeverity,
+            KillVerdict,
+        )
+        latch = KillSwitchLatch(tmp_path / "latch.json")
+        flipped = latch.record_verdict(KillVerdict(
+            action=KillAction.FLATTEN_ALL,
+            severity=KillSeverity.CRITICAL,
+            reason="dd_breach_simulated",
+            scope="account",
+            evidence={"source": "test"},
+        ))
+        assert flipped is True
+        assert latch.read().state.value == "TRIPPED"
+
+        journal = DecisionJournal(tmp_path / "blocked.jsonl")
+        bot = MnqBot(kill_switch_latch=latch, journal=journal)
+        await bot.start()
+        assert bot.state.is_paused is True
+        # Journal should record the block.
+        events = journal.read_all()
+        blocked = [e for e in events if e.outcome == Outcome.BLOCKED]
+        assert len(blocked) >= 1
+        assert "kill_switch_latch" in blocked[0].rationale.lower()
+
+
+# --------------------------------------------------------------------------- #
+# D1/D4 -- SessionGate + EoD flatten integration (MnqBot.on_bar wiring)
+#
+# These tests exercise the bot-level wiring that ties SessionGate +
+# RouterAdapter together through ``_maybe_flatten_eod``. We use a real
+# RouterAdapter and a real SessionGate so the assertions hit the actual
+# contract, not a mock one.
+# --------------------------------------------------------------------------- #
+def _ct_ms_for_bot(y: int, m: int, d: int, hh: int, mm: int) -> int:
+    """(hh:mm) America/Chicago (CDT, May) -> epoch milliseconds UTC."""
+    from datetime import UTC, datetime, timedelta
+    utc = datetime(y, m, d, hh, mm, tzinfo=UTC) + timedelta(hours=5)
+    return int(utc.timestamp() * 1000)
+
+
+def _bar_for_bot(ts_ms: int, close: float = 25_000.0) -> dict:
+    return {
+        "ts": ts_ms,
+        "open": close - 1.0,
+        "high": close + 1.0,
+        "low": close - 2.0,
+        "close": close,
+        "volume": 1000.0,
+        "avg_volume": 1000.0,
+        "orb_high": 0.0,
+        "orb_low": 0.0,
+        "ema_21": close,
+        "adx_14": 22.0,
+        "atr_14": 10.0,
+        "vwap": close,
+    }
+
+
+class TestSessionGateAttachAtStart:
+    """start() wires the SessionGate onto the strategy adapter."""
+
+    @pytest.mark.asyncio
+    async def test_session_gate_attached_to_adapter_on_start(self) -> None:
+        from apex_predator.core.session_gate import SessionGate
+        from apex_predator.strategies.engine_adapter import RouterAdapter
+
+        adapter = RouterAdapter(asset="MNQ", session_allows_entries=True)
+        assert adapter.session_gate is None
+        gate = SessionGate()
+        bot = MnqBot(strategy_adapter=adapter, session_gate=gate)
+        await bot.start()
+        assert adapter.session_gate is gate
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_no_session_gate_leaves_adapter_unchanged(self) -> None:
+        from apex_predator.strategies.engine_adapter import RouterAdapter
+
+        adapter = RouterAdapter(asset="MNQ", session_allows_entries=True)
+        bot = MnqBot(strategy_adapter=adapter, session_gate=None)
+        await bot.start()
+        assert adapter.session_gate is None
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_no_adapter_with_gate_is_safe(self) -> None:
+        """Bot without an adapter should not crash when session_gate is set."""
+        from apex_predator.core.session_gate import SessionGate
+        bot = MnqBot(strategy_adapter=None, session_gate=SessionGate())
+        await bot.start()
+        assert bot.state.is_paused is False
+        await bot.stop()
+
+
+class TestEodFlattenSignalEmission:
+    """_maybe_flatten_eod emits close signals through on_signal."""
+
+    def _wire_bot(self) -> tuple[MnqBot, list[Signal]]:
+        """Build a MnqBot + narrow-RTH gate + capturing on_signal stub."""
+        from datetime import time
+
+        from apex_predator.core.session_gate import (
+            SessionGate,
+            SessionGateConfig,
+        )
+        from apex_predator.strategies.engine_adapter import RouterAdapter
+
+        cfg = SessionGateConfig(
+            rth_start_local=time(8, 30),
+            rth_end_local=time(16, 0),
+            eod_cutoff_local=time(15, 59),
+        )
+        gate = SessionGate(config=cfg)
+        adapter = RouterAdapter(asset="MNQ", session_allows_entries=True)
+        bot = MnqBot(strategy_adapter=adapter, session_gate=gate)
+
+        captured: list[Signal] = []
+
+        async def _capture(sig: Signal) -> None:
+            captured.append(sig)
+
+        bot.on_signal = _capture  # type: ignore[method-assign]
+        return bot, captured
+
+    @pytest.mark.asyncio
+    async def test_eod_flatten_fires_close_signals(self) -> None:
+        from apex_predator.core.session_gate import REASON_EOD_PENDING
+        bot, captured = self._wire_bot()
+        await bot.start()
+        # Seed one long + one short position so the bot emits one
+        # CLOSE_LONG and one CLOSE_SHORT.
+        bot.state.open_positions = [
+            Position(symbol="MNQ", side="long", entry_price=25_000.0, size=1),
+            Position(symbol="MNQ", side="short", entry_price=25_010.0, size=1),
+        ]
+        # Bar at 15:59 CT -> past EoD cutoff.
+        bar = _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59))
+        await bot.on_bar(bar)
+
+        assert len(captured) == 2
+        types = {s.type for s in captured}
+        assert SignalType.CLOSE_LONG in types
+        assert SignalType.CLOSE_SHORT in types
+        for sig in captured:
+            assert sig.meta["setup"] == "eod_flatten"
+            assert sig.meta["source"] == "session_gate"
+            assert sig.meta["gate_reason"] == REASON_EOD_PENDING
+            assert sig.price == 25_000.0  # last close from bar
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_eod_flatten_no_positions_is_noop(self) -> None:
+        """Fires the journal event but emits zero signals when flat."""
+        bot, captured = self._wire_bot()
+        await bot.start()
+        bot.state.open_positions = []
+        bar = _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59))
+        await bot.on_bar(bar)
+        # The latch still tripped but no signals to emit.
+        assert captured == []
+        assert bot._eod_flatten_fired is True
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_eod_flatten_only_fires_once_per_window(self) -> None:
+        """Two bars past the cutoff -> one emission, not two."""
+        bot, captured = self._wire_bot()
+        await bot.start()
+        bot.state.open_positions = [
+            Position(symbol="MNQ", side="long", entry_price=25_000.0, size=1),
+        ]
+        # Bar A: 15:59 CT -> fires.
+        bar_a = _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59))
+        await bot.on_bar(bar_a)
+        assert len(captured) == 1
+        # Bar B: 15:59 CT with an updated close; past cutoff still.
+        # RouterAdapter would repopulate state.open_positions in a real
+        # fill loop; for this test the point is that _maybe_flatten_eod
+        # is latched and does NOT re-emit even if positions reappear.
+        bot.state.open_positions = [
+            Position(symbol="MNQ", side="long", entry_price=25_000.0, size=1),
+        ]
+        bar_b = _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59), close=25_005.0)
+        await bot.on_bar(bar_b)
+        assert len(captured) == 1
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_eod_flatten_latch_resets_on_new_rth_session(self) -> None:
+        """After gate returns to no_eod_action, the latch resets so the next
+        cutoff can fire."""
+        bot, captured = self._wire_bot()
+        await bot.start()
+        bot.state.open_positions = [
+            Position(symbol="MNQ", side="long", entry_price=25_000.0, size=1),
+        ]
+        # Fire once at cutoff.
+        await bot.on_bar(
+            _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59)),
+        )
+        assert len(captured) == 1
+        assert bot._eod_flatten_fired is True
+        # Mid-RTH next day: gate reports no_eod_action -> latch resets.
+        await bot.on_bar(
+            _bar_for_bot(_ct_ms_for_bot(2026, 5, 16, 10, 0)),
+        )
+        assert bot._eod_flatten_fired is False
+        # Back past cutoff -> fires again.
+        await bot.on_bar(
+            _bar_for_bot(_ct_ms_for_bot(2026, 5, 16, 15, 59)),
+        )
+        assert len(captured) == 2
+        await bot.stop()
+
+    @pytest.mark.asyncio
+    async def test_eod_flatten_no_adapter_is_noop(self) -> None:
+        """Without an adapter the bot still boots; on_bar doesn't crash."""
+        from apex_predator.core.session_gate import SessionGate
+        bot = MnqBot(strategy_adapter=None, session_gate=SessionGate())
+        captured: list[Signal] = []
+
+        async def _capture(sig: Signal) -> None:
+            captured.append(sig)
+
+        bot.on_signal = _capture  # type: ignore[method-assign]
+        await bot.start()
+        bot.state.open_positions = [
+            Position(symbol="MNQ", side="long", entry_price=25_000.0, size=1),
+        ]
+        # 15:59 CT would have fired if an adapter were wired; w/o adapter
+        # the _maybe_flatten_eod short-circuits before reaching the gate.
+        await bot.on_bar(
+            _bar_for_bot(_ct_ms_for_bot(2026, 5, 15, 15, 59)),
+        )
+        assert captured == []
+        await bot.stop()
