@@ -213,8 +213,11 @@ DEFAULT_CATALOG: dict[str, VPSServiceSpec] = {
     ),
     "tradovate-md.service": VPSServiceSpec(
         name="tradovate-md.service",
-        description="Tradovate market-data websocket self-capture",
-        desired=ServiceState.RUNNING,
+        description=(
+            "Tradovate market-data websocket self-capture "
+            "[DORMANT 2026-04-24 -- broker funding-blocked]"
+        ),
+        desired=ServiceState.STOPPED,
     ),
     "trading-dashboard.service": VPSServiceSpec(
         name="trading-dashboard.service",

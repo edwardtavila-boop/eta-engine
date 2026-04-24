@@ -39,7 +39,7 @@ class VenueIntegration(BaseModel):
     kind: str  # "futures" | "perps_cex" | "spot_cex" | "onramp" | "cold_wallet"
     module: str  # dotted python path
     asset_classes: list[str] = Field(default_factory=list)
-    status: str = "READY"  # READY | STUB | NEEDS_FUNDING | LIVE
+    status: str = "READY"  # READY | STUB | NEEDS_FUNDING | LIVE | DORMANT
     notes: str = ""
 
 
@@ -128,14 +128,39 @@ class IntegrationsReport(BaseModel):
 def canonical_venues() -> list[VenueIntegration]:
     return [
         VenueIntegration(
+            name="ibkr",
+            kind="futures",
+            module="apex_predator.venues.ibkr",
+            asset_classes=["MNQ", "NQ", "ES", "MES", "RTY"],
+            status="READY",
+            notes=(
+                "Active futures primary per operator mandate 2026-04-24. "
+                "IBKR Client Portal adapter, paper by default; flip to live "
+                "via IBKR session config."
+            ),
+        ),
+        VenueIntegration(
+            name="tastytrade",
+            kind="futures",
+            module="apex_predator.venues.tastytrade",
+            asset_classes=["MNQ", "NQ", "ES", "MES", "RTY"],
+            status="READY",
+            notes=(
+                "Active futures fallback per operator mandate 2026-04-24. "
+                "Tastytrade adapter, paper by default."
+            ),
+        ),
+        VenueIntegration(
             name="tradovate",
             kind="futures",
             module="apex_predator.venues.tradovate",
             asset_classes=["MNQ", "NQ"],
-            status="NEEDS_FUNDING",
+            status="DORMANT",
             notes=(
-                "OAuth2 creds blocked on $1000 funded balance. Helpers: "
-                "setup_tradovate_secrets + authorize_tradovate (stubbed)."
+                "DORMANT per operator mandate 2026-04-24 -- funding-blocked, "
+                "weeks-out ETA. Adapter stays importable; flip "
+                "venues.router.DORMANT_BROKERS to frozenset() when funding "
+                "clears."
             ),
         ),
         VenueIntegration(
@@ -184,20 +209,27 @@ def canonical_bots() -> list[BotIntegration]:
         BotIntegration(
             name="mnq",
             module="apex_predator.bots.mnq.mnq_bot",
-            venue="tradovate",
+            venue="ibkr",
             funnel_layer="LAYER_1_MNQ",
             risk_tier="A",
             status="PAPER",
-            notes="Router-wired; 168 trades +0.473R paper; live-tiny blocked on funding.",
+            notes=(
+                "Router-wired (IBKR primary, Tastytrade fallback; Tradovate "
+                "DORMANT 2026-04-24); 168 trades +0.473R paper; live-tiny "
+                "blocked on broker funding."
+            ),
         ),
         BotIntegration(
             name="nq",
             module="apex_predator.bots.nq.nq_bot",
-            venue="tradovate",
+            venue="ibkr",
             funnel_layer="LAYER_1_MNQ",
             risk_tier="A",
             status="PAPER",
-            notes="Inherits mnq; $20 point value; 140 trades +0.607R paper.",
+            notes=(
+                "Inherits mnq; $20 point value; 140 trades +0.607R paper. "
+                "Routes via IBKR primary + Tastytrade fallback."
+            ),
         ),
         BotIntegration(
             name="crypto_seed",

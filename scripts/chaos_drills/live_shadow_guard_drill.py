@@ -50,7 +50,7 @@ def drill_live_shadow_guard(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
     # 1. Adequate liquidity: 3 contracts absorbed at 100.01 (5-lot level).
     adequate_book = BookSnapshot(
         symbol="MNQ",
-        venue="tradovate",
+        venue="ibkr",
         ts_iso=ts,
         bids=(BookLevel(99.99, 5.0), BookLevel(99.98, 10.0)),
         asks=(BookLevel(100.01, 5.0), BookLevel(100.03, 10.0)),
@@ -85,7 +85,7 @@ def drill_live_shadow_guard(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
     # 2. Exhausted book: BUY of 10 against only 4 lots of asks.
     thin_book = BookSnapshot(
         symbol="MNQ",
-        venue="tradovate",
+        venue="ibkr",
         ts_iso=ts,
         bids=(BookLevel(99.99, 2.0),),
         asks=(BookLevel(100.01, 1.0), BookLevel(100.05, 3.0)),

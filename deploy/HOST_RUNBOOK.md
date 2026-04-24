@@ -38,8 +38,10 @@ peak steady-state is a few hundred MB resident.
 | **Recommended** | 2 vCPU | 4 GB | 80 GB SSD | us-east-1 / Chicago / NY | Comfortable. Pick this. |
 | **Overkill** | 4 vCPU | 8 GB | 160 GB SSD | us-east-1 / Chicago / NY | Only if running the full 14-stage sweep in-session. |
 
-Region rule: **pick the region closest to the Tradovate venue gateway**
-(US East for Tradovate). Every extra ms of RTT shows up as slippage.
+Region rule: **pick the region closest to your active venue gateway**
+— IBKR Client Portal + Tastytrade API are both US East (2026-04-24: IBKR primary,
+Tastytrade fallback; Tradovate DORMANT — funding-blocked). Every extra ms of
+RTT shows up as slippage.
 
 ### Provider shortlist
 

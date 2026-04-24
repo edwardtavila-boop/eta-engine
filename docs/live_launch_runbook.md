@@ -1,0 +1,275 @@
+# APEX PREDATOR — Live-Tiny Launch Runbook
+
+> **DORMANCY BANNER — 2026-04-24 (operator mandate):**
+> This runbook was written around **Tradovate** as the Tier-A venue. Tradovate
+> is currently **DORMANT** (funding-blocked, expected unlock weeks out). Live
+> futures routing now defaults to **IBKR (primary) + Tastytrade (fallback)**.
+> The Tradovate-specific phases below (credentials, auth smoke, account-balance
+> gate) are stale while dormant — substitute the IBKR equivalents from
+> `docs/broker_connections/README.md`. Single-point-of-truth for re-enablement:
+> `apex_predator/venues/router.py` `DORMANT_BROKERS` frozenset.
+
+**Audience:** operator on their own account.
+**Scope:** MNQ + NQ Tier-A only. Tier-B crypto (Bybit) deferred pending bootstrap pass on redesign.
+**Decision gate:** this runbook assumes `docs/canonical_v1_verdict_full.md` still says "cautious MNQ only". Re-read it before each run.
+
+---
+
+## T-minus: what must already be true
+
+Do NOT start this runbook unless ALL of the following are true:
+
+1. `docs/kill_log.json` exists, valid JSON, has at least one review entry.
+2. `docs/paper_run_report.json` shows Tier-A (MNQ+NQ) PASS.
+3. `roadmap_state.json` → `current_phase` starts with `P9`.
+4. `docs/decisions_v1.json` exists with all 3 required tier sections.
+5. `.env.example` present with all 9 required secret names.
+6. `apex_predator/configs/` contains `tradovate.yaml`, `bybit.yaml`, `alerts.yaml`, `kill_switch.yaml`.
+7. `apex_predator/scripts/live_supervisor.py` importable cleanly (`from apex_predator.scripts.live_supervisor import JarvisAwareRouter`).
+8. Extended preflight dryrun exits GO: `python -m apex_predator.scripts.live_tiny_preflight_dryrun`.
+9. Funded Tradovate account with ≥ $5,000 cleared balance in the tier-A bucket (Apex evaluation or funded).
+10. Tradovate app credentials (not user login) issued and stored via `core.secrets.SecretsManager`.
+
+If any one of the above is RED, STOP here. Go fix before proceeding.
+
+---
+
+## Phase 1 — Secrets & env (≈10 min)
+
+On the trading host:
+
+```bash
+# Populate secrets via keyring (preferred) or .env file.
+python - <<'PY'
+from apex_predator.core.secrets import SecretsManager
+sm = SecretsManager()
+sm.set("TRADOVATE_USERNAME", "your_username")
+sm.set("TRADOVATE_PASSWORD", "your_password")
+sm.set("TRADOVATE_APP_ID", "ApexPredator")
+sm.set("TRADOVATE_APP_SECRET", "app_secret_from_tradovate_dev_portal")
+sm.set("TRADOVATE_CID", "client_id_from_tradovate_dev_portal")
+sm.set("TELEGRAM_BOT_TOKEN", "bot_token")
+sm.set("TELEGRAM_CHAT_ID", "chat_id")
+print("OK")
+PY
+
+# Verify the credential gate turns GREEN:
+python -m apex_predator.scripts.live_tiny_preflight_dryrun | grep credential_probe_full
+# Expect: [opt] credential_probe_full   PASS   Tier-A present (7 keys) ...
+```
+
+---
+
+## Phase 2 — Venue smoke test (≈5 min, DEMO endpoint only)
+
+Never point at `TRADOVATE_LIVE` for the first smoke test. Use `demo=True`.
+
+```bash
+python - <<'PY'
+import asyncio
+from apex_predator.core.secrets import SecretsManager
+from apex_predator.venues.tradovate import TradovateVenue
+
+async def main() -> None:
+    sm = SecretsManager()
+    v = TradovateVenue(
+        api_key="",
+        api_secret=sm.get("TRADOVATE_PASSWORD") or "",
+        demo=True,
+        app_id="ApexPredator",
+        app_version="1.0",
+        cid=sm.get("TRADOVATE_CID") or "",
+        app_secret=sm.get("TRADOVATE_APP_SECRET") or "",
+    )
+    # Auth smoke — expect access token populated, no exception.
+    await v.authenticate(username=sm.get("TRADOVATE_USERNAME") or "")
+    print("demo auth OK, token obtained")
+
+asyncio.run(main())
+PY
+```
+
+Abort criteria: any network error, any 4xx from Tradovate, any `access_token` is None.
+If abort: check credentials, do NOT proceed. Credentials-for-demo and credentials-for-live can be different — verify you populated the right ones.
+
+---
+
+## Phase 2.5 — Clock sync (≈2 min, CRITICAL)
+
+Order timestamps are stamped locally; a > 3-second drift vs wall time
+will silently cause reconciliation mismatches and can invalidate fill audits.
+
+```bash
+# Verify drift:
+python -m apex_predator.scripts.live_tiny_preflight_dryrun | grep clock_drift
+# Expect: [opt] clock_drift   PASS   local vs server drift 0.XXs (< 3s)
+
+# If FAIL: on Windows, force NTP resync:
+w32tm /resync /force
+# On Linux:
+sudo ntpdate -u time.cloudflare.com
+
+# Re-verify. Do NOT advance until clock_drift PASS.
+```
+
+---
+
+## Phase 3 — Kill-switch drill (LIVE assertion, ≈2 min)
+
+On the trading host, with all credentials present but BEFORE the live loop starts:
+
+```bash
+# Drill 1: portfolio-DD trip fires FLATTEN_ALL.
+python -m apex_predator.scripts.live_tiny_preflight_dryrun | grep kill_switch_drill
+# Expect: [REQ] kill_switch_drill       PASS   tripped FLATTEN_ALL/CRITICAL on 50% DD (...)
+
+# Drill 2: idempotent order ID dedups.
+python -m apex_predator.scripts.live_tiny_preflight_dryrun | grep idempotent_order_id
+# Expect: [REQ] idempotent_order_id     PASS   identical reqs -> same coid=...
+```
+
+Both must be PASS. If either fails, STOP.
+
+---
+
+## Phase 4 — First live-tiny session (30–60 min watched)
+
+**Position size: 1 MNQ contract maximum. NO NQ. NO Tier-B.** This session is a safety probe.
+
+```bash
+# Start the supervised live loop (foreground — DO NOT nohup):
+python -m apex_predator.scripts.run_apex_live --live-tiny --tier-a-only --paper-assert-off
+```
+
+### Operator checklist during the session
+
+- [ ] First 5 minutes: no trades placed, just bar ingestion + feature pipeline. If trades fire in <5 min, suspect misconfig — abort.
+- [ ] Confirm first heartbeat Telegram (within 60s of start).
+- [ ] Watch `docs/alerts_log.jsonl` — a `runtime_start` event must appear with `payload.live=True`.
+- [ ] First order (if any) must appear in Tradovate account UI within 2s of local submission. If no UI ack, local clock drift or transport break — hit kill switch.
+- [ ] After first filled trade: run `python apex_predator/scripts/_trade_journal_reconcile.py --hours 1` — expect GREEN.
+- [ ] After 30 min: hit Ctrl-C (graceful stop). Confirm `runtime_stop` event appears in alerts_log.
+
+### Abort triggers (stop immediately)
+
+- Any Tradovate HTTP 5xx.
+- Local account equity shows discrepancy vs internal equity tracker > $50.
+- Kill-switch yaml shows any verdict other than CONTINUE in first 5 min.
+- An order fills at a price more than 2 ticks worse than last-seen bid/ask (slippage sanity).
+- Telegram alerts stop for >2 min while loop is running.
+
+---
+
+## Phase 5 — 48-hour soak (unsupervised)
+
+Only proceed to Phase 5 if Phase 4 completed clean with at least one filled round-trip.
+
+```bash
+# Start under systemd or equivalent so it auto-restarts on crash:
+# (assumes systemd unit apex-live.service exists pointing at run_apex_live.py)
+sudo systemctl start apex-live
+sudo systemctl status apex-live
+```
+
+### Daily checks (morning + evening)
+
+1. `python apex_predator/scripts/_trade_journal_reconcile.py --hours 24` → must exit GREEN.
+2. `python apex_predator/scripts/_kill_switch_drift.py --hours 24` → must exit GREEN.
+3. Tradovate account: compare realized PnL to internal journal. Discrepancy > $10 = stop.
+4. `docs/alerts_log.jsonl` tail: no `kill_switch` events with severity CRITICAL.
+
+### 48-hour exit criteria
+
+- Session n_trades ≥ 5, n_sessions ≥ 6.
+- No single day's realized PnL < -$200 (1 MNQ contract baseline).
+- No reconcile RED exit in 48h.
+- Internal-vs-venue equity discrepancy < 1.0% at all times.
+
+If ALL met → qualifies for Phase 6. If ANY fails → stop, investigate, fix, restart Phase 5.
+
+---
+
+## Phase 6 — Scale to 2 contracts / add NQ (opt-in, ≥ 2 weeks soak)
+
+Do NOT advance to Phase 6 before 2 calendar weeks of Phase-5 clean soak AND the adversarial validations re-run on the fresh live sample:
+
+```bash
+# Re-run walk-forward on live trade sample once it hits n_trades >= 120:
+python apex_predator/scripts/walk_forward_real_bars.py \
+  --overrides apex_predator/docs/overrides_p9_real_combined_v1.json \
+  --weeks 4 --stride-weeks 1 --max-folds 6 --symbols mnq \
+  --regime-overlay trending_only_plus_sol_ranging_flip --gate real \
+  --label mnq_live_refresh
+
+# Expect: mnq verdict STABLE (pass_rate >= 67%, mean > 0, CV < 1.0).
+# If still MIXED or UNSTABLE -> HALT scaling. Stay at 1 contract.
+
+# Re-run bootstrap on fresh live trades:
+python apex_predator/scripts/bootstrap_ci_real_bars.py \
+  --overrides apex_predator/docs/overrides_p9_real_combined_v1.json \
+  --iterations 10000 --weeks 4 --seed 11 --symbols mnq \
+  --regime-overlay trending_only_plus_sol_ranging_flip \
+  --label mnq_live_refresh
+
+# Expect: mnq CI95 lower bound > 0 (verdict CI_EXCLUDES_ZERO).
+# If still MARGINAL -> HALT scaling.
+```
+
+Only after both above hit STABLE and CI-excludes-zero: advance to 2 contracts. NQ gets added only after another clean 2-week soak at that size.
+
+---
+
+## Emergency stop
+
+```bash
+# Gracefully stop the loop (preferred):
+sudo systemctl stop apex-live
+
+# Hard stop (if supervisor is hung):
+pkill -f run_apex_live
+
+# Manual flatten via Tradovate UI:
+# -> Orders tab -> Cancel All Working
+# -> Positions tab -> Flatten All (market close)
+# This is the last-resort button. Use if the supervisor crashed with open positions.
+```
+
+After ANY emergency stop:
+1. Snapshot `docs/alerts_log.jsonl` to `docs/incidents/<date>.jsonl`.
+2. Run `python apex_predator/scripts/_trade_journal_reconcile.py --hours 24 > docs/incidents/<date>_reconcile.txt`.
+3. Append kill reason + root cause to `docs/kill_log.json`.
+4. Do NOT resume for at least 1 session (4h market hours). Use the pause to debug.
+
+---
+
+## Firm-board integration
+
+After every live session (Phase 4 onward), run the Firm adversarial loop against the day's trades:
+
+```bash
+python apex_predator/scripts/firm_bridge.py --integrate --session today
+```
+
+Expected Firm verdict: `CONTINUE` or `ADJUST`. If `HALT` — stop live operations until the flagged finding is resolved (red team, risk, or macro veto).
+
+---
+
+## Post-launch review cadence
+
+- **Daily:** reconcile + drift check (automated via cron).
+- **Weekly:** run walk-forward + bootstrap refresh on accumulated live sample; compare to baseline.
+- **Monthly:** strategy-generator agent review (Sonnet tier) — any drift in confluence axis effectiveness? Any need to re-tune thresholds?
+- **Quarterly:** full adversarial cycle — risk-advocate, quant-researcher, devils-advocate all opus-tier. Budget the 5× cost window.
+
+---
+
+## Lineage
+
+- Canonical override: `docs/overrides_p9_real_combined_v1.json`
+- Canonical verdict: `docs/canonical_v1_verdict_full.md`
+- Preflight entry: `apex_predator/scripts/live_tiny_preflight_dryrun.py` (14 required gates)
+- Kill-switch policy: `apex_predator/core/kill_switch_runtime.py` + `configs/kill_switch.yaml`
+- Order idempotency: `apex_predator/scripts/live_supervisor.py::JarvisAwareRouter._ensure_client_order_id`
+- Journal reconcile: `apex_predator/scripts/_trade_journal_reconcile.py`
+- Alerts: `apex_predator/obs/alert_dispatcher.py`
+- Venue: `apex_predator/venues/tradovate.py`

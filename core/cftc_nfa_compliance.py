@@ -9,7 +9,10 @@ This module is NOT legal advice. It encodes the retail-futures guardrails
 that apply to us specifically:
 
   * Operator = non-registered individual trading own capital.
-  * Venue    = Tradovate (NFA member broker, CFTC-regulated exchanges).
+  * Venues   = IBKR + Tastytrade (active, both NFA member brokers on
+               CFTC-regulated exchanges). Tradovate is also an NFA
+               member broker but is DORMANT per operator mandate
+               2026-04-24 (funding-blocked).
   * Product  = MNQ / NQ (CME) -- Section 1256 60/40 tax treatment.
   * Scale    = personal SSN, no LLC, no pooled capital.
   * Pattern  = intraday + overnight; no customer money.
