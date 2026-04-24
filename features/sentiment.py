@@ -7,14 +7,19 @@ Galaxy Score / AltRank / social volume / Fear & Greed divergence.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData
+from eta_engine.data.sentiment_lunarcrush import LunarCrushClient
 from eta_engine.features.base import Feature
 
-# TODO: integrate live MCP call
-# from mcp_client import lunarcrush  # pseudo-import, not wired yet
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
+
+# Production path: `LunarCrushClient` (below) hits the LunarCrush REST API.
+# Optional MCP-tap path: see `features.mcp_taps.lunarcrush_snapshot` — used
+# when the runtime exposes the lunarcrush MCP (agent sessions).
 
 
 def contrarian_extreme_score(galaxy_score: float, fng: int) -> float:
@@ -60,20 +65,47 @@ def social_volume_score(volume: int, baseline: int) -> float:
     return max(0.0, min(1.0, (ratio - 1.0) / 2.0))
 
 
-async def fetch_sentiment_snapshot(asset: str) -> dict[str, Any]:
-    """Fetch sentiment metrics via LunarCrush MCP.
-
-    TODO: integrate live MCP call via lunarcrush.Cryptocurrencies + Fetch
-    and aggregate into the fields below. Currently returns a neutral stub.
-    """
-    # TODO: integrate live MCP call
+async def fetch_sentiment_snapshot(
+    asset: str,
+    *,
+    client: LunarCrushClient | None = None,
+) -> dict[str, Any]:
+    """Fetch sentiment metrics via the LunarCrush facade."""
+    client = client or LunarCrushClient()
+    galaxy_score, alt_rank, social_volume, fear_greed = await asyncio.gather(
+        client.fetch_galaxy_score(asset),
+        client.fetch_alt_rank(asset),
+        client.fetch_social_volume(asset),
+        client.fetch_fear_greed(),
+    )
+    posts = int(social_volume.get("posts", 0))
+    interactions = int(social_volume.get("interactions", 0))
+    contributors = int(social_volume.get("contributors", 0))
+    volume = max(
+        0,
+        int(social_volume.get("social_volume", posts + interactions // 10 + contributors * 2)),
+    )
+    volume_baseline = max(
+        1,
+        int(social_volume.get("social_volume_baseline", max(1, volume // 2 or 1))),
+    )
     return {
         "asset": asset,
-        "galaxy_score": 50.0,
-        "alt_rank": 100,
-        "social_volume": 0,
-        "social_volume_baseline": 0,
-        "fear_greed": 50,
+        "source": social_volume.get("source", "lunarcrush"),
+        "galaxy_score": float(galaxy_score),
+        "alt_rank": int(alt_rank),
+        "social_volume": volume,
+        "social_volume_baseline": volume_baseline,
+        "social_volume_raw": social_volume.get(
+            "social_volume_raw",
+            {
+                "posts": posts,
+                "interactions": interactions,
+                "contributors": contributors,
+            },
+        ),
+        "social_volume_time_series_points": int(social_volume.get("time_series_points", 0)),
+        "fear_greed": int(fear_greed),
         "timestamp": datetime.now(UTC),
     }
 

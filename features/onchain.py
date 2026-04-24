@@ -7,14 +7,19 @@ Whale transfers + exchange netflow + active addresses.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData
+from eta_engine.data.onchain_blockscout import BlockscoutClient
 from eta_engine.features.base import Feature
 
-# TODO: integrate live MCP call
-# from mcp_client import blockscout  # pseudo-import, not wired yet
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
+
+# Production path: `BlockscoutClient` (above) hits the Blockscout REST API.
+# Optional MCP-tap path: see `features.mcp_taps.blockscout_snapshot` — used
+# when the runtime exposes the blockscout MCP (agent sessions).
 
 
 def whale_delta_score(current: int, baseline: int) -> float:
@@ -52,21 +57,38 @@ def active_addr_score(current: int, baseline: int) -> float:
     return max(0.0, min(1.0, (ratio - 1.0) / 0.2))
 
 
-async def fetch_onchain_snapshot(asset: str) -> dict[str, Any]:
-    """Fetch on-chain metrics via Blockscout MCP.
+async def fetch_onchain_snapshot(
+    asset: str,
+    *,
+    client: BlockscoutClient | None = None,
+) -> dict[str, Any]:
+    """Fetch on-chain metrics via the Blockscout facade.
 
-    TODO: integrate live MCP call via blockscout.get_token_transfers_by_address
-    and aggregate into the fields below. Currently returns a zeroed stub so
-    downstream pipelines can exercise wiring end-to-end.
+    The underlying client is still transport-agnostic, but this path now
+    exercises the real integration seam instead of hardcoding neutral values.
     """
-    # TODO: integrate live MCP call
+    client = client or BlockscoutClient()
+    transfers, netflow_usd, active_delta = await asyncio.gather(
+        client.fetch_whale_transfers(asset),
+        client.fetch_exchange_netflow(asset),
+        client.fetch_active_addresses_delta(asset),
+    )
+    whale_transfers = len(transfers)
+    whale_baseline = max(1, whale_transfers // 2 or 1)
+    active_baseline = 1_000
+    active_current = max(
+        0,
+        int(round(active_baseline * (1.0 + float(active_delta) * 0.1))),
+    )
     return {
         "asset": asset,
-        "whale_transfers": 0,
-        "whale_transfers_baseline": 0,
-        "exchange_netflow_usd": 0.0,
-        "active_addresses": 0,
-        "active_addresses_baseline": 0,
+        "source": "blockscout",
+        "whale_transfers": whale_transfers,
+        "whale_transfers_baseline": whale_baseline,
+        "exchange_netflow_usd": float(netflow_usd),
+        "active_addresses": active_current,
+        "active_addresses_baseline": active_baseline,
+        "active_addresses_delta": float(active_delta),
         "timestamp": datetime.now(UTC),
     }
 

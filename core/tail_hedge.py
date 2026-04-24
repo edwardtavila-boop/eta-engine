@@ -30,7 +30,7 @@ from scipy import stats
 
 logger = logging.getLogger(__name__)
 
-HedgeKind = Literal["otm_put_spy", "inverse_perp_btc"]
+HedgeKind = Literal["otm_put_spy", "inverse_perp_btc", "otm_put_btc_deribit"]
 
 
 class TailHedgePolicy(BaseModel):
@@ -92,6 +92,26 @@ def price_otm_put(
     t_years = days_to_expiry / 365.0
     premium = _bs_put_price(spy_spot, strike, t_years, risk_free_rate, implied_vol)
     return {"premium_per_share": premium, "strike": strike}
+
+
+def price_otm_put_btc_deribit(
+    *,
+    btc_spot: float = 60_000.0,
+    otm_pct: float = 15.0,
+    days_to_expiry: int = 30,
+    implied_vol: float = 0.65,
+    risk_free_rate: float = 0.04,
+) -> dict[str, float]:
+    """Price a single 15%-OTM BTC put on Deribit.
+
+    Mirrors :func:`price_otm_put` but with BTC-native IV defaults (Deribit
+    ATM IV is typically 50-80%, not 22% like SPY). Premium returned is
+    per-BTC (Deribit BTC options are 1 BTC-sized).
+    """
+    strike = btc_spot * (1.0 - otm_pct / 100.0)
+    t_years = days_to_expiry / 365.0
+    premium = _bs_put_price(btc_spot, strike, t_years, risk_free_rate, implied_vol)
+    return {"premium_per_btc": premium, "strike": strike}
 
 
 def price_inverse_perp_short(
