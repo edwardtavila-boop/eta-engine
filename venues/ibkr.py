@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from apex_predator.venues.base import (
     ConnectionStatus,
@@ -24,6 +23,10 @@ from apex_predator.venues.base import (
     VenueBase,
     VenueConnectionReport,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 
 IBKR_CLIENT_PORTAL_BASE_URL = "https://127.0.0.1:5000/v1/api"
 

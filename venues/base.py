@@ -11,31 +11,31 @@ import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Side(str, Enum):
+class Side(StrEnum):
     BUY = "BUY"
     SELL = "SELL"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     MARKET = "MARKET"
     LIMIT = "LIMIT"
     POST_ONLY = "POST_ONLY"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     FILLED = "FILLED"
     PARTIAL = "PARTIAL"
     OPEN = "OPEN"
     REJECTED = "REJECTED"
 
 
-class ConnectionStatus(str, Enum):
+class ConnectionStatus(StrEnum):
     READY = "READY"
     DEGRADED = "DEGRADED"
     STUBBED = "STUBBED"

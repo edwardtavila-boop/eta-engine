@@ -119,7 +119,12 @@ class BybitVenue(VenueBase):
         )
 
     @staticmethod
-    def _order_status_from_text(raw_status: Any, *, filled_qty: float = 0.0, leaves_qty: float = 0.0) -> OrderStatus:
+    def _order_status_from_text(
+        raw_status: Any,  # noqa: ANN401 -- venue payload fields are deliberately untyped
+        *,
+        filled_qty: float = 0.0,
+        leaves_qty: float = 0.0,
+    ) -> OrderStatus:
         text = str(raw_status or "").strip().lower()
         if text == "filled":
             return OrderStatus.FILLED
@@ -166,7 +171,9 @@ class BybitVenue(VenueBase):
         )
 
     @staticmethod
-    def _coerce_book_levels(raw_levels: Any) -> list[tuple[float, float]]:
+    def _coerce_book_levels(
+        raw_levels: Any,  # noqa: ANN401 -- exchange book payloads are untyped lists
+    ) -> list[tuple[float, float]]:
         levels: list[tuple[float, float]] = []
         if not isinstance(raw_levels, list):
             return levels
@@ -333,7 +340,14 @@ class BybitVenue(VenueBase):
             current = self._mock_orders.get(order_id)
             if current is not None:
                 self._mock_orders[order_id] = current.model_copy(
-                    update={"status": OrderStatus.REJECTED, "raw": {**current.raw, "orderStatus": "Cancelled", "venue": self.name}},
+                    update={
+                        "status": OrderStatus.REJECTED,
+                        "raw": {
+                            **current.raw,
+                            "orderStatus": "Cancelled",
+                            "venue": self.name,
+                        },
+                    },
                 )
             return True
 
@@ -463,8 +477,6 @@ class BybitVenue(VenueBase):
         ask_price, ask_qty = asks[0]
         bid_depth = sum(qty for _, qty in bids[:limit])
         ask_depth = sum(qty for _, qty in asks[:limit])
-        bid_notional_depth = sum(price * qty for price, qty in bids[:limit])
-        ask_notional_depth = sum(price * qty for price, qty in asks[:limit])
         mid = (bid_price + ask_price) / 2.0
         spread = max(0.0, ask_price - bid_price)
         spread_bps = (spread / mid) * 10_000.0 if mid > 0.0 else 0.0
