@@ -112,7 +112,20 @@ class TestMainCli:
         assert "details" in payload
 
     def test_fail_under_threshold(self, tmp_path: Path):
+        # v0.1.56 CHAOS DRILL CLOSURE: coverage is now 100%, so --fail-under
+        # above the current percentage (e.g., 100.5%) is what should exit 1.
         out = tmp_path / "coverage.md"
-        # Current coverage is <100%, so --fail-under 100 should exit 1
-        rc = main(["--output", str(out), "--fail-under", "100"])
+        rc = main(["--output", str(out), "--fail-under", "100.5"])
         assert rc == 1
+
+    def test_fail_under_at_hundred_passes(self, tmp_path: Path):
+        # Post-closure: every surface has a drill, so --fail-under 100 is met.
+        out = tmp_path / "coverage.md"
+        rc = main(["--output", str(out), "--fail-under", "100"])
+        assert rc == 0
+
+    def test_post_closure_full_coverage(self):
+        r = coverage_report()
+        assert r.covered == r.total, f"gaps remain: {r.missing}"
+        assert r.coverage_pct == 100.0
+        assert r.missing == ()

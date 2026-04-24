@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-24T06:39:16.960902+00:00",
+  "last_updated": "2026-04-24T11:06:20.292084+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "apex_predator_python_files": 107,
-    "apex_predator_tests_passing": 2718,
+    "apex_predator_tests_passing": 3251,
     "apex_predator_tests_failing": 0,
     "apex_predator_verify_all": "17/17 PASS",
     "apex_predator_staking_wired": {
@@ -3583,6 +3583,51 @@
       "tests_passing_before": 2658,
       "tests_passing_after": 2718,
       "tests_new": 60
+    },
+    "apex_predator_v0_1_56_chaos_drill_closure": {
+      "timestamp_utc": "2026-04-24T11:06:20.292084+00:00",
+      "version": "v0.1.56",
+      "bundle_name": "CHAOS DRILL CLOSURE -- 12 new drills (one per [GAP] safety surface). Coverage 4/16 -> 16/16. Runner wired. Matrix locked at --fail-under 100.",
+      "theme": "The v0.1.55 matrix flagged 12 undrilled safety surfaces. v0.1.56 ships one rigorously-scoped drill per surface and pins every one at passed=True in pytest.",
+      "operator_directive_quote": "every safety surface must have a drill or it does not count as safe.",
+      "coverage_before": "4 / 16 (25%)",
+      "coverage_after": "16 / 16 (100%)",
+      "drill_modules_added": [
+        "scripts/chaos_drills/__init__.py",
+        "scripts/chaos_drills/_common.py",
+        "scripts/chaos_drills/kill_switch_runtime_drill.py",
+        "scripts/chaos_drills/risk_engine_drill.py",
+        "scripts/chaos_drills/order_state_reconcile_drill.py",
+        "scripts/chaos_drills/cftc_nfa_compliance_drill.py",
+        "scripts/chaos_drills/two_factor_drill.py",
+        "scripts/chaos_drills/smart_router_drill.py",
+        "scripts/chaos_drills/firm_gate_drill.py",
+        "scripts/chaos_drills/oos_qualifier_drill.py",
+        "scripts/chaos_drills/shadow_paper_tracker_drill.py",
+        "scripts/chaos_drills/live_shadow_guard_drill.py",
+        "scripts/chaos_drills/pnl_drift_drill.py",
+        "scripts/chaos_drills/runtime_allowlist_drill.py"
+      ],
+      "runner_wiring_changed": [
+        "scripts/chaos_drill.py (ALL_DRILLS + DRILL_FUNCS + __all__)",
+        "scripts/_chaos_drill_matrix.py (12 drill_id entries)"
+      ],
+      "tests_added": [
+        "tests/test_scripts_chaos_drills_package.py"
+      ],
+      "tests_updated": [
+        "tests/test_scripts_chaos_drill_matrix.py"
+      ],
+      "design_notes": {
+        "one_drill_per_surface": "Each safety surface gets its own module under scripts/chaos_drills/. One-file-per-drill keeps individual review cheap (<=150 lines) and isolates surface-specific stubs.",
+        "shared_result_shape": "_common.drill_result() emits the same 5-key dict every drill. Drift-proof output shape across 12 independent files.",
+        "sandbox_hygiene": "Drills never touch the network. Drills that need a clock inject a mutable _FakeClock wrapper rather than monkey-patching datetime.now.",
+        "matrix_locked_at_100": "tests/test_scripts_chaos_drill_matrix.py now asserts --fail-under 100 exits 0 (post-closure) and --fail-under 100.5 exits 1. Any new surface added without a drill trips CI.",
+        "detector_reset_verified_by_state": "pnl_drift drill checks detector.n == 0 and running_mean == 0.0 after the first alarm. This is stricter than observing the next update's shape, because PageHinkley's mean tracks the input stream."
+      },
+      "tests_passing_before": 2718,
+      "tests_passing_after": 3251,
+      "tests_new": 533
     }
   },
   "phases": [
@@ -4575,7 +4620,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-24T06:39:16.960902+00:00",
+  "last_updated_utc": "2026-04-24T11:06:20.292084+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -4737,6 +4782,13 @@
       "title": "Safety / Ops ships: order-state reconciler (conservative mode) + chaos-drill coverage matrix + mobile push (Pushover + Telegram) + JARVIS cost telemetry + VPS host runbook. Four new modules, one runbook, 60 new tests, ruff-clean.",
       "tests_delta": 60,
       "tests_passing": 2718
+    },
+    {
+      "version": "v0.1.56",
+      "timestamp_utc": "2026-04-24T11:06:20.292084+00:00",
+      "title": "Chaos Drill Closure ships: 12 new surface-specific drills (kill_switch_runtime, risk_engine, order_state_reconcile, cftc_nfa_compliance, two_factor, smart_router, firm_gate, oos_qualifier, shadow_paper_tracker, live_shadow_guard, pnl_drift, runtime_allowlist). Coverage 4/16 -> 16/16. Matrix locked at --fail-under 100. Ruff-clean.",
+      "tests_delta": 533,
+      "tests_passing": 3251
     }
   ]
 }
