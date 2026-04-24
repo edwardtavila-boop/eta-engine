@@ -351,6 +351,180 @@ def list_tasks() -> dict:
     }
 
 
+@app.get("/api/brokers")
+def broker_readiness() -> dict:
+    """Return the paper-broker readiness snapshot for IBKR + Tastytrade.
+
+    Consumed by the 'Broker Paper' dashboard card to answer:
+    "are the four BTC lanes actually able to place orders right now?"
+    """
+    try:
+        from apex_predator.venues.ibkr import ibkr_paper_readiness
+        from apex_predator.venues.tastytrade import tastytrade_paper_readiness
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"broker adapters not importable: {exc}",
+        ) from exc
+    try:
+        ibkr = ibkr_paper_readiness()
+    except Exception as exc:  # noqa: BLE001 -- surface the failure, don't crash the dashboard
+        ibkr = {"adapter_available": False, "ready": False, "error": str(exc)}
+    try:
+        tasty = tastytrade_paper_readiness()
+    except Exception as exc:  # noqa: BLE001
+        tasty = {"adapter_available": False, "ready": False, "error": str(exc)}
+    return {
+        "brokers": {
+            "ibkr": ibkr,
+            "tastytrade": tasty,
+        },
+        "active_brokers": sorted(
+            name for name, report in {"ibkr": ibkr, "tastytrade": tasty}.items()
+            if report.get("ready")
+        ),
+    }
+
+
+@app.get("/api/btc/lanes")
+def btc_lanes() -> dict:
+    """Return the current state of the four BTC broker-paper lanes.
+
+    Reads the fleet manifest (written by btc_broker_fleet) and the
+    per-worker lane state files (written by PaperLaneRunner). Answers
+    'what is each lane doing right now?' without exposing any secrets.
+    """
+    fleet_dir = STATE_DIR.parent / "apex_predator" / "docs" / "btc_live" / "broker_fleet"
+    # Fallback: respect the package layout if running from the source tree.
+    fallbacks = [
+        fleet_dir,
+        Path.home() / "apex_predator" / "docs" / "btc_live" / "broker_fleet",
+        STATE_DIR / "broker_fleet",
+    ]
+    chosen: Path | None = None
+    for candidate in fallbacks:
+        if candidate.exists():
+            chosen = candidate
+            break
+    if chosen is None:
+        return {
+            "fleet_dir": str(fallbacks[0]),
+            "manifest": None,
+            "lanes": [],
+            "note": "fleet dir not found; start the fleet via "
+                    "python -m apex_predator.scripts.btc_broker_fleet --start",
+        }
+    manifest_path = chosen / "btc_broker_fleet_latest.json"
+    manifest: dict | None = None
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            manifest = None
+    workers: list[dict] = []
+    lane_files = sorted(chosen.glob("*.lane.json"))
+    for lane_file in lane_files:
+        try:
+            state = json.loads(lane_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        worker_id = state.get("worker_id") or lane_file.stem.replace(".lane", "")
+        # Also pull the heartbeat status file for this worker if present.
+        hb_path = chosen / f"{worker_id}.json"
+        heartbeat: dict | None = None
+        if hb_path.exists():
+            try:
+                heartbeat = json.loads(hb_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                heartbeat = None
+        workers.append({
+            "worker_id": worker_id,
+            "broker": state.get("broker"),
+            "lane": state.get("lane"),
+            "symbol": state.get("symbol"),
+            "active_order_id": state.get("active_order_id"),
+            "active_order_status": state.get("active_order_status"),
+            "active_order_filled_qty": state.get("active_order_filled_qty"),
+            "active_order_avg_price": state.get("active_order_avg_price"),
+            "submitted_orders": state.get("submitted_orders"),
+            "reconciled_orders": state.get("reconciled_orders"),
+            "terminal_orders": state.get("terminal_orders"),
+            "last_event": state.get("last_event"),
+            "last_event_utc": state.get("last_event_utc"),
+            "last_reconcile_utc": state.get("last_reconcile_utc"),
+            "heartbeat_status": heartbeat.get("status") if heartbeat else None,
+            "pid": heartbeat.get("pid") if heartbeat else None,
+            "execution_state": (
+                heartbeat.get("execution_state") if heartbeat else None
+            ),
+        })
+    return {
+        "fleet_dir": str(chosen),
+        "manifest": manifest,
+        "lanes": workers,
+        "lane_count": len(workers),
+    }
+
+
+@app.get("/api/btc/trades")
+def btc_trades(n: int = 30) -> dict:
+    """Tail the paper-trade ledger written by the BTC fleet.
+
+    Surfaces the last N status transitions across all four lanes for
+    the 'BTC Paper Trades' dashboard card.
+    """
+    fleet_dir = STATE_DIR.parent / "apex_predator" / "docs" / "btc_live" / "broker_fleet"
+    fallbacks = [
+        fleet_dir,
+        Path.home() / "apex_predator" / "docs" / "btc_live" / "broker_fleet",
+        STATE_DIR / "broker_fleet",
+    ]
+    chosen: Path | None = None
+    for candidate in fallbacks:
+        if candidate.exists():
+            chosen = candidate
+            break
+    if chosen is None:
+        return {
+            "trades": [],
+            "total": 0,
+            "note": "fleet dir not found",
+        }
+    ledger = chosen / "btc_paper_trades.jsonl"
+    if not ledger.exists():
+        return {
+            "trades": [],
+            "total": 0,
+            "source": str(ledger),
+            "note": "no trades yet -- either the fleet hasn't run or "
+                    "BTC_PAPER_LANE_AUTO_SUBMIT is not set",
+        }
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"cannot read trades ledger: {exc}",
+        ) from exc
+    trades: list[dict] = []
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            trades.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+        if len(trades) >= max(1, min(n, 500)):
+            break
+    return {
+        "trades": trades,
+        "total": len(lines),
+        "returned": len(trades),
+        "source": str(ledger),
+    }
+
+
 @app.post("/api/tasks/{task}/fire")
 def fire_task(task: str) -> dict:
     """Manually fire a BackgroundTask. Useful for ad-hoc retrospectives."""

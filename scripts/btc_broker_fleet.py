@@ -379,6 +379,70 @@ def build_fleet_status(
     }
 
 
+def _execute_worker_tick(
+    spec: FleetWorkerSpec,
+    *,
+    runner: PaperLaneRunner | None,
+    out_dir: Path,
+    heartbeat: int,
+    started_at: str,
+    runner_error: str,
+) -> dict[str, Any]:
+    """Execute one worker iteration and return the persisted heartbeat payload.
+
+    Pure function -- no time.sleep, no signal handling. Isolated so the
+    E2E test can drive the lifecycle without spawning a subprocess.
+    """
+    lane_snapshot: dict[str, Any] = {}
+    if runner is not None:
+        try:
+            lane_snapshot = asyncio.run(run_one_tick(runner))
+        except Exception as exc:  # noqa: BLE001
+            lane_snapshot = {
+                "execution_state": "ERROR",
+                "last_event": f"tick_error:{type(exc).__name__}",
+                "error": str(exc),
+            }
+    payload = build_worker_payload(
+        spec,
+        pid=os.getpid(),
+        status="RUNNING",
+        started_at_utc=started_at,
+        heartbeat_count=heartbeat,
+        broker_ready=True,
+        latest_trade=latest_trade_for_worker(out_dir, spec.worker_id),
+        note=runner_error or "paper-lane tick completed",
+    )
+    if lane_snapshot:
+        payload["lane_runner"] = lane_snapshot
+        if lane_snapshot.get("execution_state"):
+            payload["execution_state"] = lane_snapshot["execution_state"]
+        if lane_snapshot.get("active_order_id"):
+            payload["fill_lifecycle_ready"] = True
+    write_json(worker_status_path(out_dir, spec.worker_id), payload)
+    return payload
+
+
+def _build_lane_runner(
+    spec: FleetWorkerSpec,
+    *,
+    out_dir: Path,
+) -> tuple[PaperLaneRunner | None, str]:
+    """Construct the lane runner or capture the construction error."""
+    try:
+        runner = PaperLaneRunner(
+            worker_id=spec.worker_id,
+            broker=spec.broker,
+            lane=spec.lane,
+            symbol=spec.symbol,
+            state_dir=out_dir,
+            ledger_path=worker_ledger_path(out_dir),
+        )
+    except Exception as exc:  # noqa: BLE001 -- caller falls back to heartbeat-only
+        return None, f"{type(exc).__name__}: {exc}"
+    return runner, ""
+
+
 def run_worker(spec: FleetWorkerSpec, *, out_dir: Path, heartbeat_interval_s: float) -> int:
     """Run one BTC broker-paper worker with real lane execution.
 
@@ -395,51 +459,18 @@ def run_worker(spec: FleetWorkerSpec, *, out_dir: Path, heartbeat_interval_s: fl
     """
     started_at = utc_now()
     heartbeat = 0
-    status_path = worker_status_path(out_dir, spec.worker_id)
-    runner: PaperLaneRunner | None = None
-    runner_error: str = ""
-    try:
-        runner = PaperLaneRunner(
-            worker_id=spec.worker_id,
-            broker=spec.broker,
-            lane=spec.lane,
-            symbol=spec.symbol,
-            state_dir=out_dir,
-            ledger_path=worker_ledger_path(out_dir),
-        )
-    except Exception as exc:  # noqa: BLE001 -- report + fall back to heartbeat-only
-        runner_error = f"{type(exc).__name__}: {exc}"
+    runner, runner_error = _build_lane_runner(spec, out_dir=out_dir)
     try:
         while True:
             heartbeat += 1
-            lane_snapshot: dict[str, Any] = {}
-            if runner is not None:
-                try:
-                    lane_snapshot = asyncio.run(run_one_tick(runner))
-                except Exception as exc:  # noqa: BLE001
-                    lane_snapshot = {
-                        "execution_state": "ERROR",
-                        "last_event": f"tick_error:{type(exc).__name__}",
-                        "error": str(exc),
-                    }
-            payload = build_worker_payload(
+            _execute_worker_tick(
                 spec,
-                pid=os.getpid(),
-                status="RUNNING",
-                started_at_utc=started_at,
-                heartbeat_count=heartbeat,
-                broker_ready=True,
-                latest_trade=latest_trade_for_worker(out_dir, spec.worker_id),
-                note=runner_error or "paper-lane tick completed",
+                runner=runner,
+                out_dir=out_dir,
+                heartbeat=heartbeat,
+                started_at=started_at,
+                runner_error=runner_error,
             )
-            if lane_snapshot:
-                payload["lane_runner"] = lane_snapshot
-                # Propagate execution-state upwards for dashboard rollup.
-                if lane_snapshot.get("execution_state"):
-                    payload["execution_state"] = lane_snapshot["execution_state"]
-                if lane_snapshot.get("active_order_id"):
-                    payload["fill_lifecycle_ready"] = True
-            write_json(status_path, payload)
             time.sleep(max(0.2, heartbeat_interval_s))
     except KeyboardInterrupt:
         if runner is not None:
@@ -457,7 +488,7 @@ def run_worker(spec: FleetWorkerSpec, *, out_dir: Path, heartbeat_interval_s: fl
         )
         if runner is not None:
             payload["lane_runner"] = runner.snapshot()
-        write_json(status_path, payload)
+        write_json(worker_status_path(out_dir, spec.worker_id), payload)
         return 0
 
 

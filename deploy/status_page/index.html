@@ -143,6 +143,17 @@
       <div id="jarvis-decisions" class="mono" style="font-size: 0.85em; max-height: 320px; overflow-y: auto;">Loading…</div>
     </div>
 
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>BTC Broker-Paper Fleet
+        <span class="mono" id="btc-fleet-summary" style="font-size: 0.75em; opacity: 0.7; margin-left: 12px;"></span>
+      </h3>
+      <div id="btc-lanes" class="mono" style="font-size: 0.85em;">Loading…</div>
+      <details style="margin-top: 1rem;">
+        <summary style="cursor: pointer; opacity: 0.8;">Recent paper trades (ledger tail)</summary>
+        <div id="btc-trades" class="mono" style="font-size: 0.8em; max-height: 200px; overflow-y: auto; margin-top: 0.5rem;">Loading…</div>
+      </details>
+    </div>
+
     <div class="card" style="grid-column: 1 / -1;" id="error-card" hidden>
       <h3 class="error">⚠ Connection issue</h3>
       <div class="metric mono error" id="error-text"></div>
@@ -331,6 +342,77 @@
           document.getElementById('jarvis-decisions').textContent =
             '(no jarvis audit log yet)';
           document.getElementById('jarvis-summary').textContent = '';
+        }
+
+        // BTC broker-paper fleet
+        try {
+          const [lanes, trades, brokers] = await Promise.all([
+            fetchJson('/api/btc/lanes'),
+            fetchJson('/api/btc/trades?n=15'),
+            fetchJson('/api/brokers'),
+          ]);
+
+          // Summary ribbon
+          const ibkr_ready = brokers.brokers?.ibkr?.ready;
+          const tasty_ready = brokers.brokers?.tastytrade?.ready;
+          const active = brokers.active_brokers || [];
+          document.getElementById('btc-fleet-summary').innerHTML =
+            `<span style="color: ${ibkr_ready ? '#4ade80' : '#f87171'};">ibkr ${ibkr_ready ? '✓' : '✗'}</span> · ` +
+            `<span style="color: ${tasty_ready ? '#4ade80' : '#f87171'};">tastytrade ${tasty_ready ? '✓' : '✗'}</span> · ` +
+            `${lanes.lane_count || 0} lane(s) · ` +
+            `${active.length} active broker${active.length === 1 ? '' : 's'}`;
+
+          // Lane rows
+          const lanesEl = document.getElementById('btc-lanes');
+          if (!lanes.lanes || lanes.lanes.length === 0) {
+            lanesEl.textContent = lanes.note || '(no lane state yet)';
+          } else {
+            const stateColor = {
+              ACTIVE: 'green', ARMED: 'purple', RECONCILE_ONLY: 'blue',
+              ERROR: 'red',
+            };
+            lanesEl.innerHTML = lanes.lanes.map(l => {
+              const col = stateColor[l.execution_state] || 'blue';
+              const submitted = l.submitted_orders ?? 0;
+              const reconciled = l.reconciled_orders ?? 0;
+              const terminal = l.terminal_orders ?? 0;
+              const order = l.active_order_id
+                ? `<span style="color: #a78bfa;">${l.active_order_id}</span> @ ${l.active_order_status}`
+                : '<span style="opacity: 0.5;">no active order</span>';
+              return `
+                <div style="padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); display: grid; grid-template-columns: 1.6fr 1fr 1fr 2fr 1.5fr; gap: 0.6rem; align-items: baseline;">
+                  <span style="font-weight: 600;">${l.worker_id || '?'}</span>
+                  <span class="badge ${col}" style="text-align: center;">${l.execution_state || '?'}</span>
+                  <span style="opacity: 0.7;">${l.broker || '?'}/${l.lane || '?'}</span>
+                  <span>${order}</span>
+                  <span style="opacity: 0.6; text-align: right;">sub:${submitted} rec:${reconciled} term:${terminal}</span>
+                </div>`;
+            }).join('');
+          }
+
+          // Trades tail
+          const tradesEl = document.getElementById('btc-trades');
+          if (!trades.trades || trades.trades.length === 0) {
+            tradesEl.textContent = trades.note || '(no paper trades yet)';
+          } else {
+            tradesEl.innerHTML = trades.trades.map(t => {
+              const ts = t.ts_utc ? new Date(t.ts_utc).toLocaleTimeString() : '?';
+              const event = t.event || t.status || '?';
+              const oid = t.order_id || '';
+              return `
+                <div style="padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); display: flex; gap: 0.6rem;">
+                  <span style="opacity: 0.6; width: 5rem;">${ts}</span>
+                  <span style="min-width: 10rem; opacity: 0.8;">${t.worker_id || ''}</span>
+                  <span style="min-width: 5rem;">${event}</span>
+                  <span style="color: var(--muted);">${oid}</span>
+                </div>`;
+            }).join('');
+          }
+        } catch (_e) {
+          document.getElementById('btc-lanes').textContent =
+            '(btc fleet endpoints unavailable)';
+          document.getElementById('btc-trades').textContent = '';
+          document.getElementById('btc-fleet-summary').textContent = '';
         }
 
         document.getElementById('error-card').hidden = true;
