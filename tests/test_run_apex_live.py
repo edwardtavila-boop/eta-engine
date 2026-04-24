@@ -11,6 +11,8 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
+from apex_predator.core.broker_equity_poller import BrokerEquityPoller
+from apex_predator.core.broker_equity_reconciler import BrokerEquityReconciler
 from apex_predator.core.consistency_guard import (
     ConsistencyGuard,
     ConsistencyStatus,
@@ -1157,3 +1159,272 @@ class TestConsistencyViolationPauses:
             if e["kind"] == "tick":
                 actions.extend(v["action"] for v in e["verdicts"])
         assert "PAUSE_NEW_ENTRIES" not in actions
+
+
+# --------------------------------------------------------------------------- #
+# R1 end-to-end -- BrokerEquityPoller + BrokerEquityReconciler integration.
+#
+# The reconciler is observation-only: every tick, it compares the runtime's
+# tier-A aggregate equity against the broker-polled MTM and classifies the
+# drift. The runtime surfaces each classification in the tick log and fires
+# a `broker_equity_drift` alert on the transition INTO broker_below_logical.
+# These tests cover:
+#   * no reconciler attached = legacy path, no broker_equity key in tick
+#   * reconciler + poller attached = each tick logs a classification
+#   * tick-level alert fires exactly once on transition into drift state
+#   * no-broker-data classification is logged without alert
+# --------------------------------------------------------------------------- #
+class TestBrokerEquityReconcilerIntegration:
+    @pytest.mark.asyncio
+    async def test_no_reconciler_attached_is_noop(self, tmp_path):
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime.broker_equity_reconciler is None
+        assert runtime.broker_equity_poller is None
+        rc = await runtime.run()
+        assert rc == 0
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        tick_entries = [
+            json.loads(ln) for ln in lines
+            if json.loads(ln)["kind"] == "tick"
+        ]
+        assert tick_entries
+        # No broker_equity sub-key on any tick entry.
+        for e in tick_entries:
+            assert "broker_equity" not in e
+
+    @pytest.mark.asyncio
+    async def test_reconciler_logs_classification_each_tick(self, tmp_path):
+        """Attach a reconciler with a static-value source -- every tick must
+        record a broker_equity block in the tick log."""
+        # Within-tolerance: broker == logical (5000 tier-A from FakeBot).
+        def _src() -> float | None:
+            return 5_000.0
+        rec = BrokerEquityReconciler(
+            broker_equity_source=_src,
+            tolerance_usd=50.0,
+            tolerance_pct=0.001,
+        )
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            broker_equity_reconciler=rec,
+        )
+        rc = await runtime.run()
+        assert rc == 0
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        tick_entries = [
+            json.loads(ln) for ln in lines
+            if json.loads(ln)["kind"] == "tick"
+        ]
+        assert len(tick_entries) == 2
+        for e in tick_entries:
+            be = e["broker_equity"]
+            assert be["reason"] == "within_tolerance"
+            assert be["in_tolerance"] is True
+            assert be["drift_usd"] == pytest.approx(0.0)
+        # Stats on the reconciler reflect two ticks of checks.
+        assert rec.stats.checks_total == 2
+        assert rec.stats.checks_in_tolerance == 2
+        assert rec.stats.checks_out_of_tolerance == 0
+
+    @pytest.mark.asyncio
+    async def test_reconciler_alert_fires_once_on_drift_transition(
+        self, tmp_path,
+    ):
+        """Pre-stage a broker source that reports LOWER than logical so the
+        first tick classifies as broker_below_logical and fires the alert.
+        Subsequent ticks (still in drift) must NOT re-fire the alert."""
+        # Broker reports 4000 vs logical 5000 -> drift_usd=1000 -> well past
+        # 50 USD / 0.1% tolerance -> broker_below_logical.
+        def _low() -> float | None:
+            return 4_000.0
+        rec = BrokerEquityReconciler(
+            broker_equity_source=_low,
+            tolerance_usd=50.0,
+            tolerance_pct=0.001,
+        )
+
+        # Stub dispatcher so we can count broker_equity_drift emissions.
+        disp = _StubDispatcher()
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            broker_equity_reconciler=rec,
+            dispatcher=disp,
+        )
+        rc = await runtime.run()
+        assert rc == 0
+        # Exactly ONE broker_equity_drift alert across 3 ticks (transition).
+        drift_events = [
+            payload for (event, payload) in disp.sent
+            if event == "broker_equity_drift"
+        ]
+        assert len(drift_events) == 1
+        evt = drift_events[0]
+        assert evt["reason"] == "broker_below_logical"
+        assert evt["logical_equity_usd"] == pytest.approx(5_000.0)
+        assert evt["broker_equity_usd"] == pytest.approx(4_000.0)
+        assert evt["drift_usd"] == pytest.approx(1_000.0)
+
+        # All three tick logs carry the classification.
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        tick_entries = [
+            json.loads(ln) for ln in lines
+            if json.loads(ln)["kind"] == "tick"
+        ]
+        assert len(tick_entries) == 3
+        for e in tick_entries:
+            assert e["broker_equity"]["reason"] == "broker_below_logical"
+            assert e["broker_equity"]["in_tolerance"] is False
+        # Stats match.
+        assert rec.stats.checks_total == 3
+        assert rec.stats.checks_out_of_tolerance == 3
+
+    @pytest.mark.asyncio
+    async def test_reconciler_no_broker_data_is_logged_not_alerted(
+        self, tmp_path,
+    ):
+        """A source that always returns None classifies as no_broker_data
+        every tick. This is the paper / dormant-adapter path. The tick log
+        records it; the alert channel stays silent."""
+        def _none() -> float | None:
+            return None
+        rec = BrokerEquityReconciler(broker_equity_source=_none)
+        disp = _StubDispatcher()
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            broker_equity_reconciler=rec,
+            dispatcher=disp,
+        )
+        await runtime.run()
+        assert rec.stats.checks_total == 2
+        assert rec.stats.checks_no_data == 2
+        # No broker_equity_drift alert.
+        assert not any(
+            event == "broker_equity_drift" for (event, _) in disp.sent
+        )
+        # Every tick logs reason=no_broker_data.
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        tick_entries = [
+            json.loads(ln) for ln in lines
+            if json.loads(ln)["kind"] == "tick"
+        ]
+        for e in tick_entries:
+            assert e["broker_equity"]["reason"] == "no_broker_data"
+            assert e["broker_equity"]["drift_usd"] is None
+
+    @pytest.mark.asyncio
+    async def test_poller_lifecycle_started_and_stopped_by_runtime(
+        self, tmp_path,
+    ):
+        """When a poller is wired, run() awaits its start() and the finally
+        block awaits stop(). We verify via the poller's own is_running()
+        and fetch counters."""
+        fetches = 0
+
+        async def _fetch() -> float | None:
+            nonlocal fetches
+            fetches += 1
+            return 5_000.0
+
+        poller = BrokerEquityPoller(
+            name="test",
+            fetch_fn=_fetch,
+            refresh_s=0.05,
+            stale_after_s=5.0,
+        )
+        rec = BrokerEquityReconciler(
+            broker_equity_source=poller.current,
+            tolerance_usd=50.0,
+        )
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            broker_equity_reconciler=rec,
+            broker_equity_poller=poller,
+        )
+        assert not poller.is_running()
+        await runtime.run()
+        # Poller was stopped cleanly by the finally block.
+        assert not poller.is_running()
+        # start() does one eager fetch before scheduling the loop, so at
+        # minimum one fetch must have happened.
+        assert fetches >= 1
+        # Reconciler received the cached value on every tick (2 checks).
+        assert rec.stats.checks_total == 2
+        # And because fetch returns 5000 == logical, all within tolerance.
+        assert rec.stats.checks_in_tolerance == 2
+
+    @pytest.mark.asyncio
+    async def test_drift_transition_resets_and_refires(self, tmp_path):
+        """Transition tracking: drift clears -> re-enters -> alert fires
+        twice, not once. Uses a mutable closure to swap the broker value
+        between ticks."""
+        broker_value: list[float] = [5_000.0]  # tick 0: in tolerance
+
+        def _src() -> float | None:
+            return broker_value[0]
+
+        rec = BrokerEquityReconciler(
+            broker_equity_source=_src,
+            tolerance_usd=50.0,
+            tolerance_pct=0.001,
+        )
+
+        # Patch dispatcher send to mutate broker_value between ticks so we
+        # can script the transition pattern. The tick cadence is tight
+        # (tick_interval_s=0.0) so ticks advance as fast as the loop.
+        disp = _StubDispatcher()
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=4,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            broker_equity_reconciler=rec,
+            dispatcher=disp,
+        )
+        # Drive the ticks manually so we can script broker_value.
+        bots_inst = runtime._instantiate_active_bots()
+        for _b, bot in bots_inst:
+            await bot.start()
+        # tick 0: within tolerance (5000 vs 5000)
+        await runtime._tick(bots_inst, 0)
+        # tick 1: drift
+        broker_value[0] = 4_000.0
+        await runtime._tick(bots_inst, 1)
+        # tick 2: recover
+        broker_value[0] = 5_000.0
+        await runtime._tick(bots_inst, 2)
+        # tick 3: re-drift
+        broker_value[0] = 4_000.0
+        await runtime._tick(bots_inst, 3)
+        for _, bot in bots_inst:
+            await bot.stop()
+
+        drift_events = [
+            payload for (event, payload) in disp.sent
+            if event == "broker_equity_drift"
+        ]
+        # One for the first entry into drift (tick 1), one for the
+        # re-entry (tick 3). Recovery at tick 2 clears the latch.
+        assert len(drift_events) == 2

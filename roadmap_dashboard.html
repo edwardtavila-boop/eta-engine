@@ -120,9 +120,32 @@
   <h1>APEX PREDATOR <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.62</b></span>
-    <span>TESTS <b>3920 ✓</b></span>
+    <span>VER <b>0.1.63</b></span>
+    <span>TESTS <b>3950 ✓</b></span>
     <span>UPDATED <b>2026-04-24</b></span>
+  </div>
+</div>
+
+<!-- v0.1.63 R1 END-TO-END RUNTIME WIRING BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.14), transparent);">
+  <h3>v0.1.63 — R1 End-to-End Runtime Wiring · 3950 tests passing (+6 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.63 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>R1 closure (observation-only)</b></span>
+    <span><span style="color:var(--dim)">Reconciler:</span> <b>now called every tick</b></span>
+    <span><span style="color:var(--dim)">Poller:</span> <b>lifecycle owned by run()</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">scripts/run_apex_live.py · tests/test_run_apex_live.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>poller.start()</b> — after bot.start, eager-fetch primes cache before tick 1</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>poller.stop()</b> — first in finally, drains broker session before bot shutdown</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>reconcile(ta_equity)</b> — one tier-A computation reused by tracker + reconciler</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>broker_equity_drift alert</b> — transition-only latch (no spam under sustained drift)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>tick log block</b> — reason / in_tolerance / drift_usd / drift_pct on every tick</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>6 wiring tests</b> — noop · classification · alert-once · no-data · lifecycle · re-arm</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    R1 flipped SCAFFOLDED → CLOSED at the observation layer. KillVerdict synthesis on sustained drift stays a v0.2.x scope call (needs live-paper tolerance empirics). Backward compatible: both kwargs default to None.
   </div>
 </div>
 

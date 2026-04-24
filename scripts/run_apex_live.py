@@ -93,6 +93,10 @@ from apex_predator.obs.heartbeat import HeartbeatMonitor
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from apex_predator.core.broker_equity_poller import BrokerEquityPoller
+    from apex_predator.core.broker_equity_reconciler import (
+        BrokerEquityReconciler,
+    )
     from apex_predator.core.trailing_dd_tracker import TrailingDDTracker
 
 logger = logging.getLogger("apex_predator.runtime")
@@ -519,6 +523,8 @@ class ApexRuntime:
         kill_switch_latch: KillSwitchLatch | None = None,
         trailing_dd_tracker: TrailingDDTracker | None = None,
         consistency_guard: ConsistencyGuard | None = None,
+        broker_equity_reconciler: BrokerEquityReconciler | None = None,
+        broker_equity_poller: BrokerEquityPoller | None = None,
         dispatcher: AlertDispatcher | None = None,
         router: Any | None = None,
         heartbeat: HeartbeatMonitor | None = None,
@@ -539,6 +545,22 @@ class ApexRuntime:
         # because the tracker requires a durable state file and the
         # operator must choose where that lives (likely ROOT/state/).
         self.trailing_dd_tracker = trailing_dd_tracker
+
+        # R1 closure: observation-only broker MTM drift detection.
+        # When both are wired, the runtime starts the poller in run(),
+        # stops it in the finally block, and feeds each tick's tier-A
+        # aggregate equity to the reconciler. Classification is logged
+        # and out-of-tolerance events (broker_below_logical) fan out as
+        # a `broker_equity_drift` alert. The reconciler itself is
+        # observation-only -- it does NOT synthesize KillVerdicts today
+        # (deferred to v0.2.x). Wiring both kwargs to None preserves
+        # legacy behaviour (no drift detection).
+        self.broker_equity_reconciler = broker_equity_reconciler
+        self.broker_equity_poller = broker_equity_poller
+        # Per-tick drift status cache so we only fire an alert on the
+        # transition into broker_below_logical, not every tick while
+        # the drift persists. Mirrors the consistency-guard pattern.
+        self._last_broker_drift_reason: str | None = None
 
         # LIVE-MODE GATE (blocker #2, risk-advocate D3 review).
         # The legacy build_apex_eval_snapshot() fallback does NOT implement
@@ -621,6 +643,21 @@ class ApexRuntime:
             except Exception as exc:  # pragma: no cover — defensive
                 logger.error("bot.start failed for %s: %s", b.name, exc)
 
+        # R1 closure: start the broker-equity poller (if wired). The
+        # poller runs an async refresh loop in the background; _tick
+        # reads the cached snapshot via reconciler.reconcile(). We
+        # start AFTER bot.start so we never spin up a network pinger
+        # for a runtime that is about to abort on bot-factory errors,
+        # and stop FIRST in the finally block (before bot.stop) so a
+        # slow broker-logout can't delay the draining of live bots.
+        if self.broker_equity_poller is not None:
+            try:
+                await self.broker_equity_poller.start()
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.error(
+                    "broker_equity_poller.start failed: %s", exc,
+                )
+
         exit_code = 0
         bar_i = 0
         try:
@@ -633,6 +670,19 @@ class ApexRuntime:
                     with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(self._stop.wait(), timeout=self.cfg.tick_interval_s)
         finally:
+            # Stop the broker-equity poller FIRST -- its refresh loop
+            # holds an aiohttp/broker-SDK session and should be drained
+            # before we cancel the bot tasks to keep the shutdown order
+            # clean (reconciler never reads a poller that no longer has
+            # a live session). Guarded so a None poller (legacy path)
+            # is a no-op.
+            if self.broker_equity_poller is not None:
+                try:
+                    await self.broker_equity_poller.stop()
+                except Exception as exc:  # pragma: no cover — defensive
+                    logger.error(
+                        "broker_equity_poller.stop failed: %s", exc,
+                    )
             for b, bot in bots_instantiated:
                 try:
                     await bot.stop()
@@ -673,6 +723,12 @@ class ApexRuntime:
         # 3. snapshot + kill-switch evaluate
         snapshots = [build_bot_snapshot(b, bot) for b, bot in bots]
         portfolio = build_portfolio_snapshot(snapshots)
+        # Compute tier-A aggregate equity ONCE -- it is consumed by
+        # both the trailing-DD tracker (to synthesize the apex_eval
+        # snapshot) and the broker-equity reconciler (as the "logical"
+        # side of the drift comparison). Keeping a single source of
+        # truth avoids a rounding divergence between the two paths.
+        ta_equity = float(sum(s.equity_usd for s in snapshots if s.tier == "A"))
         # Tick-granular trailing-DD path: if a tracker is attached,
         # feed the current tier-A aggregate equity into it and use its
         # snapshot as the authoritative apex_eval for this tick. The
@@ -681,12 +737,58 @@ class ApexRuntime:
         # fall-through branch preserves the legacy bar-level proxy so
         # a runtime without a tracker still emits a plausible snapshot.
         if self.trailing_dd_tracker is not None:
-            ta_equity = sum(s.equity_usd for s in snapshots if s.tier == "A")
             apex_eval = self.trailing_dd_tracker.update(
-                current_equity_usd=float(ta_equity),
+                current_equity_usd=ta_equity,
             )
         else:
             apex_eval = build_apex_eval_snapshot(self.cfg, snapshots)
+
+        # R1 closure: observation-only broker MTM drift check. The
+        # reconciler reads the latest broker-side net-liq from the
+        # poller's TTL cache (or no-data if the poller hasn't had a
+        # successful refresh yet), classifies the gap vs the logical
+        # tier-A aggregate, and records stats. We fan out an alert
+        # only on the TRANSITION into `broker_below_logical` so a
+        # sustained drift does not spam the alert channel. Other
+        # classifications (within_tolerance / broker_above_logical /
+        # no_broker_data) are logged via _log(kind="tick") below.
+        rec_reason: str | None = None
+        rec_drift_usd: float | None = None
+        rec_drift_pct: float | None = None
+        rec_in_tol: bool | None = None
+        if self.broker_equity_reconciler is not None:
+            try:
+                rec_result = self.broker_equity_reconciler.reconcile(
+                    logical_equity_usd=ta_equity,
+                )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.error(
+                    "broker_equity_reconciler.reconcile failed: %s", exc,
+                )
+            else:
+                rec_reason = rec_result.reason
+                rec_drift_usd = rec_result.drift_usd
+                rec_drift_pct = rec_result.drift_pct_of_logical
+                rec_in_tol = rec_result.in_tolerance
+                prior_reason = self._last_broker_drift_reason
+                self._last_broker_drift_reason = rec_reason
+                # Only alert on transition INTO broker_below_logical.
+                # Re-entering tolerance clears the latch so a second
+                # breach later will re-alert.
+                if (
+                    rec_reason == "broker_below_logical"
+                    and prior_reason != "broker_below_logical"
+                ):
+                    self.dispatcher.send(
+                        "broker_equity_drift",
+                        {
+                            "reason": rec_reason,
+                            "logical_equity_usd": ta_equity,
+                            "broker_equity_usd": rec_result.broker_equity_usd,
+                            "drift_usd": rec_drift_usd,
+                            "drift_pct_of_logical": rec_drift_pct,
+                        },
+                    )
         funding = build_funding_snapshot(self.cfg)
         correlations = build_correlation_snapshot(self.cfg)
         verdicts = self.kill_switch.evaluate(
@@ -844,7 +946,7 @@ class ApexRuntime:
                         verdicts.append(pause_verdict)
 
         # 5. structured per-tick log
-        self._log(kind="tick", meta={
+        tick_meta: dict[str, Any] = {
             "bar": bar_i,
             "active": [b.name for b, _ in bots],
             "verdicts": [
@@ -858,7 +960,20 @@ class ApexRuntime:
             ],
             "executed": [e for rep in reports for e in rep.executed],
             "errors":   [e for rep in reports for e in rep.errors],
-        })
+        }
+        # R1 closure: surface the broker-drift classification in the
+        # tick log whenever the reconciler is wired. Keeps the alert
+        # channel quiet (only transitions fire there) while every
+        # tick's classification lands in runtime_log.jsonl for the
+        # post-session audit trail.
+        if self.broker_equity_reconciler is not None:
+            tick_meta["broker_equity"] = {
+                "reason": rec_reason,
+                "in_tolerance": rec_in_tol,
+                "drift_usd": rec_drift_usd,
+                "drift_pct_of_logical": rec_drift_pct,
+            }
+        self._log(kind="tick", meta=tick_meta)
 
     # -- helpers ------------------------------------------------------------- #
     def _instantiate_active_bots(self) -> list[tuple[BotBinding, Any]]:

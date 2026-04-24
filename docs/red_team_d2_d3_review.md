@@ -1,12 +1,19 @@
 # Red Team Review — D-series Apex Eval Hardening
 
-**Date:** 2026-04-24 (v0.1.58) · updated 2026-04-24 (v0.1.59 residual-risk closure)
+**Date:** 2026-04-24 (v0.1.58) · updated 2026-04-24 (v0.1.59 residual-risk
+closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring).
 **Scope:** D2 (`TrailingDDTracker`) and D3 (`ConsistencyGuard`) modules and
 their wiring into `scripts/run_apex_live.py`.
 **Reviewer:** `risk-advocate` agent (Opus 4.7, adversarial posture).
 **Outcome (v0.1.58):** 3 BLOCKERs identified, all closed.
 **Outcome (v0.1.59):** 4 HIGH residual risks re-litigated — 3 closed
 (R2/R3/R4), 1 scaffolded with enforcement deferred to v0.2.x (R1).
+**Outcome (v0.1.63):** R1 end-to-end wiring landed — ApexRuntime now
+starts/stops the BrokerEquityPoller, feeds tier-A aggregate equity to
+the reconciler each tick, logs every classification, and fires an
+alert on the transition into `broker_below_logical`. All four HIGH
+residual risks (R1/R2/R3/R4) are now CLOSED at the observation layer;
+KillVerdict synthesis on sustained drift remains a v0.2.x scope call.
 
 This document captures the adversarial teardown of the D-series work, the
 fixes shipped in response, and the residual risks that remain (documented
@@ -132,7 +139,7 @@ v0.1.59 we re-litigated that call — three of the four were within reach
 and the fourth had a clean scaffold-now-wire-later shape. All four are
 tracked below with their current closure state.
 
-### R1 — Logical equity vs broker MTM  |  SCAFFOLDED (enforcement deferred)
+### R1 — Logical equity vs broker MTM  |  CLOSED (observation-only, v0.1.63)
 
 **Original finding.** The tracker consumes `sum(bot.state.equity)` — a
 logical figure maintained by the bot's own PnL book. Apex accounts for
@@ -140,31 +147,83 @@ MTM at broker level (unrealized + realized + funding + fees). A
 prolonged disconnect between these two could drift the floor calculation
 from what Apex sees.
 
-**v0.1.59 closure (partial).** Added
+**v0.1.59 scaffolding.** Added
 `apex_predator/core/broker_equity_reconciler.py` —
 `BrokerEquityReconciler` accepts a caller-supplied
 `broker_equity_source: Callable[[], float | None]`, compares logical
 equity to broker equity on every reconcile tick, and classifies drift
-against configurable USD/pct tolerances. The dangerous case
-(`broker_below_logical` = cushion over-stated) emits a WARNING log; the
-inverse (`broker_above_logical` = cushion under-stated, merely early
-flatten) emits INFO. Source exceptions are swallowed and classified as
-`no_broker_data` (in-tolerance by convention — we can't assert drift we
-can't see). The module **does not** pause, flatten, or synthesize a
-KillVerdict — this is pure observation.
+against configurable USD/pct tolerances. Classification taxonomy:
+`within_tolerance` / `broker_below_logical` (dangerous — cushion
+over-stated) / `broker_above_logical` (informational — cushion
+under-stated, merely early flatten) / `no_broker_data` (in-tolerance by
+convention since we can't assert drift we can't see). Source exceptions
+are swallowed and classified as `no_broker_data`. The module does not
+pause, flatten, or synthesize a KillVerdict — this is pure observation.
 
-**Still deferred to v0.2.x:** wiring each broker adapter's
-`get_balance()` / account-value endpoint to the reconciler, and
-deciding whether the runtime should **replace** logical equity with
-`broker_equity - sum(open_pnl)` as the tracker input. Today IBKR's
-`get_balance()` returns an empty dict and Tastytrade/Tradovate wiring is
-venue-specific; both are v0.2.x scope.
+**v0.1.62 protocol layer.** Added
+`apex_predator/core/broker_equity_adapter.py` — a
+`@runtime_checkable typing.Protocol` (`BrokerEquityAdapter`) requiring
+`name: str` and `async def get_net_liquidation() -> float | None`. Both
+production adapters (`IBKRAdapter`, `TastytradeVenue`) satisfy the
+protocol structurally without inheritance. Shipped alongside:
+`NullBrokerEquityAdapter` (paper / dormant-venue placeholder) and
+`make_poller_for(adapter, *, refresh_s, stale_after_s)` factory that
+constructs but does not start a `BrokerEquityPoller` bound to the
+adapter.
 
-**Tests.** `tests/test_broker_equity_reconciler.py` — 21 tests across
-8 classes: no-broker-data path, within-tolerance, broker-below-logical
-(dangerous), broker-above-logical, USD/pct tolerance boundaries, zero
-logical equity, source-raising treated as no_data, running stats
-counters, result-shape contract.
+**v0.1.63 runtime wiring (closure).** `ApexRuntime.__init__` now accepts
+two kwargs: `broker_equity_reconciler: BrokerEquityReconciler | None`
+and `broker_equity_poller: BrokerEquityPoller | None`. When wired:
+
+  * `run()` awaits `poller.start()` after the bot-start loop so the
+    network session is not spun up for an abort on factory errors, and
+    awaits `poller.stop()` FIRST in the `finally:` block (before
+    `bot.stop()`) so a slow broker logout cannot delay live-bot
+    draining.
+  * `_tick()` now computes `ta_equity` ONCE at the top and reuses it
+    for both the trailing-DD tracker (tracker.update input) and the
+    reconciler (logical-side of drift check), preventing any rounding
+    divergence between the two paths.
+  * On every tick the reconciler's classification lands in the
+    per-tick log (`runtime_log.jsonl` → `"broker_equity"` sub-key:
+    `reason`, `in_tolerance`, `drift_usd`, `drift_pct_of_logical`).
+  * Fan-out alert (`broker_equity_drift`) fires on the TRANSITION INTO
+    `broker_below_logical` only — sustained drift does not spam the
+    alert channel. Recovery clears the latch so a subsequent re-entry
+    re-alerts. Other classifications (within_tolerance /
+    broker_above_logical / no_broker_data) are silent on the alert
+    channel but still land in the tick log.
+
+**Why observation-only remains correct.** Synthesizing a KillVerdict on
+out-of-tolerance would couple the drift classifier to the policy layer
+that we deliberately keep inside `KillSwitch`. The reconciler gives the
+operator a high-signal alert + audit trail; the operator decides
+whether to pause / flatten / investigate. Promoting drift to a verdict
+is a v0.2.x scope call (requires calibrating the tolerance against
+commission + slippage empirics from live paper runs, not the synthetic
+harness we ship today).
+
+**Still deferred to v0.2.x:** (1) KillVerdict synthesis on sustained
+out-of-tolerance. (2) Router-aware poller selection (pick the right
+poller based on which broker is currently trading futures). (3) A
+multi-broker drift fan-out (cross-check IBKR vs Tastytrade). None are
+Apex-eval blockers — observation is sufficient to catch the drift
+pattern that originally motivated R1.
+
+**Tests.**
+  * `tests/test_broker_equity_reconciler.py` — 21 tests: no-data,
+    within-tolerance, broker-below-logical, broker-above-logical,
+    USD/pct boundaries, zero logical equity, raising source, stats
+    counters, result-shape contract.
+  * `tests/test_broker_equity_poller.py` — poller lifecycle, TTL
+    staleness, error-swallow, counter semantics.
+  * `tests/test_broker_equity_adapter.py` — protocol satisfaction,
+    factory, null adapter.
+  * `tests/test_run_apex_live.py::TestBrokerEquityReconcilerIntegration`
+    — 6 new tests: (a) no reconciler = legacy path, (b) classification
+    logged every tick, (c) alert fires once on transition, (d) no-data
+    logged not alerted, (e) poller lifecycle (start + stop ordering),
+    (f) drift clear → re-enter → re-alert.
 
 ### R2 — Tick-interval latency  |  CLOSED
 

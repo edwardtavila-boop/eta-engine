@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-24T21:57:06.088224+00:00",
+  "last_updated": "2026-04-24T22:20:35.965090+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "apex_predator_python_files": 107,
-    "apex_predator_tests_passing": 3920,
+    "apex_predator_tests_passing": 3950,
     "apex_predator_tests_failing": 0,
     "apex_predator_verify_all": "17/17 PASS",
     "apex_predator_staking_wired": {
@@ -3949,6 +3949,46 @@
       "tests_delta_residual_from_other_modules": 7,
       "ruff_green_touched_files": true,
       "pre_existing_flaky_dashboard_test": "test_dashboard_api.py::test_btc_lanes_empty_when_fleet_dir_absent reads from the real docs/btc_live/broker_fleet instead of tmp_path. Pre-existing test-isolation bug; unrelated to this bundle. Tracked for a dedicated cleanup pass."
+    },
+    "apex_predator_v0_1_63_r1_end_to_end": {
+      "timestamp_utc": "2026-04-24T22:20:35.965090+00:00",
+      "version": "v0.1.63",
+      "bundle_name": "R1 END-TO-END RUNTIME WIRING -- close the last mile on R1 by wiring BrokerEquityPoller + BrokerEquityReconciler into ApexRuntime's run()/finally/_tick paths. Observation-only; KillVerdict synthesis stays a v0.2.x scope call.",
+      "theme": "v0.1.59 shipped the drift detector; v0.1.62 formalised the adapter contract. Neither bundle called reconcile() from the live tick -- so R1 was still classified as SCAFFOLDED. v0.1.63 closes that: ApexRuntime now starts/stops the poller, feeds tier-A aggregate equity through the reconciler on every cycle, logs each classification, and fires an alert on transition into broker_below_logical. Recovery clears the latch so re-entries re-alert.",
+      "operator_directive_quote": "do everything else you can",
+      "modules_edited": [
+        "apex_predator/scripts/run_apex_live.py (ApexRuntime accepts broker_equity_reconciler + broker_equity_poller kwargs; run() manages poller lifecycle; _tick() computes ta_equity once and feeds it to both tracker + reconciler; transition-tracked broker_equity_drift alert).",
+        "apex_predator/docs/red_team_d2_d3_review.md (R1 status SCAFFOLDED -> CLOSED; executive summary updated with v0.1.63 outcome line; R1 section expanded with wiring + tests + observation-only rationale)."
+      ],
+      "tests_added": [
+        "apex_predator/tests/test_run_apex_live.py::TestBrokerEquityReconcilerIntegration (6 tests across the wiring contract: no-reconciler noop, classification logged each tick, alert fires once on transition, no-broker-data logged-not-alerted, poller lifecycle, transition clear + re-fire)."
+      ],
+      "design_choices": {
+        "single_ta_equity_computation": "_tick() now computes ta_equity = sum(s.equity_usd for s in snapshots if s.tier == 'A') exactly once at the top and reuses it for both tracker.update and reconciler.reconcile. Previously ta_equity was computed only inside the tracker branch. A single source of truth prevents a rounding divergence between the two paths.",
+        "poller_start_after_bot_start": "run() awaits poller.start() AFTER the bot-start loop so that a bot-factory crash never spins up a network pinger for a runtime about to abort.",
+        "poller_stop_before_bot_stop": "The finally block awaits poller.stop() FIRST, before the bot.stop() loop. A slow broker logout would otherwise delay the draining of live bots. Reconciler is observation-only, so a slightly-stale poller at the very end of shutdown is harmless.",
+        "transition_only_alerting": "broker_equity_drift fires on the TRANSITION INTO broker_below_logical, not every tick while drift persists. Steady-state drift is captured in the tick log for the audit trail but does not spam the operator's alert channel. Recovery clears the latch so a subsequent re-entry re-alerts -- a recover + re-drift pattern is distinct operator-signal, not noise.",
+        "observation_only_on_purpose": "The reconciler does not synthesize a KillVerdict. Drift classification is intentionally decoupled from the policy layer that lives in KillSwitch. Promoting sustained drift to a verdict requires tolerance calibration from live-paper empirics (commissions, slippage, funding, carry) rather than the synthetic harness we ship today. v0.2.x scope.",
+        "classification_in_tick_log": "Every tick's classification lands in runtime_log.jsonl under the 'broker_equity' sub-key. This preserves the full drift history for post-session audit even when the alert channel is quiet (within_tolerance / broker_above_logical / no_broker_data all go through the log-only path)."
+      },
+      "scope_exclusions": {
+        "no_killswitch_synthesis_on_drift": "Reconciler stays observation-only. KillVerdict synthesis on sustained out-of-tolerance is v0.2.x scope once we have live-paper tolerance empirics.",
+        "no_router_aware_poller_selection": "Supervisor-level 'which broker's poller to wire' policy is not yet in place. v0.1.63 accepts the poller/reconciler as kwargs so the current wiring (explicitly picked at the call site) can be swapped for a router-driven selector in v0.2.x.",
+        "no_multi_broker_drift_fanout": "Apex evals are single-account. Cross-broker drift (IBKR vs Tastytrade) is a future-state concern.",
+        "no_replace_logical_with_broker_mtm": "The tracker still consumes logical equity. Whether to FEED the tracker with broker_mtm - sum(open_pnl) once the drift check is live is a venue-integration choice deferred to v0.2.x."
+      },
+      "r1_closure_state": {
+        "v0_1_58": "HIGH residual risk, accepted for v0.2.x.",
+        "v0_1_59": "SCAFFOLDED -- BrokerEquityReconciler module added + 21 tests. No runtime call site yet.",
+        "v0_1_62": "SCAFFOLDED (still) -- BrokerEquityAdapter Protocol + NullBrokerEquityAdapter + make_poller_for factory added + 24 tests. Contract layer formalised. Runtime still did not call reconcile().",
+        "v0_1_63": "CLOSED (observation-only) -- ApexRuntime wires and drives the reconciler; alert on transition; full classification in tick log. KillVerdict synthesis deferred to v0.2.x by design, not by omission."
+      },
+      "tests_passing_before": 3920,
+      "tests_passing_after": 3950,
+      "tests_added_in_this_bundle": 6,
+      "tests_delta_residual_from_other_modules": 24,
+      "ruff_green_touched_files": true,
+      "full_suite_runtime_seconds": 126.75
     }
   },
   "phases": [
@@ -4949,7 +4989,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-24T21:57:06.088224+00:00",
+  "last_updated_utc": "2026-04-24T22:20:35.965090+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5160,6 +5200,13 @@
       "title": "Broker-equity-adapter protocol scaffolding. Runtime-checkable Protocol + NullBrokerEquityAdapter stub + make_poller_for factory. No runtime behaviour change; v0.2.x supervisor rewiring lands on this contract.",
       "tests_delta": 24,
       "tests_passing": 3920
+    },
+    {
+      "version": "v0.1.63",
+      "timestamp_utc": "2026-04-24T22:20:35.965090+00:00",
+      "title": "R1 end-to-end runtime wiring. ApexRuntime now starts/stops the BrokerEquityPoller, feeds tier-A equity through the reconciler each tick, logs every classification, alerts on transition into broker_below_logical. R1 flipped SCAFFOLDED -> CLOSED (observation-only).",
+      "tests_delta": 6,
+      "tests_passing": 3950
     }
   ]
 }
