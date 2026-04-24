@@ -176,6 +176,55 @@ def get_state_file(filename: str) -> dict:
     return _read_json(filename)
 
 
+@app.get("/api/personas")
+def list_personas() -> dict:
+    """Return each persona's peak manual + skill catalog + MCP capabilities.
+
+    Consumed by the status page to render a training/identity panel. Also
+    useful for operator introspection via `curl /api/personas | jq`.
+    """
+    try:
+        from eta_engine.brain.jarvis_v3.training.collaboration import (
+            PROTOCOLS,
+        )
+        from eta_engine.brain.jarvis_v3.training.mcp_awareness import (
+            PERSONA_MCPS,
+        )
+        from eta_engine.brain.jarvis_v3.training.peak_manuals import (
+            PEAK_MANUALS,
+        )
+        from eta_engine.brain.jarvis_v3.training.skills_catalog import (
+            PERSONA_SKILLS,
+        )
+    except ImportError as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"training module missing: {exc}") from exc
+
+    return {
+        "personas": [
+            {
+                "name": name,
+                "manual": manual.model_dump(),
+                "skills": [s.model_dump() for s in PERSONA_SKILLS.get(name, [])],
+                "mcps":   [p.model_dump() for p in PERSONA_MCPS.get(name, [])],
+            }
+            for name, manual in PEAK_MANUALS.items()
+        ],
+        "protocols": [p.model_dump() for p in PROTOCOLS],
+    }
+
+
+@app.get("/api/personas/{persona}/eval")
+def persona_eval(persona: str) -> dict:
+    """Return the most recent eval report for a persona, if one has been run."""
+    safe = persona.upper()
+    path = STATE_DIR / "persona_evals" / f"{safe}-latest.json"
+    if not path.exists():
+        raise HTTPException(status_code=404,
+                            detail=f"no eval report for {persona}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 @app.get("/api/tasks")
 def list_tasks() -> dict:
     """Return the 12 BackgroundTask names + owners + cadences."""

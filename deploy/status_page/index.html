@@ -131,6 +131,11 @@
       <div class="tasks-grid" id="tasks-grid">Loading…</div>
     </div>
 
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>Crew — Peak Manuals</h3>
+      <div id="personas-grid" class="tasks-grid">Loading…</div>
+    </div>
+
     <div class="card" style="grid-column: 1 / -1;" id="error-card" hidden>
       <h3 class="error">⚠ Connection issue</h3>
       <div class="metric mono error" id="error-text"></div>
@@ -231,6 +236,41 @@
               <span class="metric-value" style="font-size: 0.75rem;">${t.cadence}</span>
             </div>`
           ).join('');
+
+        // Personas — peak manuals
+        try {
+          const personasResp = await fetchJson('/api/personas');
+          const tierColor = {
+            opus: 'red', sonnet: 'purple', haiku: 'blue',
+            deterministic: 'green',
+          };
+          document.getElementById('personas-grid').innerHTML =
+            (personasResp.personas || []).map(p => {
+              const m = p.manual;
+              const col = tierColor[m.model_tier] || 'blue';
+              const strengthCount = (m.strengths || []).length;
+              const skillCount = (p.skills || []).length;
+              const mcpCount = (p.mcps || []).length;
+              return `
+                <div style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <span>
+                      <span class="badge ${col}">${m.persona}</span>
+                      <span class="metric-label" style="margin-left: 0.5rem;">${m.model_tier}</span>
+                    </span>
+                    <span class="metric-value" style="font-size: 0.7rem;">
+                      ${strengthCount}★  ${skillCount}⚡  ${mcpCount}🔗
+                    </span>
+                  </div>
+                  <div style="color: var(--muted); font-size: 0.72rem; margin-top: 0.3rem; line-height: 1.4;">
+                    ${(m.identity || '').slice(0, 180)}${m.identity && m.identity.length > 180 ? '…' : ''}
+                  </div>
+                </div>`;
+            }).join('');
+        } catch (_e) {
+          document.getElementById('personas-grid').textContent =
+            '(training module not deployed yet)';
+        }
 
         document.getElementById('error-card').hidden = true;
       } catch (e) {

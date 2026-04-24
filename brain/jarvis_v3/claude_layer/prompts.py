@@ -54,6 +54,34 @@ Return nothing else. No preamble, no summary, no apologies.
 """
 
 
+def _peak_block(persona: str) -> str:
+    """Peak-manual block injected into each persona's prompt prefix.
+
+    Graceful fallback if training module isn't available at import time
+    (e.g. older checkouts). Personas retain their original prompts.
+    """
+    try:
+        from eta_engine.brain.jarvis_v3.training.collaboration import (
+            render_protocols,
+        )
+        from eta_engine.brain.jarvis_v3.training.mcp_awareness import (
+            render_mcp_block,
+        )
+        from eta_engine.brain.jarvis_v3.training.peak_manuals import (
+            render_manual,
+        )
+    except ImportError:
+        return ""
+    try:
+        return "\n\n".join([
+            render_manual(persona),
+            render_mcp_block(persona),
+            render_protocols(),
+        ])
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _bull_prefix() -> str:
     return (
         "You are BULL, one of four internal JARVIS personas. You argue the "
@@ -111,11 +139,23 @@ def _historian_prefix() -> str:
     )
 
 
+def _wrap_with_peak(persona: str, base: str) -> str:
+    """Prepend the peak manual + MCP awareness + protocols to each persona's
+    base prompt. The resulting prefix is stable across the 5-min cache window
+    so the overhead is amortized over many calls.
+    """
+    peak = _peak_block(persona)
+    return f"{peak}\n\n{base}" if peak else base
+
+
+# BULL / BEAR / SKEPTIC / HISTORIAN inherit BATMAN's peak manual (they're
+# BATMAN's internal voices). ROBIN + ALFRED + JARVIS have their own manuals
+# and are used through separate dispatch paths.
 PERSONA_PREFIXES: dict[str, str] = {
-    "BULL":      _bull_prefix(),
-    "BEAR":      _bear_prefix(),
-    "SKEPTIC":   _skeptic_prefix(),
-    "HISTORIAN": _historian_prefix(),
+    "BULL":      _wrap_with_peak("BATMAN", _bull_prefix()),
+    "BEAR":      _wrap_with_peak("BATMAN", _bear_prefix()),
+    "SKEPTIC":   _wrap_with_peak("BATMAN", _skeptic_prefix()),
+    "HISTORIAN": _wrap_with_peak("BATMAN", _historian_prefix()),
 }
 
 
