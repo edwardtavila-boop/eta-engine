@@ -206,6 +206,8 @@ _TASK_TO_CATEGORY: dict[BackgroundTask, TaskCategory] = {
     BackgroundTask.PROMPT_WARMUP:      TaskCategory.BOILERPLATE,
     BackgroundTask.DASHBOARD_ASSEMBLE: TaskCategory.FORMATTING,
     BackgroundTask.AUDIT_SUMMARIZE:    TaskCategory.LOG_PARSING,
+    # ALFRED -- meta-upgrade is routine dev work (git pull + tests + restart)
+    BackgroundTask.META_UPGRADE:       TaskCategory.DATA_PIPELINE,
 }
 
 
@@ -234,6 +236,8 @@ _TASK_GOALS: dict[BackgroundTask, str] = {
         "rebuild the Fleet dashboard payload from the latest journal state",
     BackgroundTask.AUDIT_SUMMARIZE:
         "produce the daily audit-log summary for operator review",
+    BackgroundTask.META_UPGRADE:
+        "pull latest commits, run fast test suite, restart services if green",
 }
 
 

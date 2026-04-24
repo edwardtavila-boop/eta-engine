@@ -348,6 +348,7 @@ class BackgroundTask(StrEnum):
     PROMPT_WARMUP      = "PROMPT_WARMUP"       # ROBIN
     DASHBOARD_ASSEMBLE = "DASHBOARD_ASSEMBLE"  # ROBIN
     AUDIT_SUMMARIZE    = "AUDIT_SUMMARIZE"     # ROBIN
+    META_UPGRADE       = "META_UPGRADE"        # ALFRED -- daily self-update
 
 
 # Which persona owns which task. Used by the cron wrapper in scripts/.
@@ -364,6 +365,7 @@ TASK_OWNERS: dict[BackgroundTask, str] = {
     BackgroundTask.PROMPT_WARMUP:      "ROBIN",
     BackgroundTask.DASHBOARD_ASSEMBLE: "ROBIN",
     BackgroundTask.AUDIT_SUMMARIZE:    "ROBIN",
+    BackgroundTask.META_UPGRADE:       "ALFRED",
 }
 
 
@@ -381,4 +383,5 @@ TASK_CADENCE: dict[BackgroundTask, str] = {
     BackgroundTask.PROMPT_WARMUP:      "25,55 13 * * 1-5",# pre-market + pre-close Mon-Fri
     BackgroundTask.DASHBOARD_ASSEMBLE: "* * * * *",       # every minute
     BackgroundTask.AUDIT_SUMMARIZE:    "0 6 * * *",       # daily 06:00
+    BackgroundTask.META_UPGRADE:       "30 4 * * *",      # daily 04:30 -- git pull + test + restart
 }

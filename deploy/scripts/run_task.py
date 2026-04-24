@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import traceback
 from datetime import UTC, datetime
 from pathlib import Path
@@ -199,23 +200,192 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
 
     Fires a tiny call per persona right before a high-volume period
     (pre-market open, pre-close) so the 5-min cache is hot when JARVIS
-    starts escalating. Scaffold -- real impl needs ANTHROPIC_API_KEY.
+    starts escalating.
+
+    Each call is a minimal Haiku request that reads the persona prefix
+    (cache-write on first call, cache-read on subsequent). After this
+    task runs, any real debate call within the next ~5 minutes gets a
+    10% cache-read discount on the prefix.
     """
     import os
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"skipped": True, "reason": "no API key"}
+
+    try:
+        import anthropic
+    except ImportError:
+        return {"skipped": True, "reason": "anthropic SDK not installed"}
+
     from eta_engine.brain.jarvis_v3.claude_layer.prompts import (
         PERSONA_PREFIXES,
     )
-    # Without the anthropic SDK wired in this scaffold, we just track
-    # which prefixes were queued. Production runner replaces this body.
+
+    # Use dotenv to load .env if present (harmless if already loaded)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    client = anthropic.Anthropic()
+    results: dict[str, dict] = {}
+    total_cost_est = 0.0
+    total_tokens = 0
+
+    for persona, prefix in PERSONA_PREFIXES.items():
+        try:
+            resp = client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=20,  # tiny -- just enough to prove cache
+                system=[
+                    {"type": "text", "text": prefix,
+                     "cache_control": {"type": "ephemeral"}},
+                ],
+                messages=[{"role": "user", "content": "warmup_ping"}],
+            )
+            cache_read  = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
+            cache_write = getattr(resp.usage, "cache_creation_input_tokens", 0) or 0
+            results[persona] = {
+                "input_tokens":  resp.usage.input_tokens,
+                "output_tokens": resp.usage.output_tokens,
+                "cache_read":    cache_read,
+                "cache_write":   cache_write,
+            }
+            total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
+            # Estimated cost for Haiku warmup (tiny)
+            total_cost_est += (
+                resp.usage.input_tokens   * 0.80  / 1_000_000 +
+                resp.usage.output_tokens  * 4.00  / 1_000_000
+            )
+        except Exception as exc:  # noqa: BLE001
+            results[persona] = {"error": str(exc)[:200]}
+
     out_path = state_dir / "cache_warmup.json"
     out_path.write_text(json.dumps({
         "ts": datetime.now(UTC).isoformat(),
-        "personas": list(PERSONA_PREFIXES),
-        "status": "queued (scaffold)",
+        "personas_warmed":  [p for p, r in results.items() if "error" not in r],
+        "personas_failed":  [p for p, r in results.items() if "error" in r],
+        "total_tokens":     total_tokens,
+        "estimated_cost_usd": round(total_cost_est, 6),
+        "per_persona":      results,
     }, indent=2), encoding="utf-8")
-    return {"personas_queued": len(PERSONA_PREFIXES)}
+    return {
+        "warmed":  sum(1 for r in results.values() if "error" not in r),
+        "failed":  sum(1 for r in results.values() if "error" in r),
+        "est_cost_usd": round(total_cost_est, 6),
+    }
+
+
+def _task_meta_upgrade(state_dir: Path) -> dict:
+    """ALFRED: daily self-upgrade. git pull -> run fast tests -> restart services if tests pass.
+
+    Runs safely: if pytest fails on new commits, we do NOT restart services --
+    the old (green) build keeps running until operator intervention. Writes a
+    structured report so the operator sees what happened each day.
+    """
+    import shutil
+    import subprocess
+
+    repo_dir = Path(os.environ.get("APEX_REPO_DIR", r"C:\eta_engine"))
+    if not (repo_dir / ".git").exists():
+        return {"skipped": True, "reason": f"{repo_dir} is not a git repo"}
+
+    report: dict = {"ts": datetime.now(UTC).isoformat(), "repo": str(repo_dir)}
+
+    # 1. Capture current HEAD
+    try:
+        before = subprocess.check_output(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            text=True, timeout=15,
+        ).strip()
+        report["before"] = before
+    except Exception as exc:  # noqa: BLE001
+        report["error"] = f"git rev-parse failed: {exc}"
+        _write_meta_report(state_dir, report)
+        return report
+
+    # 2. git pull
+    try:
+        pull_out = subprocess.check_output(
+            ["git", "-C", str(repo_dir), "pull", "--ff-only"],
+            text=True, stderr=subprocess.STDOUT, timeout=60,
+        )
+        report["pull_output"] = pull_out[-500:]
+    except subprocess.CalledProcessError as exc:
+        report["error"] = f"git pull failed: {exc.output[-500:]}"
+        _write_meta_report(state_dir, report)
+        return report
+
+    after = subprocess.check_output(
+        ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+        text=True, timeout=15,
+    ).strip()
+    report["after"] = after
+
+    if before == after:
+        report["result"] = "no_changes"
+        _write_meta_report(state_dir, report)
+        return report
+
+    # 3. Run fast tests (core jarvis_v3 + deploy suites only -- ~2s)
+    venv_python = repo_dir / ".venv" / "Scripts" / "python.exe"
+    if not venv_python.exists():
+        # *nix fallback
+        venv_python = repo_dir / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        report["error"] = "venv python not found"
+        _write_meta_report(state_dir, report)
+        return report
+
+    try:
+        pytest_out = subprocess.check_output(
+            [str(venv_python), "-m", "pytest",
+             "tests/test_jarvis_v3.py",
+             "tests/test_jarvis_v3_supercharge.py",
+             "tests/test_jarvis_v3_next_level.py",
+             "tests/test_jarvis_v3_claude_layer.py",
+             "tests/test_avengers_dispatch.py",
+             "tests/test_deploy.py",
+             "-q", "--tb=no", "-x"],
+            cwd=str(repo_dir), text=True, stderr=subprocess.STDOUT, timeout=180,
+        )
+        report["test_output"] = pytest_out[-600:]
+        report["tests_pass"] = True
+    except subprocess.CalledProcessError as exc:
+        report["test_output"] = exc.output[-600:]
+        report["tests_pass"] = False
+        report["result"] = "tests_failed_no_restart"
+        _write_meta_report(state_dir, report)
+        return report
+
+    # 4. Tests green -> restart services (Windows only; Linux systemd path TBD)
+    restarted: list[str] = []
+    if shutil.which("powershell"):
+        for svc in ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard",
+                    "Apex-Cloudflare-Tunnel"):
+            try:
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     f"Stop-ScheduledTask -TaskName {svc} -ErrorAction SilentlyContinue; "
+                     f"Start-Sleep -Seconds 1; Start-ScheduledTask -TaskName {svc}"],
+                    timeout=30, check=False,
+                )
+                restarted.append(svc)
+            except Exception:  # noqa: BLE001
+                pass
+    report["services_restarted"] = restarted
+    report["result"] = "upgraded_and_restarted"
+    _write_meta_report(state_dir, report)
+    return report
+
+
+def _write_meta_report(state_dir: Path, report: dict) -> None:
+    out = state_dir / "meta_upgrade.json"
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    # Also keep a rolling jsonl history
+    history = state_dir / "meta_upgrade_history.jsonl"
+    with history.open("a", encoding="utf-8") as fp:
+        fp.write(json.dumps(report) + "\n")
 
 
 def _task_dashboard_assemble(state_dir: Path) -> dict:
@@ -268,6 +438,7 @@ HANDLERS: dict[BackgroundTask, callable] = {
     BackgroundTask.PROMPT_WARMUP:      lambda s, _l: _task_prompt_warmup(s),
     BackgroundTask.DASHBOARD_ASSEMBLE: lambda s, _l: _task_dashboard_assemble(s),
     BackgroundTask.AUDIT_SUMMARIZE:    lambda s, _l: _task_audit_summarize(s),
+    BackgroundTask.META_UPGRADE:       lambda s, _l: _task_meta_upgrade(s),
 }
 
 
