@@ -120,9 +120,30 @@
   <h1>EVOLUTIONARY TRADING ALGO <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.59</b></span>
-    <span>TESTS <b>3827 ✓</b></span>
+    <span>VER <b>0.1.60</b></span>
+    <span>TESTS <b>3881 ✓</b></span>
     <span>UPDATED <b>2026-04-24</b></span>
+  </div>
+</div>
+
+<!-- v0.1.60 PREFLIGHT-HARDENING BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent2); background: linear-gradient(90deg, rgba(0,200,255,0.10), transparent);">
+  <h3>v0.1.60 — Apex Eval Preflight-Hardening · 3881 tests passing (+12 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.60 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>Surface v0.1.59 invariants at preflight</b></span>
+    <span><span style="color:var(--dim)">Added checks:</span> <b>tick_cadence · audit_log</b></span>
+    <span><span style="color:var(--dim)">Preflight now:</span> <b>7 checks (was 5)</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">scripts/preflight.py · tests/test_preflight.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>check_tick_cadence</b> — reads kill_switch.yaml cushion, runs validator at live=True before boot</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>check_audit_log_readiness</b> — mkdir state/, tempfile write+fsync+unlink (Windows/OneDrive safe)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>Fail-early principle</b> — operator sees red BEFORE flipping switch, not mid-runtime</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>12 new tests</b> — tick_cadence×6 · audit_log×4 · _run_async×2 · helper refactor</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Full regression: 3881 passed, 3 skipped. Ruff clean on both touched files. Operator can now validate cushion sizing &amp; audit-log writability before live startup.
   </div>
 </div>
 
