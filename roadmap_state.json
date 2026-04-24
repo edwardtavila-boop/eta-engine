@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-24T11:06:20.292084+00:00",
+  "last_updated": "2026-04-24T19:51:57.686604+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "apex_predator_python_files": 107,
-    "apex_predator_tests_passing": 3251,
+    "apex_predator_tests_passing": 3735,
     "apex_predator_tests_failing": 0,
     "apex_predator_verify_all": "17/17 PASS",
     "apex_predator_staking_wired": {
@@ -3628,6 +3628,127 @@
       "tests_passing_before": 2718,
       "tests_passing_after": 3251,
       "tests_new": 533
+    },
+    "apex_predator_v0_1_57_apex_eval_readiness": {
+      "timestamp_utc": "2026-04-24T15:38:11.318773+00:00",
+      "version": "v0.1.57",
+      "bundle_name": "APEX EVAL READINESS CLOSURE -- D1..D5 wired end-to-end in run_apex_live + MnqBot; bootstrap CI on real-MNQ OOS anchors expectancy in a confidence interval; NOISE verdict recorded.",
+      "theme": "Every eval-readiness D-series surface flagged in the paper-run audit is now wired into the live tick-loop and covered by integration tests. Bootstrap CI on the real OOS R-distribution replaces the point-estimate headline with an honest CI that straddles zero at n=14.",
+      "operator_directive_quote": "do all.",
+      "modules_added": [
+        "apex_predator/core/trailing_dd_tracker.py",
+        "apex_predator/core/consistency_guard.py"
+      ],
+      "modules_modified": [
+        "apex_predator/scripts/run_apex_live.py (trailing_dd_tracker kwarg + consistency_guard kwarg + tick-loop wiring + TYPE_CHECKING import hygiene)",
+        "apex_predator/bots/mnq/bot.py (SessionGate attach + on_bar EoD flatten path)",
+        "apex_predator/venues/router_adapter.py (session gate surface + should_flatten_eod signal)"
+      ],
+      "tests_added": [
+        "apex_predator/tests/test_trailing_dd_tracker.py (30)",
+        "apex_predator/tests/test_consistency_guard.py (32)"
+      ],
+      "tests_extended": [
+        "apex_predator/tests/test_run_apex_live.py (TrailingDDTrackerIntegration + ConsistencyGuardIntegration)",
+        "apex_predator/tests/test_kill_switch_latch.py",
+        "apex_predator/tests/test_session_gate.py",
+        "apex_predator/tests/test_mnq_bot.py (EoD flatten path)",
+        "apex_predator/tests/test_router_adapter.py (session gate + should_flatten_eod)"
+      ],
+      "d_series_wiring": {
+        "D1_session_gate": "MnqBot.__init__ builds SessionGate from config; RouterAdapter receives the gate and rejects out-of-window entries with meta.gate_rejection.",
+        "D2_trailing_dd_tracker": "ApexRuntime accepts trailing_dd_tracker kwarg. When attached, tick loop sums Tier-A equity, passes to tracker.update(), and uses the returned ApexEvalSnapshot in-place of build_apex_eval_snapshot. Legacy path preserved for rollout safety.",
+        "D3_consistency_guard": "ApexRuntime accepts consistency_guard kwarg. Tick loop records today's tier-A session_realized_pnl via guard.record_eod; emits consistency_status alert + log entry exactly once on WARNING/VIOLATION enter.",
+        "D4_eod_flatten": "MnqBot.on_bar queries adapter.should_flatten_eod each bar close; routes reason=apex_eod_flatten through kill-switch dispatch.",
+        "D5_kill_switch_latch": "run_apex_live calls KillSwitchLatch.boot_allowed() at startup -- refuses to init if tripped. record_verdict called at every FLATTEN_* verdict so latch state survives restarts. Cold-boot after a real flatten requires operator un-latch."
+      },
+      "bootstrap_ci_mnq_oos": {
+        "script": "apex_predator/scripts/bootstrap_ci_mnq_oos.py",
+        "iterations": 10000,
+        "seed": 11,
+        "n_bars_total": 5642,
+        "n_bars_oos": 1693,
+        "n_trades": 14,
+        "expectancy_r_point": 0.1883,
+        "sharpe_point": 1.7335,
+        "ci95_low_r": -0.598,
+        "ci95_high_r": 1.069,
+        "p_gt_zero": 0.6695,
+        "verdict": "NOISE",
+        "artifact_json": "apex_predator/docs/cross_regime/bootstrap_ci_mnq5m_rth_oos.json",
+        "artifact_md": "apex_predator/docs/cross_regime/bootstrap_ci_mnq5m_rth_oos.md",
+        "note": "CI95 straddles zero; n=14 too thin to reject null. Point estimate +0.188R is informative but not validated edge. Future OOS trades via paper-run accumulation is the path to narrower CI."
+      },
+      "design_choices": {
+        "tracker_attach_is_opt_in": "ApexRuntime constructs with tracker=None by default so existing callers keep the legacy path until the rollout flag flips.",
+        "corrupt_state_fails_closed": "Both trackers raise on any load-time integrity violation (baseline mismatch, unparseable date key). Silent reset would hide exactly the class of bug Apex is strict about.",
+        "d3_alert_is_state_transition": "Guard stores _last_consistency_status and only fires the alert when status *enters* WARNING/VIOLATION. Prevents spam while keeping steady-state visible in tick logs.",
+        "bootstrap_verdict_recorded_with_point_estimate": "Alpha-expansion's +0.188R point estimate is kept alongside the CI verdict so downstream readers cannot mistake it for a validated edge.",
+        "type_checking_hygiene": "TrailingDDTracker is imported under TYPE_CHECKING in run_apex_live because it only appears in annotations; ConsistencyGuard/Status/utc_today_iso stay at module scope because the guard's enum and helper are used at runtime."
+      },
+      "tests_passing_before": 3251,
+      "tests_passing_after": 3499,
+      "tests_new": 248,
+      "ruff_green_new_files": true,
+      "pre_existing_lint_debt_in_run_apex_live": "ANN401/ANN002/ANN003/SIM105/TC003-Callable errors in run_apex_live.py pre-date this bump and are tracked separately. Nothing new added."
+    },
+    "apex_predator_v0_1_58_red_team_closure": {
+      "timestamp_utc": "2026-04-24T19:51:57.686604+00:00",
+      "version": "v0.1.58",
+      "bundle_name": "APEX EVAL READINESS HARDENING -- Red Team closure on v0.1.57 D-series wiring. Three BLOCKERs surfaced by risk-advocate adversarial review all closed in code + tests + docs.",
+      "theme": "A safety module that is wired but whose wiring has a silent-failure gap is worse than no module: it produces false confidence. Every BLOCKER that could let the Apex eval bust while the runtime appears green is closed.",
+      "operator_directive_quote": "continue all.",
+      "modules_modified": [
+        "apex_predator/core/consistency_guard.py (new apex_trading_day_iso helper + deprecation note on utc_today_iso)",
+        "apex_predator/scripts/run_apex_live.py (B1 switch to session-day key; B2 live-mode tracker gate in ApexRuntime.__init__; B3 VIOLATION -> PAUSE_NEW_ENTRIES synthetic verdict + dispatch)"
+      ],
+      "docs_added": [
+        "apex_predator/docs/red_team_d2_d3_review.md"
+      ],
+      "tests_added": [
+        "apex_predator/tests/test_consistency_guard.py::TestApexTradingDayIso (11 tests)",
+        "apex_predator/tests/test_run_apex_live.py::TestLiveModeTrackerGate (4 tests)",
+        "apex_predator/tests/test_run_apex_live.py::TestConsistencyViolationPauses (2 tests)"
+      ],
+      "blockers_closed": {
+        "B1_session_day_bucketing": {
+          "severity": "CRITICAL",
+          "finding": "utc_today_iso keyed today's consistency-guard entry by UTC calendar midnight. US equity-futures RTH + Globex overnight straddle UTC midnight so a single Apex trading day's PnL was split across two keys -- biasing the 30%-rule ratio downward and hiding real concentration risk.",
+          "fix": "Added apex_trading_day_iso() using zoneinfo.ZoneInfo('America/Chicago') with 17:00 local rollover (DST-aware). Fallback to fixed 23:00-UTC rollover if zoneinfo unavailable. run_apex_live now calls this helper.",
+          "tests": "TestApexTradingDayIso (11 tests)"
+        },
+        "B2_live_mode_tracker_gate": {
+          "severity": "CRITICAL",
+          "finding": "ApexRuntime defaulted to the bar-level build_apex_eval_snapshot proxy when no trailing_dd_tracker was supplied. The proxy lacks the Apex freeze rule (peak >= start + cap -> floor locks at start). A live runtime booted without the tracker would silently under-protect.",
+          "fix": "ApexRuntime.__init__ raises RuntimeError when cfg.live=True AND cfg.dry_run=False AND trailing_dd_tracker is None. Dry-run, paper-sim, and unit tests stay permissive.",
+          "tests": "TestLiveModeTrackerGate (4 tests)"
+        },
+        "B3_violation_enforces_pause": {
+          "severity": "HIGH",
+          "finding": "On ConsistencyStatus.VIOLATION the guard emitted an alert + log but bot.state.is_paused stayed False. 'Notify the operator and keep trading' is not enforcement for an automated system.",
+          "fix": "Tick loop synthesizes KillVerdict(action=PAUSE_NEW_ENTRIES, severity=CRITICAL, scope='tier_a') on VIOLATION and feeds it through apply_verdict. Every tier-A bot flips is_paused=True. Existing positions are NOT flattened; only new entries blocked.",
+          "tests": "TestConsistencyViolationPauses (2 tests)"
+        }
+      },
+      "residual_risks_accepted": {
+        "R1": "logical equity vs broker MTM drift",
+        "R2": "tick-interval latency vs Apex sub-second enforcement",
+        "R3": "freeze-rule re-entrancy on tracker state deletion",
+        "R4": "Apex session-day math across weekends/US holidays",
+        "note": "All four documented in red_team_d2_d3_review.md sections R1..R4. Tracked for v0.2.x. None qualified as BLOCKER; D-series v0.1.58 baseline is strictly safer than v0.1.57 across every regime tested."
+      },
+      "design_choices": {
+        "dry_run_exempt_from_gate": "B2 gate fires only when live=True AND dry_run=False. Dry-run callers keep the legacy proxy because the freeze-rule semantics do not matter when no real orders flow.",
+        "violation_pauses_not_flattens": "B3 fix flips is_paused but does not flatten. Existing positions can close on their own signals; only new entries are blocked. This is the minimum-viable enforcement that respects operator intent (maybe the eval is recoverable via a careful day) while stopping further concentration.",
+        "fallback_rollover_is_23utc_not_22utc": "When zoneinfo is missing, the fallback picks 23:00 UTC (CST winter rollover) rather than 22:00 UTC (CDT summer). Rationale: 23:00 UTC never falls mid-RTH session in either regime; 22:00 UTC in winter would split a live session. We accept being wrong by 1h in summer to guarantee correctness during RTH every day.",
+        "utc_today_iso_kept_for_compat": "utc_today_iso not deleted -- only deprecation-noted. External callers (tests in downstream repos, the_firm_complete) may depend on the UTC-midnight semantics for their own purposes; deletion would be a breaking change for an issue confined to Apex eval accounting."
+      },
+      "tests_passing_before": 3499,
+      "tests_passing_after": 3735,
+      "tests_new": 236,
+      "ruff_green_new_code": true,
+      "pre_existing_lint_debt": "ANN401/ANN002/ANN003 in run_apex_live.py pre-date v0.1.57; F841/E741/ANN204/TC003 in test files pre-date v0.1.57. Nothing new added by this bump. Two SIM108 warnings introduced by the new apex_trading_day_iso implementation were auto-simplified to ternaries during the same review loop.",
+      "post_bump_cleanup_note": "After the initial bump to 3704, the two flaky/order-dependent failures (test_avengers_daemon::test_persona_tick_dispatches_due_tasks and test_basis_stress_breaker::test_basis_zscore_above_threshold_flatten_both) passed on re-run. Additional tests were also discovered by collector (3709 -> 3738 collected). Final clean baseline: 3735 passed, 3 skipped, 0 failed."
     }
   },
   "phases": [
@@ -4008,11 +4129,13 @@
         },
         {
           "title": "alerts.yaml pushover primary",
-          "done": true
+          "done": true,
+          "status": "done"
         },
         {
           "title": "weekly_review cadence Sunday 20:00 ET",
-          "done": true
+          "done": true,
+          "status": "done"
         }
       ],
       "percent_complete": 100
@@ -4056,7 +4179,8 @@
         },
         {
           "title": "legal entity decision: personal_ssn_for_eval (revisit $100k)",
-          "done": true
+          "done": true,
+          "status": "done"
         }
       ],
       "percent_complete": 100
@@ -4065,7 +4189,7 @@
       "id": "P9_ROLLOUT",
       "name": "Deployment, Costs & Phased Rollout",
       "status": "in_progress",
-      "progress_pct": 85,
+      "progress_pct": 95,
       "weeks": 4,
       "tasks": [
         {
@@ -4254,19 +4378,23 @@
         },
         {
           "title": "decisions_v1 locked",
-          "done": true
+          "done": true,
+          "status": "done"
         },
         {
           "title": "configs/ venues+alerts+kill written",
-          "done": true
+          "done": true,
+          "status": "done"
         },
         {
           "title": ".env.example + .gitignore",
-          "done": true
+          "done": true,
+          "status": "done"
         },
         {
           "title": "go_trigger.py + schedule_weekly_review.py armed",
-          "done": true
+          "done": true,
+          "status": "done"
         },
         {
           "id": "real_aware_harness",
@@ -4377,7 +4505,8 @@
           "redesign_note": "High-beta, fast-move profile breaks confluence engine. Needs mean-reversion overlay or session-conditional entries."
         }
       },
-      "p9_complete_note": "P9 is operationally complete. Full portfolio: 6/6 clear the honest real-data gate under the combined trending_only + SOL flip overlay (mnq, nq, crypto_seed, eth_perp, sol_perp, xrp_perp). The harness now auto-selects that combined overlay on real bars unless explicitly overridden. Synthetic gate remains 6/6 (MNQ/NQ +0.518R blended). Real-data infrastructure (real-aware ctx_builder, dual-gate {synthetic,real}, Wilder ADX regime overlay) shipped. The live roadmap dashboard now mirrors that canonical state at P9 100% / CANONICAL REAL-GATE. Live tiny size still needs Tradovate funding for actual launch; the preflight credential check is intentionally optional SKIP."
+      "p9_complete_note": "P9 is operationally complete. Full portfolio: 6/6 clear the honest real-data gate under the combined trending_only + SOL flip overlay (mnq, nq, crypto_seed, eth_perp, sol_perp, xrp_perp). The harness now auto-selects that combined overlay on real bars unless explicitly overridden. Synthetic gate remains 6/6 (MNQ/NQ +0.518R blended). Real-data infrastructure (real-aware ctx_builder, dual-gate {synthetic,real}, Wilder ADX regime overlay) shipped. The live roadmap dashboard now mirrors that canonical state at P9 100% / CANONICAL REAL-GATE. Live tiny size still needs Tradovate funding for actual launch; the preflight credential check is intentionally optional SKIP.",
+      "operator_gated_note": "18/19 code-complete; 1 task(s) pending operator action (broker funding per memory/broker_dormancy_mandate.md). Phase advances to done once IBKR/Tastytrade are funded and the first tier-A live-tiny order fills."
     },
     {
       "id": "P10_AI",
@@ -4620,7 +4749,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-24T11:06:20.292084+00:00",
+  "last_updated_utc": "2026-04-24T19:51:57.686604+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -4789,6 +4918,20 @@
       "title": "Chaos Drill Closure ships: 12 new surface-specific drills (kill_switch_runtime, risk_engine, order_state_reconcile, cftc_nfa_compliance, two_factor, smart_router, firm_gate, oos_qualifier, shadow_paper_tracker, live_shadow_guard, pnl_drift, runtime_allowlist). Coverage 4/16 -> 16/16. Matrix locked at --fail-under 100. Ruff-clean.",
       "tests_delta": 533,
       "tests_passing": 3251
+    },
+    {
+      "version": "v0.1.57",
+      "timestamp_utc": "2026-04-24T15:38:11.318773+00:00",
+      "title": "Apex Eval Readiness ships: D1 SessionGate, D2 TrailingDDTracker, D3 ConsistencyGuard, D4 EoD flatten, D5 KillSwitchLatch -- every surface wired end-to-end in run_apex_live and covered by integration tests. Bootstrap CI on real-MNQ OOS recorded with NOISE verdict (n=14 too thin).",
+      "tests_delta": 248,
+      "tests_passing": 3499
+    },
+    {
+      "version": "v0.1.58",
+      "timestamp_utc": "2026-04-24T19:51:57.686604+00:00",
+      "title": "Red Team closure on v0.1.57 D-series wiring. B1 session-day bucketing, B2 live-mode tracker gate, B3 VIOLATION-to-PAUSE enforcement -- all three BLOCKERs closed in code + tests + docs. D-series is now live-ready with respect to the adversarial review; residual risks R1..R4 documented and tracked.",
+      "tests_delta": 236,
+      "tests_passing": 3735
     }
   ]
 }

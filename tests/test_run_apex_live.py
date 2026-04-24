@@ -2,26 +2,40 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+from apex_predator.core.consistency_guard import (
+    ConsistencyGuard,
+    ConsistencyStatus,
+)
+from apex_predator.core.kill_switch_latch import KillSwitchLatch, LatchState
 from apex_predator.core.kill_switch_runtime import (
-    ApexEvalSnapshot,
     BotSnapshot,
-    CorrelationSnapshot,
-    FundingSnapshot,
     KillAction,
     KillSeverity,
     KillVerdict,
-    PortfolioSnapshot,
 )
-from apex_predator.obs.alert_dispatcher import AlertDispatcher
+from apex_predator.core.trailing_dd_tracker import TrailingDDTracker
 from apex_predator.scripts import run_apex_live as mod
+
+
+# --------------------------------------------------------------------------- #
+# Isolation: every ApexRuntime constructed in this module auto-builds a
+# disk-backed KillSwitchLatch under ROOT/"state". If we let that default
+# through, one test's FLATTEN_ALL would leave a TRIPPED latch on the repo
+# disk that blocks every subsequent run. Redirect ROOT to a tmp path for
+# the duration of each test.
+# --------------------------------------------------------------------------- #
+@pytest.fixture(autouse=True)
+def _isolate_runtime_state(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -38,7 +52,7 @@ class _FakeState:
     is_killed: bool = False
     is_paused: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.open_positions is None:
             self.open_positions = []
 
@@ -58,6 +72,7 @@ class FakeBot:
         self.started = False
         self.stopped = False
         self.tier = tier
+        self.runtime_snapshot: dict[str, Any] = {}
 
     async def start(self) -> None:
         self.started = True
@@ -160,6 +175,15 @@ def test_build_bot_snapshot_from_fake():
     bot.state.peak_equity = 5000
     bot.state.todays_pnl = -200
     bot.state.consecutive_losses = 2
+    bot.runtime_snapshot = {
+        "market_context_summary": {
+            "market_context_regime": "RISK_ON",
+            "market_context_external_score": 9.1,
+            "session_timeframe_key": "OPEN_DRIVE::M15",
+            "spread_regime": "TIGHT",
+            "order_book_quality": 8.5,
+        }
+    }
     snap = mod.build_bot_snapshot(binding, bot)
     assert snap.name == "mnq"
     assert snap.tier == "A"
@@ -167,6 +191,13 @@ def test_build_bot_snapshot_from_fake():
     assert snap.peak_equity_usd == 5000
     assert snap.session_realized_pnl_usd == -200
     assert snap.consecutive_losses == 2
+    assert snap.market_context_summary is not None
+    assert snap.market_context_summary["session_timeframe_key"] == "OPEN_DRIVE::M15"
+    assert snap.market_context_summary_text.startswith(
+        "market_context=RISK_ON quality=0.00 tf=OPEN_DRIVE::M15 spread=TIGHT",
+    )
+    assert "ext=9.10" in snap.market_context_summary_text
+    assert "obq=8.50" in snap.market_context_summary_text
 
 
 def test_build_portfolio_snapshot_aggregates():
@@ -199,7 +230,7 @@ def test_build_apex_eval_snapshot_empty_tier_a(tmp_path):
 # apply_verdict — every KillAction path
 # --------------------------------------------------------------------------- #
 class _StubDispatcher:
-    def __init__(self):
+    def __init__(self) -> None:
         self.sent: list[tuple[str, dict]] = []
 
     def send(self, event: str, payload: dict):
@@ -210,7 +241,7 @@ class _StubDispatcher:
 class _StubRouter:
     name = "stub"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.flattened: list[tuple[str, str]] = []
 
     async def flatten(self, symbol: str, reason: str):
@@ -235,7 +266,7 @@ async def test_apply_verdict_flatten_bot_scoped_by_name():
     mnq = (bindings[0], FakeBot("mnq", "MNQ", "A"))
     v = KillVerdict(action=KillAction.FLATTEN_BOT, severity=KillSeverity.WARN,
                     reason="test", scope="bot:mnq")
-    rep = await mod.apply_verdict(v, [mnq], router, disp)
+    await mod.apply_verdict(v, [mnq], router, disp)
     assert mnq[1].state.is_paused is True
     assert router.flattened == [("MNQ", "test")]
     assert any(e[0] == "kill_switch" for e in disp.sent)
@@ -250,7 +281,7 @@ async def test_apply_verdict_flatten_bot_scoped_by_symbol():
     eth = (bindings[3], FakeBot("eth_perp", "ETHUSDT", "B"))
     v = KillVerdict(action=KillAction.FLATTEN_BOT, severity=KillSeverity.WARN,
                     reason="funding", scope="bot:ETHUSDT")
-    rep = await mod.apply_verdict(v, [eth], router, disp)
+    await mod.apply_verdict(v, [eth], router, disp)
     assert router.flattened == [("ETHUSDT", "funding")]
 
 
@@ -263,7 +294,7 @@ async def test_apply_verdict_flatten_all_flags_all_bots():
     eth = (bindings[3], FakeBot("eth_perp", "ETHUSDT", "B"))
     v = KillVerdict(action=KillAction.FLATTEN_ALL, severity=KillSeverity.CRITICAL,
                     reason="port DD", scope="global")
-    rep = await mod.apply_verdict(v, [mnq, eth], router, disp)
+    await mod.apply_verdict(v, [mnq, eth], router, disp)
     assert mnq[1].state.is_killed is True
     assert eth[1].state.is_killed is True
     assert len(router.flattened) == 2
@@ -278,7 +309,7 @@ async def test_apply_verdict_flatten_tier_b_only():
     eth = (bindings[3], FakeBot("eth_perp", "ETHUSDT", "B"))
     v = KillVerdict(action=KillAction.FLATTEN_TIER_B, severity=KillSeverity.WARN,
                     reason="corr", scope="tier_b")
-    rep = await mod.apply_verdict(v, [mnq, eth], router, disp)
+    await mod.apply_verdict(v, [mnq, eth], router, disp)
     assert mnq[1].state.is_paused is False  # tier-A untouched
     assert eth[1].state.is_paused is True
     assert router.flattened == [("ETHUSDT", "corr")]
@@ -294,7 +325,7 @@ async def test_apply_verdict_flatten_tier_a_preempt():
     eth = (bindings[3], FakeBot("eth_perp", "ETHUSDT", "B"))
     v = KillVerdict(action=KillAction.FLATTEN_TIER_A_PREEMPTIVE, severity=KillSeverity.CRITICAL,
                     reason="apex cushion", scope="tier_a")
-    rep = await mod.apply_verdict(v, [mnq, nq, eth], router, disp)
+    await mod.apply_verdict(v, [mnq, nq, eth], router, disp)
     assert mnq[1].state.is_paused is True
     assert nq[1].state.is_paused is True
     assert eth[1].state.is_paused is False
@@ -311,7 +342,7 @@ async def test_apply_verdict_halve_size_cuts_risk_pct():
     v = KillVerdict(action=KillAction.HALVE_SIZE, severity=KillSeverity.INFO,
                     reason="funding soft", scope="bot:ETHUSDT",
                     evidence={"symbol": "ETHUSDT"})
-    rep = await mod.apply_verdict(v, [eth], router, disp)
+    await mod.apply_verdict(v, [eth], router, disp)
     assert eth[1].config.risk_per_trade_pct == pytest.approx(1.0)
 
 
@@ -323,7 +354,7 @@ async def test_apply_verdict_pause_new_entries():
     mnq = (bindings[0], FakeBot("mnq", "MNQ", "A"))
     v = KillVerdict(action=KillAction.PAUSE_NEW_ENTRIES, severity=KillSeverity.WARN,
                     reason="warn", scope="bot:mnq")
-    rep = await mod.apply_verdict(v, [mnq], router, disp)
+    await mod.apply_verdict(v, [mnq], router, disp)
     assert mnq[1].state.is_paused is True
 
 
@@ -337,7 +368,7 @@ async def test_runtime_runs_zero_bars_when_no_bots_active(tmp_path):
     rc = await runtime.run()
     assert rc == 0
     lines = (tmp_path / "runtime.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    kinds = [json.loads(l)["kind"] for l in lines]
+    kinds = [json.loads(ln)["kind"] for ln in lines]
     assert "no_active_bots" in kinds
 
 
@@ -348,7 +379,7 @@ async def test_runtime_ticks_active_bot(tmp_path):
     rc = await runtime.run()
     assert rc == 0
     lines = (tmp_path / "runtime.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    tick_entries = [json.loads(l) for l in lines if json.loads(l)["kind"] == "tick"]
+    tick_entries = [json.loads(ln) for ln in lines if json.loads(ln)["kind"] == "tick"]
     assert len(tick_entries) == 3
     for e in tick_entries:
         assert "mnq" in e["active"]
@@ -372,7 +403,7 @@ async def test_runtime_honors_operator_kill_between_ticks(tmp_path):
     rc = await runtime.run()
     assert rc == 0
     lines = (tmp_path / "runtime.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    kinds = [json.loads(l)["kind"] for l in lines]
+    kinds = [json.loads(ln)["kind"] for ln in lines]
     assert "operator_kill" in kinds
     # We should stop well before max_bars=10
     ticks = kinds.count("tick")
@@ -407,8 +438,8 @@ async def test_runtime_flatten_all_stops_loop(tmp_path):
     assert rc == 0
     lines = (tmp_path / "runtime.jsonl").read_text(encoding="utf-8").strip().splitlines()
     verdict_actions: list[str] = []
-    for l in lines:
-        e = json.loads(l)
+    for ln in lines:
+        e = json.loads(ln)
         if e["kind"] == "tick":
             for v in e["verdicts"]:
                 verdict_actions.append(v["action"])
@@ -480,3 +511,581 @@ def test_parse_args_live_flag():
     assert args.live is True
     assert args.max_bars == 5
     assert args.bot == "mnq"
+
+
+# --------------------------------------------------------------------------- #
+# D5 -- KillSwitchLatch integration (end-to-end)
+#
+# The latch is the boot gate + verdict durability layer on top of the
+# stateless KillSwitch. These tests cover:
+#   * TRIPPED latch refuses runtime.run() with exit code 3, never calls
+#     start() on any bot, and never hits the router
+#   * ARMED latch permits normal boot
+#   * FLATTEN_ALL verdict flips the latch to TRIPPED (survives restart)
+#   * HALVE_SIZE (non-latching) does NOT flip the latch
+# --------------------------------------------------------------------------- #
+class TestLatchIntegration:
+    @pytest.mark.asyncio
+    async def test_runtime_refuses_boot_when_latch_tripped(self, tmp_path):
+        """Pre-trip a latch on disk then boot -- must return 3 immediately."""
+        latch_path = tmp_path / "state" / "kill_switch_latch.json"
+        latch = KillSwitchLatch(latch_path)
+        latch.record_verdict(KillVerdict(
+            action=KillAction.FLATTEN_ALL,
+            severity=KillSeverity.CRITICAL,
+            reason="daily loss 6.02% >= cap 6%",
+            scope="global",
+        ))
+        assert latch.read().state is LatchState.TRIPPED
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        bindings = _fake_bindings()
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings,
+            kill_switch_latch=KillSwitchLatch(latch_path),
+        )
+        rc = await runtime.run()
+        assert rc == 3
+
+        # The boot_refused event must be in the log. No tick entries
+        # should exist -- we never got past the boot gate.
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        kinds = [json.loads(line)["kind"] for line in lines]
+        assert "boot_refused" in kinds
+        assert "tick" not in kinds
+        assert "runtime_start" not in kinds
+
+    @pytest.mark.asyncio
+    async def test_runtime_boots_when_latch_armed(self, tmp_path):
+        """Fresh latch = ARMED = boot proceeds normally."""
+        latch_path = tmp_path / "state" / "kill_switch_latch.json"
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            kill_switch_latch=KillSwitchLatch(latch_path),
+        )
+        rc = await runtime.run()
+        assert rc == 0
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        kinds = [json.loads(line)["kind"] for line in lines]
+        assert "runtime_start" in kinds
+        assert kinds.count("tick") == 2
+        assert "boot_refused" not in kinds
+
+    @pytest.mark.asyncio
+    async def test_flatten_all_verdict_persists_to_latch(self, tmp_path):
+        """A FLATTEN_ALL verdict during run() must flip the latch to TRIPPED."""
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=10,
+        )
+        cfg.kill_switch = {
+            "global": {
+                "max_drawdown_kill_pct_of_portfolio": 0.01,  # trip on any loss
+                "daily_loss_cap_pct_of_portfolio": 100.0,
+            },
+            "tier_a": {
+                "per_bucket": {},
+                "apex_eval_preemptive": {"cushion_usd": 0},
+            },
+            "tier_b": {
+                "per_bucket": {},
+                "correlation_kill": {"enabled": False},
+                "funding_veto": {"soft_threshold_bps": 20, "hard_threshold_bps": 50},
+            },
+        }
+        bindings = _fake_bindings()
+
+        def _losing_mnq() -> FakeBot:
+            b = FakeBot("mnq", "MNQ", "A")
+            b.state.equity = 4000
+            b.state.peak_equity = 5000
+            return b
+
+        bindings[0] = mod.BotBinding(
+            "mnq", "A", "tier_a_mnq_live", _losing_mnq, "MNQ",
+        )
+        latch_path = tmp_path / "state" / "kill_switch_latch.json"
+        latch = KillSwitchLatch(latch_path)
+        assert latch.read().state is LatchState.ARMED
+
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings,
+            kill_switch=mod.KillSwitch(cfg.kill_switch),
+            kill_switch_latch=latch,
+        )
+        await runtime.run()
+
+        # After the run, the latch must be TRIPPED on disk.
+        persisted = KillSwitchLatch(latch_path).read()
+        assert persisted.state is LatchState.TRIPPED
+        assert persisted.action == KillAction.FLATTEN_ALL.value
+
+        # And a subsequent runtime with this path refuses to boot.
+        cfg2 = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+            log_path=tmp_path / "runtime2.jsonl",
+        )
+        runtime2 = mod.ApexRuntime(
+            cfg2, bindings=_fake_bindings(),
+            kill_switch_latch=KillSwitchLatch(latch_path),
+        )
+        rc2 = await runtime2.run()
+        assert rc2 == 3
+
+    @pytest.mark.asyncio
+    async def test_halve_size_verdict_does_not_trip_latch(self, tmp_path):
+        """Non-latching verdicts (HALVE_SIZE) must leave the latch ARMED.
+
+        We test this at the record_verdict boundary rather than forcing a
+        HALVE_SIZE through the whole pipeline -- the runtime forwards
+        every verdict to the latch and relies on record_verdict's own
+        _LATCHING_ACTIONS filter.
+        """
+        latch_path = tmp_path / "state" / "kill_switch_latch.json"
+        latch = KillSwitchLatch(latch_path)
+        halve = KillVerdict(
+            action=KillAction.HALVE_SIZE, severity=KillSeverity.INFO,
+            reason="funding soft", scope="bot:ETHUSDT",
+        )
+        changed = latch.record_verdict(halve)
+        assert changed is False
+        assert latch.read().state is LatchState.ARMED
+
+    @pytest.mark.asyncio
+    async def test_runtime_auto_constructs_latch_when_absent(self, tmp_path):
+        """Default path: no kill_switch_latch kwarg -> auto-construct under ROOT/state.
+        With the autouse fixture ROOT = tmp_path, so the latch lives there.
+        """
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        # The default path is ROOT/"state"/"kill_switch_latch.json"
+        expected = tmp_path / "state" / "kill_switch_latch.json"
+        assert runtime.kill_switch_latch.path == expected
+        rc = await runtime.run()
+        assert rc == 0
+
+
+# --------------------------------------------------------------------------- #
+# D2 -- TrailingDDTracker integration (tick-granular apex_eval path)
+#
+# When a tracker is attached, build_apex_eval_snapshot() is bypassed and the
+# tracker becomes the source of truth for ApexEvalSnapshot. These tests cover:
+#   * no tracker attached = legacy path is used (smoke test, shape only)
+#   * tracker attached = tracker.update() is called per loop and its peak
+#     monotonically moves up
+#   * tracker's near-breach cushion triggers FLATTEN_TIER_A_PREEMPTIVE +
+#     latch TRIPPED
+#   * tracker state survives restart (peak not reset on second runtime)
+# --------------------------------------------------------------------------- #
+class TestTrailingDDTrackerIntegration:
+    @pytest.mark.asyncio
+    async def test_no_tracker_uses_legacy_apex_eval_path(self, tmp_path):
+        """Without a tracker, build_apex_eval_snapshot is used (legacy shape)."""
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime.trailing_dd_tracker is None
+        rc = await runtime.run()
+        assert rc == 0
+
+    @pytest.mark.asyncio
+    async def test_tracker_attached_receives_equity_updates(self, tmp_path):
+        """Tracker.update() fires every loop with tier-A aggregate equity."""
+        tracker_path = tmp_path / "state" / "trailing_dd.json"
+        tracker = TrailingDDTracker.load_or_init(
+            path=tracker_path,
+            starting_balance_usd=5_000.0,  # matches FakeBot default equity
+            trailing_dd_cap_usd=500.0,
+        )
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            trailing_dd_tracker=tracker,
+        )
+        rc = await runtime.run()
+        assert rc == 0
+        # Tracker received at least one update -- last_equity_usd is set.
+        assert tracker.state().last_equity_usd == 5_000.0
+        # Peak did not exceed baseline because fake equity is flat.
+        assert tracker.state().peak_equity_usd == 5_000.0
+
+    @pytest.mark.asyncio
+    async def test_tracker_breach_triggers_preemptive_flatten_and_latches(
+        self, tmp_path,
+    ):
+        """Tracker floor breach -> KillSwitch fires FLATTEN_TIER_A_PREEMPTIVE
+        -> latch TRIPPED -> next runtime refuses to boot."""
+        tracker_path = tmp_path / "state" / "trailing_dd.json"
+        tracker = TrailingDDTracker.load_or_init(
+            path=tracker_path,
+            starting_balance_usd=5_000.0,
+            trailing_dd_cap_usd=500.0,
+        )
+        # Pre-seed the tracker with a peak > 5000 so floor = 4_800.
+        tracker.update(current_equity_usd=5_300.0)
+        assert tracker.floor_usd() == pytest.approx(4_800.0)
+
+        # Configure a generous cushion so even a small dip fires preempt.
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        cfg.kill_switch = {
+            "global": {
+                "max_drawdown_kill_pct_of_portfolio": 100.0,
+                "daily_loss_cap_pct_of_portfolio": 100.0,
+            },
+            "tier_a": {
+                "per_bucket": {},
+                "apex_eval_preemptive": {"cushion_usd": 400},
+            },
+            "tier_b": {
+                "per_bucket": {},
+                "correlation_kill": {"enabled": False},
+                "funding_veto": {"soft_threshold_bps": 20, "hard_threshold_bps": 50},
+            },
+        }
+
+        # FakeBot default equity is 5_000 -> distance to floor 4_800 is 200 USD.
+        # 200 < cushion=400 -> FLATTEN_TIER_A_PREEMPTIVE must fire.
+        latch_path = tmp_path / "state" / "kill_switch_latch.json"
+        latch = KillSwitchLatch(latch_path)
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            kill_switch=mod.KillSwitch(cfg.kill_switch),
+            kill_switch_latch=latch,
+            trailing_dd_tracker=tracker,
+        )
+        await runtime.run()
+
+        # After the run, the latch must be TRIPPED on disk.
+        persisted = KillSwitchLatch(latch_path).read()
+        assert persisted.state is LatchState.TRIPPED
+        assert persisted.action == KillAction.FLATTEN_TIER_A_PREEMPTIVE.value
+
+    @pytest.mark.asyncio
+    async def test_tracker_state_survives_runtime_restart(self, tmp_path):
+        """Two successive runtimes share the tracker's persisted peak."""
+        tracker_path = tmp_path / "state" / "trailing_dd.json"
+        # First run: tracker sees 5_000 equity, peak stays at 5_000.
+        tracker_a = TrailingDDTracker.load_or_init(
+            path=tracker_path,
+            starting_balance_usd=5_000.0,
+            trailing_dd_cap_usd=500.0,
+        )
+        tracker_a.update(current_equity_usd=5_275.0)  # set a peak
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        rt1 = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(), trailing_dd_tracker=tracker_a,
+        )
+        await rt1.run()
+
+        # Second tracker instance loaded from the same path.
+        tracker_b = TrailingDDTracker.load_or_init(
+            path=tracker_path,
+            starting_balance_usd=5_000.0,
+            trailing_dd_cap_usd=500.0,
+        )
+        assert tracker_b.state().peak_equity_usd == 5_275.0
+
+
+# --------------------------------------------------------------------------- #
+# D3 -- ConsistencyGuard integration (advisory 30% rule)
+#
+# The guard is advisory: it records today's realized tier-A PnL each loop and
+# emits a status-transition alert when the largest-winning-day ratio climbs
+# into WARNING or VIOLATION. No force-flatten. These tests cover:
+#   * no guard attached = no mutation and no alert
+#   * guard attached = today's entry recorded each tick
+#   * pre-seeded near-violation prior history -> tick drives VIOLATION, alert
+#     fires exactly once (not every tick while we stay in state)
+# --------------------------------------------------------------------------- #
+class TestConsistencyGuardIntegration:
+    @pytest.mark.asyncio
+    async def test_no_guard_is_noop(self, tmp_path):
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime.consistency_guard is None
+        rc = await runtime.run()
+        assert rc == 0
+
+    @pytest.mark.asyncio
+    async def test_guard_records_today_from_session_pnl(self, tmp_path):
+        """Runtime feeds today's tier-A session_realized_pnl into the guard."""
+        guard_path = tmp_path / "state" / "consistency.json"
+        guard = ConsistencyGuard.load_or_init(
+            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+        )
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        bindings = _fake_bindings()
+
+        # Stamp a realized PnL on the MNQ bot so the guard ingests
+        # a non-zero value.
+        def _mnq_with_pnl() -> FakeBot:
+            b = FakeBot("mnq", "MNQ", "A")
+            b.state.todays_pnl = 250.0
+            return b
+        bindings[0] = mod.BotBinding(
+            "mnq", "A", "tier_a_mnq_live", _mnq_with_pnl, "MNQ",
+        )
+
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings, consistency_guard=guard,
+        )
+        rc = await runtime.run()
+        assert rc == 0
+        # One day entry for today, value = 250 (from the fake bot's pnl).
+        days = guard.state().days
+        assert len(days) == 1
+        only_date = next(iter(days))
+        assert days[only_date] == pytest.approx(250.0)
+
+    @pytest.mark.asyncio
+    async def test_guard_emits_violation_transition_alert(self, tmp_path):
+        """Pre-seed a history that tips into VIOLATION on first tick."""
+        guard_path = tmp_path / "state" / "consistency.json"
+        guard = ConsistencyGuard.load_or_init(
+            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+        )
+        # Seed 4 prior days of small profits -> total prior=1000.
+        # Today's PnL of 1000 will make largest=1000, total=2000,
+        # ratio=50% -> VIOLATION.
+        guard.record_eod("2026-04-20", 250.0)
+        guard.record_eod("2026-04-21", 250.0)
+        guard.record_eod("2026-04-22", 250.0)
+        guard.record_eod("2026-04-23", 250.0)
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        # Allow the consistency_status alert to route (even if unknown,
+        # the dispatcher logs it without exception).
+        bindings = _fake_bindings()
+
+        def _mnq_with_big_pnl() -> FakeBot:
+            b = FakeBot("mnq", "MNQ", "A")
+            b.state.todays_pnl = 1000.0
+            return b
+        bindings[0] = mod.BotBinding(
+            "mnq", "A", "tier_a_mnq_live", _mnq_with_big_pnl, "MNQ",
+        )
+
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings, consistency_guard=guard,
+        )
+        await runtime.run()
+
+        # Verdict is VIOLATION from tick 1 onward.
+        v = guard.evaluate()
+        assert v.status is ConsistencyStatus.VIOLATION
+
+        # Exactly ONE consistency_status log line (transition fires once,
+        # subsequent ticks are steady state).
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        kinds = [json.loads(line)["kind"] for line in lines]
+        assert kinds.count("consistency_status") == 1
+
+
+# --------------------------------------------------------------------------- #
+# Blocker #2 -- live-mode gate on TrailingDDTracker presence.
+#
+# The legacy build_apex_eval_snapshot() fallback does not implement the
+# Apex freeze rule. Running live without the tick-precise tracker risks a
+# silent eval bust when equity retraces past the un-frozen floor. The
+# ApexRuntime constructor therefore refuses to build in live mode without
+# a tracker. Dry-run, paper-sim, and tests stay permissive.
+# --------------------------------------------------------------------------- #
+class TestLiveModeTrackerGate:
+    def test_live_mode_without_tracker_raises(self, tmp_path):
+        cfg = _cfg_factory(
+            tmp_path,
+            go_state={"tier_a_mnq_live": True},
+            live=True,
+            dry_run=False,
+        )
+        with pytest.raises(RuntimeError, match="TrailingDDTracker"):
+            mod.ApexRuntime(cfg, bindings=_fake_bindings())
+
+    def test_live_mode_with_tracker_builds_cleanly(self, tmp_path):
+        tracker = TrailingDDTracker.load_or_init(
+            path=tmp_path / "state" / "trailing_dd.json",
+            starting_balance_usd=5_000.0,
+            trailing_dd_cap_usd=500.0,
+        )
+        cfg = _cfg_factory(
+            tmp_path,
+            go_state={"tier_a_mnq_live": True},
+            live=True,
+            dry_run=False,
+        )
+        # Construction must succeed. Use a MockRouter to avoid the
+        # real-router branch (no creds in test env anyway).
+        runtime = mod.ApexRuntime(
+            cfg,
+            bindings=_fake_bindings(),
+            trailing_dd_tracker=tracker,
+            router=mod.MockRouter(log_path=tmp_path / "orders.jsonl"),
+        )
+        assert runtime.trailing_dd_tracker is tracker
+
+    def test_dry_run_without_tracker_builds_cleanly(self, tmp_path):
+        """Dry-run is exempt from the gate: legacy proxy is fine for paper."""
+        cfg = _cfg_factory(
+            tmp_path,
+            go_state={"tier_a_mnq_live": True},
+            live=False,
+            dry_run=True,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime.trailing_dd_tracker is None
+
+    def test_live_flag_alone_is_not_enough_dry_run_still_wins(self, tmp_path):
+        """When dry_run=True overrides live=True, no tracker required."""
+        cfg = _cfg_factory(
+            tmp_path,
+            go_state={"tier_a_mnq_live": True},
+            live=True,
+            dry_run=True,  # dry_run wins; legacy proxy is safe here
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime.trailing_dd_tracker is None
+
+
+# --------------------------------------------------------------------------- #
+# Blocker #3 -- ConsistencyGuard VIOLATION enforces PAUSE_NEW_ENTRIES.
+#
+# The advisory-only path (alert + log, no action) was the Red Team's top D3
+# finding: a silent log is not enforcement. The runtime now synthesizes a
+# KillVerdict(PAUSE_NEW_ENTRIES, tier_a, CRITICAL) on VIOLATION and pushes
+# it through apply_verdict, which flips bot.state.is_paused for every
+# tier-A bot. Tests cover: pause flag set on VIOLATION, verdict logged in
+# runtime.jsonl, no flatten (positions allowed to close naturally).
+# --------------------------------------------------------------------------- #
+class TestConsistencyViolationPauses:
+    @pytest.mark.asyncio
+    async def test_violation_pauses_tier_a_bots(self, tmp_path):
+        guard_path = tmp_path / "state" / "consistency.json"
+        guard = ConsistencyGuard.load_or_init(
+            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+        )
+        # Pre-seed history that is already in violation so the tick
+        # immediately flips the verdict. Use 2023 dates to avoid any
+        # collision with apex_trading_day_iso() for "today".
+        guard.record_eod("2023-01-01", 1_000.0)
+        guard.record_eod("2023-01-02", 100.0)
+        v0 = guard.evaluate()
+        assert v0.status is ConsistencyStatus.VIOLATION
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        bindings = _fake_bindings()
+
+        captured_bots: dict[str, FakeBot] = {}
+
+        def _mnq_in_violation() -> FakeBot:
+            b = FakeBot("mnq", "MNQ", "A")
+            # today's tier-A PnL is neutral; the seeded history alone
+            # drives VIOLATION on tick.
+            b.state.todays_pnl = 0.0
+            captured_bots["mnq"] = b
+            return b
+        bindings[0] = mod.BotBinding(
+            "mnq", "A", "tier_a_mnq_live", _mnq_in_violation, "MNQ",
+        )
+
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings, consistency_guard=guard,
+        )
+        await runtime.run()
+
+        # The tier-A bot is now paused.
+        assert captured_bots["mnq"].state.is_paused is True
+
+        # The verdict is persisted in runtime.jsonl under the tick entry
+        # for the same bar. _log flattens meta kwargs directly into the
+        # entry, so "verdicts" is a top-level key.
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        events = [json.loads(line) for line in lines]
+        tick_entries = [e for e in events if e["kind"] == "tick"]
+        assert tick_entries, "expected at least one tick log entry"
+        last = tick_entries[-1]
+        actions = [v["action"] for v in last["verdicts"]]
+        assert "PAUSE_NEW_ENTRIES" in actions
+
+    @pytest.mark.asyncio
+    async def test_warning_does_not_pause(self, tmp_path):
+        """WARNING is advisory only. No bot paused, no synthetic verdict.
+
+        Pre-seed dates are in 2023 so they cannot collide with today's
+        apex_trading_day_iso() value (which is what the runtime writes
+        on each tick -- if a pre-seed date matched today's key, the
+        runtime would overwrite it and shift the ratio).
+        """
+        guard_path = tmp_path / "state" / "consistency.json"
+        guard = ConsistencyGuard.load_or_init(
+            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+        )
+        # Ratio 500/1800 = 27.8% -> between 25% and 30% -> WARNING.
+        guard.record_eod("2023-01-01", 500.0)
+        guard.record_eod("2023-01-02", 500.0)
+        guard.record_eod("2023-01-03", 400.0)
+        guard.record_eod("2023-01-04", 400.0)
+        v0 = guard.evaluate()
+        assert v0.status is ConsistencyStatus.WARNING
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=1,
+        )
+        captured: dict[str, FakeBot] = {}
+
+        def _mnq() -> FakeBot:
+            b = FakeBot("mnq", "MNQ", "A")
+            captured["mnq"] = b
+            return b
+        bindings = _fake_bindings()
+        bindings[0] = mod.BotBinding(
+            "mnq", "A", "tier_a_mnq_live", _mnq, "MNQ",
+        )
+
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings, consistency_guard=guard,
+        )
+        await runtime.run()
+
+        # Paused flag still False.
+        assert captured["mnq"].state.is_paused is False
+
+        # No PAUSE_NEW_ENTRIES verdict in any tick entry. verdicts list
+        # is a top-level key on the tick entry (see _log flattening).
+        lines = (tmp_path / "runtime.jsonl").read_text(
+            encoding="utf-8",
+        ).strip().splitlines()
+        events = [json.loads(line) for line in lines]
+        actions: list[str] = []
+        for e in events:
+            if e["kind"] == "tick":
+                actions.extend(v["action"] for v in e["verdicts"])
+        assert "PAUSE_NEW_ENTRIES" not in actions

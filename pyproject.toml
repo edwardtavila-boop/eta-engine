@@ -67,6 +67,16 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN401"]
+# jarvis_dashboard embeds long HTML template strings (E501) and overrides
+# BaseHTTPRequestHandler.log_message whose signature uses *args: Any (ANN401).
+"scripts/jarvis_dashboard.py" = ["E501", "ANN401"]
+# run_apex_live is a dispatch-heavy tie-together runtime: the router, bot
+# factories, and OrderRequest surface cross module boundaries where a Protocol
+# or Union would require pulling in 6+ venue/bot imports. The Any types are
+# intentional extension points. *_ / **__ are placeholder param names for
+# signatures that must match a venue-supplied contract whose extras we don't
+# use.
+"scripts/run_apex_live.py" = ["ANN002", "ANN003", "ANN401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

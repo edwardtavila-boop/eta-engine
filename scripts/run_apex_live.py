@@ -55,30 +55,43 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import signal
 import sys
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+from apex_predator.core.consistency_guard import (
+    ConsistencyGuard,
+    ConsistencyStatus,
+    apex_trading_day_iso,
+)
+from apex_predator.core.kill_switch_latch import KillSwitchLatch
 from apex_predator.core.kill_switch_runtime import (
     ApexEvalSnapshot,
     BotSnapshot,
     CorrelationSnapshot,
     FundingSnapshot,
     KillAction,
+    KillSeverity,
     KillSwitch,
     KillVerdict,
     PortfolioSnapshot,
 )
+from apex_predator.core.market_quality import format_market_context_summary
 from apex_predator.obs.alert_dispatcher import AlertDispatcher
 from apex_predator.obs.heartbeat import HeartbeatMonitor
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from apex_predator.core.trailing_dd_tracker import TrailingDDTracker
 
 logger = logging.getLogger("apex_predator.runtime")
 
@@ -277,6 +290,16 @@ def select_active_bots(
 # ---------------------------------------------------------------------------- #
 def build_bot_snapshot(binding: BotBinding, bot: Any) -> BotSnapshot:
     st = bot.state
+    runtime_snapshot = getattr(bot, "runtime_snapshot", None)
+    market_context_summary = None
+    market_context_summary_text = None
+    if isinstance(runtime_snapshot, dict):
+        summary = runtime_snapshot.get("market_context_summary")
+        if isinstance(summary, dict) and summary:
+            market_context_summary = summary
+            market_context_summary_text = runtime_snapshot.get("market_context_summary_text")
+            if not isinstance(market_context_summary_text, str) or not market_context_summary_text.strip():
+                market_context_summary_text = format_market_context_summary(summary)
     return BotSnapshot(
         name=binding.name,
         tier=binding.tier,
@@ -285,6 +308,8 @@ def build_bot_snapshot(binding: BotBinding, bot: Any) -> BotSnapshot:
         session_realized_pnl_usd=float(getattr(st, "todays_pnl", 0.0)),
         consecutive_losses=int(getattr(st, "consecutive_losses", 0) or 0),
         open_position_count=int(len(getattr(st, "open_positions", []) or [])),
+        market_context_summary=market_context_summary,
+        market_context_summary_text=market_context_summary_text,
     )
 
 
@@ -469,6 +494,9 @@ class ApexRuntime:
         cfg: RuntimeConfig,
         *,
         kill_switch: KillSwitch | None = None,
+        kill_switch_latch: KillSwitchLatch | None = None,
+        trailing_dd_tracker: TrailingDDTracker | None = None,
+        consistency_guard: ConsistencyGuard | None = None,
         dispatcher: AlertDispatcher | None = None,
         router: Any | None = None,
         heartbeat: HeartbeatMonitor | None = None,
@@ -476,6 +504,47 @@ class ApexRuntime:
     ) -> None:
         self.cfg = cfg
         self.kill_switch = kill_switch or KillSwitch(cfg.kill_switch or {})
+        # Disk-backed latch: survives process crash so FLATTEN_ALL /
+        # FLATTEN_TIER_A_PREEMPTIVE / FLATTEN_TIER_B trips refuse re-boot
+        # until an operator runs clear_kill_switch.
+        self.kill_switch_latch = kill_switch_latch or KillSwitchLatch(
+            ROOT / "state" / "kill_switch_latch.json",
+        )
+        # Optional tick-granular trailing-DD tracker. When present, the
+        # runtime feeds tier-A aggregate equity into it each loop and
+        # uses its ApexEvalSnapshot instead of the bar-level proxy from
+        # build_apex_eval_snapshot(). Defaults to None (no override)
+        # because the tracker requires a durable state file and the
+        # operator must choose where that lives (likely ROOT/state/).
+        self.trailing_dd_tracker = trailing_dd_tracker
+
+        # LIVE-MODE GATE (blocker #2, risk-advocate D3 review).
+        # The legacy build_apex_eval_snapshot() fallback does NOT implement
+        # the Apex trailing-DD freeze rule (peak >= start + cap => floor
+        # locks at start). Running LIVE without the tick-precise tracker
+        # therefore risks a silent eval bust when equity retraces past the
+        # unfrozen floor. Fail-closed: refuse construction so the operator
+        # cannot boot a live session with missing D2 wiring.
+        if cfg.live and not cfg.dry_run and trailing_dd_tracker is None:
+            msg = (
+                "ApexRuntime: live mode requires a TrailingDDTracker "
+                "(cfg.live=True, cfg.dry_run=False, trailing_dd_tracker=None). "
+                "The legacy bar-level proxy does not implement the Apex "
+                "freeze rule and will silently mis-price the floor once "
+                "peak >= start + trailing_dd. Wire a tracker via "
+                "trailing_dd_tracker=TrailingDDTracker.load_or_init(...). "
+                "See core/trailing_dd_tracker.py."
+            )
+            raise RuntimeError(msg)
+        # Optional Apex 30% consistency-rule guard. When present, the
+        # runtime records today's realized tier-A PnL each loop and logs
+        # a WARN alert if the largest winning day climbs into the
+        # [warning, threshold) band, or a CRITICAL alert on VIOLATION.
+        # The guard is advisory (does not force-flatten); it lets the
+        # operator spot concentration risk early enough to stop pushing
+        # on a very-green day.
+        self.consistency_guard = consistency_guard
+        self._last_consistency_status: ConsistencyStatus | None = None
         self.dispatcher = dispatcher or AlertDispatcher(
             cfg.alerts or {},
             log_path=ROOT / "docs" / "alerts_log.jsonl",
@@ -494,6 +563,19 @@ class ApexRuntime:
 
     # -- public entrypoint -------------------------------------------------- #
     async def run(self) -> int:
+        # --- Boot gate: refuse to start if a catastrophic verdict ever
+        # tripped the latch in a prior run. Clear with
+        #   python -m apex_predator.scripts.clear_kill_switch \
+        #          --confirm --operator <your_name>
+        # This runs BEFORE we instantiate bots or touch the router so a
+        # TRIPPED latch can never place orders. ----------------------- #
+        boot_ok, boot_reason = self.kill_switch_latch.boot_allowed()
+        if not boot_ok:
+            logger.critical("apex runtime boot REFUSED: %s", boot_reason)
+            self.dispatcher.send("boot_refused", {"reason": boot_reason})
+            self._log(kind="boot_refused", meta={"reason": boot_reason})
+            return 3
+
         bots_instantiated = self._instantiate_active_bots()
         self._log(kind="runtime_start", meta={
             "mode": "live" if (self.cfg.live and not self.cfg.dry_run) else "dry_run",
@@ -526,10 +608,8 @@ class ApexRuntime:
                 await self._tick(bots_instantiated, bar_i)
                 bar_i += 1
                 if self.cfg.tick_interval_s > 0:
-                    try:
+                    with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(self._stop.wait(), timeout=self.cfg.tick_interval_s)
-                    except TimeoutError:
-                        pass
         finally:
             for b, bot in bots_instantiated:
                 try:
@@ -571,7 +651,20 @@ class ApexRuntime:
         # 3. snapshot + kill-switch evaluate
         snapshots = [build_bot_snapshot(b, bot) for b, bot in bots]
         portfolio = build_portfolio_snapshot(snapshots)
-        apex_eval = build_apex_eval_snapshot(self.cfg, snapshots)
+        # Tick-granular trailing-DD path: if a tracker is attached,
+        # feed the current tier-A aggregate equity into it and use its
+        # snapshot as the authoritative apex_eval for this tick. The
+        # tracker persists peak + frozen flag to disk and applies the
+        # Apex freeze rule (peak >= start + cap => floor locks). The
+        # fall-through branch preserves the legacy bar-level proxy so
+        # a runtime without a tracker still emits a plausible snapshot.
+        if self.trailing_dd_tracker is not None:
+            ta_equity = sum(s.equity_usd for s in snapshots if s.tier == "A")
+            apex_eval = self.trailing_dd_tracker.update(
+                current_equity_usd=float(ta_equity),
+            )
+        else:
+            apex_eval = build_apex_eval_snapshot(self.cfg, snapshots)
         funding = build_funding_snapshot(self.cfg)
         correlations = build_correlation_snapshot(self.cfg)
         verdicts = self.kill_switch.evaluate(
@@ -585,10 +678,146 @@ class ApexRuntime:
         # 4. act on each verdict
         reports: list[ActionReport] = []
         for v in verdicts:
+            # Persist before we act. record_verdict is idempotent and
+            # first-trip-wins: only FLATTEN_ALL / FLATTEN_TIER_A_PREEMPTIVE
+            # / FLATTEN_TIER_B flip the latch. If the write somehow fails
+            # we still want to try the live flatten below, so we log and
+            # keep going rather than swallowing the verdict.
+            try:
+                latched = self.kill_switch_latch.record_verdict(v)
+                if latched:
+                    self.dispatcher.send(
+                        "kill_switch_latched",
+                        {
+                            "action": v.action.value,
+                            "scope": v.scope,
+                            "reason": v.reason,
+                        },
+                    )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.error(
+                    "kill_switch_latch.record_verdict failed "
+                    "(action=%s scope=%s): %s",
+                    v.action.value, v.scope, exc,
+                )
+
             rep = await apply_verdict(v, bots, self.router, self.dispatcher)
             reports.append(rep)
             if v.action is KillAction.FLATTEN_ALL:
                 self.request_stop()
+
+        # 4b. feed consistency guard with today's tier-A realized PnL.
+        # Emits a status-transition alert when the largest-winning-day
+        # ratio climbs into the WARNING or VIOLATION band. On VIOLATION
+        # we ALSO synthesize a KillVerdict(PAUSE_NEW_ENTRIES) so the
+        # verdict-dispatch path flips every tier-A bot's is_paused flag.
+        # That takes the guard from "log-only" to "pause + alert" --
+        # closing the risk-advocate's D3 gap without force-flattening
+        # (existing positions are allowed to finish; only new entries are
+        # blocked until the operator investigates).
+        #
+        # Uses the Apex session-day helper (17:00 CT rollover, DST-aware)
+        # -- NOT UTC midnight. UTC midnight splits a US equity-futures
+        # session across two day buckets, which understates the real
+        # "largest day" and inflates the denominator.
+        if self.consistency_guard is not None:
+            today = apex_trading_day_iso()
+            today_ta_pnl = float(
+                sum(
+                    s.session_realized_pnl_usd
+                    for s in snapshots
+                    if s.tier == "A"
+                )
+            )
+            try:
+                verdict = self.consistency_guard.record_intraday(
+                    today, today_ta_pnl,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error(
+                    "consistency_guard.record_intraday failed: %s", exc,
+                )
+            else:
+                prior = self._last_consistency_status
+                self._last_consistency_status = verdict.status
+                is_transition = (
+                    verdict.status in (
+                        ConsistencyStatus.WARNING,
+                        ConsistencyStatus.VIOLATION,
+                    )
+                    and verdict.status != prior
+                )
+                # Alert on transitions INTO WARNING/VIOLATION, not every
+                # tick while we're already there -- the log already
+                # captures the steady-state condition.
+                if is_transition:
+                    self.dispatcher.send(
+                        "consistency_status",
+                        {
+                            "status": verdict.status.value,
+                            "largest_day_usd": verdict.largest_day_usd,
+                            "largest_day_date": verdict.largest_day_date,
+                            "largest_day_ratio": verdict.largest_day_ratio,
+                            "total_net_profit_usd": (
+                                verdict.total_net_profit_usd
+                            ),
+                            "max_allowed_day_usd": (
+                                verdict.max_allowed_day_usd
+                            ),
+                            "headroom_today_usd": verdict.headroom_today_usd,
+                            "today_pnl_usd": verdict.today_pnl_usd,
+                        },
+                    )
+                    self._log(kind="consistency_status", meta={
+                        "status": verdict.status.value,
+                        "today_pnl_usd": verdict.today_pnl_usd,
+                        "largest_day_usd": verdict.largest_day_usd,
+                        "ratio": verdict.largest_day_ratio,
+                    })
+
+                # VIOLATION enforcement: synthesize a PAUSE_NEW_ENTRIES
+                # verdict so every tier-A bot flips is_paused. Fire on
+                # each tick while in VIOLATION (idempotent -- is_paused
+                # is already True, but a re-fire is harmless and keeps
+                # the log visible). We intentionally DO NOT flatten;
+                # existing positions can close normally. The operator
+                # must clear the guard history (close the eval bucket,
+                # trim the largest day off via new trades, or reset)
+                # before new entries resume.
+                if verdict.status is ConsistencyStatus.VIOLATION:
+                    pause_verdict = KillVerdict(
+                        action=KillAction.PAUSE_NEW_ENTRIES,
+                        severity=KillSeverity.CRITICAL,
+                        reason=(
+                            f"apex 30% consistency VIOLATION: largest day "
+                            f"{verdict.largest_day_usd:.2f} ({verdict.largest_day_date}) "
+                            f"is {verdict.largest_day_ratio:.1%} of total net profit "
+                            f"{verdict.total_net_profit_usd:.2f} "
+                            f"(cap {verdict.threshold_pct:.0%})"
+                        ),
+                        scope="tier_a",
+                        evidence={
+                            "largest_day_usd": verdict.largest_day_usd,
+                            "largest_day_date": verdict.largest_day_date,
+                            "largest_day_ratio": verdict.largest_day_ratio,
+                            "total_net_profit_usd": (
+                                verdict.total_net_profit_usd
+                            ),
+                            "threshold_pct": verdict.threshold_pct,
+                        },
+                    )
+                    try:
+                        pause_rep = await apply_verdict(
+                            pause_verdict, bots, self.router, self.dispatcher,
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.error(
+                            "consistency_guard PAUSE_NEW_ENTRIES dispatch "
+                            "failed: %s", exc,
+                        )
+                    else:
+                        reports.append(pause_rep)
+                        verdicts.append(pause_verdict)
 
         # 5. structured per-tick log
         self._log(kind="tick", meta={
@@ -673,7 +902,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _install_signal_handlers(runtime: ApexRuntime) -> None:
-    def _handler(signum, _frame):  # noqa: ANN001
+    def _handler(signum, _frame) -> None:  # noqa: ANN001
         logger.info("signal %s received — draining", signum)
         runtime.request_stop()
     try:
