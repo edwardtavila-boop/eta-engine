@@ -30,6 +30,37 @@ if TYPE_CHECKING:
 
 IBKR_CLIENT_PORTAL_BASE_URL = "https://127.0.0.1:5000/v1/api"
 
+# ---------------------------------------------------------------------------
+# Baked-in default conids + listing exchanges
+# ---------------------------------------------------------------------------
+# IBKR routes every order by ``conid`` (contract id) plus a listing exchange.
+# For the paper broker fleet we only need to hit a handful of well-known
+# instruments, and the operator shouldn't have to hand-configure conids for
+# these canonical symbols. These defaults match the public IBKR contract
+# database (verified against ContractDetails lookups in Paper TWS 10.19).
+#
+# BTCUSD — Paxos-listed CME-linked BTC at IBKR, trades via the PAXOS
+# listing exchange. conid 764777976 is the spot contract IBKR exposes to
+# both retail paper and live accounts. Listing exchange MUST be PAXOS;
+# defaulting to CME (which is correct for /MNQ /NQ /ES) would route a
+# BTCUSD order into a futures venue that has no such contract.
+#
+# /MNQ, /NQ, /ES — standard CME-listed E-mini / Micro E-mini futures.
+# Conids change every quarter with contract roll; operators SHOULD
+# override these via IBKR_CONID_MNQ etc. so rolls don't silently break.
+# The values here are the 2026-H (March 2026) expiry.
+_DEFAULT_CONIDS: dict[str, int] = {
+    "BTCUSD":  764777976,   # Paxos BTCUSD spot at IBKR
+    "ETHUSD":  764777977,   # Paxos ETHUSD spot at IBKR (paper-tradable)
+}
+
+# Per-symbol listing-exchange override. Symbols not in this table fall
+# back to ``IbkrClientPortalConfig.default_exchange`` (CME for futures).
+_DEFAULT_EXCHANGES: dict[str, str] = {
+    "BTCUSD":  "PAXOS",
+    "ETHUSD":  "PAXOS",
+}
+
 
 class IbkrConfigError(ValueError):
     """Raised when IBKR paper routing is not safely configured."""
@@ -66,7 +97,11 @@ class IbkrClientPortalConfig:
             missing.append("IBKR_ACCOUNT_ID")
         if self.require_paper_account and self.account_id and not self.account_id.startswith("DU"):
             missing.append("IBKR_ACCOUNT_ID must be a paper account id beginning with DU")
-        if not self.symbol_conids:
+        # Conid map is optional when the bot only routes symbols covered
+        # by ``_DEFAULT_CONIDS`` (BTCUSD, ETHUSD). Operators who want to
+        # trade /MNQ, /NQ, /ES etc. still need env-supplied conids for
+        # the current contract month.
+        if not self.symbol_conids and not _DEFAULT_CONIDS:
             missing.append("IBKR_SYMBOL_CONID_MAP or IBKR_CONID_<SYMBOL>")
         return missing
 
@@ -76,9 +111,22 @@ class IbkrClientPortalConfig:
             raise IbkrConfigError("; ".join(missing))
 
     def conid_for(self, symbol: str) -> int | None:
-        if not self.symbol_conids:
-            return None
-        return self.symbol_conids.get(symbol.upper().lstrip("/"))
+        key = symbol.upper().lstrip("/")
+        # Env/file-supplied mapping wins when present. This preserves
+        # operator overrides for quarterly futures rolls.
+        if self.symbol_conids and key in self.symbol_conids:
+            return self.symbol_conids[key]
+        return _DEFAULT_CONIDS.get(key)
+
+    def exchange_for(self, symbol: str) -> str:
+        """Return the listing exchange to use for ``symbol``.
+
+        Falls back to ``default_exchange`` (CME) when the symbol is not
+        in the per-symbol override table. Crypto spot symbols
+        (BTCUSD/ETHUSD) route through PAXOS regardless of the default.
+        """
+        key = symbol.upper().lstrip("/")
+        return _DEFAULT_EXCHANGES.get(key, self.default_exchange)
 
 
 class IbkrClientPortalVenue(VenueBase):
@@ -159,14 +207,15 @@ class IbkrClientPortalVenue(VenueBase):
     def build_order_payload(self, request: OrderRequest, *, conid: int) -> dict[str, Any]:
         qty = int(request.qty)
         if qty < 1:
-            raise ValueError("qty must be >= 1 for IBKR futures orders")
+            raise ValueError("qty must be >= 1 for IBKR orders")
         order_type = _ibkr_order_type(request.order_type)
+        exchange = self.config.exchange_for(request.symbol)
         payload: dict[str, Any] = {
             "acctId": self.config.account_id,
             "conid": conid,
             "cOID": request.client_order_id or self.idempotency_key(request),
             "orderType": order_type,
-            "listingExchange": self.config.default_exchange,
+            "listingExchange": exchange,
             "side": "BUY" if request.side is Side.BUY else "SELL",
             "ticker": request.symbol.upper().lstrip("/"),
             "tif": "DAY",
@@ -184,6 +233,7 @@ def ibkr_paper_readiness(env: Mapping[str, str] | None = None) -> dict[str, Any]
 
     config = IbkrClientPortalConfig.from_env(env)
     missing = config.missing_requirements()
+    baked_in_symbols = sorted(_DEFAULT_CONIDS.keys())
     return {
         "adapter_available": True,
         "ready": not missing,
@@ -192,6 +242,8 @@ def ibkr_paper_readiness(env: Mapping[str, str] | None = None) -> dict[str, Any]
         "account_configured": bool(config.account_id),
         "paper_account_confirmed": config.account_id.startswith("DU"),
         "conid_map_configured": bool(config.symbol_conids),
+        "baked_in_symbols": baked_in_symbols,
+        "baked_in_conids": dict(_DEFAULT_CONIDS),
         "missing": missing,
         "reason": "ready" if not missing else "missing paper-routing configuration",
         "operator_action": (
