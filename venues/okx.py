@@ -62,6 +62,12 @@ class OkxVenue(VenueBase):
     def _has_creds(self) -> bool:
         return bool(self.api_key) and bool(self.api_secret) and bool(self.passphrase)
 
+    def has_credentials(self) -> bool:
+        return self._has_creds()
+
+    def connection_endpoint(self) -> str:
+        return self.REST_BASE
+
     def _native_symbol(self, symbol: str) -> str:
         if symbol in self.SYMBOL_MAPPING:
             return self.SYMBOL_MAPPING[symbol]
@@ -138,11 +144,17 @@ class OkxVenue(VenueBase):
         assert last_exc is not None
         raise last_exc
 
-    async def _http_get(self, request_path: str, qs: str = "") -> tuple[int, dict[str, Any]]:
+    async def _http_get(
+        self,
+        request_path: str,
+        qs: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any]]:
         full_path = f"{request_path}?{qs}" if qs else request_path
         url = f"{self.REST_BASE}{full_path}"
-        # OKX signing uses the full path including query string
-        headers = self._headers("GET", full_path, "")
+        # OKX signing uses the full path including query string. Public endpoints
+        # can explicitly pass empty headers to avoid sending auth material.
+        headers = headers if headers is not None else self._headers("GET", full_path, "")
         session = await self._ensure_session()
         last_exc: Exception | None = None
         for attempt in range(_HTTP_RETRY + 1):
@@ -163,6 +175,43 @@ class OkxVenue(VenueBase):
                     break
         assert last_exc is not None
         raise last_exc
+
+    @staticmethod
+    def _coerce_book_levels(raw_levels: Any) -> list[tuple[float, float]]:
+        levels: list[tuple[float, float]] = []
+        if not isinstance(raw_levels, list):
+            return levels
+        for entry in raw_levels:
+            price: Any
+            size: Any
+            if isinstance(entry, dict):
+                price = entry.get("px") or entry.get("price") or entry.get("p")
+                size = entry.get("sz") or entry.get("size") or entry.get("s") or entry.get("qty")
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                price, size = entry[0], entry[1]
+            else:
+                continue
+            try:
+                price_f = float(price)
+                size_f = float(size)
+            except (TypeError, ValueError):
+                continue
+            if price_f > 0.0 and size_f >= 0.0:
+                levels.append((price_f, size_f))
+        return levels
+
+    @staticmethod
+    def _book_regime(spread_bps: float, book_imbalance: float) -> str:
+        abs_imb = abs(book_imbalance)
+        if spread_bps <= 0.0 and abs_imb <= 0.0:
+            return "UNKNOWN"
+        if spread_bps <= 1.5 and abs_imb <= 0.20:
+            return "TIGHT"
+        if spread_bps <= 4.5 and abs_imb <= 0.40:
+            return "NORMAL"
+        if spread_bps <= 12.0 and abs_imb <= 0.65:
+            return "WIDE"
+        return "STRESSED"
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -252,3 +301,72 @@ class OkxVenue(VenueBase):
                     except (TypeError, ValueError):
                         continue
         return {"USDT": total}
+
+    async def get_order_book(self, symbol: str, depth: int = 5) -> dict[str, Any] | None:
+        native = self._native_symbol(symbol)
+        limit = max(1, min(int(depth or 5), 400))
+        status, data = await self._http_get("/api/v5/market/books", f"instId={native}&sz={limit}", {})
+        if status != 200 or str(data.get("code", "")) != "0":
+            logger.warning("okx.get_order_book http=%s code=%s", status, data.get("code"))
+            return None
+        rows = data.get("data") or []
+        if not rows:
+            return None
+        row = rows[0] or {}
+        bids = sorted(self._coerce_book_levels(row.get("bids") or []), key=lambda item: item[0], reverse=True)
+        asks = sorted(self._coerce_book_levels(row.get("asks") or []), key=lambda item: item[0])
+        if not bids or not asks:
+            return None
+
+        bid_price, bid_qty = bids[0]
+        ask_price, ask_qty = asks[0]
+        bid_depth = sum(qty for _, qty in bids[:limit])
+        ask_depth = sum(qty for _, qty in asks[:limit])
+        bid_notional_depth = sum(price * qty for price, qty in bids[:limit])
+        ask_notional_depth = sum(price * qty for price, qty in asks[:limit])
+        mid = (bid_price + ask_price) / 2.0
+        spread = max(0.0, ask_price - bid_price)
+        spread_bps = (spread / mid) * 10_000.0 if mid > 0.0 else 0.0
+        depth_total = bid_depth + ask_depth
+        book_imbalance = ((bid_depth - ask_depth) / depth_total) if depth_total > 0.0 else 0.0
+        microprice = (
+            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty)
+            if (bid_qty + ask_qty) > 0.0
+            else mid
+        )
+        weighted_mid = (
+            (bid_price * ask_depth + ask_price * bid_depth) / depth_total
+            if depth_total > 0.0
+            else mid
+        )
+        ts_raw = row.get("ts") or data.get("ts")
+        try:
+            ts_ms = int(float(ts_raw))
+        except (TypeError, ValueError):
+            ts_ms = int(datetime.now(UTC).timestamp() * 1000)
+        payload = {
+            "venue": self.name,
+            "order_book_venue": self.name,
+            "symbol": native,
+            "order_book_depth": limit,
+            "ts": ts_ms,
+            "bid_price": bid_price,
+            "ask_price": ask_price,
+            "best_bid": bid_price,
+            "best_ask": ask_price,
+            "bid_depth": bid_depth,
+            "ask_depth": ask_depth,
+            "depth_1": bid_qty,
+            "depth_5": ask_qty,
+            "notional_depth_1": bid_price * bid_qty,
+            "notional_depth_5": ask_price * ask_qty,
+            "mid": mid,
+            "weighted_mid": weighted_mid,
+            "microprice": microprice,
+            "spread": spread,
+            "spread_bps": spread_bps,
+            "book_imbalance": book_imbalance,
+            "spread_regime": self._book_regime(spread_bps, book_imbalance),
+            "raw": data,
+        }
+        return payload

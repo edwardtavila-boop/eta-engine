@@ -58,12 +58,19 @@ class BybitVenue(VenueBase):
         self.testnet: bool = testnet
         self._last_request_times: deque[float] = deque(maxlen=_RATE_LIMIT_MAX * 4)
         self._session: Any = None  # aiohttp.ClientSession, lazy
+        self._mock_orders: dict[str, OrderResult] = {}
 
     def _host(self) -> str:
         return BYBIT_V5_TESTNET if self.testnet else BYBIT_V5_HOST
 
     def _has_creds(self) -> bool:
         return bool(self.api_key) and bool(self.api_secret)
+
+    def has_credentials(self) -> bool:
+        return self._has_creds()
+
+    def connection_endpoint(self) -> str:
+        return self._host()
 
     def _native_symbol(self, symbol: str) -> str:
         if symbol in self.SYMBOL_MAPPING:
@@ -110,6 +117,96 @@ class BybitVenue(VenueBase):
             order_id=str(result.get("orderId") or result.get("orderLinkId") or fallback_id),
             status=OrderStatus.OPEN, raw=raw,
         )
+
+    @staticmethod
+    def _order_status_from_text(raw_status: Any, *, filled_qty: float = 0.0, leaves_qty: float = 0.0) -> OrderStatus:
+        text = str(raw_status or "").strip().lower()
+        if text == "filled":
+            return OrderStatus.FILLED
+        if text in {"partiallyfilled", "partialfilled", "partial"}:
+            return OrderStatus.PARTIAL
+        if text in {"new", "created", "untriggered", "open"}:
+            return OrderStatus.OPEN
+        if text in {"cancelled", "canceled", "rejected", "deactivated"}:
+            return OrderStatus.REJECTED
+        if filled_qty > 0.0 and leaves_qty > 0.0:
+            return OrderStatus.PARTIAL
+        if filled_qty > 0.0:
+            return OrderStatus.FILLED
+        return OrderStatus.OPEN
+
+    def _parse_order_record(self, record: dict[str, Any], fallback_id: str) -> OrderResult:
+        try:
+            filled_qty = float(record.get("cumExecQty") or record.get("filledQty") or 0.0)
+        except (TypeError, ValueError):
+            filled_qty = 0.0
+        try:
+            leaves_qty = float(record.get("leavesQty") or 0.0)
+        except (TypeError, ValueError):
+            leaves_qty = 0.0
+        try:
+            avg_price = float(record.get("avgPrice") or 0.0)
+        except (TypeError, ValueError):
+            avg_price = 0.0
+        try:
+            fees = float(record.get("cumExecFee") or 0.0)
+        except (TypeError, ValueError):
+            fees = 0.0
+        order_id = str(record.get("orderId") or record.get("orderLinkId") or fallback_id)
+        status = self._order_status_from_text(record.get("orderStatus"), filled_qty=filled_qty, leaves_qty=leaves_qty)
+        raw = dict(record)
+        raw["venue"] = self.name
+        return OrderResult(
+            order_id=order_id,
+            status=status,
+            filled_qty=filled_qty,
+            avg_price=avg_price,
+            fees=fees,
+            raw=raw,
+        )
+
+    @staticmethod
+    def _coerce_book_levels(raw_levels: Any) -> list[tuple[float, float]]:
+        levels: list[tuple[float, float]] = []
+        if not isinstance(raw_levels, list):
+            return levels
+        for entry in raw_levels:
+            price: Any
+            size: Any
+            if isinstance(entry, dict):
+                price = entry.get("price") or entry.get("p")
+                size = entry.get("size") or entry.get("s") or entry.get("qty") or entry.get("q")
+            elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                price, size = entry[0], entry[1]
+            else:
+                continue
+            try:
+                price_f = float(price)
+                size_f = float(size)
+            except (TypeError, ValueError):
+                continue
+            if price_f > 0.0 and size_f >= 0.0:
+                levels.append((price_f, size_f))
+        return levels
+
+    @staticmethod
+    def _book_regime(spread_bps: float, book_imbalance: float) -> str:
+        abs_imb = abs(book_imbalance)
+        if spread_bps <= 0.0 and abs_imb <= 0.0:
+            return "UNKNOWN"
+        if spread_bps <= 1.5 and abs_imb <= 0.20:
+            return "TIGHT"
+        if spread_bps <= 4.5 and abs_imb <= 0.40:
+            return "NORMAL"
+        if spread_bps <= 12.0 and abs_imb <= 0.65:
+            return "WIDE"
+        return "STRESSED"
+
+    def _store_mock_order(self, result: OrderResult) -> OrderResult:
+        stored = result.model_copy(deep=True)
+        stored.raw = {**stored.raw, "venue": self.name}
+        self._mock_orders[stored.order_id] = stored
+        return stored
 
     def _build_place_payload(self, request: OrderRequest) -> dict[str, Any]:
         native = self._native_symbol(request.symbol)
@@ -214,16 +311,16 @@ class BybitVenue(VenueBase):
                 "result": {"orderId": f"mock-{int(time.time() * 1000)}", "orderLinkId": payload["orderLinkId"]},
                 "retExtInfo": {}, "time": int(time.time() * 1000),
             }
-            return self._parse_order_response(mock_raw, fallback_id=payload["orderLinkId"])
+            return self._store_mock_order(self._parse_order_response(mock_raw, fallback_id=payload["orderLinkId"]))
 
         status, data = await self._http_post("/v5/order/create", body, headers)
         if status != 200:
             logger.error("bybit.place_order http=%s body=%s", status, data)
-            return OrderResult(
+            return self._store_mock_order(OrderResult(
                 order_id=payload["orderLinkId"], status=OrderStatus.REJECTED,
                 raw={"http_status": status, **(data if isinstance(data, dict) else {})},
-            )
-        return self._parse_order_response(data, fallback_id=payload["orderLinkId"])
+            ))
+        return self._store_mock_order(self._parse_order_response(data, fallback_id=payload["orderLinkId"]))
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
         self._mark_request()
@@ -233,6 +330,11 @@ class BybitVenue(VenueBase):
         logger.info("bybit.cancel_order %s %s", payload["symbol"], order_id)
 
         if not self._has_creds():
+            current = self._mock_orders.get(order_id)
+            if current is not None:
+                self._mock_orders[order_id] = current.model_copy(
+                    update={"status": OrderStatus.REJECTED, "raw": {**current.raw, "orderStatus": "Cancelled", "venue": self.name}},
+                )
             return True
 
         status, data = await self._http_post("/v5/order/cancel", body, headers)
@@ -320,3 +422,92 @@ class BybitVenue(VenueBase):
         # retCode 110026 = "already isolated" - treat as success
         rc = int(data.get("retCode", -1))
         return rc == 0 or rc == 110026
+
+    async def get_order_status(self, symbol: str, order_id: str) -> OrderResult | None:
+        self._mark_request()
+        if not self._has_creds():
+            cached = self._mock_orders.get(order_id)
+            return cached.model_copy(deep=True) if cached is not None else None
+
+        native = self._native_symbol(symbol)
+        qs = f"category=linear&symbol={native}&orderId={order_id}"
+        headers = self._headers(qs)
+        status, data = await self._http_get("/v5/order/realtime", qs, headers)
+        if status != 200 or int(data.get("retCode", -1)) != 0:
+            logger.warning("bybit.get_order_status http=%s retCode=%s", status, data.get("retCode"))
+            return None
+        result = data.get("result") or {}
+        records = result.get("list") or []
+        if not records:
+            return None
+        return self._parse_order_record(records[0], fallback_id=order_id)
+
+    async def get_order_book(self, symbol: str, depth: int = 5) -> dict[str, Any] | None:
+        self._mark_request()
+        native = self._native_symbol(symbol)
+        limit = max(1, min(int(depth or 5), 500))
+        qs = f"category=linear&symbol={native}&limit={limit}"
+        status, data = await self._http_get("/v5/market/orderbook", qs, {})
+        if status != 200 or int(data.get("retCode", -1)) != 0:
+            logger.warning("bybit.get_order_book http=%s retCode=%s", status, data.get("retCode"))
+            return None
+        result = data.get("result") or {}
+        bids_raw = result.get("b") or result.get("bids") or []
+        asks_raw = result.get("a") or result.get("asks") or []
+        bids = sorted(self._coerce_book_levels(bids_raw), key=lambda item: item[0], reverse=True)
+        asks = sorted(self._coerce_book_levels(asks_raw), key=lambda item: item[0])
+        if not bids or not asks:
+            return None
+
+        bid_price, bid_qty = bids[0]
+        ask_price, ask_qty = asks[0]
+        bid_depth = sum(qty for _, qty in bids[:limit])
+        ask_depth = sum(qty for _, qty in asks[:limit])
+        bid_notional_depth = sum(price * qty for price, qty in bids[:limit])
+        ask_notional_depth = sum(price * qty for price, qty in asks[:limit])
+        mid = (bid_price + ask_price) / 2.0
+        spread = max(0.0, ask_price - bid_price)
+        spread_bps = (spread / mid) * 10_000.0 if mid > 0.0 else 0.0
+        depth_total = bid_depth + ask_depth
+        book_imbalance = ((bid_depth - ask_depth) / depth_total) if depth_total > 0.0 else 0.0
+        microprice = (
+            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty)
+            if (bid_qty + ask_qty) > 0.0
+            else mid
+        )
+        weighted_mid = (
+            (bid_price * ask_depth + ask_price * bid_depth) / depth_total
+            if depth_total > 0.0
+            else mid
+        )
+        ts_raw = result.get("ts") or data.get("time")
+        try:
+            ts_ms = int(float(ts_raw))
+        except (TypeError, ValueError):
+            ts_ms = int(time.time() * 1000)
+        payload = {
+            "venue": self.name,
+            "order_book_venue": self.name,
+            "symbol": native,
+            "order_book_depth": limit,
+            "ts": ts_ms,
+            "bid_price": bid_price,
+            "ask_price": ask_price,
+            "best_bid": bid_price,
+            "best_ask": ask_price,
+            "bid_depth": bid_depth,
+            "ask_depth": ask_depth,
+            "depth_1": bid_qty,
+            "depth_5": ask_qty,
+            "notional_depth_1": bid_price * bid_qty,
+            "notional_depth_5": ask_price * ask_qty,
+            "mid": mid,
+            "weighted_mid": weighted_mid,
+            "microprice": microprice,
+            "spread": spread,
+            "spread_bps": spread_bps,
+            "book_imbalance": book_imbalance,
+            "spread_regime": self._book_regime(spread_bps, book_imbalance),
+            "raw": data,
+        }
+        return payload

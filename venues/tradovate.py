@@ -86,7 +86,13 @@ class TradovateVenue(VenueBase):
         return (self._expiration - datetime.now(UTC)).total_seconds() < _TOKEN_REFRESH_BUFFER_S
 
     def _has_creds(self) -> bool:
-        return bool(self.api_key) and bool(self.api_secret)
+        return bool(self.api_key) and bool(self.api_secret) and bool(self.app_id) and bool(self.cid)
+
+    def has_credentials(self) -> bool:
+        return bool(self.api_key) and bool(self.api_secret) and bool(self.app_id) and bool(self.cid)
+
+    def connection_endpoint(self) -> str:
+        return self._base()
 
     # ------------------------------------------------------------------ #
     # HTTP plumbing (designed to be easy to monkeypatch in tests)

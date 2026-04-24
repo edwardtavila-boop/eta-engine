@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -31,6 +33,14 @@ class OrderStatus(str, Enum):
     PARTIAL = "PARTIAL"
     OPEN = "OPEN"
     REJECTED = "REJECTED"
+
+
+class ConnectionStatus(str, Enum):
+    READY = "READY"
+    DEGRADED = "DEGRADED"
+    STUBBED = "STUBBED"
+    FAILED = "FAILED"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 class OrderRequest(BaseModel):
@@ -57,6 +67,26 @@ class OrderResult(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
+@dataclass
+class VenueConnectionReport:
+    """Best-effort connection probe for a venue or broker alias."""
+
+    venue: str
+    status: ConnectionStatus
+    creds_present: bool
+    balance: dict[str, float] = field(default_factory=dict)
+    positions_count: int = 0
+    details: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
+    connected_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["status"] = self.status.value
+        payload["connected_utc"] = self.connected_utc.isoformat()
+        return payload
+
+
 class VenueBase(ABC):
     """Abstract trading venue surface."""
 
@@ -65,6 +95,14 @@ class VenueBase(ABC):
     def __init__(self, api_key: str = "", api_secret: str = "") -> None:
         self.api_key = api_key
         self.api_secret = api_secret
+
+    def has_credentials(self) -> bool:
+        """Return True when the venue has enough secrets to attempt auth."""
+        return bool(self.api_key) and bool(self.api_secret)
+
+    def connection_endpoint(self) -> str | None:
+        """Return the human-readable endpoint used for connection probes."""
+        return None
 
     @abstractmethod
     async def place_order(self, request: OrderRequest) -> OrderResult:
@@ -81,6 +119,61 @@ class VenueBase(ABC):
     @abstractmethod
     async def get_balance(self) -> dict[str, float]:
         ...
+
+    async def get_order_status(self, symbol: str, order_id: str) -> OrderResult | None:
+        """Best-effort order lookup for live reconciliation."""
+        _ = symbol, order_id
+        return None
+
+    async def get_order_book(self, symbol: str, depth: int = 5) -> dict[str, Any] | None:
+        """Best-effort top-of-book snapshot for live microstructure enrichment."""
+        _ = symbol, depth
+        return None
+
+    async def connect(self) -> VenueConnectionReport:
+        """Run a safe connection probe for operators and automation.
+
+        The default implementation never places orders. It tries the
+        read-only balance and position probes, then labels the result
+        using the current credential state.
+        """
+        endpoint = self.connection_endpoint()
+        creds_present = self.has_credentials()
+        balance: dict[str, float] = {}
+        positions: list[dict[str, Any]] = []
+        errors: list[str] = []
+
+        try:
+            balance = await self.get_balance()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"balance:{type(exc).__name__}:{exc}")
+
+        try:
+            positions = await self.get_positions()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"positions:{type(exc).__name__}:{exc}")
+
+        if errors:
+            status = ConnectionStatus.DEGRADED if balance or positions else ConnectionStatus.FAILED
+        elif creds_present:
+            status = ConnectionStatus.READY
+        else:
+            status = ConnectionStatus.STUBBED
+
+        details: dict[str, Any] = {}
+        if endpoint:
+            details["endpoint"] = endpoint
+        if errors:
+            details["errors"] = errors
+        return VenueConnectionReport(
+            venue=self.name,
+            status=status,
+            creds_present=creds_present,
+            balance=balance,
+            positions_count=len(positions),
+            details=details,
+            error="; ".join(errors),
+        )
 
     def idempotency_key(self, request: OrderRequest) -> str:
         """Deterministic client order id from the request payload."""

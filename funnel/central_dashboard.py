@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from apex_predator.core.market_quality import format_market_context_summary
+
 if TYPE_CHECKING:
     from apex_predator.funnel.equity_monitor import PortfolioState
 
@@ -36,6 +38,8 @@ class BotSnapshot(BaseModel):
     trades_today: int
     dd_pct: float
     alert_level: str = "OK"  # OK | WATCH | PAUSE | KILL
+    market_context_summary: dict[str, Any] | None = None
+    market_context_summary_text: str | None = None
 
 
 class StakingSnapshot(BaseModel):
@@ -72,6 +76,8 @@ def _render_bot(
     trades_today: int,
     max_dd_pct: float,
     alert_level: str,
+    market_context_summary: dict[str, Any] | None,
+    market_context_summary_text: str | None,
 ) -> BotSnapshot:
     return BotSnapshot(
         name=name,
@@ -82,6 +88,8 @@ def _render_bot(
         trades_today=trades_today,
         dd_pct=round(max_dd_pct, 3),
         alert_level=alert_level,
+        market_context_summary=market_context_summary,
+        market_context_summary_text=market_context_summary_text,
     )
 
 
@@ -119,6 +127,16 @@ def build_snapshot(
     for name, bot_state in portfolio.bots.items():
         d = details.get(name, {})
         alert_level = d.get("alert_level", "OK")
+        market_context_summary = d.get("market_context_summary")
+        if not isinstance(market_context_summary, dict):
+            market_context_summary = None
+        market_context_summary_text = d.get("market_context_summary_text")
+        if not isinstance(market_context_summary_text, str) or not market_context_summary_text.strip():
+            market_context_summary_text = (
+                format_market_context_summary(market_context_summary)
+                if market_context_summary
+                else None
+            )
         if alert_level == "KILL":
             any_kill = True
         worst_alert_rank = max(worst_alert_rank, alert_rank_map.get(alert_level, 0))
@@ -134,6 +152,8 @@ def build_snapshot(
             trades_today=int(d.get("trades_today", 0)),
             max_dd_pct=dd_pct,
             alert_level=alert_level,
+            market_context_summary=market_context_summary,
+            market_context_summary_text=market_context_summary_text,
         )
         bot_snaps.append(snap)
         if dd_pct > worst_dd:
@@ -210,9 +230,21 @@ def render_text(snapshot: CentralDashboardSnapshot) -> str:
         "  bots:",
     ]
     for b in snapshot.bots:
+        context_suffix = ""
+        if b.market_context_summary_text:
+            context_suffix = f"  {b.market_context_summary_text}"
+        elif b.market_context_summary:
+            mcs = b.market_context_summary
+            context_suffix = (
+                f"  market_context={mcs.get('market_context_regime', 'UNKNOWN')}"
+                f" quality={float(mcs.get('market_context_quality', 0.0)):.2f}"
+                f" tf={mcs.get('session_timeframe_key', 'UNKNOWN::UNKNOWN')}"
+                f" spread={mcs.get('spread_regime', 'UNKNOWN')}"
+            )
         lines.append(
             f"    {b.name:12s} eq=${b.equity_usd:>10,.2f}  base=${b.baseline_usd:>10,.2f}  "
             f"dd={b.dd_pct:>5.2f}%  trades={b.trades_today:>3d}  alert={b.alert_level}"
+            f"{context_suffix}"
         )
     if snapshot.staking:
         lines.append("  staking:")
