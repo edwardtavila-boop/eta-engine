@@ -51,6 +51,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.brain.avengers.push import AlertLevel
+from eta_engine.brain.avengers.push import push as _default_push_fn
 from eta_engine.venues.base import ConnectionStatus, VenueConnectionReport
 from eta_engine.venues.connection import BrokerConnectionManager
 
@@ -59,6 +61,21 @@ DEFAULT_STATUS_DIR = ROOT / "docs"
 DEFAULT_ALERTS_LOG = ROOT / "docs" / "alerts_log.jsonl"
 
 ACTIVE_BROKERS = ("ibkr", "tastytrade")
+
+# Module-level push delegate. Indirected through a plain attribute so
+# tests (and future operators) can ``monkeypatch.setattr(mon, "_push_fn", ...)``
+# without reaching into brain.avengers.push internals. The default points
+# at the real fan-out so production ``python -m`` invocations don't need
+# to do any wiring themselves.
+_push_fn = _default_push_fn
+
+# YELLOW/RED status severities on the broker monitor map to WARN/CRITICAL
+# on the cross-cutting alert bus. GREEN alerts are a no-op (we don't push
+# healthy probes), which is why this table is a partial function.
+_LEVEL_TO_PUSH: dict[str, AlertLevel] = {
+    "YELLOW": AlertLevel.WARN,
+    "RED":    AlertLevel.CRITICAL,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +196,34 @@ def append_alert(
     now_ts: float | None = None,
     dedupe_h: float = 20.0,
     event: str = "broker_session_health",
+    push_enabled: bool = True,
 ) -> bool:
     """Append a single alert line if not duplicate-suppressed.
 
-    Returns True if a new line was written, False if suppressed.
+    Side effects
+    ------------
+    * Writes one JSONL row to ``alerts_path``. The row carries
+      ``channels`` / ``delivered`` / ``blocked`` lists so the dashboard
+      can see where the alert actually went without having to re-derive
+      it from the push bus internals.
+    * When ``push_enabled`` is True and ``level`` is ``YELLOW`` or
+      ``RED``, fans the alert out via :mod:`brain.avengers.push`:
+        YELLOW -> :attr:`AlertLevel.WARN`
+        RED    -> :attr:`AlertLevel.CRITICAL`
+      A raising push delegate never breaks the local audit log; the row
+      is still written, with ``channels`` / ``delivered`` / ``blocked``
+      left empty so the failure is visible in the JSONL.
+
+    Parameters
+    ----------
+    push_enabled
+        Opt-out for tests and CLI flags that want the audit line without
+        firing off remote notifications.
+
+    Returns
+    -------
+    bool
+        True if a new line was written, False if dedupe-suppressed.
     """
     if now_ts is None:
         now_ts = time.time()
@@ -195,14 +236,42 @@ def append_alert(
         dedupe_h=dedupe_h,
     ):
         return False
+
+    # Fan the alert out through the push bus BEFORE writing the JSONL
+    # row so we can stamp the delivery outcome on the row itself. Any
+    # exception is swallowed -- the local JSONL is the forensic trail
+    # and must survive a flaky Telegram endpoint.
+    channels: list[str] = []
+    delivered: list[str] = []
+    blocked: list[str] = []
+    push_level = _LEVEL_TO_PUSH.get(level)
+    if push_enabled and push_level is not None:
+        title = f"broker {broker} {level}"
+        try:
+            result = _push_fn(
+                push_level,
+                title,
+                reason,
+                source="broker-session-monitor",
+                tags=[broker, level],
+            )
+        except Exception:  # noqa: BLE001 -- push must never block audit
+            result = {}
+        for name, ok in result.items():
+            channels.append(name)
+            if ok:
+                delivered.append(name)
+            else:
+                blocked.append(name)
+
     alerts_path.parent.mkdir(parents=True, exist_ok=True)
     row = {
         "ts": now_ts,
         "event": event,
         "level": level,
-        "channels": [],
-        "delivered": [],
-        "blocked": [],
+        "channels": channels,
+        "delivered": delivered,
+        "blocked": blocked,
         "payload": {
             "broker": broker,
             "reason": reason,

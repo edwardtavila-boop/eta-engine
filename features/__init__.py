@@ -16,6 +16,10 @@ from eta_engine.features.onchain import (
     whale_delta_score,
 )
 from eta_engine.features.pipeline import FeaturePipeline
+from eta_engine.features.regime_hmm_feature import (
+    RegimeHMMFeature,
+    build_hmm_ctx,
+)
 from eta_engine.features.sentiment import (
     SentimentFeature,
     contrarian_extreme_score,
@@ -30,10 +34,12 @@ __all__ = [
     "FeatureResult",
     "FundingSkewFeature",
     "OnchainFeature",
+    "RegimeHMMFeature",
     "SentimentFeature",
     "TrendBiasFeature",
     "VolRegimeFeature",
     "atr_percentile",
+    "build_hmm_ctx",
     "contrarian_extreme_score",
     "cumulative_funding_8h",
     "ema_slope_score",
