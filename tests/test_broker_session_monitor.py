@@ -308,3 +308,150 @@ class TestMainCLI:
                 "--broker", "tradovate",
                 "--status-dir", str(tmp_path),
             ])
+
+
+# ---------------------------------------------------------------------------
+# Push-bus wiring (delegates YELLOW/RED to brain/avengers/push.py)
+# ---------------------------------------------------------------------------
+
+class _FakePushFn:
+    """Record push calls for assertion without touching the real bus."""
+
+    def __init__(self, result: dict[str, bool] | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.result = result if result is not None else {
+            "LocalFileNotifier": True,
+        }
+
+    def __call__(
+        self,
+        level: Any,
+        title: str,
+        body: str = "",
+        *,
+        source: str = "jarvis",
+        tags: list[str] | None = None,
+    ) -> dict[str, bool]:
+        self.calls.append({
+            "level": level, "title": title, "body": body,
+            "source": source, "tags": list(tags or []),
+        })
+        return dict(self.result)
+
+
+class TestAppendAlertPushWiring:
+
+    def test_yellow_fans_out_as_warn(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.brain.avengers.push import AlertLevel
+        fake = _FakePushFn({"LocalFileNotifier": True, "TelegramNotifier": True})
+        monkeypatch.setattr(mon, "_push_fn", fake)
+        alerts = tmp_path / "alerts.jsonl"
+        wrote = mon.append_alert(
+            "ibkr", "YELLOW", "creds missing",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+        )
+        assert wrote is True
+        assert len(fake.calls) == 1
+        call = fake.calls[0]
+        assert call["level"] is AlertLevel.WARN
+        assert "ibkr" in call["title"].lower()
+        assert "creds missing" in call["body"]
+        assert "ibkr" in call["tags"]
+        assert "YELLOW" in call["tags"]
+
+    def test_red_fans_out_as_critical(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.brain.avengers.push import AlertLevel
+        fake = _FakePushFn()
+        monkeypatch.setattr(mon, "_push_fn", fake)
+        alerts = tmp_path / "alerts.jsonl"
+        mon.append_alert(
+            "tastytrade", "RED", "HTTP 500",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+        )
+        assert len(fake.calls) == 1
+        assert fake.calls[0]["level"] is AlertLevel.CRITICAL
+
+    def test_jsonl_row_carries_delivered_channels(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fake = _FakePushFn({
+            "LocalFileNotifier": True,
+            "TelegramNotifier": True,
+            "PushoverNotifier": False,  # config missing -> blocked
+        })
+        monkeypatch.setattr(mon, "_push_fn", fake)
+        alerts = tmp_path / "alerts.jsonl"
+        mon.append_alert(
+            "ibkr", "YELLOW", "reason",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+        )
+        row = json.loads(alerts.read_text(encoding="utf-8").splitlines()[0])
+        # channels contains every notifier the bus attempted
+        assert set(row["channels"]) == {
+            "LocalFileNotifier", "TelegramNotifier", "PushoverNotifier",
+        }
+        # delivered vs blocked is partitioned by the bus result
+        assert set(row["delivered"]) == {
+            "LocalFileNotifier", "TelegramNotifier",
+        }
+        assert set(row["blocked"]) == {"PushoverNotifier"}
+
+    def test_deduped_alert_does_not_push(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fake = _FakePushFn()
+        monkeypatch.setattr(mon, "_push_fn", fake)
+        alerts = tmp_path / "alerts.jsonl"
+        mon.append_alert(
+            "ibkr", "YELLOW", "x",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+        )
+        # Second push inside window -- suppressed both in file AND push
+        wrote = mon.append_alert(
+            "ibkr", "YELLOW", "x",
+            alerts_path=alerts, now_ts=1_000_000.0 + 60.0, dedupe_h=20.0,
+        )
+        assert wrote is False
+        # Only one push call -- the first
+        assert len(fake.calls) == 1
+
+    def test_push_failure_still_writes_local_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A raising push_fn must not break the local audit log."""
+        def _boom(*_args: Any, **_kwargs: Any) -> dict[str, bool]:
+            msg = "telegram down"
+            raise RuntimeError(msg)
+        monkeypatch.setattr(mon, "_push_fn", _boom)
+        alerts = tmp_path / "alerts.jsonl"
+        wrote = mon.append_alert(
+            "ibkr", "RED", "hard fail",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+        )
+        assert wrote is True
+        # Row still present in JSONL
+        lines = alerts.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        row = json.loads(lines[0])
+        assert row["level"] == "RED"
+        # channels/delivered/blocked exist but reflect the failure
+        assert row["delivered"] == []
+
+    def test_push_disabled_flag_skips_push_entirely(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Opt-out: push_bus=None (sentinel) still writes the line but skips push."""
+        fake = _FakePushFn()
+        monkeypatch.setattr(mon, "_push_fn", fake)
+        alerts = tmp_path / "alerts.jsonl"
+        wrote = mon.append_alert(
+            "ibkr", "YELLOW", "reason",
+            alerts_path=alerts, now_ts=1_000_000.0, dedupe_h=20.0,
+            push_enabled=False,
+        )
+        assert wrote is True
+        assert len(fake.calls) == 0

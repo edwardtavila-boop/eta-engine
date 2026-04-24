@@ -59,34 +59,48 @@ def main() -> int:
         risk_per_trade_pct=0.01, confluence_threshold=7.0,
         max_trades_per_day=10,
     )
+    # strict_fold_dsr_gate: adds per-fold robustness check (median fold DSR > 0.5
+    # AND >= 50% of folds pass). Turned ON here so the demo surfaces the per-fold
+    # layer and a luck-of-the-windows pass no longer slips through on aggregate
+    # DSR alone. See backtest/walk_forward.py for gate semantics.
     wf = WalkForwardConfig(
         window_days=7, step_days=5, anchored=True,
         oos_fraction=0.3, min_trades_per_window=1,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
     )
     res = WalkForwardEngine().run(
         bars=bars, pipeline=FeaturePipeline.default(),
         config=wf, base_backtest_config=cfg, ctx_builder=_ctx,
     )
 
-    print("APEX PREDATOR -- Walk-Forward Demo")
-    print("=" * 74)
+    print("APEX PREDATOR -- Walk-Forward Demo (strict per-fold DSR gate)")
+    print("=" * 82)
     print(f"Bars: {len(bars)}  anchored={wf.anchored}  windows={len(res.windows)}")
-    print("-" * 74)
+    print("-" * 82)
     print(f"{'#':>2} {'IS_Sh':>7} {'OOS_Sh':>7} {'IS_tr':>6} {'OOS_tr':>6} "
-          f"{'IS_ret%':>8} {'OOS_ret%':>9} {'deg%':>6}")
-    print("-" * 74)
+          f"{'IS_ret%':>8} {'OOS_ret%':>9} {'deg%':>6} {'DSR':>6}")
+    print("-" * 82)
     for w in res.windows:
         print(f"{w['window']:>2} {w['is_sharpe']:>7.3f} {w['oos_sharpe']:>7.3f} "
               f"{w['is_trades']:>6} {w['oos_trades']:>6} "
               f"{w['is_return_pct']:>8.2f} {w['oos_return_pct']:>9.2f} "
-              f"{w['degradation_pct']*100:>6.1f}")
-    print("-" * 74)
-    print(f"Aggregate IS Sharpe:       {res.aggregate_is_sharpe:>8.4f}")
-    print(f"Aggregate OOS Sharpe:      {res.aggregate_oos_sharpe:>8.4f}")
-    print(f"OOS degradation (avg):     {res.oos_degradation_avg*100:>7.2f}%")
-    print(f"Deflated Sharpe Ratio:     {res.deflated_sharpe:>8.4f}")
-    print(f"Gate (DSR>0.5, deg<35%):   {'PASS' if res.pass_gate else 'FAIL'}")
-    print("=" * 74)
+              f"{w['degradation_pct']*100:>6.1f} {w.get('oos_dsr', 0.0):>6.3f}")
+    print("-" * 82)
+    print(f"Aggregate IS Sharpe:         {res.aggregate_is_sharpe:>8.4f}")
+    print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
+    print(f"OOS degradation (avg):       {res.oos_degradation_avg*100:>7.2f}%")
+    print(f"Aggregate Deflated Sharpe:   {res.deflated_sharpe:>8.4f}")
+    print(f"Per-fold DSR median:         {res.fold_dsr_median:>8.4f}")
+    print(
+        f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction*100:>7.2f}% "
+        f"(threshold: {wf.fold_dsr_min_pass_fraction*100:.0f}%)",
+    )
+    print(
+        "Gate (strict: DSR+deg+trades + median+pass-frac): "
+        f"{'PASS' if res.pass_gate else 'FAIL'}",
+    )
+    print("=" * 82)
     return 0
 
 
