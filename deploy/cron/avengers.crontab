@@ -38,3 +38,19 @@ APEX_ROOT=__INSTALL_DIR__
 0 5 1 1,4,7,10 * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task DOCTRINE_REVIEW >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
 # Daily 04:30 -- META upgrade (git pull + tests + service restart)
 30 4 * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task META_UPGRADE >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Monthly 1st @ 03:00 -- chaos drills (breaker / deadman / daemon / shared-breaker / drift)
+0 3 1 * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task CHAOS_DRILL >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Every 5 min -- health watchdog (PID-file liveness probe)
+*/5 * * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task HEALTH_WATCHDOG >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Daily 03:00 -- end-to-end self test
+0 3 * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task SELF_TEST >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Daily 05:00 -- state + config backup
+0 5 * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task BACKUP >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+
+# --------- ROBIN (Haiku tier) -- ops primitives ------------------------------
+# Daily 01:00 -- log archive + prune
+0 1 * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task LOG_ROTATE >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Sundays 02:00 -- disk cleanup (tempdirs, sandbox debris)
+0 2 * * 0 cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task DISK_CLEANUP >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Every minute -- Prometheus metrics flush
+* * * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task PROMETHEUS_EXPORT >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers

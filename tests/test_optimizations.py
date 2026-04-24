@@ -18,7 +18,7 @@ class TestMetaUpgrade:
 
     def test_handler_registered(self):
         from eta_engine.brain.avengers import BackgroundTask
-        from deploy.scripts.run_task import HANDLERS
+        from eta_engine.deploy.scripts.run_task import HANDLERS
         assert BackgroundTask.META_UPGRADE in HANDLERS
 
     def test_task_has_owner_and_cadence(self):
@@ -32,7 +32,7 @@ class TestMetaUpgrade:
 
     def test_handler_skips_when_not_a_repo(self, tmp_path, monkeypatch):
         monkeypatch.setenv("APEX_REPO_DIR", str(tmp_path))
-        from deploy.scripts.run_task import _task_meta_upgrade
+        from eta_engine.deploy.scripts.run_task import _task_meta_upgrade
         result = _task_meta_upgrade(tmp_path / "state")
         (tmp_path / "state").mkdir(parents=True, exist_ok=True)
         # Re-run after state dir exists
@@ -48,7 +48,7 @@ class TestPromptWarmup:
 
     def test_skips_without_api_key(self, tmp_path, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        from deploy.scripts.run_task import _task_prompt_warmup
+        from eta_engine.deploy.scripts.run_task import _task_prompt_warmup
         out = _task_prompt_warmup(tmp_path)
         assert out.get("skipped") is True
         assert "no API key" in out.get("reason", "")
@@ -63,13 +63,13 @@ class TestTelegramAdapter:
     def test_from_env_returns_none_if_unconfigured(self, monkeypatch):
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
-        from deploy.scripts.telegram_alerts import TelegramAdapter
+        from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
         assert TelegramAdapter.from_env() is None
 
     def test_from_env_builds_adapter(self, monkeypatch, tmp_path):
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
         monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
-        from deploy.scripts.telegram_alerts import TelegramAdapter
+        from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
         adapter = TelegramAdapter.from_env(state_dir=tmp_path)
         assert adapter is not None
         assert adapter.bot_token == "123:abc"
@@ -77,7 +77,7 @@ class TestTelegramAdapter:
         assert adapter.api_base == "https://api.telegram.org/bot123:abc"
 
     def test_voice_sender_wraps_send(self, monkeypatch, tmp_path):
-        from deploy.scripts.telegram_alerts import TelegramAdapter
+        from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
         adapter = TelegramAdapter("t", "c", state_dir=tmp_path)
         sent = []
         adapter.send = lambda text, priority="INFO", **k: sent.append((text, priority)) or {"ok": True}
@@ -89,7 +89,7 @@ class TestTelegramAdapter:
         # Mock httpx.post to avoid network
         import httpx
 
-        import deploy.scripts.telegram_alerts as mod
+        import eta_engine.deploy.scripts.telegram_alerts as mod
 
         class FakeResp:
             def json(self): return {"ok": True, "result": {"message_id": 1}}
@@ -143,7 +143,7 @@ class TestSuperchargeTasks:
             TASK_OWNERS,
             BackgroundTask,
         )
-        from deploy.scripts.run_task import HANDLERS
+        from eta_engine.deploy.scripts.run_task import HANDLERS
 
         new_tasks = (
             BackgroundTask.HEALTH_WATCHDOG,
@@ -166,7 +166,7 @@ class TestSuperchargeTasks:
         logdir.mkdir()
         # Create a fresh .log file (too new to archive)
         (logdir / "active.log").write_text("hello\n")
-        from deploy.scripts.run_task import _task_log_rotate
+        from eta_engine.deploy.scripts.run_task import _task_log_rotate
         out = _task_log_rotate(state, logdir)
         assert "archived" in out
         assert (state / "log_rotate.json").exists()
@@ -179,7 +179,7 @@ class TestSuperchargeTasks:
         repo.mkdir()
         (repo / ".env").write_text("DUMMY=1")
         monkeypatch.setenv("APEX_REPO_DIR", str(repo))
-        from deploy.scripts.run_task import _task_backup
+        from eta_engine.deploy.scripts.run_task import _task_backup
         out = _task_backup(state)
         assert "archive" in out
         assert out["size_bytes"] > 0
@@ -197,7 +197,7 @@ class TestSuperchargeTasks:
             "distiller_trained": True,
         }
         (state / "avengers_heartbeat.json").write_text(json.dumps(hb))
-        from deploy.scripts.run_task import _task_prometheus_export
+        from eta_engine.deploy.scripts.run_task import _task_prometheus_export
         out = _task_prometheus_export(state)
         prom_file = state / "prometheus" / "avengers.prom"
         assert prom_file.exists()
@@ -212,7 +212,7 @@ class TestSuperchargeTasks:
         state = tmp_path / "state"
         state.mkdir()
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        from deploy.scripts.run_task import _task_self_test
+        from eta_engine.deploy.scripts.run_task import _task_self_test
         out = _task_self_test(state)
         assert "overall" in out
         assert (state / "self_test.json").exists()
@@ -222,7 +222,7 @@ class TestSuperchargeTasks:
         state = tmp_path / "state"
         state.mkdir()
         monkeypatch.setattr("os.name", "posix", raising=False)
-        from deploy.scripts.run_task import _task_health_watchdog
+        from eta_engine.deploy.scripts.run_task import _task_health_watchdog
         out = _task_health_watchdog(state)
         assert out.get("skipped") is True
 
@@ -230,7 +230,7 @@ class TestSuperchargeTasks:
         state = tmp_path / "state"
         state.mkdir()
         monkeypatch.setenv("APEX_REPO_DIR", str(tmp_path / "nonexistent"))
-        from deploy.scripts.run_task import _task_disk_cleanup
+        from eta_engine.deploy.scripts.run_task import _task_disk_cleanup
         out = _task_disk_cleanup(state)
         assert "bytes_freed" in out
         assert "files_deleted" in out
@@ -243,7 +243,7 @@ class TestPrometheusEndpoint:
         monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
         import importlib
 
-        import deploy.scripts.dashboard_api as mod
+        import eta_engine.deploy.scripts.dashboard_api as mod
         importlib.reload(mod)
         from fastapi.testclient import TestClient
         client = TestClient(mod.app)

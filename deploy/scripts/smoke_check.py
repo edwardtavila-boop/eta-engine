@@ -126,7 +126,7 @@ def check_dispatch() -> tuple[bool, str]:
 def check_task_handlers() -> tuple[bool, str]:
     try:
         from eta_engine.brain.avengers import BackgroundTask
-        from deploy.scripts.run_task import HANDLERS
+        from eta_engine.deploy.scripts.run_task import HANDLERS
         missing = [t for t in BackgroundTask if t not in HANDLERS]
         if missing:
             return False, f"missing handlers: {[t.value for t in missing]}"

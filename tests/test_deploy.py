@@ -12,12 +12,12 @@ class TestRunTask:
 
     def test_all_background_tasks_have_handlers(self):
         """Every BackgroundTask enum value has a registered handler."""
-        from deploy.scripts.run_task import HANDLERS
+        from eta_engine.deploy.scripts.run_task import HANDLERS
         for task in BackgroundTask:
             assert task in HANDLERS, f"missing handler for {task.value}"
 
     def test_unknown_task_exits_nonzero(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "TOTALLY_MADE_UP_TASK",
             "--state-dir", str(tmp_path / "state"),
@@ -26,7 +26,7 @@ class TestRunTask:
         assert rc == 2
 
     def test_kaizen_retro_runs_clean(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "KAIZEN_RETRO",
             "--state-dir", str(tmp_path / "state"),
@@ -37,7 +37,7 @@ class TestRunTask:
         assert (tmp_path / "state" / "last_task.json").exists()
 
     def test_dashboard_assemble_runs_clean(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "DASHBOARD_ASSEMBLE",
             "--state-dir", str(tmp_path / "state"),
@@ -47,7 +47,7 @@ class TestRunTask:
         assert (tmp_path / "state" / "dashboard_payload.json").exists()
 
     def test_twin_verdict_runs_clean(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "TWIN_VERDICT",
             "--state-dir", str(tmp_path / "state"),
@@ -57,7 +57,7 @@ class TestRunTask:
         assert (tmp_path / "state" / "twin_verdict.json").exists()
 
     def test_strategy_mine_runs_clean(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "STRATEGY_MINE",
             "--state-dir", str(tmp_path / "state"),
@@ -67,7 +67,7 @@ class TestRunTask:
         assert (tmp_path / "state" / "strategy_candidates.json").exists()
 
     def test_doctrine_review_writes_report(self, tmp_path):
-        from deploy.scripts.run_task import main
+        from eta_engine.deploy.scripts.run_task import main
         rc = main([
             "DOCTRINE_REVIEW",
             "--state-dir", str(tmp_path / "state"),
@@ -82,22 +82,22 @@ class TestRunTask:
 class TestSmokeCheck:
 
     def test_imports_pass(self):
-        from deploy.scripts.smoke_check import check_imports
+        from eta_engine.deploy.scripts.smoke_check import check_imports
         ok, _ = check_imports()
         assert ok
 
     def test_dirs_check_creates_dirs(self):
-        from deploy.scripts.smoke_check import check_dirs
+        from eta_engine.deploy.scripts.smoke_check import check_dirs
         ok, _ = check_dirs()
         assert ok
 
     def test_dispatch_check_runs(self):
-        from deploy.scripts.smoke_check import check_dispatch
+        from eta_engine.deploy.scripts.smoke_check import check_dispatch
         ok, msg = check_dispatch()
         assert ok, msg
 
     def test_task_handlers_check_passes(self):
-        from deploy.scripts.smoke_check import check_task_handlers
+        from eta_engine.deploy.scripts.smoke_check import check_task_handlers
         ok, msg = check_task_handlers()
         assert ok, msg
 
@@ -111,7 +111,7 @@ class TestSmokeCheck:
             "JARVIS_DAILY_USD_BUDGET=10.00\n",
             encoding="utf-8",
         )
-        from deploy.scripts.smoke_check import main
+        from eta_engine.deploy.scripts.smoke_check import main
         rc = main(["--skip-systemd"])
         assert rc in (0, 1)  # may fail on dir perms in CI; just shouldn't crash
 
@@ -119,7 +119,7 @@ class TestSmokeCheck:
 class TestAvengersDaemon:
 
     def test_heartbeat_shape(self, tmp_path):
-        from deploy.scripts.avengers_daemon import AvengersDaemon
+        from eta_engine.deploy.scripts.avengers_daemon import AvengersDaemon
         d = AvengersDaemon(state_dir=tmp_path)
         hb = d.heartbeat()
         assert "ts" in hb
@@ -127,7 +127,7 @@ class TestAvengersDaemon:
         assert hb["quota_state"] in {"OK", "WARN", "DOWNSHIFT", "FREEZE"}
 
     def test_persist_writes_state(self, tmp_path):
-        from deploy.scripts.avengers_daemon import AvengersDaemon
+        from eta_engine.deploy.scripts.avengers_daemon import AvengersDaemon
         d = AvengersDaemon(state_dir=tmp_path)
         d.persist()
         assert (tmp_path / "usage_tracker.json").exists()

@@ -31,7 +31,9 @@ from pathlib import Path
 
 from eta_engine.brain.avengers import (
     TASK_OWNERS,
+    AlertLevel,
     BackgroundTask,
+    push,
 )
 
 logger = logging.getLogger("deploy.run_task")
@@ -434,7 +436,7 @@ def _task_health_watchdog(state_dir: Path) -> dict:
     # Telegram ping if we had to restart anything (non-blocking)
     if report["actions"] and any("state_after" in a for a in report["actions"]):
         try:
-            from deploy.scripts.telegram_alerts import send_from_env
+            from eta_engine.deploy.scripts.telegram_alerts import send_from_env
             restarted = [a["svc"] for a in report["actions"]
                          if a.get("state_after")]
             if restarted:
@@ -522,7 +524,7 @@ def _task_self_test(state_dir: Path) -> dict:
     # Telegram on failure
     if not all_ok:
         try:
-            from deploy.scripts.telegram_alerts import send_from_env
+            from eta_engine.deploy.scripts.telegram_alerts import send_from_env
             failures = [k for k, v in report["checks"].items()
                         if not v.get("ok")]
             send_from_env(
@@ -794,6 +796,24 @@ def _task_chaos_drill(state_dir: Path) -> dict:
     history = state_dir / "chaos_drill_history.jsonl"
     with history.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(report) + "\n")
+
+    # Operator observability: CRITICAL if any drill failed (kill-switch
+    # guarantees, breaker isolation, etc. are load-bearing for Apex eval
+    # survival). Dedup window on the PushBus keeps back-to-back monthly
+    # re-fires quiet unless the failing drill changes.
+    if failed > 0:
+        failing = [r.get("name", "?") for r in results if not r.get("passed")]
+        try:
+            push(
+                AlertLevel.CRITICAL,
+                title=f"chaos_drill: {failed}/{len(results)} FAILED",
+                body="failing drills: " + ", ".join(failing),
+                source="chaos_drill",
+                tags=["ALFRED", "chaos_drill_failure"],
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("push() raised reporting chaos drill failure")
+
     return {"passed": passed, "failed": failed, "total": len(results)}
 
 
@@ -879,6 +899,21 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001
         logger.error("[%s] task=%s failed: %s\n%s",
                      owner, task.value, exc, traceback.format_exc())
+        # Fan out the failure so the operator knows cron is silently
+        # broken. PushBus dedups repeat titles within a 10-minute
+        # window so a task that fails every 5 min does NOT spam
+        # Telegram -- only the first-in-window hits the remote channel,
+        # all subsequent repeats hit the local audit log only.
+        try:
+            push(
+                AlertLevel.WARN,
+                title=f"run_task:{task.value} failed",
+                body=f"owner={owner} exc={type(exc).__name__}: {exc}",
+                source=f"run_task:{task.value}",
+                tags=[owner, "cron_failure"],
+            )
+        except Exception:  # noqa: BLE001 -- push must never shadow the original error
+            logger.exception("push() raised while reporting task failure")
         return 2
 
 
