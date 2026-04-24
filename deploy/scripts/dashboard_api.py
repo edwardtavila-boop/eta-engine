@@ -386,6 +386,42 @@ def broker_readiness() -> dict:
     }
 
 
+def _resolve_fleet_dir() -> Path | None:
+    """Find the BTC broker-paper fleet directory across possible deploy layouts.
+
+    Resolution order (first match wins):
+
+    1. ``APEX_BTC_FLEET_DIR`` env override -- operator-scoped hard pin.
+       Tests use this to point at a tmp_path; production can pin a
+       custom writable location off the default.
+    2. ``STATE_DIR/broker_fleet`` -- the natural operator-scoped path.
+    3. ``eta_engine`` subtrees under either ``STATE_DIR`` or
+       ``Path.home()`` -- legacy layouts.
+    4. ``btc_broker_fleet.DEFAULT_OUT_DIR`` -- the package-relative
+       default (``docs/btc_live/broker_fleet`` under the installed
+       package). Last because it would otherwise shadow the operator
+       override when the dev tree happens to contain real fleet data.
+    """
+    env_pin = os.environ.get("APEX_BTC_FLEET_DIR")
+    if env_pin:
+        pinned = Path(env_pin)
+        return pinned if pinned.exists() else None
+    candidates: list[Path] = [
+        STATE_DIR / "broker_fleet",
+        STATE_DIR.parent / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
+        Path.home() / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
+    ]
+    try:
+        from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
+        candidates.append(DEFAULT_OUT_DIR)
+    except Exception:  # noqa: BLE001 -- import errors should not crash the endpoint
+        pass
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 @app.get("/api/btc/lanes")
 def btc_lanes() -> dict:
     """Return the current state of the four BTC broker-paper lanes.
@@ -394,21 +430,16 @@ def btc_lanes() -> dict:
     per-worker lane state files (written by PaperLaneRunner). Answers
     'what is each lane doing right now?' without exposing any secrets.
     """
-    fleet_dir = STATE_DIR.parent / "eta_engine" / "docs" / "btc_live" / "broker_fleet"
-    # Fallback: respect the package layout if running from the source tree.
-    fallbacks = [
-        fleet_dir,
-        Path.home() / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
-        STATE_DIR / "broker_fleet",
-    ]
-    chosen: Path | None = None
-    for candidate in fallbacks:
-        if candidate.exists():
-            chosen = candidate
-            break
+    chosen = _resolve_fleet_dir()
     if chosen is None:
+        # Surface the best-known default so operators see where we looked.
+        try:
+            from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
+            default = str(DEFAULT_OUT_DIR)
+        except Exception:  # noqa: BLE001
+            default = str(STATE_DIR / "broker_fleet")
         return {
-            "fleet_dir": str(fallbacks[0]),
+            "fleet_dir": default,
             "manifest": None,
             "lanes": [],
             "note": "fleet dir not found; start the fleet via "
@@ -473,17 +504,7 @@ def btc_trades(n: int = 30) -> dict:
     Surfaces the last N status transitions across all four lanes for
     the 'BTC Paper Trades' dashboard card.
     """
-    fleet_dir = STATE_DIR.parent / "eta_engine" / "docs" / "btc_live" / "broker_fleet"
-    fallbacks = [
-        fleet_dir,
-        Path.home() / "eta_engine" / "docs" / "btc_live" / "broker_fleet",
-        STATE_DIR / "broker_fleet",
-    ]
-    chosen: Path | None = None
-    for candidate in fallbacks:
-        if candidate.exists():
-            chosen = candidate
-            break
+    chosen = _resolve_fleet_dir()
     if chosen is None:
         return {
             "trades": [],

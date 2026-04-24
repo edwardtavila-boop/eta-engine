@@ -15,6 +15,11 @@ def app_client(tmp_path, monkeypatch):
     """Point dashboard_api at a temp state dir + return a TestClient."""
     monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("APEX_LOG_DIR", str(tmp_path / "logs"))
+    # Pin the BTC fleet dir so the dashboard doesn't accidentally see a
+    # real fleet directory sitting in the dev package tree.
+    monkeypatch.setenv(
+        "APEX_BTC_FLEET_DIR", str(tmp_path / "state" / "broker_fleet"),
+    )
     (tmp_path / "state").mkdir()
     (tmp_path / "logs").mkdir()
     # Seed a couple of state files

@@ -256,3 +256,154 @@ class TestRunOneTickWrapper:
         snap = asyncio.run(run_one_tick(runner))
         assert snap["worker_id"] == "btc-directional-tastytrade"
         assert snap["execution_state"] == "RECONCILE_ONLY"
+
+
+class TestFillReconciliation:
+    """v0.1.59 fill-callback hook: closes the broker-fill -> bot loop."""
+
+    def test_fill_callback_fires_on_terminal_filled(
+        self, tmp_path: Path,
+    ) -> None:
+        received: list = []
+        scripted = [
+            OrderResult(order_id="srv-FC", status=OrderStatus.OPEN, raw={}),
+            OrderResult(
+                order_id="srv-FC", status=OrderStatus.FILLED,
+                filled_qty=1.0, avg_price=98_500.0, raw={},
+            ),
+        ]
+        adapter = _StubAdapter(scripted)
+        runner = PaperLaneRunner(
+            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
+            symbol="BTCUSD", adapter=adapter,
+            state_dir=tmp_path / "state",
+            ledger_path=tmp_path / "trades.jsonl",
+            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            on_terminal_fill=received.append,
+        )
+        asyncio.run(runner.tick())   # submit OPEN
+        asyncio.run(runner.tick())   # reconcile -> FILLED -> fires callback
+
+        assert len(received) == 1
+        fill = received[0]
+        assert fill.symbol == "BTCUSD"
+        assert fill.side == "BUY"
+        assert fill.size == 1.0
+        assert fill.price == 98_500.0
+
+    def test_fill_callback_does_not_fire_on_rejected(
+        self, tmp_path: Path,
+    ) -> None:
+        received: list = []
+        scripted = [
+            OrderResult(order_id="srv-R", status=OrderStatus.OPEN, raw={}),
+            OrderResult(order_id="srv-R", status=OrderStatus.REJECTED, raw={}),
+        ]
+        adapter = _StubAdapter(scripted)
+        runner = PaperLaneRunner(
+            worker_id="btc-directional-tastytrade", broker="tastytrade",
+            lane="directional", symbol="BTCUSD", adapter=adapter,
+            state_dir=tmp_path / "state",
+            ledger_path=tmp_path / "trades.jsonl",
+            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            on_terminal_fill=received.append,
+        )
+        asyncio.run(runner.tick())
+        asyncio.run(runner.tick())
+        # Rejected -> no Fill emitted
+        assert received == []
+
+    def test_fills_ledger_written_on_terminal_filled(
+        self, tmp_path: Path,
+    ) -> None:
+        scripted = [
+            OrderResult(order_id="srv-L", status=OrderStatus.OPEN, raw={}),
+            OrderResult(
+                order_id="srv-L", status=OrderStatus.FILLED,
+                filled_qty=0.5, avg_price=97_250.0, raw={},
+            ),
+        ]
+        adapter = _StubAdapter(scripted)
+        fills_path = tmp_path / "btc_paper_fills.jsonl"
+        runner = PaperLaneRunner(
+            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
+            symbol="BTCUSD", adapter=adapter,
+            state_dir=tmp_path / "state",
+            ledger_path=tmp_path / "trades.jsonl",
+            fills_ledger_path=fills_path,
+            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+        )
+        asyncio.run(runner.tick())
+        asyncio.run(runner.tick())
+
+        assert fills_path.exists()
+        lines = [
+            line for line in fills_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(lines) == 1
+        row = json.loads(lines[0])
+        assert row["symbol"] == "BTCUSD"
+        assert row["order_id"] == "srv-L"
+        assert row["size"] == 0.5
+        assert row["price"] == 97_250.0
+        assert row["worker_id"] == "btc-grid-ibkr"
+
+    def test_callback_exception_does_not_kill_lane(
+        self, tmp_path: Path,
+    ) -> None:
+        def _bad(_fill) -> None:  # type: ignore[no-untyped-def]
+            msg = "bot blew up"
+            raise RuntimeError(msg)
+
+        scripted = [
+            OrderResult(order_id="srv-X", status=OrderStatus.OPEN, raw={}),
+            OrderResult(
+                order_id="srv-X", status=OrderStatus.FILLED,
+                filled_qty=1.0, avg_price=99_000.0, raw={},
+            ),
+        ]
+        adapter = _StubAdapter(scripted)
+        runner = PaperLaneRunner(
+            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
+            symbol="BTCUSD", adapter=adapter,
+            state_dir=tmp_path / "state",
+            ledger_path=tmp_path / "trades.jsonl",
+            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            on_terminal_fill=_bad,
+        )
+        asyncio.run(runner.tick())
+        # Should not raise even though the callback did.
+        snap = asyncio.run(runner.tick())
+        assert snap["terminal_orders"] == 1
+        assert snap["active_order_id"] is None
+
+    def test_zero_filled_qty_no_callback_no_ledger(
+        self, tmp_path: Path,
+    ) -> None:
+        received: list = []
+        # Edge case: status=FILLED but filled_qty=0 shouldn't emit
+        scripted = [
+            OrderResult(order_id="srv-Z", status=OrderStatus.OPEN, raw={}),
+            OrderResult(
+                order_id="srv-Z", status=OrderStatus.FILLED,
+                filled_qty=0.0, avg_price=0.0, raw={},
+            ),
+        ]
+        adapter = _StubAdapter(scripted)
+        fills_path = tmp_path / "btc_paper_fills.jsonl"
+        runner = PaperLaneRunner(
+            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
+            symbol="BTCUSD", adapter=adapter,
+            state_dir=tmp_path / "state",
+            ledger_path=tmp_path / "trades.jsonl",
+            fills_ledger_path=fills_path,
+            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            on_terminal_fill=received.append,
+        )
+        asyncio.run(runner.tick())
+        asyncio.run(runner.tick())
+        assert received == []
+        assert not fills_path.exists() or not fills_path.read_text(
+            encoding="utf-8",
+        ).strip()

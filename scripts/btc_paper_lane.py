@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from eta_engine.bots.base_bot import Fill
 from eta_engine.venues.base import (
     OrderRequest,
     OrderResult,
@@ -54,7 +55,7 @@ from eta_engine.venues.tastytrade import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,8 @@ class PaperLaneRunner:
         adapter: _BrokerAdapter | None = None,
         state_dir: Path,
         ledger_path: Path,
+        fills_ledger_path: Path | None = None,
+        on_terminal_fill: Callable[[Fill], None] | None = None,
         anchor_price: float | None = None,
         probe_qty: int | None = None,
         auto_submit: bool | None = None,
@@ -156,6 +159,19 @@ class PaperLaneRunner:
         self._auto_submit = submit
         self.state = self._load_state(worker_id, broker, self.lane, self.symbol, anchor, qty)
         self.adapter: _BrokerAdapter = adapter if adapter is not None else self._build_adapter()
+        # v0.1.59: fill-observation hooks. The lane always writes a
+        # line to ``fills_ledger_path`` when an order goes terminal
+        # (FILLED / PARTIAL). If the caller also passes
+        # ``on_terminal_fill``, that callable is invoked with the
+        # resolved :class:`Fill` so a bot can call ``record_fill``
+        # without polling the ledger itself.
+        self._fills_ledger_path = (
+            Path(fills_ledger_path)
+            if fills_ledger_path is not None
+            else self.ledger_path.parent / "btc_paper_fills.jsonl"
+        )
+        self._fills_ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        self._on_terminal_fill = on_terminal_fill
 
     # ------------------------------------------------------------------
     # Adapter construction (per broker)
@@ -334,10 +350,56 @@ class PaperLaneRunner:
         # (subject to auto_submit gate).
         if result.status in {OrderStatus.FILLED, OrderStatus.REJECTED}:
             self.state.terminal_orders += 1
+            # v0.1.59: fire fill-observation hooks BEFORE we clear the
+            # active-order fields so callers still see the qty/price.
+            if result.status is OrderStatus.FILLED and result.filled_qty > 0.0:
+                fill = Fill(
+                    symbol=self.symbol,
+                    side="BUY",  # probes are always BUY; bot-driven lanes pass their own side
+                    price=result.avg_price or 0.0,
+                    size=result.filled_qty,
+                    fee=getattr(result, "fees", 0.0) or 0.0,
+                    realized_pnl=0.0,
+                )
+                self._emit_fill(fill, order_id=result.order_id)
             self.state.active_order_id = None
             self.state.active_order_status = "NONE"
             self.state.active_order_filled_qty = 0.0
             self.state.active_order_avg_price = 0.0
+
+    def _emit_fill(self, fill: Fill, *, order_id: str) -> None:
+        """Persist a Fill to the fills ledger + invoke on_terminal_fill.
+
+        Both steps are best-effort: a broken ledger disk or a raising
+        bot callback must never crash the lane tick. The fills ledger
+        is distinct from the status-transition ledger so bots can
+        consume fill events without having to filter status noise.
+        """
+        record = {
+            "ts_utc": _utc_now(),
+            "worker_id": self.worker_id,
+            "broker": self.broker,
+            "lane": self.lane,
+            "symbol": self.symbol,
+            "order_id": order_id,
+            "side": fill.side,
+            "size": fill.size,
+            "price": fill.price,
+            "fee": fill.fee,
+        }
+        try:
+            with self._fills_ledger_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, sort_keys=True) + "\n")
+        except OSError as exc:
+            logger.warning("fills ledger write failed %s: %s", self.worker_id, exc)
+        if self._on_terminal_fill is not None:
+            try:
+                self._on_terminal_fill(fill)
+            except Exception as exc:  # noqa: BLE001 - callback must never kill the lane
+                logger.warning(
+                    "on_terminal_fill raised %s for %s: %s",
+                    type(exc).__name__, self.worker_id, exc,
+                )
 
     async def cancel_active(self) -> bool:
         """Cancel the current probe order. Used on clean shutdown."""
