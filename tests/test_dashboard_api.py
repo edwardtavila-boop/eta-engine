@@ -248,3 +248,151 @@ class TestDashboardAPI:
         assert j["by_verdict"]["CONDITIONAL"] == 1
         assert j["by_sub_verdict"]["bot.mnq"]["APPROVED"] == 2
         assert j["by_sub_verdict"]["bot.mnq"]["DENIED"] == 1
+
+    # ------------------------------------------------------------------ #
+    # Broker readiness + BTC fleet endpoints
+    # ------------------------------------------------------------------ #
+
+    def test_brokers_endpoint_returns_both_readiness_reports(self, app_client):
+        r = app_client.get("/api/brokers")
+        assert r.status_code == 200
+        j = r.json()
+        assert set(j["brokers"].keys()) == {"ibkr", "tastytrade"}
+        # Both adapters must at least be importable -- they both have
+        # `adapter_available=True` in their readiness output.
+        assert j["brokers"]["ibkr"]["adapter_available"] is True
+        assert j["brokers"]["tastytrade"]["adapter_available"] is True
+        # active_brokers is a sorted list of ready names (may be empty
+        # in a test env with no creds, which is fine).
+        assert isinstance(j["active_brokers"], list)
+
+    def test_btc_lanes_empty_when_fleet_dir_absent(self, app_client):
+        r = app_client.get("/api/btc/lanes")
+        assert r.status_code == 200
+        j = r.json()
+        # No fleet artifacts exist under the test STATE_DIR -- endpoint
+        # must respond with an empty-list structure + note, not 500.
+        assert j["lanes"] == []
+        assert "fleet dir" in j.get("note", "") or j.get("manifest") is None
+
+    def test_btc_lanes_reads_state_files(self, tmp_path, app_client):
+        """Seed a fleet dir under STATE_DIR/broker_fleet and verify the endpoint
+        returns the lane snapshots."""
+        import os
+        from pathlib import Path
+        state = Path(os.environ["APEX_STATE_DIR"])
+        fleet_dir = state / "broker_fleet"
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+
+        # Manifest
+        (fleet_dir / "btc_broker_fleet_latest.json").write_text(json.dumps({
+            "generated_at_utc": "2026-04-24T10:00:00+00:00",
+            "fleet": "btc_broker_paper_fleet",
+            "requested_workers": 4,
+            "running_workers": 2,
+        }), encoding="utf-8")
+
+        # Two lane state files
+        (fleet_dir / "btc-grid-ibkr.lane.json").write_text(json.dumps({
+            "worker_id": "btc-grid-ibkr",
+            "broker": "ibkr", "lane": "grid", "symbol": "BTCUSD",
+            "active_order_id": "srv-I-1",
+            "active_order_status": "OPEN",
+            "active_order_filled_qty": 0.0,
+            "active_order_avg_price": 0.0,
+            "submitted_orders": 1,
+            "reconciled_orders": 3,
+            "terminal_orders": 0,
+            "last_event": "submitted:OPEN",
+            "last_event_utc": "2026-04-24T10:00:05+00:00",
+            "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
+        }), encoding="utf-8")
+        (fleet_dir / "btc-directional-tastytrade.lane.json").write_text(
+            json.dumps({
+                "worker_id": "btc-directional-tastytrade",
+                "broker": "tastytrade", "lane": "directional",
+                "symbol": "BTCUSD",
+                "active_order_id": None,
+                "active_order_status": "NONE",
+                "submitted_orders": 0,
+                "reconciled_orders": 0,
+                "terminal_orders": 0,
+                "last_event": "",
+                "last_event_utc": "",
+                "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
+            }),
+            encoding="utf-8",
+        )
+        # Heartbeat for one of them
+        (fleet_dir / "btc-grid-ibkr.json").write_text(json.dumps({
+            "worker_id": "btc-grid-ibkr",
+            "status": "RUNNING",
+            "pid": 12345,
+            "execution_state": "ACTIVE",
+        }), encoding="utf-8")
+
+        r = app_client.get("/api/btc/lanes")
+        assert r.status_code == 200
+        j = r.json()
+        assert j["lane_count"] == 2
+        # Sorted by filename so directional comes first (d < g)
+        directional = next(
+            lane for lane in j["lanes"] if lane["lane"] == "directional"
+        )
+        grid = next(lane for lane in j["lanes"] if lane["lane"] == "grid")
+        assert directional["broker"] == "tastytrade"
+        assert grid["broker"] == "ibkr"
+        assert grid["active_order_id"] == "srv-I-1"
+        assert grid["heartbeat_status"] == "RUNNING"
+        assert grid["pid"] == 12345
+        assert grid["execution_state"] == "ACTIVE"
+        assert j["manifest"]["fleet"] == "btc_broker_paper_fleet"
+
+    def test_btc_trades_tails_ledger(self, tmp_path, app_client):
+        import os
+        from pathlib import Path
+        state = Path(os.environ["APEX_STATE_DIR"])
+        fleet_dir = state / "broker_fleet"
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+        ledger = fleet_dir / "btc_paper_trades.jsonl"
+        rows = [
+            {"ts_utc": "2026-04-24T10:00:00+00:00",
+             "worker_id": "btc-grid-ibkr", "event": "submit",
+             "order_id": "srv-1", "status": "OPEN"},
+            {"ts_utc": "2026-04-24T10:00:30+00:00",
+             "worker_id": "btc-grid-ibkr", "event": "transition",
+             "order_id": "srv-1", "status": "FILLED",
+             "prior_status": "OPEN"},
+            {"ts_utc": "2026-04-24T10:01:00+00:00",
+             "worker_id": "btc-directional-tastytrade", "event": "submit",
+             "order_id": "srv-2", "status": "OPEN"},
+        ]
+        ledger.write_text(
+            "\n".join(json.dumps(r) for r in rows) + "\n",
+            encoding="utf-8",
+        )
+        r = app_client.get("/api/btc/trades?n=10")
+        assert r.status_code == 200
+        j = r.json()
+        # Newest first
+        assert j["trades"][0]["order_id"] == "srv-2"
+        assert j["trades"][1]["order_id"] == "srv-1"
+        assert j["trades"][1]["event"] == "transition"
+        assert j["total"] == 3
+        assert j["returned"] == 3
+
+    def test_btc_trades_respects_n_cap(self, tmp_path, app_client):
+        import os
+        from pathlib import Path
+        state = Path(os.environ["APEX_STATE_DIR"])
+        fleet_dir = state / "broker_fleet"
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+        ledger = fleet_dir / "btc_paper_trades.jsonl"
+        ledger.write_text("\n".join(
+            json.dumps({"i": i, "worker_id": "x", "event": "submit"})
+            for i in range(50)
+        ) + "\n", encoding="utf-8")
+        r = app_client.get("/api/btc/trades?n=5")
+        j = r.json()
+        assert j["returned"] == 5
+        assert j["total"] == 50
