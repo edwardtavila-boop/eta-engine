@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Predator · Status</title>
+  <style>
+    :root {
+      --bg:       #08080f;
+      --surface:  rgba(255,255,255,0.03);
+      --border:   rgba(255,255,255,0.06);
+      --text:     #e5e5e7;
+      --muted:    #7e7e85;
+      --green:    #a6e3a1;
+      --yellow:   #f9e2af;
+      --red:      #f38ba8;
+      --blue:     #89b4fa;
+      --purple:   #cba6f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+      background-image:
+        radial-gradient(at 20% 10%, rgba(137,180,250,0.08), transparent 50%),
+        radial-gradient(at 80% 90%, rgba(203,166,247,0.06), transparent 50%);
+    }
+    .mono { font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    header {
+      max-width: 1100px; margin: 0 auto 2rem; display: flex;
+      align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+    .subtitle { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block; margin-right: 0.5rem;
+      background: var(--green); box-shadow: 0 0 12px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    main { max-width: 1100px; margin: 0 auto; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.25rem;
+      backdrop-filter: blur(12px);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .card:hover { transform: translateY(-2px); border-color: rgba(137,180,250,0.25); }
+    .card h3 {
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 1rem;
+    }
+    .metric {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric-label { color: var(--muted); font-size: 0.8rem; }
+    .metric-value { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 500; }
+    .badge {
+      display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px;
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge.green  { background: rgba(166,227,161,0.15); color: var(--green); border: 1px solid rgba(166,227,161,0.3); }
+    .badge.yellow { background: rgba(249,226,175,0.15); color: var(--yellow); border: 1px solid rgba(249,226,175,0.3); }
+    .badge.red    { background: rgba(243,139,168,0.15); color: var(--red); border: 1px solid rgba(243,139,168,0.3); }
+    .badge.blue   { background: rgba(137,180,250,0.15); color: var(--blue); border: 1px solid rgba(137,180,250,0.3); }
+    .badge.purple { background: rgba(203,166,247,0.15); color: var(--purple); border: 1px solid rgba(203,166,247,0.3); }
+    .error { color: var(--red); font-size: 0.85rem; }
+    footer { max-width: 1100px; margin: 2rem auto 0; text-align: center; color: var(--muted); font-size: 0.75rem; }
+    footer a { color: var(--blue); text-decoration: none; }
+    .tasks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    @media (max-width: 768px) { .tasks-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🐾 Apex Predator</h1>
+      <div class="subtitle mono">
+        <span class="live-dot"></span>
+        <span id="status-text">Loading…</span>
+        · updated <span id="updated-at" class="mono">—</span>
+      </div>
+    </div>
+    <div>
+      <span class="badge blue" id="regime-badge">REGIME —</span>
+    </div>
+  </header>
+
+  <main id="app">
+    <div class="card">
+      <h3>Health</h3>
+      <div class="metric"><span class="metric-label">Status</span><span class="metric-value" id="m-health">—</span></div>
+      <div class="metric"><span class="metric-label">Regime</span><span class="metric-value" id="m-regime">—</span></div>
+      <div class="metric"><span class="metric-label">Session</span><span class="metric-value" id="m-session">—</span></div>
+      <div class="metric"><span class="metric-label">Suggestion</span><span class="metric-value" id="m-suggestion">—</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Stress</h3>
+      <div class="metric"><span class="metric-label">Composite</span><span class="metric-value" id="m-stress">—</span></div>
+      <div class="metric"><span class="metric-label">Binding</span><span class="metric-value" id="m-binding">—</span></div>
+      <div class="metric"><span class="metric-label">Horizon now</span><span class="metric-value" id="m-h-now">—</span></div>
+      <div class="metric"><span class="metric-label">Horizon 1h</span><span class="metric-value" id="m-h-1h">—</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Budget / Avengers</h3>
+      <div class="metric"><span class="metric-label">Quota state</span><span class="metric-value" id="m-quota">—</span></div>
+      <div class="metric"><span class="metric-label">Hourly burn</span><span class="metric-value" id="m-hourly">—</span></div>
+      <div class="metric"><span class="metric-label">Daily burn</span><span class="metric-value" id="m-daily">—</span></div>
+      <div class="metric"><span class="metric-label">Cache hit rate</span><span class="metric-value" id="m-cache">—</span></div>
+      <div class="metric"><span class="metric-label">Distiller version</span><span class="metric-value" id="m-distill">—</span></div>
+    </div>
+
+    <div class="card">
+      <h3>Kaizen</h3>
+      <div class="metric"><span class="metric-label">Retrospectives</span><span class="metric-value" id="m-retros">—</span></div>
+      <div class="metric"><span class="metric-label">Tickets open</span><span class="metric-value" id="m-tickets-open">—</span></div>
+      <div class="metric"><span class="metric-label">Tickets shipped</span><span class="metric-value" id="m-tickets-shipped">—</span></div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>Scheduled Tasks (Avengers Fleet)</h3>
+      <div class="tasks-grid" id="tasks-grid">Loading…</div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;" id="error-card" hidden>
+      <h3 class="error">⚠ Connection issue</h3>
+      <div class="metric mono error" id="error-text"></div>
+    </div>
+  </main>
+
+  <footer>
+    <span class="mono">jarvis.apexpredator.live</span>
+    · refresh 15s
+    · <a href="https://jarvis.apexpredator.live/api/dashboard" target="_blank">raw API</a>
+  </footer>
+
+  <script>
+    const API = 'https://jarvis.apexpredator.live';
+
+    function setBadge(el, text, color) {
+      el.className = `badge ${color}`;
+      el.textContent = text;
+    }
+
+    async function fetchJson(path) {
+      const r = await fetch(`${API}${path}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+      return r.json();
+    }
+
+    function fmtPct(x) { return `${(x * 100).toFixed(0)}%`; }
+    function fmtNum(x, d = 2) { return Number(x).toFixed(d); }
+
+    async function tick() {
+      try {
+        const [hb, db, kz, tasks] = await Promise.all([
+          fetchJson('/api/heartbeat'),
+          fetchJson('/api/dashboard'),
+          fetchJson('/api/kaizen'),
+          fetchJson('/api/tasks'),
+        ]);
+
+        // Header
+        document.getElementById('status-text').textContent = 'LIVE';
+        document.getElementById('updated-at').textContent =
+          new Date().toLocaleTimeString();
+        const regimeBadge = document.getElementById('regime-badge');
+        const regime = (db.regime || 'UNKNOWN').toUpperCase();
+        const regimeColor = regime === 'CRISIS' ? 'red' :
+          (regime.startsWith('RISK_OFF') ? 'yellow' :
+          (regime.startsWith('RISK_ON') ? 'green' : 'blue'));
+        setBadge(regimeBadge, regime, regimeColor);
+
+        // Health card
+        const healthCol = db.health === 'GREEN' ? 'green'
+          : db.health === 'YELLOW' ? 'yellow'
+          : db.health === 'RED' ? 'red' : 'blue';
+        document.getElementById('m-health').innerHTML =
+          `<span class="badge ${healthCol}">${db.health || 'UNKNOWN'}</span>`;
+        document.getElementById('m-regime').textContent = db.regime || 'UNKNOWN';
+        document.getElementById('m-session').textContent = db.session_phase || 'UNKNOWN';
+        document.getElementById('m-suggestion').textContent = db.suggestion || 'UNKNOWN';
+
+        // Stress card
+        const stress = db.stress || {};
+        document.getElementById('m-stress').textContent = fmtPct(stress.composite || 0);
+        document.getElementById('m-binding').textContent = stress.binding || 'none';
+        const h = db.horizons || {};
+        document.getElementById('m-h-now').textContent = fmtPct(h.now || 0);
+        document.getElementById('m-h-1h').textContent = fmtPct(h.next_1h || 0);
+
+        // Budget card
+        const quotaCol = hb.quota_state === 'OK' ? 'green'
+          : hb.quota_state === 'WARN' ? 'yellow'
+          : hb.quota_state === 'DOWNSHIFT' ? 'yellow'
+          : hb.quota_state === 'FREEZE' ? 'red' : 'blue';
+        document.getElementById('m-quota').innerHTML =
+          `<span class="badge ${quotaCol}">${hb.quota_state || '—'}</span>`;
+        document.getElementById('m-hourly').textContent = fmtPct(hb.hourly_pct || 0);
+        document.getElementById('m-daily').textContent = fmtPct(hb.daily_pct || 0);
+        document.getElementById('m-cache').textContent = fmtPct(hb.cache_hit_rate || 0);
+        document.getElementById('m-distill').textContent =
+          `v${hb.distiller_version || 0} ${hb.distiller_trained ? '(trained)' : '(cold)'}`;
+
+        // Kaizen card
+        document.getElementById('m-retros').textContent = kz.retrospectives || 0;
+        document.getElementById('m-tickets-open').textContent = kz.tickets_open || 0;
+        document.getElementById('m-tickets-shipped').textContent = kz.tickets_shipped || 0;
+
+        // Tasks grid
+        const ownerColor = {
+          ROBIN: 'blue', ALFRED: 'purple', BATMAN: 'red',
+        };
+        document.getElementById('tasks-grid').innerHTML =
+          (tasks.tasks || []).map(t =>
+            `<div class="metric">
+              <span><span class="badge ${ownerColor[t.owner] || 'blue'}">${t.owner}</span>
+                <span class="metric-label" style="margin-left: 0.5rem;">${t.name}</span></span>
+              <span class="metric-value" style="font-size: 0.75rem;">${t.cadence}</span>
+            </div>`
+          ).join('');
+
+        document.getElementById('error-card').hidden = true;
+      } catch (e) {
+        document.getElementById('status-text').textContent = 'ERROR';
+        document.getElementById('error-card').hidden = false;
+        document.getElementById('error-text').textContent = e.message;
+      }
+    }
+
+    tick();
+    setInterval(tick, 15_000);
+  </script>
+</body>
+</html>

@@ -36,3 +36,5 @@ APEX_ROOT=__INSTALL_DIR__
 0 4 1 * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task CAUSAL_REVIEW >> $HOME/.local/log/apex_predator/cron.log 2>&1 # apex-predator:avengers
 # Quarterly (1st of Jan/Apr/Jul/Oct @ 05:00) -- doctrine review
 0 5 1 1,4,7,10 * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task DOCTRINE_REVIEW >> $HOME/.local/log/apex_predator/cron.log 2>&1 # apex-predator:avengers
+# Daily 04:30 -- META upgrade (git pull + tests + service restart)
+30 4 * * * cd $APEX_ROOT && ./.venv/bin/python -m deploy.scripts.run_task META_UPGRADE >> $HOME/.local/log/apex_predator/cron.log 2>&1 # apex-predator:avengers

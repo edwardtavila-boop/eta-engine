@@ -26,7 +26,8 @@ $tasks = @(
     @{ Name="Apex-Batman-TwinVerdict";       Task="TWIN_VERDICT";       Trigger="DAILY-2200" },
     @{ Name="Apex-Batman-StrategyMine";      Task="STRATEGY_MINE";      Trigger="WEEKLY-MON-0300" },
     @{ Name="Apex-Batman-CausalReview";      Task="CAUSAL_REVIEW";      Trigger="DAILY-0400" },
-    @{ Name="Apex-Batman-DoctrineReview";    Task="DOCTRINE_REVIEW";    Trigger="DAILY-0500" }
+    @{ Name="Apex-Batman-DoctrineReview";    Task="DOCTRINE_REVIEW";    Trigger="DAILY-0500" },
+    @{ Name="Apex-Alfred-MetaUpgrade";        Task="META_UPGRADE";       Trigger="DAILY-0430" }
 )
 
 function New-ApexTrigger([string]$Spec) {
