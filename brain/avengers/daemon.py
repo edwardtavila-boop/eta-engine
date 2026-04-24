@@ -208,6 +208,20 @@ _TASK_TO_CATEGORY: dict[BackgroundTask, TaskCategory] = {
     BackgroundTask.AUDIT_SUMMARIZE:    TaskCategory.LOG_PARSING,
     # ALFRED -- meta-upgrade is routine dev work (git pull + tests + restart)
     BackgroundTask.META_UPGRADE:       TaskCategory.DATA_PIPELINE,
+    # ALFRED -- monthly chaos drill = a test run of the resilience suite
+    BackgroundTask.CHAOS_DRILL:        TaskCategory.TEST_RUN,
+    # ALFRED -- auto-heal the fleet (check daemons alive, restart if dead)
+    BackgroundTask.HEALTH_WATCHDOG:    TaskCategory.DEBUG,
+    # ALFRED -- daily smoke is a cheap end-to-end test run
+    BackgroundTask.SELF_TEST:          TaskCategory.TEST_RUN,
+    # ROBIN -- log rotation is pure mechanical file work
+    BackgroundTask.LOG_ROTATE:         TaskCategory.LOG_PARSING,
+    # ROBIN -- disk cleanup is pure mechanical file work
+    BackgroundTask.DISK_CLEANUP:       TaskCategory.FORMATTING,
+    # ALFRED -- backup is state-pipeline work (snapshot state_dir)
+    BackgroundTask.BACKUP:             TaskCategory.DATA_PIPELINE,
+    # ROBIN -- metrics export is trivial formatting of a fixed template
+    BackgroundTask.PROMETHEUS_EXPORT:  TaskCategory.FORMATTING,
 }
 
 
@@ -238,6 +252,20 @@ _TASK_GOALS: dict[BackgroundTask, str] = {
         "produce the daily audit-log summary for operator review",
     BackgroundTask.META_UPGRADE:
         "pull latest commits, run fast test suite, restart services if green",
+    BackgroundTask.CHAOS_DRILL:
+        "run monthly chaos drills (breaker / deadman / daemon / shared-breaker / drift)",
+    BackgroundTask.HEALTH_WATCHDOG:
+        "check daemon liveness and restart any that have died",
+    BackgroundTask.SELF_TEST:
+        "run daily end-to-end smoke: dashboard, kill switch, broker ping",
+    BackgroundTask.LOG_ROTATE:
+        "archive and prune the avengers JSONL + cron logs",
+    BackgroundTask.DISK_CLEANUP:
+        "remove stale tempdirs, sandbox debris, and old artifact files",
+    BackgroundTask.BACKUP:
+        "snapshot state_dir and configs to a rolling daily backup",
+    BackgroundTask.PROMETHEUS_EXPORT:
+        "flush the latest metrics to ~/.jarvis/metrics.prom for scraping",
 }
 
 

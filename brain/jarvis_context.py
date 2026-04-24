@@ -71,10 +71,15 @@ from __future__ import annotations
 from collections import deque
 from datetime import UTC, datetime  # noqa: TC003  -- pydantic needs runtime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
+
+from eta_engine.core.market_quality import (
+    build_market_context_summary,
+    format_market_context_summary,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -287,6 +292,9 @@ class JarvisContext(BaseModel):
     trajectory: Trajectory | None = None
     playbook: list[str] = Field(default_factory=list)
     explanation: str = ""
+    market_context: dict[str, Any] | None = None
+    market_context_summary: dict[str, Any] | None = None
+    market_context_summary_text: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +377,7 @@ def suggest_action(
     equity: EquitySnapshot,
     regime: RegimeSnapshot,
     journal: JournalSnapshot,
+    market_context: dict[str, Any] | None = None,
 ) -> JarvisSuggestion:
     """Pure policy from the four snapshots.
 
@@ -478,6 +487,36 @@ def suggest_action(
             confidence=0.7,
             warnings=["review correlated exposure"],
         )
+
+    if market_context:
+        market_regime = str(market_context.get("market_regime") or "UNKNOWN").upper()
+        try:
+            market_quality = float(market_context.get("market_quality", 0.0))
+        except (TypeError, ValueError):
+            market_quality = 0.0
+        if market_regime == "RISK_OFF" or market_quality <= 3.5:
+            return JarvisSuggestion(
+                action=ActionSuggestion.REDUCE,
+                reason=(
+                    f"market context {market_regime.lower()} "
+                    f"(quality {market_quality:.1f})"
+                ),
+                confidence=0.72,
+                warnings=["market context weak", "size down"],
+            )
+        if market_regime == "MIXED" or market_quality <= 6.0:
+            warnings.append(
+                f"market context {market_regime.lower()} quality {market_quality:.1f}",
+            )
+            return JarvisSuggestion(
+                action=ActionSuggestion.TRADE,
+                reason=(
+                    f"market context {market_regime.lower()} "
+                    f"(quality {market_quality:.1f})"
+                ),
+                confidence=0.76,
+                warnings=warnings,
+            )
 
     # 5. TRADE
     return JarvisSuggestion(
@@ -648,11 +687,14 @@ def compute_sizing_hint(
     stress: StressScore,
     session: SessionPhase,
     action: ActionSuggestion,
+    market_context: dict[str, Any] | None = None,
 ) -> SizingHint:
     """Map stress composite + session phase + action tier -> size multiplier.
 
     Base multiplier comes from stress via a stepped ramp. Session phase
-    applies a further multiplier. Non-TRADE actions collapse to 0.
+    applies a further multiplier. Live market context can nudge the size
+    up or down when external data is available. Non-TRADE actions
+    collapse to 0.
     """
     if action in {ActionSuggestion.KILL, ActionSuggestion.STAND_ASIDE}:
         return SizingHint(
@@ -686,11 +728,58 @@ def compute_sizing_hint(
         reason = f"REVIEW tier -- soft cap; {reason}"
 
     session_mult = SESSION_SIZE_MULTIPLIERS.get(session, 1.0)
-    final = _clamp01(base * session_mult)
+    market_mult, market_reason = _market_context_size_multiplier(
+        market_context,
+        action=action,
+    )
+    final = _clamp01(base * session_mult * market_mult)
     if session_mult < 1.0:
         reason += f"; session={session.value} x{session_mult:.2f}"
+    if market_context:
+        reason += f"; {market_reason}"
 
     return SizingHint(size_mult=round(final, 4), reason=reason)
+
+
+def _market_context_size_multiplier(
+    market_context: dict[str, Any] | None,
+    *,
+    action: ActionSuggestion,
+) -> tuple[float, str]:
+    if not market_context:
+        return 1.0, "market_context=absent"
+    if action in {ActionSuggestion.KILL, ActionSuggestion.STAND_ASIDE}:
+        return 0.0, "market_context=no_new_risk"
+    regime = str(market_context.get("market_regime") or "UNKNOWN").upper()
+    try:
+        quality = float(market_context.get("market_quality", 0.0)) / 10.0
+    except (TypeError, ValueError):
+        quality = 0.0
+    quality = _clamp01(quality)
+    if regime == "RISK_OFF" or quality <= 0.35:
+        return 0.75, f"market_context={regime} quality={quality:.2f} x0.75"
+    if regime == "MIXED" or quality <= 0.60:
+        return 0.90, f"market_context={regime} quality={quality:.2f} x0.90"
+    if regime == "RISK_ON" and quality >= 0.70:
+        return 1.05, f"market_context={regime} quality={quality:.2f} x1.05"
+    return 1.0, f"market_context={regime} quality={quality:.2f}"
+
+
+def _market_context_note(market_context: dict[str, Any]) -> str:
+    regime = market_context.get("market_regime") or "UNKNOWN"
+    try:
+        quality = float(market_context.get("market_quality", 0.0))
+    except (TypeError, ValueError):
+        quality = 0.0
+    external = market_context.get("external_score")
+    note = f"market_context={regime} quality={quality:.2f}"
+    if external is not None:
+        try:
+            external_value = float(external)
+        except (TypeError, ValueError):
+            external_value = 0.0
+        note += f" external={external_value:.2f}"
+    return note
 
 
 # ---------------------------------------------------------------------------
@@ -1002,19 +1091,39 @@ def build_snapshot(
     journal: JournalSnapshot,
     ts: datetime | None = None,
     notes: list[str] | None = None,
+    market_context: dict[str, Any] | None = None,
+    market_context_summary: dict[str, Any] | None = None,
 ) -> JarvisContext:
     """Assemble the four snapshots + suggestion + v2 enrichments."""
     now = ts or datetime.now(UTC)
-    suggestion = suggest_action(macro, equity, regime, journal)
+    suggestion = suggest_action(
+        macro,
+        equity,
+        regime,
+        journal,
+        market_context=market_context,
+    )
     stress = compute_stress_score(macro, equity, regime, journal)
     session = compute_session_phase(now)
-    sizing = compute_sizing_hint(stress, session, suggestion.action)
+    sizing = compute_sizing_hint(
+        stress,
+        session,
+        suggestion.action,
+        market_context=market_context,
+    )
     alerts = detect_alerts(macro, equity, regime, journal)
     margins = compute_margins(equity, journal)
     playbook = build_playbook(suggestion, stress=stress, session=session)
     explanation = build_explanation(
         suggestion, stress, margins, session, sizing,
     )
+    merged_notes = list(notes or [])
+    if market_context:
+        merged_notes.append(_market_context_note(market_context))
+    summary = market_context_summary
+    if summary is None and market_context is not None:
+        summary = build_market_context_summary(market_context)
+    summary_text = format_market_context_summary(summary) if summary else None
     return JarvisContext(
         ts=now,
         macro=macro,
@@ -1022,7 +1131,7 @@ def build_snapshot(
         regime=regime,
         journal=journal,
         suggestion=suggestion,
-        notes=list(notes or []),
+        notes=merged_notes,
         stress_score=stress,
         session_phase=session,
         sizing_hint=sizing,
@@ -1030,6 +1139,9 @@ def build_snapshot(
         margins=margins,
         playbook=playbook,
         explanation=explanation,
+        market_context=market_context,
+        market_context_summary=summary,
+        market_context_summary_text=summary_text,
     )
 
 
@@ -1073,7 +1185,13 @@ class JarvisContextBuilder:
         self._journal = journal_provider
         self._clock = clock or (lambda: datetime.now(UTC))
 
-    def snapshot(self, *, notes: list[str] | None = None) -> JarvisContext:
+    def snapshot(
+        self,
+        *,
+        notes: list[str] | None = None,
+        market_context: dict[str, Any] | None = None,
+        market_context_summary: dict[str, Any] | None = None,
+    ) -> JarvisContext:
         return build_snapshot(
             macro=self._macro.get_macro(),
             equity=self._equity.get_equity(),
@@ -1081,6 +1199,8 @@ class JarvisContextBuilder:
             journal=self._journal.get_journal_snapshot(),
             ts=self._clock(),
             notes=notes,
+            market_context=market_context,
+            market_context_summary=market_context_summary,
         )
 
 

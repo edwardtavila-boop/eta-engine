@@ -62,6 +62,15 @@ from eta_engine.brain.jarvis_context import (
     JarvisContextEngine,
     SessionPhase,
 )
+from eta_engine.brain.model_policy import (
+    ModelTier,
+    TaskCategory,
+    select_model,
+)
+from eta_engine.core.market_quality import (
+    build_market_context_summary,
+    format_market_context_summary,
+)
 
 # ---------------------------------------------------------------------------
 # Subsystem registry -- every autonomous actor in the fleet
@@ -74,10 +83,20 @@ class SubsystemId(StrEnum):
     Keep these stable -- they end up as labels in the audit log.
     """
     # eta_engine bot fleet (portfolio)
-    BOT_CRYPTO_SEED     = "bot.crypto_seed"
-    BOT_ETH_PERP        = "bot.eth_perp"
+    # L1 / equity index
     BOT_MNQ             = "bot.mnq"
     BOT_NQ              = "bot.nq"
+    # L2 / BTC hybrid (grid-in-range + directional-on-trend)
+    BOT_BTC_HYBRID      = "bot.btc_hybrid"
+    # L3 / multi-perp alpha desk  (BTC, ETH, SOL)
+    BOT_BTC_PERP        = "bot.btc_perp"
+    BOT_ETH_PERP        = "bot.eth_perp"
+    BOT_SOL_PERP        = "bot.sol_perp"
+    # L4 / yield infrastructure -- aggregator that submits per-protocol
+    # PROTOCOL_EXPOSURE requests; specific protocol disambiguated in payload.
+    BOT_YIELD_VAULT     = "bot.yield_vault"
+    # legacy / seed-capital misc crypto bot
+    BOT_CRYPTO_SEED     = "bot.crypto_seed"
 
     # mnq_bot v3 framework
     FRAMEWORK_AUTOPILOT        = "framework.autopilot"
@@ -101,6 +120,18 @@ class SubsystemId(StrEnum):
 
     # operator (still must report when exercising override authority)
     OPERATOR = "operator.edward"
+
+
+# Convenience: bots that trade 24/7 crypto markets and thus need the
+# overnight whitelist. Grouping them here so policy code stays readable.
+CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset({
+    SubsystemId.BOT_CRYPTO_SEED,
+    SubsystemId.BOT_BTC_HYBRID,
+    SubsystemId.BOT_BTC_PERP,
+    SubsystemId.BOT_ETH_PERP,
+    SubsystemId.BOT_SOL_PERP,
+    SubsystemId.BOT_YIELD_VAULT,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +158,11 @@ class ActionType(StrEnum):
     STRATEGY_RETIRE   = "STRATEGY_RETIRE"
     PARAMETER_CHANGE  = "PARAMETER_CHANGE"  # tune size/stop/target
     CAPITAL_ALLOCATE  = "CAPITAL_ALLOCATE"  # move capital between bots
+    # L4 / yield-infrastructure actions
+    PROTOCOL_EXPOSURE = "PROTOCOL_EXPOSURE" # open/increase a DeFi position
+    REBALANCE         = "REBALANCE"         # periodic ledger reconciliation
+    # LLM routing (not a trading action -- a cost-optimization decision)
+    LLM_INVOCATION    = "LLM_INVOCATION"    # which model tier for this task?
 
 
 class Verdict(StrEnum):
@@ -183,6 +219,13 @@ class ActionResponse(BaseModel):
         default=None, ge=0.0, le=1.0,
         description="Max size multiplier approved (None = no explicit cap).",
     )
+    # LLM routing decision (populated only for ActionType.LLM_INVOCATION).
+    # Backward-compatible: existing trading-action callers will see None.
+    selected_model: ModelTier | None = Field(
+        default=None,
+        description="Model tier chosen by model_policy for this task. "
+                    "Only set when action == LLM_INVOCATION.",
+    )
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -204,6 +247,9 @@ _RISK_ADDING_ACTIONS: frozenset[ActionType] = frozenset({
     ActionType.ORDER_PLACE,
     ActionType.STRATEGY_DEPLOY,
     ActionType.CAPITAL_ALLOCATE,
+    # L4 position opens grow principal-loss exposure (slashing, depeg,
+    # smart-contract) so they gate like trading entries.
+    ActionType.PROTOCOL_EXPOSURE,
 })
 
 # Operator-only -- no bot may trigger these.
@@ -212,6 +258,69 @@ _OPERATOR_ONLY: frozenset[ActionType] = frozenset({
     ActionType.GATE_OVERRIDE,
     ActionType.AUTOPILOT_RESUME,
 })
+
+
+def evaluate_llm_request(req: ActionRequest) -> ActionResponse:
+    """Pure policy for LLM tier selection -- no JarvisContext needed.
+
+    Reads ``req.payload['task_category']`` (a ``TaskCategory`` value) and
+    returns an ActionResponse with ``selected_model`` set to the tier
+    ``model_policy.select_model`` picks.
+
+    Behavior:
+      * Missing category    -> DEFERRED, reason_code='llm_missing_category'.
+      * Unknown category    -> CONDITIONAL, defaults to SONNET.
+      * Known category      -> APPROVED, model tier per policy.
+
+    We fabricate a minimal ActionResponse without the live-context fields
+    (stress, phase, binding_constraint) because model routing is
+    stress-independent. Existing fields keep sentinel defaults.
+    """
+    raw_category = req.payload.get("task_category")
+    if raw_category is None:
+        return ActionResponse(
+            request_id=req.request_id,
+            verdict=Verdict.DEFERRED,
+            reason="LLM_INVOCATION requires payload['task_category']",
+            reason_code="llm_missing_category",
+            jarvis_action=ActionSuggestion.TRADE,  # no live context; trivial
+            stress_composite=0.0,
+            session_phase=SessionPhase.OVERNIGHT,
+        )
+    try:
+        category = TaskCategory(raw_category)
+    except ValueError:
+        fallback = select_model(TaskCategory.STRATEGY_EDIT)
+        return ActionResponse(
+            request_id=req.request_id,
+            verdict=Verdict.CONDITIONAL,
+            reason=(
+                f"unknown task_category={raw_category!r}; "
+                f"defaulting to {fallback.tier.value}"
+            ),
+            reason_code="llm_unknown_category_default",
+            conditions=[f"model={fallback.tier.value}"],
+            jarvis_action=ActionSuggestion.TRADE,
+            stress_composite=0.0,
+            session_phase=SessionPhase.OVERNIGHT,
+            selected_model=fallback.tier,
+        )
+    sel = select_model(category)
+    return ActionResponse(
+        request_id=req.request_id,
+        verdict=Verdict.APPROVED,
+        reason=sel.reason,
+        reason_code=f"llm_{sel.tier.value}",
+        conditions=[
+            f"model={sel.tier.value}",
+            f"bucket={sel.bucket.value}",
+            f"cost_multiplier={sel.cost_multiplier:.2f}",
+        ],
+        jarvis_action=ActionSuggestion.TRADE,
+        stress_composite=0.0,
+        session_phase=SessionPhase.OVERNIGHT,
+        selected_model=sel.tier,
+    )
 
 
 def evaluate_request(
@@ -260,6 +369,12 @@ def evaluate_request(
             ),
             size_cap_mult=size_cap_mult,
         )
+
+    # 0. LLM invocation -- cost-optimization decision, not a risk gate.
+    # Short-circuits ahead of every other rule because model routing is
+    # stress-independent; see ``evaluate_llm_request`` for the policy.
+    if req.action == ActionType.LLM_INVOCATION:
+        return evaluate_llm_request(req)
 
     live_size = (
         ctx.sizing_hint.size_mult if ctx.sizing_hint is not None else 1.0
@@ -365,11 +480,13 @@ def evaluate_request(
 
     # 7. Session gates (apply even when tier == TRADE).
     session = ctx.session_phase or SessionPhase.OVERNIGHT
-    overnight_whitelist: set[SubsystemId] = {
-        SubsystemId.BOT_CRYPTO_SEED,
-        SubsystemId.BOT_ETH_PERP,
-        SubsystemId.OPERATOR,
-    }
+    # All 24/7 crypto bots (L2 BTC hybrid, L3 multi-perp desk BTC/ETH/SOL,
+    # L4 yield vault, legacy seed) plus the operator are whitelisted for
+    # OVERNIGHT if they pass payload['overnight_explicit']=True. Everything
+    # else -- notably the US-index futures bots -- must sit out.
+    overnight_whitelist: frozenset[SubsystemId] = (
+        CRYPTO_24_7_BOTS | {SubsystemId.OPERATOR}
+    )
     if (
         session == SessionPhase.OVERNIGHT
         and req.action in _RISK_ADDING_ACTIONS
@@ -473,9 +590,62 @@ class JarvisAdmin:
                 ctx.session_phase.value if ctx.session_phase else None
             ),
             "explanation": ctx.explanation,
+            "market_context": ctx.market_context,
+            "market_context_summary": (
+                ctx.market_context_summary
+                or build_market_context_summary(ctx.model_dump(mode="json"))
+            ),
+            "market_context_summary_text": (
+                ctx.market_context_summary_text
+                or format_market_context_summary(
+                    ctx.market_context_summary
+                    or build_market_context_summary(ctx.model_dump(mode="json"))
+                )
+            ),
         }
         with self._audit_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, default=str) + "\n")
+
+    def select_llm_tier(
+        self,
+        *,
+        subsystem: SubsystemId,
+        category: TaskCategory,
+        rationale: str = "",
+    ) -> ActionResponse:
+        """Ergonomic wrapper for LLM-tier routing.
+
+        Callers that just want "which model should I use for this task?"
+        can skip building an ActionRequest by hand. LLM routing is
+        stress-independent, so no ``JarvisContext`` is required -- this
+        method works even when no engine is attached.
+
+        The (request, response) pair is still appended to the audit log
+        (if configured) so burn-rate dashboards can aggregate across
+        subsystems.
+        """
+        req = ActionRequest(
+            subsystem=subsystem,
+            action=ActionType.LLM_INVOCATION,
+            payload={"task_category": category.value},
+            rationale=rationale,
+        )
+        resp = evaluate_llm_request(req)
+        # Audit without requiring a live ctx -- synthesize a minimal one
+        # only if we're actually writing to disk.
+        if self._audit_path is not None:
+            record = {
+                "ts": resp.ts.isoformat(),
+                "request": req.model_dump(mode="json"),
+                "response": resp.model_dump(mode="json"),
+                "jarvis_action": "N/A (LLM routing)",
+                "stress_composite": None,
+                "session_phase": None,
+                "explanation": resp.reason,
+            }
+            with self._audit_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, default=str) + "\n")
+        return resp
 
     def audit_tail(self, n: int = 20) -> list[dict[str, Any]]:
         """Read the last n audit records (for debugging / dashboards)."""
