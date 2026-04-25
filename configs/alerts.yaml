@@ -71,6 +71,13 @@ routing:
     # audit-side payload includes failed_steps so the operator can
     # triage from the email body without paging.
     apex_nightly_audit:   { level: info,     channels: [email] }
+    # B3 closure (v0.1.69) -- advisory signal that the tier-A
+    # aggregate-equity invariant has been violated. Common cause:
+    # a config copy-paste where two tier-A bots each track the
+    # full account size instead of slicing it. WARN level (pushover
+    # + email) so the operator sees it the next time they look at
+    # the device but does not get woken up by a config bug.
+    tier_a_invariant_violation: { level: warn, channels: [pushover, email] }
 
 # Rate limits
 rate_limit:

@@ -1,0 +1,22 @@
+{
+  "version": "v0.1.69",
+  "slug": "tier_a_aggregate_equity_invariant",
+  "bundle_name": "B3 closure -- tier-A aggregate-equity invariant validator",
+  "theme": "Closes the last open BLOCKER (B3) from the v0.1.64 Red Team review of v0.1.63 R1 by codifying the implicit invariant that the drift detector relies on: all tier-A bots in a runtime are trading in ONE Apex eval account, and each bot's equity_usd is a SLICE of that shared account. Without this codification, a misconfigured fleet (two tier-A bots each tracking the full account size) produces a sum_logical that is 2x the real broker net-liq -- the reconciler then classifies this as a $50K broker_below_logical drift and fires bogus FLATTEN_TIER_A_PREEMPTIVE alerts on what is actually a config copy-paste bug. v0.1.69 ships a validator module with explicit documentation + an ADVISORY runtime hook that fires a tier_a_invariant_violation alert on transition into a violation. Strict-mode promotion to KillVerdict is v0.2.x scope (gated on the same H1 calibration empirics that gate KillVerdict-on-drift synthesis).",
+  "operator_directive_quote": "continue and all take control when you need to",
+  "modules_edited": [
+    "core/eta_account_invariant.py: NEW -- ApexAccountInvariantError + InvariantResult dataclass + validate_tier_a_aggregate_equity() with verdicts no_tier_a_bots / negative_aggregate / non_finite_aggregate / oversize_aggregate / undersize_aggregate / ok. Bounds validation on multipliers (negative rejected; oversize >= undersize). Default oversize 1.5x catches the canonical 2x config-bug; default undersize 0.0 reserves that verdict for the negative-aggregate case unless the operator tightens. Strict mode raises ApexAccountInvariantError on any non-ok verdict so a boot-time gate can refuse to start.",
+    "scripts/run_eta_live.py: RuntimeConfig gains tier_a_account_size_usd: float | None field (default None = unbounded check); ApexRuntime initializes _last_tier_a_invariant_verdict cache; _tick() now calls validate_tier_a_aggregate_equity() ONCE per tick after computing ta_equity and BEFORE the reconciler / tracker consume it; transition-only alert dispatch on first violation; boot banner gains a tier_a_invar line showing the configured size + multipliers (or 'unbounded' when size is None).",
+    "configs/alerts.yaml: registered tier_a_invariant_violation event at WARN level routed to pushover + email so the operator sees the next-time-they-look but does not get woken by a config bug.",
+    "tests/test_eta_account_invariant.py: NEW -- 22 tests across TestNoTierABots (2), TestNegativeAggregate (2), TestNonFiniteAggregate (2), TestOversizeAggregate (4), TestUndersizeAggregate (3), TestNonTierABotsIgnored (1), TestStrictMode (3), TestConstructorValidation (3), TestResultSerialisation (2). The B3 canonical case (two tier-A bots each tracking full account size) is pinned as an explicit test.",
+    "tests/test_run_eta_live.py: TestTierAInvariantWiring (3 tests) -- oversize_aggregate fires alert once across multiple ticks (transition-only latch); normal aggregate does NOT fire; verdict cache initialised to None on construct."
+  ],
+  "tests_passing_after": null,
+  "deferred_followups": [
+    "H4 -- server-side broker payload timestamps (parse server-reported ts to age TTL on broker-clock not poll-cycle)",
+    "M1 -- per-bot drift detection (multi-account scope expansion)",
+    "M2 -- KillVerdict synthesis on sustained drift / sustained invariant violation (gated on H1 calibrator empirics)",
+    "L1 -- adapter name uniqueness (accepted as not-a-bug under single-account today)"
+  ],
+  "milestone_title": "B3 closure -- tier-A aggregate-equity invariant validator + advisory runtime alert. The last open BLOCKER from the v0.1.64 Red Team review is closed; the invariant the drift detector relies on is now explicit, validated each tick, and surfaces config-bug shapes as a tier_a_invariant_violation alert instead of as bogus drift events."
+}

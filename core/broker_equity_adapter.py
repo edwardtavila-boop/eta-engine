@@ -405,6 +405,7 @@ def make_poller_for(
     *,
     refresh_s: float = 5.0,
     stale_after_s: float = 30.0,
+    identical_warn_after: int = 0,
 ) -> BrokerEquityPoller:
     """Build a :class:`BrokerEquityPoller` bound to ``adapter``.
 
@@ -418,6 +419,14 @@ def make_poller_for(
         Forwarded to :class:`BrokerEquityPoller`. Default 5.0s.
     stale_after_s:
         Forwarded to :class:`BrokerEquityPoller`. Default 30.0s.
+    identical_warn_after:
+        H4 partial closure (v0.1.69). Forwarded to
+        :class:`BrokerEquityPoller`. Default 0 (disabled). When > 0,
+        the poller logs a WARN once when N consecutive successful polls
+        have returned the same value -- an early-warning signal that
+        the broker may be serving a server-side cached snapshot. Use
+        ``identical_warn_after = ceil(60 / refresh_s)`` (i.e. one
+        minute of unchanged net-liq) as a starting point.
 
     Returns
     -------
@@ -456,6 +465,7 @@ def make_poller_for(
         fetch_fn=adapter.get_net_liquidation,
         refresh_s=refresh_s,
         stale_after_s=stale_after_s,
+        identical_warn_after=identical_warn_after,
     )
 
 
