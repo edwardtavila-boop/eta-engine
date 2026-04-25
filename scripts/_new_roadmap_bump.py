@@ -125,6 +125,24 @@ def main() -> None:
         "delta_tests": new_tests - prev_tests,
     }}
 
+    # Append (or replace, if this version already shipped) the milestone
+    # entry. Idempotent on re-runs: a second invocation of this script
+    # rewrites the matching milestone in place rather than duplicating it.
+    milestones = state.setdefault("milestones", [])
+    new_milestone = {{
+        "version": "v{version}",
+        "timestamp_utc": now,
+        "title": "{title}",
+        "tests_delta": new_tests - prev_tests,
+        "tests_passing": new_tests,
+    }}
+    for idx, existing in enumerate(milestones):
+        if isinstance(existing, dict) and existing.get("version") == "v{version}":
+            milestones[idx] = new_milestone
+            break
+    else:
+        milestones.append(new_milestone)
+
     STATE_PATH.write_text(
         json.dumps(state, indent=2) + "\\n", encoding="utf-8",
     )
