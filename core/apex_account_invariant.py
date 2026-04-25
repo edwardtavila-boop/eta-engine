@@ -54,7 +54,11 @@ What this module does NOT do
   ``tier_a_invariant_violation`` alert. The operator decides
   whether to halt. Promoting to a verdict is v0.2.x scope (gated
   on the same H1 calibration empirics that gate
-  KillVerdict-on-drift synthesis).
+  KillVerdict-on-drift synthesis -- shares M2's exit criteria
+  per docs/red_team_d2_d3_review.md). Lands when the M2 closure
+  ships, at which point this validator's WARN gets paired with a
+  KillVerdict(PAUSE_NEW_ENTRIES) emitted from the same code
+  path that handles broker-drift verdicts.
 
 * Does NOT assert that the broker account size matches what the
   bots think. We do not directly read ``broker_net_liq`` here --
