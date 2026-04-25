@@ -120,9 +120,32 @@
   <h1>APEX PREDATOR <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.68</b></span>
-    <span>TESTS <b>4284 ✓</b></span>
+    <span>VER <b>0.1.69</b></span>
+    <span>TESTS <b>4403 ✓</b></span>
     <span>UPDATED <b>2026-04-25</b></span>
+  </div>
+</div>
+
+<!-- v0.1.69 B3 TIER-A INVARIANT BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.18), transparent);">
+  <h3>v0.1.69 — B3 BLOCKER Closure: tier-A Aggregate-Equity Invariant · 4403 tests passing (+25 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.69 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>last BLOCKER closed</b></span>
+    <span><span style="color:var(--dim)">Validator:</span> <b>oversize 1.5× / undersize 0×</b></span>
+    <span><span style="color:var(--dim)">Wire:</span> <b>per-tick advisory + transition latch</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/apex_account_invariant.py · scripts/run_apex_live.py · configs/alerts.yaml</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>validate_tier_a_aggregate_equity()</b> — verdicts: ok / negative / non-finite / oversize / undersize / no-bots</span>
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>InvariantResult dataclass</b> — verdict + sum + reason; JSON-safe via as_dict()</span>
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>ApexAccountInvariantError</b> — strict-mode raise; advisory by default</span>
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>RuntimeConfig.tier_a_account_size_usd</b> — operator-set expected size; None = unbounded check</span>
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>tier_a_invariant_violation alert</b> — WARN / pushover+email; transition-latch (no spam)</span>
+    <span><span class="pill done" style="font-size:9px;">B3</span> <b>25 tests</b> — 22 validator (every verdict path + strict-mode + json round-trip) + 3 runtime wire-up</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    The drift detector's implicit invariant is now explicit + validated each tick. Canonical config-bug case (two tier-A bots each tracking full account size → 2× sum_logical → bogus FLATTEN_TIER_A_PREEMPTIVE alert) now surfaces as a clean tier_a_invariant_violation. Carried to v0.1.70+ / v0.2.x: H4, M1, M2, L1 (accepted as not-a-bug).
   </div>
 </div>
 

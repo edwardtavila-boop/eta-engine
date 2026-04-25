@@ -73,6 +73,7 @@ class BrokerEquityPoller:
         fetch_fn: Callable[[], Awaitable[float | None]],
         refresh_s: float = 5.0,
         stale_after_s: float = 30.0,
+        identical_warn_after: int = 0,
     ) -> None:
         if refresh_s <= 0:
             msg = f"refresh_s must be > 0 (got {refresh_s})"
@@ -80,10 +81,36 @@ class BrokerEquityPoller:
         if stale_after_s <= 0:
             msg = f"stale_after_s must be > 0 (got {stale_after_s})"
             raise ValueError(msg)
+        if identical_warn_after < 0:
+            msg = (
+                f"identical_warn_after must be >= 0 "
+                f"(got {identical_warn_after})"
+            )
+            raise ValueError(msg)
         self.name = name
         self._fetch = fetch_fn
         self._refresh_s = float(refresh_s)
         self._stale_after_s = float(stale_after_s)
+        # H4 partial closure (v0.1.69 -- byte-identical detection track).
+        # The Red Team finding observed that ``stale_after_s`` measures
+        # OUR poll-cycle age, not the broker's snapshot age. A broker
+        # that returns the same cached value for many polls in a row
+        # (server-side staleness, IBKR Client Portal session frozen,
+        # Tastytrade balances endpoint glued to a stale snapshot) would
+        # never trip the existing TTL guard. ``identical_warn_after``
+        # counts consecutive identical poll values and emits a WARN log
+        # when the count crosses the threshold. Observation-only --
+        # ``current()`` keeps returning the cached value because in
+        # quiet markets identical polls are NORMAL (a flat balance with
+        # no trades produces them). The operator can grep
+        # ``broker_equity_poller_identical_polls`` and triage. A future
+        # H4 deepening (``v0.1.70+``: lands when the venue adapters
+        # expose a server-side timestamp via the protocol -- IBKR
+        # ``/iserver/account/pnl/partitioned`` and Tastytrade balances
+        # both ship one) replaces this heuristic with a hard staleness
+        # check on the broker's own snapshot timestamp.
+        # Default 0 = disabled (back-compat). Recommended: 5+ polls.
+        self._identical_warn_after = int(identical_warn_after)
         self._last_value: float | None = None
         self._last_success_ts: datetime | None = None
         self._task: asyncio.Task[None] | None = None
@@ -92,6 +119,7 @@ class BrokerEquityPoller:
         self._fetch_ok = 0
         self._fetch_none = 0
         self._fetch_error = 0
+        self._consecutive_identical = 0
 
     @property
     def fetch_ok(self) -> int:
@@ -108,6 +136,16 @@ class BrokerEquityPoller:
     @property
     def last_success_ts(self) -> datetime | None:
         return self._last_success_ts
+
+    @property
+    def consecutive_identical(self) -> int:
+        """Count of consecutive successful polls returning the SAME value.
+
+        Reset to 0 every time the broker's reported value changes. Useful
+        in dashboards / nightly audits as an early-warning signal that
+        the broker may be serving a server-side cached snapshot.
+        """
+        return self._consecutive_identical
 
     def is_running(self) -> bool:
         task = self._task
@@ -180,7 +218,34 @@ class BrokerEquityPoller:
         if value is None:
             self._fetch_none += 1
             return
-        self._last_value = float(value)
+        new_value = float(value)
+        # H4 partial: track consecutive-identical run length. A change
+        # resets the counter to 0; an identical value bumps it. We
+        # compare on the cached float, not the raw response, so a
+        # single noise byte in a JSON timestamp field doesn't make us
+        # think the snapshot moved when net-liq itself didn't.
+        if (
+            self._last_value is not None
+            and new_value == self._last_value
+        ):
+            self._consecutive_identical += 1
+            if (
+                self._identical_warn_after > 0
+                and self._consecutive_identical == self._identical_warn_after
+            ):
+                # Fire the warn exactly once at the boundary (==, not >=)
+                # so a sustained-identical condition does not log-spam.
+                log.warning(
+                    "%s: %d consecutive identical broker net-liq polls "
+                    "(value=%.2f). Quiet market is normal; if this is "
+                    "active hours the broker may be serving a stale "
+                    "snapshot. Check with: python -m apex_predator."
+                    "scripts.connect_brokers --probe",
+                    self.name, self._consecutive_identical, new_value,
+                )
+        else:
+            self._consecutive_identical = 0
+        self._last_value = new_value
         self._last_success_ts = datetime.now(UTC)
         self._fetch_ok += 1
 

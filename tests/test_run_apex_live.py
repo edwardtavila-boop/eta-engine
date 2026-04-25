@@ -1814,3 +1814,103 @@ class TestRuntimeLogRotatorWiring:
                 for ln in lines if ln.strip()
             ]
             assert "log_rotation" in kinds
+
+
+# ---------------------------------------------------------------------------
+# v0.1.69 B3 -- tier-A aggregate-equity invariant wiring
+# ---------------------------------------------------------------------------
+
+
+class TestTierAInvariantWiring:
+    """v0.1.69 B3 -- ApexRuntime fires tier_a_invariant_violation on bad agg."""
+
+    @pytest.mark.asyncio
+    async def test_oversize_aggregate_fires_alert_once(self, tmp_path):
+        """Two tier-A bots both at full account size -> one alert
+        across multiple ticks (transition-only latch)."""
+        from apex_predator.core.kill_switch_runtime import BotSnapshot
+        from apex_predator.scripts.run_apex_live import BotBinding
+
+        original = mod.build_bot_snapshot
+
+        def _fat_snapshot(b, bot):
+            snap = original(b, bot)
+            return BotSnapshot(
+                name=snap.name,
+                tier=snap.tier,
+                equity_usd=50_000.0 if snap.tier == "A" else snap.equity_usd,
+                peak_equity_usd=snap.peak_equity_usd,
+                session_realized_pnl_usd=snap.session_realized_pnl_usd,
+                consecutive_losses=snap.consecutive_losses,
+                open_position_count=snap.open_position_count,
+            )
+
+        bindings = _fake_bindings()
+        first = bindings[0]
+        bindings = [
+            BotBinding(
+                name=first.name,
+                tier=first.tier,
+                flag=first.flag,
+                factory=first.factory,
+                symbol=first.symbol,
+            ),
+            BotBinding(
+                name="nq_test",
+                tier="A",
+                flag=first.flag,
+                factory=first.factory,
+                symbol=first.symbol,
+            ),
+        ]
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        cfg.tier_a_account_size_usd = 50_000.0
+        disp = _StubDispatcher()
+        runtime = mod.ApexRuntime(
+            cfg, bindings=bindings, dispatcher=disp,
+        )
+        mod.build_bot_snapshot = _fat_snapshot
+        try:
+            await runtime.run()
+        finally:
+            mod.build_bot_snapshot = original
+
+        violations = [
+            payload for (event, payload) in disp.sent
+            if event == "tier_a_invariant_violation"
+        ]
+        # Exactly ONE alert across 3 ticks (transition-only latch).
+        assert len(violations) == 1
+        assert violations[0]["verdict"] == "oversize_aggregate"
+        assert violations[0]["sum_logical_usd"] == pytest.approx(100_000.0)
+
+    @pytest.mark.asyncio
+    async def test_normal_aggregate_does_not_fire_alert(self, tmp_path):
+        """Single tier-A bot tracking the full account size is FINE;
+        no violation should fire."""
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        cfg.tier_a_account_size_usd = 50_000.0
+        disp = _StubDispatcher()
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(), dispatcher=disp,
+        )
+        await runtime.run()
+
+        violations = [
+            event for (event, _) in disp.sent
+            if event == "tier_a_invariant_violation"
+        ]
+        assert len(violations) == 0
+
+    def test_invariant_verdict_attribute_initialised(self, tmp_path):
+        """ApexRuntime initialises the per-tick verdict cache to None."""
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=0,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert runtime._last_tier_a_invariant_verdict is None  # noqa: SLF001

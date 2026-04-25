@@ -5,7 +5,8 @@ closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring) · updated
 2026-04-24 (v0.1.64 router-aware adapter) · updated 2026-04-25 (v0.1.65
 broker-equity wiring hardening) · updated 2026-04-25 (v0.1.66 H3 hysteresis
 + sustained-drift re-alert) · updated 2026-04-25 (v0.1.67 M3 log rotation
-+ L2 windowed max) · updated 2026-04-25 (v0.1.68 M4 broker payload fixtures).
++ L2 windowed max) · updated 2026-04-25 (v0.1.68 M4 broker payload fixtures)
+· updated 2026-04-25 (v0.1.69 B3 tier-A aggregate-equity invariant).
 **Scope:** D2 (`TrailingDDTracker`) and D3 (`ConsistencyGuard`) modules and
 their wiring into `scripts/run_apex_live.py`.
 **Reviewer:** `risk-advocate` agent (Opus 4.7, adversarial posture).
@@ -55,7 +56,7 @@ Residuals from the v0.1.64 review (carry to v0.1.65 / v0.2.x):
 
 | ID | Severity | Title | Owner |
 |----|----------|-------|-------|
-| B3 | BLOCKER  | tier-A aggregate equity invariant undocumented (sum-of-bot-state.equity vs single broker net-liq comparison may be apples-to-oranges) | v0.1.65 — needs design call on per-account vs per-fleet equity aggregation |
+| B3 | BLOCKER  | tier-A aggregate equity invariant undocumented (sum-of-bot-state.equity vs single broker net-liq comparison may be apples-to-oranges) | **CLOSED v0.1.69** — `core/apex_account_invariant.py` codifies the invariant; ApexRuntime fires `tier_a_invariant_violation` (advisory WARN) on transition into a violation; default oversize 1.5× / undersize 0.0× catches the canonical config-bug case; +25 tests |
 | H1 | HIGH     | No tolerance calibration harness — collected drift logs unread | v0.2.x — `scripts/calibrate_broker_drift_tolerance.py` |
 | H2 | HIGH     | Asymmetric tolerances not modeled (below-bias different from above-bias) | v0.1.65 — split `tolerance_below_*` / `tolerance_above_*` |
 | H3 | HIGH     | Transition-only alerting drops sustained-drift signal + threshold-jitter latch reset can spam | **CLOSED v0.1.66** — hysteresis clear-band (default 70% of trigger) + sustained-drift re-alert (default 1800s interval) + recovered alert kind |

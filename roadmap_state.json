@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-25T12:00:29.115500+00:00",
+  "last_updated": "2026-04-25T12:21:51.752584+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "apex_predator_python_files": 107,
-    "apex_predator_tests_passing": 4284,
+    "apex_predator_tests_passing": 4403,
     "apex_predator_tests_failing": 0,
     "apex_predator_verify_all": "17/17 PASS",
     "apex_predator_staking_wired": {
@@ -4124,6 +4124,27 @@
         "L1 -- adapter name uniqueness (accepted as not-a-bug under single-account today)"
       ],
       "tests_passing_after": 4284
+    },
+    "apex_predator_v0_1_69_tier_a_aggregate_equity_invariant": {
+      "timestamp_utc": "2026-04-25T12:21:51.752584+00:00",
+      "version": "v0.1.69",
+      "bundle_name": "B3 closure -- tier-A aggregate-equity invariant validator",
+      "theme": "Closes the last open BLOCKER (B3) from the v0.1.64 Red Team review of v0.1.63 R1 by codifying the implicit invariant that the drift detector relies on: all tier-A bots in a runtime are trading in ONE Apex eval account, and each bot's equity_usd is a SLICE of that shared account. Without this codification, a misconfigured fleet (two tier-A bots each tracking the full account size) produces a sum_logical that is 2x the real broker net-liq -- the reconciler then classifies this as a $50K broker_below_logical drift and fires bogus FLATTEN_TIER_A_PREEMPTIVE alerts on what is actually a config copy-paste bug. v0.1.69 ships a validator module with explicit documentation + an ADVISORY runtime hook that fires a tier_a_invariant_violation alert on transition into a violation. Strict-mode promotion to KillVerdict is v0.2.x scope (gated on the same H1 calibration empirics that gate KillVerdict-on-drift synthesis).",
+      "operator_directive_quote": "continue and all take control when you need to",
+      "modules_edited": [
+        "core/apex_account_invariant.py: NEW -- ApexAccountInvariantError + InvariantResult dataclass + validate_tier_a_aggregate_equity() with verdicts no_tier_a_bots / negative_aggregate / non_finite_aggregate / oversize_aggregate / undersize_aggregate / ok. Bounds validation on multipliers (negative rejected; oversize >= undersize). Default oversize 1.5x catches the canonical 2x config-bug; default undersize 0.0 reserves that verdict for the negative-aggregate case unless the operator tightens. Strict mode raises ApexAccountInvariantError on any non-ok verdict so a boot-time gate can refuse to start.",
+        "scripts/run_apex_live.py: RuntimeConfig gains tier_a_account_size_usd: float | None field (default None = unbounded check); ApexRuntime initializes _last_tier_a_invariant_verdict cache; _tick() now calls validate_tier_a_aggregate_equity() ONCE per tick after computing ta_equity and BEFORE the reconciler / tracker consume it; transition-only alert dispatch on first violation; boot banner gains a tier_a_invar line showing the configured size + multipliers (or 'unbounded' when size is None).",
+        "configs/alerts.yaml: registered tier_a_invariant_violation event at WARN level routed to pushover + email so the operator sees the next-time-they-look but does not get woken by a config bug.",
+        "tests/test_apex_account_invariant.py: NEW -- 22 tests across TestNoTierABots (2), TestNegativeAggregate (2), TestNonFiniteAggregate (2), TestOversizeAggregate (4), TestUndersizeAggregate (3), TestNonTierABotsIgnored (1), TestStrictMode (3), TestConstructorValidation (3), TestResultSerialisation (2). The B3 canonical case (two tier-A bots each tracking full account size) is pinned as an explicit test.",
+        "tests/test_run_apex_live.py: TestTierAInvariantWiring (3 tests) -- oversize_aggregate fires alert once across multiple ticks (transition-only latch); normal aggregate does NOT fire; verdict cache initialised to None on construct."
+      ],
+      "deferred_followups": [
+        "H4 -- server-side broker payload timestamps (parse server-reported ts to age TTL on broker-clock not poll-cycle)",
+        "M1 -- per-bot drift detection (multi-account scope expansion)",
+        "M2 -- KillVerdict synthesis on sustained drift / sustained invariant violation (gated on H1 calibrator empirics)",
+        "L1 -- adapter name uniqueness (accepted as not-a-bug under single-account today)"
+      ],
+      "tests_passing_after": 4403
     }
   },
   "phases": [
@@ -5124,7 +5145,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-25T12:00:29.115500+00:00",
+  "last_updated_utc": "2026-04-25T12:21:51.752584+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5373,6 +5394,12 @@
       "timestamp_utc": "2026-04-25T12:00:29.115500+00:00",
       "title": "M4 closure -- canonical IBKR + Tastytrade payload fixtures + 19 replay tests pin the get_net_liquidation parser contract. Broker-side schema drift now surfaces as a CI failure rather than a silent live-runtime regression.",
       "tests_passing": 4284
+    },
+    {
+      "version": "v0.1.69",
+      "timestamp_utc": "2026-04-25T12:21:51.752584+00:00",
+      "title": "B3 closure -- tier-A aggregate-equity invariant validator + advisory runtime alert. The last open BLOCKER from the v0.1.64 Red Team review is closed; the invariant the drift detector relies on is now explicit, validated each tick, and surfaces config-bug shapes as a tier_a_invariant_violation alert instead of as bogus drift events.",
+      "tests_passing": 4403
     }
   ]
 }

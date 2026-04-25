@@ -212,3 +212,137 @@ def test_invalid_stale_after_s_rejected() -> None:
         BrokerEquityPoller(
             name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=0.0,
         )
+
+
+# ---------------------------------------------------------------------------
+# H4 partial closure (v0.1.69) -- byte-identical-poll detection
+# ---------------------------------------------------------------------------
+
+
+def test_consecutive_identical_starts_at_zero() -> None:
+    async def fetch() -> float | None:
+        return 50_000.0
+
+    poller = BrokerEquityPoller(
+        name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=2.0,
+    )
+    assert poller.consecutive_identical == 0
+
+
+def test_invalid_identical_warn_after_rejected() -> None:
+    async def fetch() -> float | None:
+        return 50_000.0
+
+    with pytest.raises(ValueError, match="identical_warn_after"):
+        BrokerEquityPoller(
+            name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=2.0,
+            identical_warn_after=-1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_identical_polls_increment_counter() -> None:
+    """Successive polls returning the same value bump consecutive_identical."""
+    async def fetch() -> float | None:
+        return 50_000.0
+
+    poller = BrokerEquityPoller(
+        name="stub", fetch_fn=fetch,
+        refresh_s=0.05, stale_after_s=10.0,
+    )
+    # Drive _poll_once directly (bypasses the asyncio loop)
+    await poller._poll_once()  # noqa: SLF001
+    # First poll has no prior value; counter stays at 0.
+    assert poller.consecutive_identical == 0
+    await poller._poll_once()  # noqa: SLF001
+    assert poller.consecutive_identical == 1
+    await poller._poll_once()  # noqa: SLF001
+    assert poller.consecutive_identical == 2
+
+
+@pytest.mark.asyncio
+async def test_changed_value_resets_counter() -> None:
+    """A value change resets consecutive_identical to 0."""
+    values = iter([50_000.0, 50_000.0, 50_000.0, 50_100.0, 50_100.0])
+
+    async def fetch() -> float | None:
+        return next(values)
+
+    poller = BrokerEquityPoller(
+        name="stub", fetch_fn=fetch,
+        refresh_s=0.05, stale_after_s=10.0,
+    )
+    await poller._poll_once()  # noqa: SLF001 -- first
+    await poller._poll_once()  # noqa: SLF001 -- identical (count=1)
+    await poller._poll_once()  # noqa: SLF001 -- identical (count=2)
+    assert poller.consecutive_identical == 2
+    await poller._poll_once()  # noqa: SLF001 -- value changes (count=0)
+    assert poller.consecutive_identical == 0
+    await poller._poll_once()  # noqa: SLF001 -- identical to prev (count=1)
+    assert poller.consecutive_identical == 1
+
+
+@pytest.mark.asyncio
+async def test_warn_fires_once_at_threshold(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The warn log fires exactly at the threshold, not before, not after."""
+    import logging
+    async def fetch() -> float | None:
+        return 50_000.0
+
+    poller = BrokerEquityPoller(
+        name="stub", fetch_fn=fetch,
+        refresh_s=0.05, stale_after_s=10.0,
+        identical_warn_after=3,
+    )
+    target_logger = "apex_predator.core.broker_equity_poller"
+    with caplog.at_level(logging.WARNING, logger=target_logger):
+        # First 3 polls: counter goes 0, 1, 2. No warn yet.
+        for _ in range(3):
+            await poller._poll_once()  # noqa: SLF001
+        warn_records_before = [
+            r for r in caplog.records
+            if "consecutive identical" in r.getMessage()
+        ]
+        assert len(warn_records_before) == 0
+        # Fourth poll: counter goes to 3 == threshold -> warn fires.
+        await poller._poll_once()  # noqa: SLF001
+        warn_records_after = [
+            r for r in caplog.records
+            if "consecutive identical" in r.getMessage()
+        ]
+        assert len(warn_records_after) == 1
+        # Fifth poll: counter goes to 4. No additional warn (single-fire).
+        await poller._poll_once()  # noqa: SLF001
+        warn_records_no_spam = [
+            r for r in caplog.records
+            if "consecutive identical" in r.getMessage()
+        ]
+        assert len(warn_records_no_spam) == 1
+
+
+@pytest.mark.asyncio
+async def test_warn_disabled_when_identical_warn_after_zero(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Default ``identical_warn_after=0`` disables the warn entirely."""
+    import logging
+    async def fetch() -> float | None:
+        return 50_000.0
+
+    poller = BrokerEquityPoller(
+        name="stub", fetch_fn=fetch,
+        refresh_s=0.05, stale_after_s=10.0,
+        # Default identical_warn_after=0
+    )
+    with caplog.at_level(logging.WARNING, logger="apex_predator.core.broker_equity_poller"):
+        for _ in range(20):
+            await poller._poll_once()  # noqa: SLF001
+        warn_records = [
+            r for r in caplog.records
+            if "consecutive identical" in r.getMessage()
+        ]
+        assert len(warn_records) == 0
+        # But the counter still tracks for observability
+        assert poller.consecutive_identical >= 19

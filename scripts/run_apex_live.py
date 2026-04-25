@@ -183,6 +183,18 @@ class RuntimeConfig:
     state_path: Path = field(default_factory=lambda: ROOT / "roadmap_state.json")
     config_dir: Path = field(default_factory=lambda: ROOT / "configs")
     log_path: Path = field(default_factory=lambda: ROOT / "docs" / "runtime_log.jsonl")
+    # B3 closure (v0.1.69): operator-supplied expected size of the
+    # Apex eval account in USD. When set, the tier-A aggregate-equity
+    # invariant validator checks ``sum(tier_a.equity_usd)`` against
+    # [undersize * size, oversize * size] each tick (default oversize
+    # 1.5x flags the canonical config-bug case where two tier-A bots
+    # each track the full account size). Leave None to skip the
+    # bounded check (the negative-aggregate / non-finite checks
+    # still fire). Threaded through ``load_runtime_config`` so the
+    # operator can set it via a future ``--account-size-usd`` flag
+    # or ``configs/apex_account.yaml`` -- both tracked as v0.1.70+
+    # ergonomics work; v0.1.69 ships the validator + runtime hook.
+    tier_a_account_size_usd: float | None = None
 
 
 def _load_yaml(p: Path) -> dict[str, Any]:
@@ -581,6 +593,13 @@ class ApexRuntime:
         # Reset to None on a clean exit transition.
         self._last_broker_drift_alert_ts: float | None = None
         self.broker_drift_realert_interval_s: float = 1800.0
+        # B3 closure (v0.1.69): per-tick tier-A aggregate-equity
+        # invariant verdict cache. Lets the runtime fire an alert
+        # only on the transition INTO a violation, not every tick
+        # while the misconfigured fleet keeps producing the same
+        # bogus aggregate. Mirrors the consistency-guard / drift-
+        # latch alert patterns elsewhere in this loop.
+        self._last_tier_a_invariant_verdict: str | None = None
 
         # M3 closure (v0.1.67): runtime-log rotator. Defaults to a
         # 100 MB / 1-day-gzip / 30-day-retain policy bound to
@@ -800,6 +819,37 @@ class ApexRuntime:
         # side of the drift comparison). Keeping a single source of
         # truth avoids a rounding divergence between the two paths.
         ta_equity = float(sum(s.equity_usd for s in snapshots if s.tier == "A"))
+        # B3 closure (v0.1.69): tier-A aggregate-equity invariant. The
+        # reconciler / tracker both consume ``ta_equity`` as the
+        # logical-equity side of comparisons. If two tier-A bots are
+        # mistakenly each tracking the full account size, ``ta_equity``
+        # over-states the actual account by 2x and the reconciler
+        # mistakes it for $50K of broker_below_logical drift. The
+        # validator catches the obvious config-bug shape and fires an
+        # advisory alert; strict promotion to KillVerdict is v0.2.x.
+        # Once-per-session: we cache the last verdict so we only fire
+        # an alert on the transition into a violation, not every tick.
+        from apex_predator.core.apex_account_invariant import (
+            validate_tier_a_aggregate_equity,
+        )
+        invariant_result = validate_tier_a_aggregate_equity(
+            snapshots=snapshots,
+            expected_account_size_usd=getattr(
+                self.cfg, "tier_a_account_size_usd", None,
+            ),
+        )
+        prior_inv_verdict = self._last_tier_a_invariant_verdict
+        self._last_tier_a_invariant_verdict = invariant_result.verdict
+        if not invariant_result.ok and (
+            prior_inv_verdict != invariant_result.verdict
+        ):
+            logger.warning(
+                "tier_a_invariant: %s", invariant_result.reason,
+            )
+            self.dispatcher.send(
+                "tier_a_invariant_violation",
+                invariant_result.as_dict(),
+            )
         # Tick-granular trailing-DD path: if a tracker is attached,
         # feed the current tier-A aggregate equity into it and use its
         # snapshot as the authoritative apex_eval for this tick. The
@@ -1315,7 +1365,17 @@ async def _amain(argv: list[str] | None = None) -> int:
         logger.error("boot refused: %s", exc)
         print(f"BOOT REFUSED: {exc}")
         return 78  # EX_CONFIG -- operator config error
-    broker_poller = make_poller_for(broker_adapter, refresh_s=5.0)
+    # H4 partial (v0.1.69): warn when net-liq is unchanged for 12
+    # consecutive polls (= 60 seconds at the 5s refresh). Active
+    # market hours typically tick MTM at least once a minute even
+    # for unfunded paper accounts; sustained zero-change is a
+    # plausible signal that the broker is serving a stale snapshot.
+    # Quiet markets / overnight WILL trip this; the warn is single-
+    # fire so it cannot log-spam, and observation-only -- it never
+    # demotes the cached value to no_broker_data.
+    broker_poller = make_poller_for(
+        broker_adapter, refresh_s=5.0, identical_warn_after=12,
+    )
     # H2 closure (Red Team v0.1.64 review, shipped v0.1.66):
     # asymmetric tolerances. broker_below_logical is the dangerous
     # direction (cushion over-stated, eval-bust risk) so we use a
@@ -1408,6 +1468,20 @@ async def _amain(argv: list[str] | None = None) -> int:
         f"start / {_tdd_state.trailing_dd_cap_usd:.0f} cap "
         f"(floor={trailing_dd_tracker.floor_usd():.0f})",
     )
+    # B3 boot banner: tier-A account-size invariant. Prints either
+    # an explicit size + bounds or 'none (unbounded)' so the operator
+    # sees at startup whether the validator's bounded checks are on.
+    _ta_acct_size = getattr(cfg, "tier_a_account_size_usd", None)
+    if _ta_acct_size is None:
+        print(
+            "tier_a_invar  : aggregate-equity validator advisory "
+            "(size unset; only negative/non-finite checks fire)",
+        )
+    else:
+        print(
+            f"tier_a_invar  : aggregate-equity validator advisory "
+            f"(size=${_ta_acct_size:.0f}, oversize=1.5x, undersize=0x)",
+        )
     print("=" * 64)
 
     rc = await runtime.run()
