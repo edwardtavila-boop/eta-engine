@@ -130,6 +130,12 @@ def scan(root: Path) -> list[Hit]:
     Excludes: tests/, scripts/_legacy_bumps/, scripts/bumps/, docs/,
     __pycache__, .cache/, .venv/. The exclusions reflect 'this is a
     one-shot historical artifact, not actively-deferred work.'
+
+    Also self-excludes (this file): the audit's own regex source code
+    contains the exact marker phrasings it's looking for, which would
+    flood the report with self-references. The audit's own deferral
+    discipline is enforced by review of the regex itself, not by
+    self-scan.
     """
     out: list[Hit] = []
     skip_prefixes = (
@@ -138,8 +144,11 @@ def scan(root: Path) -> list[Hit]:
         "__pycache__/", ".git/", ".pytest_cache/", ".ruff_cache/",
         ".mypy_cache/", "var/", "state/",
     )
+    self_path = "scripts/_audit_deferral_criteria.py"
     for p in root.rglob("*.py"):
         rel = p.relative_to(root).as_posix()
+        if rel == self_path:
+            continue
         if any(rel.startswith(prefix) or "__pycache__" in rel
                for prefix in skip_prefixes):
             continue

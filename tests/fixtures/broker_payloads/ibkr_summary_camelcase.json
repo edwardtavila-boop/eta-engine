@@ -1,0 +1,5 @@
+{
+  "netLiquidation": {"amount": 50123.45, "currency": "USD"},
+  "equityWithLoanValue": {"amount": 50123.45, "currency": "USD"},
+  "totalCashValue": {"amount": 12000.0, "currency": "USD"}
+}

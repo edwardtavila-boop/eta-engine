@@ -560,7 +560,12 @@ class ApexRuntime:
         # and out-of-tolerance events (broker_below_logical) fan out as
         # a `broker_equity_drift` alert. The reconciler itself is
         # observation-only -- it does NOT synthesize KillVerdicts today
-        # (deferred to v0.2.x). Wiring both kwargs to None preserves
+        # (deferred to v0.2.x; M2 in docs/red_team_d2_d3_review.md).
+        # Lands when: scripts/calibrate_broker_drift_tolerance.py emits
+        # a recommendation backed by 30+ days of live-paper data, AND
+        # configs/kill_switch.yaml grows a tier_a.broker_drift entry,
+        # AND test_run_eta_live asserts the synthesised KillVerdict
+        # fires on sustained drift. Wiring both kwargs to None preserves
         # legacy behaviour (no drift detection).
         self.broker_equity_reconciler = broker_equity_reconciler
         self.broker_equity_poller = broker_equity_poller

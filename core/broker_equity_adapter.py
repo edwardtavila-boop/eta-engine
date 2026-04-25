@@ -65,12 +65,27 @@ Closed in v0.1.64
 
 Non-goals (still deferred to v0.2.x)
 -------------------------------------
-  * Multi-broker drift fan-out (poll BOTH IBKR and Tastytrade and
-    cross-check). Not needed for Apex eval (single account at a time).
-    Sketched for completeness in :class:`MultiAdapterEquitySource` but
-    NOT shipped here -- defer until we genuinely run multi-broker.
-  * KillVerdict synthesis on out-of-tolerance. Reconciler stays
-    observation-only per its v0.1.59 docstring.
+Each item below has an explicit exit criterion -- the audit at
+``scripts/_audit_deferral_criteria.py`` will reject any v0.2.x
+deferral that does not. M1 / M2 below correspond to the residual
+ledger in ``docs/red_team_d2_d3_review.md``.
+
+  * M1 -- Multi-broker drift fan-out. Lands when:
+    :class:`MultiAdapterEquitySource` grows a real fetch +
+    reconciliation impl (vs the current placeholder), and
+    ``test_multi_adapter_cross_broker_reconciles`` asserts the
+    cross-check fires on a synthetic mismatch. Out of scope for
+    Apex eval (single account at a time); reactivates when the
+    operator runs multiple futures accounts simultaneously.
+  * M2 -- KillVerdict synthesis on out-of-tolerance. Lands when:
+    ``scripts/calibrate_broker_drift_tolerance.py`` emits a
+    recommendation backed by 30+ days of live-paper data, AND
+    ``configs/kill_switch.yaml`` grows a ``tier_a.broker_drift``
+    entry that maps sustained drift -> ``KillVerdict``
+    (PAUSE_NEW_ENTRIES or FLATTEN_TIER_A_PREEMPTIVE), AND
+    ``test_run_eta_live`` grows an integration test asserting
+    the KillVerdict fires. Reconciler stays observation-only
+    until then per its v0.1.59 docstring.
 
 Usage
 -----

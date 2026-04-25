@@ -1,0 +1,8 @@
+{
+  "netliquidation": {"amount": 50123.45, "currency": "USD", "timestamp": 1714060800000},
+  "equitywithloanvalue": {"amount": 50123.45, "currency": "USD"},
+  "totalcashvalue": {"amount": 12000.0, "currency": "USD"},
+  "availablefunds": {"amount": 38000.0, "currency": "USD"},
+  "buyingpower": {"amount": 152000.0, "currency": "USD"},
+  "grosspositionvalue": {"amount": 38123.45, "currency": "USD"}
+}
