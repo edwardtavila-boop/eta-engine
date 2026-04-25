@@ -65,6 +65,12 @@ routing:
     apex_preempt:         { level: warn,     channels: [pushover, email] }
     kill_switch_latched:  { level: critical, channels: [pushover, email, sms] }
     consistency_status:   { level: warn,     channels: [pushover, email] }
+    # Cron-triggered nightly audit summary. The audit always emits
+    # (pass / warn / fail verdict) so we route to email-only at INFO
+    # to avoid pushover spam on the nominal-pass nights. The
+    # audit-side payload includes failed_steps so the operator can
+    # triage from the email body without paging.
+    apex_nightly_audit:   { level: info,     channels: [email] }
 
 # Rate limits
 rate_limit:

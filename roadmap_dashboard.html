@@ -120,9 +120,32 @@
   <h1>APEX PREDATOR <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.67</b></span>
-    <span>TESTS <b>4236 ✓</b></span>
+    <span>VER <b>0.1.68</b></span>
+    <span>TESTS <b>4284 ✓</b></span>
     <span>UPDATED <b>2026-04-25</b></span>
+  </div>
+</div>
+
+<!-- v0.1.68 BROKER-PAYLOAD FIXTURES BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.16), transparent);">
+  <h3>v0.1.68 — M4 Broker-Payload Fixtures · 4284 tests passing (+19 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.68 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>1 MEDIUM closed</b></span>
+    <span><span style="color:var(--dim)">IBKR:</span> <b>{amount,currency} drill-down pinned</b></span>
+    <span><span style="color:var(--dim)">Tasty:</span> <b>{data,context} wrapper + hyphen-keys pinned</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">tests/fixtures/broker_payloads/ · tests/test_broker_payload_fixtures.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>ibkr_account_summary.json</b> — canonical /portfolio/{id}/summary; expected_net_liquidation=50123.45</span>
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>tastytrade_balance.json</b> — canonical /accounts/{id}/balances; expected_net_liquidation=25000.00</span>
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>positive replay × 4</b> — happy-path parses both venues + populates all balance fields</span>
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>negative cases × 13</b> — missing key, dropped wrapper, type flip, malformed HTTP, no creds</span>
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>protocol fit pinned × 2</b> — IBKR + Tasty still satisfy BrokerEquityAdapter Protocol</span>
+    <span><span class="pill done" style="font-size:9px;">M4</span> <b>apex_nightly_audit registered</b> — alert-event registry CI gate kept green</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Broker-side schema drift now surfaces as a CI failure rather than a silent live-runtime regression. The "MUST NOT raise" Protocol guarantee is pinned across every malformed-input path. Carried to v0.1.69+ / v0.2.x: B3 BLOCKER, H4, M1, M2, L1.
   </div>
 </div>
 

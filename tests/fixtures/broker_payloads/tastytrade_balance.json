@@ -1,0 +1,42 @@
+{
+  "_provenance": {
+    "endpoint": "/accounts/{account_number}/balances",
+    "venue": "Tastytrade API",
+    "doc": "https://developer.tastytrade.com/open-api-spec/account-endpoints",
+    "captured_at_utc": "2026-04-25T17:30:00+00:00",
+    "captured_against": "synthetic / hand-authored to match the schema we parse",
+    "expected_net_liquidation": 25000.00,
+    "note": "Tastytrade wraps every payload in a top-level {\"data\": {...}, \"context\": str}. The TastytradeVenue.get_balance() reads data.cash-balance / data.equity-buying-power / data.net-liquidating-value, with hyphenated keys. The numeric values arrive as STRINGS (typed in the API as decimals) -- the venue's float() coercion handles that. M4 closure (v0.1.68) -- this fixture pins that the wrapper layer + hyphenated keys + string-typed numerics all stay parseable. A future API change to camelCase, snake_case, or float-typed values would surface as a fixture-replay test failure."
+  },
+  "data": {
+    "account-number": "5WT12345",
+    "cash-balance": "25000.00",
+    "long-equity-value": "0.00",
+    "short-equity-value": "0.00",
+    "long-derivative-value": "0.00",
+    "short-derivative-value": "0.00",
+    "long-futures-value": "0.00",
+    "short-futures-value": "0.00",
+    "long-margineable-value": "0.00",
+    "short-margineable-value": "0.00",
+    "margin-equity": "25000.00",
+    "equity-buying-power": "50000.00",
+    "derivative-buying-power": "25000.00",
+    "day-trading-buying-power": "100000.00",
+    "futures-margin-requirement": "0.00",
+    "available-trading-funds": "25000.00",
+    "maintenance-requirement": "0.00",
+    "maintenance-call-value": "0.00",
+    "reg-t-call-value": "0.00",
+    "day-trading-call-value": "0.00",
+    "day-equity-call-value": "0.00",
+    "net-liquidating-value": "25000.00",
+    "cash-available-to-withdraw": "25000.00",
+    "day-trade-excess": "100000.00",
+    "pending-cash": "0.00",
+    "pending-cash-effect": "None",
+    "snapshot-date": "2026-04-25",
+    "updated-at": "2026-04-25T17:30:00.000+00:00"
+  },
+  "context": "/accounts/5WT12345/balances"
+}

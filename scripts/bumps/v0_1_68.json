@@ -1,0 +1,21 @@
+{
+  "version": "v0.1.68",
+  "slug": "broker_payload_fixtures",
+  "bundle_name": "M4 closure -- broker-payload fixture-replay tests for IBKR + Tastytrade",
+  "theme": "Closes M4 from the v0.1.64 Red Team review of v0.1.63 R1. The IBKR + Tastytrade get_net_liquidation parsers had no recorded fixtures so a broker-side schema change (renamed key, dropped wrapper, type flip from string to float) would silently break parsing -- the drift detector would receive None on every poll and classify every tick as no_broker_data, effectively disabling drift detection without an obvious failure mode. v0.1.68 adds canonical recorded payload fixtures + replay tests with positive (parse to expected net-liq) and negative (missing key, dropped wrapper, non-numeric value, malformed HTTP response) coverage. The 'MUST NOT raise' guarantee of the BrokerEquityAdapter Protocol is also pinned: every malformed-input path returns None gracefully.",
+  "operator_directive_quote": "continue and do all",
+  "modules_edited": [
+    "tests/fixtures/broker_payloads/ibkr_account_summary.json: NEW canonical IBKR Client Portal /portfolio/{accountId}/summary response. Pins the {amount: float, currency: str} drill-down schema for netliquidation / equitywithloanvalue / totalcashvalue / availablefunds. Includes _provenance metadata block with endpoint URL, IBKR docs link, expected net-liq.",
+    "tests/fixtures/broker_payloads/tastytrade_balance.json: NEW canonical Tastytrade /accounts/{id}/balances response. Pins the {data: {...}, context: str} wrapper layer + hyphenated keys + string-typed decimals (cash-balance, equity-buying-power, net-liquidating-value).",
+    "tests/test_broker_payload_fixtures.py: NEW 19 tests across TestIbkrFixtureReplay (8), TestTastyFixtureReplay (9), TestParsersStillSatisfyProtocol (2). Replays canonical fixtures for happy-path parse + drives negative cases (missing key, type flip, dropped wrapper, malformed HTTP, no creds) to assert the parser returns None instead of raising or producing garbage."
+  ],
+  "tests_passing_after": null,
+  "deferred_followups": [
+    "B3 BLOCKER -- tier-A aggregate equity invariant (needs design call on per-account vs per-fleet aggregation)",
+    "H4 -- server-side broker payload timestamps (parse server-reported ts to age TTL on broker-clock not poll-cycle)",
+    "M1 -- per-bot drift detection (multi-account scope expansion)",
+    "M2 -- KillVerdict synthesis on sustained drift (gated on H1 calibrator empirics)",
+    "L1 -- adapter name uniqueness (accepted as not-a-bug under single-account today)"
+  ],
+  "milestone_title": "M4 closure -- canonical IBKR + Tastytrade payload fixtures + 19 replay tests pin the get_net_liquidation parser contract. Broker-side schema drift now surfaces as a CI failure rather than a silent live-runtime regression."
+}

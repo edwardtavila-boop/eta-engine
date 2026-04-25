@@ -1,0 +1,20 @@
+{
+  "_provenance": {
+    "endpoint": "/portfolio/{accountId}/summary",
+    "venue": "IBKR Client Portal",
+    "doc": "https://interactivebrokers.github.io/cpwebapi/endpoints",
+    "captured_at_utc": "2026-04-25T17:30:00+00:00",
+    "captured_against": "synthetic / hand-authored to match the schema we parse",
+    "expected_net_liquidation": 50123.45,
+    "note": "The Client Portal returns each balance field as a {\"amount\": float, \"currency\": str, ...} dict. The IBKR adapter's get_balance() looks up the field by lowercased Apex-side key (netliquidation, equitywithloanvalue, totalcashvalue, availablefunds), then drills into the .amount sub-key. M4 closure (v0.1.68) -- this fixture pins that schema so a future Client Portal change that drops the .amount nesting (or renames the top-level key) surfaces as a fixture-replay test failure rather than a silent runtime regression."
+  },
+  "accountcode": {"amount": "DU1234567", "currency": "", "isNull": false, "timestamp": 1714050000, "value": "DU1234567"},
+  "netliquidation": {"amount": 50123.45, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "50123.45 USD"},
+  "equitywithloanvalue": {"amount": 50123.45, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "50123.45 USD"},
+  "totalcashvalue": {"amount": 25000.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "25000.00 USD"},
+  "availablefunds": {"amount": 24000.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "24000.00 USD"},
+  "buyingpower": {"amount": 200000.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "200000.00 USD"},
+  "grosspositionvalue": {"amount": 0.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "0.00 USD"},
+  "maintmarginreq": {"amount": 0.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "0.00 USD"},
+  "initmarginreq": {"amount": 0.00, "currency": "USD", "isNull": false, "timestamp": 1714050000, "value": "0.00 USD"}
+}

@@ -5,7 +5,7 @@ closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring) · updated
 2026-04-24 (v0.1.64 router-aware adapter) · updated 2026-04-25 (v0.1.65
 broker-equity wiring hardening) · updated 2026-04-25 (v0.1.66 H3 hysteresis
 + sustained-drift re-alert) · updated 2026-04-25 (v0.1.67 M3 log rotation
-+ L2 windowed max).
++ L2 windowed max) · updated 2026-04-25 (v0.1.68 M4 broker payload fixtures).
 **Scope:** D2 (`TrailingDDTracker`) and D3 (`ConsistencyGuard`) modules and
 their wiring into `scripts/run_apex_live.py`.
 **Reviewer:** `risk-advocate` agent (Opus 4.7, adversarial posture).
@@ -66,7 +66,7 @@ Residuals from the v0.1.64 review (carry to v0.1.65 / v0.2.x):
 | M1 | MEDIUM   | No per-bot drift detection (aggregate-only) | v0.2.x with multi-account venue introspection |
 | M2 | MEDIUM   | TrailingDDTracker/ConsistencyGuard run on logical equity, ignore reconciler output | v0.2.x — KillVerdict synthesis design |
 | M3 | MEDIUM   | No `runtime_log.jsonl` rotation (8GB/month at 1s cadence) | **CLOSED v0.1.67** — `RuntimeLogRotator` size + age + retention with default 100 MB / 24h / 30d policy |
-| M4 | MEDIUM   | No recorded broker-payload fixtures — IBKR/Tasty schema drift would silently break parsing | v0.1.65 — VCR-style fixture tests |
+| M4 | MEDIUM   | No recorded broker-payload fixtures — IBKR/Tasty schema drift would silently break parsing | **CLOSED v0.1.68** — canonical IBKR + Tasty payloads under `tests/fixtures/broker_payloads/` + 19 replay tests covering happy path + 8 schema-drift / malformed-input negative cases |
 | L1 | LOW      | Adapter `name` not uniqueness-enforced | accepted — single-account today |
 | L2 | LOW      | `ReconcileStats.max_drift_usd_abs` lifetime-only (never reset) | **CLOSED v0.1.67** — `windowed_max_drift_usd_abs` + `drift_window_size` (default 1000) deque-backed |
 
