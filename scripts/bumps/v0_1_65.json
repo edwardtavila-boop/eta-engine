@@ -1,0 +1,30 @@
+{
+  "version": "v0.1.65",
+  "slug": "broker_equity_hardening",
+  "bundle_name": "BROKER-EQUITY WIRING HARDENING -- close H5/H6/H7 from the v0.1.64 Red Team review",
+  "theme": "v0.1.64 closed B1+B2 from the Red Team review of v0.1.63 R1; this bundle closes three of the seven HIGH residuals that lived on the v0.1.63/v0.1.64 broker-equity surface. H5: ta_equity==0 produced float('inf') in the JSON tick log (RFC 8259 violation); now guarded via min_logical_usd floor + as_dict sanitisation. H6: live mode silently degraded to NullBrokerEquityAdapter when both broker creds were missing; now refuses to boot unless the operator opts in via APEX_ALLOW_LIVE_NO_DRIFT=1. H7: the Protocol's MUST-NOT-RAISE guarantee was by convention; now enforced at runtime via SafeBrokerEquityAdapter wrapper. Plus process-gap-3: tests/test_amain_wire_up.py smoke-tests the production CLI end-to-end so a future B1 regression cannot slip past unit suites.",
+  "operator_directive_quote": "continue and do all",
+  "modules_edited": [
+    "core/broker_equity_reconciler.py: add min_logical_usd floor (default 1.0) + math.isfinite guard in reconcile() + _sanitize_for_json helper for ReconcileResult.as_dict",
+    "core/broker_equity_adapter.py: add BrokerEquityNotAvailableError + SafeBrokerEquityAdapter wrapper class + extend __all__",
+    "scripts/run_apex_live.py: thread allow_live_no_drift through _build_broker_equity_adapter; wrap returns in SafeBrokerEquityAdapter; raise BrokerEquityNotAvailableError when no creds in strict live mode; _amain reads APEX_ALLOW_LIVE_NO_DRIFT env var + catches the exception with rc=78",
+    "tests/test_broker_equity_adapter.py: TestSafeBrokerEquityAdapter (10 tests) + TestBrokerEquityNotAvailableError (2 tests)",
+    "tests/test_run_apex_live.py: TestBuildBrokerEquityAdapterLiveModeGate (6 tests) covering paper/dry-run/strict-refuse/opt-in/IBKR-creds/Tasty-fallback paths",
+    "tests/test_amain_wire_up.py: end-to-end smoke test asserting broker_equity block lands in runtime_log.jsonl (process-gap-3 closure)",
+    "tests/test_broker_equity_reconciler.py: H5 regression pins (already in tree from v0.1.64 review prep, now made green by this bundle's reconciler fixes)"
+  ],
+  "tests_passing_after": null,
+  "deferred_followups": [
+    "H1 -- tolerance calibration harness: scripts/calibrate_broker_drift_tolerance.py reads accumulated runtime_log.jsonl drift histogram and recommends tolerance_usd/tolerance_pct.",
+    "H2 -- asymmetric tolerances: split tolerance_below_* / tolerance_above_* (deferred until H1 produces empirics).",
+    "H3 -- sustained-drift signal + hysteresis on transition latch.",
+    "H4 -- server-side timestamp on broker payloads (parse where available).",
+    "B3 -- tier-A aggregate equity invariant design call.",
+    "M1-M4 -- per-bot drift, KillVerdict synthesis, runtime_log rotation, broker-payload fixtures.",
+    "L1-L2 -- adapter name uniqueness, ReconcileStats.max_drift_usd_abs windowing.",
+    "Process-gap-2 -- exit criteria for 'deferred to v0.2.x'.",
+    "Process-gap-4 -- scripts/_audit_roadmap_vs_code.py reconciler.",
+    "Process-gap-5 -- docs/runbooks/broker_equity_drift_response.md."
+  ],
+  "milestone_title": "Broker-equity wiring hardening: H5 (inf JSON guard) + H6 (live refuse-to-boot) + H7 (SafeBrokerEquityAdapter wrapper) + process-gap-3 (_amain wire-up smoke test). Three HIGH residuals from the v0.1.64 Red Team review closed in one bundle; B3 BLOCKER + 4 HIGH + 4 MEDIUM + 2 LOW + 4 process gaps carried to v0.1.66+ / v0.2.x."
+}

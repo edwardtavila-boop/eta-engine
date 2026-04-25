@@ -168,21 +168,51 @@ class TestToleranceBoundaries:
 
 class TestEdgeCases:
 
-    def test_zero_logical_equity_with_zero_broker_is_in_tolerance(self):
+    def test_zero_logical_equity_short_circuits_to_no_data(self):
+        # H5 closure (Red Team v0.1.64 review): when logical equity is
+        # below the min_logical_usd floor (default 1.0), reconcile must
+        # NOT compute a drift percentage (was producing float('inf') and
+        # corrupting runtime_log.jsonl per RFC 8259). It now classifies
+        # as no_broker_data so the runtime path stays uniform.
         rec = BrokerEquityReconciler(broker_equity_source=lambda: 0.0)
         result = rec.reconcile(logical_equity_usd=0.0)
-        assert result.drift_usd == pytest.approx(0.0)
+        assert result.reason == "no_broker_data"
+        assert result.drift_usd is None
+        assert result.drift_pct_of_logical is None
         assert result.in_tolerance is True
 
-    def test_zero_logical_with_nonzero_broker_is_out_of_tolerance(self):
+    def test_zero_logical_with_nonzero_broker_short_circuits_to_no_data(self):
+        # H5 closure: same guard fires regardless of broker value when
+        # logical is below the floor. The asymmetric drift detection
+        # (logical_zero, broker=$10K = "broker says you have $10K but
+        # the bot books say zero") is real but cannot be expressed as a
+        # percentage, so we degrade to no_broker_data and let the
+        # operator surface the discrepancy via boot-time bot-state
+        # inspection rather than letting an inf escape into the JSON
+        # tick log.
         rec = BrokerEquityReconciler(
             broker_equity_source=lambda: 10.0,
             tolerance_usd=1.0,
         )
         result = rec.reconcile(logical_equity_usd=0.0)
-        # drift_pct becomes inf when logical is 0 and broker is not.
-        assert result.drift_pct_of_logical == float("inf")
-        assert result.in_tolerance is False
+        assert result.reason == "no_broker_data"
+        assert result.drift_pct_of_logical is None
+        assert result.in_tolerance is True
+
+    def test_below_floor_logical_does_not_emit_inf_in_serialized_json(self):
+        # H5 regression pin: the whole point of the guard is to keep
+        # docs/runtime_log.jsonl strict-RFC-8259-parseable. Round-trip
+        # the result through json.dumps with allow_nan=False (which
+        # raises on inf/nan if they leak through) and confirm no
+        # "Infinity" / "NaN" tokens appear.
+        import json as _json
+        rec = BrokerEquityReconciler(broker_equity_source=lambda: 50_000.0)
+        result = rec.reconcile(logical_equity_usd=0.0)
+        # allow_nan=False makes json.dumps raise on inf/nan rather than
+        # silently producing the non-RFC-8259 "Infinity" string.
+        encoded = _json.dumps(result.as_dict(), allow_nan=False)
+        assert "Infinity" not in encoded
+        assert "NaN" not in encoded
 
     def test_source_raising_is_treated_as_no_data(self):
         def _broken():

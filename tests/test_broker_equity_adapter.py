@@ -39,8 +39,10 @@ import pytest
 
 from apex_predator.core.broker_equity_adapter import (
     BrokerEquityAdapter,
+    BrokerEquityNotAvailableError,
     NullBrokerEquityAdapter,
     RouterBackedBrokerEquityAdapter,
+    SafeBrokerEquityAdapter,
     make_poller_for,
 )
 from apex_predator.core.broker_equity_poller import BrokerEquityPoller
@@ -458,3 +460,95 @@ class TestRouterBackedBrokerEquityAdapter:
             assert poller.current() == 49_500.0
         finally:
             await poller.stop()
+
+
+# ---------------------------------------------------------------------------
+# Safe-wrapping adapter (v0.1.65 H7)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingAdapter:
+    """Adapter that raises on every call -- for H7 wrapper testing."""
+
+    name = "raising"
+
+    def __init__(self, exc: Exception | None = None) -> None:
+        self._exc = exc or RuntimeError("simulated failure")
+
+    async def get_net_liquidation(self) -> float | None:
+        raise self._exc
+
+
+class TestSafeBrokerEquityAdapter:
+    """v0.1.65 H7 -- runtime-enforced 'MUST NOT raise' wrapper."""
+
+    def test_satisfies_protocol(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_FixedAdapter())
+        assert isinstance(wrapped, BrokerEquityAdapter)
+
+    def test_default_name_wraps_inner(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_FixedAdapter(name="ibkr"))
+        assert wrapped.name == "safe(ibkr)"
+
+    def test_custom_name_override(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(
+            _FixedAdapter(name="ibkr"), name="my-custom",
+        )
+        assert wrapped.name == "my-custom"
+
+    def test_construct_with_non_protocol_raises(self) -> None:
+        with pytest.raises(TypeError, match="BrokerEquityAdapter"):
+            SafeBrokerEquityAdapter("not an adapter")  # type: ignore[arg-type]
+
+    @pytest.mark.asyncio
+    async def test_forwards_happy_path(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_FixedAdapter(value=12_345.6))
+        assert await wrapped.get_net_liquidation() == 12_345.6
+
+    @pytest.mark.asyncio
+    async def test_forwards_none(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_FixedAdapter(value=None))
+        assert await wrapped.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_swallows_runtime_error(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_RaisingAdapter(RuntimeError("auth")))
+        assert await wrapped.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_swallows_value_error(self) -> None:
+        wrapped = SafeBrokerEquityAdapter(_RaisingAdapter(ValueError("parse")))
+        assert await wrapped.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_swallows_arbitrary_exception_subclass(self) -> None:
+        class _CustomError(Exception):
+            pass
+
+        wrapped = SafeBrokerEquityAdapter(
+            _RaisingAdapter(_CustomError("anything")),
+        )
+        assert await wrapped.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_wraps_router_backed_adapter(self) -> None:
+        """Composition smoke test: Safe(RouterBacked(router)) works."""
+        ibkr = _FakeFuturesVenue("ibkr", equity=42_000.0)
+        from apex_predator.venues.router import SmartRouter
+        router = SmartRouter(ibkr=ibkr, preferred_futures_venue="ibkr")
+        inner = RouterBackedBrokerEquityAdapter(router)
+        wrapped = SafeBrokerEquityAdapter(inner)
+        assert isinstance(wrapped, BrokerEquityAdapter)
+        assert await wrapped.get_net_liquidation() == 42_000.0
+
+
+class TestBrokerEquityNotAvailableError:
+    """v0.1.65 H6 -- exception class is importable + RuntimeError-derived."""
+
+    def test_is_runtime_error_subclass(self) -> None:
+        # Callers may catch RuntimeError; this contract must be stable.
+        assert issubclass(BrokerEquityNotAvailableError, RuntimeError)
+
+    def test_can_be_raised_and_caught_by_message(self) -> None:
+        with pytest.raises(BrokerEquityNotAvailableError, match="no creds"):
+            raise BrokerEquityNotAvailableError("no creds in live mode")

@@ -120,9 +120,32 @@
   <h1>APEX PREDATOR <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.64</b></span>
-    <span>TESTS <b>3965 ✓</b></span>
-    <span>UPDATED <b>2026-04-24</b></span>
+    <span>VER <b>0.1.65</b></span>
+    <span>TESTS <b>4073 ✓</b></span>
+    <span>UPDATED <b>2026-04-25</b></span>
+  </div>
+</div>
+
+<!-- v0.1.65 BROKER-EQUITY WIRING HARDENING BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.16), transparent);">
+  <h3>v0.1.65 — Broker-Equity Wiring Hardening · 4073 tests passing (H5+H6+H7+process-gap-3 closed)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.65 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>3 HIGH residuals + process-gap-3</b></span>
+    <span><span style="color:var(--dim)">JSON log:</span> <b>RFC 8259 strict</b></span>
+    <span><span style="color:var(--dim)">Live boot:</span> <b>refuses on no-creds</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/broker_equity_*.py · scripts/run_apex_live.py · tests/test_amain_wire_up.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">H5</span> <b>min_logical_usd</b> floor (default 1.0) + math.isfinite guard — no more <code>inf</code> drift_pct</span>
+    <span><span class="pill done" style="font-size:9px;">H5</span> <b>as_dict sanitizer</b> — inf/NaN → None defensively even on stale state</span>
+    <span><span class="pill done" style="font-size:9px;">H6</span> <b>BrokerEquityNotAvailableError</b> — live + no creds → boot refused (rc=78)</span>
+    <span><span class="pill done" style="font-size:9px;">H6</span> <b>APEX_ALLOW_LIVE_NO_DRIFT=1</b> opt-in — explicit acknowledgement of OFF state</span>
+    <span><span class="pill done" style="font-size:9px;">H7</span> <b>SafeBrokerEquityAdapter</b> — wraps every adapter; "MUST NOT raise" enforced at runtime</span>
+    <span><span class="pill done" style="font-size:9px;">PG3</span> <b>test_amain_wire_up.py</b> — 2 tests pin B1 wire-up + boot-banner regression</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Carried to v0.1.66+ / v0.2.x: B3 BLOCKER (tier-A aggregate equity invariant), H1-H4 (calibration harness, asymmetric tolerances, sustained-drift signal, server-side timestamps), M1-M4, L1-L2, process gaps 2/4/5.
   </div>
 </div>
 

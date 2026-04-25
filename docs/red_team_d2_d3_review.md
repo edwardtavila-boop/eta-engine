@@ -2,7 +2,8 @@
 
 **Date:** 2026-04-24 (v0.1.58) · updated 2026-04-24 (v0.1.59 residual-risk
 closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring) · updated
-2026-04-24 (v0.1.64 router-aware adapter).
+2026-04-24 (v0.1.64 router-aware adapter) · updated 2026-04-25 (v0.1.65
+broker-equity wiring hardening).
 **Scope:** D2 (`TrailingDDTracker`) and D3 (`ConsistencyGuard`) modules and
 their wiring into `scripts/run_apex_live.py`.
 **Reviewer:** `risk-advocate` agent (Opus 4.7, adversarial posture).
@@ -57,9 +58,9 @@ Residuals from the v0.1.64 review (carry to v0.1.65 / v0.2.x):
 | H2 | HIGH     | Asymmetric tolerances not modeled (below-bias different from above-bias) | v0.1.65 — split `tolerance_below_*` / `tolerance_above_*` |
 | H3 | HIGH     | Transition-only alerting drops sustained-drift signal + threshold-jitter latch reset can spam | v0.1.65 — re-fire interval + hysteresis on latch clear |
 | H4 | HIGH     | TTL is on our poll cycle, not broker server-side timestamp | v0.1.65 — parse server timestamps where available; identical-bytes detection where not |
-| H5 | HIGH     | `ta_equity == 0` produces inf in JSON tick log (RFC 8259 violation) | v0.1.65 — guard `min_logical_usd` in tick + `as_dict` sentinel for inf |
-| H6 | HIGH     | NullBrokerEquityAdapter in live mode is invisible to operator | v0.1.64 partial — boot banner now shows adapter name; v0.1.65 full — refuse-to-boot in live mode |
-| H7 | HIGH     | Protocol "MUST NOT raise" guarantee is by convention, not enforced | v0.1.65 — `BrokerEquityAdapterBase` wrapper |
+| H5 | HIGH     | `ta_equity == 0` produces inf in JSON tick log (RFC 8259 violation) | **CLOSED v0.1.65** — `min_logical_usd` floor + `as_dict` sanitizer |
+| H6 | HIGH     | NullBrokerEquityAdapter in live mode is invisible to operator | **CLOSED v0.1.65** — refuse-to-boot in live mode unless `APEX_ALLOW_LIVE_NO_DRIFT=1` |
+| H7 | HIGH     | Protocol "MUST NOT raise" guarantee is by convention, not enforced | **CLOSED v0.1.65** — `SafeBrokerEquityAdapter` wrapper class |
 | M1 | MEDIUM   | No per-bot drift detection (aggregate-only) | v0.2.x with multi-account venue introspection |
 | M2 | MEDIUM   | TrailingDDTracker/ConsistencyGuard run on logical equity, ignore reconciler output | v0.2.x — KillVerdict synthesis design |
 | M3 | MEDIUM   | No `runtime_log.jsonl` rotation (8GB/month at 1s cadence) | v0.1.65 — daily rotation + gzip on age |
@@ -72,19 +73,30 @@ Process gaps from the review:
    `tests/test_alert_event_registry.py` which walks call sites against
    the production `alerts.yaml`.
 2. **"Deferred to v0.2.x" docstring is the same in 4+ versions** — no
-   exit criteria. v0.1.65 should commit a calibrator-script ticket
-   with concrete acceptance criteria.
-3. **No production wire-up smoke test** — should add
-   `tests/test_amain_wire_up.py` that runs `_amain(["--max-bars", "1",
-   "--dry-run"])` against a temp dir and asserts the `broker_equity`
-   block lands in the JSONL.
-4. **Roadmap-vs-code reconciler missing** — bump scripts advance the
-   R-status flag without verifying the underlying code symbols exist.
-   v0.1.65 should ship `scripts/_audit_roadmap_vs_code.py`.
-5. **No operator runbook for drift detector** — v0.1.65 should add
-   `docs/runbooks/broker_equity_drift_response.md`.
+   exit criteria. Carried to v0.1.66+ — needs a calibrator-script
+   ticket with concrete acceptance criteria (gated on H1 calibration
+   harness which itself needs live-paper drift histograms).
+3. ✅ **No production wire-up smoke test** — closed v0.1.65 by
+   `tests/test_amain_wire_up.py` (2 tests: in-process `_amain` async
+   path + subprocess banner pin).
+4. ✅ **Roadmap-vs-code reconciler missing** — closed v0.1.65 by
+   `scripts/_audit_roadmap_vs_code.py`. Walks every R-status flag in
+   `roadmap_state.json` against the code symbols it references.
+5. ✅ **No operator runbook for drift detector** — closed v0.1.65 by
+   `docs/runbooks/broker_equity_drift_response.md`. Step-by-step
+   triage from alert receipt through clear-or-flatten decision.
 6. ✅ **`docs/red_team_d2_d3_review.md` design doc out of sync with
    v0.1.63 contract layer** — closed by this update.
+
+**v0.1.65 outcome line.** Three HIGH residuals (H5/H6/H7) and three
+process gaps (#3, #4, #5) closed in one bundle. v0.1.65 hardens the
+broker-equity surface that v0.1.63/v0.1.64 wired up: no more inf
+in the JSON log, no more silent live-without-drift booting, no more
+"adapter raised and ate the runtime" failure mode, and the operator
+now has a runbook + an audit script to trust the closure flags.
+Carried forward to v0.1.66+ / v0.2.x: B3 BLOCKER, H1-H4 (4 HIGH),
+M1-M4 (4 MEDIUM), L1-L2 (2 LOW), and process gap 2 (exit criteria
+for "deferred to v0.2.x").
 
 This document captures the adversarial teardown of the D-series work, the
 fixes shipped in response, and the residual risks that remain (documented

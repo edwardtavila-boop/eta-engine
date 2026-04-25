@@ -1428,3 +1428,127 @@ class TestBrokerEquityReconcilerIntegration:
         # One for the first entry into drift (tick 1), one for the
         # re-entry (tick 3). Recovery at tick 2 clears the latch.
         assert len(drift_events) == 2
+
+
+# ---------------------------------------------------------------------------
+# v0.1.65 -- H6 closure: live mode refuse-to-boot when no real broker source
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBrokerEquityAdapterLiveModeGate:
+    """v0.1.65 H6 -- live + no-creds = refuse-to-boot unless opted in."""
+
+    def test_paper_mode_returns_null_adapter(self) -> None:
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+
+        adapter = _build_broker_equity_adapter(live=False, dry_run=True)
+        # Wrapped in SafeBrokerEquityAdapter (H7), so the inner Null
+        # is reached via the wrapper. The wrapper still satisfies the
+        # protocol and reports a name we can grep on.
+        assert "paper-null" in adapter.name
+
+    def test_dry_run_with_live_flag_returns_null(self) -> None:
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+
+        # cfg.live=True but cfg.dry_run=True wins -- this is the
+        # paper smoke path. Should not consult broker creds.
+        adapter = _build_broker_equity_adapter(live=True, dry_run=True)
+        assert "paper-null" in adapter.name
+
+    def test_live_no_creds_strict_raises_boot_refused(
+        self, monkeypatch,
+    ) -> None:
+        """The default (allow_live_no_drift=False) refuses to boot."""
+        from apex_predator.core.broker_equity_adapter import (
+            BrokerEquityNotAvailableError,
+        )
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+        from apex_predator.venues.ibkr import IbkrClientPortalVenue
+        from apex_predator.venues.tastytrade import TastytradeVenue
+
+        monkeypatch.setattr(
+            IbkrClientPortalVenue, "has_credentials",
+            lambda self: False,
+        )
+        monkeypatch.setattr(
+            TastytradeVenue, "has_credentials",
+            lambda self: False,
+        )
+        with pytest.raises(BrokerEquityNotAvailableError, match="no real broker"):
+            _build_broker_equity_adapter(live=True, dry_run=False)
+
+    def test_live_no_creds_allow_returns_null_with_warn(
+        self, monkeypatch, caplog,
+    ) -> None:
+        """The opt-in path returns Null but logs a loud WARN."""
+        import logging as _logging
+
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+        from apex_predator.venues.ibkr import IbkrClientPortalVenue
+        from apex_predator.venues.tastytrade import TastytradeVenue
+
+        monkeypatch.setattr(
+            IbkrClientPortalVenue, "has_credentials",
+            lambda self: False,
+        )
+        monkeypatch.setattr(
+            TastytradeVenue, "has_credentials",
+            lambda self: False,
+        )
+        with caplog.at_level(_logging.WARNING):
+            adapter = _build_broker_equity_adapter(
+                live=True, dry_run=False, allow_live_no_drift=True,
+            )
+        assert "live-null-no-creds" in adapter.name
+        # Confirm the loud WARN fired (operator-visible signal that
+        # drift detection is OFF).
+        warns = [
+            r.message for r in caplog.records if r.levelno >= _logging.WARNING
+        ]
+        assert any("APEX_ALLOW_LIVE_NO_DRIFT" in m for m in warns)
+
+    def test_live_with_ibkr_creds_returns_ibkr_adapter(
+        self, monkeypatch,
+    ) -> None:
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+        from apex_predator.venues.ibkr import IbkrClientPortalVenue
+
+        monkeypatch.setattr(
+            IbkrClientPortalVenue, "has_credentials",
+            lambda self: True,
+        )
+        adapter = _build_broker_equity_adapter(live=True, dry_run=False)
+        # SafeBrokerEquityAdapter wraps it -- name reflects wrapping.
+        assert "safe(" in adapter.name
+        assert "ibkr" in adapter.name
+
+    def test_live_ibkr_missing_tasty_creds_returns_tasty(
+        self, monkeypatch,
+    ) -> None:
+        from apex_predator.scripts.run_apex_live import (
+            _build_broker_equity_adapter,
+        )
+        from apex_predator.venues.ibkr import IbkrClientPortalVenue
+        from apex_predator.venues.tastytrade import TastytradeVenue
+
+        monkeypatch.setattr(
+            IbkrClientPortalVenue, "has_credentials",
+            lambda self: False,
+        )
+        monkeypatch.setattr(
+            TastytradeVenue, "has_credentials",
+            lambda self: True,
+        )
+        adapter = _build_broker_equity_adapter(live=True, dry_run=False)
+        # Tasty wins on the fallback path.
+        assert "tastytrade" in adapter.name

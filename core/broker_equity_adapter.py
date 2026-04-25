@@ -106,6 +106,22 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+class BrokerEquityNotAvailableError(RuntimeError):
+    """Raised when live mode cannot resolve a real broker equity source.
+
+    H6 closure (v0.1.65). The v0.1.64 ``_build_broker_equity_adapter``
+    helper degraded silently to :class:`NullBrokerEquityAdapter` when
+    both IBKR and Tastytrade creds were missing in live mode. The boot
+    banner showed ``broker_equity : live-null-no-creds``, but a busy
+    operator scanning startup output could miss it -- and the eval
+    would then run with drift detection silently disabled. v0.1.65
+    flips that: live mode refuses to boot when no real broker source
+    resolves, unless the operator opts in via the environment variable
+    ``APEX_ALLOW_LIVE_NO_DRIFT=1``. The exit path is loud (this
+    exception) rather than quiet (a placeholder adapter).
+    """
+
+
 @runtime_checkable
 class BrokerEquityAdapter(Protocol):
     """Structural contract for any broker that can report net liquidation.
@@ -299,6 +315,76 @@ class RouterBackedBrokerEquityAdapter:
         return value
 
 
+class SafeBrokerEquityAdapter:
+    """Defensive wrapper that enforces the "MUST NOT raise" guarantee.
+
+    H7 closure (v0.1.65). The :class:`BrokerEquityAdapter` Protocol's
+    ``get_net_liquidation`` docstring promises that implementations
+    "MUST NOT raise -- transport / auth / parse failures should
+    degrade to ``None`` so the reconciler can classify them as
+    ``no_broker_data``." That guarantee is by convention -- ``mypy``
+    cannot enforce it, and a venue's ``get_net_liquidation`` raising
+    deep inside an HTTP retry would propagate up through
+    :class:`BrokerEquityPoller` and corrupt the runtime.
+
+    This wrapper makes the contract enforceable at runtime. It takes
+    any object satisfying the protocol and returns a wrapper that:
+
+      * Forwards happy-path values unchanged.
+      * Catches **every** exception from the wrapped adapter's
+        ``get_net_liquidation`` and degrades to ``None`` (logged at
+        DEBUG so the operator can grep without noise).
+      * Forwards the wrapped adapter's ``name`` (or accepts an
+        override).
+
+    Use it whenever you do not fully trust the adapter's exception
+    discipline -- in practice, that means "always", since adapter
+    code paths span aiohttp, JSON parsing, and broker SDKs whose
+    error surface is wide and undocumented.
+
+    Parameters
+    ----------
+    adapter:
+        Any object satisfying :class:`BrokerEquityAdapter`. Verified
+        at construction.
+    name:
+        Optional name override. Defaults to ``f"safe({adapter.name})"``
+        so a wrapped adapter is visually distinct in logs without the
+        operator having to thread a custom name through every wiring
+        site.
+
+    Raises
+    ------
+    TypeError
+        When ``adapter`` does not satisfy :class:`BrokerEquityAdapter`.
+    """
+
+    def __init__(
+        self,
+        adapter: BrokerEquityAdapter,
+        *,
+        name: str | None = None,
+    ) -> None:
+        if not isinstance(adapter, BrokerEquityAdapter):
+            msg = (
+                f"SafeBrokerEquityAdapter requires a BrokerEquityAdapter, "
+                f"got {type(adapter).__name__}"
+            )
+            raise TypeError(msg)
+        self._adapter = adapter
+        self.name = name if name is not None else f"safe({adapter.name})"
+
+    async def get_net_liquidation(self) -> float | None:
+        try:
+            return await self._adapter.get_net_liquidation()
+        except Exception as exc:  # noqa: BLE001
+            log.debug(
+                "safe_broker_adapter: wrapped %s.get_net_liquidation raised: %s",
+                getattr(self._adapter, "name", "unknown"), exc,
+            )
+            return None
+
+
 def make_poller_for(
     adapter: BrokerEquityAdapter,
     *,
@@ -360,7 +446,9 @@ def make_poller_for(
 
 __all__ = [
     "BrokerEquityAdapter",
+    "BrokerEquityNotAvailableError",
     "NullBrokerEquityAdapter",
     "RouterBackedBrokerEquityAdapter",
+    "SafeBrokerEquityAdapter",
     "make_poller_for",
 ]

@@ -70,7 +70,9 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from apex_predator.core.broker_equity_adapter import (
     BrokerEquityAdapter,
+    BrokerEquityNotAvailableError,
     NullBrokerEquityAdapter,
+    SafeBrokerEquityAdapter,
     make_poller_for,
 )
 from apex_predator.core.broker_equity_reconciler import BrokerEquityReconciler
@@ -1058,7 +1060,12 @@ def _install_signal_handlers(runtime: ApexRuntime) -> None:
         pass
 
 
-def _build_broker_equity_adapter(*, live: bool, dry_run: bool) -> BrokerEquityAdapter:
+def _build_broker_equity_adapter(
+    *,
+    live: bool,
+    dry_run: bool,
+    allow_live_no_drift: bool = False,
+) -> BrokerEquityAdapter:
     """Pick the broker-equity adapter for this run.
 
     R1 closure (B1, v0.1.64): production CLI was constructing
@@ -1068,18 +1075,24 @@ def _build_broker_equity_adapter(*, live: bool, dry_run: bool) -> BrokerEquityAd
     right adapter for the mode and is wired into ``_amain`` so every
     boot path (dry-run, paper, live) instantiates SOMETHING.
 
+    H6 closure (v0.1.65): live mode with no real broker source now
+    refuses to boot unless the operator explicitly opts in via
+    ``APEX_ALLOW_LIVE_NO_DRIFT=1`` (caught in ``_amain`` and threaded
+    through as ``allow_live_no_drift``). The previous v0.1.64
+    behaviour silently fell through to ``NullBrokerEquityAdapter`` --
+    a busy operator scanning startup output could miss the WARN line
+    and run a whole eval with drift detection off. Refusing to boot
+    is loud; opting in is explicit.
+
     Resolution
     ----------
     * **Live mode** (``cfg.live and not cfg.dry_run``): try IBKR
       (primary per ``memory/broker_dormancy_mandate.md``); if creds
       are missing, fall through to Tastytrade; if both are missing,
-      degrade to :class:`NullBrokerEquityAdapter` and log a WARN. The
-      degrade path is intentional -- the operator may have legitimate
-      reasons to run live with the broker SDK temporarily unavailable
-      (e.g. IBKR Client Portal session expired, rotating creds), and
-      refusing to boot would be more harmful than running with
-      drift detection silently off. The boot banner makes the choice
-      visible (see ``adapter_name`` print line in ``_amain``).
+      raise :class:`BrokerEquityNotAvailableError` UNLESS
+      ``allow_live_no_drift=True`` (operator opt-in via env var), in
+      which case degrade to :class:`NullBrokerEquityAdapter` with a
+      LOUD WARN.
     * **Dry-run / paper**: always :class:`NullBrokerEquityAdapter`.
       This is intentional -- it keeps the runtime wire-up exercised
       end-to-end (so a regression in B1 surfaces in the paper smoke
@@ -1087,15 +1100,20 @@ def _build_broker_equity_adapter(*, live: bool, dry_run: bool) -> BrokerEquityAd
 
     Tradovate is not consulted (DORMANT per the broker dormancy
     mandate, 2026-04-24). Wire it in here when funding clears.
+
+    Adapters are returned wrapped in :class:`SafeBrokerEquityAdapter`
+    so the "MUST NOT raise" Protocol guarantee is enforced at the
+    wrapper level rather than relying on each venue's exception
+    discipline (H7 closure, v0.1.65).
     """
     if not (live and not dry_run):
-        return NullBrokerEquityAdapter(name="paper-null")
+        return SafeBrokerEquityAdapter(NullBrokerEquityAdapter(name="paper-null"))
     # Live mode -- try IBKR first.
     try:
         from apex_predator.venues.ibkr import IbkrClientPortalVenue
         ibkr = IbkrClientPortalVenue()
         if ibkr.has_credentials():
-            return ibkr
+            return SafeBrokerEquityAdapter(ibkr)
         logger.warning(
             "broker_equity: IBKR creds missing -- falling through to Tastytrade",
         )
@@ -1106,14 +1124,31 @@ def _build_broker_equity_adapter(*, live: bool, dry_run: bool) -> BrokerEquityAd
         from apex_predator.venues.tastytrade import TastytradeVenue
         tasty = TastytradeVenue()
         if tasty.has_credentials():
-            return tasty
+            return SafeBrokerEquityAdapter(tasty)
         logger.warning(
-            "broker_equity: Tastytrade creds also missing -- "
-            "drift detection will be OFF for this run (no_broker_data each tick)",
+            "broker_equity: Tastytrade creds also missing",
         )
     except Exception as exc:  # pragma: no cover -- defensive
         logger.warning("broker_equity: Tastytrade adapter ctor failed (%s)", exc)
-    return NullBrokerEquityAdapter(name="live-null-no-creds")
+    # No real broker source available in live mode. H6 closure: refuse
+    # to boot unless the operator has explicitly opted in.
+    if not allow_live_no_drift:
+        msg = (
+            "live mode requested but no real broker equity source is "
+            "available (IBKR + Tastytrade creds both missing). Refusing "
+            "to boot -- drift detection would be silently disabled. "
+            "Fix: populate IBKR_* / TASTYTRADE_* env vars, OR opt in "
+            "explicitly via APEX_ALLOW_LIVE_NO_DRIFT=1 to acknowledge "
+            "that the eval will run with drift detection OFF."
+        )
+        raise BrokerEquityNotAvailableError(msg)
+    logger.warning(
+        "broker_equity: APEX_ALLOW_LIVE_NO_DRIFT=1 -- live eval will "
+        "run with drift detection OFF (no_broker_data each tick)",
+    )
+    return SafeBrokerEquityAdapter(
+        NullBrokerEquityAdapter(name="live-null-no-creds"),
+    )
 
 
 async def _amain(argv: list[str] | None = None) -> int:
@@ -1141,18 +1176,71 @@ async def _amain(argv: list[str] | None = None) -> int:
     # poller end-to-end. Picks the right adapter for the mode (real
     # venue in live, NullBrokerEquityAdapter in dry-run / paper).
     # See ``_build_broker_equity_adapter`` for the resolution chain.
-    broker_adapter = _build_broker_equity_adapter(
-        live=cfg.live, dry_run=cfg.dry_run,
-    )
+    # H6 closure (v0.1.65): live + no creds = refuse-to-boot unless
+    # the operator explicitly opts in via APEX_ALLOW_LIVE_NO_DRIFT=1.
+    allow_live_no_drift = os.environ.get("APEX_ALLOW_LIVE_NO_DRIFT") == "1"
+    try:
+        broker_adapter = _build_broker_equity_adapter(
+            live=cfg.live,
+            dry_run=cfg.dry_run,
+            allow_live_no_drift=allow_live_no_drift,
+        )
+    except BrokerEquityNotAvailableError as exc:
+        logger.error("boot refused: %s", exc)
+        print(f"BOOT REFUSED: {exc}")
+        return 78  # EX_CONFIG -- operator config error
     broker_poller = make_poller_for(broker_adapter, refresh_s=5.0)
     broker_reconciler = BrokerEquityReconciler(
         broker_equity_source=broker_poller.current,
     )
 
+    # R3 + D2 closure (v0.1.65 wave 2): wire ConsistencyGuard and
+    # TrailingDDTracker in production. The roadmap-vs-code reconciler
+    # (`scripts/_audit_roadmap_vs_code.py`) flagged R3 as WIRED-FAIL
+    # because _amain was constructing ApexRuntime with no
+    # `consistency_guard=` / `trailing_dd_tracker=` kwargs -- exactly
+    # the same B1-shaped wire-up gap the Red Team caught for R1. The
+    # runtime had a hard `RuntimeError` raise on live + missing
+    # trailing_dd_tracker (so live mode was hard-broken); the
+    # consistency guard was silently no-op without the kwarg.
+    #
+    # State files are scoped to ``cfg.state_path.parent / "state"``
+    # rather than ``ROOT / "state"`` so smoke tests (which pass
+    # ``--state-path tmp_path/s.json``) get isolated state and do not
+    # pollute the operator's real ``state/`` directory between runs.
+    # In production with the default ``--state-path roadmap_state.json``,
+    # this resolves to ``ROOT / "state"`` -- same path as before.
+    from apex_predator.core.trailing_dd_tracker import TrailingDDTracker
+    state_dir = cfg.state_path.parent / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    consistency_guard = ConsistencyGuard.load_or_init(
+        state_dir / "consistency_guard.json",
+    )
+    # Apex 50K eval defaults: $50,000 starting balance, $2,500 trailing
+    # DD cap. These match configs/kill_switch.yaml::tier_a.apex_eval_preemptive
+    # ($500 cushion before the $2,500 floor). For dry-run / paper the
+    # values are nominal -- the tracker still observes the cushion
+    # regardless of whether the equity numbers feed real PnL.
+    trailing_dd_tracker = TrailingDDTracker.load_or_init(
+        state_dir / "trailing_dd_tracker.json",
+        starting_balance_usd=50_000.0,
+        trailing_dd_cap_usd=2_500.0,
+    )
+    # Scope the KillSwitchLatch to the same isolated state dir so the
+    # tracker's verdicts persist alongside the rest of the per-run
+    # state. Without this override the latch defaults to
+    # ``ROOT / "state" / "kill_switch_latch.json"`` and a smoke test
+    # that trips it (e.g. by ticking with empty go_state) leaks the
+    # tripped latch into the operator's working tree.
+    kill_switch_latch = KillSwitchLatch(state_dir / "kill_switch_latch.json")
+
     runtime = ApexRuntime(
         cfg,
         broker_equity_reconciler=broker_reconciler,
         broker_equity_poller=broker_poller,
+        consistency_guard=consistency_guard,
+        trailing_dd_tracker=trailing_dd_tracker,
+        kill_switch_latch=kill_switch_latch,
     )
     _install_signal_handlers(runtime)
 
@@ -1169,6 +1257,16 @@ async def _amain(argv: list[str] | None = None) -> int:
         f"(tol_usd={broker_reconciler.tolerance_usd} "
         f"tol_pct={broker_reconciler.tolerance_pct} "
         f"refresh_s=5.0)",
+    )
+    print(
+        f"consistency   : 30%-rule guard wired "
+        f"(state={(state_dir / 'consistency_guard.json').name})",
+    )
+    _tdd_state = trailing_dd_tracker.state()
+    print(
+        f"trailing_dd   : {_tdd_state.starting_balance_usd:.0f} "
+        f"start / {_tdd_state.trailing_dd_cap_usd:.0f} cap "
+        f"(floor={trailing_dd_tracker.floor_usd():.0f})",
     )
     print("=" * 64)
 

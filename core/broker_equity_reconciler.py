@@ -74,6 +74,7 @@ runtime to respond to out-of-tolerance events.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -82,6 +83,23 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 log = logging.getLogger(__name__)
+
+
+def _sanitize_for_json(value: float | None) -> float | None:
+    """Return ``value`` unchanged unless it is ``inf`` / ``-inf`` / ``NaN``.
+
+    H5 closure (v0.1.65). The Python ``json`` module emits ``inf`` and
+    ``NaN`` as the literals ``Infinity`` / ``NaN`` -- which are valid
+    JavaScript but **not** valid JSON per RFC 8259 §6. Downstream
+    consumers (the dashboard, the alerts log parser, anything reading
+    ``runtime_log.jsonl`` with a stricter parser) will choke. Treat
+    those sentinels as ``None`` for serialisation.
+    """
+    if value is None:
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
 
 
 @dataclass(frozen=True)
@@ -125,12 +143,20 @@ class ReconcileResult:
     reason: str
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialisation view -- defensive against inf / NaN floats.
+
+        H5 closure (v0.1.65): every numeric field is sanitised through
+        :func:`_sanitize_for_json` so a stale state object that somehow
+        carries ``inf`` / ``NaN`` (e.g. constructed manually in a test,
+        or built before the v0.1.65 ``min_logical_usd`` guard landed)
+        cannot produce RFC-8259-violating output.
+        """
         return {
             "ts": self.ts,
-            "logical_equity_usd": self.logical_equity_usd,
-            "broker_equity_usd": self.broker_equity_usd,
-            "drift_usd": self.drift_usd,
-            "drift_pct_of_logical": self.drift_pct_of_logical,
+            "logical_equity_usd": _sanitize_for_json(self.logical_equity_usd),
+            "broker_equity_usd": _sanitize_for_json(self.broker_equity_usd),
+            "drift_usd": _sanitize_for_json(self.drift_usd),
+            "drift_pct_of_logical": _sanitize_for_json(self.drift_pct_of_logical),
             "in_tolerance": self.in_tolerance,
             "reason": self.reason,
         }
@@ -164,6 +190,15 @@ class BrokerEquityReconciler:
         Fractional drift threshold (0.001 == 0.1%). Drift above this
         flips out-of-tolerance. Both thresholds are enforced jointly;
         we go out-of-tolerance when EITHER is exceeded.
+    min_logical_usd:
+        Minimum logical equity for which a percentage drift is
+        defined. When ``logical_equity_usd < min_logical_usd``, the
+        reconcile result is classified as ``no_broker_data`` (we
+        cannot meaningfully divide by a zero-or-tiny denominator,
+        and producing ``inf`` would corrupt the JSON tick log).
+        Defaults to 1.0 USD -- below 1 dollar of equity the eval is
+        already over and drift detection is moot. H5 closure
+        (v0.1.65).
     name:
         Optional identifier used in log lines. Defaults to
         ``"broker_equity_reconciler"``.
@@ -175,6 +210,7 @@ class BrokerEquityReconciler:
         *,
         tolerance_usd: float = 50.0,
         tolerance_pct: float = 0.001,
+        min_logical_usd: float = 1.0,
         name: str = "broker_equity_reconciler",
     ) -> None:
         if tolerance_usd < 0:
@@ -183,9 +219,13 @@ class BrokerEquityReconciler:
         if tolerance_pct < 0:
             msg = f"tolerance_pct must be >= 0 (got {tolerance_pct})"
             raise ValueError(msg)
+        if min_logical_usd < 0:
+            msg = f"min_logical_usd must be >= 0 (got {min_logical_usd})"
+            raise ValueError(msg)
         self._source = broker_equity_source
         self.tolerance_usd = float(tolerance_usd)
         self.tolerance_pct = float(tolerance_pct)
+        self.min_logical_usd = float(min_logical_usd)
         self.name = name
         self._stats = ReconcileStats()
 
@@ -210,6 +250,32 @@ class BrokerEquityReconciler:
         """
         ts = datetime.now(UTC).isoformat()
         self._stats.checks_total += 1
+
+        # H5 closure (v0.1.65): guard against logical equity below the
+        # configured floor BEFORE we touch broker data. Below the floor
+        # the percentage drift is undefined; producing inf would corrupt
+        # the JSON tick log (RFC 8259 violation). Classify as no_data so
+        # the runtime path stays uniform.
+        if (
+            not math.isfinite(logical_equity_usd)
+            or logical_equity_usd < self.min_logical_usd
+        ):
+            self._stats.checks_no_data += 1
+            result = ReconcileResult(
+                ts=ts,
+                logical_equity_usd=(
+                    float(logical_equity_usd)
+                    if math.isfinite(logical_equity_usd)
+                    else 0.0
+                ),
+                broker_equity_usd=None,
+                drift_usd=None,
+                drift_pct_of_logical=None,
+                in_tolerance=True,
+                reason="no_broker_data",
+            )
+            self._stats.last_result = result
+            return result
 
         try:
             broker_equity = self._source()
@@ -236,10 +302,9 @@ class BrokerEquityReconciler:
 
         drift_usd = float(logical_equity_usd) - float(broker_equity)
         drift_abs = abs(drift_usd)
-        if logical_equity_usd == 0:
-            drift_pct = 0.0 if drift_usd == 0 else float("inf")
-        else:
-            drift_pct = drift_abs / abs(float(logical_equity_usd))
+        # logical_equity_usd >= min_logical_usd >= 0 here, so the
+        # division below is safe.
+        drift_pct = drift_abs / abs(float(logical_equity_usd))
 
         exceeds_usd = drift_abs > self.tolerance_usd
         exceeds_pct = drift_pct > self.tolerance_pct
