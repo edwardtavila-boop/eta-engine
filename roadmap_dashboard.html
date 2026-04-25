@@ -120,9 +120,32 @@
   <h1>EVOLUTIONARY TRADING ALGO <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.63</b></span>
-    <span>TESTS <b>3950 ✓</b></span>
+    <span>VER <b>0.1.64</b></span>
+    <span>TESTS <b>3965 ✓</b></span>
     <span>UPDATED <b>2026-04-24</b></span>
+  </div>
+</div>
+
+<!-- v0.1.64 ROUTER-AWARE BROKER-EQUITY ADAPTER BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.14), transparent);">
+  <h3>v0.1.64 — Router-Aware Broker-Equity Adapter · 3965 tests passing (+15 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.64 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>R1 deferred item #2 closure</b></span>
+    <span><span style="color:var(--dim)">Adapter:</span> <b>router-driven futures broker proxy</b></span>
+    <span><span style="color:var(--dim)">Failover:</span> <b>IBKR↔Tastytrade transparent</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/broker_equity_adapter.py · tests/test_broker_equity_adapter.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>RouterBackedBrokerEquityAdapter</b> — proxies to <code>router.choose_venue("MNQ")</code> on every fetch</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>active_venue_name</b> — best-effort live name for log lines (None on probe error)</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>stable poller name</b> — "router-active-futures" so log key doesn't flip per failover</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>3-layer exception isolation</b> — choose_venue / venue surface / reader call all → None</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>Tradovate dormancy honoured</b> — router substitution flows through transparently</span>
+    <span><span class="pill done" style="font-size:9px;">✓</span> <b>15 wiring tests</b> — protocol · failover · 3 raise paths · dormancy · e2e · mid-poll swap</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Mid-session IBKR→Tastytrade failover now keeps drift detection live (was: silent <code>no_broker_data</code> blackout). Single-source reconciler contract preserved. Multi-broker fan-out + KillVerdict synthesis remain v0.2.x scope.
   </div>
 </div>
 

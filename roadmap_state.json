@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-24T22:20:35.965090+00:00",
+  "last_updated": "2026-04-25T02:25:02.308620+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 107,
-    "eta_engine_tests_passing": 3950,
+    "eta_engine_tests_passing": 3965,
     "eta_engine_tests_failing": 0,
     "eta_engine_verify_all": "17/17 PASS",
     "eta_engine_staking_wired": {
@@ -3989,6 +3989,44 @@
       "tests_delta_residual_from_other_modules": 24,
       "ruff_green_touched_files": true,
       "full_suite_runtime_seconds": 126.75
+    },
+    "eta_engine_v0_1_64_router_aware_adapter": {
+      "timestamp_utc": "2026-04-25T02:25:02.308620+00:00",
+      "version": "v0.1.64",
+      "bundle_name": "ROUTER-AWARE BROKER-EQUITY ADAPTER -- close the v0.1.62 deferred item *router-aware poller selection* by adding RouterBackedBrokerEquityAdapter, a single-source proxy that resolves the active futures broker via router.choose_venue() on every fetch.",
+      "theme": "v0.1.63 wired the reconciler / poller into ApexRuntime but the poller bound to one statically-chosen adapter. A mid-session failover (IBKR -> Tastytrade) under the broker dormancy mandate would silently degrade drift detection to no_broker_data. The router-backed adapter fixes that: failover swaps the read source automatically because the adapter delegates to whichever venue the router currently prefers.",
+      "operator_directive_quote": "continue all",
+      "modules_edited": [
+        "eta_engine/core/broker_equity_adapter.py (new class RouterBackedBrokerEquityAdapter; lazy SmartRouter import in __init__ to keep import graph clean; docstring updated to move 'router-aware poller selection' out of Non-goals into Closed-in-v0.1.64).",
+        "eta_engine/tests/test_broker_equity_adapter.py (new class TestRouterBackedBrokerEquityAdapter, 15 tests covering protocol fit, failover, exception swallowing, tradovate dormancy substitution, end-to-end smoke, mid-polling failover)."
+      ],
+      "tests_added": [
+        "eta_engine/tests/test_broker_equity_adapter.py::TestRouterBackedBrokerEquityAdapter (15 tests across the router-aware proxy contract: protocol fit, name stability, type validation, active venue reporting, fetch delegation, failover semantics, exception swallowing on three layers, dormant-broker substitution, end-to-end with reconciler, mid-polling failover)."
+      ],
+      "design_choices": {
+        "single_source_contract_preserved": "Reconciler still consumes a single broker_equity_source callable. The router-backed adapter is one adapter that internally varies its read target -- the upstream contract does not change.",
+        "stable_poller_name_dynamic_venue_name": "The adapter's `name` attr is stable ('router-active-futures' by default) so the poller's log key does not flip every failover. A separate `active_venue_name` property exposes the live name for callers that want to log it alongside drift events.",
+        "exception_swallowing_three_layers": "router.choose_venue raise / venue lacks reader / reader raises -- all three degrade to None so the reconciler classifies as no_broker_data. The supervisor never sees a router fault as a tick-halt; drift detection just goes dark for the affected window and resumes on the next successful read.",
+        "construct_time_router_validation": "RouterBackedBrokerEquityAdapter.__init__ runs an isinstance(SmartRouter) check at construct time. A miswired supervisor fails loud at startup, not silently at the first tick.",
+        "lazy_router_import": "core.broker_equity_adapter imports SmartRouter lazily (inside __init__ + a TYPE_CHECKING guard) so the module's import graph stays free of every venue's HTTP client. Importing the adapter module for unit tests does not pull in aiohttp / httpx.",
+        "probe_symbol_default_mnq": "MNQ is the canonical Apex-eval symbol. Crypto / non-futures probes would resolve to crypto venues, which do not implement equity reconciliation -- those would return None and disable drift detection. Default keeps the adapter useful out of the box; callers may override via probe_symbol kwarg."
+      },
+      "scope_exclusions": {
+        "no_supervisor_rewiring": "scripts/run_eta_live.py is unchanged. The v0.1.63 kwargs already accept any (poller, reconciler) the caller constructs, so adopting the router-backed path is a one-line change at the call site rather than a contract change in ApexRuntime.",
+        "no_killswitch_synthesis_on_drift": "Reconciler stays observation-only. KillVerdict synthesis on sustained out-of-tolerance is v0.2.x scope once we have live-paper tolerance empirics.",
+        "no_multi_broker_fanout": "Single-source contract preserved. Cross-broker drift (IBKR vs Tastytrade simultaneously) is still v0.2.x scope.",
+        "no_replace_logical_with_broker_mtm": "The tracker still consumes logical equity. Whether to feed it broker_mtm - sum(open_pnl) once the drift check is live is a venue-integration choice deferred to v0.2.x."
+      },
+      "r1_deferred_item_2_closure_state": {
+        "v0_1_62_status": "Listed as deferred under 'Non-goals': supervisor explicitly picks one adapter; v0.2.x to lift into router-driven selector.",
+        "v0_1_63_status": "Still deferred -- runtime wiring landed but adapter selection remained a call-site decision.",
+        "v0_1_64_status": "CLOSED -- RouterBackedBrokerEquityAdapter ships. Single-line construction at the supervisor: `adapter = RouterBackedBrokerEquityAdapter(router)`; `poller = make_poller_for(adapter)`. Failover automatic; tradovate-dormancy substitution honoured."
+      },
+      "tests_passing_before": 3950,
+      "tests_passing_after": 3965,
+      "tests_added_in_this_bundle": 15,
+      "tests_delta_residual_from_other_modules": 0,
+      "ruff_green_touched_files": true
     }
   },
   "phases": [
@@ -4989,7 +5027,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-24T22:20:35.965090+00:00",
+  "last_updated_utc": "2026-04-25T02:25:02.308620+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5207,6 +5245,13 @@
       "title": "R1 end-to-end runtime wiring. ApexRuntime now starts/stops the BrokerEquityPoller, feeds tier-A equity through the reconciler each tick, logs every classification, alerts on transition into broker_below_logical. R1 flipped SCAFFOLDED -> CLOSED (observation-only).",
       "tests_delta": 6,
       "tests_passing": 3950
+    },
+    {
+      "version": "v0.1.64",
+      "timestamp_utc": "2026-04-25T02:25:02.308620+00:00",
+      "title": "Router-aware broker-equity adapter. RouterBackedBrokerEquityAdapter proxies to whichever futures venue the SmartRouter currently prefers, so a mid-session failover from IBKR to Tastytrade keeps drift detection live instead of silently degrading to no_broker_data. R1 deferred item #2 (router-aware poller selection) flipped from DEFERRED to CLOSED.",
+      "tests_delta": 15,
+      "tests_passing": 3965
     }
   ]
 }

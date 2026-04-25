@@ -45,6 +45,26 @@ routing:
     firm_red_gate:     { level: warn,     channels: [pushover, email] }
     preflight_fail:    { level: warn,     channels: [pushover, email] }
     weekly_review:     { level: info,     channels: [email] }
+    # R1 broker-equity drift detector. Fires on transition into
+    # broker_below_logical (broker net-liq cushion is < tier-A logical
+    # equity by more than tolerance). Routed to pushover + email so
+    # the operator gets a mobile push and a paper trail for post-mortem.
+    # Re-fire on recovery+re-entry; sustained-drift re-fire is the
+    # v0.2.x scope per the residual ledger.
+    broker_equity_drift: { level: warn,     channels: [pushover, email] }
+    # ApexRuntime lifecycle + verdict-execution events. All of these
+    # were being dispatched in code (run_eta_live.py) but were not
+    # registered here, so AlertDispatcher silently dropped them into
+    # docs/alerts_log.jsonl with no Pushover / email / SMS delivery.
+    # Caught by the v0.1.63 R1 Red Team review (B2) and the
+    # scripts/_audit_alert_events.py audit that traced 7 missing events.
+    runtime_start:        { level: info,     channels: [email] }
+    runtime_stop:         { level: info,     channels: [email] }
+    boot_refused:         { level: critical, channels: [pushover, email, sms] }
+    bot_error:            { level: warn,     channels: [pushover, email] }
+    apex_preempt:         { level: warn,     channels: [pushover, email] }
+    kill_switch_latched:  { level: critical, channels: [pushover, email, sms] }
+    consistency_status:   { level: warn,     channels: [pushover, email] }
 
 # Rate limits
 rate_limit:

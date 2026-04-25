@@ -1,7 +1,8 @@
 # Red Team Review — D-series Apex Eval Hardening
 
 **Date:** 2026-04-24 (v0.1.58) · updated 2026-04-24 (v0.1.59 residual-risk
-closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring).
+closure) · updated 2026-04-24 (v0.1.63 R1 end-to-end wiring) · updated
+2026-04-24 (v0.1.64 router-aware adapter).
 **Scope:** D2 (`TrailingDDTracker`) and D3 (`ConsistencyGuard`) modules and
 their wiring into `scripts/run_eta_live.py`.
 **Reviewer:** `risk-advocate` agent (Opus 4.7, adversarial posture).
@@ -14,6 +15,76 @@ the reconciler each tick, logs every classification, and fires an
 alert on the transition into `broker_below_logical`. All four HIGH
 residual risks (R1/R2/R3/R4) are now CLOSED at the observation layer;
 KillVerdict synthesis on sustained drift remains a v0.2.x scope call.
+**Outcome (v0.1.64):** R1 deferred item #2 (router-aware poller
+selection) closed — `RouterBackedBrokerEquityAdapter` proxies to
+whichever futures venue the SmartRouter currently prefers so that an
+IBKR↔Tastytrade failover keeps drift detection live instead of
+silently degrading to `no_broker_data`. Single-source reconciler
+contract preserved; +15 wiring tests.
+**Outcome (v0.1.64 R1 production wire-up — adversarial dispatch):**
+Mandatory Red-Team review of v0.1.63 R1 closure ran (risk-advocate
+Opus 4.7) and returned **BLOCKED** with 3 BLOCKERs, 7 HIGH, 4 MEDIUM,
+2 LOW, plus 6 process gaps. Two BLOCKERs closed in this bundle:
+- **B1 (production wire-up gap)** — `_amain` was constructing
+  `ApexRuntime(cfg)` with no broker-equity reconciler/poller kwargs,
+  so the entire R1 stack was dormant code in live mode. Closed by
+  `_build_broker_equity_adapter()` helper in `scripts/run_eta_live.py`
+  that resolves IBKR-primary / Tastytrade-fallback / Null-degrade
+  per the broker dormancy mandate, plus `make_poller_for(...)` /
+  `BrokerEquityReconciler(...)` construction in `_amain`. Boot banner
+  prints `broker_equity : <adapter_name> (tol_usd=... tol_pct=...
+  refresh_s=...)` so misconfiguration is visible.
+- **B2 (alert routing gap)** — `dispatcher.send("broker_equity_drift",
+  ...)` was emitting an event that was not registered in
+  `configs/alerts.yaml`. AlertDispatcher silently logs unknown events
+  to `docs/alerts_log.jsonl` with no Pushover / email / SMS delivery,
+  so the operator received zero notifications when drift fired. A
+  re-audit (`scripts/_audit_alert_events.py`) found six other events
+  with the same gap: `boot_refused`, `kill_switch_latched`,
+  `apex_preempt`, `consistency_status`, `runtime_start`,
+  `runtime_stop`, `bot_error`. All seven plus `broker_equity_drift`
+  now have routing entries with appropriate levels. New CI gate
+  `tests/test_alert_event_registry.py` walks every `dispatcher.send(
+  EVENT, ...)` call site against the YAML registry and refuses to pass
+  if any event is missing — this class of bug cannot recur.
+
+Residuals from the v0.1.64 review (carry to v0.1.65 / v0.2.x):
+
+| ID | Severity | Title | Owner |
+|----|----------|-------|-------|
+| B3 | BLOCKER  | tier-A aggregate equity invariant undocumented (sum-of-bot-state.equity vs single broker net-liq comparison may be apples-to-oranges) | v0.1.65 — needs design call on per-account vs per-fleet equity aggregation |
+| H1 | HIGH     | No tolerance calibration harness — collected drift logs unread | v0.2.x — `scripts/calibrate_broker_drift_tolerance.py` |
+| H2 | HIGH     | Asymmetric tolerances not modeled (below-bias different from above-bias) | v0.1.65 — split `tolerance_below_*` / `tolerance_above_*` |
+| H3 | HIGH     | Transition-only alerting drops sustained-drift signal + threshold-jitter latch reset can spam | v0.1.65 — re-fire interval + hysteresis on latch clear |
+| H4 | HIGH     | TTL is on our poll cycle, not broker server-side timestamp | v0.1.65 — parse server timestamps where available; identical-bytes detection where not |
+| H5 | HIGH     | `ta_equity == 0` produces inf in JSON tick log (RFC 8259 violation) | v0.1.65 — guard `min_logical_usd` in tick + `as_dict` sentinel for inf |
+| H6 | HIGH     | NullBrokerEquityAdapter in live mode is invisible to operator | v0.1.64 partial — boot banner now shows adapter name; v0.1.65 full — refuse-to-boot in live mode |
+| H7 | HIGH     | Protocol "MUST NOT raise" guarantee is by convention, not enforced | v0.1.65 — `BrokerEquityAdapterBase` wrapper |
+| M1 | MEDIUM   | No per-bot drift detection (aggregate-only) | v0.2.x with multi-account venue introspection |
+| M2 | MEDIUM   | TrailingDDTracker/ConsistencyGuard run on logical equity, ignore reconciler output | v0.2.x — KillVerdict synthesis design |
+| M3 | MEDIUM   | No `runtime_log.jsonl` rotation (8GB/month at 1s cadence) | v0.1.65 — daily rotation + gzip on age |
+| M4 | MEDIUM   | No recorded broker-payload fixtures — IBKR/Tasty schema drift would silently break parsing | v0.1.65 — VCR-style fixture tests |
+| L1 | LOW      | Adapter `name` not uniqueness-enforced | accepted — single-account today |
+| L2 | LOW      | `ReconcileStats.max_drift_usd_abs` lifetime-only (never reset) | v0.1.65 — windowed max |
+
+Process gaps from the review:
+1. ✅ **Test stub bypassed real alert routing** — closed by
+   `tests/test_alert_event_registry.py` which walks call sites against
+   the production `alerts.yaml`.
+2. **"Deferred to v0.2.x" docstring is the same in 4+ versions** — no
+   exit criteria. v0.1.65 should commit a calibrator-script ticket
+   with concrete acceptance criteria.
+3. **No production wire-up smoke test** — should add
+   `tests/test_amain_wire_up.py` that runs `_amain(["--max-bars", "1",
+   "--dry-run"])` against a temp dir and asserts the `broker_equity`
+   block lands in the JSONL.
+4. **Roadmap-vs-code reconciler missing** — bump scripts advance the
+   R-status flag without verifying the underlying code symbols exist.
+   v0.1.65 should ship `scripts/_audit_roadmap_vs_code.py`.
+5. **No operator runbook for drift detector** — v0.1.65 should add
+   `docs/runbooks/broker_equity_drift_response.md`.
+6. ✅ **`docs/red_team_d2_d3_review.md` design doc out of sync with
+   v0.1.63 contract layer** — closed by this update.
 
 This document captures the adversarial teardown of the D-series work, the
 fixes shipped in response, and the residual risks that remain (documented
@@ -203,12 +274,28 @@ is a v0.2.x scope call (requires calibrating the tolerance against
 commission + slippage empirics from live paper runs, not the synthetic
 harness we ship today).
 
+**v0.1.64 router-aware adapter (closure of deferred item #2).**
+Added `RouterBackedBrokerEquityAdapter` to
+`eta_engine/core/broker_equity_adapter.py` — a `BrokerEquityAdapter`
+that consults `router.choose_venue(probe_symbol)` on every fetch and
+proxies to whichever futures venue is currently active. The
+reconciler / poller side keep their existing single-source contract;
+the router takes care of substitution under the broker dormancy
+mandate (IBKR primary, Tastytrade fallback, Tradovate dormant). A
+mid-session failover swaps the read source automatically — no
+poller re-wire, no drift-detection blackout. Three layers of
+exception swallowing (router probe / venue lacks reader / reader
+raises) all degrade to `None` so the reconciler classifies as
+`no_broker_data` and the supervisor keeps running. Tests:
+`TestRouterBackedBrokerEquityAdapter` (15 tests) covers protocol
+fit, failover semantics, exception isolation, dormancy substitution,
+end-to-end with reconciler, mid-polling failover.
+
 **Still deferred to v0.2.x:** (1) KillVerdict synthesis on sustained
-out-of-tolerance. (2) Router-aware poller selection (pick the right
-poller based on which broker is currently trading futures). (3) A
-multi-broker drift fan-out (cross-check IBKR vs Tastytrade). None are
-Apex-eval blockers — observation is sufficient to catch the drift
-pattern that originally motivated R1.
+out-of-tolerance. (2) A multi-broker drift fan-out (cross-check
+IBKR vs Tastytrade simultaneously). Neither is an Apex-eval blocker
+— observation with router-aware single-broker reads is sufficient
+for the single-account pattern Apex evals run on.
 
 **Tests.**
   * `tests/test_broker_equity_reconciler.py` — 21 tests: no-data,

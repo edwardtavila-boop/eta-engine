@@ -24,6 +24,12 @@ TestMakePollerFor
 TestEndToEndAdapterPollerReconciler
   Smoke test wiring an adapter through the factory through the
   reconciler so any future regression in the contract is caught.
+
+TestRouterBackedBrokerEquityAdapter
+  Pins the v0.1.64 router-aware adapter that proxies to whichever
+  futures venue the router currently prefers (IBKR primary, Tastytrade
+  fallback under the broker dormancy mandate). Verifies failover
+  semantics, exception swallowing, and protocol fit.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ import pytest
 from eta_engine.core.broker_equity_adapter import (
     BrokerEquityAdapter,
     NullBrokerEquityAdapter,
+    RouterBackedBrokerEquityAdapter,
     make_poller_for,
 )
 from eta_engine.core.broker_equity_poller import BrokerEquityPoller
@@ -272,5 +279,182 @@ class TestEndToEndAdapterPollerReconciler:
             await asyncio.sleep(0.12)
             # at minimum: 1 eager fetch + a few loop iterations
             assert len(call_log) >= 3
+        finally:
+            await poller.stop()
+
+
+# ---------------------------------------------------------------------------
+# Router-backed adapter (v0.1.64)
+# ---------------------------------------------------------------------------
+
+
+class _FakeFuturesVenue:
+    """Stand-in for IBKR / Tastytrade with a controllable equity reading."""
+
+    def __init__(self, name: str, equity: float | None = 50_000.0) -> None:
+        self.name = name
+        self._equity = equity
+        self._raise_on_call: Exception | None = None
+        self.calls: int = 0
+
+    def set_equity(self, value: float | None) -> None:
+        self._equity = value
+
+    def set_raises(self, exc: Exception | None) -> None:
+        self._raise_on_call = exc
+
+    async def get_net_liquidation(self) -> float | None:
+        self.calls += 1
+        if self._raise_on_call is not None:
+            raise self._raise_on_call
+        return self._equity
+
+
+class _NoEquityVenue:
+    """Stand-in for a venue that lacks ``get_net_liquidation``."""
+
+    def __init__(self, name: str = "no_equity") -> None:
+        self.name = name
+
+
+def _make_router(
+    *,
+    ibkr: object | None = None,
+    tastytrade: object | None = None,
+    preferred: str = "ibkr",
+):
+    """Construct a SmartRouter wired with fake venues, lazy-imported."""
+    from eta_engine.venues.router import SmartRouter
+
+    return SmartRouter(
+        ibkr=ibkr or _FakeFuturesVenue("ibkr", equity=50_000.0),
+        tastytrade=tastytrade or _FakeFuturesVenue("tastytrade", equity=49_900.0),
+        preferred_futures_venue=preferred,
+    )
+
+
+class TestRouterBackedBrokerEquityAdapter:
+    """v0.1.64 -- router-aware proxy that follows futures-broker failover."""
+
+    def test_adapter_satisfies_protocol(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router())
+        assert isinstance(adapter, BrokerEquityAdapter)
+
+    def test_default_name_is_router_active_futures(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router())
+        assert adapter.name == "router-active-futures"
+
+    def test_custom_name_is_preserved(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(), name="custom")
+        assert adapter.name == "custom"
+
+    def test_construct_with_non_router_raises_typeerror(self) -> None:
+        with pytest.raises(TypeError, match="SmartRouter"):
+            RouterBackedBrokerEquityAdapter("not a router")  # type: ignore[arg-type]
+
+    def test_active_venue_name_reports_ibkr_when_router_prefers_ibkr(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(preferred="ibkr"))
+        assert adapter.active_venue_name == "ibkr"
+
+    def test_active_venue_name_reports_tastytrade_on_failover(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(preferred="tastytrade"))
+        assert adapter.active_venue_name == "tastytrade"
+
+    @pytest.mark.asyncio
+    async def test_get_net_liquidation_reads_from_active_venue(self) -> None:
+        ibkr = _FakeFuturesVenue("ibkr", equity=51_234.5)
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(ibkr=ibkr))
+        assert await adapter.get_net_liquidation() == 51_234.5
+        assert ibkr.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_failover_routes_next_read_to_tastytrade(self) -> None:
+        ibkr = _FakeFuturesVenue("ibkr", equity=50_000.0)
+        tasty = _FakeFuturesVenue("tastytrade", equity=49_900.0)
+        adapter = RouterBackedBrokerEquityAdapter(
+            _make_router(ibkr=ibkr, tastytrade=tasty, preferred="ibkr"),
+        )
+        # First read -- IBKR primary.
+        assert await adapter.get_net_liquidation() == 50_000.0
+        assert ibkr.calls == 1
+        assert tasty.calls == 0
+        # Operator / circuit failover swaps the router preference.
+        adapter._router._preferred_futures_venue = "tastytrade"  # noqa: SLF001
+        assert await adapter.get_net_liquidation() == 49_900.0
+        assert tasty.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_venue_lacks_reader(self) -> None:
+        no_equity = _NoEquityVenue("ibkr")
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(ibkr=no_equity))
+        assert await adapter.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_reader_raises(self) -> None:
+        ibkr = _FakeFuturesVenue("ibkr")
+        ibkr.set_raises(RuntimeError("auth flap"))
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(ibkr=ibkr))
+        assert await adapter.get_net_liquidation() is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_choose_venue_raises(self) -> None:
+        adapter = RouterBackedBrokerEquityAdapter(_make_router())
+
+        def _boom(*_a: object, **_kw: object) -> object:
+            raise RuntimeError("router internal")
+
+        adapter._router.choose_venue = _boom  # type: ignore[method-assign]  # noqa: SLF001
+        assert await adapter.get_net_liquidation() is None
+        # active_venue_name should also degrade gracefully.
+        assert adapter.active_venue_name is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_venue_returns_none(self) -> None:
+        ibkr = _FakeFuturesVenue("ibkr", equity=None)
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(ibkr=ibkr))
+        assert await adapter.get_net_liquidation() is None
+
+    def test_tradovate_dormancy_substitution_is_respected(self) -> None:
+        """Operator mandate 2026-04-24: requesting tradovate -> IBKR substitution."""
+        ibkr = _FakeFuturesVenue("ibkr", equity=50_000.0)
+        adapter = RouterBackedBrokerEquityAdapter(
+            _make_router(ibkr=ibkr, preferred="tradovate"),
+        )
+        # The router substitutes "tradovate" -> "ibkr" at construction.
+        # The adapter should follow.
+        assert adapter.active_venue_name == "ibkr"
+
+    @pytest.mark.asyncio
+    async def test_adapter_drives_reconciler_within_tolerance(self) -> None:
+        """End-to-end: router-backed adapter -> poller -> reconciler."""
+        ibkr = _FakeFuturesVenue("ibkr", equity=50_000.0)
+        adapter = RouterBackedBrokerEquityAdapter(_make_router(ibkr=ibkr))
+        poller = make_poller_for(adapter, refresh_s=0.05, stale_after_s=5.0)
+        await poller.start()
+        try:
+            assert poller.current() == 50_000.0
+            rec = BrokerEquityReconciler(broker_equity_source=poller.current)
+            result = rec.reconcile(logical_equity_usd=50_010.0)
+            assert result.in_tolerance is True
+            assert result.broker_equity_usd == 50_000.0
+        finally:
+            await poller.stop()
+
+    @pytest.mark.asyncio
+    async def test_failover_mid_polling_swaps_source(self) -> None:
+        """Long-running poller picks up a router preference flip."""
+        ibkr = _FakeFuturesVenue("ibkr", equity=50_000.0)
+        tasty = _FakeFuturesVenue("tastytrade", equity=49_500.0)
+        router = _make_router(ibkr=ibkr, tastytrade=tasty, preferred="ibkr")
+        adapter = RouterBackedBrokerEquityAdapter(router)
+        poller = make_poller_for(adapter, refresh_s=0.02, stale_after_s=5.0)
+        await poller.start()
+        try:
+            await asyncio.sleep(0.06)
+            assert poller.current() == 50_000.0
+            # Mid-flight failover.
+            router._preferred_futures_venue = "tastytrade"  # noqa: SLF001
+            await asyncio.sleep(0.08)
+            assert poller.current() == 49_500.0
         finally:
             await poller.stop()

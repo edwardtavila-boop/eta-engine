@@ -68,6 +68,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from eta_engine.core.broker_equity_adapter import (
+    BrokerEquityAdapter,
+    NullBrokerEquityAdapter,
+    make_poller_for,
+)
+from eta_engine.core.broker_equity_reconciler import BrokerEquityReconciler
 from eta_engine.core.consistency_guard import (
     ConsistencyGuard,
     ConsistencyStatus,
@@ -94,9 +100,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from eta_engine.core.broker_equity_poller import BrokerEquityPoller
-    from eta_engine.core.broker_equity_reconciler import (
-        BrokerEquityReconciler,
-    )
     from eta_engine.core.trailing_dd_tracker import TrailingDDTracker
 
 logger = logging.getLogger("eta_engine.runtime")
@@ -1055,6 +1058,64 @@ def _install_signal_handlers(runtime: ApexRuntime) -> None:
         pass
 
 
+def _build_broker_equity_adapter(*, live: bool, dry_run: bool) -> BrokerEquityAdapter:
+    """Pick the broker-equity adapter for this run.
+
+    R1 closure (B1, v0.1.64): production CLI was constructing
+    ``ApexRuntime(cfg)`` with no broker-equity reconciler/poller, so
+    the entire R1 stack was dormant code in live mode -- exactly the
+    silent-drift exposure R1 was meant to close. This helper picks the
+    right adapter for the mode and is wired into ``_amain`` so every
+    boot path (dry-run, paper, live) instantiates SOMETHING.
+
+    Resolution
+    ----------
+    * **Live mode** (``cfg.live and not cfg.dry_run``): try IBKR
+      (primary per ``memory/broker_dormancy_mandate.md``); if creds
+      are missing, fall through to Tastytrade; if both are missing,
+      degrade to :class:`NullBrokerEquityAdapter` and log a WARN. The
+      degrade path is intentional -- the operator may have legitimate
+      reasons to run live with the broker SDK temporarily unavailable
+      (e.g. IBKR Client Portal session expired, rotating creds), and
+      refusing to boot would be more harmful than running with
+      drift detection silently off. The boot banner makes the choice
+      visible (see ``adapter_name`` print line in ``_amain``).
+    * **Dry-run / paper**: always :class:`NullBrokerEquityAdapter`.
+      This is intentional -- it keeps the runtime wire-up exercised
+      end-to-end (so a regression in B1 surfaces in the paper smoke
+      test) while ensuring no broker calls go out in dry-run.
+
+    Tradovate is not consulted (DORMANT per the broker dormancy
+    mandate, 2026-04-24). Wire it in here when funding clears.
+    """
+    if not (live and not dry_run):
+        return NullBrokerEquityAdapter(name="paper-null")
+    # Live mode -- try IBKR first.
+    try:
+        from eta_engine.venues.ibkr import IbkrClientPortalVenue
+        ibkr = IbkrClientPortalVenue()
+        if ibkr.has_credentials():
+            return ibkr
+        logger.warning(
+            "broker_equity: IBKR creds missing -- falling through to Tastytrade",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("broker_equity: IBKR adapter ctor failed (%s)", exc)
+    # IBKR not available -- try Tastytrade as fallback.
+    try:
+        from eta_engine.venues.tastytrade import TastytradeVenue
+        tasty = TastytradeVenue()
+        if tasty.has_credentials():
+            return tasty
+        logger.warning(
+            "broker_equity: Tastytrade creds also missing -- "
+            "drift detection will be OFF for this run (no_broker_data each tick)",
+        )
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("broker_equity: Tastytrade adapter ctor failed (%s)", exc)
+    return NullBrokerEquityAdapter(name="live-null-no-creds")
+
+
 async def _amain(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(
@@ -1076,7 +1137,23 @@ async def _amain(argv: list[str] | None = None) -> int:
         log_path=args.log_path,
     )
 
-    runtime = ApexRuntime(cfg)
+    # R1 closure (B1, v0.1.64): wire the broker-equity reconciler /
+    # poller end-to-end. Picks the right adapter for the mode (real
+    # venue in live, NullBrokerEquityAdapter in dry-run / paper).
+    # See ``_build_broker_equity_adapter`` for the resolution chain.
+    broker_adapter = _build_broker_equity_adapter(
+        live=cfg.live, dry_run=cfg.dry_run,
+    )
+    broker_poller = make_poller_for(broker_adapter, refresh_s=5.0)
+    broker_reconciler = BrokerEquityReconciler(
+        broker_equity_source=broker_poller.current,
+    )
+
+    runtime = ApexRuntime(
+        cfg,
+        broker_equity_reconciler=broker_reconciler,
+        broker_equity_poller=broker_poller,
+    )
     _install_signal_handlers(runtime)
 
     print("EVOLUTIONARY TRADING ALGO  -- runtime")
@@ -1087,6 +1164,12 @@ async def _amain(argv: list[str] | None = None) -> int:
     print(f"tick_interval : {cfg.tick_interval_s}s")
     print(f"go_state      : {cfg.go_state or '(empty)'}")
     print(f"bot_filter    : {cfg.bot_filter or '(all)'}")
+    print(
+        f"broker_equity : {broker_adapter.name} "
+        f"(tol_usd={broker_reconciler.tolerance_usd} "
+        f"tol_pct={broker_reconciler.tolerance_pct} "
+        f"refresh_s=5.0)",
+    )
     print("=" * 64)
 
     rc = await runtime.run()
