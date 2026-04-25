@@ -1712,3 +1712,105 @@ class TestSustainedDriftReAlert:
         # After recovery the ts is reset to None so a fresh entry
         # fires immediately as a new transition.
         assert runtime._last_broker_drift_alert_ts is None  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# v0.1.67 M3 -- runtime log rotator wiring
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimeLogRotatorWiring:
+    """v0.1.67 M3 -- ApexRuntime calls rotator.run() periodically."""
+
+    def test_default_rotator_constructed_when_kwarg_omitted(self, tmp_path):
+        from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=0,
+        )
+        runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
+        assert isinstance(runtime.runtime_log_rotator, RuntimeLogRotator)
+        assert runtime.runtime_log_rotator.log_path == cfg.log_path
+        assert runtime.runtime_log_rotate_every_n_ticks == 600
+
+    def test_explicit_rotator_kwarg_overrides_default(self, tmp_path):
+        from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
+
+        custom = RuntimeLogRotator(
+            log_path=tmp_path / "custom.jsonl",
+            rotate_at_size_bytes=1024,
+        )
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=0,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            runtime_log_rotator=custom,
+        )
+        assert runtime.runtime_log_rotator is custom
+
+    @pytest.mark.asyncio
+    async def test_rotation_fires_on_size_threshold(self, tmp_path):
+        """When the log exceeds the rotator threshold mid-run, the
+        rotator renames it aside and the runtime keeps writing fresh."""
+        from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=3,
+        )
+        # Seed the live log so it's already past the threshold; with a
+        # very small threshold (100 bytes) and N=1 rotate-every-tick,
+        # the first tick triggers rotation.
+        cfg.log_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg.log_path.write_bytes(b"x" * 5000)
+        rotator = RuntimeLogRotator(
+            log_path=cfg.log_path, rotate_at_size_bytes=100,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            runtime_log_rotator=rotator,
+        )
+        runtime.runtime_log_rotate_every_n_ticks = 1
+
+        rc = await runtime.run()
+        assert rc == 0
+        # At least one rotation should have happened.
+        assert rotator.stats.rotations >= 1
+        # The rotated archive lives next to the live log.
+        archives = list(
+            cfg.log_path.parent.glob(f"{cfg.log_path.stem}.*.jsonl"),
+        )
+        assert archives, "expected at least one rotated archive"
+
+    @pytest.mark.asyncio
+    async def test_rotation_emits_log_rotation_event(self, tmp_path):
+        """When rotator.run yields a non-empty outcome, the runtime
+        records a 'log_rotation' kind entry."""
+        import json
+
+        from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
+
+        cfg = _cfg_factory(
+            tmp_path, go_state={"tier_a_mnq_live": True}, max_bars=2,
+        )
+        cfg.log_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg.log_path.write_bytes(b"x" * 5000)
+        rotator = RuntimeLogRotator(
+            log_path=cfg.log_path, rotate_at_size_bytes=100,
+        )
+        runtime = mod.ApexRuntime(
+            cfg, bindings=_fake_bindings(),
+            runtime_log_rotator=rotator,
+        )
+        runtime.runtime_log_rotate_every_n_ticks = 1
+
+        await runtime.run()
+        # The new live log (post-rotation) should carry a log_rotation
+        # entry recording the archive that was rolled aside.
+        if cfg.log_path.exists():
+            lines = cfg.log_path.read_text(encoding="utf-8").splitlines()
+            kinds = [
+                json.loads(ln).get("kind")
+                for ln in lines if ln.strip()
+            ]
+            assert "log_rotation" in kinds

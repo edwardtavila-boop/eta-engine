@@ -75,6 +75,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -198,6 +199,14 @@ class ReconcileStats:
     # H3 closure (v0.1.66): hysteresis transition counters.
     drift_state_entries: int = 0
     drift_state_exits: int = 0
+    # L2 closure (v0.1.67): windowed max drift, computed over the last
+    # ``drift_window_size`` reconcile ticks (no_broker_data ticks not
+    # included in the window). The lifetime ``max_drift_usd_abs`` stays
+    # for forensic posterity; the windowed value gives the H1
+    # calibration harness a moving statistic that ages out stale
+    # spikes from earlier in the eval.
+    windowed_max_drift_usd_abs: float = 0.0
+    drift_window_size: int = 0
 
 
 class BrokerEquityReconciler:
@@ -243,6 +252,7 @@ class BrokerEquityReconciler:
         min_logical_usd: float = 1.0,
         clear_tolerance_below_usd: float | None = None,
         clear_tolerance_below_pct: float | None = None,
+        drift_window_size: int = 1000,
         name: str = "broker_equity_reconciler",
     ) -> None:
         # H2 closure (Red Team v0.1.64 review): asymmetric tolerances.
@@ -347,8 +357,25 @@ class BrokerEquityReconciler:
             raise ValueError(msg)
         self.clear_tolerance_below_usd = float(clear_tolerance_below_usd)
         self.clear_tolerance_below_pct = float(clear_tolerance_below_pct)
+        # L2 closure (v0.1.67): windowed-max drift tracking. The deque
+        # holds drift_abs values from the last ``drift_window_size``
+        # ticks that produced a real classification (no_broker_data
+        # ticks are not added to the window). Default 1000 == ~16 min
+        # at the v0.1.65 1s tick cadence -- short enough to age out
+        # stale spikes, long enough to retain a meaningful sample for
+        # the H1 calibration harness when it lands.
+        if drift_window_size < 0:
+            msg = (
+                f"drift_window_size must be >= 0 "
+                f"(got {drift_window_size})"
+            )
+            raise ValueError(msg)
+        self.drift_window_size = int(drift_window_size)
+        self._drift_window: deque[float] = deque(
+            maxlen=self.drift_window_size or None,
+        )
         self.name = name
-        self._stats = ReconcileStats()
+        self._stats = ReconcileStats(drift_window_size=self.drift_window_size)
         # H3 closure (v0.1.66): latched drift state. Flips True on
         # entry into a broker_below_logical out-of-tolerance tick;
         # flips back False only when drift falls inside BOTH clear
@@ -485,6 +512,15 @@ class BrokerEquityReconciler:
         self._stats.max_drift_usd_abs = max(
             self._stats.max_drift_usd_abs, drift_abs,
         )
+        # L2 closure (v0.1.67): track windowed max drift over the last
+        # ``drift_window_size`` real (non no_broker_data) ticks. The
+        # deque appends with bounded maxlen so old values age out.
+        # Re-computing max() per tick is cheap at the default 1000-
+        # element window and avoids the complexity of a heap-based
+        # sliding-window max. drift_window_size==0 disables the window.
+        if self.drift_window_size > 0:
+            self._drift_window.append(drift_abs)
+            self._stats.windowed_max_drift_usd_abs = max(self._drift_window)
 
         # H3 closure (v0.1.66): hysteresis-driven drift-state machine.
         #

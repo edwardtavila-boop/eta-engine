@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-25T11:23:12.612319+00:00",
+  "last_updated": "2026-04-25T11:48:56.001349+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 107,
-    "eta_engine_tests_passing": 4113,
+    "eta_engine_tests_passing": 4236,
     "eta_engine_tests_failing": 0,
     "eta_engine_verify_all": "17/17 PASS",
     "eta_engine_staking_wired": {
@@ -4078,6 +4078,32 @@
         "Process gap 2 -- exit criteria for 'deferred to v0.2.x' claims"
       ],
       "tests_passing_after": 4113
+    },
+    "eta_engine_v0_1_67_log_rotation_and_windowed_max": {
+      "timestamp_utc": "2026-04-25T11:48:56.001349+00:00",
+      "version": "v0.1.67",
+      "bundle_name": "M3 closure -- runtime log rotation + L2 closure -- ReconcileStats windowed max",
+      "theme": "Closes M3 + L2 from the v0.1.64 Red Team review of v0.1.63 R1. M3: at the v0.1.65 1s tick cadence the runtime log grows ~2-8 GB/month uncapped; an Apex eval VM hitting its disk quota is a preventable infrastructure-only failure mode. v0.1.67 adds RuntimeLogRotator with size-triggered rotation (default 100 MB) + age-based gzip (default 24h) + retention prune (default 30d). ApexRuntime constructs a default rotator bound to cfg.log_path and calls rotator.run() every Nth tick (default 600 = ~10 min at 1s cadence). L2: ReconcileStats.max_drift_usd_abs is lifetime-only -- a single early-eval spike pollutes the metric forever. Adds drift_window_size (default 1000) + windowed_max_drift_usd_abs that ages out stale spikes via a bounded deque. The lifetime max stays for forensics; the windowed value gives the H1 calibration harness (when it ships) a moving statistic.",
+      "operator_directive_quote": "contine and do all",
+      "modules_edited": [
+        "core/runtime_log_rotator.py: NEW -- RuntimeLogRotator class with maybe_rotate / gzip_aged / prune_aged / run methods; pure-stdlib (gzip + shutil + pathlib); idempotent on every leg; same-second collision handling; bounds validation in __init__ (rotate_at_size_bytes > 0; gzip_after_age <= retain_age); RotatorStats counters",
+        "scripts/run_eta_live.py: import RuntimeLogRotator + thread runtime_log_rotator kwarg through ApexRuntime.__init__; default constructed when omitted (bound to cfg.log_path); runtime_log_rotate_every_n_ticks=600 attribute; tick loop calls rotator.run() every Nth tick + emits a 'log_rotation' kind entry to the runtime log when any of rotated/gzipped/pruned is non-empty",
+        "core/broker_equity_reconciler.py: ReconcileStats gains windowed_max_drift_usd_abs + drift_window_size; constructor adds drift_window_size kwarg (default 1000) with bounds validation; collections.deque(maxlen=N) tracks last N drift_abs values; reconcile() updates both lifetime max and windowed max; no_broker_data ticks do not pollute the window",
+        "tests/test_runtime_log_rotator.py: NEW -- 20 tests covering constructor validation (5), size-triggered rotation (4), gzip aging (3), retention prune (2), run() composition (1), stats (2), edge cases (2), with monkeypatched mtimes for age-based behaviour",
+        "tests/test_broker_equity_reconciler.py: TestWindowedMaxDrift (6 tests) covering default size, negative rejection, size=0 disable, growth-then-cap, age-out behaviour, no_broker_data isolation",
+        "tests/test_run_eta_live.py: TestRuntimeLogRotatorWiring (4 tests) covering default construction, explicit kwarg override, size-triggered rotation through the live runtime, log_rotation event emission"
+      ],
+      "deferred_followups": [
+        "B3 BLOCKER -- tier-A aggregate equity invariant (needs design call on per-account vs per-fleet equity aggregation)",
+        "H1 -- tolerance calibration harness (gated on collected drift histogram from live-paper -- L2 windowed_max now gives the harness a moving stat)",
+        "H4 -- server-side broker payload timestamps",
+        "M1 -- per-bot drift detection",
+        "M2 -- KillVerdict synthesis on sustained drift (gated on H1 empirics)",
+        "M4 -- broker-payload fixture tests",
+        "L1 -- adapter name uniqueness (accepted as not a bug under single-account today)",
+        "Process gap 2 -- exit criteria for 'deferred to v0.2.x' claims"
+      ],
+      "tests_passing_after": 4236
     }
   },
   "phases": [
@@ -5078,7 +5104,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-25T11:23:12.612319+00:00",
+  "last_updated_utc": "2026-04-25T11:48:56.001349+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5315,6 +5341,12 @@
       "timestamp_utc": "2026-04-25T11:23:12.612319+00:00",
       "title": "H3 closure: hysteresis clear-band on the drift latch + sustained-drift re-alert (kind=transition/sustained/recovered). The drift state survives noisy ticks; multi-hour drift events stay visible to the operator instead of falling silent after the initial entry alert.",
       "tests_passing": 4113
+    },
+    {
+      "version": "v0.1.67",
+      "timestamp_utc": "2026-04-25T11:48:56.001349+00:00",
+      "title": "M3 closure (RuntimeLogRotator -- size + age + retention) + L2 closure (ReconcileStats windowed max). The runtime log can no longer grow unbounded; the H1 calibration harness now has a moving-window drift stat to consume.",
+      "tests_passing": 4236
     }
   ]
 }

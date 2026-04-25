@@ -596,3 +596,94 @@ class TestHysteresisClearBand:
         assert result.reason == "no_broker_data"
         assert result.is_in_drift_state is False
         assert result.transition == "stable"
+
+
+# ---------------------------------------------------------------------------
+# v0.1.67 L2 -- windowed max drift over the last N reconcile ticks
+# ---------------------------------------------------------------------------
+
+
+class TestWindowedMaxDrift:
+    """v0.1.67 L2 -- bounded sliding window over drift_abs."""
+
+    def test_default_window_size_is_1000(self):
+        rec = BrokerEquityReconciler(broker_equity_source=lambda: None)
+        assert rec.drift_window_size == 1000
+        assert rec.stats.drift_window_size == 1000
+        assert rec.stats.windowed_max_drift_usd_abs == 0.0
+
+    def test_negative_window_size_rejected(self):
+        with pytest.raises(ValueError, match="drift_window_size"):
+            BrokerEquityReconciler(
+                broker_equity_source=lambda: None,
+                drift_window_size=-5,
+            )
+
+    def test_window_size_zero_disables_windowing(self):
+        """drift_window_size=0 means windowed_max stays at 0.0."""
+        broker = [49_900.0]  # drift=$100
+
+        def _src():
+            return broker[0]
+
+        rec = BrokerEquityReconciler(
+            broker_equity_source=_src,
+            tolerance_usd=50.0,
+            drift_window_size=0,
+        )
+        rec.reconcile(logical_equity_usd=50_000.0)
+        # Lifetime max still tracks; window stays disabled.
+        assert rec.stats.max_drift_usd_abs == pytest.approx(100.0)
+        assert rec.stats.windowed_max_drift_usd_abs == 0.0
+
+    def test_window_grows_then_caps(self):
+        """Drift series 100, 200, 50 with window=2: max sees 100,200; 200,50."""
+        equities = iter([49_900.0, 49_800.0, 49_950.0])
+        rec = BrokerEquityReconciler(
+            broker_equity_source=lambda: next(equities),
+            tolerance_usd=10.0,
+            drift_window_size=2,
+        )
+        rec.reconcile(logical_equity_usd=50_000.0)  # drift=100
+        assert rec.stats.windowed_max_drift_usd_abs == pytest.approx(100.0)
+        rec.reconcile(logical_equity_usd=50_000.0)  # drift=200
+        assert rec.stats.windowed_max_drift_usd_abs == pytest.approx(200.0)
+        rec.reconcile(logical_equity_usd=50_000.0)  # drift=50
+        # Window now [200, 50] -- the 100 has aged out, max is 200.
+        assert rec.stats.windowed_max_drift_usd_abs == pytest.approx(200.0)
+
+    def test_window_eventually_ages_out_old_spike(self):
+        """Spike + sustained quiet: windowed max eventually drops to quiet level."""
+        equities = iter([49_000.0] + [49_990.0] * 5)  # 1000 spike, then 10x5
+        rec = BrokerEquityReconciler(
+            broker_equity_source=lambda: next(equities),
+            tolerance_usd=10.0,
+            drift_window_size=3,
+        )
+        rec.reconcile(logical_equity_usd=50_000.0)  # 1000
+        for _ in range(5):
+            rec.reconcile(logical_equity_usd=50_000.0)  # 10
+        # Window holds last 3 = [10, 10, 10]; max is 10.
+        assert rec.stats.windowed_max_drift_usd_abs == pytest.approx(10.0)
+        # Lifetime max still records the original spike.
+        assert rec.stats.max_drift_usd_abs == pytest.approx(1000.0)
+
+    def test_no_broker_data_does_not_pollute_window(self):
+        """A no_broker_data tick must not append to the window."""
+        broker: list[float | None] = [49_900.0]
+
+        def _src():
+            return broker[0]
+
+        rec = BrokerEquityReconciler(
+            broker_equity_source=_src,
+            tolerance_usd=10.0,
+            drift_window_size=10,
+        )
+        rec.reconcile(logical_equity_usd=50_000.0)  # drift=100
+        # Source returns None next; that tick should not be windowed.
+        broker[0] = None
+        rec.reconcile(logical_equity_usd=50_000.0)
+        # Window still has just the single $100 entry.
+        assert rec.stats.windowed_max_drift_usd_abs == pytest.approx(100.0)
+        assert rec.stats.checks_no_data == 1

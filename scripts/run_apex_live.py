@@ -95,6 +95,7 @@ from eta_engine.core.kill_switch_runtime import (
     validate_apex_tick_cadence,
 )
 from eta_engine.core.market_quality import format_market_context_summary
+from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
 from eta_engine.obs.alert_dispatcher import AlertDispatcher
 from eta_engine.obs.heartbeat import HeartbeatMonitor
 
@@ -530,6 +531,7 @@ class ApexRuntime:
         consistency_guard: ConsistencyGuard | None = None,
         broker_equity_reconciler: BrokerEquityReconciler | None = None,
         broker_equity_poller: BrokerEquityPoller | None = None,
+        runtime_log_rotator: RuntimeLogRotator | None = None,
         dispatcher: AlertDispatcher | None = None,
         router: Any | None = None,
         heartbeat: HeartbeatMonitor | None = None,
@@ -574,6 +576,24 @@ class ApexRuntime:
         # Reset to None on a clean exit transition.
         self._last_broker_drift_alert_ts: float | None = None
         self.broker_drift_realert_interval_s: float = 1800.0
+
+        # M3 closure (v0.1.67): runtime-log rotator. Defaults to a
+        # 100 MB / 1-day-gzip / 30-day-retain policy bound to
+        # ``cfg.log_path``. When passed explicitly, the operator can
+        # override (e.g. a tighter retention window for an eval VM
+        # with a small disk). Pass ``runtime_log_rotator=False``-y
+        # equivalent (None + skip-the-default) is intentionally not
+        # supported -- a runtime that writes a JSONL log with no
+        # rotation is the failure mode M3 was raised to close.
+        if runtime_log_rotator is None:
+            runtime_log_rotator = RuntimeLogRotator(log_path=cfg.log_path)
+        self.runtime_log_rotator = runtime_log_rotator
+        # Rotation cadence: every Nth tick, the runtime calls
+        # ``rotator.run()`` (rotate -> gzip -> prune). Default 600 ticks
+        # ~= 10 min at the v0.1.65 1s tick interval. The rotator is
+        # idempotent so over-calling is safe; under-calling lets the
+        # log grow past the rotation threshold momentarily.
+        self.runtime_log_rotate_every_n_ticks: int = 600
 
         # LIVE-MODE GATE (blocker #2, risk-advocate D3 review).
         # The legacy build_apex_eval_snapshot() fallback does NOT implement
@@ -678,6 +698,39 @@ class ApexRuntime:
                 if self.cfg.max_bars and bar_i >= self.cfg.max_bars:
                     break
                 await self._tick(bots_instantiated, bar_i)
+                # M3 closure (v0.1.67): rotate / gzip / prune the
+                # runtime log on a coarse cadence. Idempotent so
+                # over-calling is safe; running every Nth tick keeps
+                # the cost amortised (~10 min between checks at the
+                # default 1s tick cadence). Errors degrade to a log
+                # warning; the eval keeps running.
+                if (
+                    bar_i > 0
+                    and self.runtime_log_rotate_every_n_ticks > 0
+                    and (bar_i % self.runtime_log_rotate_every_n_ticks) == 0
+                ):
+                    try:
+                        outcome = self.runtime_log_rotator.run()
+                    except Exception as exc:  # pragma: no cover -- defensive
+                        logger.warning(
+                            "runtime_log_rotator.run failed: %s", exc,
+                        )
+                    else:
+                        if any(outcome.values()):
+                            self._log(
+                                kind="log_rotation",
+                                meta={
+                                    "rotated": [
+                                        str(p) for p in outcome["rotated"]
+                                    ],
+                                    "gzipped": [
+                                        str(p) for p in outcome["gzipped"]
+                                    ],
+                                    "pruned": [
+                                        str(p) for p in outcome["pruned"]
+                                    ],
+                                },
+                            )
                 bar_i += 1
                 if self.cfg.tick_interval_s > 0:
                     with contextlib.suppress(TimeoutError):
@@ -1076,6 +1129,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--state-path", type=Path, default=ROOT / "roadmap_state.json")
     ap.add_argument("--config-dir", type=Path, default=ROOT / "configs")
     ap.add_argument("--log-path", type=Path, default=ROOT / "docs" / "runtime_log.jsonl")
+    ap.add_argument(
+        "--require-firm-health",
+        choices=["off", "advisory", "strict"],
+        default=None,
+        help=(
+            "Run firm_health probes before booting. "
+            "'off' = skip; 'advisory' = log probe results, never block; "
+            "'strict' = REFUSE TO BOOT unless verdict is READY. "
+            "Default: 'strict' under --live, 'advisory' under --dry-run."
+        ),
+    )
     return ap.parse_args(argv)
 
 
@@ -1191,6 +1255,32 @@ async def _amain(argv: list[str] | None = None) -> int:
 
     # --live overrides --dry-run
     dry_run = not args.live
+
+    # firm_health gate (#20). Default policy: live -> strict, dry-run -> advisory.
+    # Operator can override either way via --require-firm-health=off.
+    fh_mode = args.require_firm_health or ("strict" if args.live else "advisory")
+    if fh_mode != "off":
+        try:
+            from eta_engine.scripts import firm_health as _fh
+        except ImportError as e:
+            logger.warning("firm_health unavailable, skipping gate: %s", e)
+        else:
+            results = _fh.run_all(skip_bridge=False)
+            verdict = _fh.verdict_from(results, strict=False)
+            print(f"firm_health   : verdict={verdict} mode={fh_mode}")
+            if fh_mode == "strict" and verdict != "READY":
+                bad = [r for r in results if r.status in ("fail", "warn", "skip_broken")]
+                logger.error(
+                    "firm_health gate REFUSED boot (verdict=%s, mode=strict). "
+                    "Issues:\n%s",
+                    verdict,
+                    "\n".join(f"  [{r.status}] {r.name}: {r.detail}" for r in bad),
+                )
+                logger.error(
+                    "Override with `--require-firm-health off` (NOT recommended "
+                    "for live) or fix the failing probes."
+                )
+                return 4
 
     cfg = load_runtime_config(
         config_dir=args.config_dir,

@@ -120,9 +120,32 @@
   <h1>EVOLUTIONARY TRADING ALGO <span>// LIVE ROADMAP</span></h1>
   <div class="stats mono">
     <span><span class="dot"></span>LIVE</span>
-    <span>VER <b>0.1.66</b></span>
-    <span>TESTS <b>4113 ✓</b></span>
+    <span>VER <b>0.1.67</b></span>
+    <span>TESTS <b>4236 ✓</b></span>
     <span>UPDATED <b>2026-04-25</b></span>
+  </div>
+</div>
+
+<!-- v0.1.67 LOG ROTATION + WINDOWED MAX BANNER -->
+<div class="panel" style="margin-bottom:10px; border-left:3px solid var(--accent); background: linear-gradient(90deg, rgba(0,255,163,0.16), transparent);">
+  <h3>v0.1.67 — M3 Log Rotation + L2 Windowed Max · 4236 tests passing (+30 in-scope)</h3>
+  <div class="mono" style="display:flex; gap:14px; align-items:center; font-size:12px; flex-wrap:wrap;">
+    <span class="pill done" style="font-size:12px; padding: 3px 10px;">v0.1.67 SHIPPED</span>
+    <span><span style="color:var(--dim)">Scope:</span> <b>1 MEDIUM + 1 LOW closed</b></span>
+    <span><span style="color:var(--dim)">M3 rotation:</span> <b>100MB / 24h gzip / 30d retain</b></span>
+    <span><span style="color:var(--dim)">L2 window:</span> <b>last 1000 ticks</b></span>
+    <span style="color:var(--dim); margin-left:auto; font-size:10px;">core/runtime_log_rotator.py · core/broker_equity_reconciler.py · scripts/run_eta_live.py</span>
+  </div>
+  <div class="mono" style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(2,1fr); gap:6px;">
+    <span><span class="pill done" style="font-size:9px;">M3</span> <b>RuntimeLogRotator</b> — pure-stdlib; size + age + retention; idempotent on every leg</span>
+    <span><span class="pill done" style="font-size:9px;">M3</span> <b>maybe_rotate / gzip_aged / prune_aged / run</b> — composed via run() each Nth tick</span>
+    <span><span class="pill done" style="font-size:9px;">M3</span> <b>ApexRuntime wiring</b> — every 600 ticks (~10 min @ 1s) + log_rotation event in JSONL</span>
+    <span><span class="pill done" style="font-size:9px;">L2</span> <b>windowed_max_drift_usd_abs</b> — collections.deque(maxlen=1000); ages out stale spikes</span>
+    <span><span class="pill done" style="font-size:9px;">L2</span> <b>drift_window_size kwarg</b> — 0 disables; H1 calibrator gets a moving stat</span>
+    <span><span class="pill done" style="font-size:9px;">M3+L2</span> <b>30 tests</b> — 20 rotator + 6 windowed-max + 4 runtime wire-up</span>
+  </div>
+  <div class="mono" style="margin-top:6px; font-size:10px; color:var(--dim);">
+    Disk-quota safety net for the runtime log: at 1s cadence the log no longer grows unbounded; gzipped daily; pruned at 30d. Lifetime <code>max_drift_usd_abs</code> kept for forensics; windowed companion gives the H1 calibration harness an aging-friendly statistic. Carried to v0.1.68+ / v0.2.x: B3 BLOCKER, H1, H4, M1+M2+M4, L1, process gap 2.
   </div>
 </div>
 
