@@ -65,3 +65,16 @@ docs/btc_inventory/*_20[0-9][0-9][0-9][0-9][0-9][0-9]T*Z.json
 
 # Local cache directory (model weights, parquet shards, etc.)
 .cache/
+
+# Runtime state directories (persisted across runs but operator-local;
+# e.g. kill_switch_latch.json, dashboard_history.json). The path each
+# script writes to is configurable via APEX_STATE_DIR; these are the
+# repo-local defaults and never belong in git.
+/state/
+/var/
+
+# Background-process log streams (jarvis_dashboard, etc.). Anything
+# written under docs/ as *_stderr.log / *_stdout.log is by definition
+# a captured stdio dump, not a committed artifact.
+docs/*_stderr.log
+docs/*_stdout.log
