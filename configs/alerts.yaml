@@ -60,6 +60,11 @@ routing:
     # scripts/_audit_alert_events.py audit that traced 7 missing events.
     runtime_start:        { level: info,     channels: [email] }
     runtime_stop:         { level: info,     channels: [email] }
+    # Operator sign-off marker. Fired by ApexRuntime.run() once per
+    # boot when --unpause + --operator are passed. Routes to
+    # pushover + email so the operator (and inbox) sees an audit
+    # entry tying the run to a human authorization.
+    runtime_unpaused:     { level: info,     channels: [pushover, email] }
     boot_refused:         { level: critical, channels: [pushover, email, sms] }
     bot_error:            { level: warn,     channels: [pushover, email] }
     apex_preempt:         { level: warn,     channels: [pushover, email] }

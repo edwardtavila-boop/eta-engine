@@ -173,6 +173,16 @@ class RuntimeConfig:
     dry_run: bool = True
     bot_filter: str | None = None
     max_bars: int = 0
+    # Wall-clock budget. 0.0 = no limit. Used by overnight paper soaks
+    # so the daemon exits cleanly after N seconds regardless of bar
+    # ingestion rate. Independent of max_bars (whichever bound trips
+    # first wins).
+    max_runtime_s: float = 0.0
+    # Operator sign-off marker. When True, the runtime is allowed to
+    # leave bots un-paused and emits a ``runtime_unpaused`` event on
+    # boot so there's an audit-trail entry tied to the operator.
+    unpause: bool = False
+    operator: str = ""
     # R2 closure: default lowered from 5.0s -> 1.0s to match Apex's sub-second
     # DD enforcement window. A 5s tick could silently cross Apex's floor
     # mid-interval on a fast move; 1s keeps at least one tick per second
@@ -215,6 +225,9 @@ def load_runtime_config(
     max_bars: int,
     tick_interval_s: float,
     log_path: Path,
+    max_runtime_s: float = 0.0,
+    unpause: bool = False,
+    operator: str = "",
 ) -> RuntimeConfig:
     cfg = RuntimeConfig(
         tradovate=_load_yaml(config_dir / "tradovate.yaml"),
@@ -225,6 +238,9 @@ def load_runtime_config(
         dry_run=dry_run,
         bot_filter=bot_filter,
         max_bars=max_bars,
+        max_runtime_s=max_runtime_s,
+        unpause=unpause,
+        operator=operator,
         tick_interval_s=tick_interval_s,
         state_path=state_path,
         config_dir=config_dir,
@@ -699,6 +715,22 @@ class ApexRuntime:
             "live": self.cfg.live and not self.cfg.dry_run,
         })
 
+        # Item 5 closure: operator sign-off journal hook. When the
+        # operator passed --unpause (with --operator NAME), emit a
+        # runtime_unpaused event with the operator name + timestamp so
+        # the audit trail captures who authorized this run to trade.
+        # Fires once per boot, BEFORE the tick loop, so even an
+        # immediate kill-switch trip still leaves a trail of "operator
+        # X allowed this run, then it tripped at tick 0".
+        if self.cfg.unpause:
+            unpause_payload = {
+                "operator":     self.cfg.operator or "anonymous",
+                "live":         self.cfg.live and not self.cfg.dry_run,
+                "active_bots":  [b.name for b, _ in bots_instantiated],
+            }
+            self._log(kind="runtime_unpaused", meta=unpause_payload)
+            self.dispatcher.send("runtime_unpaused", unpause_payload)
+
         if not bots_instantiated:
             self._log(kind="no_active_bots", meta={"go_state": self.cfg.go_state})
             return 0
@@ -728,9 +760,23 @@ class ApexRuntime:
 
         exit_code = 0
         bar_i = 0
+        # Wall-clock budget anchor. Item 4 closure: when max_runtime_s
+        # is set, the tick loop exits cleanly at the budget boundary
+        # regardless of bar ingestion rate. Used by overnight paper
+        # soaks (e.g. --max-runtime-seconds 28800 = 8h).
+        run_started = time.monotonic()
         try:
             while not self._stop.is_set():
                 if self.cfg.max_bars and bar_i >= self.cfg.max_bars:
+                    break
+                if (
+                    self.cfg.max_runtime_s > 0.0
+                    and (time.monotonic() - run_started) >= self.cfg.max_runtime_s
+                ):
+                    logger.info(
+                        "runtime budget exhausted (%.1fs >= %.1fs); draining",
+                        time.monotonic() - run_started, self.cfg.max_runtime_s,
+                    )
                     break
                 await self._tick(bots_instantiated, bar_i)
                 # M3 closure (v0.1.67): rotate / gzip / prune the
@@ -1221,6 +1267,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     help="Only run this bot name (mnq|nq|crypto_seed|eth_perp|sol_perp|xrp_perp)")
     ap.add_argument("--max-bars", type=int, default=0,
                     help="Stop after N ticks (0 = forever). Used by CI smoke-tests.")
+    ap.add_argument("--max-runtime-seconds", type=float, default=0.0,
+                    dest="max_runtime_s",
+                    help=(
+                        "Wall-clock budget. Stop after N seconds even if "
+                        "the tick loop is still running (0.0 = no limit). "
+                        "Used by overnight paper soaks -- e.g. "
+                        "--max-runtime-seconds 28800 = 8h. Independent of "
+                        "--max-bars; whichever bound trips first wins."
+                    ))
+    ap.add_argument("--unpause", action="store_true",
+                    help=(
+                        "Operator sign-off marker. Emits a runtime_unpaused "
+                        "event on boot so the audit trail captures who "
+                        "authorized this run to trade. Pair with --operator "
+                        "NAME so the payload identifies the human."
+                    ))
+    ap.add_argument("--operator", default=None,
+                    help=(
+                        "Operator name attached to runtime_unpaused. "
+                        "Falls back to APEX_OPERATOR env var, then "
+                        "'anonymous'. Required by paper-soak procedure."
+                    ))
     ap.add_argument("--tick-interval", type=float, default=1.0,
                     help=(
                         "Seconds between ticks (0 = tight loop for tests; "
@@ -1389,6 +1457,9 @@ async def _amain(argv: list[str] | None = None) -> int:
         dry_run=dry_run,
         bot_filter=args.bot,
         max_bars=args.max_bars,
+        max_runtime_s=args.max_runtime_s,
+        unpause=args.unpause,
+        operator=(args.operator or os.environ.get("APEX_OPERATOR", "")),
         tick_interval_s=args.tick_interval,
         log_path=args.log_path,
     )
