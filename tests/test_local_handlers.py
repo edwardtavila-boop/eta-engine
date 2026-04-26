@@ -121,18 +121,81 @@ class TestPromptWarmup:
         assert result["est_cost_usd"] == 0.0
         assert "warmup disabled" in result["skipped"]
 
-    def test_emits_est_cost_when_enabled(
+    def test_real_sdk_call_when_enabled(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """When APEX_PROMPT_WARMUP=1 + key + SDK present, the handler
+        issues one real SDK call. Use a fake anthropic module that
+        captures the request shape and returns a synthetic usage block."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         monkeypatch.setenv("APEX_PROMPT_WARMUP", "1")
+
+        captured: dict = {}
+
+        class _FakeUsage:
+            input_tokens = 250
+            output_tokens = 4
+            cache_creation_input_tokens = 250
+            cache_read_input_tokens = 0
+
+        class _FakeResponse:
+            usage = _FakeUsage()
+
+        class _FakeMessages:
+            def create(self, **kwargs) -> _FakeResponse:
+                captured.update(kwargs)
+                return _FakeResponse()
+
+        class _FakeAnthropic:
+            def __init__(self, **_kwargs) -> None:
+                self.messages = _FakeMessages()
+
         import sys
         import types
-        monkeypatch.setitem(sys.modules, "anthropic", types.ModuleType("anthropic"))
+        fake_mod = types.ModuleType("anthropic")
+        fake_mod.Anthropic = _FakeAnthropic  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "anthropic", fake_mod)
+
         result = lh._prompt_warmup_handler(BackgroundTask.PROMPT_WARMUP)
         assert result is not None
-        # Token budget * price = 250/1000 * 0.001 = 0.00025
-        assert result["est_cost_usd"] == pytest.approx(0.00025)
+        assert result["warmed"] == 1
+        assert result["failed"] == 0
+        assert result["input_tokens"] == 250
+        assert result["output_tokens"] == 4
+        assert result["cache_creation"] == 250
+        # 250 * 0.001/1000 + 250 * 0.00125/1000 + 4 * 0.005/1000
+        # = 0.00025 + 0.0003125 + 0.00002 = 0.0005825
+        assert result["est_cost_usd"] == pytest.approx(0.0005825, abs=1e-6)
+        # Cache-control is on the system prefix.
+        sys_block = captured["system"][0]
+        assert sys_block["cache_control"]["type"] == "ephemeral"
+        assert "JARVIS" in sys_block["text"]
+
+    def test_sdk_failure_does_not_raise(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A raising SDK call must surface as failed=1, not propagate."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        monkeypatch.setenv("APEX_PROMPT_WARMUP", "1")
+
+        class _Boom:
+            def __init__(self, **_kwargs) -> None:
+                self.messages = self
+
+            def create(self, **_kwargs) -> None:
+                raise RuntimeError("synthetic SDK failure")
+
+        import sys
+        import types
+        fake_mod = types.ModuleType("anthropic")
+        fake_mod.Anthropic = _Boom  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "anthropic", fake_mod)
+
+        result = lh._prompt_warmup_handler(BackgroundTask.PROMPT_WARMUP)
+        assert result is not None
+        assert result["warmed"] == 0
+        assert result["failed"] == 1
+        assert "synthetic" in result.get("error", "")
 
 
 # ---------------------------------------------------------------------------

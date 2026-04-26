@@ -12,13 +12,24 @@ qualifying paper windows so a single lucky run can't sneak it back in:
     * :meth:`reinstate` clears the bucket once the operator promotes
       the strategy back
 
-This module has no IO and no scheduler -- it is a pure ledger that the
-orchestrator queries each tick.
+The tracker is a pure ledger by default. Constructing with a
+``journal_path`` enables an opt-in JSONL sink so live ticks land in
+``state/shadow_paper_tracker.jsonl`` for the SHADOW_TICK avenger
+handler to tally.
 """
 from __future__ import annotations
 
+import json
+import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_SIZE: int = 20
 DEFAULT_REINSTATE_WINDOWS: int = 3
@@ -51,6 +62,7 @@ class ShadowPaperTracker:
         window_size: int = DEFAULT_WINDOW_SIZE,
         reinstate_windows: int = DEFAULT_REINSTATE_WINDOWS,
         win_rate_floor: float = DEFAULT_WIN_RATE_FLOOR,
+        journal_path: Path | None = None,
     ) -> None:
         if window_size <= 0:
             raise ValueError("window_size must be > 0")
@@ -61,6 +73,7 @@ class ShadowPaperTracker:
         self.window_size = window_size
         self.reinstate_windows = reinstate_windows
         self.win_rate_floor = win_rate_floor
+        self.journal_path = journal_path
         self._buckets: dict[tuple[str, str], _Bucket] = defaultdict(
             lambda: _Bucket(max_windows=reinstate_windows)
         )
@@ -75,6 +88,13 @@ class ShadowPaperTracker:
     ) -> None:
         bucket = self._buckets[(strategy, regime)]
         bucket.trades.append((pnl_r, is_win))
+        if self.journal_path is not None:
+            self._append_journal(
+                strategy=strategy,
+                regime=regime,
+                pnl_r=pnl_r,
+                is_win=is_win,
+            )
         if len(bucket.trades) >= self.window_size:
             window = bucket.trades[: self.window_size]
             del bucket.trades[: self.window_size]
@@ -108,3 +128,32 @@ class ShadowPaperTracker:
     def reinstate(self, strategy: str, regime: str) -> None:
         """Clear bucket after operator promotes strategy back to live."""
         self._buckets.pop((strategy, regime), None)
+
+    def _append_journal(
+        self,
+        *,
+        strategy: str,
+        regime: str,
+        pnl_r: float,
+        is_win: bool,
+    ) -> None:
+        """Best-effort JSONL append. Failures degrade to a log warning
+        so a writeable-disk hiccup never tears down the trading loop.
+        """
+        if self.journal_path is None:
+            return
+        rec = {
+            "ts":       datetime.now(UTC).isoformat(),
+            "strategy": strategy,
+            "regime":   regime,
+            "pnl_r":    pnl_r,
+            "is_win":   bool(is_win),
+        }
+        try:
+            self.journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.journal_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec) + "\n")
+        except OSError as exc:
+            logger.warning(
+                "shadow_paper_tracker journal write failed: %s", exc,
+            )

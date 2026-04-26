@@ -147,21 +147,28 @@ def _prompt_warmup_handler(_task: BackgroundTask) -> dict[str, Any] | None:
     key is configured -- the daemon falls through to Fleet dispatch
     (which itself no-ops in dry-run modes).
 
-    The Anthropic SDK is imported lazily so a system without it can
-    still run the daemon -- the handler simply skips warmup work.
+    Behaviour gate ladder (in order):
+      1. ``ANTHROPIC_API_KEY`` unset           -> None (fall through)
+      2. ``anthropic`` SDK not installed       -> None
+      3. ``APEX_PROMPT_WARMUP`` != "1"          -> safe stub w/ cost=0
+      4. real path: issue one cache_control prefix warmup request,
+         report tokens warmed + actual ``est_cost_usd`` from the
+         response usage block. Failures count toward ``failed`` rather
+         than raising, so the daemon's tick path stays alive.
+
+    The warmup payload is intentionally tiny -- one Haiku-tier
+    `messages.create` with a static system prefix tagged
+    ``cache_control: ephemeral``. Cost is bounded at ~$0.00025 per
+    invocation by the input-token budget.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return None
     try:
-        import anthropic  # noqa: F401  -- presence check only
+        import anthropic  # noqa: F401 -- presence check only
     except ImportError:
         return None
 
-    # Real warmup logic lives behind the SDK. We deliberately do NOT
-    # issue an API call from inside the daemon's tick path on the test
-    # harness -- a flag toggle protects production from accidentally
-    # firing N requests/day from CI smoke runs.
     if not _is_warmup_enabled():
         return {
             "warmed":       0,
@@ -169,22 +176,79 @@ def _prompt_warmup_handler(_task: BackgroundTask) -> dict[str, Any] | None:
             "est_cost_usd": 0.0,
             "skipped":      "warmup disabled (set APEX_PROMPT_WARMUP=1 to enable)",
         }
-
-    # When enabled, we'd issue a small number of warmup requests here.
-    # Returning a deterministic stub keeps the unit-test surface tight
-    # while the real SDK path can be filled in once the operator
-    # selects the prefix-set to warm.
-    est_cost = (_WARMUP_TOKEN_BUDGET / 1000.0) * _WARMUP_PRICE_PER_K_INPUT_USD
-    return {
-        "warmed":       0,
-        "failed":       0,
-        "est_cost_usd": est_cost,
-        "skipped":      "warmup SDK call not yet wired -- placeholder",
-    }
+    return _do_warmup_call(api_key)
 
 
 def _is_warmup_enabled() -> bool:
     return os.environ.get("APEX_PROMPT_WARMUP", "0") == "1"
+
+
+# Cached system prefix used as the warmup target. Picking a deterministic
+# string lets every warmup call hit the same cache slot so subsequent
+# live requests with the same prefix get the cache-hit discount.
+_WARMUP_SYSTEM_PREFIX: str = (
+    "You are JARVIS, the operations supervisor for the APEX PREDATOR "
+    "trading framework. Your role on this call is purely cache warmup: "
+    "respond with the single word ACK and nothing else."
+)
+_WARMUP_USER_MESSAGE: str = "ACK?"
+_WARMUP_MODEL: str = "claude-haiku-4-5-20251001"
+_WARMUP_MAX_OUTPUT_TOKENS: int = 16
+
+
+def _do_warmup_call(api_key: str) -> dict[str, Any]:
+    """Issue one warmup messages.create with cache_control on the
+    system prefix. Errors are caught and reported via ``failed`` rather
+    than raised -- the daemon must never die from a warmup hiccup.
+    """
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model=_WARMUP_MODEL,
+            max_tokens=_WARMUP_MAX_OUTPUT_TOKENS,
+            system=[
+                {
+                    "type": "text",
+                    "text": _WARMUP_SYSTEM_PREFIX,
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+            messages=[{"role": "user", "content": _WARMUP_USER_MESSAGE}],
+        )
+    except Exception as exc:  # noqa: BLE001 -- daemon must never crash
+        logger.warning("prompt_warmup: SDK call failed -- %s", exc)
+        return {
+            "warmed":       0,
+            "failed":       1,
+            "est_cost_usd": 0.0,
+            "error":        str(exc),
+        }
+
+    usage = getattr(resp, "usage", None)
+    in_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+    out_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+    cache_create = getattr(usage, "cache_creation_input_tokens", 0) if usage else 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) if usage else 0
+    # Haiku 4.5 list pricing: $0.001/$0.005 per 1k input/output tokens
+    # (cache writes 1.25x input price, cache reads 0.1x). Approximation
+    # is fine here; the real billing dashboard is the source of truth.
+    est_cost = (
+        in_tokens         * 0.001 / 1000.0
+        + cache_create    * 0.00125 / 1000.0
+        + cache_read      * 0.0001 / 1000.0
+        + out_tokens      * 0.005 / 1000.0
+    )
+    return {
+        "warmed":          1,
+        "failed":          0,
+        "est_cost_usd":    round(est_cost, 6),
+        "input_tokens":    in_tokens,
+        "output_tokens":   out_tokens,
+        "cache_creation":  cache_create,
+        "cache_read":      cache_read,
+        "model":           _WARMUP_MODEL,
+    }
 
 
 # ---------------------------------------------------------------------------
