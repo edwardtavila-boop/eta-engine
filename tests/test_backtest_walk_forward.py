@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import importlib
 
-import pytest
-
 
 def test_import_smoke() -> None:
     """Module imports without raising."""
@@ -17,36 +15,48 @@ def test_import_smoke() -> None:
 
 
 def test_walk_forward_config_smoke() -> None:
-    """``WalkForwardConfig`` instantiates with no args (or skips if it requires args)."""
+    """``WalkForwardConfig`` instantiates with the two required fields."""
     from apex_predator.backtest.walk_forward import WalkForwardConfig
-    try:
-        obj = WalkForwardConfig()  # type: ignore[call-arg]
-    except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently
-        pytest.skip(f"WalkForwardConfig requires args: {type(e).__name__}: {e}")
-    else:
-        assert obj is not None
-        # TODO: real assertions about default state
+
+    cfg = WalkForwardConfig(window_days=30, step_days=7)
+    assert cfg.window_days == 30
+    assert cfg.step_days == 7
+    # Defaults exposed for downstream callers.
+    assert cfg.anchored is False
+    assert cfg.oos_fraction == 0.3
+    assert cfg.min_trades_per_window == 20
+    assert cfg.strict_fold_dsr_gate is False
+    assert cfg.fold_dsr_min_pass_fraction == 0.5
 
 
 def test_walk_forward_result_smoke() -> None:
-    """``WalkForwardResult`` instantiates with no args (or skips if it requires args)."""
+    """``WalkForwardResult`` defaults to an empty-windows summary."""
     from apex_predator.backtest.walk_forward import WalkForwardResult
-    try:
-        obj = WalkForwardResult()  # type: ignore[call-arg]
-    except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently
-        pytest.skip(f"WalkForwardResult requires args: {type(e).__name__}: {e}")
-    else:
-        assert obj is not None
-        # TODO: real assertions about default state
+
+    res = WalkForwardResult()
+    assert res.windows == []
+    assert res.aggregate_is_sharpe == 0.0
+    assert res.aggregate_oos_sharpe == 0.0
+    assert res.deflated_sharpe == 0.0
+    assert res.pass_gate is False
+    assert res.per_fold_dsr == []
 
 
 def test_walk_forward_engine_smoke() -> None:
-    """``WalkForwardEngine`` instantiates with no args (or skips if it requires args)."""
-    from apex_predator.backtest.walk_forward import WalkForwardEngine
-    try:
-        obj = WalkForwardEngine()  # type: ignore[call-arg]
-    except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently
-        pytest.skip(f"WalkForwardEngine requires args: {type(e).__name__}: {e}")
-    else:
-        assert obj is not None
-        # TODO: real assertions about default state
+    """``WalkForwardEngine`` is a stateless engine -- no args to construct."""
+    from apex_predator.backtest.walk_forward import (
+        WalkForwardEngine,
+        WalkForwardResult,
+    )
+
+    engine = WalkForwardEngine()
+    # An empty bar list is the canonical zero-input edge case.
+    res = engine.run(
+        bars=[],
+        pipeline=None,  # type: ignore[arg-type]
+        config=None,  # type: ignore[arg-type]
+        base_backtest_config=None,  # type: ignore[arg-type]
+    )
+    assert isinstance(res, WalkForwardResult)
+    assert res.windows == []
+    assert res.pass_gate is False

@@ -16,13 +16,37 @@ def test_import_smoke() -> None:
     importlib.import_module("apex_predator.staking.base")
 
 
-def test_staking_adapter_smoke() -> None:
-    """``StakingAdapter`` instantiates with no args (or skips if it requires args)."""
+def test_staking_adapter_is_abstract() -> None:
+    """``StakingAdapter`` is an ABC -- direct construction must raise."""
     from apex_predator.staking.base import StakingAdapter
-    try:
-        obj = StakingAdapter()  # type: ignore[call-arg]
-    except TypeError as e:
-        pytest.skip(f"StakingAdapter requires args: {e}")
-    else:
-        assert obj is not None
-        # TODO: real assertions about default state
+
+    with pytest.raises(TypeError, match="abstract"):
+        StakingAdapter()  # type: ignore[abstract]
+
+
+def test_minimal_subclass_satisfies_contract() -> None:
+    """A subclass that implements all four abstract methods constructs."""
+    from apex_predator.staking.base import StakingAdapter
+
+    class _Stub(StakingAdapter):
+        symbol = "ETH"
+        token = "wstETH"
+        target_apy = 3.8
+
+        async def stake(self, amount: float, token: str | None = None) -> str:
+            return "tx-stake"
+
+        async def unstake(self, amount: float) -> str:
+            return "tx-unstake"
+
+        async def get_balance(self) -> float:
+            return 0.0
+
+        async def get_apy(self) -> float:
+            return self.target_apy
+
+    obj = _Stub()
+    assert obj.symbol == "ETH"
+    assert obj.token == "wstETH"
+    assert obj.target_apy == 3.8
+    assert "ETH->wstETH" in repr(obj)

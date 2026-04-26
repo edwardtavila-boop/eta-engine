@@ -36,7 +36,8 @@ jobs:
             pytest pytest-asyncio pytest-cov \
             ruff \
             pydantic numpy pandas scipy aiohttp pyyaml \
-            fastapi httpx
+            fastapi httpx \
+            eth_account
 
       - name: Wire apex_predator as importable package
         run: |

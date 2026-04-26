@@ -48,7 +48,8 @@ jobs:
             aiohttp \
             pyyaml \
             fastapi \
-            httpx
+            httpx \
+            eth_account
       - name: Wire apex_predator as importable package
         # The repo doesn't ship a pyproject.toml; tests import via
         # `from apex_predator.strategies...`. Make the parent dir

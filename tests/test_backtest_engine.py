@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import importlib
 
-import pytest
-
 
 def test_import_smoke() -> None:
     """Module imports without raising."""
@@ -17,12 +15,25 @@ def test_import_smoke() -> None:
 
 
 def test_backtest_engine_smoke() -> None:
-    """``BacktestEngine`` instantiates with no args (or skips if it requires args)."""
+    """``BacktestEngine`` instantiates with a minimal valid pipeline + config."""
+    from datetime import UTC, datetime
+
     from apex_predator.backtest.engine import BacktestEngine
-    try:
-        obj = BacktestEngine()  # type: ignore[call-arg]
-    except TypeError as e:
-        pytest.skip(f"BacktestEngine requires args: {e}")
-    else:
-        assert obj is not None
-        # TODO: real assertions about default state
+    from apex_predator.backtest.models import BacktestConfig
+    from apex_predator.features.pipeline import FeaturePipeline
+
+    pipeline = FeaturePipeline()
+    config = BacktestConfig(
+        start_date=datetime(2026, 1, 1, tzinfo=UTC),
+        end_date=datetime(2026, 1, 31, tzinfo=UTC),
+        symbol="MNQ",
+        initial_equity=5_000.0,
+        risk_per_trade_pct=0.01,
+    )
+    engine = BacktestEngine(pipeline=pipeline, config=config)
+    assert engine.pipeline is pipeline
+    assert engine.config is config
+    assert engine.strategy_id == "apex_default"
+    # ctx_builder defaults to a no-op lambda when not supplied.
+    assert callable(engine.ctx_builder)
+    assert engine.ctx_builder(None, []) == {}
