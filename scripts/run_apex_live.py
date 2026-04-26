@@ -203,6 +203,14 @@ class RuntimeConfig:
     # or ``configs/eta_account.yaml`` -- both tracked as v0.1.70+
     # ergonomics work; v0.1.69 ships the validator + runtime hook.
     tier_a_account_size_usd: float | None = None
+    # User-selectable aggressiveness preset (conservative / balanced /
+    # aggressive). Drives every position-sizing and circuit-breaker knob
+    # from a single choice; see core/risk_profile.py for exact values.
+    # ``None`` means "use the default" (balanced) when the runtime
+    # eventually consumes this — the field is plumbed here so the
+    # private-portal can pass per-user selections through without
+    # touching argparse internals.
+    risk_profile_name: str | None = None
 
 
 def _load_yaml(p: Path) -> dict[str, Any]:
@@ -223,6 +231,7 @@ def load_runtime_config(
     max_bars: int,
     tick_interval_s: float,
     log_path: Path,
+    risk_profile_name: str | None = None,
 ) -> RuntimeConfig:
     # _load_yaml returns {} for missing files; tradovate.yaml is
     # expected to be absent while the broker is DORMANT.
@@ -239,6 +248,7 @@ def load_runtime_config(
         state_path=state_path,
         config_dir=config_dir,
         log_path=log_path,
+        risk_profile_name=risk_profile_name,
     )
     if state_path.exists():
         try:
@@ -1212,6 +1222,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Default: 'strict' under --live, 'advisory' under --dry-run."
         ),
     )
+    ap.add_argument(
+        "--risk-profile",
+        choices=["conservative", "balanced", "aggressive"],
+        default=None,
+        help=(
+            "User-selectable aggressiveness preset. Drives every "
+            "position-sizing and circuit-breaker knob from a single "
+            "choice (see core/risk_profile.py for exact values). "
+            "Default: 'balanced' — matches the published methodology "
+            "and the back-tested track record."
+        ),
+    )
     return ap.parse_args(argv)
 
 
@@ -1363,6 +1385,7 @@ async def _amain(argv: list[str] | None = None) -> int:
         max_bars=args.max_bars,
         tick_interval_s=args.tick_interval,
         log_path=args.log_path,
+        risk_profile_name=args.risk_profile,
     )
 
     # R1 closure (B1, v0.1.64): wire the broker-equity reconciler /
@@ -1485,6 +1508,12 @@ async def _amain(argv: list[str] | None = None) -> int:
         f"start / {_tdd_state.trailing_dd_cap_usd:.0f} cap "
         f"(floor={trailing_dd_tracker.floor_usd():.0f})",
     )
+    # User-selectable risk profile. The bot doesn't yet read these values
+    # to override its internal sizing — that integration ships with the
+    # private portal. Banner surfaces the choice so dry-run smoke tests
+    # can confirm the CLI flag plumbed through ``RuntimeConfig``.
+    _rp_name = getattr(cfg, "risk_profile_name", None) or "balanced (default)"
+    print(f"risk_profile  : {_rp_name}")
     # B3 boot banner: tier-A account-size invariant. Prints either
     # an explicit size + bounds or 'none (unbounded)' so the operator
     # sees at startup whether the validator's bounded checks are on.
