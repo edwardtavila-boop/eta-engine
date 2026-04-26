@@ -49,8 +49,12 @@ Drift card schema (``_render_drift`` output):
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
+import time
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -61,6 +65,20 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 DRIFT_JOURNAL: Path = Path("~/.jarvis/drift.jsonl").expanduser()
+DECISION_JOURNAL: Path = Path("~/.jarvis/decision_journal.jsonl").expanduser()
+ALERTS_LOG: Path = Path("docs/alerts_log.jsonl")  # obs.alert_dispatcher writes here
+AUDIT_LOG: Path = Path("~/.local/state/apex_predator/mcc_audit.jsonl").expanduser()
+PUSH_SUBSCRIPTIONS: Path = Path("~/.local/state/apex_predator/mcc_push_subscriptions.jsonl").expanduser()
+KILL_REQUEST: Path = Path("~/.local/state/apex_predator/mcc_kill_request.json").expanduser()
+PAUSE_REQUESTS: Path = Path("~/.local/state/apex_predator/mcc_pause_requests.jsonl").expanduser()
+ALERT_ACKS: Path = Path("~/.local/state/apex_predator/mcc_alert_acks.jsonl").expanduser()
+
+# Live tail size (cards show last N journal/alert entries).
+TAIL_LINES: int = 20
+
+# Hard rule: bots boot paused, never auto-unpause. The operator must type
+# this exact string in the body of any /api/cmd/unpause-bot request.
+UNPAUSE_CONFIRM_TOKEN: str = "I_UNDERSTAND_LIVE_RISK"
 
 
 # ---------------------------------------------------------------------------
@@ -164,12 +182,78 @@ def _render_calibration() -> dict[str, Any]:
     return {"last_run": None, "ks_pvalue": None}
 
 
+def _tail_jsonl(path: Path, n: int = TAIL_LINES) -> list[dict[str, Any]]:
+    """Return the last ``n`` well-formed JSON-line entries from ``path``."""
+    if not path.exists():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out: list[dict[str, Any]] = []
+    for line in text.splitlines()[-n:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            out.append(obj)
+    return out
+
+
 def _render_journal() -> dict[str, Any]:
-    return {"tail": []}
+    return {"path": str(DECISION_JOURNAL), "tail": _tail_jsonl(DECISION_JOURNAL)}
 
 
 def _render_alerts() -> dict[str, Any]:
-    return {"tail": []}
+    return {"path": str(ALERTS_LOG), "tail": _tail_jsonl(ALERTS_LOG)}
+
+
+# ---------------------------------------------------------------------------
+# Audit log + operator identity (Cloudflare Access JWT)
+# ---------------------------------------------------------------------------
+
+
+def _audit(action: str, *, operator: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Append one row to AUDIT_LOG. Returns the record (echoed in response)."""
+    rec: dict[str, Any] = {
+        "ts": datetime.now(UTC).isoformat(),
+        "action": action,
+        "operator": operator,
+        "payload": payload,
+    }
+    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with AUDIT_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+    return rec
+
+
+def _operator_from_jwt(headers: Any) -> str:
+    """Extract operator email from the ``Cf-Access-Jwt-Assertion`` header.
+
+    Signature is NOT verified -- the cloudflared tunnel only forwards
+    requests that already cleared Cloudflare Access at the edge, so the
+    JWT is trusted-by-channel. Returns "anonymous" when the header is
+    missing or unparseable (covers local dev without the tunnel).
+    """
+    raw = headers.get("Cf-Access-Jwt-Assertion") or headers.get("cf-access-jwt-assertion")
+    if not raw:
+        return "anonymous"
+    try:
+        parts = raw.split(".")
+        if len(parts) != 3:
+            return "anonymous"
+        # JWT segments are base64url with no padding -- pad before decoding.
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        if not isinstance(payload, dict):
+            return "anonymous"
+        return str(payload.get("email") or payload.get("identity") or "anonymous")
+    except (ValueError, KeyError, json.JSONDecodeError, binascii.Error, UnicodeDecodeError):
+        return "anonymous"
 
 
 def collect_state() -> dict[str, Any]:
@@ -262,6 +346,43 @@ INDEX_HTML: str = """<!DOCTYPE html>
     .ok   { color: var(--ok)   !important; }
     .warn { color: var(--warn) !important; }
     .bad  { color: var(--bad)  !important; }
+    .controls {
+      margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .btn {
+      flex: 0 1 auto; min-height: 44px; padding: 8px 14px;
+      background: var(--panel2); color: var(--text);
+      border: 1px solid var(--border2); border-radius: 6px;
+      font-family: inherit; font-size: 12px; letter-spacing: 0.08em;
+      text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover  { background: var(--panel); border-color: var(--accent); }
+    .btn:active { transform: translateY(1px); }
+    .btn.danger        { color: var(--bad);  border-color: var(--bad); }
+    .btn.danger:hover  { background: rgba(248, 81, 73, 0.12); }
+    .btn.success       { color: var(--ok);   border-color: var(--ok); }
+    .btn.success:hover { background: rgba(86, 211, 100, 0.12); }
+    .btn.voice         { color: var(--accent2); border-color: var(--accent2); }
+    .btn.voice.listening {
+      background: rgba(0, 209, 255, 0.18);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .toast {
+      position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+      max-width: 90vw; padding: 10px 16px; border-radius: 6px;
+      background: var(--panel2); border: 1px solid var(--border2);
+      color: var(--text); font-size: 12px; z-index: 100;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    }
+    .toast.ok  { border-color: var(--ok);  color: var(--ok); }
+    .toast.bad { border-color: var(--bad); color: var(--bad); }
+    .tail {
+      margin: 8px 0 0 0; padding: 0; max-height: 120px; overflow-y: auto;
+      font-size: 11px; color: var(--dim); list-style: none;
+    }
+    .tail li { padding: 2px 0; border-bottom: 1px dashed var(--border); }
+    .tail li:last-child { border-bottom: none; }
     footer {
       margin-top: 14px; color: var(--mute); font-size: 11px;
       text-align: center; letter-spacing: 0.08em;
@@ -271,6 +392,7 @@ INDEX_HTML: str = """<!DOCTYPE html>
       .grid { grid-template-columns: 1fr; gap: 8px; }
       .card { padding: 11px 12px; }
       header h1 { font-size: 12px; }
+      .btn { font-size: 11px; padding: 8px 10px; }
     }
   </style>
 </head>
@@ -282,6 +404,15 @@ INDEX_HTML: str = """<!DOCTYPE html>
     </h1>
     <span id="hb-ts" style="font-size:11px;color:var(--mute);">--</span>
   </header>
+  <div class="controls">
+    <button class="btn danger"  id="btn-kill-trip"   type="button">Kill Switch &#8226; TRIP</button>
+    <button class="btn success" id="btn-kill-reset"  type="button">Kill &#8226; Reset</button>
+    <button class="btn"         id="btn-pause"       type="button">Pause Bot</button>
+    <button class="btn"         id="btn-unpause"     type="button">Unpause Bot</button>
+    <button class="btn"         id="btn-ack"         type="button">Ack Alert</button>
+    <button class="btn voice"   id="btn-voice"       type="button">&#127908; Voice</button>
+    <button class="btn"         id="btn-push"        type="button">&#128276; Notify Me</button>
+  </div>
   <div class="grid">
     <div class="card" id="card-drift">
       <h2>drift <span class="badge" id="drift-counts">--</span></h2>
@@ -299,10 +430,19 @@ INDEX_HTML: str = """<!DOCTYPE html>
     <div class="card" id="card-daemons"><h2>daemons</h2><div class="row"><span>down</span><span id="daemons-down">--</span></div></div>
     <div class="card" id="card-promotion"><h2>promotion</h2><div class="row"><span>in-flight</span><span id="promotion-inflight">--</span></div></div>
     <div class="card" id="card-calibration"><h2>calibration</h2><div class="row"><span>p-value</span><span id="calibration-p">--</span></div></div>
-    <div class="card" id="card-journal"><h2>journal</h2><div class="row"><span>tail</span><span id="journal-tail">--</span></div></div>
-    <div class="card" id="card-alerts"><h2>alerts</h2><div class="row"><span>tail</span><span id="alerts-tail">--</span></div></div>
+    <div class="card" id="card-journal">
+      <h2>journal</h2>
+      <div class="row"><span>tail</span><span id="journal-tail">--</span></div>
+      <ul class="tail" id="journal-tail-list"></ul>
+    </div>
+    <div class="card" id="card-alerts">
+      <h2>alerts</h2>
+      <div class="row"><span>tail</span><span id="alerts-tail">--</span></div>
+      <ul class="tail" id="alerts-tail-list"></ul>
+    </div>
   </div>
   <footer>apex predator // jarvis master command center</footer>
+  <div id="toast-host"></div>
   <script>
     const $ = (id) => document.getElementById(id);
     const colorFor = (s) => s === 'OK' ? 'ok' : s === 'WARN' ? 'warn'
@@ -313,36 +453,164 @@ INDEX_HTML: str = """<!DOCTYPE html>
       el.classList.remove('ok','warn','bad');
       if (klass) el.classList.add(klass);
     }
-    async function poll() {
-      try {
-        const r = await fetch('/api/state', { cache: 'no-store' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const s = await r.json();
-        const d = s.drift || {};
-        setText('drift-state',    d.state, colorFor(d.state));
-        setText('drift-strategy', d.strategy_id);
-        setText('drift-kl',       d.kl != null ? d.kl.toFixed(3) : null);
-        setText('drift-dsharpe',  d.sharpe_delta != null ? d.sharpe_delta.toFixed(2) : null);
-        setText('drift-dmean',    d.mean_delta != null ? d.mean_delta.toFixed(4) : null);
-        setText('drift-n',        (d.n_live != null && d.n_backtest != null) ? `${d.n_live}/${d.n_backtest}` : null);
-        setText('drift-reason',   d.reason);
-        const c = d.counts || {}; const ck = Object.keys(c);
-        setText('drift-counts', ck.length ? ck.map(k => `${k.charAt(0)}:${c[k]}`).join(' ') : null);
-        const b = s.breaker || {};   setText('breaker-state', b.state, colorFor(b.state));
-        const dm = s.deadman || {};  setText('deadman-last', dm.last_heartbeat);
-        const fc = s.forecast || {}; setText('forecast-horizon', fc.horizon_minutes != null ? `${fc.horizon_minutes}m` : null);
-        const dn = s.daemons || {};  setText('daemons-down', (dn.down || []).length, (dn.down || []).length ? 'bad' : 'ok');
-        const pr = s.promotion || {};setText('promotion-inflight', (pr.in_flight || []).length);
-        const cb = s.calibration || {};setText('calibration-p', cb.ks_pvalue != null ? cb.ks_pvalue.toFixed(3) : null);
-        const jr = s.journal || {};  setText('journal-tail', (jr.tail || []).length);
-        const al = s.alerts || {};   setText('alerts-tail', (al.tail || []).length);
-        $('hb-pulse').classList.remove('stale');
-        $('hb-ts').textContent = new Date().toLocaleTimeString();
-      } catch (e) {
-        $('hb-pulse').classList.add('stale');
-      }
+    function toast(msg, klass) {
+      const host = $('toast-host'); if (!host) return;
+      const t = document.createElement('div');
+      t.className = 'toast ' + (klass || '');
+      t.textContent = msg;
+      host.appendChild(t);
+      setTimeout(() => t.remove(), 4000);
     }
-    poll(); setInterval(poll, 5000);
+    function render(s) {
+      const d = s.drift || {};
+      setText('drift-state',    d.state, colorFor(d.state));
+      setText('drift-strategy', d.strategy_id);
+      setText('drift-kl',       d.kl != null ? d.kl.toFixed(3) : null);
+      setText('drift-dsharpe',  d.sharpe_delta != null ? d.sharpe_delta.toFixed(2) : null);
+      setText('drift-dmean',    d.mean_delta != null ? d.mean_delta.toFixed(4) : null);
+      setText('drift-n',        (d.n_live != null && d.n_backtest != null) ? `${d.n_live}/${d.n_backtest}` : null);
+      setText('drift-reason',   d.reason);
+      const c = d.counts || {}; const ck = Object.keys(c);
+      setText('drift-counts', ck.length ? ck.map(k => `${k.charAt(0)}:${c[k]}`).join(' ') : null);
+      const b = s.breaker || {};   setText('breaker-state', b.state, colorFor(b.state));
+      const dm = s.deadman || {};  setText('deadman-last', dm.last_heartbeat);
+      const fc = s.forecast || {}; setText('forecast-horizon', fc.horizon_minutes != null ? `${fc.horizon_minutes}m` : null);
+      const dn = s.daemons || {};  setText('daemons-down', (dn.down || []).length, (dn.down || []).length ? 'bad' : 'ok');
+      const pr = s.promotion || {};setText('promotion-inflight', (pr.in_flight || []).length);
+      const cb = s.calibration || {};setText('calibration-p', cb.ks_pvalue != null ? cb.ks_pvalue.toFixed(3) : null);
+      const jr = s.journal || {};  setText('journal-tail', (jr.tail || []).length);
+      const al = s.alerts  || {};  setText('alerts-tail',  (al.tail  || []).length);
+      renderTail('journal-tail-list', jr.tail || []);
+      renderTail('alerts-tail-list',  al.tail || []);
+      $('hb-pulse').classList.remove('stale');
+      $('hb-ts').textContent = new Date().toLocaleTimeString();
+    }
+    function renderTail(id, rows) {
+      const ul = $(id); if (!ul) return;
+      ul.innerHTML = '';
+      rows.slice(-6).reverse().forEach(r => {
+        const li = document.createElement('li');
+        const ts = r.ts || r.generated_at || r.timestamp || '';
+        const summary = r.summary || r.reason || r.message || r.verdict || JSON.stringify(r).slice(0, 80);
+        li.textContent = (ts ? ts.slice(11, 19) + '  ' : '') + summary;
+        ul.appendChild(li);
+      });
+    }
+    // ---- live state via SSE (auto-reconnects) -------------------------
+    let sse;
+    function connect() {
+      try { if (sse) sse.close(); } catch (e) {}
+      sse = new EventSource('/api/state/stream');
+      sse.onmessage = (e) => { try { render(JSON.parse(e.data)); } catch (err) {} };
+      sse.onerror = () => {
+        $('hb-pulse').classList.add('stale');
+        setTimeout(connect, 3000);
+      };
+    }
+    connect();
+    // initial paint from non-stream endpoint so the UI populates fast
+    fetch('/api/state', { cache: 'no-store' }).then(r => r.ok && r.json()).then(s => s && render(s)).catch(() => {});
+
+    // ---- action helpers -----------------------------------------------
+    async function postCmd(path, body) {
+      try {
+        const r = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body || {}),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(data.error || ('HTTP ' + r.status), 'bad'); return null; }
+        toast('OK: ' + path.split('/').pop(), 'ok');
+        return data;
+      } catch (err) { toast(String(err), 'bad'); return null; }
+    }
+    function ask(prompt) { return window.prompt(prompt); }
+
+    $('btn-kill-trip').onclick = () => {
+      if (!confirm('Trip the kill switch? All bots will be flattened.')) return;
+      const reason = ask('Reason (audit log):') || 'manual operator trip';
+      postCmd('/api/cmd/kill-switch-trip', { reason });
+    };
+    $('btn-kill-reset').onclick = () => {
+      if (!confirm('Reset (clear) the kill-switch request?')) return;
+      postCmd('/api/cmd/kill-switch-reset', {});
+    };
+    $('btn-pause').onclick = () => {
+      const bot_id = ask('Bot id to pause (e.g. mnq, eth_perp):'); if (!bot_id) return;
+      const reason = ask('Reason (optional):') || '';
+      postCmd('/api/cmd/pause-bot', { bot_id, reason });
+    };
+    $('btn-unpause').onclick = () => {
+      const bot_id = ask('Bot id to UNPAUSE:'); if (!bot_id) return;
+      const confirm_token = ask('Type confirm token to unpause (see UNPAUSE_CONFIRM_TOKEN in MCC):');
+      if (!confirm_token) return;
+      postCmd('/api/cmd/unpause-bot', { bot_id, confirm: confirm_token });
+    };
+    $('btn-ack').onclick = () => {
+      const alert_id = ask('Alert id to ack:'); if (!alert_id) return;
+      const note = ask('Note (optional):') || '';
+      postCmd('/api/cmd/ack-alert', { alert_id, note });
+    };
+
+    // ---- voice control (Web Speech API) -------------------------------
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const voiceBtn = $('btn-voice');
+    if (!SR) { voiceBtn.disabled = true; voiceBtn.title = 'Web Speech API not available'; }
+    voiceBtn.onclick = () => {
+      if (!SR) return;
+      const recog = new SR();
+      recog.lang = 'en-US'; recog.interimResults = false; recog.maxAlternatives = 1;
+      voiceBtn.classList.add('listening');
+      recog.onresult = (e) => {
+        const cmd = (e.results[0][0].transcript || '').toLowerCase().trim();
+        toast('heard: ' + cmd);
+        if (cmd.includes('kill switch') || cmd.includes('kill the switch')) {
+          if (confirm('VOICE: trip kill switch?')) postCmd('/api/cmd/kill-switch-trip', { reason: 'voice: ' + cmd });
+        } else if (cmd.startsWith('pause ')) {
+          const bot_id = cmd.replace(/^pause\\s+/, '').trim();
+          if (bot_id && confirm('VOICE: pause bot ' + bot_id + '?')) postCmd('/api/cmd/pause-bot', { bot_id, reason: 'voice' });
+        } else if (cmd.startsWith('ack ')) {
+          const alert_id = cmd.replace(/^ack\\s+/, '').trim();
+          if (alert_id) postCmd('/api/cmd/ack-alert', { alert_id, note: 'voice' });
+        } else {
+          toast('voice command not recognized', 'bad');
+        }
+      };
+      recog.onend   = () => voiceBtn.classList.remove('listening');
+      recog.onerror = (e) => { voiceBtn.classList.remove('listening'); toast('voice error: ' + e.error, 'bad'); };
+      recog.start();
+    };
+
+    // ---- web push subscription ----------------------------------------
+    function urlBase64ToUint8Array(b64) {
+      const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+      const s = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(s); const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+    $('btn-push').onclick = async () => {
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          toast('web push not supported in this browser', 'bad'); return;
+        }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { toast('notification permission denied', 'bad'); return; }
+        const reg = await navigator.serviceWorker.ready;
+        const r = await fetch('/api/push/vapid-public-key');
+        if (!r.ok) { toast('VAPID key not configured on server', 'bad'); return; }
+        const { key } = await r.json();
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        });
+        const j = sub.toJSON();
+        const out = await postCmd('/api/push/subscribe', { endpoint: j.endpoint, keys: j.keys });
+        if (out) toast('push subscription active', 'ok');
+      } catch (err) { toast('push subscribe failed: ' + err, 'bad'); }
+    };
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
@@ -427,11 +695,18 @@ ICON_SVG: str = """\
 DEFAULT_HOST: str = "127.0.0.1"
 DEFAULT_PORT: int = 8765
 
+# SSE poll cadence (seconds between state pushes on /api/state/stream).
+SSE_INTERVAL_SEC: float = 1.0
+# Max payload size accepted on POST (defends against accidental floods).
+POST_MAX_BYTES: int = 64 * 1024
+
 
 class _Handler(BaseHTTPRequestHandler):
     """Minimal stdlib handler -- one route table, no framework."""
 
     server_version = "JarvisMCC/1.0"
+
+    # ---- response helpers --------------------------------------------------
 
     def _send(self, status: int, body: bytes, content_type: str, cache: str = "no-store") -> None:
         self.send_response(status)
@@ -443,19 +718,50 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_json(self, status: int, obj: Any) -> None:
+        body = json.dumps(obj, default=str).encode("utf-8")
+        self._send(status, body, "application/json")
+
+    def _read_json_body(self) -> dict[str, Any]:
+        """Parse a JSON body. Returns {} on missing / malformed."""
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            return {}
+        if length <= 0 or length > POST_MAX_BYTES:
+            return {}
+        try:
+            raw = self.rfile.read(length)
+            obj = json.loads(raw)
+            return obj if isinstance(obj, dict) else {}
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return {}
+
+    def _operator(self) -> str:
+        return _operator_from_jwt(self.headers)
+
+    # ---- GET routing -------------------------------------------------------
+
     def do_GET(self) -> None:  # noqa: N802 -- stdlib contract
         path = self.path.split("?", 1)[0]
-        if path == "/" or path == "/index.html":
+        if path in ("/", "/index.html"):
             self._send(HTTPStatus.OK, INDEX_HTML.encode("utf-8"), "text/html; charset=utf-8")
             return
         if path == "/api/state":
             try:
-                payload = json.dumps(collect_state(), default=str).encode("utf-8")
+                self._send_json(HTTPStatus.OK, collect_state())
             except Exception as exc:  # noqa: BLE001 -- never crash the dashboard
-                payload = json.dumps({"error": str(exc)}).encode("utf-8")
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR, payload, "application/json")
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+            return
+        if path == "/api/state/stream":
+            self._stream_state()
+            return
+        if path == "/api/push/vapid-public-key":
+            key = os.environ.get("MCC_VAPID_PUBLIC_KEY", "").strip()
+            if not key:
+                self._send_json(HTTPStatus.NOT_FOUND, {"error": "MCC_VAPID_PUBLIC_KEY not set"})
                 return
-            self._send(HTTPStatus.OK, payload, "application/json")
+            self._send_json(HTTPStatus.OK, {"key": key})
             return
         if path == "/healthz":
             self._send(HTTPStatus.OK, b"ok\n", "text/plain; charset=utf-8")
@@ -472,6 +778,164 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, ICON_SVG.encode("utf-8"), "image/svg+xml", cache="public, max-age=86400")
             return
         self._send(HTTPStatus.NOT_FOUND, b"not found\n", "text/plain; charset=utf-8")
+
+    # ---- POST routing ------------------------------------------------------
+
+    _ACTION_ROUTES: dict[str, str] = {
+        "/api/cmd/kill-switch-trip": "_action_kill_trip",
+        "/api/cmd/kill-switch-reset": "_action_kill_reset",
+        "/api/cmd/pause-bot": "_action_pause",
+        "/api/cmd/unpause-bot": "_action_unpause",
+        "/api/cmd/ack-alert": "_action_ack_alert",
+        "/api/push/subscribe": "_action_push_subscribe",
+    }
+
+    def do_POST(self) -> None:  # noqa: N802 -- stdlib contract
+        path = self.path.split("?", 1)[0]
+        handler_name = self._ACTION_ROUTES.get(path)
+        if not handler_name:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "unknown action", "path": path})
+            return
+        body = self._read_json_body()
+        operator = self._operator()
+        try:
+            handler = getattr(self, handler_name)
+            status, payload = handler(body, operator)
+        except Exception as exc:  # noqa: BLE001 -- never crash the dashboard
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+            return
+        self._send_json(status, payload)
+
+    # ---- action handlers ---------------------------------------------------
+
+    def _action_kill_trip(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        reason = str(body.get("reason") or "").strip() or "manual operator trip via MCC"
+        rec = {
+            "tripped_at": datetime.now(UTC).isoformat(),
+            "operator": operator,
+            "reason": reason,
+            "scope": str(body.get("scope") or "ALL"),
+        }
+        KILL_REQUEST.parent.mkdir(parents=True, exist_ok=True)
+        KILL_REQUEST.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+        audit = _audit("kill-switch-trip", operator=operator, payload=rec)
+        return HTTPStatus.OK, {"ok": True, "audit": audit, "request_file": str(KILL_REQUEST)}
+
+    def _action_kill_reset(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        if KILL_REQUEST.exists():
+            KILL_REQUEST.unlink()
+        audit = _audit("kill-switch-reset", operator=operator, payload={"reason": body.get("reason")})
+        return HTTPStatus.OK, {"ok": True, "audit": audit}
+
+    def _action_pause(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        bot_id = str(body.get("bot_id") or "").strip()
+        if not bot_id:
+            return HTTPStatus.BAD_REQUEST, {"error": "bot_id required"}
+        rec = {
+            "ts": datetime.now(UTC).isoformat(),
+            "intent": "pause",
+            "bot_id": bot_id,
+            "operator": operator,
+            "reason": str(body.get("reason") or "").strip(),
+        }
+        PAUSE_REQUESTS.parent.mkdir(parents=True, exist_ok=True)
+        with PAUSE_REQUESTS.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        audit = _audit("pause-bot", operator=operator, payload=rec)
+        return HTTPStatus.OK, {"ok": True, "audit": audit}
+
+    def _action_unpause(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        bot_id = str(body.get("bot_id") or "").strip()
+        confirm = str(body.get("confirm") or "")
+        if not bot_id:
+            return HTTPStatus.BAD_REQUEST, {"error": "bot_id required"}
+        if confirm != UNPAUSE_CONFIRM_TOKEN:
+            return HTTPStatus.FORBIDDEN, {
+                "error": "unpause requires confirm token",
+                "expected_confirm_token": UNPAUSE_CONFIRM_TOKEN,
+            }
+        rec = {
+            "ts": datetime.now(UTC).isoformat(),
+            "intent": "unpause",
+            "bot_id": bot_id,
+            "operator": operator,
+            "reason": str(body.get("reason") or "").strip(),
+        }
+        PAUSE_REQUESTS.parent.mkdir(parents=True, exist_ok=True)
+        with PAUSE_REQUESTS.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        audit = _audit("unpause-bot", operator=operator, payload=rec)
+        return HTTPStatus.OK, {"ok": True, "audit": audit}
+
+    def _action_ack_alert(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        alert_id = str(body.get("alert_id") or "").strip()
+        if not alert_id:
+            return HTTPStatus.BAD_REQUEST, {"error": "alert_id required"}
+        rec = {
+            "ts": datetime.now(UTC).isoformat(),
+            "alert_id": alert_id,
+            "operator": operator,
+            "note": str(body.get("note") or "").strip(),
+        }
+        ALERT_ACKS.parent.mkdir(parents=True, exist_ok=True)
+        with ALERT_ACKS.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        audit = _audit("ack-alert", operator=operator, payload=rec)
+        return HTTPStatus.OK, {"ok": True, "audit": audit}
+
+    def _action_push_subscribe(self, body: dict[str, Any], operator: str) -> tuple[int, dict[str, Any]]:
+        endpoint = str(body.get("endpoint") or "").strip()
+        keys = body.get("keys")
+        if not endpoint or not isinstance(keys, dict):
+            return HTTPStatus.BAD_REQUEST, {"error": "endpoint and keys required"}
+        rec = {
+            "ts": datetime.now(UTC).isoformat(),
+            "operator": operator,
+            "endpoint": endpoint,
+            "keys": keys,
+        }
+        PUSH_SUBSCRIPTIONS.parent.mkdir(parents=True, exist_ok=True)
+        with PUSH_SUBSCRIPTIONS.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        audit = _audit("push-subscribe", operator=operator, payload={"endpoint": endpoint})
+        return HTTPStatus.OK, {"ok": True, "audit": audit}
+
+    # ---- SSE state stream --------------------------------------------------
+
+    def _stream_state(self) -> None:
+        """Push state snapshots forever as Server-Sent Events.
+
+        Sends a snapshot every ``SSE_INTERVAL_SEC`` plus a comment-only ping
+        every 15s to keep proxies/Cloudflare from idling out the connection.
+        Exits cleanly on client disconnect (BrokenPipeError / ConnectionReset).
+        """
+        try:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")  # disable nginx buffering
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
+        last_ping = time.monotonic()
+        while True:
+            try:
+                state = collect_state()
+                chunk = ("data: " + json.dumps(state, default=str) + "\n\n").encode("utf-8")
+                self.wfile.write(chunk)
+                self.wfile.flush()
+                now = time.monotonic()
+                if now - last_ping >= 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_ping = now
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+            except Exception:  # noqa: BLE001 -- never crash the dashboard
+                return
+            time.sleep(SSE_INTERVAL_SEC)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 -- stdlib contract
         # Silence the default access log; systemd journals stay clean.
@@ -503,13 +967,23 @@ if __name__ == "__main__":  # pragma: no cover -- entry point
 
 
 __all__ = [
+    "ALERTS_LOG",
+    "ALERT_ACKS",
+    "AUDIT_LOG",
+    "DECISION_JOURNAL",
     "DEFAULT_HOST",
     "DEFAULT_PORT",
     "DRIFT_JOURNAL",
     "ICON_SVG",
     "INDEX_HTML",
+    "KILL_REQUEST",
     "MANIFEST_JSON",
+    "PAUSE_REQUESTS",
+    "PUSH_SUBSCRIPTIONS",
     "SERVICE_WORKER_JS",
+    "SSE_INTERVAL_SEC",
+    "TAIL_LINES",
+    "UNPAUSE_CONFIRM_TOKEN",
     "collect_state",
     "main",
     "read_drift_journal",

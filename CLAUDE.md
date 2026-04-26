@@ -13,7 +13,7 @@ PYTHONPATH=/tmp/_pkg_root:$PWD .venv/bin/python -m apex_predator.scripts.jarvis_
 # then open http://127.0.0.1:8765
 ```
 
-Routes: `/` (HTML shell), `/api/state`, `/healthz`, `/manifest.webmanifest`, `/sw.js`, `/icon.svg`. Any new operator-facing surface area should be wired through the MCC — do not fork another dashboard.
+Routes: `/` (HTML shell), `/api/state`, `/api/state/stream` (SSE; sub-second pushes), `/healthz`, `/manifest.webmanifest`, `/sw.js`, `/icon.svg`, `/api/push/vapid-public-key`. Action POSTs (audit-logged, operator from `Cf-Access-Jwt-Assertion`): `/api/cmd/kill-switch-trip`, `/api/cmd/kill-switch-reset`, `/api/cmd/pause-bot`, `/api/cmd/unpause-bot` (requires `confirm: I_UNDERSTAND_LIVE_RISK` per the never-auto-unpause rule), `/api/cmd/ack-alert`, `/api/push/subscribe`. Audit log lands at `~/.local/state/apex_predator/mcc_audit.jsonl`; intent records at `~/.local/state/apex_predator/mcc_*` for the supervisor to read. Voice control runs in the browser via Web Speech API. Any new operator-facing surface area should be wired through the MCC — do not fork another dashboard.
 
 ## Repo layout (important)
 The package directory IS the repo root. `from apex_predator.foo import bar` resolves to `./foo/bar.py`. To make imports work locally, symlink the repo into a parent dir named `apex_predator`:
