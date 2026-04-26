@@ -1,12 +1,12 @@
 # EVOLUTIONARY TRADING ALGO — Live-Tiny Launch Runbook
 
 > **DORMANCY BANNER — 2026-04-24 (operator mandate):**
-> This runbook was written around **Tradovate** as the Tier-A venue. Tradovate
-> is currently **DORMANT** (funding-blocked, expected unlock weeks out). Live
-> futures routing now defaults to **IBKR (primary) + Tastytrade (fallback)**.
-> The Tradovate-specific phases below (credentials, auth smoke, account-balance
-> gate) are stale while dormant — substitute the IBKR equivalents from
-> `docs/broker_connections/README.md`. Single-point-of-truth for re-enablement:
+> Live futures routing defaults to **IBKR (primary) + Tastytrade (fallback)**.
+> **Tradovate is DORMANT** (funding-blocked, expected unlock weeks out). The
+> body of this runbook is keyed to the IBKR-primary path; the small set of
+> changes that flip back when Tradovate un-dormants live in [Appendix A:
+> When Tradovate Un-Dormants](#appendix-a--when-tradovate-un-dormants).
+> Single-point-of-truth for re-enablement:
 > `eta_engine/venues/router.py` `DORMANT_BROKERS` frozenset.
 
 **Audience:** operator on their own account.
@@ -24,11 +24,11 @@ Do NOT start this runbook unless ALL of the following are true:
 3. `roadmap_state.json` → `current_phase` starts with `P9`.
 4. `docs/decisions_v1.json` exists with all 3 required tier sections.
 5. `.env.example` present with all 9 required secret names.
-6. `eta_engine/configs/` contains `tradovate.yaml`, `bybit.yaml`, `alerts.yaml`, `kill_switch.yaml`.
+6. `eta_engine/configs/` contains `bybit.yaml`, `alerts.yaml`, `kill_switch.yaml`, AND every yaml for the active futures brokers (i.e. for each broker in `ACTIVE_FUTURES_VENUES` from `venues/router.py`). With the current `DORMANT_BROKERS = {"tradovate"}` mandate this is `ibkr.yaml` + `tastytrade.yaml`. `tradovate.yaml` is NOT required while the broker is dormant.
 7. `eta_engine/scripts/live_supervisor.py` importable cleanly (`from eta_engine.scripts.live_supervisor import JarvisAwareRouter`).
 8. Extended preflight dryrun exits GO: `python -m eta_engine.scripts.live_tiny_preflight_dryrun`.
-9. Funded Tradovate account with ≥ $5,000 cleared balance in the tier-A bucket (Apex evaluation or funded).
-10. Tradovate app credentials (not user login) issued and stored via `core.secrets.SecretsManager`.
+9. Funded **IBKR primary** account with ≥ $5,000 cleared balance in the tier-A bucket (Apex evaluation or funded). Tastytrade fallback may be funded later but is not required for first live tick. Tradovate is **DORMANT** — do NOT attempt to fund it; see Appendix A for the un-dormancy procedure.
+10. **IBKR Client Portal** session credentials populated via `core.secrets.SecretsManager` (see Phase 1). Tastytrade fallback credentials are recommended but not blocking. Tradovate credentials are NOT required while dormant.
 
 If any one of the above is RED, STOP here. Go fix before proceeding.
 
@@ -36,61 +36,127 @@ If any one of the above is RED, STOP here. Go fix before proceeding.
 
 ## Phase 1 — Secrets & env (≈10 min)
 
-On the trading host:
+On the trading host. Populate **IBKR (primary)** first; **Tastytrade (fallback)**
+is recommended but optional for first live tick. **Tradovate is DORMANT — skip
+the Tradovate block** unless Appendix A says it has un-dormanted.
 
 ```bash
 # Populate secrets via keyring (preferred) or .env file.
 python - <<'PY'
 from eta_engine.core.secrets import SecretsManager
 sm = SecretsManager()
-sm.set("TRADOVATE_USERNAME", "your_username")
-sm.set("TRADOVATE_PASSWORD", "your_password")
-sm.set("TRADOVATE_APP_ID", "ApexPredator")
-sm.set("TRADOVATE_APP_SECRET", "app_secret_from_tradovate_dev_portal")
-sm.set("TRADOVATE_CID", "client_id_from_tradovate_dev_portal")
+
+# --- IBKR primary (REQUIRED) ----------------------------------------
+# IBKR Client Portal Gateway is the local TLS endpoint that brokers
+# the Web API. Spin it up first via the IBKR distribution; then fill
+# the URL + account id below. The session is browser-OAuth + cookie
+# based, so we do not stash a long-lived token here -- the Gateway
+# holds the session.
+sm.set("IBKR_BASE_URL", "https://localhost:5000/v1/api")
+sm.set("IBKR_ACCOUNT_ID", "DUxxxxxxx")  # paper or live account id
+
+# --- Tastytrade fallback (RECOMMENDED, optional) --------------------
+# Tastytrade uses a session-token model. Generate a token from
+# https://my.tastytrade.com -> Manage -> Sessions, or via the API
+# /sessions endpoint with username + password.
+sm.set("TASTYTRADE_BASE_URL", "https://api.tastyworks.com")
+sm.set("TASTYTRADE_ACCOUNT_NUMBER", "5WTxxxxx")
+sm.set("TASTYTRADE_SESSION_TOKEN", "session_token_from_tastytrade")
+
+# --- Operator notification channel (REQUIRED) -----------------------
 sm.set("TELEGRAM_BOT_TOKEN", "bot_token")
 sm.set("TELEGRAM_CHAT_ID", "chat_id")
+
+# --- Tradovate (DORMANT -- do NOT populate while dormant) -----------
+# See Appendix A for the un-dormancy procedure.
 print("OK")
 PY
 
 # Verify the credential gate turns GREEN:
 python -m eta_engine.scripts.live_tiny_preflight_dryrun | grep credential_probe_full
-# Expect: [opt] credential_probe_full   PASS   Tier-A present (7 keys) ...
+# Expect: [opt] credential_probe_full   PASS   Tier-A present (... keys) ...
 ```
 
 ---
 
-## Phase 2 — Venue smoke test (≈5 min, DEMO endpoint only)
+## Phase 2 — Venue smoke test (≈5 min, paper account preferred)
 
-Never point at `TRADOVATE_LIVE` for the first smoke test. Use `demo=True`.
+Never point at a funded LIVE account for the first smoke test. Use the IBKR
+**paper** account (account id starts with `DU`) or the Tastytrade
+**cert**/sandbox endpoint where available.
 
 ```bash
 python - <<'PY'
 import asyncio
 from eta_engine.core.secrets import SecretsManager
-from eta_engine.venues.tradovate import TradovateVenue
+from eta_engine.venues.ibkr import (
+    IbkrClientPortalConfig,
+    IbkrClientPortalVenue,
+)
 
 async def main() -> None:
     sm = SecretsManager()
-    v = TradovateVenue(
-        api_key="",
-        api_secret=sm.get("TRADOVATE_PASSWORD") or "",
-        demo=True,
-        app_id="ApexPredator",
-        app_version="1.0",
-        cid=sm.get("TRADOVATE_CID") or "",
-        app_secret=sm.get("TRADOVATE_APP_SECRET") or "",
+    cfg = IbkrClientPortalConfig(
+        base_url=sm.get("IBKR_BASE_URL") or "",
+        account_id=sm.get("IBKR_ACCOUNT_ID") or "",
     )
-    # Auth smoke — expect access token populated, no exception.
-    await v.authenticate(username=sm.get("TRADOVATE_USERNAME") or "")
-    print("demo auth OK, token obtained")
+    v = IbkrClientPortalVenue(config=cfg)
+    # Auth + connectivity smoke -- expect a real net-liq number,
+    # not None. Returns None when creds are missing, the Client
+    # Portal Gateway is offline, or the response is malformed.
+    net_liq = await v.get_net_liquidation()
+    if net_liq is None:
+        msg = (
+            "IBKR get_net_liquidation returned None. Check that the "
+            "Client Portal Gateway is running on IBKR_BASE_URL, that "
+            "IBKR_ACCOUNT_ID matches a logged-in account, and that "
+            "the session has not timed out."
+        )
+        raise RuntimeError(msg)
+    print(f"IBKR auth + read OK, account net-liq=${net_liq:,.2f}")
 
 asyncio.run(main())
 PY
 ```
 
-Abort criteria: any network error, any 4xx from Tradovate, any `access_token` is None.
-If abort: check credentials, do NOT proceed. Credentials-for-demo and credentials-for-live can be different — verify you populated the right ones.
+If Tastytrade fallback creds are populated, run an analogous smoke:
+
+```bash
+python - <<'PY'
+import asyncio
+from eta_engine.core.secrets import SecretsManager
+from eta_engine.venues.tastytrade import (
+    TastytradeConfig,
+    TastytradeVenue,
+)
+
+async def main() -> None:
+    sm = SecretsManager()
+    cfg = TastytradeConfig(
+        base_url=sm.get("TASTYTRADE_BASE_URL") or "",
+        account_number=sm.get("TASTYTRADE_ACCOUNT_NUMBER") or "",
+        session_token=sm.get("TASTYTRADE_SESSION_TOKEN") or "",
+    )
+    v = TastytradeVenue(config=cfg)
+    net_liq = await v.get_net_liquidation()
+    if net_liq is None:
+        print("Tastytrade smoke: no creds or session expired (OK if fallback unused)")
+    else:
+        print(f"Tastytrade auth + read OK, account net-liq=${net_liq:,.2f}")
+
+asyncio.run(main())
+PY
+```
+
+Abort criteria for the **primary (IBKR)** path: any network error, any 4xx
+from the Client Portal Gateway, any `get_net_liquidation()` returns None
+when creds are populated. If abort: check that the Gateway is running, the
+session is still authenticated, and `IBKR_ACCOUNT_ID` matches the logged-in
+account. Do NOT proceed without the primary smoke green.
+
+Tastytrade fallback failures are non-blocking for first live tick (the
+runtime will degrade to `no_broker_data` for Tastytrade and IBKR will keep
+serving). They are blocking once you intentionally exercise failover.
 
 ---
 
@@ -146,13 +212,13 @@ python -m eta_engine.scripts.run_eta_live --live-tiny --tier-a-only --paper-asse
 - [ ] First 5 minutes: no trades placed, just bar ingestion + feature pipeline. If trades fire in <5 min, suspect misconfig — abort.
 - [ ] Confirm first heartbeat Telegram (within 60s of start).
 - [ ] Watch `docs/alerts_log.jsonl` — a `runtime_start` event must appear with `payload.live=True`.
-- [ ] First order (if any) must appear in Tradovate account UI within 2s of local submission. If no UI ack, local clock drift or transport break — hit kill switch.
+- [ ] First order (if any) must appear in the **active broker's** account UI (IBKR Trader Workstation / Client Portal web for IBKR primary; Tastytrade web for the fallback) within 2s of local submission. If no UI ack, local clock drift or transport break — hit kill switch.
 - [ ] After first filled trade: run `python eta_engine/scripts/_trade_journal_reconcile.py --hours 1` — expect GREEN.
 - [ ] After 30 min: hit Ctrl-C (graceful stop). Confirm `runtime_stop` event appears in alerts_log.
 
 ### Abort triggers (stop immediately)
 
-- Any Tradovate HTTP 5xx.
+- Any 5xx from the active futures broker (IBKR Client Portal Gateway or Tastytrade API).
 - Local account equity shows discrepancy vs internal equity tracker > $50.
 - Kill-switch yaml shows any verdict other than CONTINUE in first 5 min.
 - An order fills at a price more than 2 ticks worse than last-seen bid/ask (slippage sanity).
@@ -175,7 +241,7 @@ sudo systemctl status apex-live
 
 1. `python eta_engine/scripts/_trade_journal_reconcile.py --hours 24` → must exit GREEN.
 2. `python eta_engine/scripts/_kill_switch_drift.py --hours 24` → must exit GREEN.
-3. Tradovate account: compare realized PnL to internal journal. Discrepancy > $10 = stop.
+3. Active broker account UI (IBKR Client Portal / Tastytrade web): compare realized PnL to internal journal. Discrepancy > $10 = stop. The R1 broker-equity drift detector should also catch this each tick (see `broker_equity` sub-key in `runtime_log.jsonl`).
 4. `docs/alerts_log.jsonl` tail: no `kill_switch` events with severity CRITICAL.
 
 ### 48-hour exit criteria
@@ -228,10 +294,16 @@ sudo systemctl stop apex-live
 # Hard stop (if supervisor is hung):
 pkill -f run_eta_live
 
-# Manual flatten via Tradovate UI:
-# -> Orders tab -> Cancel All Working
-# -> Positions tab -> Flatten All (market close)
-# This is the last-resort button. Use if the supervisor crashed with open positions.
+# Manual flatten via the active broker's UI (IBKR primary):
+#   IBKR Client Portal / Trader Workstation
+#     -> Orders tab -> Cancel All
+#     -> Positions tab -> Close All (market close)
+# Tastytrade fallback (if router has failed over):
+#     -> Trade tab -> Working orders -> Cancel All
+#     -> Positions -> Close All (market)
+# This is the last-resort button. Use if the supervisor crashed
+# with open positions. Tradovate is DORMANT; ignore unless Appendix A
+# says otherwise.
 ```
 
 After ANY emergency stop:
@@ -272,4 +344,124 @@ Expected Firm verdict: `CONTINUE` or `ADJUST`. If `HALT` — stop live operation
 - Order idempotency: `eta_engine/scripts/live_supervisor.py::JarvisAwareRouter._ensure_client_order_id`
 - Journal reconcile: `eta_engine/scripts/_trade_journal_reconcile.py`
 - Alerts: `eta_engine/obs/alert_dispatcher.py`
-- Venue: `eta_engine/venues/tradovate.py`
+- Venues (active set): `eta_engine/venues/ibkr.py` (primary), `eta_engine/venues/tastytrade.py` (fallback). `eta_engine/venues/tradovate.py` ships but is DORMANT per `eta_engine/venues/router.py::DORMANT_BROKERS`.
+- Router: `eta_engine/venues/router.py::SmartRouter` — substitutes any caller-supplied `preferred_futures_venue="tradovate"` with `DEFAULT_FUTURES_VENUE` (currently `"ibkr"`).
+- Broker-equity drift detector: `eta_engine/core/broker_equity_reconciler.py` + `eta_engine/core/broker_equity_adapter.py::RouterBackedBrokerEquityAdapter`.
+
+---
+
+## Appendix A — When Tradovate Un-Dormants
+
+Trigger: Tradovate funding clears AND the operator decides to bring the
+adapter back into the active live-futures set. The dormancy mandate
+(2026-04-24) is in `memory/broker_dormancy_mandate.md`; flipping out of
+dormant requires the literal "unpark tradovate" / "re-enable tradovate"
+operator language plus the steps below.
+
+### A.1 Code-side flip (single source of truth)
+
+`eta_engine/venues/router.py`:
+
+```python
+# From:
+DORMANT_BROKERS: frozenset[str] = frozenset({"tradovate"})
+
+# To:
+DORMANT_BROKERS: frozenset[str] = frozenset()
+```
+
+`ACTIVE_FUTURES_VENUES` is computed from `DORMANT_BROKERS`, so flipping
+the frozenset re-enables Tradovate everywhere it cares (router selection,
+preflight gates, boot-banner advertised brokers).
+
+### A.2 Re-add the Tradovate prereqs
+
+In the **T-minus checklist** at the top of this runbook:
+
+* Item #6 — `eta_engine/configs/` must now ALSO contain `tradovate.yaml`
+  (it gets back into `ACTIVE_FUTURES_VENUES` automatically once `DORMANT_BROKERS`
+  is empty).
+* Item #9 — funding requirement extends to whichever futures broker is now
+  the operator-selected primary. If staying IBKR-primary with Tradovate as
+  a third fallback, no new funding gate; if flipping to Tradovate-primary,
+  the original "≥ $5,000 cleared in the tier-A bucket" applies to Tradovate
+  again.
+* Item #10 — Tradovate **app credentials** (NOT user login: app_id +
+  app_secret + cid issued from the Tradovate dev portal) must be
+  populated in `core.secrets.SecretsManager` under the keys
+  `TRADOVATE_USERNAME`, `TRADOVATE_PASSWORD`, `TRADOVATE_APP_ID`,
+  `TRADOVATE_APP_SECRET`, `TRADOVATE_CID`.
+
+### A.3 Tradovate secrets block (Phase 1 supplement)
+
+```bash
+python - <<'PY'
+from eta_engine.core.secrets import SecretsManager
+sm = SecretsManager()
+sm.set("TRADOVATE_USERNAME", "your_username")
+sm.set("TRADOVATE_PASSWORD", "your_password")
+sm.set("TRADOVATE_APP_ID", "ApexPredator")
+sm.set("TRADOVATE_APP_SECRET", "app_secret_from_tradovate_dev_portal")
+sm.set("TRADOVATE_CID", "client_id_from_tradovate_dev_portal")
+print("OK")
+PY
+```
+
+Helper script: `python -m eta_engine.scripts.setup_tradovate_secrets`
+(keyring-based; only runs on the trading host).
+
+### A.4 Tradovate venue smoke test (DEMO endpoint only)
+
+Never point at `TRADOVATE_LIVE` for the first smoke. Use `demo=True`.
+
+```bash
+python - <<'PY'
+import asyncio
+from eta_engine.core.secrets import SecretsManager
+from eta_engine.venues.tradovate import TradovateVenue
+
+async def main() -> None:
+    sm = SecretsManager()
+    v = TradovateVenue(
+        api_key="",
+        api_secret=sm.get("TRADOVATE_PASSWORD") or "",
+        demo=True,
+        app_id="ApexPredator",
+        app_version="1.0",
+        cid=sm.get("TRADOVATE_CID") or "",
+        app_secret=sm.get("TRADOVATE_APP_SECRET") or "",
+    )
+    await v.authenticate(username=sm.get("TRADOVATE_USERNAME") or "")
+    print("demo auth OK, token obtained")
+
+asyncio.run(main())
+PY
+```
+
+Abort criteria: any network error, any 4xx from Tradovate, any
+`access_token` is None. Demo creds and live creds can differ — verify
+which set you populated.
+
+### A.5 Operator UI references for Tradovate
+
+Manual flatten, when Tradovate is the active routing venue:
+
+* Tradovate web/desktop UI -> Orders tab -> Cancel All Working
+* Positions tab -> Flatten All (market close)
+
+### A.6 Re-enable checklist (advisory)
+
+* [ ] `DORMANT_BROKERS` flipped in `router.py`.
+* [ ] `tradovate.yaml` present in `eta_engine/configs/`.
+* [ ] `setup_tradovate_secrets` populated 5 Tradovate keys.
+* [ ] Phase 2 demo smoke green for Tradovate.
+* [ ] Preflight `live_tiny_preflight_dryrun` still 14/14 PASS with
+  Tradovate back in the active set.
+* [ ] `memory/broker_dormancy_mandate.md` updated to record the
+  un-dormancy date + operator authorisation.
+
+After all six are checked, Tradovate is back in the active live-futures
+set. The router-aware drift detector (`RouterBackedBrokerEquityAdapter`)
+will follow whichever broker `router.choose_venue("MNQ")` picks; no
+additional wiring needed for drift detection to track the new active
+venue.
