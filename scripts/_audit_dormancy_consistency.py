@@ -78,8 +78,12 @@ ALLOWLIST: frozenset[str] = frozenset({
     # the appendix's own header line carries). The file therefore is
     # NOT in the allowlist; instead the Appendix A heading propagates
     # dormancy-context across the rest of the appendix.
-    # Bump-script archive -- versioned narratives, frozen.
+    # Bump-script archive -- versioned narratives, frozen. Match both
+    # the archive subdirectory and any top-level bump scripts that
+    # haven't been moved yet (each is a one-shot from a v0.1.x
+    # release that we don't rewrite).
     "scripts/_legacy_bumps",
+    "scripts/_bump_roadmap_v*.py",
     # The auditor itself naturally mentions Tradovate.
     "scripts/_audit_dormancy_consistency.py",
     # Tradovate-specific tooling whose entire purpose is the dormancy
@@ -141,11 +145,14 @@ _TRADOVATE_RE = re.compile(r"\btradovate\b", re.IGNORECASE)
 
 
 def _is_allowlisted(rel_path: str) -> bool:
-    """Return True if any allowlist prefix matches."""
-    return any(
-        rel_path == entry or rel_path.startswith(entry + "/")
-        for entry in ALLOWLIST
-    )
+    """Return True if any allowlist prefix or glob pattern matches."""
+    import fnmatch as _fnmatch
+    for entry in ALLOWLIST:
+        if rel_path == entry or rel_path.startswith(entry + "/"):
+            return True
+        if "*" in entry and _fnmatch.fnmatch(rel_path, entry):
+            return True
+    return False
 
 
 def _has_dormancy_context(lines: list[str], idx: int, *, is_markdown: bool) -> bool:
