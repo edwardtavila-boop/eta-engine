@@ -259,6 +259,12 @@ class RouterAdapter:
     #: ``gate``, ``n_windows``, ``harness_config``, ``is_fraction`` --
     #: anything :func:`qualify_strategies` accepts.
     scheduler_kwargs: Mapping[str, object] | None = None
+    #: Optional :class:`SessionGate` consulted by
+    #: :meth:`should_flatten_eod`. When set, the adapter delegates the
+    #: EOD-cutoff verdict to the gate so the bot side stays free of
+    #: timezone / session-clock concerns. ``None`` means no EOD logic --
+    #: ``should_flatten_eod`` returns ``(False, "no_eod_action")``.
+    session_gate: object | None = None
 
     # private
     _bars: deque[Bar] = field(init=False, repr=False)
@@ -344,6 +350,28 @@ class RouterAdapter:
             symbol=self.asset,
             price_fallback=price,
         )
+
+    # ── Session-gate integration ──
+
+    def should_flatten_eod(self, bar_dict: dict[str, Any]) -> tuple[bool, str]:
+        """Delegate the EOD-cutoff verdict to the wired :class:`SessionGate`.
+
+        Returns ``(False, "no_eod_action")`` when no gate is wired so
+        callers can short-circuit without a None check. The gate decides
+        based on the bar's ``ts`` (epoch ms) -- bots should always feed
+        a timestamped bar dict; missing/invalid ``ts`` falls back to
+        ``datetime.now(UTC)`` so live mode still works.
+        """
+        if self.session_gate is None:
+            return False, "no_eod_action"
+        from datetime import UTC, datetime
+        ts_raw = _first_present(bar_dict, _TS_KEYS, _MISSING)
+        try:
+            ts_ms = int(ts_raw)
+            now = datetime.fromtimestamp(ts_ms / 1000.0, tz=UTC)
+        except (TypeError, ValueError):
+            now = datetime.now(UTC)
+        return self.session_gate.should_flatten_eod(now)
 
     # ── Allowlist-scheduler integration ──
 

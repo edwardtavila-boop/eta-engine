@@ -38,6 +38,7 @@ class Position(BaseModel):
 class Fill(BaseModel):
     symbol: str; side: str; price: float; size: float
     fee: float = 0.0; realized_pnl: float = 0.0
+    risk_at_entry: float = 0.0
     ts: datetime = Field(default_factory=datetime.utcnow)
 
 class BotConfig(BaseModel):
