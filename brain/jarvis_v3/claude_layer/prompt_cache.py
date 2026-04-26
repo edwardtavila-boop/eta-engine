@@ -246,13 +246,26 @@ class FakeClaudeClient:
 
 
 # ---------------------------------------------------------------------------
-# Production adapter scaffold (not wired -- would import anthropic SDK)
+# Anthropic model ID per tier (single source of truth for "which model string
+# does the SDK actually accept for this tier"). Update when models rev.
+# ---------------------------------------------------------------------------
+
+ANTHROPIC_MODEL_BY_TIER: dict[ModelTier, str] = {
+    ModelTier.HAIKU:  "claude-haiku-4-5",
+    ModelTier.SONNET: "claude-sonnet-4-6",
+    ModelTier.OPUS:   "claude-opus-4-7",
+}
+
+
+# ---------------------------------------------------------------------------
+# Production adapter -- wraps anthropic.Anthropic().messages.create() with
+# prompt caching + structured cost accounting. Wired by avengers_daemon when
+# APEX_AVENGERS_LIVE=1 and ANTHROPIC_API_KEY is present.
 # ---------------------------------------------------------------------------
 
 class AnthropicClaudeClient:
     """Thin adapter over the Anthropic SDK.
 
-    Not imported by default so tests don't need the SDK installed.
     Wire it up in production via:
 
         from anthropic import Anthropic
@@ -260,15 +273,86 @@ class AnthropicClaudeClient:
             AnthropicClaudeClient, PromptCacheTracker,
         )
         client = AnthropicClaudeClient(Anthropic(), PromptCacheTracker())
+
+    The SDK client is duck-typed (must expose ``.messages.create(...)``) so
+    tests can pass a fake without importing the real SDK.
     """
 
     def __init__(self, sdk_client: object, tracker: PromptCacheTracker) -> None:
         self.sdk = sdk_client
         self.tracker = tracker
 
-    def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:  # pragma: no cover
-        # Deliberately NOT imported or exercised in tests -- this is the
-        # production hook. Uncovered until wired at deploy time.
-        raise NotImplementedError(
-            "Wire Anthropic SDK at deploy time: see module docstring"
+    def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:
+        model_id = ANTHROPIC_MODEL_BY_TIER[req.model]
+        now = datetime.now(UTC)
+
+        # Build system blocks. The cacheable prefix gets `cache_control`;
+        # any extra `system` text rides as a non-cached block. Anthropic
+        # requires the cached block to come FIRST and meet the minimum
+        # token threshold (1024 for Sonnet/Opus, 2048 for Haiku) -- if it
+        # doesn't, the SDK silently falls back to non-cached.
+        system_blocks: list[dict] = [
+            {
+                "type": "text",
+                "text": req.prompt.prefix,
+                "cache_control": {"type": "ephemeral"},
+            },
+        ]
+        if req.prompt.system and req.prompt.system != req.prompt.prefix:
+            system_blocks.append({"type": "text", "text": req.prompt.system})
+
+        # The per-call variable suffix becomes the user message. Empty
+        # suffix is illegal for Anthropic, so substitute a single space.
+        user_content = req.prompt.suffix if req.prompt.suffix else " "
+
+        resp = self.sdk.messages.create(
+            model=model_id,
+            max_tokens=req.max_tokens,
+            system=system_blocks,
+            messages=[{"role": "user", "content": user_content}],
+        )
+
+        # Extract usage. cache_read / cache_creation may be missing on
+        # older SDK versions or non-cached responses -- guard with getattr.
+        usage = resp.usage
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        cached_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_write = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+
+        # Cost from real usage numbers (not the estimate).
+        in_rate, out_rate = MODEL_PRICES[req.model]
+        fresh_in = max(0, input_tokens - cached_read - cache_write)
+        cost = round(
+            cached_read / 1_000_000 * in_rate * CACHE_READ_MULT
+            + cache_write / 1_000_000 * in_rate * CACHE_WRITE_MULT
+            + fresh_in / 1_000_000 * in_rate
+            + output_tokens / 1_000_000 * out_rate,
+            6,
+        )
+
+        # Mirror the server-side cache locally so cost-governor can
+        # predict cache hits on the next call to this prefix.
+        self.tracker.observe(req.prompt.prefix_hash, now=now)
+
+        # Concatenate text blocks. Anthropic returns content as a list of
+        # typed blocks; for our use case (no tool use yet) all blocks are text.
+        output_text_parts: list[str] = []
+        for block in (resp.content or []):
+            text = getattr(block, "text", None)
+            if text:
+                output_text_parts.append(text)
+        output_text = "".join(output_text_parts)
+
+        return ClaudeCallResult(
+            model=req.model,
+            persona=req.persona,
+            output_text=output_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_read_tokens=cached_read,
+            cache_write_tokens=cache_write,
+            cost_usd=cost,
+            cache_hit=cached_read > 0,
+            ts=now,
         )

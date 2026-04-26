@@ -56,18 +56,69 @@ class AvengersDaemon:
         self.governor = CostGovernor(
             usage=self.usage, distiller=self.distiller,
         )
-        # Fleet with dry-run executor by default -- production wires in
-        # the real Anthropic client at deploy time.
-        self.fleet = Fleet(executor=DryRunExecutor())
-        self.dispatch = AvengersDispatch(
-            governor=self.governor, fleet=self.fleet,
-        )
 
         # Persistent HTTP/2 client for Anthropic (optimization #8). Saves
         # TLS handshake on every call, 50-100ms each. Held across the
         # daemon's life. Lazy-init so import cost is avoided if key is missing.
+        # Build BEFORE the Fleet so live executor can adopt the pooled client.
         self._anthropic_client = None
         self._init_anthropic_client()
+
+        # Fleet executor selection. Default = DryRunExecutor (no live
+        # Claude calls). When APEX_AVENGERS_LIVE=1 *and* the Anthropic
+        # client + SDK are available, swap in AnthropicExecutor so persona
+        # dispatch hits the real API, with prompt caching + usage tracking.
+        executor = self._build_fleet_executor()
+        self.fleet = Fleet(executor=executor)
+        self.dispatch = AvengersDispatch(
+            governor=self.governor, fleet=self.fleet,
+        )
+
+    def _build_fleet_executor(self) -> object:
+        """Choose Fleet executor based on APEX_AVENGERS_LIVE feature flag.
+
+        Returns ``AnthropicExecutor`` when the flag is truthy AND the
+        anthropic SDK + persistent client are available; ``DryRunExecutor``
+        otherwise. Logs the choice so it's visible in the daemon log.
+        """
+        import os
+        flag = os.environ.get("APEX_AVENGERS_LIVE", "").strip().lower()
+        if flag not in {"1", "true", "yes", "on"}:
+            logger.info(
+                "fleet executor: DryRunExecutor (APEX_AVENGERS_LIVE not set)",
+            )
+            return DryRunExecutor()
+        if self._anthropic_client is None:
+            logger.warning(
+                "fleet executor: APEX_AVENGERS_LIVE=%s but anthropic "
+                "client unavailable -- staying on DryRunExecutor",
+                flag,
+            )
+            return DryRunExecutor()
+        try:
+            from apex_predator.brain.avengers.anthropic_executor import (
+                AnthropicExecutor,
+            )
+            from apex_predator.brain.jarvis_v3.claude_layer.prompt_cache import (
+                PromptCacheTracker,
+            )
+            executor = AnthropicExecutor(
+                sdk_client=self._anthropic_client,
+                cache_tracker=PromptCacheTracker(),
+                usage=self.usage,
+            )
+            logger.info(
+                "fleet executor: AnthropicExecutor LIVE -- persona dispatch "
+                "now calls Claude (prompt-cached + usage-tracked)",
+            )
+            return executor
+        except Exception as exc:  # noqa: BLE001 -- log + fall back
+            logger.error(
+                "fleet executor: failed to build AnthropicExecutor (%s) -- "
+                "falling back to DryRunExecutor",
+                exc,
+            )
+            return DryRunExecutor()
 
     def _init_anthropic_client(self) -> None:
         """Build a long-lived Anthropic client with HTTP/2 + pooling."""
