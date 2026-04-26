@@ -81,7 +81,15 @@ class BaseBot(abc.ABC):
 
     def check_risk(self) -> bool:
         """Return True if trading is permitted, False to halt."""
+        # MCC operator intent overrides local pause state. The MCC enforces
+        # the confirm-token gate at HTTP POST time (UNPAUSE_CONFIRM_TOKEN);
+        # by the time intent reaches this file, the operator has already
+        # acknowledged the live-risk warning.
+        from apex_predator.core.mcc_intent import apply_pause_intent
+        self.state.is_paused = apply_pause_intent(self.config.name, self.state.is_paused)
         if self.state.is_killed:
+            return False
+        if self.state.is_paused:
             return False
         daily_loss_pct = abs(self.state.todays_pnl) / self.config.starting_capital_usd * 100
         if self.state.todays_pnl < 0 and daily_loss_pct >= self.config.daily_loss_cap_pct:

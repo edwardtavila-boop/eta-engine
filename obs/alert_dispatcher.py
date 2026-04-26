@@ -301,6 +301,17 @@ class AlertDispatcher:
             sms_body = f"{title}\n{body}"[:1600]
             return _send_sms(sid, token, from_number, to_number, sms_body)
 
+        if channel == "mcc_push":
+            # Web push to phones / desktops that subscribed via the MCC.
+            # No-ops gracefully when pywebpush isn't installed or VAPID
+            # env isn't set -- we treat that as "channel unconfigured"
+            # (returns False, blocked as send_failed in the journal),
+            # never raises.
+            from apex_predator.obs.mcc_push_sender import send_to_all
+            result = send_to_all(severity=level, title=title, body=body,
+                                 extra={"event": event})
+            return result.ok
+
         logger.warning("unknown channel in routing: %s", channel)
         return False
 

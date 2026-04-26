@@ -1000,6 +1000,15 @@ class ApexRuntime:
             apex_eval=apex_eval,
         )
 
+        # MCC operator intent: if the operator manually tripped the kill
+        # switch via the Master Command Center (POST /api/cmd/kill-switch-trip),
+        # honor it on this tick. The MCC verdict goes FIRST so that the latch's
+        # first-trip-wins logic preserves the operator's reason for the audit.
+        from apex_predator.core import mcc_intent
+        mcc_verdict = mcc_intent.kill_request_as_verdict()
+        if mcc_verdict is not None:
+            verdicts = [mcc_verdict, *verdicts]
+
         # 4. act on each verdict
         reports: list[ActionReport] = []
         for v in verdicts:
@@ -1019,6 +1028,11 @@ class ApexRuntime:
                             "reason": v.reason,
                         },
                     )
+                    # If THIS verdict came from the MCC, clean up the request
+                    # file so we don't re-emit on the next tick. The latch
+                    # itself is now TRIPPED and is the source of truth.
+                    if v.evidence.get("source") == "mcc":
+                        mcc_intent.clear_kill_request()
             except Exception as exc:  # pragma: no cover — defensive
                 logger.error(
                     "kill_switch_latch.record_verdict failed "
