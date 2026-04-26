@@ -100,6 +100,9 @@ class DaemonHeartbeat(BaseModel):
     tasks_ok:        int = Field(ge=0, default=0)
     tasks_failed:    int = Field(ge=0, default=0)
     note:            str = ""
+    # JARVIS-only: summary of the MCC intent files drained on this
+    # tick (kill-request, pause/unpause). None for non-JARVIS personas.
+    mcc_intent:      dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -517,6 +520,32 @@ class AvengerDaemon:
         tasks_ok = 0
         tasks_failed = 0
         tasks_due_names: list[str] = []
+        mcc_intent_summary: dict | None = None
+
+        # MCC intent consumer: only JARVIS drains the operator-control
+        # files (mcc_kill_request.json, mcc_pause_requests.jsonl, etc.).
+        # Running this on every persona would race the file unlinks.
+        # The consumer never raises -- failures land in the heartbeat
+        # under "mcc_intent" for the dashboard to surface.
+        if self.persona == "JARVIS":
+            try:
+                from apex_predator.brain.avengers.mcc_intent_consumer import (
+                    consume_mcc_intents,
+                )
+                summary = consume_mcc_intents()
+                mcc_intent_summary = {
+                    "kill_tripped":    summary.kill_tripped,
+                    "kill_cleared":    summary.kill_cleared,
+                    "pause_applied":   summary.pause_applied,
+                    "unpause_applied": summary.unpause_applied,
+                    "paused_bots":     summary.paused_bots_now,
+                    "errors":          summary.errors,
+                }
+            except Exception as exc:  # noqa: BLE001 -- never crash tick
+                logger.exception(
+                    "JARVIS MCC intent consumer raised: %s", exc,
+                )
+                mcc_intent_summary = {"errors": [str(exc)]}
 
         # JARVIS has no BackgroundTask lane -- heartbeat only.
         if self.persona != "JARVIS":
@@ -560,6 +589,7 @@ class AvengerDaemon:
             tasks_ok=tasks_ok,
             tasks_failed=tasks_failed,
             note=self._admin_note(now) if self.persona == "JARVIS" else "",
+            mcc_intent=mcc_intent_summary,
         )
         self._append_heartbeat(hb)
         self._tick_index += 1

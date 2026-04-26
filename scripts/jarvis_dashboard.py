@@ -164,6 +164,7 @@ BREAKER_PATH:        Path = Path("~/.jarvis/breaker.json").expanduser()
 DEADMAN_PATH:        Path = Path("~/.jarvis/heartbeat.jsonl").expanduser()
 PROMOTION_PATH:      Path = Path("~/.jarvis/promotion.jsonl").expanduser()
 CALIBRATION_PATH:    Path = Path("~/.jarvis/calibration.jsonl").expanduser()
+FORECAST_PATH:       Path = Path("~/.jarvis/forecast.jsonl").expanduser()
 JARVIS_PID_DIR:      Path = Path("~/.jarvis").expanduser()
 
 
@@ -215,13 +216,57 @@ def _render_deadman() -> dict[str, Any]:
 
 
 def _render_forecast() -> dict[str, Any]:
-    """Forecast subsystem is not yet wired. Surfaces a structured
-    placeholder so the HTML poller always sees the panel keys.
+    """Read the forecast journal written by
+    :mod:`brain.jarvis_v3.forecast_journal`. Maps the latest projection
+    to the dashboard's panel schema.
+
+    The 5-step-ahead forecast becomes ``horizon_minutes`` under the
+    convention that the JARVIS supervisor ticks once per minute --
+    operators read this as "stress level we expect 5 minutes from
+    now". ``confidence`` reflects how stable the trend is: a small
+    |trend_raw| means the forecaster has settled on a steady reading,
+    so confidence in the projection is high.
     """
+    if not FORECAST_PATH.exists():
+        return {
+            "horizon_minutes": None,
+            "confidence":      None,
+            "status":          "no_data",
+            "path":            str(FORECAST_PATH),
+        }
+    rows = _tail_jsonl(FORECAST_PATH, n=1)
+    if not rows:
+        return {
+            "horizon_minutes": None,
+            "confidence":      None,
+            "status":          "no_data",
+            "path":            str(FORECAST_PATH),
+        }
+    last = rows[-1]
+    trend_raw = float(last.get("trend_raw") or 0.0)
+    # Confidence band: |trend_raw| >= 0.05 -> low (rapidly shifting);
+    # 0.01..0.05 -> medium; <0.01 -> high (steady-state forecaster).
+    abs_t = abs(trend_raw)
+    if abs_t >= 0.05:
+        confidence = "low"
+    elif abs_t >= 0.01:
+        confidence = "medium"
+    else:
+        confidence = "high"
     return {
-        "horizon_minutes": None,
-        "confidence":      None,
-        "status":          "not_wired",
+        "level":           last.get("level"),
+        "level_raw":       last.get("level_raw"),
+        "trend":           last.get("trend"),
+        "trend_raw":       trend_raw,
+        "horizon_minutes": 5,
+        "confidence":      confidence,
+        "forecast_1":      last.get("forecast_1"),
+        "forecast_3":      last.get("forecast_3"),
+        "forecast_5":      last.get("forecast_5"),
+        "samples":         last.get("samples"),
+        "note":            last.get("note", ""),
+        "status":          "ok",
+        "path":            str(FORECAST_PATH),
     }
 
 

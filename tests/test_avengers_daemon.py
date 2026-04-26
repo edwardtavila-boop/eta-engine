@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import apex_predator.brain.avengers.daemon as _daemon_mod  # for skipif lookups
 from apex_predator.brain.avengers import (
     TASK_CADENCE,
     TASK_OWNERS,
@@ -293,10 +292,6 @@ class TestTick:
         hb3 = d.tick()
         assert (hb1.tick_index, hb2.tick_index, hb3.tick_index) == (0, 1, 2)
 
-    @pytest.mark.skipif(
-        not hasattr(_daemon_mod, "_run_local_background_task"),
-        reason="daemon._run_local_background_task not yet wired",
-    )
     @pytest.mark.parametrize(
         ("persona", "task"),
         [
@@ -344,10 +339,6 @@ class TestTick:
         lines = tmp_journal.read_text(encoding="utf-8").splitlines()
         assert any('"provider": "local_handler"' in line for line in lines)
 
-    @pytest.mark.skipif(
-        not hasattr(_daemon_mod, "_run_local_background_task"),
-        reason="daemon._run_local_background_task not yet wired",
-    )
     def test_prompt_warmup_local_handler_preserves_estimated_spend(
         self,
         tmp_journal: Path,
@@ -499,10 +490,6 @@ class TestRunDaemonCli:
         )
         assert ticks == 2
 
-    @pytest.mark.skipif(
-        not hasattr(_daemon_mod, "_default_fleet"),
-        reason="daemon._default_fleet not yet wired",
-    )
     def test_uses_default_fleet_when_none_supplied(
         self,
         tmp_path: Path,
@@ -525,10 +512,6 @@ class TestRunDaemonCli:
 
 
 class TestAnthropicClientFallback:
-    @pytest.mark.skipif(
-        not hasattr(_daemon_mod, "_build_anthropic_http_client"),
-        reason="daemon._build_anthropic_http_client not yet wired",
-    )
     def test_build_http_client_retries_without_http2(self, monkeypatch: pytest.MonkeyPatch):
         import apex_predator.brain.avengers.daemon as dm
 

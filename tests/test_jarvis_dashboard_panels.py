@@ -100,19 +100,6 @@ class TestRenderDeadman:
 
 
 # ---------------------------------------------------------------------------
-# Forecast (still placeholder, but structured)
-# ---------------------------------------------------------------------------
-
-class TestRenderForecast:
-    def test_returns_structured_placeholder(self) -> None:
-        from apex_predator.scripts import jarvis_dashboard as mod
-        out = mod._render_forecast()
-        assert out["horizon_minutes"] is None
-        assert out["confidence"] is None
-        assert out["status"] == "not_wired"
-
-
-# ---------------------------------------------------------------------------
 # Daemons
 # ---------------------------------------------------------------------------
 
@@ -216,6 +203,73 @@ class TestRenderCalibration:
         assert out["last_run"] == "2026-04-26T12:00:00Z"
         assert out["ks_pvalue"] == 0.42
         assert out["verdict"] == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Forecast (now wired -- reads ~/.jarvis/forecast.jsonl)
+# ---------------------------------------------------------------------------
+
+class TestRenderForecast:
+    def test_no_data_when_file_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.scripts import jarvis_dashboard as mod
+        monkeypatch.setattr(mod, "FORECAST_PATH", tmp_path / "missing.jsonl")
+        out = mod._render_forecast()
+        assert out["status"] == "no_data"
+        assert out["horizon_minutes"] is None
+        assert out["confidence"] is None
+
+    def test_reads_last_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.scripts import jarvis_dashboard as mod
+        journal = tmp_path / "forecast.jsonl"
+        journal.write_text(json.dumps({
+            "ts": "2026-04-26T12:00:00Z",
+            "level": "ELEVATED",
+            "level_raw": 0.48,
+            "trend": "UP",
+            "trend_raw": 0.02,
+            "forecast_1": 0.50,
+            "forecast_3": 0.54,
+            "forecast_5": 0.58,
+            "samples": 30,
+            "note": "trending up",
+        }) + "\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "FORECAST_PATH", journal)
+        out = mod._render_forecast()
+        assert out["status"] == "ok"
+        assert out["level"] == "ELEVATED"
+        assert out["trend"] == "UP"
+        assert out["horizon_minutes"] == 5
+        assert out["forecast_5"] == 0.58
+        assert out["samples"] == 30
+        assert out["note"] == "trending up"
+
+    def test_confidence_band_high_when_trend_steady(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.scripts import jarvis_dashboard as mod
+        journal = tmp_path / "forecast.jsonl"
+        journal.write_text(json.dumps({
+            "level": "NORMAL", "trend": "FLAT", "trend_raw": 0.001,
+            "forecast_5": 0.30, "samples": 50,
+        }) + "\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "FORECAST_PATH", journal)
+        assert mod._render_forecast()["confidence"] == "high"
+
+    def test_confidence_band_low_when_trend_swings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from apex_predator.scripts import jarvis_dashboard as mod
+        journal = tmp_path / "forecast.jsonl"
+        journal.write_text(json.dumps({
+            "level": "HIGH", "trend": "UP", "trend_raw": 0.08,
+            "forecast_5": 0.95, "samples": 12,
+        }) + "\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "FORECAST_PATH", journal)
+        assert mod._render_forecast()["confidence"] == "low"
 
 
 # ---------------------------------------------------------------------------
