@@ -5,8 +5,10 @@ The runtime loop that ties every piece together.
 
 Reads
 -----
-* configs/tradovate.yaml, configs/bybit.yaml, configs/kill_switch.yaml,
-  configs/alerts.yaml
+* configs/<active_futures_venue>.yaml for each venue in
+  ``venues.router.ACTIVE_FUTURES_VENUES`` (currently ibkr.yaml +
+  tastytrade.yaml; tradovate.yaml is DORMANT and not required),
+  configs/bybit.yaml, configs/kill_switch.yaml, configs/alerts.yaml
 * .env (via os.environ; we do not ship python-dotenv — it's optional)
 * roadmap_state.json -> shared_artifacts.apex_go_state  (set by go_trigger.py)
 
@@ -164,6 +166,12 @@ class MockRouter:
 # ---------------------------------------------------------------------------- #
 @dataclass
 class RuntimeConfig:
+    # tradovate config slot is preserved through the broker dormancy
+    # mandate -- the adapter still ships and the apex_eval block (read
+    # by build_apex_eval_snapshot) lives here. When Tradovate is in
+    # DORMANT_BROKERS, configs/tradovate.yaml may be absent;
+    # _load_yaml returns {} and downstream cfg.tradovate.get(...)
+    # calls fall through to defaults.
     tradovate: dict[str, Any] = field(default_factory=dict)
     bybit: dict[str, Any] = field(default_factory=dict)
     alerts: dict[str, Any] = field(default_factory=dict)
@@ -216,6 +224,8 @@ def load_runtime_config(
     tick_interval_s: float,
     log_path: Path,
 ) -> RuntimeConfig:
+    # _load_yaml returns {} for missing files; tradovate.yaml is
+    # expected to be absent while the broker is DORMANT.
     cfg = RuntimeConfig(
         tradovate=_load_yaml(config_dir / "tradovate.yaml"),
         bybit=_load_yaml(config_dir / "bybit.yaml"),
@@ -371,15 +381,22 @@ def build_portfolio_snapshot(snapshots: list[BotSnapshot]) -> PortfolioSnapshot:
 def build_apex_eval_snapshot(cfg: RuntimeConfig, snapshots: list[BotSnapshot]) -> ApexEvalSnapshot:
     """Crude proxy: distance_to_limit = (peak - current) vs configured trailing DD.
 
-    The real Apex API lives in venues.tradovate; when creds are wired this
-    will be replaced by a live read. For now we compute from aggregate tier_a
-    equity.
+    Originally written when Tradovate was the assumed Apex venue and
+    its API was the canonical live read. Under the broker dormancy
+    mandate (Tradovate DORMANT) the trailing-DD value is read from
+    cfg.tradovate.apex_eval.trailing_drawdown_usd if that yaml is
+    present, else from the v0.1.59 R3 trailing_dd_tracker (which is
+    the authoritative source today). When Tradovate un-dormants, the
+    venues.tradovate adapter's live API will replace this proxy --
+    until then this is a bar-level fallback.
     """
     ta = [s for s in snapshots if s.tier == "A"]
     if not ta:
         return ApexEvalSnapshot(trailing_dd_limit_usd=2500.0, distance_to_limit_usd=2500.0)
     current = sum(s.equity_usd for s in ta)
     peak = sum(s.peak_equity_usd for s in ta)
+    # cfg.tradovate is {} when tradovate.yaml is absent (DORMANT path);
+    # the .get(..., 2500.0) fallback then yields the Apex-eval default.
     trailing_dd = float(
         (cfg.tradovate.get("apex_eval", {}) or {}).get("trailing_drawdown_usd", 2500.0)
     )

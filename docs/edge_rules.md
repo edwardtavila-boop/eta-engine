@@ -27,8 +27,11 @@ is authoritative and **this file must be updated**.
    its signal meta. Position size is derived from stop, not from
    confidence. Target is 2R hard or trailing 1R from peak (MNQ/NQ) or
    liquidation-safe leverage cap (perps).
-5. **Venue matters.** Futures (MNQ/NQ) use bracket orders via Tradovate.
-   Perps (ETH/SOL/XRP/BTC-seed) use reduce-only IOC on Bybit v5.
+5. **Venue matters.** Futures (MNQ/NQ) use bracket orders via the
+   active futures broker — currently IBKR (primary) + Tastytrade
+   (fallback) per `venues/router.py::ACTIVE_FUTURES_VENUES`.
+   Tradovate is DORMANT (operator mandate 2026-04-24). Perps
+   (ETH/SOL/XRP/BTC-seed) use reduce-only IOC on Bybit v5.
 
 ## 2. Hierarchy: from macro to entry
 
@@ -59,8 +62,9 @@ is authoritative and **this file must be updated**.
      └────────────┬────────────┘
                   │
      ┌────────────▼────────────┐
-     │  Smart Router + Venue   │  core/smart_router.py
-     │  MARKET or POST_ONLY    │  MNQ→Tradovate, perps→Bybit
+     │  Smart Router + Venue   │  venues/router.py
+     │  MARKET or POST_ONLY    │  MNQ→IBKR (primary)/Tastytrade,
+     │                         │  perps→Bybit. Tradovate DORMANT.
      └─────────────────────────┘
 ```
 

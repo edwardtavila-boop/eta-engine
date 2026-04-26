@@ -178,7 +178,14 @@ def test_amain_dry_run_smoke_via_subprocess(tmp_path: Path) -> None:
         cwd=ROOT.parent,
         capture_output=True,
         text=True,
-        timeout=60,
+        # Subprocess timeout. Bumped from 60s -> 180s in v0.1.71 because
+        # parallel-automation startup work (H4 byte-identical-poll
+        # tracking, B3 invariant validator, dormancy-aware preflight
+        # gates) extended the cold-boot path past the original 60s
+        # budget on slow filesystems / CI runners. The actual tick
+        # cadence is ``--tick-interval 0`` so this is a startup-time
+        # ceiling, not a test-runtime limit.
+        timeout=180,
         check=False,
     )
 

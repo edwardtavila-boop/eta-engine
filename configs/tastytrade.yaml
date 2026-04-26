@@ -1,0 +1,96 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/tastytrade.yaml
+# Tastytrade venue configuration — Tier-A bots (MNQ, NQ) FALLBACK
+# Decisions source: docs/decisions_v1.json (APEX_DECISIONS_v1)
+# Status: FALLBACK active futures broker per broker_dormancy_mandate
+# (2026-04-24). Active when IBKR (primary) circuit-breaker trips or
+# the operator pins preferred_futures_venue="tastytrade".
+#
+# Operator action required before live (RECOMMENDED, not blocking
+# first live tick): populate TASTYTRADE_BASE_URL +
+# TASTYTRADE_ACCOUNT_NUMBER + TASTYTRADE_SESSION_TOKEN via the OS
+# keyring / .env, and fund the Tastytrade account if you intend to
+# exercise the failover path.
+
+venue: tastytrade
+environment: cert    # cert (sandbox) | live  — flipped after Phase 4 soak
+
+# Apex Trader Funding eval constraints (decision #1)
+apex_eval:
+  enabled: true
+  trailing_drawdown_usd: 2500
+  daily_loss_limit_usd: 1500
+  profit_target_usd: 2500
+  min_trading_days: 7
+  consistency_rule_pct: 30
+  notes: "10% bucket DD ($500) trips BEFORE Apex trailing"
+
+# Auth — Tastytrade uses a session-token model. Generate a token
+# from https://my.tastytrade.com -> Manage -> Sessions, or via the
+# /sessions endpoint with username + password. Tokens expire after
+# ~24h of inactivity; the runtime catches the expiry as a failed
+# get_net_liquidation and the v0.1.66 H3 hysteresis-aware drift
+# detector surfaces it via no_broker_data classifications.
+auth:
+  env_keys:
+    base_url: TASTYTRADE_BASE_URL
+    account_number: TASTYTRADE_ACCOUNT_NUMBER
+    session_token: TASTYTRADE_SESSION_TOKEN
+  defaults:
+    base_url: "https://api.tastyworks.com"   # cert: api.cert.tastyworks.com
+
+# Contracts traded (mirror of ibkr.yaml — same Apex eval contracts)
+contracts:
+  mnq:
+    symbol: "/MNQ"           # Tastytrade uses /-prefix for futures
+    tick_size: 0.25
+    tick_value_usd: 0.50
+    exchange: "CME"
+    active: true
+  nq:
+    symbol: "/NQ"
+    tick_size: 0.25
+    tick_value_usd: 5.00
+    exchange: "CME"
+    active: false
+
+# Per-bot sizing (decision #3 + #4)
+sizing:
+  mnq:
+    contracts_per_entry: 1
+    max_concurrent: 1
+    bucket_equity_usd: 5000
+    max_bucket_loss_usd: 500
+  nq:
+    contracts_per_entry: 1
+    max_concurrent: 1
+    bucket_equity_usd: 12000
+    max_bucket_loss_usd: 1200
+
+# Session gating — no overnight, no news-window entry
+session:
+  allow_rth_only: true
+  skip_first_5m_after_open: true
+  flat_by_et: "15:55"
+  news_blackout_minutes_before: 5
+  news_blackout_minutes_after: 5
+
+# Circuit breakers
+circuit_breakers:
+  consecutive_losses: 3
+  on_trip: "flatten_and_pause_until_next_session"
+  daily_loss_flip: "flatten_all"
+
+# Reconciliation
+reconciliation:
+  on_reconnect: "verify_position_and_open_orders_before_new_entries"
+  idempotency_key_prefix: "apex-tasty-mnq-"
+  stale_order_timeout_sec: 30
+
+# Notes for the operator
+# ----------------------
+# Tastytrade is the failover path. The v0.1.64
+# RouterBackedBrokerEquityAdapter automatically follows
+# router.choose_venue("MNQ") so the broker-equity drift detector
+# tracks whichever broker is currently routing -- no separate
+# wiring needed here. The session_token is the long-lived auth
+# (~24h); rotate it before each live session.

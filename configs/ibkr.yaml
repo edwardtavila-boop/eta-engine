@@ -1,0 +1,92 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/ibkr.yaml
+# IBKR Client Portal venue configuration — Tier-A bots (MNQ, NQ)
+# Decisions source: docs/decisions_v1.json (APEX_DECISIONS_v1)
+# Status: PRIMARY active futures broker per broker_dormancy_mandate
+# (2026-04-24).
+#
+# Operator action required before live: populate IBKR_BASE_URL +
+# IBKR_ACCOUNT_ID via scripts/setup_brokers (or directly via the OS
+# keyring / .env), and fund the IBKR account to >= $5,000 cleared
+# balance per docs/live_launch_runbook.md T-minus #9.
+
+venue: ibkr
+environment: paper   # paper | live  — flipped after Phase 4 soak
+
+# Apex Trader Funding eval constraints (decision #1)
+apex_eval:
+  enabled: true
+  trailing_drawdown_usd: 2500
+  daily_loss_limit_usd: 1500
+  profit_target_usd: 2500
+  min_trading_days: 7
+  consistency_rule_pct: 30
+  notes: "10% bucket DD ($500) trips BEFORE Apex trailing"
+
+# Auth — IBKR Client Portal Gateway is a local TLS endpoint that
+# brokers the Web API. The Gateway holds the session; we do not
+# stash long-lived tokens. The operator runs the Gateway separately
+# and points IBKR_BASE_URL at it.
+auth:
+  env_keys:
+    base_url: IBKR_BASE_URL
+    account_id: IBKR_ACCOUNT_ID
+  defaults:
+    base_url: "https://localhost:5000/v1/api"
+
+# Contracts traded (decision #3 — MNQ only at first, NQ added later)
+contracts:
+  mnq:
+    conid: 0                 # populated by IBKR contract-search at startup
+    symbol: "MNQ"
+    tick_size: 0.25
+    tick_value_usd: 0.50
+    exchange: "CME"
+    active: true
+  nq:
+    conid: 0
+    symbol: "NQ"
+    tick_size: 0.25
+    tick_value_usd: 5.00
+    exchange: "CME"
+    active: false            # flipped after MNQ 30 trades green
+
+# Per-bot sizing (decision #3 + #4)
+sizing:
+  mnq:
+    contracts_per_entry: 1
+    max_concurrent: 1
+    bucket_equity_usd: 5000
+    max_bucket_loss_usd: 500   # 10% trip-wire
+  nq:
+    contracts_per_entry: 1
+    max_concurrent: 1
+    bucket_equity_usd: 12000
+    max_bucket_loss_usd: 1200
+
+# Session gating — no overnight, no news-window entry
+session:
+  allow_rth_only: true
+  skip_first_5m_after_open: true
+  flat_by_et: "15:55"
+  news_blackout_minutes_before: 5
+  news_blackout_minutes_after: 5
+
+# Circuit breakers
+circuit_breakers:
+  consecutive_losses: 3
+  on_trip: "flatten_and_pause_until_next_session"
+  daily_loss_flip: "flatten_all"
+
+# Reconciliation
+reconciliation:
+  on_reconnect: "verify_position_and_open_orders_before_new_entries"
+  idempotency_key_prefix: "apex-ibkr-mnq-"
+  stale_order_timeout_sec: 30
+
+# Notes for the operator
+# ----------------------
+# The Client Portal session expires after ~24h of inactivity. The
+# v0.1.66+ runtime fires a kind="recovered" alert on reconnect; the
+# v0.1.69 H4 partial scaffolds byte-identical-poll detection so a
+# stale Gateway (returning the same payload over and over) surfaces
+# in the broker_equity sub-key of runtime_log.jsonl.
