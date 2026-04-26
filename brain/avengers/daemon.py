@@ -291,6 +291,88 @@ def envelope_for_task(
 
 
 # ---------------------------------------------------------------------------
+# Local-handler bypass + Anthropic HTTP fallback + default Fleet factory
+# ---------------------------------------------------------------------------
+# A "local handler" is a background task that doesn't need an LLM round-
+# trip -- the daemon executes it inline and emits a journal record with
+# ``provider="local_handler"``. Tests monkey-patch the helper so the bot
+# can pretend a task is local even though no real handler is wired yet.
+# Returning ``None`` means "no local handler matched -- fall through to
+# fleet.dispatch".
+
+
+def _run_local_background_task(task: BackgroundTask) -> dict | None:  # noqa: ARG001
+    """Default no-op stub. Real local handlers can be registered as the
+    project wires them up; until then every task falls through to the
+    Fleet. Tests patch this attribute to inject a synthetic handler.
+    """
+    return None
+
+
+def _local_handler_journal_record(
+    task: BackgroundTask,
+    handler_result: dict,
+    *,
+    ts: datetime,
+    persona: str,
+) -> dict:
+    """Wrap a handler's return into the JSONL record the journal writes.
+
+    PROMPT_WARMUP runs through the Anthropic API for prefix caching, so
+    its `est_cost_usd` is mapped to `billable_usd` and `billing_mode`
+    flips to `anthropic_api`. Other tasks are free-of-charge by default.
+    """
+    billable = float(handler_result.get("est_cost_usd", 0.0) or 0.0)
+    is_billed = task is BackgroundTask.PROMPT_WARMUP and billable > 0.0
+    return {
+        "ts":      ts.isoformat(),
+        "persona": persona,
+        "task":    task.value,
+        "result": {
+            "provider":     "local_handler",
+            "billing_mode": "anthropic_api" if is_billed else "free",
+            "billable_usd": billable,
+            **handler_result,
+        },
+    }
+
+
+def _default_fleet() -> Fleet:
+    """Construct a Fleet with default journal/executor.
+
+    Indirection point so ``run_daemon_cli`` doesn't bake in the Fleet
+    class -- tests patch this to inject a fake fleet without monkey-
+    patching the symbol on the Fleet class itself.
+    """
+    return Fleet()
+
+
+def _build_anthropic_http_client(httpx_module: object) -> object:  # noqa: ANN401
+    """Build an httpx.Client for the Anthropic SDK, falling back to
+    HTTP/1.1 when the runtime is missing the ``h2`` package.
+
+    The Anthropic SDK prefers HTTP/2 because it's cheaper for prompt-
+    cache reuse; on systems without h2 installed it raises at
+    ``Client(http2=True)``. This helper tries h2 first, swallows the
+    failure, and retries without h2 so the daemon still has an HTTP
+    client to issue requests with.
+    """
+    limits = httpx_module.Limits(  # type: ignore[attr-defined]
+        max_keepalive_connections=10,
+        max_connections=20,
+    )
+    timeout = httpx_module.Timeout(60.0, connect=10.0)  # type: ignore[attr-defined]
+    try:
+        return httpx_module.Client(  # type: ignore[attr-defined]
+            http2=True, limits=limits, timeout=timeout,
+        )
+    except Exception:  # noqa: BLE001 -- h2 missing OR any handshake-time error
+        return httpx_module.Client(  # type: ignore[attr-defined]
+            http2=False, limits=limits, timeout=timeout,
+        )
+
+
+# ---------------------------------------------------------------------------
 # PID file helpers
 # ---------------------------------------------------------------------------
 
@@ -434,6 +516,20 @@ class AvengerDaemon:
             for task in self.due_tasks(now):
                 tasks_due_names.append(task.value)
                 try:
+                    # Local-handler bypass: if the module-level helper
+                    # returns a dict, the task is handled inline and
+                    # the Fleet is not invoked. Saves an LLM round-trip
+                    # for tasks that don't need one (dashboard payload
+                    # assembly, log compaction, prompt-cache warmup).
+                    local_result = _run_local_background_task(task)
+                    if local_result is not None:
+                        record = _local_handler_journal_record(
+                            task, local_result,
+                            ts=now, persona=self.persona,
+                        )
+                        self._append_record(record)
+                        tasks_ok += 1
+                        continue
                     env = envelope_for_task(task, caller=SubsystemId.OPERATOR)
                     res = self.fleet.dispatch(env)
                     if res.success:
@@ -537,6 +633,20 @@ class AvengerDaemon:
         except OSError:
             return
 
+    def _append_record(self, record: dict) -> None:
+        """Write an arbitrary JSONL record to the journal. Best-effort.
+
+        Used by the local-handler bypass path so tests + audit code
+        can find a `provider="local_handler"` entry alongside the
+        usual heartbeat / dispatch lines.
+        """
+        self._journal_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._journal_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, default=str) + "\n")
+        except OSError:
+            return
+
 
 # ---------------------------------------------------------------------------
 # Convenience: run the daemon for a persona name (used by scripts/)
@@ -564,7 +674,7 @@ def run_daemon_cli(
         raise ValueError(
             f"unknown persona {persona!r}; expected one of: {valid}",
         )
-    fleet = fleet or Fleet()
+    fleet = fleet or _default_fleet()
     daemon = AvengerDaemon(
         persona=name,
         fleet=fleet,
