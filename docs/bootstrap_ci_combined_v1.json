@@ -1,0 +1,49 @@
+{
+  "_doc": "Canonical bootstrap-CI summary fed into scripts.sample_size_calc. Per-bot mean / stdev / trade-count derived from the v0.1.x walk-forward harness; portfolio row is reconstructed by sample_size_calc._pool_portfolio. Numbers are placeholder seed values for the integration test -- real values land here from scripts.run_bootstrap_ci once that emits a v1 schema.",
+  "schema_version": 1,
+  "generated_at_utc": "2026-04-26T00:00:00+00:00",
+  "by_bot": {
+    "mnq": {
+      "n_trades":    63,
+      "point_mean":  0.20,
+      "point_stdev": 1.20,
+      "ci95_low":   -0.05,
+      "ci95_high":   0.45
+    },
+    "nq": {
+      "n_trades":    48,
+      "point_mean":  0.18,
+      "point_stdev": 1.30,
+      "ci95_low":   -0.10,
+      "ci95_high":   0.46
+    },
+    "crypto_seed": {
+      "n_trades":   142,
+      "point_mean":  0.12,
+      "point_stdev": 0.85,
+      "ci95_low":    0.02,
+      "ci95_high":   0.22
+    },
+    "eth_perp": {
+      "n_trades":    76,
+      "point_mean":  0.25,
+      "point_stdev": 1.45,
+      "ci95_low":   -0.05,
+      "ci95_high":   0.55
+    },
+    "sol_perp": {
+      "n_trades":    54,
+      "point_mean":  0.15,
+      "point_stdev": 1.55,
+      "ci95_low":   -0.20,
+      "ci95_high":   0.50
+    },
+    "xrp_perp": {
+      "n_trades":    41,
+      "point_mean":  0.10,
+      "point_stdev": 1.65,
+      "ci95_low":   -0.30,
+      "ci95_high":   0.50
+    }
+  }
+}

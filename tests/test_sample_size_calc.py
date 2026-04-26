@@ -90,11 +90,13 @@ def test_integration_run_on_canonical(tmp_path: Path):
     if not (root.parent / "apex_predator" / "__init__.py").exists():
         pytest.skip("apex_predator package not on cwd-parent path")
 
+    out_dir = tmp_path / "out"
     result = subprocess.run(
         [
             sys.executable, "-m", "apex_predator.scripts.sample_size_calc",
             "--report", str(report),
             "--label", "test_integration",
+            "--out-dir", str(out_dir),
         ],
         cwd=str(root.parent),
         capture_output=True, text=True,
@@ -105,18 +107,17 @@ def test_integration_run_on_canonical(tmp_path: Path):
             f"{result.stderr[:300]}",
         )
 
-    out_json = root / "docs" / "sample_size_test_integration.json"
-    if not out_json.exists():
-        pytest.skip(
-            "output JSON not produced (subprocess env mismatch)",
-        )
+    out_json = out_dir / "sample_size_test_integration.json"
+    assert out_json.exists(), (
+        f"output JSON not produced; stderr={result.stderr[:300]}"
+    )
     data = json.loads(out_json.read_text())
     assert "rows" in data
     # Should include at least the 6 bots + portfolio row
     assert len(data["rows"]) >= 7
     # Portfolio must be the last row
     assert data["rows"][-1]["bot"] == "portfolio"
-    # Cleanup
-    out_json.unlink(missing_ok=True)
-    md = root / "docs" / "sample_size_test_integration.md"
-    md.unlink(missing_ok=True)
+    # Markdown rendered alongside the JSON.
+    md = out_dir / "sample_size_test_integration.md"
+    assert md.exists()
+    assert "test_integration" in md.read_text(encoding="utf-8")

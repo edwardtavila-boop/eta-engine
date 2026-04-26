@@ -128,11 +128,17 @@ def _eth_account_installed() -> bool:
     return True
 
 
-@pytest.mark.skipif(
-    _eth_account_installed(),
-    reason="runs only when eth_account is NOT installed",
-)
-def test_sign_l1_action_raises_unavailable_when_missing() -> None:
+def test_sign_l1_action_raises_unavailable_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate the eth_account-missing state via is_available() patch.
+
+    Previously skipped when eth_account WAS installed; that left the
+    missing-dep code path untested in environments that always have
+    the dep. Now monkey-patching ``is_available`` to return False
+    forces the code path independent of the dep state.
+    """
+    monkeypatch.setattr(HyperliquidSigner, "is_available", staticmethod(lambda: False))
     signer = HyperliquidSigner(_TEST_KEY)
     with pytest.raises(HyperliquidSignerUnavailable):
         signer.sign_l1_action(
@@ -141,11 +147,11 @@ def test_sign_l1_action_raises_unavailable_when_missing() -> None:
         )
 
 
-@pytest.mark.skipif(
-    _eth_account_installed(),
-    reason="runs only when eth_account is NOT installed",
-)
-def test_address_returns_none_when_missing() -> None:
+def test_address_returns_none_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same simulation pattern as the sign-action inverse test."""
+    monkeypatch.setattr(HyperliquidSigner, "is_available", staticmethod(lambda: False))
     signer = HyperliquidSigner(_TEST_KEY)
     assert signer.address() is None
 
