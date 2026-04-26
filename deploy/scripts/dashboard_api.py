@@ -30,7 +30,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 # State/log dirs: Windows defaults; overridable via env
 if os.name == "nt":
@@ -174,6 +174,100 @@ def get_state_file(filename: str) -> dict:
     if filename not in safe:
         raise HTTPException(status_code=403, detail="filename not on safelist")
     return _read_json(filename)
+
+
+# --- raw-state proxy ----------------------------------------------------- #
+# The /api/state/{filename} endpoint above is intentionally tight (safelist
+# of 14 files in STATE_DIR). The mnq_apex_bot dashboard, however, reads a
+# different set of files under `eta_engine/docs/btc_live/...` (broker
+# fleet, ecosystem JSON, control config, role-latest, etc.) and does so
+# from arbitrary nested subpaths.
+#
+# Rather than maintain a parallel safelist, we resolve a rooted "BTC root"
+# directory and serve any file under it, with strict path-traversal
+# protection. Read-only; rejects any resolved path that escapes BTC_ROOT.
+def _resolve_btc_root() -> Path:
+    """Find the btc_live directory the daemons are actually writing to."""
+    candidates = [
+        STATE_DIR.parent / "eta_engine" / "docs" / "btc_live",
+        Path.home() / "eta_engine" / "docs" / "btc_live",
+        Path("C:/eta_engine/docs/btc_live"),
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return candidates[0]
+
+
+BTC_ROOT = _resolve_btc_root()
+
+
+@app.get("/api/raw-state/{path:path}", response_model=None)
+def get_raw_state(path: str) -> JSONResponse | PlainTextResponse:
+    """Serve a file from BTC_ROOT (or its alias roots), with traversal-safety.
+
+    Path must resolve under BTC_ROOT. JSON files are parsed and returned as
+    JSON; .jsonl / .txt / .log / .md returned as plain text. Anything else
+    is 415. Missing file is 404; traversal attempt is 403.
+
+    Sets `X-File-Mtime` (unix epoch float) and `Last-Modified` (HTTP-date)
+    response headers so remote callers can compute file age without a
+    round-trip through `/api/raw-state-list`.
+    """
+    target = (BTC_ROOT / path).resolve()
+    btc_root = BTC_ROOT.resolve()
+    try:
+        target.relative_to(btc_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="path escapes btc root") from exc
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+
+    stat = target.stat()
+    from email.utils import formatdate as _formatdate
+    headers = {
+        "X-File-Mtime": str(stat.st_mtime),
+        "Last-Modified": _formatdate(stat.st_mtime, usegmt=True),
+        "Cache-Control": "no-store",
+    }
+
+    suffix = target.suffix.lower()
+    if suffix == ".json":
+        try:
+            return JSONResponse(
+                content=json.loads(target.read_text(encoding="utf-8")),
+                headers=headers,
+            )
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail=f"invalid json: {exc}") from exc
+    if suffix in (".jsonl", ".txt", ".log", ".md"):
+        return PlainTextResponse(target.read_text(encoding="utf-8"), headers=headers)
+    raise HTTPException(status_code=415, detail=f"unsupported type: {suffix}")
+
+
+@app.get("/api/raw-state-list/{subdir:path}")
+def list_raw_state(subdir: str = "") -> dict:
+    """Directory listing under BTC_ROOT (lets the local dashboard discover
+    which files exist before fetching them). Same traversal protection."""
+    target = (BTC_ROOT / subdir).resolve() if subdir else BTC_ROOT.resolve()
+    btc_root = BTC_ROOT.resolve()
+    try:
+        target.relative_to(btc_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="path escapes btc root") from exc
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail="not a directory")
+    entries = []
+    for p in sorted(target.iterdir()):
+        rel = str(p.relative_to(btc_root)).replace("\\", "/")
+        entries.append({
+            "name": p.name,
+            "path": rel,
+            "is_dir": p.is_dir(),
+            "size": p.stat().st_size if p.is_file() else None,
+            "mtime": p.stat().st_mtime,
+        })
+    return {"root": str(btc_root), "subdir": subdir, "entries": entries}
 
 
 @app.get("/api/personas")
