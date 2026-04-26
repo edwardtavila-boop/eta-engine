@@ -646,9 +646,17 @@ class ApexRuntime:
         # on a very-green day.
         self.consistency_guard = consistency_guard
         self._last_consistency_status: ConsistencyStatus | None = None
+        # Alert-journal path is overridable via APEX_ALERTS_LOG_PATH so
+        # tests can redirect to a tmp dir without monkey-patching ROOT.
+        # Production leaves it unset and writes to docs/alerts_log.jsonl.
+        _alerts_log_override = os.environ.get("APEX_ALERTS_LOG_PATH")
         self.dispatcher = dispatcher or AlertDispatcher(
             cfg.alerts or {},
-            log_path=ROOT / "docs" / "alerts_log.jsonl",
+            log_path=(
+                Path(_alerts_log_override)
+                if _alerts_log_override
+                else ROOT / "docs" / "alerts_log.jsonl"
+            ),
         )
         self.heartbeat = heartbeat or HeartbeatMonitor()
         self.bindings = bindings if bindings is not None else BOT_BINDINGS

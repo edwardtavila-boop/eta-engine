@@ -50,9 +50,15 @@ ROOT = Path(__file__).resolve().parent.parent
 @pytest.mark.asyncio
 async def test_amain_dry_run_wires_broker_equity_into_runtime_log(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """End-to-end: ``_amain --max-bars 1 --dry-run`` must wire the
     R1 reconciler so each tick records a ``broker_equity`` block."""
+    # Redirect the alert dispatcher's journal to tmp -- without this
+    # override the runtime would append runtime_start / kill_switch_*
+    # / runtime_stop events to the real docs/alerts_log.jsonl on every
+    # test run.
+    monkeypatch.setenv("APEX_ALERTS_LOG_PATH", str(tmp_path / "alerts.jsonl"))
     # Lazy import so a broken module surfaces as an import error in
     # this test rather than at collection time (clearer signal).
     sys.path.insert(0, str(ROOT.parent))
@@ -167,6 +173,7 @@ def test_amain_dry_run_smoke_via_subprocess(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    import os
     proc = subprocess.run(
         [
             sys.executable, "-m", "apex_predator.scripts.run_apex_live",
@@ -180,6 +187,13 @@ def test_amain_dry_run_smoke_via_subprocess(tmp_path: Path) -> None:
         text=True,
         timeout=60,
         check=False,
+        # Redirect the alert dispatcher's journal to tmp so a subprocess
+        # invocation doesn't append runtime_start / kill_switch_* /
+        # runtime_stop events into the real docs/alerts_log.jsonl.
+        env={
+            **os.environ,
+            "APEX_ALERTS_LOG_PATH": str(tmp_path / "alerts.jsonl"),
+        },
     )
 
     assert proc.returncode == 0, (
