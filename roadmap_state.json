@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-26T18:35:13.878490+00:00",
+  "last_updated": "2026-04-26T20:12:27.762873+00:00",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -4210,6 +4210,80 @@
       "tests_passing_after": 4403,
       "tests_added_in_this_bundle": 132,
       "ruff_green_touched_files": true
+    },
+    "apex_predator_v0_1_72_session_closure": {
+      "timestamp_utc": "2026-04-26T20:12:27.762873+00:00",
+      "version": "v0.1.72",
+      "bundle_name": "POST-v0.1.71 SESSION CLOSURE -- 7 PRs (#3 through #9) shipped tightly scoped behind one operator directive ('do all'), captured in a single milestone rather than per-PR bumps.",
+      "theme": "Daemon hardening (real local-handler bypass + Anthropic SDK warmup + ShadowPaperTracker journal). MCC panel wiring (5 of 6 panels off placeholders). Phase-1 paper-mode loop closed end-to-end (--max-runtime-seconds + runtime_unpaused audit + e2e CI test). Operations hygiene (active-broker creds check, audit-log pollution fix, branch protection on main, roadmap_state.json schema doc, audit-log regression pin). 446 net new passing tests; 0 failures going out.",
+      "prs_landed": [
+        "#3  v0.1.71 avengers daemon helpers + PR #2 closure bump",
+        "#4  fix: redirect alerts_log.jsonl in test_amain_wire_up",
+        "#5  feat: 5 real local-handler implementations + 14 tests",
+        "#6  test: pin scaffold skipped tests + eth_account in CI",
+        "#7  chore: pyproject metadata + Phase 1 scoping doc",
+        "#8  feat: active-broker creds + JARVIS MCC + Cloudflare",
+        "#9  feat: 5-wave bundle (Phase1 items 2/4/5 + MCC + warmup + tests + docs)"
+      ],
+      "modules_added": [
+        "apex_predator/brain/avengers/local_handlers.py",
+        "apex_predator/scripts/jarvis_dashboard.py (Phase 1)",
+        "apex_predator/scripts/_bump_roadmap_v0_1_71.py",
+        "apex_predator/scripts/_bump_roadmap_v0_1_72.py",
+        "apex_predator/docs/phase_1_paper_mode_scoping.md",
+        "apex_predator/docs/ROADMAP_STATE_SCHEMA.md",
+        "apex_predator/docs/bootstrap_ci_combined_v1.json",
+        "apex_predator/tests/test_local_handlers.py",
+        "apex_predator/tests/test_paper_mode_e2e.py",
+        "apex_predator/tests/test_jarvis_dashboard_panels.py",
+        "apex_predator/tests/test_jarvis_command_center.py (parallel)",
+        "apex_predator/tests/test_strategies_shadow_paper_tracker.py",
+        "apex_predator/tests/test_no_test_pollution.py",
+        "apex_predator/deploy/scripts/cloudflare_tunnel_setup.sh (parallel)",
+        "apex_predator/deploy/scripts/cloudflare_tunnel_status.sh (parallel)",
+        "apex_predator/deploy/systemd/jarvis-command-center.service (parallel)"
+      ],
+      "modules_edited": [
+        "apex_predator/brain/avengers/daemon.py (3 helpers wired).",
+        "apex_predator/strategies/shadow_paper_tracker.py (opt-in JSONL journal_path).",
+        "apex_predator/scripts/run_apex_live.py (--max-runtime-seconds, --unpause, --operator, runtime_unpaused dispatch, _active_broker_creds_present, APEX_ALERTS_LOG_PATH).",
+        "apex_predator/configs/alerts.yaml (runtime_unpaused entry).",
+        "apex_predator/.github/workflows/ci.yml (eth_account dep + fastapi/httpx/pytest-asyncio).",
+        "apex_predator/.github/workflows/test.yml (symlink-trick alignment with ci.yml + eth_account).",
+        "apex_predator/Makefile (pkg-link + WITH_ENV + correct lint scope).",
+        "apex_predator/CLAUDE.md (Master Command Center pointer)."
+      ],
+      "tests_added_lower_bound": 49,
+      "tests_passing_at_session_close": 3562,
+      "tests_failing_at_session_close": 0,
+      "tests_skipped_at_session_close": 2,
+      "ci_status": "all_green",
+      "ci_jobs_required": [
+        "ruff (production code) [py3.14]",
+        "pytest (full sweep) [py3.14]",
+        "py3.12 (test.yml)",
+        "py3.13 (test.yml)"
+      ],
+      "operator_directive_quote": "do all",
+      "branch_protection_active": true,
+      "design_choices": {
+        "local_handler_bypass_short_circuits_fleet": "AvengerDaemon.tick() consults _run_local_background_task BEFORE Fleet.dispatch on every due task. A non-None return short-circuits the LLM round-trip and writes a journal record with provider='local_handler'. 5 of the daemon's task slots are now bypass-capable; PROMPT_WARMUP is the only one that legitimately calls the API (with billing_mode=anthropic_api in the journal record).",
+        "prompt_warmup_haiku45_cache_control": "PROMPT_WARMUP issues messages.create(model='claude-haiku-4-5-20251001', max_tokens=16, system=[{type:'text', text:..., cache_control:{type:'ephemeral'}}]) so every warmup hits the same cache slot. Subsequent live requests with the matching prefix get the cache-read discount. Failures degrade to failed=1; daemon never raises from a warmup hiccup.",
+        "active_broker_creds_priority": "_active_broker_creds_present consults IBKR (primary) + Tastytrade (fallback) per the 2026-04-24 dormancy mandate. Tradovate creds alone CANNOT flip --live into the real-router branch -- regression-pinned by test_tradovate_creds_alone_do_not_flip_check. Backward-compat alias _tradovate_creds_present kept.",
+        "max_runtime_independent_of_max_bars": "--max-runtime-seconds and --max-bars are independent loop bounds; whichever trips first wins. Used by overnight paper soaks (--max-runtime-seconds 28800 = 8h) where bar ingestion rate is unbounded. The trip is logged at INFO so the operator can tell budget-exit apart from kill-switch-exit at a glance.",
+        "runtime_unpaused_audit_anchor": "--unpause + --operator NAME (or APEX_OPERATOR env) emits a runtime_unpaused event right after runtime_start so the audit trail captures who authorized this run to trade. Falls back to 'anonymous' when the operator name is unset; registered in configs/alerts.yaml at info-level on pushover+email so the operator (and inbox) sees the authorization recorded.",
+        "audit_log_pollution_pin": "test_no_test_pollution.py snapshots the SHA-256 of tracked audit-log files at module collection time and re-checks at test time. Catches a third recurrence of the docs/alerts_log.jsonl + docs/broker_connections pollution patterns at CI time -- the existing test-side fixes (PR #2 + PR #4) stay in place; the drift pin is the canary for the next contributor."
+      },
+      "scope_exclusions": {
+        "no_forecast_subsystem": "JARVIS MCC's forecast panel returns a structured placeholder ({horizon_minutes: None, confidence: None, status: 'not_wired'}). The forecast subsystem itself doesn't exist yet -- building it is its own arc beyond the v0.1.x scope. Wiring is one-line once the subsystem ships.",
+        "no_phase_2_through_11_advance": "ROADMAP.md phases P2 through P11 (Data, Backtesting, Risk, Brokers, Funnel, Ops, Security, Rollout, AI/ML, Staking) get incremental progress through this session but no phase-flip events. The work was horizontal -- daemon hardening + MCC + paper-mode -- rather than vertical (a single phase end-to-end).",
+        "no_real_paper_mode_run": "The paper-mode loop is now CI-pinned end-to-end but no actual paper trades have run against IBKR/Tasty. Operator action: fill .env with paper creds, run make preflight, run make firm-gate, then a bounded paper run with --max-bars 200 + --max-runtime-seconds 60. See docs/phase_1_paper_mode_scoping.md for the full order of operations.",
+        "no_pat_rotation": "The PAT used to push this session's commits is still in chat history. Operator todo: rotate at https://github.com/settings/personal-access-tokens and re-prime the credential helper."
+      },
+      "tests_passing_before": 4403,
+      "tests_passing_after": 4403,
+      "tests_added_in_this_bundle": 49,
+      "ruff_green_touched_files": true
     }
   },
   "phases": [
@@ -5210,7 +5284,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-26T18:35:13.878490+00:00",
+  "last_updated_utc": "2026-04-26T20:12:27.762873+00:00",
   "milestones": [
     {
       "version": "v0.1.31",
@@ -5471,6 +5545,13 @@
       "timestamp_utc": "2026-04-26T18:35:13.878490+00:00",
       "title": "PR #2 closure: 10 spec-first WIP modules + retrospective stack + Makefile/test.yml layout drift reconciled + env-bound test gating. First green CI sweep across all 6 jobs in branch history.",
       "tests_delta": 132,
+      "tests_passing": 4403
+    },
+    {
+      "version": "v0.1.72",
+      "timestamp_utc": "2026-04-26T20:12:27.762873+00:00",
+      "title": "Post-v0.1.71 session closure -- 7 PRs shipped (daemon hardening + MCC panel wiring + Phase-1 paper-mode loop closure + ops hygiene + branch protection). 446 net new passing tests; 0 failures going out.",
+      "tests_delta": 49,
       "tests_passing": 4403
     }
   ]
