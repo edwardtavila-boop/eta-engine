@@ -301,12 +301,19 @@ def envelope_for_task(
 # fleet.dispatch".
 
 
-def _run_local_background_task(task: BackgroundTask) -> dict | None:  # noqa: ARG001
-    """Default no-op stub. Real local handlers can be registered as the
-    project wires them up; until then every task falls through to the
-    Fleet. Tests patch this attribute to inject a synthetic handler.
+def _run_local_background_task(task: BackgroundTask) -> dict | None:
+    """Dispatch ``task`` through the local-handler table.
+
+    Returns a dict summary if a handler matched (and didn't itself
+    return None as a fallthrough hint); else ``None`` to let the
+    daemon fall through to ``Fleet.dispatch``. Tests can monkey-patch
+    this attribute on the module to inject a synthetic handler without
+    touching the dispatch table.
     """
-    return None
+    from apex_predator.brain.avengers.local_handlers import (
+        run_local_background_task as _run,
+    )
+    return _run(task)
 
 
 def _local_handler_journal_record(
