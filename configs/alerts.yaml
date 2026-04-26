@@ -105,6 +105,15 @@ routing:
     # sla_alerter.py prevents per-probe alert storms.
     apex_sla_breach:      { level: warn,     channels: [pushover, email, mcc_push] }
     apex_sla_recovered:   { level: info,     channels: [email] }
+    # brain.avengers.drift_detector emits this when KL or Sharpe-delta
+    # crosses the demote threshold and the strategy must be taken out
+    # of production. AUTO_DEMOTE-only -- WARN drift verdicts stay
+    # journal-only to avoid waking the operator on borderline noise.
+    drift_demote:         { level: critical, channels: [pushover, email, mcc_push] }
+    # obs.heartbeat.HeartbeatMonitor emits this when a registered bot
+    # has been silent past its timeout window. Hung-process detection;
+    # fires once per stale bot until the bot ticks again.
+    deadman_timeout:      { level: critical, channels: [pushover, email, sms, mcc_push] }
 
 # Rate limits
 rate_limit:

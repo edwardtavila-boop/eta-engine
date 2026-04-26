@@ -6,14 +6,29 @@ Heartbeat monitor -- detects silent bots and fires an alert.
 Each bot registers with `register(bot_name)` at boot and calls `tick(bot_name)`
 after every loop iteration. `run(interval_s)` scans every interval and alerts
 via a bound MultiAlerter when any bot has been silent past `timeout_s`.
+
+Two parallel alert paths:
+
+* The original ``MultiAlerter`` (``alerter`` ctor arg) -- legacy, fires
+  whatever transports it is configured with (Slack, console, etc.).
+* An optional :class:`apex_predator.obs.alert_dispatcher.AlertDispatcher`
+  (``dispatcher`` ctor arg) -- when provided, also emits a
+  ``deadman_timeout`` event so the YAML-routed channels (mcc_push, etc.)
+  fire on stale bots. Backwards compatible: when None, behaviour is
+  identical to the legacy single-alerter path.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from apex_predator.obs.alerts import Alert, AlertLevel, MultiAlerter
+
+if TYPE_CHECKING:
+    from apex_predator.obs.alert_dispatcher import AlertDispatcher
 
 
 class HeartbeatMonitor:
@@ -23,11 +38,13 @@ class HeartbeatMonitor:
         self,
         alerter: MultiAlerter | None = None,
         default_timeout_s: int = 60,
+        dispatcher: AlertDispatcher | None = None,
     ) -> None:
         self._last: dict[str, datetime] = {}
         self._timeouts: dict[str, int] = {}
         self._alerted: set[str] = set()
         self.alerter = alerter
+        self.dispatcher = dispatcher
         self.default_timeout_s = default_timeout_s
         self._running = False
 
@@ -63,20 +80,38 @@ class HeartbeatMonitor:
         return self._last.get(bot_name)
 
     async def _alert_stale(self, stale: list[str]) -> None:
-        if self.alerter is None:
-            return
         for name in stale:
             if name in self._alerted:
                 continue
             self._alerted.add(name)
-            alert = Alert(
-                level=AlertLevel.CRITICAL,
-                title=f"Bot stale: {name}",
-                message=f"No heartbeat from {name} within its timeout window.",
-                context={"bot": name, "last_seen": str(self._last.get(name))},
-                dedup_key=f"heartbeat_stale::{name}",
-            )
-            await self.alerter.send(alert)
+            last = self._last.get(name)
+            now = datetime.now(UTC)
+            stale_seconds = (now - last).total_seconds() if last is not None else None
+            timeout_s = self._timeouts.get(name, self.default_timeout_s)
+            # Legacy MultiAlerter path -- preserved for backwards compat.
+            if self.alerter is not None:
+                alert = Alert(
+                    level=AlertLevel.CRITICAL,
+                    title=f"Bot stale: {name}",
+                    message=f"No heartbeat from {name} within its timeout window.",
+                    context={"bot": name, "last_seen": str(last)},
+                    dedup_key=f"heartbeat_stale::{name}",
+                )
+                await self.alerter.send(alert)
+            # AlertDispatcher path -- routes through configs/alerts.yaml so
+            # mcc_push (and any other configured channels) fire. Never
+            # raises; an alert-path failure must not crash the monitor.
+            if self.dispatcher is not None:
+                with contextlib.suppress(Exception):
+                    self.dispatcher.send(
+                        "deadman_timeout",
+                        {
+                            "bot": name,
+                            "last_heartbeat": last.isoformat() if last else None,
+                            "stale_seconds": stale_seconds,
+                            "timeout_seconds": timeout_s,
+                        },
+                    )
 
     async def run(self, interval_s: int = 10) -> None:
         """Loop: every `interval_s`, check for stale bots and alert."""

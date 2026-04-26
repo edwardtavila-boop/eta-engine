@@ -674,7 +674,10 @@ class ApexRuntime:
                 else ROOT / "docs" / "alerts_log.jsonl"
             ),
         )
-        self.heartbeat = heartbeat or HeartbeatMonitor()
+        # Wire the configured AlertDispatcher into the heartbeat monitor so
+        # stale bots emit a `deadman_timeout` event (routed via configs/
+        # alerts.yaml -- includes mcc_push for phone notifications).
+        self.heartbeat = heartbeat or HeartbeatMonitor(dispatcher=self.dispatcher)
         self.bindings = bindings if bindings is not None else BOT_BINDINGS
         self._stop = asyncio.Event()
 
