@@ -1,6 +1,17 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# NOTE: this pyproject.toml is METADATA-ONLY. No [build-system] block is
+# declared because the repo is laid out FLAT (the package directory IS
+# the repo root -- bots/, brain/, core/, etc. live alongside this file
+# rather than under an apex_predator/ subdirectory). `pip install -e .`
+# is therefore not supported; use the symlink trick documented in
+# CLAUDE.md ("Repo layout") to make `from apex_predator.foo import bar`
+# resolve. ci.yml + test.yml + Makefile all use this pattern.
+#
+# To restore proper installability you would need to either:
+#   a) move every top-level package dir under apex_predator/, OR
+#   b) add hatchling source-mapping config that tells the build to
+#      re-namespace the flat layout as apex_predator.<name>.
+# Both are tracked in the operator backlog; neither is in scope of
+# any v0.1.x bundle.
 
 [project]
 name = "apex-predator"
