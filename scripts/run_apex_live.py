@@ -662,10 +662,13 @@ class ApexRuntime:
         self.bindings = bindings if bindings is not None else BOT_BINDINGS
         self._stop = asyncio.Event()
 
-        # Router selection: --live AND creds present → real. Else mock.
+        # Router selection: --live AND ACTIVE-broker creds present → real.
+        # Else mock. Active brokers are IBKR (primary) and Tastytrade
+        # (fallback) per the 2026-04-24 dormancy mandate; Tradovate is
+        # checked inside SmartRouter but never selected as primary.
         if router is not None:
             self.router = router
-        elif cfg.live and _tradovate_creds_present() and not cfg.dry_run:
+        elif cfg.live and _active_broker_creds_present() and not cfg.dry_run:
             self.router = _build_real_router(cfg)
         else:
             self.router = MockRouter(log_path=cfg.log_path.with_name("runtime_mock_orders.jsonl"))
@@ -1159,9 +1162,37 @@ class ApexRuntime:
 # ---------------------------------------------------------------------------- #
 # Real router wiring — only called when --live AND creds present
 # ---------------------------------------------------------------------------- #
-def _tradovate_creds_present() -> bool:
-    keys = ("TRADOVATE_CLIENT_ID", "TRADOVATE_CLIENT_SECRET", "TRADOVATE_USERNAME", "TRADOVATE_PASSWORD")
-    return all(bool(os.environ.get(k)) for k in keys)
+def _active_broker_creds_present() -> bool:
+    """True iff an ACTIVE broker (IBKR or Tastytrade) has credentials.
+
+    Tradovate is DORMANT per the 2026-04-24 funding-block mandate
+    (``venues.router.DORMANT_BROKERS``); checking its env vars here
+    would let ``--live`` boot pointing at a venue that's transparently
+    substituted away by ``_resolve_preferred_futures_venue``.
+
+    The defensive try/except keeps the check side-effect-free: a
+    venue's ``__init__`` may parse env vars or read credential files,
+    and we don't want a transient credential-file IO error to demote
+    a perfectly valid creds set to ``False``.
+    """
+    try:
+        from apex_predator.venues.ibkr import IbkrClientPortalVenue
+        if IbkrClientPortalVenue().has_credentials():
+            return True
+    except Exception:  # noqa: BLE001 -- defensive
+        pass
+    try:
+        from apex_predator.venues.tastytrade import TastytradeVenue
+        if TastytradeVenue().has_credentials():
+            return True
+    except Exception:  # noqa: BLE001 -- defensive
+        pass
+    return False
+
+
+# Backward-compat shim. Existing callers can keep importing the old
+# name; new code should use :func:`_active_broker_creds_present`.
+_tradovate_creds_present = _active_broker_creds_present
 
 
 def _build_real_router(cfg: RuntimeConfig) -> Any:
@@ -1179,7 +1210,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--dry-run", action="store_true", default=True,
                     help="No orders — mock router only (default True)")
     ap.add_argument("--live", action="store_true",
-                    help="Flip off --dry-run and use the real router. Requires creds.")
+                    help=(
+                        "Flip off --dry-run and use the real router. Requires "
+                        "credentials for at least one ACTIVE broker (IBKR or "
+                        "Tastytrade); Tradovate is dormant per the 2026-04-24 "
+                        "mandate. Without credentials, --live still falls "
+                        "through to MockRouter."
+                    ))
     ap.add_argument("--bot", dest="bot", default=None,
                     help="Only run this bot name (mnq|nq|crypto_seed|eth_perp|sol_perp|xrp_perp)")
     ap.add_argument("--max-bars", type=int, default=0,

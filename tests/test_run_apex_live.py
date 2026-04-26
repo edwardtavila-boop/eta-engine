@@ -550,20 +550,69 @@ class TestLoadRuntimeConfigTickCadence:
 
 # --------------------------------------------------------------------------- #
 # Router selection: real vs mock
+#
+# Per the 2026-04-24 broker-dormancy mandate, the active-broker check
+# looks at IBKR (primary) + Tastytrade (fallback). Tradovate creds are
+# explicitly NOT enough to flip --live into the real-router branch
+# because Tradovate is dormant in venues.router.DORMANT_BROKERS.
 # --------------------------------------------------------------------------- #
-def test_tradovate_creds_absent_by_default(monkeypatch):
-    for k in ("TRADOVATE_CLIENT_ID", "TRADOVATE_CLIENT_SECRET",
-              "TRADOVATE_USERNAME", "TRADOVATE_PASSWORD"):
-        monkeypatch.delenv(k, raising=False)
-    assert mod._tradovate_creds_present() is False
+def test_active_broker_creds_absent_by_default(monkeypatch):
+    """No env -> False (conservative -- don't auto-spin a real venue)."""
+    monkeypatch.setattr(
+        "apex_predator.venues.ibkr.IbkrClientPortalVenue.has_credentials",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "apex_predator.venues.tastytrade.TastytradeVenue.has_credentials",
+        lambda self: False,
+    )
+    assert mod._active_broker_creds_present() is False
 
 
-def test_tradovate_creds_present_with_env(monkeypatch):
+def test_active_broker_creds_present_via_ibkr(monkeypatch):
+    """IBKR present -> True regardless of Tasty."""
+    monkeypatch.setattr(
+        "apex_predator.venues.ibkr.IbkrClientPortalVenue.has_credentials",
+        lambda self: True,
+    )
+    assert mod._active_broker_creds_present() is True
+
+
+def test_active_broker_creds_present_via_tastytrade(monkeypatch):
+    """Tasty present (IBKR absent) -> True via fallback."""
+    monkeypatch.setattr(
+        "apex_predator.venues.ibkr.IbkrClientPortalVenue.has_credentials",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "apex_predator.venues.tastytrade.TastytradeVenue.has_credentials",
+        lambda self: True,
+    )
+    assert mod._active_broker_creds_present() is True
+
+
+def test_tradovate_creds_alone_do_not_flip_check(monkeypatch):
+    """The dormant broker is not an 'active' broker. Tradovate creds
+    set, IBKR + Tasty empty -> the active-broker check returns False."""
+    monkeypatch.setattr(
+        "apex_predator.venues.ibkr.IbkrClientPortalVenue.has_credentials",
+        lambda self: False,
+    )
+    monkeypatch.setattr(
+        "apex_predator.venues.tastytrade.TastytradeVenue.has_credentials",
+        lambda self: False,
+    )
     monkeypatch.setenv("TRADOVATE_CLIENT_ID", "x")
     monkeypatch.setenv("TRADOVATE_CLIENT_SECRET", "x")
     monkeypatch.setenv("TRADOVATE_USERNAME", "x")
     monkeypatch.setenv("TRADOVATE_PASSWORD", "x")
-    assert mod._tradovate_creds_present() is True
+    assert mod._active_broker_creds_present() is False
+
+
+def test_tradovate_creds_present_alias_still_resolves(monkeypatch):
+    """Backward-compat shim -- existing callers can still import the
+    old name without breaking. New code should use the new name."""
+    assert mod._tradovate_creds_present is mod._active_broker_creds_present
 
 
 # --------------------------------------------------------------------------- #

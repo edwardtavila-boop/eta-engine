@@ -107,6 +107,24 @@ session since the token has been in chat history.
 
 ## What still needs more code
 
+### Items already shipped after this doc landed
+
+* **`_amain` real-router conditional** -- the active-broker creds
+  check used to look at Tradovate (DORMANT). Now checks IBKR
+  (primary) + Tastytrade (fallback) per the 2026-04-24 mandate.
+  Tradovate creds alone no longer flip ``--live`` into the
+  real-router branch; both creds-absent and creds-present branches
+  unit-tested.
+* **Equity-source picker for `BrokerEquityPoller`** -- already wired
+  in ``_amain`` via ``_build_broker_equity_adapter()`` →
+  ``make_poller_for()`` → ``BrokerEquityReconciler``. The picker
+  picks IBKR → Tastytrade → fail-closed (or
+  ``APEX_ALLOW_LIVE_NO_DRIFT=1`` opt-in) automatically. The earlier
+  scoping note ("operator picks the source explicitly") was wrong
+  about the gap; the picker has been live since v0.1.65.
+
+### Still open
+
 ### 1. `runtime_start` -> `runtime_log.jsonl` end-to-end pinning
 PR #3 fixed the alert-log pollution; PR #5 added the local-handler
 dashboard snapshot. We don't yet have a CI test that asserts a
