@@ -47,6 +47,10 @@ dependencies = [
     "uvicorn>=0.27",
     "redis>=5.0",
     "psycopg[binary]>=3.1",
+
+    # Auth / file locking
+    "bcrypt>=4.1",
+    "portalocker>=2.10",
 ]
 
 [project.optional-dependencies]
