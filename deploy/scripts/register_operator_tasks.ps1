@@ -235,6 +235,51 @@ $tasks = @(
         Cwd        = $EtaEngineDir
         Trigger    = "Daily-2300"
         Notes      = "Daily 23:00 -- regenerate investor/beta dashboard HTML at state/investor_dashboard/index.html."
+    },
+    # Wave-4 (2026-04-27): critique nightly (BATMAN 2nd reviewer)
+    @{
+        Name       = "Eta-Critique-Nightly"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.run_critique_nightly"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Daily-2245"
+        Notes      = "Daily 22:45 -- run critique_window over the day's audit; alerts on HIGH severity."
+    },
+    # Wave-4: calibration fit
+    @{
+        Name       = "Eta-Calibration-Daily"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.run_calibration_fit"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Daily-2300"
+        Notes      = "Daily 23:00 -- fit Platt sigmoid from last 14 days of audit; persist calibrator."
+    },
+    # Wave-4: anomaly scan every 15 min
+    @{
+        Name       = "Eta-Anomaly-Scan-15m"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.run_anomaly_scan"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Every15Min"
+        Notes      = "Every 15 min -- KS-test on verdict stress distribution; alert on regime shift."
+    },
+    # Wave-4: bandit promotion check (daily)
+    @{
+        Name       = "Eta-Bandit-Promotion-Daily"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.bandit_promotion_check"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Daily-2330"
+        Notes      = "Daily 23:30 -- score every candidate vs champion over last 30d; alert on promotable."
+    },
+    # Wave-4: verdict webhook tail (every 1 min)
+    @{
+        Name       = "Eta-Verdict-Webhook"
+        Exec       = $Python
+        Args       = "-m eta_engine.obs.jarvis_verdict_webhook"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Every1Min"
+        Notes      = "Every 1 min -- forward DENIED verdicts (default) to ETA_VERDICT_WEBHOOK_URL (Slack/Discord)."
     }
 )
 

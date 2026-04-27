@@ -182,6 +182,51 @@ def jarvis_router_health() -> dict:
     return {"status": "ok", "router": "jarvis"}
 
 
+# ─── Cross-policy verdict diff (Tier-4 #17, 2026-04-27) ────────────
+@app.get("/api/jarvis/policy_diff")
+def jarvis_policy_diff(window_days: int = 30) -> dict:
+    """For each registered candidate (v18/v19/v20/v21), what would it
+    have done differently from the champion (v17) in the last
+    ``window_days`` of audit records?
+
+    Returns a per-candidate dict with metrics from
+    ``score_policy_candidate.candidate_metrics``. Operator uses this to
+    inspect whether a candidate's behavior differs meaningfully from
+    the champion before flipping ETA_BANDIT_ENABLED on.
+    """
+    try:
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+        from eta_engine.brain.jarvis_v3 import policies  # noqa: F401  (auto-register)
+        from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
+        from eta_engine.scripts.score_policy_candidate import (
+            candidate_metrics, champion_metrics, load_audit_records,
+        )
+
+        audit_dir = Path(STATE_DIR) / "jarvis_audit" if "STATE_DIR" in globals() else Path.home() / "AppData/Local/eta_engine/state/jarvis_audit"
+        if not audit_dir.exists():
+            audit_dir = Path(__file__).resolve().parents[2] / "state" / "jarvis_audit"
+        cutoff = datetime.now(UTC) - timedelta(days=window_days)
+        records = load_audit_records(list(audit_dir.glob("*.jsonl")), since=cutoff)
+        champion = champion_metrics(records)
+        diffs: dict[str, dict] = {}
+        for c in list_candidates():
+            if c["name"] == "v17":
+                continue
+            try:
+                diffs[c["name"]] = candidate_metrics(records, candidate_module=c["name"])
+            except Exception as exc:  # noqa: BLE001
+                diffs[c["name"]] = {"error": str(exc)}
+        return {
+            "window_days": window_days,
+            "n_records": len(records),
+            "champion": champion,
+            "candidates": diffs,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error_code": "diff_failed", "error_detail": str(exc)}
+
+
 @app.get("/api/kaizen")
 def kaizen_summary() -> dict:
     """Kaizen ledger -- retrospectives + tickets."""

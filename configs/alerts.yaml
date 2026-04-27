@@ -101,6 +101,10 @@ routing:
     # position basis -- WARN level (pushover + email) so the operator
     # sees it the next time they look at their phone.
     position_drift:        { level: warn,     channels: [pushover, email] }
+    # Wave-4 (2026-04-27)
+    critique_high_severity:    { level: warn,     channels: [pushover, email] }
+    jarvis_anomaly_detected:   { level: warn,     channels: [pushover, email] }
+    kaizen_promotion_pending:  { level: info,     channels: [email] }
 
 # Rate limits
 rate_limit:
