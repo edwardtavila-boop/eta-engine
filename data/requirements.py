@@ -289,6 +289,24 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "lunarcrush MCP (sentiment)",
         ),
     ),
+    # eth_sage_daily is the daily-frame sage variant of eth_perp.
+    # Same upstream ETH bar/funding/correlation needs as eth_perp;
+    # only the decision-frame and sage-consensus gate differ.
+    BotRequirements(
+        bot_id="eth_sage_daily",
+        requirements=(
+            DataRequirement("bars", "ETH", "1h", critical=True),
+            DataRequirement("bars", "ETH", "D", critical=True,
+                note="daily timeframe is the primary signal frame"),
+            DataRequirement("funding", "ETH", "8h", critical=False,
+                note="sage panel reads funding skew when available"),
+            DataRequirement("correlation", "BTC", "1h", critical=True,
+                note="ETH-BTC correlation as regime confirmation"),
+        ),
+        sources_hint=(
+            "Coinbase/Binance ETH bars + funding",
+        ),
+    ),
     BotRequirements(
         bot_id="xrp_perp",
         requirements=(
