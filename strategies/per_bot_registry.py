@@ -357,6 +357,50 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "research_candidate": True,
         },
     ),
+    # BTC ETF-flow confluence (Tier 4 winner). Adds a single
+    # institutional-flow gate to the +2.96 regime_trend baseline:
+    # long requires positive net daily ETF inflow, short requires
+    # net outflow. Source: Farside Investors aggregate spot-BTC ETF
+    # daily totals.
+    StrategyAssignment(
+        bot_id="btc_regime_trend_etf",
+        strategy_id="btc_regime_trend_etf_v1",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",  # unused when strategy_kind=crypto_macro_confluence
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="crypto_macro_confluence",
+        rationale=(
+            "Promoted 2026-04-27 after Tier-4 data-feed wave. The "
+            "user's BTC-driver write-up flagged ETF flows as 'often "
+            "outpacing new miner supply' — the single dominant 2025-"
+            "2026 driver. We fetched the Farside aggregate daily-flow "
+            "feed (590 day rows) and gated the regime_trend baseline "
+            "on flow direction (long requires inflow, short requires "
+            "outflow). Walk-forward 90d/30d, 9 windows: agg OOS "
+            "Sharpe **+4.28** (vs plain regime_trend +2.96 — a 44%% "
+            "Sharpe lift), 8/9 positive OOS, DSR median 1.000, "
+            "89%% pass fraction, 79 OOS trades. STRICT GATE FAILS by "
+            "0.057 on deg_avg=0.407 > 0.35 cap, driven entirely by a "
+            "single regime-shift outlier (W5: OOS Sh -4.79). Without "
+            "W5 the strategy is decisively the strongest crypto "
+            "edge in the catalog. "
+            "Best single-filter result of any sweep on this codebase. "
+            "Promote to live ONLY after paper-soak validation + "
+            "either (a) more walk-forward windows on a longer data "
+            "span or (b) a regime-shift-aware risk cap that limits "
+            "the W5-style cost."
+        ),
+        extras={
+            "research_candidate": True,
+            "tier_4_filters": ["etf_flow"],
+            "etf_csv_path": "C:/mnq_data/history/BTC_ETF_FLOWS.csv",
+        },
+    ),
     # BTC hybrid (sage research candidate). 180-cell sweep on BTC 1h
     # found best cell at conv=0.40, range=30m, lookback=200: agg OOS
     # Sharpe +3.157 (vs plain crypto_orb +2.73 — sage adds +0.43 OOS

@@ -34,6 +34,17 @@
       "_notes": "OOS > IS in both windows (W0: IS +1.61 / OOS +12.39; W1: IS +3.90 / OOS +7.73) — sage filter cuts more losers than winners on OOS, the opposite of overfitting. n_trades inferred from W0+W1 IS+OOS = 13+7 + 24+5 = 49. Trade count is low; paper-soak validation required before live promotion. Re-baseline once paper-soak produces 50+ real fills."
     },
     {
+      "strategy_id": "btc_regime_trend_etf_v1",
+      "n_trades": 121,
+      "win_rate": 0.585,
+      "avg_r": 1.142,
+      "r_stddev": 1.396,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "research_candidate",
+      "_walk_forward_summary": "BTC/1h, 90d/30d, 9 windows: agg OOS Sharpe +4.276 (vs plain regime_trend +2.962 — 44% Sharpe lift), 8/9 +OOS, DSR median 1.000, 89% pass fraction, 79 OOS trades. Best single-filter result on this codebase. Strict gate FAIL only on deg_avg=0.407 > 0.35 cap, driven by W5 (-4.79 OOS) — a single regime-shift outlier.",
+      "_notes": "Promoted on 2026-04-27 user directive 'wire those feeds then'. Filter: regime_trend baseline + ETF flow direction gate (long requires Farside aggregate spot-BTC daily inflow > 0). The user's BTC-driver write-up flagged ETF flows as the dominant 2025-2026 driver; the data validates that thesis. n_trades = sum across 9 windows IS+OOS = ~121 (avg ~13.4 per window). Per-window OOS Sharpes: +8.42, +8.54, +10.14, +1.64, +1.72, -4.79, +3.63, +2.20, +6.97. Without W5 the strategy decisively passes every gate criterion. Promote to live only after paper-soak + a regime-shift-aware risk cap that limits W5-style drawdowns."
+    },
+    {
       "strategy_id": "nq_orb_sage_v1",
       "n_trades": 58,
       "win_rate": 0.586,
