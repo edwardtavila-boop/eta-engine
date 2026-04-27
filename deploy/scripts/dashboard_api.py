@@ -29,9 +29,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from pydantic import BaseModel
 
 # State/log dirs: Windows defaults; overridable via env
 if os.name == "nt":
@@ -67,6 +68,117 @@ def _read_json(name: str) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"parse error: {e}") from e
+
+
+# ---------------------------------------------------------------------------
+# Auth (Wave-7, 2026-04-27)
+# ---------------------------------------------------------------------------
+
+
+def _users_path() -> Path:
+    """Resolve users.json path at call time so env-var monkeypatching works."""
+    return Path(os.environ.get(
+        "ETA_DASHBOARD_USERS_PATH",
+        str(STATE_DIR / "auth" / "users.json"),
+    ))
+
+
+def _sessions_path() -> Path:
+    """Resolve sessions.json path at call time so env-var monkeypatching works."""
+    return Path(os.environ.get(
+        "ETA_DASHBOARD_SESSIONS_PATH",
+        str(STATE_DIR / "auth" / "sessions.json"),
+    ))
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class StepUpRequest(BaseModel):
+    pin: str
+
+
+def require_session(session: str | None = Cookie(default=None)) -> dict:
+    """FastAPI dependency: returns session row or raises 401."""
+    from eta_engine.deploy.scripts.dashboard_auth import get_session
+    if session is None:
+        raise HTTPException(status_code=401, detail={"error_code": "no_session"})
+    s = get_session(_sessions_path(), session)
+    if s is None:
+        raise HTTPException(status_code=401, detail={"error_code": "session_expired"})
+    return s
+
+
+def require_step_up(session: str | None = Cookie(default=None)) -> dict:
+    """FastAPI dependency: requires fresh step-up auth."""
+    from eta_engine.deploy.scripts.dashboard_auth import is_stepped_up
+    s = require_session(session)
+    if not is_stepped_up(_sessions_path(), session):
+        raise HTTPException(status_code=403, detail={"error_code": "step_up_required"})
+    return s
+
+
+@app.get("/api/auth/session")
+def auth_session(session: str | None = Cookie(default=None)) -> dict:
+    from eta_engine.deploy.scripts.dashboard_auth import get_session, is_stepped_up
+    if session is None:
+        return {"authenticated": False}
+    s = get_session(_sessions_path(), session)
+    if s is None:
+        return {"authenticated": False}
+    return {
+        "authenticated": True,
+        "user": s["user"],
+        "stepped_up": is_stepped_up(_sessions_path(), session),
+    }
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest, response: Response) -> dict:
+    from eta_engine.deploy.scripts.dashboard_auth import (
+        create_session,
+        verify_password,
+    )
+    if not verify_password(_users_path(), req.username, req.password):
+        raise HTTPException(status_code=401, detail={"error_code": "bad_credentials"})
+    token = create_session(_sessions_path(), user=req.username)
+    response.set_cookie(
+        key="session",
+        value=token,
+        httponly=True,
+        samesite="strict",
+        max_age=24 * 3600,
+    )
+    return {"authenticated": True, "user": req.username}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(
+    response: Response,
+    session: str | None = Cookie(default=None),
+) -> dict:
+    from eta_engine.deploy.scripts.dashboard_auth import revoke_session
+    if session is not None:
+        revoke_session(_sessions_path(), session)
+    response.delete_cookie(key="session")
+    return {"authenticated": False}
+
+
+@app.post("/api/auth/step-up")
+def auth_step_up(
+    req: StepUpRequest,
+    session: str | None = Cookie(default=None),
+) -> dict:
+    from eta_engine.deploy.scripts.dashboard_auth import mark_step_up
+    if session is None:
+        raise HTTPException(status_code=401, detail={"error_code": "no_session"})
+    pin = os.environ.get("ETA_DASHBOARD_STEP_UP_PIN", "")
+    if not pin or req.pin != pin:
+        raise HTTPException(status_code=403, detail={"error_code": "bad_pin"})
+    mark_step_up(_sessions_path(), session)
+    return {"stepped_up": True}
 
 
 # ---------------------------------------------------------------------------
