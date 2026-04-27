@@ -68,6 +68,48 @@ def _compression_sweep_grid() -> list[dict]:
     ]
 
 
+def _compression_tight_grid() -> list[dict]:
+    """Tighter compression sweep — fewer but higher-quality entries.
+
+    Built 2026-04-27 after the default sweep showed BTC compression
+    at +0.50 OOS / 358 trades but DSR pass only 28% (close-but-not).
+    The hypothesis: tightening volume + close-location + cooldown
+    gates removes marginal trades and lifts per-fold DSR.
+    """
+    return [
+        {
+            "bb_width_max_percentile": 0.30, "rr_target": 2.5,
+            "atr_stop_mult_factor": 1.0,
+            "min_volume_z": 1.0, "min_close_location": 0.80,
+            "min_bars_between_trades": 24,
+        },
+        {
+            "bb_width_max_percentile": 0.20, "rr_target": 2.5,
+            "atr_stop_mult_factor": 1.0,
+            "min_volume_z": 0.5, "min_close_location": 0.70,
+            "min_bars_between_trades": 12,
+        },
+        {
+            "bb_width_max_percentile": 0.30, "rr_target": 3.0,
+            "atr_stop_mult_factor": 1.0,
+            "min_volume_z": 0.5, "min_close_location": 0.70,
+            "min_bars_between_trades": 12,
+        },
+        {
+            "bb_width_max_percentile": 0.30, "rr_target": 2.5,
+            "atr_stop_mult_factor": 1.0,
+            "min_volume_z": 0.8, "min_close_location": 0.80,
+            "min_bars_between_trades": 24,
+        },
+        {
+            "bb_width_max_percentile": 0.20, "rr_target": 3.0,
+            "atr_stop_mult_factor": 1.2,   # wider stop for more durability
+            "min_volume_z": 1.0, "min_close_location": 0.75,
+            "min_bars_between_trades": 24,
+        },
+    ]
+
+
 def _sweep_sweep_grid() -> list[dict]:
     """Sweep-reclaim parameter grid (4 cells)."""
     return [
@@ -104,12 +146,17 @@ def _build_compression_factory(symbol: str, params: dict) -> Any:  # noqa: ANN40
     if factory is None:
         return None
     base_cfg = factory()
-    cfg = replace(
-        base_cfg,
-        bb_width_max_percentile=params["bb_width_max_percentile"],
-        rr_target=params["rr_target"],
-        atr_stop_mult=base_cfg.atr_stop_mult * params["atr_stop_mult_factor"],
-    )
+    overrides: dict = {
+        "bb_width_max_percentile": params["bb_width_max_percentile"],
+        "rr_target": params["rr_target"],
+        "atr_stop_mult": base_cfg.atr_stop_mult * params["atr_stop_mult_factor"],
+    }
+    # Optional tight-grid knobs
+    for k in ("min_volume_z", "min_close_location",
+              "min_bars_between_trades"):
+        if k in params:
+            overrides[k] = params[k]
+    cfg = replace(base_cfg, **overrides)
     return lambda: CompressionBreakoutStrategy(cfg)
 
 
@@ -272,6 +319,9 @@ def main() -> int:
             cell_key = f"{asset}/{strategy}"
             if strategy == "compression":
                 grid = _compression_sweep_grid()
+                builder = _build_compression_factory
+            elif strategy == "compression_tight":
+                grid = _compression_tight_grid()
                 builder = _build_compression_factory
             elif strategy == "sweep":
                 grid = _sweep_sweep_grid()

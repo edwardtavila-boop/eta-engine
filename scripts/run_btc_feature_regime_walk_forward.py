@@ -107,11 +107,14 @@ def _build_sage_provider(symbol: str) -> Any:  # noqa: ANN401
 # ---------------------------------------------------------------------------
 
 
-def _build_feature_regime_provider(
+def _build_feature_regime_provider(  # noqa: PLR0913
     *, symbol: str, etf_path: Path, funding_path: Path,
     use_funding: bool, use_etf_flow: bool,
     use_fear_greed: bool, use_sage_daily: bool,
     sage_provider: Any | None,  # noqa: ANN401
+    bull_threshold: float = 0.30,
+    bear_threshold: float = 0.30,
+    sage_conviction_floor: float = 0.30,
 ) -> Any:  # noqa: ANN401
     """Build a regime-provider callable from feature classifications
     on daily BTC bars."""
@@ -140,9 +143,9 @@ def _build_feature_regime_provider(
         funding_extreme=0.0005,
         etf_flow_threshold=200.0,
         fear_greed_extreme=0.6,
-        sage_conviction_floor=0.30,
-        bull_threshold=0.30,
-        bear_threshold=0.30,
+        sage_conviction_floor=sage_conviction_floor,
+        bull_threshold=bull_threshold,
+        bear_threshold=bear_threshold,
     )
     classifier = FeatureRegimeClassifier(cfg)
     if use_funding and funding_path.exists():
@@ -274,6 +277,18 @@ def main() -> int:
         "--strict-long-only", action="store_true",
         help="Force BUY only under LONG bias (most selective)",
     )
+    p.add_argument(
+        "--bull-threshold", type=float, default=0.30,
+        help="FeatureRegimeConfig.bull_threshold sweep value",
+    )
+    p.add_argument(
+        "--bear-threshold", type=float, default=0.30,
+        help="FeatureRegimeConfig.bear_threshold sweep value",
+    )
+    p.add_argument(
+        "--sage-conviction-floor", type=float, default=0.30,
+        help="FeatureRegimeConfig.sage_conviction_floor sweep value",
+    )
     args = p.parse_args()
 
     from eta_engine.backtest import BacktestConfig, WalkForwardConfig
@@ -332,6 +347,9 @@ def main() -> int:
                 use_fear_greed=spec["use_fear_greed"],
                 use_sage_daily=spec["use_sage_daily"],
                 sage_provider=sage_provider,
+                bull_threshold=args.bull_threshold,
+                bear_threshold=args.bear_threshold,
+                sage_conviction_floor=args.sage_conviction_floor,
             )
         factory = _build_factory(
             sage_provider=sage_provider,

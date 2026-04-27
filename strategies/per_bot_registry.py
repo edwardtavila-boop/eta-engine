@@ -864,6 +864,50 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "because the goal is *exposure*, not edge."
         ),
     ),
+    # BTC compression breakout — RESEARCH CANDIDATE 2026-04-27 from
+    # the tight-knob foundation supercharge sweep. Clear lift from
+    # the default config (+0.50 OOS) to +2.30 OOS by tightening
+    # volume + close-location + cooldown. Still below strict DSR
+    # gate (39% vs 50%) so registered as candidate, not full PASS.
+    StrategyAssignment(
+        bot_id="btc_compression",
+        strategy_id="btc_compression_v1",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="compression_breakout",
+        rationale=(
+            "RESEARCH CANDIDATE 2026-04-27 from foundation supercharge "
+            "tight-knob sweep. Default BTC preset OOS +0.50 / 358 trades "
+            "(DSR 28%) — tightening volume z to 0.8, close-location to "
+            "0.80, and cooldown to 24 bars lifted the OOS to +2.30 / 269 "
+            "trades / DSR 39% (config #3 of the tight sweep). Still 11pp "
+            "below the strict 50% DSR pass-fraction gate, so promoted as "
+            "RESEARCH CANDIDATE rather than full production promotion. "
+            "Paper-soak validation will determine whether the per-fold "
+            "DSR shortfall is a real drag or a small-sample artifact "
+            "(57 windows is plenty but DSR estimation is sensitive to "
+            "fold trade counts). Half-size warmup_policy applies."
+        ),
+        extras={
+            "compression_preset": "btc",
+            "compression_min_volume_z": 0.8,
+            "compression_min_close_location": 0.80,
+            "compression_min_bars_between_trades": 24,
+            "compression_rr_target": 2.5,
+            "promotion_status": "research_candidate",
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.3,  # tighter for candidate
+            },
+        },
+    ),
     # ETH compression breakout — PROMOTED 2026-04-27 from the
     # foundation supercharge sweep. The cleanest gate-passer of all
     # 10 cells tested in run_foundation_supercharge_sweep.

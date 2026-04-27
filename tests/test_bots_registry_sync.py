@@ -68,6 +68,7 @@ VARIANT_BOT_IDS: set[str] = {
     "btc_ensemble_2of3",  # ensemble vote variant; bot dir = bots/btc_hybrid/
     "eth_sage_daily",  # sage-daily variant; bot dir = bots/eth_perp/
     "eth_compression",  # compression-breakout variant; bot dir = bots/eth_perp/
+    "btc_compression",  # compression-breakout variant; bot dir = bots/btc_hybrid/
 }
 
 

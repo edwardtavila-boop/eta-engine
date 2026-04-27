@@ -320,6 +320,16 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "Coinbase/Binance ETH bars (no exotic feeds — pure price-action)",
         ),
     ),
+    # btc_compression — research candidate (tight-knob sweep winner).
+    BotRequirements(
+        bot_id="btc_compression",
+        requirements=(
+            DataRequirement("bars", "BTC", "1h", critical=True),
+        ),
+        sources_hint=(
+            "Coinbase/Binance BTC 1h bars (no exotic feeds)",
+        ),
+    ),
     BotRequirements(
         bot_id="xrp_perp",
         requirements=(

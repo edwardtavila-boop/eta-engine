@@ -1,0 +1,104 @@
+{
+  "BTC/compression_tight": [
+    {
+      "windows": 57,
+      "is_sharpe": 0.494,
+      "oos_sharpe": 2.0215,
+      "is_trades": 12001,
+      "oos_trades": 258,
+      "pos_oos_frac": 0.5087719298245614,
+      "deg_avg": 0.4912,
+      "dsr_pass_frac": 0.3684,
+      "gate_pass": false,
+      "composite_score": 32.47009794410852,
+      "params": {
+        "bb_width_max_percentile": 0.3,
+        "rr_target": 2.5,
+        "atr_stop_mult_factor": 1.0,
+        "min_volume_z": 1.0,
+        "min_close_location": 0.8,
+        "min_bars_between_trades": 24
+      }
+    },
+    {
+      "windows": 57,
+      "is_sharpe": 0.2859,
+      "oos_sharpe": 0.4635,
+      "is_trades": 17413,
+      "oos_trades": 355,
+      "pos_oos_frac": 0.49122807017543857,
+      "deg_avg": 0.4988,
+      "dsr_pass_frac": 0.2807,
+      "gate_pass": false,
+      "composite_score": 8.733009146336675,
+      "params": {
+        "bb_width_max_percentile": 0.2,
+        "rr_target": 2.5,
+        "atr_stop_mult_factor": 1.0,
+        "min_volume_z": 0.5,
+        "min_close_location": 0.7,
+        "min_bars_between_trades": 12
+      }
+    },
+    {
+      "windows": 57,
+      "is_sharpe": 0.5275,
+      "oos_sharpe": 0.4586,
+      "is_trades": 17189,
+      "oos_trades": 346,
+      "pos_oos_frac": 0.43859649122807015,
+      "deg_avg": 0.5614,
+      "dsr_pass_frac": 0.3509,
+      "gate_pass": false,
+      "composite_score": 8.530453104026773,
+      "params": {
+        "bb_width_max_percentile": 0.3,
+        "rr_target": 3.0,
+        "atr_stop_mult_factor": 1.0,
+        "min_volume_z": 0.5,
+        "min_close_location": 0.7,
+        "min_bars_between_trades": 12
+      }
+    },
+    {
+      "windows": 57,
+      "is_sharpe": 0.6717,
+      "oos_sharpe": 2.2987,
+      "is_trades": 12328,
+      "oos_trades": 269,
+      "pos_oos_frac": 0.49122807017543857,
+      "deg_avg": 0.5088,
+      "dsr_pass_frac": 0.386,
+      "gate_pass": false,
+      "composite_score": 37.70148318846356,
+      "params": {
+        "bb_width_max_percentile": 0.3,
+        "rr_target": 2.5,
+        "atr_stop_mult_factor": 1.0,
+        "min_volume_z": 0.8,
+        "min_close_location": 0.8,
+        "min_bars_between_trades": 24
+      }
+    },
+    {
+      "windows": 57,
+      "is_sharpe": 0.6927,
+      "oos_sharpe": 0.7045,
+      "is_trades": 12128,
+      "oos_trades": 260,
+      "pos_oos_frac": 0.47368421052631576,
+      "deg_avg": 0.5413,
+      "dsr_pass_frac": 0.3333,
+      "gate_pass": false,
+      "composite_score": 11.359721167352657,
+      "params": {
+        "bb_width_max_percentile": 0.2,
+        "rr_target": 3.0,
+        "atr_stop_mult_factor": 1.2,
+        "min_volume_z": 1.0,
+        "min_close_location": 0.75,
+        "min_bars_between_trades": 24
+      }
+    }
+  ]
+}

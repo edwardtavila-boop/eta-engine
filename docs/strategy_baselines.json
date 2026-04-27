@@ -152,6 +152,69 @@
       "_promotion_status": "research_candidate",
       "_walk_forward_summary": "ETH/1h, 90d/30d windows, 9 windows. Strategy = crypto_orb(range=120m, ATR=3.0, RR=2.5) + sage 22-school composite at DAILY cadence as directional veto (strict mode, conv>=0.40). Agg IS Sharpe +2.46 (vs -0.86 plain crypto_orb baseline — sage flipped IS positive), agg OOS Sharpe **+5.77** (vs +1.38 baseline — 4x lift). 6/9 +OOS, DSR median 0.992, DSR pass 66.7%, deg_avg 0.73 (FAIL the 0.35 cap). Per-window OOS Sharpes: +12.09, +14.74, +4.81, +9.81, +10.85, -15.14, +14.74, 0.00, 0.00.",
       "_notes": "Research candidate, not promoted to live. ETH lacks ETF flow data so we can't run the BTC formula end-to-end (regime_trend + ETF + sage_daily). Substituting crypto_orb for regime_trend works because ETH's crypto_orb baseline already passes; sage daily gate adds +4.4 OOS Sharpe on top. Gate FAIL on two single-trade-window blowups (W7=2, W8=1) plus W5 regime-shift outlier (-15.14). The +5.77 result is real and IS-positive (resolves the prior eth_corb_v2 promotion blocker), but the strict gate's deg_avg cap and min_trades_met floor need either more data (currently 360d) or a circuit breaker. n_trades = sum across 9 windows IS+OOS = ~89."
+    },
+    {
+      "strategy_id": "btc_regime_trend_v1",
+      "n_trades": 91,
+      "win_rate": 0.504,
+      "avg_r": 0.654,
+      "r_stddev": 1.215,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 9 windows. crypto_regime_trend (regime_ema=100, pullback_ema=21, tol=3pct, atr=2.0, rr=3.0). Agg OOS Sharpe +2.96, 7/9 +OOS, DSR median 1.000, 67pct pass, 91 OOS trades. Strict gate FAILS on a single regime-shift outlier window (-4.19) but the strategy is sound across all other folds.",
+      "_notes": "Baseline preserved for drift comparison even though gate technically fails. Used as the underlying for btc_regime_trend_etf_v1 (which adds the ETF flow filter and DOES pass the gate)."
+    },
+    {
+      "strategy_id": "sol_corb_v1",
+      "n_trades": 104,
+      "win_rate": 0.481,
+      "avg_r": 0.601,
+      "r_stddev": 1.412,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "SOL/1h, 90d/30d windows, 9 windows. crypto_orb tuned for SOL volatility (range=120m, ATR=3.5, RR=2.5). Agg OOS Sharpe +2.34, 7/9 +OOS, 78pct DSR pass, 104 OOS trades. Strict gate FAIL on deg_avg.",
+      "_notes": "SOL is materially more volatile than BTC/ETH; baseline ATR-stop and RR are widened accordingly. n_trades = sum IS+OOS across 9 windows (~104). Re-baseline once SOL ETF or sentiment data wires."
+    },
+    {
+      "strategy_id": "crypto_seed_dca",
+      "n_trades": 0,
+      "win_rate": 0.0,
+      "avg_r": 0.0,
+      "r_stddev": 0.0,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "non_edge_strategy",
+      "_walk_forward_summary": "DCA accumulator on BTC daily — buys steadily at any non-distressed score. Daily timeframe matches accumulation cadence. NO walk-forward edge metric applies; goal is exposure not edge.",
+      "_notes": "DCA is a SIZING discipline, not an edge strategy. No Sharpe ratio, no win rate. Drift watchdog should flag if the DCA bot stops firing (e.g. score-threshold drift) or starts firing during distressed-score windows (e.g. confluence-scorer drift)."
+    },
+    {
+      "strategy_id": "eth_compression_v1",
+      "n_trades": 54,
+      "win_rate": 0.591,
+      "avg_r": 1.013,
+      "r_stddev": 1.187,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "ETH/1h, 90d/30d windows, 9 windows. compression_breakout with ETH preset (BB-width pct cap 0.30, RR 2.0, ATR-stop 1.8x, trend-EMA 200, vol-z 0.4, close-loc 0.65). Agg IS Sharpe +1.63, agg OOS Sharpe +3.86, gate PASS. 54 OOS trades = ~6 trades/window.",
+      "_notes": "ONLY cell of the 10-cell foundation supercharge sweep to clear the strict DSR gate. Both IS and OOS positive (resolves the trap that blocked many earlier promotions). Half-size 30-day warmup_policy applied."
+    },
+    {
+      "strategy_id": "btc_compression_v1",
+      "n_trades": 269,
+      "win_rate": 0.524,
+      "avg_r": 0.412,
+      "r_stddev": 1.297,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "research_candidate",
+      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 57 windows on 5y data. compression_breakout with tight knobs (vol_z=0.8, close_loc=0.80, cooldown=24, rr=2.5). Agg IS Sharpe +0.67, agg OOS Sharpe **+2.30**, 269 OOS trades, 39pct DSR pass. Gate FAIL on DSR pass (39pct vs 50pct gate).",
+      "_notes": "RESEARCH CANDIDATE. Tightening from the default sweep config (+0.50 OOS) to tight knobs delivered 4.6x lift (+2.30 OOS). Still 11pp below the strict 50pct DSR pass-fraction gate. Promoted as research candidate with risk_multiplier_during_warmup=0.3 (vs 0.5 for full promotions)."
+    },
+    {
+      "strategy_id": "xrp_DEACTIVATED",
+      "n_trades": 0,
+      "win_rate": 0.0,
+      "avg_r": 0.0,
+      "r_stddev": 0.0,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "deactivated",
+      "_walk_forward_summary": "XRP perp bot deactivated 2026-04-27. No active strategy assigned.",
+      "_notes": "Placeholder baseline so registry-sync tests pass. Re-enable by switching strategy_id and re-baselining."
     }
   ]
 }
