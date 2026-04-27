@@ -1,0 +1,208 @@
+<!doctype html>
+<!--
+  JARVIS Panel (Tier-3 #11, 2026-04-27)
+  =====================================
+  Stand-alone single-file HTML panel that consumes
+  /api/jarvis/today_verdicts and /api/jarvis/policy_diff. No build
+  step, no React framework -- just modern vanilla JS so it can be
+  dropped behind any web server (or served by the existing FastAPI
+  dashboard on :8787, or by Cloudflare Pages).
+-->
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>ETA Engine -- JARVIS Panel</title>
+  <style>
+    :root {
+      --bg-base:    #08080f;
+      --bg-card:    #14141d;
+      --bg-row:    #1a1a25;
+      --fg-base:    #e2e2eb;
+      --fg-muted:   #888;
+      --color-ok:   #2ecc71;
+      --color-warn: #f1c40f;
+      --color-bad:  #e74c3c;
+      --color-info: #3498db;
+      --color-cond: #f39c12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-base); color: var(--fg-base);
+      margin: 0; padding: 1.5rem; min-height: 100vh;
+    }
+    h1 { margin: 0 0 0.25rem; font-weight: 600; letter-spacing: -0.02em; }
+    .sub { color: var(--fg-muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .card {
+      background: var(--bg-card); border: 1px solid #222;
+      border-radius: 6px; padding: 1.1rem;
+    }
+    .card h3 { margin: 0 0 0.6rem; font-weight: 500; font-size: 0.95rem; }
+    .metric-label { font-size: 0.7rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric-value {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 1.4rem; font-weight: 600; margin: 0.15rem 0;
+    }
+    .metric-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.4rem 0; border-bottom: 1px solid #222;
+      font-family: ui-monospace, monospace; font-size: 0.85rem;
+    }
+    .metric-row:last-child { border-bottom: 0; }
+    .verdict-badge {
+      display: inline-block; padding: 0.1rem 0.5rem; border-radius: 3px;
+      font-size: 0.7rem; font-weight: 500; min-width: 80px; text-align: center;
+    }
+    .verdict-APPROVED    { background: rgba(46,204,113,0.18); color: var(--color-ok); }
+    .verdict-CONDITIONAL { background: rgba(241,196,15,0.18); color: var(--color-warn); }
+    .verdict-DEFERRED    { background: rgba(52,152,219,0.18); color: var(--color-info); }
+    .verdict-DENIED      { background: rgba(231,76,60,0.18);  color: var(--color-bad); }
+    .reason-bar {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.3rem 0; font-family: ui-monospace, monospace; font-size: 0.8rem;
+    }
+    .reason-bar-fill {
+      height: 0.4rem; background: var(--color-cond); border-radius: 2px; min-width: 2px;
+    }
+    table { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+    th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid #222; }
+    th { color: var(--fg-muted); font-weight: 500; font-size: 0.7rem; text-transform: uppercase; }
+    .footer { color: var(--fg-muted); font-size: 0.7rem; margin-top: 2rem; }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .err { color: var(--color-bad); font-family: ui-monospace, monospace; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <h1>JARVIS Panel</h1>
+  <div class="sub">ETA Engine -- live verdict stream &amp; policy diff <span id="last-update" class="pulse">...</span></div>
+
+  <div class="grid" id="cards">
+    <div class="card">
+      <div class="metric-label">Verdicts today</div>
+      <div class="metric-value" id="card-total">--</div>
+      <div class="metric-label">Avg conditional cap: <span id="card-cap">--</span></div>
+    </div>
+    <div class="card">
+      <h3>Verdict mix</h3>
+      <div id="verdict-mix">--</div>
+    </div>
+    <div class="card">
+      <h3>Top denial reasons</h3>
+      <div id="reason-list">--</div>
+    </div>
+    <div class="card">
+      <h3>Policy versions seen</h3>
+      <div id="policy-list">--</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <h3>By subsystem</h3>
+    <table id="subsystem-table">
+      <thead>
+        <tr><th>subsystem</th><th>APPROVED</th><th>CONDITIONAL</th><th>DEFERRED</th><th>DENIED</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <h3>Candidate policies vs champion (last 30d)</h3>
+    <table id="policy-diff-table">
+      <thead>
+        <tr><th>candidate</th><th>total</th><th>approval rate</th><th>avg cap</th><th>cap tightened</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="footer">refreshes every 30s &middot; ETA Engine private</div>
+
+  <script>
+    async function fetchJson(url) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        return { _error: String(e) };
+      }
+    }
+
+    function renderTodayVerdicts(d) {
+      if (d._error) { document.getElementById('card-total').textContent = 'err'; return; }
+      const totals = d.totals || {};
+      const total = Object.values(totals).reduce((a,b) => a+(+b||0), 0);
+      document.getElementById('card-total').textContent = total;
+      document.getElementById('card-cap').textContent = (d.avg_conditional_cap ?? 1).toFixed(2);
+
+      // Mix
+      const mixEl = document.getElementById('verdict-mix');
+      const verdicts = ['APPROVED','CONDITIONAL','DEFERRED','DENIED'];
+      mixEl.innerHTML = verdicts.map(v => {
+        const n = totals[v] || 0;
+        return `<div class="metric-row">
+          <span class="verdict-badge verdict-${v}">${v}</span>
+          <span>${n}</span>
+        </div>`;
+      }).join('');
+
+      // Reasons
+      const reasonEl = document.getElementById('reason-list');
+      const reasons = d.top_denial_reasons || [];
+      const max = reasons.length ? Math.max(...reasons.map(([,n]) => n)) : 1;
+      reasonEl.innerHTML = reasons.length
+        ? reasons.map(([code,n]) => `<div class="reason-bar">
+            <div class="reason-bar-fill" style="width:${Math.max(2, n/max*120)}px"></div>
+            <span style="flex:1">${code}</span>
+            <span style="color:var(--fg-muted)">${n}</span>
+          </div>`).join('')
+        : '<div style="color:var(--fg-muted);font-size:0.8rem">no denials today</div>';
+
+      // Policy versions
+      const polEl = document.getElementById('policy-list');
+      const versions = (d.policy_versions_seen || []).map(v => `v${v}`).join(', ') || '—';
+      polEl.innerHTML = `<div style="font-family:ui-monospace,monospace;font-size:0.85rem">${versions}</div>`;
+
+      // Subsystem table
+      const sub = d.by_subsystem || {};
+      const tbody = document.querySelector('#subsystem-table tbody');
+      tbody.innerHTML = Object.entries(sub).map(([name, c]) =>
+        `<tr><td>${name}</td><td>${c.APPROVED||0}</td><td>${c.CONDITIONAL||0}</td><td>${c.DEFERRED||0}</td><td>${c.DENIED||0}</td></tr>`
+      ).join('') || '<tr><td colspan="5" style="color:var(--fg-muted)">no events today</td></tr>';
+    }
+
+    function renderPolicyDiff(d) {
+      const tbody = document.querySelector('#policy-diff-table tbody');
+      if (d._error || d.error) {
+        tbody.innerHTML = `<tr><td colspan="5" class="err">${d.error_detail || d._error}</td></tr>`;
+        return;
+      }
+      const cands = d.candidates || {};
+      tbody.innerHTML = Object.entries(cands).map(([name, m]) =>
+        `<tr>
+          <td>${name}</td>
+          <td>${m.total ?? '—'}</td>
+          <td>${m.approval_rate != null ? (m.approval_rate*100).toFixed(1) + '%' : '—'}</td>
+          <td>${m.avg_cap != null ? Number(m.avg_cap).toFixed(2) : '—'}</td>
+          <td>${m.cap_tightened_count ?? '—'}</td>
+        </tr>`
+      ).join('') || '<tr><td colspan="5" style="color:var(--fg-muted)">no candidates registered</td></tr>';
+    }
+
+    async function refresh() {
+      const today = await fetchJson('/api/jarvis/today_verdicts');
+      renderTodayVerdicts(today);
+      const diff = await fetchJson('/api/jarvis/policy_diff?window_days=30');
+      renderPolicyDiff(diff);
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>
