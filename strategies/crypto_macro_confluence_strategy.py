@@ -100,9 +100,24 @@ class MacroConfluenceConfig:
     # short requires negative. 0 = disabled.
     require_etf_flow_alignment: bool = False
 
-    # ── H. On-chain LTH supply (Tier 4 - placeholder) ──
-    # Provider returns LTH-supply delta. Long requires accumulation
-    # (positive delta), short requires distribution. 0 = disabled.
+    # ── H. On-chain LTH supply (Tier 4 - active) ──
+    # Provider returns LTH proxy in [-1, +1] (Mayer Multiple
+    # percentile-derived). +1 = accumulation phase. Long requires
+    # score > min_lth_score, short requires score < -min_lth_score.
+    # 0 = disabled.
+    min_lth_score: float = 0.0
+
+    # ── I. Sentiment (Tier 4 - active) ──
+    # Provider returns Fear & Greed normalized to [-1, +1]
+    # (CONTRARIAN: fear = +1, greed = -1). Long requires score >=
+    # min_sentiment_score (i.e. enough fear / not too greedy),
+    # short requires score <= -min_sentiment_score (i.e. enough
+    # greed / not too fearful). 0 = disabled.
+    min_sentiment_score: float = 0.0
+
+    # Legacy on-chain alignment toggle kept for back-compat with
+    # tests that referenced it before the LTH proxy landed. Behaves
+    # identically to ``min_lth_score > 0``.
     require_onchain_alignment: bool = False
 
 
@@ -159,6 +174,7 @@ class CryptoMacroConfluenceStrategy:
         self._macro_provider: Callable[[BarData], float] | None = None
         self._etf_provider: Callable[[BarData], float] | None = None
         self._onchain_provider: Callable[[BarData], float] | None = None
+        self._sentiment_provider: Callable[[BarData], float] | None = None
         # Track per-bar state so filters can read what the wrapper
         # already computed
         self._last_bar_atr: float | None = None
@@ -189,6 +205,11 @@ class CryptoMacroConfluenceStrategy:
         self, p: Callable[[BarData], float] | None,
     ) -> None:
         self._onchain_provider = p
+
+    def attach_sentiment_provider(
+        self, p: Callable[[BarData], float] | None,
+    ) -> None:
+        self._sentiment_provider = p
 
     # -- main entry point -----------------------------------------------------
 
@@ -244,6 +265,9 @@ class CryptoMacroConfluenceStrategy:
             self._rollback_base()
             return None
         if not self._filter_onchain(bar, opened):
+            self._rollback_base()
+            return None
+        if not self._filter_sentiment(bar, opened):
             self._rollback_base()
             return None
 
@@ -348,16 +372,52 @@ class CryptoMacroConfluenceStrategy:
         return (opened.side == "BUY" and flow > 0) or (opened.side == "SELL" and flow < 0)
 
     def _filter_onchain(self, bar: BarData, opened: _Open) -> bool:
-        """Variant H. Long requires LTH accumulation."""
-        if not self.cfg.filters.require_onchain_alignment:
+        """Variant H. LTH proxy in [-1, +1]: +1 = strong accumulation,
+        -1 = strong distribution.
+
+        Long requires score >= min_lth_score (or, back-compat,
+        require_onchain_alignment=True with score>0).
+        Short requires score <= -min_lth_score (or score<0 in back-
+        compat mode).
+        """
+        threshold = self.cfg.filters.min_lth_score
+        legacy = self.cfg.filters.require_onchain_alignment
+        if threshold <= 0.0 and not legacy:
             return True
         if self._onchain_provider is None:
             return True  # fail-open
         try:
-            delta = self._onchain_provider(bar)
+            score = self._onchain_provider(bar)
         except Exception:  # noqa: BLE001
             return True
-        return (opened.side == "BUY" and delta > 0) or (opened.side == "SELL" and delta < 0)
+        if legacy and threshold <= 0.0:
+            return (
+                (opened.side == "BUY" and score > 0)
+                or (opened.side == "SELL" and score < 0)
+            )
+        if opened.side == "BUY":
+            return score >= threshold
+        return score <= -threshold
+
+    def _filter_sentiment(self, bar: BarData, opened: _Open) -> bool:
+        """Variant I. Fear & Greed normalized to [-1, +1] CONTRARIAN
+        (fear=+1, greed=-1).
+
+        Long requires score >= min_sentiment_score (enough fear /
+        not too greedy). Short requires score <= -min_sentiment_score.
+        """
+        threshold = self.cfg.filters.min_sentiment_score
+        if threshold <= 0.0:
+            return True
+        if self._sentiment_provider is None:
+            return True  # fail-open
+        try:
+            score = self._sentiment_provider(bar)
+        except Exception:  # noqa: BLE001
+            return True
+        if opened.side == "BUY":
+            return score >= threshold
+        return score <= -threshold
 
     # -- helpers --------------------------------------------------------------
 

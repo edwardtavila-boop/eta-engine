@@ -16,8 +16,11 @@ from eta_engine.strategies.crypto_macro_confluence_strategy import (
 )
 from eta_engine.strategies.crypto_regime_trend_strategy import CryptoRegimeTrendConfig
 from eta_engine.strategies.macro_confluence_providers import (
+    EtfFlowProvider,
     EthAlignmentProvider,
+    FearGreedProvider,
     FundingRateProvider,
+    LthProxyProvider,
     MacroTailwindProvider,
 )
 
@@ -322,3 +325,159 @@ def test_funding_provider_round_trip(tmp_path: Path) -> None:
         symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
     )
     assert p(bar2) == pytest.approx(0.0005)
+
+
+# ---------------------------------------------------------------------------
+# Tier-4 providers
+# ---------------------------------------------------------------------------
+
+
+def test_etf_flow_provider_returns_zero_when_no_csv(tmp_path: Path) -> None:
+    p = EtfFlowProvider(csv_path=tmp_path / "no_etf.csv")
+    bar = _bar(0, h=100, low=99, c=99.5)
+    assert p(bar) == 0.0
+
+
+def test_etf_flow_provider_returns_latest_at_or_before_bar(tmp_path: Path) -> None:
+    csv_p = tmp_path / "etf.csv"
+    csv_p.write_text(
+        "time,net_flow_usd_m\n"
+        f"{int(datetime(2026, 1, 1, tzinfo=UTC).timestamp())},250.5\n"
+        f"{int(datetime(2026, 1, 2, tzinfo=UTC).timestamp())},-180.0\n",
+        encoding="utf-8",
+    )
+    p = EtfFlowProvider(csv_path=csv_p)
+    # Bar on Jan 1 → first day's flow
+    bar = BarData(
+        timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    assert p(bar) == pytest.approx(250.5)
+    # Bar on Jan 2 → second day's flow (outflow)
+    bar2 = BarData(
+        timestamp=datetime(2026, 1, 2, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    assert p(bar2) == pytest.approx(-180.0)
+
+
+def test_fear_greed_provider_normalizes_to_signed_range(tmp_path: Path) -> None:
+    csv_p = tmp_path / "fg.csv"
+    # Three days: extreme fear (10), neutral (50), extreme greed (90)
+    csv_p.write_text(
+        "time,fear_greed\n"
+        f"{int(datetime(2026, 1, 1, tzinfo=UTC).timestamp())},10\n"
+        f"{int(datetime(2026, 1, 2, tzinfo=UTC).timestamp())},50\n"
+        f"{int(datetime(2026, 1, 3, tzinfo=UTC).timestamp())},90\n",
+        encoding="utf-8",
+    )
+    p = FearGreedProvider(csv_path=csv_p)
+    fear_bar = BarData(
+        timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    neutral_bar = BarData(
+        timestamp=datetime(2026, 1, 2, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    greed_bar = BarData(
+        timestamp=datetime(2026, 1, 3, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    # Contrarian: fear maps to +0.8, neutral to 0, greed to -0.8
+    assert p(fear_bar) == pytest.approx(0.8, abs=1e-3)
+    assert p(neutral_bar) == pytest.approx(0.0, abs=1e-3)
+    assert p(greed_bar) == pytest.approx(-0.8, abs=1e-3)
+
+
+def test_lth_proxy_provider_round_trip(tmp_path: Path) -> None:
+    csv_p = tmp_path / "lth.csv"
+    csv_p.write_text(
+        "time,lth_proxy\n"
+        f"{int(datetime(2026, 1, 1, tzinfo=UTC).timestamp())},0.75\n"
+        f"{int(datetime(2026, 1, 2, tzinfo=UTC).timestamp())},-0.40\n",
+        encoding="utf-8",
+    )
+    p = LthProxyProvider(csv_path=csv_p)
+    bar = BarData(
+        timestamp=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        symbol="BTC", open=100, high=100, low=100, close=100, volume=1000,
+    )
+    assert p(bar) == pytest.approx(0.75)
+
+
+# ---------------------------------------------------------------------------
+# Tier-4 strategy filters
+# ---------------------------------------------------------------------------
+
+
+def test_lth_filter_blocks_long_when_score_too_low() -> None:
+    s = _strat(min_lth_score=0.3)
+    cfg = _config()
+    s.attach_onchain_provider(lambda b: -0.5)  # distribution phase
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is None
+
+
+def test_lth_filter_passes_long_in_accumulation() -> None:
+    s = _strat(min_lth_score=0.3)
+    cfg = _config()
+    s.attach_onchain_provider(lambda b: 0.6)  # accumulation phase
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is not None
+
+
+def test_sentiment_filter_blocks_long_in_greed() -> None:
+    s = _strat(min_sentiment_score=0.2)
+    cfg = _config()
+    s.attach_sentiment_provider(lambda b: -0.5)  # extreme greed (contrarian)
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is None
+
+
+def test_sentiment_filter_passes_long_in_fear() -> None:
+    s = _strat(min_sentiment_score=0.2)
+    cfg = _config()
+    s.attach_sentiment_provider(lambda b: 0.5)  # fear (contrarian = bullish)
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is not None
+
+
+def test_etf_filter_blocks_long_on_outflow() -> None:
+    s = _strat(require_etf_flow_alignment=True)
+    cfg = _config()
+    s.attach_etf_flow_provider(lambda b: -250.0)  # net outflow
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is None
+
+
+def test_etf_filter_passes_long_on_inflow() -> None:
+    s = _strat(require_etf_flow_alignment=True)
+    cfg = _config()
+    s.attach_etf_flow_provider(lambda b: 350.0)  # institutional inflow
+    hist = _setup_uptrend(s)
+    pull_ema = s._base._pullback_ema
+    pull_bar = _bar(35, h=pull_ema + 0.5, low=pull_ema - 0.05, c=pull_ema + 0.4)
+    hist.append(pull_bar)
+    out = s.maybe_enter(pull_bar, hist, 10_000.0, cfg)
+    assert out is not None

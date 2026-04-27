@@ -258,3 +258,122 @@ def _read_yahoo_csv(p: Path) -> list[tuple[datetime, float]]:
     except OSError:
         return []
     return out
+
+
+def _read_two_col_csv(
+    p: Path, value_col: str,
+) -> list[tuple[datetime, float]]:
+    """Read a (time, <value_col>) CSV. Used by all three Tier-4 providers.
+
+    Schema: ``time,<value_col>`` where ``time`` is unix-seconds and
+    ``<value_col>`` is a float. Missing files / unparseable rows
+    return an empty list — downstream providers no-op gracefully.
+    """
+    if not p.exists():
+        return []
+    out: list[tuple[datetime, float]] = []
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                try:
+                    ts = datetime.fromtimestamp(int(row["time"]), UTC)
+                    val = float(row[value_col])
+                except (ValueError, KeyError, TypeError):
+                    continue
+                out.append((ts, val))
+    except OSError:
+        return []
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Tier-4 providers
+# ---------------------------------------------------------------------------
+
+
+class EtfFlowProvider:
+    """Daily BTC spot-ETF net flows from Farside Investors.
+
+    Returns the most recent day's net flow in USD millions
+    at-or-before bar.timestamp. Positive = inflow, negative =
+    outflow, 0 = no data / weekend / pre-coverage.
+
+    The strategy's ``filter_etf_flow`` checks sign:
+      * Long requires flow > 0  (institutional buying)
+      * Short requires flow < 0 (institutional selling)
+    """
+
+    def __init__(self, csv_path: Path | str) -> None:
+        self._rows = _read_two_col_csv(Path(csv_path), "net_flow_usd_m")
+
+    def __call__(self, bar: BarData) -> float:
+        if not self._rows:
+            return 0.0
+        result = 0.0
+        target = bar.timestamp.date()
+        for ts, val in self._rows:
+            if ts.date() <= target:
+                result = val
+            else:
+                break
+        return result
+
+
+class FearGreedProvider:
+    """Crypto Fear & Greed Index from alternative.me.
+
+    Raw score is 0-100 (0 = extreme fear, 100 = extreme greed).
+    Provider returns a CONTRARIAN-NORMALIZED score in [-1, +1]:
+      * fg <= 25  -> +1.0  (extreme fear, accumulation phase, BUY)
+      * fg >= 75  -> -1.0  (extreme greed, distribution phase, SELL)
+      * 50        ->  0.0  (neutral)
+      * linear interpolation between
+
+    The strategy's filter expects long-positive / short-negative
+    semantics, so this contrarian-flipped score plugs in as a
+    sentiment filter where fear = good for longs, greed = bad.
+    """
+
+    def __init__(self, csv_path: Path | str) -> None:
+        self._rows = _read_two_col_csv(Path(csv_path), "fear_greed")
+
+    def __call__(self, bar: BarData) -> float:
+        if not self._rows:
+            return 0.0
+        target = bar.timestamp.date()
+        raw = 50.0
+        for ts, val in self._rows:
+            if ts.date() <= target:
+                raw = val
+            else:
+                break
+        # Map [0, 100] linearly to [+1, -1] (fear -> +1, greed -> -1)
+        score = (50.0 - raw) / 50.0
+        return max(-1.0, min(1.0, score))
+
+
+class LthProxyProvider:
+    """LTH-supply proxy from BTC daily Mayer Multiple percentile.
+
+    Pre-computed by ``scripts.fetch_lth_proxy``. CSV value is already
+    in [-1, +1] where +1 = strong accumulation (LTH buying), -1 =
+    strong distribution (LTH selling). Provider just returns the
+    current day's value.
+    """
+
+    def __init__(self, csv_path: Path | str) -> None:
+        self._rows = _read_two_col_csv(Path(csv_path), "lth_proxy")
+
+    def __call__(self, bar: BarData) -> float:
+        if not self._rows:
+            return 0.0
+        target = bar.timestamp.date()
+        result = 0.0
+        for ts, val in self._rows:
+            if ts.date() <= target:
+                result = val
+            else:
+                break
+        return max(-1.0, min(1.0, result))
