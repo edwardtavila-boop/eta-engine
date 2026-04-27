@@ -51,7 +51,15 @@ sys.path.insert(0, str(ROOT.parent))
 
 
 def _load_csv(path: Path, limit: int | None = None) -> list:
-    """Read mnq_5m-style CSV. Returns a list of BarData objects."""
+    """Read MNQ-style CSV. Returns a list of BarData objects.
+
+    Handles two on-disk formats:
+      * ``mnq_5m.csv`` shape: ``timestamp_utc, epoch_s, open, high, low, close, volume, session``
+      * ``MNQ1_*.csv`` history shape: ``time, open, high, low, close, volume``
+        where ``time`` is epoch seconds (UTC).
+
+    Detection is based on which timestamp column the row carries.
+    """
     from eta_engine.core.data_pipeline import BarData
 
     if not path.exists():
@@ -63,13 +71,25 @@ def _load_csv(path: Path, limit: int | None = None) -> list:
     with path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
+            ts: datetime | None = None
             ts_raw = row.get("timestamp_utc") or row.get("timestamp")
-            if not ts_raw:
+            if ts_raw:
+                if ts_raw.endswith("Z"):
+                    ts_raw = ts_raw[:-1] + "+00:00"
+                try:
+                    ts = datetime.fromisoformat(ts_raw)
+                except ValueError:
+                    pass
+            if ts is None:
+                # history/MNQ1_*.csv shape: epoch seconds in 'time' column
+                epoch_raw = row.get("time") or row.get("epoch_s")
+                if epoch_raw:
+                    try:
+                        ts = datetime.fromtimestamp(int(float(epoch_raw)), tz=UTC)
+                    except (TypeError, ValueError):
+                        ts = None
+            if ts is None:
                 continue
-            # Accept both "...Z" and "+00:00" suffixes.
-            if ts_raw.endswith("Z"):
-                ts_raw = ts_raw[:-1] + "+00:00"
-            ts = datetime.fromisoformat(ts_raw)
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=UTC)
             try:
@@ -230,13 +250,41 @@ def main() -> int:
     from eta_engine.core.confluence_scorer import score_confluence_mnq
     from eta_engine.features.pipeline import FeaturePipeline
 
-    data_path = Path(os.environ.get("MNQ_DATA_PATH", r"C:\mnq_data\mnq_5m.csv"))
+    # Two ways to choose data:
+    #   * MNQ_DATA_PATH env var (legacy direct path) — kept for backcompat.
+    #   * MNQ_SYMBOL + MNQ_TIMEFRAME (preferred) — picks from the
+    #     data.library catalog so the longest-history match wins
+    #     automatically (e.g. MNQ1 1h = 4 years, MNQ1 4h = 7 years).
+    data_path = os.environ.get("MNQ_DATA_PATH")
     limit_str = os.environ.get("MNQ_BARS_LIMIT", "")
     limit = int(limit_str) if limit_str.isdigit() else None
 
-    bars = _load_csv(data_path, limit=limit)
+    if data_path:
+        bars = _load_csv(Path(data_path), limit=limit)
+    else:
+        from eta_engine.data.library import default_library
+
+        symbol = os.environ.get("MNQ_SYMBOL", "MNQ1")
+        tf = os.environ.get("MNQ_TIMEFRAME", "5m")
+        ds = default_library().get(symbol=symbol, timeframe=tf)
+        if ds is None:
+            print(
+                f"ABORT: no dataset for symbol={symbol} timeframe={tf} in the data library. "
+                "Run `python -m eta_engine.scripts.announce_data_library --dry-run` to see "
+                "what's available."
+            )
+            return 1
+        print(
+            f"[data.library] using {ds.symbol}/{ds.timeframe}/{ds.schema_kind}: "
+            f"{ds.row_count} bars over {ds.days_span():.1f} days "
+            f"({ds.start_ts.date()} -> {ds.end_ts.date()})"
+        )
+        bars = default_library().load_bars(ds, limit=limit)
     if not bars:
-        print(f"ABORT: zero bars loaded from {data_path}")
+        print(
+            f"ABORT: zero bars loaded "
+            f"({'path=' + str(data_path) if data_path else 'via library'})"
+        )
         return 1
 
     # Confluence threshold lowered from 7.0 -> 5.0 specifically for the
@@ -265,6 +313,13 @@ def main() -> int:
         strict_fold_dsr_gate=True,
         fold_dsr_min_pass_fraction=0.5,
     )
+    # Regime gate: built from the 2026-04-27 Window 0 deep-dive,
+    # which showed the strategy is +EV in "choppy" regimes and
+    # bleeds in "trending_up" / "trending_down". Disable via
+    # MNQ_BLOCK_REGIMES="" (empty) to compare against the
+    # ungated baseline.
+    block_raw = os.environ.get("MNQ_BLOCK_REGIMES", "trending_up,trending_down")
+    block_regimes = frozenset(r.strip() for r in block_raw.split(",") if r.strip())
     res = WalkForwardEngine().run(
         bars=bars,
         pipeline=FeaturePipeline.default(),
@@ -272,6 +327,7 @@ def main() -> int:
         base_backtest_config=cfg,
         ctx_builder=_ctx,
         scorer=score_confluence_mnq,
+        block_regimes=block_regimes if block_regimes else None,
     )
 
     print("EVOLUTIONARY TRADING ALGO -- MNQ Real-Data Walk-Forward")

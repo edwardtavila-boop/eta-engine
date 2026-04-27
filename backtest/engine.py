@@ -63,6 +63,7 @@ class BacktestEngine:
         ctx_builder: Any | None = None,
         strategy_id: str = "eta_default",
         scorer: Callable[..., ConfluenceResult] | None = None,
+        block_regimes: frozenset[str] | set[str] | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.config = config
@@ -72,6 +73,14 @@ class BacktestEngine:
         # Pass score_confluence_mnq (or any other 5-tuple-accepting
         # callable) to swap weights without subclassing.
         self.scorer = scorer or score_confluence
+        # Optional regime gate: any ctx["regime"] in this set causes
+        # _enter() to refuse new positions. Built for the 2026-04-27
+        # MNQ Window 0 finding (strategy bleeds in trending regimes,
+        # +EV in choppy). Default None preserves legacy no-gate
+        # behaviour for every existing caller.
+        self.block_regimes = (
+            frozenset(block_regimes) if block_regimes is not None else None
+        )
 
     def run(self, bars: Iterable[BarData]) -> BacktestResult:
         equity, curve, trades, hist = self.config.initial_equity, [], [], []
@@ -113,6 +122,14 @@ class BacktestEngine:
 
     def _enter(self, bar: BarData, hist: list[BarData], equity: float) -> _Open | None:
         ctx = self.ctx_builder(bar, hist)
+        # Regime gate runs before scoring so a blocked regime never
+        # consumes the trades-per-day budget. Both the gate set and
+        # the regime tag are optional — when either is None we skip
+        # silently and the legacy code path runs unchanged.
+        if self.block_regimes is not None:
+            current_regime = ctx.get("regime")
+            if current_regime is not None and str(current_regime) in self.block_regimes:
+                return None
         results = self.pipeline.compute_all(bar, ctx)
         score = self.scorer(*self.pipeline.to_confluence_inputs(results))
         if score.total_score < self.config.confluence_threshold or score.recommended_leverage <= 0:

@@ -113,6 +113,7 @@ class WalkForwardEngine:
         base_backtest_config: BacktestConfig,
         ctx_builder: object | None = None,
         scorer: object | None = None,
+        block_regimes: frozenset[str] | set[str] | None = None,
     ) -> WalkForwardResult:
         if not bars:
             return WalkForwardResult()
@@ -136,10 +137,12 @@ class WalkForwardEngine:
                 }
             )
             is_res = BacktestEngine(
-                pipeline, is_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-IS", scorer=scorer,
+                pipeline, is_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-IS",
+                scorer=scorer, block_regimes=block_regimes,
             ).run(is_bars)
             oos_res = BacktestEngine(
-                pipeline, oos_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-OOS", scorer=scorer,
+                pipeline, oos_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-OOS",
+                scorer=scorer, block_regimes=block_regimes,
             ).run(oos_bars)
             oos_skew, oos_kurt = _fold_moments_from_trades(oos_res.trades)
             win_results.append(
