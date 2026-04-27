@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ class CellResult:
     note: str = ""
 
 
-def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]
+def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
     from eta_engine.core.confluence_scorer import (
         score_confluence,
         score_confluence_btc,
@@ -193,9 +193,13 @@ def run_cell(cell: ResearchCell) -> CellResult:
     )
 
 
-def render_table(results: "Sequence[CellResult]") -> str:
+def render_table(results: Sequence[CellResult]) -> str:
+    header = (
+        "| Config | Sym/TF | Scorer | Thr | Gate | W | +OOS | IS Sh | "
+        "OOS Sh | Deg% | DSR med | DSR pass% | Verdict | Note |"
+    )
     lines = [
-        "| Config | Sym/TF | Scorer | Thr | Gate | W | +OOS | IS Sh | OOS Sh | Deg% | DSR med | DSR pass% | Verdict | Note |",
+        header,
         "|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
     ]
     for r in results:
