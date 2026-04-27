@@ -84,6 +84,8 @@ def gather_payload() -> dict[str, Any]:
             "totals": agg.get("totals", {}),
             "avg_conditional_cap": agg.get("avg_conditional_cap"),
             "policy_versions_seen": agg.get("policy_versions_seen", []),
+            # Tier-3 #14 (2026-04-27): hourly heatmap for the panel
+            "hourly_timeline": agg.get("hourly_timeline", []),
         }
     except Exception as exc:  # noqa: BLE001
         logger.warning("verdict aggregation failed: %s", exc)
@@ -154,6 +156,13 @@ HTML_TEMPLATE = """<!doctype html>
     {kaizen_rows}
   </div>
 
+  <div class="card">
+    <h3 style="margin-top:0">JARVIS verdict heatmap (today, by hour ET)</h3>
+    <div style="font-family: ui-monospace, monospace; font-size: 0.75rem;">
+      {heatmap_rows}
+    </div>
+  </div>
+
   <div class="footer">
     ETA Engine &middot; private &middot; not investment advice &middot;
     do not redistribute
@@ -182,6 +191,24 @@ def render_html(payload: dict[str, Any]) -> str:
     totals = payload.get("todays_verdicts", {}).get("totals", {})
     verdict_total = sum(totals.values()) if totals else 0
 
+    # Heatmap rows: one row per hour, simple text bars
+    timeline = payload.get("todays_verdicts", {}).get("hourly_timeline", [])
+    if timeline:
+        max_n = max(
+            max(int(row.get("approved", 0)), int(row.get("conditional", 0)),
+                int(row.get("rejected", 0)))
+            for row in timeline
+        ) or 1
+        heatmap_rows = "<br>".join(
+            f"  {row['hr']}:00&nbsp; "
+            f"<span style='color:#2ECC71'>{'&block;' * int(int(row.get('approved', 0)) / max_n * 18)}</span>"
+            f"<span style='color:#F1C40F'>{'&block;' * int(int(row.get('conditional', 0)) / max_n * 18)}</span>"
+            f"<span style='color:#E74C3C'>{'&block;' * int(int(row.get('rejected', 0)) / max_n * 18)}</span>"
+            for row in timeline
+        )
+    else:
+        heatmap_rows = '<span style="color:#888">no verdicts today</span>'
+
     return HTML_TEMPLATE.format(
         generated_at=payload["generated_at"][:19] + "Z",
         fleet_size=payload["fleet"]["size"],
@@ -192,6 +219,7 @@ def render_html(payload: dict[str, Any]) -> str:
         pv_seen=", ".join(str(v) for v in payload.get("todays_verdicts", {}).get("policy_versions_seen", [])) or "—",
         fleet_rows=fleet_rows,
         kaizen_rows=kaizen_rows,
+        heatmap_rows=heatmap_rows,
     )
 
 
