@@ -31,6 +31,15 @@ from __future__ import annotations
 from eta_engine.brain.jarvis_v3.policies import (  # noqa: F401
     v17_champion,
     v18_high_stress_tighten,
+    v19_drift_aware,
+    v20_overnight_tighten,
+    v21_drawdown_proximity,
 )
 
-__all__ = ["v17_champion", "v18_high_stress_tighten"]
+__all__ = [
+    "v17_champion",
+    "v18_high_stress_tighten",
+    "v19_drift_aware",
+    "v20_overnight_tighten",
+    "v21_drawdown_proximity",
+]

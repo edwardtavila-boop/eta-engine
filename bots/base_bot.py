@@ -147,6 +147,107 @@ class BaseBot(abc.ABC):
         """
         self._eta_logger = logger
 
+    def run_pre_flight(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        confluence: float,
+        fleet_positions: dict[str, float] | None = None,
+        rationale: str = "",
+        extra_payload: dict[str, Any] | None = None,
+    ) -> Any:
+        """Tier-1 wave-3 (2026-04-27): one-call pre-flight composer.
+
+        Combines the cross-bot correlation throttle and JARVIS gate via
+        ``brain/jarvis_pre_flight.bot_pre_flight``. Returns a
+        ``PreflightDecision`` with .allowed / .size_cap_mult / .reason
+        / .reason_code / .binding fields.
+
+        Bots opt in by calling this in their ``on_signal`` flow instead
+        of (or before) calling ``self._ask_jarvis`` directly. When
+        no JARVIS is wired (legacy mode), the underlying composer
+        passes through with correlation cap applied -- so this method
+        is safe to call from any bot.
+
+        Example::
+
+            decision = self.run_pre_flight(
+                symbol=signal.symbol,
+                side=signal.type.value,
+                confluence=signal.confidence,
+                fleet_positions=fleet.positions_by_symbol(),
+            )
+            if not decision.allowed:
+                self._log_blocked(decision.reason_code, decision.reason)
+                return
+            qty = base_qty * decision.size_cap_mult
+            ...
+        """
+        from eta_engine.brain.jarvis_pre_flight import bot_pre_flight
+        return bot_pre_flight(
+            bot=self,
+            symbol=symbol,
+            side=side,
+            confluence=confluence,
+            fleet_positions=fleet_positions or {},
+            rationale=rationale,
+            extra_payload=extra_payload,
+        )
+
+    def record_fill_outcome(
+        self,
+        *,
+        intent: str,
+        r_multiple: float,
+        feature_bucket: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Tier-1 wave-3 (2026-04-27): record fill outcome for kaizen + learning.
+
+        Closes the feedback loop end-to-end. Two effects:
+
+          1. Writes a journal event (via ``record_fill_with_realized_r``)
+             with ``metadata['realized_r']`` populated -- the kaizen
+             synthesizer reads this to ground went_well/went_poorly in
+             realized R-multiples instead of just gate firings.
+
+          2. Calls ``observe_fill_for_learning(feature_bucket, r_multiple)``
+             so an attached ``OnlineUpdater`` (if any) gets the data point.
+
+        Backward-compatible: when no journal is attached AND no online
+        updater is attached, this is a no-op.
+
+        Bots that have already been doing per-bot journaling can ALSO
+        call this -- the events compose (no double-counting since
+        kaizen synthesizer only reads metadata['realized_r']).
+        """
+        from eta_engine.brain.jarvis_pre_flight import record_fill_with_realized_r
+
+        # Effect 1: journal event with realized_r metadata
+        journal = getattr(self, "_journal", None)
+        if journal is not None:
+            try:
+                record_fill_with_realized_r(
+                    journal,
+                    intent=intent,
+                    r_multiple=r_multiple,
+                    bot_name=self.config.name,
+                    extra=extra,
+                )
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).warning(
+                    "record_fill_with_realized_r failed (non-fatal): %s", exc,
+                )
+
+        # Effect 2: online learning update (if attached)
+        if feature_bucket is not None:
+            self.observe_fill_for_learning(
+                feature_bucket=feature_bucket,
+                r_multiple=r_multiple,
+            )
+
     def observe_fill_for_learning(
         self,
         *,

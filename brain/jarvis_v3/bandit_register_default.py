@@ -44,10 +44,12 @@ def bandit_with_etas():
             logger.info("bandit: registered champion v17")
         except (KeyError, ValueError) as exc:
             logger.warning("could not register v17: %s", exc)
-    if "v18" not in h.arms:
+    for arm in ("v18", "v19", "v20", "v21"):
+        if arm in h.arms:
+            continue
         try:
-            h.register_arm("v18", get_candidate("v18"))
-            logger.info("bandit: registered candidate v18")
+            h.register_arm(arm, get_candidate(arm))
+            logger.info("bandit: registered candidate %s", arm)
         except (KeyError, ValueError) as exc:
-            logger.warning("could not register v18: %s", exc)
+            logger.warning("could not register %s: %s", arm, exc)
     return h
