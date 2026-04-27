@@ -144,11 +144,13 @@ def auth_login(req: LoginRequest, response: Response) -> dict:
     if not verify_password(_users_path(), req.username, req.password):
         raise HTTPException(status_code=401, detail={"error_code": "bad_credentials"})
     token = create_session(_sessions_path(), user=req.username)
+    secure = os.environ.get("ETA_DASHBOARD_COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes", "on", "y")
     response.set_cookie(
         key="session",
         value=token,
         httponly=True,
         samesite="strict",
+        secure=secure,
         max_age=24 * 3600,
     )
     return {"authenticated": True, "user": req.username}
@@ -162,7 +164,13 @@ def auth_logout(
     from eta_engine.deploy.scripts.dashboard_auth import revoke_session
     if session is not None:
         revoke_session(_sessions_path(), session)
-    response.delete_cookie(key="session")
+    secure = os.environ.get("ETA_DASHBOARD_COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes", "on", "y")
+    response.delete_cookie(
+        key="session",
+        httponly=True,
+        samesite="strict",
+        secure=secure,
+    )
     return {"authenticated": False}
 
 
