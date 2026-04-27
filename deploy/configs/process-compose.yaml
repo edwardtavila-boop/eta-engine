@@ -1,0 +1,114 @@
+# EVOLUTIONARY TRADING ALGO  //  process-compose.yaml
+#
+# Sidecar manager for the lightweight always-on processes that don't
+# need a full systemd unit. Runs under the operator's user, restarted
+# on crash, logs to ~/.local/log/eta_engine/sidecars.log.
+#
+# Why not just systemd?
+#   * The five sidecars below depend on each other in ways that are
+#     awkward in systemd (Cloudflare Tunnel must be up before the
+#     dashboard is reachable; healthchecks ping must be after the
+#     watchdog reports READY). process-compose has explicit `depends_on`.
+#   * One YAML file is auditable in PRs; ten systemd units across
+#     ~/.config/systemd/user/ are not.
+#
+# Run with:
+#   process-compose up -f deploy/configs/process-compose.yaml -d \
+#       --tui=false --port 8989
+#
+# Status / restart:
+#   process-compose process list -p 8989
+#   process-compose process restart cloudflare-tunnel -p 8989
+
+version: "0.5"
+
+log_location: "${HOME}/.local/log/eta_engine/sidecars.log"
+log_level: info
+
+processes:
+
+  # ------------------------------------------------------------------
+  # 1. Cloudflare Tunnel -- inbound for the MCC dashboard.
+  # ------------------------------------------------------------------
+  cloudflare-tunnel:
+    command: "cloudflared tunnel run eta-engine"
+    restart: always
+    backoff_seconds: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 9090         # cloudflared metrics endpoint
+        path: /metrics
+      initial_delay_seconds: 2
+      period_seconds: 5
+      failure_threshold: 4
+
+  # ------------------------------------------------------------------
+  # 2. healthchecks.io ping -- external dead-man-switch. If we silently
+  #    crash, healthchecks emails the operator within 5 minutes.
+  # ------------------------------------------------------------------
+  healthchecks-ping:
+    command: |
+      bash -c '
+        while true; do
+          curl -fsS --retry 3 -m 10 \
+            "https://hc-ping.com/${HEALTHCHECKS_PING_UUID}" >/dev/null \
+            || echo "healthchecks ping failed at $$(date -Iseconds)"
+          sleep 60
+        done
+      '
+    restart: always
+    backoff_seconds: 10
+    depends_on:
+      cloudflare-tunnel:
+        condition: process_started
+    environment:
+      - "HEALTHCHECKS_PING_UUID=${HEALTHCHECKS_PING_UUID}"
+
+  # ------------------------------------------------------------------
+  # 3. Prometheus node-exporter -- metrics scraped by Grafana Cloud
+  #    over Cloudflare Tunnel. Already a systemd service post-bootstrap
+  #    but we add a wrapper sidecar so process-compose can show its
+  #    health alongside everything else.
+  # ------------------------------------------------------------------
+  metrics-tail:
+    command: "journalctl -u prometheus-node-exporter -f --no-pager"
+    restart: always
+    backoff_seconds: 5
+
+  # ------------------------------------------------------------------
+  # 4. broker-ws-reachability watcher -- runs the
+  #    obs.ws_reachability monitor as a standalone diagnostic, prints
+  #    one JSON line every 30s for the dashboard panel to tail.
+  # ------------------------------------------------------------------
+  ws-reachability:
+    command: "python -m eta_engine.scripts.run_ws_reachability_watch"
+    restart: always
+    backoff_seconds: 15
+    environment:
+      - "PYTHONUNBUFFERED=1"
+
+  # ------------------------------------------------------------------
+  # 5. tradingview-auth-staleness checker -- nags the operator (via
+  #    AlertDispatcher) when the auth-state JSON is older than 5 days,
+  #    since TradingView rotates session cookies weekly.
+  # ------------------------------------------------------------------
+  tv-auth-stale-check:
+    command: |
+      bash -c '
+        while true; do
+          AUTH=${HOME}/.local/state/eta_engine/tradingview_auth.json
+          if [[ -f "$$AUTH" ]]; then
+            AGE=$$(( $$(date +%s) - $$(stat -c %Y "$$AUTH") ))
+            DAYS=$$(( AGE / 86400 ))
+            if [[ "$$DAYS" -ge 5 ]]; then
+              echo "TV auth is $${DAYS}d old; refresh recommended"
+              python -m eta_engine.obs.alert_dispatcher \
+                --event tv_auth_aging --level warn \
+                --message "TradingView auth state is $${DAYS} days old"
+            fi
+          fi
+          sleep 21600   # 6h
+        done
+      '
+    restart: always

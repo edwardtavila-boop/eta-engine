@@ -35,13 +35,21 @@ DRY_RUN=0
 SKIP_BBR=0
 SKIP_UFW=0
 SKIP_PLAYWRIGHT=0
+SKIP_DISK=0
+SKIP_DNS=0
+SKIP_UV=0
+SKIP_EGRESS=1   # opt-IN: lock egress only on operator request
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)        DRY_RUN=1; shift ;;
-    --skip-bbr)       SKIP_BBR=1; shift ;;
-    --skip-ufw)       SKIP_UFW=1; shift ;;
+    --dry-run)         DRY_RUN=1; shift ;;
+    --skip-bbr)        SKIP_BBR=1; shift ;;
+    --skip-ufw)        SKIP_UFW=1; shift ;;
     --skip-playwright) SKIP_PLAYWRIGHT=1; shift ;;
+    --skip-disk)       SKIP_DISK=1; shift ;;
+    --skip-dns)        SKIP_DNS=1; shift ;;
+    --skip-uv)         SKIP_UV=1; shift ;;
+    --enable-egress-lock) SKIP_EGRESS=0; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -80,12 +88,13 @@ run "apt-get install -yq --no-install-recommends \
   ca-certificates curl gnupg jq \
   chrony \
   fail2ban \
-  ufw \
+  ufw nftables \
   unattended-upgrades apt-listchanges \
   redis-server \
   prometheus-node-exporter \
   python3-venv python3-pip \
   rsync \
+  zram-tools \
   htop iftop iotop"
 
 # ----------------------------------------------------------------------
@@ -112,6 +121,12 @@ run "install -m 644 ${CONFIG_DIR}/sshd-jail.local /etc/fail2ban/jail.local"
 run "install -m 644 ${CONFIG_DIR}/50unattended-upgrades.local \
                     /etc/apt/apt.conf.d/50unattended-upgrades.local"
 
+# DNS: stub resolver + DoT + DNSSEC
+if [[ "${SKIP_DNS}" -eq 0 ]]; then
+  run "install -m 644 ${CONFIG_DIR}/resolved.conf /etc/systemd/resolved.conf"
+  run "ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf"
+fi
+
 # ----------------------------------------------------------------------
 # 4. Kernel net tuning (BBR + buffers)
 # ----------------------------------------------------------------------
@@ -129,6 +144,32 @@ if [[ "${SKIP_UFW}" -eq 0 ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# 5b. Disk + memory tuning (noatime + zram + trim)
+# ----------------------------------------------------------------------
+if [[ "${SKIP_DISK}" -eq 0 ]]; then
+  echo "## 5b. disk + memory tuning"
+  run "bash ${SCRIPT_DIR}/tune_disk.sh"
+fi
+
+# ----------------------------------------------------------------------
+# 5c. uv (fast python installer) -- installed for the eta-engine user
+#     when this script is run with `sudo -E -u <user>`. Otherwise the
+#     operator runs install_uv.sh manually post-bootstrap.
+# ----------------------------------------------------------------------
+if [[ "${SKIP_UV}" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]]; then
+  echo "## 5c. install uv for ${SUDO_USER}"
+  run "sudo -u ${SUDO_USER} -H bash ${SCRIPT_DIR}/install_uv.sh"
+fi
+
+# ----------------------------------------------------------------------
+# 5d. Egress allowlist (opt-in via --enable-egress-lock)
+# ----------------------------------------------------------------------
+if [[ "${SKIP_EGRESS}" -eq 0 ]]; then
+  echo "## 5d. nftables egress allowlist"
+  run "bash ${SCRIPT_DIR}/egress_allowlist.sh"
+fi
+
+# ----------------------------------------------------------------------
 # 6. Restart services to pick up new configs
 # ----------------------------------------------------------------------
 echo "## 6. restart services"
@@ -140,6 +181,11 @@ run "systemctl enable --now unattended-upgrades"
 run "systemctl enable --now redis-server"
 run "systemctl restart redis-server"
 run "systemctl enable --now prometheus-node-exporter"
+if [[ "${SKIP_DNS}" -eq 0 ]]; then
+  run "systemctl enable --now systemd-resolved"
+  run "systemctl restart systemd-resolved"
+fi
+run "systemctl enable --now nftables"
 
 # ----------------------------------------------------------------------
 # 7. Sanity output

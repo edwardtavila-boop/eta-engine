@@ -1,0 +1,88 @@
+# EVOLUTIONARY TRADING ALGO  //  broker_cidrs.txt
+#
+# Known CIDR ranges for the brokers, market-data vendors, and SaaS
+# services this fleet talks to.  Used by `egress_allowlist.sh` to
+# build an nftables ruleset that allows ONLY these destinations on
+# port 443 (https/wss). Egress to anything else is dropped.
+#
+# Format: one CIDR or hostname per line. Comments after `#` ignored.
+# Hostnames are resolved to A records once at script-run time --
+# re-run egress_allowlist.sh weekly to pick up CDN movement.
+#
+# Source of truth for each block is in the comment so we can re-derive
+# (BGP bgp.he.net, AWS published ranges, etc.). If you add a new venue,
+# update both this file and configs/<venue>.yaml.
+
+# ----------------------------------------------------------------------
+# Active venues (per dormancy doctrine 2026-04-24)
+# ----------------------------------------------------------------------
+
+# IBKR -- gateway hosts (Stamford CT colos)
+208.92.179.0/24                # IBKR primary
+208.92.180.0/24                # IBKR secondary
+198.252.46.0/24                # IBKR client portal API
+
+# Tastytrade -- production (AWS us-east-1)
+api.tastyworks.com             # resolved at script-run time
+streamer.tastyworks.com
+
+# Bybit (Tokyo TSE colo + Singapore + global)
+api.bybit.com
+stream.bybit.com
+api2.bybit.com
+
+# OKX (Hong Kong + Singapore)
+www.okx.com
+ws.okx.com
+aws.okx.com
+
+# Binance (BTC seed grid only — referenced for cross-spread via Bybit)
+api.binance.com
+stream.binance.com
+
+# ----------------------------------------------------------------------
+# Market data
+# ----------------------------------------------------------------------
+hist.databento.com
+api.lunarcrush.com
+www.tradingview.com
+prodata.tradingview.com
+charts.tradingview.com
+
+# ----------------------------------------------------------------------
+# Infra (logging, alerting, AI)
+# ----------------------------------------------------------------------
+api.anthropic.com              # claude API
+files.anthropic.com            # files API
+api.pushover.net               # mobile push
+api.cloudflare.com             # cloudflared tunnel control plane
+api.tunnels.cloudflare.com
+hc-ping.com                    # healthchecks.io dead-man-switch
+
+# ----------------------------------------------------------------------
+# OS / package mirrors (controlled — we don't want random egress)
+# ----------------------------------------------------------------------
+deb.debian.org
+security.debian.org
+archive.ubuntu.com
+security.ubuntu.com
+files.pythonhosted.org
+pypi.org
+
+# ----------------------------------------------------------------------
+# Ops sources (operator workstation update path)
+# ----------------------------------------------------------------------
+github.com
+api.github.com
+raw.githubusercontent.com
+codeload.github.com
+
+# ----------------------------------------------------------------------
+# DNS + NTP — already permitted via stub resolver + chrony, listed for
+# completeness. egress_allowlist.sh always allows udp/53 + udp/123.
+# ----------------------------------------------------------------------
+1.1.1.1
+1.0.0.1
+9.9.9.9
+149.112.112.112
+time.cloudflare.com
