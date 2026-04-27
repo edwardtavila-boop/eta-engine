@@ -178,7 +178,9 @@ def _redact_account(account_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_SUPPORTED_KINDS: frozenset[str] = frozenset({"orb", "orb_sage_gated"})
+_SUPPORTED_KINDS: frozenset[str] = frozenset({
+    "orb", "orb_sage_gated", "sage_daily_gated", "crypto_macro_confluence",
+})
 
 
 def _registry_check(bot_id: str = "mnq_futures") -> tuple[bool, str, dict[str, Any]]:
@@ -419,11 +421,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--bot-id",
         default="mnq_futures",
-        choices=["mnq_futures", "mnq_futures_sage", "nq_futures", "nq_futures_sage"],
+        choices=[
+            "mnq_futures", "mnq_futures_sage",
+            "nq_futures", "nq_futures_sage",
+            "btc_sage_daily_etf", "btc_regime_trend_etf",
+        ],
         help=(
-            "Registry bot id to soak-prep. Defaults to mnq_futures "
-            "(plain ORB). Choose mnq_futures_sage for the sage-overlay "
-            "variant; nq_futures / nq_futures_sage for the NQ siblings."
+            "Registry bot id to soak-prep. ORB-family bots use the "
+            "RTH session calendar; BTC bots use 24/7 calendar (no "
+            "weekend / holiday skip)."
         ),
     )
     p.add_argument(
