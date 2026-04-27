@@ -23,6 +23,7 @@ Replaces the operator's "let me check git, then pytest, then sentinels,
 then look at roadmap_state, then count strategies..." morning ritual.
 One command, one screen, full context.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,12 @@ SCRIPTS = ROOT / "scripts"
 def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str]:
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=timeout,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
         )
         return (proc.returncode, proc.stdout + proc.stderr)
     except (subprocess.TimeoutExpired, OSError):
@@ -68,7 +73,8 @@ def _git_snapshot() -> dict:
 
 def _pytest_snapshot() -> dict:
     rc, output = _run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q"], timeout=120,
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        timeout=120,
     )
     out: dict = {"collected": None, "rc": rc}
     for line in output.splitlines():
@@ -94,8 +100,7 @@ def _bot_snapshot() -> dict:
 def _strategy_snapshot() -> dict:
     rc, output = _run([sys.executable, "scripts/_strategy_capability_matrix.py"])
     summary = next(
-        (ln for ln in reversed(output.splitlines())
-         if ln.startswith("Total:")),
+        (ln for ln in reversed(output.splitlines()) if ln.startswith("Total:")),
         "(no summary)",
     )
     return {"summary": summary.strip(), "rc": rc}
@@ -103,7 +108,8 @@ def _strategy_snapshot() -> dict:
 
 def _sentinel_snapshot() -> dict:
     rc, output = _run(
-        [sys.executable, "scripts/_all_sentinels.py", "--fast"], timeout=120,
+        [sys.executable, "scripts/_all_sentinels.py", "--fast"],
+        timeout=120,
     )
     overall = next(
         (ln for ln in reversed(output.splitlines()) if "Overall:" in ln),
@@ -122,18 +128,22 @@ def _roadmap_snapshot() -> dict:
         return {"error": f"malformed JSON: {e}"}
     sa = d.get("shared_artifacts", {})
     return {
-        "phase":            d.get("current_phase", "?"),
-        "progress_pct":     d.get("overall_progress_pct", "?"),
-        "tests_claimed":    sa.get("eta_engine_tests_passing", "?"),
-        "files_claimed":    sa.get("eta_engine_python_files", "?"),
-        "last_updated":     d.get("last_updated", "?"),
+        "phase": d.get("current_phase", "?"),
+        "progress_pct": d.get("overall_progress_pct", "?"),
+        "tests_claimed": sa.get("eta_engine_tests_passing", "?"),
+        "files_claimed": sa.get("eta_engine_python_files", "?"),
+        "last_updated": d.get("last_updated", "?"),
     }
 
 
 def _render_markdown(snap: dict) -> str:
     g, t, b, s, sen, r = (
-        snap["git"], snap["pytest"], snap["bots"], snap["strategies"],
-        snap["sentinels"], snap["roadmap"],
+        snap["git"],
+        snap["pytest"],
+        snap["bots"],
+        snap["strategies"],
+        snap["sentinels"],
+        snap["roadmap"],
     )
     lines = ["# EVOLUTIONARY TRADING ALGO Overview\n"]
 
@@ -166,8 +176,12 @@ def _render_markdown(snap: dict) -> str:
 
 def _render_compact(snap: dict) -> str:
     g, t, b, s, sen, r = (
-        snap["git"], snap["pytest"], snap["bots"], snap["strategies"],
-        snap["sentinels"], snap["roadmap"],
+        snap["git"],
+        snap["pytest"],
+        snap["bots"],
+        snap["strategies"],
+        snap["sentinels"],
+        snap["roadmap"],
     )
     lines = ["=== EVOLUTIONARY TRADING ALGO Overview ===", ""]
     lines.append(f"  git:        {g['branch']} @ {g['latest_commit'][:60]}")
@@ -187,21 +201,18 @@ def _render_compact(snap: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     fmt = p.add_mutually_exclusive_group()
-    fmt.add_argument("--compact", action="store_true",
-                     help="terminal-friendly one-screen view")
-    fmt.add_argument("--json", action="store_true",
-                     help="JSON output (machine-readable)")
-    p.add_argument("--no-pytest", action="store_true",
-                   help="skip pytest collection (faster)")
+    fmt.add_argument("--compact", action="store_true", help="terminal-friendly one-screen view")
+    fmt.add_argument("--json", action="store_true", help="JSON output (machine-readable)")
+    p.add_argument("--no-pytest", action="store_true", help="skip pytest collection (faster)")
     args = p.parse_args(argv)
 
     snap = {
-        "git":        _git_snapshot(),
-        "pytest":     {"collected": None, "rc": 0} if args.no_pytest else _pytest_snapshot(),
-        "bots":       _bot_snapshot(),
+        "git": _git_snapshot(),
+        "pytest": {"collected": None, "rc": 0} if args.no_pytest else _pytest_snapshot(),
+        "bots": _bot_snapshot(),
         "strategies": _strategy_snapshot(),
-        "sentinels":  _sentinel_snapshot(),
-        "roadmap":    _roadmap_snapshot(),
+        "sentinels": _sentinel_snapshot(),
+        "roadmap": _roadmap_snapshot(),
     }
 
     if args.json:

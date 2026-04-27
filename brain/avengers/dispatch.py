@@ -30,6 +30,7 @@ JARVIS's role is reduced to:
 
 Pure stdlib + pydantic. No network.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -66,29 +67,32 @@ if TYPE_CHECKING:
 
 class DispatchRoute(StrEnum):
     """Which path the dispatcher took for this decision."""
-    JARVIS_ONLY    = "JARVIS_ONLY"        # gate said no-escalate
-    JARVIS_DISTILL = "JARVIS_DISTILL"     # distiller said classifier is confident
-    JARVIS_FREEZE  = "JARVIS_FREEZE"      # quota freeze
-    BATMAN_DEBATE  = "BATMAN_DEBATE"      # Claude-backed debate via BATMAN
-    BATMAN_REVIEW  = "BATMAN_REVIEW"      # heavy strategic review (single-shot)
+
+    JARVIS_ONLY = "JARVIS_ONLY"  # gate said no-escalate
+    JARVIS_DISTILL = "JARVIS_DISTILL"  # distiller said classifier is confident
+    JARVIS_FREEZE = "JARVIS_FREEZE"  # quota freeze
+    BATMAN_DEBATE = "BATMAN_DEBATE"  # Claude-backed debate via BATMAN
+    BATMAN_REVIEW = "BATMAN_REVIEW"  # heavy strategic review (single-shot)
 
 
 class DispatchResult(BaseModel):
     """What the dispatcher returns to JARVIS's hot path."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:                datetime
-    route:             DispatchRoute
-    plan:              InvocationPlan
-    deterministic:     DebateVerdict   # always available as fallback
-    claude_debate:     dict[str, ParsedVerdict] | None = None
-    final_vote:        str = Field(min_length=1)
-    note:              str = ""
+    ts: datetime
+    route: DispatchRoute
+    plan: InvocationPlan
+    deterministic: DebateVerdict  # always available as fallback
+    claude_debate: dict[str, ParsedVerdict] | None = None
+    final_vote: str = Field(min_length=1)
+    note: str = ""
 
 
 # ---------------------------------------------------------------------------
 # The dispatcher
 # ---------------------------------------------------------------------------
+
 
 class AvengersDispatch:
     """Single entry point JARVIS uses to delegate reasoning.
@@ -154,7 +158,9 @@ class AvengersDispatch:
 
         # 4. Claude-backed: BATMAN orchestrates the debate.
         claude_results = self._run_claude_debate(
-            plan=plan, context=context, baseline=det,
+            plan=plan,
+            context=context,
+            baseline=det,
         )
         # 5. Reconcile: Claude votes trump deterministic if they agree
         #    internally; otherwise fall back to deterministic verdict.
@@ -183,7 +189,8 @@ class AvengersDispatch:
         return DispatchRoute.JARVIS_ONLY
 
     def _debate_kwargs_from_ctx(
-        self, ctx: StructuredContext,
+        self,
+        ctx: StructuredContext,
     ) -> dict:
         """Translate StructuredContext -> deterministic debate kwargs."""
         return {
@@ -245,20 +252,16 @@ class AvengersDispatch:
             envelope = make_envelope(
                 category=_category_for_persona(assignment.persona),
                 subsystem="persona.jarvis",
-                goal=(
-                    f"{assignment.persona} persona debate vote for "
-                    f"{context.subsystem}/{context.action}"
-                ),
+                goal=(f"{assignment.persona} persona debate vote for {context.subsystem}/{context.action}"),
                 context={
-                    "system":  p_prompts["system"],
-                    "prefix":  p_prompts["prefix"],
-                    "suffix":  p_prompts["suffix"],
+                    "system": p_prompts["system"],
+                    "prefix": p_prompts["prefix"],
+                    "suffix": p_prompts["suffix"],
                     "persona": assignment.persona,
-                    "tier":    assignment.tier.value if assignment.tier else "",
+                    "tier": assignment.tier.value if assignment.tier else "",
                 },
                 rationale=(
-                    f"BATMAN-orchestrated debate, stakes="
-                    f"{plan.stakes.stakes.value if plan.stakes else 'UNKNOWN'}"
+                    f"BATMAN-orchestrated debate, stakes={plan.stakes.stakes.value if plan.stakes else 'UNKNOWN'}"
                 ),
                 requested_tier=assignment.tier,
             )
@@ -271,11 +274,12 @@ class AvengersDispatch:
         return results
 
     def _reconcile(
-        self, claude_results: dict[str, ParsedVerdict], baseline: DebateVerdict,
+        self,
+        claude_results: dict[str, ParsedVerdict],
+        baseline: DebateVerdict,
     ) -> str:
         """Tally Claude's persona votes; fall back to baseline if deadlock."""
-        tally: dict[str, float] = {"APPROVE": 0, "CONDITIONAL": 0,
-                                   "DENY": 0, "DEFER": 0}
+        tally: dict[str, float] = {"APPROVE": 0, "CONDITIONAL": 0, "DENY": 0, "DEFER": 0}
         for v in claude_results.values():
             if v.vote in tally:
                 tally[v.vote] += v.confidence or 0.5
@@ -284,10 +288,7 @@ class AvengersDispatch:
         winner = max(tally.items(), key=lambda kv: kv[1])
         # If margin is tight (< 0.15), defer to baseline -- conservative
         sorted_scores = sorted(tally.values(), reverse=True)
-        margin = (
-            sorted_scores[0] - sorted_scores[1]
-            if len(sorted_scores) > 1 else sorted_scores[0]
-        )
+        margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
         if margin < 0.15:
             return baseline.final_vote
         return winner[0]
@@ -296,16 +297,16 @@ class AvengersDispatch:
 def _features_from(ctx: StructuredContext) -> dict[str, float]:
     """Pull the distillation features from a StructuredContext."""
     return {
-        "stress_composite":       ctx.stress_composite,
-        "sizing_mult":            ctx.sizing_mult,
-        "regime":                 ctx.regime,
-        "hours_until_event":      ctx.hours_until_event,
-        "portfolio_breach":       ctx.portfolio_breach,
-        "doctrine_net_bias":      ctx.doctrine_net_bias,
-        "r_at_risk":              ctx.r_at_risk,
+        "stress_composite": ctx.stress_composite,
+        "sizing_mult": ctx.sizing_mult,
+        "regime": ctx.regime,
+        "hours_until_event": ctx.hours_until_event,
+        "portfolio_breach": ctx.portfolio_breach,
+        "doctrine_net_bias": ctx.doctrine_net_bias,
+        "r_at_risk": ctx.r_at_risk,
         "operator_overrides_24h": ctx.operator_overrides_24h,
-        "precedent_n":            ctx.precedent_n,
-        "anomaly_count":          len(ctx.anomaly_flags),
+        "precedent_n": ctx.precedent_n,
+        "anomaly_count": len(ctx.anomaly_flags),
     }
 
 
@@ -334,75 +335,77 @@ def _category_for_persona(persona: str) -> TaskCategory:
 # Background task dispatchers -- called by ALFRED / ROBIN cron hooks
 # ---------------------------------------------------------------------------
 
+
 class BackgroundTask(StrEnum):
     """Out-of-band tasks that were once on JARVIS but now belong to Avengers."""
-    KAIZEN_RETRO       = "KAIZEN_RETRO"        # ALFRED
-    DISTILL_TRAIN      = "DISTILL_TRAIN"       # ALFRED
-    SHADOW_TICK        = "SHADOW_TICK"         # ALFRED
-    DRIFT_SUMMARY      = "DRIFT_SUMMARY"       # ALFRED
-    STRATEGY_MINE      = "STRATEGY_MINE"       # BATMAN
-    CAUSAL_REVIEW      = "CAUSAL_REVIEW"       # BATMAN
-    TWIN_VERDICT       = "TWIN_VERDICT"        # BATMAN
-    DOCTRINE_REVIEW    = "DOCTRINE_REVIEW"     # BATMAN
-    LOG_COMPACT        = "LOG_COMPACT"         # ROBIN
-    PROMPT_WARMUP      = "PROMPT_WARMUP"       # ROBIN
+
+    KAIZEN_RETRO = "KAIZEN_RETRO"  # ALFRED
+    DISTILL_TRAIN = "DISTILL_TRAIN"  # ALFRED
+    SHADOW_TICK = "SHADOW_TICK"  # ALFRED
+    DRIFT_SUMMARY = "DRIFT_SUMMARY"  # ALFRED
+    STRATEGY_MINE = "STRATEGY_MINE"  # BATMAN
+    CAUSAL_REVIEW = "CAUSAL_REVIEW"  # BATMAN
+    TWIN_VERDICT = "TWIN_VERDICT"  # BATMAN
+    DOCTRINE_REVIEW = "DOCTRINE_REVIEW"  # BATMAN
+    LOG_COMPACT = "LOG_COMPACT"  # ROBIN
+    PROMPT_WARMUP = "PROMPT_WARMUP"  # ROBIN
     DASHBOARD_ASSEMBLE = "DASHBOARD_ASSEMBLE"  # ROBIN
-    AUDIT_SUMMARIZE    = "AUDIT_SUMMARIZE"     # ROBIN
-    META_UPGRADE       = "META_UPGRADE"        # ALFRED -- daily self-update
-    CHAOS_DRILL        = "CHAOS_DRILL"         # ALFRED -- monthly resilience drills
-    HEALTH_WATCHDOG    = "HEALTH_WATCHDOG"     # ALFRED -- 5-min service auto-heal
-    SELF_TEST          = "SELF_TEST"           # ALFRED -- daily end-to-end smoke
-    LOG_ROTATE         = "LOG_ROTATE"          # ROBIN  -- daily log archive/prune
-    DISK_CLEANUP       = "DISK_CLEANUP"        # ROBIN  -- weekly temp/cache prune
-    BACKUP             = "BACKUP"              # ALFRED -- daily state+config backup
-    PROMETHEUS_EXPORT  = "PROMETHEUS_EXPORT"   # ROBIN  -- every minute metrics flush
+    AUDIT_SUMMARIZE = "AUDIT_SUMMARIZE"  # ROBIN
+    META_UPGRADE = "META_UPGRADE"  # ALFRED -- daily self-update
+    CHAOS_DRILL = "CHAOS_DRILL"  # ALFRED -- monthly resilience drills
+    HEALTH_WATCHDOG = "HEALTH_WATCHDOG"  # ALFRED -- 5-min service auto-heal
+    SELF_TEST = "SELF_TEST"  # ALFRED -- daily end-to-end smoke
+    LOG_ROTATE = "LOG_ROTATE"  # ROBIN  -- daily log archive/prune
+    DISK_CLEANUP = "DISK_CLEANUP"  # ROBIN  -- weekly temp/cache prune
+    BACKUP = "BACKUP"  # ALFRED -- daily state+config backup
+    PROMETHEUS_EXPORT = "PROMETHEUS_EXPORT"  # ROBIN  -- every minute metrics flush
 
 
 # Which persona owns which task. Used by the cron wrapper in scripts/.
 TASK_OWNERS: dict[BackgroundTask, str] = {
-    BackgroundTask.KAIZEN_RETRO:       "ALFRED",
-    BackgroundTask.DISTILL_TRAIN:      "ALFRED",
-    BackgroundTask.SHADOW_TICK:        "ALFRED",
-    BackgroundTask.DRIFT_SUMMARY:      "ALFRED",
-    BackgroundTask.STRATEGY_MINE:      "BATMAN",
-    BackgroundTask.CAUSAL_REVIEW:      "BATMAN",
-    BackgroundTask.TWIN_VERDICT:       "BATMAN",
-    BackgroundTask.DOCTRINE_REVIEW:    "BATMAN",
-    BackgroundTask.LOG_COMPACT:        "ROBIN",
-    BackgroundTask.PROMPT_WARMUP:      "ROBIN",
+    BackgroundTask.KAIZEN_RETRO: "ALFRED",
+    BackgroundTask.DISTILL_TRAIN: "ALFRED",
+    BackgroundTask.SHADOW_TICK: "ALFRED",
+    BackgroundTask.DRIFT_SUMMARY: "ALFRED",
+    BackgroundTask.STRATEGY_MINE: "BATMAN",
+    BackgroundTask.CAUSAL_REVIEW: "BATMAN",
+    BackgroundTask.TWIN_VERDICT: "BATMAN",
+    BackgroundTask.DOCTRINE_REVIEW: "BATMAN",
+    BackgroundTask.LOG_COMPACT: "ROBIN",
+    BackgroundTask.PROMPT_WARMUP: "ROBIN",
     BackgroundTask.DASHBOARD_ASSEMBLE: "ROBIN",
-    BackgroundTask.AUDIT_SUMMARIZE:    "ROBIN",
-    BackgroundTask.META_UPGRADE:       "ALFRED",
-    BackgroundTask.CHAOS_DRILL:        "ALFRED",
-    BackgroundTask.HEALTH_WATCHDOG:    "ALFRED",
-    BackgroundTask.SELF_TEST:          "ALFRED",
-    BackgroundTask.LOG_ROTATE:         "ROBIN",
-    BackgroundTask.DISK_CLEANUP:       "ROBIN",
-    BackgroundTask.BACKUP:             "ALFRED",
-    BackgroundTask.PROMETHEUS_EXPORT:  "ROBIN",
+    BackgroundTask.AUDIT_SUMMARIZE: "ROBIN",
+    BackgroundTask.META_UPGRADE: "ALFRED",
+    BackgroundTask.CHAOS_DRILL: "ALFRED",
+    BackgroundTask.HEALTH_WATCHDOG: "ALFRED",
+    BackgroundTask.SELF_TEST: "ALFRED",
+    BackgroundTask.LOG_ROTATE: "ROBIN",
+    BackgroundTask.DISK_CLEANUP: "ROBIN",
+    BackgroundTask.BACKUP: "ALFRED",
+    BackgroundTask.PROMETHEUS_EXPORT: "ROBIN",
 }
 
 
 # Cron cadences. Used by the scheduled-tasks MCP or any equivalent.
 TASK_CADENCE: dict[BackgroundTask, str] = {
-    BackgroundTask.KAIZEN_RETRO:       "0 23 * * *",      # daily 23:00
-    BackgroundTask.DISTILL_TRAIN:      "0 2 * * 0",       # Sundays 02:00
-    BackgroundTask.SHADOW_TICK:        "*/5 * * * *",     # every 5 min
-    BackgroundTask.DRIFT_SUMMARY:      "*/15 * * * *",    # every 15 min
-    BackgroundTask.STRATEGY_MINE:      "0 3 * * 1",       # Mondays 03:00
-    BackgroundTask.CAUSAL_REVIEW:      "0 4 1 * *",       # 1st of month 04:00
-    BackgroundTask.TWIN_VERDICT:       "0 22 * * *",      # daily 22:00
-    BackgroundTask.DOCTRINE_REVIEW:    "0 5 1 */3 *",     # quarterly
-    BackgroundTask.LOG_COMPACT:        "0 * * * *",       # hourly
-    BackgroundTask.PROMPT_WARMUP:      "25,55 13 * * 1-5",# pre-market + pre-close Mon-Fri
-    BackgroundTask.DASHBOARD_ASSEMBLE: "* * * * *",       # every minute
-    BackgroundTask.AUDIT_SUMMARIZE:    "0 6 * * *",       # daily 06:00
-    BackgroundTask.META_UPGRADE:       "30 4 * * *",      # daily 04:30 -- git pull + test + restart
-    BackgroundTask.CHAOS_DRILL:        "0 3 1 * *",       # monthly 1st @ 03:00 -- resilience drills
-    BackgroundTask.HEALTH_WATCHDOG:    "*/5 * * * *",     # every 5 min -- auto-heal services
-    BackgroundTask.SELF_TEST:          "0 3 * * *",       # daily 03:00 -- end-to-end smoke
-    BackgroundTask.LOG_ROTATE:         "0 1 * * *",       # daily 01:00 -- archive + prune logs
-    BackgroundTask.DISK_CLEANUP:       "0 2 * * 0",       # Sundays 02:00 -- temp/cache prune
-    BackgroundTask.BACKUP:             "0 5 * * *",       # daily 05:00 -- state+config snapshot
-    BackgroundTask.PROMETHEUS_EXPORT:  "* * * * *",       # every minute -- OpenMetrics flush
+    BackgroundTask.KAIZEN_RETRO: "0 23 * * *",  # daily 23:00
+    BackgroundTask.DISTILL_TRAIN: "0 2 * * 0",  # Sundays 02:00
+    BackgroundTask.SHADOW_TICK: "*/5 * * * *",  # every 5 min
+    BackgroundTask.DRIFT_SUMMARY: "*/15 * * * *",  # every 15 min
+    BackgroundTask.STRATEGY_MINE: "0 3 * * 1",  # Mondays 03:00
+    BackgroundTask.CAUSAL_REVIEW: "0 4 1 * *",  # 1st of month 04:00
+    BackgroundTask.TWIN_VERDICT: "0 22 * * *",  # daily 22:00
+    BackgroundTask.DOCTRINE_REVIEW: "0 5 1 */3 *",  # quarterly
+    BackgroundTask.LOG_COMPACT: "0 * * * *",  # hourly
+    BackgroundTask.PROMPT_WARMUP: "25,55 13 * * 1-5",  # pre-market + pre-close Mon-Fri
+    BackgroundTask.DASHBOARD_ASSEMBLE: "* * * * *",  # every minute
+    BackgroundTask.AUDIT_SUMMARIZE: "0 6 * * *",  # daily 06:00
+    BackgroundTask.META_UPGRADE: "30 4 * * *",  # daily 04:30 -- git pull + test + restart
+    BackgroundTask.CHAOS_DRILL: "0 3 1 * *",  # monthly 1st @ 03:00 -- resilience drills
+    BackgroundTask.HEALTH_WATCHDOG: "*/5 * * * *",  # every 5 min -- auto-heal services
+    BackgroundTask.SELF_TEST: "0 3 * * *",  # daily 03:00 -- end-to-end smoke
+    BackgroundTask.LOG_ROTATE: "0 1 * * *",  # daily 01:00 -- archive + prune logs
+    BackgroundTask.DISK_CLEANUP: "0 2 * * 0",  # Sundays 02:00 -- temp/cache prune
+    BackgroundTask.BACKUP: "0 5 * * *",  # daily 05:00 -- state+config snapshot
+    BackgroundTask.PROMETHEUS_EXPORT: "* * * * *",  # every minute -- OpenMetrics flush
 }

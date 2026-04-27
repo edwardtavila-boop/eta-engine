@@ -30,6 +30,7 @@ A bot can satisfy every AST invariant but still explode on
 ``__init__`` because it imports a missing module or fails dependency
 injection. Cheap insurance.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,11 +50,11 @@ if str(_PKG_PARENT) not in sys.path:
 
 # (module_dotted, class_name)
 CONCRETE_BOTS: list[tuple[str, str]] = [
-    ("eta_engine.bots.mnq.bot",         "MnqBot"),
-    ("eta_engine.bots.eth_perp.bot",    "EthPerpBot"),
-    ("eta_engine.bots.nq.bot",          "NqBot"),
-    ("eta_engine.bots.sol_perp.bot",    "SolPerpBot"),
-    ("eta_engine.bots.xrp_perp.bot",    "XrpPerpBot"),
+    ("eta_engine.bots.mnq.bot", "MnqBot"),
+    ("eta_engine.bots.eth_perp.bot", "EthPerpBot"),
+    ("eta_engine.bots.nq.bot", "NqBot"),
+    ("eta_engine.bots.sol_perp.bot", "SolPerpBot"),
+    ("eta_engine.bots.xrp_perp.bot", "XrpPerpBot"),
     ("eta_engine.bots.crypto_seed.bot", "CryptoSeedBot"),
 ]
 
@@ -149,11 +150,15 @@ PROBE_LEVELS: dict[str, Callable[[str, str], tuple[bool, str]]] = {
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument(
-        "--level", default="L1", choices=list(PROBE_LEVELS),
+        "--level",
+        default="L1",
+        choices=list(PROBE_LEVELS),
         help="probe level: L0=import, L1=construct, L2=start/stop (default L1)",
     )
     p.add_argument(
-        "--max-yellow", type=int, default=2,
+        "--max-yellow",
+        type=int,
+        default=2,
         help="more than this many failures -> RED (default 2)",
     )
     p.add_argument("--traceback", action="store_true", help="full traceback on failure")

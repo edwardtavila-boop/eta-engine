@@ -20,6 +20,7 @@ operator mandate forbids demotion -- those stay pinned via
 
 Pure stdlib + pydantic. Persistence via ``load()`` / ``save()`` to JSON.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,23 +38,26 @@ from eta_engine.brain.model_policy import (
 
 # Categories we refuse to demote, no matter what the bandit learns.
 # Mirror of the Opus-pinned bucket in model_policy.
-PINNED_CATEGORIES: frozenset[TaskCategory] = frozenset({
-    TaskCategory.RED_TEAM_SCORING,
-    TaskCategory.GAUNTLET_GATE_DESIGN,
-    TaskCategory.RISK_POLICY_DESIGN,
-    TaskCategory.ARCHITECTURE_DECISION,
-    TaskCategory.ADVERSARIAL_REVIEW,
-    TaskCategory.STATE_MACHINE_DESIGN,
-})
+PINNED_CATEGORIES: frozenset[TaskCategory] = frozenset(
+    {
+        TaskCategory.RED_TEAM_SCORING,
+        TaskCategory.GAUNTLET_GATE_DESIGN,
+        TaskCategory.RISK_POLICY_DESIGN,
+        TaskCategory.ARCHITECTURE_DECISION,
+        TaskCategory.ADVERSARIAL_REVIEW,
+        TaskCategory.STATE_MACHINE_DESIGN,
+    }
+)
 
 
 class ArmStats(BaseModel):
     """Beta-Bernoulli arm: alpha (successes+1), beta (failures+1)."""
+
     model_config = ConfigDict(frozen=False)
 
     alpha: float = Field(default=1.0, ge=0.0)
-    beta:  float = Field(default=1.0, ge=0.0)
-    pulls: int   = Field(default=0, ge=0)
+    beta: float = Field(default=1.0, ge=0.0)
+    pulls: int = Field(default=0, ge=0)
 
     @property
     def mean(self) -> float:
@@ -74,6 +78,7 @@ class ArmStats(BaseModel):
 
 class BanditState(BaseModel):
     """Persisted state: one ArmStats per (category, tier) pair."""
+
     model_config = ConfigDict(frozen=False)
 
     arms: dict[str, ArmStats] = Field(default_factory=dict)
@@ -94,13 +99,14 @@ class BanditState(BaseModel):
 
 class BanditSelection(BaseModel):
     """Result of a ``select_tier`` call."""
+
     model_config = ConfigDict(frozen=True)
 
-    category:   TaskCategory
-    tier:       ModelTier
-    reason:     str = Field(min_length=1)
+    category: TaskCategory
+    tier: ModelTier
+    reason: str = Field(min_length=1)
     exploratory: bool = False
-    sampled_p:  float = Field(ge=0.0, le=1.0)
+    sampled_p: float = Field(ge=0.0, le=1.0)
 
 
 class LLMBandit:
@@ -136,9 +142,11 @@ class LLMBandit:
         if category in PINNED_CATEGORIES:
             tier = _CATEGORY_TO_TIER[category]
             return BanditSelection(
-                category=category, tier=tier,
+                category=category,
+                tier=tier,
                 reason=f"{category.value} pinned -> {tier.value}",
-                exploratory=False, sampled_p=1.0,
+                exploratory=False,
+                sampled_p=1.0,
             )
 
         tiers = list(ModelTier)
@@ -146,9 +154,11 @@ class LLMBandit:
         if min(pull_counts.values()) < self.min_pulls_before_bandit:
             tier = _CATEGORY_TO_TIER.get(category, ModelTier.SONNET)
             return BanditSelection(
-                category=category, tier=tier,
+                category=category,
+                tier=tier,
                 reason="cold-start: policy default",
-                exploratory=True, sampled_p=0.0,
+                exploratory=True,
+                sampled_p=0.0,
             )
 
         # Thompson sample per tier, adjust by cost.
@@ -157,18 +167,22 @@ class LLMBandit:
             p = self.state.get(category, t).sample(self.rng)
             # Cost-adjust: divide by cost ratio ^ cost_weight
             cost = COST_RATIO[t]
-            adjusted = p / (cost ** self.cost_weight) if cost > 0 else p
+            adjusted = p / (cost**self.cost_weight) if cost > 0 else p
             samples[t] = adjusted
         best_tier, best_p = max(samples.items(), key=lambda kv: kv[1])
         return BanditSelection(
-            category=category, tier=best_tier,
+            category=category,
+            tier=best_tier,
             reason=f"thompson: adjusted p={best_p:.3f}",
             exploratory=False,
             sampled_p=min(1.0, max(0.0, best_p)),
         )
 
     def reward(
-        self, category: TaskCategory, tier: ModelTier, reward: int,
+        self,
+        category: TaskCategory,
+        tier: ModelTier,
+        reward: int,
     ) -> None:
         self.state.update(category, tier, reward)
 

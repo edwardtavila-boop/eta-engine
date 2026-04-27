@@ -1,4 +1,5 @@
 """Ghost-trader stop-hunt simulator tests — P3_PROOF adversarial."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -37,6 +38,7 @@ def _short_position(entry: float = 100.0, stop: float = 102.0) -> Position:
 # Validation
 # ---------------------------------------------------------------------------
 
+
 def test_shape_mismatch_rejected() -> None:
     with pytest.raises(ValueError, match="shape mismatch"):
         simulate([_long_position()], np.zeros(10), np.zeros(5))
@@ -50,6 +52,7 @@ def test_non_1d_bars_rejected() -> None:
 # ---------------------------------------------------------------------------
 # Long-side
 # ---------------------------------------------------------------------------
+
 
 def test_long_untouched_when_bars_stay_above_stop() -> None:
     # Bars never dip to 98 - penetration
@@ -80,6 +83,7 @@ def test_long_hunted_when_bar_penetrates_stop() -> None:
 # Short-side
 # ---------------------------------------------------------------------------
 
+
 def test_short_hunted_when_bar_spikes_above_stop() -> None:
     highs = np.full(50, 101.0)
     lows = np.full(50, 99.5)
@@ -96,6 +100,7 @@ def test_short_hunted_when_bar_spikes_above_stop() -> None:
 # ---------------------------------------------------------------------------
 # Policy knobs
 # ---------------------------------------------------------------------------
+
 
 def test_penetration_ticks_widens_the_trigger_band() -> None:
     # With penetration=1, bars at 97.8 are INSIDE the allowed band (98-0.25=97.75)

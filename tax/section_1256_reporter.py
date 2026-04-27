@@ -8,8 +8,7 @@ Mark-to-market applies to open positions at year end.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from eta_engine.tax.models import (
     AccountTier,
@@ -17,6 +16,9 @@ from eta_engine.tax.models import (
     InstrumentType,
     TaxableEvent,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass
@@ -59,19 +61,21 @@ class Section1256Reporter:
             cost = pos.entry_price * pos.qty
             gain = proceeds - cost
             holding = max((year_end_date - pos.entry_time).days, 0)
-            events.append(TaxableEvent(
-                event_id=f"mtm-{pos.symbol}-{i}",
-                timestamp=year_end_date,
-                event_type=EventType.TRADE_CLOSE,
-                asset=pos.symbol,
-                qty=pos.qty,
-                cost_basis_usd=round(cost, 2),
-                proceeds_usd=round(proceeds, 2),
-                realized_gain_usd=round(gain, 2),
-                holding_days=holding,
-                account_tier=pos.account_tier,
-                instrument_type=InstrumentType.FUTURES_1256,
-            ))
+            events.append(
+                TaxableEvent(
+                    event_id=f"mtm-{pos.symbol}-{i}",
+                    timestamp=year_end_date,
+                    event_type=EventType.TRADE_CLOSE,
+                    asset=pos.symbol,
+                    qty=pos.qty,
+                    cost_basis_usd=round(cost, 2),
+                    proceeds_usd=round(proceeds, 2),
+                    realized_gain_usd=round(gain, 2),
+                    holding_days=holding,
+                    account_tier=pos.account_tier,
+                    instrument_type=InstrumentType.FUTURES_1256,
+                )
+            )
         return events
 
     # ------------------------------------------------------------------
@@ -102,10 +106,7 @@ class Section1256Reporter:
         Line 8: short-term 40% portion -> Schedule D line
         Line 9: long-term 60% portion -> Schedule D line
         """
-        contracts_1256 = [
-            e for e in events
-            if e.instrument_type == InstrumentType.FUTURES_1256
-        ]
+        contracts_1256 = [e for e in events if e.instrument_type == InstrumentType.FUTURES_1256]
         line1_items = [
             {
                 "description": f"{e.asset} ({e.qty:g})",

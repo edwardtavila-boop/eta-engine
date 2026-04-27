@@ -20,6 +20,7 @@ Endpoints:
   GET  /api/tasks                    -- list registered BackgroundTasks
   POST /api/tasks/{task}/fire        -- manually fire a BackgroundTask
 """
+
 from __future__ import annotations
 
 import json
@@ -35,13 +36,13 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 # State/log dirs: Windows defaults; overridable via env
 if os.name == "nt":
     _DEFAULT_STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"
-    _DEFAULT_LOG   = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "logs"
+    _DEFAULT_LOG = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "logs"
 else:
     _DEFAULT_STATE = Path.home() / ".local" / "state" / "eta_engine"
-    _DEFAULT_LOG   = Path.home() / ".local" / "log" / "eta_engine"
+    _DEFAULT_LOG = Path.home() / ".local" / "log" / "eta_engine"
 
 STATE_DIR = Path(os.environ.get("APEX_STATE_DIR", _DEFAULT_STATE))
-LOG_DIR   = Path(os.environ.get("APEX_LOG_DIR",   _DEFAULT_LOG))
+LOG_DIR = Path(os.environ.get("APEX_LOG_DIR", _DEFAULT_LOG))
 
 
 app = FastAPI(
@@ -81,8 +82,7 @@ def root() -> HTMLResponse:
     if _STATUS_PAGE.exists():
         return HTMLResponse(_STATUS_PAGE.read_text(encoding="utf-8"))
     return HTMLResponse(
-        "<h1>Evolutionary Trading Algo</h1><p>Status page not bundled. "
-        "See /health or /api/dashboard.</p>",
+        "<h1>Evolutionary Trading Algo</h1><p>Status page not bundled. See /health or /api/dashboard.</p>",
     )
 
 
@@ -107,8 +107,7 @@ def prometheus_metrics() -> PlainTextResponse:
     prom_file = STATE_DIR / "prometheus" / "avengers.prom"
     if not prom_file.exists():
         return PlainTextResponse(
-            "# no metrics file yet -- PROMETHEUS_EXPORT task has not run\n"
-            "apex_up 0\n",
+            "# no metrics file yet -- PROMETHEUS_EXPORT task has not run\napex_up 0\n",
             media_type="text/plain; version=0.0.4",
         )
     return PlainTextResponse(
@@ -152,11 +151,9 @@ def kaizen_summary() -> dict:
     data = _read_json("kaizen_ledger.json")
     return {
         "retrospectives": len(data.get("retrospectives", [])),
-        "tickets_total":  len(data.get("tickets", [])),
-        "tickets_open":   sum(1 for t in data.get("tickets", [])
-                              if t.get("status") == "OPEN"),
-        "tickets_shipped": sum(1 for t in data.get("tickets", [])
-                               if t.get("status") == "SHIPPED"),
+        "tickets_total": len(data.get("tickets", [])),
+        "tickets_open": sum(1 for t in data.get("tickets", []) if t.get("status") == "OPEN"),
+        "tickets_shipped": sum(1 for t in data.get("tickets", []) if t.get("status") == "SHIPPED"),
         "latest_tickets": data.get("tickets", [])[-5:],
     }
 
@@ -165,11 +162,20 @@ def kaizen_summary() -> dict:
 def get_state_file(filename: str) -> dict:
     """Fetch a raw JSON state file. Filename is safelisted."""
     safe = {
-        "avengers_heartbeat.json", "dashboard_payload.json", "last_task.json",
-        "kaizen_ledger.json", "shadow_ledger.json", "usage_tracker.json",
-        "distiller.json", "precedent_graph.json", "strategy_candidates.json",
-        "twin_verdict.json", "causal_review.json", "drift_summary.json",
-        "cache_warmup.json", "audit_daily_summary.json",
+        "avengers_heartbeat.json",
+        "dashboard_payload.json",
+        "last_task.json",
+        "kaizen_ledger.json",
+        "shadow_ledger.json",
+        "usage_tracker.json",
+        "distiller.json",
+        "precedent_graph.json",
+        "strategy_candidates.json",
+        "twin_verdict.json",
+        "causal_review.json",
+        "drift_summary.json",
+        "cache_warmup.json",
+        "audit_daily_summary.json",
     }
     if filename not in safe:
         raise HTTPException(status_code=403, detail="filename not on safelist")
@@ -197,8 +203,7 @@ def list_personas() -> dict:
             PERSONA_SKILLS,
         )
     except ImportError as exc:
-        raise HTTPException(status_code=503,
-                            detail=f"training module missing: {exc}") from exc
+        raise HTTPException(status_code=503, detail=f"training module missing: {exc}") from exc
 
     return {
         "personas": [
@@ -206,7 +211,7 @@ def list_personas() -> dict:
                 "name": name,
                 "manual": manual.model_dump(),
                 "skills": [s.model_dump() for s in PERSONA_SKILLS.get(name, [])],
-                "mcps":   [p.model_dump() for p in PERSONA_MCPS.get(name, [])],
+                "mcps": [p.model_dump() for p in PERSONA_MCPS.get(name, [])],
             }
             for name, manual in PEAK_MANUALS.items()
         ],
@@ -220,8 +225,7 @@ def persona_eval(persona: str) -> dict:
     safe = persona.upper()
     path = STATE_DIR / "persona_evals" / f"{safe}-latest.json"
     if not path.exists():
-        raise HTTPException(status_code=404,
-                            detail=f"no eval report for {persona}")
+        raise HTTPException(status_code=404, detail=f"no eval report for {persona}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -251,8 +255,7 @@ def jarvis_decisions(n: int = 20, subsystem: str | None = None) -> dict:
         with audit_path.open("r", encoding="utf-8") as fh:
             lines = fh.readlines()
     except OSError as exc:
-        raise HTTPException(status_code=500,
-                            detail=f"cannot read audit log: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"cannot read audit log: {exc}") from exc
 
     # Parse bottom-up so the most recent are first. Keep only valid JSON.
     decisions: list[dict] = []
@@ -268,18 +271,20 @@ def jarvis_decisions(n: int = 20, subsystem: str | None = None) -> dict:
             sub = rec.get("request", {}).get("subsystem")
             if sub != subsystem:
                 continue
-        decisions.append({
-            "ts": rec.get("ts"),
-            "subsystem": rec.get("request", {}).get("subsystem"),
-            "action": rec.get("request", {}).get("action"),
-            "verdict": rec.get("response", {}).get("verdict"),
-            "reason_code": rec.get("response", {}).get("reason_code"),
-            "reason": rec.get("response", {}).get("reason"),
-            "size_cap_mult": rec.get("response", {}).get("size_cap_mult"),
-            "stress_composite": rec.get("stress_composite"),
-            "session_phase": rec.get("session_phase"),
-            "jarvis_action": rec.get("jarvis_action"),
-        })
+        decisions.append(
+            {
+                "ts": rec.get("ts"),
+                "subsystem": rec.get("request", {}).get("subsystem"),
+                "action": rec.get("request", {}).get("action"),
+                "verdict": rec.get("response", {}).get("verdict"),
+                "reason_code": rec.get("response", {}).get("reason_code"),
+                "reason": rec.get("response", {}).get("reason"),
+                "size_cap_mult": rec.get("response", {}).get("size_cap_mult"),
+                "stress_composite": rec.get("stress_composite"),
+                "session_phase": rec.get("session_phase"),
+                "jarvis_action": rec.get("jarvis_action"),
+            }
+        )
         if len(decisions) >= max(1, min(n, 500)):
             break
 
@@ -307,8 +312,7 @@ def jarvis_summary(window: int = 500) -> dict:
         with audit_path.open("r", encoding="utf-8") as fh:
             lines = fh.readlines()
     except OSError as exc:
-        raise HTTPException(status_code=500,
-                            detail=f"cannot read audit log: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"cannot read audit log: {exc}") from exc
 
     tail = lines[-window:] if window > 0 else lines
     by_subsystem: dict[str, int] = {}
@@ -343,11 +347,9 @@ def jarvis_summary(window: int = 500) -> dict:
 def list_tasks() -> dict:
     """Return the 12 BackgroundTask names + owners + cadences."""
     from eta_engine.brain.avengers import TASK_CADENCE, TASK_OWNERS
+
     return {
-        "tasks": [
-            {"name": k.value, "owner": TASK_OWNERS[k], "cadence": TASK_CADENCE[k]}
-            for k in TASK_CADENCE
-        ],
+        "tasks": [{"name": k.value, "owner": TASK_OWNERS[k], "cadence": TASK_CADENCE[k]} for k in TASK_CADENCE],
     }
 
 
@@ -380,8 +382,7 @@ def broker_readiness() -> dict:
             "tastytrade": tasty,
         },
         "active_brokers": sorted(
-            name for name, report in {"ibkr": ibkr, "tastytrade": tasty}.items()
-            if report.get("ready")
+            name for name, report in {"ibkr": ibkr, "tastytrade": tasty}.items() if report.get("ready")
         ),
     }
 
@@ -413,6 +414,7 @@ def _resolve_fleet_dir() -> Path | None:
     ]
     try:
         from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
+
         candidates.append(DEFAULT_OUT_DIR)
     except Exception:  # noqa: BLE001 -- import errors should not crash the endpoint
         pass
@@ -435,6 +437,7 @@ def btc_lanes() -> dict:
         # Surface the best-known default so operators see where we looked.
         try:
             from eta_engine.scripts.btc_broker_fleet import DEFAULT_OUT_DIR
+
             default = str(DEFAULT_OUT_DIR)
         except Exception:  # noqa: BLE001
             default = str(STATE_DIR / "broker_fleet")
@@ -442,8 +445,7 @@ def btc_lanes() -> dict:
             "fleet_dir": default,
             "manifest": None,
             "lanes": [],
-            "note": "fleet dir not found; start the fleet via "
-                    "python -m eta_engine.scripts.btc_broker_fleet --start",
+            "note": "fleet dir not found; start the fleet via python -m eta_engine.scripts.btc_broker_fleet --start",
         }
     manifest_path = chosen / "btc_broker_fleet_latest.json"
     manifest: dict | None = None
@@ -468,27 +470,27 @@ def btc_lanes() -> dict:
                 heartbeat = json.loads(hb_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 heartbeat = None
-        workers.append({
-            "worker_id": worker_id,
-            "broker": state.get("broker"),
-            "lane": state.get("lane"),
-            "symbol": state.get("symbol"),
-            "active_order_id": state.get("active_order_id"),
-            "active_order_status": state.get("active_order_status"),
-            "active_order_filled_qty": state.get("active_order_filled_qty"),
-            "active_order_avg_price": state.get("active_order_avg_price"),
-            "submitted_orders": state.get("submitted_orders"),
-            "reconciled_orders": state.get("reconciled_orders"),
-            "terminal_orders": state.get("terminal_orders"),
-            "last_event": state.get("last_event"),
-            "last_event_utc": state.get("last_event_utc"),
-            "last_reconcile_utc": state.get("last_reconcile_utc"),
-            "heartbeat_status": heartbeat.get("status") if heartbeat else None,
-            "pid": heartbeat.get("pid") if heartbeat else None,
-            "execution_state": (
-                heartbeat.get("execution_state") if heartbeat else None
-            ),
-        })
+        workers.append(
+            {
+                "worker_id": worker_id,
+                "broker": state.get("broker"),
+                "lane": state.get("lane"),
+                "symbol": state.get("symbol"),
+                "active_order_id": state.get("active_order_id"),
+                "active_order_status": state.get("active_order_status"),
+                "active_order_filled_qty": state.get("active_order_filled_qty"),
+                "active_order_avg_price": state.get("active_order_avg_price"),
+                "submitted_orders": state.get("submitted_orders"),
+                "reconciled_orders": state.get("reconciled_orders"),
+                "terminal_orders": state.get("terminal_orders"),
+                "last_event": state.get("last_event"),
+                "last_event_utc": state.get("last_event_utc"),
+                "last_reconcile_utc": state.get("last_reconcile_utc"),
+                "heartbeat_status": heartbeat.get("status") if heartbeat else None,
+                "pid": heartbeat.get("pid") if heartbeat else None,
+                "execution_state": (heartbeat.get("execution_state") if heartbeat else None),
+            }
+        )
     return {
         "fleet_dir": str(chosen),
         "manifest": manifest,
@@ -517,8 +519,7 @@ def btc_trades(n: int = 30) -> dict:
             "trades": [],
             "total": 0,
             "source": str(ledger),
-            "note": "no trades yet -- either the fleet hasn't run or "
-                    "BTC_PAPER_LANE_AUTO_SUBMIT is not set",
+            "note": "no trades yet -- either the fleet hasn't run or BTC_PAPER_LANE_AUTO_SUBMIT is not set",
         }
     try:
         lines = ledger.read_text(encoding="utf-8").splitlines()
@@ -563,6 +564,7 @@ def _resolve_mnq_supervisor_dir() -> Path | None:
     ]
     try:
         from eta_engine.scripts.mnq_live_supervisor import DEFAULT_OUT_DIR
+
         candidates.append(DEFAULT_OUT_DIR)
     except Exception:  # noqa: BLE001
         pass
@@ -586,6 +588,7 @@ def mnq_supervisor() -> dict:
     if chosen is None:
         try:
             from eta_engine.scripts.mnq_live_supervisor import DEFAULT_OUT_DIR
+
             default = str(DEFAULT_OUT_DIR)
         except Exception:  # noqa: BLE001
             default = str(STATE_DIR / "mnq_live")
@@ -594,8 +597,8 @@ def mnq_supervisor() -> dict:
             "state": None,
             "recent_events": [],
             "note": "mnq_live dir not found; start the supervisor via "
-                    "python -m eta_engine.scripts.mnq_live_supervisor "
-                    "--bars <file.jsonl>",
+            "python -m eta_engine.scripts.mnq_live_supervisor "
+            "--bars <file.jsonl>",
         }
     state_path = chosen / "mnq_live_state.json"
     journal_path = chosen / "mnq_live_decisions.jsonl"
@@ -621,13 +624,15 @@ def mnq_supervisor() -> dict:
                 ev = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            recent.append({
-                "ts": ev.get("ts"),
-                "actor": ev.get("actor"),
-                "intent": ev.get("intent"),
-                "outcome": ev.get("outcome"),
-                "rationale": ev.get("rationale", "")[:200],
-            })
+            recent.append(
+                {
+                    "ts": ev.get("ts"),
+                    "actor": ev.get("actor"),
+                    "intent": ev.get("intent"),
+                    "outcome": ev.get("outcome"),
+                    "rationale": ev.get("rationale", "")[:200],
+                }
+            )
             if len(recent) >= 20:
                 break
 
@@ -661,11 +666,13 @@ def all_systems_status() -> dict:
     tasty_ready = False
     try:
         from eta_engine.venues.ibkr import ibkr_paper_readiness
+
         ibkr_ready = bool(ibkr_paper_readiness().get("ready"))
     except Exception:  # noqa: BLE001
         pass
     try:
         from eta_engine.venues.tastytrade import tastytrade_paper_readiness
+
         tasty_ready = bool(tastytrade_paper_readiness().get("ready"))
     except Exception:  # noqa: BLE001
         pass
@@ -703,11 +710,13 @@ def all_systems_status() -> dict:
                 continue
         if total == 0:
             out["btc_fleet"] = {
-                "status": "YELLOW", "detail": "0 lanes (fleet not started)",
+                "status": "YELLOW",
+                "detail": "0 lanes (fleet not started)",
             }
         elif active == total:
             out["btc_fleet"] = {
-                "status": "GREEN", "detail": f"{active}/{total} lanes ACTIVE",
+                "status": "GREEN",
+                "detail": f"{active}/{total} lanes ACTIVE",
             }
         elif active > 0:
             out["btc_fleet"] = {
@@ -724,13 +733,15 @@ def all_systems_status() -> dict:
     mnq_dir = _resolve_mnq_supervisor_dir()
     if mnq_dir is None:
         out["mnq_supervisor"] = {
-            "status": "YELLOW", "detail": "not running",
+            "status": "YELLOW",
+            "detail": "not running",
         }
     else:
         state_path = mnq_dir / "mnq_live_state.json"
         if not state_path.exists():
             out["mnq_supervisor"] = {
-                "status": "YELLOW", "detail": "no state file yet",
+                "status": "YELLOW",
+                "detail": "no state file yet",
             }
         else:
             try:
@@ -753,7 +764,8 @@ def all_systems_status() -> dict:
     audit_path = STATE_DIR / "jarvis_audit.jsonl"
     if not audit_path.exists():
         out["jarvis"] = {
-            "status": "YELLOW", "detail": "no audit log yet",
+            "status": "YELLOW",
+            "detail": "no audit log yet",
         }
     else:
         try:
@@ -784,15 +796,26 @@ def all_systems_status() -> dict:
 def fire_task(task: str) -> dict:
     """Manually fire a BackgroundTask. Useful for ad-hoc retrospectives."""
     from eta_engine.brain.avengers import BackgroundTask
+
     try:
         BackgroundTask(task.upper())
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=f"unknown task: {task}") from exc
     # Fire async via subprocess so we don't block the response
     result = subprocess.run(
-        [sys.executable, "-m", "deploy.scripts.run_task", task.upper(),
-         "--state-dir", str(STATE_DIR), "--log-dir", str(LOG_DIR)],
-        capture_output=True, text=True, timeout=120,
+        [
+            sys.executable,
+            "-m",
+            "deploy.scripts.run_task",
+            task.upper(),
+            "--state-dir",
+            str(STATE_DIR),
+            "--log-dir",
+            str(LOG_DIR),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     return {
         "task": task.upper(),

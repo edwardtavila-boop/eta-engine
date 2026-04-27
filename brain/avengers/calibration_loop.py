@@ -24,6 +24,7 @@ Design
   success rate in [0.1, 1.0]. Never zero (we want exploration to stay
   possible even after a bad streak).
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -42,12 +43,13 @@ CALIBRATION_JOURNAL: Path = Path.home() / ".jarvis" / "calibration.jsonl"
 
 class PersonaScore(BaseModel):
     """One (persona, category) running score."""
+
     model_config = ConfigDict(frozen=False)
 
-    persona:   str
-    category:  str
+    persona: str
+    category: str
     successes: int = Field(ge=0, default=0)
-    failures:  int = Field(ge=0, default=0)
+    failures: int = Field(ge=0, default=0)
     last_seen: datetime | None = None
 
     @property
@@ -98,13 +100,14 @@ class CalibrationLoop:
                     rec = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                persona  = rec.get("persona", "")
+                persona = rec.get("persona", "")
                 category = rec.get("category", "")
                 if not persona or not category:
                     continue
                 key = (persona, category)
                 score = self._scores.get(key) or PersonaScore(
-                    persona=persona, category=category,
+                    persona=persona,
+                    category=category,
                 )
                 if rec.get("success"):
                     score.successes += 1
@@ -132,11 +135,12 @@ class CalibrationLoop:
         persona that actually ran and whether it succeeded). TaskResult
         alone is insufficient -- category lives on the envelope.
         """
-        persona  = result.persona_id.value
+        persona = result.persona_id.value
         category = envelope.category.value
         key = (persona, category)
         score = self._scores.get(key) or PersonaScore(
-            persona=persona, category=category,
+            persona=persona,
+            category=category,
         )
         if result.success:
             score.successes += 1
@@ -151,18 +155,25 @@ class CalibrationLoop:
         try:
             self.journal_path.parent.mkdir(parents=True, exist_ok=True)
             with self.journal_path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps({
-                    "ts":       datetime.now(UTC).isoformat(),
-                    "persona":  persona,
-                    "category": category,
-                    "success":  success,
-                }) + "\n")
+                fh.write(
+                    json.dumps(
+                        {
+                            "ts": datetime.now(UTC).isoformat(),
+                            "persona": persona,
+                            "category": category,
+                            "success": success,
+                        }
+                    )
+                    + "\n"
+                )
         except OSError:
             # Lossy append is survivable -- in-memory state wins.
             return
 
     def weight(
-        self, persona: PersonaId | str, category: TaskCategory | str,
+        self,
+        persona: PersonaId | str,
+        category: TaskCategory | str,
     ) -> float:
         """Return a multiplier in [0.1, 1.0]. Cold pairs get ~0.5."""
         p = persona.value if isinstance(persona, PersonaId) else persona

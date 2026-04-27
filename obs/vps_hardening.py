@@ -14,6 +14,7 @@ No shell execution — this module produces *text*. The operator SCPs the
 files up, reviews, and applies. Safer than remote-applying hardening
 from the bot's event loop.
 """
+
 from __future__ import annotations
 
 from typing import Literal
@@ -47,6 +48,7 @@ class HardeningConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
+
 
 def _default_ufw_rules(
     *,
@@ -87,40 +89,50 @@ def _default_ufw_rules(
 def build_sshd_config(*, ssh_port: int = 22, allow_users: list[str] | None = None) -> str:
     """Harden sshd: keys only, no root, no password, no X11."""
     users = " ".join(allow_users or ["apex"])
-    return "\n".join([
-        "# /etc/ssh/sshd_config.d/10-apex-hardening.conf",
-        f"Port {ssh_port}",
-        "PermitRootLogin no",
-        "PasswordAuthentication no",
-        "PermitEmptyPasswords no",
-        "ChallengeResponseAuthentication no",
-        "KbdInteractiveAuthentication no",
-        "UsePAM yes",
-        "X11Forwarding no",
-        "AllowTcpForwarding no",
-        "ClientAliveInterval 300",
-        "ClientAliveCountMax 2",
-        "MaxAuthTries 3",
-        "MaxSessions 2",
-        f"AllowUsers {users}",
-        "Protocol 2",
-        "Compression no",
-        "LogLevel VERBOSE",
-    ]) + "\n"
+    return (
+        "\n".join(
+            [
+                "# /etc/ssh/sshd_config.d/10-apex-hardening.conf",
+                f"Port {ssh_port}",
+                "PermitRootLogin no",
+                "PasswordAuthentication no",
+                "PermitEmptyPasswords no",
+                "ChallengeResponseAuthentication no",
+                "KbdInteractiveAuthentication no",
+                "UsePAM yes",
+                "X11Forwarding no",
+                "AllowTcpForwarding no",
+                "ClientAliveInterval 300",
+                "ClientAliveCountMax 2",
+                "MaxAuthTries 3",
+                "MaxSessions 2",
+                f"AllowUsers {users}",
+                "Protocol 2",
+                "Compression no",
+                "LogLevel VERBOSE",
+            ]
+        )
+        + "\n"
+    )
 
 
 def build_fail2ban_config() -> str:
     """Minimal SSH jail — 4 failures → 1h ban."""
-    return "\n".join([
-        "[sshd]",
-        "enabled = true",
-        "port = 22",
-        "filter = sshd",
-        "logpath = /var/log/auth.log",
-        "maxretry = 4",
-        "findtime = 600",
-        "bantime = 3600",
-    ]) + "\n"
+    return (
+        "\n".join(
+            [
+                "[sshd]",
+                "enabled = true",
+                "port = 22",
+                "filter = sshd",
+                "logpath = /var/log/auth.log",
+                "maxretry = 4",
+                "findtime = 600",
+                "bantime = 3600",
+            ]
+        )
+        + "\n"
+    )
 
 
 def build_systemd_unit(
@@ -130,40 +142,45 @@ def build_systemd_unit(
     entrypoint: str = "python -m eta_engine.main",
 ) -> str:
     """Hardened systemd unit: sandbox + restart policy."""
-    return "\n".join([
-        "[Unit]",
-        "Description=EVOLUTIONARY TRADING ALGO trading bot",
-        "After=network-online.target",
-        "Wants=network-online.target",
-        "",
-        "[Service]",
-        "Type=simple",
-        f"User={bot_user}",
-        f"Group={bot_user}",
-        f"WorkingDirectory={work_dir}",
-        f"ExecStart={entrypoint}",
-        "Restart=on-failure",
-        "RestartSec=5s",
-        "StartLimitBurst=3",
-        "StartLimitIntervalSec=60s",
-        # sandboxing
-        "NoNewPrivileges=true",
-        "PrivateTmp=true",
-        "ProtectSystem=strict",
-        "ProtectHome=read-only",
-        "ProtectKernelTunables=true",
-        "ProtectKernelModules=true",
-        "ProtectControlGroups=true",
-        "RestrictNamespaces=true",
-        "RestrictRealtime=true",
-        "LockPersonality=true",
-        "MemoryDenyWriteExecute=true",
-        "SystemCallArchitectures=native",
-        f"ReadWritePaths={work_dir}/data {work_dir}/logs",
-        "",
-        "[Install]",
-        "WantedBy=multi-user.target",
-    ]) + "\n"
+    return (
+        "\n".join(
+            [
+                "[Unit]",
+                "Description=EVOLUTIONARY TRADING ALGO trading bot",
+                "After=network-online.target",
+                "Wants=network-online.target",
+                "",
+                "[Service]",
+                "Type=simple",
+                f"User={bot_user}",
+                f"Group={bot_user}",
+                f"WorkingDirectory={work_dir}",
+                f"ExecStart={entrypoint}",
+                "Restart=on-failure",
+                "RestartSec=5s",
+                "StartLimitBurst=3",
+                "StartLimitIntervalSec=60s",
+                # sandboxing
+                "NoNewPrivileges=true",
+                "PrivateTmp=true",
+                "ProtectSystem=strict",
+                "ProtectHome=read-only",
+                "ProtectKernelTunables=true",
+                "ProtectKernelModules=true",
+                "ProtectControlGroups=true",
+                "RestrictNamespaces=true",
+                "RestrictRealtime=true",
+                "LockPersonality=true",
+                "MemoryDenyWriteExecute=true",
+                "SystemCallArchitectures=native",
+                f"ReadWritePaths={work_dir}/data {work_dir}/logs",
+                "",
+                "[Install]",
+                "WantedBy=multi-user.target",
+            ]
+        )
+        + "\n"
+    )
 
 
 def build_runbook(*, operator_ip: str | None = None) -> str:

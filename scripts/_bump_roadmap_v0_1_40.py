@@ -75,6 +75,7 @@ whitelist, the daily-volume limit, the manual-approval threshold --
 all of it applies to rebalance transfers with zero additional code.
 Portfolio allocation finally became operational.
 """
+
 from __future__ import annotations
 
 import json
@@ -120,12 +121,10 @@ def main() -> None:
         },
         "artifacts_modified": {
             "strategies": [
-                "strategies/portfolio_rebalancer.py "
-                "(+rebalance_plan_to_transfers)",
+                "strategies/portfolio_rebalancer.py (+rebalance_plan_to_transfers)",
             ],
             "funnel": [
-                "funnel/orchestrator.py "
-                "(+execute_rebalance, +AllocatorFn, TYPE_CHECKING tidy)",
+                "funnel/orchestrator.py (+execute_rebalance, +AllocatorFn, TYPE_CHECKING tidy)",
             ],
         },
         "api_surface": {
@@ -242,12 +241,13 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: rebalance_plan_to_transfers + "
-          "FunnelOrchestrator.execute_rebalance + 26 tests. "
-          "RebalancePlan sweeps now execute as real TransferRequests "
-          "through the orchestrator.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: rebalance_plan_to_transfers + "
+        "FunnelOrchestrator.execute_rebalance + 26 tests. "
+        "RebalancePlan sweeps now execute as real TransferRequests "
+        "through the orchestrator."
+    )
 
 
 if __name__ == "__main__":

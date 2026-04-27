@@ -12,6 +12,7 @@ Layers:
   insufficient-bars path, pass-gate path, fail paths (DSR /
   degradation / min_trades), serialisation, multi-strategy.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -54,6 +55,7 @@ def _always_win_registry(
     target: float = 102.0,
 ) -> _RegistryType:
     """Registry where a long trade always prints a target hit next bar."""
+
     def fn(bars: list[Bar], _ctx: object) -> StrategySignal:
         if not bars:
             return StrategySignal(
@@ -70,6 +72,7 @@ def _always_win_registry(
             risk_mult=1.0,
             rationale_tags=("stub_always_win",),
         )
+
     return {StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn}
 
 
@@ -79,6 +82,7 @@ def _always_lose_registry(
     target: float = 102.0,
 ) -> _RegistryType:
     """Registry where a long trade always prints a stop hit next bar."""
+
     def fn(bars: list[Bar], _ctx: object) -> StrategySignal:
         if not bars:
             return StrategySignal(
@@ -95,6 +99,7 @@ def _always_lose_registry(
             risk_mult=1.0,
             rationale_tags=("stub_always_lose",),
         )
+
     return {StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn}
 
 
@@ -139,6 +144,7 @@ class TestQualificationGateDefaults:
 
     def test_gate_is_frozen(self) -> None:
         import dataclasses
+
         assert dataclasses.is_dataclass(QualificationGate)
         # Attempting to mutate a frozen dataclass raises FrozenInstanceError
         gate = QualificationGate()
@@ -254,7 +260,10 @@ class TestBuildWindows:
 
     def test_normal_case_four_windows(self) -> None:
         triples = _build_windows(
-            total_bars=500, warmup_bars=100, n_windows=4, is_fraction=0.7,
+            total_bars=500,
+            warmup_bars=100,
+            n_windows=4,
+            is_fraction=0.7,
         )
         assert len(triples) == 4
         # Each IS/OOS split is inside the preceding window's bar range
@@ -263,7 +272,10 @@ class TestBuildWindows:
 
     def test_windows_do_not_overlap(self) -> None:
         triples = _build_windows(
-            total_bars=500, warmup_bars=100, n_windows=4, is_fraction=0.7,
+            total_bars=500,
+            warmup_bars=100,
+            n_windows=4,
+            is_fraction=0.7,
         )
         for prev, curr in zip(triples, triples[1:], strict=False):
             assert prev[2] <= curr[0]
@@ -271,7 +283,10 @@ class TestBuildWindows:
     def test_is_fraction_at_boundary(self) -> None:
         # is_fraction of 0.9 leaves only 10% for OOS
         triples = _build_windows(
-            total_bars=500, warmup_bars=100, n_windows=4, is_fraction=0.9,
+            total_bars=500,
+            warmup_bars=100,
+            n_windows=4,
+            is_fraction=0.9,
         )
         assert len(triples) == 4
         # IS portion dominates each window
@@ -290,7 +305,8 @@ class TestBuildWindows:
 class TestQualifyStrategiesInsufficientBars:
     def test_empty_bars_produces_empty_report(self) -> None:
         report = qualify_strategies(
-            [], asset="TEST",
+            [],
+            asset="TEST",
             harness_config=HarnessConfig(warmup_bars=5),
         )
         assert isinstance(report, QualificationReport)
@@ -303,7 +319,8 @@ class TestQualifyStrategiesInsufficientBars:
     def test_tape_below_warmup_produces_empty_report(self) -> None:
         bars = [_bar(i, 100.0, 100.0, 100.0, 100.0) for i in range(3)]
         report = qualify_strategies(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             harness_config=HarnessConfig(warmup_bars=10),
         )
         assert report.n_windows_executed == 0
@@ -319,17 +336,21 @@ class TestQualifyStrategiesHappyPath:
     def test_winning_strategy_passes_gate(self) -> None:
         # Loose gate so the winning tape definitely clears it
         gate = QualificationGate(
-            dsr_threshold=0.1, max_degradation_pct=0.95,
+            dsr_threshold=0.1,
+            max_degradation_pct=0.95,
             min_trades_per_window=1,
         )
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             gate=gate,
             n_windows=2,
             is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -342,15 +363,21 @@ class TestQualifyStrategiesHappyPath:
 
     def test_winning_strategy_has_positive_is_and_oos_sharpe(self) -> None:
         gate = QualificationGate(
-            dsr_threshold=0.1, max_degradation_pct=0.95,
+            dsr_threshold=0.1,
+            max_degradation_pct=0.95,
             min_trades_per_window=1,
         )
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST",
-            gate=gate, n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            gate=gate,
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -369,14 +396,21 @@ class TestQualifyStrategiesFailurePaths:
     def test_losing_strategy_fails_dsr(self) -> None:
         # Losing tape + loose deg/min_trades, but keep default DSR threshold
         gate = QualificationGate(
-            dsr_threshold=0.5, max_degradation_pct=1.0, min_trades_per_window=1,
+            dsr_threshold=0.5,
+            max_degradation_pct=1.0,
+            min_trades_per_window=1,
         )
         bars = _losing_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST",
-            gate=gate, n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            gate=gate,
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_lose_registry(),
@@ -389,15 +423,21 @@ class TestQualifyStrategiesFailurePaths:
     def test_tight_min_trades_gate_fails(self) -> None:
         # Require 100k trades per window (impossible on a 200-bar tape)
         gate = QualificationGate(
-            dsr_threshold=0.01, max_degradation_pct=0.99,
+            dsr_threshold=0.01,
+            max_degradation_pct=0.99,
             min_trades_per_window=10_000,
         )
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST",
-            gate=gate, n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            gate=gate,
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -416,10 +456,14 @@ class TestPerWindowRecords:
     def test_n_windows_executed_matches_triples(self) -> None:
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST",
-            n_windows=3, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            n_windows=3,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -432,17 +476,21 @@ class TestPerWindowRecords:
     def test_window_id_monotonic(self) -> None:
         bars = _winning_tape(240)
         report = qualify_strategies(
-            bars, asset="TEST", n_windows=4, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            n_windows=4,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
         )
         # For a single strategy, per-window rows appear in window_id order
         sid_rows = sorted(
-            [r for r in report.per_window
-             if r.strategy is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT],
+            [r for r in report.per_window if r.strategy is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT],
             key=lambda r: r.window_id,
         )
         ids = [r.window_id for r in sid_rows]
@@ -459,9 +507,14 @@ class TestReportSerialisation:
     def test_as_dict_has_expected_keys(self) -> None:
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST", n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -469,9 +522,15 @@ class TestReportSerialisation:
         d = report.as_dict()
         assert d["asset"] == "TEST"
         assert set(d.keys()) >= {
-            "asset", "gate", "n_windows_requested", "n_windows_executed",
-            "per_window", "qualifications", "notes",
-            "passing_strategies", "failing_strategies",
+            "asset",
+            "gate",
+            "n_windows_requested",
+            "n_windows_executed",
+            "per_window",
+            "qualifications",
+            "notes",
+            "passing_strategies",
+            "failing_strategies",
         }
 
     def test_per_window_as_dict_fields(self) -> None:
@@ -516,14 +575,20 @@ class TestReportSerialisation:
     def test_passing_and_failing_helpers(self) -> None:
         bars = _winning_tape(200)
         gate = QualificationGate(
-            dsr_threshold=0.01, max_degradation_pct=0.99,
+            dsr_threshold=0.01,
+            max_degradation_pct=0.99,
             min_trades_per_window=1,
         )
         report = qualify_strategies(
-            bars, asset="TEST", gate=gate,
-            n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            gate=gate,
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),
@@ -543,6 +608,7 @@ def _two_strategy_registry() -> _RegistryType:
     higher-confidence one each bar. FVG_FILL_CONFLUENCE wins; LSD is
     the lower-confidence fallback.
     """
+
     def lsd(bars: list[Bar], _ctx: object) -> StrategySignal:
         if not bars:
             return StrategySignal(
@@ -552,21 +618,28 @@ def _two_strategy_registry() -> _RegistryType:
         return StrategySignal(
             strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
             side=Side.LONG,
-            entry=100.0, stop=99.0, target=102.0,
-            confidence=6.0, risk_mult=1.0,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            confidence=6.0,
+            risk_mult=1.0,
             rationale_tags=("lsd_win",),
         )
 
     def fvg(bars: list[Bar], _ctx: object) -> StrategySignal:
         if not bars:
             return StrategySignal(
-                strategy=StrategyId.FVG_FILL_CONFLUENCE, side=Side.FLAT,
+                strategy=StrategyId.FVG_FILL_CONFLUENCE,
+                side=Side.FLAT,
             )
         return StrategySignal(
             strategy=StrategyId.FVG_FILL_CONFLUENCE,
             side=Side.LONG,
-            entry=100.0, stop=99.0, target=102.0,
-            confidence=9.0, risk_mult=1.0,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            confidence=9.0,
+            risk_mult=1.0,
             rationale_tags=("fvg_win",),
         )
 
@@ -587,9 +660,14 @@ class TestMultiStrategy:
         }
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="TEST", n_windows=2, is_fraction=0.5,
+            bars,
+            asset="TEST",
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=elig,
             registry=_two_strategy_registry(),
@@ -602,9 +680,14 @@ class TestMultiStrategy:
     def test_asset_propagated_upper(self) -> None:
         bars = _winning_tape(200)
         report = qualify_strategies(
-            bars, asset="test", n_windows=2, is_fraction=0.5,
+            bars,
+            asset="test",
+            n_windows=2,
+            is_fraction=0.5,
             harness_config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=0.0,
             ),
             eligibility=_ELIG,
             registry=_always_win_registry(),

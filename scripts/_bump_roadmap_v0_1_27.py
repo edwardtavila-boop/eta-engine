@@ -49,6 +49,7 @@ Reconciliation
     on $1000 Tradovate funding gate).
   * overall_progress_pct: 99 (unchanged).
 """
+
 from __future__ import annotations
 
 import json
@@ -179,10 +180,7 @@ def main() -> None:
                         "stability": 0.019,
                         "gate_pass": True,
                     },
-                    "reason": (
-                        "applied (MODERATE): gate-pass: exp=+1.202R "
-                        "dd=0.01% stability=0.019"
-                    ),
+                    "reason": ("applied (MODERATE): gate-pass: exp=+1.202R dd=0.01% stability=0.019"),
                 },
                 "policy": {
                     "allow_aggressive": False,
@@ -217,8 +215,7 @@ def main() -> None:
                 "_as_journal_provider",
             ],
             "tests_unblocked": [
-                "tests/test_jarvis_admin.py::TestEngineIntegration::"
-                "test_admin_with_engine_ticks_per_request",
+                "tests/test_jarvis_admin.py::TestEngineIntegration::test_admin_with_engine_ticks_per_request",
             ],
         },
         "glide_step_algorithm": {
@@ -247,11 +244,11 @@ def main() -> None:
     state["overall_progress_pct"] = state.get("overall_progress_pct", 99)
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.27 at {now}")
-    print(f"  tests_passing: {prev_tests} -> {new_tests} "
-          f"({new_tests - prev_tests:+d})")
+    print(f"  tests_passing: {prev_tests} -> {new_tests} ({new_tests - prev_tests:+d})")
     print("  shared_artifacts.eta_engine_v0_1_27_final_revision written")
     print("  ready_for_rollout: True  (external funding gate unchanged)")
 

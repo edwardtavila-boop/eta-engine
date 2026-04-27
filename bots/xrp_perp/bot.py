@@ -38,9 +38,9 @@ XRP_CONFIG = BotConfig(
 
 # XRP leverage tiers — capped at 50x even at highest confluence
 _XRP_LEV_TIERS: list[tuple[float, float]] = [
-    (9.0, 50.0),   # confluence >= 9  → 50x (not 75x)
-    (7.0, 20.0),   # confluence 7-8   → 20x
-    (5.0, 10.0),   # confluence 5-6   → 10x
+    (9.0, 50.0),  # confluence >= 9  → 50x (not 75x)
+    (7.0, 20.0),  # confluence 7-8   → 20x
+    (5.0, 10.0),  # confluence 5-6   → 10x
 ]
 
 # XRP slippage is higher due to thinner books

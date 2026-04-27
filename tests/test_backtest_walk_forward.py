@@ -4,6 +4,7 @@ Auto-scaffolded by scripts/_test_scaffold.py -- the import smoke and
 the per-symbol smoke tests are boilerplate. Edit freely; the
 operator-specific edge cases belong here.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -19,6 +20,7 @@ def test_import_smoke() -> None:
 def test_walk_forward_config_smoke() -> None:
     """``WalkForwardConfig`` instantiates with no args (or skips if it requires args)."""
     from eta_engine.backtest.walk_forward import WalkForwardConfig
+
     try:
         obj = WalkForwardConfig()  # type: ignore[call-arg]
     except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently
@@ -31,6 +33,7 @@ def test_walk_forward_config_smoke() -> None:
 def test_walk_forward_result_smoke() -> None:
     """``WalkForwardResult`` instantiates with no args (or skips if it requires args)."""
     from eta_engine.backtest.walk_forward import WalkForwardResult
+
     try:
         obj = WalkForwardResult()  # type: ignore[call-arg]
     except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently
@@ -43,6 +46,7 @@ def test_walk_forward_result_smoke() -> None:
 def test_walk_forward_engine_smoke() -> None:
     """``WalkForwardEngine`` instantiates with no args (or skips if it requires args)."""
     from eta_engine.backtest.walk_forward import WalkForwardEngine
+
     try:
         obj = WalkForwardEngine()  # type: ignore[call-arg]
     except Exception as e:  # noqa: BLE001 -- pydantic/dataclass/attrs all raise differently

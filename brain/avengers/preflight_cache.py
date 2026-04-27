@@ -16,6 +16,7 @@ This module caches ``(category, caller, action_type)`` -> verdict for
 NEVER caches a DENY -- if policy says no, we want to re-ask next call
 so an operator override can take effect immediately.
 """
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -30,19 +31,20 @@ if TYPE_CHECKING:
 
 class CacheKey(BaseModel):
     """Triple used to key a cached pre-flight verdict."""
+
     model_config = ConfigDict(frozen=True)
 
-    category:    str
-    caller:      str
+    category: str
+    caller: str
     action_type: str
 
 
 class CacheEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    verdict:     str
-    ts:          datetime
-    hit_count:   int = Field(ge=0, default=0)
+    verdict: str
+    ts: datetime
+    hit_count: int = Field(ge=0, default=0)
 
 
 class PreflightCache:
@@ -74,7 +76,11 @@ class PreflightCache:
         return (category, caller, action_type)
 
     def get(
-        self, *, category: str, caller: str, action_type: str,
+        self,
+        *,
+        category: str,
+        caller: str,
+        action_type: str,
     ) -> str | None:
         now = self._clock()
         k = self._key(category, caller, action_type)
@@ -93,7 +99,12 @@ class PreflightCache:
         return entry.verdict
 
     def put(
-        self, *, category: str, caller: str, action_type: str, verdict: str,
+        self,
+        *,
+        category: str,
+        caller: str,
+        action_type: str,
+        verdict: str,
     ) -> None:
         # Never cache denials or deferrals -- we want live policy on those.
         if verdict not in {"APPROVE", "APPROVE_WITH_RESTRICTIONS"}:
@@ -108,7 +119,9 @@ class PreflightCache:
         """Convenience wrapper for callers that already have an ActionResponse."""
         category, caller, action_type = key_inputs
         self.put(
-            category=category, caller=caller, action_type=action_type,
+            category=category,
+            caller=caller,
+            action_type=action_type,
             verdict=response.verdict.value,
         )
 
@@ -116,10 +129,10 @@ class PreflightCache:
         total = self._hits + self._misses
         rate = (self._hits / total) if total else 0.0
         return {
-            "hits":     self._hits,
-            "misses":   self._misses,
+            "hits": self._hits,
+            "misses": self._misses,
             "hit_rate": rate,
-            "size":     len(self._entries),
+            "size": len(self._entries),
         }
 
     def clear(self) -> None:

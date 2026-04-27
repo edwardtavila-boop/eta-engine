@@ -20,6 +20,7 @@ the supervisor fires a CRITICAL alert and JARVIS submits a
 
 Pure / no network. Replay happens from files the caller hands in.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,38 +32,40 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class DecisionRecord(BaseModel):
     """Minimum schema the critique engine needs per audit-log line."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:               datetime
-    verdict:          str = Field(min_length=1)
-    reason_code:      str = Field(min_length=1)
+    ts: datetime
+    verdict: str = Field(min_length=1)
+    reason_code: str = Field(min_length=1)
     stress_composite: float = Field(ge=0.0, le=1.0)
     # Outcome: 1 = correct, 0 = wrong, None = not yet known.
-    outcome_correct:  int | None = None
-    realized_r:       float | None = None  # realized R if it was a trade
+    outcome_correct: int | None = None
+    realized_r: float | None = None  # realized R if it was a trade
     counterfactual_r: float | None = None  # reconstructed R if verdict was DENIED
 
 
 class CritiqueReport(BaseModel):
     """A retrospective health pass over a window of decisions."""
+
     model_config = ConfigDict(frozen=True)
 
-    window_start:       datetime
-    window_end:         datetime
-    total_decisions:    int = Field(ge=0)
-    labeled:            int = Field(ge=0)
-    approved_total:     int = Field(ge=0)
-    approved_wrong:     int = Field(ge=0)
-    denied_total:       int = Field(ge=0)
-    denied_wrong:       int = Field(ge=0)
+    window_start: datetime
+    window_end: datetime
+    total_decisions: int = Field(ge=0)
+    labeled: int = Field(ge=0)
+    approved_total: int = Field(ge=0)
+    approved_wrong: int = Field(ge=0)
+    denied_total: int = Field(ge=0)
+    denied_wrong: int = Field(ge=0)
     false_positive_rate: float = Field(ge=0.0, le=1.0)
     false_negative_rate: float = Field(ge=0.0, le=1.0)
-    mean_realized_r:    float
-    mean_missed_r:      float
-    stress_drift:       float = Field(description="Signed mean-delta of composite.")
-    severity:           str   = Field(pattern="^(GREEN|YELLOW|RED)$")
-    flags:              list[str] = Field(default_factory=list)
-    recommendation:     str
+    mean_realized_r: float
+    mean_missed_r: float
+    stress_drift: float = Field(description="Signed mean-delta of composite.")
+    severity: str = Field(pattern="^(GREEN|YELLOW|RED)$")
+    flags: list[str] = Field(default_factory=list)
+    recommendation: str
 
 
 # Thresholds -- configurable, with safe defaults.
@@ -70,7 +73,7 @@ FP_RATE_YELLOW = 0.25
 FP_RATE_RED = 0.40
 FN_RATE_YELLOW = 0.30
 FN_RATE_RED = 0.50
-DRIFT_YELLOW = 0.05   # absolute mean-delta on composite
+DRIFT_YELLOW = 0.05  # absolute mean-delta on composite
 DRIFT_RED = 0.10
 
 

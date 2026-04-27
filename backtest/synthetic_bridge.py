@@ -29,21 +29,27 @@ Public API
 * ``synthetic_scenario_bars(kind, *, n_bars, start_price, seed)`` -- end-
   to-end: generate the stress returns + convert to OHLCV.
 """
+
 from __future__ import annotations
 
 import math
 from datetime import UTC, datetime, timedelta
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from eta_engine.brain.regime import RegimeType
-from eta_engine.brain.synthetic import Bar, SyntheticBarGenerator, get_profile
 from eta_engine.backtest.stress_scenarios import (
     ScenarioKind,
     ScenarioSpec,
+)
+from eta_engine.backtest.stress_scenarios import (
     generate as generate_scenario,
 )
+from eta_engine.brain.regime import RegimeType
+from eta_engine.brain.synthetic import Bar, SyntheticBarGenerator, get_profile
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "scenario_to_regime",

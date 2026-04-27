@@ -4,6 +4,7 @@ Validates that `sample_size_calc` correctly derives n_required for CI95
 exclusion of zero from per-bot mean and sigma, and that pool reconstruction
 from per-bot stats matches a directly-computed pooled sigma.
 """
+
 from __future__ import annotations
 
 import json
@@ -84,25 +85,31 @@ def test_integration_run_on_canonical(tmp_path: Path):
     report = root / "docs" / "bootstrap_ci_combined_v1.json"
     if not report.exists():
         import pytest
+
         pytest.skip("canonical bootstrap json not present")
 
     import pytest
+
     if not (root.parent / "eta_engine" / "__init__.py").exists():
         pytest.skip("eta_engine package not on cwd-parent path")
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "eta_engine.scripts.sample_size_calc",
-            "--report", str(report),
-            "--label", "test_integration",
+            sys.executable,
+            "-m",
+            "eta_engine.scripts.sample_size_calc",
+            "--report",
+            str(report),
+            "--label",
+            "test_integration",
         ],
         cwd=str(root.parent),
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         pytest.skip(
-            f"sample_size_calc subprocess failed (likely env-specific): "
-            f"{result.stderr[:300]}",
+            f"sample_size_calc subprocess failed (likely env-specific): {result.stderr[:300]}",
         )
 
     out_json = root / "docs" / "sample_size_test_integration.json"

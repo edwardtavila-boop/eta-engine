@@ -13,6 +13,7 @@ Covered:
   * exit codes (0 ok, 1 with --strict if bare markers exist)
   * exclusion of tests/, scripts/_legacy_bumps/, docs/_backups/
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,7 +34,6 @@ from eta_engine.scripts._audit_deferral_criteria import (  # noqa: E402
 
 
 class TestMarkerRegex:
-
     @pytest.mark.parametrize(
         "phrasing",
         [
@@ -62,7 +62,6 @@ class TestMarkerRegex:
 
 
 class TestCriterionRegex:
-
     @pytest.mark.parametrize(
         "phrase",
         [
@@ -85,12 +84,10 @@ class TestCriterionRegex:
 
 
 class TestScanFile:
-
     def test_marker_with_nearby_criterion_marked_pinned(self, tmp_path: Path):
         f = tmp_path / "src.py"
         f.write_text(
-            "# This feature is deferred to v0.2.x.\n"
-            "# Lands when KZN-42 ships.\n",
+            "# This feature is deferred to v0.2.x.\n# Lands when KZN-42 ships.\n",
             encoding="utf-8",
         )
         hits = _scan_file(f, root=tmp_path)
@@ -100,8 +97,7 @@ class TestScanFile:
     def test_lone_marker_without_criterion_is_bare(self, tmp_path: Path):
         f = tmp_path / "src.py"
         f.write_text(
-            "# This is deferred to v0.2.x.\n"
-            "x = 1\n",
+            "# This is deferred to v0.2.x.\nx = 1\n",
             encoding="utf-8",
         )
         hits = _scan_file(f, root=tmp_path)
@@ -109,12 +105,12 @@ class TestScanFile:
         assert hits[0].has_criterion is False
 
     def test_criterion_outside_context_window_does_not_count(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ):
         # Criterion 6+ lines below the marker should NOT pin it.
         f = tmp_path / "src.py"
-        body = ["# deferred to v0.2.x", *[f"# filler {i}" for i in range(6)],
-                "# closed in v1.0.0"]
+        body = ["# deferred to v0.2.x", *[f"# filler {i}" for i in range(6)], "# closed in v1.0.0"]
         f.write_text("\n".join(body) + "\n", encoding="utf-8")
         hits = _scan_file(f, root=tmp_path)
         assert len(hits) == 1
@@ -129,10 +125,7 @@ class TestScanFile:
     def test_multiple_markers_in_one_file(self, tmp_path: Path):
         f = tmp_path / "src.py"
         f.write_text(
-            "# A: deferred to v0.2.x\n"
-            "x = 1\n"
-            "# B: another v0.2.x scope item\n"
-            "y = 2\n",
+            "# A: deferred to v0.2.x\nx = 1\n# B: another v0.2.x scope item\ny = 2\n",
             encoding="utf-8",
         )
         hits = _scan_file(f, root=tmp_path)
@@ -146,16 +139,17 @@ class TestScanFile:
 
 
 class TestScan:
-
     def test_excludes_tests_dir(self, tmp_path: Path):
         # Synthetic mini-repo with src + tests dirs
         (tmp_path / "src").mkdir()
         (tmp_path / "tests").mkdir()
         (tmp_path / "src" / "a.py").write_text(
-            "# deferred to v0.2.x\n", encoding="utf-8",
+            "# deferred to v0.2.x\n",
+            encoding="utf-8",
         )
         (tmp_path / "tests" / "test_a.py").write_text(
-            "# deferred to v0.2.x in test\n", encoding="utf-8",
+            "# deferred to v0.2.x in test\n",
+            encoding="utf-8",
         )
         # We pass the tmp_path as the root so the production exclusion
         # applies to "tests/" prefix.
@@ -167,14 +161,14 @@ class TestScan:
     def test_excludes_legacy_bumps(self, tmp_path: Path):
         (tmp_path / "scripts" / "_legacy_bumps").mkdir(parents=True)
         (tmp_path / "scripts" / "_legacy_bumps" / "v1.py").write_text(
-            "# deferred to v0.2.x in legacy\n", encoding="utf-8",
+            "# deferred to v0.2.x in legacy\n",
+            encoding="utf-8",
         )
         hits = scan(tmp_path)
         assert hits == []
 
 
 class TestMainCLI:
-
     def test_strict_with_bare_returns_1(self, tmp_path: Path, capsys):
         # Stand up a synthetic repo, rebind ROOT briefly via monkeypatch
         # of the module-level variable. This is intrusive but reliable.
@@ -184,6 +178,7 @@ class TestMainCLI:
         )
         # Monkeypatch the module's ROOT to point at tmp_path
         from eta_engine.scripts import _audit_deferral_criteria as mod
+
         old_root = mod.ROOT
         mod.ROOT = tmp_path
         try:
@@ -201,6 +196,7 @@ class TestMainCLI:
             encoding="utf-8",
         )
         from eta_engine.scripts import _audit_deferral_criteria as mod
+
         old_root = mod.ROOT
         mod.ROOT = tmp_path
         try:
@@ -215,6 +211,7 @@ class TestMainCLI:
             encoding="utf-8",
         )
         from eta_engine.scripts import _audit_deferral_criteria as mod
+
         old_root = mod.ROOT
         mod.ROOT = tmp_path
         try:
@@ -223,6 +220,7 @@ class TestMainCLI:
             mod.ROOT = old_root
         assert rc == 0
         import json
+
         captured = capsys.readouterr()
         payload = json.loads(captured.out)
         assert "total" in payload

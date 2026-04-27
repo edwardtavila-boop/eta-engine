@@ -7,14 +7,17 @@ Unit + smoke coverage for the paper-run harness and paper-phase gate.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from eta_engine.scripts import paper_run_harness as prh
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ── Gate unit tests ──
+
 
 def _make_result(**kw) -> prh.BotPaperResult:
     base = dict(
@@ -99,6 +102,7 @@ def test_gate_fails_on_kill_switch_rate() -> None:
 
 # ── Aggregate ──
 
+
 def test_aggregate_all_pass_emits_go() -> None:
     reqs = prh.PaperPhaseRequirements()
     rs = [
@@ -142,6 +146,7 @@ def test_aggregate_kill_event_emits_modify_not_go() -> None:
 
 # ── End-to-end smoke ──
 
+
 def test_harness_runs_one_bot(tmp_path: Path) -> None:
     plan = prh.BOT_PLAN["mnq"]
     reqs = prh.PaperPhaseRequirements()
@@ -164,7 +169,12 @@ def test_harness_produces_report_and_tearsheet(tmp_path: Path) -> None:
         results.append(r)
     agg = prh._aggregate(results, reqs, weeks=4)
     report_path, tearsheet_path = prh._write_report(
-        results, agg, weeks=4, seed=11, reqs=reqs, out_dir=tmp_path,
+        results,
+        agg,
+        weeks=4,
+        seed=11,
+        reqs=reqs,
+        out_dir=tmp_path,
     )
     assert report_path.exists()
     assert tearsheet_path.exists()

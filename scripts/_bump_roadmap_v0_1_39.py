@@ -79,6 +79,7 @@ and consume the sweep list the same way it already consumes
 ``waterfall.plan(snapshot).sweeps``. The PORTFOLIO-tier strategy is
 finally closing the loop.
 """
+
 from __future__ import annotations
 
 import json
@@ -124,8 +125,7 @@ def main() -> None:
         },
         "api_surface": {
             "plan_rebalance": (
-                "(snapshot, allocation, *, drift_threshold_pct=0.05, "
-                "min_transfer_usd=100.0) -> RebalancePlan"
+                "(snapshot, allocation, *, drift_threshold_pct=0.05, min_transfer_usd=100.0) -> RebalancePlan"
             ),
             "RebalancePlan": (
                 "ts_utc, total_equity_usd, sweeps (tuple of ProposedSweep), "
@@ -233,11 +233,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/portfolio_rebalancer.py + 27 tests. "
-          "Regime_allocator weights now drive cross-layer capital "
-          "transfers when the funnel drifts off plan.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/portfolio_rebalancer.py + 27 tests. "
+        "Regime_allocator weights now drive cross-layer capital "
+        "transfers when the funnel drifts off plan."
+    )
 
 
 if __name__ == "__main__":

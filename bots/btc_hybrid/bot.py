@@ -27,6 +27,7 @@ lifecycle now has two paths:
 That lets the bot stay usable in paper and replay mode while still
 being ready for a live fill stream without reshaping the public API.
 """
+
 from __future__ import annotations
 
 import logging
@@ -90,11 +91,11 @@ logger = logging.getLogger(__name__)
 # The final default profile therefore widens the grid band slightly and
 # raises the directional confluence floor so the bot leans into better
 # bars instead of churning every transition candle.
-_ADX_TREND_BTC: float = 30.0         # >= this -> DIRECTIONAL
-_ADX_RANGING_BTC: float = 23.0       # <= this -> GRID (calmer tape)
+_ADX_TREND_BTC: float = 30.0  # >= this -> DIRECTIONAL
+_ADX_RANGING_BTC: float = 23.0  # <= this -> GRID (calmer tape)
 # Grid geometry
-_GRID_LEVELS: int = 6                # 3 buy + 3 sell around mid
-_GRID_SPACING_PCT: float = 0.004     # 0.4% between levels (BTC-like)
+_GRID_LEVELS: int = 6  # 3 buy + 3 sell around mid
+_GRID_SPACING_PCT: float = 0.004  # 0.4% between levels (BTC-like)
 _GRID_INVENTORY_CAP_PCT: float = 0.25  # max 25% of equity per side
 # Confluence floor for DIRECTIONAL entries.
 _DIR_MIN_CONFLUENCE: float = 8.0
@@ -215,8 +216,8 @@ BTC_HYBRID_CONFIG = BotConfig(
     tier=Tier.CASINO,
     baseline_usd=5000.0,
     starting_capital_usd=5000.0,
-    max_leverage=3.0,              # L2 is spot-ish; directional leg caps low
-    risk_per_trade_pct=1.5,        # directional leg -- grid sizes separately
+    max_leverage=3.0,  # L2 is spot-ish; directional leg caps low
+    risk_per_trade_pct=1.5,  # directional leg -- grid sizes separately
     daily_loss_cap_pct=4.0,
     max_dd_kill_pct=12.0,
     margin_mode=MarginMode.CROSS,
@@ -225,9 +226,10 @@ BTC_HYBRID_CONFIG = BotConfig(
 
 class HybridMode(StrEnum):
     """Which strategy mode the bot is currently running."""
+
     GRID = "GRID"
     DIRECTIONAL = "DIRECTIONAL"
-    FLAT = "FLAT"            # transition / stood-down
+    FLAT = "FLAT"  # transition / stood-down
 
 
 class _Router(Protocol):
@@ -367,14 +369,18 @@ class BtcHybridBot(BaseBot):
         if not allowed:
             logger.info(
                 "%s jarvis refused %s: %s (%s)",
-                self.config.name, action.value,
-                resp.reason, resp.reason_code,
+                self.config.name,
+                action.value,
+                resp.reason,
+                resp.reason_code,
             )
         elif resp.verdict == Verdict.CONDITIONAL:
             logger.info(
                 "%s jarvis conditional %s: size_cap=%.3f (%s)",
-                self.config.name, action.value,
-                resp.size_cap_mult or 1.0, resp.reason_code,
+                self.config.name,
+                action.value,
+                resp.size_cap_mult or 1.0,
+                resp.reason_code,
             )
         return allowed, resp.size_cap_mult, resp.reason_code
 
@@ -393,6 +399,7 @@ class BtcHybridBot(BaseBot):
         request. Returns the :class:`ModelTier` JARVIS chose.
         """
         from eta_engine.brain.jarvis_gate import pick_llm_tier
+
         return pick_llm_tier(
             self._jarvis,
             subsystem=self.SUBSYSTEM,
@@ -585,9 +592,11 @@ class BtcHybridBot(BaseBot):
             bar.get("order_book_venue") or bar.get("venue") or self._last_order_book_venue or "",
         )
         try:
-            self._last_order_book_depth = int(float(  # noqa: E501 -- one-line fallback chain for depth
-                bar.get("order_book_depth") or self._last_order_book_depth or 0,
-            ))
+            self._last_order_book_depth = int(
+                float(  # noqa: E501 -- one-line fallback chain for depth
+                    bar.get("order_book_depth") or self._last_order_book_depth or 0,
+                )
+            )
         except (TypeError, ValueError):
             self._last_order_book_depth = int(self._last_order_book_depth or 0)
         self._last_order_book_age_ms = float(  # noqa: E501 -- one-line fallback chain for age
@@ -652,11 +661,10 @@ class BtcHybridBot(BaseBot):
                     0.0,
                     min(  # noqa: E501 -- microstructure clamp keeps formula on one line
                         10.0,
-                        microstructure_score
-                        if microstructure_score is not None
-                        else self._last_microstructure_score,
+                        microstructure_score if microstructure_score is not None else self._last_microstructure_score,
                     ),
-                ) * 0.016,
+                )
+                * 0.016,
             ),
         )
         book_quality = max(
@@ -667,7 +675,8 @@ class BtcHybridBot(BaseBot):
                 + max(
                     0.0,
                     min(10.0, order_book_quality if order_book_quality is not None else self._last_order_book_quality),
-                ) * 0.016,
+                )
+                * 0.016,
             ),
         )
         quality_bucket_bias = self._temporal_bias(
@@ -687,7 +696,8 @@ class BtcHybridBot(BaseBot):
                         if order_book_freshness_score is not None
                         else self._last_order_book_freshness_score,
                     ),
-                ) * 0.012,
+                )
+                * 0.012,
             ),
         )
         edge = max(
@@ -698,12 +708,20 @@ class BtcHybridBot(BaseBot):
                 + max(
                     0.0,
                     min(10.0, pattern_edge_score if pattern_edge_score is not None else self._last_pattern_edge_score),
-                ) * 0.020,
+                )
+                * 0.020,
             ),
         )
         combined = (
-            session_bias * timeframe_bias * session_timeframe_bias * spread_bias
-            * micro * book_quality * freshness * edge * quality_bucket_bias
+            session_bias
+            * timeframe_bias
+            * session_timeframe_bias
+            * spread_bias
+            * micro
+            * book_quality
+            * freshness
+            * edge
+            * quality_bucket_bias
         )
         return max(0.65, min(1.35, combined))
 
@@ -753,16 +771,20 @@ class BtcHybridBot(BaseBot):
         self._last_microstructure_score = microstructure_score
         self._last_pattern_edge_score = pattern_edge_score
         self._last_session_size_bias = self._temporal_bias(
-            self.profile.session_phase_size_bias, session_phase,
+            self.profile.session_phase_size_bias,
+            session_phase,
         )
         self._last_timeframe_size_bias = self._temporal_bias(
-            self.profile.timeframe_size_bias, timeframe_label,
+            self.profile.timeframe_size_bias,
+            timeframe_label,
         )
         self._last_session_timeframe_size_bias = self._temporal_bias(
-            self.profile.session_timeframe_size_bias, session_timeframe_key,
+            self.profile.session_timeframe_size_bias,
+            session_timeframe_key,
         )
         self._last_spread_size_bias = self._temporal_bias(
-            self.profile.spread_regime_size_bias, spread_regime,
+            self.profile.spread_regime_size_bias,
+            spread_regime,
         )
         self._last_order_book_quality_bucket = order_book_quality_bucket
         self._last_temporal_size_mult = self._temporal_size_mult(
@@ -879,7 +901,9 @@ class BtcHybridBot(BaseBot):
             "risk_lockout_remaining_bars": max(
                 0,
                 self._risk_lockout_until_bar_idx - self._current_bar_idx,
-            ) if lockout_active else 0,
+            )
+            if lockout_active
+            else 0,
             "market_quality": round(self._market_quality, 4),
             "execution_quality": round(self._execution_quality, 4),
             "directional_quality": round(self._directional_quality, 4),
@@ -917,8 +941,7 @@ class BtcHybridBot(BaseBot):
             "directional_cooldown_bars": self.profile.directional_cooldown_bars,
             "directional_cooldown_remaining": max(
                 0,
-                self.profile.directional_cooldown_bars
-                - max(0, self._current_bar_idx - self._last_directional_bar_idx),
+                self.profile.directional_cooldown_bars - max(0, self._current_bar_idx - self._last_directional_bar_idx),
             ),
         }
         market_context_summary = build_market_context_summary(snapshot)
@@ -928,18 +951,10 @@ class BtcHybridBot(BaseBot):
         return snapshot
 
     def _recent_close_values(self, lookback: int = 50) -> list[float]:
-        return [
-            float(bar.close)
-            for bar in list(self._recent_bars)[-lookback:]
-            if float(bar.close) > 0.0
-        ]
+        return [float(bar.close) for bar in list(self._recent_bars)[-lookback:] if float(bar.close) > 0.0]
 
     def _recent_volume_values(self, lookback: int = 50) -> list[float]:
-        return [
-            float(bar.volume)
-            for bar in list(self._recent_bars)[-lookback:]
-            if float(bar.volume) >= 0.0
-        ]
+        return [float(bar.volume) for bar in list(self._recent_bars)[-lookback:] if float(bar.volume) >= 0.0]
 
     @staticmethod
     def _ema_from_values(values: list[float], span: int) -> float:
@@ -996,24 +1011,17 @@ class BtcHybridBot(BaseBot):
         if self._as_float(enriched.get("avg_volume"), 0.0) <= 0.0 and volumes:
             enriched["avg_volume"] = statistics.fmean(volumes[-20:])
         if self._as_float(enriched.get("atr_14"), 0.0) <= 0.0 and recent_bars:
-            ranges = [
-                max(float(bar.high) - float(bar.low), 0.0)
-                for bar in recent_bars[-14:]
-            ]
+            ranges = [max(float(bar.high) - float(bar.low), 0.0) for bar in recent_bars[-14:]]
             ranges = [value for value in ranges if value > 0.0]
             if ranges:
                 enriched["atr_14"] = statistics.fmean(ranges)
         if self._as_float(enriched.get("avg_atr_50"), 0.0) <= 0.0 and recent_bars:
-            ranges = [
-                max(float(bar.high) - float(bar.low), 0.0)
-                for bar in recent_bars[-50:]
-            ]
+            ranges = [max(float(bar.high) - float(bar.low), 0.0) for bar in recent_bars[-50:]]
             ranges = [value for value in ranges if value > 0.0]
             if ranges:
                 enriched["avg_atr_50"] = statistics.fmean(ranges)
         if (
-            self._as_float(enriched.get("bb_upper"), 0.0) <= 0.0
-            or self._as_float(enriched.get("bb_lower"), 0.0) <= 0.0
+            self._as_float(enriched.get("bb_upper"), 0.0) <= 0.0 or self._as_float(enriched.get("bb_lower"), 0.0) <= 0.0
         ) and len(closes) >= 5:
             tail = closes[-20:]
             center = statistics.fmean(tail)
@@ -1154,16 +1162,20 @@ class BtcHybridBot(BaseBot):
         self._last_microstructure_score = microstructure_score
         self._last_pattern_edge_score = pattern_edge_score
         self._last_session_size_bias = self._temporal_bias(
-            self.profile.session_phase_size_bias, session_phase,
+            self.profile.session_phase_size_bias,
+            session_phase,
         )
         self._last_timeframe_size_bias = self._temporal_bias(
-            self.profile.timeframe_size_bias, timeframe_label,
+            self.profile.timeframe_size_bias,
+            timeframe_label,
         )
         self._last_session_timeframe_size_bias = self._temporal_bias(
-            self.profile.session_timeframe_size_bias, session_timeframe_key,
+            self.profile.session_timeframe_size_bias,
+            session_timeframe_key,
         )
         self._last_spread_size_bias = self._temporal_bias(
-            self.profile.spread_regime_size_bias, spread_regime,
+            self.profile.spread_regime_size_bias,
+            spread_regime,
         )
         self._last_order_book_quality_bucket = order_book_quality_bucket
         self._last_temporal_size_mult = self._temporal_size_mult(
@@ -1370,8 +1382,7 @@ class BtcHybridBot(BaseBot):
 
     def _refresh_grid_snapshot(self, mid: float) -> None:
         previous_orders = {
-            (float(order.price), self._coerce_side(order.side)): order
-            for order in self.grid_state.active_orders
+            (float(order.price), self._coerce_side(order.side)): order for order in self.grid_state.active_orders
         }
         self.grid_state.levels = self._grid_target_levels(mid)
         orders = self.manage_grid(mid, self.grid_state)
@@ -1397,8 +1408,7 @@ class BtcHybridBot(BaseBot):
         h = self.profile.mode_hysteresis_adx
         if self._market_quality_blocked:
             grid_below_floor = (
-                candidate == HybridMode.GRID
-                and self._execution_quality < self.profile.execution_quality_floor
+                candidate == HybridMode.GRID and self._execution_quality < self.profile.execution_quality_floor
             )
             directional_below_floor = (
                 candidate == HybridMode.DIRECTIONAL
@@ -1542,11 +1552,7 @@ class BtcHybridBot(BaseBot):
         temporal_mult = self._last_temporal_size_mult
         for idx, lvl in enumerate(state.levels):
             side = Side.BUY if lvl < current_price else Side.SELL
-            size = (
-                self.state.equity
-                * self._active_grid_inventory_cap_pct
-                / self.profile.grid_levels
-            )
+            size = self.state.equity * self._active_grid_inventory_cap_pct / self.profile.grid_levels
             qty = size / lvl if lvl > 0.0 else 0.0
             qty *= self._quality_signal_mult(self._execution_quality)
             qty *= max(0.85, min(1.15, 0.85 + self._last_order_book_quality * 0.015))
@@ -1691,7 +1697,8 @@ class BtcHybridBot(BaseBot):
         )
         if not allowed:
             logger.warning(
-                "BTC-Hybrid refused to start: %s", code,
+                "BTC-Hybrid refused to start: %s",
+                code,
             )
             self._record_event(
                 intent="btc_hybrid_start_blocked",
@@ -1702,7 +1709,8 @@ class BtcHybridBot(BaseBot):
             return
         logger.info(
             "BTC-Hybrid starting | symbol=%s cap=$%.0f router=%s profile=%s",
-            self._venue_symbol, self.config.starting_capital_usd,
+            self._venue_symbol,
+            self.config.starting_capital_usd,
             "yes" if self._router is not None else "paper-sim",
             {
                 "adx_range": self.profile.adx_ranging_threshold,
@@ -1725,7 +1733,8 @@ class BtcHybridBot(BaseBot):
     async def stop(self) -> None:
         logger.info(
             "BTC-Hybrid stopping | equity=$%.2f mode=%s",
-            self.state.equity, self._mode.value,
+            self.state.equity,
+            self._mode.value,
         )
         self._grid_levels.clear()
         self._grid_level_side.clear()
@@ -1776,7 +1785,8 @@ class BtcHybridBot(BaseBot):
         if new_mode != self._mode:
             logger.info(
                 "BTC-Hybrid mode %s -> %s (adx=%.1f)",
-                self._mode.value, new_mode.value,
+                self._mode.value,
+                new_mode.value,
                 bar.get("adx_14", 0.0),
             )
             self._record_event(
@@ -1798,8 +1808,7 @@ class BtcHybridBot(BaseBot):
     # ------------------------------------------------------------------
 
     async def _tick_grid(self, bar: dict[str, Any]) -> None:
-        """Place / maintain the grid around the range midpoint.
-        """
+        """Place / maintain the grid around the range midpoint."""
         bar = self._bar_with_fallbacks(bar)
         mid = (bar.get("bb_upper", 0.0) + bar.get("bb_lower", 0.0)) / 2
         if mid <= 0.0:
@@ -1842,7 +1851,8 @@ class BtcHybridBot(BaseBot):
                 )
                 continue
             sig = Signal(
-                type=SignalType.GRID_ADD, symbol=self.config.symbol,
+                type=SignalType.GRID_ADD,
+                symbol=self.config.symbol,
                 price=px,
                 confidence=min(
                     10.0,
@@ -1935,17 +1945,16 @@ class BtcHybridBot(BaseBot):
             released > 0
             and not self._grid_levels
             and self._grid_anchor_mid > 0.0
-            and abs(current_mid - self._grid_anchor_mid) / self._grid_anchor_mid
-                >= self.profile.grid_reanchor_drift_pct
+            and abs(current_mid - self._grid_anchor_mid) / self._grid_anchor_mid >= self.profile.grid_reanchor_drift_pct
         ):
-                self._grid_anchor_mid = current_mid
-                self._record_event(
-                    intent="btc_hybrid_grid_reanchor",
-                    rationale="grid book cleared after drift; anchor moved to current mid",
-                    outcome=Outcome.NOTED,
-                    price=current_mid,
-                    bar_idx=current_idx,
-                )
+            self._grid_anchor_mid = current_mid
+            self._record_event(
+                intent="btc_hybrid_grid_reanchor",
+                rationale="grid book cleared after drift; anchor moved to current mid",
+                outcome=Outcome.NOTED,
+                price=current_mid,
+                bar_idx=current_idx,
+            )
         return released
 
     # ------------------------------------------------------------------
@@ -2019,7 +2028,8 @@ class BtcHybridBot(BaseBot):
         confluence = min(
             6.0
             + (bar.get("adx_14", 0) - self.profile.adx_trending_threshold) / 10
-            + ema_spread * 100 + max(0.0, vol_ratio - 1.0),
+            + ema_spread * 100
+            + max(0.0, vol_ratio - 1.0),
             10.0,
         )
         if self._directional_quality < self.profile.directional_quality_floor:
@@ -2027,8 +2037,10 @@ class BtcHybridBot(BaseBot):
         if confluence < self.profile.dir_min_confluence:
             return
         sig = Signal(
-            type=direction, symbol=self.config.symbol,
-            price=bar["close"], confidence=confluence,
+            type=direction,
+            symbol=self.config.symbol,
+            price=bar["close"],
+            confidence=confluence,
             meta={
                 "mode": "directional",
                 "strategy": "ema_adx_volume",
@@ -2079,13 +2091,17 @@ class BtcHybridBot(BaseBot):
         if qty <= 0.0:
             logger.debug(
                 "BTC-Hybrid size<=0 -- skipping %s @ %.2f",
-                signal.type.value, signal.price,
+                signal.type.value,
+                signal.price,
             )
             return None
         if self._router is None:
             logger.info(
                 "BTC-Hybrid paper-sim %s %s qty=%.6f @ %.2f (cap=%s)",
-                signal.type.value, signal.symbol, qty, signal.price,
+                signal.type.value,
+                signal.symbol,
+                qty,
+                signal.price,
                 f"{cap:.2f}" if cap is not None else "none",
             )
             # In paper-sim we still record the arm so the grid tick
@@ -2113,7 +2129,9 @@ class BtcHybridBot(BaseBot):
             side, reduce_only = _signal_to_side(signal.type)
             order_type = OrderType.MARKET
         req = OrderRequest(
-            symbol=self._venue_symbol, side=side, qty=qty,
+            symbol=self._venue_symbol,
+            side=side,
+            qty=qty,
             order_type=order_type,
             reduce_only=reduce_only,
         )
@@ -2125,7 +2143,8 @@ class BtcHybridBot(BaseBot):
         if result.status is OrderStatus.REJECTED:
             logger.warning(
                 "BTC-Hybrid order rejected: id=%s reason_code=%s",
-                result.order_id, code,
+                result.order_id,
+                code,
             )
         elif signal.type == SignalType.GRID_ADD:
             grid_side = self._grid_side_for_signal(signal)
@@ -2196,30 +2215,26 @@ class BtcHybridBot(BaseBot):
     # ------------------------------------------------------------------
 
     def _size_from_signal(
-        self, signal: Signal, *, size_cap_mult: float | None,
+        self,
+        signal: Signal,
+        *,
+        size_cap_mult: float | None,
     ) -> float:
         """Derive coin qty from risk-per-trade, with optional Jarvis cap."""
         if signal.type == SignalType.GRID_ADD:
             # Grid orders use an inventory-cap allocation: equity * cap
             # / grid_levels. Each level is a small nibble; collectively
             # they respect _GRID_INVENTORY_CAP_PCT per side.
-            per_level = (
-                self.state.equity
-                * self._active_grid_inventory_cap_pct
-                / self.profile.grid_levels
-            )
+            per_level = self.state.equity * self._active_grid_inventory_cap_pct / self.profile.grid_levels
             qty = per_level / max(signal.price, 1.0)
             qty *= self._quality_signal_mult(self._execution_quality)
         else:
-            risk_usd = (
-                self.state.equity * (self.config.risk_per_trade_pct / 100.0)
-            )
+            risk_usd = self.state.equity * (self.config.risk_per_trade_pct / 100.0)
             stop_distance = signal.meta.get(
-                "stop_distance", signal.price * 0.01,
+                "stop_distance",
+                signal.price * 0.01,
             )
-            qty = (
-                risk_usd / stop_distance if stop_distance > 0 else 0.0
-            )
+            qty = risk_usd / stop_distance if stop_distance > 0 else 0.0
         size_mult = float(signal.meta.get("size_mult", 1.0) or 1.0)
         temporal_mult = float(signal.meta.get("temporal_size_mult", self._last_temporal_size_mult) or 1.0)
         book_mult = max(0.85, min(1.15, 0.85 + self._last_order_book_quality * 0.015))
@@ -2243,7 +2258,9 @@ class BtcHybridBot(BaseBot):
     # ------------------------------------------------------------------
 
     def evaluate_entry(
-        self, bar: dict[str, Any], confluence_score: float,
+        self,
+        bar: dict[str, Any],
+        confluence_score: float,
     ) -> bool:
         """Entry permitted if confluence >= floor and risk checks pass.
 
@@ -2261,9 +2278,7 @@ class BtcHybridBot(BaseBot):
         """Exit on 1R loss or 2R gain (BTC hybrid uses a lower R-multiple
         target than the L3 perps because the grid side generates more
         frequent small wins)."""
-        risk_usd = (
-            self.config.risk_per_trade_pct / 100 * self.state.equity
-        )
+        risk_usd = self.config.risk_per_trade_pct / 100 * self.state.equity
         if position.unrealized_pnl <= -risk_usd:
             return True
         return position.unrealized_pnl >= 2.0 * risk_usd

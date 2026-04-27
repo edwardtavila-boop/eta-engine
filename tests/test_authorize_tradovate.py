@@ -8,6 +8,7 @@ Tradovate endpoint is hit and no real creds are read. Exit-code contract:
     1 = FAILED      (creds present but HTTP rejected)
     2 = STUBBED     (creds missing, fell to stub path)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -69,8 +70,10 @@ def _patch_secrets(
     values: dict[str, str | None],
 ) -> None:
     """Make SECRETS.get return ``values`` for the 5 Tradovate keys."""
+
     def fake_get(key: str, required: bool = False) -> str | None:  # noqa: ARG001
         return values.get(key)
+
     monkeypatch.setattr(azt.SECRETS, "get", fake_get)
 
 
@@ -87,7 +90,8 @@ def _patch_status_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def test_stubbed_when_all_creds_missing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _patch_secrets(monkeypatch, {})
     status = _patch_status_dir(monkeypatch, tmp_path)
@@ -109,13 +113,18 @@ def test_stubbed_when_all_creds_missing(
 
 
 def test_stubbed_when_only_some_creds_present(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     # 3/5 present -> still stub, not real auth
-    _patch_secrets(monkeypatch, {
-        "TRADOVATE_USERNAME": "u", "TRADOVATE_PASSWORD": "p",
-        "TRADOVATE_APP_ID": "aid",
-    })
+    _patch_secrets(
+        monkeypatch,
+        {
+            "TRADOVATE_USERNAME": "u",
+            "TRADOVATE_PASSWORD": "p",
+            "TRADOVATE_APP_ID": "aid",
+        },
+    )
     _patch_status_dir(monkeypatch, tmp_path)
 
     rc, report = asyncio.run(azt._run(demo=True))
@@ -134,15 +143,19 @@ def test_stubbed_when_only_some_creds_present(
 
 
 def test_authorized_when_all_creds_present_and_http_ok(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    _patch_secrets(monkeypatch, {
-        "TRADOVATE_USERNAME": "trader@example.com",
-        "TRADOVATE_PASSWORD": "account-pw",
-        "TRADOVATE_APP_ID": "ApexPredator",
-        "TRADOVATE_APP_SECRET": "app-sec-xyz",
-        "TRADOVATE_CID": "12345",
-    })
+    _patch_secrets(
+        monkeypatch,
+        {
+            "TRADOVATE_USERNAME": "trader@example.com",
+            "TRADOVATE_PASSWORD": "account-pw",
+            "TRADOVATE_APP_ID": "ApexPredator",
+            "TRADOVATE_APP_SECRET": "app-sec-xyz",
+            "TRADOVATE_CID": "12345",
+        },
+    )
     _patch_status_dir(monkeypatch, tmp_path)
 
     # Patch TradovateVenue to inject our fake session + canned 200 response.
@@ -153,11 +166,14 @@ def test_authorized_when_all_creds_present_and_http_ok(
     def wrapped_init(self: TradovateVenue, *args: object, **kwargs: object) -> None:
         real_init(self, *args, **kwargs)
         sess = _FakeSession()
-        sess.enqueue(200, {
-            "accessToken": "LIVE-TOKEN-ABCDEF9999",
-            "mdAccessToken": "MD-TOKEN",
-            "expirationTime": "2099-01-01T00:00:00Z",
-        })
+        sess.enqueue(
+            200,
+            {
+                "accessToken": "LIVE-TOKEN-ABCDEF9999",
+                "mdAccessToken": "MD-TOKEN",
+                "expirationTime": "2099-01-01T00:00:00Z",
+            },
+        )
         self._session = sess
         captured_session["s"] = sess
 
@@ -189,13 +205,19 @@ def test_authorized_when_all_creds_present_and_http_ok(
 
 
 def test_failed_when_http_rejects_creds(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    _patch_secrets(monkeypatch, {
-        "TRADOVATE_USERNAME": "u", "TRADOVATE_PASSWORD": "p",
-        "TRADOVATE_APP_ID": "a", "TRADOVATE_APP_SECRET": "s",
-        "TRADOVATE_CID": "c",
-    })
+    _patch_secrets(
+        monkeypatch,
+        {
+            "TRADOVATE_USERNAME": "u",
+            "TRADOVATE_PASSWORD": "p",
+            "TRADOVATE_APP_ID": "a",
+            "TRADOVATE_APP_SECRET": "s",
+            "TRADOVATE_CID": "c",
+        },
+    )
     _patch_status_dir(monkeypatch, tmp_path)
 
     real_init = TradovateVenue.__init__
@@ -223,7 +245,8 @@ def test_failed_when_http_rejects_creds(
 
 
 def test_live_flag_selects_live_endpoint(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _patch_secrets(monkeypatch, {})
     _patch_status_dir(monkeypatch, tmp_path)
@@ -233,7 +256,8 @@ def test_live_flag_selects_live_endpoint(
 
 
 def test_demo_flag_selects_demo_endpoint(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _patch_secrets(monkeypatch, {})
     _patch_status_dir(monkeypatch, tmp_path)
@@ -248,7 +272,8 @@ def test_demo_flag_selects_demo_endpoint(
 
 
 def test_write_emits_valid_json(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     status = _patch_status_dir(monkeypatch, tmp_path)
     report = azt.AuthReport(

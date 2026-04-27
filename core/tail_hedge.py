@@ -19,6 +19,7 @@ this module emits:
 No live order flow. The allocator consumes the ``TailHedgeDecision`` and
 either queues a hedge leg or stores it for manual review.
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,6 +59,7 @@ class TailHedgeDecision(BaseModel):
 # Black-Scholes pricing (for OTM put)
 # ---------------------------------------------------------------------------
 
+
 def _bs_put_price(
     spot: float,
     strike: float,
@@ -78,6 +80,7 @@ def _bs_put_price(
 # ---------------------------------------------------------------------------
 # Price helpers for each kind
 # ---------------------------------------------------------------------------
+
 
 def price_otm_put(
     *,
@@ -132,6 +135,7 @@ def price_inverse_perp_short(
 # ---------------------------------------------------------------------------
 # Policy engine
 # ---------------------------------------------------------------------------
+
 
 def decide(
     *,
@@ -189,17 +193,18 @@ def decide(
     if not dd_trigger:
         notes.append(f"dd {current_dd_pct:.2f}% below trigger {pol.trigger_dd_pct:.2f}%")
     if not cost_ok:
-        notes.append(
-            f"hedge cost ${cost_usd:.0f} exceeds ceiling ${max_cost_allowed:.0f}"
-        )
+        notes.append(f"hedge cost ${cost_usd:.0f} exceeds ceiling ${max_cost_allowed:.0f}")
 
-    coverage_pct = (
-        (expected_payoff / projected_loss_usd * 100.0) if projected_loss_usd > 0 else 0.0
-    )
+    coverage_pct = (expected_payoff / projected_loss_usd * 100.0) if projected_loss_usd > 0 else 0.0
 
     logger.info(
         "tail_hedge.decide | equity=%.0f dd=%.2f armed=%s contracts=%d cost=%.0f payoff=%.0f",
-        equity_usd, current_dd_pct, armed, int(contracts), cost_usd, expected_payoff,
+        equity_usd,
+        current_dd_pct,
+        armed,
+        int(contracts),
+        cost_usd,
+        expected_payoff,
     )
 
     return TailHedgeDecision(

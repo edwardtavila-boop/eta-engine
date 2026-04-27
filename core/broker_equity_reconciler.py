@@ -71,6 +71,7 @@ source wired, so it's effectively a no-op. v0.2.x wires each broker's
 adapter `get_balance()` through to `broker_equity_source` and flips the
 runtime to respond to out-of-tolerance events.
 """
+
 from __future__ import annotations
 
 import logging
@@ -298,20 +299,16 @@ class BrokerEquityReconciler:
         # public attributes so the boot banner / observability can
         # surface them directly.
         self.tolerance_below_usd = float(
-            tolerance_below_usd if tolerance_below_usd is not None
-            else tolerance_usd,
+            tolerance_below_usd if tolerance_below_usd is not None else tolerance_usd,
         )
         self.tolerance_below_pct = float(
-            tolerance_below_pct if tolerance_below_pct is not None
-            else tolerance_pct,
+            tolerance_below_pct if tolerance_below_pct is not None else tolerance_pct,
         )
         self.tolerance_above_usd = float(
-            tolerance_above_usd if tolerance_above_usd is not None
-            else tolerance_usd,
+            tolerance_above_usd if tolerance_above_usd is not None else tolerance_usd,
         )
         self.tolerance_above_pct = float(
-            tolerance_above_pct if tolerance_above_pct is not None
-            else tolerance_pct,
+            tolerance_above_pct if tolerance_above_pct is not None else tolerance_pct,
         )
         self.min_logical_usd = float(min_logical_usd)
         # H3 closure (v0.1.66): hysteresis clear band for the below-
@@ -327,16 +324,10 @@ class BrokerEquityReconciler:
         if clear_tolerance_below_pct is None:
             clear_tolerance_below_pct = self.tolerance_below_pct * 0.7
         if clear_tolerance_below_usd < 0:
-            msg = (
-                f"clear_tolerance_below_usd must be >= 0 "
-                f"(got {clear_tolerance_below_usd})"
-            )
+            msg = f"clear_tolerance_below_usd must be >= 0 (got {clear_tolerance_below_usd})"
             raise ValueError(msg)
         if clear_tolerance_below_pct < 0:
-            msg = (
-                f"clear_tolerance_below_pct must be >= 0 "
-                f"(got {clear_tolerance_below_pct})"
-            )
+            msg = f"clear_tolerance_below_pct must be >= 0 (got {clear_tolerance_below_pct})"
             raise ValueError(msg)
         if clear_tolerance_below_usd > self.tolerance_below_usd:
             msg = (
@@ -365,10 +356,7 @@ class BrokerEquityReconciler:
         # stale spikes, long enough to retain a meaningful sample for
         # the H1 calibration harness when it lands.
         if drift_window_size < 0:
-            msg = (
-                f"drift_window_size must be >= 0 "
-                f"(got {drift_window_size})"
-            )
+            msg = f"drift_window_size must be >= 0 (got {drift_window_size})"
             raise ValueError(msg)
         self.drift_window_size = int(drift_window_size)
         self._drift_window: deque[float] = deque(
@@ -412,21 +400,14 @@ class BrokerEquityReconciler:
         # the percentage drift is undefined; producing inf would corrupt
         # the JSON tick log (RFC 8259 violation). Classify as no_data so
         # the runtime path stays uniform.
-        if (
-            not math.isfinite(logical_equity_usd)
-            or logical_equity_usd < self.min_logical_usd
-        ):
+        if not math.isfinite(logical_equity_usd) or logical_equity_usd < self.min_logical_usd:
             self._stats.checks_no_data += 1
             # H3 closure: a no_broker_data tick is silent on the latch
             # -- the drift state from before this tick carries through.
             # No transition.
             result = ReconcileResult(
                 ts=ts,
-                logical_equity_usd=(
-                    float(logical_equity_usd)
-                    if math.isfinite(logical_equity_usd)
-                    else 0.0
-                ),
+                logical_equity_usd=(float(logical_equity_usd) if math.isfinite(logical_equity_usd) else 0.0),
                 broker_equity_usd=None,
                 drift_usd=None,
                 drift_pct_of_logical=None,
@@ -443,7 +424,9 @@ class BrokerEquityReconciler:
         except Exception as exc:
             log.warning(
                 "%s: broker equity source raised %s -- treating as no_data",
-                self.name, exc, exc_info=True,
+                self.name,
+                exc,
+                exc_info=True,
             )
             broker_equity = None
 
@@ -494,9 +477,13 @@ class BrokerEquityReconciler:
             log.warning(
                 "%s: DRIFT broker_below_logical: logical=%.2f broker=%.2f "
                 "drift=%.2f (%.4f%%) tol_below_usd=%.2f tol_below_pct=%.4f",
-                self.name, logical_equity_usd, broker_equity,
-                drift_usd, drift_pct * 100.0,
-                self.tolerance_below_usd, self.tolerance_below_pct,
+                self.name,
+                logical_equity_usd,
+                broker_equity,
+                drift_usd,
+                drift_pct * 100.0,
+                self.tolerance_below_usd,
+                self.tolerance_below_pct,
             )
         else:
             reason = "broker_above_logical"
@@ -504,13 +491,18 @@ class BrokerEquityReconciler:
             log.info(
                 "%s: drift broker_above_logical: logical=%.2f broker=%.2f "
                 "drift=%.2f (%.4f%%) tol_above_usd=%.2f tol_above_pct=%.4f",
-                self.name, logical_equity_usd, broker_equity,
-                drift_usd, drift_pct * 100.0,
-                self.tolerance_above_usd, self.tolerance_above_pct,
+                self.name,
+                logical_equity_usd,
+                broker_equity,
+                drift_usd,
+                drift_pct * 100.0,
+                self.tolerance_above_usd,
+                self.tolerance_above_pct,
             )
 
         self._stats.max_drift_usd_abs = max(
-            self._stats.max_drift_usd_abs, drift_abs,
+            self._stats.max_drift_usd_abs,
+            drift_abs,
         )
         # L2 closure (v0.1.67): track windowed max drift over the last
         # ``drift_window_size`` real (non no_broker_data) ticks. The
@@ -551,12 +543,8 @@ class BrokerEquityReconciler:
             # clear band. drift_usd < 0 (broker_above_logical) also
             # clears the latch -- we are no longer in the dangerous
             # cushion-overstated direction.
-            cleared = (
-                drift_usd < 0
-                or (
-                    drift_abs <= self.clear_tolerance_below_usd
-                    and drift_pct <= self.clear_tolerance_below_pct
-                )
+            cleared = drift_usd < 0 or (
+                drift_abs <= self.clear_tolerance_below_usd and drift_pct <= self.clear_tolerance_below_pct
             )
             if cleared:
                 self._in_drift_state = False

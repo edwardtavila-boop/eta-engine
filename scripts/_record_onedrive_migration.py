@@ -1,4 +1,5 @@
 """One-shot: record the v3 framework OneDrive->projects migration in roadmap_state.json."""
+
 from __future__ import annotations
 
 import json

@@ -68,6 +68,7 @@ not an eval-saver.
 The soft/info verdicts (``HALVE_SIZE``, ``PAUSE_NEW_ENTRIES``,
 ``CONTINUE``) are never latched.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -88,11 +89,13 @@ log = logging.getLogger(__name__)
 
 #: Verdict actions that flip the latch to TRIPPED. Anything else is
 #: passed through without latching.
-_LATCHING_ACTIONS: frozenset[str] = frozenset({
-    "FLATTEN_ALL",
-    "FLATTEN_TIER_A_PREEMPTIVE",
-    "FLATTEN_TIER_B",
-})
+_LATCHING_ACTIONS: frozenset[str] = frozenset(
+    {
+        "FLATTEN_ALL",
+        "FLATTEN_TIER_A_PREEMPTIVE",
+        "FLATTEN_TIER_B",
+    }
+)
 
 
 class LatchState(StrEnum):
@@ -226,18 +229,18 @@ class KillSwitchLatch:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             log.error(
-                "kill_switch_latch: corrupt latch file %s (%s) "
-                "-- failing closed (TRIPPED)",
-                self.path, exc,
+                "kill_switch_latch: corrupt latch file %s (%s) -- failing closed (TRIPPED)",
+                self.path,
+                exc,
             )
             return LatchRecord.fail_closed_tripped(
                 f"corrupt latch file at {self.path}: {exc}",
             )
         if not isinstance(raw, dict):
             log.error(
-                "kill_switch_latch: malformed root in %s "
-                "(expected object, got %s) -- failing closed",
-                self.path, type(raw).__name__,
+                "kill_switch_latch: malformed root in %s (expected object, got %s) -- failing closed",
+                self.path,
+                type(raw).__name__,
             )
             return LatchRecord.fail_closed_tripped(
                 f"corrupt latch root in {self.path}: not an object",
@@ -262,11 +265,7 @@ class KillSwitchLatch:
             scope = rec.scope or "unknown"
             action = rec.action or "unknown"
             reason = rec.reason or "no reason recorded"
-            corrupt_hint = (
-                "corrupt"
-                if action == "CORRUPT_LATCH"
-                else "TRIPPED"
-            )
+            corrupt_hint = "corrupt" if action == "CORRUPT_LATCH" else "TRIPPED"
             msg = (
                 f"kill-switch latch {corrupt_hint} at {tripped_at} "
                 f"(scope={scope}, action={action}): {reason}. "
@@ -308,7 +307,9 @@ class KillSwitchLatch:
         self._write_atomic(rec.to_dict())
         log.critical(
             "kill_switch_latch: TRIPPED action=%s scope=%s reason=%s",
-            action, verdict.scope, verdict.reason,
+            action,
+            verdict.scope,
+            verdict.reason,
         )
         return True
 
@@ -348,33 +349,20 @@ class KillSwitchLatch:
             # the synthetic CORRUPT_LATCH record (those carry no real
             # audit data; clearing a corrupt file should not leave a
             # fake "CORRUPT_LATCH" trip in the post-clear record).
-            tripped_at_utc=(
-                prior.tripped_at_utc if prior.action != "CORRUPT_LATCH" else None
-            ),
-            reason=(
-                prior.reason if prior.action != "CORRUPT_LATCH" else None
-            ),
-            scope=(
-                prior.scope if prior.action != "CORRUPT_LATCH" else None
-            ),
-            action=(
-                prior.action if prior.action != "CORRUPT_LATCH" else None
-            ),
-            severity=(
-                prior.severity if prior.action != "CORRUPT_LATCH" else None
-            ),
-            evidence=(
-                dict(prior.evidence)
-                if prior.action != "CORRUPT_LATCH"
-                else {}
-            ),
+            tripped_at_utc=(prior.tripped_at_utc if prior.action != "CORRUPT_LATCH" else None),
+            reason=(prior.reason if prior.action != "CORRUPT_LATCH" else None),
+            scope=(prior.scope if prior.action != "CORRUPT_LATCH" else None),
+            action=(prior.action if prior.action != "CORRUPT_LATCH" else None),
+            severity=(prior.severity if prior.action != "CORRUPT_LATCH" else None),
+            evidence=(dict(prior.evidence) if prior.action != "CORRUPT_LATCH" else {}),
             cleared_at_utc=cleared_at,
             cleared_by=cleared_by.strip(),
         )
         self._write_atomic(rec.to_dict())
         log.warning(
             "kill_switch_latch: CLEARED by %s at %s",
-            rec.cleared_by, cleared_at,
+            rec.cleared_by,
+            cleared_at,
         )
         return rec
 

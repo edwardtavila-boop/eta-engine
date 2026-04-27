@@ -21,6 +21,7 @@ Design contract
 4. Hierarchy respected: daily dominates 4H. When they disagree we
    return NEUTRAL rather than defaulting to one side.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,6 +55,7 @@ class HtfBias(BaseModel):
 # ---------------------------------------------------------------------------
 # EMA
 # ---------------------------------------------------------------------------
+
 
 def compute_ema(values: list[float], period: int) -> list[float]:
     """Exponential moving average. Seed from the first ``period`` SMA.
@@ -106,6 +108,7 @@ def ema_slope_label(ema: list[float], lookback: int = 20) -> float:
 # ---------------------------------------------------------------------------
 # Swing detection + structure
 # ---------------------------------------------------------------------------
+
 
 def swing_highs(bars: list[BarData], k: int = 2) -> list[int]:
     """Return indices i where bar[i].high is the max within [i-k, i+k].

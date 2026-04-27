@@ -34,6 +34,7 @@ Exit codes
 ----------
 0 GREEN, 1 YELLOW, 2 RED, 9 backup directory unwritable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -111,7 +112,7 @@ def _prune(backup_dir: Path, basename: str, keep: int) -> int:
     snaps = _existing_snapshots(backup_dir, basename)
     if len(snaps) <= keep:
         return 0
-    to_remove = snaps[: -keep]
+    to_remove = snaps[:-keep]
     pruned = 0
     for p in to_remove:
         try:
@@ -128,9 +129,13 @@ def _stamp_from_name(p: Path) -> float | None:
     for tok in parts:
         if len(tok) == 16 and tok.endswith("Z") and "T" in tok:
             try:
-                return datetime.strptime(tok, "%Y%m%dT%H%M%SZ").replace(
-                    tzinfo=UTC,
-                ).timestamp()
+                return (
+                    datetime.strptime(tok, "%Y%m%dT%H%M%SZ")
+                    .replace(
+                        tzinfo=UTC,
+                    )
+                    .timestamp()
+                )
             except ValueError:
                 continue
     return None
@@ -152,8 +157,7 @@ def _evaluate(backup_dir: Path, min_snaps: int, max_stale_h: float) -> tuple[str
                 severity = max(severity, 2)
         if len(viable) < min_snaps:
             issues.append(
-                f"  {src.name}: only {len(viable)} viable snapshots "
-                f"(min {min_snaps})",
+                f"  {src.name}: only {len(viable)} viable snapshots (min {min_snaps})",
             )
             severity = max(severity, 1)
         if viable:
@@ -164,8 +168,7 @@ def _evaluate(backup_dir: Path, min_snaps: int, max_stale_h: float) -> tuple[str
             age_h = (now_ts - ref_ts) / 3600.0
             if age_h > max_stale_h:
                 issues.append(
-                    f"  {src.name}: freshest snapshot {age_h:.1f}h old "
-                    f"(cap {max_stale_h:.0f}h)",
+                    f"  {src.name}: freshest snapshot {age_h:.1f}h old (cap {max_stale_h:.0f}h)",
                 )
                 severity = max(severity, 1)
     overall = ("GREEN", "YELLOW", "RED")[severity]

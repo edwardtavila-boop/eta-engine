@@ -34,6 +34,7 @@ Hash field selection
     so the COID this router emits matches what the venue would have
     computed on its own — there's a single canonical hash form.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -89,9 +90,7 @@ class JarvisAwareRouter:
                 str(request.reduce_only),
             ]
         )
-        coid = hashlib.sha256(payload.encode()).hexdigest()[
-            : JarvisAwareRouter.COID_LEN
-        ]
+        coid = hashlib.sha256(payload.encode()).hexdigest()[: JarvisAwareRouter.COID_LEN]
         return request.model_copy(update={"client_order_id": coid})
 
 

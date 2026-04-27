@@ -1,4 +1,5 @@
 """Tests for funnel.fiat_to_crypto -- the fiat -> crypto on-ramp pipeline."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ _T0 = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
 def _clock_at(t: datetime) -> Callable[[], datetime]:
     def fn() -> datetime:
         return t
+
     return fn
 
 
@@ -77,26 +79,44 @@ def _req(
 
 def test_fiat_source_enum_members() -> None:
     assert {m.value for m in FiatSource} == {
-        "BANK_WIRE", "ACH", "CARD", "ZELLE", "CASH_APP",
+        "BANK_WIRE",
+        "ACH",
+        "CARD",
+        "ZELLE",
+        "CASH_APP",
     }
 
 
 def test_provider_enum_members() -> None:
     assert {m.value for m in OnrampProvider} == {
-        "COINBASE", "KRAKEN", "STRIKE", "BINANCE_US", "GEMINI",
+        "COINBASE",
+        "KRAKEN",
+        "STRIKE",
+        "BINANCE_US",
+        "GEMINI",
     }
 
 
 def test_crypto_target_enum_members() -> None:
     assert {m.value for m in CryptoTarget} == {
-        "BTC", "ETH", "SOL", "XRP", "USDC", "USDT",
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP",
+        "USDC",
+        "USDT",
     }
 
 
 def test_stage_enum_members() -> None:
     assert {m.value for m in OnrampStage} == {
-        "INITIATED", "FIAT_DEPOSITED", "CONVERTING",
-        "CONVERTED", "WITHDRAWING", "COMPLETE", "FAILED",
+        "INITIATED",
+        "FIAT_DEPOSITED",
+        "CONVERTING",
+        "CONVERTED",
+        "WITHDRAWING",
+        "COMPLETE",
+        "FAILED",
     }
 
 
@@ -203,10 +223,14 @@ async def test_stub_executor_zero_slippage() -> None:
 async def test_stub_executor_order_counter_increments() -> None:
     x = StubOnrampExecutor()
     f1 = await x.place_order(
-        provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC, fiat_amount_usd=500.0,
+        provider=OnrampProvider.COINBASE,
+        target=CryptoTarget.BTC,
+        fiat_amount_usd=500.0,
     )
     f2 = await x.place_order(
-        provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC, fiat_amount_usd=500.0,
+        provider=OnrampProvider.COINBASE,
+        target=CryptoTarget.BTC,
+        fiat_amount_usd=500.0,
     )
     assert f1.order_id == "COINBASE-1"
     assert f2.order_id == "COINBASE-2"
@@ -239,12 +263,16 @@ async def test_stub_executor_withdraw_happy_path() -> None:
 async def test_stub_executor_withdraw_tx_counter_increments() -> None:
     x = StubOnrampExecutor()
     r1 = await x.withdraw(
-        provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC,
-        crypto_qty=0.1, address="addr_1234",
+        provider=OnrampProvider.COINBASE,
+        target=CryptoTarget.BTC,
+        crypto_qty=0.1,
+        address="addr_1234",
     )
     r2 = await x.withdraw(
-        provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC,
-        crypto_qty=0.2, address="addr_1234",
+        provider=OnrampProvider.COINBASE,
+        target=CryptoTarget.BTC,
+        crypto_qty=0.2,
+        address="addr_1234",
     )
     assert r1.tx_id == "BTC-tx-1"
     assert r2.tx_id == "BTC-tx-2"
@@ -255,8 +283,10 @@ async def test_stub_executor_rejects_zero_qty_withdraw() -> None:
     x = StubOnrampExecutor()
     with pytest.raises(OnrampExecutorError, match="qty must be > 0"):
         await x.withdraw(
-            provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC,
-            crypto_qty=0.0, address="addr_1234",
+            provider=OnrampProvider.COINBASE,
+            target=CryptoTarget.BTC,
+            crypto_qty=0.0,
+            address="addr_1234",
         )
 
 
@@ -265,8 +295,10 @@ async def test_stub_executor_rejects_empty_address() -> None:
     x = StubOnrampExecutor()
     with pytest.raises(OnrampExecutorError, match="address must be non-empty"):
         await x.withdraw(
-            provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC,
-            crypto_qty=0.1, address="",
+            provider=OnrampProvider.COINBASE,
+            target=CryptoTarget.BTC,
+            crypto_qty=0.1,
+            address="",
         )
 
 
@@ -275,8 +307,10 @@ async def test_stub_executor_fail_withdrawals_flag() -> None:
     x = StubOnrampExecutor(fail_withdrawals=True)
     with pytest.raises(OnrampExecutorError, match="configured to fail"):
         await x.withdraw(
-            provider=OnrampProvider.COINBASE, target=CryptoTarget.BTC,
-            crypto_qty=0.1, address="addr_1234",
+            provider=OnrampProvider.COINBASE,
+            target=CryptoTarget.BTC,
+            crypto_qty=0.1,
+            address="addr_1234",
         )
 
 

@@ -34,6 +34,7 @@ Scorer = Callable[[Mapping[str, Any]], CellScore]
 # Parameter sweep
 # ---------------------------------------------------------------------------
 
+
 def run_parameter_sweep(
     param_ranges: dict[str, list[Any]],
     scorer: Scorer,
@@ -55,9 +56,7 @@ def run_parameter_sweep(
     if not param_ranges:
         return []
     grid = SweepGrid(
-        params=[
-            SweepParam(name=k, values=list(v)) for k, v in param_ranges.items()
-        ],
+        params=[SweepParam(name=k, values=list(v)) for k, v in param_ranges.items()],
     )
     cells = run_sweep(grid, scorer, gate=gate)
     ranked = rank_cells(cells)
@@ -87,9 +86,7 @@ def pareto_frontier_for(
     if not param_ranges:
         return []
     grid = SweepGrid(
-        params=[
-            SweepParam(name=k, values=list(v)) for k, v in param_ranges.items()
-        ],
+        params=[SweepParam(name=k, values=list(v)) for k, v in param_ranges.items()],
     )
     cells = run_sweep(grid, scorer)
     return [
@@ -107,6 +104,7 @@ def pareto_frontier_for(
 # ---------------------------------------------------------------------------
 # Forward test A/B comparator
 # ---------------------------------------------------------------------------
+
 
 def run_forward_test_comparator(
     scorer_a: Scorer,
@@ -160,6 +158,7 @@ def run_forward_test_comparator(
 # Regime-sliced evaluator
 # ---------------------------------------------------------------------------
 
+
 def run_regime_slice_evaluator(
     scorer: Scorer,
     data: list[dict[str, float]],
@@ -208,12 +207,16 @@ def run_regime_slice_evaluator(
 # Summary helpers
 # ---------------------------------------------------------------------------
 
+
 def summarize_sweep(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Produce a one-shot summary of a sweep run for dashboards / tests."""
     if not results:
         return {
-            "n_cells": 0, "n_pass": 0, "best_expectancy_r": 0.0,
-            "median_expectancy_r": 0.0, "winner": None,
+            "n_cells": 0,
+            "n_pass": 0,
+            "best_expectancy_r": 0.0,
+            "median_expectancy_r": 0.0,
+            "winner": None,
         }
     passers = [r for r in results if r["gate_pass"]]
     exp_values = [r["expectancy_r"] for r in results]

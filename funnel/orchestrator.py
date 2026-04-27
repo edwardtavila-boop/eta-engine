@@ -33,6 +33,7 @@ AllocatorFn = Callable[[float], dict[str, float]]
 # Result model
 # ---------------------------------------------------------------------------
 
+
 class FunnelTickResult(BaseModel):
     """Output of a single orchestrator tick."""
 
@@ -100,28 +101,37 @@ class FunnelOrchestrator:
             for asset, usd in stake_alloc.items():
                 if usd <= 0.0:
                     continue
-                result.transfers_queued.append(TransferRequest(
-                    from_bot=bot, to_bot=f"staking_{asset}",
-                    amount_usd=round(usd, 2),
-                    reason=f"Sweep {bot}: {asset} stake allocation",
-                ))
+                result.transfers_queued.append(
+                    TransferRequest(
+                        from_bot=bot,
+                        to_bot=f"staking_{asset}",
+                        amount_usd=round(usd, 2),
+                        reason=f"Sweep {bot}: {asset} stake allocation",
+                    )
+                )
 
             # 30% → reinvest back into the bot
             if sweep.to_reinvest > 0.0:
-                result.transfers_queued.append(TransferRequest(
-                    from_bot=bot, to_bot=bot,
-                    amount_usd=round(sweep.to_reinvest, 2),
-                    reason=f"Sweep {bot}: reinvest",
-                ))
+                result.transfers_queued.append(
+                    TransferRequest(
+                        from_bot=bot,
+                        to_bot=bot,
+                        amount_usd=round(sweep.to_reinvest, 2),
+                        reason=f"Sweep {bot}: reinvest",
+                    )
+                )
 
             # 10% → cold reserve
             if sweep.to_reserve > 0.0:
-                result.transfers_queued.append(TransferRequest(
-                    from_bot=bot, to_bot="cold_wallet",
-                    amount_usd=round(sweep.to_reserve, 2),
-                    reason=f"Sweep {bot}: cold reserve",
-                    requires_approval=True,
-                ))
+                result.transfers_queued.append(
+                    TransferRequest(
+                        from_bot=bot,
+                        to_bot="cold_wallet",
+                        amount_usd=round(sweep.to_reserve, 2),
+                        reason=f"Sweep {bot}: cold reserve",
+                        requires_approval=True,
+                    )
+                )
 
         result.total_swept_usd = round(result.total_swept_usd, 2)
         result.total_to_stake_usd = round(result.total_to_stake_usd, 2)

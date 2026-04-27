@@ -134,6 +134,7 @@ Reconciliation
     but do not advance the MNQ P9 gate by themselves.
   * Python-only bundle (no JSX touched this slice).
 """
+
 from __future__ import annotations
 
 import json
@@ -160,9 +161,7 @@ def main() -> None:
     sa["eta_engine_v0_1_30_dual_bot_funnel_rental"] = {
         "timestamp_utc": now,
         "version": "v0.1.30",
-        "bundle_name": (
-            "DUAL-BOT + FUNNEL + RENTAL SAAS -- the monetization spine"
-        ),
+        "bundle_name": ("DUAL-BOT + FUNNEL + RENTAL SAAS -- the monetization spine"),
         "directive": (
             "fine-tune both bots with Jarvis, build a BTC paper + "
             "live-gate sequencer, collect MNQ + BTC + Jarvis in one "
@@ -237,10 +236,7 @@ def main() -> None:
         "tests_passing_before": prev_tests,
         "tests_passing_after": new_tests,
         "preexisting_flake_cleared": {
-            "test": (
-                "tests/test_jarvis_admin.py::TestEngineIntegration::"
-                "test_admin_with_engine_ticks_per_request"
-            ),
+            "test": ("tests/test_jarvis_admin.py::TestEngineIntegration::test_admin_with_engine_ticks_per_request"),
             "cause": (
                 "session_phase was derived from wall clock time, so "
                 "outside RTH the OVERNIGHT gate flipped the verdict to "
@@ -283,9 +279,7 @@ def main() -> None:
             },
             "global_kill_pct": 8.0,
             "correlation_guard_mult": 0.6,
-            "correlation_guard_trigger": (
-                ">=2 risky layers simultaneously in HIGH vol regime"
-            ),
+            "correlation_guard_trigger": (">=2 risky layers simultaneously in HIGH vol regime"),
             "inverse_vol_floor": 0.25,
         },
         "rental_saas_spec_locked": {
@@ -296,8 +290,7 @@ def main() -> None:
                     "notes": "paper only, BTC_SEED only",
                 },
                 "STARTER": {
-                    "monthly_usd_range": "25..90 (anchors with " \
-                                         "cheap-SaaS competitors)",
+                    "monthly_usd_range": "25..90 (anchors with cheap-SaaS competitors)",
                     "skus": ["BTC_SEED"],
                 },
                 "PRO": {
@@ -306,7 +299,10 @@ def main() -> None:
                 },
                 "PORTFOLIO": {
                     "skus_include": [
-                        "BTC_SEED", "ETH_PERP", "SOL_PERP", "STAKING_SWEEP",
+                        "BTC_SEED",
+                        "ETH_PERP",
+                        "SOL_PERP",
+                        "STAKING_SWEEP",
                     ],
                     "cpu_per_container": 2.0,
                     "memory_per_container": "2Gi",
@@ -318,32 +314,44 @@ def main() -> None:
             "api_key_model": {
                 "scope": "TRADE_ONLY -- WITHDRAW scopes are rejected",
                 "secret_storage": (
-                    "raw secret shown ONCE to the tenant at issuance, "
-                    "stored only as salt+SHA-256 digest server-side"
+                    "raw secret shown ONCE to the tenant at issuance, stored only as salt+SHA-256 digest server-side"
                 ),
                 "salt_bytes": 16,
                 "fresh_salt_per_record": True,
             },
             "isolation_guarantees": {
                 "env_injected": [
-                    "APEX_TENANT_ID", "APEX_SKU", "APEX_TIER",
-                    "APEX_EXCHANGE", "APEX_KEY_ID",
+                    "APEX_TENANT_ID",
+                    "APEX_SKU",
+                    "APEX_TIER",
+                    "APEX_EXCHANGE",
+                    "APEX_KEY_ID",
                 ],
                 "env_never_contains_raw_secret": True,
                 "strategy_mounts_read_only": [
-                    "/opt/apex/brain:ro", "/opt/apex/funnel:ro",
+                    "/opt/apex/brain:ro",
+                    "/opt/apex/funnel:ro",
                 ],
                 "network_allowlist": "explicit hosts, no wildcards",
                 "labels": ["tenant", "sku", "tier"],
             },
             "subscription_state_machine": {
                 "states": [
-                    "TRIAL", "ACTIVE", "GRACE", "PAST_DUE",
-                    "CANCELLED", "EXPIRED",
+                    "TRIAL",
+                    "ACTIVE",
+                    "GRACE",
+                    "PAST_DUE",
+                    "CANCELLED",
+                    "EXPIRED",
                 ],
                 "events": [
-                    "START_TRIAL", "ACTIVATE", "RENEWAL_PAID",
-                    "PAYMENT_FAILED", "REINSTATE", "CANCEL", "EXPIRE",
+                    "START_TRIAL",
+                    "ACTIVATE",
+                    "RENEWAL_PAID",
+                    "PAYMENT_FAILED",
+                    "REINSTATE",
+                    "CANCEL",
+                    "EXPIRE",
                 ],
                 "grace_window_days": 3,
                 "trial_window_days": 7,
@@ -352,10 +360,12 @@ def main() -> None:
                 "required_params_enforced": True,
                 "unexpected_params_rejected": True,
                 "forbidden_strategy_params": [
-                    "reward_weights", "pine_source",
+                    "reward_weights",
+                    "pine_source",
                 ],
                 "empty_credentials_rejected": [
-                    "session_token", "tenant_id",
+                    "session_token",
+                    "tenant_id",
                 ],
                 "unknown_kind_rejected": True,
             },
@@ -371,10 +381,7 @@ def main() -> None:
             "btc": "live_ticks_btc.jsonl",
             "jarvis": "live_jarvis.jsonl",
             "enrichment_keys": ["_stream", "_ts_written"],
-            "error_capture": (
-                "per-stream exceptions into stats.errors instead of "
-                "crashing the collector task pool"
-            ),
+            "error_capture": ("per-stream exceptions into stats.errors instead of crashing the collector task pool"),
             "shutdown_modes": [
                 "external asyncio.Event (stop_event)",
                 "CollectorConfig.max_ticks cap",
@@ -408,16 +415,17 @@ def main() -> None:
     state["overall_progress_pct"] = state.get("overall_progress_pct", 99)
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.30 at {now}")
-    print(f"  tests_passing: {prev_tests} -> {new_tests} "
-          f"({new_tests - prev_tests:+d})  [+132 new, 1 flake fixed]")
-    print("  shared_artifacts.eta_engine_v0_1_30_dual_bot_funnel_rental "
-          "written")
-    print("  directive satisfied: dual fine-tune + BTC paper+live gate + "
-          "dual collector + 4-layer funnel + rental SaaS foundation + "
-          "Electron client scaffold")
+    print(f"  tests_passing: {prev_tests} -> {new_tests} ({new_tests - prev_tests:+d})  [+132 new, 1 flake fixed]")
+    print("  shared_artifacts.eta_engine_v0_1_30_dual_bot_funnel_rental written")
+    print(
+        "  directive satisfied: dual fine-tune + BTC paper+live gate + "
+        "dual collector + 4-layer funnel + rental SaaS foundation + "
+        "Electron client scaffold"
+    )
 
 
 if __name__ == "__main__":

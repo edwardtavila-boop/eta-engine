@@ -35,6 +35,7 @@ What's NOT enforced
 * Tolerance defaults -- separately covered by
   ``test_broker_equity_reconciler.py``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -67,31 +68,33 @@ async def test_amain_dry_run_wires_broker_equity_into_runtime_log(
     # appears -- not because the wire-up is broken but because there
     # are no ticks. Seed -> force a real tick path.
     state_path.write_text(
-        json.dumps({
-            "shared_artifacts": {
-                "apex_go_state": {"tier_a_mnq_live": True},
-            },
-        }),
+        json.dumps(
+            {
+                "shared_artifacts": {
+                    "apex_go_state": {"tier_a_mnq_live": True},
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
-    rc = await _amain([
-        "--max-bars", "1",
-        "--tick-interval", "0",
-        "--state-path", str(state_path),
-        "--log-path", str(log_path),
-    ])
-
-    assert rc == 0, f"_amain returned rc={rc}, expected 0"
-    assert log_path.exists(), (
-        f"runtime log was never written -- did _amain even tick? "
-        f"(checked {log_path})"
+    rc = await _amain(
+        [
+            "--max-bars",
+            "1",
+            "--tick-interval",
+            "0",
+            "--state-path",
+            str(state_path),
+            "--log-path",
+            str(log_path),
+        ]
     )
 
-    lines = [
-        ln for ln in log_path.read_text(encoding="utf-8").splitlines()
-        if ln.strip()
-    ]
+    assert rc == 0, f"_amain returned rc={rc}, expected 0"
+    assert log_path.exists(), f"runtime log was never written -- did _amain even tick? (checked {log_path})"
+
+    lines = [ln for ln in log_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert lines, "runtime log is empty -- _amain ticked zero times"
 
     # Find at least one tick entry with a broker_equity block.
@@ -110,8 +113,7 @@ async def test_amain_dry_run_wires_broker_equity_into_runtime_log(
         # snuck in via float('inf') in a stat field. H5 regression pin.
         if any(tok in raw for tok in ("Infinity", "NaN", "-Infinity")):
             pytest.fail(
-                f"runtime log contains non-RFC-8259 tokens "
-                f"(H5 regression): {raw[:200]!r}",
+                f"runtime log contains non-RFC-8259 tokens (H5 regression): {raw[:200]!r}",
             )
         if entry.get("kind") == "tick":
             meta = entry.get("meta") or {}
@@ -128,19 +130,17 @@ async def test_amain_dry_run_wires_broker_equity_into_runtime_log(
 
     # Verify the broker_equity block has the expected R1 fields.
     be = tick_with_be.get("meta", {}).get(
-        "broker_equity", tick_with_be.get("broker_equity"),
+        "broker_equity",
+        tick_with_be.get("broker_equity"),
     )
-    assert isinstance(be, dict), (
-        f"broker_equity block is not a dict: {be!r}"
-    )
+    assert isinstance(be, dict), f"broker_equity block is not a dict: {be!r}"
     # In dry-run with NullBrokerEquityAdapter, reason must be no_broker_data.
     # The exact field set depends on what runtime chose to project, but
     # 'reason' is the canonical classification key per
     # BrokerEquityReconciler.ReconcileResult.as_dict.
     reason = be.get("reason")
     assert reason in {"no_broker_data", "within_tolerance"}, (
-        f"broker_equity.reason={reason!r}; expected no_broker_data "
-        f"(NullBrokerEquityAdapter is wired in dry-run mode)"
+        f"broker_equity.reason={reason!r}; expected no_broker_data (NullBrokerEquityAdapter is wired in dry-run mode)"
     )
 
 
@@ -173,20 +173,28 @@ async def test_amain_dry_run_emits_broker_equity_in_boot_banner(
     log_path = tmp_path / "rt2.jsonl"
     state_path = tmp_path / "s2.json"
     state_path.write_text(
-        json.dumps({
-            "shared_artifacts": {
-                "apex_go_state": {"tier_a_mnq_live": True},
-            },
-        }),
+        json.dumps(
+            {
+                "shared_artifacts": {
+                    "apex_go_state": {"tier_a_mnq_live": True},
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
-    rc = await _amain([
-        "--max-bars", "1",
-        "--tick-interval", "0",
-        "--state-path", str(state_path),
-        "--log-path", str(log_path),
-    ])
+    rc = await _amain(
+        [
+            "--max-bars",
+            "1",
+            "--tick-interval",
+            "0",
+            "--state-path",
+            str(state_path),
+            "--log-path",
+            str(log_path),
+        ]
+    )
     assert rc == 0, f"_amain returned rc={rc}, expected 0"
 
     captured = capsys.readouterr()

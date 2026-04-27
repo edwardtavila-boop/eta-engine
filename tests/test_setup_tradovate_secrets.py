@@ -3,6 +3,7 @@
 The interactive prompts are exercised by monkeypatching input / getpass.getpass
 so no real stdin is needed and no plaintext is passed via argv.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -19,7 +20,8 @@ if TYPE_CHECKING:
 
 
 def test_cmd_check_returns_1_when_all_missing(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(sts.SECRETS, "get", lambda k, required=False: None)  # noqa: ARG005
     rc = sts.cmd_check()
@@ -29,7 +31,8 @@ def test_cmd_check_returns_1_when_all_missing(
 
 
 def test_cmd_check_returns_0_when_all_present(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(sts.SECRETS, "get", lambda k, required=False: "x")  # noqa: ARG005
     rc = sts.cmd_check()
@@ -45,6 +48,7 @@ def test_cmd_check_returns_1_when_some_missing(
 
     def fake_get(key: str, required: bool = False) -> str | None:  # noqa: ARG001
         return values.get(key)
+
     monkeypatch.setattr(sts.SECRETS, "get", fake_get)
     assert sts.cmd_check() == 1
 
@@ -55,7 +59,8 @@ def test_cmd_check_returns_1_when_some_missing(
 
 
 def test_cmd_reset_attempts_delete_on_all_keys(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     deleted: list[str] = []
     monkeypatch.setattr(sts, "_delete", lambda k: deleted.append(k))
@@ -75,19 +80,24 @@ def test_cmd_reset_tolerates_missing_keyring(
 
     def boom(k: str) -> None:
         raise RuntimeError("keyring not installed")
+
     # Patch the internal function that the top-level one wraps.
     monkeypatch.setattr(sts, "_delete", lambda k: None)  # outer _delete is safe
     # The real _delete() is its own function; let's also exercise it directly
     # with a broken keyring to confirm it doesn't raise.
     # (This is an integration-level smoke check of the except path.)
     import eta_engine.scripts.setup_tradovate_secrets as mod
+
     # Replace the keyring import inside _delete with something that raises
     class _BoomKeyring:
         @staticmethod
         def delete_password(*a: object, **kw: object) -> None:  # noqa: ARG004
             raise RuntimeError("nope")
+
     monkeypatch.setitem(
-        __import__("sys").modules, "keyring", _BoomKeyring,
+        __import__("sys").modules,
+        "keyring",
+        _BoomKeyring,
     )
     # Should not raise
     mod._delete("TRADOVATE_USERNAME")
@@ -99,7 +109,8 @@ def test_cmd_reset_tolerates_missing_keyring(
 
 
 def test_interactive_stores_all_five_when_user_fills_everything(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     # Nothing stored initially.
     stored: dict[str, str] = {}
@@ -113,13 +124,15 @@ def test_interactive_stores_all_five_when_user_fills_everything(
     monkeypatch.setattr(sts.SECRETS, "get", fake_get)
     monkeypatch.setattr(sts.SECRETS, "set", fake_set)
 
-    answers = iter([
-        "trader@example.com",      # USERNAME
-        "pw-1",                    # PASSWORD (getpass)
-        "",                        # APP_ID (takes default "ApexPredator")
-        "app-sec-xyz",             # APP_SECRET (getpass)
-        "12345",                   # CID
-    ])
+    answers = iter(
+        [
+            "trader@example.com",  # USERNAME
+            "pw-1",  # PASSWORD (getpass)
+            "",  # APP_ID (takes default "ApexPredator")
+            "app-sec-xyz",  # APP_SECRET (getpass)
+            "12345",  # CID
+        ]
+    )
     # Overwrite prompts only fire for already-stored keys; none here.
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     monkeypatch.setattr(sts.getpass, "getpass", lambda prompt="": next(answers))
@@ -160,7 +173,8 @@ def test_interactive_skips_stored_keys_when_user_says_no(
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     called: list[tuple[str, ...]] = []
     monkeypatch.setattr(
-        sts.getpass, "getpass",
+        sts.getpass,
+        "getpass",
         lambda prompt="": called.append(("getpass",)) or "",
     )
     rc = sts.cmd_interactive()
@@ -184,16 +198,20 @@ def test_interactive_overwrites_when_user_says_yes(
     monkeypatch.setattr(sts.SECRETS, "set", fake_set)
 
     # For the stored USERNAME: "y" then new value. For others: value.
-    input_answers = iter([
-        "y",                       # overwrite USERNAME?
-        "new-u",                   # new username
-        "ApexPredator",            # APP_ID (default)
-        "12345",                   # CID
-    ])
-    getpass_answers = iter([
-        "new-p",                   # PASSWORD
-        "new-sec",                 # APP_SECRET
-    ])
+    input_answers = iter(
+        [
+            "y",  # overwrite USERNAME?
+            "new-u",  # new username
+            "ApexPredator",  # APP_ID (default)
+            "12345",  # CID
+        ]
+    )
+    getpass_answers = iter(
+        [
+            "new-p",  # PASSWORD
+            "new-sec",  # APP_SECRET
+        ]
+    )
     monkeypatch.setattr("builtins.input", lambda prompt="": next(input_answers))
     monkeypatch.setattr(sts.getpass, "getpass", lambda prompt="": next(getpass_answers))
 
@@ -229,12 +247,14 @@ def test_interactive_returns_1_when_user_skips_required_fields(
 
 
 def test_interactive_reports_keyring_set_failure(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(sts.SECRETS, "get", lambda k, required=False: None)  # noqa: ARG005
 
     def boom(key: str, val: str, scope: str = "keyring") -> None:  # noqa: ARG001
         raise RuntimeError("keyring backend error")
+
     monkeypatch.setattr(sts.SECRETS, "set", boom)
 
     answers = iter(["trader@example.com", "pw-1", "ApexPredator", "sec", "1"])

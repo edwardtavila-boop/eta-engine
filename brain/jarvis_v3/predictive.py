@@ -13,6 +13,7 @@ plenty for a 60s-tick context where we care about 1-5 step ahead.
 
 Pure / deterministic. No numpy -- stdlib only.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -22,17 +23,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Projection(BaseModel):
     """Forecasted stress over the next K steps."""
+
     model_config = ConfigDict(frozen=True)
 
-    level:      float = Field(ge=0.0, le=1.0)
-    trend:      float = Field(
+    level: float = Field(ge=0.0, le=1.0)
+    trend: float = Field(
         description="Smoothed per-step delta. Positive -> worsening.",
     )
     forecast_1: float = Field(ge=0.0, le=1.0, description="1-step-ahead forecast.")
     forecast_3: float = Field(ge=0.0, le=1.0, description="3-step-ahead forecast.")
     forecast_5: float = Field(ge=0.0, le=1.0, description="5-step-ahead forecast.")
-    samples:    int   = Field(ge=0)
-    note:       str   = ""
+    samples: int = Field(ge=0)
+    note: str = ""
 
 
 class StressForecaster:
@@ -46,7 +48,11 @@ class StressForecaster:
     """
 
     def __init__(
-        self, *, alpha: float = 0.5, beta: float = 0.3, maxlen: int = 256,
+        self,
+        *,
+        alpha: float = 0.5,
+        beta: float = 0.3,
+        maxlen: int = 256,
     ) -> None:
         if not (0.0 < alpha <= 1.0):
             raise ValueError(f"alpha must be in (0, 1], got {alpha}")
@@ -120,8 +126,12 @@ def projection_from_series(series: list[float]) -> Projection:
         last = fc.update(v)
     if last is None:
         return Projection(
-            level=0.0, trend=0.0, forecast_1=0.0,
-            forecast_3=0.0, forecast_5=0.0, samples=0,
+            level=0.0,
+            trend=0.0,
+            forecast_1=0.0,
+            forecast_3=0.0,
+            forecast_5=0.0,
+            samples=0,
             note="empty series",
         )
     return last

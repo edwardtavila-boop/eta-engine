@@ -24,12 +24,14 @@ from eta_engine.venues import (
 
 
 class TestBybitOrderFlow:
-
     def test_bybit_place_payload_structure(self) -> None:
         venue = BybitVenue(api_key="K", api_secret="S")
         req = OrderRequest(
-            symbol="ETH/USDT:USDT", side=Side.BUY, qty=0.5,
-            order_type=OrderType.LIMIT, price=3500.0,
+            symbol="ETH/USDT:USDT",
+            side=Side.BUY,
+            qty=0.5,
+            order_type=OrderType.LIMIT,
+            price=3500.0,
         )
         payload = venue._build_place_payload(req)
         assert payload["category"] == "linear"
@@ -141,7 +143,6 @@ class TestBybitOrderFlow:
 
 
 class TestOkxOrderBook:
-
     @pytest.mark.asyncio
     async def test_okx_order_book_snapshot_is_normalized(self) -> None:
         venue = OkxVenue()
@@ -180,14 +181,16 @@ class TestOkxOrderBook:
 
 
 class TestTradovateBracket:
-
     @pytest.mark.asyncio
     async def test_tradovate_bracket_structure(self) -> None:
         # No creds -> stub path (exercises leg-structure logic, no HTTP).
         venue = TradovateVenue(demo=True)
         entry = OrderRequest(
-            symbol="MNQM6", side=Side.BUY, qty=1,
-            order_type=OrderType.LIMIT, price=21550.0,
+            symbol="MNQM6",
+            side=Side.BUY,
+            qty=1,
+            order_type=OrderType.LIMIT,
+            price=21550.0,
         )
         legs = await venue.bracket_order(entry, stop_price=21500.0, target_price=21650.0)
         assert isinstance(legs, list)
@@ -215,7 +218,6 @@ class TestTradovateBracket:
 
 
 class TestRouterDispatch:
-
     def test_router_picks_bybit_for_crypto(self) -> None:
         router = SmartRouter()
         assert router.choose_venue("ETHUSDT", 0.5) is router.bybit

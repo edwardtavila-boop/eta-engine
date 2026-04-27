@@ -13,6 +13,7 @@ Exercises the bar-consumption loop end-to-end with a stubbed bar source
     instead of crashing the loop;
   * JsonlBarSource reads a JSONL file line-by-line.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,8 +49,11 @@ def _trade_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(),
@@ -61,8 +65,11 @@ def _kill_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-3_000.0,
-            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
         journal=JournalSnapshot(kill_switch_active=True),
@@ -75,7 +82,10 @@ class _FakeRouter:
         self.calls: list[OrderRequest] = []
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency
         self.calls.append(req)
@@ -105,8 +115,10 @@ def _make_bot(tmp_path: Path, ctx_fn, *, router: _FakeRouter) -> tuple[MnqBot, D
     journal = DecisionJournal(tmp_path / "mnq.jsonl")
     jarvis = JarvisAdmin(audit_path=tmp_path / "mnq_audit.jsonl")
     bot = MnqBot(
-        jarvis=jarvis, provide_ctx=ctx_fn,
-        router=router, journal=journal,
+        jarvis=jarvis,
+        provide_ctx=ctx_fn,
+        router=router,
+        journal=journal,
     )
     return bot, journal, jarvis
 
@@ -120,10 +132,15 @@ def _orb_bar() -> dict[str, Any]:
     """
     return {
         "ts": "2026-04-15T15:00:00+00:00",
-        "open": 25_000, "high": 25_050, "low": 24_990, "close": 25_050,
-        "volume": 5000, "avg_volume": 1000,
-        "orb_high": 25_040, "orb_low": 24_900,
-        "atr_14": 1.0,       # -> stop_distance 1.5 pts -> ~16 contracts base
+        "open": 25_000,
+        "high": 25_050,
+        "low": 24_990,
+        "close": 25_050,
+        "volume": 5000,
+        "avg_volume": 1000,
+        "orb_high": 25_040,
+        "orb_low": 24_900,
+        "atr_14": 1.0,  # -> stop_distance 1.5 pts -> ~16 contracts base
         "adx_14": 35.0,
     }
 
@@ -132,14 +149,15 @@ def _orb_bar() -> dict[str, Any]:
 # start() gates through JARVIS + persists state
 # --------------------------------------------------------------------------- #
 class TestSupervisorStart:
-
     def test_start_under_trade_persists_state(self, tmp_path: Path) -> None:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _trade_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([]),
+            bot=bot,
+            bar_source=_StaticBarSource([]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         assert sup.state.paused is False
@@ -154,9 +172,11 @@ class TestSupervisorStart:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _kill_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([]),
+            bot=bot,
+            bar_source=_StaticBarSource([]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         assert sup.state.paused is True
@@ -166,32 +186,34 @@ class TestSupervisorStart:
 # run_one_bar + run_n_bars -- counter tracking
 # --------------------------------------------------------------------------- #
 class TestBarConsumption:
-
     def test_run_one_bar_routes_order_and_increments_counters(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _trade_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([_orb_bar()]),
+            bot=bot,
+            bar_source=_StaticBarSource([_orb_bar()]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         snap = asyncio.run(sup.run_one_bar())
         assert snap["bars_consumed"] == 1
-        assert snap["signals_routed"] == 1, (
-            f"expected 1 routed order, got {snap['signals_routed']}"
-        )
+        assert snap["signals_routed"] == 1, f"expected 1 routed order, got {snap['signals_routed']}"
         assert len(router.calls) == 1
 
     def test_run_one_bar_blocked_under_kill(self, tmp_path: Path) -> None:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _kill_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([_orb_bar()]),
+            bot=bot,
+            bar_source=_StaticBarSource([_orb_bar()]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         # Start under kill -> bot paused, but we still push a bar
         # through to prove the gate rejects it cleanly.
@@ -205,14 +227,17 @@ class TestBarConsumption:
         assert len(router.calls) == 0
 
     def test_exhausted_source_returns_empty_snapshot(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _trade_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([]),
+            bot=bot,
+            bar_source=_StaticBarSource([]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         snap = asyncio.run(sup.run_one_bar())
@@ -223,9 +248,11 @@ class TestBarConsumption:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _trade_ctx, router=router)
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([_orb_bar(), _orb_bar()]),
+            bot=bot,
+            bar_source=_StaticBarSource([_orb_bar(), _orb_bar()]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         snaps = asyncio.run(sup.run_n_bars(10))
@@ -237,9 +264,9 @@ class TestBarConsumption:
 # on_bar error quarantine
 # --------------------------------------------------------------------------- #
 class TestErrorQuarantine:
-
     def test_on_bar_exception_does_not_crash_supervisor(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         router = _FakeRouter()
         bot, journal, jarvis = _make_bot(tmp_path, _trade_ctx, router=router)
@@ -250,9 +277,11 @@ class TestErrorQuarantine:
 
         bot.on_bar = _broken_on_bar  # type: ignore[method-assign]
         sup = MnqLiveSupervisor(
-            bot=bot, bar_source=_StaticBarSource([_orb_bar()]),
+            bot=bot,
+            bar_source=_StaticBarSource([_orb_bar()]),
             out_dir=tmp_path / "out",
-            journal=journal, jarvis=jarvis,
+            journal=journal,
+            jarvis=jarvis,
         )
         asyncio.run(sup.start())
         snap = asyncio.run(sup.run_one_bar())
@@ -264,12 +293,10 @@ class TestErrorQuarantine:
 # JsonlBarSource
 # --------------------------------------------------------------------------- #
 class TestJsonlBarSource:
-
     def test_yields_bars_in_order(self, tmp_path: Path) -> None:
         path = tmp_path / "bars.jsonl"
         path.write_text(
-            "\n".join(json.dumps({"i": i, "close": 25_000 + i}) for i in range(3))
-            + "\n",
+            "\n".join(json.dumps({"i": i, "close": 25_000 + i}) for i in range(3)) + "\n",
             encoding="utf-8",
         )
         src = JsonlBarSource(path)
@@ -299,7 +326,7 @@ class TestJsonlBarSource:
     def test_invalid_lines_are_skipped(self, tmp_path: Path) -> None:
         path = tmp_path / "bars.jsonl"
         path.write_text(
-            "{broken\n{\"ok\": 1}\n\n{\"ok\": 2}\n",
+            '{broken\n{"ok": 1}\n\n{"ok": 2}\n',
             encoding="utf-8",
         )
         src = JsonlBarSource(path)

@@ -1,4 +1,5 @@
 """Tests for ``funnel.integrations`` + ``scripts.build_integrations_report``."""
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,10 @@ if TYPE_CHECKING:
 
 def test_venue_integration_required_fields() -> None:
     v = VenueIntegration(
-        name="x", kind="onramp", module="a.b.c", asset_classes=["BTC"],
+        name="x",
+        kind="onramp",
+        module="a.b.c",
+        asset_classes=["BTC"],
     )
     assert v.status == "READY"
     assert v.notes == ""
@@ -45,8 +49,11 @@ def test_venue_integration_required_fields() -> None:
 
 def test_bot_integration_default_status_is_paper() -> None:
     b = BotIntegration(
-        name="mnq", module="a.b", venue="tradovate",
-        funnel_layer="LAYER_1_MNQ", risk_tier="A",
+        name="mnq",
+        module="a.b",
+        venue="tradovate",
+        funnel_layer="LAYER_1_MNQ",
+        risk_tier="A",
     )
     assert b.status == "PAPER"
 
@@ -54,9 +61,13 @@ def test_bot_integration_default_status_is_paper() -> None:
 def test_funnel_layer_rejects_out_of_range_sweep() -> None:
     with pytest.raises(ValueError):
         FunnelLayer(
-            layer_id="L", label="x", sweep_out_pct=1.1,
-            min_outgoing_usd=100.0, max_position_pct_per_trade=0.01,
-            daily_loss_cap_pct=0.03, drawdown_kill_pct=0.08,
+            layer_id="L",
+            label="x",
+            sweep_out_pct=1.1,
+            min_outgoing_usd=100.0,
+            max_position_pct_per_trade=0.01,
+            daily_loss_cap_pct=0.03,
+            drawdown_kill_pct=0.08,
             leverage_cap=5.0,
         )
 
@@ -64,9 +75,13 @@ def test_funnel_layer_rejects_out_of_range_sweep() -> None:
 def test_funnel_layer_rejects_nonpositive_leverage() -> None:
     with pytest.raises(ValueError):
         FunnelLayer(
-            layer_id="L", label="x", sweep_out_pct=0.5,
-            min_outgoing_usd=100.0, max_position_pct_per_trade=0.01,
-            daily_loss_cap_pct=0.03, drawdown_kill_pct=0.08,
+            layer_id="L",
+            label="x",
+            sweep_out_pct=0.5,
+            min_outgoing_usd=100.0,
+            max_position_pct_per_trade=0.01,
+            daily_loss_cap_pct=0.03,
+            drawdown_kill_pct=0.08,
             leverage_cap=0.0,
         )
 
@@ -74,22 +89,31 @@ def test_funnel_layer_rejects_nonpositive_leverage() -> None:
 def test_onramp_route_rejects_zero_per_txn() -> None:
     with pytest.raises(ValueError):
         OnrampRoute(
-            fiat_source="ACH", provider="COINBASE", crypto_target="BTC",
-            per_txn_limit_usd=0.0, monthly_limit_usd=50_000.0,
+            fiat_source="ACH",
+            provider="COINBASE",
+            crypto_target="BTC",
+            per_txn_limit_usd=0.0,
+            monthly_limit_usd=50_000.0,
         )
 
 
 def test_staking_integration_accepts_zero_apy() -> None:
     s = StakingIntegration(
-        protocol="Stub", module="a.b", chain="ethereum",
-        asset_in="USDT", asset_out="sUSDT", target_apy_pct=0.0,
+        protocol="Stub",
+        module="a.b",
+        chain="ethereum",
+        asset_in="USDT",
+        asset_out="sUSDT",
+        target_apy_pct=0.0,
     )
     assert s.target_apy_pct == 0.0
 
 
 def test_observability_default_status() -> None:
     o = ObservabilityIntegration(
-        name="StubAlerter", module="a.b", kind="alerter",
+        name="StubAlerter",
+        module="a.b",
+        kind="alerter",
     )
     assert o.status == "ACTIVE"
 
@@ -138,7 +162,10 @@ def test_canonical_funnel_layers_exactly_four() -> None:
     layers = canonical_funnel_layers()
     ids = [layer.layer_id for layer in layers]
     assert ids == [
-        "LAYER_1_MNQ", "LAYER_2_BTC", "LAYER_3_PERPS", "LAYER_4_STAKING",
+        "LAYER_1_MNQ",
+        "LAYER_2_BTC",
+        "LAYER_3_PERPS",
+        "LAYER_4_STAKING",
     ]
 
 
@@ -158,7 +185,8 @@ def test_canonical_onramp_routes_default_limits() -> None:
 
 def test_canonical_onramp_routes_respect_overrides() -> None:
     routes = canonical_onramp_routes(
-        per_txn_limit_usd=25_000.0, monthly_limit_usd=250_000.0,
+        per_txn_limit_usd=25_000.0,
+        monthly_limit_usd=250_000.0,
     )
     assert all(r.per_txn_limit_usd == 25_000.0 for r in routes)
     assert all(r.monthly_limit_usd == 250_000.0 for r in routes)
@@ -276,8 +304,13 @@ def test_build_report_model_dump_is_jsonable() -> None:
 def test_render_text_mentions_every_section_header() -> None:
     text = render_text(build_integrations_report())
     for header in (
-        "SUMMARY", "VENUES", "BOTS", "FUNNEL LAYERS",
-        "ONRAMP ROUTES", "STAKING", "OBSERVABILITY",
+        "SUMMARY",
+        "VENUES",
+        "BOTS",
+        "FUNNEL LAYERS",
+        "ONRAMP ROUTES",
+        "STAKING",
+        "OBSERVABILITY",
     ):
         assert header in text
 
@@ -361,12 +394,18 @@ def test_cli_main_respects_overlay(tmp_path: Path) -> None:
 
 
 def test_cli_main_respects_onramp_overrides(tmp_path: Path) -> None:
-    exit_code = cli.main([
-        "--out-dir", str(tmp_path),
-        "--live-status", str(tmp_path / "missing.json"),
-        "--onramp-per-txn-usd", "25000",
-        "--onramp-monthly-usd", "250000",
-    ])
+    exit_code = cli.main(
+        [
+            "--out-dir",
+            str(tmp_path),
+            "--live-status",
+            str(tmp_path / "missing.json"),
+            "--onramp-per-txn-usd",
+            "25000",
+            "--onramp-monthly-usd",
+            "250000",
+        ]
+    )
     assert exit_code == 0
     data = json.loads((tmp_path / "integrations_latest.json").read_text())
     for route in data["onramp_routes"]:
@@ -375,13 +414,18 @@ def test_cli_main_respects_onramp_overrides(tmp_path: Path) -> None:
 
 
 def test_cli_main_print_flag_echoes_to_stdout(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    exit_code = cli.main([
-        "--out-dir", str(tmp_path),
-        "--live-status", str(tmp_path / "missing.json"),
-        "--print",
-    ])
+    exit_code = cli.main(
+        [
+            "--out-dir",
+            str(tmp_path),
+            "--live-status",
+            str(tmp_path / "missing.json"),
+            "--print",
+        ]
+    )
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "INTEGRATIONS MAP" in captured.out

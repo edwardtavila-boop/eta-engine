@@ -1,4 +1,5 @@
 """Tests for backtest.exit_quality -- MAE/MFE analyzer."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -36,11 +37,18 @@ def _point(
     time_to_mfe_min: int = 25,
 ) -> MaeMfePoint:
     return MaeMfePoint(
-        trade_id=trade_id, symbol="MNQ", side=side,
-        regime=regime, setup=setup,
-        opened_at=_T0, closed_at=_T0 + timedelta(minutes=hold_min),
-        entry_price=entry, exit_price=exit_, stop_price=stop,
-        mfe_price=mfe, mae_price=mae,
+        trade_id=trade_id,
+        symbol="MNQ",
+        side=side,
+        regime=regime,
+        setup=setup,
+        opened_at=_T0,
+        closed_at=_T0 + timedelta(minutes=hold_min),
+        entry_price=entry,
+        exit_price=exit_,
+        stop_price=stop,
+        mfe_price=mfe,
+        mae_price=mae,
         time_to_mfe_sec=time_to_mfe_min * 60.0,
     )
 
@@ -53,11 +61,18 @@ def _point(
 def test_point_rejects_reversed_times() -> None:
     with pytest.raises(ValidationError):
         MaeMfePoint(
-            trade_id="x", symbol="MNQ", side=Side.LONG,
-            regime="TRENDING_UP", setup="s",
-            opened_at=_T0 + timedelta(minutes=1), closed_at=_T0,
-            entry_price=1.0, exit_price=1.0, stop_price=0.5,
-            mfe_price=1.1, mae_price=0.9,
+            trade_id="x",
+            symbol="MNQ",
+            side=Side.LONG,
+            regime="TRENDING_UP",
+            setup="s",
+            opened_at=_T0 + timedelta(minutes=1),
+            closed_at=_T0,
+            entry_price=1.0,
+            exit_price=1.0,
+            stop_price=0.5,
+            mfe_price=1.1,
+            mae_price=0.9,
             time_to_mfe_sec=30.0,
         )
 
@@ -65,11 +80,18 @@ def test_point_rejects_reversed_times() -> None:
 def test_point_rejects_negative_time_to_mfe() -> None:
     with pytest.raises(ValidationError):
         MaeMfePoint(
-            trade_id="x", symbol="MNQ", side=Side.LONG,
-            regime="TRENDING_UP", setup="s",
-            opened_at=_T0, closed_at=_T0 + timedelta(minutes=1),
-            entry_price=1.0, exit_price=1.0, stop_price=0.5,
-            mfe_price=1.1, mae_price=0.9,
+            trade_id="x",
+            symbol="MNQ",
+            side=Side.LONG,
+            regime="TRENDING_UP",
+            setup="s",
+            opened_at=_T0,
+            closed_at=_T0 + timedelta(minutes=1),
+            entry_price=1.0,
+            exit_price=1.0,
+            stop_price=0.5,
+            mfe_price=1.1,
+            mae_price=0.9,
             time_to_mfe_sec=-1.0,
         )
 
@@ -95,8 +117,7 @@ def test_r_captured_long_winner() -> None:
 
 
 def test_r_captured_short_winner() -> None:
-    p = _point(side=Side.SHORT, entry=100.0, exit_=90.0, stop=105.0,
-               mfe=89.0, mae=101.0)
+    p = _point(side=Side.SHORT, entry=100.0, exit_=90.0, stop=105.0, mfe=89.0, mae=101.0)
     assert p.r_captured == 2.0
 
 
@@ -155,8 +176,7 @@ def test_analyze_stop_out_no_mfe_full_capture() -> None:
 
 def test_analyze_hold_frac_and_score() -> None:
     # Hold 30 min, MFE at 25 min -> frac = 0.833
-    p = _point(hold_min=30, time_to_mfe_min=25,
-               entry=100.0, exit_=108.0, stop=95.0, mfe=110.0)
+    p = _point(hold_min=30, time_to_mfe_min=25, entry=100.0, exit_=108.0, stop=95.0, mfe=110.0)
     row = analyze_trade(p)
     assert row.hold_frac_to_mfe == pytest.approx(0.833, abs=0.001)
     # capture_ratio = 8/10/ = 0.8
@@ -192,21 +212,9 @@ def test_analyze_batch_empty() -> None:
 
 
 def test_heatmap_groups_by_regime_and_setup() -> None:
-    rows = [
-        analyze_trade(_point(trade_id=f"t-{i}",
-                             regime="TRENDING_UP", setup="breakout"))
-        for i in range(3)
-    ]
-    rows += [
-        analyze_trade(_point(trade_id=f"t-{i}",
-                             regime="TRENDING_UP", setup="fade"))
-        for i in range(3, 5)
-    ]
-    rows += [
-        analyze_trade(_point(trade_id=f"t-{i}",
-                             regime="CRISIS", setup="fade"))
-        for i in range(5, 6)
-    ]
+    rows = [analyze_trade(_point(trade_id=f"t-{i}", regime="TRENDING_UP", setup="breakout")) for i in range(3)]
+    rows += [analyze_trade(_point(trade_id=f"t-{i}", regime="TRENDING_UP", setup="fade")) for i in range(3, 5)]
+    rows += [analyze_trade(_point(trade_id=f"t-{i}", regime="CRISIS", setup="fade")) for i in range(5, 6)]
     hm = build_heatmap(rows)
     assert len(hm) == 3
     assert hm[("TRENDING_UP", "breakout")].n == 3
@@ -216,14 +224,24 @@ def test_heatmap_groups_by_regime_and_setup() -> None:
 
 def test_heatmap_mean_capture_ratio() -> None:
     rows = [
-        analyze_trade(_point(
-            trade_id="perfect",
-            entry=100.0, exit_=110.0, stop=95.0, mfe=110.0,  # 1.0
-        )),
-        analyze_trade(_point(
-            trade_id="half",
-            entry=100.0, exit_=105.0, stop=95.0, mfe=115.0,  # 0.333
-        )),
+        analyze_trade(
+            _point(
+                trade_id="perfect",
+                entry=100.0,
+                exit_=110.0,
+                stop=95.0,
+                mfe=110.0,  # 1.0
+            )
+        ),
+        analyze_trade(
+            _point(
+                trade_id="half",
+                entry=100.0,
+                exit_=105.0,
+                stop=95.0,
+                mfe=115.0,  # 0.333
+            )
+        ),
     ]
     hm = build_heatmap(rows)[(rows[0].regime, rows[0].setup)]
     assert hm.mean_capture_ratio == pytest.approx((1.0 + 0.333) / 2, abs=0.01)
@@ -232,10 +250,8 @@ def test_heatmap_mean_capture_ratio() -> None:
 
 def test_heatmap_worst_leak() -> None:
     rows = [
-        analyze_trade(_point(trade_id="t1",
-                             entry=100.0, exit_=105.0, stop=95.0, mfe=115.0)),  # 2R leaked
-        analyze_trade(_point(trade_id="t2",
-                             entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),  # 0R leaked
+        analyze_trade(_point(trade_id="t1", entry=100.0, exit_=105.0, stop=95.0, mfe=115.0)),  # 2R leaked
+        analyze_trade(_point(trade_id="t2", entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),  # 0R leaked
     ]
     hm = list(build_heatmap(rows).values())[0]
     assert hm.worst_leak_r == pytest.approx(2.0, abs=0.001)
@@ -252,10 +268,8 @@ def test_heatmap_empty_input() -> None:
 
 def test_money_left_on_table_only_positive_leaks() -> None:
     rows = [
-        analyze_trade(_point(trade_id="leaker",
-                             entry=100.0, exit_=105.0, stop=95.0, mfe=115.0)),  # 2R leak
-        analyze_trade(_point(trade_id="perfect",
-                             entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),  # 0R leak
+        analyze_trade(_point(trade_id="leaker", entry=100.0, exit_=105.0, stop=95.0, mfe=115.0)),  # 2R leak
+        analyze_trade(_point(trade_id="perfect", entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),  # 0R leak
     ]
     total = money_left_on_table(rows, dollars_per_r=100.0)
     # Only the leaker contributes: 2R * $100 = $200
@@ -278,12 +292,11 @@ def test_money_left_on_table_empty_batch() -> None:
 
 def test_rank_setups_by_leak_descending() -> None:
     rows = [
-        analyze_trade(_point(trade_id="a", setup="fade",
-                             entry=100.0, exit_=105.0, stop=95.0, mfe=120.0)),  # 3R leak
-        analyze_trade(_point(trade_id="b", setup="breakout",
-                             entry=100.0, exit_=108.0, stop=95.0, mfe=110.0)),  # 0.4R leak
-        analyze_trade(_point(trade_id="c", setup="fade",
-                             entry=100.0, exit_=102.0, stop=95.0, mfe=112.0)),  # 2R leak
+        analyze_trade(_point(trade_id="a", setup="fade", entry=100.0, exit_=105.0, stop=95.0, mfe=120.0)),  # 3R leak
+        analyze_trade(
+            _point(trade_id="b", setup="breakout", entry=100.0, exit_=108.0, stop=95.0, mfe=110.0)
+        ),  # 0.4R leak
+        analyze_trade(_point(trade_id="c", setup="fade", entry=100.0, exit_=102.0, stop=95.0, mfe=112.0)),  # 2R leak
     ]
     ranked = rank_setups_by_leak(rows)
     assert ranked[0][0] == "fade"
@@ -293,8 +306,7 @@ def test_rank_setups_by_leak_descending() -> None:
 
 def test_rank_setups_empty_when_no_leaks() -> None:
     rows = [
-        analyze_trade(_point(trade_id="x",
-                             entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),
+        analyze_trade(_point(trade_id="x", entry=100.0, exit_=110.0, stop=95.0, mfe=110.0)),
     ]
     assert rank_setups_by_leak(rows) == []
 
@@ -307,18 +319,29 @@ def test_rank_setups_empty_when_no_leaks() -> None:
 def test_row_rejects_capture_ratio_over_1() -> None:
     with pytest.raises(ValidationError):
         ExitQualityRow(
-            trade_id="x", regime="R", setup="s",
-            r_captured=1.0, r_available=1.0, r_adverse=0.0,
-            capture_ratio=1.5, hold_frac_to_mfe=0.5,
-            hold_score=0.5, leaked_r=0.0,
+            trade_id="x",
+            regime="R",
+            setup="s",
+            r_captured=1.0,
+            r_available=1.0,
+            r_adverse=0.0,
+            capture_ratio=1.5,
+            hold_frac_to_mfe=0.5,
+            hold_score=0.5,
+            leaked_r=0.0,
         )
 
 
 def test_heatmap_rejects_negative_n() -> None:
     with pytest.raises(ValidationError):
         ExitQualityHeatmap(
-            regime="R", setup="s", n=-1,
-            mean_capture_ratio=0.5, mean_r_captured=0.0,
-            mean_r_available=0.0, mean_leaked_r=0.0,
-            worst_leak_r=0.0, best_capture_ratio=0.0,
+            regime="R",
+            setup="s",
+            n=-1,
+            mean_capture_ratio=0.5,
+            mean_r_captured=0.0,
+            mean_r_available=0.0,
+            mean_leaked_r=0.0,
+            worst_leak_r=0.0,
+            best_capture_ratio=0.0,
         )

@@ -1,4 +1,5 @@
 """Tests for venues.deribit."""
+
 from __future__ import annotations
 
 import asyncio
@@ -45,9 +46,7 @@ def _option(name: str, strike: float, expiry_ms: int, option_type: str) -> dict[
     }
 
 
-def _ticker(
-    name: str, *, mark_price: float, mark_iv: float, bid: float = 0.0, ask: float = 0.0
-) -> dict[str, Any]:
+def _ticker(name: str, *, mark_price: float, mark_iv: float, bid: float = 0.0, ask: float = 0.0) -> dict[str, Any]:
     return {
         "instrument_name": name,
         "mark_price": mark_price,
@@ -137,9 +136,7 @@ class TestDeribitClient:
 
     def test_fetch_chain_partitions_puts_and_calls(self):
         client = self._client()
-        chain = client.fetch_option_chain(
-            underlying="BTC", expiry_ts_ms=1_719_619_200_000
-        )
+        chain = client.fetch_option_chain(underlying="BTC", expiry_ts_ms=1_719_619_200_000)
         assert len(chain.puts) == 2
         assert len(chain.calls) == 1
         # Puts sorted descending, calls ascending
@@ -148,9 +145,7 @@ class TestDeribitClient:
 
     def test_fetch_chain_filters_by_expiry(self):
         client = self._client()
-        chain = client.fetch_option_chain(
-            underlying="BTC", expiry_ts_ms=1_719_619_200_000
-        )
+        chain = client.fetch_option_chain(underlying="BTC", expiry_ts_ms=1_719_619_200_000)
         expiries = {c.expiry_ts_ms for c in chain.puts}
         assert expiries == {1_719_619_200_000}
 

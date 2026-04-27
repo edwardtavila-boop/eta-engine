@@ -18,6 +18,7 @@ hypotheses, not just a gate.
 Pure / deterministic. Hands off to external strategy-generator via
 a structured ``StrategySpec`` pydantic.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,36 +37,38 @@ if TYPE_CHECKING:
 
 class StrategySpec(BaseModel):
     """Candidate strategy the operator should consider building."""
+
     model_config = ConfigDict(frozen=True)
 
-    id:            str = Field(min_length=1)
-    hypothesis:    str = Field(min_length=1)
-    regime:        str
+    id: str = Field(min_length=1)
+    hypothesis: str = Field(min_length=1)
+    regime: str
     session_phase: str
     event_category: str = ""
     binding_constraint: str = ""
     sample_support: int = Field(ge=0)
     historical_mean_r: float | None = None
     historical_win_rate: float | None = None
-    priority:      str = Field(pattern="^(low|medium|high)$")
-    rationale:     str
-    proposed_at:   datetime
+    priority: str = Field(pattern="^(low|medium|high)$")
+    rationale: str
+    proposed_at: datetime
 
 
 class SynthesisReport(BaseModel):
     """Output of one mining pass."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:             datetime
+    ts: datetime
     buckets_scanned: int = Field(ge=0)
     candidates_found: int = Field(ge=0)
-    specs:          list[StrategySpec]
-    note:           str
+    specs: list[StrategySpec]
+    note: str
 
 
 # Thresholds for "this bucket is interesting"
-MIN_SAMPLE_SUPPORT = 20      # need at least N observations
-MIN_POSITIVE_R = 0.40        # historical mean R worth pursuing
+MIN_SAMPLE_SUPPORT = 20  # need at least N observations
+MIN_POSITIVE_R = 0.40  # historical mean R worth pursuing
 MIN_WIN_RATE = 0.50
 
 
@@ -89,28 +92,29 @@ def mine(
         wr = q.win_rate or 0.0
         if mean_r < min_mean_r or wr < min_win_rate:
             continue
-        priority = "high" if (mean_r >= 1.0 and wr >= 0.60) else \
-                   ("medium" if mean_r >= 0.7 else "low")
+        priority = "high" if (mean_r >= 1.0 and wr >= 0.60) else ("medium" if mean_r >= 0.7 else "low")
         hypothesis = _build_hypothesis(k, mean_r, wr, q.n)
         spec_id = f"S-{k.regime}-{k.session_phase}-{_short_hash(hypothesis)}"
-        specs.append(StrategySpec(
-            id=spec_id,
-            hypothesis=hypothesis,
-            regime=k.regime,
-            session_phase=k.session_phase,
-            event_category=k.event_category,
-            binding_constraint=k.binding_constraint,
-            sample_support=q.n,
-            historical_mean_r=round(mean_r, 3),
-            historical_win_rate=round(wr, 3),
-            priority=priority,
-            rationale=(
-                f"precedent bucket ({k.regime}, {k.session_phase}) has "
-                f"mean_r={mean_r:+.2f} over {q.n} samples with "
-                f"win_rate={wr:.0%} -- historical edge"
-            ),
-            proposed_at=now,
-        ))
+        specs.append(
+            StrategySpec(
+                id=spec_id,
+                hypothesis=hypothesis,
+                regime=k.regime,
+                session_phase=k.session_phase,
+                event_category=k.event_category,
+                binding_constraint=k.binding_constraint,
+                sample_support=q.n,
+                historical_mean_r=round(mean_r, 3),
+                historical_win_rate=round(wr, 3),
+                priority=priority,
+                rationale=(
+                    f"precedent bucket ({k.regime}, {k.session_phase}) has "
+                    f"mean_r={mean_r:+.2f} over {q.n} samples with "
+                    f"win_rate={wr:.0%} -- historical edge"
+                ),
+                proposed_at=now,
+            )
+        )
     return SynthesisReport(
         ts=now,
         buckets_scanned=len(buckets),
@@ -136,7 +140,10 @@ def export_specs(report: SynthesisReport, out_path: Path | str) -> None:
 
 
 def _build_hypothesis(
-    key: PrecedentKey, mean_r: float, wr: float, n: int,
+    key: PrecedentKey,
+    mean_r: float,
+    wr: float,
+    n: int,
 ) -> str:
     parts = [
         f"When regime={key.regime}",

@@ -13,6 +13,7 @@ import pytest
 # Grid math (self-contained — no external module dependency)
 # ---------------------------------------------------------------------------
 
+
 def geometric_grid(
     lower: float,
     upper: float,
@@ -36,13 +37,15 @@ def geometric_grid(
 
     levels = []
     for i in range(num_levels):
-        price = lower * (ratio ** i)
-        levels.append({
-            "level": i,
-            "price": round(price, 2),
-            "capital_usd": round(capital_per_level, 2),
-            "ratio_from_prev": round(ratio, 6) if i > 0 else None,
-        })
+        price = lower * (ratio**i)
+        levels.append(
+            {
+                "level": i,
+                "price": round(price, 2),
+                "capital_usd": round(capital_per_level, 2),
+                "ratio_from_prev": round(ratio, 6) if i > 0 else None,
+            }
+        )
     return levels
 
 
@@ -50,8 +53,8 @@ def geometric_grid(
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestGeometricGrid:
 
+class TestGeometricGrid:
     def test_correct_number_of_levels(self) -> None:
         grid = geometric_grid(20000.0, 22000.0, 10, 5000.0)
         assert len(grid) == 10

@@ -1,4 +1,5 @@
 """Tests for obs.jarvis_supervisor -- live liveness + drift watchdog."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -39,12 +40,14 @@ def _clock_series(stamps: list[datetime]) -> Callable[[], datetime]:
         i = min(idx["i"], len(stamps) - 1)
         idx["i"] += 1
         return stamps[i]
+
     return fn
 
 
 def _clock_fixed(t: datetime) -> Callable[[], datetime]:
     def fn() -> datetime:
         return t
+
     return fn
 
 
@@ -53,6 +56,7 @@ def _clock_mutable(initial: datetime) -> tuple[Callable[[], datetime], list[date
 
     def fn() -> datetime:
         return holder[0]
+
     return fn, holder
 
 
@@ -310,7 +314,8 @@ def test_no_dominance_under_run_threshold() -> None:
 
 def test_flatline_yellow_when_run_reached() -> None:
     pol = SupervisorPolicy(
-        flatline_threshold=0.05, flatline_run=5,
+        flatline_threshold=0.05,
+        flatline_run=5,
         dominance_run=200,  # keep dominance out of the picture
     )
     # All composites at 0.01 -> flatline
@@ -327,11 +332,11 @@ def test_flatline_yellow_when_run_reached() -> None:
 
 def test_not_flatline_when_one_sample_above_threshold() -> None:
     pol = SupervisorPolicy(
-        flatline_threshold=0.05, flatline_run=5, dominance_run=200,
+        flatline_threshold=0.05,
+        flatline_run=5,
+        dominance_run=200,
     )
-    ctxs = [
-        _mk_ctx(composite=0.01, binding=f"b{i}") for i in range(4)
-    ]
+    ctxs = [_mk_ctx(composite=0.01, binding=f"b{i}") for i in range(4)]
     ctxs.append(_mk_ctx(composite=0.5, binding="spike"))
     engine = _StubEngine(queue=ctxs)
     sup = JarvisSupervisor(engine=engine, policy=pol, clock=_clock_fixed(_T0))
@@ -382,8 +387,10 @@ def test_red_overrides_yellow_on_combined_failure() -> None:
     # -- overall must be RED.
     clock, holder = _clock_mutable(_T0)
     pol = SupervisorPolicy(
-        stale_after_s=100.0, dead_after_s=10_000.0,
-        dominance_run=3, flatline_run=200,
+        stale_after_s=100.0,
+        dead_after_s=10_000.0,
+        dominance_run=3,
+        flatline_run=200,
     )
     ctxs = [_mk_ctx(binding="drawdown") for _ in range(3)]
     # Corrupt last composite

@@ -1,4 +1,5 @@
 """Master-tweaks tests -- P12_POLISH.master_tweaks."""
+
 from __future__ import annotations
 
 import pytest
@@ -18,6 +19,7 @@ from eta_engine.core.parameter_sweep import CellScore, SweepCell
 # ---------------------------------------------------------------------------
 # classify_risk
 # ---------------------------------------------------------------------------
+
 
 def test_classify_risk_empty_proposal_is_safe() -> None:
     assert classify_risk({"a": 1.0}, {}) == RiskTag.SAFE
@@ -71,11 +73,15 @@ def test_classify_risk_zero_baseline_does_not_crash() -> None:
 # propose_tweaks
 # ---------------------------------------------------------------------------
 
+
 def _cell(params: dict, *, gate: bool = True, exp: float = 0.40, dd: float = 5.0) -> SweepCell:
     return SweepCell(
         params=params,
         score=CellScore(
-            expectancy_r=exp, max_dd_pct=dd, win_rate=0.55, n_trades=100,
+            expectancy_r=exp,
+            max_dd_pct=dd,
+            win_rate=0.55,
+            n_trades=100,
         ),
         gate_pass=gate,
         stability=0.05,
@@ -136,6 +142,7 @@ def test_propose_tweaks_carries_custom_source() -> None:
 # apply_tweak
 # ---------------------------------------------------------------------------
 
+
 def test_apply_tweak_copies_proposal_into_baseline() -> None:
     baseline = {"conf": 6.0, "risk": 0.010, "unrelated": "keep"}
     tweak = Tweak(
@@ -152,7 +159,10 @@ def test_apply_tweak_copies_proposal_into_baseline() -> None:
 def test_apply_tweak_rejects_when_gate_required_and_not_pass() -> None:
     baseline = {"conf": 6.0}
     tweak = Tweak(
-        bot="mnq", proposal={"conf": 6.1}, gate_pass=False, risk_tag=RiskTag.SAFE,
+        bot="mnq",
+        proposal={"conf": 6.1},
+        gate_pass=False,
+        risk_tag=RiskTag.SAFE,
     )
     res = apply_tweak(baseline, tweak, TweakPolicy(require_gate_pass=True))
     assert res.applied is False
@@ -163,7 +173,10 @@ def test_apply_tweak_rejects_when_gate_required_and_not_pass() -> None:
 def test_apply_tweak_allows_gate_fail_when_policy_relaxed() -> None:
     baseline = {"conf": 6.0}
     tweak = Tweak(
-        bot="mnq", proposal={"conf": 6.1}, gate_pass=False, risk_tag=RiskTag.SAFE,
+        bot="mnq",
+        proposal={"conf": 6.1},
+        gate_pass=False,
+        risk_tag=RiskTag.SAFE,
     )
     res = apply_tweak(baseline, tweak, TweakPolicy(require_gate_pass=False))
     assert res.applied is True
@@ -173,8 +186,10 @@ def test_apply_tweak_allows_gate_fail_when_policy_relaxed() -> None:
 def test_apply_tweak_rejects_aggressive_by_default() -> None:
     baseline = {"conf": 6.0}
     tweak = Tweak(
-        bot="mnq", proposal={"conf": 10.0},
-        gate_pass=True, risk_tag=RiskTag.AGGRESSIVE,
+        bot="mnq",
+        proposal={"conf": 10.0},
+        gate_pass=True,
+        risk_tag=RiskTag.AGGRESSIVE,
     )
     res = apply_tweak(baseline, tweak)
     assert res.applied is False
@@ -185,12 +200,16 @@ def test_apply_tweak_rejects_aggressive_by_default() -> None:
 def test_apply_tweak_allows_aggressive_when_opted_in() -> None:
     baseline = {"conf": 6.0}
     tweak = Tweak(
-        bot="mnq", proposal={"conf": 10.0},
-        gate_pass=True, risk_tag=RiskTag.AGGRESSIVE,
+        bot="mnq",
+        proposal={"conf": 10.0},
+        gate_pass=True,
+        risk_tag=RiskTag.AGGRESSIVE,
     )
     # Relax both the max_relative_change AND the aggressive gate
     res = apply_tweak(
-        baseline, tweak, TweakPolicy(allow_aggressive=True, max_relative_change=1.0),
+        baseline,
+        tweak,
+        TweakPolicy(allow_aggressive=True, max_relative_change=1.0),
     )
     assert res.applied is True
     assert res.new_config["conf"] == 10.0
@@ -229,8 +248,10 @@ def test_apply_tweak_rejects_whole_tweak_when_every_param_exceeds_cap() -> None:
 def test_apply_tweak_preserves_non_proposed_baseline_keys() -> None:
     baseline = {"conf": 6.0, "risk": 0.010, "atr_mult": 2.0, "mode": "live"}
     tweak = Tweak(
-        bot="mnq", proposal={"conf": 6.2},
-        gate_pass=True, risk_tag=RiskTag.SAFE,
+        bot="mnq",
+        proposal={"conf": 6.2},
+        gate_pass=True,
+        risk_tag=RiskTag.SAFE,
     )
     res = apply_tweak(baseline, tweak)
     assert res.new_config["atr_mult"] == 2.0
@@ -241,16 +262,15 @@ def test_apply_tweak_preserves_non_proposed_baseline_keys() -> None:
 # apply_tweaks_bulk
 # ---------------------------------------------------------------------------
 
+
 def test_apply_tweaks_bulk_applies_per_bot_independently() -> None:
     baselines = {
         "mnq": {"conf": 6.0},
         "eth_perp": {"conf": 5.0},
     }
     tweaks = [
-        Tweak(bot="mnq", proposal={"conf": 6.5},
-              gate_pass=True, risk_tag=RiskTag.SAFE),
-        Tweak(bot="eth_perp", proposal={"conf": 5.2},
-              gate_pass=False, risk_tag=RiskTag.SAFE),
+        Tweak(bot="mnq", proposal={"conf": 6.5}, gate_pass=True, risk_tag=RiskTag.SAFE),
+        Tweak(bot="eth_perp", proposal={"conf": 5.2}, gate_pass=False, risk_tag=RiskTag.SAFE),
     ]
     result = apply_tweaks_bulk(baselines, tweaks, TweakPolicy(require_gate_pass=True))
     assert result["mnq"].applied is True
@@ -260,10 +280,8 @@ def test_apply_tweaks_bulk_applies_per_bot_independently() -> None:
 def test_apply_tweaks_bulk_returns_result_per_tweak() -> None:
     baselines = {"mnq": {"conf": 6.0}, "eth_perp": {"conf": 5.0}}
     tweaks = [
-        Tweak(bot="mnq", proposal={"conf": 6.1},
-              gate_pass=True, risk_tag=RiskTag.SAFE),
-        Tweak(bot="eth_perp", proposal={"conf": 5.1},
-              gate_pass=True, risk_tag=RiskTag.SAFE),
+        Tweak(bot="mnq", proposal={"conf": 6.1}, gate_pass=True, risk_tag=RiskTag.SAFE),
+        Tweak(bot="eth_perp", proposal={"conf": 5.1}, gate_pass=True, risk_tag=RiskTag.SAFE),
     ]
     result = apply_tweaks_bulk(baselines, tweaks)
     assert set(result.keys()) == {"mnq", "eth_perp"}
@@ -273,6 +291,7 @@ def test_apply_tweaks_bulk_returns_result_per_tweak() -> None:
 # ---------------------------------------------------------------------------
 # TweakPolicy validation
 # ---------------------------------------------------------------------------
+
 
 def test_tweak_policy_rejects_non_positive_max_relative_change() -> None:
     with pytest.raises(ValidationError):

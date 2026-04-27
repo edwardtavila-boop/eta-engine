@@ -42,6 +42,7 @@ Exit codes
        is then a single-source claim, fragile)
 9  data missing on either side
 """
+
 from __future__ import annotations
 
 import argparse
@@ -111,8 +112,7 @@ def _verdict(apex_neg: list, mnq_neg: list) -> tuple[str, int, str]:
         return (
             "AGREE",
             0,
-            f"both negative: apex={[r for r, _ in apex_neg]} "
-            f"mnq={[r for r, _ in mnq_neg]}",
+            f"both negative: apex={[r for r, _ in apex_neg]} mnq={[r for r, _ in mnq_neg]}",
         )
     if apex_neg and not mnq_neg:
         return (
@@ -125,8 +125,7 @@ def _verdict(apex_neg: list, mnq_neg: list) -> tuple[str, int, str]:
         return (
             "YELLOW",
             1,
-            f"mnq_bot shows negative regimes {[r for r, _ in mnq_neg]} "
-            f"but apex's cross_regime_validation has none",
+            f"mnq_bot shows negative regimes {[r for r, _ in mnq_neg]} but apex's cross_regime_validation has none",
         )
     return (
         "RED",

@@ -13,14 +13,15 @@ from enum import Enum
 class RiskTier(Enum):
     """Risk profile tiers. Tighter = smaller position, wider stops."""
 
-    FUTURES = "futures"    # tight: exchange-traded, regulated margin
-    SEED = "seed"          # medium: funded account, drawdown rules
-    CASINO = "casino"      # high: degen capital, full send
+    FUTURES = "futures"  # tight: exchange-traded, regulated margin
+    SEED = "seed"  # medium: funded account, drawdown rules
+    CASINO = "casino"  # high: degen capital, full send
 
 
 # ---------------------------------------------------------------------------
 # Leverage ceiling
 # ---------------------------------------------------------------------------
+
 
 def calculate_max_leverage(
     price: float,
@@ -46,8 +47,7 @@ def calculate_max_leverage(
 
     if max_lev < 5.0:
         raise ValueError(
-            f"Max leverage {max_lev:.2f}x below safety floor (5x). "
-            f"ATR={atr_14_5m:.2f} too wide at price={price:.2f}."
+            f"Max leverage {max_lev:.2f}x below safety floor (5x). ATR={atr_14_5m:.2f} too wide at price={price:.2f}."
         )
     return round(max_lev, 2)
 
@@ -55,6 +55,7 @@ def calculate_max_leverage(
 # ---------------------------------------------------------------------------
 # Position sizing
 # ---------------------------------------------------------------------------
+
 
 def dynamic_position_size(
     equity: float,
@@ -84,6 +85,7 @@ def dynamic_position_size(
 # Kelly criterion
 # ---------------------------------------------------------------------------
 
+
 def fractional_kelly(
     win_rate: float,
     avg_win_r: float,
@@ -109,6 +111,7 @@ def fractional_kelly(
 # ---------------------------------------------------------------------------
 # Circuit breakers
 # ---------------------------------------------------------------------------
+
 
 def check_daily_loss_cap(
     todays_pnl: float,
@@ -144,6 +147,7 @@ def check_max_drawdown_kill(
 # Liquidation math
 # ---------------------------------------------------------------------------
 
+
 def liquidation_distance(
     entry_price: float,
     leverage: float,
@@ -164,8 +168,7 @@ def liquidation_distance(
     base = entry_price * (1.0 / leverage - maint_rate)
     if base <= 0:
         raise ValueError(
-            f"Leverage {leverage}x too high for maint_rate {maint_rate}. "
-            "Liquidation distance is negative."
+            f"Leverage {leverage}x too high for maint_rate {maint_rate}. Liquidation distance is negative."
         )
 
     if margin_mode == "cross":

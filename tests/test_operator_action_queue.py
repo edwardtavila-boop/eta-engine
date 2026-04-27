@@ -4,6 +4,7 @@ Pins the OP-list shape, the verdict glyph table, the JSON contract,
 and the per-probe behaviour against synthetic state. The script
 itself is read-only and pure-stdlib so the tests run fast (< 1s).
 """
+
 from __future__ import annotations
 
 import json
@@ -51,9 +52,7 @@ class TestOpListShape:
         items = collect_items()
         known = {VERDICT_DONE, VERDICT_BLOCKED, VERDICT_OBSERVED, VERDICT_UNKNOWN}
         for item in items:
-            assert item.verdict in known, (
-                f"{item.op_id} verdict={item.verdict!r} not in {known}"
-            )
+            assert item.verdict in known, f"{item.op_id} verdict={item.verdict!r} not in {known}"
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +61,6 @@ class TestOpListShape:
 
 
 class TestOpItemSerialisation:
-
     def test_as_dict_contains_canonical_keys(self):
         item = OpItem(
             op_id="OP-99",
@@ -74,7 +72,12 @@ class TestOpItemSerialisation:
         )
         d = item.as_dict()
         assert set(d.keys()) >= {
-            "op_id", "title", "verdict", "detail", "where", "evidence",
+            "op_id",
+            "title",
+            "verdict",
+            "detail",
+            "where",
+            "evidence",
         }
         assert d["evidence"] == {"k": 1}
 
@@ -90,7 +93,6 @@ class TestOpItemSerialisation:
 
 
 class TestRenderText:
-
     def test_renders_summary_line(self):
         items = collect_items()
         text = render_text(items)
@@ -136,9 +138,9 @@ class TestRenderText:
 
 
 class TestJsonOutput:
-
     def test_json_payload_round_trips(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         rc = main(["--json"])
         assert rc == 0
@@ -152,14 +154,18 @@ class TestJsonOutput:
         assert total == 17
 
     def test_json_summary_has_all_four_verdicts(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         rc = main(["--json"])
         assert rc == 0
         captured = capsys.readouterr().out
         payload = json.loads(captured)
         assert set(payload["summary"].keys()) == {
-            "DONE", "BLOCKED", "OBSERVED", "UNKNOWN",
+            "DONE",
+            "BLOCKED",
+            "OBSERVED",
+            "UNKNOWN",
         }
 
 
@@ -169,9 +175,9 @@ class TestJsonOutput:
 
 
 class TestCliTextMode:
-
     def test_default_text_render_succeeds(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         rc = main([])
         assert rc == 0
@@ -180,7 +186,8 @@ class TestCliTextMode:
         assert "Summary:" in out
 
     def test_verbose_flag_includes_evidence(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         rc = main(["--verbose"])
         assert rc == 0
@@ -203,6 +210,7 @@ class TestMcpOauthProbeUnderSyntheticState:
         from eta_engine.scripts.operator_action_queue import (
             _op6_op7_op8_mcp_oauth,
         )
+
         roadmap: dict[str, Any] = {
             "shared_artifacts": {
                 "mcp_status": {
@@ -220,6 +228,7 @@ class TestMcpOauthProbeUnderSyntheticState:
         from eta_engine.scripts.operator_action_queue import (
             _op6_op7_op8_mcp_oauth,
         )
+
         roadmap = {
             "shared_artifacts": {
                 "mcp_status": {
@@ -236,6 +245,7 @@ class TestMcpOauthProbeUnderSyntheticState:
         from eta_engine.scripts.operator_action_queue import (
             _op6_op7_op8_mcp_oauth,
         )
+
         roadmap: dict[str, Any] = {}
         items = _op6_op7_op8_mcp_oauth(roadmap)
         assert all(i.verdict == VERDICT_UNKNOWN for i in items)

@@ -24,6 +24,7 @@ Writes:
 This script does NOT log secret values. Only last-4 of the access token
 and the key names it attempted to read are emitted.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,8 +75,8 @@ class AuthReport:
     demo: bool = True
     creds_present: dict[str, bool] = field(default_factory=dict)
     has_all_creds: bool = False
-    auth_path: str = "stub"          # "real" | "stub"
-    result: str = "PENDING"          # AUTHORIZED | FAILED | STUBBED
+    auth_path: str = "stub"  # "real" | "stub"
+    result: str = "PENDING"  # AUTHORIZED | FAILED | STUBBED
     reason: str = ""
     token_last4: str = ""
     token_expires_at: str = ""
@@ -114,9 +115,7 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
             f"and rerun"
         )
         report.token_last4 = ""  # stub token, don't report fake last4
-        report.token_expires_at = (
-            venue._expiration.isoformat() if venue._expiration else ""
-        )
+        report.token_expires_at = venue._expiration.isoformat() if venue._expiration else ""
         await venue.close()
         return 2, report
 
@@ -145,9 +144,7 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
     report.result = "AUTHORIZED"
     report.reason = "oauth2 accessTokenRequest succeeded"
     report.token_last4 = _last4(venue._access_token)
-    report.token_expires_at = (
-        venue._expiration.isoformat() if venue._expiration else ""
-    )
+    report.token_expires_at = venue._expiration.isoformat() if venue._expiration else ""
     await venue.close()
     return 0, report
 
@@ -180,10 +177,8 @@ def _print_human(report: AuthReport) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Tradovate OAuth2 authorize")
-    ap.add_argument("--live", action="store_true",
-                    help="Use live URL instead of demo (default: demo)")
-    ap.add_argument("--json", action="store_true",
-                    help="Emit only the JSON report on stdout")
+    ap.add_argument("--live", action="store_true", help="Use live URL instead of demo (default: demo)")
+    ap.add_argument("--json", action="store_true", help="Emit only the JSON report on stdout")
     args = ap.parse_args()
 
     rc, report = asyncio.run(_run(demo=not args.live))

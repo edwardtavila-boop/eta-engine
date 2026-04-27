@@ -4,6 +4,7 @@ R1 wiring -- the async→sync bridge that powers
 :class:`BrokerEquityReconciler` from a venue adapter's
 ``get_net_liquidation()`` coroutine.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +24,10 @@ async def test_start_eagerly_fetches_before_returning() -> None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.05, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -42,7 +46,10 @@ async def test_polling_refreshes_on_interval() -> None:
         return results.pop(0) if results else 50_200.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.02, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.02,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -63,7 +70,10 @@ async def test_none_result_does_not_poison_cache() -> None:
         return 50_000.0 if idx[0] == 1 else None
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.02, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.02,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -88,7 +98,10 @@ async def test_exception_in_fetch_increments_error_counter() -> None:
         raise RuntimeError(msg)
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.02, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.02,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -108,7 +121,10 @@ async def test_stale_cache_returns_none() -> None:
         return 50_000.0 if idx[0] == 1 else None
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.02, stale_after_s=0.03,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.02,
+        stale_after_s=0.03,
     )
     await poller.start()
     try:
@@ -129,7 +145,10 @@ async def test_never_succeeded_returns_none() -> None:
         return None
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.02, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.02,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -146,7 +165,10 @@ async def test_integrates_with_reconciler() -> None:
         return 49_900.0  # $100 below our logical
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.05, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -170,7 +192,10 @@ async def test_start_is_idempotent() -> None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.05, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=5.0,
     )
     await poller.start()
     try:
@@ -187,7 +212,10 @@ async def test_stop_without_start_is_safe() -> None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=0.05, stale_after_s=5.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=5.0,
     )
     # No start; stop must not raise
     await poller.stop()
@@ -200,7 +228,10 @@ def test_invalid_refresh_s_rejected() -> None:
 
     with pytest.raises(ValueError, match="refresh_s"):
         BrokerEquityPoller(
-            name="stub", fetch_fn=fetch, refresh_s=0.0, stale_after_s=1.0,
+            name="stub",
+            fetch_fn=fetch,
+            refresh_s=0.0,
+            stale_after_s=1.0,
         )
 
 
@@ -210,7 +241,10 @@ def test_invalid_stale_after_s_rejected() -> None:
 
     with pytest.raises(ValueError, match="stale_after_s"):
         BrokerEquityPoller(
-            name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=0.0,
+            name="stub",
+            fetch_fn=fetch,
+            refresh_s=1.0,
+            stale_after_s=0.0,
         )
 
 
@@ -224,7 +258,10 @@ def test_consecutive_identical_starts_at_zero() -> None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=2.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=1.0,
+        stale_after_s=2.0,
     )
     assert poller.consecutive_identical == 0
 
@@ -235,7 +272,10 @@ def test_invalid_identical_warn_after_rejected() -> None:
 
     with pytest.raises(ValueError, match="identical_warn_after"):
         BrokerEquityPoller(
-            name="stub", fetch_fn=fetch, refresh_s=1.0, stale_after_s=2.0,
+            name="stub",
+            fetch_fn=fetch,
+            refresh_s=1.0,
+            stale_after_s=2.0,
             identical_warn_after=-1,
         )
 
@@ -243,12 +283,15 @@ def test_invalid_identical_warn_after_rejected() -> None:
 @pytest.mark.asyncio
 async def test_identical_polls_increment_counter() -> None:
     """Successive polls returning the same value bump consecutive_identical."""
+
     async def fetch() -> float | None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch,
-        refresh_s=0.05, stale_after_s=10.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=10.0,
     )
     # Drive _poll_once directly (bypasses the asyncio loop)
     await poller._poll_once()  # noqa: SLF001
@@ -269,8 +312,10 @@ async def test_changed_value_resets_counter() -> None:
         return next(values)
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch,
-        refresh_s=0.05, stale_after_s=10.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=10.0,
     )
     await poller._poll_once()  # noqa: SLF001 -- first
     await poller._poll_once()  # noqa: SLF001 -- identical (count=1)
@@ -288,12 +333,15 @@ async def test_warn_fires_once_at_threshold(
 ) -> None:
     """The warn log fires exactly at the threshold, not before, not after."""
     import logging
+
     async def fetch() -> float | None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch,
-        refresh_s=0.05, stale_after_s=10.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=10.0,
         identical_warn_after=3,
     )
     target_logger = "eta_engine.core.broker_equity_poller"
@@ -301,24 +349,15 @@ async def test_warn_fires_once_at_threshold(
         # First 3 polls: counter goes 0, 1, 2. No warn yet.
         for _ in range(3):
             await poller._poll_once()  # noqa: SLF001
-        warn_records_before = [
-            r for r in caplog.records
-            if "consecutive identical" in r.getMessage()
-        ]
+        warn_records_before = [r for r in caplog.records if "consecutive identical" in r.getMessage()]
         assert len(warn_records_before) == 0
         # Fourth poll: counter goes to 3 == threshold -> warn fires.
         await poller._poll_once()  # noqa: SLF001
-        warn_records_after = [
-            r for r in caplog.records
-            if "consecutive identical" in r.getMessage()
-        ]
+        warn_records_after = [r for r in caplog.records if "consecutive identical" in r.getMessage()]
         assert len(warn_records_after) == 1
         # Fifth poll: counter goes to 4. No additional warn (single-fire).
         await poller._poll_once()  # noqa: SLF001
-        warn_records_no_spam = [
-            r for r in caplog.records
-            if "consecutive identical" in r.getMessage()
-        ]
+        warn_records_no_spam = [r for r in caplog.records if "consecutive identical" in r.getMessage()]
         assert len(warn_records_no_spam) == 1
 
 
@@ -328,21 +367,21 @@ async def test_warn_disabled_when_identical_warn_after_zero(
 ) -> None:
     """Default ``identical_warn_after=0`` disables the warn entirely."""
     import logging
+
     async def fetch() -> float | None:
         return 50_000.0
 
     poller = BrokerEquityPoller(
-        name="stub", fetch_fn=fetch,
-        refresh_s=0.05, stale_after_s=10.0,
+        name="stub",
+        fetch_fn=fetch,
+        refresh_s=0.05,
+        stale_after_s=10.0,
         # Default identical_warn_after=0
     )
     with caplog.at_level(logging.WARNING, logger="eta_engine.core.broker_equity_poller"):
         for _ in range(20):
             await poller._poll_once()  # noqa: SLF001
-        warn_records = [
-            r for r in caplog.records
-            if "consecutive identical" in r.getMessage()
-        ]
+        warn_records = [r for r in caplog.records if "consecutive identical" in r.getMessage()]
         assert len(warn_records) == 0
         # But the counter still tracks for observability
         assert poller.consecutive_identical >= 19

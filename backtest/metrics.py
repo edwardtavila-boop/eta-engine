@@ -7,9 +7,12 @@ Pure-math performance stats. No pandas, no numpy required.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from eta_engine.backtest.models import Trade
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from eta_engine.backtest.models import Trade
 
 
 def _mean(xs: Iterable[float]) -> float:
@@ -53,10 +56,7 @@ def compute_sortino(returns: list[float]) -> float:
     if len(returns) < 2:
         return 0.0
     downside = [r for r in returns if r < 0.0]
-    if downside:
-        dd = _stdev(downside)
-    else:
-        dd = _stdev(returns)
+    dd = _stdev(downside) if downside else _stdev(returns)
     if dd == 0.0:
         return 0.0
     return round(_mean(returns) / dd * math.sqrt(252), 4)

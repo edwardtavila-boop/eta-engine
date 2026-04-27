@@ -31,7 +31,11 @@ def bar() -> BarData:
     return BarData(
         timestamp=datetime.now(UTC),
         symbol="ETHUSDT",
-        open=3500.0, high=3510.0, low=3495.0, close=3505.0, volume=1234.0,
+        open=3500.0,
+        high=3510.0,
+        low=3495.0,
+        close=3505.0,
+        volume=1234.0,
     )
 
 
@@ -43,25 +47,25 @@ def ctx() -> dict:
         "bias": 1,
         "atr_history": [20.0, 22.0, 25.0, 28.0, 30.0, 32.0, 35.0],
         "atr_current": 26.0,
-        "funding_history": [
-            FundingRate(timestamp=datetime.now(UTC), symbol="ETHUSDT", rate=0.0001)
-            for _ in range(8)
-        ],
+        "funding_history": [FundingRate(timestamp=datetime.now(UTC), symbol="ETHUSDT", rate=0.0001) for _ in range(8)],
         "onchain": {
-            "whale_transfers": 12, "whale_transfers_baseline": 6,
+            "whale_transfers": 12,
+            "whale_transfers_baseline": 6,
             "exchange_netflow_usd": -20_000_000.0,
-            "active_addresses": 1200, "active_addresses_baseline": 1000,
+            "active_addresses": 1200,
+            "active_addresses_baseline": 1000,
         },
         "sentiment": {
-            "galaxy_score": 85.0, "alt_rank": 15,
-            "social_volume": 500, "social_volume_baseline": 200,
+            "galaxy_score": 85.0,
+            "alt_rank": 15,
+            "social_volume": 500,
+            "social_volume_baseline": 200,
             "fear_greed": 22,
         },
     }
 
 
 class TestHelpers:
-
     def test_ema_slope_rising(self) -> None:
         assert ema_slope_score([100, 101, 102, 103]) > 0.5
 
@@ -82,11 +86,16 @@ class TestHelpers:
 
 
 class TestFeatures:
-
-    @pytest.mark.parametrize("feature", [
-        TrendBiasFeature(), VolRegimeFeature(), FundingSkewFeature(),
-        OnchainFeature(), SentimentFeature(),
-    ])
+    @pytest.mark.parametrize(
+        "feature",
+        [
+            TrendBiasFeature(),
+            VolRegimeFeature(),
+            FundingSkewFeature(),
+            OnchainFeature(),
+            SentimentFeature(),
+        ],
+    )
     def test_feature_returns_bounded_float(self, feature: object, bar: BarData, ctx: dict) -> None:
         score = feature.compute(bar, ctx)
         assert isinstance(score, float)
@@ -100,7 +109,6 @@ class TestFeatures:
 
 
 class TestPipeline:
-
     def test_default_has_five_features(self) -> None:
         p = FeaturePipeline.default()
         assert len(p._features) == 5  # noqa: SLF001

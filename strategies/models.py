@@ -6,6 +6,7 @@ All models are frozen dataclasses so they can flow safely across async
 task boundaries (no hidden mutation) and be held inside the
 ``JarvisContext`` / decision-journal payloads.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -99,18 +100,14 @@ class StrategySignal:
     entry: float = 0.0
     stop: float = 0.0
     target: float = 0.0
-    confidence: float = 0.0        # 0..10
-    risk_mult: float = 0.0         # base-risk modifier
+    confidence: float = 0.0  # 0..10
+    risk_mult: float = 0.0  # base-risk modifier
     rationale_tags: tuple[str, ...] = field(default_factory=tuple)
     meta: dict[str, float] = field(default_factory=dict)
 
     @property
     def is_actionable(self) -> bool:
-        return (
-            self.side is not Side.FLAT
-            and self.confidence > 0.0
-            and self.risk_mult > 0.0
-        )
+        return self.side is not Side.FLAT and self.confidence > 0.0 and self.risk_mult > 0.0
 
     @property
     def rr(self) -> float:

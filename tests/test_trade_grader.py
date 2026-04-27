@@ -1,4 +1,5 @@
 """Tests for core.trade_grader -- post-trade A+ grading."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -61,10 +62,16 @@ def _trade(
 def test_closed_at_must_be_after_opened_at() -> None:
     with pytest.raises(ValidationError):
         ClosedTrade(
-            trade_id="x", symbol="MNQ", side=TradeSide.LONG,
-            opened_at=_T1, closed_at=_T0,
-            entry_price=1.0, exit_price=1.0, stop_price=0.5,
-            mfe_price=1.1, mae_price=0.9,
+            trade_id="x",
+            symbol="MNQ",
+            side=TradeSide.LONG,
+            opened_at=_T1,
+            closed_at=_T0,
+            entry_price=1.0,
+            exit_price=1.0,
+            stop_price=0.5,
+            mfe_price=1.1,
+            mae_price=0.9,
             first_pullback_frac=0.5,
             confluence_score=5.0,
             regime_at_entry=TradeRegime.RANGING,
@@ -97,8 +104,7 @@ def test_r_risk_long() -> None:
 
 
 def test_r_risk_short() -> None:
-    t = _trade(side=TradeSide.SHORT, entry=100.0, stop=105.0,
-               exit_=95.0, mfe=94.0, mae=101.0)
+    t = _trade(side=TradeSide.SHORT, entry=100.0, stop=105.0, exit_=95.0, mfe=94.0, mae=101.0)
     assert t.r_risk == 5.0
 
 
@@ -113,8 +119,7 @@ def test_r_captured_long_loser() -> None:
 
 
 def test_r_captured_short_winner() -> None:
-    t = _trade(side=TradeSide.SHORT, entry=100.0, exit_=90.0, stop=105.0,
-               mfe=89.0, mae=101.0)
+    t = _trade(side=TradeSide.SHORT, entry=100.0, exit_=90.0, stop=105.0, mfe=89.0, mae=101.0)
     assert t.r_captured == 2.0
 
 
@@ -171,8 +176,13 @@ def test_regime_fit_long_trending_up() -> None:
 def test_regime_fit_short_trending_down() -> None:
     g = TradeGrader()
     tr = _trade(
-        side=TradeSide.SHORT, regime=TradeRegime.TRENDING_DOWN,
-        entry=100.0, exit_=90.0, stop=105.0, mfe=89.0, mae=101.0,
+        side=TradeSide.SHORT,
+        regime=TradeRegime.TRENDING_DOWN,
+        entry=100.0,
+        exit_=90.0,
+        stop=105.0,
+        mfe=89.0,
+        mae=101.0,
     )
     gr = g.grade(tr)
     assert gr.breakdown.regime_fit == 20.0
@@ -302,9 +312,14 @@ def test_rule_adherence_never_negative() -> None:
 def test_a_plus_when_every_component_maxed() -> None:
     g = TradeGrader()
     tr = _trade(
-        entry=100.0, exit_=110.0, stop=95.0, mfe=110.0,
-        first_pullback=1.0, confluence=9.0,
-        regime=TradeRegime.TRENDING_UP, side=TradeSide.LONG,
+        entry=100.0,
+        exit_=110.0,
+        stop=95.0,
+        mfe=110.0,
+        first_pullback=1.0,
+        confluence=9.0,
+        regime=TradeRegime.TRENDING_UP,
+        side=TradeSide.LONG,
         overrides=0,
     )
     gr = g.grade(tr)
@@ -315,9 +330,14 @@ def test_a_plus_when_every_component_maxed() -> None:
 def test_f_when_everything_wrong() -> None:
     g = TradeGrader()
     tr = _trade(
-        entry=100.0, exit_=97.0, stop=95.0, mfe=101.0,
-        first_pullback=0.0, confluence=3.0,
-        regime=TradeRegime.TRENDING_DOWN, side=TradeSide.LONG,
+        entry=100.0,
+        exit_=97.0,
+        stop=95.0,
+        mfe=101.0,
+        first_pullback=0.0,
+        confluence=3.0,
+        regime=TradeRegime.TRENDING_DOWN,
+        side=TradeSide.LONG,
         overrides=4,
     )
     gr = g.grade(tr)
@@ -356,14 +376,20 @@ def test_grade_many() -> None:
 
 def test_leak_distribution_counts_buckets() -> None:
     g = TradeGrader()
-    bad_regime = g.grade(_trade(
-        regime=TradeRegime.TRENDING_DOWN, side=TradeSide.LONG,
-    ))
+    bad_regime = g.grade(
+        _trade(
+            regime=TradeRegime.TRENDING_DOWN,
+            side=TradeSide.LONG,
+        )
+    )
     bad_entry = g.grade(_trade(first_pullback=0.1))
-    bad_both = g.grade(_trade(
-        regime=TradeRegime.TRENDING_DOWN, side=TradeSide.LONG,
-        first_pullback=0.1,
-    ))
+    bad_both = g.grade(
+        _trade(
+            regime=TradeRegime.TRENDING_DOWN,
+            side=TradeSide.LONG,
+            first_pullback=0.1,
+        )
+    )
     dist = leak_distribution([bad_regime, bad_entry, bad_both])
     assert dist["regime_fit"] == 2
     assert dist["entry_timing"] == 2
@@ -376,8 +402,10 @@ def test_leak_distribution_counts_buckets() -> None:
 
 def test_grade_breakdown_total_rounds() -> None:
     b = GradeBreakdown(
-        entry_timing=19.97, regime_fit=20.0,
-        confluence_accuracy=20.0, exit_efficiency=20.0,
+        entry_timing=19.97,
+        regime_fit=20.0,
+        confluence_accuracy=20.0,
+        exit_efficiency=20.0,
         rule_adherence=20.0,
     )
     assert b.total == 99.97
@@ -386,7 +414,9 @@ def test_grade_breakdown_total_rounds() -> None:
 def test_grade_breakdown_rejects_over_max() -> None:
     with pytest.raises(ValidationError):
         GradeBreakdown(
-            entry_timing=25.0, regime_fit=20.0,
-            confluence_accuracy=20.0, exit_efficiency=20.0,
+            entry_timing=25.0,
+            regime_fit=20.0,
+            confluence_accuracy=20.0,
+            exit_efficiency=20.0,
             rule_adherence=20.0,
         )

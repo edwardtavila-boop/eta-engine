@@ -32,7 +32,7 @@ def _cfg() -> dict:
             "apex_eval_preemptive": {"cushion_usd": 500},
             "per_bucket": {
                 "mnq": {"max_loss_usd": 500, "consecutive_losses": 3},
-                "nq":  {"max_loss_usd": 1200, "consecutive_losses": 3},
+                "nq": {"max_loss_usd": 1200, "consecutive_losses": 3},
             },
         },
         "tier_b": {
@@ -52,7 +52,8 @@ def _cfg() -> dict:
 
 def _portfolio(total=7000, peak=7000, pnl=0.0):
     return PortfolioSnapshot(
-        total_equity_usd=total, peak_equity_usd=peak,
+        total_equity_usd=total,
+        peak_equity_usd=peak,
         daily_realized_pnl_usd=pnl,
     )
 
@@ -84,8 +85,9 @@ def test_global_trip_supersedes_other_verdicts():
     """If global trips, we must not emit per-bot verdicts too."""
     ks = KillSwitch(_cfg())
     p = _portfolio(total=7500, peak=10000)  # DD 25% > 20% cap
-    bot = BotSnapshot(name="mnq", tier="A", equity_usd=1000, peak_equity_usd=5000,
-                      session_realized_pnl_usd=-4000)  # also tripped per-bucket
+    bot = BotSnapshot(
+        name="mnq", tier="A", equity_usd=1000, peak_equity_usd=5000, session_realized_pnl_usd=-4000
+    )  # also tripped per-bucket
     v = ks.evaluate(bots=[bot], portfolio=p)
     assert len(v) == 1, "global trip should short-circuit"
     assert v[0].action is KillAction.FLATTEN_ALL
@@ -118,7 +120,10 @@ def test_correlation_kill_fires_on_n_pairs_above_threshold():
     p = _portfolio()
     c = CorrelationSnapshot(
         pair_abs_corr={
-            "BTC-ETH": 0.91, "BTC-SOL": 0.88, "ETH-SOL": 0.90, "SOL-XRP": 0.86,
+            "BTC-ETH": 0.91,
+            "BTC-SOL": 0.88,
+            "ETH-SOL": 0.90,
+            "SOL-XRP": 0.86,
         }
     )
     v = ks.evaluate(bots=[], portfolio=p, correlations=c)
@@ -179,8 +184,10 @@ def test_funding_below_soft_is_silent():
 def test_tier_a_max_loss_usd_trips():
     ks = KillSwitch(_cfg())
     bot = BotSnapshot(
-        name="mnq", tier="A",
-        equity_usd=4500, peak_equity_usd=5000,
+        name="mnq",
+        tier="A",
+        equity_usd=4500,
+        peak_equity_usd=5000,
         session_realized_pnl_usd=-500.01,
     )
     v = ks.evaluate(bots=[bot], portfolio=_portfolio())
@@ -191,8 +198,10 @@ def test_tier_a_max_loss_usd_trips():
 def test_tier_b_max_loss_pct_trips():
     ks = KillSwitch(_cfg())
     bot = BotSnapshot(
-        name="eth_perp", tier="B",
-        equity_usd=900, peak_equity_usd=1000,  # 10% loss
+        name="eth_perp",
+        tier="B",
+        equity_usd=900,
+        peak_equity_usd=1000,  # 10% loss
         session_realized_pnl_usd=-100,
     )
     v = ks.evaluate(bots=[bot], portfolio=_portfolio())
@@ -203,9 +212,12 @@ def test_tier_b_max_loss_pct_trips():
 def test_consecutive_loss_trip_fires_on_either_tier():
     ks = KillSwitch(_cfg())
     bot = BotSnapshot(
-        name="mnq", tier="A",
-        equity_usd=5000, peak_equity_usd=5000,
-        session_realized_pnl_usd=-10, consecutive_losses=3,
+        name="mnq",
+        tier="A",
+        equity_usd=5000,
+        peak_equity_usd=5000,
+        session_realized_pnl_usd=-10,
+        consecutive_losses=3,
     )
     v = ks.evaluate(bots=[bot], portfolio=_portfolio())
     hits = [x for x in v if x.action is KillAction.FLATTEN_BOT]
@@ -216,8 +228,10 @@ def test_consecutive_loss_trip_fires_on_either_tier():
 def test_no_trip_returns_single_continue():
     ks = KillSwitch(_cfg())
     bot = BotSnapshot(
-        name="mnq", tier="A",
-        equity_usd=5000, peak_equity_usd=5000,
+        name="mnq",
+        tier="A",
+        equity_usd=5000,
+        peak_equity_usd=5000,
     )
     v = ks.evaluate(bots=[bot], portfolio=_portfolio())
     assert len(v) == 1
@@ -251,8 +265,8 @@ def test_from_yaml_tolerates_empty_file(tmp_path):
 # Enforces tick_interval_s * max_usd_move_per_sec * safety_factor <= cushion_usd
 # in live mode. Non-live runs are exempt.
 
-class TestValidateApexTickCadence:
 
+class TestValidateApexTickCadence:
     def test_noop_when_not_live(self):
         # Clearly-unsafe cadence but live=False -> silent pass.
         validate_apex_tick_cadence(

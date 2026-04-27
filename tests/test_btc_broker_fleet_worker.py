@@ -18,6 +18,7 @@ a stubbed broker adapter, proving that:
 Uses the in-memory ``_StubAdapter`` from ``tests.test_btc_paper_lane``
 so the network-free test surface stays consistent.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,7 +57,9 @@ class _StubAdapter:
         return OrderResult(order_id="auto", status=OrderStatus.OPEN, raw={})
 
     async def get_order_status(
-        self, symbol: str, order_id: str,
+        self,
+        symbol: str,
+        order_id: str,
     ) -> OrderResult | None:
         _ = symbol
         self.status_calls.append(order_id)
@@ -99,7 +102,6 @@ def _runner(tmp_path: Path, spec: FleetWorkerSpec, adapter: _StubAdapter, *, aut
 # fleet_workers: every lane-broker pair is distinct
 # --------------------------------------------------------------------------- #
 class TestFleetWorkers:
-
     def test_four_workers_each_lane_each_broker(self) -> None:
         workers = fleet_workers(starting_cash=1000.0)
         ids = [w.worker_id for w in workers]
@@ -117,12 +119,13 @@ class TestFleetWorkers:
 # _execute_worker_tick: single-tick surface
 # --------------------------------------------------------------------------- #
 class TestWorkerTickLifecycle:
-
     def test_first_tick_submits_probe(self, tmp_path: Path) -> None:
         spec = _spec("directional", "tastytrade")
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-X", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-X", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner = _runner(tmp_path, spec, adapter, auto_submit=True)
 
         payload = _execute_worker_tick(
@@ -152,20 +155,30 @@ class TestWorkerTickLifecycle:
 
     def test_second_tick_reconciles_no_new_submit(self, tmp_path: Path) -> None:
         spec = _spec("grid", "ibkr")
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-Y", status=OrderStatus.OPEN, raw={}),
-            # Second tick -> reconcile returns still-OPEN
-            OrderResult(order_id="srv-Y", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-Y", status=OrderStatus.OPEN, raw={}),
+                # Second tick -> reconcile returns still-OPEN
+                OrderResult(order_id="srv-Y", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner = _runner(tmp_path, spec, adapter, auto_submit=True)
 
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=2, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=2,
+            started_at="ts",
+            runner_error="",
         )
         # One submit, one reconcile
         assert len(adapter.place_calls) == 1
@@ -173,22 +186,35 @@ class TestWorkerTickLifecycle:
 
     def test_fill_transition_clears_active(self, tmp_path: Path) -> None:
         spec = _spec("grid", "ibkr")
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-F", status=OrderStatus.OPEN, raw={}),
-            OrderResult(
-                order_id="srv-F", status=OrderStatus.FILLED,
-                filled_qty=1.0, avg_price=95_000.0, raw={},
-            ),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-F", status=OrderStatus.OPEN, raw={}),
+                OrderResult(
+                    order_id="srv-F",
+                    status=OrderStatus.FILLED,
+                    filled_qty=1.0,
+                    avg_price=95_000.0,
+                    raw={},
+                ),
+            ]
+        )
         runner = _runner(tmp_path, spec, adapter, auto_submit=True)
 
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         payload2 = _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=2, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=2,
+            started_at="ts",
+            runner_error="",
         )
         # Terminal FILLED -> cleared
         assert payload2["lane_runner"]["active_order_id"] is None
@@ -197,18 +223,28 @@ class TestWorkerTickLifecycle:
 
     def test_rejected_terminal_clears(self, tmp_path: Path) -> None:
         spec = _spec("directional", "tastytrade")
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-R", status=OrderStatus.OPEN, raw={}),
-            OrderResult(order_id="srv-R", status=OrderStatus.REJECTED, raw={}),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-R", status=OrderStatus.OPEN, raw={}),
+                OrderResult(order_id="srv-R", status=OrderStatus.REJECTED, raw={}),
+            ]
+        )
         runner = _runner(tmp_path, spec, adapter, auto_submit=True)
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         payload2 = _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=2, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=2,
+            started_at="ts",
+            runner_error="",
         )
         assert payload2["lane_runner"]["active_order_id"] is None
         assert payload2["lane_runner"]["terminal_orders"] == 1
@@ -218,8 +254,12 @@ class TestWorkerTickLifecycle:
         adapter = _StubAdapter()
         runner = _runner(tmp_path, spec, adapter, auto_submit=False)
         payload = _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         assert adapter.place_calls == []
         assert payload["lane_runner"]["execution_state"] == "RECONCILE_ONLY"
@@ -227,8 +267,11 @@ class TestWorkerTickLifecycle:
     def test_no_runner_still_writes_heartbeat(self, tmp_path: Path) -> None:
         spec = _spec("grid", "ibkr")
         payload = _execute_worker_tick(
-            spec, runner=None, out_dir=tmp_path,
-            heartbeat=1, started_at="ts",
+            spec,
+            runner=None,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
             runner_error="ConfigError: simulated",
         )
         # Heartbeat still written even when the runner failed to construct.
@@ -238,7 +281,8 @@ class TestWorkerTickLifecycle:
         assert "lane_runner" not in payload
 
     def test_adapter_exception_is_quarantined_to_snapshot(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         class _BreakingAdapter:
             async def place_order(self, request):  # type: ignore[no-untyped-def]
@@ -252,16 +296,25 @@ class TestWorkerTickLifecycle:
 
         spec = _spec("grid", "ibkr")
         runner = PaperLaneRunner(
-            worker_id=spec.worker_id, broker=spec.broker, lane=spec.lane,
-            symbol=spec.symbol, adapter=_BreakingAdapter(),  # type: ignore[arg-type]
-            state_dir=tmp_path, ledger_path=worker_ledger_path(tmp_path),
-            anchor_price=100_000.0, auto_submit=True,
+            worker_id=spec.worker_id,
+            broker=spec.broker,
+            lane=spec.lane,
+            symbol=spec.symbol,
+            adapter=_BreakingAdapter(),  # type: ignore[arg-type]
+            state_dir=tmp_path,
+            ledger_path=worker_ledger_path(tmp_path),
+            anchor_price=100_000.0,
+            auto_submit=True,
         )
         # First tick triggers place_order, which raises -> runner
         # catches internally and records a submit_error last_event.
         payload = _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         # Lane tick didn't crash the worker; snapshot is present.
         assert "lane_runner" in payload
@@ -275,10 +328,11 @@ class TestWorkerTickLifecycle:
 # _build_lane_runner: error capture
 # --------------------------------------------------------------------------- #
 class TestBuildLaneRunner:
-
     def test_unsupported_lane_returns_error(self, tmp_path: Path) -> None:
         bad = FleetWorkerSpec(
-            worker_id="x", broker="tastytrade", lane="banana",
+            worker_id="x",
+            broker="tastytrade",
+            lane="banana",
             symbol="BTCUSD",
         )
         runner, err = _build_lane_runner(bad, out_dir=tmp_path)
@@ -287,7 +341,9 @@ class TestBuildLaneRunner:
 
     def test_unsupported_broker_returns_error(self, tmp_path: Path) -> None:
         bad = FleetWorkerSpec(
-            worker_id="x", broker="fake-broker", lane="grid",
+            worker_id="x",
+            broker="fake-broker",
+            lane="grid",
             symbol="BTCUSD",
         )
         runner, err = _build_lane_runner(bad, out_dir=tmp_path)
@@ -299,33 +355,42 @@ class TestBuildLaneRunner:
 # Trade ledger grows monotonically
 # --------------------------------------------------------------------------- #
 class TestLedgerMonotonic:
-
     def test_ledger_appends_on_submit_and_transition(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         spec = _spec("grid", "tastytrade")
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-L", status=OrderStatus.OPEN, raw={}),
-            OrderResult(
-                order_id="srv-L", status=OrderStatus.FILLED,
-                filled_qty=1.0, avg_price=95_000.0, raw={},
-            ),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-L", status=OrderStatus.OPEN, raw={}),
+                OrderResult(
+                    order_id="srv-L",
+                    status=OrderStatus.FILLED,
+                    filled_qty=1.0,
+                    avg_price=95_000.0,
+                    raw={},
+                ),
+            ]
+        )
         runner = _runner(tmp_path, spec, adapter, auto_submit=True)
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=1, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=1,
+            started_at="ts",
+            runner_error="",
         )
         _execute_worker_tick(
-            spec, runner=runner, out_dir=tmp_path,
-            heartbeat=2, started_at="ts", runner_error="",
+            spec,
+            runner=runner,
+            out_dir=tmp_path,
+            heartbeat=2,
+            started_at="ts",
+            runner_error="",
         )
         ledger = worker_ledger_path(tmp_path)
-        rows = [
-            json.loads(line)
-            for line in ledger.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip()]
         events = [r["event"] for r in rows]
         assert "submit" in events
         assert "transition" in events

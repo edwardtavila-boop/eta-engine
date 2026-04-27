@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 # Types
 # ---------------------------------------------------------------------------
 
-class AgentRole(str, Enum):
+
+class AgentRole(StrEnum):
     MACRO_GUARDIAN = "MACRO_GUARDIAN"
     REGIME_DETECTOR = "REGIME_DETECTOR"
     RISK_ADVOCATE = "RISK_ADVOCATE"

@@ -3,6 +3,7 @@
 Unit tests for pure SMC/ICT detectors. No fixtures -- every test
 constructs its own bar stream to keep failures easy to read.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -66,10 +67,7 @@ class TestFindEqualLevels:
             h = 110.0 if i in (10, 20) else 105.0
             bars.append(_bar(i, 100.0, h, 99.0, 102.0))
         levels = find_equal_levels(bars, tolerance_pct=0.0005, min_count=2)
-        assert any(
-            level.side is SweepSide.HIGH and level.level == pytest.approx(110.0)
-            for level in levels
-        )
+        assert any(level.side is SweepSide.HIGH and level.level == pytest.approx(110.0) for level in levels)
 
     def test_respects_tolerance(self) -> None:
         bars: list[Bar] = []
@@ -277,6 +275,7 @@ class TestDetectOrderBlock:
         bars = _steady_uptrend(n=20, start=100.0, step=1.0)
         # Construct a trivial bullish BOS by hand
         from eta_engine.strategies.smc_primitives import BreakOfStructure
+
         bos = BreakOfStructure(
             direction=Side.LONG,
             pivot_price=110.0,

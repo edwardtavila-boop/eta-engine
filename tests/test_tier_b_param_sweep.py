@@ -5,8 +5,9 @@ from __future__ import annotations
 from eta_engine.scripts import tier_b_param_sweep as mod
 
 
-def _cell(bot: str, conf: float, risk: float, exp_r: float,
-          dd: float = 5.0, trades: int = 100, gate_pass: bool | None = None) -> mod.SweepCell:
+def _cell(
+    bot: str, conf: float, risk: float, exp_r: float, dd: float = 5.0, trades: int = 100, gate_pass: bool | None = None
+) -> mod.SweepCell:
     return mod.SweepCell(
         bot=bot,
         confluence_threshold=conf,
@@ -35,7 +36,7 @@ def test_winner_picks_highest_expectancy_among_passers():
 def test_winner_tiebreaks_on_dd_when_expectancy_equal():
     cells = [
         _cell("eth_perp", 5.0, 0.01, 0.40, dd=10.0),
-        _cell("eth_perp", 6.0, 0.01, 0.40, dd=4.0),   # lower dd wins
+        _cell("eth_perp", 6.0, 0.01, 0.40, dd=4.0),  # lower dd wins
         _cell("eth_perp", 7.0, 0.01, 0.40, dd=12.0),
     ]
     w = mod._winner(cells)
@@ -64,9 +65,4 @@ def test_grid_cardinality_matches_advertised_shape():
     assert len(mod.CONFLUENCE_GRID) == 7
     assert len(mod.RISK_GRID) == 4
     assert len(mod.TIER_B_BOTS) == 4
-    assert (
-        len(mod.TIER_B_BOTS)
-        * len(mod.CONFLUENCE_GRID)
-        * len(mod.RISK_GRID)
-        == 112
-    )
+    assert len(mod.TIER_B_BOTS) * len(mod.CONFLUENCE_GRID) * len(mod.RISK_GRID) == 112

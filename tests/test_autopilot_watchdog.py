@@ -1,4 +1,5 @@
 """Tests for obs.autopilot_watchdog -- require_ack on stale positions."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -24,7 +25,8 @@ _T0 = datetime(2026, 1, 1, 9, 30, tzinfo=UTC)
 
 
 def _pos(
-    *, trade_id: str = "t-1",
+    *,
+    trade_id: str = "t-1",
     symbol: str = "MNQ",
     opened: datetime = _T0,
     last_ack: datetime = _T0,
@@ -32,9 +34,12 @@ def _pos(
     open_r: float = 0.0,
 ) -> PositionState:
     return PositionState(
-        trade_id=trade_id, symbol=symbol,
-        opened_at=opened, last_ack_at=last_ack,
-        current_stop_distance=stop_distance, open_r=open_r,
+        trade_id=trade_id,
+        symbol=symbol,
+        opened_at=opened,
+        last_ack_at=last_ack,
+        current_stop_distance=stop_distance,
+        open_r=open_r,
     )
 
 
@@ -148,9 +153,7 @@ def test_multiple_positions_each_alerted() -> None:
     wd.register_position(_pos(trade_id="c"))
     alerts = wd.check_all()
     assert {a.trade_id for a in alerts} == {"a", "b", "c"}
-    assert all(
-        a.level == WatchdogAlertLevel.REQUIRE_ACK for a in alerts
-    )
+    assert all(a.level == WatchdogAlertLevel.REQUIRE_ACK for a in alerts)
 
 
 def test_remove_position() -> None:
@@ -188,6 +191,7 @@ def test_force_flatten_marked_executed(tmp_path: Path) -> None:
     wd.register_position(_pos())
     wd.check_all()
     from eta_engine.obs.decision_journal import Outcome
+
     events = journal.read_all()
     assert events[0].outcome == Outcome.EXECUTED
 
@@ -235,6 +239,7 @@ def test_request_flatten_approval_without_admin_raises() -> None:
 def test_request_flatten_approval_rejects_non_flatten_alert() -> None:
     """Only FORCE_FLATTEN alerts go through the admin flow."""
     from eta_engine.brain.jarvis_admin import JarvisAdmin  # noqa: PLC0415
+
     admin = JarvisAdmin()
     wd = AutopilotWatchdog(
         clock=lambda: _T0 + timedelta(seconds=1800),  # REQUIRE_ACK
@@ -266,8 +271,11 @@ def test_request_flatten_approval_end_to_end(tmp_path: Path) -> None:
     # Constant providers -> TRADE-tier context every tick
     macro = MacroSnapshot(vix_level=17.0, macro_bias="neutral")
     equity = EquitySnapshot(
-        account_equity=50_000.0, daily_pnl=0.0,
-        daily_drawdown_pct=0.0, open_positions=1, open_risk_r=1.0,
+        account_equity=50_000.0,
+        daily_pnl=0.0,
+        daily_drawdown_pct=0.0,
+        open_positions=1,
+        open_risk_r=1.0,
     )
     regime = RegimeSnapshot(regime="TREND_UP", confidence=0.7)
     journal = JournalSnapshot()
@@ -275,17 +283,22 @@ def test_request_flatten_approval_end_to_end(tmp_path: Path) -> None:
     class _P:
         def get_macro(self) -> MacroSnapshot:
             return macro
+
         def get_equity(self) -> EquitySnapshot:
             return equity
+
         def get_regime(self) -> RegimeSnapshot:
             return regime
+
         def get_journal_snapshot(self) -> JournalSnapshot:
             return journal
 
     providers = _P()
     builder = JarvisContextBuilder(
-        macro_provider=providers, equity_provider=providers,
-        regime_provider=providers, journal_provider=providers,
+        macro_provider=providers,
+        equity_provider=providers,
+        regime_provider=providers,
+        journal_provider=providers,
     )
     engine = JarvisContextEngine(builder=builder)
     audit = tmp_path / "admin_audit.jsonl"

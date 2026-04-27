@@ -58,6 +58,7 @@ Usage
     # -> ApexEvalSnapshot(trailing_dd_limit_usd=2500.0, distance_to_limit_usd=...)
     verdicts = kill_switch.evaluate(apex_eval=snapshot, ...)
 """
+
 from __future__ import annotations
 
 import json
@@ -250,16 +251,10 @@ class TrailingDDTracker:
         audit_log_path: Path | None = None,
     ) -> None:
         if state.starting_balance_usd <= 0:
-            msg = (
-                "starting_balance_usd must be > 0 "
-                f"(got {state.starting_balance_usd})"
-            )
+            msg = f"starting_balance_usd must be > 0 (got {state.starting_balance_usd})"
             raise ValueError(msg)
         if state.trailing_dd_cap_usd <= 0:
-            msg = (
-                "trailing_dd_cap_usd must be > 0 "
-                f"(got {state.trailing_dd_cap_usd})"
-            )
+            msg = f"trailing_dd_cap_usd must be > 0 (got {state.trailing_dd_cap_usd})"
             raise ValueError(msg)
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -346,11 +341,7 @@ class TrailingDDTracker:
             trailing_dd_cap_usd=loaded_cap,
             peak_equity_usd=float(raw.get("peak_equity_usd", loaded_start)),
             frozen=bool(raw.get("frozen", False)),
-            last_equity_usd=(
-                float(raw["last_equity_usd"])
-                if raw.get("last_equity_usd") is not None
-                else None
-            ),
+            last_equity_usd=(float(raw["last_equity_usd"]) if raw.get("last_equity_usd") is not None else None),
             last_update_utc=raw.get("last_update_utc"),
             breach_count=int(raw.get("breach_count", 0)),
         )
@@ -469,10 +460,12 @@ class TrailingDDTracker:
         if breached:
             s.breach_count += 1
             log.critical(
-                "trailing-DD FLOOR BREACHED: equity=%.2f floor=%.2f "
-                "peak=%.2f frozen=%s breach_count=%d",
-                current_equity_usd, self.floor_usd(), s.peak_equity_usd,
-                s.frozen, s.breach_count,
+                "trailing-DD FLOOR BREACHED: equity=%.2f floor=%.2f peak=%.2f frozen=%s breach_count=%d",
+                current_equity_usd,
+                self.floor_usd(),
+                s.peak_equity_usd,
+                s.frozen,
+                s.breach_count,
             )
         self._write_atomic()
         # R3 closure: emit audit events AFTER state is durably on disk so
@@ -544,10 +537,7 @@ class TrailingDDTracker:
             msg = "reset() requires a non-empty 'operator' identifier."
             raise ValueError(msg)
         if starting_balance_usd <= 0:
-            msg = (
-                "starting_balance_usd must be > 0 "
-                f"(got {starting_balance_usd})"
-            )
+            msg = f"starting_balance_usd must be > 0 (got {starting_balance_usd})"
             raise ValueError(msg)
         prior_state = self._state.as_dict()
         self._state = TrailingDDState(
@@ -572,7 +562,10 @@ class TrailingDDTracker:
         )
         log.warning(
             "trailing-DD tracker RESET: operator=%s new starting_balance=%.2f cap=%.2f reason=%r",
-            operator, starting_balance_usd, self._state.trailing_dd_cap_usd, reason,
+            operator,
+            starting_balance_usd,
+            self._state.trailing_dd_cap_usd,
+            reason,
         )
 
 

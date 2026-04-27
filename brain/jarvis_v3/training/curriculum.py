@@ -17,6 +17,7 @@ Each Exercise has:
 
 Operators add exercises by editing this file. Code just reads.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,16 +27,16 @@ from eta_engine.brain.model_policy import TaskCategory
 
 class Exercise(BaseModel):
     """One curriculum exercise."""
+
     model_config = ConfigDict(frozen=True)
 
-    id:              str = Field(min_length=1)
-    persona:         str = Field(min_length=1)
-    skill:           TaskCategory
-    prompt:          str = Field(min_length=10)
-    typical_tokens:  int = Field(ge=50, default=400)
-    success_traits:  list[str] = Field(default_factory=list)
-    tier:            str = Field(pattern="^(basic|intermediate|advanced)$",
-                                 default="basic")
+    id: str = Field(min_length=1)
+    persona: str = Field(min_length=1)
+    skill: TaskCategory
+    prompt: str = Field(min_length=10)
+    typical_tokens: int = Field(ge=50, default=400)
+    success_traits: list[str] = Field(default_factory=list)
+    tier: str = Field(pattern="^(basic|intermediate|advanced)$", default="basic")
 
 
 EXERCISES: list[Exercise] = [
@@ -50,8 +51,7 @@ EXERCISES: list[Exercise] = [
             "KeyboardInterrupt. Draft a one-line commit message."
         ),
         typical_tokens=80,
-        success_traits=["conventional-commits prefix", "under 80 chars",
-                         "no preamble"],
+        success_traits=["conventional-commits prefix", "under 80 chars", "no preamble"],
         tier="basic",
     ),
     Exercise(
@@ -59,8 +59,7 @@ EXERCISES: list[Exercise] = [
         persona="ROBIN",
         skill=TaskCategory.LOG_PARSING,
         prompt=(
-            "Here are the last 20 lines of avengers-fleet.log. Count errors "
-            "by type and return a one-line summary."
+            "Here are the last 20 lines of avengers-fleet.log. Count errors by type and return a one-line summary."
         ),
         typical_tokens=150,
         success_traits=["single summary line", "numeric counts"],
@@ -70,10 +69,7 @@ EXERCISES: list[Exercise] = [
         id="ROB-003",
         persona="ROBIN",
         skill=TaskCategory.TRIVIAL_LOOKUP,
-        prompt=(
-            "Which file contains the `BackgroundTask` enum definition? "
-            "Return only the path."
-        ),
+        prompt=("Which file contains the `BackgroundTask` enum definition? Return only the path."),
         typical_tokens=50,
         success_traits=["single path", "no explanation"],
         tier="basic",
@@ -82,15 +78,11 @@ EXERCISES: list[Exercise] = [
         id="ROB-004",
         persona="ROBIN",
         skill=TaskCategory.BOILERPLATE,
-        prompt=(
-            "Add `AlertLevel` to the `__all__` list in "
-            "brain/avengers/__init__.py. Show only the diff hunk."
-        ),
+        prompt=("Add `AlertLevel` to the `__all__` list in brain/avengers/__init__.py. Show only the diff hunk."),
         typical_tokens=100,
         success_traits=["unified-diff format", "no code not in __all__"],
         tier="basic",
     ),
-
     # ---------------------- ALFRED -----------------------------------------
     Exercise(
         id="ALF-001",
@@ -120,8 +112,7 @@ EXERCISES: list[Exercise] = [
             "just cloned the repo."
         ),
         typical_tokens=700,
-        success_traits=["Plan/Deliverable/Check structure",
-                         "apex task KAIZEN_RETRO command present"],
+        success_traits=["Plan/Deliverable/Check structure", "apex task KAIZEN_RETRO command present"],
         tier="intermediate",
     ),
     Exercise(
@@ -134,11 +125,9 @@ EXERCISES: list[Exercise] = [
             "sites + tests."
         ),
         typical_tokens=800,
-        success_traits=["reversible change", "shim left behind",
-                         "no test break"],
+        success_traits=["reversible change", "shim left behind", "no test break"],
         tier="advanced",
     ),
-
     # ---------------------- BATMAN -----------------------------------------
     Exercise(
         id="BAT-001",
@@ -168,8 +157,7 @@ EXERCISES: list[Exercise] = [
             "to 'get cleaner equity curves'. Adversarial review."
         ),
         typical_tokens=900,
-        success_traits=["identifies conflation of backtest vs live",
-                         "KILL verdict", "names capital_first doctrine"],
+        success_traits=["identifies conflation of backtest vs live", "KILL verdict", "names capital_first doctrine"],
         tier="intermediate",
     ),
     Exercise(
@@ -182,9 +170,7 @@ EXERCISES: list[Exercise] = [
             "5-gate ladder with numeric thresholds."
         ),
         typical_tokens=1400,
-        success_traits=["5+ gates", "numeric thresholds",
-                         "fail-closed defaults",
-                         "walk-forward gate present"],
+        success_traits=["5+ gates", "numeric thresholds", "fail-closed defaults", "walk-forward gate present"],
         tier="advanced",
     ),
 ]
@@ -200,6 +186,5 @@ def exercises_for(persona: str, tier: str | None = None) -> list[Exercise]:
 
 def count_per_persona() -> dict[str, int]:
     return {
-        persona: sum(1 for e in EXERCISES if e.persona.upper() == persona)
-        for persona in ("BATMAN", "ALFRED", "ROBIN")
+        persona: sum(1 for e in EXERCISES if e.persona.upper() == persona) for persona in ("BATMAN", "ALFRED", "ROBIN")
     }

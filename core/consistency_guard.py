@@ -73,6 +73,7 @@ Regime-B upper bound computed at current P_prior, M_prior. If
 M_prior > d_cap the cap is raised to M_prior (you cannot be required
 to take less profit than an already-fixed prior day).
 """
+
 from __future__ import annotations
 
 import json
@@ -97,6 +98,7 @@ log = logging.getLogger(__name__)
 # Errors
 # ---------------------------------------------------------------------------
 
+
 class ConsistencyCorruptError(RuntimeError):
     """Raised when the persisted consistency-history file is unparseable."""
 
@@ -105,11 +107,12 @@ class ConsistencyCorruptError(RuntimeError):
 # Public enums + dataclasses
 # ---------------------------------------------------------------------------
 
+
 class ConsistencyStatus(StrEnum):
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"  # total_net_profit <= 0
-    OK = "OK"                                # ratio < warning
-    WARNING = "WARNING"                      # warning <= ratio < violation
-    VIOLATION = "VIOLATION"                  # ratio >= violation
+    OK = "OK"  # ratio < warning
+    WARNING = "WARNING"  # warning <= ratio < violation
+    VIOLATION = "VIOLATION"  # ratio >= violation
 
 
 @dataclass
@@ -117,15 +120,15 @@ class ConsistencyVerdict:
     """Structured result of a consistency check at a single point in time."""
 
     status: ConsistencyStatus
-    threshold_pct: float                # violation threshold (e.g. 0.30)
-    warning_pct: float                  # warning threshold (e.g. 0.25)
+    threshold_pct: float  # violation threshold (e.g. 0.30)
+    warning_pct: float  # warning threshold (e.g. 0.25)
     largest_day_usd: float
     largest_day_date: str | None
     total_net_profit_usd: float
     total_winning_profit_usd: float
-    largest_day_ratio: float            # largest_day / total_net (0..inf)
-    max_allowed_day_usd: float          # threshold * total_net_profit
-    headroom_today_usd: float           # extra today-$ still safe
+    largest_day_ratio: float  # largest_day / total_net (0..inf)
+    max_allowed_day_usd: float  # threshold * total_net_profit
+    headroom_today_usd: float  # extra today-$ still safe
     today_pnl_usd: float
     today_date: str | None
 
@@ -153,6 +156,7 @@ class ConsistencyRuleState:
 # Guard
 # ---------------------------------------------------------------------------
 
+
 class ConsistencyGuard:
     """Apex 30%-rule tracker with durable per-day history."""
 
@@ -168,10 +172,7 @@ class ConsistencyGuard:
             msg = f"threshold_pct must be in (0, 1), got {threshold_pct}"
             raise ValueError(msg)
         if not (0.0 < warning_pct <= threshold_pct):
-            msg = (
-                f"warning_pct must be in (0, threshold_pct], got "
-                f"warning={warning_pct} vs threshold={threshold_pct}"
-            )
+            msg = f"warning_pct must be in (0, threshold_pct], got warning={warning_pct} vs threshold={threshold_pct}"
             raise ValueError(msg)
 
     @classmethod
@@ -214,9 +215,7 @@ class ConsistencyGuard:
             try:
                 date.fromisoformat(k)
             except (TypeError, ValueError) as exc:
-                msg = (
-                    f"consistency-history has invalid date key {k!r}: {exc}"
-                )
+                msg = f"consistency-history has invalid date key {k!r}: {exc}"
                 raise ConsistencyCorruptError(msg) from exc
             days[k] = float(v)
         state = ConsistencyRuleState(
@@ -251,7 +250,9 @@ class ConsistencyGuard:
     # Recording
     # ------------------------------------------------------------------ #
     def record_eod(
-        self, date_iso: str, realized_pnl_usd: float,
+        self,
+        date_iso: str,
+        realized_pnl_usd: float,
     ) -> ConsistencyVerdict:
         """Record an end-of-day PnL snapshot and return a fresh verdict.
 
@@ -264,7 +265,9 @@ class ConsistencyGuard:
         return self.evaluate(today_date=date_iso, today_pnl_usd=realized_pnl_usd)
 
     def record_intraday(
-        self, date_iso: str, today_realized_pnl_usd: float,
+        self,
+        date_iso: str,
+        today_realized_pnl_usd: float,
     ) -> ConsistencyVerdict:
         """Record today's in-progress realized PnL.
 
@@ -282,9 +285,9 @@ class ConsistencyGuard:
         )
         self._write_atomic()
         log.warning(
-            "consistency guard RESET: thresholds preserved "
-            "(threshold=%.2f warning=%.2f)",
-            self._state.threshold_pct, self._state.warning_pct,
+            "consistency guard RESET: thresholds preserved (threshold=%.2f warning=%.2f)",
+            self._state.threshold_pct,
+            self._state.warning_pct,
         )
 
     # ------------------------------------------------------------------ #
@@ -316,7 +319,8 @@ class ConsistencyGuard:
         total_winning = sum(winning.values())
         if winning:
             largest_day_date, largest_day = max(
-                winning.items(), key=lambda kv: kv[1],
+                winning.items(),
+                key=lambda kv: kv[1],
             )
         else:
             largest_day_date, largest_day = None, 0.0
@@ -337,8 +341,10 @@ class ConsistencyGuard:
             status = ConsistencyStatus.OK
 
         today_pnl = (
-            float(today_pnl_usd) if today_pnl_usd is not None
-            else days.get(today_date, 0.0) if today_date is not None
+            float(today_pnl_usd)
+            if today_pnl_usd is not None
+            else days.get(today_date, 0.0)
+            if today_date is not None
             else 0.0
         )
         headroom = self._headroom(
@@ -446,10 +452,13 @@ class ConsistencyGuard:
 # Convenience constructor when only a threshold is known
 # ---------------------------------------------------------------------------
 
+
 def default_apex_50k_guard(path: Path) -> ConsistencyGuard:
     """Standard Apex 50K eval guard: 30% threshold, 25% warning band."""
     return ConsistencyGuard.load_or_init(
-        path=path, threshold_pct=0.30, warning_pct=0.25,
+        path=path,
+        threshold_pct=0.30,
+        warning_pct=0.25,
     )
 
 
@@ -503,11 +512,7 @@ def apex_trading_day_iso(now_utc: datetime | None = None) -> str:
         local = now_utc.astimezone(ZoneInfo(_APEX_TZ_NAME))
         # If we've crossed the 17:00 local rollover, we're already
         # in the NEXT trading day.
-        trading_day = (
-            local.date() + timedelta(days=1)
-            if local.hour >= _APEX_ROLLOVER_HOUR_LOCAL
-            else local.date()
-        )
+        trading_day = local.date() + timedelta(days=1) if local.hour >= _APEX_ROLLOVER_HOUR_LOCAL else local.date()
         return trading_day.isoformat()
 
     # zoneinfo missing -- degraded fallback. Pick 23:00 UTC (CST
@@ -517,11 +522,7 @@ def apex_trading_day_iso(now_utc: datetime | None = None) -> str:
         "Install tzdata or upgrade Python for DST-accurate accounting.",
     )
     rollover_utc_hour = 23
-    trading_day = (
-        now_utc.date() + timedelta(days=1)
-        if now_utc.hour >= rollover_utc_hour
-        else now_utc.date()
-    )
+    trading_day = now_utc.date() + timedelta(days=1) if now_utc.hour >= rollover_utc_hour else now_utc.date()
     return trading_day.isoformat()
 
 
@@ -537,12 +538,14 @@ def apex_trading_day_iso(now_utc: datetime | None = None) -> str:
 
 # CME observes every US federal "closed" holiday. List matches the
 # CME Globex calendar under "full closure" events as of 2026.
-_CME_FIXED_CLOSURES: frozenset[tuple[int, int]] = frozenset({
-    (1, 1),    # New Year's Day
-    (6, 19),   # Juneteenth (recognized by CME since 2022)
-    (7, 4),    # Independence Day
-    (12, 25),  # Christmas Day
-})
+_CME_FIXED_CLOSURES: frozenset[tuple[int, int]] = frozenset(
+    {
+        (1, 1),  # New Year's Day
+        (6, 19),  # Juneteenth (recognized by CME since 2022)
+        (7, 4),  # Independence Day
+        (12, 25),  # Christmas Day
+    }
+)
 
 
 def _is_cme_holiday(d: date) -> bool:
@@ -575,6 +578,7 @@ def _is_cme_holiday(d: date) -> bool:
     # dateutil.easter is the canonical stdlib-adjacent helper.
     try:
         from dateutil.easter import easter as _easter
+
         if d == _easter(d.year) - timedelta(days=2):
             return True
     except ImportError:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from threading import RLock
 
 from pydantic import BaseModel, Field
@@ -41,7 +41,7 @@ GATE_OVERRIDE_RATE = "apex_gate_override_rate"  # gauge 0..1
 HISTOGRAM_WINDOW = 1024  # ring-buffer size per histogram series
 
 
-class MetricType(str, Enum):
+class MetricType(StrEnum):
     COUNTER = "counter"
     GAUGE = "gauge"
     HISTOGRAM = "histogram"
@@ -79,9 +79,9 @@ class MetricsRegistry:
         self._lock = RLock()
         self._counters: dict[tuple[str, tuple[tuple[str, str], ...]], float] = defaultdict(float)
         self._gauges: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
-        self._histograms: dict[
-            tuple[str, tuple[tuple[str, str], ...]], deque[float]
-        ] = defaultdict(lambda: deque(maxlen=HISTOGRAM_WINDOW))
+        self._histograms: dict[tuple[str, tuple[tuple[str, str], ...]], deque[float]] = defaultdict(
+            lambda: deque(maxlen=HISTOGRAM_WINDOW)
+        )
 
     def inc(self, name: str, labels: dict[str, str] | None = None, value: float = 1.0) -> None:
         with self._lock:
@@ -103,9 +103,7 @@ class MetricsRegistry:
         with self._lock:
             return self._gauges.get((name, _label_key(labels)))
 
-    def histogram_stats(
-        self, name: str, labels: dict[str, str] | None = None
-    ) -> dict[str, float]:
+    def histogram_stats(self, name: str, labels: dict[str, str] | None = None) -> dict[str, float]:
         with self._lock:
             series = list(self._histograms.get((name, _label_key(labels)), deque()))
         if not series:
@@ -122,12 +120,10 @@ class MetricsRegistry:
         """Render all metrics as a nested dict."""
         with self._lock:
             counters = [
-                {"name": n, "labels": dict(lk), "value": v, "type": "counter"}
-                for (n, lk), v in self._counters.items()
+                {"name": n, "labels": dict(lk), "value": v, "type": "counter"} for (n, lk), v in self._counters.items()
             ]
             gauges = [
-                {"name": n, "labels": dict(lk), "value": v, "type": "gauge"}
-                for (n, lk), v in self._gauges.items()
+                {"name": n, "labels": dict(lk), "value": v, "type": "gauge"} for (n, lk), v in self._gauges.items()
             ]
             histograms = [
                 {"name": n, "labels": dict(lk), "type": "histogram", **self.histogram_stats(n, dict(lk))}

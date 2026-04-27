@@ -74,16 +74,14 @@ def _resolve_preferred_futures_venue(requested: str) -> str:
     """
     norm = requested.strip().lower()
     if norm not in _KNOWN_FUTURES_VENUES:
-        msg = (
-            f"preferred_futures_venue must be one of "
-            f"{sorted(_KNOWN_FUTURES_VENUES)}, got {requested!r}"
-        )
+        msg = f"preferred_futures_venue must be one of {sorted(_KNOWN_FUTURES_VENUES)}, got {requested!r}"
         raise ValueError(msg)
     if norm in DORMANT_BROKERS:
         logger.warning(
             "broker_dormancy: requested preferred_futures_venue=%r is DORMANT; "
             "substituting %r (operator mandate 2026-04-24)",
-            norm, DEFAULT_FUTURES_VENUE,
+            norm,
+            DEFAULT_FUTURES_VENUE,
         )
         return DEFAULT_FUTURES_VENUE
     return norm

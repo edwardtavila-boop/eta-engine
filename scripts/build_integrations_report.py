@@ -38,6 +38,7 @@ the canonical topology. Known keys (all optional):
 If the live-status file is missing or unreadable the script writes
 the canonical topology unchanged and exits 0 (safe for cron).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,12 +72,14 @@ def _load_live_status(path: Path) -> dict[str, Any] | None:
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(
             "live-status file %s unreadable (%s); using canonical topology only",
-            path, exc,
+            path,
+            exc,
         )
         return None
     if not isinstance(raw, dict):
         logger.warning(
-            "live-status file %s is not a JSON object; ignored", path,
+            "live-status file %s is not a JSON object; ignored",
+            path,
         )
         return None
     return raw

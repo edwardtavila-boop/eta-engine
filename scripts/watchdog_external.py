@@ -134,7 +134,9 @@ async def poll_heartbeat(
                 runtime.last_heartbeat_body = body
                 return True
             logger.warning(
-                "heartbeat status=%s body=%s", resp.status, body[:200],
+                "heartbeat status=%s body=%s",
+                resp.status,
+                body[:200],
             )
             return False
     except Exception as exc:  # noqa: BLE001
@@ -193,7 +195,9 @@ async def flatten_kraken_positions(config: WatchdogConfig) -> bool:
         status, data = await venue._private_post("CancelAll", {})  # noqa: SLF001
         if status != 200 or (data.get("error") or []):
             logger.error(
-                "kraken CancelAll http=%s error=%s", status, data.get("error"),
+                "kraken CancelAll http=%s error=%s",
+                status,
+                data.get("error"),
             )
             # Continue to position flatten anyway — cancel-all is a courtesy
         positions = await venue.get_positions()
@@ -215,7 +219,9 @@ async def flatten_kraken_positions(config: WatchdogConfig) -> bool:
             if result.status.name in {"REJECTED", "EXPIRED"}:
                 logger.error(
                     "kraken flatten failed for %s qty=%s: %s",
-                    symbol, qty, result.raw,
+                    symbol,
+                    qty,
+                    result.raw,
                 )
                 all_ok = False
         return all_ok
@@ -242,7 +248,8 @@ async def flatten_ibkr_positions(config: WatchdogConfig) -> bool:
 
     acct = os.environ.get("WATCHDOG_IBKR_ACCOUNT_ID", "")
     base_url = os.environ.get(
-        "WATCHDOG_IBKR_BASE_URL", "https://127.0.0.1:5000/v1/api",
+        "WATCHDOG_IBKR_BASE_URL",
+        "https://127.0.0.1:5000/v1/api",
     ).rstrip("/")
     if not acct:
         logger.error("flatten_ibkr_positions: WATCHDOG_IBKR_ACCOUNT_ID not set")
@@ -267,7 +274,8 @@ async def flatten_ibkr_positions(config: WatchdogConfig) -> bool:
                 if resp.status >= 400:
                     logger.error(
                         "ibkr global-cancel http=%s body=%s",
-                        resp.status, (await resp.text())[:200],
+                        resp.status,
+                        (await resp.text())[:200],
                     )
                     all_ok = False
 
@@ -277,7 +285,8 @@ async def flatten_ibkr_positions(config: WatchdogConfig) -> bool:
                 if resp.status >= 400:
                     logger.error(
                         "ibkr positions http=%s body=%s",
-                        resp.status, (await resp.text())[:200],
+                        resp.status,
+                        (await resp.text())[:200],
                     )
                     return False
                 positions = await resp.json()
@@ -295,21 +304,25 @@ async def flatten_ibkr_positions(config: WatchdogConfig) -> bool:
                 # Opposite side, absolute qty
                 order_side = "SELL" if qty > 0 else "BUY"
                 payload = {
-                    "orders": [{
-                        "acctId": acct,
-                        "conid": int(conid),
-                        "orderType": "MKT",
-                        "side": order_side,
-                        "quantity": abs(qty),
-                        "tif": "DAY",
-                    }],
+                    "orders": [
+                        {
+                            "acctId": acct,
+                            "conid": int(conid),
+                            "orderType": "MKT",
+                            "side": order_side,
+                            "quantity": abs(qty),
+                            "tif": "DAY",
+                        }
+                    ],
                 }
                 order_url = f"{base_url}/iserver/account/{acct}/orders"
                 async with session.post(order_url, json=payload) as resp:
                     if resp.status >= 400:
                         logger.error(
                             "ibkr close conid=%s http=%s body=%s",
-                            conid, resp.status, (await resp.text())[:200],
+                            conid,
+                            resp.status,
+                            (await resp.text())[:200],
                         )
                         all_ok = False
         return all_ok
@@ -330,8 +343,7 @@ async def flatten_hyperliquid_positions(config: WatchdogConfig) -> bool:
         logger.warning("[DRY_RUN] hyperliquid flatten would fire now")
         return True
     logger.error(
-        "flatten_hyperliquid_positions STUB CALLED — "
-        "operator must wire EIP-712 signer before production use",
+        "flatten_hyperliquid_positions STUB CALLED — operator must wire EIP-712 signer before production use",
     )
     return False
 
@@ -344,16 +356,21 @@ async def _send_telegram(token: str, chat_id: str, message: str) -> bool:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=8.0),
-        ) as session, session.post(
-            url, json={"chat_id": chat_id, "text": message},
-        ) as resp:
+        async with (
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=8.0),
+            ) as session,
+            session.post(
+                url,
+                json={"chat_id": chat_id, "text": message},
+            ) as resp,
+        ):
             if resp.status == 200:
                 return True
             logger.warning(
                 "telegram http=%s body=%s",
-                resp.status, (await resp.text())[:200],
+                resp.status,
+                (await resp.text())[:200],
             )
             return False
     except Exception as exc:  # noqa: BLE001
@@ -362,7 +379,11 @@ async def _send_telegram(token: str, chat_id: str, message: str) -> bool:
 
 
 async def _send_twilio_sms(
-    sid: str, auth: str, from_number: str, to_number: str, message: str,
+    sid: str,
+    auth: str,
+    from_number: str,
+    to_number: str,
+    message: str,
 ) -> bool:
     """POST to Twilio Messages API via Basic Auth. Returns True on HTTP 2xx."""
     try:
@@ -371,18 +392,22 @@ async def _send_twilio_sms(
         return False
     url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=8.0),
-        ) as session, session.post(
-            url,
-            data={"From": from_number, "To": to_number, "Body": message[:1600]},
-            auth=aiohttp.BasicAuth(sid, auth),
-        ) as resp:
+        async with (
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=8.0),
+            ) as session,
+            session.post(
+                url,
+                data={"From": from_number, "To": to_number, "Body": message[:1600]},
+                auth=aiohttp.BasicAuth(sid, auth),
+            ) as resp,
+        ):
             if 200 <= resp.status < 300:
                 return True
             logger.warning(
                 "twilio http=%s body=%s",
-                resp.status, (await resp.text())[:200],
+                resp.status,
+                (await resp.text())[:200],
             )
             return False
     except Exception as exc:  # noqa: BLE001
@@ -425,12 +450,10 @@ async def execute_trigger(
     runtime.triggers_fired += 1
     runtime.state = WatchdogState.TRIGGERED
     await send_alert(
-        config, runtime,
+        config,
+        runtime,
         severity="CRITICAL",
-        message=(
-            f"VPS heartbeat stale >{config.heartbeat_timeout_s}s. "
-            "Firing flatten on all venues."
-        ),
+        message=(f"VPS heartbeat stale >{config.heartbeat_timeout_s}s. Firing flatten on all venues."),
     )
     results = await asyncio.gather(
         flatten_kraken_positions(config),
@@ -439,14 +462,12 @@ async def execute_trigger(
         return_exceptions=True,
     )
     success = [bool(r) and not isinstance(r, Exception) for r in results]
-    summary = (
-        f"flatten results: kraken={success[0]} ibkr={success[1]} "
-        f"hyperliquid={success[2]}"
-    )
+    summary = f"flatten results: kraken={success[0]} ibkr={success[1]} hyperliquid={success[2]}"
     await send_alert(config, runtime, severity="CRITICAL", message=summary)
     if not all(success):
         await send_alert(
-            config, runtime,
+            config,
+            runtime,
             severity="CRITICAL",
             message="AT LEAST ONE VENUE FLATTEN FAILED — MANUAL INTERVENTION",
         )
@@ -460,8 +481,10 @@ async def run_forever(
     runtime = WatchdogRuntime()
     logger.info(
         "watchdog starting url=%s timeout=%ss poll=%ss dry_run=%s",
-        config.heartbeat_url, config.heartbeat_timeout_s,
-        config.poll_interval_s, config.dry_run,
+        config.heartbeat_url,
+        config.heartbeat_timeout_s,
+        config.poll_interval_s,
+        config.dry_run,
     )
     while True:
         await poll_heartbeat(config, runtime)
@@ -469,11 +492,13 @@ async def run_forever(
         if new_state != runtime.state:
             logger.info(
                 "watchdog state transition %s -> %s",
-                runtime.state.value, new_state.value,
+                runtime.state.value,
+                new_state.value,
             )
             if new_state is WatchdogState.DEGRADED:
                 await send_alert(
-                    config, runtime,
+                    config,
+                    runtime,
                     severity="WARNING",
                     message="heartbeat degraded (approaching timeout)",
                 )

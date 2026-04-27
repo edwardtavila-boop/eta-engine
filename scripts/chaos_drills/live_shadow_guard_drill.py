@@ -25,6 +25,7 @@ The drill builds two books:
 
 Plus the invalid-order path that must never raise.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -70,10 +71,7 @@ def drill_live_shadow_guard(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         return drill_result(
             "live_shadow_guard",
             passed=False,
-            details=(
-                f"adequate-book fill did not complete: ok={ok_fill.ok} "
-                f"filled={ok_fill.size_filled}"
-            ),
+            details=(f"adequate-book fill did not complete: ok={ok_fill.ok} filled={ok_fill.size_filled}"),
         )
     if ok_fill.slippage_bps <= 0.0:
         return drill_result(
@@ -140,13 +138,12 @@ def drill_live_shadow_guard(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         "live_shadow_guard",
         passed=True,
         details=(
-            "adequate-book full-fill emitted positive slippage; "
-            "exhausted book flagged partial; invalid order absorbed"
+            "adequate-book full-fill emitted positive slippage; exhausted book flagged partial; invalid order absorbed"
         ),
         observed={
-            "ok_slippage_bps":   round(ok_fill.slippage_bps, 4),
-            "partial_filled":    partial.size_filled,
-            "partial_reason":    partial.reason,
-            "invalid_reason":    bad_fill.reason,
+            "ok_slippage_bps": round(ok_fill.slippage_bps, 4),
+            "partial_filled": partial.size_filled,
+            "partial_reason": partial.reason,
+            "invalid_reason": bad_fill.reason,
         },
     )

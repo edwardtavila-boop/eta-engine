@@ -7,6 +7,7 @@ routing defaults must be IBKR primary + Tastytrade fallback. Dormant
 brokers, even if explicitly requested via ``preferred_futures_venue``,
 must be substituted with the active default and a warning logged.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,6 @@ CONFIG_PATH = ROOT / "config.json"
 
 
 class TestBrokerPolicyConstants:
-
     def test_default_futures_venue_is_ibkr(self) -> None:
         assert DEFAULT_FUTURES_VENUE == "ibkr"
 
@@ -44,9 +44,7 @@ class TestBrokerPolicyConstants:
 
     def test_active_futures_venues_excludes_dormant(self) -> None:
         dormant = DORMANT_BROKERS & set(ACTIVE_FUTURES_VENUES)
-        assert dormant == set(), (
-            f"ACTIVE_FUTURES_VENUES leaks dormant brokers: {dormant}"
-        )
+        assert dormant == set(), f"ACTIVE_FUTURES_VENUES leaks dormant brokers: {dormant}"
 
     def test_active_futures_venues_contains_ibkr_and_tastytrade(self) -> None:
         assert "ibkr" in ACTIVE_FUTURES_VENUES
@@ -57,7 +55,6 @@ class TestBrokerPolicyConstants:
 
 
 class TestSmartRouterDefaults:
-
     def test_default_constructor_routes_futures_to_ibkr(self) -> None:
         router = SmartRouter()
         assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
@@ -72,9 +69,9 @@ class TestSmartRouterDefaults:
 
 
 class TestDormantBrokerSubstitution:
-
     def test_explicit_tradovate_is_substituted_with_ibkr(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level(logging.WARNING, logger=router_mod.__name__)
         router = SmartRouter(preferred_futures_venue="tradovate")
@@ -106,13 +103,11 @@ class TestDormantBrokerSubstitution:
 
 
 class TestConfigJsonBrokerPolicy:
-
     def test_config_broker_primary_is_ibkr(self) -> None:
         cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         futures = cfg["execution"]["futures"]
         assert futures["broker_primary"] == "ibkr", (
-            f"broker_primary must be 'ibkr' while Tradovate is DORMANT, "
-            f"got {futures['broker_primary']!r}"
+            f"broker_primary must be 'ibkr' while Tradovate is DORMANT, got {futures['broker_primary']!r}"
         )
 
     def test_config_broker_dormant_field_contains_tradovate(self) -> None:
@@ -120,14 +115,11 @@ class TestConfigJsonBrokerPolicy:
         futures = cfg["execution"]["futures"]
         dormant = futures.get("broker_dormant", [])
         assert "tradovate" in dormant, (
-            f"config.json execution.futures.broker_dormant must list tradovate, "
-            f"got {dormant!r}"
+            f"config.json execution.futures.broker_dormant must list tradovate, got {dormant!r}"
         )
 
     def test_config_broker_backups_do_not_include_tradovate(self) -> None:
         cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         futures = cfg["execution"]["futures"]
         backups = futures.get("broker_backups", [])
-        assert "tradovate" not in backups, (
-            f"broker_backups must NOT include dormant tradovate, got {backups!r}"
-        )
+        assert "tradovate" not in backups, f"broker_backups must NOT include dormant tradovate, got {backups!r}"

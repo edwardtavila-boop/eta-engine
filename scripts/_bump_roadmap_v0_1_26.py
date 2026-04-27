@@ -30,6 +30,7 @@ Reconciliation
     on $1000 Tradovate funding gate).
   * overall_progress_pct: 99 (unchanged).
 """
+
 from __future__ import annotations
 
 import json
@@ -67,10 +68,17 @@ def main() -> None:
             "build_playbook: ranked action list from a JarvisContext",
         ],
         "stress_components": [
-            "drawdown", "macro", "regime", "override", "concentration",
+            "drawdown",
+            "macro",
+            "regime",
+            "override",
+            "concentration",
         ],
         "trajectory_states": [
-            "IMPROVING", "FLAT", "WORSENING", "UNKNOWN",
+            "IMPROVING",
+            "FLAT",
+            "WORSENING",
+            "UNKNOWN",
         ],
         "invariants_tested": [
             "STRESS_WEIGHTS sums to 1.0",

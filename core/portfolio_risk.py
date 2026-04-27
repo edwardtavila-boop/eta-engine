@@ -13,6 +13,7 @@ Offers
 Inputs are plain numpy arrays so the caller can pull returns from any source —
 live positions, backtest PnL, paper-run simulations. No SDK coupling.
 """
+
 from __future__ import annotations
 
 import logging
@@ -147,7 +148,9 @@ class PortfolioRisk:
         if engaged:
             logger.warning(
                 "correlation brake engaged: max=%.3f mean_offdiag=%.3f pairs_above=%d",
-                max_corr, mean_corr, pairs_above,
+                max_corr,
+                mean_corr,
+                pairs_above,
             )
         return {
             "max_correlation": max_corr,

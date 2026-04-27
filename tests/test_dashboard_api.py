@@ -2,6 +2,7 @@
 Tests for deploy.scripts.dashboard_api -- FastAPI backend for the Apex
 Predator dashboard.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,44 +19,70 @@ def app_client(tmp_path, monkeypatch):
     # Pin the BTC fleet dir so the dashboard doesn't accidentally see a
     # real fleet directory sitting in the dev package tree.
     monkeypatch.setenv(
-        "APEX_BTC_FLEET_DIR", str(tmp_path / "state" / "broker_fleet"),
+        "APEX_BTC_FLEET_DIR",
+        str(tmp_path / "state" / "broker_fleet"),
     )
     (tmp_path / "state").mkdir()
     (tmp_path / "logs").mkdir()
     # Seed a couple of state files
-    (tmp_path / "state" / "avengers_heartbeat.json").write_text(json.dumps({
-        "ts": "2026-04-24T00:00:00+00:00",
-        "quota_state": "OK", "hourly_pct": 0.0, "daily_pct": 0.0,
-        "cache_hit_rate": 0.0, "distiller_version": 0,
-        "distiller_trained": False,
-    }))
-    (tmp_path / "state" / "dashboard_payload.json").write_text(json.dumps({
-        "ts": "2026-04-24T00:00:00+00:00",
-        "health": "GREEN", "regime": "NEUTRAL", "session_phase": "MORNING",
-        "suggestion": "TRADE",
-        "stress": {"composite": 0.2, "binding": "equity_dd", "components": []},
-        "horizons": {"now": 0.2, "next_15m": 0.2, "next_1h": 0.2, "overnight": 0.2},
-        "projection": {"level": 0.2, "trend": 0.0, "forecast_5": 0.2},
-    }))
-    (tmp_path / "state" / "kaizen_ledger.json").write_text(json.dumps({
-        "retrospectives": [{"ts": "2026-04-24T00:00:00+00:00"}],
-        "tickets": [
-            {"id": "KZN-1", "title": "Fix x", "status": "OPEN",
-             "rationale": "r", "parent_retrospective_ts": "2026-04-24T00:00:00+00:00",
-             "opened_at": "2026-04-24T00:00:00+00:00", "impact": "small",
-             "owner": "op", "shipped_at": None, "drop_reason": ""},
-        ],
-    }))
+    (tmp_path / "state" / "avengers_heartbeat.json").write_text(
+        json.dumps(
+            {
+                "ts": "2026-04-24T00:00:00+00:00",
+                "quota_state": "OK",
+                "hourly_pct": 0.0,
+                "daily_pct": 0.0,
+                "cache_hit_rate": 0.0,
+                "distiller_version": 0,
+                "distiller_trained": False,
+            }
+        )
+    )
+    (tmp_path / "state" / "dashboard_payload.json").write_text(
+        json.dumps(
+            {
+                "ts": "2026-04-24T00:00:00+00:00",
+                "health": "GREEN",
+                "regime": "NEUTRAL",
+                "session_phase": "MORNING",
+                "suggestion": "TRADE",
+                "stress": {"composite": 0.2, "binding": "equity_dd", "components": []},
+                "horizons": {"now": 0.2, "next_15m": 0.2, "next_1h": 0.2, "overnight": 0.2},
+                "projection": {"level": 0.2, "trend": 0.0, "forecast_5": 0.2},
+            }
+        )
+    )
+    (tmp_path / "state" / "kaizen_ledger.json").write_text(
+        json.dumps(
+            {
+                "retrospectives": [{"ts": "2026-04-24T00:00:00+00:00"}],
+                "tickets": [
+                    {
+                        "id": "KZN-1",
+                        "title": "Fix x",
+                        "status": "OPEN",
+                        "rationale": "r",
+                        "parent_retrospective_ts": "2026-04-24T00:00:00+00:00",
+                        "opened_at": "2026-04-24T00:00:00+00:00",
+                        "impact": "small",
+                        "owner": "op",
+                        "shipped_at": None,
+                        "drop_reason": "",
+                    },
+                ],
+            }
+        )
+    )
     # Force reimport so env vars take effect
     import importlib
 
     import eta_engine.deploy.scripts.dashboard_api as mod
+
     importlib.reload(mod)
     return TestClient(mod.app)
 
 
 class TestDashboardAPI:
-
     def test_health(self, app_client):
         r = app_client.get("/health")
         assert r.status_code == 200
@@ -125,6 +152,7 @@ class TestDashboardAPI:
         """Seed an audit log and verify the endpoint returns it newest-first."""
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         audit = state / "jarvis_audit.jsonl"
         # 3 entries: one approved, one denied, one conditional
@@ -133,30 +161,39 @@ class TestDashboardAPI:
                 "ts": "2026-04-24T10:00:00+00:00",
                 "request": {"subsystem": "bot.mnq", "action": "ORDER_PLACE"},
                 "response": {
-                    "verdict": "APPROVED", "reason_code": "ok",
-                    "reason": "all clear", "size_cap_mult": None,
+                    "verdict": "APPROVED",
+                    "reason_code": "ok",
+                    "reason": "all clear",
+                    "size_cap_mult": None,
                 },
-                "stress_composite": 0.1, "session_phase": "MORNING",
+                "stress_composite": 0.1,
+                "session_phase": "MORNING",
                 "jarvis_action": "TRADE",
             },
             {
                 "ts": "2026-04-24T10:01:00+00:00",
                 "request": {"subsystem": "bot.btc_hybrid", "action": "ORDER_PLACE"},
                 "response": {
-                    "verdict": "CONDITIONAL", "reason_code": "dd_reduce",
-                    "reason": "daily dd triggered reduce", "size_cap_mult": 0.5,
+                    "verdict": "CONDITIONAL",
+                    "reason_code": "dd_reduce",
+                    "reason": "daily dd triggered reduce",
+                    "size_cap_mult": 0.5,
                 },
-                "stress_composite": 0.55, "session_phase": "OVERNIGHT",
+                "stress_composite": 0.55,
+                "session_phase": "OVERNIGHT",
                 "jarvis_action": "REDUCE",
             },
             {
                 "ts": "2026-04-24T10:02:00+00:00",
                 "request": {"subsystem": "bot.mnq", "action": "ORDER_PLACE"},
                 "response": {
-                    "verdict": "DENIED", "reason_code": "kill_blocks_all",
-                    "reason": "kill switch active", "size_cap_mult": None,
+                    "verdict": "DENIED",
+                    "reason_code": "kill_blocks_all",
+                    "reason": "kill switch active",
+                    "size_cap_mult": None,
                 },
-                "stress_composite": 0.95, "session_phase": "MORNING",
+                "stress_composite": 0.95,
+                "session_phase": "MORNING",
                 "jarvis_action": "KILL",
             },
         ]
@@ -179,6 +216,7 @@ class TestDashboardAPI:
     def test_jarvis_decisions_subsystem_filter(self, tmp_path, app_client):
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         audit = state / "jarvis_audit.jsonl"
         rows = [
@@ -186,20 +224,26 @@ class TestDashboardAPI:
                 "ts": "2026-04-24T10:00:00+00:00",
                 "request": {"subsystem": "bot.mnq", "action": "ORDER_PLACE"},
                 "response": {
-                    "verdict": "APPROVED", "reason_code": "ok",
-                    "reason": "all clear", "size_cap_mult": None,
+                    "verdict": "APPROVED",
+                    "reason_code": "ok",
+                    "reason": "all clear",
+                    "size_cap_mult": None,
                 },
-                "stress_composite": 0.1, "session_phase": "MORNING",
+                "stress_composite": 0.1,
+                "session_phase": "MORNING",
                 "jarvis_action": "TRADE",
             },
             {
                 "ts": "2026-04-24T10:01:00+00:00",
                 "request": {"subsystem": "bot.btc_hybrid", "action": "ORDER_PLACE"},
                 "response": {
-                    "verdict": "APPROVED", "reason_code": "ok",
-                    "reason": "all clear", "size_cap_mult": None,
+                    "verdict": "APPROVED",
+                    "reason_code": "ok",
+                    "reason": "all clear",
+                    "size_cap_mult": None,
                 },
-                "stress_composite": 0.1, "session_phase": "OVERNIGHT",
+                "stress_composite": 0.1,
+                "session_phase": "OVERNIGHT",
                 "jarvis_action": "TRADE",
             },
         ]
@@ -217,6 +261,7 @@ class TestDashboardAPI:
     def test_jarvis_summary_aggregates(self, tmp_path, app_client):
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         audit = state / "jarvis_audit.jsonl"
         rows = [
@@ -285,65 +330,84 @@ class TestDashboardAPI:
         returns the lane snapshots."""
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         fleet_dir = state / "broker_fleet"
         fleet_dir.mkdir(parents=True, exist_ok=True)
 
         # Manifest
-        (fleet_dir / "btc_broker_fleet_latest.json").write_text(json.dumps({
-            "generated_at_utc": "2026-04-24T10:00:00+00:00",
-            "fleet": "btc_broker_paper_fleet",
-            "requested_workers": 4,
-            "running_workers": 2,
-        }), encoding="utf-8")
+        (fleet_dir / "btc_broker_fleet_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": "2026-04-24T10:00:00+00:00",
+                    "fleet": "btc_broker_paper_fleet",
+                    "requested_workers": 4,
+                    "running_workers": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
 
         # Two lane state files
-        (fleet_dir / "btc-grid-ibkr.lane.json").write_text(json.dumps({
-            "worker_id": "btc-grid-ibkr",
-            "broker": "ibkr", "lane": "grid", "symbol": "BTCUSD",
-            "active_order_id": "srv-I-1",
-            "active_order_status": "OPEN",
-            "active_order_filled_qty": 0.0,
-            "active_order_avg_price": 0.0,
-            "submitted_orders": 1,
-            "reconciled_orders": 3,
-            "terminal_orders": 0,
-            "last_event": "submitted:OPEN",
-            "last_event_utc": "2026-04-24T10:00:05+00:00",
-            "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
-        }), encoding="utf-8")
+        (fleet_dir / "btc-grid-ibkr.lane.json").write_text(
+            json.dumps(
+                {
+                    "worker_id": "btc-grid-ibkr",
+                    "broker": "ibkr",
+                    "lane": "grid",
+                    "symbol": "BTCUSD",
+                    "active_order_id": "srv-I-1",
+                    "active_order_status": "OPEN",
+                    "active_order_filled_qty": 0.0,
+                    "active_order_avg_price": 0.0,
+                    "submitted_orders": 1,
+                    "reconciled_orders": 3,
+                    "terminal_orders": 0,
+                    "last_event": "submitted:OPEN",
+                    "last_event_utc": "2026-04-24T10:00:05+00:00",
+                    "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
         (fleet_dir / "btc-directional-tastytrade.lane.json").write_text(
-            json.dumps({
-                "worker_id": "btc-directional-tastytrade",
-                "broker": "tastytrade", "lane": "directional",
-                "symbol": "BTCUSD",
-                "active_order_id": None,
-                "active_order_status": "NONE",
-                "submitted_orders": 0,
-                "reconciled_orders": 0,
-                "terminal_orders": 0,
-                "last_event": "",
-                "last_event_utc": "",
-                "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
-            }),
+            json.dumps(
+                {
+                    "worker_id": "btc-directional-tastytrade",
+                    "broker": "tastytrade",
+                    "lane": "directional",
+                    "symbol": "BTCUSD",
+                    "active_order_id": None,
+                    "active_order_status": "NONE",
+                    "submitted_orders": 0,
+                    "reconciled_orders": 0,
+                    "terminal_orders": 0,
+                    "last_event": "",
+                    "last_event_utc": "",
+                    "last_reconcile_utc": "2026-04-24T10:00:30+00:00",
+                }
+            ),
             encoding="utf-8",
         )
         # Heartbeat for one of them
-        (fleet_dir / "btc-grid-ibkr.json").write_text(json.dumps({
-            "worker_id": "btc-grid-ibkr",
-            "status": "RUNNING",
-            "pid": 12345,
-            "execution_state": "ACTIVE",
-        }), encoding="utf-8")
+        (fleet_dir / "btc-grid-ibkr.json").write_text(
+            json.dumps(
+                {
+                    "worker_id": "btc-grid-ibkr",
+                    "status": "RUNNING",
+                    "pid": 12345,
+                    "execution_state": "ACTIVE",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/btc/lanes")
         assert r.status_code == 200
         j = r.json()
         assert j["lane_count"] == 2
         # Sorted by filename so directional comes first (d < g)
-        directional = next(
-            lane for lane in j["lanes"] if lane["lane"] == "directional"
-        )
+        directional = next(lane for lane in j["lanes"] if lane["lane"] == "directional")
         grid = next(lane for lane in j["lanes"] if lane["lane"] == "grid")
         assert directional["broker"] == "tastytrade"
         assert grid["broker"] == "ibkr"
@@ -356,21 +420,34 @@ class TestDashboardAPI:
     def test_btc_trades_tails_ledger(self, tmp_path, app_client):
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         fleet_dir = state / "broker_fleet"
         fleet_dir.mkdir(parents=True, exist_ok=True)
         ledger = fleet_dir / "btc_paper_trades.jsonl"
         rows = [
-            {"ts_utc": "2026-04-24T10:00:00+00:00",
-             "worker_id": "btc-grid-ibkr", "event": "submit",
-             "order_id": "srv-1", "status": "OPEN"},
-            {"ts_utc": "2026-04-24T10:00:30+00:00",
-             "worker_id": "btc-grid-ibkr", "event": "transition",
-             "order_id": "srv-1", "status": "FILLED",
-             "prior_status": "OPEN"},
-            {"ts_utc": "2026-04-24T10:01:00+00:00",
-             "worker_id": "btc-directional-tastytrade", "event": "submit",
-             "order_id": "srv-2", "status": "OPEN"},
+            {
+                "ts_utc": "2026-04-24T10:00:00+00:00",
+                "worker_id": "btc-grid-ibkr",
+                "event": "submit",
+                "order_id": "srv-1",
+                "status": "OPEN",
+            },
+            {
+                "ts_utc": "2026-04-24T10:00:30+00:00",
+                "worker_id": "btc-grid-ibkr",
+                "event": "transition",
+                "order_id": "srv-1",
+                "status": "FILLED",
+                "prior_status": "OPEN",
+            },
+            {
+                "ts_utc": "2026-04-24T10:01:00+00:00",
+                "worker_id": "btc-directional-tastytrade",
+                "event": "submit",
+                "order_id": "srv-2",
+                "status": "OPEN",
+            },
         ]
         ledger.write_text(
             "\n".join(json.dumps(r) for r in rows) + "\n",
@@ -389,14 +466,15 @@ class TestDashboardAPI:
     def test_btc_trades_respects_n_cap(self, tmp_path, app_client):
         import os
         from pathlib import Path
+
         state = Path(os.environ["APEX_STATE_DIR"])
         fleet_dir = state / "broker_fleet"
         fleet_dir.mkdir(parents=True, exist_ok=True)
         ledger = fleet_dir / "btc_paper_trades.jsonl"
-        ledger.write_text("\n".join(
-            json.dumps({"i": i, "worker_id": "x", "event": "submit"})
-            for i in range(50)
-        ) + "\n", encoding="utf-8")
+        ledger.write_text(
+            "\n".join(json.dumps({"i": i, "worker_id": "x", "event": "submit"}) for i in range(50)) + "\n",
+            encoding="utf-8",
+        )
         r = app_client.get("/api/btc/trades?n=5")
         j = r.json()
         assert j["returned"] == 5
@@ -415,29 +493,37 @@ class TestDashboardAPI:
         assert "mnq_live dir not found" in j.get("note", "")
 
     def test_mnq_supervisor_surfaces_state_and_events(
-        self, tmp_path, app_client, monkeypatch,
+        self,
+        tmp_path,
+        app_client,
+        monkeypatch,
     ):
         mnq_dir = tmp_path / "mnq_live"
         mnq_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("APEX_MNQ_SUPERVISOR_DIR", str(mnq_dir))
 
         # Seed state
-        (mnq_dir / "mnq_live_state.json").write_text(json.dumps({
-            "worker": "mnq_live",
-            "heartbeat_count": 42,
-            "bars_consumed": 42,
-            "signals_routed": 3,
-            "signals_blocked": 1,
-            "paused": False,
-            "router_name": "IbkrClientPortalVenue",
-            "symbol": "MNQ",
-            "tradovate_symbol": "MNQH6",
-            "started_at_utc": "2026-04-24T14:00:00+00:00",
-            "last_heartbeat_utc": "2026-04-24T14:42:00+00:00",
-            "last_bar_ts": "2026-04-24T14:42:00+00:00",
-            "last_event": "ok",
-            "jarvis_audit_tail_len": 48,
-        }), encoding="utf-8")
+        (mnq_dir / "mnq_live_state.json").write_text(
+            json.dumps(
+                {
+                    "worker": "mnq_live",
+                    "heartbeat_count": 42,
+                    "bars_consumed": 42,
+                    "signals_routed": 3,
+                    "signals_blocked": 1,
+                    "paused": False,
+                    "router_name": "IbkrClientPortalVenue",
+                    "symbol": "MNQ",
+                    "tradovate_symbol": "MNQH6",
+                    "started_at_utc": "2026-04-24T14:00:00+00:00",
+                    "last_heartbeat_utc": "2026-04-24T14:42:00+00:00",
+                    "last_bar_ts": "2026-04-24T14:42:00+00:00",
+                    "last_event": "ok",
+                    "jarvis_audit_tail_len": 48,
+                }
+            ),
+            encoding="utf-8",
+        )
 
         # Seed a few journal rows (jsonl-ish DecisionJournal format)
         from datetime import UTC, datetime
@@ -447,15 +533,20 @@ class TestDashboardAPI:
             DecisionJournal,
             Outcome,
         )
+
         journal = DecisionJournal(mnq_dir / "mnq_live_decisions.jsonl")
         journal.record(
-            actor=Actor.TRADE_ENGINE, intent="mnq_start",
-            rationale="ok", outcome=Outcome.EXECUTED,
+            actor=Actor.TRADE_ENGINE,
+            intent="mnq_start",
+            rationale="ok",
+            outcome=Outcome.EXECUTED,
             ts=datetime(2026, 4, 24, 14, 0, tzinfo=UTC),
         )
         journal.record(
-            actor=Actor.TRADE_ENGINE, intent="mnq_order_routed",
-            rationale="routed", outcome=Outcome.EXECUTED,
+            actor=Actor.TRADE_ENGINE,
+            intent="mnq_order_routed",
+            rationale="routed",
+            outcome=Outcome.EXECUTED,
             ts=datetime(2026, 4, 24, 14, 1, tzinfo=UTC),
         )
 
@@ -488,14 +579,23 @@ class TestDashboardAPI:
         assert j["systems"]["dashboard"]["status"] == "GREEN"
 
     def test_systems_rollup_red_on_paused_mnq(
-        self, tmp_path, app_client, monkeypatch,
+        self,
+        tmp_path,
+        app_client,
+        monkeypatch,
     ):
         mnq_dir = tmp_path / "mnq_live"
         mnq_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("APEX_MNQ_SUPERVISOR_DIR", str(mnq_dir))
-        (mnq_dir / "mnq_live_state.json").write_text(json.dumps({
-            "paused": True, "bars_consumed": 5,
-        }), encoding="utf-8")
+        (mnq_dir / "mnq_live_state.json").write_text(
+            json.dumps(
+                {
+                    "paused": True,
+                    "bars_consumed": 5,
+                }
+            ),
+            encoding="utf-8",
+        )
         r = app_client.get("/api/systems")
         j = r.json()
         assert j["systems"]["mnq_supervisor"]["status"] == "RED"
@@ -504,23 +604,33 @@ class TestDashboardAPI:
         assert j["overall"] == "RED"
 
     def test_systems_rollup_green_on_full_active_fleet(
-        self, tmp_path, app_client, monkeypatch,
+        self,
+        tmp_path,
+        app_client,
+        monkeypatch,
     ):
         fleet_dir = tmp_path / "state" / "broker_fleet"
         fleet_dir.mkdir(parents=True, exist_ok=True)
         # Shadow the pinned env so /api/systems sees this path
         monkeypatch.setenv("APEX_BTC_FLEET_DIR", str(fleet_dir))
-        for i, (lane, broker) in enumerate([
-            ("directional", "ibkr"), ("directional", "tastytrade"),
-            ("grid", "ibkr"), ("grid", "tastytrade"),
-        ]):
+        for i, (lane, broker) in enumerate(
+            [
+                ("directional", "ibkr"),
+                ("directional", "tastytrade"),
+                ("grid", "ibkr"),
+                ("grid", "tastytrade"),
+            ]
+        ):
             (fleet_dir / f"btc-{lane}-{broker}.lane.json").write_text(
-                json.dumps({
-                    "worker_id": f"btc-{lane}-{broker}",
-                    "broker": broker, "lane": lane,
-                    "active_order_id": f"srv-{i:03d}",
-                    "active_order_status": "OPEN",
-                }),
+                json.dumps(
+                    {
+                        "worker_id": f"btc-{lane}-{broker}",
+                        "broker": broker,
+                        "lane": lane,
+                        "active_order_id": f"srv-{i:03d}",
+                        "active_order_status": "OPEN",
+                    }
+                ),
                 encoding="utf-8",
             )
         r = app_client.get("/api/systems")

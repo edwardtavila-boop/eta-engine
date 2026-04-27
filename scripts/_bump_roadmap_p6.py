@@ -1,4 +1,5 @@
 """One-shot roadmap bump for P3/P4/P6 portfolio-risk wiring."""
+
 import json
 from pathlib import Path
 
@@ -46,15 +47,15 @@ data["shared_artifacts"]["eta_engine_portfolio_risk_wired"] = {
     ],
     "api_surface": {
         "portfolio_risk.PortfolioRisk": [
-            "var_historical", "var_parametric", "cvar",
-            "portfolio_var", "correlation_brake", "size_multiplier",
+            "var_historical",
+            "var_parametric",
+            "cvar",
+            "portfolio_var",
+            "correlation_brake",
+            "size_multiplier",
         ],
-        "portfolio_correlation.analyze": (
-            "pnl_series -> PortfolioCorrelationReport (eff_n, flags, pairwise)"
-        ),
-        "central_dashboard.build_snapshot": (
-            "PortfolioState + bot_details + staking -> CentralDashboardSnapshot"
-        ),
+        "portfolio_correlation.analyze": ("pnl_series -> PortfolioCorrelationReport (eff_n, flags, pairwise)"),
+        "central_dashboard.build_snapshot": ("PortfolioState + bot_details + staking -> CentralDashboardSnapshot"),
     },
     "notes": (
         "VaR/CVaR uses scipy.stats.norm for parametric; central_dashboard "

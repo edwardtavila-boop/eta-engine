@@ -7,6 +7,7 @@ Covers :class:`eta_engine.core.portfolio_risk.PortfolioRisk` across:
 * size_multiplier halving when the brake trips
 * guardrails (bad confidence, bad weights, too-few observations)
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -25,6 +26,7 @@ def pr() -> PortfolioRisk:
 # Guardrails
 # ---------------------------------------------------------------------------
 
+
 def test_bad_confidence_level_rejected() -> None:
     with pytest.raises(ValueError, match="confidence_level"):
         PortfolioRisk(confidence_level=0.3)
@@ -42,6 +44,7 @@ def test_var_returns_zero_when_sample_too_small(pr: PortfolioRisk) -> None:
 # ---------------------------------------------------------------------------
 # Single-series VaR / CVaR
 # ---------------------------------------------------------------------------
+
 
 def test_var_historical_is_loss_as_positive(pr: PortfolioRisk) -> None:
     # 100 returns: 10 losses at -0.05, rest flat. With 100 samples, the 5th
@@ -73,6 +76,7 @@ def test_cvar_deeper_than_var(pr: PortfolioRisk) -> None:
 # ---------------------------------------------------------------------------
 # Portfolio VaR
 # ---------------------------------------------------------------------------
+
 
 def test_portfolio_var_equal_weight_default(pr: PortfolioRisk) -> None:
     rng = np.random.default_rng(0)
@@ -108,6 +112,7 @@ def test_portfolio_var_weighted_concentration_raises_var(pr: PortfolioRisk) -> N
 # ---------------------------------------------------------------------------
 # Correlation brake
 # ---------------------------------------------------------------------------
+
 
 def test_correlation_brake_degenerate_shape(pr: PortfolioRisk) -> None:
     verdict = pr.correlation_brake(np.zeros((100, 1)))

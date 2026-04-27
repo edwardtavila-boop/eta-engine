@@ -3,16 +3,24 @@ EVOLUTIONARY TRADING ALGO -- Preflight Dryrun Log
 [REQ] kill_log_present        PASS   4 kill-log entries
 [REQ] paper_run_report        PASS   Tier-A mnq=True nq=True
 [REQ] firm_board_verdict      PASS   Firm latest verdict: GO (APEX_PAPER_RESULTS_v2)
-[REQ] roadmap_state           PASS   phase=P9_ROLLOUT progress=91%
-[opt] tradovate_creds         FAIL   creds missing — live-tiny cannot start
+[REQ] roadmap_state           PASS   phase=P9_ROLLOUT progress=100%
+[opt] tradovate_creds         SKIP   creds missing - optional live-tiny staging gate skipped
 [REQ] risk_sizing             PASS   per_trade=3.0% daily_cap=6.0% dd_kill=20.0% tier_A_cap=$17000
 [opt] telemetry_channels      PASS   telemetry/=False  alerts/=False
-[opt] venue_health            PASS   configs/ has 4/4 venue+alert+kill files
-[REQ] pytest_green            PASS   13 passed in 0.28s
+[opt] venue_health            PASS   configs/ has 5/5 venue+alert+kill files (active futures venues: ibkr,tastytrade)
+[REQ] pytest_green            PASS   13 passed in 0.68s
 [REQ] decisions_locked        PASS   APEX_DECISIONS_v1 locked, 11 sections
 [REQ] env_template            PASS   .env.example present with all 9 required keys
 [REQ] go_trigger_armed        PASS   go_trigger.py + schedule_weekly_review.py both present
 [REQ] runtime_wired           PASS   kill_switch + alerts + run_eta_live all importable
+[opt] credential_probe_full   SKIP   Tier-A missing: 7 key(s) (active venues: ibkr,tastytrade) — populate before live run
+[REQ] kill_switch_drill       PASS   tripped FLATTEN_ALL/CRITICAL on 50% DD (portfolio DD 50.00% >= cap 20.0%)
+[REQ] idempotent_order_id     PASS   identical reqs -> same coid=15a4906d0db5..
+[opt] reconcile_on_reconnect  PASS   GREEN: reconcile: GREEN -- window=24h
+[REQ] crash_recovery_simulated  PASS   synthetic orphan detected by reconcile
+[opt] clock_drift             PASS   local vs server drift 0.09s (< 3s)
+[opt] alert_dispatcher_echo   PASS   echoed 1 alert to alerts_log.jsonl (1 line(s))
 [REQ] abort_on_red_loop       PASS   No required RED gates — abort wiring idle (correct)
 --------------------------------------------------------------------------------
+Gate mix: 14 required / 7 optional | required PASS 14/14 | optional PASS 5/7 | optional SKIP 2
 Overall: GO

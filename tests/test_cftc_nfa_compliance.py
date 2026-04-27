@@ -1,4 +1,5 @@
 """Tests for eta_engine.core.cftc_nfa_compliance."""
+
 from __future__ import annotations
 
 import pytest
@@ -77,10 +78,12 @@ def test_external_capital_blocks() -> None:
 
 
 def test_third_party_deposit_whitelist_blocks() -> None:
-    res = check_compliance(_ok_ctx(
-        account_id="apex-main",
-        deposit_whitelist=["apex-main", "grandma-bob"],
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            account_id="apex-main",
+            deposit_whitelist=["apex-main", "grandma-bob"],
+        )
+    )
     assert res.passed is False
     rules = [v.rule for v in res.violations]
     assert ComplianceRuleId.NO_POOL_MANAGEMENT in rules
@@ -90,9 +93,15 @@ def test_whitelist_that_is_empty_or_only_self_passes() -> None:
     # Empty list
     assert check_compliance(_ok_ctx()).passed is True
     # Only operator in whitelist
-    assert check_compliance(_ok_ctx(
-        account_id="apex-main", deposit_whitelist=["apex-main"],
-    )).passed is True
+    assert (
+        check_compliance(
+            _ok_ctx(
+                account_id="apex-main",
+                deposit_whitelist=["apex-main"],
+            )
+        ).passed
+        is True
+    )
 
 
 def test_self_match_blocks() -> None:
@@ -110,10 +119,12 @@ def test_self_match_blocks() -> None:
 def test_multiple_eta_accounts_is_advisory_not_blocking() -> None:
     # ApexRule ONE_ACCOUNT_PER_TRADE is ADVISORY, not BLOCKING -- operator
     # may have a second Apex account for unrelated symbols.
-    res = check_compliance(_ok_ctx(
-        eta_account_id="apex-1",
-        other_eta_account_ids=["apex-2"],
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            eta_account_id="apex-1",
+            other_eta_account_ids=["apex-2"],
+        )
+    )
     assert res.passed is True
     rules = [v.rule for v in res.violations]
     assert ComplianceRuleId.APEX_ONE_ACCOUNT in rules
@@ -123,10 +134,12 @@ def test_multiple_eta_accounts_is_advisory_not_blocking() -> None:
 
 
 def test_opposing_apex_position_blocks() -> None:
-    res = check_compliance(_ok_ctx(
-        eta_account_id="apex-1",
-        has_opposing_apex_position=True,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            eta_account_id="apex-1",
+            has_opposing_apex_position=True,
+        )
+    )
     assert res.passed is False
     rules = [v.rule for v in res.violations]
     assert ComplianceRuleId.APEX_NO_CROSS_HEDGE in rules
@@ -142,11 +155,13 @@ def test_news_blackout_blocks() -> None:
 def test_apex_checks_skipped_when_not_eta_account() -> None:
     # No eta_account_id set -> Apex rules do not fire even if other_apex_*
     # has entries (they are irrelevant without a primary Apex account).
-    res = check_compliance(_ok_ctx(
-        eta_account_id=None,
-        other_eta_account_ids=["apex-2"],
-        has_opposing_apex_position=True,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            eta_account_id=None,
+            other_eta_account_ids=["apex-2"],
+            has_opposing_apex_position=True,
+        )
+    )
     assert res.passed is True
     assert res.violations == []
 
@@ -157,28 +172,34 @@ def test_apex_checks_skipped_when_not_eta_account() -> None:
 
 
 def test_promotional_without_disclaimer_blocks() -> None:
-    res = check_compliance(_ok_ctx(
-        is_promotional_communication=True,
-        promotional_disclaimer_included=False,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            is_promotional_communication=True,
+            promotional_disclaimer_included=False,
+        )
+    )
     assert res.passed is False
     rules = [v.rule for v in res.violations]
     assert ComplianceRuleId.NFA_2_29_PROMOTIONAL in rules
 
 
 def test_promotional_with_disclaimer_passes() -> None:
-    res = check_compliance(_ok_ctx(
-        is_promotional_communication=True,
-        promotional_disclaimer_included=True,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            is_promotional_communication=True,
+            promotional_disclaimer_included=True,
+        )
+    )
     assert res.passed is True
 
 
 def test_non_promotional_skips_the_check() -> None:
-    res = check_compliance(_ok_ctx(
-        is_promotional_communication=False,
-        promotional_disclaimer_included=False,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            is_promotional_communication=False,
+            promotional_disclaimer_included=False,
+        )
+    )
     assert res.passed is True
 
 
@@ -222,11 +243,13 @@ def test_result_accepts_advisory_violations_with_passed_true() -> None:
 
 
 def test_multiple_blocking_rules_all_surface() -> None:
-    res = check_compliance(_ok_ctx(
-        operator_owned_account=False,
-        external_capital_present=True,
-        news_blackout_active=True,
-    ))
+    res = check_compliance(
+        _ok_ctx(
+            operator_owned_account=False,
+            external_capital_present=True,
+            news_blackout_active=True,
+        )
+    )
     assert res.passed is False
     rules = [v.rule for v in res.violations]
     assert ComplianceRuleId.OWNS_ACCOUNT in rules
@@ -237,14 +260,18 @@ def test_multiple_blocking_rules_all_surface() -> None:
 def test_pretrade_context_rejects_zero_qty() -> None:
     with pytest.raises(ValueError, match="greater than 0"):
         PreTradeContext(
-            account_id="x", symbol="MNQ", side="BUY", qty=0.0,
+            account_id="x",
+            symbol="MNQ",
+            side="BUY",
+            qty=0.0,
         )
 
 
 def test_pretrade_context_rejects_unknown_side() -> None:
     with pytest.raises(ValueError):
         PreTradeContext(
-            account_id="x", symbol="MNQ",
+            account_id="x",
+            symbol="MNQ",
             side="FLOAT",  # type: ignore[arg-type]
             qty=1.0,
         )

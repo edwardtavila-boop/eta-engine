@@ -52,6 +52,7 @@ File schema v1
 during a probe. Each process computes HALF_OPEN locally when it sees
 disk state OPEN with ``reopen_at`` in the past.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -208,21 +209,20 @@ class SharedCircuitBreaker(CircuitBreaker):
             return None
         ver = data.get("version")
         if ver != SCHEMA_VERSION:
-            _LOG.warning("[shared_breaker] schema version %r != %d", ver,
-                         SCHEMA_VERSION)
+            _LOG.warning("[shared_breaker] schema version %r != %d", ver, SCHEMA_VERSION)
             return None
         return data
 
     def _write_shared(self) -> None:
         """Atomic write of current breaker snapshot to ``breaker.json``."""
         payload: dict[str, object] = {
-            "version":     SCHEMA_VERSION,
-            "state":       self._state.value,
-            "tripped_at":  self._tripped_at.isoformat() if self._tripped_at else None,
-            "reopen_at":   self._reopen_at.isoformat()  if self._reopen_at  else None,
+            "version": SCHEMA_VERSION,
+            "state": self._state.value,
+            "tripped_at": self._tripped_at.isoformat() if self._tripped_at else None,
+            "reopen_at": self._reopen_at.isoformat() if self._reopen_at else None,
             "last_reason": self._last_reason,
-            "written_at":  self._clock().isoformat(),
-            "writer_pid":  os.getpid(),
+            "written_at": self._clock().isoformat(),
+            "writer_pid": os.getpid(),
         }
         # HALF_OPEN is transient and never persists; if the parent put us
         # there (probe in flight), mirror it as OPEN on disk so other
@@ -234,13 +234,13 @@ class SharedCircuitBreaker(CircuitBreaker):
             self._path.parent.mkdir(parents=True, exist_ok=True)
             # Write to temp in same directory (same FS -> os.replace atomic).
             fd, tmp_name = tempfile.mkstemp(
-                prefix=".breaker-", suffix=".tmp",
+                prefix=".breaker-",
+                suffix=".tmp",
                 dir=str(self._path.parent),
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    json.dump(payload, fh, indent=2, sort_keys=True,
-                              allow_nan=False)
+                    json.dump(payload, fh, indent=2, sort_keys=True, allow_nan=False)
                 os.replace(tmp_name, self._path)
             except Exception:
                 # Clean up tmp on failure; swallow cleanup errors.
@@ -293,17 +293,19 @@ def reset_shared(path: Path | str | None = None) -> bool:
     p.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC).isoformat()
     payload = {
-        "version":     SCHEMA_VERSION,
-        "state":       BreakerState.CLOSED.value,
-        "tripped_at":  None,
-        "reopen_at":   None,
+        "version": SCHEMA_VERSION,
+        "state": BreakerState.CLOSED.value,
+        "tripped_at": None,
+        "reopen_at": None,
         "last_reason": "operator_reset",
-        "written_at":  now,
-        "writer_pid":  os.getpid(),
+        "written_at": now,
+        "writer_pid": os.getpid(),
     }
     try:
         fd, tmp_name = tempfile.mkstemp(
-            prefix=".breaker-", suffix=".tmp", dir=str(p.parent),
+            prefix=".breaker-",
+            suffix=".tmp",
+            dir=str(p.parent),
         )
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, sort_keys=True, allow_nan=False)

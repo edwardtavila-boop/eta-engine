@@ -39,6 +39,7 @@ Public API
   * ``PROFILES``               -- default per-``RegimeType`` profile map
   * ``get_profile(regime)``    -- lookup helper
 """
+
 from __future__ import annotations
 
 import math
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
 
 class Bar(BaseModel):
     """Minimal synthetic OHLCV bar. Mirrors the columns the backtester reads."""
@@ -83,26 +85,35 @@ class RegimeProfile(BaseModel):
     mu: float = Field(description="Per-bar drift of log returns")
     sigma: float = Field(gt=0.0, description="Base per-bar vol of log returns")
     vol_persistence: float = Field(
-        default=0.0, ge=0.0, lt=1.0,
+        default=0.0,
+        ge=0.0,
+        lt=1.0,
         description="AR(1) coefficient on |return| for vol clustering (0=iid)",
     )
     tail_weight: float = Field(
-        default=0.0, ge=0.0, le=1.0,
+        default=0.0,
+        ge=0.0,
+        le=1.0,
         description="Mixture weight on Student-t (heavy tail) draws. 0=pure Gaussian.",
     )
     tail_df: float = Field(
-        default=6.0, gt=2.0,
+        default=6.0,
+        gt=2.0,
         description="Degrees of freedom for Student-t tail component.",
     )
     intrabar_range_mult: float = Field(
-        default=1.5, gt=0.0,
+        default=1.5,
+        gt=0.0,
         description="Wick stretch factor: high/low extend beyond |close-open| by this mult.",
     )
     base_volume: float = Field(
-        default=1000.0, gt=0.0, description="Baseline volume per bar",
+        default=1000.0,
+        gt=0.0,
+        description="Baseline volume per bar",
     )
     volume_return_sensitivity: float = Field(
-        default=500.0, ge=0.0,
+        default=500.0,
+        ge=0.0,
         description="Extra volume per unit |log return| (captures flow on moves)",
     )
 
@@ -114,38 +125,63 @@ class RegimeProfile(BaseModel):
 PROFILES: dict[RegimeType, RegimeProfile] = {
     # Bull trend: small positive drift, moderate vol, mild clustering
     RegimeType.TRENDING: RegimeProfile(
-        mu=0.00020, sigma=0.0025, vol_persistence=0.20, tail_weight=0.05,
-        intrabar_range_mult=1.6, base_volume=1200.0,
+        mu=0.00020,
+        sigma=0.0025,
+        vol_persistence=0.20,
+        tail_weight=0.05,
+        intrabar_range_mult=1.6,
+        base_volume=1200.0,
         volume_return_sensitivity=400.0,
     ),
     # Range: tight sigma, zero drift, low clustering
     RegimeType.RANGING: RegimeProfile(
-        mu=0.0, sigma=0.0012, vol_persistence=0.05, tail_weight=0.02,
-        intrabar_range_mult=1.3, base_volume=800.0,
+        mu=0.0,
+        sigma=0.0012,
+        vol_persistence=0.05,
+        tail_weight=0.02,
+        intrabar_range_mult=1.3,
+        base_volume=800.0,
         volume_return_sensitivity=300.0,
     ),
     # High vol: fat sigma, strong clustering, meaningful tail weight
     RegimeType.HIGH_VOL: RegimeProfile(
-        mu=0.0, sigma=0.0060, vol_persistence=0.55, tail_weight=0.20,
-        intrabar_range_mult=2.0, base_volume=2500.0,
+        mu=0.0,
+        sigma=0.0060,
+        vol_persistence=0.55,
+        tail_weight=0.20,
+        intrabar_range_mult=2.0,
+        base_volume=2500.0,
         volume_return_sensitivity=900.0,
     ),
     # Low vol: narrow sigma, dead clustering, zero tail
     RegimeType.LOW_VOL: RegimeProfile(
-        mu=0.0, sigma=0.0006, vol_persistence=0.0, tail_weight=0.0,
-        intrabar_range_mult=1.2, base_volume=600.0,
+        mu=0.0,
+        sigma=0.0006,
+        vol_persistence=0.0,
+        tail_weight=0.0,
+        intrabar_range_mult=1.2,
+        base_volume=600.0,
         volume_return_sensitivity=200.0,
     ),
     # Crisis: extreme sigma, heavy clustering, heavy tails, wide wicks
     RegimeType.CRISIS: RegimeProfile(
-        mu=-0.00040, sigma=0.0120, vol_persistence=0.75, tail_weight=0.45,
-        tail_df=4.0, intrabar_range_mult=2.5, base_volume=4500.0,
+        mu=-0.00040,
+        sigma=0.0120,
+        vol_persistence=0.75,
+        tail_weight=0.45,
+        tail_df=4.0,
+        intrabar_range_mult=2.5,
+        base_volume=4500.0,
         volume_return_sensitivity=1500.0,
     ),
     # Transition: middle-of-the-road
     RegimeType.TRANSITION: RegimeProfile(
-        mu=0.0, sigma=0.0030, vol_persistence=0.30, tail_weight=0.08,
-        intrabar_range_mult=1.7, base_volume=1000.0,
+        mu=0.0,
+        sigma=0.0030,
+        vol_persistence=0.30,
+        tail_weight=0.08,
+        intrabar_range_mult=1.7,
+        base_volume=1000.0,
         volume_return_sensitivity=500.0,
     ),
 }
@@ -161,6 +197,7 @@ def get_profile(regime: RegimeType) -> RegimeProfile:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 def _student_t(rng: random.Random, df: float) -> float:
     """Draw a Student-t variate using the normal / chi-square decomposition.
@@ -361,6 +398,7 @@ class SyntheticBarGenerator:
 # ---------------------------------------------------------------------------
 # Helpers (optional: calibration from real bars)
 # ---------------------------------------------------------------------------
+
 
 def fit_profile_from_bars(
     bars: list[Bar],

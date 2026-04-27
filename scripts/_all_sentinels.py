@@ -42,6 +42,7 @@ Why
 Single command for "is anything drifting RIGHT NOW" — useful as a
 pre-commit gate, end-of-day check, or as the body of a cloud cron.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,22 +73,22 @@ class SentinelResult:
 # fast=True  -> always runs
 # fast=False -> only runs without --fast (avoids long pytest collects)
 SENTINELS: list[tuple[str, list[str], bool]] = [
-    ("coverage-drift",   ["scripts/_coverage_drift.py", "--no-run"], True),
-    ("docstring-audit",  ["scripts/_docstring_audit.py"],            True),
-    ("dead-code",        ["scripts/_dead_code_scan.py"],             True),
-    ("test-gap",         ["scripts/_test_coverage_gap.py"],          True),
-    ("fleet-invariants", ["scripts/_fleet_invariants.py"],           True),
-    ("roadmap-drift",    ["scripts/_roadmap_drift.py", "--no-pytest"], True),
-    ("roadmap-drift+pytest", ["scripts/_roadmap_drift.py"],          False),
-    ("bot-health-L0",    ["scripts/_bot_health_probe.py", "--level", "L0"], True),
-    ("bot-health-L1",    ["scripts/_bot_health_probe.py", "--level", "L1"], True),
-    ("secret-audit",     ["scripts/_secret_audit.py"],               True),
-    ("dependency-drift", ["scripts/_dependency_drift.py"],           True),
-    ("complexity",       ["scripts/_complexity_hotspots.py", "--threshold", "20", "--top", "10"], True),
-    ("strategy-pairing", ["scripts/_strategy_test_pairing.py"],      True),
-    ("orphan-files",     ["scripts/_orphan_files.py"],               True),
-    ("import-graph",     ["scripts/_import_graph.py"],               True),
-    ("long-tests",       ["scripts/_long_test_finder.py", "--top", "10", "--max-yellow-ms", "500"], False),
+    ("coverage-drift", ["scripts/_coverage_drift.py", "--no-run"], True),
+    ("docstring-audit", ["scripts/_docstring_audit.py"], True),
+    ("dead-code", ["scripts/_dead_code_scan.py"], True),
+    ("test-gap", ["scripts/_test_coverage_gap.py"], True),
+    ("fleet-invariants", ["scripts/_fleet_invariants.py"], True),
+    ("roadmap-drift", ["scripts/_roadmap_drift.py", "--no-pytest"], True),
+    ("roadmap-drift+pytest", ["scripts/_roadmap_drift.py"], False),
+    ("bot-health-L0", ["scripts/_bot_health_probe.py", "--level", "L0"], True),
+    ("bot-health-L1", ["scripts/_bot_health_probe.py", "--level", "L1"], True),
+    ("secret-audit", ["scripts/_secret_audit.py"], True),
+    ("dependency-drift", ["scripts/_dependency_drift.py"], True),
+    ("complexity", ["scripts/_complexity_hotspots.py", "--threshold", "20", "--top", "10"], True),
+    ("strategy-pairing", ["scripts/_strategy_test_pairing.py"], True),
+    ("orphan-files", ["scripts/_orphan_files.py"], True),
+    ("import-graph", ["scripts/_import_graph.py"], True),
+    ("long-tests", ["scripts/_long_test_finder.py", "--top", "10", "--max-yellow-ms", "500"], False),
 ]
 
 
@@ -121,8 +122,12 @@ def _run_one(name: str, argv: list[str]) -> SentinelResult:
     t0 = time.monotonic()
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=180,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
         )
         out = proc.stdout + proc.stderr
         exit_code = proc.returncode
@@ -131,7 +136,9 @@ def _run_one(name: str, argv: list[str]) -> SentinelResult:
         exit_code = 2
     duration = time.monotonic() - t0
     return SentinelResult(
-        name=name, cmd=cmd, exit_code=exit_code,
+        name=name,
+        cmd=cmd,
+        exit_code=exit_code,
         duration_s=duration,
         summary_line=_last_summary_line(out),
         full_output=out,
@@ -168,22 +175,25 @@ def _verdict(results: list[SentinelResult]) -> tuple[str, dict[str, int]]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    p.add_argument("--fast", action="store_true",
-                   help="skip slow sentinels (pytest collects)")
-    p.add_argument("--json", action="store_true",
-                   help="emit JSON report instead of table")
-    p.add_argument("--verbose", "-v", action="store_true",
-                   help="dump full output of each sentinel")
+    p.add_argument("--fast", action="store_true", help="skip slow sentinels (pytest collects)")
+    p.add_argument("--json", action="store_true", help="emit JSON report instead of table")
+    p.add_argument("--verbose", "-v", action="store_true", help="dump full output of each sentinel")
     args = p.parse_args(argv)
 
     results: list[SentinelResult] = []
     for name, sub_argv, is_fast in SENTINELS:
         if args.fast and not is_fast:
-            results.append(SentinelResult(
-                name=name, cmd=[sys.executable, *sub_argv],
-                exit_code=0, duration_s=0.0,
-                summary_line="(skipped --fast)", fast=is_fast, skipped=True,
-            ))
+            results.append(
+                SentinelResult(
+                    name=name,
+                    cmd=[sys.executable, *sub_argv],
+                    exit_code=0,
+                    duration_s=0.0,
+                    summary_line="(skipped --fast)",
+                    fast=is_fast,
+                    skipped=True,
+                )
+            )
             continue
         results.append(_run_one(name, sub_argv))
 

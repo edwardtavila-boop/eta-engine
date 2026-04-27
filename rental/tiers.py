@@ -18,15 +18,17 @@ from enum import StrEnum
 
 class BotSku(StrEnum):
     """Which bot(s) a tier grants access to."""
-    MNQ_APEX = "MNQ_APEX"                 # Layer 1 -- futures
-    BTC_SEED = "BTC_SEED"                 # Layer 2 -- grid + overlay
-    ETH_PERP = "ETH_PERP"                 # Layer 3 -- eth perps
-    SOL_PERP = "SOL_PERP"                 # Layer 3 -- sol perps
-    STAKING_SWEEP = "STAKING_SWEEP"       # Layer 4 -- passive accumulator
+
+    MNQ_APEX = "MNQ_APEX"  # Layer 1 -- futures
+    BTC_SEED = "BTC_SEED"  # Layer 2 -- grid + overlay
+    ETH_PERP = "ETH_PERP"  # Layer 3 -- eth perps
+    SOL_PERP = "SOL_PERP"  # Layer 3 -- sol perps
+    STAKING_SWEEP = "STAKING_SWEEP"  # Layer 4 -- passive accumulator
 
 
 class RentalTier(StrEnum):
     """Named product tiers."""
+
     TRIAL = "TRIAL"
     STARTER = "STARTER"
     PRO = "PRO"
@@ -37,6 +39,7 @@ class RentalTier(StrEnum):
 @dataclass(frozen=True)
 class Tier:
     """One SKU row in the public price list."""
+
     id: RentalTier
     display_name: str
     monthly_usd: float
@@ -78,8 +81,8 @@ STARTER = Tier(
     id=RentalTier.STARTER,
     display_name="Apex Starter",
     monthly_usd=49.0,
-    quarterly_usd=129.0,   # ~$43/mo  (12% off monthly)
-    annual_usd=469.0,      # ~$39/mo  (20% off monthly)
+    quarterly_usd=129.0,  # ~$43/mo  (12% off monthly)
+    annual_usd=469.0,  # ~$39/mo  (20% off monthly)
     bot_skus=frozenset({BotSku.BTC_SEED}),
     recommended_min_capital_usd=2_000,
     max_concurrent_positions=3,
@@ -112,8 +115,7 @@ PORTFOLIO = Tier(
     max_equity_managed_usd=250_000,
     includes_custom_tweaks=True,
     description=(
-        "Full Layer 2 + Layer 3 + Layer 4. Custom risk tweaks unlocked. Profit "
-        "sweeps to staking automatically enabled."
+        "Full Layer 2 + Layer 3 + Layer 4. Custom risk tweaks unlocked. Profit sweeps to staking automatically enabled."
     ),
 )
 
@@ -126,7 +128,7 @@ ELITE = Tier(
     bot_skus=frozenset(BotSku),
     recommended_min_capital_usd=50_000,
     max_concurrent_positions=20,
-    max_equity_managed_usd=None,   # uncapped
+    max_equity_managed_usd=None,  # uncapped
     includes_custom_tweaks=True,
     includes_priority_retrain=True,
     description=(
@@ -139,6 +141,7 @@ ELITE = Tier(
 @dataclass(frozen=True)
 class TierCatalog:
     """Immutable catalog of available tiers."""
+
     tiers: tuple[Tier, ...] = field(
         default_factory=lambda: (TRIAL, STARTER, PRO, PORTFOLIO, ELITE),
     )

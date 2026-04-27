@@ -29,6 +29,7 @@ Batman writes a verdict, Alfred writes a patch. He structures every
 artifact as an actionable plan + a concrete deliverable (the code change,
 the test body, the doc section) so the caller can copy-paste.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar

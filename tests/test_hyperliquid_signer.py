@@ -9,6 +9,7 @@ Covers:
 When ``eth_account`` IS installed, additional tests verify the signature
 shape (r, s, v), determinism, and address derivation.
 """
+
 from __future__ import annotations
 
 import os
@@ -109,6 +110,7 @@ def test_from_key_file_rejects_group_readable(tmp_path: Path) -> None:
 def test_is_available_matches_eth_account_import() -> None:
     try:
         import eth_account  # noqa: F401
+
         expected = True
     except ImportError:
         expected = False
@@ -219,7 +221,8 @@ def test_sign_l1_action_rejects_short_connection_id() -> None:
     signer = HyperliquidSigner(_TEST_KEY)
     with pytest.raises(HyperliquidSignerConfigError, match="32 bytes"):
         signer.sign_l1_action(
-            {"type": "order", "__connection_id": "0xdeadbeef"}, nonce=1,
+            {"type": "order", "__connection_id": "0xdeadbeef"},
+            nonce=1,
         )
 
 
@@ -231,5 +234,6 @@ def test_sign_l1_action_rejects_wrong_byte_length() -> None:
     signer = HyperliquidSigner(_TEST_KEY)
     with pytest.raises(HyperliquidSignerConfigError, match="32 bytes"):
         signer.sign_l1_action(
-            {"type": "order", "__connection_id": b"too-short"}, nonce=1,
+            {"type": "order", "__connection_id": b"too-short"},
+            nonce=1,
         )

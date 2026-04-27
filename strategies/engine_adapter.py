@@ -21,6 +21,7 @@ The adapter is **import-light**. It does not touch pydantic, torch,
 web3, or any network primitives so it can run in the hot trading
 loop without GIL or allocation surprises.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -358,11 +359,11 @@ class RouterAdapter:
         if self.allowlist_scheduler is None:
             return
         try:
-            kwargs = (
-                dict(self.scheduler_kwargs) if self.scheduler_kwargs else {}
-            )
+            kwargs = dict(self.scheduler_kwargs) if self.scheduler_kwargs else {}
             self.allowlist_scheduler.tick(
-                self.asset, list(self._bars), **kwargs,
+                self.asset,
+                list(self._bars),
+                **kwargs,
             )
         except Exception:  # noqa: BLE001  -- never crash the hot loop
             return
@@ -379,9 +380,7 @@ class RouterAdapter:
         """
         if self.allowlist_scheduler is None:
             return self.eligibility
-        scheduler_map = (
-            self.allowlist_scheduler.cache.as_eligibility_map()
-        )
+        scheduler_map = self.allowlist_scheduler.cache.as_eligibility_map()
         if not scheduler_map:
             return self.eligibility
         if not self.eligibility:

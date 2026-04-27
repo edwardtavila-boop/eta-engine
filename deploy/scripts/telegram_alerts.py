@@ -26,6 +26,7 @@ Usage from code:
 Use as VoiceHub sender:
   hub = VoiceHub(audit_path=..., sender=adapter.as_voice_sender())
 """
+
 from __future__ import annotations
 
 import json
@@ -44,8 +45,7 @@ logger = logging.getLogger("telegram_alerts")
 class TelegramAdapter:
     """Thin adapter over Telegram's HTTP Bot API."""
 
-    def __init__(self, bot_token: str, chat_id: str,
-                 state_dir: Path | None = None) -> None:
+    def __init__(self, bot_token: str, chat_id: str, state_dir: Path | None = None) -> None:
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.state_dir = state_dir
@@ -66,25 +66,26 @@ class TelegramAdapter:
     # ------------------------------------------------------------------
     # Send
     # ------------------------------------------------------------------
-    def send(self, text: str, *, priority: str = "INFO",
-             parse_mode: str = "Markdown") -> dict:
+    def send(self, text: str, *, priority: str = "INFO", parse_mode: str = "Markdown") -> dict:
         """Send a message to the configured chat. Returns response dict."""
         try:
             import httpx
         except ImportError:
             return {"ok": False, "error": "httpx not installed"}
 
-        prefix = {"INFO": "\u2139\ufe0f", "WARN": "\u26a0\ufe0f",
-                  "CRITICAL": "\U0001f6a8"}.get(priority, "")
+        prefix = {"INFO": "\u2139\ufe0f", "WARN": "\u26a0\ufe0f", "CRITICAL": "\U0001f6a8"}.get(priority, "")
         body = f"{prefix} {text}" if prefix else text
         if len(body) > 4000:
             body = body[:3990] + "\u2026"
         try:
             resp = httpx.post(
                 f"{self.api_base}/sendMessage",
-                json={"chat_id": self.chat_id, "text": body,
-                      "parse_mode": parse_mode,
-                      "disable_web_page_preview": True},
+                json={
+                    "chat_id": self.chat_id,
+                    "text": body,
+                    "parse_mode": parse_mode,
+                    "disable_web_page_preview": True,
+                },
                 timeout=10.0,
             )
             result = resp.json()
@@ -104,22 +105,25 @@ class TelegramAdapter:
             self.state_dir.mkdir(parents=True, exist_ok=True)
             log_path = self.state_dir / "telegram_alerts.jsonl"
             with log_path.open("a", encoding="utf-8") as fp:
-                fp.write(json.dumps({
-                    "ts": datetime.now(UTC).isoformat(),
-                    "priority": priority,
-                    "body_preview": body[:200],
-                    "ok": bool(result.get("ok", False)),
-                    "error": result.get("description") or result.get("error"),
-                }) + "\n")
+                fp.write(
+                    json.dumps(
+                        {
+                            "ts": datetime.now(UTC).isoformat(),
+                            "priority": priority,
+                            "body_preview": body[:200],
+                            "ok": bool(result.get("ok", False)),
+                            "error": result.get("description") or result.get("error"),
+                        }
+                    )
+                    + "\n"
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("telegram record failed: %s", exc)
 
     def test(self) -> dict:
         """Send a heartbeat test message."""
         return self.send(
-            f"*Evolutionary Trading Algo adapter online* \n"
-            f"Time: `{datetime.now(UTC).isoformat()}`\n"
-            f"Chat: `{self.chat_id}`",
+            f"*Evolutionary Trading Algo adapter online* \nTime: `{datetime.now(UTC).isoformat()}`\nChat: `{self.chat_id}`",
             priority="INFO",
         )
 
@@ -132,8 +136,10 @@ class TelegramAdapter:
         VoiceHub calls: sender(channel, text, priority) -> None.
         We ignore channel (we're only Telegram) but respect priority.
         """
+
         def _send(channel: str, text: str, priority: str) -> None:  # noqa: ARG001
             self.send(text, priority=priority)
+
         return _send
 
 
@@ -147,8 +153,10 @@ def send_from_env(text: str, priority: str = "INFO") -> dict:
 
 if __name__ == "__main__":
     import sys
+
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass

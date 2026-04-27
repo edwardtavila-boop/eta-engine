@@ -12,6 +12,7 @@ If the agent is unavailable (no checkpoint, no torch installed,
 deterministic-test mode), this module returns a FLAT signal with a tag
 explaining why -- never crashes the router.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -79,9 +80,7 @@ def build_feature_vector(bars: list[Bar], *, window: int = 20) -> list[float]:
 
     volumes = [b.volume for b in w]
     med_vol = _median(volumes)
-    vol_z = (
-        (last.volume - med_vol) / (_std(volumes) + 1e-9) if med_vol > 0 else 0.0
-    )
+    vol_z = (last.volume - med_vol) / (_std(volumes) + 1e-9) if med_vol > 0 else 0.0
     bull_frac = sum(1 for b in w if b.is_bull) / len(w)
     max_dd = 0.0
     peak = closes[0]

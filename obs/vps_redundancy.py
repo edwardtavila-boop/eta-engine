@@ -43,6 +43,7 @@ Public API
   * ``FailoverController`` -- the decision engine
   * ``VpsRedundancyController`` -- loop runner
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -247,7 +248,8 @@ class FailoverController:
         if self.active_role != VpsRole.PRIMARY:
             return False
         unhealthy_primary = self._consecutive_tail(
-            VpsRole.PRIMARY, self._unhealthy,
+            VpsRole.PRIMARY,
+            self._unhealthy,
         )
         return unhealthy_primary >= self.policy.primary_unhealthy_threshold
 
@@ -264,7 +266,8 @@ class FailoverController:
         """True if secondary has been DOWN for N probes; the operator
         should be paged because we have no working fallback."""
         down_secondary = self._consecutive_tail(
-            VpsRole.SECONDARY, lambda h: h == VpsHealth.DOWN,
+            VpsRole.SECONDARY,
+            lambda h: h == VpsHealth.DOWN,
         )
         return down_secondary >= self.policy.secondary_unhealthy_threshold
 
@@ -277,10 +280,7 @@ class FailoverController:
                 ts=now,
                 from_role=self.active_role,
                 to_role=VpsRole.SECONDARY,
-                reason=(
-                    f"primary unhealthy for "
-                    f">= {self.policy.primary_unhealthy_threshold} probes"
-                ),
+                reason=(f"primary unhealthy for >= {self.policy.primary_unhealthy_threshold} probes"),
             )
             self.active_role = VpsRole.SECONDARY
             self.events.append(evt)
@@ -290,10 +290,7 @@ class FailoverController:
                 ts=now,
                 from_role=self.active_role,
                 to_role=VpsRole.PRIMARY,
-                reason=(
-                    f"primary healthy for "
-                    f">= {self.policy.primary_recovery_threshold} probes"
-                ),
+                reason=(f"primary healthy for >= {self.policy.primary_recovery_threshold} probes"),
             )
             self.active_role = VpsRole.PRIMARY
             self.events.append(evt)
@@ -325,7 +322,8 @@ class VpsRedundancyController:
         self.probe = probe
         self.dns = dns
         self.controller = FailoverController(
-            policy=policy, initial_role=initial_role,
+            policy=policy,
+            initial_role=initial_role,
         )
         self._clock: ClockFn = clock if clock is not None else (lambda: datetime.now(UTC))
 

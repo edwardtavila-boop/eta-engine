@@ -26,6 +26,7 @@ Exit codes
 2  RED -- token expired, FAILED auth, or report > 2*stale-h hours old
 9  data missing (no status file)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,7 +73,8 @@ def _classify_freshness(report_mtime: float, now_ts: float, stale_h: float) -> t
     age_h = (now_ts - report_mtime) / 3600.0
     if age_h > stale_h * 2:
         return (
-            "RED", f"auth report {age_h:.1f}h old (>{stale_h * 2:.0f}h) -- keep-alive dead",
+            "RED",
+            f"auth report {age_h:.1f}h old (>{stale_h * 2:.0f}h) -- keep-alive dead",
         )
     if age_h > stale_h:
         return ("YELLOW", f"auth report {age_h:.1f}h old (>{stale_h:.0f}h)")

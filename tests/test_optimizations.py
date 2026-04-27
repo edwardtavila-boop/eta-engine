@@ -5,6 +5,7 @@ Tests for the 10-optimization bundle:
   - TelegramAdapter (#9)
   - status_page HTML exists + is well-formed (#10)
 """
+
 from __future__ import annotations
 
 import json
@@ -14,11 +15,12 @@ from pathlib import Path
 # #5 META_UPGRADE
 # ---------------------------------------------------------------------------
 
-class TestMetaUpgrade:
 
+class TestMetaUpgrade:
     def test_handler_registered(self):
         from eta_engine.brain.avengers import BackgroundTask
         from eta_engine.deploy.scripts.run_task import HANDLERS
+
         assert BackgroundTask.META_UPGRADE in HANDLERS
 
     def test_task_has_owner_and_cadence(self):
@@ -27,12 +29,14 @@ class TestMetaUpgrade:
             TASK_OWNERS,
             BackgroundTask,
         )
+
         assert TASK_OWNERS[BackgroundTask.META_UPGRADE] == "ALFRED"
         assert TASK_CADENCE[BackgroundTask.META_UPGRADE].startswith("30 4")
 
     def test_handler_skips_when_not_a_repo(self, tmp_path, monkeypatch):
         monkeypatch.setenv("APEX_REPO_DIR", str(tmp_path))
         from eta_engine.deploy.scripts.run_task import _task_meta_upgrade
+
         result = _task_meta_upgrade(tmp_path / "state")
         (tmp_path / "state").mkdir(parents=True, exist_ok=True)
         # Re-run after state dir exists
@@ -44,11 +48,12 @@ class TestMetaUpgrade:
 # #7 PROMPT_WARMUP
 # ---------------------------------------------------------------------------
 
-class TestPromptWarmup:
 
+class TestPromptWarmup:
     def test_skips_without_api_key(self, tmp_path, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         from eta_engine.deploy.scripts.run_task import _task_prompt_warmup
+
         out = _task_prompt_warmup(tmp_path)
         assert out.get("skipped") is True
         assert "no API key" in out.get("reason", "")
@@ -58,18 +63,20 @@ class TestPromptWarmup:
 # #9 Telegram adapter
 # ---------------------------------------------------------------------------
 
-class TestTelegramAdapter:
 
+class TestTelegramAdapter:
     def test_from_env_returns_none_if_unconfigured(self, monkeypatch):
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
         from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
+
         assert TelegramAdapter.from_env() is None
 
     def test_from_env_builds_adapter(self, monkeypatch, tmp_path):
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
         monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
         from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
+
         adapter = TelegramAdapter.from_env(state_dir=tmp_path)
         assert adapter is not None
         assert adapter.bot_token == "123:abc"
@@ -78,6 +85,7 @@ class TestTelegramAdapter:
 
     def test_voice_sender_wraps_send(self, monkeypatch, tmp_path):
         from eta_engine.deploy.scripts.telegram_alerts import TelegramAdapter
+
         adapter = TelegramAdapter("t", "c", state_dir=tmp_path)
         sent = []
         adapter.send = lambda text, priority="INFO", **k: sent.append((text, priority)) or {"ok": True}
@@ -92,9 +100,12 @@ class TestTelegramAdapter:
         import eta_engine.deploy.scripts.telegram_alerts as mod
 
         class FakeResp:
-            def json(self): return {"ok": True, "result": {"message_id": 1}}
+            def json(self):
+                return {"ok": True, "result": {"message_id": 1}}
 
-        def fake_post(*args, **kwargs): return FakeResp()
+        def fake_post(*args, **kwargs):
+            return FakeResp()
+
         monkeypatch.setattr(httpx, "post", fake_post)
 
         adapter = mod.TelegramAdapter("t", "c", state_dir=tmp_path)
@@ -111,8 +122,8 @@ class TestTelegramAdapter:
 # #10 status page
 # ---------------------------------------------------------------------------
 
-class TestStatusPage:
 
+class TestStatusPage:
     def test_index_exists(self):
         path = Path(__file__).resolve().parent.parent / "deploy" / "status_page" / "index.html"
         assert path.exists()
@@ -133,6 +144,7 @@ class TestStatusPage:
 # ---------------------------------------------------------------------------
 # Supercharge tasks (round 2)
 # ---------------------------------------------------------------------------
+
 
 class TestSuperchargeTasks:
     """All 6 new supercharge tasks must be registered + have handlers."""
@@ -167,6 +179,7 @@ class TestSuperchargeTasks:
         # Create a fresh .log file (too new to archive)
         (logdir / "active.log").write_text("hello\n")
         from eta_engine.deploy.scripts.run_task import _task_log_rotate
+
         out = _task_log_rotate(state, logdir)
         assert "archived" in out
         assert (state / "log_rotate.json").exists()
@@ -180,6 +193,7 @@ class TestSuperchargeTasks:
         (repo / ".env").write_text("DUMMY=1")
         monkeypatch.setenv("APEX_REPO_DIR", str(repo))
         from eta_engine.deploy.scripts.run_task import _task_backup
+
         out = _task_backup(state)
         assert "archive" in out
         assert out["size_bytes"] > 0
@@ -192,12 +206,16 @@ class TestSuperchargeTasks:
         # Seed minimal heartbeat
         hb = {
             "ts": "2026-04-24T00:00:00+00:00",
-            "quota_state": "OK", "hourly_pct": 0.05, "daily_pct": 0.12,
-            "cache_hit_rate": 0.88, "distiller_version": 3,
+            "quota_state": "OK",
+            "hourly_pct": 0.05,
+            "daily_pct": 0.12,
+            "cache_hit_rate": 0.88,
+            "distiller_version": 3,
             "distiller_trained": True,
         }
         (state / "avengers_heartbeat.json").write_text(json.dumps(hb))
         from eta_engine.deploy.scripts.run_task import _task_prometheus_export
+
         out = _task_prometheus_export(state)
         prom_file = state / "prometheus" / "avengers.prom"
         assert prom_file.exists()
@@ -213,6 +231,7 @@ class TestSuperchargeTasks:
         state.mkdir()
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         from eta_engine.deploy.scripts.run_task import _task_self_test
+
         out = _task_self_test(state)
         assert "overall" in out
         assert (state / "self_test.json").exists()
@@ -223,6 +242,7 @@ class TestSuperchargeTasks:
         state.mkdir()
         monkeypatch.setattr("os.name", "posix", raising=False)
         from eta_engine.deploy.scripts.run_task import _task_health_watchdog
+
         out = _task_health_watchdog(state)
         assert out.get("skipped") is True
 
@@ -231,6 +251,7 @@ class TestSuperchargeTasks:
         state.mkdir()
         monkeypatch.setenv("APEX_REPO_DIR", str(tmp_path / "nonexistent"))
         from eta_engine.deploy.scripts.run_task import _task_disk_cleanup
+
         out = _task_disk_cleanup(state)
         assert "bytes_freed" in out
         assert "files_deleted" in out
@@ -244,8 +265,10 @@ class TestPrometheusEndpoint:
         import importlib
 
         import eta_engine.deploy.scripts.dashboard_api as mod
+
         importlib.reload(mod)
         from fastapi.testclient import TestClient
+
         client = TestClient(mod.app)
 
         # Empty -- no metrics file yet

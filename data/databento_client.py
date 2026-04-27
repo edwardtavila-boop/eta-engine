@@ -104,8 +104,7 @@ class DataBentoClient:
         if client is None:
             # Dry-run: yield nothing, cost already accrued for forecast.
             if False:  # pragma: no cover - makes this an AsyncIterator
-                yield BarData(timestamp=start, symbol=symbol, open=0.0,
-                              high=0.0, low=0.0, close=0.0, volume=0.0)
+                yield BarData(timestamp=start, symbol=symbol, open=0.0, high=0.0, low=0.0, close=0.0, volume=0.0)
             return
 
         ds = dataset or self.dataset
@@ -120,8 +119,7 @@ class DataBentoClient:
         except Exception as e:  # noqa: BLE001
             log.warning("databento fetch_bars failed: %s", e)
             if False:  # pragma: no cover
-                yield BarData(timestamp=start, symbol=symbol, open=0.0,
-                              high=0.0, low=0.0, close=0.0, volume=0.0)
+                yield BarData(timestamp=start, symbol=symbol, open=0.0, high=0.0, low=0.0, close=0.0, volume=0.0)
             return
 
         # Databento price fields are nano-fixed-point (divide by 1e9)
@@ -152,8 +150,7 @@ class DataBentoClient:
         client = self._ensure_client()
         if client is None:
             if False:  # pragma: no cover
-                yield {"ts_event": start, "symbol": symbol, "price": 0.0,
-                       "size": 0.0, "side": "B"}
+                yield {"ts_event": start, "symbol": symbol, "price": 0.0, "size": 0.0, "side": "B"}
             return
 
         ds = dataset or self.dataset
@@ -168,8 +165,7 @@ class DataBentoClient:
         except Exception as e:  # noqa: BLE001
             log.warning("databento fetch_trades failed: %s", e)
             if False:  # pragma: no cover
-                yield {"ts_event": start, "symbol": symbol, "price": 0.0,
-                       "size": 0.0, "side": "B"}
+                yield {"ts_event": start, "symbol": symbol, "price": 0.0, "size": 0.0, "side": "B"}
             return
 
         for row in self._iter_rows(store):
@@ -238,10 +234,7 @@ class DataBentoClient:
         cost = per_gb * (total_bytes / (1024**3))
         prev = self._cost_usd_accrued
         self._cost_usd_accrued += cost
-        if (
-            prev < self.cost_warn_threshold_usd
-            <= self._cost_usd_accrued
-        ):
+        if prev < self.cost_warn_threshold_usd <= self._cost_usd_accrued:
             log.warning(
                 "DataBento session cost crossed $%.2f (now $%.2f)",
                 self.cost_warn_threshold_usd,

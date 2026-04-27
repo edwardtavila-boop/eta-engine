@@ -1,4 +1,5 @@
 """Tests for eta_engine.brain.synthetic."""
+
 from __future__ import annotations
 
 import math
@@ -122,7 +123,10 @@ def test_series_is_chained_open_matches_prev_close() -> None:
 def test_timestamps_advance_by_step() -> None:
     gen = SyntheticBarGenerator(regime=RegimeType.RANGING, seed=7)
     bars = gen.generate_series(
-        n=10, start_price=_START_PRICE, start_ts=_T0, step_seconds=60,
+        n=10,
+        start_price=_START_PRICE,
+        start_ts=_T0,
+        step_seconds=60,
     )
     for prev, curr in zip(bars[:-1], bars[1:], strict=True):
         assert curr.ts - prev.ts == timedelta(seconds=60)
@@ -140,10 +144,7 @@ def test_first_bar_open_equals_start_price() -> None:
 
 
 def _series_sigma(bars: list[Bar]) -> float:
-    rets = [
-        math.log(bars[i].close / bars[i - 1].close)
-        for i in range(1, len(bars))
-    ]
+    rets = [math.log(bars[i].close / bars[i - 1].close) for i in range(1, len(bars))]
     mean = sum(rets) / len(rets)
     var = sum((r - mean) ** 2 for r in rets) / max(len(rets) - 1, 1)
     return math.sqrt(var)
@@ -152,20 +153,28 @@ def _series_sigma(bars: list[Bar]) -> float:
 def test_crisis_series_has_higher_realized_vol_than_low_vol() -> None:
     # Long runs so sample estimates are stable.
     low = SyntheticBarGenerator(regime=RegimeType.LOW_VOL, seed=5).generate_series(
-        n=1000, start_price=_START_PRICE, start_ts=_T0,
+        n=1000,
+        start_price=_START_PRICE,
+        start_ts=_T0,
     )
     crisis = SyntheticBarGenerator(regime=RegimeType.CRISIS, seed=5).generate_series(
-        n=1000, start_price=_START_PRICE, start_ts=_T0,
+        n=1000,
+        start_price=_START_PRICE,
+        start_ts=_T0,
     )
     assert _series_sigma(crisis) > _series_sigma(low) * 5.0
 
 
 def test_high_vol_series_has_higher_realized_vol_than_ranging() -> None:
     ranging = SyntheticBarGenerator(regime=RegimeType.RANGING, seed=2).generate_series(
-        n=1000, start_price=_START_PRICE, start_ts=_T0,
+        n=1000,
+        start_price=_START_PRICE,
+        start_ts=_T0,
     )
     hv = SyntheticBarGenerator(regime=RegimeType.HIGH_VOL, seed=2).generate_series(
-        n=1000, start_price=_START_PRICE, start_ts=_T0,
+        n=1000,
+        start_price=_START_PRICE,
+        start_ts=_T0,
     )
     assert _series_sigma(hv) > _series_sigma(ranging) * 2.0
 
@@ -223,11 +232,17 @@ def _real_bars(n: int) -> list[Bar]:
     t = _T0
     price = _START_PRICE
     for i in range(n):
-        out.append(Bar(
-            ts=t, open=price, high=price + 5, low=price - 5,
-            close=price + (2 if i % 2 else -2), volume=500.0,
-            synthetic=False,
-        ))
+        out.append(
+            Bar(
+                ts=t,
+                open=price,
+                high=price + 5,
+                low=price - 5,
+                close=price + (2 if i % 2 else -2),
+                volume=500.0,
+                synthetic=False,
+            )
+        )
         t += timedelta(minutes=5)
         price = out[-1].close
     return out
@@ -287,10 +302,15 @@ def test_fit_profile_recovers_sigma_within_tolerance() -> None:
     # Generate a long series with a known profile, then re-fit.
     true_sigma = 0.004
     true_profile = RegimeProfile(
-        mu=0.0001, sigma=true_sigma, vol_persistence=0.0, tail_weight=0.0,
+        mu=0.0001,
+        sigma=true_sigma,
+        vol_persistence=0.0,
+        tail_weight=0.0,
     )
     gen = SyntheticBarGenerator(
-        regime=RegimeType.TRENDING, seed=42, profile=true_profile,
+        regime=RegimeType.TRENDING,
+        seed=42,
+        profile=true_profile,
     )
     bars = gen.generate_series(n=2000, start_price=_START_PRICE, start_ts=_T0)
     fitted = fit_profile_from_bars(bars, regime=RegimeType.TRENDING)
@@ -307,7 +327,8 @@ def test_fit_profile_rejects_short_input() -> None:
 
 def test_fit_profile_keeps_default_tail_knobs() -> None:
     bars = SyntheticBarGenerator(
-        regime=RegimeType.TRENDING, seed=3,
+        regime=RegimeType.TRENDING,
+        seed=3,
     ).generate_series(n=500, start_price=_START_PRICE, start_ts=_T0)
     fitted = fit_profile_from_bars(bars, regime=RegimeType.CRISIS)
     # Calibration does not estimate tail_weight / tail_df -> defaults preserved

@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FIRM_DIR = Path("C:/Users/edwar/OneDrive/the_firm_complete")
+FIRM_DIR = Path("C:/EvolutionaryTradingAlgo/firm/the_firm_complete")  # post-OneDrive-migration 2026-04-26
 KILL_LOG = ROOT / "docs" / "kill_log.json"
 
 logger = logging.getLogger("firm_engage")
@@ -60,11 +60,13 @@ def append_kill_log(spec_id: str, verdict: dict) -> None:
     """Persist verdict to the kill log."""
     with open(KILL_LOG) as f:
         log = json.load(f)
-    log["entries"].append({
-        "timestamp": datetime.now(UTC).isoformat(),
-        "spec_id": spec_id,
-        "verdict": verdict,
-    })
+    log["entries"].append(
+        {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "spec_id": spec_id,
+            "verdict": verdict,
+        }
+    )
     with open(KILL_LOG, "w") as f:
         json.dump(log, f, indent=2)
 

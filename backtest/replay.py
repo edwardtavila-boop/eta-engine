@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from eta_engine.core.data_pipeline import BarData
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 class BarReplay:
@@ -97,15 +100,17 @@ class BarReplay:
             low_jitter = abs(rng.gauss(0.0, vol * 0.5)) * price
             hi = max(price, new_price) + high_jitter
             lo = max(min(price, new_price) - low_jitter, 0.01)
-            bars.append(BarData(
-                timestamp=ts + step * i,
-                symbol=symbol,
-                open=round(price, 4),
-                high=round(hi, 4),
-                low=round(lo, 4),
-                close=round(new_price, 4),
-                volume=round(1000.0 + abs(rng.gauss(0.0, 200.0)), 2),
-            ))
+            bars.append(
+                BarData(
+                    timestamp=ts + step * i,
+                    symbol=symbol,
+                    open=round(price, 4),
+                    high=round(hi, 4),
+                    low=round(lo, 4),
+                    close=round(new_price, 4),
+                    volume=round(1000.0 + abs(rng.gauss(0.0, 200.0)), 2),
+                )
+            )
             price = new_price
         return bars
 
@@ -170,14 +175,16 @@ class BarReplay:
             low_jitter = abs(rng.gauss(0.0, vol * 0.6)) * price
             hi = max(price, new_price) + high_jitter
             lo = max(min(price, new_price) - low_jitter, 0.01)
-            bars.append(BarData(
-                timestamp=ts + step * i,
-                symbol=symbol,
-                open=round(price, 4),
-                high=round(hi, 4),
-                low=round(lo, 4),
-                close=round(new_price, 4),
-                volume=round(1000.0 + abs(rng.gauss(0.0, 250.0)), 2),
-            ))
+            bars.append(
+                BarData(
+                    timestamp=ts + step * i,
+                    symbol=symbol,
+                    open=round(price, 4),
+                    high=round(hi, 4),
+                    low=round(lo, 4),
+                    close=round(new_price, 4),
+                    volume=round(1000.0 + abs(rng.gauss(0.0, 250.0)), 2),
+                )
+            )
             price = new_price
         return bars

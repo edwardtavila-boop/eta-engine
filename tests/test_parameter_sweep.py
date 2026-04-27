@@ -1,4 +1,5 @@
 """Parameter-sweep engine tests -- P12_POLISH.parameter_sweep."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -26,6 +27,7 @@ _Scorer = Callable[[Mapping[str, Any]], CellScore]
 # ---------------------------------------------------------------------------
 # SweepParam / SweepGrid
 # ---------------------------------------------------------------------------
+
 
 def test_sweep_param_rejects_empty_values() -> None:
     with pytest.raises(ValidationError):
@@ -78,6 +80,7 @@ def test_sweep_grid_rejects_no_params() -> None:
 # CellScore validation
 # ---------------------------------------------------------------------------
 
+
 def test_cell_score_rejects_negative_dd() -> None:
     with pytest.raises(ValidationError):
         CellScore(expectancy_r=0.5, max_dd_pct=-1.0, win_rate=0.5, n_trades=50)
@@ -96,6 +99,7 @@ def test_cell_score_rejects_negative_trades() -> None:
 # ---------------------------------------------------------------------------
 # Gate evaluation
 # ---------------------------------------------------------------------------
+
 
 def test_gate_passes_when_all_thresholds_met() -> None:
     g = Gate()
@@ -131,11 +135,14 @@ def test_gate_custom_min_win_rate() -> None:
 # run_sweep
 # ---------------------------------------------------------------------------
 
+
 def _scorer_factory(recipe: dict[tuple, CellScore]) -> _Scorer:
     """Return a scorer that looks params up in ``recipe`` by sorted-items tuple."""
+
     def scorer(params: Mapping[str, Any]) -> CellScore:
         key = tuple(sorted(params.items()))
         return recipe[key]
+
     return scorer
 
 
@@ -152,7 +159,10 @@ def test_run_sweep_evaluates_every_combination() -> None:
     def scorer(params: Mapping[str, Any]) -> CellScore:
         seen.append(dict(params))
         return CellScore(
-            expectancy_r=0.4, max_dd_pct=5.0, win_rate=0.5, n_trades=50,
+            expectancy_r=0.4,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=50,
         )
 
     cells = run_sweep(grid, scorer)
@@ -214,11 +224,17 @@ def test_run_sweep_higher_wf_variance_yields_higher_stability_number() -> None:
     grid = SweepGrid(params=[SweepParam(name="x", values=[1, 2])])
     recipe = {
         (("x", 1),): CellScore(
-            expectancy_r=0.4, max_dd_pct=5.0, win_rate=0.5, n_trades=50,
+            expectancy_r=0.4,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=50,
             walk_forward_scores=[0.4, 0.4, 0.4],
         ),
         (("x", 2),): CellScore(
-            expectancy_r=0.4, max_dd_pct=5.0, win_rate=0.5, n_trades=50,
+            expectancy_r=0.4,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=50,
             walk_forward_scores=[0.1, 0.4, 0.9],  # volatile
         ),
     }
@@ -252,14 +268,24 @@ def test_run_sweep_is_deterministic_under_same_inputs() -> None:
 # rank_cells / pick_winner
 # ---------------------------------------------------------------------------
 
+
 def _mk_cell(
-    *, exp: float, dd: float = 5.0, stab: float = 0.0, gate: bool = True,
-    trades: int = 50, wr: float = 0.5, name: str = "c",
+    *,
+    exp: float,
+    dd: float = 5.0,
+    stab: float = 0.0,
+    gate: bool = True,
+    trades: int = 50,
+    wr: float = 0.5,
+    name: str = "c",
 ) -> SweepCell:
     return SweepCell(
         params={"name": name},
         score=CellScore(
-            expectancy_r=exp, max_dd_pct=dd, win_rate=wr, n_trades=trades,
+            expectancy_r=exp,
+            max_dd_pct=dd,
+            win_rate=wr,
+            n_trades=trades,
         ),
         gate_pass=gate,
         stability=stab,
@@ -315,6 +341,7 @@ def test_pick_winner_falls_back_to_closest_to_passing_when_none_pass() -> None:
 # Pareto frontier
 # ---------------------------------------------------------------------------
 
+
 def test_dominates_requires_at_least_one_strict_inequality() -> None:
     a = _mk_cell(exp=0.40, dd=5.0, stab=0.1)
     b = _mk_cell(exp=0.40, dd=5.0, stab=0.1)
@@ -331,7 +358,7 @@ def test_dominates_detects_strict_pareto() -> None:
 
 def test_dominates_requires_improvement_on_all_dims_not_worse_anywhere() -> None:
     a = _mk_cell(exp=0.50, dd=10.0, stab=0.1, name="a")  # higher expectancy
-    b = _mk_cell(exp=0.40, dd=5.0, stab=0.1, name="b")   # lower dd
+    b = _mk_cell(exp=0.40, dd=5.0, stab=0.1, name="b")  # lower dd
     # Neither dominates
     assert _dominates(a, b) is False
     assert _dominates(b, a) is False
@@ -339,8 +366,8 @@ def test_dominates_requires_improvement_on_all_dims_not_worse_anywhere() -> None
 
 def test_pareto_frontier_keeps_non_dominated() -> None:
     dominated = _mk_cell(exp=0.30, dd=10.0, stab=0.2, name="dom")
-    a = _mk_cell(exp=0.50, dd=8.0, stab=0.2, name="a")   # high exp, med dd
-    b = _mk_cell(exp=0.40, dd=5.0, stab=0.2, name="b")   # low dd
+    a = _mk_cell(exp=0.50, dd=8.0, stab=0.2, name="a")  # high exp, med dd
+    b = _mk_cell(exp=0.40, dd=5.0, stab=0.2, name="b")  # low dd
     c = _mk_cell(exp=0.35, dd=6.0, stab=0.05, name="c")  # best stability
     frontier = pareto_frontier([dominated, a, b, c])
     names = {cell.params["name"] for cell in frontier}
@@ -359,6 +386,7 @@ def test_pareto_frontier_handles_empty() -> None:
 # ---------------------------------------------------------------------------
 # walk_forward_windows
 # ---------------------------------------------------------------------------
+
 
 def test_walk_forward_windows_default_step_is_test_bars() -> None:
     # 100 bars, train=60, test=20, step defaults to 20
@@ -400,6 +428,7 @@ def test_walk_forward_windows_rejects_non_positive_sizes() -> None:
 # ---------------------------------------------------------------------------
 # End-to-end: realistic Tier-B-shaped sweep
 # ---------------------------------------------------------------------------
+
 
 def test_end_to_end_sweep_picks_highest_expectancy_gate_passer() -> None:
     """Simulate a 3x3 grid where exactly 2 cells pass; the higher-expectancy

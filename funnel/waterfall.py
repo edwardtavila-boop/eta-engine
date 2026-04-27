@@ -69,12 +69,13 @@ class VolRegime(StrEnum):
 @dataclass(frozen=True)
 class LayerRiskTier:
     """Hard per-trade / per-day / global DD rules for one layer."""
+
     layer: LayerId
     max_position_pct_per_trade: float
     daily_loss_cap_pct: float
     drawdown_kill_pct: float
     leverage_cap: float
-    sweep_out_pct: float   # fraction of realized pnl to pass downstream
+    sweep_out_pct: float  # fraction of realized pnl to pass downstream
     min_outgoing_usd: float
     min_incoming_usd: float = 0.0
 
@@ -135,6 +136,7 @@ DEFAULT_TIERS: dict[LayerId, LayerRiskTier] = {
 @dataclass(frozen=True)
 class LayerSnapshot:
     """Current financial state of one layer at the sweep cutoff."""
+
     layer: LayerId
     current_equity: float
     peak_equity: float
@@ -281,10 +283,7 @@ class FunnelWaterfall:
                         layer=layer_id,
                         action=RiskAction.HALT,
                         size_mult=0.0,
-                        reason=(
-                            f"global funnel DD {dd_pct:.2%} >= kill "
-                            f"{self.global_kill_pct:.2%}"
-                        ),
+                        reason=(f"global funnel DD {dd_pct:.2%} >= kill {self.global_kill_pct:.2%}"),
                     ),
                 )
             return WaterfallPlan(
@@ -307,10 +306,7 @@ class FunnelWaterfall:
                         layer=layer_id,
                         action=RiskAction.HALT,
                         size_mult=0.0,
-                        reason=(
-                            f"layer DD {layer.drawdown_pct:.2%} >= kill "
-                            f"{tier.drawdown_kill_pct:.2%}"
-                        ),
+                        reason=(f"layer DD {layer.drawdown_pct:.2%} >= kill {tier.drawdown_kill_pct:.2%}"),
                     ),
                 )
 
@@ -320,10 +316,7 @@ class FunnelWaterfall:
         #    cut their size.
         risky_layers = (LayerId.LAYER_1_MNQ, LayerId.LAYER_2_BTC, LayerId.LAYER_3_PERPS)
         high_vol_hits = [
-            lid
-            for lid in risky_layers
-            if lid in snapshot.layers
-            and snapshot.layers[lid].vol_regime == VolRegime.HIGH
+            lid for lid in risky_layers if lid in snapshot.layers and snapshot.layers[lid].vol_regime == VolRegime.HIGH
         ]
         if len(high_vol_hits) >= 2:
             for lid in high_vol_hits:
@@ -334,10 +327,7 @@ class FunnelWaterfall:
                         layer=lid,
                         action=RiskAction.REDUCE_SIZE,
                         size_mult=self.correlation_vol_mult,
-                        reason=(
-                            f"correlation_guard: {len(high_vol_hits)} risky layers "
-                            "in HIGH vol simultaneously"
-                        ),
+                        reason=(f"correlation_guard: {len(high_vol_hits)} risky layers in HIGH vol simultaneously"),
                     ),
                 )
             notes.append(
@@ -395,10 +385,7 @@ class FunnelWaterfall:
                     src=src_id,
                     dst=dst_id,
                     amount_usd=amount,
-                    reason=(
-                        f"{reason_tag}: {src_tier.sweep_out_pct:.0%} of "
-                        f"${pnl:.2f} realized pnl"
-                    ),
+                    reason=(f"{reason_tag}: {src_tier.sweep_out_pct:.0%} of ${pnl:.2f} realized pnl"),
                 ),
             )
 
@@ -449,8 +436,7 @@ def format_digest(snapshot: FunnelSnapshot, plan: WaterfallPlan) -> str:
             lines.append("Risk directives:")
             for d in plan.directives:
                 lines.append(
-                    f"  {d.layer.value:<20} {d.action.value:<12} "
-                    f"mult={d.size_mult:.2f}  ({d.reason})",
+                    f"  {d.layer.value:<20} {d.action.value:<12} mult={d.size_mult:.2f}  ({d.reason})",
                 )
     if plan.notes:
         lines.append("")

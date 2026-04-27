@@ -40,6 +40,7 @@ override per-strategy.
 
 Pure stdlib + pydantic. No numpy, no scipy.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

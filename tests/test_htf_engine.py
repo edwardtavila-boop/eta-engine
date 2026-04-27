@@ -1,4 +1,5 @@
 """Tests for eta_engine.brain.htf_engine -- higher-timeframe engine."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -24,12 +25,17 @@ from eta_engine.core.data_pipeline import BarData
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-def _bar(i: int, open_p: float, high: float, low: float, close: float,
-         vol: float = 1000.0, symbol: str = "MNQ") -> BarData:
+def _bar(
+    i: int, open_p: float, high: float, low: float, close: float, vol: float = 1000.0, symbol: str = "MNQ"
+) -> BarData:
     return BarData(
         timestamp=_T0 + timedelta(days=i),
         symbol=symbol,
-        open=open_p, high=high, low=low, close=close, volume=vol,
+        open=open_p,
+        high=high,
+        low=low,
+        close=close,
+        volume=vol,
     )
 
 
@@ -60,8 +66,7 @@ def _flat_bars(n: int = 60, level: float = 20_000.0) -> list[BarData]:
     return [_bar(i, level, level + 1.0, level - 1.0, level) for i in range(n)]
 
 
-def _staircase_bull_bars(n_cycles: int = 4, base: float = 20_000.0,
-                         amp: float = 30.0, leg: int = 4) -> list[BarData]:
+def _staircase_bull_bars(n_cycles: int = 4, base: float = 20_000.0, amp: float = 30.0, leg: int = 4) -> list[BarData]:
     """Bull staircase: rise ``leg`` bars, pull back ``leg`` bars, but the
     pullback low is higher than the previous pullback low, and each peak is
     higher than the last. Produces real HH + HL swing pivots.
@@ -87,8 +92,7 @@ def _staircase_bull_bars(n_cycles: int = 4, base: float = 20_000.0,
     return bars
 
 
-def _staircase_bear_bars(n_cycles: int = 4, base: float = 20_800.0,
-                         amp: float = 30.0, leg: int = 4) -> list[BarData]:
+def _staircase_bear_bars(n_cycles: int = 4, base: float = 20_800.0, amp: float = 30.0, leg: int = 4) -> list[BarData]:
     """Bear staircase: lower highs + lower lows."""
     bars: list[BarData] = []
     price = base
@@ -224,8 +228,7 @@ def test_classify_structure_identifies_higherhigh_higherlow_bull_leg() -> None:
     prices_h = [100, 105, 110, 104, 115, 108, 120]
     prices_l = [99, 102, 108, 103, 114, 107, 119]
     bars = [
-        _bar(i, (prices_h[i] + prices_l[i]) / 2, prices_h[i], prices_l[i],
-             (prices_h[i] + prices_l[i]) / 2)
+        _bar(i, (prices_h[i] + prices_l[i]) / 2, prices_h[i], prices_l[i], (prices_h[i] + prices_l[i]) / 2)
         for i in range(len(prices_h))
     ]
     # Extend so swings are confirmed on both sides
@@ -238,8 +241,7 @@ def test_classify_structure_identifies_lowerhigh_lowerlow_bear_leg() -> None:
     prices_h = [120, 118, 115, 117, 110, 114, 105]
     prices_l = [110, 112, 108, 110, 103, 107, 100]
     bars = [
-        _bar(i, (prices_h[i] + prices_l[i]) / 2, prices_h[i], prices_l[i],
-             (prices_h[i] + prices_l[i]) / 2)
+        _bar(i, (prices_h[i] + prices_l[i]) / 2, prices_h[i], prices_l[i], (prices_h[i] + prices_l[i]) / 2)
         for i in range(len(prices_h))
     ]
     bars.append(_bar(7, 108, 109, 104, 108))
@@ -291,7 +293,7 @@ def test_htf_engine_bearish_when_daily_falling_and_h4_lower_lows() -> None:
 
 def test_htf_engine_neutral_when_4h_disagrees_with_daily() -> None:
     eng = HtfEngine(daily_ema_period=20, slope_lookback=10)
-    daily = _rising_bars(n=40, step=200.0)           # daily bullish
+    daily = _rising_bars(n=40, step=200.0)  # daily bullish
     # Real LH_LL pivots required for 4H to disagree; monotonic falls are NEUTRAL.
     h4 = _staircase_bear_bars(n_cycles=4, base=20_800.0, amp=30.0, leg=4)
     out = eng.top_down(daily, h4)
@@ -311,7 +313,7 @@ def test_htf_engine_keeps_bias_when_4h_is_neutral() -> None:
 
 def test_htf_engine_neutral_when_not_enough_daily_bars() -> None:
     eng = HtfEngine(daily_ema_period=50)
-    daily = _rising_bars(n=10)   # fewer than period
+    daily = _rising_bars(n=10)  # fewer than period
     h4 = _rising_bars(n=30)
     out = eng.top_down(daily, h4)
     assert out.bias == 0

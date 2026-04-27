@@ -40,6 +40,7 @@ Caveats
   they're not directly imported -- handled by the operator-pattern
   filter (``test_*`` is in the known-callable list).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,15 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PACKAGES = [
-    "bots", "strategies", "core", "brain", "obs", "funnel",
-    "backtest", "venues", "staking",
+    "bots",
+    "strategies",
+    "core",
+    "brain",
+    "obs",
+    "funnel",
+    "backtest",
+    "venues",
+    "staking",
 ]
 DEFAULT_REFERENCE_DIRS = ["tests", "scripts"]
 
@@ -95,10 +103,7 @@ def _collect_all_literal(path: Path) -> set[str]:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if not any(
-            isinstance(t, ast.Name) and t.id == "__all__"
-            for t in node.targets
-        ):
+        if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
             continue
         if isinstance(node.value, (ast.List, ast.Tuple)):
             for elt in node.value.elts:
@@ -154,7 +159,8 @@ def _walk_refs(dirs: list[str]) -> set[str]:
 
 
 def _find_dead(
-    packages: list[str], reference_dirs: list[str],
+    packages: list[str],
+    reference_dirs: list[str],
 ) -> list[dict]:
     defs_by_file = _walk(packages, _collect_definitions)
     all_literals: set[str] = set()
@@ -175,9 +181,14 @@ def _find_dead(
                 continue
             if KNOWN_CALLABLE_REGEX.match(name):
                 continue
-            dead.append({
-                "module": rel, "symbol": name, "lineno": lineno, "kind": kind,
-            })
+            dead.append(
+                {
+                    "module": rel,
+                    "symbol": name,
+                    "lineno": lineno,
+                    "kind": kind,
+                }
+            )
     return dead
 
 
@@ -185,19 +196,27 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--packages", nargs="+", default=DEFAULT_PACKAGES)
     p.add_argument(
-        "--reference-dirs", nargs="+", default=DEFAULT_REFERENCE_DIRS,
+        "--reference-dirs",
+        nargs="+",
+        default=DEFAULT_REFERENCE_DIRS,
         help="dirs to also scan for references (default: tests scripts)",
     )
     p.add_argument(
-        "--threshold-yellow", type=int, default=1,
+        "--threshold-yellow",
+        type=int,
+        default=1,
         help="dead symbols >= this trigger YELLOW (default 1)",
     )
     p.add_argument(
-        "--threshold-red", type=int, default=20,
+        "--threshold-red",
+        type=int,
+        default=20,
         help="dead symbols > this trigger RED (default 20)",
     )
     p.add_argument(
-        "--max-show", type=int, default=30,
+        "--max-show",
+        type=int,
+        default=30,
         help="cap output rows (default 30)",
     )
     args = p.parse_args(argv)
@@ -208,16 +227,13 @@ def main(argv: list[str] | None = None) -> int:
     if n == 0:
         print("dead-code-scan: GREEN -- no dead public symbols found")
         return 0
-    level = "RED" if n > args.threshold_red else (
-        "YELLOW" if n >= args.threshold_yellow else "GREEN"
-    )
+    level = "RED" if n > args.threshold_red else ("YELLOW" if n >= args.threshold_yellow else "GREEN")
     code = {"GREEN": 0, "YELLOW": 1, "RED": 2}[level]
     print(
-        f"dead-code-scan: {level} -- {n} dead public symbols across "
-        f"{len({d['module'] for d in dead})} files",
+        f"dead-code-scan: {level} -- {n} dead public symbols across {len({d['module'] for d in dead})} files",
     )
     # Sort by file then lineno
-    for d in sorted(dead, key=lambda x: (x["module"], x["lineno"]))[:args.max_show]:
+    for d in sorted(dead, key=lambda x: (x["module"], x["lineno"]))[: args.max_show]:
         print(f"  {d['module']}:{d['lineno']:>4}  [{d['kind']:>8}]  {d['symbol']}")
     if n > args.max_show:
         print(f"  ... and {n - args.max_show} more (raise --max-show)")

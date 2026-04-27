@@ -17,6 +17,7 @@ End-to-end tests use a stub qualifier forwarded through
 ``scheduler_kwargs`` so we exercise the real tick + cache
 refresh path without a real walk-forward run.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -77,7 +78,8 @@ def _dict_bar(i: int, *, price: float = 100.0) -> dict[str, float]:
 
 
 def _make_clock(
-    start: datetime, step: timedelta,
+    start: datetime,
+    step: timedelta,
 ) -> tuple[list[datetime], callable]:
     times: list[datetime] = [start]
 
@@ -90,7 +92,8 @@ def _make_clock(
 
 
 def _stub_report(
-    asset: str, passing: tuple[StrategyId, ...],
+    asset: str,
+    passing: tuple[StrategyId, ...],
 ) -> QualificationReport:
     """Build a minimal QualificationReport whose `passing_strategies`
     property returns `passing`. We synthesize one StrategyQualification
@@ -141,10 +144,7 @@ class TestLiveDefaults:
     def test_ttl_is_at_least_twice_the_seconds_trigger(self) -> None:
         """TTL must be >= 2x the seconds trigger so the cache stays
         fresh between scheduler ticks on a normally-ticking bot."""
-        assert (
-            DEFAULT_LIVE_TTL_SECONDS
-            >= 2.0 * DEFAULT_LIVE_REFRESH_EVERY_SECONDS
-        )
+        assert DEFAULT_LIVE_TTL_SECONDS >= 2.0 * DEFAULT_LIVE_REFRESH_EVERY_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,8 @@ class TestFactoryShape:
         adapter = build_live_adapter("MNQ")
         assert adapter.allowlist_scheduler is not None
         assert isinstance(
-            adapter.allowlist_scheduler.cache, RuntimeAllowlistCache,
+            adapter.allowlist_scheduler.cache,
+            RuntimeAllowlistCache,
         )
 
 
@@ -246,7 +247,9 @@ class TestKnobForwarding:
 class TestTriggerNoneDisablesAxis:
     def test_bar_only_trigger(self) -> None:
         adapter = build_live_adapter(
-            "MNQ", refresh_every_n_bars=10, refresh_every_seconds=None,
+            "MNQ",
+            refresh_every_n_bars=10,
+            refresh_every_seconds=None,
         )
         assert adapter.allowlist_scheduler is not None
         trg = adapter.allowlist_scheduler.trigger
@@ -255,7 +258,9 @@ class TestTriggerNoneDisablesAxis:
 
     def test_time_only_trigger(self) -> None:
         adapter = build_live_adapter(
-            "MNQ", refresh_every_n_bars=None, refresh_every_seconds=5.0,
+            "MNQ",
+            refresh_every_n_bars=None,
+            refresh_every_seconds=5.0,
         )
         assert adapter.allowlist_scheduler is not None
         trg = adapter.allowlist_scheduler.trigger
@@ -301,7 +306,9 @@ class TestEndToEndDispatch:
         passing = (StrategyId.MTF_TREND_FOLLOWING,)
 
         def stub_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _stub_report(asset, passing)
 
@@ -328,7 +335,9 @@ class TestEndToEndDispatch:
         passing = (StrategyId.MTF_TREND_FOLLOWING,)
 
         def stub_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _stub_report(asset, passing)
 
@@ -354,7 +363,9 @@ class TestEndToEndDispatch:
         }
 
         def stub_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _stub_report(asset, (StrategyId.MTF_TREND_FOLLOWING,))
 
@@ -381,7 +392,9 @@ class TestEndToEndDispatch:
 class TestFailureIsolation:
     def test_qualifier_exception_does_not_crash_push_bar(self) -> None:
         def bad_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             msg = "synthetic qualifier failure"
             raise RuntimeError(msg)
@@ -398,9 +411,7 @@ class TestFailureIsolation:
             adapter.push_bar(_dict_bar(i))
         # Cache is empty because every refresh attempt failed.
         assert adapter.allowlist_scheduler is not None
-        assert (
-            adapter.allowlist_scheduler.cache.as_eligibility_map() == {}
-        )
+        assert adapter.allowlist_scheduler.cache.as_eligibility_map() == {}
         # Effective eligibility falls back to the static override
         # (which we didn't set -> None -> DEFAULT_ELIGIBILITY in dispatch).
         assert adapter._effective_eligibility() is None

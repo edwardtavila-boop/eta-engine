@@ -17,6 +17,7 @@ cover every branch:
   :class:`TaskCategory`.
 * Unknown category falls back to SONNET.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -60,8 +61,11 @@ def _trade_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(),
@@ -73,8 +77,11 @@ def _kill_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-3_000.0,
-            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
         journal=JournalSnapshot(kill_switch_active=True),
@@ -86,8 +93,11 @@ def _reduce_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-1_250.0,
-            daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+            account_equity=50_000.0,
+            daily_pnl=-1_250.0,
+            daily_drawdown_pct=0.025,
+            open_positions=1,
+            open_risk_r=1.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
         journal=JournalSnapshot(),
@@ -107,7 +117,9 @@ class TestAskJarvis:
             action=ActionType.ORDER_PLACE,
             rationale="routine entry",
             provide_ctx=_trade_ctx,
-            side="LONG", symbol="MNQ", price=25_000.0,
+            side="LONG",
+            symbol="MNQ",
+            price=25_000.0,
         )
         assert allowed is True
         # TRADE tier may carry a live sizing hint; what matters is
@@ -124,7 +136,9 @@ class TestAskJarvis:
             action=ActionType.ORDER_PLACE,
             rationale="entry under kill",
             provide_ctx=_kill_ctx,
-            side="LONG", symbol="MNQ", price=25_000.0,
+            side="LONG",
+            symbol="MNQ",
+            price=25_000.0,
         )
         assert allowed is False
         assert "kill" in code.lower() or "stand" in code.lower() or "blocked" in code.lower()
@@ -137,7 +151,9 @@ class TestAskJarvis:
             action=ActionType.ORDER_PLACE,
             rationale="entry under reduce",
             provide_ctx=_reduce_ctx,
-            side="LONG", symbol="MNQ", price=25_000.0,
+            side="LONG",
+            symbol="MNQ",
+            price=25_000.0,
         )
         assert allowed is True
         assert cap is not None

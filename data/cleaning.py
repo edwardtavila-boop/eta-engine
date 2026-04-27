@@ -15,6 +15,7 @@ from eta_engine.core.data_pipeline import BarData
 # Gaps
 # ---------------------------------------------------------------------------
 
+
 def detect_gaps(
     bars: list[BarData],
     expected_freq_s: int,
@@ -27,7 +28,7 @@ def detect_gaps(
         return []
     threshold = expected_freq_s * 1.5
     gaps: list[tuple[datetime, datetime]] = []
-    for a, b in zip(bars, bars[1:]):
+    for a, b in zip(bars, bars[1:], strict=False):
         dt_s = (b.timestamp - a.timestamp).total_seconds()
         if dt_s > threshold:
             gaps.append((a.timestamp, b.timestamp))
@@ -63,18 +64,24 @@ def fill_gaps(
             else:  # linear
                 frac = k / (n_missing + 1)
                 price = b.close + frac * (nxt.close - b.close)
-            out.append(BarData(
-                timestamp=ts,
-                symbol=b.symbol,
-                open=price, high=price, low=price, close=price,
-                volume=0.0,
-            ))
+            out.append(
+                BarData(
+                    timestamp=ts,
+                    symbol=b.symbol,
+                    open=price,
+                    high=price,
+                    low=price,
+                    close=price,
+                    volume=0.0,
+                )
+            )
     return out
 
 
 # ---------------------------------------------------------------------------
 # Outliers (Median Absolute Deviation)
 # ---------------------------------------------------------------------------
+
 
 def _median(xs: list[float]) -> float:
     s = sorted(xs)
@@ -114,6 +121,7 @@ def remove_outliers_mad(
 # Duplicates
 # ---------------------------------------------------------------------------
 
+
 def detect_duplicates(bars: list[BarData]) -> list[BarData]:
     """Drop rows sharing the same timestamp — keep the LAST one."""
     seen: dict[datetime, BarData] = {}
@@ -125,6 +133,7 @@ def detect_duplicates(bars: list[BarData]) -> list[BarData]:
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def validate_bar(bar: BarData) -> list[str]:
     """Return list of validation errors. Empty means clean."""

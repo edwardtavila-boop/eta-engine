@@ -1,4 +1,5 @@
 """Tests for obs.mobile_push."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -74,9 +75,7 @@ class TestTelegramFormat:
             (MobileSeverity.INFO, "INFO"),
             (MobileSeverity.KILL, "KILL"),
         ):
-            formatted = _telegram_format(
-                MobileAlert(severity=sev, title="t", body="b")
-            )
+            formatted = _telegram_format(MobileAlert(severity=sev, title="t", body="b"))
             assert token in formatted
 
 
@@ -146,9 +145,7 @@ class TestMobilePushBus:
         bus.add(RecordingChannel())
         assert len(bus.channels) == 1
 
-    def test_from_env_uses_pushover_and_telegram(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_from_env_uses_pushover_and_telegram(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("PUSHOVER_APP_TOKEN", raising=False)
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
         bus = MobilePushBus.from_env()

@@ -7,6 +7,7 @@ Covers :func:`eta_engine.backtest.portfolio_correlation.analyze`:
 * redundancy flag firing above threshold
 * effective-N collapses when all bots move together
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -21,6 +22,7 @@ from eta_engine.backtest.portfolio_correlation import (
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def test_analyze_rejects_empty_dict() -> None:
     with pytest.raises(ValueError, match="non-empty"):
@@ -44,6 +46,7 @@ def test_analyze_rejects_single_bot() -> None:
 # ---------------------------------------------------------------------------
 # Pair key + baseline shape
 # ---------------------------------------------------------------------------
+
 
 def test_pair_keys_are_alphabetical_and_unique() -> None:
     rng = np.random.default_rng(0)
@@ -80,6 +83,7 @@ def test_report_fields_populated() -> None:
 # Redundancy & effective-N
 # ---------------------------------------------------------------------------
 
+
 def test_redundant_pair_flag_fires_above_threshold() -> None:
     rng = np.random.default_rng(3)
     base = rng.normal(0.0, 0.01, size=300)
@@ -107,10 +111,7 @@ def test_no_redundancy_flag_when_all_low_corr() -> None:
 
 def test_effective_n_collapses_when_all_identical() -> None:
     base = np.linspace(-1.0, 1.0, 200)
-    series = {
-        f"bot_{i}": base + np.random.default_rng(i).normal(0.0, 1e-8, size=200)
-        for i in range(4)
-    }
+    series = {f"bot_{i}": base + np.random.default_rng(i).normal(0.0, 1e-8, size=200) for i in range(4)}
     report = analyze(series)
     # Near-perfect correlation → eff_n should drop close to 1.0 (not N=4)
     assert report.eff_n_bots < 1.5
@@ -119,10 +120,7 @@ def test_effective_n_collapses_when_all_identical() -> None:
 
 def test_effective_n_near_n_when_independent() -> None:
     rng = np.random.default_rng(17)
-    series = {
-        f"bot_{i}": rng.normal(0.0, 0.01, size=500)
-        for i in range(4)
-    }
+    series = {f"bot_{i}": rng.normal(0.0, 0.01, size=500) for i in range(4)}
     report = analyze(series)
     # Independent returns should give eff_n close to 4
     assert report.eff_n_bots > 3.0
@@ -131,6 +129,7 @@ def test_effective_n_near_n_when_independent() -> None:
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------
+
 
 def test_as_dict_returns_json_safe() -> None:
     rng = np.random.default_rng(19)

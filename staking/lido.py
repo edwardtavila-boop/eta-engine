@@ -16,6 +16,7 @@ Production-wired paths
 
 Contract addresses are mainnet-final. Testnet override via kwargs.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -74,13 +75,19 @@ class LidoAdapter(StakingAdapter):
             build_contract_call(self._wsteth_address, "wrap", int(amount * 1e18)),
         ]
         if self.restake_eigenlayer:
-            steps.append(build_contract_call(
-                EIGENLAYER_STRATEGY_MANAGER, "depositIntoStrategy",
-                self._wsteth_address, int(amount * 1e18),
-            ))
+            steps.append(
+                build_contract_call(
+                    EIGENLAYER_STRATEGY_MANAGER,
+                    "depositIntoStrategy",
+                    self._wsteth_address,
+                    int(amount * 1e18),
+                )
+            )
         logger.info(
             "Lido stake plan | amount=%.6f ETH restake=%s steps=%d",
-            amount, self.restake_eigenlayer, len(steps),
+            amount,
+            self.restake_eigenlayer,
+            len(steps),
         )
         self._balance += amount
         return f"lido-stake-stub-{amount}"
@@ -100,7 +107,8 @@ class LidoAdapter(StakingAdapter):
             build_contract_call(
                 "0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1",  # withdrawalQueue mainnet
                 "requestWithdrawals",
-                [int(amount * 1e18)], self._wallet_address or "0x0",
+                [int(amount * 1e18)],
+                self._wallet_address or "0x0",
             ),
         ]
         logger.info("Lido unstake plan | amount=%.6f wstETH steps=%d", amount, len(steps))
@@ -110,7 +118,10 @@ class LidoAdapter(StakingAdapter):
     async def get_balance(self) -> float:
         """Return wstETH balance — on-chain if configured, else in-memory."""
         real = await asyncio.to_thread(
-            read_balance, self._rpc_url, self._wallet_address, self._wsteth_address,
+            read_balance,
+            self._rpc_url,
+            self._wallet_address,
+            self._wsteth_address,
         )
         if real is not None:
             return real

@@ -35,6 +35,7 @@ Design constraints
 * No exceptions on a missing/corrupt config -- always fall through to
   the hard-coded default, with a single-line stderr warning.
 """
+
 from __future__ import annotations
 
 import json
@@ -79,10 +80,7 @@ _DEFAULT_EXCLUSIONS: Final[dict[str, str]] = {
 for CRISIS (already zero) and adds HIGH_VOL per the OOS verdict."""
 
 
-_CONFIG_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[1]
-    / "docs" / "cross_regime" / "regime_exclusions.json"
-)
+_CONFIG_PATH: Final[Path] = Path(__file__).resolve().parents[1] / "docs" / "cross_regime" / "regime_exclusions.json"
 
 
 # ---------------------------------------------------------------------------
@@ -108,26 +106,18 @@ def _load_from_disk() -> dict[str, str]:
         raw = json.loads(text)
         # Accept either {"excluded_regimes": {label: reason}} or flat
         # {label: reason}; both legitimate so the user can hand-edit.
-        payload = (
-            raw["excluded_regimes"]
-            if isinstance(raw, dict) and "excluded_regimes" in raw
-            else raw
-        )
+        payload = raw["excluded_regimes"] if isinstance(raw, dict) and "excluded_regimes" in raw else raw
         if not isinstance(payload, dict):
             msg = "regime_exclusions payload not a dict"
             raise TypeError(msg)
         # Coerce values to str; skip non-string keys.
-        cleaned = {
-            str(k).upper(): str(v) for k, v in payload.items()
-            if isinstance(k, str)
-        }
+        cleaned = {str(k).upper(): str(v) for k, v in payload.items() if isinstance(k, str)}
         _cached_mtime = mtime
         _cached_payload = cleaned
         return dict(cleaned)
     except (OSError, ValueError, TypeError) as exc:
         sys.stderr.write(
-            f"[regime_exclusion] failed to load {_CONFIG_PATH.name}: "
-            f"{exc!r}; using defaults\n",
+            f"[regime_exclusion] failed to load {_CONFIG_PATH.name}: {exc!r}; using defaults\n",
         )
         return dict(_DEFAULT_EXCLUSIONS)
 
@@ -172,13 +162,14 @@ def write_default_config(*, force: bool = False) -> Path:
         "source": "cross_regime_validation 2026-04-17",
         "excluded_regimes": dict(_DEFAULT_EXCLUSIONS),
         "notes": (
-            "Add a regime by inserting `\"<LABEL>\": \"<reason>\"` under "
+            'Add a regime by inserting `"<LABEL>": "<reason>"` under '
             "excluded_regimes. Remove a regime by deleting its key. The "
             "loader picks up edits on next call -- no restart needed."
         ),
     }
     _CONFIG_PATH.write_text(
-        json.dumps(payload, indent=2) + "\n", encoding="utf-8",
+        json.dumps(payload, indent=2) + "\n",
+        encoding="utf-8",
     )
     # Bust the cache so the very next read sees the new content.
     _invalidate_cache()

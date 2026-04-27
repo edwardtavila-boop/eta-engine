@@ -85,6 +85,7 @@ a runaway CONVICTION bet can't exceed a hard ceiling (default:
 5% per trade). The floor ensures PROBE sizing is still a real
 position, not rounding error.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -181,10 +182,10 @@ class PriorSuccessMetrics:
     """
 
     n_trades: int = 0
-    hit_rate: float = 0.0           # 0..1
-    expectancy_r: float = 0.0       # avg R per trade (1R = per-trade risk)
+    hit_rate: float = 0.0  # 0..1
+    expectancy_r: float = 0.0  # avg R per trade (1R = per-trade risk)
     avg_win_r: float = 0.0
-    avg_loss_r: float = 0.0         # negative
+    avg_loss_r: float = 0.0  # negative
     consecutive_losses: int = 0
     consecutive_wins: int = 0
 
@@ -203,13 +204,13 @@ class SizingContext:
 
     asset: str
     strategy: StrategyId
-    side: Side                       # from :class:`strategies.models.Side`
+    side: Side  # from :class:`strategies.models.Side`
     regime: RegimeLabel
-    confluence_score: float          # 0..10 (bot core_confluence)
-    htf_bias: Side | None            # from context_from_dict
+    confluence_score: float  # 0..10 (bot core_confluence)
+    htf_bias: Side | None  # from context_from_dict
     equity_band: EquityBand
     prior: PriorSuccessMetrics = field(default_factory=PriorSuccessMetrics)
-    base_risk_pct: float = 1.0       # BotConfig.risk_per_trade_pct
+    base_risk_pct: float = 1.0  # BotConfig.risk_per_trade_pct
     kill_switch_active: bool = False
     session_allows_entries: bool = True
 
@@ -241,11 +242,11 @@ class SizingPolicy:
     # decreasing. Tuned against the maximum-positive ceiling of
     # ~0.875 (every axis saturated) so CONVICTION-3x is reserved
     # for genuine sniper-shot setups, not merely good ones.
-    conviction_high_threshold: float = 0.65   # 3.0x
-    conviction_low_threshold: float = 0.45    # 2.0x
-    standard_threshold: float = 0.15          # 1.0x
-    reduced_threshold: float = -0.10          # 0.5x
-    probe_threshold: float = -0.35            # 0.25x
+    conviction_high_threshold: float = 0.65  # 3.0x
+    conviction_low_threshold: float = 0.45  # 2.0x
+    standard_threshold: float = 0.15  # 1.0x
+    reduced_threshold: float = -0.10  # 0.5x
+    probe_threshold: float = -0.35  # 0.25x
     # total < probe_threshold -> SKIP
 
     # Multipliers per tier. CONVICTION has two variants picked on
@@ -306,7 +307,8 @@ class SizingVerdict:
 
 
 def score_regime(
-    regime: RegimeLabel, strategy: StrategyId,
+    regime: RegimeLabel,
+    strategy: StrategyId,
 ) -> float:
     """Return -1..+1 based on regime / strategy fit.
 
@@ -353,7 +355,8 @@ def score_confluence(score: float) -> float:
 
 
 def score_htf_agreement(
-    htf_bias: Side | None, side: Side,
+    htf_bias: Side | None,
+    side: Side,
 ) -> float:
     """Return +0.5 on agreement, -0.5 on disagreement, 0 on flat."""
     from eta_engine.strategies.models import Side as _SideCls
@@ -464,11 +467,15 @@ def compute_size(
     # Hard gates first -- kill-switch is non-negotiable.
     if ctx.kill_switch_active:
         return _skip(
-            ctx, policy, reason="kill_switch_active",
+            ctx,
+            policy,
+            reason="kill_switch_active",
         )
     if not ctx.session_allows_entries:
         return _skip(
-            ctx, policy, reason="session_disallows_entries",
+            ctx,
+            policy,
+            reason="session_disallows_entries",
         )
 
     # Per-axis raw scores.
@@ -503,7 +510,14 @@ def compute_size(
     confidence = _confidence_from_total(total)
 
     rationale = _build_rationale(
-        ctx, tier, s_regime, s_confluence, s_htf, s_equity, s_prior, total,
+        ctx,
+        tier,
+        s_regime,
+        s_confluence,
+        s_htf,
+        s_equity,
+        s_prior,
+        total,
     )
 
     return SizingVerdict(
@@ -530,7 +544,8 @@ def compute_size(
 
 
 def _tier_for_total(
-    total: float, policy: SizingPolicy,
+    total: float,
+    policy: SizingPolicy,
 ) -> tuple[SizeTier, float]:
     if total >= policy.conviction_high_threshold:
         return SizeTier.CONVICTION, policy.conviction_high_mult
@@ -554,7 +569,10 @@ def _confidence_from_total(total: float) -> float:
 
 
 def _skip(
-    ctx: SizingContext, policy: SizingPolicy, *, reason: str,
+    ctx: SizingContext,
+    policy: SizingPolicy,
+    *,
+    reason: str,
 ) -> SizingVerdict:
     return SizingVerdict(
         tier=SizeTier.SKIP,
@@ -594,8 +612,7 @@ def _build_rationale(
     ]
     if not ctx.prior.is_empty:
         parts.append(
-            f"prior(n={ctx.prior.n_trades},"
-            f"exp={ctx.prior.expectancy_r:+.2f}R):{s_prior:+.2f}",
+            f"prior(n={ctx.prior.n_trades},exp={ctx.prior.expectancy_r:+.2f}R):{s_prior:+.2f}",
         )
     else:
         parts.append("prior=none")

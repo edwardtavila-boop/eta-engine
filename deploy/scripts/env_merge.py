@@ -9,6 +9,7 @@ Usage:
     python -m deploy.scripts.env_merge --target .env --source .env.anthropic
     python -m deploy.scripts.env_merge --target .env --source .env.anthropic --delete-source
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,8 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True, help="existing .env to modify")
     ap.add_argument("--source", required=True, help="KEY=VALUE file to merge in")
-    ap.add_argument("--delete-source", action="store_true",
-                    help="rm the source file after merge (for temp files)")
+    ap.add_argument("--delete-source", action="store_true", help="rm the source file after merge (for temp files)")
     args = ap.parse_args(argv)
 
     target = Path(args.target)

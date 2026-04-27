@@ -11,6 +11,7 @@ blender so v2 stress can be re-weighted without touching ``jarvis_context``.
 
 Pure / deterministic / no I/O.
 """
+
 from __future__ import annotations
 
 from typing import Literal
@@ -22,6 +23,7 @@ RegimeLabel = Literal["RISK_ON", "RISK_OFF", "NEUTRAL", "CRISIS", "UNKNOWN"]
 
 class RegimeWeightProfile(BaseModel):
     """A weight set for a specific regime. Must sum to 1.0 within 1e-6."""
+
     model_config = ConfigDict(frozen=True)
 
     regime: RegimeLabel
@@ -39,54 +41,54 @@ class RegimeWeightProfile(BaseModel):
 #   * NEUTRAL  -- same shape as v2 baseline
 _PROFILES: dict[RegimeLabel, dict[str, float]] = {
     "CRISIS": {
-        "macro_event":   0.30,
-        "equity_dd":     0.15,
-        "open_risk":     0.10,
-        "regime_risk":   0.20,
+        "macro_event": 0.30,
+        "equity_dd": 0.15,
+        "open_risk": 0.10,
+        "regime_risk": 0.20,
         "override_rate": 0.05,
-        "autopilot":     0.05,
-        "correlations":  0.05,
-        "macro_bias":    0.10,
+        "autopilot": 0.05,
+        "correlations": 0.05,
+        "macro_bias": 0.10,
     },
     "RISK_OFF": {
-        "macro_event":   0.20,
-        "equity_dd":     0.30,
-        "open_risk":     0.20,
-        "regime_risk":   0.10,
+        "macro_event": 0.20,
+        "equity_dd": 0.30,
+        "open_risk": 0.20,
+        "regime_risk": 0.10,
         "override_rate": 0.07,
-        "autopilot":     0.05,
-        "correlations":  0.05,
-        "macro_bias":    0.03,
+        "autopilot": 0.05,
+        "correlations": 0.05,
+        "macro_bias": 0.03,
     },
     "RISK_ON": {
-        "macro_event":   0.15,
-        "equity_dd":     0.15,
-        "open_risk":     0.10,
-        "regime_risk":   0.05,
+        "macro_event": 0.15,
+        "equity_dd": 0.15,
+        "open_risk": 0.10,
+        "regime_risk": 0.05,
         "override_rate": 0.20,
-        "autopilot":     0.15,
-        "correlations":  0.15,
-        "macro_bias":    0.05,
+        "autopilot": 0.15,
+        "correlations": 0.15,
+        "macro_bias": 0.05,
     },
     "NEUTRAL": {
-        "macro_event":   0.25,
-        "equity_dd":     0.25,
-        "open_risk":     0.15,
-        "regime_risk":   0.10,
+        "macro_event": 0.25,
+        "equity_dd": 0.25,
+        "open_risk": 0.15,
+        "regime_risk": 0.10,
         "override_rate": 0.10,
-        "autopilot":     0.07,
-        "correlations":  0.05,
-        "macro_bias":    0.03,
+        "autopilot": 0.07,
+        "correlations": 0.05,
+        "macro_bias": 0.03,
     },
     "UNKNOWN": {
-        "macro_event":   0.25,
-        "equity_dd":     0.25,
-        "open_risk":     0.15,
-        "regime_risk":   0.10,
+        "macro_event": 0.25,
+        "equity_dd": 0.25,
+        "open_risk": 0.15,
+        "regime_risk": 0.10,
         "override_rate": 0.10,
-        "autopilot":     0.07,
-        "correlations":  0.05,
-        "macro_bias":    0.03,
+        "autopilot": 0.07,
+        "correlations": 0.05,
+        "macro_bias": 0.03,
     },
 }
 
@@ -104,7 +106,8 @@ def profile_for_regime(regime: str) -> RegimeWeightProfile:
 
 
 def reweight(
-    components_raw: dict[str, float], regime: str,
+    components_raw: dict[str, float],
+    regime: str,
 ) -> tuple[float, dict[str, float], str]:
     """Apply regime weighting to an already-computed set of raw 0..1 values.
 
@@ -113,11 +116,9 @@ def reweight(
     show the per-factor breakdown (explainable alerts, #11).
     """
     w = weights_for_regime(regime)
-    contributions = {name: float(raw) * w.get(name, 0.0)
-                     for name, raw in components_raw.items()}
+    contributions = {name: float(raw) * w.get(name, 0.0) for name, raw in components_raw.items()}
     composite = max(0.0, min(1.0, sum(contributions.values())))
-    binding = max(contributions.items(), key=lambda kv: kv[1])[0] \
-        if contributions else "none"
+    binding = max(contributions.items(), key=lambda kv: kv[1])[0] if contributions else "none"
     return composite, contributions, binding
 
 

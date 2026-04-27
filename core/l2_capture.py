@@ -38,6 +38,7 @@ Design rules
   * ``L2Snapshot`` (already in ``core.data_pipeline``) is the canonical
     read shape. We do not redefine it here.
 """
+
 from __future__ import annotations
 
 import csv
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
 # Update model
 # ---------------------------------------------------------------------------
 
+
 class L2UpdateType(StrEnum):
     SNAPSHOT = "SNAPSHOT"
     DELTA = "DELTA"
@@ -77,7 +79,8 @@ class L2Update(BaseModel):
     bids: list[list[float]] = Field(default_factory=list)
     asks: list[list[float]] = Field(default_factory=list)
     seq: int | None = Field(
-        default=None, description="Monotonic sequence id if the venue provides one",
+        default=None,
+        description="Monotonic sequence id if the venue provides one",
     )
 
     @field_validator("bids", "asks")
@@ -98,6 +101,7 @@ class L2Update(BaseModel):
 # Errors
 # ---------------------------------------------------------------------------
 
+
 class SequenceGapError(RuntimeError):
     """Raised when a delta arrives with a non-contiguous sequence id."""
 
@@ -109,6 +113,7 @@ class CrossedBookError(RuntimeError):
 # ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
+
 
 class L2OrderBookState:
     """Mutable in-memory L2 book for one symbol.
@@ -330,9 +335,18 @@ class L2OrderBookState:
 # ---------------------------------------------------------------------------
 
 _CSV_HEADER: tuple[str, ...] = (
-    "ts", "symbol", "best_bid", "best_bid_qty", "best_ask", "best_ask_qty",
-    "spread", "mid", "weighted_mid", "imbalance_top5",
-    "depth_bid_top5", "depth_ask_top5",
+    "ts",
+    "symbol",
+    "best_bid",
+    "best_bid_qty",
+    "best_ask",
+    "best_ask_qty",
+    "spread",
+    "mid",
+    "weighted_mid",
+    "imbalance_top5",
+    "depth_bid_top5",
+    "depth_ask_top5",
 )
 
 
@@ -396,10 +410,16 @@ def _snapshot_to_row(snap: L2Snapshot) -> list[str]:
     return [
         snap.timestamp.isoformat(),
         snap.symbol,
-        _fmt(bb[0]), _fmt(bb[1]),
-        _fmt(ba[0]), _fmt(ba[1]),
-        _fmt(spread), _fmt(mid), _fmt(w_mid), _fmt(imb),
-        _fmt(depth_b), _fmt(depth_a),
+        _fmt(bb[0]),
+        _fmt(bb[1]),
+        _fmt(ba[0]),
+        _fmt(ba[1]),
+        _fmt(spread),
+        _fmt(mid),
+        _fmt(w_mid),
+        _fmt(imb),
+        _fmt(depth_b),
+        _fmt(depth_a),
     ]
 
 

@@ -100,14 +100,18 @@ def fake_session() -> _FakeSession:
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_authenticate_posts_credentials_and_sets_token(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "accessToken": "REAL-TOKEN-123",
-        "mdAccessToken": "MD-TOKEN-456",
-        "expirationTime": "2099-01-01T00:00:00.000Z",
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "accessToken": "REAL-TOKEN-123",
+            "mdAccessToken": "MD-TOKEN-456",
+            "expirationTime": "2099-01-01T00:00:00.000Z",
+        },
+    )
     await creds_venue.authenticate()
 
     assert creds_venue._access_token == "REAL-TOKEN-123"
@@ -128,7 +132,8 @@ async def test_authenticate_posts_credentials_and_sets_token(
 
 @pytest.mark.asyncio
 async def test_authenticate_raises_on_non_200(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(401, {"errorText": "bad creds"})
@@ -138,7 +143,8 @@ async def test_authenticate_raises_on_non_200(
 
 @pytest.mark.asyncio
 async def test_authenticate_raises_when_accesstoken_missing(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"p-ticket": "captcha-needed"})
@@ -173,11 +179,14 @@ async def test_authenticate_sends_distinct_app_secret_when_provided() -> None:
     )
     session = _FakeSession()
     v._session = session
-    session.enqueue(200, {
-        "accessToken": "TOK",
-        "mdAccessToken": "MD",
-        "expirationTime": "2099-01-01T00:00:00Z",
-    })
+    session.enqueue(
+        200,
+        {
+            "accessToken": "TOK",
+            "mdAccessToken": "MD",
+            "expirationTime": "2099-01-01T00:00:00Z",
+        },
+    )
     await v.authenticate()
     payload = json.loads(session.calls[0]["data"])
     assert payload["password"] == "account-password"
@@ -208,7 +217,8 @@ async def test_authenticate_falls_back_sec_to_api_secret_when_app_secret_empty()
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_place_order_http_success_returns_open_with_orderid(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     # First call: authenticate. Second: place.
@@ -222,7 +232,8 @@ async def test_place_order_http_success_returns_open_with_orderid(
     assert res.status is OrderStatus.OPEN
     # Authenticate + place
     assert [c["url"].split("/")[-1] for c in fake_session.calls] == [
-        "accessTokenRequest", "placeOrder",
+        "accessTokenRequest",
+        "placeOrder",
     ]
     # The place request should carry a Bearer header + resolved futures symbol
     place_call = fake_session.calls[1]
@@ -237,7 +248,8 @@ async def test_place_order_http_success_returns_open_with_orderid(
 
 @pytest.mark.asyncio
 async def test_place_order_http_rejection_returns_rejected(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"accessToken": "T", "expirationTime": "2099-01-01T00:00:00Z"})
@@ -253,7 +265,8 @@ async def test_place_order_http_rejection_returns_rejected(
 
 @pytest.mark.asyncio
 async def test_place_order_retries_on_transient_network_error(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     # One network failure then success on auth, then success on place.
@@ -273,12 +286,14 @@ async def test_place_order_retries_on_transient_network_error(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_cancel_order_posts_orderid(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     # Pre-seed token so cancel doesn't try to auth
     creds_venue._access_token = "SEEDED"
     from datetime import UTC, datetime, timedelta
+
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     fake_session.enqueue(200, {"ok": True})
 
@@ -291,10 +306,12 @@ async def test_cancel_order_posts_orderid(
 
 @pytest.mark.asyncio
 async def test_cancel_order_returns_false_on_non_200(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     fake_session.enqueue(500, {"error": "server"})
@@ -308,10 +325,12 @@ async def test_cancel_order_returns_false_on_non_200(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_get_positions_returns_parsed_list(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     positions = [{"id": 1, "symbol": "MNQM6", "netPos": 1}]
@@ -325,10 +344,12 @@ async def test_get_positions_returns_parsed_list(
 
 @pytest.mark.asyncio
 async def test_get_positions_returns_empty_on_bad_payload(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     fake_session.enqueue(200, {"not": "a list"})
@@ -338,17 +359,22 @@ async def test_get_positions_returns_empty_on_bad_payload(
 
 @pytest.mark.asyncio
 async def test_get_balance_sums_amount_fields(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
-    fake_session.enqueue(200, [
-        {"id": 1, "amount": 2500.0},
-        {"id": 2, "amount": 1500.0},
-        {"id": 3, "amount": "not-a-number"},  # should be skipped gracefully
-    ])
+    fake_session.enqueue(
+        200,
+        [
+            {"id": 1, "amount": 2500.0},
+            {"id": 2, "amount": 1500.0},
+            {"id": 3, "amount": "not-a-number"},  # should be skipped gracefully
+        ],
+    )
     bal = await creds_venue.get_balance()
     assert bal == {"USD": 4000.0}
 
@@ -366,10 +392,12 @@ async def test_get_balance_zero_when_no_creds() -> None:
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_bracket_order_http_success_returns_three_legs(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     fake_session.enqueue(200, {"orderId": 5000, "clOrdId": "oso-xyz"})
@@ -392,10 +420,12 @@ async def test_bracket_order_http_success_returns_three_legs(
 
 @pytest.mark.asyncio
 async def test_bracket_order_http_failure_returns_single_rejected_leg(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     from datetime import UTC, datetime, timedelta
+
     creds_venue._access_token = "T"
     creds_venue._expiration = datetime.now(UTC) + timedelta(hours=1)
     fake_session.enqueue(400, {"errorText": "invalid stop"})
@@ -412,7 +442,8 @@ async def test_bracket_order_http_failure_returns_single_rejected_leg(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_close_closes_session(
-    creds_venue: TradovateVenue, fake_session: _FakeSession,
+    creds_venue: TradovateVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     await creds_venue.close()

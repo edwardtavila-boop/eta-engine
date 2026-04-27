@@ -33,6 +33,7 @@ Design: everything is dependency-injected. Default factory wires sane
 defaults so ``ApexPredatorCore()`` "just works," but tests swap any
 component for a stub.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -90,22 +91,23 @@ if TYPE_CHECKING:
 
 class ApexDecision(BaseModel):
     """Merged envelope returned by ``ApexPredatorCore.decide()``."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:               datetime
-    request_id:       str
-    base_verdict:     str
+    ts: datetime
+    request_id: str
+    base_verdict: str
     doctrine_verdict: str
-    final_verdict:    str
-    calibrated:       CalibratedVerdict | None = None
-    doctrine:         DoctrineVerdict | None = None
-    horizons:         HorizonContext | None = None
-    projection:       Projection | None = None
-    portfolio:        PortfolioAssessment | None = None
-    precedent:        PrecedentQuery | None = None
-    alerts:           list[AlertExplanation] = Field(default_factory=list)
-    size_cap_mult:    float | None = None
-    notes:            list[str] = Field(default_factory=list)
+    final_verdict: str
+    calibrated: CalibratedVerdict | None = None
+    doctrine: DoctrineVerdict | None = None
+    horizons: HorizonContext | None = None
+    projection: Projection | None = None
+    portfolio: PortfolioAssessment | None = None
+    precedent: PrecedentQuery | None = None
+    alerts: list[AlertExplanation] = Field(default_factory=list)
+    size_cap_mult: float | None = None
+    notes: list[str] = Field(default_factory=list)
 
 
 class ApexPredatorCore:
@@ -141,10 +143,15 @@ class ApexPredatorCore:
         self.mcps = mcps or MCPRegistry()
         self.calibrator = calibrator or PlattSigmoid()
         self.forecaster = forecaster or StressForecaster()
-        self.anomaly = anomaly or MultiFieldDetector([
-            "stress_composite", "vix", "regime_confidence",
-            "equity_dd", "open_risk_r",
-        ])
+        self.anomaly = anomaly or MultiFieldDetector(
+            [
+                "stress_composite",
+                "vix",
+                "regime_confidence",
+                "equity_dd",
+                "open_risk_r",
+            ]
+        )
 
     def decide(
         self,
@@ -165,7 +172,7 @@ class ApexPredatorCore:
             base_resp = self.admin.request_approval(request, context)
         else:
             # Bootstrap without admin: treat as APPROVED if stress < 0.5.
-            stress = (context.stress_score.composite if context.stress_score else 0.0)
+            stress = context.stress_score.composite if context.stress_score else 0.0
             base_resp = ActionResponse(
                 request_id=request.request_id,
                 verdict=Verdict.APPROVED if stress < 0.5 else Verdict.CONDITIONAL,
@@ -173,8 +180,10 @@ class ApexPredatorCore:
                 reason_code="bootstrap",
                 jarvis_action=context.suggestion.action,
                 stress_composite=stress,
-                session_phase=(context.session_phase  # type: ignore[arg-type]
-                               or "OVERNIGHT"),
+                session_phase=(
+                    context.session_phase  # type: ignore[arg-type]
+                    or "OVERNIGHT"
+                ),
             )
 
         # Stage 2 -- regime-aware reweight (nudges composite but stays in [0,1]).
@@ -195,8 +204,7 @@ class ApexPredatorCore:
         event_label = context.macro.next_event_label if context.macro else None
         h_ctx = project_horizons(
             base_composite=stress_composite_for_downstream,
-            base_binding=(context.stress_score.binding_constraint
-                          if context.stress_score else "unknown"),
+            base_binding=(context.stress_score.binding_constraint if context.stress_score else "unknown"),
             hours_until_event=h_until,
             event_label=event_label,
             is_overnight_now=(str(context.session_phase or "").upper() == "OVERNIGHT"),
@@ -214,7 +222,9 @@ class ApexPredatorCore:
 
         # Stage 6 -- operator preferences
         nudge = self.preferences.nudge_for(
-            request.subsystem.value, request.action.value, base_resp.reason_code,
+            request.subsystem.value,
+            request.action.value,
+            base_resp.reason_code,
             now=now,
         )
         if nudge and nudge.confidence > 0.5:
@@ -225,8 +235,7 @@ class ApexPredatorCore:
             regime=(context.regime.regime if context.regime else "UNKNOWN"),
             session_phase=str(context.session_phase or "OVERNIGHT"),
             event_category="macro_event" if event_label else "none",
-            binding_constraint=(context.stress_score.binding_constraint
-                                if context.stress_score else "none"),
+            binding_constraint=(context.stress_score.binding_constraint if context.stress_score else "none"),
         )
         prec_q = self.precedent.query(prec_key)
 
@@ -246,8 +255,7 @@ class ApexPredatorCore:
             stress_composite=stress_composite_for_downstream,
             sizing_mult=base_resp.size_cap_mult or 1.0,
             session_phase=str(context.session_phase or "OVERNIGHT"),
-            binding_constraint=(context.stress_score.binding_constraint
-                                if context.stress_score else "none"),
+            binding_constraint=(context.stress_score.binding_constraint if context.stress_score else "none"),
             event_within_1h=(h_until is not None and h_until <= 1.0),
         )
         calibrated = calibrate_verdict(cal_feat, self.calibrator)
@@ -257,10 +265,7 @@ class ApexPredatorCore:
         if port and port.cluster_breach:
             if port.verdict_downgrade == "DENIED":
                 final_verdict = "DENIED"
-            elif (
-                port.verdict_downgrade == "CONDITIONAL"
-                and final_verdict == "APPROVED"
-            ):
+            elif port.verdict_downgrade == "CONDITIONAL" and final_verdict == "APPROVED":
                 final_verdict = "CONDITIONAL"
 
         # Stage 11 -- anomaly scan on the context inputs we can expose
@@ -277,8 +282,7 @@ class ApexPredatorCore:
         anomaly_reports = self.anomaly.observe(anomaly_payload)
         if anomaly_reports:
             notes.append(
-                f"anomaly: {len(anomaly_reports)} field(s) flagged "
-                f"({', '.join(r.field for r in anomaly_reports)})",
+                f"anomaly: {len(anomaly_reports)} field(s) flagged ({', '.join(r.field for r in anomaly_reports)})",
             )
 
         # Stage 12 / 13 / 14 / 15 -- out-of-band. Unleashed doesn't block on them.
@@ -302,30 +306,33 @@ class ApexPredatorCore:
         )
 
     def dashboard_snapshot(
-        self, context: JarvisContext, now: datetime | None = None,
+        self,
+        context: JarvisContext,
+        now: datetime | None = None,
     ) -> dict[str, object]:
         """A payload the React JARVIS tile can render directly."""
         now = now or datetime.now(UTC)
         stress_components = []
         if context.stress_score:
             for c in context.stress_score.components:
-                stress_components.append({
-                    "name": c.name, "value": c.value,
-                    "weight": c.weight, "contribution": c.contribution,
-                })
+                stress_components.append(
+                    {
+                        "name": c.name,
+                        "value": c.value,
+                        "weight": c.weight,
+                        "contribution": c.contribution,
+                    }
+                )
         bud_status = self.budget.status(now=now)
         kaizen_summary = self.kaizen.summary(window_days=7, now=now)
         return {
             "ts": now.isoformat(),
-            "suggestion": (context.suggestion.action.value
-                           if context.suggestion else "UNKNOWN"),
+            "suggestion": (context.suggestion.action.value if context.suggestion else "UNKNOWN"),
             "regime": (context.regime.regime if context.regime else "UNKNOWN"),
             "session_phase": str(context.session_phase or "OVERNIGHT"),
             "stress": {
-                "composite": (context.stress_score.composite
-                              if context.stress_score else 0.0),
-                "binding": (context.stress_score.binding_constraint
-                            if context.stress_score else "none"),
+                "composite": (context.stress_score.composite if context.stress_score else 0.0),
+                "binding": (context.stress_score.binding_constraint if context.stress_score else "none"),
                 "components": stress_components,
             },
             "budget": {

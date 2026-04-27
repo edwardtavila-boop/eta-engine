@@ -43,6 +43,7 @@ once) are exactly the kind of parallel edit that drifts. Adding a new
 invariant to this script costs ~5 lines and prevents an entire class
 of "shipped MnqBot fix, forgot to backport to NqBot" bugs.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -125,7 +126,9 @@ def _scan_bot(name: str, path: Path) -> BotInfo:
 
 
 def _has_method_inherited(
-    bot: BotInfo, fleet: dict[str, BotInfo], method: str,
+    bot: BotInfo,
+    fleet: dict[str, BotInfo],
+    method: str,
 ) -> bool:
     """Walk parent chain checking for the method."""
     if method in bot.methods:
@@ -140,10 +143,7 @@ def _has_method_inherited(
 def _has_attr_inherited(bot: BotInfo, fleet: dict[str, BotInfo], attr: str) -> bool:
     if attr in bot.init_attrs:
         return True
-    return any(
-        parent in fleet and _has_attr_inherited(fleet[parent], fleet, attr)
-        for parent in bot.bases
-    )
+    return any(parent in fleet and _has_attr_inherited(fleet[parent], fleet, attr) for parent in bot.bases)
 
 
 # ---- Invariants ----
@@ -172,10 +172,7 @@ def i1_inherits_basebot(bot: BotInfo, fleet: dict[str, BotInfo]) -> str | None:
 
 
 def i2_has_start_stop(bot: BotInfo, fleet: dict[str, BotInfo]) -> str | None:
-    missing = [
-        m for m in ("start", "stop")
-        if not _has_method_inherited(bot, fleet, m)
-    ]
+    missing = [m for m in ("start", "stop") if not _has_method_inherited(bot, fleet, m)]
     if missing:
         return f"{bot.name}: missing required method(s) {missing}"
     return None
@@ -209,23 +206,14 @@ def i5_retrospective_parity(bot: BotInfo, fleet: dict[str, BotInfo]) -> str | No
     """If ANY root bot has retrospective wiring, all root bots should."""
     if bot.name not in ROOT_BOTS:
         return None
-    any_root_has_it = any(
-        RETROSPECTIVE_ATTRS.intersection(fleet[r].init_attrs)
-        for r in ROOT_BOTS if r in fleet
-    )
+    any_root_has_it = any(RETROSPECTIVE_ATTRS.intersection(fleet[r].init_attrs) for r in ROOT_BOTS if r in fleet)
     if not any_root_has_it:
         return None
     missing = RETROSPECTIVE_ATTRS - bot.init_attrs
     if missing == RETROSPECTIVE_ATTRS:
-        return (
-            f"{bot.name}: ROOT bot missing retrospective wiring "
-            f"(siblings have it, this one has 0/3 attrs)"
-        )
+        return f"{bot.name}: ROOT bot missing retrospective wiring (siblings have it, this one has 0/3 attrs)"
     if missing:
-        return (
-            f"{bot.name}: ROOT bot has partial retrospective wiring "
-            f"(missing {sorted(missing)})"
-        )
+        return f"{bot.name}: ROOT bot has partial retrospective wiring (missing {sorted(missing)})"
     return None
 
 
@@ -254,13 +242,13 @@ def i7_symbol_naming(bot: BotInfo, fleet: dict[str, BotInfo]) -> str | None:  # 
 
 
 INVARIANTS: list[tuple[str, str, InvariantFn]] = [
-    ("I1", "inherits BaseBot",                    i1_inherits_basebot),
-    ("I2", "has start/stop",                      i2_has_start_stop),
-    ("I3", "has active_entries",                  i3_has_active_entries),
-    ("I4", "init calls super",                    i4_init_calls_super),
-    ("I5", "retrospective wiring parity (root)",  i5_retrospective_parity),
-    ("I6", "router/strategy paired (root)",       i6_router_strategy_paired),
-    ("I7", "symbol attr present (root)",          i7_symbol_naming),
+    ("I1", "inherits BaseBot", i1_inherits_basebot),
+    ("I2", "has start/stop", i2_has_start_stop),
+    ("I3", "has active_entries", i3_has_active_entries),
+    ("I4", "init calls super", i4_init_calls_super),
+    ("I5", "retrospective wiring parity (root)", i5_retrospective_parity),
+    ("I6", "router/strategy paired (root)", i6_router_strategy_paired),
+    ("I7", "symbol attr present (root)", i7_symbol_naming),
 ]
 
 
@@ -275,7 +263,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--verbose", "-v", action="store_true", help="dump per-bot AST summary")
     p.add_argument(
-        "--max-yellow", type=int, default=3,
+        "--max-yellow",
+        type=int,
+        default=3,
         help="more than this many violations -> RED (default 3)",
     )
     args = p.parse_args(argv)
@@ -288,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             b = fleet[name]
             print(f"\n  {name} ({b.path.relative_to(ROOT)})")
             print(f"    bases: {b.bases}")
-            print(f"    methods ({len(b.methods)}): {sorted(b.methods)[:8]}{'...' if len(b.methods)>8 else ''}")
+            print(f"    methods ({len(b.methods)}): {sorted(b.methods)[:8]}{'...' if len(b.methods) > 8 else ''}")
             print(f"    init attrs: {sorted(b.init_attrs)}")
             print(f"    init calls super: {b.init_calls_super}")
         print()
@@ -305,13 +295,11 @@ def main(argv: list[str] | None = None) -> int:
 
     n = len(violations)
     if n == 0:
-        print("fleet-invariants: GREEN -- 0 violations across "
-              f"{len(CONCRETE_BOTS)} bots, {len(INVARIANTS)} invariants")
+        print(f"fleet-invariants: GREEN -- 0 violations across {len(CONCRETE_BOTS)} bots, {len(INVARIANTS)} invariants")
         return 0
     level = "RED" if n > args.max_yellow else "YELLOW"
     print(
-        f"fleet-invariants: {level} -- {n} violation(s) across "
-        f"{len(CONCRETE_BOTS)} bots, {len(INVARIANTS)} invariants",
+        f"fleet-invariants: {level} -- {n} violation(s) across {len(CONCRETE_BOTS)} bots, {len(INVARIANTS)} invariants",
     )
     print()
     # Group by bot

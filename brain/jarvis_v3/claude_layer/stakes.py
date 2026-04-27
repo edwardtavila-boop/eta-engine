@@ -24,6 +24,7 @@ Stakes derivation is deterministic from features JARVIS already has:
 
 Pure stdlib + pydantic.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -34,21 +35,22 @@ from eta_engine.brain.model_policy import ModelTier
 
 
 class Stakes(StrEnum):
-    LOW      = "LOW"
-    MEDIUM   = "MEDIUM"
-    HIGH     = "HIGH"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
     CRITICAL = "CRITICAL"
 
 
 class StakesInputs(BaseModel):
     """Inputs used to classify stakes. All optional with safe defaults."""
+
     model_config = ConfigDict(frozen=True)
 
-    regime:            str = "NEUTRAL"
-    action:            str = "ORDER_PLACE"
-    r_at_risk:         float = Field(ge=0.0, default=0.0)
-    is_live:           bool = False
-    portfolio_breach:  bool = False
+    regime: str = "NEUTRAL"
+    action: str = "ORDER_PLACE"
+    r_at_risk: float = Field(ge=0.0, default=0.0)
+    is_live: bool = False
+    portfolio_breach: bool = False
     doctrine_net_bias: float = Field(ge=-1.0, le=1.0, default=0.0)
     operator_overrides_24h: int = Field(ge=0, default=0)
     capital_exposed_pct: float = Field(ge=0.0, le=1.0, default=0.0)
@@ -56,19 +58,20 @@ class StakesInputs(BaseModel):
 
 class StakesVerdict(BaseModel):
     """Classified stakes + model-tier pick."""
+
     model_config = ConfigDict(frozen=True)
 
-    stakes:      Stakes
-    model_tier:  ModelTier
+    stakes: Stakes
+    model_tier: ModelTier
     skeptic_tier: ModelTier  # the persona that MIGHT go to a higher tier
-    reasons:     list[str]
+    reasons: list[str]
 
 
 # Stakes -> baseline model tier (everyone except skeptic)
 _STAKES_TO_TIER: dict[Stakes, ModelTier] = {
-    Stakes.LOW:      ModelTier.HAIKU,
-    Stakes.MEDIUM:   ModelTier.SONNET,
-    Stakes.HIGH:     ModelTier.SONNET,
+    Stakes.LOW: ModelTier.HAIKU,
+    Stakes.MEDIUM: ModelTier.SONNET,
+    Stakes.HIGH: ModelTier.SONNET,
     Stakes.CRITICAL: ModelTier.OPUS,
 }
 
@@ -76,27 +79,31 @@ _STAKES_TO_TIER: dict[Stakes, ModelTier] = {
 # Upgrade the skeptic tier at HIGH (Sonnet -> Opus) while keeping others
 # on Sonnet; at CRITICAL everyone goes Opus.
 _STAKES_TO_SKEPTIC_TIER: dict[Stakes, ModelTier] = {
-    Stakes.LOW:      ModelTier.HAIKU,
-    Stakes.MEDIUM:   ModelTier.SONNET,
-    Stakes.HIGH:     ModelTier.OPUS,
+    Stakes.LOW: ModelTier.HAIKU,
+    Stakes.MEDIUM: ModelTier.SONNET,
+    Stakes.HIGH: ModelTier.OPUS,
     Stakes.CRITICAL: ModelTier.OPUS,
 }
 
 
 # Actions that pin stakes regardless of other signals.
-_CRITICAL_ACTIONS = frozenset({
-    "KILL_SWITCH_TRIP",
-    "KILL_SWITCH_RESET",
-    "GATE_OVERRIDE",
-    "STRATEGY_DEPLOY",
-    "CAPITAL_ALLOCATE",
-})
-_HIGH_ACTIONS = frozenset({
-    "STRATEGY_RETIRE",
-    "PARAMETER_CHANGE",
-    "PROTOCOL_EXPOSURE",
-    "AUTOPILOT_RESUME",
-})
+_CRITICAL_ACTIONS = frozenset(
+    {
+        "KILL_SWITCH_TRIP",
+        "KILL_SWITCH_RESET",
+        "GATE_OVERRIDE",
+        "STRATEGY_DEPLOY",
+        "CAPITAL_ALLOCATE",
+    }
+)
+_HIGH_ACTIONS = frozenset(
+    {
+        "STRATEGY_RETIRE",
+        "PARAMETER_CHANGE",
+        "PROTOCOL_EXPOSURE",
+        "AUTOPILOT_RESUME",
+    }
+)
 
 
 def classify_stakes(inp: StakesInputs) -> StakesVerdict:
@@ -138,23 +145,17 @@ def classify_stakes(inp: StakesInputs) -> StakesVerdict:
     # Doctrine conflict
     if inp.doctrine_net_bias <= -0.50:
         stakes = max(stakes, Stakes.HIGH, key=_rank)
-        reasons.append(
-            f"doctrine bias {inp.doctrine_net_bias:+.2f} heavily negative -> HIGH"
-        )
+        reasons.append(f"doctrine bias {inp.doctrine_net_bias:+.2f} heavily negative -> HIGH")
 
     # Operator override velocity
     if inp.operator_overrides_24h >= 5:
         stakes = max(stakes, Stakes.HIGH, key=_rank)
-        reasons.append(
-            f"operator overrode {inp.operator_overrides_24h}x in 24h -> HIGH"
-        )
+        reasons.append(f"operator overrode {inp.operator_overrides_24h}x in 24h -> HIGH")
 
     # Capital exposed
     if inp.capital_exposed_pct >= 0.60:
         stakes = max(stakes, Stakes.CRITICAL, key=_rank)
-        reasons.append(
-            f"{inp.capital_exposed_pct:.0%} of capital exposed -> CRITICAL"
-        )
+        reasons.append(f"{inp.capital_exposed_pct:.0%} of capital exposed -> CRITICAL")
 
     # LOW only if truly nothing elevates
     if not reasons and not inp.is_live and inp.r_at_risk < 0.5:
@@ -172,7 +173,10 @@ def classify_stakes(inp: StakesInputs) -> StakesVerdict:
 
 
 _RANK: dict[Stakes, int] = {
-    Stakes.LOW: 0, Stakes.MEDIUM: 1, Stakes.HIGH: 2, Stakes.CRITICAL: 3,
+    Stakes.LOW: 0,
+    Stakes.MEDIUM: 1,
+    Stakes.HIGH: 2,
+    Stakes.CRITICAL: 3,
 }
 
 

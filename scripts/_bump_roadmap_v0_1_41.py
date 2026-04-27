@@ -96,6 +96,7 @@ The policy router already accepts a custom eligibility map via
 ``dispatch(... eligibility=...)``, so the next live wire-up (v0.1.42)
 becomes a trivial intersection + cache refresh.
 """
+
 from __future__ import annotations
 
 import json
@@ -142,8 +143,7 @@ def main() -> None:
         },
         "api_surface": {
             "QualificationGate": (
-                "(dsr_threshold=0.5, max_degradation_pct=0.35, "
-                "min_trades_per_window=20)  -- frozen dataclass."
+                "(dsr_threshold=0.5, max_degradation_pct=0.35, min_trades_per_window=20)  -- frozen dataclass."
             ),
             "DEFAULT_QUALIFICATION_GATE": "QualificationGate()",
             "PerStrategyWindow": (
@@ -171,8 +171,7 @@ def main() -> None:
         },
         "design_notes": {
             "sharpe_like_per_trade": (
-                "Per-trade mean / stddev of R-multiples -- scale- "
-                "invariant and matches DSR's input contract directly."
+                "Per-trade mean / stddev of R-multiples -- scale- invariant and matches DSR's input contract directly."
             ),
             "dsr_n_trials_equals_windows": (
                 "Each window is an independent backtest trial; setting "
@@ -267,11 +266,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/oos_qualifier.py + 40 tests. "
-          "Walk-forward + DSR gate is live on the harness; "
-          "qualify_strategies returns a per-asset pass/fail verdict.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/oos_qualifier.py + 40 tests. "
+        "Walk-forward + DSR gate is live on the harness; "
+        "qualify_strategies returns a per-asset pass/fail verdict."
+    )
 
 
 if __name__ == "__main__":

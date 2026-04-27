@@ -36,6 +36,7 @@ Design constraints
 * --quick flag skips pytest for tiny doc-only commits
 * --no-pytest also skips, but loudly warns
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,14 +63,14 @@ def _staged_python_files(*, root: Path) -> list[str]:
     """Return staged .py files (relative paths). Empty list -> nothing to lint."""
     out = subprocess.run(
         ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-        cwd=root, capture_output=True, text=True, check=False,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if out.returncode != 0:
         return []
-    return [
-        line for line in out.stdout.splitlines()
-        if line.endswith(".py") and (root / line).exists()
-    ]
+    return [line for line in out.stdout.splitlines() if line.endswith(".py") and (root / line).exists()]
 
 
 def _ruff_check(*, root: Path) -> int:
@@ -87,8 +88,7 @@ def _ruff_check(*, root: Path) -> int:
     rc = _run(["python", "-m", "ruff", "check", *files], cwd=root)
     if rc != 0:
         print(
-            f"[pre-commit] FAIL: ruff found issues in "
-            f"{len(files)} staged file(s)",
+            f"[pre-commit] FAIL: ruff found issues in {len(files)} staged file(s)",
             file=sys.stderr,
         )
     return rc
@@ -113,8 +113,7 @@ def _install_hook(*, root: Path) -> int:
     hooks_dir = root / ".git" / "hooks"
     if not hooks_dir.exists():
         print(
-            f"[pre-commit] cannot install: {hooks_dir} does not exist "
-            f"(is this a git repo?)",
+            f"[pre-commit] cannot install: {hooks_dir} does not exist (is this a git repo?)",
             file=sys.stderr,
         )
         return 3
@@ -162,8 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.no_pytest:
         print(
-            "[pre-commit] --no-pytest -> WARNING: skipping pytest, "
-            "you are committing untested code",
+            "[pre-commit] --no-pytest -> WARNING: skipping pytest, you are committing untested code",
             file=sys.stderr,
         )
     else:
@@ -215,7 +213,10 @@ def _advisory_audits(*, root: Path) -> None:
         print(f"[pre-commit] advisory: {label}...", file=sys.stderr)
         result = subprocess.run(
             ["python", str(path), *extra_args],
-            cwd=root, capture_output=True, text=True, check=False,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         # Print the audit's stdout summary so the operator sees the
         # report without having to run the script separately.
@@ -224,18 +225,14 @@ def _advisory_audits(*, root: Path) -> None:
             # but DO NOT propagate the non-zero exit -- advisory mode.
             tail = result.stdout.rstrip().splitlines()[-15:]
             print(
-                f"[pre-commit] advisory: {label} reports issues "
-                f"(rc={result.returncode}, NOT blocking):",
+                f"[pre-commit] advisory: {label} reports issues (rc={result.returncode}, NOT blocking):",
                 file=sys.stderr,
             )
             for line in tail:
                 print(f"[pre-commit]   {line}", file=sys.stderr)
         else:
             # Show the last summary line so silent passes still confirm.
-            lines = [
-                ln for ln in result.stdout.rstrip().splitlines()
-                if ln.strip()
-            ]
+            lines = [ln for ln in result.stdout.rstrip().splitlines() if ln.strip()]
             if lines:
                 print(f"[pre-commit]   {lines[-1]}", file=sys.stderr)
 

@@ -1,4 +1,5 @@
 """Regime classifier + drift detector tests — P10_AI regime_model."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ from eta_engine.brain.regime import (
 # ---------------------------------------------------------------------------
 # RegimeAxes validation
 # ---------------------------------------------------------------------------
+
 
 def test_regime_axes_accepts_boundary_values() -> None:
     axes = RegimeAxes(vol=0.0, trend=-1.0, liquidity=0.0, correlation=0.0, macro="neutral")
@@ -43,6 +45,7 @@ def test_regime_axes_rejects_correlation_above_one() -> None:
 # ---------------------------------------------------------------------------
 # classify_regime — decision-tree priority order
 # ---------------------------------------------------------------------------
+
 
 def test_classify_crisis_by_macro_label_wins_over_everything() -> None:
     # Even with otherwise-benign numbers, macro=crisis short-circuits to CRISIS
@@ -103,6 +106,7 @@ def test_classify_crisis_priority_over_high_vol() -> None:
 # ---------------------------------------------------------------------------
 # detect_drift
 # ---------------------------------------------------------------------------
+
 
 def test_detect_drift_false_on_single_regime_history() -> None:
     assert detect_drift([RegimeType.TRENDING]) is False

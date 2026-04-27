@@ -60,9 +60,17 @@ class TradovateVenue(VenueBase):
 
     name: str = "tradovate"
 
-    def __init__(self, api_key: str = "", api_secret: str = "", *, demo: bool = True,
-                 app_id: str = "ApexPredator", app_version: str = "1.0", cid: str = "",
-                 app_secret: str = "") -> None:
+    def __init__(
+        self,
+        api_key: str = "",
+        api_secret: str = "",
+        *,
+        demo: bool = True,
+        app_id: str = "ApexPredator",
+        app_version: str = "1.0",
+        cid: str = "",
+        app_secret: str = "",
+    ) -> None:
         super().__init__(api_key, api_secret)
         self.demo: bool = demo
         self.app_id, self.app_version, self.cid = app_id, app_version, cid
@@ -100,6 +108,7 @@ class TradovateVenue(VenueBase):
     async def _ensure_session(self) -> Any:  # noqa: ANN401 - aiohttp imported lazily; real type is aiohttp.ClientSession
         if self._session is None:
             import aiohttp  # noqa: PLC0415 - lazy import keeps module importable without aiohttp
+
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT_S),
             )
@@ -168,9 +177,12 @@ class TradovateVenue(VenueBase):
     async def authenticate(self) -> None:
         """POST /auth/accessTokenRequest -- sets access_token + md_access_token."""
         payload = {
-            "name": self.api_key, "password": self.api_secret,
-            "appId": self.app_id, "appVersion": self.app_version,
-            "cid": self.cid, "sec": self.app_secret,
+            "name": self.api_key,
+            "password": self.api_secret,
+            "appId": self.app_id,
+            "appVersion": self.app_version,
+            "cid": self.cid,
+            "sec": self.app_secret,
         }
         body = json.dumps(payload, separators=(",", ":"))
         headers = {"Content-Type": "application/json"}
@@ -319,7 +331,10 @@ class TradovateVenue(VenueBase):
         return {"USD": total}
 
     async def bracket_order(
-        self, entry: OrderRequest, stop_price: float, target_price: float,
+        self,
+        entry: OrderRequest,
+        stop_price: float,
+        target_price: float,
     ) -> list[OrderResult]:
         """OSO: entry + OCO(stop, target). Returns [entry, stop, target]."""
         await self._ensure_token()
@@ -339,27 +354,46 @@ class TradovateVenue(VenueBase):
 
         if not self._has_creds():
             return [
-                OrderResult(order_id=parent_id, status=OrderStatus.OPEN,
-                            raw={"leg": "entry", "parent": parent_id}),
-                OrderResult(order_id=f"{parent_id}-S", status=OrderStatus.OPEN, avg_price=stop_price,
-                            raw={"leg": "stop", "parent": parent_id}),
-                OrderResult(order_id=f"{parent_id}-T", status=OrderStatus.OPEN, avg_price=target_price,
-                            raw={"leg": "target", "parent": parent_id}),
+                OrderResult(order_id=parent_id, status=OrderStatus.OPEN, raw={"leg": "entry", "parent": parent_id}),
+                OrderResult(
+                    order_id=f"{parent_id}-S",
+                    status=OrderStatus.OPEN,
+                    avg_price=stop_price,
+                    raw={"leg": "stop", "parent": parent_id},
+                ),
+                OrderResult(
+                    order_id=f"{parent_id}-T",
+                    status=OrderStatus.OPEN,
+                    avg_price=target_price,
+                    raw={"leg": "target", "parent": parent_id},
+                ),
             ]
 
         status, data = await self._http_post("/order/placeOSO", body, headers)
         if status != 200 or "orderId" not in data:
             logger.error("tradovate.bracket rejected status=%s body=%s", status, data)
             return [
-                OrderResult(order_id=parent_id, status=OrderStatus.REJECTED,
-                            raw={"http_status": status, **(data if isinstance(data, dict) else {})}),
+                OrderResult(
+                    order_id=parent_id,
+                    status=OrderStatus.REJECTED,
+                    raw={"http_status": status, **(data if isinstance(data, dict) else {})},
+                ),
             ]
         parent_real = str(data["orderId"])
         return [
-            OrderResult(order_id=parent_real, status=OrderStatus.OPEN,
-                        raw={"leg": "entry", "parent": parent_real, **data}),
-            OrderResult(order_id=f"{parent_real}-S", status=OrderStatus.OPEN, avg_price=stop_price,
-                        raw={"leg": "stop", "parent": parent_real}),
-            OrderResult(order_id=f"{parent_real}-T", status=OrderStatus.OPEN, avg_price=target_price,
-                        raw={"leg": "target", "parent": parent_real}),
+            OrderResult(
+                order_id=parent_real, status=OrderStatus.OPEN, raw={"leg": "entry", "parent": parent_real, **data}
+            ),
+            OrderResult(
+                order_id=f"{parent_real}-S",
+                status=OrderStatus.OPEN,
+                avg_price=stop_price,
+                raw={"leg": "stop", "parent": parent_real},
+            ),
+            OrderResult(
+                order_id=f"{parent_real}-T",
+                status=OrderStatus.OPEN,
+                avg_price=target_price,
+                raw={"leg": "target", "parent": parent_real},
+            ),
         ]

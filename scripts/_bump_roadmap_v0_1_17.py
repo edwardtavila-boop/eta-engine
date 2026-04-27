@@ -14,6 +14,7 @@ are still missing from SECRETS (user-action required).
 
 Bumps tests_passing 752 -> 762.
 """
+
 from __future__ import annotations
 
 import json
@@ -77,15 +78,13 @@ def main() -> None:
             "eta_engine/scripts/authorize_tradovate.py",
         ],
         "modified_modules": [
-            "eta_engine/venues/tradovate.py (added app_secret ctor param; "
-            "sec payload sourced from app_secret)",
+            "eta_engine/venues/tradovate.py (added app_secret ctor param; sec payload sourced from app_secret)",
         ],
         "new_test_files": [
             "tests/test_authorize_tradovate.py (8 tests)",
         ],
         "new_tests_in_existing_files": [
-            "tests/test_venues_tradovate_http.py (+2 tests: "
-            "distinct-sec + backward-compat)",
+            "tests/test_venues_tradovate_http.py (+2 tests: distinct-sec + backward-compat)",
         ],
         "tests_new": 10,
     }

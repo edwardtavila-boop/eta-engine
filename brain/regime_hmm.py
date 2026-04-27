@@ -61,6 +61,7 @@ _TINY = 1e-300
 # Result container
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class HMMFitResult:
     """Snapshot of a fitted Gaussian HMM.
@@ -133,15 +134,13 @@ class HMMFitResult:
             raise ValueError(f"n_obs must be > 0, got {n_obs}")
         if not self.log_likelihood_history:
             raise ValueError("log_likelihood_history is empty; cannot compute BIC")
-        return (
-            self.n_parameters() * math.log(n_obs)
-            - 2.0 * self.log_likelihood_history[-1]
-        )
+        return self.n_parameters() * math.log(n_obs) - 2.0 * self.log_likelihood_history[-1]
 
 
 # ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
+
 
 class GaussianHMM:
     """Gaussian-emission hidden Markov model fit with Baum-Welch EM.
@@ -216,10 +215,7 @@ class GaussianHMM:
             ll_history.append(ll)
 
             # Converged?
-            if (
-                len(ll_history) >= 2
-                and abs(ll_history[-1] - ll_history[-2]) < self.tol
-            ):
+            if len(ll_history) >= 2 and abs(ll_history[-1] - ll_history[-2]) < self.tol:
                 break
 
             # M-step ----------------------------------------------------
@@ -255,13 +251,12 @@ class GaussianHMM:
         psi = [[0] * k for _ in range(n)]
         for i in range(k):
             delta[0][i] = log_init[i] + _log_gauss(
-                returns[0], res.means[i], res.variances[i],
+                returns[0],
+                res.means[i],
+                res.variances[i],
             )
         for t in range(1, n):
-            obs_log_pdf = [
-                _log_gauss(returns[t], res.means[j], res.variances[j])
-                for j in range(k)
-            ]
+            obs_log_pdf = [_log_gauss(returns[t], res.means[j], res.variances[j]) for j in range(k)]
             for j in range(k):
                 best_i = 0
                 best_val = delta[t - 1][0] + log_trans[0][j]
@@ -290,10 +285,18 @@ class GaussianHMM:
         """Forward-backward posterior ``γ_t(i) = P(q_t=i | O, λ)``."""
         res = self._require_fit()
         alpha, c = _forward_scaled(
-            returns, res.means, res.variances, res.initial_probs, res.transition_matrix,
+            returns,
+            res.means,
+            res.variances,
+            res.initial_probs,
+            res.transition_matrix,
         )
         beta = _backward_scaled(
-            returns, res.means, res.variances, res.transition_matrix, c,
+            returns,
+            res.means,
+            res.variances,
+            res.transition_matrix,
+            c,
         )
         return _posterior_gamma(alpha, beta)
 
@@ -364,9 +367,7 @@ class GaussianHMM:
         # distinguishable from iteration 0. Without this spread, two
         # identical starting variances leave EM with a symmetric saddle
         # point and the fit can take many iterations to break out.
-        variances = [
-            max(sv * (0.25 * (3.0 ** i)), _VAR_FLOOR) for i in range(k)
-        ]
+        variances = [max(sv * (0.25 * (3.0**i)), _VAR_FLOOR) for i in range(k)]
 
         # Small random perturbation to break any remaining symmetry.
         for i in range(k):
@@ -375,15 +376,14 @@ class GaussianHMM:
 
         init_probs = [1.0 / k] * k
         off = 0.05 / (k - 1) if k > 1 else 0.0
-        trans = [
-            [0.95 if i == j else off for j in range(k)] for i in range(k)
-        ]
+        trans = [[0.95 if i == j else off for j in range(k)] for i in range(k)]
         return means, variances, init_probs, trans
 
 
 # ---------------------------------------------------------------------------
 # Forward-backward helpers (scaled; see Rabiner 1989 §5)
 # ---------------------------------------------------------------------------
+
 
 def _gauss(x: float, mean: float, variance: float) -> float:
     v = max(variance, _VAR_FLOOR)
@@ -459,9 +459,7 @@ def _backward_scaled(
     for i in range(k):
         beta[n - 1][i] = 1.0 / denom_last
     for t in range(n - 2, -1, -1):
-        obs_pdf = [
-            _gauss(obs[t + 1], means[j], variances[j]) for j in range(k)
-        ]
+        obs_pdf = [_gauss(obs[t + 1], means[j], variances[j]) for j in range(k)]
         denom = max(c[t], _TINY)
         for i in range(k):
             acc = 0.0
@@ -500,9 +498,7 @@ def _posterior_xi(
     k = len(means)
     xi = [[[0.0] * k for _ in range(k)] for _ in range(n - 1)]
     for t in range(n - 1):
-        obs_pdf = [
-            _gauss(obs[t + 1], means[j], variances[j]) for j in range(k)
-        ]
+        obs_pdf = [_gauss(obs[t + 1], means[j], variances[j]) for j in range(k)]
         total = 0.0
         for i in range(k):
             for j in range(k):
@@ -524,6 +520,7 @@ def _posterior_xi(
 # ---------------------------------------------------------------------------
 # M-step helpers
 # ---------------------------------------------------------------------------
+
 
 def _m_step_initial(gamma: list[list[float]]) -> list[float]:
     init = list(gamma[0])
@@ -584,7 +581,8 @@ def _m_step_emissions(
             sm = sum(obs) / n
             means[j] = sm
             variances[j] = max(
-                sum((x - sm) ** 2 for x in obs) / n, _VAR_FLOOR,
+                sum((x - sm) ** 2 for x in obs) / n,
+                _VAR_FLOOR,
             )
             continue
         mj = num / denom
@@ -656,8 +654,7 @@ def map_to_regime_labels(
     """
     if len(means) != len(variances):
         raise ValueError(
-            "length: means and variances must be the same length "
-            f"(got {len(means)} vs {len(variances)})",
+            f"length: means and variances must be the same length (got {len(means)} vs {len(variances)})",
         )
     k = len(means)
     if k == 0:
@@ -698,6 +695,7 @@ def map_to_regime_labels(
 # ---------------------------------------------------------------------------
 # Canonical state ordering -- risk-advocate blocker #1
 # ---------------------------------------------------------------------------
+
 
 def canonicalize_states(result: HMMFitResult) -> HMMFitResult:
     """Re-order HMM states so state 0 is always the lowest-variance regime.
@@ -740,10 +738,7 @@ def canonicalize_states(result: HMMFitResult) -> HMMFitResult:
     new_variances = [result.variances[p[i]] for i in range(k)]
     new_initial = [result.initial_probs[p[i]] for i in range(k)]
     # Transition matrix needs BOTH axes permuted.
-    new_trans = [
-        [result.transition_matrix[p[i]][p[j]] for j in range(k)]
-        for i in range(k)
-    ]
+    new_trans = [[result.transition_matrix[p[i]][p[j]] for j in range(k)] for i in range(k)]
     return HMMFitResult(
         means=new_means,
         variances=new_variances,

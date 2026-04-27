@@ -16,6 +16,7 @@ installed, :meth:`get_balance` does a real ``getTokenAccountBalance`` RPC
 call (via :func:`_fetch_spl_balance`). If any link is missing, it falls
 back to the in-memory ledger.
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,7 +87,8 @@ class JitoAdapter(StakingAdapter):
         if amount <= 0:
             raise ValueError(f"Stake amount must be positive, got {amount}")
         payload = build_contract_call(
-            self._stake_pool, "DepositSol",
+            self._stake_pool,
+            "DepositSol",
             self._wallet_address or "0x0",
             int(amount * 1e9),  # lamports
         )
@@ -99,7 +101,8 @@ class JitoAdapter(StakingAdapter):
         if amount <= 0 or amount > self._balance:
             raise ValueError(f"Invalid unstake amount: {amount} (balance: {self._balance})")
         payload = build_contract_call(
-            self._stake_pool, "WithdrawSol",
+            self._stake_pool,
+            "WithdrawSol",
             self._wallet_address or "0x0",
             int(amount * 1e9),
         )
@@ -111,6 +114,7 @@ class JitoAdapter(StakingAdapter):
         """Return JitoSOL balance — real RPC if configured, else in-memory."""
         if self._rpc_url and self._token_account:
             import asyncio as _asyncio
+
             real = await _asyncio.to_thread(_fetch_spl_balance, self._rpc_url, self._token_account)
             if real is not None:
                 return real

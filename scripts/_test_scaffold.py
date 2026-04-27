@@ -31,6 +31,7 @@ class smoke per public class, basic-input smoke per public function.
 Generating those frees the operator to focus on the edge cases that
 actually exercise behavior.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -165,19 +166,26 @@ def _scaffold_one(src: Path, *, force: bool) -> tuple[bool, str]:
     pytest_needed = bool(classes) or bool(async_funcs)
     pytest_import = "\nimport pytest\n" if pytest_needed else ""
     body = TEMPLATE_HEADER_BASE.format(
-        import_path=import_path, pytest_import=pytest_import,
+        import_path=import_path,
+        pytest_import=pytest_import,
     )
     for cls in classes:
         body += CLASS_TEMPLATE.format(
-            snake_name=_to_snake(cls), cls_name=cls, import_path=import_path,
+            snake_name=_to_snake(cls),
+            cls_name=cls,
+            import_path=import_path,
         )
     for fn in sync_funcs:
         body += FUNC_TEMPLATE.format(
-            snake_name=_to_snake(fn), fn_name=fn, import_path=import_path,
+            snake_name=_to_snake(fn),
+            fn_name=fn,
+            import_path=import_path,
         )
     for fn in async_funcs:
         body += ASYNC_FUNC_TEMPLATE.format(
-            snake_name=_to_snake(fn), fn_name=fn, import_path=import_path,
+            snake_name=_to_snake(fn),
+            fn_name=fn,
+            import_path=import_path,
         )
     test_path.parent.mkdir(parents=True, exist_ok=True)
     test_path.write_text(body, encoding="utf-8")
@@ -201,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("paths", nargs="+", help="source file(s) or dir(s)")
     p.add_argument("--force", action="store_true", help="overwrite existing test files")
     p.add_argument(
-        "--batch", action="store_true",
+        "--batch",
+        action="store_true",
         help="treat positional args as dirs and recurse into them",
     )
     args = p.parse_args(argv)

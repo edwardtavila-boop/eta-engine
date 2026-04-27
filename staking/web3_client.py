@@ -14,6 +14,7 @@ still constructs its own contract-call payload so signing stays colocated with
 protocol-specific state. This module is strictly for read paths that the
 allocator & dashboard need before approving any on-chain action.
 """
+
 from __future__ import annotations
 
 import logging
@@ -94,7 +95,7 @@ def read_balance(
     except Exception as e:  # noqa: BLE001 - RPC failures / network / ABI mismatch
         logger.warning("read_balance failed for %s: %s", token_address, e)
         return None
-    return raw_balance / (10 ** decimals)
+    return raw_balance / (10**decimals)
 
 
 def build_contract_call(

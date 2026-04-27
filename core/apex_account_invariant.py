@@ -80,6 +80,7 @@ Usage
         log.warning(result.reason)
         dispatcher.send("tier_a_invariant_violation", result.as_dict())
 """
+
 from __future__ import annotations
 
 import math
@@ -216,25 +217,13 @@ def validate_tier_a_aggregate_equity(
         If multipliers are negative.
     """
     if oversize_multiplier < 0:
-        msg = (
-            f"oversize_multiplier must be >= 0 "
-            f"(got {oversize_multiplier})"
-        )
+        msg = f"oversize_multiplier must be >= 0 (got {oversize_multiplier})"
         raise ValueError(msg)
     if undersize_multiplier < 0:
-        msg = (
-            f"undersize_multiplier must be >= 0 "
-            f"(got {undersize_multiplier})"
-        )
+        msg = f"undersize_multiplier must be >= 0 (got {undersize_multiplier})"
         raise ValueError(msg)
-    if (
-        expected_account_size_usd is not None
-        and oversize_multiplier < undersize_multiplier
-    ):
-        msg = (
-            f"oversize_multiplier ({oversize_multiplier}) must be "
-            f">= undersize_multiplier ({undersize_multiplier})"
-        )
+    if expected_account_size_usd is not None and oversize_multiplier < undersize_multiplier:
+        msg = f"oversize_multiplier ({oversize_multiplier}) must be >= undersize_multiplier ({undersize_multiplier})"
         raise ValueError(msg)
 
     tier_a = [s for s in snapshots if s.tier == "A"]
@@ -341,10 +330,7 @@ def validate_tier_a_aggregate_equity(
         n_tier_a=n_tier_a,
         expected_account_size_usd=expected_account_size_usd,
         verdict="ok",
-        reason=(
-            f"tier-A aggregate ${sum_logical:.2f} across "
-            f"{n_tier_a} bot(s) within sanity bounds"
-        ),
+        reason=(f"tier-A aggregate ${sum_logical:.2f} across {n_tier_a} bot(s) within sanity bounds"),
     )
 
 

@@ -74,6 +74,7 @@ stack abstains for a given instrument. The ETH/SOL/XRP leverage gating
 fires on the adapter signal's confidence just as it does on legacy
 signals -- the router layer never sees a leverage-unsafe trade.
 """
+
 from __future__ import annotations
 
 import json
@@ -131,9 +132,7 @@ def main() -> None:
             "scripts": ["scripts/_bump_roadmap_v0_1_35.py"],
         },
         "integration_points": {
-            "eth_perp_constructor": (
-                "EthPerpBot(..., strategy_adapter: RouterAdapter | None = None)"
-            ),
+            "eth_perp_constructor": ("EthPerpBot(..., strategy_adapter: RouterAdapter | None = None)"),
             "eth_perp_on_bar_priority": (
                 "1) check_risk(); 2) if adapter -> sync kill_switch_active "
                 "and push_bar; 3) if Signal -> apply effective_leverage and "
@@ -157,8 +156,7 @@ def main() -> None:
                 "liquidation_safe_leverage are applied via polymorphism."
             ),
             "backwards_compatible": (
-                "strategy_adapter default is None on every bot. All "
-                "pre-v0.1.35 bot tests pass unchanged."
+                "strategy_adapter default is None on every bot. All pre-v0.1.35 bot tests pass unchanged."
             ),
         },
         "test_coverage": {
@@ -221,11 +219,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: RouterAdapter wiring now live on ETH/SOL/XRP/NQ/"
-          "CryptoSeed with leverage gating on adapter signals and legacy "
-          "fallback preserved")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: RouterAdapter wiring now live on ETH/SOL/XRP/NQ/"
+        "CryptoSeed with leverage gating on adapter signals and legacy "
+        "fallback preserved"
+    )
 
 
 if __name__ == "__main__":

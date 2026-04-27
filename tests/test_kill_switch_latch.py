@@ -11,6 +11,7 @@ Covers:
   * corrupt latch JSON => fail-closed (treated as TRIPPED)
   * atomic write leaves no .tmp file behind
 """
+
 from __future__ import annotations
 
 import json
@@ -129,8 +130,10 @@ class TestVerdictLatching:
     def test_continue_verdict_does_NOT_trip_latch(self, tmp_path: Path) -> None:  # noqa: N802
         latch = KillSwitchLatch(tmp_path / "kill_latch.json")
         ok_verdict = KillVerdict(
-            action=KillAction.CONTINUE, severity=KillSeverity.INFO,
-            reason="no trip", scope="global",
+            action=KillAction.CONTINUE,
+            severity=KillSeverity.INFO,
+            reason="no trip",
+            scope="global",
         )
         assert latch.record_verdict(ok_verdict) is False
         assert latch.read().state == LatchState.ARMED

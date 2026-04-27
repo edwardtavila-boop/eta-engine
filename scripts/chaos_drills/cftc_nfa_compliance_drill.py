@@ -21,6 +21,7 @@ A silent regression in any of these would let an NFA-registration-
 triggering pattern reach the venue -- the worst class of bug we can
 ship.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -41,20 +42,20 @@ __all__ = ["drill_cftc_nfa_compliance"]
 
 def _ctx(**overrides: object) -> PreTradeContext:
     base: dict[str, Any] = {
-        "operator_owned_account":      True,
-        "account_id":                  "apex-op-001",
-        "symbol":                      "MNQ",
-        "side":                        "BUY",
-        "qty":                         1.0,
-        "external_capital_present":    False,
-        "deposit_whitelist":           ["apex-op-001"],
-        "eta_account_id":             None,
-        "other_eta_account_ids":      [],
-        "has_opposing_apex_position":  False,
-        "open_order_ids_same_symbol":  [],
-        "order_cancel_rate_hz":        0.0,
-        "bid_ask_self_overlap":        False,
-        "news_blackout_active":        False,
+        "operator_owned_account": True,
+        "account_id": "apex-op-001",
+        "symbol": "MNQ",
+        "side": "BUY",
+        "qty": 1.0,
+        "external_capital_present": False,
+        "deposit_whitelist": ["apex-op-001"],
+        "eta_account_id": None,
+        "other_eta_account_ids": [],
+        "has_opposing_apex_position": False,
+        "open_order_ids_same_symbol": [],
+        "order_cancel_rate_hz": 0.0,
+        "bid_ask_self_overlap": False,
+        "news_blackout_active": False,
         "is_promotional_communication": False,
         "promotional_disclaimer_included": False,
     }
@@ -65,13 +66,13 @@ def _ctx(**overrides: object) -> PreTradeContext:
 def drill_cftc_nfa_compliance(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
     """Exercise 4 BLOCKING violations + a clean context; confirm the verdicts."""
     failing_cases: dict[str, tuple[PreTradeContext, ComplianceRuleId]] = {
-        "owns_account":   (_ctx(operator_owned_account=False), ComplianceRuleId.OWNS_ACCOUNT),
-        "external_cap":   (_ctx(external_capital_present=True), ComplianceRuleId.NO_EXTERNAL_CAPITAL),
-        "pool_mgmt":      (
+        "owns_account": (_ctx(operator_owned_account=False), ComplianceRuleId.OWNS_ACCOUNT),
+        "external_cap": (_ctx(external_capital_present=True), ComplianceRuleId.NO_EXTERNAL_CAPITAL),
+        "pool_mgmt": (
             _ctx(deposit_whitelist=["apex-op-001", "someone-else-xyz"]),
             ComplianceRuleId.NO_POOL_MANAGEMENT,
         ),
-        "news_blackout":  (
+        "news_blackout": (
             _ctx(eta_account_id="apex-eval-01", news_blackout_active=True),
             ComplianceRuleId.APEX_NEWS_BLACKOUT,
         ),
@@ -91,14 +92,13 @@ def drill_cftc_nfa_compliance(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
                 "cftc_nfa_compliance",
                 passed=False,
                 details=(
-                    f"{case_name}: expected BLOCKING rule {expected_rule.value} "
-                    f"but got {[r.value for r in rule_ids]}"
+                    f"{case_name}: expected BLOCKING rule {expected_rule.value} but got {[r.value for r in rule_ids]}"
                 ),
             )
         observed[case_name] = {
-            "passed":    result.passed,
-            "rule":      expected_rule.value,
-            "n_block":   len(rule_ids),
+            "passed": result.passed,
+            "rule": expected_rule.value,
+            "n_block": len(rule_ids),
         }
 
     clean = check_compliance(_ctx())

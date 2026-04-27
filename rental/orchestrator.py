@@ -45,11 +45,12 @@ class TenantContainerSpec:
     JSON-serializable so it can be persisted in the tenant registry and
     replayed if a tenant's pod needs to be rescheduled.
     """
+
     tenant_id: str
     sku: BotSku
     tier: RentalTier
     image: str = "evolutionarytradingalgo/bot:current"
-    cpu_limit: str = "0.5"           # cores (overridden per tier below)
+    cpu_limit: str = "0.5"  # cores (overridden per tier below)
     memory_limit: str = "512Mi"
     env: dict[str, str] = field(default_factory=dict)
     mounts_read_only: tuple[str, ...] = ()
@@ -69,11 +70,11 @@ class TenantInstanceState:
 
 # Per-tier resource table. Bigger tiers get more CPU + memory.
 _TIER_CPU_MEM: dict[RentalTier, tuple[str, str]] = {
-    RentalTier.TRIAL:      ("0.25", "256Mi"),
-    RentalTier.STARTER:    ("0.5",  "512Mi"),
-    RentalTier.PRO:        ("1.0",  "1Gi"),
-    RentalTier.PORTFOLIO:  ("2.0",  "2Gi"),
-    RentalTier.ELITE:      ("4.0",  "4Gi"),
+    RentalTier.TRIAL: ("0.25", "256Mi"),
+    RentalTier.STARTER: ("0.5", "512Mi"),
+    RentalTier.PRO: ("1.0", "1Gi"),
+    RentalTier.PORTFOLIO: ("2.0", "2Gi"),
+    RentalTier.ELITE: ("4.0", "4Gi"),
 }
 
 

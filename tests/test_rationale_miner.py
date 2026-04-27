@@ -1,4 +1,5 @@
 """Tests for brain.rationale_miner -- cluster rationales -> outcomes."""
+
 from __future__ import annotations
 
 import pytest
@@ -80,8 +81,10 @@ def test_record_rejects_empty_trade_id() -> None:
 def test_record_grade_bounded() -> None:
     with pytest.raises(ValidationError):
         RationaleRecord(
-            trade_id="x", rationale="y",
-            r_captured=1.0, grade_total=200.0,
+            trade_id="x",
+            rationale="y",
+            r_captured=1.0,
+            grade_total=200.0,
         )
 
 
@@ -119,12 +122,7 @@ def test_mine_empty_returns_empty_report() -> None:
 
 
 def test_mine_with_min_cluster_size_not_met_drops_all_clusters() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"t-{i}",
-                        rationale=f"unique phrase {i}",
-                        r_captured=1.0)
-        for i in range(3)
-    ]
+    recs = [RationaleRecord(trade_id=f"t-{i}", rationale=f"unique phrase {i}", r_captured=1.0) for i in range(3)]
     miner = RationaleMiner(min_cluster_size=5)
     rep = miner.mine(recs)
     assert rep.clusters == []
@@ -139,15 +137,9 @@ def test_mine_with_min_cluster_size_not_met_drops_all_clusters() -> None:
 
 def test_mine_finds_shared_phrase_cluster() -> None:
     recs = [
-        RationaleRecord(trade_id="t-1",
-                        rationale="fade open gap up",
-                        r_captured=1.5),
-        RationaleRecord(trade_id="t-2",
-                        rationale="fade open gap down",
-                        r_captured=2.0),
-        RationaleRecord(trade_id="t-3",
-                        rationale="fade open range",
-                        r_captured=-0.5),
+        RationaleRecord(trade_id="t-1", rationale="fade open gap up", r_captured=1.5),
+        RationaleRecord(trade_id="t-2", rationale="fade open gap down", r_captured=2.0),
+        RationaleRecord(trade_id="t-3", rationale="fade open range", r_captured=-0.5),
     ]
     miner = RationaleMiner(min_cluster_size=3)
     rep = miner.mine(recs)
@@ -159,12 +151,9 @@ def test_mine_finds_shared_phrase_cluster() -> None:
 
 def test_cluster_stats_correct() -> None:
     recs = [
-        RationaleRecord(trade_id="t-1", rationale="fade open",
-                        r_captured=2.0, grade_total=90.0),
-        RationaleRecord(trade_id="t-2", rationale="fade open",
-                        r_captured=-1.0, grade_total=50.0),
-        RationaleRecord(trade_id="t-3", rationale="fade open",
-                        r_captured=1.0, grade_total=70.0),
+        RationaleRecord(trade_id="t-1", rationale="fade open", r_captured=2.0, grade_total=90.0),
+        RationaleRecord(trade_id="t-2", rationale="fade open", r_captured=-1.0, grade_total=50.0),
+        RationaleRecord(trade_id="t-3", rationale="fade open", r_captured=1.0, grade_total=70.0),
     ]
     miner = RationaleMiner(min_cluster_size=3, max_ngram=2)
     rep = miner.mine(recs)
@@ -176,18 +165,8 @@ def test_cluster_stats_correct() -> None:
 
 
 def test_mine_ranks_clusters_by_expectancy() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"win-{i}",
-                        rationale="strong winner",
-                        r_captured=3.0)
-        for i in range(3)
-    ]
-    recs += [
-        RationaleRecord(trade_id=f"loss-{i}",
-                        rationale="weak loser",
-                        r_captured=-1.0)
-        for i in range(3)
-    ]
+    recs = [RationaleRecord(trade_id=f"win-{i}", rationale="strong winner", r_captured=3.0) for i in range(3)]
+    recs += [RationaleRecord(trade_id=f"loss-{i}", rationale="weak loser", r_captured=-1.0) for i in range(3)]
     miner = RationaleMiner(min_cluster_size=3)
     rep = miner.mine(recs)
     # Top cluster by expectancy should be "strong winner" related
@@ -195,18 +174,8 @@ def test_mine_ranks_clusters_by_expectancy() -> None:
 
 
 def test_top_winners_top_losers_populated() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"w-{i}",
-                        rationale="breakout retest",
-                        r_captured=2.0)
-        for i in range(3)
-    ]
-    recs += [
-        RationaleRecord(trade_id=f"l-{i}",
-                        rationale="chase high",
-                        r_captured=-1.5)
-        for i in range(3)
-    ]
+    recs = [RationaleRecord(trade_id=f"w-{i}", rationale="breakout retest", r_captured=2.0) for i in range(3)]
+    recs += [RationaleRecord(trade_id=f"l-{i}", rationale="chase high", r_captured=-1.5) for i in range(3)]
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     assert len(rep.top_winners) > 0
     assert len(rep.top_losers) > 0
@@ -220,11 +189,7 @@ def test_top_winners_top_losers_populated() -> None:
 
 
 def test_sharpe_zero_when_std_zero() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"t-{i}", rationale="flat trade",
-                        r_captured=1.0)
-        for i in range(3)
-    ]
+    recs = [RationaleRecord(trade_id=f"t-{i}", rationale="flat trade", r_captured=1.0) for i in range(3)]
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     # All rs = 1.0 -> std = 0 -> sharpe = 0
     assert all(c.sharpe == 0.0 for c in rep.clusters)
@@ -232,8 +197,7 @@ def test_sharpe_zero_when_std_zero() -> None:
 
 def test_std_r_nonzero_when_varied() -> None:
     recs = [
-        RationaleRecord(trade_id=f"t-{i}", rationale="varied phrase",
-                        r_captured=r)
+        RationaleRecord(trade_id=f"t-{i}", rationale="varied phrase", r_captured=r)
         for i, r in enumerate([1.0, 2.0, -1.0])
     ]
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
@@ -247,17 +211,14 @@ def test_std_r_nonzero_when_varied() -> None:
 
 
 def test_uncategorized_includes_trades_with_no_shared_phrase() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"grp-{i}",
-                        rationale="shared phrase here",
-                        r_captured=1.0)
-        for i in range(3)
-    ]
-    recs.append(RationaleRecord(
-        trade_id="orphan",
-        rationale="completely unique wording nowhere else",
-        r_captured=0.5,
-    ))
+    recs = [RationaleRecord(trade_id=f"grp-{i}", rationale="shared phrase here", r_captured=1.0) for i in range(3)]
+    recs.append(
+        RationaleRecord(
+            trade_id="orphan",
+            rationale="completely unique wording nowhere else",
+            r_captured=0.5,
+        )
+    )
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     assert "orphan" in rep.uncategorized
 
@@ -268,27 +229,22 @@ def test_uncategorized_includes_trades_with_no_shared_phrase() -> None:
 
 
 def test_winners_minus_losers() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"w-{i}", rationale="winner", r_captured=2.0)
-        for i in range(3)
-    ]
-    recs += [
-        RationaleRecord(trade_id=f"l-{i}", rationale="loser", r_captured=-1.0)
-        for i in range(3)
-    ]
+    recs = [RationaleRecord(trade_id=f"w-{i}", rationale="winner", r_captured=2.0) for i in range(3)]
+    recs += [RationaleRecord(trade_id=f"l-{i}", rationale="loser", r_captured=-1.0) for i in range(3)]
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     ranked = winners_minus_losers(rep)
     assert ranked[0][1] >= ranked[-1][1]
 
 
 def test_coverage_metric() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"t-{i}", rationale="shared", r_captured=1.0)
-        for i in range(3)
-    ]
-    recs.append(RationaleRecord(
-        trade_id="orphan", rationale="one-off", r_captured=0.0,
-    ))
+    recs = [RationaleRecord(trade_id=f"t-{i}", rationale="shared", r_captured=1.0) for i in range(3)]
+    recs.append(
+        RationaleRecord(
+            trade_id="orphan",
+            rationale="one-off",
+            r_captured=0.0,
+        )
+    )
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     # 3 of 4 in clusters -> 0.75
     assert coverage(rep) == pytest.approx(0.75, abs=0.01)
@@ -317,10 +273,7 @@ def test_phrase_frequency_counts() -> None:
 
 
 def test_mine_handles_empty_rationales() -> None:
-    recs = [
-        RationaleRecord(trade_id=f"t-{i}", rationale="", r_captured=1.0)
-        for i in range(5)
-    ]
+    recs = [RationaleRecord(trade_id=f"t-{i}", rationale="", r_captured=1.0) for i in range(5)]
     rep = RationaleMiner(min_cluster_size=3).mine(recs)
     # No phrases -> no clusters, all uncategorized
     assert rep.clusters == []
@@ -328,8 +281,7 @@ def test_mine_handles_empty_rationales() -> None:
 
 
 def test_mine_handles_single_trade() -> None:
-    recs = [RationaleRecord(trade_id="t-1",
-                            rationale="solo trade", r_captured=0.5)]
+    recs = [RationaleRecord(trade_id="t-1", rationale="solo trade", r_captured=0.5)]
     rep = RationaleMiner(min_cluster_size=1).mine(recs)
     assert rep.n_records == 1
     assert len(rep.clusters) >= 1

@@ -19,6 +19,7 @@ Flow
 
 No private keys ever touch this code. All outputs are human-auditable.
 """
+
 from __future__ import annotations
 
 import logging
@@ -104,7 +105,9 @@ class ColdWalletSweep:
         if notional_usd < self._min_sweep_usd:
             logger.info(
                 "cold_wallet_sweep skipped (below floor): amount=%s notional=$%.2f < $%.0f",
-                amount, notional_usd, self._min_sweep_usd,
+                amount,
+                notional_usd,
+                self._min_sweep_usd,
             )
             return None
         target = self._targets.get(chain)
@@ -126,7 +129,11 @@ class ColdWalletSweep:
         )
         logger.info(
             "cold_wallet_sweep planned: %s %s %s → %s (notional $%.2f)",
-            amount, asset_symbol, chain, target.label or target.address, notional_usd,
+            amount,
+            asset_symbol,
+            chain,
+            target.label or target.address,
+            notional_usd,
         )
         return instr
 
@@ -152,15 +159,16 @@ class ColdWalletSweep:
         verified = drift <= self._drift_tolerance_pct and observed > 0
         notes: list[str] = []
         if not verified:
-            notes.append(
-                f"drift {drift:.2f}% exceeds tolerance {self._drift_tolerance_pct:.2f}%"
-            )
+            notes.append(f"drift {drift:.2f}% exceeds tolerance {self._drift_tolerance_pct:.2f}%")
         if observed <= 0:
             notes.append("observed delta <= 0 — sweep may have failed or gone to wrong address")
 
         logger.info(
             "cold_wallet_sweep verify: expected=%s observed=%s drift=%.3f%% verified=%s",
-            expected, observed, drift, verified,
+            expected,
+            observed,
+            drift,
+            verified,
         )
         return SweepVerification(
             instruction_id=f"{instruction.chain}:{instruction.created_utc}",

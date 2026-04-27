@@ -60,7 +60,7 @@ sys.path.insert(0, str(ROOT.parent))
 class Gate:
     name: str
     required: bool
-    status: str = "PENDING"   # PASS | FAIL | SKIP
+    status: str = "PENDING"  # PASS | FAIL | SKIP
     detail: str = ""
     evidence: dict = field(default_factory=dict)
 
@@ -111,11 +111,7 @@ def _gate_firm_verdict() -> Gate:
         return g
     try:
         raw = json.loads(rs.read_text())
-        latest = (
-            raw.get("shared_artifacts", {}).get("firm_board_latest")
-            or raw.get("firm_board_latest")
-            or {}
-        )
+        latest = raw.get("shared_artifacts", {}).get("firm_board_latest") or raw.get("firm_board_latest") or {}
         v = str(latest.get("final_verdict", "UNKNOWN")).upper()
         g.status = "PASS" if v == "GO" else "FAIL"
         g.detail = f"Firm latest verdict: {v} ({latest.get('spec_id', '?')})"
@@ -151,9 +147,7 @@ def _gate_tradovate_creds() -> Gate:
     has = bool(cid and sec)
     g.status = "PASS" if has else "SKIP"
     g.detail = (
-        "env TRADOVATE_CLIENT_ID+SECRET set"
-        if has
-        else "creds missing - optional live-tiny staging gate skipped"
+        "env TRADOVATE_CLIENT_ID+SECRET set" if has else "creds missing - optional live-tiny staging gate skipped"
     )
     g.evidence = {"client_id_set": bool(cid), "secret_set": bool(sec)}
     return g
@@ -175,17 +169,9 @@ def _gate_risk_sizing() -> Gate:
         allocs = rm.get("paper_capital_allocations", {}) or {}
         tier_a_cap = int(allocs.get("mnq", 0)) + int(allocs.get("nq", 0))
         # Thresholds: per-trade ≤ 3%, daily cap ≤ 6%, DD kill ≤ 20%, Tier-A cap ≥ $5k
-        ok = (
-            per_trade <= 3.0
-            and daily_cap <= 6.0
-            and dd_kill <= 20.0
-            and tier_a_cap >= 5_000
-        )
+        ok = per_trade <= 3.0 and daily_cap <= 6.0 and dd_kill <= 20.0 and tier_a_cap >= 5_000
         g.status = "PASS" if ok else "FAIL"
-        g.detail = (
-            f"per_trade={per_trade}% daily_cap={daily_cap}% "
-            f"dd_kill={dd_kill}% tier_A_cap=${tier_a_cap}"
-        )
+        g.detail = f"per_trade={per_trade}% daily_cap={daily_cap}% dd_kill={dd_kill}% tier_A_cap=${tier_a_cap}"
         g.evidence = {
             "per_trade_risk_pct": per_trade,
             "daily_loss_cap_pct": daily_cap,
@@ -289,9 +275,15 @@ def _gate_env_template() -> Gate:
         return g
     txt = p.read_text()
     required_keys = [
-        "TRADOVATE_CLIENT_ID", "TRADOVATE_CLIENT_SECRET", "TRADOVATE_USERNAME",
-        "TRADOVATE_PASSWORD", "TRADOVATE_DEVICE_ID", "BYBIT_API_KEY",
-        "BYBIT_API_SECRET", "PUSHOVER_USER", "PUSHOVER_TOKEN",
+        "TRADOVATE_CLIENT_ID",
+        "TRADOVATE_CLIENT_SECRET",
+        "TRADOVATE_USERNAME",
+        "TRADOVATE_PASSWORD",
+        "TRADOVATE_DEVICE_ID",
+        "BYBIT_API_KEY",
+        "BYBIT_API_SECRET",
+        "PUSHOVER_USER",
+        "PUSHOVER_TOKEN",
     ]
     missing = [k for k in required_keys if k not in txt]
     if missing:
@@ -332,8 +324,8 @@ def _gate_runtime_wired() -> Gate:
     g = Gate(name="runtime_wired", required=True)
     paths = {
         "kill_switch_runtime.py": ROOT / "core" / "kill_switch_runtime.py",
-        "alert_dispatcher.py":    ROOT / "obs"  / "alert_dispatcher.py",
-        "run_eta_live.py":       ROOT / "scripts" / "run_eta_live.py",
+        "alert_dispatcher.py": ROOT / "obs" / "alert_dispatcher.py",
+        "run_eta_live.py": ROOT / "scripts" / "run_eta_live.py",
     }
     missing = [name for name, p in paths.items() if not p.exists()]
     if missing:
@@ -342,6 +334,7 @@ def _gate_runtime_wired() -> Gate:
         return g
     # Import-level smoke: each module must import cleanly.
     import importlib
+
     import_errors: list[str] = []
     for mod_name in (
         "eta_engine.core.kill_switch_runtime",
@@ -369,8 +362,11 @@ def _gate_pytest_subset() -> Gate:
     try:
         out = subprocess.run(
             [sys.executable, "-m", "pytest", target, "-x", "-q", "--no-header"],
-            capture_output=True, text=True, check=False,
-            cwd=ROOT.parent, timeout=180,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=ROOT.parent,
+            timeout=180,
         )
         ok = out.returncode == 0
         # Parse "N passed" line
@@ -441,7 +437,7 @@ def _gate_credential_probe_full() -> Gate:
     all_missing = sm.validate_required_keys(REQUIRED_KEYS)
     # Tier-A secrets being absent = FAIL; other REQUIRED_KEYS absent = SKIP (optional bots)
     if missing_tier_a:
-        g.status = "SKIP"   # SKIP not FAIL: pre-funding this is expected
+        g.status = "SKIP"  # SKIP not FAIL: pre-funding this is expected
         g.detail = (
             f"Tier-A missing: {len(missing_tier_a)} key(s) "
             f"(active venues: {','.join(active_futures) or 'none'}) — "
@@ -503,9 +499,7 @@ def _gate_kill_switch_drill() -> Gate:
         g.evidence = {"action": v.action.value, "severity": v.severity.value}
     else:
         g.status = "FAIL"
-        g.detail = (
-            f"expected FLATTEN_ALL/CRITICAL got {v.action.value}/{v.severity.value}"
-        )
+        g.detail = f"expected FLATTEN_ALL/CRITICAL got {v.action.value}/{v.severity.value}"
         g.evidence = {"action": v.action.value, "severity": v.severity.value}
     return g
 
@@ -525,12 +519,20 @@ def _gate_idempotent_order_id() -> Gate:
         return g
     try:
         req_a = OrderRequest(
-            symbol="MNQZ5", side=Side.BUY, qty=1.0,
-            order_type=OrderType.MARKET, price=None, reduce_only=False,
+            symbol="MNQZ5",
+            side=Side.BUY,
+            qty=1.0,
+            order_type=OrderType.MARKET,
+            price=None,
+            reduce_only=False,
         )
         req_b = OrderRequest(
-            symbol="MNQZ5", side=Side.BUY, qty=1.0,
-            order_type=OrderType.MARKET, price=None, reduce_only=False,
+            symbol="MNQZ5",
+            side=Side.BUY,
+            qty=1.0,
+            order_type=OrderType.MARKET,
+            price=None,
+            reduce_only=False,
         )
         out_a = JarvisAwareRouter._ensure_client_order_id(req_a)
         out_b = JarvisAwareRouter._ensure_client_order_id(req_b)
@@ -543,9 +545,7 @@ def _gate_idempotent_order_id() -> Gate:
             }
         else:
             g.status = "FAIL"
-            g.detail = (
-                f"dedup broken: a={out_a.client_order_id} b={out_b.client_order_id}"
-            )
+            g.detail = f"dedup broken: a={out_a.client_order_id} b={out_b.client_order_id}"
     except Exception as e:  # noqa: BLE001
         g.status, g.detail = "FAIL", f"idempotent test error: {e}"
     return g
@@ -563,8 +563,11 @@ def _gate_reconcile_on_reconnect() -> Gate:
     try:
         out = subprocess.run(
             [sys.executable, str(script), "--hours", "24"],
-            capture_output=True, text=True, check=False,
-            cwd=ROOT.parent, timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=ROOT.parent,
+            timeout=60,
         )
         rc = out.returncode
         first = (out.stdout or "").splitlines()[0] if out.stdout else ""
@@ -597,6 +600,7 @@ def _gate_crash_recovery_simulated() -> Gate:
     import json as _json
     import tempfile
     import time
+
     script = ROOT / "scripts" / "_trade_journal_reconcile.py"
     if not script.exists():
         g.status, g.detail = "FAIL", f"missing {script}"
@@ -616,19 +620,24 @@ def _gate_crash_recovery_simulated() -> Gate:
         tmp_btc.write_text("", encoding="utf-8")
         out = subprocess.run(
             [
-                sys.executable, str(script),
-                "--alerts", str(tmp_alerts),
-                "--btc", str(tmp_btc),
-                "--hours", "24",
+                sys.executable,
+                str(script),
+                "--alerts",
+                str(tmp_alerts),
+                "--btc",
+                str(tmp_btc),
+                "--hours",
+                "24",
             ],
-            capture_output=True, text=True, check=False,
-            cwd=ROOT.parent, timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=ROOT.parent,
+            timeout=60,
         )
         text = out.stdout or ""
         # Expect orphan-detection text in output (RED or YELLOW orphaned-runtime line)
-        detected = "orphaned-runtime" in text and (
-            "YELLOW" in text or "RED" in text
-        )
+        detected = "orphaned-runtime" in text and ("YELLOW" in text or "RED" in text)
         if detected:
             g.status = "PASS"
             g.detail = "synthetic orphan detected by reconcile"
@@ -666,6 +675,7 @@ def _gate_clock_drift() -> Gate:
         import time
         from email.utils import parsedate_to_datetime
         from urllib.request import Request, urlopen
+
         req = Request(
             "https://www.cloudflare.com/cdn-cgi/trace",
             headers={"User-Agent": "apex-preflight/1.0"},
@@ -716,13 +726,16 @@ def _gate_alert_dispatcher_echo() -> Gate:
     g = Gate(name="alert_dispatcher_echo", required=False)
     import json as _json
     import tempfile
+
     try:
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
+
         tmp_dir = Path(tempfile.mkdtemp(prefix="apex_preflight_alerts_"))
         tmp_log = tmp_dir / "alerts_log.jsonl"
         cfg = {
             "rate_limit": {
-                "info_per_minute": 10, "warn_per_minute": 10,
+                "info_per_minute": 10,
+                "warn_per_minute": 10,
                 "critical_per_minute": 10,
             },
             "routing": {
@@ -735,10 +748,7 @@ def _gate_alert_dispatcher_echo() -> Gate:
         disp = AlertDispatcher(cfg, log_path=tmp_log)
         disp.send(event="preflight_echo", payload={"ok": True})
         if tmp_log.exists():
-            lines = [
-                _json.loads(line)
-                for line in tmp_log.read_text().splitlines() if line.strip()
-            ]
+            lines = [_json.loads(line) for line in tmp_log.read_text().splitlines() if line.strip()]
             if any(ln.get("event") == "preflight_echo" for ln in lines):
                 g.status = "PASS"
                 g.detail = f"echoed 1 alert to {tmp_log.name} ({len(lines)} line(s))"
@@ -767,10 +777,7 @@ def _gate_abort_on_red_loop(all_gates: list[Gate]) -> Gate:
     red_req = [gg for gg in all_gates if gg.required and gg.status == "FAIL"]
     if red_req:
         g.status = "PASS"  # the loop correctly identifies aborts
-        g.detail = (
-            f"Simulated abort would fire on: "
-            f"{', '.join(gg.name for gg in red_req)}"
-        )
+        g.detail = f"Simulated abort would fire on: {', '.join(gg.name for gg in red_req)}"
     else:
         # No red reqs means no aborts to simulate — still PASS (the wiring works)
         g.status = "PASS"
@@ -832,10 +839,15 @@ def _inject_failures(gates: list[Gate], names: set[str]) -> list[Gate]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Live-tiny preflight dry run")
-    p.add_argument("--inject-fail", action="append", default=[],
-                   help="Force gate(s) to FAIL (comma or repeat). For abort-path dryrun.")
-    p.add_argument("--simulate-red", action="store_true",
-                   help="Shortcut: inject failure on tradovate_creds to prove abort path.")
+    p.add_argument(
+        "--inject-fail",
+        action="append",
+        default=[],
+        help="Force gate(s) to FAIL (comma or repeat). For abort-path dryrun.",
+    )
+    p.add_argument(
+        "--simulate-red", action="store_true", help="Shortcut: inject failure on tradovate_creds to prove abort path."
+    )
     p.add_argument("--out-dir", type=Path, default=ROOT / "docs")
     args = p.parse_args()
 
@@ -874,10 +886,7 @@ def main() -> int:
         f"optional PASS {counts['optional_pass']}/{counts['optional_gates']} | "
         f"optional SKIP {counts['optional_skip']}"
     )
-    print(
-        f"Overall dryrun: {overall}   "
-        f"({len(red_required)} required-RED, {counts['total_pass']} PASS)"
-    )
+    print(f"Overall dryrun: {overall}   ({len(red_required)} required-RED, {counts['total_pass']} PASS)")
     if overall == "ABORT":
         print(f"Abort reasons: {', '.join(g.name for g in red_required)}")
     print("=" * 80)

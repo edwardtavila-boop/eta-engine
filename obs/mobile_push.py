@@ -22,6 +22,7 @@ Design
   mobile by default — the operator does not want to be woken up by
   INFO-level chatter.
 """
+
 from __future__ import annotations
 
 import json
@@ -91,6 +92,7 @@ class MobilePushChannel(Protocol):
 # Pushover
 # ---------------------------------------------------------------------------
 
+
 class PushoverChannel:
     """Send alerts through the Pushover API."""
 
@@ -154,6 +156,7 @@ def _pushover_priority(severity: MobileSeverity) -> int:
 # Telegram
 # ---------------------------------------------------------------------------
 
+
 class TelegramChannel:
     """Send alerts through the Telegram Bot API."""
 
@@ -211,17 +214,13 @@ def _telegram_format(alert: MobileAlert) -> str:
     }[alert.severity]
     tags = " ".join(f"#{t}" for t in alert.tags)
     link = f'\n<a href="{alert.url}">open</a>' if alert.url else ""
-    return (
-        f"<b>{badge} {alert.source}</b>\n"
-        f"<b>{alert.title}</b>\n"
-        f"{alert.body}\n"
-        f"{tags}{link}"
-    ).strip()
+    return (f"<b>{badge} {alert.source}</b>\n<b>{alert.title}</b>\n{alert.body}\n{tags}{link}").strip()
 
 
 # ---------------------------------------------------------------------------
 # Bus
 # ---------------------------------------------------------------------------
+
 
 class MobilePushBus:
     """Fan-out a :class:`MobileAlert` to every enabled channel above threshold."""
@@ -238,9 +237,7 @@ class MobilePushBus:
         self._suppressed_count = 0
 
     @classmethod
-    def from_env(
-        cls, *, min_severity: MobileSeverity = DEFAULT_MIN_SEVERITY
-    ) -> MobilePushBus:
+    def from_env(cls, *, min_severity: MobileSeverity = DEFAULT_MIN_SEVERITY) -> MobilePushBus:
         return cls(
             channels=[PushoverChannel(), TelegramChannel()],
             min_severity=min_severity,

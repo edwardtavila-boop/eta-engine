@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from eta_engine.scripts import schedule_weekly_review as mod
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 ET = ZoneInfo("America/New_York")
 

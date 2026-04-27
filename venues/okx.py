@@ -107,6 +107,7 @@ class OkxVenue(VenueBase):
     async def _ensure_session(self) -> Any:  # noqa: ANN401 - aiohttp imported lazily; real type is aiohttp.ClientSession
         if self._session is None:
             import aiohttp  # noqa: PLC0415
+
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT_S),
             )
@@ -330,15 +331,9 @@ class OkxVenue(VenueBase):
         depth_total = bid_depth + ask_depth
         book_imbalance = ((bid_depth - ask_depth) / depth_total) if depth_total > 0.0 else 0.0
         microprice = (
-            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty)
-            if (bid_qty + ask_qty) > 0.0
-            else mid
+            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty) if (bid_qty + ask_qty) > 0.0 else mid
         )
-        weighted_mid = (
-            (bid_price * ask_depth + ask_price * bid_depth) / depth_total
-            if depth_total > 0.0
-            else mid
-        )
+        weighted_mid = (bid_price * ask_depth + ask_price * bid_depth) / depth_total if depth_total > 0.0 else mid
         ts_raw = row.get("ts") or data.get("ts")
         try:
             ts_ms = int(float(ts_raw))

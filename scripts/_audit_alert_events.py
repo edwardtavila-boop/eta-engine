@@ -6,6 +6,7 @@ opposite). Used-but-unregistered events get silently dropped by
 AlertDispatcher (logged-only, no Pushover/email/SMS), which was the
 v0.1.63 R1 Red-Team B2 finding.
 """
+
 from __future__ import annotations
 
 import pathlib

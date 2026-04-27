@@ -12,6 +12,7 @@ Covers the full lane lifecycle against a stubbed broker adapter:
     picks up the existing probe instead of submitting a duplicate
   * ``cancel_active`` cleans up on shutdown
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -57,7 +58,9 @@ class _StubAdapter:
         )
 
     async def get_order_status(
-        self, symbol: str, order_id: str,
+        self,
+        symbol: str,
+        order_id: str,
     ) -> OrderResult | None:
         _ = symbol
         self.status_calls.append(order_id)
@@ -94,7 +97,6 @@ def _runner(
 
 
 class TestReconcileOnlyMode:
-
     def test_no_active_order_no_submission(self, tmp_path: Path) -> None:
         adapter = _StubAdapter()
         runner = _runner(tmp_path, auto_submit=False, adapter=adapter)
@@ -106,15 +108,16 @@ class TestReconcileOnlyMode:
 
 
 class TestAutoSubmitLifecycle:
-
     def test_submits_single_probe_per_lane(self, tmp_path: Path) -> None:
         scripted = [
             OrderResult(order_id="srv-A", status=OrderStatus.OPEN, raw={}),
         ]
         adapter = _StubAdapter(scripted)
         runner = _runner(
-            tmp_path, lane="directional",
-            auto_submit=True, adapter=adapter,
+            tmp_path,
+            lane="directional",
+            auto_submit=True,
+            adapter=adapter,
         )
         snap = asyncio.run(runner.tick())
         assert snap["active_order_id"] == "srv-A"
@@ -133,9 +136,11 @@ class TestAutoSubmitLifecycle:
         assert req.client_order_id.startswith("btc-directional-tastytrade-")
 
     def test_grid_lane_uses_deeper_probe_price(self, tmp_path: Path) -> None:
-        adapter = _StubAdapter([
-            OrderResult(order_id="g1", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="g1", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner = _runner(tmp_path, lane="grid", auto_submit=True, adapter=adapter)
         asyncio.run(runner.tick())
         # Grid probe = anchor * 0.70 = 70000
@@ -146,8 +151,11 @@ class TestAutoSubmitLifecycle:
         scripted = [
             OrderResult(order_id="srv-B", status=OrderStatus.OPEN, raw={}),
             OrderResult(
-                order_id="srv-B", status=OrderStatus.FILLED,
-                filled_qty=1.0, avg_price=99_500.0, raw={},
+                order_id="srv-B",
+                status=OrderStatus.FILLED,
+                filled_qty=1.0,
+                avg_price=99_500.0,
+                raw={},
             ),
         ]
         adapter = _StubAdapter(scripted)
@@ -183,19 +191,22 @@ class TestAutoSubmitLifecycle:
 
 
 class TestStatePersistence:
-
     def test_second_runner_picks_up_existing_order(self, tmp_path: Path) -> None:
-        adapter1 = _StubAdapter([
-            OrderResult(order_id="srv-P", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter1 = _StubAdapter(
+            [
+                OrderResult(order_id="srv-P", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner1 = _runner(tmp_path, auto_submit=True, adapter=adapter1)
         asyncio.run(runner1.tick())
 
         # Fresh runner (worker restart) — should NOT submit a new probe
         # because the state file still reports srv-P as active.
-        adapter2 = _StubAdapter([
-            OrderResult(order_id="srv-P", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter2 = _StubAdapter(
+            [
+                OrderResult(order_id="srv-P", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner2 = _runner(tmp_path, auto_submit=True, adapter=adapter2)
         snap = asyncio.run(runner2.tick())
         # No new place_order call
@@ -206,11 +217,12 @@ class TestStatePersistence:
 
 
 class TestCancelOnShutdown:
-
     def test_cancel_clears_active(self, tmp_path: Path) -> None:
-        adapter = _StubAdapter([
-            OrderResult(order_id="srv-C", status=OrderStatus.OPEN, raw={}),
-        ])
+        adapter = _StubAdapter(
+            [
+                OrderResult(order_id="srv-C", status=OrderStatus.OPEN, raw={}),
+            ]
+        )
         runner = _runner(tmp_path, auto_submit=True, adapter=adapter)
         asyncio.run(runner.tick())
         assert runner.state.active_order_id == "srv-C"
@@ -224,10 +236,11 @@ class TestCancelOnShutdown:
 
 
 class TestLaneStateDefaults:
-
     def test_new_lane_state_empty(self) -> None:
         state = LaneState(
-            worker_id="x", broker="tastytrade", lane="grid",
+            worker_id="x",
+            broker="tastytrade",
+            lane="grid",
         )
         assert state.active_order_id is None
         assert state.active_order_status == "NONE"
@@ -237,9 +250,12 @@ class TestLaneStateDefaults:
         adapter = _StubAdapter()
         try:
             PaperLaneRunner(
-                worker_id="x", broker="tastytrade", lane="banana",
+                worker_id="x",
+                broker="tastytrade",
+                lane="banana",
                 adapter=adapter,
-                state_dir=tmp_path, ledger_path=tmp_path / "t.jsonl",
+                state_dir=tmp_path,
+                ledger_path=tmp_path / "t.jsonl",
             )
         except ValueError as exc:
             assert "unsupported lane" in str(exc)
@@ -249,7 +265,6 @@ class TestLaneStateDefaults:
 
 
 class TestRunOneTickWrapper:
-
     def test_wrapper_returns_snapshot(self, tmp_path: Path) -> None:
         adapter = _StubAdapter()
         runner = _runner(tmp_path, auto_submit=False, adapter=adapter)
@@ -262,27 +277,36 @@ class TestFillReconciliation:
     """v0.1.59 fill-callback hook: closes the broker-fill -> bot loop."""
 
     def test_fill_callback_fires_on_terminal_filled(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         received: list = []
         scripted = [
             OrderResult(order_id="srv-FC", status=OrderStatus.OPEN, raw={}),
             OrderResult(
-                order_id="srv-FC", status=OrderStatus.FILLED,
-                filled_qty=1.0, avg_price=98_500.0, raw={},
+                order_id="srv-FC",
+                status=OrderStatus.FILLED,
+                filled_qty=1.0,
+                avg_price=98_500.0,
+                raw={},
             ),
         ]
         adapter = _StubAdapter(scripted)
         runner = PaperLaneRunner(
-            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
-            symbol="BTCUSD", adapter=adapter,
+            worker_id="btc-grid-ibkr",
+            broker="ibkr",
+            lane="grid",
+            symbol="BTCUSD",
+            adapter=adapter,
             state_dir=tmp_path / "state",
             ledger_path=tmp_path / "trades.jsonl",
-            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            anchor_price=100_000.0,
+            probe_qty=1,
+            auto_submit=True,
             on_terminal_fill=received.append,
         )
-        asyncio.run(runner.tick())   # submit OPEN
-        asyncio.run(runner.tick())   # reconcile -> FILLED -> fires callback
+        asyncio.run(runner.tick())  # submit OPEN
+        asyncio.run(runner.tick())  # reconcile -> FILLED -> fires callback
 
         assert len(received) == 1
         fill = received[0]
@@ -292,7 +316,8 @@ class TestFillReconciliation:
         assert fill.price == 98_500.0
 
     def test_fill_callback_does_not_fire_on_rejected(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         received: list = []
         scripted = [
@@ -301,11 +326,16 @@ class TestFillReconciliation:
         ]
         adapter = _StubAdapter(scripted)
         runner = PaperLaneRunner(
-            worker_id="btc-directional-tastytrade", broker="tastytrade",
-            lane="directional", symbol="BTCUSD", adapter=adapter,
+            worker_id="btc-directional-tastytrade",
+            broker="tastytrade",
+            lane="directional",
+            symbol="BTCUSD",
+            adapter=adapter,
             state_dir=tmp_path / "state",
             ledger_path=tmp_path / "trades.jsonl",
-            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            anchor_price=100_000.0,
+            probe_qty=1,
+            auto_submit=True,
             on_terminal_fill=received.append,
         )
         asyncio.run(runner.tick())
@@ -314,33 +344,39 @@ class TestFillReconciliation:
         assert received == []
 
     def test_fills_ledger_written_on_terminal_filled(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         scripted = [
             OrderResult(order_id="srv-L", status=OrderStatus.OPEN, raw={}),
             OrderResult(
-                order_id="srv-L", status=OrderStatus.FILLED,
-                filled_qty=0.5, avg_price=97_250.0, raw={},
+                order_id="srv-L",
+                status=OrderStatus.FILLED,
+                filled_qty=0.5,
+                avg_price=97_250.0,
+                raw={},
             ),
         ]
         adapter = _StubAdapter(scripted)
         fills_path = tmp_path / "btc_paper_fills.jsonl"
         runner = PaperLaneRunner(
-            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
-            symbol="BTCUSD", adapter=adapter,
+            worker_id="btc-grid-ibkr",
+            broker="ibkr",
+            lane="grid",
+            symbol="BTCUSD",
+            adapter=adapter,
             state_dir=tmp_path / "state",
             ledger_path=tmp_path / "trades.jsonl",
             fills_ledger_path=fills_path,
-            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            anchor_price=100_000.0,
+            probe_qty=1,
+            auto_submit=True,
         )
         asyncio.run(runner.tick())
         asyncio.run(runner.tick())
 
         assert fills_path.exists()
-        lines = [
-            line for line in fills_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        lines = [line for line in fills_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         assert len(lines) == 1
         row = json.loads(lines[0])
         assert row["symbol"] == "BTCUSD"
@@ -350,7 +386,8 @@ class TestFillReconciliation:
         assert row["worker_id"] == "btc-grid-ibkr"
 
     def test_callback_exception_does_not_kill_lane(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         def _bad(_fill) -> None:  # type: ignore[no-untyped-def]
             msg = "bot blew up"
@@ -359,17 +396,25 @@ class TestFillReconciliation:
         scripted = [
             OrderResult(order_id="srv-X", status=OrderStatus.OPEN, raw={}),
             OrderResult(
-                order_id="srv-X", status=OrderStatus.FILLED,
-                filled_qty=1.0, avg_price=99_000.0, raw={},
+                order_id="srv-X",
+                status=OrderStatus.FILLED,
+                filled_qty=1.0,
+                avg_price=99_000.0,
+                raw={},
             ),
         ]
         adapter = _StubAdapter(scripted)
         runner = PaperLaneRunner(
-            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
-            symbol="BTCUSD", adapter=adapter,
+            worker_id="btc-grid-ibkr",
+            broker="ibkr",
+            lane="grid",
+            symbol="BTCUSD",
+            adapter=adapter,
             state_dir=tmp_path / "state",
             ledger_path=tmp_path / "trades.jsonl",
-            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            anchor_price=100_000.0,
+            probe_qty=1,
+            auto_submit=True,
             on_terminal_fill=_bad,
         )
         asyncio.run(runner.tick())
@@ -379,31 +424,43 @@ class TestFillReconciliation:
         assert snap["active_order_id"] is None
 
     def test_zero_filled_qty_no_callback_no_ledger(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         received: list = []
         # Edge case: status=FILLED but filled_qty=0 shouldn't emit
         scripted = [
             OrderResult(order_id="srv-Z", status=OrderStatus.OPEN, raw={}),
             OrderResult(
-                order_id="srv-Z", status=OrderStatus.FILLED,
-                filled_qty=0.0, avg_price=0.0, raw={},
+                order_id="srv-Z",
+                status=OrderStatus.FILLED,
+                filled_qty=0.0,
+                avg_price=0.0,
+                raw={},
             ),
         ]
         adapter = _StubAdapter(scripted)
         fills_path = tmp_path / "btc_paper_fills.jsonl"
         runner = PaperLaneRunner(
-            worker_id="btc-grid-ibkr", broker="ibkr", lane="grid",
-            symbol="BTCUSD", adapter=adapter,
+            worker_id="btc-grid-ibkr",
+            broker="ibkr",
+            lane="grid",
+            symbol="BTCUSD",
+            adapter=adapter,
             state_dir=tmp_path / "state",
             ledger_path=tmp_path / "trades.jsonl",
             fills_ledger_path=fills_path,
-            anchor_price=100_000.0, probe_qty=1, auto_submit=True,
+            anchor_price=100_000.0,
+            probe_qty=1,
+            auto_submit=True,
             on_terminal_fill=received.append,
         )
         asyncio.run(runner.tick())
         asyncio.run(runner.tick())
         assert received == []
-        assert not fills_path.exists() or not fills_path.read_text(
-            encoding="utf-8",
-        ).strip()
+        assert (
+            not fills_path.exists()
+            or not fills_path.read_text(
+                encoding="utf-8",
+            ).strip()
+        )

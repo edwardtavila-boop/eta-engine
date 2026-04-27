@@ -19,6 +19,7 @@ This module provides a lightweight DAG-based causal framework:
 Pure stdlib + pydantic. Not a full-featured causal library -- just
 enough to answer "which direction is this gate moving P&L?"
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,10 +27,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CausalNode(BaseModel):
     """One variable in the DAG."""
+
     model_config = ConfigDict(frozen=True)
 
-    name:   str = Field(min_length=1)
-    kind:   str = Field(pattern="^(binary|categorical|continuous)$")
+    name: str = Field(min_length=1)
+    kind: str = Field(pattern="^(binary|categorical|continuous)$")
     parents: list[str] = Field(default_factory=list)
 
 
@@ -55,22 +57,27 @@ class CausalDAG:
 
 class InterventionResult(BaseModel):
     """Result of a do(X=x) operation on the DAG."""
+
     model_config = ConfigDict(frozen=True)
 
     treatment_variable: str
-    treatment_value:    float
-    outcome_variable:   str
-    sample_n:           int = Field(ge=0)
-    treated_n:          int = Field(ge=0)
-    control_n:          int = Field(ge=0)
-    mean_treated:       float
-    mean_control:       float
-    ate:                float  # average treatment effect = E[Y|do(X=x)] - E[Y|do(X=x')]
-    note:               str
+    treatment_value: float
+    outcome_variable: str
+    sample_n: int = Field(ge=0)
+    treated_n: int = Field(ge=0)
+    control_n: int = Field(ge=0)
+    mean_treated: float
+    mean_control: float
+    ate: float  # average treatment effect = E[Y|do(X=x)] - E[Y|do(X=x')]
+    note: str
 
 
 def propensity_match(
-    dag: CausalDAG, *, treatment: str, outcome: str, treatment_value: float,
+    dag: CausalDAG,
+    *,
+    treatment: str,
+    outcome: str,
+    treatment_value: float,
     confounders: list[str] | None = None,
     tolerance: float = 0.1,
 ) -> InterventionResult:
@@ -105,7 +112,7 @@ def propensity_match(
                 d += (t[feat] - c[feat]) ** 2
             if not ok:
                 continue
-            d = d ** 0.5
+            d = d**0.5
             if d < best_d:
                 best_d = d
                 best = c
@@ -145,7 +152,8 @@ def propensity_match(
 
 def counterfactual_denied(
     dag: CausalDAG,
-    *, confounders: list[str] | None = None,
+    *,
+    confounders: list[str] | None = None,
 ) -> InterventionResult:
     """Convenience: what's the P&L ATE of DENIED verdicts?
 

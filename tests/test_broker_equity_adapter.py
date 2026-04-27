@@ -31,6 +31,7 @@ TestRouterBackedBrokerEquityAdapter
   fallback under the broker dormancy mandate). Verifies failover
   semantics, exception swallowing, and protocol fit.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -172,7 +173,9 @@ class TestMakePollerFor:
 
     def test_forwards_refresh_and_stale_parameters(self) -> None:
         poller = make_poller_for(
-            _FixedAdapter(), refresh_s=12.5, stale_after_s=99.0,
+            _FixedAdapter(),
+            refresh_s=12.5,
+            stale_after_s=99.0,
         )
         # poller stores them privately -- verify via the dataclass-ish attrs
         assert poller._refresh_s == 12.5  # noqa: SLF001
@@ -492,7 +495,8 @@ class TestSafeBrokerEquityAdapter:
 
     def test_custom_name_override(self) -> None:
         wrapped = SafeBrokerEquityAdapter(
-            _FixedAdapter(name="ibkr"), name="my-custom",
+            _FixedAdapter(name="ibkr"),
+            name="my-custom",
         )
         assert wrapped.name == "my-custom"
 
@@ -535,6 +539,7 @@ class TestSafeBrokerEquityAdapter:
         """Composition smoke test: Safe(RouterBacked(router)) works."""
         ibkr = _FakeFuturesVenue("ibkr", equity=42_000.0)
         from eta_engine.venues.router import SmartRouter
+
         router = SmartRouter(ibkr=ibkr, preferred_futures_venue="ibkr")
         inner = RouterBackedBrokerEquityAdapter(router)
         wrapped = SafeBrokerEquityAdapter(inner)

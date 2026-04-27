@@ -35,6 +35,7 @@ What this test does NOT enforce
   looking entries (e.g. ``bot_entry`` is in YAML but no code path
   emits it yet). Removing them silently would break the next hookup.
 """
+
 from __future__ import annotations
 
 import re
@@ -87,10 +88,7 @@ def test_every_dispatched_event_is_registered_in_alerts_yaml() -> None:
         "from configs/alerts.yaml -- AlertDispatcher will silently drop "
         "them and the operator will get NO Pushover / email / SMS. "
         f"Add a routing.events entry for each: {missing}.\n"
-        + "\n".join(
-            f"  {ev:<30s} -> {', '.join(p.relative_to(ROOT).as_posix() for p in called[ev])}"
-            for ev in missing
-        )
+        + "\n".join(f"  {ev:<30s} -> {', '.join(p.relative_to(ROOT).as_posix() for p in called[ev])}" for ev in missing)
     )
 
 

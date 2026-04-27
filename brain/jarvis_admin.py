@@ -45,6 +45,7 @@ Public API
   * ``JarvisAdmin``         -- the authority class itself
   * ``evaluate_request``    -- pure policy function (exposed for testing)
 """
+
 from __future__ import annotations
 
 import json
@@ -82,41 +83,42 @@ class SubsystemId(StrEnum):
 
     Keep these stable -- they end up as labels in the audit log.
     """
+
     # eta_engine bot fleet (portfolio)
     # L1 / equity index
-    BOT_MNQ             = "bot.mnq"
-    BOT_NQ              = "bot.nq"
+    BOT_MNQ = "bot.mnq"
+    BOT_NQ = "bot.nq"
     # L2 / BTC hybrid (grid-in-range + directional-on-trend)
-    BOT_BTC_HYBRID      = "bot.btc_hybrid"
+    BOT_BTC_HYBRID = "bot.btc_hybrid"
     # L3 / multi-perp alpha desk  (BTC, ETH, SOL, XRP)
-    BOT_BTC_PERP        = "bot.btc_perp"
-    BOT_ETH_PERP        = "bot.eth_perp"
-    BOT_SOL_PERP        = "bot.sol_perp"
-    BOT_XRP_PERP        = "bot.xrp_perp"
+    BOT_BTC_PERP = "bot.btc_perp"
+    BOT_ETH_PERP = "bot.eth_perp"
+    BOT_SOL_PERP = "bot.sol_perp"
+    BOT_XRP_PERP = "bot.xrp_perp"
     # L4 / yield infrastructure -- aggregator that submits per-protocol
     # PROTOCOL_EXPOSURE requests; specific protocol disambiguated in payload.
-    BOT_YIELD_VAULT     = "bot.yield_vault"
+    BOT_YIELD_VAULT = "bot.yield_vault"
     # legacy / seed-capital misc crypto bot
-    BOT_CRYPTO_SEED     = "bot.crypto_seed"
+    BOT_CRYPTO_SEED = "bot.crypto_seed"
 
     # mnq_bot v3 framework
-    FRAMEWORK_AUTOPILOT        = "framework.autopilot"
-    FRAMEWORK_FIRM_ENGINE      = "framework.firm_engine"
+    FRAMEWORK_AUTOPILOT = "framework.autopilot"
+    FRAMEWORK_FIRM_ENGINE = "framework.firm_engine"
     FRAMEWORK_COURT_OF_APPEALS = "framework.court_of_appeals"
-    FRAMEWORK_CONFLUENCE       = "framework.confluence_scorer"
-    FRAMEWORK_WEBHOOK          = "framework.webhook"
-    FRAMEWORK_META_ORCH        = "framework.meta_orchestrator"
+    FRAMEWORK_CONFLUENCE = "framework.confluence_scorer"
+    FRAMEWORK_WEBHOOK = "framework.webhook"
+    FRAMEWORK_META_ORCH = "framework.meta_orchestrator"
 
     # the_firm 6-agent adversarial system
-    AGENT_QUANT    = "firm.quant"
+    AGENT_QUANT = "firm.quant"
     AGENT_RED_TEAM = "firm.red_team"
-    AGENT_RISK     = "firm.risk"
-    AGENT_MACRO    = "firm.macro"
-    AGENT_MICRO    = "firm.micro"
-    AGENT_PM       = "firm.pm"
+    AGENT_RISK = "firm.risk"
+    AGENT_MACRO = "firm.macro"
+    AGENT_MICRO = "firm.micro"
+    AGENT_PM = "firm.pm"
 
     # gate + watchdog + telemetry
-    GATE_CHAIN        = "gates.chain"
+    GATE_CHAIN = "gates.chain"
     AUTOPILOT_WATCHDOG = "watchdog.autopilot"
 
     # operator (still must report when exercising override authority)
@@ -125,15 +127,17 @@ class SubsystemId(StrEnum):
 
 # Convenience: bots that trade 24/7 crypto markets and thus need the
 # overnight whitelist. Grouping them here so policy code stays readable.
-CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset({
-    SubsystemId.BOT_CRYPTO_SEED,
-    SubsystemId.BOT_BTC_HYBRID,
-    SubsystemId.BOT_BTC_PERP,
-    SubsystemId.BOT_ETH_PERP,
-    SubsystemId.BOT_SOL_PERP,
-    SubsystemId.BOT_XRP_PERP,
-    SubsystemId.BOT_YIELD_VAULT,
-})
+CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset(
+    {
+        SubsystemId.BOT_CRYPTO_SEED,
+        SubsystemId.BOT_BTC_HYBRID,
+        SubsystemId.BOT_BTC_PERP,
+        SubsystemId.BOT_ETH_PERP,
+        SubsystemId.BOT_SOL_PERP,
+        SubsystemId.BOT_XRP_PERP,
+        SubsystemId.BOT_YIELD_VAULT,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -143,35 +147,36 @@ CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset({
 
 class ActionType(StrEnum):
     """Kind of autonomous action a subsystem is requesting approval for."""
+
     # signal / decision lifecycle
-    SIGNAL_EMIT       = "SIGNAL_EMIT"       # strategy produces a signal
+    SIGNAL_EMIT = "SIGNAL_EMIT"  # strategy produces a signal
     # order lifecycle
-    ORDER_PLACE       = "ORDER_PLACE"
-    ORDER_MODIFY      = "ORDER_MODIFY"      # move stop, change size, etc.
-    ORDER_CANCEL      = "ORDER_CANCEL"
-    POSITION_FLATTEN  = "POSITION_FLATTEN"  # emergency exit one position
+    ORDER_PLACE = "ORDER_PLACE"
+    ORDER_MODIFY = "ORDER_MODIFY"  # move stop, change size, etc.
+    ORDER_CANCEL = "ORDER_CANCEL"
+    POSITION_FLATTEN = "POSITION_FLATTEN"  # emergency exit one position
     # system-level
-    KILL_SWITCH_TRIP  = "KILL_SWITCH_TRIP"
-    KILL_SWITCH_RESET = "KILL_SWITCH_RESET" # operator only
-    AUTOPILOT_RESUME  = "AUTOPILOT_RESUME"
-    GATE_OVERRIDE     = "GATE_OVERRIDE"     # operator overriding a blocking gate
+    KILL_SWITCH_TRIP = "KILL_SWITCH_TRIP"
+    KILL_SWITCH_RESET = "KILL_SWITCH_RESET"  # operator only
+    AUTOPILOT_RESUME = "AUTOPILOT_RESUME"
+    GATE_OVERRIDE = "GATE_OVERRIDE"  # operator overriding a blocking gate
     # strategy / portfolio lifecycle
-    STRATEGY_DEPLOY   = "STRATEGY_DEPLOY"   # promote paper -> live
-    STRATEGY_RETIRE   = "STRATEGY_RETIRE"
-    PARAMETER_CHANGE  = "PARAMETER_CHANGE"  # tune size/stop/target
-    CAPITAL_ALLOCATE  = "CAPITAL_ALLOCATE"  # move capital between bots
+    STRATEGY_DEPLOY = "STRATEGY_DEPLOY"  # promote paper -> live
+    STRATEGY_RETIRE = "STRATEGY_RETIRE"
+    PARAMETER_CHANGE = "PARAMETER_CHANGE"  # tune size/stop/target
+    CAPITAL_ALLOCATE = "CAPITAL_ALLOCATE"  # move capital between bots
     # L4 / yield-infrastructure actions
-    PROTOCOL_EXPOSURE = "PROTOCOL_EXPOSURE" # open/increase a DeFi position
-    REBALANCE         = "REBALANCE"         # periodic ledger reconciliation
+    PROTOCOL_EXPOSURE = "PROTOCOL_EXPOSURE"  # open/increase a DeFi position
+    REBALANCE = "REBALANCE"  # periodic ledger reconciliation
     # LLM routing (not a trading action -- a cost-optimization decision)
-    LLM_INVOCATION    = "LLM_INVOCATION"    # which model tier for this task?
+    LLM_INVOCATION = "LLM_INVOCATION"  # which model tier for this task?
 
 
 class Verdict(StrEnum):
-    APPROVED    = "APPROVED"
-    CONDITIONAL = "CONDITIONAL"   # approved WITH conditions (size cap, etc.)
-    DENIED      = "DENIED"
-    DEFERRED    = "DEFERRED"      # try again later (e.g. wait for macro event)
+    APPROVED = "APPROVED"
+    CONDITIONAL = "CONDITIONAL"  # approved WITH conditions (size cap, etc.)
+    DENIED = "DENIED"
+    DEFERRED = "DEFERRED"  # try again later (e.g. wait for macro event)
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +190,7 @@ def _new_request_id() -> str:
 
 class ActionRequest(BaseModel):
     """A subsystem asking Jarvis for permission to take an action."""
+
     model_config = ConfigDict(frozen=False)  # allow request_id default factory
 
     request_id: str = Field(default_factory=_new_request_id, min_length=1)
@@ -196,14 +202,14 @@ class ActionRequest(BaseModel):
     )
     rationale: str = Field(
         default="",
-        description="One-sentence explanation of why the subsystem wants "
-                    "this action. Logged for post-hoc review.",
+        description="One-sentence explanation of why the subsystem wants this action. Logged for post-hoc review.",
     )
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ActionResponse(BaseModel):
     """Jarvis's verdict on an ActionRequest."""
+
     request_id: str = Field(min_length=1)
     verdict: Verdict
     reason: str = Field(min_length=1)
@@ -218,15 +224,16 @@ class ActionResponse(BaseModel):
     session_phase: SessionPhase
     binding_constraint: str = ""
     size_cap_mult: float | None = Field(
-        default=None, ge=0.0, le=1.0,
+        default=None,
+        ge=0.0,
+        le=1.0,
         description="Max size multiplier approved (None = no explicit cap).",
     )
     # LLM routing decision (populated only for ActionType.LLM_INVOCATION).
     # Backward-compatible: existing trading-action callers will see None.
     selected_model: ModelTier | None = Field(
         default=None,
-        description="Model tier chosen by model_policy for this task. "
-                    "Only set when action == LLM_INVOCATION.",
+        description="Model tier chosen by model_policy for this task. Only set when action == LLM_INVOCATION.",
     )
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -237,29 +244,35 @@ class ActionResponse(BaseModel):
 
 
 # Actions that are ALWAYS permitted (protective / exit-only).
-_EXIT_ONLY_ACTIONS: frozenset[ActionType] = frozenset({
-    ActionType.ORDER_CANCEL,
-    ActionType.POSITION_FLATTEN,
-    ActionType.KILL_SWITCH_TRIP,
-})
+_EXIT_ONLY_ACTIONS: frozenset[ActionType] = frozenset(
+    {
+        ActionType.ORDER_CANCEL,
+        ActionType.POSITION_FLATTEN,
+        ActionType.KILL_SWITCH_TRIP,
+    }
+)
 
 # Actions that grow risk (net-new exposure).
-_RISK_ADDING_ACTIONS: frozenset[ActionType] = frozenset({
-    ActionType.SIGNAL_EMIT,
-    ActionType.ORDER_PLACE,
-    ActionType.STRATEGY_DEPLOY,
-    ActionType.CAPITAL_ALLOCATE,
-    # L4 position opens grow principal-loss exposure (slashing, depeg,
-    # smart-contract) so they gate like trading entries.
-    ActionType.PROTOCOL_EXPOSURE,
-})
+_RISK_ADDING_ACTIONS: frozenset[ActionType] = frozenset(
+    {
+        ActionType.SIGNAL_EMIT,
+        ActionType.ORDER_PLACE,
+        ActionType.STRATEGY_DEPLOY,
+        ActionType.CAPITAL_ALLOCATE,
+        # L4 position opens grow principal-loss exposure (slashing, depeg,
+        # smart-contract) so they gate like trading entries.
+        ActionType.PROTOCOL_EXPOSURE,
+    }
+)
 
 # Operator-only -- no bot may trigger these.
-_OPERATOR_ONLY: frozenset[ActionType] = frozenset({
-    ActionType.KILL_SWITCH_RESET,
-    ActionType.GATE_OVERRIDE,
-    ActionType.AUTOPILOT_RESUME,
-})
+_OPERATOR_ONLY: frozenset[ActionType] = frozenset(
+    {
+        ActionType.KILL_SWITCH_RESET,
+        ActionType.GATE_OVERRIDE,
+        ActionType.AUTOPILOT_RESUME,
+    }
+)
 
 
 def evaluate_llm_request(req: ActionRequest) -> ActionResponse:
@@ -296,10 +309,7 @@ def evaluate_llm_request(req: ActionRequest) -> ActionResponse:
         return ActionResponse(
             request_id=req.request_id,
             verdict=Verdict.CONDITIONAL,
-            reason=(
-                f"unknown task_category={raw_category!r}; "
-                f"defaulting to {fallback.tier.value}"
-            ),
+            reason=(f"unknown task_category={raw_category!r}; defaulting to {fallback.tier.value}"),
             reason_code="llm_unknown_category_default",
             conditions=[f"model={fallback.tier.value}"],
             jarvis_action=ActionSuggestion.TRADE,
@@ -346,6 +356,7 @@ def evaluate_request(
          * CLOSE refuses risk-adding entries in last 15 minutes.
       8. TRADE tier -> APPROVED (with size_cap from sizing_hint).
     """
+
     def _build(
         verdict: Verdict,
         reason: str,
@@ -361,14 +372,9 @@ def evaluate_request(
             reason_code=reason_code,
             conditions=conditions or [],
             jarvis_action=ctx.suggestion.action,
-            stress_composite=(
-                ctx.stress_score.composite if ctx.stress_score else 0.0
-            ),
+            stress_composite=(ctx.stress_score.composite if ctx.stress_score else 0.0),
             session_phase=(ctx.session_phase or SessionPhase.OVERNIGHT),
-            binding_constraint=(
-                ctx.stress_score.binding_constraint
-                if ctx.stress_score else ""
-            ),
+            binding_constraint=(ctx.stress_score.binding_constraint if ctx.stress_score else ""),
             size_cap_mult=size_cap_mult,
         )
 
@@ -378,19 +384,13 @@ def evaluate_request(
     if req.action == ActionType.LLM_INVOCATION:
         return evaluate_llm_request(req)
 
-    live_size = (
-        ctx.sizing_hint.size_mult if ctx.sizing_hint is not None else 1.0
-    )
+    live_size = ctx.sizing_hint.size_mult if ctx.sizing_hint is not None else 1.0
 
     # 1. Operator-only actions -- non-operators are refused.
-    if (
-        req.action in _OPERATOR_ONLY
-        and req.subsystem != SubsystemId.OPERATOR
-    ):
+    if req.action in _OPERATOR_ONLY and req.subsystem != SubsystemId.OPERATOR:
         return _build(
             Verdict.DENIED,
-            f"{req.action.value} is operator-only; "
-            f"{req.subsystem.value} not authorized",
+            f"{req.action.value} is operator-only; {req.subsystem.value} not authorized",
             reason_code="operator_only_action",
         )
 
@@ -462,8 +462,7 @@ def evaluate_request(
             if not req.payload.get("review_acknowledged"):
                 return _build(
                     Verdict.DEFERRED,
-                    "REVIEW tier -- must set "
-                    "payload['review_acknowledged']=True first",
+                    "REVIEW tier -- must set payload['review_acknowledged']=True first",
                     reason_code="review_ack_required",
                 )
             cap = min(live_size, 0.75)
@@ -486,25 +485,20 @@ def evaluate_request(
     # L4 yield vault, legacy seed) plus the operator are whitelisted for
     # OVERNIGHT if they pass payload['overnight_explicit']=True. Everything
     # else -- notably the US-index futures bots -- must sit out.
-    overnight_whitelist: frozenset[SubsystemId] = (
-        CRYPTO_24_7_BOTS | {SubsystemId.OPERATOR}
-    )
+    overnight_whitelist: frozenset[SubsystemId] = CRYPTO_24_7_BOTS | {SubsystemId.OPERATOR}
     if (
         session == SessionPhase.OVERNIGHT
         and req.action in _RISK_ADDING_ACTIONS
-        and (
-            req.subsystem not in overnight_whitelist
-            or not req.payload.get("overnight_explicit")
-        )
+        and (req.subsystem not in overnight_whitelist or not req.payload.get("overnight_explicit"))
     ):
         return _build(
             Verdict.DENIED,
-            "OVERNIGHT session refused for non-whitelisted subsystem "
-            "(futures liquidity thin, wide spreads)",
+            "OVERNIGHT session refused for non-whitelisted subsystem (futures liquidity thin, wide spreads)",
             reason_code="overnight_refused",
         )
     if session == SessionPhase.CLOSE and req.action in {
-        ActionType.ORDER_PLACE, ActionType.SIGNAL_EMIT,
+        ActionType.ORDER_PLACE,
+        ActionType.SIGNAL_EMIT,
     }:
         return _build(
             Verdict.DENIED,
@@ -585,23 +579,17 @@ class JarvisAdmin:
             "request": req.model_dump(mode="json"),
             "response": resp.model_dump(mode="json"),
             "jarvis_action": ctx.suggestion.action.value,
-            "stress_composite": (
-                ctx.stress_score.composite if ctx.stress_score else None
-            ),
-            "session_phase": (
-                ctx.session_phase.value if ctx.session_phase else None
-            ),
+            "stress_composite": (ctx.stress_score.composite if ctx.stress_score else None),
+            "session_phase": (ctx.session_phase.value if ctx.session_phase else None),
             "explanation": ctx.explanation,
             "market_context": ctx.market_context,
             "market_context_summary": (
-                ctx.market_context_summary
-                or build_market_context_summary(ctx.model_dump(mode="json"))
+                ctx.market_context_summary or build_market_context_summary(ctx.model_dump(mode="json"))
             ),
             "market_context_summary_text": (
                 ctx.market_context_summary_text
                 or format_market_context_summary(
-                    ctx.market_context_summary
-                    or build_market_context_summary(ctx.model_dump(mode="json"))
+                    ctx.market_context_summary or build_market_context_summary(ctx.model_dump(mode="json"))
                 )
             ),
         }

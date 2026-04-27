@@ -110,7 +110,9 @@ class BybitWSCapture:
                 self._retry_count += 1
                 log.warning(
                     "bybit ws retry %d/%d after %.1fs",
-                    self._retry_count, self.max_retries, delay,
+                    self._retry_count,
+                    self.max_retries,
+                    delay,
                 )
                 await asyncio.sleep(delay)
                 delay = min(delay * 2.0, 60.0)
@@ -149,8 +151,7 @@ class BybitWSCapture:
             ),
             timeout=_WS_OPEN_TIMEOUT_S,
         )
-        log.info("bybit ws connected url=%s topics=%d symbols=%d",
-                 self.url, len(self.topics), len(self.symbols))
+        log.info("bybit ws connected url=%s topics=%d symbols=%d", self.url, len(self.topics), len(self.symbols))
 
     async def _subscribe(self) -> None:
         args = [f"{topic}.{sym}" for topic in self.topics for sym in self.symbols]

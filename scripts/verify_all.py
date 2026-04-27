@@ -9,6 +9,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import sys
 from pathlib import Path
@@ -74,49 +75,38 @@ def test_bots_import() -> None:
 
 
 def test_funnel_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.funnel")
-    except ImportError:
-        pass
 
 
 def test_brain_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.brain")
-    except ImportError:
-        pass
 
 
 def test_staking_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.staking")
-    except ImportError:
-        pass
 
 
 def test_features_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.features")
-    except ImportError:
-        pass
 
 
 def test_venues_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.venues")
-    except ImportError:
-        pass
 
 
 def test_backtest_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.backtest")
-    except ImportError:
-        pass
 
 
 def test_funnel_orchestrator_flow() -> None:
     from eta_engine.funnel import FunnelOrchestrator
+
     assert FunnelOrchestrator is not None
 
 
@@ -164,16 +154,15 @@ def test_secrets_manager() -> None:
 
 def test_data_package() -> None:
     from eta_engine.data import (
-        DataSource,
         DatasetManifest,
+        DataSource,
         ParquetLoader,
         SlippageModel,
         detect_gaps,
     )
 
     m = SlippageModel()
-    assert m.estimate("ETHUSDT", "BUY", qty=0.01, price=3500.0,
-                      urgency="AGGRESSIVE") > 0.0
+    assert m.estimate("ETHUSDT", "BUY", qty=0.01, price=3500.0, urgency="AGGRESSIVE") > 0.0
     manifest = ParquetLoader().scan_manifest(Path("/tmp/nonexistent_dir"))
     assert isinstance(manifest, DatasetManifest)
     assert DataSource.DATABENTO.value == "DATABENTO"
@@ -198,7 +187,10 @@ def test_tax_package() -> None:
     calc = CostBasisCalculator(method="FIFO")
     calc.add_buy("ETH", 1.0, 2000.0, datetime(2025, 1, 1, tzinfo=UTC))
     evs = calc.process_sell(
-        "ETH", 1.0, 3000.0, datetime(2025, 6, 1, tzinfo=UTC),
+        "ETH",
+        1.0,
+        3000.0,
+        datetime(2025, 6, 1, tzinfo=UTC),
         account_tier=AccountTier.US,
         instrument_type=InstrumentType.CRYPTO_SPOT,
     )
@@ -217,25 +209,30 @@ def test_walk_forward_engine() -> None:
     )
     from eta_engine.features.pipeline import FeaturePipeline
 
-    dsr = compute_dsr(sharpe=1.5, n_trades=200, skew=0.0,
-                      kurtosis=3.0, n_trials=10)
+    dsr = compute_dsr(sharpe=1.5, n_trades=200, skew=0.0, kurtosis=3.0, n_trials=10)
     assert 0.0 <= dsr <= 1.0
 
     bars = BarReplay.synthetic_bars(
-        n=4 * 24 * 12, drift=0.0005, vol=0.004, seed=1,
-        start=datetime(2025, 1, 1, tzinfo=UTC), interval_minutes=15,
+        n=4 * 24 * 12,
+        drift=0.0005,
+        vol=0.004,
+        seed=1,
+        start=datetime(2025, 1, 1, tzinfo=UTC),
+        interval_minutes=15,
     )
     cfg = BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=bars[0].symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=7.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=bars[0].symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=7.0,
         max_trades_per_day=10,
     )
     res = WalkForwardEngine().run(
-        bars=bars, pipeline=FeaturePipeline.default(),
-        config=WalkForwardConfig(window_days=4, step_days=2,
-                                 anchored=False, oos_fraction=0.3,
-                                 min_trades_per_window=1),
+        bars=bars,
+        pipeline=FeaturePipeline.default(),
+        config=WalkForwardConfig(window_days=4, step_days=2, anchored=False, oos_fraction=0.3, min_trades_per_window=1),
         base_backtest_config=cfg,
     )
     assert isinstance(res.deflated_sharpe, float)

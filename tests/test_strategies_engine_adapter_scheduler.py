@@ -19,6 +19,7 @@ tests exercise the new wiring:
   - End-to-end: after enough bars, only passing strategies from the
     staged qualifier see the router.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -128,6 +129,7 @@ def _make_registry(
     )
     allowed_set = set(allowed)
     registry: dict[StrategyId, object] = {}
+
     def _make(target: StrategyId) -> object:
         def fn(bars: list[Bar], ctx: object) -> StrategySignal:
             calls.append(target)
@@ -147,6 +149,7 @@ def _make_registry(
                 side=Side.FLAT,
                 rationale_tags=("noop",),
             )
+
         return fn
 
     for sid in all_sids:
@@ -165,7 +168,9 @@ class TestSchedulerTicksBeforeDispatch:
         order: list[str] = []
 
         def qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             order.append("qualifier")
             return _report(asset, (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT, True))
@@ -173,12 +178,15 @@ class TestSchedulerTicksBeforeDispatch:
         registry, _ = _make_registry(StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT)
         # wrap every registry fn so it appends "dispatch" to order
         for sid, fn in list(registry.items()):
+
             def _wrap(
-                original: object, target: StrategyId = sid,
+                original: object,
+                target: StrategyId = sid,
             ) -> object:
                 def probe(bars: list[Bar], ctx: object) -> StrategySignal:
                     order.append(f"dispatch:{target.value}")
                     return original(bars, ctx)  # type: ignore[misc,no-any-return]
+
                 return probe
 
             registry[sid] = _wrap(fn)
@@ -207,7 +215,9 @@ class TestSchedulerTicksBeforeDispatch:
         calls = {"n": 0}
 
         def qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             calls["n"] += 1
             return _report(asset, (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT, True))
@@ -329,7 +339,9 @@ class TestEffectiveEligibility:
 class TestFailureContainment:
     def test_qualifier_exception_does_not_break_push_bar(self) -> None:
         def bad_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             msg = "qualifier blew up"
             raise RuntimeError(msg)
@@ -357,8 +369,11 @@ class TestFailureContainment:
 
     def test_scheduler_failure_falls_back_to_default(self) -> None:
         """With no static and scheduler broken, dispatch uses DEFAULT_ELIGIBILITY."""
+
         def bad_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             msg = "boom"
             raise RuntimeError(msg)
@@ -397,7 +412,9 @@ class TestDecisionSinkCooperation:
         sink = _Sink()
 
         def qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _report(asset, (StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT, True))
 
@@ -430,7 +447,9 @@ class TestEndToEndLiveLoop:
     def test_only_passing_strategies_are_dispatched(self) -> None:
         # Qualifier passes LSD + OB, fails FVG + MTF.
         def qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _report(
                 asset,
@@ -470,8 +489,11 @@ class TestEndToEndLiveLoop:
 
     def test_static_override_takes_precedence_over_scheduler(self) -> None:
         """Static eligibility survives even when scheduler disagrees."""
+
         def qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _report(
                 asset,
@@ -496,7 +518,5 @@ class TestEndToEndLiveLoop:
         adapter.push_bar(_bar_dict(1))
         assert adapter.last_decision is not None
         # Static override beats scheduler: FVG is dispatched, not LSD/OB
-        assert adapter.last_decision.eligible == (
-            StrategyId.FVG_FILL_CONFLUENCE,
-        )
+        assert adapter.last_decision.eligible == (StrategyId.FVG_FILL_CONFLUENCE,)
         assert StrategyId.FVG_FILL_CONFLUENCE in calls

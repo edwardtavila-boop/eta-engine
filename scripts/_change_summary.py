@@ -28,6 +28,7 @@ pick the most recent file's commit SHA.
 Output is plain markdown to stdout. Pipe to clipboard or paste
 straight into the auto-bump scaffold's TODO slots.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,7 +46,11 @@ BUMP_NAME_RE = re.compile(r"^_bump_roadmap_v(\d+)_(\d+)_(\d+)\.py$")
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, cwd=str(ROOT), capture_output=True, text=True, check=False,
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -128,7 +133,10 @@ def _by_dir(numstat: list[tuple[int, int, str]]) -> dict[str, dict[str, int]]:
 
 
 def _render_markdown(
-    since: str, to: str, subjects: list[str], numstat: list[tuple[int, int, str]],
+    since: str,
+    to: str,
+    subjects: list[str],
+    numstat: list[tuple[int, int, str]],
 ) -> str:
     if not subjects:
         return f"# Change summary {since}..{to}\n\n(no commits in range)\n"
@@ -159,31 +167,35 @@ def _render_markdown(
     lines.extend(["", "## Commit log", ""])
     for s in subjects:
         lines.append(f"- {s}")
-    lines.extend([
-        "",
-        "## Suggested narrative slots",
-        "",
-        "**Bundle name (TODO):** `<short_slug>` -- one-line summary of what shipped",
-        "",
-        "**Theme (3-5 lines, TODO):** what was the prior state, what was the gap,",
-        "what does this bundle add, why now?",
-        "",
-        "**Why it matters (TODO):** how does this advance the founder directive,",
-        "the live trading loop, or the next phase?",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Suggested narrative slots",
+            "",
+            "**Bundle name (TODO):** `<short_slug>` -- one-line summary of what shipped",
+            "",
+            "**Theme (3-5 lines, TODO):** what was the prior state, what was the gap,",
+            "what does this bundle add, why now?",
+            "",
+            "**Why it matters (TODO):** how does this advance the founder directive,",
+            "the live trading loop, or the next phase?",
+            "",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument(
-        "--since", default=None,
+        "--since",
+        default=None,
         help="git ref to compare from (default: SHA of last _bump_roadmap_*.py)",
     )
     p.add_argument("--to", default="HEAD", help="git ref to compare to (default HEAD)")
     p.add_argument(
-        "--markdown", action="store_true",
+        "--markdown",
+        action="store_true",
         help="render markdown (default: plain text key=value)",
     )
     args = p.parse_args(argv)

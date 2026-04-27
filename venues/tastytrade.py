@@ -52,20 +52,20 @@ TASTY_HTTP_TIMEOUT_S = 8.0
 # the cert API reports; the right is the canonical Apex enum.
 # ---------------------------------------------------------------------------
 _TASTY_STATUS_MAP: dict[str, OrderStatus] = {
-    "filled":         OrderStatus.FILLED,
+    "filled": OrderStatus.FILLED,
     "partial filled": OrderStatus.PARTIAL,
     "partially filled": OrderStatus.PARTIAL,
-    "partial":        OrderStatus.PARTIAL,
-    "rejected":       OrderStatus.REJECTED,
-    "cancelled":      OrderStatus.REJECTED,
-    "canceled":       OrderStatus.REJECTED,
-    "expired":        OrderStatus.REJECTED,
-    "routed":         OrderStatus.OPEN,
-    "received":       OrderStatus.OPEN,
-    "live":           OrderStatus.OPEN,
-    "in flight":      OrderStatus.OPEN,
-    "replaced":       OrderStatus.OPEN,
-    "contingent":     OrderStatus.OPEN,
+    "partial": OrderStatus.PARTIAL,
+    "rejected": OrderStatus.REJECTED,
+    "cancelled": OrderStatus.REJECTED,
+    "canceled": OrderStatus.REJECTED,
+    "expired": OrderStatus.REJECTED,
+    "routed": OrderStatus.OPEN,
+    "received": OrderStatus.OPEN,
+    "live": OrderStatus.OPEN,
+    "in flight": OrderStatus.OPEN,
+    "replaced": OrderStatus.OPEN,
+    "contingent": OrderStatus.OPEN,
 }
 
 
@@ -342,11 +342,7 @@ class TastytradeVenue(VenueBase):
                 },
             ],
         }
-        payload["client-order-id"] = (
-            client_order_id
-            or request.client_order_id
-            or self.idempotency_key(request)
-        )
+        payload["client-order-id"] = client_order_id or request.client_order_id or self.idempotency_key(request)
         if request.price is not None:
             payload["price"] = str(request.price)
         if order_type != "Market":
@@ -387,7 +383,8 @@ class TastytradeVenue(VenueBase):
         if resp.status_code >= 400:
             logger.info(
                 "tastytrade: order POST rejected status=%d body=%s",
-                resp.status_code, resp.text[:200],
+                resp.status_code,
+                resp.text[:200],
             )
             return None
         try:
@@ -413,7 +410,9 @@ class TastytradeVenue(VenueBase):
         if resp.status_code >= 400:
             logger.info(
                 "tastytrade: GET %s returned %d body=%s",
-                path, resp.status_code, resp.text[:200],
+                path,
+                resp.status_code,
+                resp.text[:200],
             )
             return None
         try:
@@ -426,10 +425,7 @@ class TastytradeVenue(VenueBase):
             import httpx  # noqa: PLC0415 - lazy import
         except ImportError:
             return False
-        url = (
-            f"{self.config.base_url}/accounts/"
-            f"{self.config.account_number}/orders/{order_id}"
-        )
+        url = f"{self.config.base_url}/accounts/{self.config.account_number}/orders/{order_id}"
         try:
             async with httpx.AsyncClient(timeout=TASTY_HTTP_TIMEOUT_S) as client:
                 resp = await client.delete(url, headers=self._session_headers())
@@ -455,9 +451,7 @@ def tastytrade_paper_readiness(env: Mapping[str, str] | None = None) -> dict[str
         "missing": missing,
         "reason": "ready" if not missing else "missing paper-routing configuration",
         "operator_action": (
-            "ready"
-            if not missing
-            else "Set TASTY_ACCOUNT_NUMBER and TASTY_SESSION_TOKEN or their *_FILE variants."
+            "ready" if not missing else "Set TASTY_ACCOUNT_NUMBER and TASTY_SESSION_TOKEN or their *_FILE variants."
         ),
         "checked_utc": datetime.now(UTC).isoformat(),
     }

@@ -12,6 +12,7 @@ Both are pure functions of the inputs -- no hidden state, no I/O --
 so they can be called from inside the existing bot
 :meth:`on_bar` handlers or from the live supervisor tests.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

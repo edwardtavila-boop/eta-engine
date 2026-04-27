@@ -61,6 +61,7 @@ class JarvisSnapshotSource(Protocol):
 @dataclass(frozen=True)
 class CollectorConfig:
     """Where to write, how fast to tick Jarvis, when to stop."""
+
     out_dir: Path
     mnq_filename: str = "live_ticks_mnq.jsonl"
     btc_filename: str = "live_ticks_btc.jsonl"

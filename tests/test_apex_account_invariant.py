@@ -37,6 +37,7 @@ TestResultSerialisation
   ``InvariantResult.as_dict`` round-trips through json.dumps with
   no inf / NaN issues (cross-cutting H5 alignment).
 """
+
 from __future__ import annotations
 
 import json
@@ -66,7 +67,6 @@ def _bot(name: str, tier: str, equity: float) -> BotSnapshot:
 
 
 class TestNoTierABots:
-
     def test_empty_snapshot_list_is_ok(self):
         result = validate_tier_a_aggregate_equity(snapshots=[])
         assert result.ok is True
@@ -91,7 +91,6 @@ class TestNoTierABots:
 
 
 class TestNegativeAggregate:
-
     def test_single_negative_equity_flags(self):
         result = validate_tier_a_aggregate_equity(
             snapshots=[_bot("mnq", "A", -1_000.0)],
@@ -119,7 +118,6 @@ class TestNegativeAggregate:
 
 
 class TestNonFiniteAggregate:
-
     def test_inf_equity_is_non_finite(self):
         result = validate_tier_a_aggregate_equity(
             snapshots=[_bot("mnq", "A", float("inf"))],
@@ -141,7 +139,6 @@ class TestNonFiniteAggregate:
 
 
 class TestOversizeAggregate:
-
     def test_two_bots_each_full_size_flags_oversize(self):
         """The B3 canonical config-bug case: two tier-A bots each
         track $50K when the broker account is only $50K."""
@@ -196,7 +193,6 @@ class TestOversizeAggregate:
 
 
 class TestUndersizeAggregate:
-
     def test_default_undersize_zero_means_no_lower_bound_fires(self):
         """Default undersize_multiplier=0 means the only undersize
         verdict that fires is the negative-aggregate case."""
@@ -232,7 +228,6 @@ class TestUndersizeAggregate:
 
 
 class TestNonTierABotsIgnored:
-
     def test_tier_b_equity_does_not_count(self):
         result = validate_tier_a_aggregate_equity(
             snapshots=[
@@ -252,7 +247,6 @@ class TestNonTierABotsIgnored:
 
 
 class TestStrictMode:
-
     def test_strict_mode_raises_on_negative(self):
         with pytest.raises(ApexAccountInvariantError, match="NEGATIVE"):
             validate_tier_a_aggregate_equity(
@@ -287,7 +281,6 @@ class TestStrictMode:
 
 
 class TestConstructorValidation:
-
     def test_negative_oversize_rejected(self):
         with pytest.raises(ValueError, match="oversize_multiplier"):
             validate_tier_a_aggregate_equity(
@@ -318,7 +311,6 @@ class TestConstructorValidation:
 
 
 class TestResultSerialisation:
-
     def test_as_dict_round_trips_through_json(self):
         result = validate_tier_a_aggregate_equity(
             snapshots=[

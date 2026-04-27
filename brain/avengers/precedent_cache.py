@@ -22,6 +22,7 @@ No embeddings, no vector DB. Just:
 Pure stdlib. Readable. Good enough until the ``vector_precedent.py`` in
 jarvis_v3/next_level gets wired up properly.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,25 +57,27 @@ def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
 
 class PrecedentHit(BaseModel):
     """One past dispatch that looked like the current envelope."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:         datetime
-    category:   str
-    caller:     str
-    goal:       str
-    success:    bool
+    ts: datetime
+    category: str
+    caller: str
+    goal: str
+    success: bool
     similarity: float = Field(ge=0.0, le=1.0)
     artifact_snippet: str = ""
 
 
 class SkipVerdict(BaseModel):
     """Returned when cache says the Fleet can skip a dispatch."""
+
     model_config = ConfigDict(frozen=True)
 
-    confidence:     float = Field(ge=0.0, le=1.0)
-    reason:         str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
     reused_artifact: str
-    precedents:     list[PrecedentHit]
+    precedents: list[PrecedentHit]
 
 
 class PrecedentCache:
@@ -139,14 +142,16 @@ class PrecedentCache:
                     continue
                 if ts < cutoff:
                     continue
-                out.append({
-                    "ts":       ts,
-                    "category": env.get("category", ""),
-                    "caller":   env.get("caller", ""),
-                    "goal":     env.get("goal", ""),
-                    "success":  bool(res.get("success", False)),
-                    "artifact": res.get("artifact", "") or "",
-                })
+                out.append(
+                    {
+                        "ts": ts,
+                        "category": env.get("category", ""),
+                        "caller": env.get("caller", ""),
+                        "goal": env.get("goal", ""),
+                        "success": bool(res.get("success", False)),
+                        "artifact": res.get("artifact", "") or "",
+                    }
+                )
         except OSError:
             return []
         return out
@@ -160,15 +165,17 @@ class PrecedentCache:
             sim = _jaccard(target_tokens, _tokens(rec["goal"]))
             if sim < self.min_similarity:
                 continue
-            hits.append(PrecedentHit(
-                ts=rec["ts"],
-                category=rec["category"],
-                caller=rec["caller"],
-                goal=rec["goal"],
-                success=rec["success"],
-                similarity=sim,
-                artifact_snippet=rec["artifact"][:500],
-            ))
+            hits.append(
+                PrecedentHit(
+                    ts=rec["ts"],
+                    category=rec["category"],
+                    caller=rec["caller"],
+                    goal=rec["goal"],
+                    success=rec["success"],
+                    similarity=sim,
+                    artifact_snippet=rec["artifact"][:500],
+                )
+            )
         hits.sort(key=lambda h: h.similarity, reverse=True)
         return hits[:k]
 

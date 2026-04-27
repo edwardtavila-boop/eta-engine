@@ -46,6 +46,7 @@ Public API
   * ``is_due``             -- pure cron matcher (exposed for tests)
   * ``envelope_for_task``  -- pure mapping BackgroundTask -> TaskEnvelope
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -90,16 +91,17 @@ class DaemonHeartbeat(BaseModel):
     """One heartbeat per daemon tick. Appended to the avengers journal so
     the admin console can show "ALIVE 12s ago" for every persona.
     """
+
     model_config = ConfigDict(frozen=True)
 
-    persona:         str = Field(min_length=1)
-    pid:             int
-    tick_index:      int = Field(ge=0)
-    ts:              datetime
-    tasks_due:       list[str] = Field(default_factory=list)
-    tasks_ok:        int = Field(ge=0, default=0)
-    tasks_failed:    int = Field(ge=0, default=0)
-    note:            str = ""
+    persona: str = Field(min_length=1)
+    pid: int
+    tick_index: int = Field(ge=0)
+    ts: datetime
+    tasks_due: list[str] = Field(default_factory=list)
+    tasks_ok: int = Field(ge=0, default=0)
+    tasks_failed: int = Field(ge=0, default=0)
+    note: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +110,9 @@ class DaemonHeartbeat(BaseModel):
 
 
 def _parse_cron_field(
-    expr: str, lo: int, hi: int,
+    expr: str,
+    lo: int,
+    hi: int,
 ) -> frozenset[int]:
     """Expand one cron field (e.g. ``"*/5"`` or ``"1,3-5"``) to a set of ints.
 
@@ -167,19 +171,19 @@ def is_due(cron_expr: str, now: datetime) -> bool:
     if len(fields) != 5:
         return False
     minute_f, hour_f, dom_f, month_f, dow_f = fields
-    minutes  = _parse_cron_field(minute_f, 0, 59)
-    hours    = _parse_cron_field(hour_f,   0, 23)
-    days     = _parse_cron_field(dom_f,    1, 31)
-    months   = _parse_cron_field(month_f,  1, 12)
+    minutes = _parse_cron_field(minute_f, 0, 59)
+    hours = _parse_cron_field(hour_f, 0, 23)
+    days = _parse_cron_field(dom_f, 1, 31)
+    months = _parse_cron_field(month_f, 1, 12)
     # Python weekday: Monday=0 .. Sunday=6. Cron weekday: Sunday=0 .. Sat=6.
     # Accept both: build the cron-style weekday set then compare to now.
     dow_cron = _parse_cron_field(dow_f, 0, 6)
     # Translate cron-style (Sun=0) to Python (Mon=0): Python = (cron - 1) % 7
     dow_py = frozenset(((c - 1) % 7) for c in dow_cron)
     return (
-        now.minute   in minutes
+        now.minute in minutes
         and now.hour in hours
-        and now.day  in days
+        and now.day in days
         and now.month in months
         and now.weekday() in dow_py
     )
@@ -192,80 +196,60 @@ def is_due(cron_expr: str, now: datetime) -> bool:
 
 _TASK_TO_CATEGORY: dict[BackgroundTask, TaskCategory] = {
     # ALFRED lane
-    BackgroundTask.KAIZEN_RETRO:       TaskCategory.DOC_WRITING,
-    BackgroundTask.DISTILL_TRAIN:      TaskCategory.DATA_PIPELINE,
-    BackgroundTask.SHADOW_TICK:        TaskCategory.TEST_RUN,
-    BackgroundTask.DRIFT_SUMMARY:      TaskCategory.DEBUG,
+    BackgroundTask.KAIZEN_RETRO: TaskCategory.DOC_WRITING,
+    BackgroundTask.DISTILL_TRAIN: TaskCategory.DATA_PIPELINE,
+    BackgroundTask.SHADOW_TICK: TaskCategory.TEST_RUN,
+    BackgroundTask.DRIFT_SUMMARY: TaskCategory.DEBUG,
     # BATMAN lane
-    BackgroundTask.STRATEGY_MINE:      TaskCategory.ARCHITECTURE_DECISION,
-    BackgroundTask.CAUSAL_REVIEW:      TaskCategory.ADVERSARIAL_REVIEW,
-    BackgroundTask.TWIN_VERDICT:       TaskCategory.RED_TEAM_SCORING,
-    BackgroundTask.DOCTRINE_REVIEW:    TaskCategory.RISK_POLICY_DESIGN,
+    BackgroundTask.STRATEGY_MINE: TaskCategory.ARCHITECTURE_DECISION,
+    BackgroundTask.CAUSAL_REVIEW: TaskCategory.ADVERSARIAL_REVIEW,
+    BackgroundTask.TWIN_VERDICT: TaskCategory.RED_TEAM_SCORING,
+    BackgroundTask.DOCTRINE_REVIEW: TaskCategory.RISK_POLICY_DESIGN,
     # ROBIN lane
-    BackgroundTask.LOG_COMPACT:        TaskCategory.LOG_PARSING,
-    BackgroundTask.PROMPT_WARMUP:      TaskCategory.BOILERPLATE,
+    BackgroundTask.LOG_COMPACT: TaskCategory.LOG_PARSING,
+    BackgroundTask.PROMPT_WARMUP: TaskCategory.BOILERPLATE,
     BackgroundTask.DASHBOARD_ASSEMBLE: TaskCategory.FORMATTING,
-    BackgroundTask.AUDIT_SUMMARIZE:    TaskCategory.LOG_PARSING,
+    BackgroundTask.AUDIT_SUMMARIZE: TaskCategory.LOG_PARSING,
     # ALFRED -- meta-upgrade is routine dev work (git pull + tests + restart)
-    BackgroundTask.META_UPGRADE:       TaskCategory.DATA_PIPELINE,
+    BackgroundTask.META_UPGRADE: TaskCategory.DATA_PIPELINE,
     # ALFRED -- monthly chaos drill = a test run of the resilience suite
-    BackgroundTask.CHAOS_DRILL:        TaskCategory.TEST_RUN,
+    BackgroundTask.CHAOS_DRILL: TaskCategory.TEST_RUN,
     # ALFRED -- auto-heal the fleet (check daemons alive, restart if dead)
-    BackgroundTask.HEALTH_WATCHDOG:    TaskCategory.DEBUG,
+    BackgroundTask.HEALTH_WATCHDOG: TaskCategory.DEBUG,
     # ALFRED -- daily smoke is a cheap end-to-end test run
-    BackgroundTask.SELF_TEST:          TaskCategory.TEST_RUN,
+    BackgroundTask.SELF_TEST: TaskCategory.TEST_RUN,
     # ROBIN -- log rotation is pure mechanical file work
-    BackgroundTask.LOG_ROTATE:         TaskCategory.LOG_PARSING,
+    BackgroundTask.LOG_ROTATE: TaskCategory.LOG_PARSING,
     # ROBIN -- disk cleanup is pure mechanical file work
-    BackgroundTask.DISK_CLEANUP:       TaskCategory.FORMATTING,
+    BackgroundTask.DISK_CLEANUP: TaskCategory.FORMATTING,
     # ALFRED -- backup is state-pipeline work (snapshot state_dir)
-    BackgroundTask.BACKUP:             TaskCategory.DATA_PIPELINE,
+    BackgroundTask.BACKUP: TaskCategory.DATA_PIPELINE,
     # ROBIN -- metrics export is trivial formatting of a fixed template
-    BackgroundTask.PROMETHEUS_EXPORT:  TaskCategory.FORMATTING,
+    BackgroundTask.PROMETHEUS_EXPORT: TaskCategory.FORMATTING,
 }
 
 
 _TASK_GOALS: dict[BackgroundTask, str] = {
-    BackgroundTask.KAIZEN_RETRO:
-        "draft the daily Kaizen retrospective from today's journal entries",
-    BackgroundTask.DISTILL_TRAIN:
-        "refresh the distillation classifier from the latest escalation log",
-    BackgroundTask.SHADOW_TICK:
-        "advance the shadow-trade ledger one tick and reconcile",
-    BackgroundTask.DRIFT_SUMMARY:
-        "summarize regime / feature drift over the last 15 minutes",
-    BackgroundTask.STRATEGY_MINE:
-        "mine the weekly rationale log for candidate strategy variants",
-    BackgroundTask.CAUSAL_REVIEW:
-        "run the monthly causal-ATE review on last month's promotions",
-    BackgroundTask.TWIN_VERDICT:
-        "produce the nightly digital-twin promote/avoid verdict",
-    BackgroundTask.DOCTRINE_REVIEW:
-        "run the quarterly doctrine review across active strategies",
-    BackgroundTask.LOG_COMPACT:
-        "compact the avengers journal: fold duplicate heartbeats into spans",
-    BackgroundTask.PROMPT_WARMUP:
-        "warm the persona prompt cache for pre-market and pre-close",
-    BackgroundTask.DASHBOARD_ASSEMBLE:
-        "rebuild the Fleet dashboard payload from the latest journal state",
-    BackgroundTask.AUDIT_SUMMARIZE:
-        "produce the daily audit-log summary for operator review",
-    BackgroundTask.META_UPGRADE:
-        "pull latest commits, run fast test suite, restart services if green",
-    BackgroundTask.CHAOS_DRILL:
-        "run monthly chaos drills (breaker / deadman / daemon / shared-breaker / drift)",
-    BackgroundTask.HEALTH_WATCHDOG:
-        "check daemon liveness and restart any that have died",
-    BackgroundTask.SELF_TEST:
-        "run daily end-to-end smoke: dashboard, kill switch, broker ping",
-    BackgroundTask.LOG_ROTATE:
-        "archive and prune the avengers JSONL + cron logs",
-    BackgroundTask.DISK_CLEANUP:
-        "remove stale tempdirs, sandbox debris, and old artifact files",
-    BackgroundTask.BACKUP:
-        "snapshot state_dir and configs to a rolling daily backup",
-    BackgroundTask.PROMETHEUS_EXPORT:
-        "flush the latest metrics to ~/.jarvis/metrics.prom for scraping",
+    BackgroundTask.KAIZEN_RETRO: "draft the daily Kaizen retrospective from today's journal entries",
+    BackgroundTask.DISTILL_TRAIN: "refresh the distillation classifier from the latest escalation log",
+    BackgroundTask.SHADOW_TICK: "advance the shadow-trade ledger one tick and reconcile",
+    BackgroundTask.DRIFT_SUMMARY: "summarize regime / feature drift over the last 15 minutes",
+    BackgroundTask.STRATEGY_MINE: "mine the weekly rationale log for candidate strategy variants",
+    BackgroundTask.CAUSAL_REVIEW: "run the monthly causal-ATE review on last month's promotions",
+    BackgroundTask.TWIN_VERDICT: "produce the nightly digital-twin promote/avoid verdict",
+    BackgroundTask.DOCTRINE_REVIEW: "run the quarterly doctrine review across active strategies",
+    BackgroundTask.LOG_COMPACT: "compact the avengers journal: fold duplicate heartbeats into spans",
+    BackgroundTask.PROMPT_WARMUP: "warm the persona prompt cache for pre-market and pre-close",
+    BackgroundTask.DASHBOARD_ASSEMBLE: "rebuild the Fleet dashboard payload from the latest journal state",
+    BackgroundTask.AUDIT_SUMMARIZE: "produce the daily audit-log summary for operator review",
+    BackgroundTask.META_UPGRADE: "pull latest commits, run fast test suite, restart services if green",
+    BackgroundTask.CHAOS_DRILL: "run monthly chaos drills (breaker / deadman / daemon / shared-breaker / drift)",
+    BackgroundTask.HEALTH_WATCHDOG: "check daemon liveness and restart any that have died",
+    BackgroundTask.SELF_TEST: "run daily end-to-end smoke: dashboard, kill switch, broker ping",
+    BackgroundTask.LOG_ROTATE: "archive and prune the avengers JSONL + cron logs",
+    BackgroundTask.DISK_CLEANUP: "remove stale tempdirs, sandbox debris, and old artifact files",
+    BackgroundTask.BACKUP: "snapshot state_dir and configs to a rolling daily backup",
+    BackgroundTask.PROMETHEUS_EXPORT: "flush the latest metrics to ~/.jarvis/metrics.prom for scraping",
 }
 
 
@@ -382,6 +366,7 @@ class AvengerDaemon:
 
     def _install_signal_handlers(self) -> None:
         """Best-effort SIGINT / SIGTERM so ``Ctrl-C`` exits cleanly."""
+
         def _handler(
             _signo: int,
             _frame: object | None,
@@ -401,9 +386,9 @@ class AvengerDaemon:
 
     def due_tasks(self, now: datetime) -> list[BackgroundTask]:
         """Return every BackgroundTask that:
-          * is owned by my persona, and
-          * the cron expression fires for this minute, and
-          * hasn't already fired within this same minute (dedupe).
+        * is owned by my persona, and
+        * the cron expression fires for this minute, and
+        * hasn't already fired within this same minute (dedupe).
         """
         due: list[BackgroundTask] = []
         this_minute = now.replace(second=0, microsecond=0)
@@ -444,7 +429,9 @@ class AvengerDaemon:
                     # lets one bad envelope kill the loop.
                     logger.exception(
                         "persona=%s task=%s dispatch raised: %s",
-                        self.persona, task.value, exc,
+                        self.persona,
+                        task.value,
+                        exc,
                     )
                     tasks_failed += 1
 
@@ -472,7 +459,10 @@ class AvengerDaemon:
         _write_pid(self.persona)
         logger.info(
             "AvengerDaemon[%s] starting: tick=%.1fs pid=%d journal=%s",
-            self.persona, self.tick_seconds, os.getpid(), self._journal_path,
+            self.persona,
+            self.tick_seconds,
+            os.getpid(),
+            self._journal_path,
         )
         ticks_run = 0
         try:
@@ -484,7 +474,8 @@ class AvengerDaemon:
                 except Exception as exc:  # noqa: BLE001 -- crash-resilient
                     logger.exception(
                         "AvengerDaemon[%s] tick raised: %s",
-                        self.persona, exc,
+                        self.persona,
+                        exc,
                     )
                 ticks_run += 1
                 if self._alive and (max_ticks is None or ticks_run < max_ticks):
@@ -493,7 +484,8 @@ class AvengerDaemon:
             _remove_pid(self.persona)
             logger.info(
                 "AvengerDaemon[%s] stopped after %d ticks",
-                self.persona, ticks_run,
+                self.persona,
+                ticks_run,
             )
         return ticks_run
 
@@ -523,11 +515,11 @@ class AvengerDaemon:
                 fh.write(
                     json.dumps(
                         {
-                            "ts":       hb.ts.isoformat(),
-                            "kind":     "heartbeat",
-                            "persona":  f"persona.{hb.persona.lower()}",
+                            "ts": hb.ts.isoformat(),
+                            "kind": "heartbeat",
+                            "persona": f"persona.{hb.persona.lower()}",
                             "envelope": None,
-                            "result":   None,
+                            "result": None,
                             "heartbeat": hb.model_dump(mode="json"),
                         },
                         default=str,

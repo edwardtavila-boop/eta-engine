@@ -11,6 +11,7 @@ Closes:
 
 Updates tests_passing to 604 and adds three new shared_artifacts entries.
 """
+
 from __future__ import annotations
 
 import json

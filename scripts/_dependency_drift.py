@@ -23,6 +23,7 @@ Exit codes
 1  YELLOW -- drift below thresholds
 2  RED    -- significant drift (>--max-yellow drifts, or --strict mismatch)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,17 +36,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Packages we don't care about pinning (build/test infrastructure)
 IGNORED_PKGS = {
-    "pip", "setuptools", "wheel", "uv", "build",
-    "ruff", "pytest", "pytest-asyncio", "pytest-cov", "pytest-mock",
-    "coverage", "mypy", "black", "isort",
+    "pip",
+    "setuptools",
+    "wheel",
+    "uv",
+    "build",
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock",
+    "coverage",
+    "mypy",
+    "black",
+    "isort",
 }
 
 
 def _run(cmd: list[str]) -> tuple[int, str]:
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=60,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
         )
         return (proc.returncode, proc.stdout + proc.stderr)
     except (subprocess.TimeoutExpired, OSError):
@@ -132,10 +148,8 @@ def _declared_lock() -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    p.add_argument("--strict", action="store_true",
-                   help="version mismatches -> RED (default: YELLOW)")
-    p.add_argument("--max-yellow", type=int, default=10,
-                   help="more than this many drifts -> RED (default 10)")
+    p.add_argument("--strict", action="store_true", help="version mismatches -> RED (default: YELLOW)")
+    p.add_argument("--max-yellow", type=int, default=10, help="more than this many drifts -> RED (default 10)")
     args = p.parse_args(argv)
 
     inst = _installed()
@@ -184,19 +198,14 @@ def main(argv: list[str] | None = None) -> int:
     n = sum(1 for d in drifts if not d.startswith("  "))
     if n == 0:
         print(
-            f"dependency-drift: GREEN -- {len(inst)} installed, "
-            f"{len(decl)} declared, {len(pinned)} pinned",
+            f"dependency-drift: GREEN -- {len(inst)} installed, {len(decl)} declared, {len(pinned)} pinned",
         )
         return 0
     has_mismatch = bool(mismatches)
     n_pkgs = len(extra) + len(missing) + len(mismatches)
-    level = (
-        "RED" if (args.strict and has_mismatch) or n_pkgs > args.max_yellow
-        else "YELLOW"
-    )
+    level = "RED" if (args.strict and has_mismatch) or n_pkgs > args.max_yellow else "YELLOW"
     print(
-        f"dependency-drift: {level} -- {n_pkgs} package drift(s) "
-        f"across {n} class(es)",
+        f"dependency-drift: {level} -- {n_pkgs} package drift(s) across {n} class(es)",
     )
     for line in drifts:
         print(line)

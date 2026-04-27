@@ -28,6 +28,7 @@ Exit codes
 1  YELLOW -- 1..2 findings (likely false positives or low-severity)
 2  RED    -- 3+ findings (real secret leak suspected)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,26 +43,46 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parents[1]
 
 PATTERNS: dict[str, re.Pattern[str]] = {
-    "AWS access key":           re.compile(r"AKIA[A-Z0-9]{16}"),
-    "Stripe live secret":       re.compile(r"sk_live_[a-zA-Z0-9]{24,}"),
-    "Slack token":              re.compile(r"xox[baprs]-[a-zA-Z0-9-]{10,}"),
-    "GitHub token":             re.compile(r"gh[poustrd]_[a-zA-Z0-9]{30,}"),
-    "OpenAI/Anthropic key":     re.compile(r"sk-(?:ant-|proj-)?[a-zA-Z0-9_-]{32,}"),
-    "JWT":                      re.compile(
+    "AWS access key": re.compile(r"AKIA[A-Z0-9]{16}"),
+    "Stripe live secret": re.compile(r"sk_live_[a-zA-Z0-9]{24,}"),
+    "Slack token": re.compile(r"xox[baprs]-[a-zA-Z0-9-]{10,}"),
+    "GitHub token": re.compile(r"gh[poustrd]_[a-zA-Z0-9]{30,}"),
+    "OpenAI/Anthropic key": re.compile(r"sk-(?:ant-|proj-)?[a-zA-Z0-9_-]{32,}"),
+    "JWT": re.compile(
         r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
     ),
-    "PEM private key":          re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"),
-    "Discord token":            re.compile(r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}"),
+    "PEM private key": re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"),
+    "Discord token": re.compile(r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}"),
 }
 
 SKIP_DIRS = {
-    ".git", ".venv", "venv", "node_modules", ".cache",
-    ".pytest_cache", ".ruff_cache", "__pycache__", ".mypy_cache",
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    ".mypy_cache",
 }
 SKIP_EXTS = {
-    ".pyc", ".pyo", ".so", ".dll", ".dylib",
-    ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".tar", ".gz",
-    ".parquet", ".bin", ".lock",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".dll",
+    ".dylib",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".parquet",
+    ".bin",
+    ".lock",
 }
 
 
@@ -111,14 +132,11 @@ def _walk(root: Path) -> Iterator[Path]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    p.add_argument("--max-yellow", type=int, default=2,
-                   help="more than this many findings -> RED (default 2)")
-    p.add_argument("paths", nargs="*",
-                   help="explicit paths to scan (default: full tree)")
+    p.add_argument("--max-yellow", type=int, default=2, help="more than this many findings -> RED (default 2)")
+    p.add_argument("paths", nargs="*", help="explicit paths to scan (default: full tree)")
     args = p.parse_args(argv)
 
-    targets = [Path(t) if Path(t).is_absolute() else ROOT / t
-               for t in args.paths] if args.paths else [ROOT]
+    targets = [Path(t) if Path(t).is_absolute() else ROOT / t for t in args.paths] if args.paths else [ROOT]
     findings: list[tuple[Path, int, str, str]] = []
     for target in targets:
         if target.is_file():

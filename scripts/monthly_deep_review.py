@@ -28,6 +28,7 @@ Usage
         --mae-mfe docs/mae_mfe_points.jsonl \\
         --rationales docs/rationales.jsonl
 """
+
 from __future__ import annotations
 
 import argparse
@@ -110,13 +111,8 @@ def _exit_block(points: list[MaeMfePoint]) -> dict:
     return {
         "n": len(rows),
         "money_left_on_table_usd": leak_usd,
-        "top_leaking_setups": [
-            {"setup": s, "leak_r": round(r, 2)} for s, r in ranked[:5]
-        ],
-        "heatmap": {
-            f"{k[0]}|{k[1]}": v.model_dump(mode="json")
-            for k, v in heatmap.items()
-        },
+        "top_leaking_setups": [{"setup": s, "leak_r": round(r, 2)} for s, r in ranked[:5]],
+        "heatmap": {f"{k[0]}|{k[1]}": v.model_dump(mode="json") for k, v in heatmap.items()},
     }
 
 
@@ -129,14 +125,10 @@ def _rationale_block(records: list[RationaleRecord]) -> dict:
         "n": report.n_records,
         "coverage": coverage(report),
         "top_winners": [
-            {"phrase": c.phrase, "n": c.n,
-             "mean_r": c.mean_r, "win_rate": c.win_rate}
-            for c in report.top_winners
+            {"phrase": c.phrase, "n": c.n, "mean_r": c.mean_r, "win_rate": c.win_rate} for c in report.top_winners
         ],
         "top_losers": [
-            {"phrase": c.phrase, "n": c.n,
-             "mean_r": c.mean_r, "win_rate": c.win_rate}
-            for c in report.top_losers
+            {"phrase": c.phrase, "n": c.n, "mean_r": c.mean_r, "win_rate": c.win_rate} for c in report.top_losers
         ],
     }
 
@@ -153,14 +145,12 @@ def _propose_tweaks(
         worst = max(dist, key=lambda k: dist[k] if k in {"D", "F"} else -1)
         if worst in {"D", "F"} and dist.get(worst, 0) >= 3:
             tweaks.append(
-                f"high count of {worst} grades ({dist[worst]}) "
-                f"-- tighten setup filter or revisit checklist",
+                f"high count of {worst} grades ({dist[worst]}) -- tighten setup filter or revisit checklist",
             )
 
     if exit_info.get("money_left_on_table_usd", 0) > 500:
         tweaks.append(
-            "leaked >$500 in the month via early exits -- "
-            "widen trail / add partial-take at 2R",
+            "leaked >$500 in the month via early exits -- widen trail / add partial-take at 2R",
         )
 
     for loser in rationale_info.get("top_losers", [])[:2]:
@@ -172,9 +162,7 @@ def _propose_tweaks(
 
     for winner in rationale_info.get("top_winners", [])[:1]:
         tweaks.append(
-            f"cluster '{winner['phrase']}' "
-            f"mean +{winner['mean_r']}R / n={winner['n']} -- "
-            "explicitly add to checklist",
+            f"cluster '{winner['phrase']}' mean +{winner['mean_r']}R / n={winner['n']} -- explicitly add to checklist",
         )
 
     return tweaks[:3]
@@ -226,17 +214,13 @@ def _render_text(payload: dict) -> str:
             lines.append("  top winners:")
             for c in r["top_winners"]:
                 lines.append(
-                    f"    + {c['phrase']:<30} "
-                    f"n={c['n']:>3} mean_r={c['mean_r']:+.2f} "
-                    f"wr={c['win_rate']:.0%}",
+                    f"    + {c['phrase']:<30} n={c['n']:>3} mean_r={c['mean_r']:+.2f} wr={c['win_rate']:.0%}",
                 )
         if r["top_losers"]:
             lines.append("  top losers:")
             for c in r["top_losers"]:
                 lines.append(
-                    f"    - {c['phrase']:<30} "
-                    f"n={c['n']:>3} mean_r={c['mean_r']:+.2f} "
-                    f"wr={c['win_rate']:.0%}",
+                    f"    - {c['phrase']:<30} n={c['n']:>3} mean_r={c['mean_r']:+.2f} wr={c['win_rate']:.0%}",
                 )
     lines.append("")
     lines.append("PROPOSED TWEAKS (top 3)")
@@ -283,9 +267,7 @@ def run(
         "inputs": {
             "trades_path": str(trades_path) if trades_path else None,
             "mae_mfe_path": str(mae_mfe_path) if mae_mfe_path else None,
-            "rationales_path": (
-                str(rationales_path) if rationales_path else None
-            ),
+            "rationales_path": (str(rationales_path) if rationales_path else None),
         },
     }
 
@@ -295,14 +277,16 @@ def run(
         encoding="utf-8",
     )
     (out_dir / f"monthly_review_{period}.txt").write_text(
-        _render_text(payload), encoding="utf-8",
+        _render_text(payload),
+        encoding="utf-8",
     )
     (out_dir / "monthly_review_latest.json").write_text(
         json.dumps(payload, indent=2, default=str) + "\n",
         encoding="utf-8",
     )
     (out_dir / "monthly_review_latest.txt").write_text(
-        _render_text(payload), encoding="utf-8",
+        _render_text(payload),
+        encoding="utf-8",
     )
     return payload
 
@@ -336,7 +320,6 @@ if __name__ == "__main__":
     today = date.today()
     if today.day != 1:
         sys.stdout.write(
-            f"[monthly_deep_review] note: today is "
-            f"day-of-month={today.day} -- normally runs on the 1st\n",
+            f"[monthly_deep_review] note: today is day-of-month={today.day} -- normally runs on the 1st\n",
         )
     sys.exit(main())

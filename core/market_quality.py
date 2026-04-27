@@ -4,6 +4,7 @@ The BTC stack now carries several microstructure signals beyond spread and
 imbalance. This module keeps the book-depth / freshness / quality math in one
 place so live, paper, and strategy code all score the same tape the same way.
 """
+
 # ruff: noqa: ANN401  -- this module deliberately takes dict[str, Any] inputs
 from __future__ import annotations
 
@@ -208,12 +209,7 @@ def order_book_quality(
 
     spread_score = 0.5 if spread <= 0.0 else clamp(1.0 - spread / 18.0, 0.0, 1.0)
     balance_score = clamp(1.0 - abs(imbalance), 0.0, 1.0)
-    quality = (
-        0.36 * (depth / 10.0)
-        + 0.24 * (freshness / 10.0)
-        + 0.22 * spread_score
-        + 0.18 * balance_score
-    )
+    quality = 0.36 * (depth / 10.0) + 0.24 * (freshness / 10.0) + 0.22 * spread_score + 0.18 * balance_score
     return clamp(10.0 * quality, 0.0, 10.0)
 
 

@@ -46,6 +46,7 @@ samples']``. This prevents first-day noise from triggering auto-demote.
 Stdlib-only by design -- this runs inside the live fleet hot loop so
 we do not want to pull numpy/scipy.
 """
+
 from __future__ import annotations
 
 import json
@@ -72,27 +73,28 @@ TRADING_DAYS_PER_YEAR = 252
 
 
 class DriftVerdict(StrEnum):
-    OK           = "OK"            # no meaningful divergence
-    WARN         = "WARN"          # notable but not yet actionable
-    AUTO_DEMOTE  = "AUTO_DEMOTE"   # divergence exceeds hard threshold
+    OK = "OK"  # no meaningful divergence
+    WARN = "WARN"  # notable but not yet actionable
+    AUTO_DEMOTE = "AUTO_DEMOTE"  # divergence exceeds hard threshold
 
 
 class DriftReport(BaseModel):
     """Structured output of a backtest-vs-live comparison."""
+
     model_config = ConfigDict(frozen=True)
 
-    strategy_id:        str
-    verdict:            DriftVerdict
-    reasons:            list[str]
-    sharpe_bt:          float
-    sharpe_live:        float
+    strategy_id: str
+    verdict: DriftVerdict
+    reasons: list[str]
+    sharpe_bt: float
+    sharpe_live: float
     sharpe_delta_sigma: float
-    kl_divergence:      float
-    mean_return_delta:  float
-    bt_sample_size:     int          = Field(ge=0)
-    live_sample_size:   int          = Field(ge=0)
-    recommendation:     PromotionAction | None = None
-    generated_at:       datetime
+    kl_divergence: float
+    mean_return_delta: float
+    bt_sample_size: int = Field(ge=0)
+    live_sample_size: int = Field(ge=0)
+    recommendation: PromotionAction | None = None
+    generated_at: datetime
 
 
 # --- detector ---------------------------------------------------------------
@@ -126,13 +128,13 @@ class DriftDetector:
     def __init__(
         self,
         *,
-        warn_sharpe_delta_sigma:   float = 1.5,
+        warn_sharpe_delta_sigma: float = 1.5,
         demote_sharpe_delta_sigma: float = 2.5,
-        warn_kl:                    float = 0.15,
-        demote_kl:                  float = 0.35,
-        min_live_samples:           int   = 20,
-        bins:                        int   = 10,
-        journal_path:               Path | None = None,
+        warn_kl: float = 0.15,
+        demote_kl: float = 0.35,
+        min_live_samples: int = 20,
+        bins: int = 10,
+        journal_path: Path | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if warn_sharpe_delta_sigma < 0 or demote_sharpe_delta_sigma < 0:
@@ -151,13 +153,13 @@ class DriftDetector:
             msg = "bins must be >= 2"
             raise ValueError(msg)
 
-        self.warn_sharpe_delta_sigma   = warn_sharpe_delta_sigma
+        self.warn_sharpe_delta_sigma = warn_sharpe_delta_sigma
         self.demote_sharpe_delta_sigma = demote_sharpe_delta_sigma
-        self.warn_kl                    = warn_kl
-        self.demote_kl                  = demote_kl
-        self.min_live_samples           = min_live_samples
-        self.bins                        = bins
-        self.journal_path               = journal_path or DRIFT_JOURNAL
+        self.warn_kl = warn_kl
+        self.demote_kl = demote_kl
+        self.min_live_samples = min_live_samples
+        self.bins = bins
+        self.journal_path = journal_path or DRIFT_JOURNAL
         self._clock = clock or (lambda: datetime.now(UTC))
 
     # --- public API -------------------------------------------------------
@@ -166,7 +168,7 @@ class DriftDetector:
         self,
         strategy_id: str,
         backtest_returns: Sequence[float],
-        live_returns:     Sequence[float],
+        live_returns: Sequence[float],
         *,
         journal: bool = True,
     ) -> DriftReport:
@@ -177,7 +179,7 @@ class DriftDetector:
         """
         now = self._clock()
         bt = [float(x) for x in backtest_returns if math.isfinite(x)]
-        lv = [float(x) for x in live_returns     if math.isfinite(x)]
+        lv = [float(x) for x in live_returns if math.isfinite(x)]
 
         # --- sample-size guard -------------------------------------------
         if len(lv) < self.min_live_samples:
@@ -185,8 +187,7 @@ class DriftDetector:
                 strategy_id=strategy_id,
                 verdict=DriftVerdict.OK,
                 reasons=[
-                    f"insufficient live samples: "
-                    f"have={len(lv)} need={self.min_live_samples}",
+                    f"insufficient live samples: have={len(lv)} need={self.min_live_samples}",
                 ],
                 sharpe_bt=_safe_sharpe(bt),
                 sharpe_live=_safe_sharpe(lv),
@@ -207,8 +208,7 @@ class DriftDetector:
                 strategy_id=strategy_id,
                 verdict=DriftVerdict.OK,
                 reasons=[
-                    f"insufficient backtest samples: "
-                    f"have={len(bt)} need>=2",
+                    f"insufficient backtest samples: have={len(bt)} need>=2",
                 ],
                 sharpe_bt=0.0,
                 sharpe_live=_safe_sharpe(lv),
@@ -225,7 +225,7 @@ class DriftDetector:
             return report
 
         # --- sharpe delta -------------------------------------------------
-        sh_bt,   se_bt   = _sharpe_with_se(bt)
+        sh_bt, se_bt = _sharpe_with_se(bt)
         sh_live, se_live = _sharpe_with_se(lv)
         # Both estimators are noisy. The SE of the difference combines
         # the per-sample Lo-(2002) SEs in quadrature. With n_bt >> n_lv
@@ -246,14 +246,12 @@ class DriftDetector:
         if delta_sigma >= self.demote_sharpe_delta_sigma:
             verdict = DriftVerdict.AUTO_DEMOTE
             reasons.append(
-                f"sharpe_delta={delta_sigma:.2f}sigma "
-                f">= demote={self.demote_sharpe_delta_sigma:.2f}sigma",
+                f"sharpe_delta={delta_sigma:.2f}sigma >= demote={self.demote_sharpe_delta_sigma:.2f}sigma",
             )
         elif delta_sigma >= self.warn_sharpe_delta_sigma:
             verdict = _escalate(verdict, DriftVerdict.WARN)
             reasons.append(
-                f"sharpe_delta={delta_sigma:.2f}sigma "
-                f">= warn={self.warn_sharpe_delta_sigma:.2f}sigma",
+                f"sharpe_delta={delta_sigma:.2f}sigma >= warn={self.warn_sharpe_delta_sigma:.2f}sigma",
             )
 
         if kl >= self.demote_kl:
@@ -265,14 +263,10 @@ class DriftDetector:
 
         if not reasons:
             reasons.append(
-                f"sharpe_delta={delta_sigma:.2f}sigma (ok) "
-                f"KL={kl:.3f} (ok)",
+                f"sharpe_delta={delta_sigma:.2f}sigma (ok) KL={kl:.3f} (ok)",
             )
 
-        recommendation = (
-            PromotionAction.DEMOTE if verdict is DriftVerdict.AUTO_DEMOTE
-            else None
-        )
+        recommendation = PromotionAction.DEMOTE if verdict is DriftVerdict.AUTO_DEMOTE else None
 
         report = DriftReport(
             strategy_id=strategy_id,
@@ -389,7 +383,9 @@ def _escalate(current: DriftVerdict, proposed: DriftVerdict) -> DriftVerdict:
 
 
 def read_drift_journal(
-    path: Path | None = None, *, n: int = 50,
+    path: Path | None = None,
+    *,
+    n: int = 50,
 ) -> list[dict]:
     """Tail the drift journal. Returns last ``n`` records (best-effort)."""
     p = path or DRIFT_JOURNAL

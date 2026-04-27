@@ -17,6 +17,7 @@ A single JSON file (``jarvis_mcp_registry.json``) on disk is the
 runtime source of truth. ``default_registry`` supplies sensible tiers
 that mirror the operator doctrine.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,24 +28,25 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class MCPRiskTier(StrEnum):
-    READ     = "READ"       # read-only, idempotent
-    WRITE    = "WRITE"      # writes data but not irreversible
-    TRADE    = "TRADE"      # can move money / place orders
-    ADMIN    = "ADMIN"      # can change system state (computer-use, files)
+    READ = "READ"  # read-only, idempotent
+    WRITE = "WRITE"  # writes data but not irreversible
+    TRADE = "TRADE"  # can move money / place orders
+    ADMIN = "ADMIN"  # can change system state (computer-use, files)
 
 
 class MCPToolScope(BaseModel):
     """Allowlist entry for one tool inside one server."""
+
     model_config = ConfigDict(frozen=False)
 
-    server:           str = Field(min_length=1)
-    tool:             str = Field(min_length=1)
-    tier:             MCPRiskTier
+    server: str = Field(min_length=1)
+    tool: str = Field(min_length=1)
+    tier: MCPRiskTier
     allowed_subsystems: list[str] = Field(default_factory=lambda: ["operator.edward"])
-    cool_down_s:      float = Field(default=0.0, ge=0.0)
+    cool_down_s: float = Field(default=0.0, ge=0.0)
     # If true, approval requires explicit 'review_acknowledged' in payload.
     needs_operator_ack: bool = False
-    rationale:        str = ""
+    rationale: str = ""
 
 
 class MCPRegistry:
@@ -65,7 +67,10 @@ class MCPRegistry:
         return [v for (s, _t), v in self._by_key.items() if s == server]
 
     def can_use(
-        self, server: str, tool: str, subsystem: str,
+        self,
+        server: str,
+        tool: str,
+        subsystem: str,
     ) -> tuple[bool, str]:
         sc = self._by_key.get((server, tool))
         if sc is None:
@@ -113,148 +118,281 @@ def default_registry() -> MCPRegistry:
     # === TradingView (READ + TRADE split) ==================================
     # Read tools -- chart_get_*, data_get_*, pine_*, symbol_*, quote_get
     for t in (
-        "chart_get_state", "chart_get_visible_range",
-        "data_get_ohlcv", "data_get_equity", "data_get_indicator",
-        "data_get_pine_boxes", "data_get_pine_labels",
-        "data_get_pine_lines", "data_get_pine_tables",
-        "data_get_strategy_results", "data_get_study_values",
+        "chart_get_state",
+        "chart_get_visible_range",
+        "data_get_ohlcv",
+        "data_get_equity",
+        "data_get_indicator",
+        "data_get_pine_boxes",
+        "data_get_pine_labels",
+        "data_get_pine_lines",
+        "data_get_pine_tables",
+        "data_get_strategy_results",
+        "data_get_study_values",
         "data_get_trades",
-        "quote_get", "symbol_info", "symbol_search",
-        "pine_analyze", "pine_check", "pine_compile",
-        "pine_get_console", "pine_get_errors", "pine_get_source",
-        "pine_list_scripts", "layout_list", "tab_list",
-        "tv_discover", "tv_health_check", "tv_ui_state",
-        "watchlist_get", "capture_screenshot",
+        "quote_get",
+        "symbol_info",
+        "symbol_search",
+        "pine_analyze",
+        "pine_check",
+        "pine_compile",
+        "pine_get_console",
+        "pine_get_errors",
+        "pine_get_source",
+        "pine_list_scripts",
+        "layout_list",
+        "tab_list",
+        "tv_discover",
+        "tv_health_check",
+        "tv_ui_state",
+        "watchlist_get",
+        "capture_screenshot",
     ):
-        reg.register(MCPToolScope(
-            server="tradingview", tool=t, tier=MCPRiskTier.READ,
-            allowed_subsystems=["operator.edward", "bot.mnq", "bot.nq", "watchdog.autopilot"],
-            rationale="read-only chart / indicator / quote data",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="tradingview",
+                tool=t,
+                tier=MCPRiskTier.READ,
+                allowed_subsystems=["operator.edward", "bot.mnq", "bot.nq", "watchdog.autopilot"],
+                rationale="read-only chart / indicator / quote data",
+            )
+        )
     # Write / chart-mutate tools
     for t in (
-        "chart_set_symbol", "chart_set_timeframe", "chart_set_type",
-        "chart_manage_indicator", "chart_scroll_to_date",
+        "chart_set_symbol",
+        "chart_set_timeframe",
+        "chart_set_type",
+        "chart_manage_indicator",
+        "chart_scroll_to_date",
         "chart_set_visible_range",
-        "draw_shape", "draw_clear", "draw_remove_one", "draw_get_properties",
-        "indicator_set_inputs", "indicator_toggle_visibility",
-        "pine_new", "pine_open", "pine_save", "pine_set_source",
+        "draw_shape",
+        "draw_clear",
+        "draw_remove_one",
+        "draw_get_properties",
+        "indicator_set_inputs",
+        "indicator_toggle_visibility",
+        "pine_new",
+        "pine_open",
+        "pine_save",
+        "pine_set_source",
         "pine_smart_compile",
-        "layout_switch", "pane_focus", "pane_set_layout", "pane_set_symbol",
-        "replay_start", "replay_stop", "replay_step", "replay_autoplay",
+        "layout_switch",
+        "pane_focus",
+        "pane_set_layout",
+        "pane_set_symbol",
+        "replay_start",
+        "replay_stop",
+        "replay_step",
+        "replay_autoplay",
         "replay_status",
-        "tab_new", "tab_close", "tab_switch",
+        "tab_new",
+        "tab_close",
+        "tab_switch",
         "watchlist_add",
     ):
-        reg.register(MCPToolScope(
-            server="tradingview", tool=t, tier=MCPRiskTier.WRITE,
-            allowed_subsystems=["operator.edward"],
-            rationale="chart-mutating tool; operator-only",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="tradingview",
+                tool=t,
+                tier=MCPRiskTier.WRITE,
+                allowed_subsystems=["operator.edward"],
+                rationale="chart-mutating tool; operator-only",
+            )
+        )
     # TRADE tier (alert / replay trade simulation)
-    for t in ("alert_create", "alert_delete", "alert_list",
-              "replay_trade", "batch_run"):
-        reg.register(MCPToolScope(
-            server="tradingview", tool=t, tier=MCPRiskTier.TRADE,
-            allowed_subsystems=["operator.edward"],
-            needs_operator_ack=True,
-            rationale="alert / replay trade -- operator ack required",
-        ))
+    for t in ("alert_create", "alert_delete", "alert_list", "replay_trade", "batch_run"):
+        reg.register(
+            MCPToolScope(
+                server="tradingview",
+                tool=t,
+                tier=MCPRiskTier.TRADE,
+                allowed_subsystems=["operator.edward"],
+                needs_operator_ack=True,
+                rationale="alert / replay trade -- operator ack required",
+            )
+        )
 
     # === Desktop Commander (ADMIN) ========================================
     for t in (
-        "create_directory", "edit_block", "force_terminate", "get_config",
-        "get_file_info", "get_more_search_results", "get_prompts",
-        "get_recent_tool_calls", "get_usage_stats",
-        "give_feedback_to_desktop_commander", "interact_with_process",
-        "kill_process", "list_directory", "list_processes",
-        "list_searches", "list_sessions", "move_file", "read_file",
-        "read_multiple_files", "read_process_output", "set_config_value",
-        "start_process", "start_search", "stop_search", "write_file",
+        "create_directory",
+        "edit_block",
+        "force_terminate",
+        "get_config",
+        "get_file_info",
+        "get_more_search_results",
+        "get_prompts",
+        "get_recent_tool_calls",
+        "get_usage_stats",
+        "give_feedback_to_desktop_commander",
+        "interact_with_process",
+        "kill_process",
+        "list_directory",
+        "list_processes",
+        "list_searches",
+        "list_sessions",
+        "move_file",
+        "read_file",
+        "read_multiple_files",
+        "read_process_output",
+        "set_config_value",
+        "start_process",
+        "start_search",
+        "stop_search",
+        "write_file",
         "write_pdf",
     ):
-        reg.register(MCPToolScope(
-            server="Desktop_Commander", tool=t, tier=MCPRiskTier.ADMIN,
-            allowed_subsystems=["operator.edward"],
-            needs_operator_ack=True,
-            rationale="shell / filesystem access; admin tier",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="Desktop_Commander",
+                tool=t,
+                tier=MCPRiskTier.ADMIN,
+                allowed_subsystems=["operator.edward"],
+                needs_operator_ack=True,
+                rationale="shell / filesystem access; admin tier",
+            )
+        )
 
     # === computer-use (ADMIN) =============================================
     for t in (
-        "screenshot", "left_click", "right_click", "double_click",
-        "triple_click", "mouse_move", "type", "key", "hold_key",
-        "scroll", "cursor_position",
-        "left_click_drag", "middle_click", "wait", "zoom",
-        "open_application", "list_granted_applications",
-        "read_clipboard", "write_clipboard",
-        "computer_batch", "teach_batch", "teach_step",
-        "left_mouse_down", "left_mouse_up", "request_access",
-        "request_teach_access", "switch_display",
+        "screenshot",
+        "left_click",
+        "right_click",
+        "double_click",
+        "triple_click",
+        "mouse_move",
+        "type",
+        "key",
+        "hold_key",
+        "scroll",
+        "cursor_position",
+        "left_click_drag",
+        "middle_click",
+        "wait",
+        "zoom",
+        "open_application",
+        "list_granted_applications",
+        "read_clipboard",
+        "write_clipboard",
+        "computer_batch",
+        "teach_batch",
+        "teach_step",
+        "left_mouse_down",
+        "left_mouse_up",
+        "request_access",
+        "request_teach_access",
+        "switch_display",
     ):
-        reg.register(MCPToolScope(
-            server="computer-use", tool=t, tier=MCPRiskTier.ADMIN,
-            allowed_subsystems=["operator.edward"],
-            needs_operator_ack=True,
-            rationale="screen / keyboard / mouse control",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="computer-use",
+                tool=t,
+                tier=MCPRiskTier.ADMIN,
+                allowed_subsystems=["operator.edward"],
+                needs_operator_ack=True,
+                rationale="screen / keyboard / mouse control",
+            )
+        )
 
     # === Chrome / Claude_in_Chrome (WRITE + ADMIN mix) ====================
     for t in (
-        "find", "form_input", "get_page_text", "navigate",
-        "read_console_messages", "read_network_requests", "read_page",
-        "switch_browser", "tabs_close_mcp", "tabs_context_mcp",
-        "tabs_create_mcp", "resize_window", "computer",
+        "find",
+        "form_input",
+        "get_page_text",
+        "navigate",
+        "read_console_messages",
+        "read_network_requests",
+        "read_page",
+        "switch_browser",
+        "tabs_close_mcp",
+        "tabs_context_mcp",
+        "tabs_create_mcp",
+        "resize_window",
+        "computer",
     ):
-        reg.register(MCPToolScope(
-            server="Claude_in_Chrome", tool=t, tier=MCPRiskTier.WRITE,
-            allowed_subsystems=["operator.edward"],
-            rationale="browser automation",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="Claude_in_Chrome",
+                tool=t,
+                tier=MCPRiskTier.WRITE,
+                allowed_subsystems=["operator.edward"],
+                rationale="browser automation",
+            )
+        )
 
     # === Slack (WRITE) ====================================================
     for t in (
-        "slack_create_canvas", "slack_read_canvas", "slack_read_channel",
-        "slack_read_thread", "slack_read_user_profile",
-        "slack_schedule_message", "slack_search_channels",
-        "slack_search_public", "slack_search_users", "slack_send_message",
-        "slack_send_message_draft", "slack_update_canvas",
+        "slack_create_canvas",
+        "slack_read_canvas",
+        "slack_read_channel",
+        "slack_read_thread",
+        "slack_read_user_profile",
+        "slack_schedule_message",
+        "slack_search_channels",
+        "slack_search_public",
+        "slack_search_users",
+        "slack_send_message",
+        "slack_send_message_draft",
+        "slack_update_canvas",
     ):
-        reg.register(MCPToolScope(
-            server="slack", tool=t, tier=MCPRiskTier.WRITE,
-            allowed_subsystems=["operator.edward"],
-            rationale="external comms",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="slack",
+                tool=t,
+                tier=MCPRiskTier.WRITE,
+                allowed_subsystems=["operator.edward"],
+                rationale="external comms",
+            )
+        )
 
     # === Blockscout (READ) ================================================
     for t in (
-        "get_address_info", "get_block_info", "get_block_number",
-        "get_chains_list", "get_contract_abi",
-        "get_token_transfers_by_address", "get_tokens_by_address",
-        "get_transaction_info", "get_transactions_by_address",
-        "inspect_contract_code", "lookup_token_by_symbol",
-        "nft_tokens_by_address", "read_contract", "direct_api_call",
+        "get_address_info",
+        "get_block_info",
+        "get_block_number",
+        "get_chains_list",
+        "get_contract_abi",
+        "get_token_transfers_by_address",
+        "get_tokens_by_address",
+        "get_transaction_info",
+        "get_transactions_by_address",
+        "inspect_contract_code",
+        "lookup_token_by_symbol",
+        "nft_tokens_by_address",
+        "read_contract",
+        "direct_api_call",
         "get_address_by_ens_name",
     ):
-        reg.register(MCPToolScope(
-            server="blockscout", tool=t, tier=MCPRiskTier.READ,
-            allowed_subsystems=[
-                "operator.edward", "bot.btc_hybrid",
-                "bot.btc_perp", "bot.eth_perp", "bot.sol_perp",
-                "bot.yield_vault",
-            ],
-            rationale="on-chain read for crypto desks",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="blockscout",
+                tool=t,
+                tier=MCPRiskTier.READ,
+                allowed_subsystems=[
+                    "operator.edward",
+                    "bot.btc_hybrid",
+                    "bot.btc_perp",
+                    "bot.eth_perp",
+                    "bot.sol_perp",
+                    "bot.yield_vault",
+                ],
+                rationale="on-chain read for crypto desks",
+            )
+        )
 
     # === Scheduled tasks (WRITE) ==========================================
     for t in (
-        "create_scheduled_task", "list_scheduled_tasks",
+        "create_scheduled_task",
+        "list_scheduled_tasks",
         "update_scheduled_task",
     ):
-        reg.register(MCPToolScope(
-            server="scheduled-tasks", tool=t, tier=MCPRiskTier.WRITE,
-            allowed_subsystems=["operator.edward"],
-            rationale="cron-style scheduling",
-        ))
+        reg.register(
+            MCPToolScope(
+                server="scheduled-tasks",
+                tool=t,
+                tier=MCPRiskTier.WRITE,
+                allowed_subsystems=["operator.edward"],
+                rationale="cron-style scheduling",
+            )
+        )
 
     return reg

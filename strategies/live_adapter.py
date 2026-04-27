@@ -62,6 +62,7 @@ Or, via the bot's built-in auto-wire kwarg (v0.1.45+):
     bot = MnqBot(auto_wire_ai_strategies=True)
     # bot.start() invokes build_live_adapter("MNQ") internally.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -24,8 +24,20 @@ _KOINLY_LABELS = {
 
 # Full set of Koinly-recognized transaction labels (documented)
 KOINLY_LABEL_VOCAB: tuple[str, ...] = (
-    "trade", "send", "receive", "staking", "mining", "fork", "airdrop",
-    "gift", "lost", "reward", "interest", "cost", "income", "transfer",
+    "trade",
+    "send",
+    "receive",
+    "staking",
+    "mining",
+    "fork",
+    "airdrop",
+    "gift",
+    "lost",
+    "reward",
+    "interest",
+    "cost",
+    "income",
+    "transfer",
 )
 
 _COLUMNS: list[str] = [

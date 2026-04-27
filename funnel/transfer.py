@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 # Models
 # ---------------------------------------------------------------------------
 
+
 class TransferStatus(StrEnum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
@@ -67,6 +68,7 @@ class TransferResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Execution stubs
 # ---------------------------------------------------------------------------
+
 
 async def execute_transfer(req: TransferRequest) -> TransferResult:
     """Execute an inter-bot transfer.
@@ -137,6 +139,7 @@ async def sweep_to_cold(
 # in tests; ``TransferManager`` routes every request through one of these)
 # ---------------------------------------------------------------------------
 
+
 @runtime_checkable
 class TransferExecutor(Protocol):
     """Any object with an async ``execute(req) -> TransferResult`` is an executor."""
@@ -200,6 +203,7 @@ class FailingExecutor:
 # Policy & errors
 # ---------------------------------------------------------------------------
 
+
 class TransferLimitExceededError(ValueError):
     """Raised when a transfer breaches per-txn or 24h-volume limits."""
 
@@ -225,19 +229,19 @@ class TransferPolicy(BaseModel):
     """
 
     per_txn_limit_usd: float = Field(
-        default=25_000.0, gt=0.0,
+        default=25_000.0,
+        gt=0.0,
         description="Max USD size of a single transfer",
     )
     daily_limit_usd: float = Field(
-        default=100_000.0, gt=0.0,
+        default=100_000.0,
+        gt=0.0,
         description="Rolling 24h USD volume limit across all transfers",
     )
     approval_threshold_usd: float = Field(
-        default=10_000.0, ge=0.0,
-        description=(
-            "Transfers at or above this amount must carry "
-            "requires_approval=True (manual 2FA attestation)."
-        ),
+        default=10_000.0,
+        ge=0.0,
+        description=("Transfers at or above this amount must carry requires_approval=True (manual 2FA attestation)."),
     )
     whitelist: dict[str, set[str]] = Field(
         default_factory=dict,
@@ -259,6 +263,7 @@ class TransferPolicy(BaseModel):
 # ---------------------------------------------------------------------------
 # Ledger
 # ---------------------------------------------------------------------------
+
 
 class TransferLedgerEntry(BaseModel):
     """Append-only audit entry for one manager decision."""
@@ -286,11 +291,7 @@ class TransferLedger:
 
     def total_usd_since(self, since: datetime) -> float:
         """Sum of EXECUTED request amounts since ``since`` (inclusive)."""
-        return sum(
-            e.request.amount_usd
-            for e in self._entries
-            if e.outcome == "EXECUTED" and e.ts >= since
-        )
+        return sum(e.request.amount_usd for e in self._entries if e.outcome == "EXECUTED" and e.ts >= since)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -333,9 +334,7 @@ class TransferManager:
 
     def _prune_daily(self, bot: str, now: datetime) -> None:
         cutoff = now - timedelta(hours=24)
-        self._daily_sent[bot] = [
-            (ts, amt) for ts, amt in self._daily_sent[bot] if ts >= cutoff
-        ]
+        self._daily_sent[bot] = [(ts, amt) for ts, amt in self._daily_sent[bot] if ts >= cutoff]
 
     def _daily_total(self, bot: str, now: datetime) -> float:
         self._prune_daily(bot, now)
@@ -350,8 +349,7 @@ class TransferManager:
         # Per-txn limit
         if req.amount_usd > self.policy.per_txn_limit_usd:
             raise TransferLimitExceededError(
-                f"amount ${req.amount_usd:.2f} exceeds per-txn "
-                f"limit ${self.policy.per_txn_limit_usd:.2f}",
+                f"amount ${req.amount_usd:.2f} exceeds per-txn limit ${self.policy.per_txn_limit_usd:.2f}",
             )
         # 24h rolling
         rolling = self._daily_total(req.from_bot, now)
@@ -362,10 +360,7 @@ class TransferManager:
                 f"exceeding ${self.policy.daily_limit_usd:.2f}",
             )
         # Approval gate for large amounts
-        if (
-            req.amount_usd >= self.policy.approval_threshold_usd
-            and not req.requires_approval
-        ):
+        if req.amount_usd >= self.policy.approval_threshold_usd and not req.requires_approval:
             raise TransferApprovalRequiredError(
                 f"amount ${req.amount_usd:.2f} at/above approval "
                 f"threshold ${self.policy.approval_threshold_usd:.2f} -- "
@@ -389,10 +384,15 @@ class TransferManager:
                 status=TransferStatus.FAILED,
                 error=str(exc),
             )
-            self.ledger.append(TransferLedgerEntry(
-                ts=now, request=req, result=result,
-                outcome="REJECTED", reason=str(exc),
-            ))
+            self.ledger.append(
+                TransferLedgerEntry(
+                    ts=now,
+                    request=req,
+                    result=result,
+                    outcome="REJECTED",
+                    reason=str(exc),
+                )
+            )
             return result
 
         result = await self.executor.execute(req)
@@ -407,8 +407,13 @@ class TransferManager:
         if outcome == "EXECUTED":
             self._daily_sent[req.from_bot].append((now, req.amount_usd))
 
-        self.ledger.append(TransferLedgerEntry(
-            ts=now, request=req, result=result,
-            outcome=outcome, reason=result.error or "",
-        ))
+        self.ledger.append(
+            TransferLedgerEntry(
+                ts=now,
+                request=req,
+                result=result,
+                outcome=outcome,
+                reason=result.error or "",
+            )
+        )
         return result

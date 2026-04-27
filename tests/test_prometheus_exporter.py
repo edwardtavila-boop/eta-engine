@@ -1,4 +1,5 @@
 """Prometheus /metrics + /health endpoint tests — P7_OPS prometheus."""
+
 from __future__ import annotations
 
 import pytest

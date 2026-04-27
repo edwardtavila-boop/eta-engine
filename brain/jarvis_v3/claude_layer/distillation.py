@@ -21,6 +21,7 @@ uses the same stdlib-only GD from ``calibration.py``. Persistent JSON.
 
 Pure / deterministic / no external deps.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,19 +34,20 @@ from pydantic import BaseModel, ConfigDict, Field
 FEATURE_KEYS: tuple[str, ...] = (
     "stress_composite",
     "sizing_mult",
-    "regime_crisis",         # 0/1
-    "event_within_1h",       # 0/1
-    "portfolio_breach",      # 0/1
+    "regime_crisis",  # 0/1
+    "event_within_1h",  # 0/1
+    "portfolio_breach",  # 0/1
     "doctrine_net_bias",
     "r_at_risk",
     "operator_overrides_24h",
-    "precedent_n_log",       # log1p(precedent_n)
+    "precedent_n_log",  # log1p(precedent_n)
     "anomaly_count",
 )
 
 
 class DistillSample(BaseModel):
     """One triple used for training."""
+
     model_config = ConfigDict(frozen=True)
 
     features: dict[str, float]
@@ -60,13 +62,14 @@ class DistillSample(BaseModel):
 
 class DistillerModel(BaseModel):
     """Logistic regression weights + bias."""
+
     model_config = ConfigDict(frozen=False)
 
-    weights:  dict[str, float] = Field(default_factory=dict)
-    bias:     float = 0.0
-    train_n:  int = Field(ge=0, default=0)
+    weights: dict[str, float] = Field(default_factory=dict)
+    bias: float = 0.0
+    train_n: int = Field(ge=0, default=0)
     accuracy: float = Field(ge=0.0, le=1.0, default=0.0)
-    version:  int = Field(ge=0, default=0)
+    version: int = Field(ge=0, default=0)
 
     def predict_agreement(self, features: dict[str, float]) -> float:
         z = self.bias
@@ -82,13 +85,14 @@ class DistillerModel(BaseModel):
 
 class SkipDecision(BaseModel):
     """Output of ``should_skip_claude``."""
+
     model_config = ConfigDict(frozen=True)
 
-    skip_claude:     bool
-    p_agree:         float = Field(ge=0.0, le=1.0)
-    threshold:       float = Field(ge=0.0, le=1.0)
-    model_version:   int   = Field(ge=0)
-    reason:          str
+    skip_claude: bool
+    p_agree: float = Field(ge=0.0, le=1.0)
+    threshold: float = Field(ge=0.0, le=1.0)
+    model_version: int = Field(ge=0)
+    reason: str
 
 
 class Distiller:
@@ -121,9 +125,7 @@ class Distiller:
             grad_b = 0.0
             for x, y in zip(xs, ys, strict=True):
                 z = b + sum(w[k] * x.get(k, 0.0) for k in FEATURE_KEYS)
-                p = 1.0 / (1.0 + math.exp(-z)) if z >= 0 else (
-                    math.exp(z) / (1.0 + math.exp(z))
-                )
+                p = 1.0 / (1.0 + math.exp(-z)) if z >= 0 else (math.exp(z) / (1.0 + math.exp(z)))
                 err = p - y
                 for k in FEATURE_KEYS:
                     grads[k] += err * x.get(k, 0.0)
@@ -161,8 +163,8 @@ class Distiller:
         skip = p >= skip_threshold
         reason = (
             f"classifier p_agree={p:.3f} >= {skip_threshold} -- skip Claude"
-            if skip else
-            f"classifier p_agree={p:.3f} < {skip_threshold} -- invoke Claude"
+            if skip
+            else f"classifier p_agree={p:.3f} < {skip_threshold} -- invoke Claude"
         )
         return SkipDecision(
             skip_claude=skip,
@@ -193,17 +195,15 @@ class Distiller:
 def _extract(raw: dict[str, float]) -> dict[str, float]:
     """Normalize raw features -> model features (binning, log-transform)."""
     out: dict[str, float] = {k: 0.0 for k in FEATURE_KEYS}
-    out["stress_composite"]        = float(raw.get("stress_composite", 0.0))
-    out["sizing_mult"]             = float(raw.get("sizing_mult", 1.0))
-    out["regime_crisis"]           = float(
-        1.0 if str(raw.get("regime", "")).upper() == "CRISIS" else 0.0
-    )
+    out["stress_composite"] = float(raw.get("stress_composite", 0.0))
+    out["sizing_mult"] = float(raw.get("sizing_mult", 1.0))
+    out["regime_crisis"] = float(1.0 if str(raw.get("regime", "")).upper() == "CRISIS" else 0.0)
     hev = raw.get("hours_until_event")
-    out["event_within_1h"]         = float(1.0 if hev is not None and 0 <= hev <= 1.0 else 0.0)
-    out["portfolio_breach"]        = float(1.0 if raw.get("portfolio_breach") else 0.0)
-    out["doctrine_net_bias"]       = float(raw.get("doctrine_net_bias", 0.0))
-    out["r_at_risk"]               = float(raw.get("r_at_risk", 0.0))
-    out["operator_overrides_24h"]  = float(raw.get("operator_overrides_24h", 0))
-    out["precedent_n_log"]         = math.log1p(max(0, int(raw.get("precedent_n", 0))))
-    out["anomaly_count"]           = float(raw.get("anomaly_count", 0))
+    out["event_within_1h"] = float(1.0 if hev is not None and 0 <= hev <= 1.0 else 0.0)
+    out["portfolio_breach"] = float(1.0 if raw.get("portfolio_breach") else 0.0)
+    out["doctrine_net_bias"] = float(raw.get("doctrine_net_bias", 0.0))
+    out["r_at_risk"] = float(raw.get("r_at_risk", 0.0))
+    out["operator_overrides_24h"] = float(raw.get("operator_overrides_24h", 0))
+    out["precedent_n_log"] = math.log1p(max(0, int(raw.get("precedent_n", 0))))
+    out["anomaly_count"] = float(raw.get("anomaly_count", 0))
     return out

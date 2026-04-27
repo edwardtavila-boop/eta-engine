@@ -1,4 +1,5 @@
 """Tests for scripts.daily_premarket."""
+
 from __future__ import annotations
 
 import json
@@ -65,10 +66,7 @@ def test_run_stubs_when_inputs_missing(tmp_path: Path) -> None:
     inputs = tmp_path / "nope.json"
     out_dir = tmp_path / "docs"
     ctx = run(inputs_path=inputs, out_dir=out_dir)
-    assert any(
-        "stub" in n.lower() or "premarket_inputs" in n.lower()
-        for n in ctx.notes
-    )
+    assert any("stub" in n.lower() or "premarket_inputs" in n.lower() for n in ctx.notes)
 
 
 def test_run_appends_to_log(tmp_path: Path) -> None:
@@ -77,9 +75,14 @@ def test_run_appends_to_log(tmp_path: Path) -> None:
     out_dir = tmp_path / "docs"
     run(inputs_path=inputs, out_dir=out_dir)
     run(inputs_path=inputs, out_dir=out_dir)
-    log_lines = (out_dir / "premarket_log.jsonl").read_text(
-        encoding="utf-8",
-    ).strip().split("\n")
+    log_lines = (
+        (out_dir / "premarket_log.jsonl")
+        .read_text(
+            encoding="utf-8",
+        )
+        .strip()
+        .split("\n")
+    )
     assert len(log_lines) == 2
 
 

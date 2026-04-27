@@ -1,4 +1,5 @@
 """Tests for scripts._chaos_drill_matrix."""
+
 from __future__ import annotations
 
 import json

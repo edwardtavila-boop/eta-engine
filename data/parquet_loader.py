@@ -7,12 +7,15 @@ Streaming parquet reader over the DataBento cache. Bar chunks, no full-file load
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from eta_engine.core.data_pipeline import BarData
 from eta_engine.data.models import DatasetManifest, DatasetRef, DataSource
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class ParquetLoader:

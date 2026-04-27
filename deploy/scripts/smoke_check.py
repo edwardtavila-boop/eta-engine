@@ -14,6 +14,7 @@ Verifies:
 
 Exit 0 on clean; exit non-zero with a table of failures.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +44,7 @@ def check_imports() -> tuple[bool, str]:
         from eta_engine.brain.jarvis_v3.claude_layer.cost_governor import (
             CostGovernor,  # noqa: F401
         )
+
         return True, "imports OK"
     except Exception as exc:  # noqa: BLE001
         return False, f"import failure: {exc}"
@@ -97,23 +99,37 @@ def check_dispatch() -> tuple[bool, str]:
         from eta_engine.brain.jarvis_v3.claude_layer.usage_tracker import (
             UsageTracker,
         )
+
         fleet = Fleet(executor=DryRunExecutor())
         gov = CostGovernor(UsageTracker())
         disp = AvengersDispatch(governor=gov, fleet=fleet)
         ctx = StructuredContext(
-            ts="smoke", subsystem="bot.mnq", action="ORDER_PLACE",
-            regime="NEUTRAL", regime_confidence=0.8, session_phase="MORNING",
-            stress_composite=0.2, binding_constraint="equity_dd",
-            sizing_mult=0.9, hours_until_event=None, event_label=None,
-            r_at_risk=1.0, daily_dd_pct=0.01, portfolio_breach=False,
-            doctrine_net_bias=-0.1, precedent_n=30,
-            precedent_win_rate=0.6, precedent_mean_r=0.4,
+            ts="smoke",
+            subsystem="bot.mnq",
+            action="ORDER_PLACE",
+            regime="NEUTRAL",
+            regime_confidence=0.8,
+            session_phase="MORNING",
+            stress_composite=0.2,
+            binding_constraint="equity_dd",
+            sizing_mult=0.9,
+            hours_until_event=None,
+            event_label=None,
+            r_at_risk=1.0,
+            daily_dd_pct=0.01,
+            portfolio_breach=False,
+            doctrine_net_bias=-0.1,
+            precedent_n=30,
+            precedent_win_rate=0.6,
+            precedent_mean_r=0.4,
             operator_overrides_24h=0,
             jarvis_baseline_verdict="APPROVED",
         )
         result = disp.decide(
             escalation_inputs=EscalationInputs(
-                regime="NEUTRAL", stress_composite=0.2, precedent_n=30,
+                regime="NEUTRAL",
+                stress_composite=0.2,
+                precedent_n=30,
             ),
             stakes_inputs=StakesInputs(),
             context=ctx,
@@ -127,6 +143,7 @@ def check_task_handlers() -> tuple[bool, str]:
     try:
         from eta_engine.brain.avengers import BackgroundTask
         from eta_engine.deploy.scripts.run_task import HANDLERS
+
         missing = [t for t in BackgroundTask if t not in HANDLERS]
         if missing:
             return False, f"missing handlers: {[t.value for t in missing]}"
@@ -149,7 +166,10 @@ def check_crontab() -> tuple[bool, str]:
     try:
         out = subprocess.run(
             ["crontab", "-l"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
         ).stdout
     except Exception as exc:  # noqa: BLE001
         return False, f"crontab check failed: {exc}"
@@ -160,20 +180,19 @@ def check_crontab() -> tuple[bool, str]:
 
 
 CHECKS = (
-    ("imports",         check_imports),
-    ("env",             lambda: check_env(Path.cwd() / ".env")),
-    ("state/log dirs",  check_dirs),
-    ("dispatch",        check_dispatch),
-    ("task handlers",   check_task_handlers),
-    ("systemd",         check_systemd),
-    ("crontab",         check_crontab),
+    ("imports", check_imports),
+    ("env", lambda: check_env(Path.cwd() / ".env")),
+    ("state/log dirs", check_dirs),
+    ("dispatch", check_dispatch),
+    ("task handlers", check_task_handlers),
+    ("systemd", check_systemd),
+    ("crontab", check_crontab),
 )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--skip-systemd", action="store_true",
-                    help="skip systemd + crontab checks (useful pre-install)")
+    ap.add_argument("--skip-systemd", action="store_true", help="skip systemd + crontab checks (useful pre-install)")
     args = ap.parse_args(argv)
 
     print("EVOLUTIONARY TRADING ALGO  //  smoke check")

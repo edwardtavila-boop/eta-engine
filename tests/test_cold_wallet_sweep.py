@@ -1,4 +1,5 @@
 """Cold-wallet sweep verifier tests — P6_FUNNEL cold_wallet."""
+
 from __future__ import annotations
 
 import pytest
@@ -27,6 +28,7 @@ def _build_default() -> ColdWalletSweep:
 # ---------------------------------------------------------------------------
 # build_sweep_plan
 # ---------------------------------------------------------------------------
+
 
 def test_build_sweep_plan_returns_instruction_above_floor() -> None:
     sweep = _build_default()
@@ -148,6 +150,7 @@ def test_build_sweep_plan_respects_custom_floor() -> None:
 # ---------------------------------------------------------------------------
 # verify_sweep
 # ---------------------------------------------------------------------------
+
 
 def _instruction(amount: float = 5_000.0) -> SweepInstruction:
     return SweepInstruction(

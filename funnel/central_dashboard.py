@@ -11,6 +11,7 @@ dashboard or a CLI tearsheet. The snapshot combines:
 The module is read-only — it doesn't drive state, it renders it. Callers hand
 in the live :class:`PortfolioState` + optional sweep ledger + staking balances.
 """
+
 from __future__ import annotations
 
 import json
@@ -133,9 +134,7 @@ def build_snapshot(
         market_context_summary_text = d.get("market_context_summary_text")
         if not isinstance(market_context_summary_text, str) or not market_context_summary_text.strip():
             market_context_summary_text = (
-                format_market_context_summary(market_context_summary)
-                if market_context_summary
-                else None
+                format_market_context_summary(market_context_summary) if market_context_summary else None
             )
         if alert_level == "KILL":
             any_kill = True
@@ -170,23 +169,22 @@ def build_snapshot(
         # we approximate USD yield via `balance * apy/100 * usd_price` — but
         # price lookup is out-of-scope here, so we treat balance as USD notional.
         est_yield = balance * apy / 100.0
-        staking_snaps.append(StakingSnapshot(
-            protocol=str(s.get("protocol", "unknown")),
-            asset=str(s.get("asset", "")),
-            balance=round(balance, 6),
-            apy_pct=round(apy, 2),
-            est_yield_per_year_usd=round(est_yield, 2),
-        ))
+        staking_snaps.append(
+            StakingSnapshot(
+                protocol=str(s.get("protocol", "unknown")),
+                asset=str(s.get("asset", "")),
+                balance=round(balance, 6),
+                apy_pct=round(apy, 2),
+                est_yield_per_year_usd=round(est_yield, 2),
+            )
+        )
 
     total_equity = round(float(portfolio.total_equity), 2)
     total_baseline = round(sum(float(b.baseline_usd) for b in portfolio.bots.values()), 2)
     total_excess = round(total_equity - total_baseline, 2)
 
     health_label = (
-        "KILL" if any_kill
-        else "PAUSE" if worst_alert_rank >= 2
-        else "WATCH" if worst_alert_rank == 1
-        else "OK"
+        "KILL" if any_kill else "PAUSE" if worst_alert_rank >= 2 else "WATCH" if worst_alert_rank == 1 else "OK"
     )
     if total_equity < total_baseline * 0.90:
         notes.append(f"portfolio equity {total_equity} < 90% baseline {total_baseline}")

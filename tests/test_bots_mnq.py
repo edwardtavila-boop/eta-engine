@@ -27,7 +27,10 @@ class _FakeRouter:
         self.calls: list[OrderRequest] = []
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency
         self.calls.append(req)
@@ -45,10 +48,16 @@ class _FakeRouter:
 def test_orb_breakout_long_fires_with_volume_confirmation() -> None:
     bot = MnqBot()
     bar = {
-        "open": 25_000, "high": 25_050, "low": 24_990, "close": 25_050,
-        "volume": 5000, "avg_volume": 1000,
-        "orb_high": 25_040, "orb_low": 24_900,
-        "atr_14": 10.0, "adx_14": 35.0,  # trending
+        "open": 25_000,
+        "high": 25_050,
+        "low": 24_990,
+        "close": 25_050,
+        "volume": 5000,
+        "avg_volume": 1000,
+        "orb_high": 25_040,
+        "orb_low": 24_900,
+        "atr_14": 10.0,
+        "adx_14": 35.0,  # trending
     }
     sig = bot.orb_breakout(bar, RegimeType.TRENDING, None)
     assert sig is not None
@@ -60,8 +69,12 @@ def test_orb_breakout_long_fires_with_volume_confirmation() -> None:
 def test_orb_breakout_no_volume_no_signal() -> None:
     bot = MnqBot()
     bar = {
-        "close": 25_050, "volume": 500, "avg_volume": 1000,
-        "orb_high": 25_040, "orb_low": 24_900, "atr_14": 10.0,
+        "close": 25_050,
+        "volume": 500,
+        "avg_volume": 1000,
+        "orb_high": 25_040,
+        "orb_low": 24_900,
+        "atr_14": 10.0,
     }
     assert bot.orb_breakout(bar, RegimeType.TRENDING, None) is None
 
@@ -80,6 +93,7 @@ def test_ema_pullback_requires_trending_regime() -> None:
 
 def test_sweep_reclaim_fires_on_confirmed_reclaim() -> None:
     from eta_engine.bots.base_bot import SweepResult
+
     bot = MnqBot()
     bar = {"close": 25_100, "atr_14": 8.0}
     sweep = SweepResult(swept=True, direction=SignalType.LONG, level=25_080, reclaim_confirmed=True)
@@ -104,8 +118,7 @@ def test_mean_reversion_fires_on_zscore_only_in_ranging() -> None:
 def test_size_from_signal_uses_stop_distance_meta() -> None:
     bot = MnqBot()
     # equity=$5000, risk=1% -> $50 risk budget. stop_distance=5 pts = $10/contract
-    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000,
-                 confidence=7.0, meta={"stop_distance": 5.0})
+    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000, confidence=7.0, meta={"stop_distance": 5.0})
     qty = bot._size_from_signal(sig)
     # $50 / ($10/contract) = 5 contracts
     assert qty == 5.0
@@ -113,8 +126,7 @@ def test_size_from_signal_uses_stop_distance_meta() -> None:
 
 def test_size_from_signal_zero_when_stop_dist_zero() -> None:
     bot = MnqBot()
-    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000,
-                 meta={"stop_distance": 0.0})
+    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000, meta={"stop_distance": 0.0})
     assert bot._size_from_signal(sig) == 0.0
 
 
@@ -132,8 +144,7 @@ async def test_on_signal_routes_to_router_with_buy_side() -> None:
     results = [OrderResult(order_id="T-1", status=OrderStatus.FILLED, filled_qty=5.0, avg_price=25_001)]
     router = _FakeRouter(results)
     bot = MnqBot(router=router, tradovate_symbol="MNQH6")
-    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000,
-                 confidence=7.0, meta={"stop_distance": 5.0})
+    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000, confidence=7.0, meta={"stop_distance": 5.0})
     res = await bot.on_signal(sig)
     assert res is not None
     assert res.status is OrderStatus.FILLED
@@ -149,8 +160,7 @@ async def test_on_signal_routes_to_router_with_buy_side() -> None:
 async def test_on_signal_close_short_uses_reduce_only_buy() -> None:
     router = _FakeRouter([OrderResult(order_id="T-2", status=OrderStatus.FILLED, filled_qty=2.0)])
     bot = MnqBot(router=router)
-    sig = Signal(type=SignalType.CLOSE_SHORT, symbol="MNQ", price=25_100,
-                 size=2.0, meta={})
+    sig = Signal(type=SignalType.CLOSE_SHORT, symbol="MNQ", price=25_100, size=2.0, meta={})
     await bot.on_signal(sig)
     req = router.calls[0]
     assert req.side is Side.BUY
@@ -179,8 +189,7 @@ async def test_on_signal_skips_when_qty_zero() -> None:
     router = _FakeRouter([])
     bot = MnqBot(router=router)
     # stop_distance=0 → qty=0 → skipped before router call
-    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000,
-                 meta={"stop_distance": 0.0})
+    sig = Signal(type=SignalType.LONG, symbol="MNQ", price=25_000, meta={"stop_distance": 0.0})
     res = await bot.on_signal(sig)
     assert res is None
     assert router.calls == []
@@ -249,10 +258,16 @@ async def test_on_bar_orb_long_routes_to_router() -> None:
     router = _FakeRouter(results)
     bot = MnqBot(router=router)
     bar = {
-        "open": 25_000, "high": 25_050, "low": 24_990, "close": 25_050,
-        "volume": 5000, "avg_volume": 1000,
-        "orb_high": 25_040, "orb_low": 24_900,
-        "atr_14": 10.0, "adx_14": 35.0,
+        "open": 25_000,
+        "high": 25_050,
+        "low": 24_990,
+        "close": 25_050,
+        "volume": 5000,
+        "avg_volume": 1000,
+        "orb_high": 25_040,
+        "orb_low": 24_900,
+        "atr_14": 10.0,
+        "adx_14": 35.0,
     }
     await bot.on_bar(bar)
     assert len(router.calls) == 1
@@ -297,8 +312,11 @@ def _trade_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(),
@@ -310,8 +328,11 @@ def _kill_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-3_000.0,
-            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
         journal=JournalSnapshot(kill_switch_active=True),
@@ -323,8 +344,11 @@ def _reduce_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-1_250.0,
-            daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+            account_equity=50_000.0,
+            daily_pnl=-1_250.0,
+            daily_drawdown_pct=0.025,
+            open_positions=1,
+            open_risk_r=1.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
         journal=JournalSnapshot(),
@@ -360,8 +384,11 @@ class TestJarvisGating:
         router = _FakeRouter([])
         bot = MnqBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
-            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+            type=SignalType.LONG,
+            symbol="MNQ",
+            price=25_000.0,
+            confidence=7.0,
+            meta={"stop_distance": 5.0, "setup": "orb_breakout"},
         )
         result = await bot.on_signal(sig)
         assert result is None
@@ -372,13 +399,16 @@ class TestJarvisGating:
     async def test_conditional_size_cap_shrinks_qty(self) -> None:
         """REDUCE tier caps size at <=0.5 -- the bot must apply it."""
         jarvis = JarvisAdmin()
-        router = _FakeRouter([
-            OrderResult(order_id="R-1", status=OrderStatus.FILLED,
-                         filled_qty=2.0, avg_price=25_000.0),
-        ])
+        router = _FakeRouter(
+            [
+                OrderResult(order_id="R-1", status=OrderStatus.FILLED, filled_qty=2.0, avg_price=25_000.0),
+            ]
+        )
         bot = MnqBot(jarvis=jarvis, provide_ctx=_reduce_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
+            type=SignalType.LONG,
+            symbol="MNQ",
+            price=25_000.0,
             confidence=7.0,
             meta={"stop_distance": 5.0, "setup": "orb_breakout"},
         )
@@ -392,7 +422,10 @@ class TestJarvisGating:
         req = make_action_request(
             subsystem=SubsystemId.BOT_MNQ,
             action=ActionType.ORDER_PLACE,
-            side="LONG", symbol="MNQ", price=25_000.0, confidence=7.0,
+            side="LONG",
+            symbol="MNQ",
+            price=25_000.0,
+            confidence=7.0,
         )
         resp = jarvis.request_approval(req, ctx=_reduce_ctx())
         assert resp.verdict == Verdict.CONDITIONAL
@@ -405,14 +438,18 @@ class TestJarvisGating:
         would refuse an entry. Exits reduce risk -- the gate is for
         entries only."""
         jarvis = JarvisAdmin()
-        router = _FakeRouter([
-            OrderResult(order_id="C-1", status=OrderStatus.FILLED,
-                         filled_qty=2.0, avg_price=25_000.0),
-        ])
+        router = _FakeRouter(
+            [
+                OrderResult(order_id="C-1", status=OrderStatus.FILLED, filled_qty=2.0, avg_price=25_000.0),
+            ]
+        )
         bot = MnqBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
         sig = Signal(
-            type=SignalType.CLOSE_LONG, symbol="MNQ", price=25_100.0,
-            size=2.0, meta={},
+            type=SignalType.CLOSE_LONG,
+            symbol="MNQ",
+            price=25_100.0,
+            size=2.0,
+            meta={},
         )
         result = await bot.on_signal(sig)
         assert result is not None
@@ -421,23 +458,32 @@ class TestJarvisGating:
 
     @pytest.mark.asyncio
     async def test_journal_records_start_and_order_events(
-        self, tmp_path,  # type: ignore[no-untyped-def]
+        self,
+        tmp_path,  # type: ignore[no-untyped-def]
     ) -> None:
         journal = DecisionJournal(tmp_path / "mnq.jsonl")
         jarvis = JarvisAdmin()
-        router = _FakeRouter([
-            OrderResult(order_id="J-1", status=OrderStatus.FILLED,
-                         filled_qty=5.0, avg_price=25_000.0),
-        ])
+        router = _FakeRouter(
+            [
+                OrderResult(order_id="J-1", status=OrderStatus.FILLED, filled_qty=5.0, avg_price=25_000.0),
+            ]
+        )
         bot = MnqBot(
-            jarvis=jarvis, provide_ctx=_trade_ctx,
-            router=router, journal=journal,
+            jarvis=jarvis,
+            provide_ctx=_trade_ctx,
+            router=router,
+            journal=journal,
         )
         await bot.start()
-        await bot.on_signal(Signal(
-            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
-            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
-        ))
+        await bot.on_signal(
+            Signal(
+                type=SignalType.LONG,
+                symbol="MNQ",
+                price=25_000.0,
+                confidence=7.0,
+                meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+            )
+        )
         await bot.stop()
         events = journal.read_all()
         intents = [e.intent for e in events]
@@ -449,18 +495,26 @@ class TestJarvisGating:
 
     @pytest.mark.asyncio
     async def test_journal_records_blocked_order(
-        self, tmp_path,  # type: ignore[no-untyped-def]
+        self,
+        tmp_path,  # type: ignore[no-untyped-def]
     ) -> None:
         journal = DecisionJournal(tmp_path / "mnq_blocked.jsonl")
         jarvis = JarvisAdmin()
         bot = MnqBot(
-            jarvis=jarvis, provide_ctx=_kill_ctx,
-            router=_FakeRouter([]), journal=journal,
+            jarvis=jarvis,
+            provide_ctx=_kill_ctx,
+            router=_FakeRouter([]),
+            journal=journal,
         )
-        await bot.on_signal(Signal(
-            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
-            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
-        ))
+        await bot.on_signal(
+            Signal(
+                type=SignalType.LONG,
+                symbol="MNQ",
+                price=25_000.0,
+                confidence=7.0,
+                meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+            )
+        )
         events = journal.read_all()
         blocked = [e for e in events if e.outcome == Outcome.BLOCKED]
         assert len(blocked) == 1
@@ -480,14 +534,18 @@ class TestJarvisGating:
     @pytest.mark.asyncio
     async def test_no_jarvis_preserves_legacy_behavior(self) -> None:
         """When jarvis is None, on_signal routes without gating (legacy)."""
-        router = _FakeRouter([
-            OrderResult(order_id="L-1", status=OrderStatus.FILLED,
-                         filled_qty=5.0, avg_price=25_000.0),
-        ])
+        router = _FakeRouter(
+            [
+                OrderResult(order_id="L-1", status=OrderStatus.FILLED, filled_qty=5.0, avg_price=25_000.0),
+            ]
+        )
         bot = MnqBot(router=router)  # no jarvis
         sig = Signal(
-            type=SignalType.LONG, symbol="MNQ", price=25_000.0,
-            confidence=7.0, meta={"stop_distance": 5.0, "setup": "orb_breakout"},
+            type=SignalType.LONG,
+            symbol="MNQ",
+            price=25_000.0,
+            confidence=7.0,
+            meta={"stop_distance": 5.0, "setup": "orb_breakout"},
         )
         result = await bot.on_signal(sig)
         assert result is not None
@@ -499,11 +557,13 @@ class TestNqJarvisIntegration:
 
     def test_nq_subsystem_id(self) -> None:
         from eta_engine.bots.nq.bot import NqBot
+
         assert NqBot().SUBSYSTEM == SubsystemId.BOT_NQ
 
     @pytest.mark.asyncio
     async def test_nq_start_gates_through_jarvis(self) -> None:
         from eta_engine.bots.nq.bot import NqBot
+
         jarvis = JarvisAdmin()
         bot = NqBot(jarvis=jarvis, provide_ctx=_kill_ctx)
         await bot.start()
@@ -512,6 +572,7 @@ class TestNqJarvisIntegration:
     @pytest.mark.asyncio
     async def test_nq_start_approved_under_trade(self) -> None:
         from eta_engine.bots.nq.bot import NqBot
+
         jarvis = JarvisAdmin()
         bot = NqBot(jarvis=jarvis, provide_ctx=_trade_ctx)
         await bot.start()
@@ -525,6 +586,7 @@ class TestKillSwitchLatchGating:
     @pytest.mark.asyncio
     async def test_armed_latch_allows_start(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from eta_engine.core.kill_switch_latch import KillSwitchLatch
+
         latch = KillSwitchLatch(tmp_path / "latch.json")
         # ARMED by default -- no file means no trip.
         bot = MnqBot(kill_switch_latch=latch)
@@ -540,14 +602,17 @@ class TestKillSwitchLatchGating:
             KillSeverity,
             KillVerdict,
         )
+
         latch = KillSwitchLatch(tmp_path / "latch.json")
-        flipped = latch.record_verdict(KillVerdict(
-            action=KillAction.FLATTEN_ALL,
-            severity=KillSeverity.CRITICAL,
-            reason="dd_breach_simulated",
-            scope="account",
-            evidence={"source": "test"},
-        ))
+        flipped = latch.record_verdict(
+            KillVerdict(
+                action=KillAction.FLATTEN_ALL,
+                severity=KillSeverity.CRITICAL,
+                reason="dd_breach_simulated",
+                scope="account",
+                evidence={"source": "test"},
+            )
+        )
         assert flipped is True
         assert latch.read().state.value == "TRIPPED"
 
@@ -573,6 +638,7 @@ class TestKillSwitchLatchGating:
 def _ct_ms_for_bot(y: int, m: int, d: int, hh: int, mm: int) -> int:
     """(hh:mm) America/Chicago (CDT, May) -> epoch milliseconds UTC."""
     from datetime import UTC, datetime, timedelta
+
     utc = datetime(y, m, d, hh, mm, tzinfo=UTC) + timedelta(hours=5)
     return int(utc.timestamp() * 1000)
 
@@ -625,6 +691,7 @@ class TestSessionGateAttachAtStart:
     async def test_no_adapter_with_gate_is_safe(self) -> None:
         """Bot without an adapter should not crash when session_gate is set."""
         from eta_engine.core.session_gate import SessionGate
+
         bot = MnqBot(strategy_adapter=None, session_gate=SessionGate())
         await bot.start()
         assert bot.state.is_paused is False
@@ -664,6 +731,7 @@ class TestEodFlattenSignalEmission:
     @pytest.mark.asyncio
     async def test_eod_flatten_fires_close_signals(self) -> None:
         from eta_engine.core.session_gate import REASON_EOD_PENDING
+
         bot, captured = self._wire_bot()
         await bot.start()
         # Seed one long + one short position so the bot emits one
@@ -755,6 +823,7 @@ class TestEodFlattenSignalEmission:
     async def test_eod_flatten_no_adapter_is_noop(self) -> None:
         """Without an adapter the bot still boots; on_bar doesn't crash."""
         from eta_engine.core.session_gate import SessionGate
+
         bot = MnqBot(strategy_adapter=None, session_gate=SessionGate())
         captured: list[Signal] = []
 

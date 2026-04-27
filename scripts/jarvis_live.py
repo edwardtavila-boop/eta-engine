@@ -46,6 +46,7 @@ All I/O is injected for testing. ``run_live()`` takes explicit
 providers / alerter / paths, so tests wire stubs and bound the loop
 with ``max_ticks``. The module-level ``main()`` is just a CLI shim.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -264,7 +265,8 @@ async def run_live(
             # Sleep cancellable by stop_event.
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
-                    stop_event.wait(), timeout=interval_s,
+                    stop_event.wait(),
+                    timeout=interval_s,
                 )
     finally:
         if alerter is not None:
@@ -319,7 +321,8 @@ async def _async_main(
     _install_signal_handlers(stop_event)
     logger.info(
         "jarvis_live starting: inputs=%s interval=%.1fs alerter=%s max_ticks=%s",
-        inputs_path, interval_s,
+        inputs_path,
+        interval_s,
         "on" if alerter is not None else "dry-run",
         max_ticks,
     )
@@ -343,14 +346,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="EVOLUTIONARY TRADING ALGO Jarvis live supervisor daemon",
     )
-    parser.add_argument("--inputs", type=Path, default=DEFAULT_INPUTS,
-                        help="Path to premarket_inputs.json (hot-reloaded)")
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR,
-                        help="Directory for jarvis_live_health.json + log")
-    parser.add_argument("--interval", type=float, default=60.0,
-                        help="Tick interval in seconds (default 60)")
-    parser.add_argument("--max-ticks", type=int, default=None,
-                        help="Stop after N ticks (default: run forever)")
+    parser.add_argument(
+        "--inputs", type=Path, default=DEFAULT_INPUTS, help="Path to premarket_inputs.json (hot-reloaded)"
+    )
+    parser.add_argument(
+        "--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="Directory for jarvis_live_health.json + log"
+    )
+    parser.add_argument("--interval", type=float, default=60.0, help="Tick interval in seconds (default 60)")
+    parser.add_argument("--max-ticks", type=int, default=None, help="Stop after N ticks (default: run forever)")
     parser.add_argument("--log-level", type=str, default="INFO")
     args = parser.parse_args(argv)
 
@@ -361,12 +364,14 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.write(
         f"[{datetime.now(UTC).isoformat()}] jarvis_live starting\n",
     )
-    return asyncio.run(_async_main(
-        inputs_path=args.inputs,
-        out_dir=args.out_dir,
-        interval_s=args.interval,
-        max_ticks=args.max_ticks,
-    ))
+    return asyncio.run(
+        _async_main(
+            inputs_path=args.inputs,
+            out_dir=args.out_dir,
+            interval_s=args.interval,
+            max_ticks=args.max_ticks,
+        )
+    )
 
 
 if __name__ == "__main__":

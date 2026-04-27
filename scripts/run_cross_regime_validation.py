@@ -33,6 +33,7 @@ Exit codes:
 Usage:
     python -m eta_engine.scripts.run_cross_regime_validation
 """
+
 from __future__ import annotations
 
 import json
@@ -69,46 +70,61 @@ def _specs() -> list[RegimeSpec]:
             name="TRENDING",
             expected_label=RegimeType.TRENDING,
             bar_params={
-                "n": 1200, "start_price": 3500.0, "drift": 0.0012,
-                "vol": 0.006, "symbol": "SYN-TREND", "seed": 101,
+                "n": 1200,
+                "start_price": 3500.0,
+                "drift": 0.0012,
+                "vol": 0.006,
+                "symbol": "SYN-TREND",
+                "seed": 101,
             },
-            axes=RegimeAxes(vol=0.45, trend=0.70, liquidity=0.8,
-                            correlation=0.45, macro="neutral"),
+            axes=RegimeAxes(vol=0.45, trend=0.70, liquidity=0.8, correlation=0.45, macro="neutral"),
         ),
         RegimeSpec(
             name="RANGING",
             expected_label=RegimeType.RANGING,
             bar_params={
-                "n": 1200, "start_price": 3500.0, "drift": 0.0,
-                "vol": 0.003, "symbol": "SYN-RANGE", "seed": 202,
+                "n": 1200,
+                "start_price": 3500.0,
+                "drift": 0.0,
+                "vol": 0.003,
+                "symbol": "SYN-RANGE",
+                "seed": 202,
             },
             # vol 0.30 and |trend| 0.1 -> RANGING (requires vol in [0.2, 0.5])
-            axes=RegimeAxes(vol=0.30, trend=0.10, liquidity=0.7,
-                            correlation=0.40, macro="neutral"),
+            axes=RegimeAxes(vol=0.30, trend=0.10, liquidity=0.7, correlation=0.40, macro="neutral"),
         ),
         RegimeSpec(
             name="HIGH_VOL",
             expected_label=RegimeType.HIGH_VOL,
             bar_params={
-                "n": 1200, "start_price": 3500.0, "drift": 0.0004,
-                "vol": 0.020, "symbol": "SYN-HIVOL", "seed": 303,
-                "jump_intensity": 0.05, "jump_mean": 0.0, "jump_vol": 0.03,
+                "n": 1200,
+                "start_price": 3500.0,
+                "drift": 0.0004,
+                "vol": 0.020,
+                "symbol": "SYN-HIVOL",
+                "seed": 303,
+                "jump_intensity": 0.05,
+                "jump_mean": 0.0,
+                "jump_vol": 0.03,
                 "regime_persist": 24,
-                "bull_drift_boost": 0.0015, "bear_drift_penalty": 0.0015,
+                "bull_drift_boost": 0.0015,
+                "bear_drift_penalty": 0.0015,
             },
-            axes=RegimeAxes(vol=0.80, trend=0.20, liquidity=0.5,
-                            correlation=0.80, macro="hawkish"),
+            axes=RegimeAxes(vol=0.80, trend=0.20, liquidity=0.5, correlation=0.80, macro="hawkish"),
             use_jump=True,
         ),
         RegimeSpec(
             name="LOW_VOL",
             expected_label=RegimeType.LOW_VOL,
             bar_params={
-                "n": 1200, "start_price": 3500.0, "drift": 0.0001,
-                "vol": 0.001, "symbol": "SYN-LOWVOL", "seed": 404,
+                "n": 1200,
+                "start_price": 3500.0,
+                "drift": 0.0001,
+                "vol": 0.001,
+                "symbol": "SYN-LOWVOL",
+                "seed": 404,
             },
-            axes=RegimeAxes(vol=0.10, trend=0.05, liquidity=0.9,
-                            correlation=0.30, macro="neutral"),
+            axes=RegimeAxes(vol=0.10, trend=0.05, liquidity=0.9, correlation=0.30, macro="neutral"),
         ),
     ]
 
@@ -121,11 +137,7 @@ def _specs() -> list[RegimeSpec]:
 def _ctx_builder(bar: BarData, hist: list[BarData]) -> dict:
     now = bar.timestamp
     tail = hist[-20:] if len(hist) >= 20 else hist
-    ema_series = (
-        [b.close for b in tail[::max(1, len(tail) // 5)]]
-        if len(tail) >= 2
-        else [bar.close * 0.95, bar.close]
-    )
+    ema_series = [b.close for b in tail[:: max(1, len(tail) // 5)]] if len(tail) >= 2 else [bar.close * 0.95, bar.close]
     return {
         "daily_ema": ema_series,
         "h4_struct": "HH_HL",
@@ -134,18 +146,25 @@ def _ctx_builder(bar: BarData, hist: list[BarData]) -> dict:
         "atr_current": max(bar.high - bar.low, 1.0),
         "funding_history": [
             FundingRate(
-                timestamp=now, symbol=bar.symbol,
-                rate=-0.0008, predicted_rate=-0.0008,
+                timestamp=now,
+                symbol=bar.symbol,
+                rate=-0.0008,
+                predicted_rate=-0.0008,
             ),
-        ] * 8,
+        ]
+        * 8,
         "onchain": {
-            "whale_transfers": 40, "whale_transfers_baseline": 20,
+            "whale_transfers": 40,
+            "whale_transfers_baseline": 20,
             "exchange_netflow_usd": -30_000_000.0,
-            "active_addresses": 1300, "active_addresses_baseline": 1000,
+            "active_addresses": 1300,
+            "active_addresses_baseline": 1000,
         },
         "sentiment": {
-            "galaxy_score": 85.0, "alt_rank": 15,
-            "social_volume": 600, "social_volume_baseline": 200,
+            "galaxy_score": 85.0,
+            "alt_rank": 15,
+            "social_volume": 600,
+            "social_volume_baseline": 200,
             "fear_greed": 20,
         },
     }
@@ -177,7 +196,10 @@ def _run(bars: list[BarData], strategy_id: str) -> BacktestResult:
     )
     pipe = FeaturePipeline.default()
     engine = BacktestEngine(
-        pipe, cfg, ctx_builder=_ctx_builder, strategy_id=strategy_id,
+        pipe,
+        cfg,
+        ctx_builder=_ctx_builder,
+        strategy_id=strategy_id,
     )
     return engine.run(bars)
 
@@ -186,8 +208,12 @@ def _summarize(result: BacktestResult) -> dict[str, float | int]:
     trades = list(getattr(result, "trades", []) or [])
     if not trades:
         return {
-            "trades": 0, "expectancy_r": 0.0, "win_rate": 0.0,
-            "profit_factor": 0.0, "sharpe": 0.0, "max_dd_pct": 0.0,
+            "trades": 0,
+            "expectancy_r": 0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "sharpe": 0.0,
+            "max_dd_pct": 0.0,
             "total_return_pct": 0.0,
         }
     # Compute R from trade pnl_r field or fall back to headline metrics
@@ -200,13 +226,17 @@ def _summarize(result: BacktestResult) -> dict[str, float | int]:
         "sharpe": round(float(getattr(result, "sharpe", 0.0)), 4),
         "max_dd_pct": round(float(getattr(result, "max_dd_pct", 0.0)), 4),
         "total_return_pct": round(
-            float(getattr(result, "total_return_pct", 0.0)), 4,
+            float(getattr(result, "total_return_pct", 0.0)),
+            4,
         ),
     }
 
 
-def _split_bars(bars: list[BarData], is_frac: float = 0.70) -> tuple[
-    list[BarData], list[BarData],
+def _split_bars(
+    bars: list[BarData], is_frac: float = 0.70
+) -> tuple[
+    list[BarData],
+    list[BarData],
 ]:
     split = int(len(bars) * is_frac)
     return bars[:split], bars[split:]
@@ -266,17 +296,14 @@ def _apply_gate(per_regime: dict[str, dict]) -> tuple[bool, dict]:
             bits = []
             if oos_exp < GATE_LIVE_TRADE_EXPECTANCY_R:
                 bits.append(
-                    f"OOS exp {oos_exp:+.3f}R < "
-                    f"{GATE_LIVE_TRADE_EXPECTANCY_R}R",
+                    f"OOS exp {oos_exp:+.3f}R < {GATE_LIVE_TRADE_EXPECTANCY_R}R",
                 )
             if oos_trades < GATE_LIVE_TRADE_MIN_TRADES:
                 bits.append(
-                    f"OOS trades {oos_trades} < "
-                    f"{GATE_LIVE_TRADE_MIN_TRADES}",
+                    f"OOS trades {oos_trades} < {GATE_LIVE_TRADE_MIN_TRADES}",
                 )
             if deg > GATE_MAX_DEGRADATION:
-                bits.append(f"degradation {deg:+.1%} > "
-                            f"{GATE_MAX_DEGRADATION:.0%}")
+                bits.append(f"degradation {deg:+.1%} > {GATE_MAX_DEGRADATION:.0%}")
             non_tradeable.append({"regime": rg, "reasons": bits})
 
         # Overfitting red flag: IS was tradeable but OOS SIGN-FLIPPED
@@ -285,8 +312,7 @@ def _apply_gate(per_regime: dict[str, dict]) -> tuple[bool, dict]:
         # is regime-selectivity, not overfit -- real signal.
         if is_was_tradeable and oos_exp < 0.0:
             overfit_red_flags.append(
-                f"{rg}: IS {is_exp:+.3f}R -> OOS {oos_exp:+.3f}R "
-                f"(sign flip, deg {deg:+.1%}) -- exclude this regime",
+                f"{rg}: IS {is_exp:+.3f}R -> OOS {oos_exp:+.3f}R (sign flip, deg {deg:+.1%}) -- exclude this regime",
             )
 
     any_live_tradeable = len(live_tradeable) > 0
@@ -319,7 +345,10 @@ def _apply_gate(per_regime: dict[str, dict]) -> tuple[bool, dict]:
 
 
 def _render_markdown(
-    per_regime: dict[str, dict], gate: dict, passed: bool, now_iso: str,
+    per_regime: dict[str, dict],
+    gate: dict,
+    passed: bool,
+    now_iso: str,
 ) -> str:
     lines = [
         "# EVOLUTIONARY TRADING ALGO — Cross-regime OOS validation",
@@ -328,8 +357,7 @@ def _render_markdown(
         "",
         f"## Verdict: {'PASS' if passed else 'FAIL'}",
         "",
-        "| Regime | IS trades | IS exp (R) | IS Sharpe | "
-        "OOS trades | OOS exp (R) | OOS Sharpe | Degradation |",
+        "| Regime | IS trades | IS exp (R) | IS Sharpe | OOS trades | OOS exp (R) | OOS Sharpe | Degradation |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for rg, body in per_regime.items():
@@ -401,7 +429,8 @@ def main() -> int:
             "is": is_sum,
             "oos": oos_sum,
             "degradation_r": _degradation(
-                is_sum["expectancy_r"], oos_sum["expectancy_r"],
+                is_sum["expectancy_r"],
+                oos_sum["expectancy_r"],
             ),
         }
 
@@ -424,10 +453,12 @@ def main() -> int:
     json_path = out_dir / "cross_regime_validation.json"
     md_path = out_dir / "cross_regime_validation.md"
     json_path.write_text(
-        json.dumps(payload, indent=2) + "\n", encoding="utf-8",
+        json.dumps(payload, indent=2) + "\n",
+        encoding="utf-8",
     )
     md_path.write_text(
-        _render_markdown(per_regime, gate, passed, now), encoding="utf-8",
+        _render_markdown(per_regime, gate, passed, now),
+        encoding="utf-8",
     )
 
     # Stdout summary -- short and greppable

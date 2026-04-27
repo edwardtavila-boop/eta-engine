@@ -84,9 +84,13 @@ def _pick_latest_spec() -> Path:
 
 def _tier_bots(spec: dict, tier: str) -> list[str]:
     tier = tier.upper()
-    prom = spec.get("promotion_path_proposed_v2") or spec.get(
-        "promotion_path_proposed",
-    ) or {}
+    prom = (
+        spec.get("promotion_path_proposed_v2")
+        or spec.get(
+            "promotion_path_proposed",
+        )
+        or {}
+    )
     if tier == "A":
         return list(prom.get("tier_A_graduate_to_live_tiny", []))
     if tier == "B":
@@ -167,9 +171,11 @@ def _engage_firm(spec_path: Path) -> dict:
     """Call the firm-engagement script and parse the return verdict."""
     try:
         out = subprocess.run(
-            [sys.executable, "-m", "eta_engine.scripts.engage_firm_board",
-             "--spec", str(spec_path)],
-            capture_output=True, text=True, check=False, cwd=ROOT.parent,
+            [sys.executable, "-m", "eta_engine.scripts.engage_firm_board", "--spec", str(spec_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=ROOT.parent,
             timeout=300,
         )
     except (subprocess.SubprocessError, OSError) as e:
@@ -224,10 +230,7 @@ def _write_checklist_stub(out_dir: Path) -> Path:
     """Emit a template the operator can copy + answer."""
     out_dir.mkdir(parents=True, exist_ok=True)
     stub_path = out_dir / "weekly_checklist_template.json"
-    stub = [
-        {"index": p.index, "yes": False, "note": ""}
-        for p in DEFAULT_PRINCIPLES
-    ]
+    stub = [{"index": p.index, "yes": False, "note": ""} for p in DEFAULT_PRINCIPLES]
     stub_path.write_text(json.dumps(stub, indent=2), encoding="utf-8")
     return stub_path
 
@@ -236,15 +239,15 @@ def _write_checklist_report(report: ChecklistReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     latest = out_dir / "weekly_checklist_latest.json"
     latest.write_text(
-        report.model_dump_json(indent=2) + "\n", encoding="utf-8",
+        report.model_dump_json(indent=2) + "\n",
+        encoding="utf-8",
     )
     txt = out_dir / "weekly_checklist_latest.txt"
     lines = [
         "EVOLUTIONARY TRADING ALGO -- Weekly Principles Checklist",
         "=" * 80,
         f"Period: {report.period_label}   Generated: {report.ts.isoformat()}",
-        f"Score: {report.score:.0%}   Letter: {report.letter_grade}   "
-        f"Discipline: {report.discipline_score}/10",
+        f"Score: {report.score:.0%}   Letter: {report.letter_grade}   Discipline: {report.discipline_score}/10",
         "-" * 80,
     ]
     slug_by_index = {p.index: p.slug for p in DEFAULT_PRINCIPLES}
@@ -252,8 +255,7 @@ def _write_checklist_report(report: ChecklistReport, out_dir: Path) -> Path:
     for a in report.answers:
         mark = "[Y]" if a.yes else "[ ]"
         lines.append(
-            f"  {mark} {slug_by_index[a.index]:<22} "
-            f"-- {question_by_index[a.index]}",
+            f"  {mark} {slug_by_index[a.index]:<22} -- {question_by_index[a.index]}",
         )
         if a.note:
             lines.append(f"         note: {a.note}")
@@ -372,14 +374,15 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Apex Weekly Firm Review")
     p.add_argument("--spec", type=Path, default=None)
     p.add_argument("--tier", choices=("A", "B", "BOTH"), default="BOTH")
-    p.add_argument("--auto", action="store_true",
-                   help="Pick newest firm_spec_paper_results_*.json under docs/")
+    p.add_argument("--auto", action="store_true", help="Pick newest firm_spec_paper_results_*.json under docs/")
     p.add_argument("--out-dir", type=Path, default=ROOT / "docs")
-    p.add_argument("--skip-engage", action="store_true",
-                   help="Do not call engage_firm_board; read verdict from spec")
-    p.add_argument("--checklist-answers", type=Path, default=None,
-                   help="Path to JSON of 10 ChecklistAnswer rows "
-                        "(indices 0..9). If omitted, a stub template is written.")
+    p.add_argument("--skip-engage", action="store_true", help="Do not call engage_firm_board; read verdict from spec")
+    p.add_argument(
+        "--checklist-answers",
+        type=Path,
+        default=None,
+        help="Path to JSON of 10 ChecklistAnswer rows (indices 0..9). If omitted, a stub template is written.",
+    )
     args = p.parse_args()
 
     spec_path = args.spec or (_pick_latest_spec() if args.auto else None)
@@ -401,8 +404,14 @@ def main() -> int:
         votes = firm_result.get("votes", {})
         verdict = firm_result.get("verdict", "UNKNOWN")
     else:
-        votes = {"Quant": "UNKNOWN", "RedTeam": "UNKNOWN", "Risk": "UNKNOWN",
-                 "Macro": "UNKNOWN", "Micro": "UNKNOWN", "PM": "UNKNOWN"}
+        votes = {
+            "Quant": "UNKNOWN",
+            "RedTeam": "UNKNOWN",
+            "Risk": "UNKNOWN",
+            "Macro": "UNKNOWN",
+            "Micro": "UNKNOWN",
+            "PM": "UNKNOWN",
+        }
         verdict = "SKIPPED"
 
     kl_count = _kill_log_count()
@@ -435,9 +444,11 @@ def main() -> int:
         )
         log_p, latest_j, latest_t = _write(entry, args.out_dir, raw_blob)
         emitted.append(latest_t)
-        print(f"Tier {tier}: {verdict}  "
-              f"exp={entry.blended_expectancy_r:+.3f}R  dd={entry.blended_dd_pct:.2f}%  "
-              f"trades={entry.trades}")
+        print(
+            f"Tier {tier}: {verdict}  "
+            f"exp={entry.blended_expectancy_r:+.3f}R  dd={entry.blended_dd_pct:.2f}%  "
+            f"trades={entry.trades}"
+        )
 
     print("-" * 80)
     print(f"Log:    {args.out_dir / 'weekly_review_log.json'}")
@@ -449,8 +460,7 @@ def main() -> int:
     checklist = _load_checklist(args.checklist_answers, week_of)
     if checklist is not None:
         cpath = _write_checklist_report(checklist, args.out_dir)
-        print(f"Checklist: {checklist.letter_grade} "
-              f"({checklist.discipline_score}/10) -> {cpath}")
+        print(f"Checklist: {checklist.letter_grade} ({checklist.discipline_score}/10) -> {cpath}")
     else:
         stub = _write_checklist_stub(args.out_dir)
         print(f"Checklist: no answers supplied -- stub template at {stub}")

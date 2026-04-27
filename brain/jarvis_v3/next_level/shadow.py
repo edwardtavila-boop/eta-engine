@@ -14,6 +14,7 @@ cost the desk? When regret climbs high, policy review is warranted.
 Pure + deterministic; relies on a caller-supplied price feed for
 counterfactual resolution.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,44 +26,46 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ShadowStatus(StrEnum):
-    OPEN    = "OPEN"     # not yet resolved
-    CLOSED  = "CLOSED"   # resolved (TP / SL / time-stop hit)
+    OPEN = "OPEN"  # not yet resolved
+    CLOSED = "CLOSED"  # resolved (TP / SL / time-stop hit)
     EXPIRED = "EXPIRED"  # max holding period elapsed without resolution
 
 
 class ShadowTrade(BaseModel):
     """One denied-request counterfactual."""
+
     model_config = ConfigDict(frozen=False)
 
-    id:              str = Field(min_length=1)
-    opened_at:       datetime
-    subsystem:       str
-    symbol:          str
-    side:            str = Field(pattern="^(LONG|SHORT)$")
-    entry_px:        float
-    stop_px:         float
-    target_px:       float
-    r_distance:      float = Field(ge=0.0)
+    id: str = Field(min_length=1)
+    opened_at: datetime
+    subsystem: str
+    symbol: str
+    side: str = Field(pattern="^(LONG|SHORT)$")
+    entry_px: float
+    stop_px: float
+    target_px: float
+    r_distance: float = Field(ge=0.0)
     # What Jarvis would have done
-    jarvis_verdict:  str = "DENIED"
-    closed_at:       datetime | None = None
-    closed_px:       float | None = None
-    realized_r:      float | None = None
-    status:          ShadowStatus = ShadowStatus.OPEN
+    jarvis_verdict: str = "DENIED"
+    closed_at: datetime | None = None
+    closed_px: float | None = None
+    realized_r: float | None = None
+    status: ShadowStatus = ShadowStatus.OPEN
 
 
 class RegretSummary(BaseModel):
     """Roll-up of shadow P&L across all denied trades in a window."""
+
     model_config = ConfigDict(frozen=True)
 
-    window_hours:    float = Field(ge=0.0)
+    window_hours: float = Field(ge=0.0)
     n_shadow_trades: int = Field(ge=0)
-    n_resolved:      int = Field(ge=0)
-    hit_rate:        float | None = None
-    mean_r:          float | None = None
-    cumulative_r:    float
-    severity:        str = Field(pattern="^(GREEN|YELLOW|RED)$")
-    note:            str
+    n_resolved: int = Field(ge=0)
+    hit_rate: float | None = None
+    mean_r: float | None = None
+    cumulative_r: float
+    severity: str = Field(pattern="^(GREEN|YELLOW|RED)$")
+    note: str
 
 
 class ShadowLedger:
@@ -92,10 +95,7 @@ class ShadowLedger:
         if t is None:
             return
         direction = 1 if t.side == "LONG" else -1
-        realized_r = (
-            direction * (closed_px - t.entry_px) / t.r_distance
-            if t.r_distance > 0 else 0.0
-        )
+        realized_r = direction * (closed_px - t.entry_px) / t.r_distance if t.r_distance > 0 else 0.0
         t.closed_at = closed_at
         t.closed_px = closed_px
         t.realized_r = round(realized_r, 4)
@@ -139,7 +139,9 @@ class ShadowLedger:
                     hit = True
             if hit:
                 self.resolve(
-                    t.id, closed_px=closed_px, closed_at=now,
+                    t.id,
+                    closed_px=closed_px,
+                    closed_at=now,
                     status=ShadowStatus.CLOSED,
                 )
                 changed.append(t.id)
@@ -147,14 +149,18 @@ class ShadowLedger:
             # Expire if held too long
             if (now - t.opened_at) > timedelta(hours=max_holding_hours):
                 self.resolve(
-                    t.id, closed_px=px, closed_at=now,
+                    t.id,
+                    closed_px=px,
+                    closed_at=now,
                     status=ShadowStatus.EXPIRED,
                 )
                 changed.append(t.id)
         return changed
 
     def regret(
-        self, window_hours: float = 24.0, now: datetime | None = None,
+        self,
+        window_hours: float = 24.0,
+        now: datetime | None = None,
     ) -> RegretSummary:
         now = now or datetime.now(UTC)
         cutoff = now - timedelta(hours=window_hours)
@@ -169,18 +175,13 @@ class ShadowLedger:
         # (JARVIS denied too much alpha); flag for operator review.
         if cum_r >= 3.0:
             severity = "RED"
-            note = (
-                f"regret {cum_r:+.2f}R in {window_hours}h "
-                "-- JARVIS is overly restrictive"
-            )
+            note = f"regret {cum_r:+.2f}R in {window_hours}h -- JARVIS is overly restrictive"
         elif cum_r >= 1.0:
             severity = "YELLOW"
             note = f"regret {cum_r:+.2f}R in {window_hours}h -- monitor"
         elif cum_r <= -1.0:
             severity = "GREEN"
-            note = (
-                f"regret {cum_r:+.2f}R in {window_hours}h -- denials protected capital"
-            )
+            note = f"regret {cum_r:+.2f}R in {window_hours}h -- denials protected capital"
         else:
             severity = "GREEN"
             note = f"regret near zero ({cum_r:+.2f}R) -- gates are well-tuned"

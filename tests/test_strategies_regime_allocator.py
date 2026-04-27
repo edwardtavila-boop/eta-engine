@@ -6,6 +6,7 @@ The allocator is a pure function -- deterministic given the same inputs.
 Every test reasons about the final normalized weights or the notes
 trail.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -64,9 +65,7 @@ class TestPlanAllocationHappy:
     def test_normal_regime_leaves_ratios_intact(self) -> None:
         plan = plan_allocation(_normal_inputs())
         # Starting ratios were 40/30/20 among risky layers (0.9 total)
-        risky = {
-            k: v for k, v in plan.weights.items() if k is not LayerId.LAYER_4_STAKING
-        }
+        risky = {k: v for k, v in plan.weights.items() if k is not LayerId.LAYER_4_STAKING}
         # After normalization they should sum to (1 - 0.10) = 0.90
         assert sum(risky.values()) == pytest.approx(0.90)
         # MNQ (40) should be largest
@@ -221,9 +220,7 @@ class TestEdgeCases:
         }
         plan = plan_allocation(_normal_inputs(), base=custom)
         # MNQ should have the highest share
-        risky = {
-            k: v for k, v in plan.weights.items() if k is not LayerId.LAYER_4_STAKING
-        }
+        risky = {k: v for k, v in plan.weights.items() if k is not LayerId.LAYER_4_STAKING}
         assert risky[LayerId.LAYER_1_MNQ] == max(risky.values())
 
     def test_plan_is_frozen(self) -> None:

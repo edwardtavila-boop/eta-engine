@@ -19,6 +19,7 @@ Silent regressions in any of these would quietly raise size, quietly
 allow dangerous leverage, or quietly skip a daily-loss halt.  The drill
 trips each guard on purpose and verifies the expected behaviour.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

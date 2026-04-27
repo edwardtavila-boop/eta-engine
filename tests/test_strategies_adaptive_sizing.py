@@ -19,6 +19,7 @@ Coverage targets
    entries.
 10. Default policy wire-matches the module docstring.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -82,29 +83,49 @@ def _ctx(
 
 class TestRegimeScorer:
     def test_trending_directional_is_max_positive(self) -> None:
-        assert score_regime(
-            RegimeLabel.TRENDING, StrategyId.MTF_TREND_FOLLOWING,
-        ) == 1.0
+        assert (
+            score_regime(
+                RegimeLabel.TRENDING,
+                StrategyId.MTF_TREND_FOLLOWING,
+            )
+            == 1.0
+        )
 
     def test_trending_meanrev_is_negative(self) -> None:
-        assert score_regime(
-            RegimeLabel.TRENDING, StrategyId.FVG_FILL_CONFLUENCE,
-        ) == -0.5
+        assert (
+            score_regime(
+                RegimeLabel.TRENDING,
+                StrategyId.FVG_FILL_CONFLUENCE,
+            )
+            == -0.5
+        )
 
     def test_ranging_meanrev_is_max_positive(self) -> None:
-        assert score_regime(
-            RegimeLabel.RANGING, StrategyId.FVG_FILL_CONFLUENCE,
-        ) == 1.0
+        assert (
+            score_regime(
+                RegimeLabel.RANGING,
+                StrategyId.FVG_FILL_CONFLUENCE,
+            )
+            == 1.0
+        )
 
     def test_ranging_directional_is_negative(self) -> None:
-        assert score_regime(
-            RegimeLabel.RANGING, StrategyId.MTF_TREND_FOLLOWING,
-        ) == -0.3
+        assert (
+            score_regime(
+                RegimeLabel.RANGING,
+                StrategyId.MTF_TREND_FOLLOWING,
+            )
+            == -0.3
+        )
 
     def test_transition_is_zero(self) -> None:
-        assert score_regime(
-            RegimeLabel.TRANSITION, StrategyId.MTF_TREND_FOLLOWING,
-        ) == 0.0
+        assert (
+            score_regime(
+                RegimeLabel.TRANSITION,
+                StrategyId.MTF_TREND_FOLLOWING,
+            )
+            == 0.0
+        )
 
     def test_high_vol_always_penalizes(self) -> None:
         for sid in StrategyId:
@@ -244,7 +265,8 @@ class TestClassifyEquityBand:
     def test_custom_thresholds(self) -> None:
         # Tight bands: growth above 1%, drawdown under 99%.
         band = classify_equity_band(
-            101.5, 100.0,
+            101.5,
+            100.0,
             growth_threshold=1.01,
             drawdown_threshold=0.99,
             critical_threshold=0.90,
@@ -261,7 +283,9 @@ class TestTierMapping:
     def test_sniper_shot_conviction_3x(self) -> None:
         """Every positive axis maxed out -> CONVICTION at 3x."""
         prior = PriorSuccessMetrics(
-            n_trades=30, expectancy_r=0.6, consecutive_wins=4,
+            n_trades=30,
+            expectancy_r=0.6,
+            consecutive_wins=4,
         )
         ctx = _ctx(
             regime=RegimeLabel.TRENDING,
@@ -323,7 +347,9 @@ class TestTierMapping:
         confluence is weak + HTF disagrees + equity drawdown, we
         should fall into SKIP."""
         prior = PriorSuccessMetrics(
-            n_trades=20, expectancy_r=-0.4, consecutive_losses=4,
+            n_trades=20,
+            expectancy_r=-0.4,
+            consecutive_losses=4,
         )
         ctx = _ctx(
             regime=RegimeLabel.HIGH_VOL,
@@ -342,7 +368,8 @@ class TestTierMapping:
     def test_conviction_2x_vs_3x_boundary(self) -> None:
         """A solid but not-maxed setup lands in CONVICTION 2x band."""
         prior = PriorSuccessMetrics(
-            n_trades=20, expectancy_r=0.3,
+            n_trades=20,
+            expectancy_r=0.3,
         )
         ctx = _ctx(
             regime=RegimeLabel.TRENDING,
@@ -378,10 +405,7 @@ class TestHardOverrides:
         v = compute_size(ctx)
         assert v.tier is SizeTier.SKIP
         assert v.adjusted_risk_pct == 0.0
-        assert (
-            "hard_override:session_disallows_entries"
-            in v.rationale
-        )
+        assert "hard_override:session_disallows_entries" in v.rationale
 
 
 # ===========================================================================
@@ -394,7 +418,9 @@ class TestSafetyBounds:
         # Set a tight ceiling to force the clamp.
         tight_policy = SizingPolicy(max_risk_pct=2.0)
         prior = PriorSuccessMetrics(
-            n_trades=30, expectancy_r=0.8, consecutive_wins=4,
+            n_trades=30,
+            expectancy_r=0.8,
+            consecutive_wins=4,
         )
         ctx = _ctx(
             regime=RegimeLabel.TRENDING,
@@ -467,8 +493,12 @@ class TestVerdictShape:
         ctx = _ctx()
         v = compute_size(ctx)
         assert set(v.axis_scores) == {
-            "regime", "confluence", "htf",
-            "equity", "prior", "total_weighted",
+            "regime",
+            "confluence",
+            "htf",
+            "equity",
+            "prior",
+            "total_weighted",
         }
 
     def test_rationale_contains_tier_and_total(self) -> None:
@@ -522,10 +552,7 @@ class TestPolicyTuning:
         )
         v_tuned = compute_size(base, policy_heavy_confluence)
         # Total should be higher with confluence dominating.
-        assert (
-            v_tuned.axis_scores["total_weighted"]
-            > v_default.axis_scores["total_weighted"]
-        )
+        assert v_tuned.axis_scores["total_weighted"] > v_default.axis_scores["total_weighted"]
 
 
 # ===========================================================================
@@ -546,7 +573,9 @@ class TestSelfEvolvingSemantics:
             htf_bias=Side.LONG,
             equity_band=EquityBand.NEUTRAL,
             prior=PriorSuccessMetrics(
-                n_trades=20, expectancy_r=0.2, consecutive_wins=3,
+                n_trades=20,
+                expectancy_r=0.2,
+                consecutive_wins=3,
             ),
         )
         bad = _ctx(
@@ -557,16 +586,15 @@ class TestSelfEvolvingSemantics:
             htf_bias=Side.LONG,
             equity_band=EquityBand.NEUTRAL,
             prior=PriorSuccessMetrics(
-                n_trades=20, expectancy_r=-0.2, consecutive_losses=4,
+                n_trades=20,
+                expectancy_r=-0.2,
+                consecutive_losses=4,
             ),
         )
         v_good = compute_size(good)
         v_bad = compute_size(bad)
         assert v_good.multiplier >= v_bad.multiplier
-        assert (
-            v_good.axis_scores["prior"]
-            > v_bad.axis_scores["prior"]
-        )
+        assert v_good.axis_scores["prior"] > v_bad.axis_scores["prior"]
 
     def test_critical_drawdown_suppresses_conviction(self) -> None:
         """Even a clean setup in CRITICAL equity band should not

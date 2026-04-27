@@ -12,6 +12,7 @@ reconstruct "what exactly happened at 14:03 ET that made you go RED."
 
 Pure / deterministic.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -21,33 +22,35 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CrossingKind(StrEnum):
-    APPROACH  = "APPROACH"   # nearing threshold (yellow)
-    BREACH    = "BREACH"     # crossed threshold (red)
-    RECOVER   = "RECOVER"    # crossed back below threshold
-    HEADLINE  = "HEADLINE"   # narrative-level event (FOMC within 1h, etc.)
+    APPROACH = "APPROACH"  # nearing threshold (yellow)
+    BREACH = "BREACH"  # crossed threshold (red)
+    RECOVER = "RECOVER"  # crossed back below threshold
+    HEADLINE = "HEADLINE"  # narrative-level event (FOMC within 1h, etc.)
 
 
 class ThresholdCrossing(BaseModel):
     """One datum that contributed to an alert."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:           datetime
-    factor:       str = Field(min_length=1)
-    raw_value:    float
-    threshold:    float
-    kind:         CrossingKind
-    note:         str = ""
+    ts: datetime
+    factor: str = Field(min_length=1)
+    raw_value: float
+    threshold: float
+    kind: CrossingKind
+    note: str = ""
 
 
 class AlertExplanation(BaseModel):
     """The ``why-now`` for a single alert."""
+
     model_config = ConfigDict(frozen=True)
 
-    alert_code:   str = Field(min_length=1)
-    severity:     str = Field(min_length=1)
-    built_at:     datetime
-    crossings:    list[ThresholdCrossing] = Field(default_factory=list)
-    summary:      str = ""
+    alert_code: str = Field(min_length=1)
+    severity: str = Field(min_length=1)
+    built_at: datetime
+    crossings: list[ThresholdCrossing] = Field(default_factory=list)
+    summary: str = ""
     recommendations: list[str] = Field(default_factory=list)
 
 
@@ -88,23 +91,32 @@ def build_explanation(
         else:
             # Contribution can still be meaningful even without crossing.
             continue
-        crossings.append(ThresholdCrossing(
-            ts=now, factor=factor,
-            raw_value=round(raw, 4),
-            threshold=round(thr or 0.0, 4),
-            kind=kind, note=note,
-        ))
+        crossings.append(
+            ThresholdCrossing(
+                ts=now,
+                factor=factor,
+                raw_value=round(raw, 4),
+                threshold=round(thr or 0.0, 4),
+                kind=kind,
+                note=note,
+            )
+        )
     if narrative:
-        crossings.insert(0, ThresholdCrossing(
-            ts=now, factor="narrative",
-            raw_value=0.0, threshold=0.0,
-            kind=CrossingKind.HEADLINE, note=narrative,
-        ))
+        crossings.insert(
+            0,
+            ThresholdCrossing(
+                ts=now,
+                factor="narrative",
+                raw_value=0.0,
+                threshold=0.0,
+                kind=CrossingKind.HEADLINE,
+                note=narrative,
+            ),
+        )
     if crossings:
         pri = crossings[0]
         summary = (
-            f"Primary: {pri.factor} ({pri.kind.value}, {pri.note}); "
-            f"plus {len(crossings) - 1} supporting crossings"
+            f"Primary: {pri.factor} ({pri.kind.value}, {pri.note}); plus {len(crossings) - 1} supporting crossings"
         )
     else:
         summary = "no threshold crossings recorded; alert may be narrative-only"
@@ -120,15 +132,15 @@ def build_explanation(
 
 
 def _recommendations_for(
-    alert_code: str, crossings: list[ThresholdCrossing],
+    alert_code: str,
+    crossings: list[ThresholdCrossing],
 ) -> list[str]:
     out: list[str] = []
     if any(c.factor == "equity_dd" and c.kind == CrossingKind.BREACH for c in crossings):
         out.append("flatten open risk; no new entries until equity_dd recovers below REDUCE")
     if any(c.factor == "macro_event" for c in crossings):
         out.append("stand aside until next macro event resolves")
-    if any(c.factor == "override_rate" and c.kind == CrossingKind.BREACH
-           for c in crossings):
+    if any(c.factor == "override_rate" and c.kind == CrossingKind.BREACH for c in crossings):
         out.append("review last 24h override log; suspend autopilot on breaching subsystem")
     if any(c.factor == "regime_risk" for c in crossings):
         out.append("check regime classifier; may need manual recalibration")

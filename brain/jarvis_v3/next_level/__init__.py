@@ -17,6 +17,7 @@ Modules
 
 (Federated multi-VPS #8 is deferred until the operator actually has >1 VPS.)
 """
+
 from __future__ import annotations
 
 __all__ = [

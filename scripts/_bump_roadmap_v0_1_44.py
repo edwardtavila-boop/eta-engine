@@ -92,6 +92,7 @@ fail-safe, not fail-closed.
 The six AI-Optimized strategies now live or die on the live bot by
 their own walk-forward + DSR evidence, not by a hand-curated table.
 """
+
 from __future__ import annotations
 
 import json
@@ -150,12 +151,10 @@ def main() -> None:
         },
         "api_surface": {
             "RouterAdapter.allowlist_scheduler": (
-                "AllowlistScheduler | None  -- new optional field. "
-                "When set, push_bar ticks it before dispatch."
+                "AllowlistScheduler | None  -- new optional field. When set, push_bar ticks it before dispatch."
             ),
             "RouterAdapter.scheduler_kwargs": (
-                "Mapping[str, object] | None  -- forwarded verbatim to "
-                "scheduler.tick on every bar."
+                "Mapping[str, object] | None  -- forwarded verbatim to scheduler.tick on every bar."
             ),
             "RouterAdapter._tick_scheduler_safely": (
                 "() -> None  -- private; wraps scheduler.tick in a "
@@ -270,11 +269,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: RouterAdapter wired into AllowlistScheduler + "
-          "13 integration tests. Live dispatch path is now fully "
-          "governed by the OOS qualification loop.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: RouterAdapter wired into AllowlistScheduler + "
+        "13 integration tests. Live dispatch path is now fully "
+        "governed by the OOS qualification loop."
+    )
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ CYCLE_DAYS: dict[BillingCycle, int] = {
 class SubscriptionStatus(StrEnum):
     TRIAL = "TRIAL"
     ACTIVE = "ACTIVE"
-    GRACE = "GRACE"              # first failed payment -- 3-day grace
+    GRACE = "GRACE"  # first failed payment -- 3-day grace
     PAST_DUE = "PAST_DUE"
     CANCELLED = "CANCELLED"
     EXPIRED = "EXPIRED"
@@ -62,6 +62,7 @@ class BillingEvent:
 @dataclass
 class Subscription:
     """One subscription record. Thin around a state machine + event log."""
+
     tenant_id: str
     tier: RentalTier
     cycle: BillingCycle

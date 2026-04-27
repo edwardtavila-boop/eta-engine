@@ -16,13 +16,17 @@ from eta_engine.data.cleaning import (
 
 def _bar(ts: datetime, px: float = 100.0, sym: str = "T") -> BarData:
     return BarData(
-        timestamp=ts, symbol=sym, open=px, high=px + 1.0,
-        low=px - 1.0, close=px, volume=100.0,
+        timestamp=ts,
+        symbol=sym,
+        open=px,
+        high=px + 1.0,
+        low=px - 1.0,
+        close=px,
+        volume=100.0,
     )
 
 
 class TestGaps:
-
     def test_no_gap_on_contiguous_stream(self) -> None:
         start = datetime(2025, 1, 1, tzinfo=UTC)
         bars = [_bar(start + timedelta(seconds=60 * i)) for i in range(10)]
@@ -55,7 +59,6 @@ class TestGaps:
 
 
 class TestOutliers:
-
     def test_mad_drops_spike(self) -> None:
         start = datetime(2025, 1, 1, tzinfo=UTC)
         bars = [_bar(start + timedelta(seconds=60 * i), 100.0) for i in range(20)]
@@ -72,7 +75,6 @@ class TestOutliers:
 
 
 class TestDuplicates:
-
     def test_dedup_keeps_last(self) -> None:
         ts = datetime(2025, 1, 1, tzinfo=UTC)
         bars = [_bar(ts, 100.0), _bar(ts, 101.0), _bar(ts, 102.0)]
@@ -81,7 +83,6 @@ class TestDuplicates:
 
 
 class TestValidation:
-
     def test_valid_bar_returns_empty(self) -> None:
         ts = datetime(2025, 1, 1, tzinfo=UTC)
         assert validate_bar(_bar(ts, 100.0)) == []
@@ -89,7 +90,12 @@ class TestValidation:
     def test_high_below_low_caught(self) -> None:
         b = BarData(
             timestamp=datetime(2025, 1, 1, tzinfo=UTC),
-            symbol="T", open=100.0, high=90.0, low=95.0, close=92.0, volume=1.0,
+            symbol="T",
+            open=100.0,
+            high=90.0,
+            low=95.0,
+            close=92.0,
+            volume=1.0,
         )
         errs = validate_bar(b)
         assert any("high" in e for e in errs)
@@ -97,6 +103,11 @@ class TestValidation:
     def test_negative_volume_caught(self) -> None:
         b = BarData(
             timestamp=datetime(2025, 1, 1, tzinfo=UTC),
-            symbol="T", open=100.0, high=101.0, low=99.0, close=100.0, volume=-1.0,
+            symbol="T",
+            open=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.0,
+            volume=-1.0,
         )
         assert any("negative volume" in e for e in validate_bar(b))

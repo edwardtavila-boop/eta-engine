@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from eta_engine.scripts import go_trigger as mod
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture()
@@ -49,8 +52,7 @@ def test_handle_skip_preflight_override(fake_root: Path):
     (fake_root / "docs" / "preflight_dryrun_report.json").write_text(
         json.dumps({"overall": "ABORT"}),
     )
-    e = mod.handle("GO APEX MNQ LIVE-TINY", reason="emergency",
-                   skip_preflight=True)
+    e = mod.handle("GO APEX MNQ LIVE-TINY", reason="emergency", skip_preflight=True)
     assert e.accepted is True
 
 

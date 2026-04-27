@@ -13,6 +13,7 @@ Exposes:
   * ``quota_state()``       -- OK / DOWNSHIFT / FREEZE
   * persistence to JSON
 """
+
 from __future__ import annotations
 
 import json
@@ -28,30 +29,30 @@ from eta_engine.brain.jarvis_v3.claude_layer.prompt_cache import (
 )
 
 HOURLY_WINDOW = timedelta(hours=1)
-DAILY_WINDOW  = timedelta(days=1)
+DAILY_WINDOW = timedelta(days=1)
 
 
 class QuotaState(StrEnum):
-    OK         = "OK"
-    WARN       = "WARN"       # approaching threshold
-    DOWNSHIFT  = "DOWNSHIFT"  # demote all tiers by one step
-    FREEZE     = "FREEZE"     # skip Claude entirely; JARVIS-only mode
+    OK = "OK"
+    WARN = "WARN"  # approaching threshold
+    DOWNSHIFT = "DOWNSHIFT"  # demote all tiers by one step
+    FREEZE = "FREEZE"  # skip Claude entirely; JARVIS-only mode
 
 
 class QuotaStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    ts:              datetime
-    hourly_spend:    float = Field(ge=0.0)
-    daily_spend:     float = Field(ge=0.0)
-    hourly_budget:   float = Field(ge=0.0)
-    daily_budget:    float = Field(ge=0.0)
-    hourly_pct:      float = Field(ge=0.0)
-    daily_pct:       float = Field(ge=0.0)
-    cache_hit_rate:  float = Field(ge=0.0, le=1.0)
-    calls_1h:        int   = Field(ge=0)
-    state:           QuotaState
-    note:            str
+    ts: datetime
+    hourly_spend: float = Field(ge=0.0)
+    daily_spend: float = Field(ge=0.0)
+    hourly_budget: float = Field(ge=0.0)
+    daily_budget: float = Field(ge=0.0)
+    hourly_pct: float = Field(ge=0.0)
+    daily_pct: float = Field(ge=0.0)
+    cache_hit_rate: float = Field(ge=0.0, le=1.0)
+    calls_1h: int = Field(ge=0)
+    state: QuotaState
+    note: str
 
 
 class UsageTracker:
@@ -61,10 +62,10 @@ class UsageTracker:
         self,
         *,
         hourly_usd_budget: float = 1.00,
-        daily_usd_budget:  float = 10.00,
-        warn_pct:          float = 0.60,
-        downshift_pct:     float = 0.80,
-        freeze_pct:        float = 0.95,
+        daily_usd_budget: float = 10.00,
+        warn_pct: float = 0.60,
+        downshift_pct: float = 0.80,
+        freeze_pct: float = 0.95,
     ) -> None:
         self.hourly_usd_budget = hourly_usd_budget
         self.daily_usd_budget = daily_usd_budget
@@ -145,7 +146,7 @@ class UsageTracker:
     def save(self, path: Path | str) -> None:
         data = {
             "hourly_usd_budget": self.hourly_usd_budget,
-            "daily_usd_budget":  self.daily_usd_budget,
+            "daily_usd_budget": self.daily_usd_budget,
             "warn_pct": self.warn_pct,
             "downshift_pct": self.downshift_pct,
             "freeze_pct": self.freeze_pct,

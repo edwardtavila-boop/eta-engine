@@ -33,6 +33,7 @@ Order of operations (per dispatch)
 Everything is off by default. Pass ``None`` for any component to disable
 that guard.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -84,18 +85,18 @@ class HardenedFleet:
         self,
         fleet: Fleet,
         *,
-        precedent_cache:  PrecedentCache | None = None,
-        deadman:          DeadmanSwitch | None = None,
-        breaker:          CircuitBreaker | None = None,
-        calibration:      CalibrationLoop | None = None,
-        push_bus:         PushBus | None = None,
+        precedent_cache: PrecedentCache | None = None,
+        deadman: DeadmanSwitch | None = None,
+        breaker: CircuitBreaker | None = None,
+        calibration: CalibrationLoop | None = None,
+        push_bus: PushBus | None = None,
     ) -> None:
-        self.fleet            = fleet
-        self.precedent_cache  = precedent_cache
-        self.deadman          = deadman
-        self.breaker          = breaker
-        self.calibration      = calibration
-        self.push_bus         = push_bus or default_bus()
+        self.fleet = fleet
+        self.precedent_cache = precedent_cache
+        self.deadman = deadman
+        self.breaker = breaker
+        self.calibration = calibration
+        self.push_bus = push_bus or default_bus()
         self._last_breaker_state: str | None = None
         self._last_deadman_state: str | None = None
 
@@ -197,7 +198,7 @@ class HardenedFleet:
         if self.breaker is None:
             return
         status = self.breaker.status()
-        state  = status.state.value
+        state = status.state.value
         if state == self._last_breaker_state:
             return
         self._last_breaker_state = state
@@ -255,8 +256,7 @@ class HardenedFleet:
         if self.deadman is not None:
             st = self.deadman.status()
             lines.append(
-                f"deadman: state={st.state.value} "
-                f"hours_since={st.hours_since:.1f}",
+                f"deadman: state={st.state.value} hours_since={st.hours_since:.1f}",
             )
         if self.calibration is not None:
             snap = self.calibration.snapshot()

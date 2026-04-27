@@ -69,10 +69,7 @@ class SlippageModel:
         Positive for BUY costs / SELL discounts; passive can go negative.
         """
         urg = urgency.upper()
-        spread_bps = (
-            spread_ticks if spread_ticks is not None
-            else self.spreads.get(symbol, 1.0)
-        )
+        spread_bps = spread_ticks if spread_ticks is not None else self.spreads.get(symbol, 1.0)
         adv = daily_adv if daily_adv is not None else self.advs.get(symbol, 1e6)
         qty_ratio = max(qty / adv, 1e-9)
         impact = math.sqrt(qty_ratio) * vol_pct
@@ -101,8 +98,7 @@ class SlippageModel:
         actual_fills: objects with .fill_price_bps_vs_mid attribute, or floats.
         """
         actuals = [
-            getattr(f, "fill_price_bps_vs_mid", f) if not isinstance(f, (int, float))
-            else float(f)
+            getattr(f, "fill_price_bps_vs_mid", f) if not isinstance(f, (int, float)) else float(f)
             for f in actual_fills
         ]
         if not actuals or not theoretical or len(actuals) != len(theoretical):

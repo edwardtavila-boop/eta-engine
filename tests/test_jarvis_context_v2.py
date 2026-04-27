@@ -10,6 +10,7 @@ All v2 enrichment is additive to v1. Tests focus on:
   * memory trajectory classification (IMPROVING/FLAT/WORSENING/UNKNOWN)
   * engine tick ordering (trajectory BEFORE append)
 """
+
 from __future__ import annotations
 
 import math
@@ -97,7 +98,9 @@ def _ok_regime(
     conf: float = 0.8,
 ) -> RegimeSnapshot:
     return RegimeSnapshot(
-        regime=regime, confidence=conf, flipped_recently=flipped,
+        regime=regime,
+        confidence=conf,
+        flipped_recently=flipped,
     )
 
 
@@ -129,7 +132,10 @@ class TestStressScoreWeights:
 
     def test_all_clear_near_zero(self) -> None:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         assert s.composite < 0.05
         assert 0.0 <= s.composite <= 1.0
@@ -267,7 +273,10 @@ class TestSizingHint:
         )
         # Bypass the empty-list validation by constructing via compute:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         for action in (ActionSuggestion.KILL, ActionSuggestion.STAND_ASIDE):
             h = compute_sizing_hint(s, SessionPhase.MORNING, action)
@@ -275,14 +284,20 @@ class TestSizingHint:
 
     def test_low_stress_full_size_during_morning(self) -> None:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         h = compute_sizing_hint(s, SessionPhase.MORNING, ActionSuggestion.TRADE)
         assert h.size_mult == pytest.approx(1.0)
 
     def test_overnight_penalty_applies_to_trade(self) -> None:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         h = compute_sizing_hint(s, SessionPhase.OVERNIGHT, ActionSuggestion.TRADE)
         # overnight mult = 0.40, base = 1.00
@@ -307,14 +322,20 @@ class TestSizingHint:
 
     def test_reduce_tier_caps_at_50(self) -> None:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         h = compute_sizing_hint(s, SessionPhase.MORNING, ActionSuggestion.REDUCE)
         assert h.size_mult <= 0.50 + 1e-9
 
     def test_review_tier_soft_caps_at_75(self) -> None:
         s = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         h = compute_sizing_hint(s, SessionPhase.MORNING, ActionSuggestion.REVIEW)
         assert h.size_mult <= 0.75 + 1e-9
@@ -328,7 +349,10 @@ class TestSizingHint:
 class TestAlerts:
     def test_no_alerts_when_all_clear(self) -> None:
         alerts = detect_alerts(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         assert alerts == []
 
@@ -358,22 +382,25 @@ class TestAlerts:
 
     def test_kill_switch_is_critical(self) -> None:
         alerts = detect_alerts(
-            _ok_macro(), _ok_equity(), _ok_regime(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
             _ok_journal(kill=True),
         )
-        assert any(
-            a.level == AlertLevel.CRITICAL and a.code == "kill_switch_active"
-            for a in alerts
-        )
+        assert any(a.level == AlertLevel.CRITICAL and a.code == "kill_switch_active" for a in alerts)
 
     def test_overrides_approaching_vs_at_threshold(self) -> None:
         # 1 below threshold -> INFO; at threshold -> WARN
         alerts_below = detect_alerts(
-            _ok_macro(), _ok_equity(), _ok_regime(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
             _ok_journal(overrides=OVERRIDE_REVIEW_THRESHOLD - 1),
         )
         alerts_at = detect_alerts(
-            _ok_macro(), _ok_equity(), _ok_regime(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
             _ok_journal(overrides=OVERRIDE_REVIEW_THRESHOLD),
         )
         assert any(a.code == "overrides_approaching_review" for a in alerts_below)
@@ -383,28 +410,25 @@ class TestAlerts:
         # >1.5h and <=4h -> INFO; >1.0 and <=1.5 -> WARN; <=1.0 -> CRITICAL
         info = detect_alerts(
             _ok_macro(hours=3.0, label="FOMC"),
-            _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         warn = detect_alerts(
             _ok_macro(hours=1.2, label="FOMC"),
-            _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         crit = detect_alerts(
             _ok_macro(hours=0.5, label="FOMC"),
-            _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
-        assert any(
-            a.code == "macro_event_upcoming" and a.level == AlertLevel.INFO
-            for a in info
-        )
-        assert any(
-            a.code == "macro_event_soon" and a.level == AlertLevel.WARN
-            for a in warn
-        )
-        assert any(
-            a.code == "macro_event_imminent" and a.level == AlertLevel.CRITICAL
-            for a in crit
-        )
+        assert any(a.code == "macro_event_upcoming" and a.level == AlertLevel.INFO for a in info)
+        assert any(a.code == "macro_event_soon" and a.level == AlertLevel.WARN for a in warn)
+        assert any(a.code == "macro_event_imminent" and a.level == AlertLevel.CRITICAL for a in crit)
 
     def test_alerts_sorted_by_severity_desc(self) -> None:
         alerts = detect_alerts(
@@ -451,7 +475,9 @@ class TestMargins:
 class TestPlaybook:
     def test_kill_playbook_present(self) -> None:
         sug = JarvisSuggestion(
-            action=ActionSuggestion.KILL, reason="test", confidence=1.0,
+            action=ActionSuggestion.KILL,
+            reason="test",
+            confidence=1.0,
         )
         steps = build_playbook(sug)
         assert any("flatten" in s.lower() for s in steps)
@@ -459,14 +485,18 @@ class TestPlaybook:
 
     def test_trade_playbook_mentions_a_plus(self) -> None:
         sug = JarvisSuggestion(
-            action=ActionSuggestion.TRADE, reason="test", confidence=0.8,
+            action=ActionSuggestion.TRADE,
+            reason="test",
+            confidence=0.8,
         )
         steps = build_playbook(sug)
         assert any("A+" in s for s in steps)
 
     def test_open_drive_addendum(self) -> None:
         sug = JarvisSuggestion(
-            action=ActionSuggestion.TRADE, reason="test", confidence=0.8,
+            action=ActionSuggestion.TRADE,
+            reason="test",
+            confidence=0.8,
         )
         steps = build_playbook(sug, session=SessionPhase.OPEN_DRIVE)
         assert any("first-hour" in s.lower() or "15m" in s for s in steps)
@@ -485,7 +515,9 @@ class TestPlaybook:
             _ok_journal(),
         )
         sug = JarvisSuggestion(
-            action=ActionSuggestion.TRADE, reason="test", confidence=0.8,
+            action=ActionSuggestion.TRADE,
+            reason="test",
+            confidence=0.8,
         )
         steps = build_playbook(sug, stress=stress, session=SessionPhase.MORNING)
         # Expect binding constraint note
@@ -500,11 +532,16 @@ class TestPlaybook:
 class TestExplanation:
     def test_explanation_mentions_action_and_stress(self) -> None:
         stress = compute_stress_score(
-            _ok_macro(), _ok_equity(dd_pct=0.02), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(dd_pct=0.02),
+            _ok_regime(),
+            _ok_journal(),
         )
         margins = compute_margins(_ok_equity(dd_pct=0.02), _ok_journal())
         sug = JarvisSuggestion(
-            action=ActionSuggestion.REDUCE, reason="dd 2%", confidence=0.75,
+            action=ActionSuggestion.REDUCE,
+            reason="dd 2%",
+            confidence=0.75,
         )
         sizing = compute_sizing_hint(stress, SessionPhase.MORNING, sug.action)
         text = build_explanation(sug, stress, margins, SessionPhase.MORNING, sizing)
@@ -513,11 +550,16 @@ class TestExplanation:
 
     def test_explanation_single_string(self) -> None:
         stress = compute_stress_score(
-            _ok_macro(), _ok_equity(), _ok_regime(), _ok_journal(),
+            _ok_macro(),
+            _ok_equity(),
+            _ok_regime(),
+            _ok_journal(),
         )
         margins = compute_margins(_ok_equity(), _ok_journal())
         sug = JarvisSuggestion(
-            action=ActionSuggestion.TRADE, reason="green", confidence=0.8,
+            action=ActionSuggestion.TRADE,
+            reason="green",
+            confidence=0.8,
         )
         sizing = compute_sizing_hint(stress, SessionPhase.MORNING, sug.action)
         text = build_explanation(sug, stress, margins, SessionPhase.MORNING, sizing)
@@ -548,8 +590,8 @@ class TestBuildSnapshotV2:
         assert ctx.playbook
 
     def test_snapshot_session_phase_drives_sizing(self) -> None:
-        ts_over = datetime(2026, 4, 20, 22, 0, tzinfo=UTC)   # 18:00 ET overnight
-        ts_morn = datetime(2026, 4, 20, 15, 0, tzinfo=UTC)   # 11:00 ET morning
+        ts_over = datetime(2026, 4, 20, 22, 0, tzinfo=UTC)  # 18:00 ET overnight
+        ts_morn = datetime(2026, 4, 20, 15, 0, tzinfo=UTC)  # 11:00 ET morning
         ctx_over = build_snapshot(
             macro=_ok_macro(),
             equity=_ok_equity(),
@@ -575,7 +617,11 @@ class TestBuildSnapshotV2:
 
 
 def _ctx_for_memory(
-    *, ts: datetime, dd: float, stress_comp: float, overrides: int = 0,
+    *,
+    ts: datetime,
+    dd: float,
+    stress_comp: float,
+    overrides: int = 0,
 ) -> JarvisContext:
     """Build a JarvisContext with arbitrary stress composite for memory tests."""
     stress = StressScore(
@@ -584,7 +630,9 @@ def _ctx_for_memory(
         binding_constraint="synthetic",
     )
     sug = JarvisSuggestion(
-        action=ActionSuggestion.TRADE, reason="test", confidence=0.8,
+        action=ActionSuggestion.TRADE,
+        reason="test",
+        confidence=0.8,
     )
     return JarvisContext(
         ts=ts,
@@ -603,19 +651,24 @@ class TestJarvisMemory:
         mem = JarvisMemory(maxlen=3)
         t0 = datetime(2026, 4, 20, 14, 0, tzinfo=UTC)
         for i in range(10):
-            mem.append(_ctx_for_memory(
-                ts=t0 + timedelta(seconds=i),
-                dd=0.001 * i,
-                stress_comp=0.1,
-            ))
+            mem.append(
+                _ctx_for_memory(
+                    ts=t0 + timedelta(seconds=i),
+                    dd=0.001 * i,
+                    stress_comp=0.1,
+                )
+            )
         assert len(mem) == 3
 
     def test_trajectory_unknown_with_single_sample(self) -> None:
         mem = JarvisMemory()
-        mem.append(_ctx_for_memory(
-            ts=datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
-            dd=0.0, stress_comp=0.1,
-        ))
+        mem.append(
+            _ctx_for_memory(
+                ts=datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+                dd=0.0,
+                stress_comp=0.1,
+            )
+        )
         traj = mem.trajectory()
         assert traj.dd == TrajectoryState.UNKNOWN
         assert traj.stress == TrajectoryState.UNKNOWN
@@ -624,9 +677,13 @@ class TestJarvisMemory:
         mem = JarvisMemory()
         t0 = datetime(2026, 4, 20, 14, 0, tzinfo=UTC)
         mem.append(_ctx_for_memory(ts=t0, dd=0.0, stress_comp=0.1))
-        mem.append(_ctx_for_memory(
-            ts=t0 + timedelta(minutes=5), dd=0.02, stress_comp=0.1,
-        ))
+        mem.append(
+            _ctx_for_memory(
+                ts=t0 + timedelta(minutes=5),
+                dd=0.02,
+                stress_comp=0.1,
+            )
+        )
         traj = mem.trajectory()
         assert traj.dd == TrajectoryState.WORSENING
 
@@ -634,9 +691,13 @@ class TestJarvisMemory:
         mem = JarvisMemory()
         t0 = datetime(2026, 4, 20, 14, 0, tzinfo=UTC)
         mem.append(_ctx_for_memory(ts=t0, dd=0.02, stress_comp=0.1))
-        mem.append(_ctx_for_memory(
-            ts=t0 + timedelta(minutes=5), dd=0.001, stress_comp=0.1,
-        ))
+        mem.append(
+            _ctx_for_memory(
+                ts=t0 + timedelta(minutes=5),
+                dd=0.001,
+                stress_comp=0.1,
+            )
+        )
         traj = mem.trajectory()
         assert traj.dd == TrajectoryState.IMPROVING
 
@@ -644,9 +705,13 @@ class TestJarvisMemory:
         mem = JarvisMemory()
         t0 = datetime(2026, 4, 20, 14, 0, tzinfo=UTC)
         mem.append(_ctx_for_memory(ts=t0, dd=0.010, stress_comp=0.20))
-        mem.append(_ctx_for_memory(
-            ts=t0 + timedelta(minutes=5), dd=0.011, stress_comp=0.21,
-        ))
+        mem.append(
+            _ctx_for_memory(
+                ts=t0 + timedelta(minutes=5),
+                dd=0.011,
+                stress_comp=0.21,
+            )
+        )
         traj = mem.trajectory()
         assert traj.dd == TrajectoryState.FLAT
         assert traj.stress == TrajectoryState.FLAT
@@ -656,10 +721,14 @@ class TestJarvisMemory:
         t0 = datetime(2026, 4, 20, 14, 0, tzinfo=UTC)
         # 0 -> 2 overrides in 6 hours -> velocity = 8/24h
         mem.append(_ctx_for_memory(ts=t0, dd=0.0, stress_comp=0.1, overrides=0))
-        mem.append(_ctx_for_memory(
-            ts=t0 + timedelta(hours=6),
-            dd=0.0, stress_comp=0.1, overrides=2,
-        ))
+        mem.append(
+            _ctx_for_memory(
+                ts=t0 + timedelta(hours=6),
+                dd=0.0,
+                stress_comp=0.1,
+                overrides=2,
+            )
+        )
         traj = mem.trajectory()
         assert traj.overrides_velocity_per_24h == pytest.approx(8.0, rel=1e-3)
 
@@ -710,13 +779,17 @@ class _FakeJournal:
 class TestJarvisContextEngine:
     def test_first_tick_has_no_trajectory(self) -> None:
         mac, eq, reg, j = _FakeMacro(), _FakeEquity(), _FakeRegime(), _FakeJournal()
-        ticks = iter([
-            datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
-            datetime(2026, 4, 20, 14, 5, tzinfo=UTC),
-        ])
+        ticks = iter(
+            [
+                datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+                datetime(2026, 4, 20, 14, 5, tzinfo=UTC),
+            ]
+        )
         builder = JarvisContextBuilder(
-            macro_provider=mac, equity_provider=eq,
-            regime_provider=reg, journal_provider=j,
+            macro_provider=mac,
+            equity_provider=eq,
+            regime_provider=reg,
+            journal_provider=j,
             clock=lambda: next(ticks),
         )
         engine = JarvisContextEngine(builder=builder)
@@ -728,13 +801,17 @@ class TestJarvisContextEngine:
         # tick 1 -> memory has 0 priors, tick 2 -> 1 prior -> still too few.
         # Only tick 3+ can report a non-empty trajectory.
         mac, eq, reg, j = _FakeMacro(), _FakeEquity(), _FakeRegime(), _FakeJournal()
-        ticks = iter([
-            datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
-            datetime(2026, 4, 20, 14, 5, tzinfo=UTC),
-        ])
+        ticks = iter(
+            [
+                datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
+                datetime(2026, 4, 20, 14, 5, tzinfo=UTC),
+            ]
+        )
         builder = JarvisContextBuilder(
-            macro_provider=mac, equity_provider=eq,
-            regime_provider=reg, journal_provider=j,
+            macro_provider=mac,
+            equity_provider=eq,
+            regime_provider=reg,
+            journal_provider=j,
             clock=lambda: next(ticks),
         )
         engine = JarvisContextEngine(builder=builder)
@@ -755,16 +832,18 @@ class TestJarvisContextEngine:
         ]
         it = iter(times)
         builder = JarvisContextBuilder(
-            macro_provider=mac, equity_provider=eq,
-            regime_provider=reg, journal_provider=j,
+            macro_provider=mac,
+            equity_provider=eq,
+            regime_provider=reg,
+            journal_provider=j,
             clock=lambda: next(it),
         )
         engine = JarvisContextEngine(builder=builder)
-        engine.tick()            # sample A: dd=0
+        engine.tick()  # sample A: dd=0
         eq.dd = 0.015
-        engine.tick()            # sample B: dd=0.015
+        engine.tick()  # sample B: dd=0.015
         eq.dd = 0.03
-        ctx3 = engine.tick()     # trajectory should see A->B worsening
+        ctx3 = engine.tick()  # trajectory should see A->B worsening
         assert ctx3.trajectory is not None
         assert ctx3.trajectory.samples == 2
         assert ctx3.trajectory.dd == TrajectoryState.WORSENING
@@ -773,8 +852,10 @@ class TestJarvisContextEngine:
         custom = JarvisMemory(maxlen=5)
         mac, eq, reg, j = _FakeMacro(), _FakeEquity(), _FakeRegime(), _FakeJournal()
         builder = JarvisContextBuilder(
-            macro_provider=mac, equity_provider=eq,
-            regime_provider=reg, journal_provider=j,
+            macro_provider=mac,
+            equity_provider=eq,
+            regime_provider=reg,
+            journal_provider=j,
             clock=lambda: datetime(2026, 4, 20, 14, 0, tzinfo=UTC),
         )
         engine = JarvisContextEngine(builder=builder, memory=custom)
@@ -791,20 +872,29 @@ class TestJarvisContextEngine:
 class TestModelShapes:
     def test_alert_severity_bounded(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             JarvisAlert(
-                level=AlertLevel.INFO, code="x", message="y", severity=1.5,
+                level=AlertLevel.INFO,
+                code="x",
+                message="y",
+                severity=1.5,
             )
 
     def test_alert_requires_non_empty_code(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             JarvisAlert(
-                level=AlertLevel.INFO, code="", message="y", severity=0.1,
+                level=AlertLevel.INFO,
+                code="",
+                message="y",
+                severity=0.1,
             )
 
     def test_sizing_hint_bounded(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             SizingHint(size_mult=1.5, reason="too big")
 

@@ -24,6 +24,7 @@ Outputs
   docs/final_revision/tweaks_applied.json
   docs/final_revision/final_revision_report.txt
 """
+
 from __future__ import annotations
 
 import json
@@ -112,11 +113,7 @@ def _stage_jarvis() -> dict[str, Any]:
 
     # ctx already carries v2 fields: suggestion, playbook, explanation.
     suggestion = ctx.suggestion
-    action_value = (
-        suggestion.action.value
-        if hasattr(suggestion.action, "value")
-        else str(suggestion.action)
-    )
+    action_value = suggestion.action.value if hasattr(suggestion.action, "value") else str(suggestion.action)
     playbook = ctx.playbook or []
     pb_out: list[Any] = []
     for p in playbook:
@@ -142,29 +139,20 @@ def _stage_jarvis() -> dict[str, Any]:
 def _stage_principles() -> dict[str, Any]:
     """Run 10-principle self-audit with honest yes/no answers."""
     answers = [
-        ChecklistAnswer(index=0, yes=True,
-                        note="Confluence threshold set to A+ only; B/C/D/F suppressed"),
-        ChecklistAnswer(index=1, yes=True,
-                        note="Decision journal mandatory per trade; graded post-close"),
-        ChecklistAnswer(index=2, yes=True,
-                        note="obs/decision_journal.py append-only JSONL active"),
-        ChecklistAnswer(index=3, yes=True,
-                        note="JarvisContext.tick() pulled before each session + on regime flip"),
-        ChecklistAnswer(index=4, yes=True,
-                        note="AutopilotWatchdog REQUIRE_ACK on stale positions"),
-        ChecklistAnswer(index=5, yes=True,
-                        note="Sun 20:00 ET weekly; 1st of month monthly deep review"),
-        ChecklistAnswer(index=6, yes=True,
-                        note="StressScore composite + regime-conditioned synthetic replay"),
-        ChecklistAnswer(index=7, yes=True,
-                        note="MaxDailyDD 3%, per-trade 1R cap, kill_switch wired"),
-        ChecklistAnswer(index=8, yes=True,
-                        note="gate_override_telemetry tracks rate; >=3/day => REVIEW"),
-        ChecklistAnswer(index=9, yes=True,
-                        note="rationale_miner + exit_quality feed weekly review"),
+        ChecklistAnswer(index=0, yes=True, note="Confluence threshold set to A+ only; B/C/D/F suppressed"),
+        ChecklistAnswer(index=1, yes=True, note="Decision journal mandatory per trade; graded post-close"),
+        ChecklistAnswer(index=2, yes=True, note="obs/decision_journal.py append-only JSONL active"),
+        ChecklistAnswer(index=3, yes=True, note="JarvisContext.tick() pulled before each session + on regime flip"),
+        ChecklistAnswer(index=4, yes=True, note="AutopilotWatchdog REQUIRE_ACK on stale positions"),
+        ChecklistAnswer(index=5, yes=True, note="Sun 20:00 ET weekly; 1st of month monthly deep review"),
+        ChecklistAnswer(index=6, yes=True, note="StressScore composite + regime-conditioned synthetic replay"),
+        ChecklistAnswer(index=7, yes=True, note="MaxDailyDD 3%, per-trade 1R cap, kill_switch wired"),
+        ChecklistAnswer(index=8, yes=True, note="gate_override_telemetry tracks rate; >=3/day => REVIEW"),
+        ChecklistAnswer(index=9, yes=True, note="rationale_miner + exit_quality feed weekly review"),
     ]
     report = build_report(
-        answers=answers, period_label="pre-rollout-final-revision",
+        answers=answers,
+        period_label="pre-rollout-final-revision",
     )
     return json.loads(report.model_dump_json())
 
@@ -292,8 +280,7 @@ def _stage_basement_sweep() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _glide_step(baseline: dict[str, Any], target: dict[str, Any],
-                *, cap_rel: float = 0.34) -> dict[str, Any]:
+def _glide_step(baseline: dict[str, Any], target: dict[str, Any], *, cap_rel: float = 0.34) -> dict[str, Any]:
     """Produce a MODERATE-compliant intermediate proposal.
 
     Caps each numeric param's relative change at ``cap_rel`` so the
@@ -304,11 +291,7 @@ def _glide_step(baseline: dict[str, Any], target: dict[str, Any],
     out: dict[str, Any] = {}
     for k, new in target.items():
         old = baseline.get(k)
-        if (
-            isinstance(new, (int, float))
-            and isinstance(old, (int, float))
-            and old not in (0, 0.0)
-        ):
+        if isinstance(new, (int, float)) and isinstance(old, (int, float)) and old not in (0, 0.0):
             max_delta = abs(old) * cap_rel
             raw_delta = new - old
             clipped = raw_delta
@@ -316,11 +299,7 @@ def _glide_step(baseline: dict[str, Any], target: dict[str, Any],
                 clipped = max_delta if raw_delta > 0 else -max_delta
             proposed = old + clipped
             # Preserve int-ness for int keys
-            proposed = (
-                int(round(proposed))
-                if isinstance(old, int) and isinstance(new, int)
-                else round(proposed, 4)
-            )
+            proposed = int(round(proposed)) if isinstance(old, int) and isinstance(new, int) else round(proposed, 4)
             out[k] = proposed
         else:
             # Keep baseline to avoid structural flip -> MODERATE bump
@@ -353,7 +332,8 @@ def _stage_master_tweaks(sweep_summary: dict[str, Any], cells: list[Any]) -> dic
     # 1. Full-winner tweak (documented, usually AGGRESSIVE, rejected)
     full_winners = {"mnq_apex": winner}
     full_tweaks = propose_tweaks(
-        winners=full_winners, baselines=baselines,
+        winners=full_winners,
+        baselines=baselines,
         source="basement_sweep_v0_1_27_full_winner",
     )
 
@@ -377,25 +357,26 @@ def _stage_master_tweaks(sweep_summary: dict[str, Any], cells: list[Any]) -> dic
     )
     # Stability -- std of walk-forward scores
     import statistics as _stat
-    glide_stab = (
-        _stat.pstdev(glide_score.walk_forward_scores)
-        if len(glide_score.walk_forward_scores) >= 2
-        else 0.0
-    )
+
+    glide_stab = _stat.pstdev(glide_score.walk_forward_scores) if len(glide_score.walk_forward_scores) >= 2 else 0.0
 
     from eta_engine.core.parameter_sweep import SweepCell
+
     glide_cell = SweepCell(
-        params=glide_params, score=glide_score,
-        gate_pass=glide_gate_pass, stability=round(glide_stab, 4),
+        params=glide_params,
+        score=glide_score,
+        gate_pass=glide_gate_pass,
+        stability=round(glide_stab, 4),
     )
     glide_winners = {"mnq_apex": glide_cell}
     glide_tweaks = propose_tweaks(
-        winners=glide_winners, baselines=baselines,
+        winners=glide_winners,
+        baselines=baselines,
         source="basement_sweep_v0_1_27_glide_step",
     )
 
     policy = TweakPolicy(
-        allow_aggressive=False,      # SAFE + MODERATE only
+        allow_aggressive=False,  # SAFE + MODERATE only
         max_relative_change=0.50,
         require_gate_pass=True,
     )
@@ -483,33 +464,35 @@ def _write_report(
     if sweep.get("winner"):
         w = sweep["winner"]
         lines.append(f"Winner params: {w['params']}")
-        lines.append(f"  expectancy_r={w['expectancy_r']:.3f}  "
-                     f"max_dd_pct={w['max_dd_pct']:.3f}  "
-                     f"win_rate={w['win_rate']:.3f}  "
-                     f"stability={w['stability']:.3f}")
+        lines.append(
+            f"  expectancy_r={w['expectancy_r']:.3f}  "
+            f"max_dd_pct={w['max_dd_pct']:.3f}  "
+            f"win_rate={w['win_rate']:.3f}  "
+            f"stability={w['stability']:.3f}"
+        )
     lines.append("")
     lines.append("Top 5 ranked:")
     for i, r in enumerate(sweep["top_5_ranked"], start=1):
         lines.append(f"  #{i}: {r['params']}")
-        lines.append(f"        expect={r['expectancy_r']:.3f}  "
-                     f"dd={r['max_dd_pct']:.3f}  "
-                     f"wr={r['win_rate']:.3f}  "
-                     f"stab={r['stability']:.3f}  "
-                     f"gate={r['gate_pass']}")
+        lines.append(
+            f"        expect={r['expectancy_r']:.3f}  "
+            f"dd={r['max_dd_pct']:.3f}  "
+            f"wr={r['win_rate']:.3f}  "
+            f"stab={r['stability']:.3f}  "
+            f"gate={r['gate_pass']}"
+        )
     lines.append("")
 
     lines.append("-- MASTER TWEAK PROPOSALS (SAFE + MODERATE) --------------------------")
     proposed = tweaks.get("tweaks_proposed", [])
     lines.append(f"Proposed: {len(proposed)}")
     for t in proposed:
-        lines.append(f"  * [{t['risk_tag']}] {t['bot']}: {t['proposal']}  "
-                     f"{t['reason']}")
+        lines.append(f"  * [{t['risk_tag']}] {t['bot']}: {t['proposal']}  {t['reason']}")
     applied = tweaks.get("applied", {})
     lines.append("")
     lines.append("Applied result:")
     for bot, r in applied.items():
-        lines.append(f"  * {bot}: applied={r['applied']}  "
-                     f"new={r['new_config']}")
+        lines.append(f"  * {bot}: applied={r['applied']}  new={r['new_config']}")
         if r.get("rejected_params"):
             lines.append(f"        rejected: {r['rejected_params']}")
         if r.get("reason"):
@@ -518,9 +501,7 @@ def _write_report(
 
     lines.append("-- READY FOR ROLLOUT ? -----------------------------------------------")
     ready = (
-        jarvis["suggested_action"] == "TRADE"
-        and principles.get("score", 0.0) >= 0.85
-        and sweep["gate_pass_count"] > 0
+        jarvis["suggested_action"] == "TRADE" and principles.get("score", 0.0) >= 0.85 and sweep["gate_pass_count"] > 0
     )
     lines.append(f"READY: {ready}")
     if not ready:
@@ -548,43 +529,53 @@ def main() -> None:
     print("[1/4] building JarvisContext snapshot...")
     jarvis = _stage_jarvis()
     (OUT_DIR / "jarvis_context.json").write_text(
-        json.dumps(jarvis, indent=2, default=str), encoding="utf-8",
+        json.dumps(jarvis, indent=2, default=str),
+        encoding="utf-8",
     )
-    playbook_text = jarvis["explanation"] + "\n\n" + "\n".join(
-        f"- {p}" for p in jarvis["playbook"]
-    )
+    playbook_text = jarvis["explanation"] + "\n\n" + "\n".join(f"- {p}" for p in jarvis["playbook"])
     (OUT_DIR / "jarvis_playbook.txt").write_text(playbook_text, encoding="utf-8")
-    print(f"      -> action={jarvis['suggested_action']}  "
-          f"reason={jarvis['suggested_reason']}")
+    print(f"      -> action={jarvis['suggested_action']}  reason={jarvis['suggested_reason']}")
 
     print("[2/4] running principles checklist...")
     principles = _stage_principles()
     (OUT_DIR / "principles_audit.json").write_text(
-        json.dumps(principles, indent=2, default=str), encoding="utf-8",
+        json.dumps(principles, indent=2, default=str),
+        encoding="utf-8",
     )
-    print(f"      -> score={principles.get('score', 0.0):.3f}  "
-          f"grade={principles.get('letter_grade')}  "
-          f"discipline={principles.get('discipline_score', 0.0):.3f}")
+    print(
+        f"      -> score={principles.get('score', 0.0):.3f}  "
+        f"grade={principles.get('letter_grade')}  "
+        f"discipline={principles.get('discipline_score', 0.0):.3f}"
+    )
 
     print("[3/4] basement-level parameter sweep...")
     sweep, cells = _stage_basement_sweep()
     (OUT_DIR / "basement_sweep_summary.json").write_text(
-        json.dumps(sweep, indent=2, default=str), encoding="utf-8",
+        json.dumps(sweep, indent=2, default=str),
+        encoding="utf-8",
     )
-    print(f"      -> {sweep['total_candidates']} candidates, "
-          f"{sweep['gate_pass_count']} gate-pass, "
-          f"{sweep['pareto_frontier_count']} pareto")
+    print(
+        f"      -> {sweep['total_candidates']} candidates, "
+        f"{sweep['gate_pass_count']} gate-pass, "
+        f"{sweep['pareto_frontier_count']} pareto"
+    )
 
     print("[4/4] master_tweaks proposals...")
     tweaks = _stage_master_tweaks(sweep, cells)
     (OUT_DIR / "tweaks_proposed.json").write_text(
-        json.dumps(tweaks, indent=2, default=str), encoding="utf-8",
+        json.dumps(tweaks, indent=2, default=str),
+        encoding="utf-8",
     )
-    print(f"      -> proposed={len(tweaks.get('tweaks_proposed', []))}  "
-          f"applied_any={any(r['applied'] for r in tweaks.get('applied', {}).values())}")
+    print(
+        f"      -> proposed={len(tweaks.get('tweaks_proposed', []))}  "
+        f"applied_any={any(r['applied'] for r in tweaks.get('applied', {}).values())}"
+    )
 
     report = _write_report(
-        jarvis=jarvis, principles=principles, sweep=sweep, tweaks=tweaks,
+        jarvis=jarvis,
+        principles=principles,
+        sweep=sweep,
+        tweaks=tweaks,
     )
     (OUT_DIR / "final_revision_report.txt").write_text(report, encoding="utf-8")
     print()

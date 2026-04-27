@@ -32,6 +32,7 @@ Design
    ``WatchdogRelauncher`` was wired up and the persona is OFFLINE, try
    to cold-start the .bat.
 """
+
 from __future__ import annotations
 
 import json
@@ -52,29 +53,31 @@ FLEET_PERSONAS: tuple[str, ...] = ("JARVIS", "BATMAN", "ALFRED", "ROBIN")
 
 class HealthStatus(StrEnum):
     HEALTHY = "HEALTHY"
-    STUCK   = "STUCK"
+    STUCK = "STUCK"
     OFFLINE = "OFFLINE"
 
 
 class DaemonHealth(BaseModel):
     """One persona's health snapshot."""
+
     model_config = ConfigDict(frozen=True)
 
-    persona:         str
-    status:          HealthStatus
-    last_heartbeat:  datetime | None
-    minutes_since:   float = Field(ge=0.0)
-    note:            str = ""
+    persona: str
+    status: HealthStatus
+    last_heartbeat: datetime | None
+    minutes_since: float = Field(ge=0.0)
+    note: str = ""
 
 
 class WatchdogReport(BaseModel):
     """Full sweep output. Persist / render as-is."""
+
     model_config = ConfigDict(frozen=True)
 
-    checked_at:    datetime
-    daemons:       list[DaemonHealth]
-    alerts_fired:  list[str] = Field(default_factory=list)
-    relaunches:    list[str] = Field(default_factory=list)
+    checked_at: datetime
+    daemons: list[DaemonHealth]
+    alerts_fired: list[str] = Field(default_factory=list)
+    relaunches: list[str] = Field(default_factory=list)
 
 
 class WatchdogRelauncher:
@@ -97,7 +100,8 @@ class WatchdogRelauncher:
     ) -> None:
         if launcher_dir is None:
             # Project default -- matches what install_desktop_shortcuts.ps1 writes.
-            launcher_dir = Path.home() / "OneDrive" / "Desktop" / "Base" / "launchers"
+            # post-OneDrive-migration 2026-04-26: launchers live under C:\EvolutionaryTradingAlgo\.
+            launcher_dir = Path("C:/EvolutionaryTradingAlgo/launchers")
         self.launcher_dir = launcher_dir
         self._mapping: dict[str, Path] = {}
         for persona in FLEET_PERSONAS:
@@ -154,27 +158,24 @@ class Watchdog:
     def __init__(
         self,
         *,
-        journal_path:     Path | None = None,
-        push_bus:         PushBus | None = None,
-        stuck_minutes:    float = 5.0,
-        offline_minutes:  float = 15.0,
+        journal_path: Path | None = None,
+        push_bus: PushBus | None = None,
+        stuck_minutes: float = 5.0,
+        offline_minutes: float = 15.0,
         lookback_minutes: float = 60.0,
-        relauncher:       WatchdogRelauncher | None = None,
+        relauncher: WatchdogRelauncher | None = None,
         clock: callable | None = None,
-        self_persona:     str | None = None,
+        self_persona: str | None = None,
     ) -> None:
         if not (0 < stuck_minutes < offline_minutes <= lookback_minutes):
-            msg = (
-                "watchdog thresholds must satisfy "
-                "0 < stuck < offline <= lookback"
-            )
+            msg = "watchdog thresholds must satisfy 0 < stuck < offline <= lookback"
             raise ValueError(msg)
-        self.journal_path      = journal_path or AVENGERS_JOURNAL
-        self.push_bus          = push_bus or default_bus()
-        self.stuck_minutes     = stuck_minutes
-        self.offline_minutes   = offline_minutes
-        self.lookback_minutes  = lookback_minutes
-        self.relauncher        = relauncher
+        self.journal_path = journal_path or AVENGERS_JOURNAL
+        self.push_bus = push_bus or default_bus()
+        self.stuck_minutes = stuck_minutes
+        self.offline_minutes = offline_minutes
+        self.lookback_minutes = lookback_minutes
+        self.relauncher = relauncher
         self._clock = clock or (lambda: datetime.now(UTC))
         self.self_persona = (self_persona or "").upper() or None
 
@@ -217,7 +218,10 @@ class Watchdog:
         return latest
 
     def _classify(
-        self, persona: str, last: datetime | None, now: datetime,
+        self,
+        persona: str,
+        last: datetime | None,
+        now: datetime,
     ) -> DaemonHealth:
         if last is None:
             return DaemonHealth(
@@ -225,9 +229,7 @@ class Watchdog:
                 status=HealthStatus.OFFLINE,
                 last_heartbeat=None,
                 minutes_since=float(self.lookback_minutes),
-                note=(
-                    f"no heartbeat in last {int(self.lookback_minutes)} min"
-                ),
+                note=(f"no heartbeat in last {int(self.lookback_minutes)} min"),
             )
         minutes = max(0.0, (now - last).total_seconds() / 60.0)
         if minutes >= self.offline_minutes:
@@ -240,8 +242,11 @@ class Watchdog:
             status = HealthStatus.HEALTHY
             note = ""
         return DaemonHealth(
-            persona=persona, status=status,
-            last_heartbeat=last, minutes_since=minutes, note=note,
+            persona=persona,
+            status=status,
+            last_heartbeat=last,
+            minutes_since=minutes,
+            note=note,
         )
 
     def sweep(self) -> WatchdogReport:
@@ -282,7 +287,11 @@ class Watchdog:
         )
 
     def _alert(
-        self, persona: str, health: DaemonHealth, *, level: AlertLevel,
+        self,
+        persona: str,
+        health: DaemonHealth,
+        *,
+        level: AlertLevel,
     ) -> None:
         try:
             self.push_bus.push(

@@ -24,7 +24,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +106,7 @@ BOT_PLAN: dict[str, dict[str, Any]] = {
 
 # ── Paper-phase gate thresholds (mirrors firm_spec_paper_promotion_v1.json) ──
 
+
 @dataclass
 class PaperPhaseRequirements:
     min_weeks: int = 4
@@ -117,6 +118,7 @@ class PaperPhaseRequirements:
 
 
 # ── Per-bot result container ──
+
 
 @dataclass
 class BotPaperResult:
@@ -166,15 +168,14 @@ class BotPaperResult:
 
 # ── Harness ──
 
+
 def _ctx_builder(bar, hist):  # noqa: ANN001
     """Rich synthetic context that drives meaningful confluence."""
     from eta_engine.core.data_pipeline import FundingRate
+
     now = bar.timestamp
     tail = hist[-20:] if len(hist) >= 20 else hist
-    if len(tail) >= 2:
-        ema_series = [b.close for b in tail[:: max(1, len(tail) // 5)]]
-    else:
-        ema_series = [bar.close * 0.98, bar.close]
+    ema_series = [b.close for b in tail[:: max(1, len(tail) // 5)]] if len(tail) >= 2 else [bar.close * 0.98, bar.close]
     return {
         "daily_ema": ema_series,
         "h4_struct": "HH_HL",
@@ -183,18 +184,26 @@ def _ctx_builder(bar, hist):  # noqa: ANN001
         "atr_current": max(bar.high - bar.low, 0.01),
         "funding_history": [
             FundingRate(
-                timestamp=now, symbol=bar.symbol,
-                rate=-0.0006, predicted_rate=-0.0006,
+                timestamp=now,
+                symbol=bar.symbol,
+                rate=-0.0006,
+                predicted_rate=-0.0006,
             )
-        ] * 8,
+        ]
+        * 8,
         "onchain": {
-            "whale_transfers": 40, "whale_transfers_baseline": 20,
+            "whale_transfers": 40,
+            "whale_transfers_baseline": 20,
             "exchange_netflow_usd": -25_000_000.0,
-            "active_addresses": 1300, "active_addresses_baseline": 1000,
+            "active_addresses": 1300,
+            "active_addresses_baseline": 1000,
         },
         "sentiment": {
-            "galaxy_score": 80.0, "alt_rank": 18, "social_volume": 500,
-            "social_volume_baseline": 200, "fear_greed": 22,
+            "galaxy_score": 80.0,
+            "alt_rank": 18,
+            "social_volume": 500,
+            "social_volume_baseline": 200,
+            "fear_greed": 22,
         },
     }
 
@@ -257,7 +266,10 @@ def _run_one_bot(
     )
     pipe = FeaturePipeline.default()
     engine = BacktestEngine(
-        pipe, cfg, ctx_builder=_ctx_builder, strategy_id=f"apex_paper_{bot_name}",
+        pipe,
+        cfg,
+        ctx_builder=_ctx_builder,
+        strategy_id=f"apex_paper_{bot_name}",
     )
     res = engine.run(bars)
 
@@ -329,6 +341,7 @@ def _apply_gate(
 
 # ── Aggregate ──
 
+
 @dataclass
 class AggregateResult:
     total_bots: int
@@ -355,14 +368,8 @@ def _aggregate(
     passing = sum(1 for b in per_bot if b.gate_pass)
     any_killed = any(b.killed for b in per_bot)
     # Blend expectancy by trade count
-    blended_exp = (
-        sum(b.expectancy_r * b.n_trades for b in per_bot) / n_trades
-        if n_trades > 0 else 0.0
-    )
-    blended_wr = (
-        sum(b.win_rate * b.n_trades for b in per_bot) / n_trades
-        if n_trades > 0 else 0.0
-    )
+    blended_exp = sum(b.expectancy_r * b.n_trades for b in per_bot) / n_trades if n_trades > 0 else 0.0
+    blended_wr = sum(b.win_rate * b.n_trades for b in per_bot) / n_trades if n_trades > 0 else 0.0
     blended_dd = max((b.max_dd_pct for b in per_bot), default=0.0)
 
     # Verdict:
@@ -395,6 +402,7 @@ def _aggregate(
 
 
 # ── Report + tearsheet ──
+
 
 def _write_report(
     per_bot: list[BotPaperResult],
@@ -490,6 +498,7 @@ def _write_report(
 
 # ── Entry ──
 
+
 def _merge_overrides(
     plans: dict[str, dict[str, Any]],
     overrides_path: Path | None,
@@ -513,8 +522,12 @@ def _merge_overrides(
         for k, v in params.items():
             # Strip non-plan keys like 'expected_expectancy_r'
             if k in merged[bot] or k in (
-                "jump_intensity", "jump_mean", "jump_vol",
-                "regime_persist", "bull_drift_boost", "bear_drift_penalty",
+                "jump_intensity",
+                "jump_mean",
+                "jump_vol",
+                "regime_persist",
+                "bull_drift_boost",
+                "bear_drift_penalty",
             ):
                 merged[bot][k] = v
     return merged
@@ -574,9 +587,11 @@ def main() -> int:
 
     print("EVOLUTIONARY TRADING ALGO -- Paper-Run Harness")
     print("=" * 96)
-    print(f"Weeks: {weeks}   Seed: {args.seed}   Bots: {len(plans)}   "
-          f"Starting capital: ${sum(p['capital'] for p in plans.values()):,.0f}   "
-          f"Bar mode: {bar_mode}   Label: {label or '-'}")
+    print(
+        f"Weeks: {weeks}   Seed: {args.seed}   Bots: {len(plans)}   "
+        f"Starting capital: ${sum(p['capital'] for p in plans.values()):,.0f}   "
+        f"Bar mode: {bar_mode}   Label: {label or '-'}"
+    )
     if args.overrides:
         print(f"Overrides: {args.overrides}")
     print("-" * 96)
@@ -599,8 +614,14 @@ def main() -> int:
 
     agg = _aggregate(results, reqs, weeks)
     rp, tp = _write_report(
-        results, agg, weeks, int(args.seed), reqs, args.out_dir,
-        label=label, bar_mode=bar_mode,
+        results,
+        agg,
+        weeks,
+        int(args.seed),
+        reqs,
+        args.out_dir,
+        label=label,
+        bar_mode=bar_mode,
     )
 
     print("-" * 96)

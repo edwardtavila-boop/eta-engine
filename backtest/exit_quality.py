@@ -29,6 +29,7 @@ Public API
   * ``build_heatmap(rows) -> dict[(regime, setup), ExitQualityHeatmap]``
   * ``money_left_on_table(rows, dollars_per_r) -> float``
 """
+
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003  -- pydantic needs it at runtime
@@ -131,20 +132,22 @@ class ExitQualityRow(BaseModel):
     r_available: float
     r_adverse: float
     capture_ratio: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="min(max(captured/available, 0), 1); 1.0 = perfect exit.",
     )
     hold_frac_to_mfe: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of hold time spent BEFORE the MFE peak.",
     )
     hold_score: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="(1 - capture_ratio) inverted -> longer hold past MFE = lower",
     )
     leaked_r: float = Field(
-        description="R left on the table (r_available - r_captured). "
-                    "Negative = stop-out (no leak).",
+        description="R left on the table (r_available - r_captured). Negative = stop-out (no leak).",
     )
 
 
@@ -166,16 +169,11 @@ class ExitQualityHeatmap(BaseModel):
 
 
 def analyze_trade(p: MaeMfePoint) -> ExitQualityRow:
-    cap_raw = (
-        p.r_captured / p.r_available if p.r_available > 0 else
-        (1.0 if p.r_captured >= 0 else 0.0)
-    )
+    cap_raw = p.r_captured / p.r_available if p.r_available > 0 else (1.0 if p.r_captured >= 0 else 0.0)
     capture_ratio = max(0.0, min(1.0, cap_raw))
 
     hold_s = p.hold_seconds
-    hold_frac = (
-        max(0.0, min(1.0, p.time_to_mfe_sec / hold_s)) if hold_s > 0 else 1.0
-    )
+    hold_frac = max(0.0, min(1.0, p.time_to_mfe_sec / hold_s)) if hold_s > 0 else 1.0
 
     # If you peaked 20% into the hold and slid 80% more -> hold_score low
     # If you exited right at the peak -> hold_score high
@@ -218,10 +216,7 @@ def build_heatmap(
         n = len(group)
         # Trades with r_available > 0 are the only ones where capture is meaningful
         meaningful = [r for r in group if r.r_available > 0]
-        mean_cap = (
-            sum(r.capture_ratio for r in meaningful) / len(meaningful)
-            if meaningful else 0.0
-        )
+        mean_cap = sum(r.capture_ratio for r in meaningful) / len(meaningful) if meaningful else 0.0
         best_cap = max((r.capture_ratio for r in meaningful), default=0.0)
         mean_r_captured = sum(r.r_captured for r in group) / n
         mean_r_available = sum(r.r_available for r in group) / n
@@ -230,7 +225,9 @@ def build_heatmap(
         worst_leak = max(leaks) if leaks else 0.0
 
         out[(regime, setup)] = ExitQualityHeatmap(
-            regime=regime, setup=setup, n=n,
+            regime=regime,
+            setup=setup,
+            n=n,
             mean_capture_ratio=round(mean_cap, 3),
             mean_r_captured=round(mean_r_captured, 3),
             mean_r_available=round(mean_r_available, 3),

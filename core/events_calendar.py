@@ -25,6 +25,7 @@ This module adds:
 Keeping this in its own module lets the session filter stay deterministic
 while calendar data is refreshed on a slower cadence (5m).
 """
+
 from __future__ import annotations
 
 import bisect
@@ -173,9 +174,7 @@ class EventsCalendar:
         for event in self.events[start_idx:end_idx]:
             if impact_filter is not None and event.impact != impact_filter:
                 continue
-            if event.in_window(
-                now, pre_minutes=pre_minutes, post_minutes=post_minutes
-            ):
+            if event.in_window(now, pre_minutes=pre_minutes, post_minutes=post_minutes):
                 return True
         return False
 
@@ -196,9 +195,7 @@ class EventsCalendar:
         for event in self.events[start_idx:end_idx]:
             if impact_filter is not None and event.impact != impact_filter:
                 continue
-            if event.in_window(
-                now, pre_minutes=pre_minutes, post_minutes=post_minutes
-            ):
+            if event.in_window(now, pre_minutes=pre_minutes, post_minutes=post_minutes):
                 return event
         return None
 
@@ -206,6 +203,7 @@ class EventsCalendar:
 # ---------------------------------------------------------------------------
 # Loaders
 # ---------------------------------------------------------------------------
+
 
 def load_from_json(path: str | Path) -> EventsCalendar:
     """Load an events calendar from a local JSON schedule.
@@ -252,20 +250,14 @@ def load_from_mcp(
     start = start_utc or datetime.now(UTC)
     end = start + timedelta(days=max(1, days_ahead))
     try:
-        rows = mcp.events_calendar(
-            start_utc=start, end_utc=end, impact=impact_filter
-        )
+        rows = mcp.events_calendar(start_utc=start, end_utc=end, impact=impact_filter)
     except Exception as exc:  # noqa: BLE001
         log.warning("events_calendar MCP failed: %s", exc)
         return EventsCalendar()
     events: list[CalendarEvent] = []
     for row in rows or []:
         try:
-            ts = _parse_ts(
-                row.get("scheduled_utc")
-                or row.get("ts")
-                or row.get("event_time")
-            )
+            ts = _parse_ts(row.get("scheduled_utc") or row.get("ts") or row.get("event_time"))
         except ValueError:
             continue
         events.append(

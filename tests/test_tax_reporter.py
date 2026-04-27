@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,6 +17,9 @@ from eta_engine.tax import (
     Section1256Reporter,
     TaxableEvent,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _ev(
@@ -43,7 +46,6 @@ def _ev(
 
 
 class TestSection1256:
-
     def test_60_40_split(self) -> None:
         r = Section1256Reporter()
         out = r.breakdown_60_40(10_000.0)
@@ -60,7 +62,9 @@ class TestSection1256:
     def test_mark_to_market_creates_events(self) -> None:
         r = Section1256Reporter()
         pos = OpenFuturesPosition(
-            symbol="MNQ", qty=5.0, entry_price=20_000.0,
+            symbol="MNQ",
+            qty=5.0,
+            entry_price=20_000.0,
             entry_time=datetime(2025, 6, 1, tzinfo=UTC),
         )
         events = r.mark_to_market(
@@ -87,7 +91,6 @@ class TestSection1256:
 
 
 class TestKoinlyExport:
-
     def test_csv_header_matches_spec(self, tmp_path: Path) -> None:
         exp = KoinlyExporter()
         path = tmp_path / "koinly.csv"
@@ -96,10 +99,18 @@ class TestKoinlyExport:
             reader = csv.reader(f)
             header = next(reader)
         assert header == [
-            "Date", "Sent Amount", "Sent Currency", "Received Amount",
-            "Received Currency", "Fee Amount", "Fee Currency",
-            "Net Worth Amount", "Net Worth Currency", "Label",
-            "Description", "TxHash",
+            "Date",
+            "Sent Amount",
+            "Sent Currency",
+            "Received Amount",
+            "Received Currency",
+            "Fee Amount",
+            "Fee Currency",
+            "Net Worth Amount",
+            "Net Worth Currency",
+            "Label",
+            "Description",
+            "TxHash",
         ]
 
     def test_trade_row_shape(self, tmp_path: Path) -> None:

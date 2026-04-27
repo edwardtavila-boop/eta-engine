@@ -129,6 +129,7 @@ Expected state changes
     with the full ledger.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -241,14 +242,8 @@ def main() -> None:
             ),
         },
         "production_venues_protocol_status": {
-            "IbkrClientPortalVenue": (
-                "Already satisfies. Pinned by "
-                "test_ibkr_adapter_satisfies_protocol."
-            ),
-            "TastytradeVenue": (
-                "Already satisfies. Pinned by "
-                "test_tastytrade_venue_satisfies_protocol."
-            ),
+            "IbkrClientPortalVenue": ("Already satisfies. Pinned by test_ibkr_adapter_satisfies_protocol."),
+            "TastytradeVenue": ("Already satisfies. Pinned by test_tastytrade_venue_satisfies_protocol."),
             "TradovateVenue": (
                 "DORMANT (operator mandate 2026-04-24). When funding "
                 "clears, add get_net_liquidation() async method and "
@@ -259,9 +254,7 @@ def main() -> None:
         "tests_passing_before": prev_tests,
         "tests_passing_after": NEW_TESTS_ABS,
         "tests_added_in_this_bundle": PROTOCOL_TESTS_ADDED,
-        "tests_delta_residual_from_other_modules": (
-            NEW_TESTS_ABS - prev_tests - PROTOCOL_TESTS_ADDED
-        ),
+        "tests_delta_residual_from_other_modules": (NEW_TESTS_ABS - prev_tests - PROTOCOL_TESTS_ADDED),
         "ruff_green_touched_files": True,
         "pre_existing_flaky_dashboard_test": (
             "test_dashboard_api.py::test_btc_lanes_empty_when_fleet_"

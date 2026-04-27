@@ -11,6 +11,7 @@ Embedded in the debate prompt so every persona knows:
 
 Pure rules + helpers. No I/O.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,13 +19,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CollaborationRule(BaseModel):
     """One rule describing how personas interact."""
+
     model_config = ConfigDict(frozen=True)
 
-    when:     str = Field(min_length=1)
-    actor:    str = Field(min_length=1)
-    action:   str = Field(min_length=1)
-    priority: int = Field(ge=0, le=10,
-                          description="Higher = earlier in conflict resolution")
+    when: str = Field(min_length=1)
+    actor: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    priority: int = Field(ge=0, le=10, description="Higher = earlier in conflict resolution")
     rationale: str = ""
 
 
@@ -48,7 +49,7 @@ PROTOCOLS: list[CollaborationRule] = [
         when="HISTORIAN reports precedent_n >= 20 with mean_r > 0.5 and wr >= 0.55",
         actor="BULL, BEAR",
         action="BULL gains tiebreaker authority; BEAR must escalate a specific "
-               "attack vector beyond the precedent to maintain DENY",
+        "attack vector beyond the precedent to maintain DENY",
         priority=7,
         rationale="Historical evidence is the strongest signal we have.",
     ),
@@ -57,14 +58,12 @@ PROTOCOLS: list[CollaborationRule] = [
         actor="FULL_DEBATE",
         action="Verdict is DEFER until the blind spot is addressed, regardless of BULL/BEAR split",
         priority=8,
-        rationale="ADVERSARIAL_HONESTY tenet: an unresolved blind spot cannot "
-                  "be overridden by a majority vote.",
+        rationale="ADVERSARIAL_HONESTY tenet: an unresolved blind spot cannot be overridden by a majority vote.",
     ),
     CollaborationRule(
         when="Portfolio breach (cluster correlated risk > cap)",
         actor="ALL",
-        action="Downgrade verdict by at least one tier (APPROVE -> CONDITIONAL; "
-               "CONDITIONAL -> DENY)",
+        action="Downgrade verdict by at least one tier (APPROVE -> CONDITIONAL; CONDITIONAL -> DENY)",
         priority=8,
         rationale="Correlation concentration risk is invisible to single-trade analysis.",
     ),
@@ -80,8 +79,7 @@ PROTOCOLS: list[CollaborationRule] = [
         actor="ALFRED",
         action="Ship the Plan + Deliverable first; BATMAN reviews the shipped artifact",
         priority=4,
-        rationale="BATMAN reviews code; ALFRED writes it. Don't block on adversarial review "
-                  "for every routine change.",
+        rationale="BATMAN reviews code; ALFRED writes it. Don't block on adversarial review for every routine change.",
     ),
     CollaborationRule(
         when="ROBIN produces output > 500 tokens",

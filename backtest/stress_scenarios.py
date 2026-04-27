@@ -18,6 +18,7 @@ parameterised by seed so walk-forward tests are reproducible. Output plugs
 into :class:`eta_engine.core.portfolio_risk.PortfolioRisk` or the
 :mod:`eta_engine.backtest.engine` replay harness.
 """
+
 from __future__ import annotations
 
 import logging
@@ -53,6 +54,7 @@ def _drawdown(returns: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 # Scenario generators
 # ---------------------------------------------------------------------------
+
 
 def scenario_2008_slow_grind(
     n_bars: int = 250,

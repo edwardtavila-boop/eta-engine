@@ -31,6 +31,7 @@ HIGH_IMPACT_TAGS: list[str] = [
 # Models
 # ---------------------------------------------------------------------------
 
+
 class SessionWindow(BaseModel):
     """Named trading session with time boundaries (UTC)."""
 
@@ -99,6 +100,7 @@ _SESSION_INDEX: dict[str, SessionWindow] = {s.name: s for s in DEFAULT_SESSIONS}
 # Session detection
 # ---------------------------------------------------------------------------
 
+
 def _time_in_range(start: time, end: time, check: time) -> bool:
     """Check if `check` falls within [start, end). Handles midnight wrap."""
     if start <= end:
@@ -132,6 +134,7 @@ def is_htf_window(
 # ---------------------------------------------------------------------------
 # News blackout
 # ---------------------------------------------------------------------------
+
 
 def is_news_blackout(
     dt: datetime,
@@ -167,6 +170,7 @@ def is_news_blackout(
 # ---------------------------------------------------------------------------
 # Convenience
 # ---------------------------------------------------------------------------
+
 
 def get_session(name: str) -> SessionWindow | None:
     """Lookup a default session by name."""

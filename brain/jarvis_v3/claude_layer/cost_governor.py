@@ -18,6 +18,7 @@ the four personas run, and at what tier each. This is where we put
 MORE STRESS ON JARVIS: under DOWNSHIFT or FREEZE, personas fall back
 to their deterministic (free) implementations from ``next_level.debate``.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -52,31 +53,34 @@ from eta_engine.brain.model_policy import ModelTier
 
 class PersonaAssignment(BaseModel):
     """One persona's execution plan."""
+
     model_config = ConfigDict(frozen=True)
 
-    persona:      str
-    tier:         ModelTier | None = None   # None = run JARVIS-only (free)
+    persona: str
+    tier: ModelTier | None = None  # None = run JARVIS-only (free)
     deterministic: bool = False
-    reason:       str = ""
+    reason: str = ""
 
 
 class InvocationPlan(BaseModel):
     """The full decision the governor hands to the caller."""
+
     model_config = ConfigDict(frozen=True)
 
-    invoke_claude:   bool
-    reason:          str
-    escalation:      EscalationDecision
-    stakes:          StakesVerdict | None = None
-    distillation:    SkipDecision | None = None
-    quota:           QuotaStatus | None = None
-    personas:        list[PersonaAssignment] = Field(default_factory=list)
-    est_cost_usd:    float = Field(ge=0.0, default=0.0)
+    invoke_claude: bool
+    reason: str
+    escalation: EscalationDecision
+    stakes: StakesVerdict | None = None
+    distillation: SkipDecision | None = None
+    quota: QuotaStatus | None = None
+    personas: list[PersonaAssignment] = Field(default_factory=list)
+    est_cost_usd: float = Field(ge=0.0, default=0.0)
 
 
 # ---------------------------------------------------------------------------
 # Default persona plan per stakes. Under normal quota.
 # ---------------------------------------------------------------------------
+
 
 def _persona_plan_for_stakes(stakes: StakesVerdict) -> list[PersonaAssignment]:
     """Compose the default persona plan at a given stakes level."""
@@ -84,42 +88,29 @@ def _persona_plan_for_stakes(stakes: StakesVerdict) -> list[PersonaAssignment]:
     if s == Stakes.CRITICAL:
         # All four on Opus
         return [
-            PersonaAssignment(persona="BULL", tier=ModelTier.OPUS,
-                              reason="CRITICAL -- full Opus quartet"),
-            PersonaAssignment(persona="BEAR", tier=ModelTier.OPUS,
-                              reason="CRITICAL -- full Opus quartet"),
-            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.OPUS,
-                              reason="CRITICAL -- full Opus quartet"),
-            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.OPUS,
-                              reason="CRITICAL -- full Opus quartet"),
+            PersonaAssignment(persona="BULL", tier=ModelTier.OPUS, reason="CRITICAL -- full Opus quartet"),
+            PersonaAssignment(persona="BEAR", tier=ModelTier.OPUS, reason="CRITICAL -- full Opus quartet"),
+            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.OPUS, reason="CRITICAL -- full Opus quartet"),
+            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.OPUS, reason="CRITICAL -- full Opus quartet"),
         ]
     if s == Stakes.HIGH:
         return [
-            PersonaAssignment(persona="BULL", tier=ModelTier.SONNET,
-                              reason="HIGH -- Sonnet for PRO side"),
-            PersonaAssignment(persona="BEAR", tier=ModelTier.SONNET,
-                              reason="HIGH -- Sonnet for CON side"),
-            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.OPUS,
-                              reason="HIGH -- Opus skeptic (adversarial)"),
-            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.HAIKU,
-                              reason="HIGH -- Haiku historian (citation)"),
+            PersonaAssignment(persona="BULL", tier=ModelTier.SONNET, reason="HIGH -- Sonnet for PRO side"),
+            PersonaAssignment(persona="BEAR", tier=ModelTier.SONNET, reason="HIGH -- Sonnet for CON side"),
+            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.OPUS, reason="HIGH -- Opus skeptic (adversarial)"),
+            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.HAIKU, reason="HIGH -- Haiku historian (citation)"),
         ]
     if s == Stakes.MEDIUM:
         # Only Skeptic + Historian fire on Claude; Bull/Bear run deterministic (free)
         return [
-            PersonaAssignment(persona="BULL", deterministic=True,
-                              reason="MEDIUM -- JARVIS handles BULL"),
-            PersonaAssignment(persona="BEAR", deterministic=True,
-                              reason="MEDIUM -- JARVIS handles BEAR"),
-            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.SONNET,
-                              reason="MEDIUM -- Sonnet skeptic"),
-            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.HAIKU,
-                              reason="MEDIUM -- Haiku historian"),
+            PersonaAssignment(persona="BULL", deterministic=True, reason="MEDIUM -- JARVIS handles BULL"),
+            PersonaAssignment(persona="BEAR", deterministic=True, reason="MEDIUM -- JARVIS handles BEAR"),
+            PersonaAssignment(persona="SKEPTIC", tier=ModelTier.SONNET, reason="MEDIUM -- Sonnet skeptic"),
+            PersonaAssignment(persona="HISTORIAN", tier=ModelTier.HAIKU, reason="MEDIUM -- Haiku historian"),
         ]
     # LOW: everyone deterministic -- should have been filtered earlier
     return [
-        PersonaAssignment(persona=n, deterministic=True,
-                          reason="LOW -- JARVIS only")
+        PersonaAssignment(persona=n, deterministic=True, reason="LOW -- JARVIS only")
         for n in ("BULL", "BEAR", "SKEPTIC", "HISTORIAN")
     ]
 
@@ -127,9 +118,9 @@ def _persona_plan_for_stakes(stakes: StakesVerdict) -> list[PersonaAssignment]:
 def _downshift_plan(plan: list[PersonaAssignment]) -> list[PersonaAssignment]:
     """Apply DOWNSHIFT: demote every non-deterministic tier by one step."""
     demote: dict[ModelTier, ModelTier] = {
-        ModelTier.OPUS:   ModelTier.SONNET,
+        ModelTier.OPUS: ModelTier.SONNET,
         ModelTier.SONNET: ModelTier.HAIKU,
-        ModelTier.HAIKU:  ModelTier.HAIKU,  # can't go lower -- kept as Haiku
+        ModelTier.HAIKU: ModelTier.HAIKU,  # can't go lower -- kept as Haiku
     }
     return [
         PersonaAssignment(
@@ -158,6 +149,7 @@ def _freeze_plan(plan: list[PersonaAssignment]) -> list[PersonaAssignment]:
 # Cost estimate for a persona plan (uses MODEL_PRICES imported above)
 # ---------------------------------------------------------------------------
 
+
 def _estimate_persona_cost(
     assignment: PersonaAssignment,
     prefix_tokens: int,
@@ -180,6 +172,7 @@ def _estimate_persona_cost(
 # ---------------------------------------------------------------------------
 # Governor
 # ---------------------------------------------------------------------------
+
 
 class CostGovernor:
     """The single entrypoint the meta-controller hits per request."""
@@ -233,7 +226,8 @@ class CostGovernor:
         # Layer 4 -- distillation says skip?
         if self.distiller.model.train_n > 0:
             skip = self.distiller.should_skip(
-                features, skip_threshold=self.skip_threshold,
+                features,
+                skip_threshold=self.skip_threshold,
             )
             if skip.skip_claude:
                 return InvocationPlan(
@@ -257,7 +251,10 @@ class CostGovernor:
         # Cost estimate
         total_cost = sum(
             _estimate_persona_cost(
-                p, prefix_tokens, suffix_tokens, output_tokens,
+                p,
+                prefix_tokens,
+                suffix_tokens,
+                output_tokens,
                 cache_hit=expected_cache_hit,
             )
             for p in personas
@@ -265,10 +262,7 @@ class CostGovernor:
 
         return InvocationPlan(
             invoke_claude=True,
-            reason=(
-                f"escalating -- stakes={stk.stakes.value}, "
-                f"quota={q.state.value}"
-            ),
+            reason=(f"escalating -- stakes={stk.stakes.value}, quota={q.state.value}"),
             escalation=esc,
             stakes=stk,
             distillation=skip,

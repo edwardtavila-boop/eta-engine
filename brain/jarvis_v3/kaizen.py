@@ -20,6 +20,7 @@ supports ad-hoc cycles (post-incident, post-strategy-promotion, etc.)
 
 Pure stdlib + pydantic.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,65 +32,67 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CycleKind(StrEnum):
-    DAILY        = "DAILY"
-    WEEKLY       = "WEEKLY"
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
     POST_INCIDENT = "POST_INCIDENT"
-    POST_DEPLOY   = "POST_DEPLOY"
-    AD_HOC        = "AD_HOC"
+    POST_DEPLOY = "POST_DEPLOY"
+    AD_HOC = "AD_HOC"
 
 
 class Retrospective(BaseModel):
     """One closed retrospective."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:             datetime
-    cycle_kind:     CycleKind
-    window_start:   datetime
-    window_end:     datetime
-    went_well:      list[str] = Field(default_factory=list)
-    went_poorly:    list[str] = Field(default_factory=list)
-    surprises:      list[str] = Field(default_factory=list)
-    kpis:           dict[str, float] = Field(default_factory=dict)
-    lessons:        list[str] = Field(default_factory=list)
+    ts: datetime
+    cycle_kind: CycleKind
+    window_start: datetime
+    window_end: datetime
+    went_well: list[str] = Field(default_factory=list)
+    went_poorly: list[str] = Field(default_factory=list)
+    surprises: list[str] = Field(default_factory=list)
+    kpis: dict[str, float] = Field(default_factory=dict)
+    lessons: list[str] = Field(default_factory=list)
 
 
 class KaizenStatus(StrEnum):
-    OPEN       = "OPEN"
+    OPEN = "OPEN"
     IN_PROGRESS = "IN_PROGRESS"
-    SHIPPED     = "SHIPPED"
-    DROPPED     = "DROPPED"
+    SHIPPED = "SHIPPED"
+    DROPPED = "DROPPED"
 
 
 class KaizenTicket(BaseModel):
     """One +1 item emitted by a retrospective."""
+
     model_config = ConfigDict(frozen=False)
 
-    id:          str = Field(min_length=1)
+    id: str = Field(min_length=1)
     parent_retrospective_ts: datetime
-    title:       str = Field(min_length=1)
-    rationale:   str = Field(min_length=1)
-    status:      KaizenStatus = KaizenStatus.OPEN
-    impact:      str = Field(default="medium",
-                             pattern="^(small|medium|large|critical)$")
-    owner:       str = "operator.edward"
-    opened_at:   datetime
-    shipped_at:  datetime | None = None
+    title: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    status: KaizenStatus = KaizenStatus.OPEN
+    impact: str = Field(default="medium", pattern="^(small|medium|large|critical)$")
+    owner: str = "operator.edward"
+    opened_at: datetime
+    shipped_at: datetime | None = None
     drop_reason: str = ""
 
 
 class KaizenCycleSummary(BaseModel):
     """Roll-up view: how we're doing."""
+
     model_config = ConfigDict(frozen=True)
 
-    window_days:   int
+    window_days: int
     retrospectives: int
     tickets_opened: int
     tickets_shipped: int
     tickets_dropped: int
-    velocity:      float = Field(description="shipped tickets per retrospective")
+    velocity: float = Field(description="shipped tickets per retrospective")
     missed_cycles: int
-    severity:      str = Field(pattern="^(GREEN|YELLOW|RED)$")
-    note:          str
+    severity: str = Field(pattern="^(GREEN|YELLOW|RED)$")
+    note: str
 
 
 class KaizenLedger:
@@ -125,7 +128,9 @@ class KaizenLedger:
         return list(self._tickets.values())
 
     def summary(
-        self, window_days: int = 7, now: datetime | None = None,
+        self,
+        window_days: int = 7,
+        now: datetime | None = None,
     ) -> KaizenCycleSummary:
         now = now or datetime.now(UTC)
         cutoff = now - timedelta(days=window_days)
@@ -207,10 +212,14 @@ def close_cycle(
         lessons.append(f"investigate surprise: {surprises[0]}")
 
     retro = Retrospective(
-        ts=now, cycle_kind=cycle_kind,
-        window_start=window_start, window_end=window_end,
-        went_well=went_well, went_poorly=went_poorly,
-        surprises=surprises or [], kpis=kpis or {},
+        ts=now,
+        cycle_kind=cycle_kind,
+        window_start=window_start,
+        window_end=window_end,
+        went_well=went_well,
+        went_poorly=went_poorly,
+        surprises=surprises or [],
+        kpis=kpis or {},
         lessons=lessons,
     )
 
@@ -220,7 +229,9 @@ def close_cycle(
     ticket = KaizenTicket(
         id=tid,
         parent_retrospective_ts=now,
-        title=title, rationale=rationale, impact=impact,
+        title=title,
+        rationale=rationale,
+        impact=impact,
         opened_at=now,
     )
     return retro, ticket
@@ -237,8 +248,7 @@ def _select_plus_one(r: Retrospective) -> tuple[str, str, str]:
     if r.surprises:
         return (
             f"Investigate: {r.surprises[0][:60]}",
-            f"Unexpected event in {r.cycle_kind.value} cycle; must reduce "
-            f"surprise surface area",
+            f"Unexpected event in {r.cycle_kind.value} cycle; must reduce surprise surface area",
             "medium",
         )
     # Baseline Kaizen +1 when nothing is broken.

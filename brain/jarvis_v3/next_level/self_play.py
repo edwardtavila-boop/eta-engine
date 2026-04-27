@@ -19,6 +19,7 @@ This module provides:
 
 Deterministic given a seed, so experiments are reproducible.
 """
+
 from __future__ import annotations
 
 import random
@@ -29,52 +30,55 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventKind(StrEnum):
-    REGIME_FLIP      = "REGIME_FLIP"          # CRISIS appears out of nowhere
-    LIQUIDITY_CRASH  = "LIQUIDITY_CRASH"      # spreads blow out
-    FEED_STUCK       = "FEED_STUCK"           # regime_confidence frozen
-    HIDDEN_MOMENTUM  = "HIDDEN_MOMENTUM"      # real edge JARVIS may miss
-    SPOOFING         = "SPOOFING"             # false signal ambush
-    MACRO_SHOCK      = "MACRO_SHOCK"          # surprise FOMC / CPI
-    SESSION_OUTLIER  = "SESSION_OUTLIER"      # unusual session-phase regime
+    REGIME_FLIP = "REGIME_FLIP"  # CRISIS appears out of nowhere
+    LIQUIDITY_CRASH = "LIQUIDITY_CRASH"  # spreads blow out
+    FEED_STUCK = "FEED_STUCK"  # regime_confidence frozen
+    HIDDEN_MOMENTUM = "HIDDEN_MOMENTUM"  # real edge JARVIS may miss
+    SPOOFING = "SPOOFING"  # false signal ambush
+    MACRO_SHOCK = "MACRO_SHOCK"  # surprise FOMC / CPI
+    SESSION_OUTLIER = "SESSION_OUTLIER"  # unusual session-phase regime
 
 
 class MarketEvent(BaseModel):
     """One synthetic adversarial event."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:            datetime
-    kind:          EventKind
-    regime_hint:   str  # what the regime classifier would SAY
-    truth_regime:  str  # what the regime ACTUALLY is (ground truth)
+    ts: datetime
+    kind: EventKind
+    regime_hint: str  # what the regime classifier would SAY
+    truth_regime: str  # what the regime ACTUALLY is (ground truth)
     stress_pushed: float = Field(ge=0.0, le=1.0)
     realized_r_if_trade: float  # payoff if JARVIS approves
-    realized_r_if_deny:  float = 0.0   # always 0 -- denied trades don't pay
-    note:          str = ""
+    realized_r_if_deny: float = 0.0  # always 0 -- denied trades don't pay
+    note: str = ""
 
 
 class SelfPlayRound(BaseModel):
     """One round of self-play."""
+
     model_config = ConfigDict(frozen=True)
 
-    round_id:      int = Field(ge=0)
-    event:         MarketEvent
+    round_id: int = Field(ge=0)
+    event: MarketEvent
     jarvis_verdict: str = Field(min_length=1)
-    realized_r:    float
-    correct:       bool
-    note:          str = ""
+    realized_r: float
+    correct: bool
+    note: str = ""
 
 
 class SelfPlaySummary(BaseModel):
     """Roll-up across many rounds."""
+
     model_config = ConfigDict(frozen=True)
 
-    rounds:        int = Field(ge=0)
+    rounds: int = Field(ge=0)
     approve_count: int = Field(ge=0)
-    deny_count:    int = Field(ge=0)
-    correct:       int = Field(ge=0)
-    cumulative_r:  float
-    win_rate:      float = Field(ge=0.0, le=1.0)
-    by_event:      dict[str, float] = Field(default_factory=dict)
+    deny_count: int = Field(ge=0)
+    correct: int = Field(ge=0)
+    cumulative_r: float
+    win_rate: float = Field(ge=0.0, le=1.0)
+    by_event: dict[str, float] = Field(default_factory=dict)
 
 
 class RedMarket:
@@ -124,7 +128,10 @@ class RedMarket:
             stress_pushed = 0.5
             pay_if_trade = -0.5
         return MarketEvent(
-            ts=ts, kind=kind, regime_hint=hint, truth_regime=truth,
+            ts=ts,
+            kind=kind,
+            regime_hint=hint,
+            truth_regime=truth,
             stress_pushed=stress_pushed,
             realized_r_if_trade=round(pay_if_trade, 3),
             note=f"synthetic event {self._round}",
@@ -146,8 +153,12 @@ class SelfPlayLedger:
     def summary(self) -> SelfPlaySummary:
         if not self._rounds:
             return SelfPlaySummary(
-                rounds=0, approve_count=0, deny_count=0,
-                correct=0, cumulative_r=0.0, win_rate=0.0,
+                rounds=0,
+                approve_count=0,
+                deny_count=0,
+                correct=0,
+                cumulative_r=0.0,
+                win_rate=0.0,
             )
         approve = sum(1 for r in self._rounds if r.jarvis_verdict == "APPROVE")
         deny = sum(1 for r in self._rounds if r.jarvis_verdict == "DENY")
@@ -155,9 +166,13 @@ class SelfPlayLedger:
         cum_r = sum(r.realized_r for r in self._rounds)
         by_event: dict[str, float] = {}
         for r in self._rounds:
-            by_event[r.event.kind.value] = by_event.get(
-                r.event.kind.value, 0.0,
-            ) + r.realized_r
+            by_event[r.event.kind.value] = (
+                by_event.get(
+                    r.event.kind.value,
+                    0.0,
+                )
+                + r.realized_r
+            )
         return SelfPlaySummary(
             rounds=len(self._rounds),
             approve_count=approve,
@@ -184,13 +199,15 @@ def play_round(
     else:
         # CONDITIONAL / DEFER -- half-size if approved later
         realized = event.realized_r_if_trade * 0.5
-    correct = (
-        (verdict == "APPROVE" and event.realized_r_if_trade > 0) or
-        (verdict == "DENY" and event.realized_r_if_trade < 0)
+    correct = (verdict == "APPROVE" and event.realized_r_if_trade > 0) or (
+        verdict == "DENY" and event.realized_r_if_trade < 0
     )
     return SelfPlayRound(
-        round_id=round_id, event=event, jarvis_verdict=verdict,
-        realized_r=round(realized, 3), correct=correct,
+        round_id=round_id,
+        event=event,
+        jarvis_verdict=verdict,
+        realized_r=round(realized, 3),
+        correct=correct,
     )
 
 

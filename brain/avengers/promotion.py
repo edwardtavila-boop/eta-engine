@@ -35,6 +35,7 @@ JSON file at ``~/.jarvis/promotion.json`` with a dict of specs keyed by
 ``strategy_id``. Append-only JSONL audit log at
 ``~/.jarvis/promotion.jsonl``.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,16 +46,16 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROMOTION_STATE:   Path = Path.home() / ".jarvis" / "promotion.json"
+PROMOTION_STATE: Path = Path.home() / ".jarvis" / "promotion.json"
 PROMOTION_JOURNAL: Path = Path.home() / ".jarvis" / "promotion.jsonl"
 
 
 class PromotionStage(StrEnum):
-    SHADOW    = "SHADOW"
-    PAPER     = "PAPER"
+    SHADOW = "SHADOW"
+    PAPER = "PAPER"
     LIVE_1LOT = "LIVE_1LOT"
     LIVE_FULL = "LIVE_FULL"
-    RETIRED   = "RETIRED"
+    RETIRED = "RETIRED"
 
 
 # Linear ordering for promote / demote.
@@ -68,85 +69,102 @@ _ORDER: list[PromotionStage] = [
 
 class StageThresholds(BaseModel):
     """Gate thresholds for one stage-transition step."""
+
     model_config = ConfigDict(frozen=True)
 
-    min_days:      float = Field(ge=0.0, default=14.0)
-    min_trades:    int   = Field(ge=0,   default=50)
-    min_sharpe:    float = 1.0
-    max_dd_pct:    float = Field(ge=0.0, default=5.0)
-    min_win_rate:  float = Field(ge=0.0, le=1.0, default=0.45)
-    max_slip_bps:  float = Field(ge=0.0, default=3.0)
+    min_days: float = Field(ge=0.0, default=14.0)
+    min_trades: int = Field(ge=0, default=50)
+    min_sharpe: float = 1.0
+    max_dd_pct: float = Field(ge=0.0, default=5.0)
+    min_win_rate: float = Field(ge=0.0, le=1.0, default=0.45)
+    max_slip_bps: float = Field(ge=0.0, default=3.0)
 
 
 # Default thresholds per transition. Hardened as we climb.
 _DEFAULT_THRESHOLDS: dict[PromotionStage, StageThresholds] = {
     # Leaving SHADOW -> PAPER: minimum walk.
     PromotionStage.SHADOW: StageThresholds(
-        min_days=14.0, min_trades=50,
-        min_sharpe=1.0, max_dd_pct=5.0,
-        min_win_rate=0.45, max_slip_bps=3.0,
+        min_days=14.0,
+        min_trades=50,
+        min_sharpe=1.0,
+        max_dd_pct=5.0,
+        min_win_rate=0.45,
+        max_slip_bps=3.0,
     ),
     # Leaving PAPER -> LIVE_1LOT: stricter; slippage + reconciliation.
     PromotionStage.PAPER: StageThresholds(
-        min_days=21.0, min_trades=100,
-        min_sharpe=1.3, max_dd_pct=4.0,
-        min_win_rate=0.48, max_slip_bps=2.5,
+        min_days=21.0,
+        min_trades=100,
+        min_sharpe=1.3,
+        max_dd_pct=4.0,
+        min_win_rate=0.48,
+        max_slip_bps=2.5,
     ),
     # Leaving LIVE_1LOT -> LIVE_FULL: real-money proof.
     PromotionStage.LIVE_1LOT: StageThresholds(
-        min_days=30.0, min_trades=150,
-        min_sharpe=1.5, max_dd_pct=3.5,
-        min_win_rate=0.50, max_slip_bps=2.0,
+        min_days=30.0,
+        min_trades=150,
+        min_sharpe=1.5,
+        max_dd_pct=3.5,
+        min_win_rate=0.50,
+        max_slip_bps=2.0,
     ),
     # LIVE_FULL is terminal upward. Entry here is promotion-only; no
     # further upshift.
     PromotionStage.LIVE_FULL: StageThresholds(
-        min_days=0, min_trades=0, min_sharpe=0.0,
-        max_dd_pct=100.0, min_win_rate=0.0, max_slip_bps=999.0,
+        min_days=0,
+        min_trades=0,
+        min_sharpe=0.0,
+        max_dd_pct=100.0,
+        min_win_rate=0.0,
+        max_slip_bps=999.0,
     ),
 }
 
 
 class StageMetrics(BaseModel):
     """Current rolling metrics for a strategy inside its stage."""
+
     model_config = ConfigDict(frozen=True)
 
-    trades:           int   = Field(ge=0, default=0)
-    days_active:      float = Field(ge=0.0, default=0.0)
-    sharpe:           float = 0.0
-    max_dd_pct:       float = Field(ge=0.0, default=0.0)
-    win_rate:         float = Field(ge=0.0, le=1.0, default=0.0)
+    trades: int = Field(ge=0, default=0)
+    days_active: float = Field(ge=0.0, default=0.0)
+    sharpe: float = 0.0
+    max_dd_pct: float = Field(ge=0.0, default=0.0)
+    win_rate: float = Field(ge=0.0, le=1.0, default=0.0)
     mean_slippage_bps: float = Field(ge=0.0, default=0.0)
-    pnl:              float = 0.0
+    pnl: float = 0.0
 
 
 class PromotionAction(StrEnum):
     PROMOTE = "PROMOTE"
-    HOLD    = "HOLD"
-    DEMOTE  = "DEMOTE"
-    RETIRE  = "RETIRE"
+    HOLD = "HOLD"
+    DEMOTE = "DEMOTE"
+    RETIRE = "RETIRE"
 
 
 class PromotionDecision(BaseModel):
     """One gate evaluation output."""
+
     model_config = ConfigDict(frozen=True)
 
-    strategy_id:   str
-    from_stage:    PromotionStage
-    to_stage:      PromotionStage
-    action:        PromotionAction
-    reasons:       list[str]
-    metrics:       StageMetrics
+    strategy_id: str
+    from_stage: PromotionStage
+    to_stage: PromotionStage
+    action: PromotionAction
+    reasons: list[str]
+    metrics: StageMetrics
 
 
 class PromotionSpec(BaseModel):
     """State of one strategy inside the pipeline."""
+
     model_config = ConfigDict(frozen=False)
 
-    strategy_id:      str
-    current_stage:    PromotionStage
+    strategy_id: str
+    current_stage: PromotionStage
     entered_stage_at: datetime
-    metrics:          StageMetrics
+    metrics: StageMetrics
 
 
 # --- red team gate ------------------------------------------------------------
@@ -168,11 +186,12 @@ class RedTeamVerdict(BaseModel):
         risky. The gate itself doesn't use this number directly -- it's
         for dashboards and trend analysis.
     """
+
     model_config = ConfigDict(frozen=True)
 
-    approve:    bool
-    reasons:    list[str] = Field(default_factory=list)
-    risk_score: float      = Field(default=0.0, ge=0.0, le=1.0)
+    approve: bool
+    reasons: list[str] = Field(default_factory=list)
+    risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 # The callable injected into ``PromotionGate`` on construction. Must not
@@ -186,10 +205,12 @@ RedTeamGate = Callable[[PromotionSpec, "PromotionDecision"], RedTeamVerdict]
 # risk-budget engine owns it. The red team veto covers the two
 # transitions where an un-vetted strategy first touches external systems
 # (PAPER) or real money (LIVE_1LOT).
-RED_TEAM_GATED_TRANSITIONS: frozenset[tuple[PromotionStage, PromotionStage]] = frozenset({
-    (PromotionStage.SHADOW, PromotionStage.PAPER),
-    (PromotionStage.PAPER,  PromotionStage.LIVE_1LOT),
-})
+RED_TEAM_GATED_TRANSITIONS: frozenset[tuple[PromotionStage, PromotionStage]] = frozenset(
+    {
+        (PromotionStage.SHADOW, PromotionStage.PAPER),
+        (PromotionStage.PAPER, PromotionStage.LIVE_1LOT),
+    }
+)
 
 
 # --- default red team -------------------------------------------------------
@@ -208,19 +229,19 @@ RED_TEAM_GATED_TRANSITIONS: frozenset[tuple[PromotionStage, PromotionStage]] = f
 # one trade or sharpe by 0.01 has almost certainly been optimized against
 # the threshold and is unlikely to survive out-of-sample. We veto those.
 
-DEFAULT_TIGHT_MARGIN_PCT     = 0.10       # flag if within 10% of threshold
-DEFAULT_TRADES_SAFETY_FACTOR = 1.30       # require trades >= 1.3 * min_trades
-DEFAULT_MIN_LIVE_SLIPPAGE_BPS = 0.25      # slippage lower than this is unrealistic
+DEFAULT_TIGHT_MARGIN_PCT = 0.10  # flag if within 10% of threshold
+DEFAULT_TRADES_SAFETY_FACTOR = 1.30  # require trades >= 1.3 * min_trades
+DEFAULT_MIN_LIVE_SLIPPAGE_BPS = 0.25  # slippage lower than this is unrealistic
 
 
 def default_red_team_gate(
-    spec:      PromotionSpec,
+    spec: PromotionSpec,
     decision: PromotionDecision,
     *,
-    thresholds:             dict[PromotionStage, StageThresholds] | None = None,
-    tight_margin_pct:        float = DEFAULT_TIGHT_MARGIN_PCT,
-    trades_safety_factor:    float = DEFAULT_TRADES_SAFETY_FACTOR,
-    min_live_slippage_bps:   float = DEFAULT_MIN_LIVE_SLIPPAGE_BPS,
+    thresholds: dict[PromotionStage, StageThresholds] | None = None,
+    tight_margin_pct: float = DEFAULT_TIGHT_MARGIN_PCT,
+    trades_safety_factor: float = DEFAULT_TRADES_SAFETY_FACTOR,
+    min_live_slippage_bps: float = DEFAULT_MIN_LIVE_SLIPPAGE_BPS,
 ) -> RedTeamVerdict:
     """Deterministic, stdlib-only default red-team callable.
 
@@ -332,11 +353,11 @@ class PromotionGate:
     def __init__(
         self,
         *,
-        state_path:    Path | None = None,
-        journal_path:  Path | None = None,
-        thresholds:    dict[PromotionStage, StageThresholds] | None = None,
-        demote_dd_pct:  float = 10.0,
-        demote_sharpe:  float = -0.5,
+        state_path: Path | None = None,
+        journal_path: Path | None = None,
+        thresholds: dict[PromotionStage, StageThresholds] | None = None,
+        demote_dd_pct: float = 10.0,
+        demote_sharpe: float = -0.5,
         red_team_gate: RedTeamGate | None = default_red_team_gate,
         clock: callable | None = None,
     ) -> None:
@@ -345,9 +366,9 @@ class PromotionGate:
         # red-team veto by default. Pass ``red_team_gate=None`` to disable
         # (old behaviour), or pass your own callable (LLM-backed, etc.)
         # to override.
-        self.state_path    = state_path   or PROMOTION_STATE
-        self.journal_path  = journal_path or PROMOTION_JOURNAL
-        self.thresholds    = thresholds   or _DEFAULT_THRESHOLDS
+        self.state_path = state_path or PROMOTION_STATE
+        self.journal_path = journal_path or PROMOTION_JOURNAL
+        self.thresholds = thresholds or _DEFAULT_THRESHOLDS
         self.demote_dd_pct = demote_dd_pct
         self.demote_sharpe = demote_sharpe
         self.red_team_gate = red_team_gate
@@ -376,10 +397,7 @@ class PromotionGate:
 
     def _persist_state(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            sid: spec.model_dump(mode="json")
-            for sid, spec in self._specs.items()
-        }
+        payload = {sid: spec.model_dump(mode="json") for sid, spec in self._specs.items()}
         tmp = self.state_path.with_suffix(".json.tmp")
         tmp.write_text(
             json.dumps(payload, indent=2, default=str),
@@ -415,16 +433,20 @@ class PromotionGate:
         )
         self._specs[strategy_id] = spec
         self._persist_state()
-        self._append_journal({
-            "ts":          self._clock().isoformat(),
-            "event":       "register",
-            "strategy_id": strategy_id,
-            "stage":       stage.value,
-        })
+        self._append_journal(
+            {
+                "ts": self._clock().isoformat(),
+                "event": "register",
+                "strategy_id": strategy_id,
+                "stage": stage.value,
+            }
+        )
         return spec
 
     def update_metrics(
-        self, strategy_id: str, metrics: StageMetrics,
+        self,
+        strategy_id: str,
+        metrics: StageMetrics,
     ) -> PromotionSpec:
         spec = self._specs.get(strategy_id)
         if spec is None:
@@ -454,7 +476,8 @@ class PromotionGate:
         if stage is PromotionStage.RETIRED:
             return PromotionDecision(
                 strategy_id=strategy_id,
-                from_stage=stage, to_stage=stage,
+                from_stage=stage,
+                to_stage=stage,
                 action=PromotionAction.HOLD,
                 reasons=["strategy is RETIRED"],
                 metrics=metrics,
@@ -464,20 +487,19 @@ class PromotionGate:
         hard_break: list[str] = []
         if metrics.max_dd_pct >= self.demote_dd_pct:
             hard_break.append(
-                f"max_dd_pct={metrics.max_dd_pct:.2f} >= "
-                f"demote_dd_pct={self.demote_dd_pct:.2f}",
+                f"max_dd_pct={metrics.max_dd_pct:.2f} >= demote_dd_pct={self.demote_dd_pct:.2f}",
             )
         if metrics.sharpe <= self.demote_sharpe and metrics.trades > 10:
             hard_break.append(
-                f"sharpe={metrics.sharpe:.2f} <= "
-                f"demote_sharpe={self.demote_sharpe:.2f}",
+                f"sharpe={metrics.sharpe:.2f} <= demote_sharpe={self.demote_sharpe:.2f}",
             )
 
         if hard_break:
             if stage is PromotionStage.SHADOW:
                 return PromotionDecision(
                     strategy_id=strategy_id,
-                    from_stage=stage, to_stage=PromotionStage.RETIRED,
+                    from_stage=stage,
+                    to_stage=PromotionStage.RETIRED,
                     action=PromotionAction.RETIRE,
                     reasons=["hard break at SHADOW", *hard_break],
                     metrics=metrics,
@@ -485,7 +507,8 @@ class PromotionGate:
             down = self._down(stage)
             return PromotionDecision(
                 strategy_id=strategy_id,
-                from_stage=stage, to_stage=down,
+                from_stage=stage,
+                to_stage=down,
                 action=PromotionAction.DEMOTE,
                 reasons=hard_break,
                 metrics=metrics,
@@ -495,7 +518,8 @@ class PromotionGate:
         if stage is PromotionStage.LIVE_FULL:
             return PromotionDecision(
                 strategy_id=strategy_id,
-                from_stage=stage, to_stage=stage,
+                from_stage=stage,
+                to_stage=stage,
                 action=PromotionAction.HOLD,
                 reasons=["already at LIVE_FULL; terminal"],
                 metrics=metrics,
@@ -506,8 +530,7 @@ class PromotionGate:
 
         if metrics.days_active < thr.min_days:
             gate_reasons.append(
-                f"days_active={metrics.days_active:.1f} < "
-                f"min_days={thr.min_days:.1f}",
+                f"days_active={metrics.days_active:.1f} < min_days={thr.min_days:.1f}",
             )
         if metrics.trades < thr.min_trades:
             gate_reasons.append(
@@ -515,29 +538,26 @@ class PromotionGate:
             )
         if metrics.sharpe < thr.min_sharpe:
             gate_reasons.append(
-                f"sharpe={metrics.sharpe:.2f} < "
-                f"min_sharpe={thr.min_sharpe:.2f}",
+                f"sharpe={metrics.sharpe:.2f} < min_sharpe={thr.min_sharpe:.2f}",
             )
         if metrics.max_dd_pct > thr.max_dd_pct:
             gate_reasons.append(
-                f"max_dd_pct={metrics.max_dd_pct:.2f} > "
-                f"max_dd_pct={thr.max_dd_pct:.2f}",
+                f"max_dd_pct={metrics.max_dd_pct:.2f} > max_dd_pct={thr.max_dd_pct:.2f}",
             )
         if metrics.win_rate < thr.min_win_rate:
             gate_reasons.append(
-                f"win_rate={metrics.win_rate:.2f} < "
-                f"min_win_rate={thr.min_win_rate:.2f}",
+                f"win_rate={metrics.win_rate:.2f} < min_win_rate={thr.min_win_rate:.2f}",
             )
         if metrics.mean_slippage_bps > thr.max_slip_bps:
             gate_reasons.append(
-                f"mean_slip_bps={metrics.mean_slippage_bps:.2f} > "
-                f"max={thr.max_slip_bps:.2f}",
+                f"mean_slip_bps={metrics.mean_slippage_bps:.2f} > max={thr.max_slip_bps:.2f}",
             )
 
         if gate_reasons:
             return PromotionDecision(
                 strategy_id=strategy_id,
-                from_stage=stage, to_stage=stage,
+                from_stage=stage,
+                to_stage=stage,
                 action=PromotionAction.HOLD,
                 reasons=gate_reasons,
                 metrics=metrics,
@@ -546,7 +566,8 @@ class PromotionGate:
         up = self._up(stage)
         tentative = PromotionDecision(
             strategy_id=strategy_id,
-            from_stage=stage, to_stage=up,
+            from_stage=stage,
+            to_stage=up,
             action=PromotionAction.PROMOTE,
             reasons=["all thresholds cleared"],
             metrics=metrics,
@@ -557,10 +578,7 @@ class PromotionGate:
         # external systems or real money. Failure in the red team callable
         # is fail-closed: any exception becomes a HOLD with an explicit
         # veto reason so the operator notices the gate is broken.
-        if (
-            self.red_team_gate is not None
-            and (stage, up) in RED_TEAM_GATED_TRANSITIONS
-        ):
+        if self.red_team_gate is not None and (stage, up) in RED_TEAM_GATED_TRANSITIONS:
             try:
                 verdict = self.red_team_gate(spec, tentative)
             except Exception as exc:  # noqa: BLE001
@@ -572,13 +590,13 @@ class PromotionGate:
             self._last_rt_verdict[strategy_id] = verdict
             if not verdict.approve:
                 reasons = [
-                    f"red_team_blocked ({stage.value}->{up.value}): "
-                    f"risk_score={verdict.risk_score:.2f}",
+                    f"red_team_blocked ({stage.value}->{up.value}): risk_score={verdict.risk_score:.2f}",
                     *verdict.reasons,
                 ]
                 return PromotionDecision(
                     strategy_id=strategy_id,
-                    from_stage=stage, to_stage=stage,
+                    from_stage=stage,
+                    to_stage=stage,
                     action=PromotionAction.HOLD,
                     reasons=reasons,
                     metrics=metrics,
@@ -594,7 +612,8 @@ class PromotionGate:
             spec = self.register(decision.strategy_id)
 
         if decision.action in {
-            PromotionAction.PROMOTE, PromotionAction.DEMOTE,
+            PromotionAction.PROMOTE,
+            PromotionAction.DEMOTE,
             PromotionAction.RETIRE,
         }:
             spec.current_stage = decision.to_stage
@@ -605,13 +624,13 @@ class PromotionGate:
         self._specs[decision.strategy_id] = spec
         self._persist_state()
         record: dict = {
-            "ts":          self._clock().isoformat(),
-            "event":       "apply",
+            "ts": self._clock().isoformat(),
+            "event": "apply",
             "strategy_id": decision.strategy_id,
-            "from_stage":  decision.from_stage.value,
-            "to_stage":    decision.to_stage.value,
-            "action":      decision.action.value,
-            "reasons":     decision.reasons,
+            "from_stage": decision.from_stage.value,
+            "to_stage": decision.to_stage.value,
+            "action": decision.action.value,
+            "reasons": decision.reasons,
         }
         # If a red-team verdict was recorded during the matching
         # ``evaluate()``, stamp it into the journal. The dashboard and

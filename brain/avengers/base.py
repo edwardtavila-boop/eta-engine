@@ -53,6 +53,7 @@ Public API
   * ``AVENGERS_JOURNAL``-- default JSONL path (``~/.jarvis/avengers.jsonl``)
   * ``append_journal``  -- small helper used by every Persona
 """
+
 from __future__ import annotations
 
 import json
@@ -97,19 +98,20 @@ class PersonaId(StrEnum):
     the deterministic admin. Including it in the enum lets the JSONL
     journal attribute setup / shutdown events to the right actor.
     """
+
     JARVIS = "persona.jarvis"
     BATMAN = "persona.batman"
     ALFRED = "persona.alfred"
-    ROBIN  = "persona.robin"
+    ROBIN = "persona.robin"
 
 
 # Persona -> locked tier. Changing these is an architectural decision --
 # keep it in sync with ``brain.model_policy._CATEGORY_TO_TIER`` buckets.
 PERSONA_TIER: dict[PersonaId, ModelTier | None] = {
-    PersonaId.JARVIS: None,              # deterministic, no LLM
-    PersonaId.BATMAN: ModelTier.OPUS,    # architectural
+    PersonaId.JARVIS: None,  # deterministic, no LLM
+    PersonaId.BATMAN: ModelTier.OPUS,  # architectural
     PersonaId.ALFRED: ModelTier.SONNET,  # routine
-    PersonaId.ROBIN:  ModelTier.HAIKU,   # grunt
+    PersonaId.ROBIN: ModelTier.HAIKU,  # grunt
 }
 
 
@@ -118,7 +120,7 @@ PERSONA_BUCKET: dict[PersonaId, TaskBucket | None] = {
     PersonaId.JARVIS: None,
     PersonaId.BATMAN: TaskBucket.ARCHITECTURAL,
     PersonaId.ALFRED: TaskBucket.ROUTINE,
-    PersonaId.ROBIN:  TaskBucket.GRUNT,
+    PersonaId.ROBIN: TaskBucket.GRUNT,
 }
 
 
@@ -137,6 +139,7 @@ class TaskEnvelope(BaseModel):
     The envelope is intentionally small -- personas are stateless and each
     dispatch must carry everything needed to reproduce the work.
     """
+
     model_config = ConfigDict(frozen=False)  # allow default_factory fields
 
     task_id: str = Field(default_factory=_new_task_id, min_length=1)
@@ -148,13 +151,12 @@ class TaskEnvelope(BaseModel):
     context: dict[str, Any] = Field(
         default_factory=dict,
         description="Structured supporting data (file paths, error messages, "
-                    "metric snapshots, etc.). Kept as dict so JSON round-trip "
-                    "stays lossless.",
+        "metric snapshots, etc.). Kept as dict so JSON round-trip "
+        "stays lossless.",
     )
     caller: SubsystemId = Field(
         default=SubsystemId.OPERATOR,
-        description="Which subsystem originated the request. Used in the "
-                    "JSONL journal for cross-persona audit.",
+        description="Which subsystem originated the request. Used in the JSONL journal for cross-persona audit.",
     )
     rationale: str = Field(
         default="",
@@ -172,32 +174,29 @@ class TaskResult(BaseModel):
     """What a persona returns. Denormalized so the JSONL entry is complete
     without needing to re-resolve anything.
     """
+
     model_config = ConfigDict(frozen=True)
 
     task_id: str = Field(min_length=1)
     persona_id: PersonaId
     tier_used: ModelTier | None = Field(
         default=None,
-        description="Tier actually consumed. None for JARVIS deterministic "
-                    "paths or when the executor short-circuited.",
+        description="Tier actually consumed. None for JARVIS deterministic paths or when the executor short-circuited.",
     )
     success: bool
     artifact: str = Field(
         default="",
-        description="Primary output (markdown, code, analysis). Empty on "
-                    "rejection / deferral.",
+        description="Primary output (markdown, code, analysis). Empty on rejection / deferral.",
     )
     reason_code: str = Field(
         min_length=1,
-        description="Stable machine-readable code, e.g. 'tier_mismatch', "
-                    "'jarvis_denied', 'ok'.",
+        description="Stable machine-readable code, e.g. 'tier_mismatch', 'jarvis_denied', 'ok'.",
     )
     reason: str = Field(min_length=1)
     cost_multiplier: float = Field(ge=0.0, le=10.0)
     jarvis_verdict: Verdict | None = Field(
         default=None,
-        description="Verdict JARVIS returned for the LLM_INVOCATION pre-flight, "
-                    "if the persona consulted JARVIS.",
+        description="Verdict JARVIS returned for the LLM_INVOCATION pre-flight, if the persona consulted JARVIS.",
     )
     ms_elapsed: float = Field(ge=0.0, default=0.0)
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -254,21 +253,9 @@ class DryRunExecutor:
             f"- caller: `{envelope.caller.value}`\n"
             f"- ts: {envelope.ts.isoformat()}\n\n"
         )
-        sys_block = (
-            "## System prompt\n\n```\n"
-            f"{system_prompt.strip()}\n"
-            "```\n\n"
-        )
-        usr_block = (
-            "## User prompt\n\n```\n"
-            f"{user_prompt.strip()}\n"
-            "```\n\n"
-        )
-        ctx_block = (
-            "## Context\n\n```json\n"
-            f"{json.dumps(envelope.context, indent=2, default=str)}\n"
-            "```\n"
-        )
+        sys_block = f"## System prompt\n\n```\n{system_prompt.strip()}\n```\n\n"
+        usr_block = f"## User prompt\n\n```\n{user_prompt.strip()}\n```\n\n"
+        ctx_block = f"## Context\n\n```json\n{json.dumps(envelope.context, indent=2, default=str)}\n```\n"
         return header + sys_block + usr_block + ctx_block
 
 
@@ -380,9 +367,7 @@ class Persona(ABC):
         my_tier = PERSONA_TIER[cls.PERSONA_ID]
         if my_tier is None:
             return frozenset()
-        return frozenset(
-            cat for cat in TaskCategory if tier_for(cat) == my_tier
-        )
+        return frozenset(cat for cat in TaskCategory if tier_for(cat) == my_tier)
 
     # --- abstract prompt surface -------------------------------------------
 
@@ -396,14 +381,8 @@ class Persona(ABC):
         """
         ctx_block = ""
         if envelope.context:
-            ctx_block = (
-                "\n\nContext:\n```json\n"
-                f"{json.dumps(envelope.context, indent=2, default=str)}\n"
-                "```"
-            )
-        rationale = (
-            f"\n\nWhy: {envelope.rationale}" if envelope.rationale else ""
-        )
+            ctx_block = f"\n\nContext:\n```json\n{json.dumps(envelope.context, indent=2, default=str)}\n```"
+        rationale = f"\n\nWhy: {envelope.rationale}" if envelope.rationale else ""
         return f"Task: {envelope.goal}{rationale}{ctx_block}"
 
     # --- public dispatch ---------------------------------------------------
@@ -448,10 +427,7 @@ class Persona(ABC):
             req = make_action_request(
                 subsystem=envelope.caller,
                 action=ActionType.LLM_INVOCATION,
-                rationale=(
-                    f"persona={self.PERSONA_ID.value} "
-                    f"goal={envelope.goal[:80]}"
-                ),
+                rationale=(f"persona={self.PERSONA_ID.value} goal={envelope.goal[:80]}"),
                 task_category=envelope.category.value,
             )
             jarvis_response = self._admin.request_approval(req)
@@ -461,10 +437,7 @@ class Persona(ABC):
                     success=False,
                     artifact="",
                     reason_code=f"jarvis_{jarvis_response.verdict.value.lower()}",
-                    reason=(
-                        f"JARVIS {jarvis_response.verdict.value}: "
-                        f"{jarvis_response.reason}"
-                    ),
+                    reason=(f"JARVIS {jarvis_response.verdict.value}: {jarvis_response.reason}"),
                     jarvis_verdict=jarvis_response.verdict,
                     started_at=started,
                 )
@@ -484,9 +457,7 @@ class Persona(ABC):
             # Tier is guaranteed non-None here: JARVIS persona never
             # inherits from Persona so the abstract tier is always
             # ModelTier for concrete subclasses.
-            assert self.tier is not None, (
-                f"{self.PERSONA_ID.value} must have a locked tier"
-            )
+            assert self.tier is not None, f"{self.PERSONA_ID.value} must have a locked tier"
             artifact = self._executor(
                 tier=self.tier,
                 system_prompt=sys_prompt,
@@ -501,9 +472,7 @@ class Persona(ABC):
                 artifact="",
                 reason_code="executor_error",
                 reason=f"executor raised: {exc!r}",
-                jarvis_verdict=(
-                    jarvis_response.verdict if jarvis_response else None
-                ),
+                jarvis_verdict=(jarvis_response.verdict if jarvis_response else None),
                 started_at=started,
             )
             append_journal(
@@ -521,9 +490,7 @@ class Persona(ABC):
             artifact=artifact,
             reason_code="ok",
             reason=f"{self.PERSONA_ID.value} completed {envelope.category.value}",
-            jarvis_verdict=(
-                jarvis_response.verdict if jarvis_response else None
-            ),
+            jarvis_verdict=(jarvis_response.verdict if jarvis_response else None),
             started_at=started,
         )
         append_journal(
@@ -594,15 +561,9 @@ def describe_persona(persona_id: PersonaId) -> str:
     tier = PERSONA_TIER[persona_id]
     bucket = PERSONA_BUCKET[persona_id]
     if tier is None or bucket is None:
-        return (
-            f"{persona_id.value}: deterministic admin "
-            f"(no LLM, policy engine only)"
-        )
+        return f"{persona_id.value}: deterministic admin (no LLM, policy engine only)"
     cost = COST_RATIO[tier]
-    return (
-        f"{persona_id.value}: tier={tier.value} bucket={bucket.value} "
-        f"cost={cost:g}x Sonnet"
-    )
+    return f"{persona_id.value}: tier={tier.value} bucket={bucket.value} cost={cost:g}x Sonnet"
 
 
 # Exported names kept stable -- avengers/__init__.py re-exports these.

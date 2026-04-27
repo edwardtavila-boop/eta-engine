@@ -44,7 +44,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
 
 TZ_ET = ZoneInfo("America/New_York")
-CRON_LINE = "0 20 * * 0"   # Sunday 20:00 ET
+CRON_LINE = "0 20 * * 0"  # Sunday 20:00 ET
 TASK_NAME = "ApexPredatorWeeklyReview"
 
 
@@ -88,8 +88,12 @@ def _should_force_firm_reengage() -> tuple[bool, str]:
 
 def _run_weekly_review(tier: str, force_engage: bool) -> int:
     cmd = [
-        sys.executable, "-m", "eta_engine.scripts.weekly_review",
-        "--tier", tier, "--auto",
+        sys.executable,
+        "-m",
+        "eta_engine.scripts.weekly_review",
+        "--tier",
+        tier,
+        "--auto",
     ]
     if not force_engage:
         # Still engages — weekly_review always runs the board.
@@ -114,7 +118,7 @@ def emit_task_scheduler() -> str:
     return (
         f"# EVOLUTIONARY TRADING ALGO weekly review — Windows Task Scheduler\n"
         f"schtasks /Create /SC WEEKLY /D SUN /ST 20:00 /TN {TASK_NAME} "
-        f"/TR \"\\\"{exe}\\\" -m eta_engine.scripts.schedule_weekly_review\" "
+        f'/TR "\\"{exe}\\" -m eta_engine.scripts.schedule_weekly_review" '
         f"/RL HIGHEST /F\n"
     )
 
@@ -122,8 +126,9 @@ def emit_task_scheduler() -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="APEX weekly review schedule guard")
     ap.add_argument("--tier", default="BOTH", choices=["A", "B", "BOTH"])
-    ap.add_argument("--no-window-guard", action="store_true",
-                    help="Bypass the Sunday 20:00 ET window check (manual run)")
+    ap.add_argument(
+        "--no-window-guard", action="store_true", help="Bypass the Sunday 20:00 ET window check (manual run)"
+    )
     ap.add_argument("--emit-cron", action="store_true")
     ap.add_argument("--emit-task-scheduler", action="store_true")
     args = ap.parse_args()
@@ -155,7 +160,7 @@ def main() -> int:
     print("-" * 64)
 
     rcs: list[int] = []
-    for tier in (["A", "B"] if args.tier == "BOTH" else [args.tier]):
+    for tier in ["A", "B"] if args.tier == "BOTH" else [args.tier]:
         print(f"-> running weekly_review --tier {tier}")
         rcs.append(_run_weekly_review(tier, force_engage=force))
 

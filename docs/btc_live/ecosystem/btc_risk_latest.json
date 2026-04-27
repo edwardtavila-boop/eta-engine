@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-04-26T14:51:25.812218+00:00",
+  "pid": 59364,
+  "risk": {
+    "expected_cash_per_bot": 5000.0,
+    "findings": [],
+    "fleet_summary": {
+      "by_broker": {
+        "ibkr": 2,
+        "tastytrade": 2
+      },
+      "by_lane": {
+        "directional": 2,
+        "grid": 2
+      },
+      "live_money_orders": "blocked",
+      "order_routing": "paper_broker_enabled",
+      "paper_broker_orders": "allowed",
+      "paper_starting_cash_per_worker": 5000.0,
+      "paper_starting_cash_total": 20000.0,
+      "requested_workers": 4,
+      "running_workers": 4
+    },
+    "health": "GREEN"
+  },
+  "role": "risk",
+  "safety": "risk sentinel only; no broker order placement",
+  "status": "RUNNING"
+}

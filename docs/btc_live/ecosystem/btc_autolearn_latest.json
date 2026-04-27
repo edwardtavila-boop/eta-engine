@@ -1,0 +1,42 @@
+{
+  "champion_candidate": {
+    "broker_balance": {
+      "ibkr": 2,
+      "tastytrade": 2
+    },
+    "cash_per_bot": 5000.0,
+    "lane_balance": {
+      "directional": 2,
+      "grid": 2
+    }
+  },
+  "fleet_summary": {
+    "by_broker": {
+      "ibkr": 2,
+      "tastytrade": 2
+    },
+    "by_lane": {
+      "directional": 2,
+      "grid": 2
+    },
+    "live_money_orders": "blocked",
+    "order_routing": "paper_broker_enabled",
+    "paper_broker_orders": "allowed",
+    "paper_starting_cash_per_worker": 5000.0,
+    "paper_starting_cash_total": 20000.0,
+    "requested_workers": 4,
+    "running_workers": 4
+  },
+  "generated_at_utc": "2026-04-26T14:51:31.848196+00:00",
+  "pid": 68056,
+  "recommendations": [
+    {
+      "action": "continue_observation",
+      "priority": "normal",
+      "reason": "all BTC paper workers are alive and safety posture is unchanged"
+    }
+  ],
+  "role": "autolearn",
+  "safety": "analysis only; recommendations do not mutate broker routing",
+  "status": "RUNNING"
+}

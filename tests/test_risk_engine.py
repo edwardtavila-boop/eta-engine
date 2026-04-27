@@ -21,8 +21,8 @@ from eta_engine.core.risk_engine import (
 # Leverage ceiling
 # ---------------------------------------------------------------------------
 
-class TestCalculateMaxLeverage:
 
+class TestCalculateMaxLeverage:
     def test_normal_conditions(self) -> None:
         lev = calculate_max_leverage(price=21550.0, atr_14_5m=18.5)
         assert 5.0 <= lev <= 500.0
@@ -45,15 +45,23 @@ class TestCalculateMaxLeverage:
 # Position sizing
 # ---------------------------------------------------------------------------
 
-class TestDynamicPositionSize:
 
-    @pytest.mark.parametrize("equity,risk_pct,atr,price,expected_min", [
-        (50_000, 0.01, 18.5, 21550.0, 1000.0),
-        (100_000, 0.02, 18.5, 21550.0, 5000.0),
-        (10_000, 0.005, 10.0, 21550.0, 100.0),
-    ])
+class TestDynamicPositionSize:
+    @pytest.mark.parametrize(
+        "equity,risk_pct,atr,price,expected_min",
+        [
+            (50_000, 0.01, 18.5, 21550.0, 1000.0),
+            (100_000, 0.02, 18.5, 21550.0, 5000.0),
+            (10_000, 0.005, 10.0, 21550.0, 100.0),
+        ],
+    )
     def test_sizing_scales_with_equity(
-        self, equity: float, risk_pct: float, atr: float, price: float, expected_min: float,
+        self,
+        equity: float,
+        risk_pct: float,
+        atr: float,
+        price: float,
+        expected_min: float,
     ) -> None:
         size = dynamic_position_size(equity, risk_pct, atr, price)
         assert size > expected_min
@@ -71,8 +79,8 @@ class TestDynamicPositionSize:
 # Kelly criterion
 # ---------------------------------------------------------------------------
 
-class TestFractionalKelly:
 
+class TestFractionalKelly:
     def test_positive_edge(self) -> None:
         kelly = fractional_kelly(win_rate=0.55, avg_win_r=1.5, avg_loss_r=1.0)
         assert kelly > 0.0
@@ -91,8 +99,8 @@ class TestFractionalKelly:
 # Circuit breakers
 # ---------------------------------------------------------------------------
 
-class TestDailyLossCap:
 
+class TestDailyLossCap:
     def test_under_cap(self) -> None:
         assert check_daily_loss_cap(-500.0, 0.025, 50_000.0) is False
 
@@ -104,7 +112,6 @@ class TestDailyLossCap:
 
 
 class TestMaxDrawdownKill:
-
     def test_no_drawdown(self) -> None:
         assert check_max_drawdown_kill(50_000.0, 50_000.0, 0.08) is False
 
@@ -119,8 +126,8 @@ class TestMaxDrawdownKill:
 # Liquidation
 # ---------------------------------------------------------------------------
 
-class TestLiquidationDistance:
 
+class TestLiquidationDistance:
     def test_isolated_basic(self) -> None:
         dist = liquidation_distance(21550.0, 20.0, "isolated")
         assert dist > 0

@@ -27,6 +27,7 @@ The Firm has dozens of strategies in strategies/. Operator can't keep
 the full feature matrix in memory. This script makes the gaps obvious
 ("XrpPerp has no short-side -- need to add").
 """
+
 from __future__ import annotations
 
 import argparse
@@ -113,20 +114,23 @@ def _yn(b: bool) -> str:
 
 def _render_markdown(strats: list[StratInfo]) -> str:
     cols = ["strategy", "long", "short", "regime", "lev", "async", "sink", "loc"]
-    out = ["| " + " | ".join(c.ljust(8) for c in cols) + " |",
-           "|" + "|".join("-" * 10 for _ in cols) + "|"]
+    out = ["| " + " | ".join(c.ljust(8) for c in cols) + " |", "|" + "|".join("-" * 10 for _ in cols) + "|"]
     for s in strats:
         out.append(
-            "| " + " | ".join([
-                s.name[:8].ljust(8),
-                _yn(s.supports_long).ljust(8),
-                _yn(s.supports_short).ljust(8),
-                _yn(s.uses_regime).ljust(8),
-                _yn(s.uses_leverage).ljust(8),
-                _yn(s.has_async).ljust(8),
-                _yn(s.has_decision_sink).ljust(8),
-                str(s.loc).ljust(8),
-            ]) + " |",
+            "| "
+            + " | ".join(
+                [
+                    s.name[:8].ljust(8),
+                    _yn(s.supports_long).ljust(8),
+                    _yn(s.supports_short).ljust(8),
+                    _yn(s.uses_regime).ljust(8),
+                    _yn(s.uses_leverage).ljust(8),
+                    _yn(s.has_async).ljust(8),
+                    _yn(s.has_decision_sink).ljust(8),
+                    str(s.loc).ljust(8),
+                ]
+            )
+            + " |",
         )
     return "\n".join(out)
 
@@ -134,15 +138,33 @@ def _render_markdown(strats: list[StratInfo]) -> str:
 def _render_csv(strats: list[StratInfo]) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow([
-        "name", "path", "long", "short", "regime", "leverage",
-        "async", "decision_sink", "loc",
-    ])
+    w.writerow(
+        [
+            "name",
+            "path",
+            "long",
+            "short",
+            "regime",
+            "leverage",
+            "async",
+            "decision_sink",
+            "loc",
+        ]
+    )
     for s in strats:
-        w.writerow([
-            s.name, s.path, s.supports_long, s.supports_short, s.uses_regime,
-            s.uses_leverage, s.has_async, s.has_decision_sink, s.loc,
-        ])
+        w.writerow(
+            [
+                s.name,
+                s.path,
+                s.supports_long,
+                s.supports_short,
+                s.uses_regime,
+                s.uses_leverage,
+                s.has_async,
+                s.has_decision_sink,
+                s.loc,
+            ]
+        )
     return buf.getvalue()
 
 
@@ -164,8 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     fmt = p.add_mutually_exclusive_group()
     fmt.add_argument("--csv", action="store_true")
     fmt.add_argument("--json", action="store_true")
-    fmt.add_argument("--gap", action="store_true",
-                     help="only show strategies missing key caps")
+    fmt.add_argument("--gap", action="store_true", help="only show strategies missing key caps")
     args = p.parse_args(argv)
 
     strats = _scan_all()
@@ -184,10 +205,12 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(_render_markdown(strats))
         print()
-        print(f"Total: {len(strats)} strategies, "
-              f"{sum(s.supports_long for s in strats)} long, "
-              f"{sum(s.supports_short for s in strats)} short, "
-              f"{sum(s.uses_regime for s in strats)} regime-aware")
+        print(
+            f"Total: {len(strats)} strategies, "
+            f"{sum(s.supports_long for s in strats)} long, "
+            f"{sum(s.supports_short for s in strats)} short, "
+            f"{sum(s.uses_regime for s in strats)} regime-aware"
+        )
     return 0
 
 

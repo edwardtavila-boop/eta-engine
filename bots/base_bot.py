@@ -1,55 +1,99 @@
 """EVOLUTIONARY TRADING ALGO -- Abstract base bot and shared types for the 6-bot fleet."""
+
 from __future__ import annotations
 
 import abc
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Tier(str, Enum):
-    FUTURES = "FUTURES"; SEED = "SEED"; CASINO = "CASINO"
+class Tier(StrEnum):
+    FUTURES = "FUTURES"
+    SEED = "SEED"
+    CASINO = "CASINO"
 
-class MarginMode(str, Enum):
-    CROSS = "cross"; ISOLATED = "isolated"
 
-class SignalType(str, Enum):
-    LONG = "LONG"; SHORT = "SHORT"; CLOSE_LONG = "CLOSE_LONG"
-    CLOSE_SHORT = "CLOSE_SHORT"; GRID_ADD = "GRID_ADD"; GRID_REMOVE = "GRID_REMOVE"
+class MarginMode(StrEnum):
+    CROSS = "cross"
+    ISOLATED = "isolated"
 
-class RegimeType(str, Enum):
-    TRENDING = "TRENDING"; TRANSITION = "TRANSITION"; RANGING = "RANGING"
+
+class SignalType(StrEnum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    CLOSE_LONG = "CLOSE_LONG"
+    CLOSE_SHORT = "CLOSE_SHORT"
+    GRID_ADD = "GRID_ADD"
+    GRID_REMOVE = "GRID_REMOVE"
+
+
+class RegimeType(StrEnum):
+    TRENDING = "TRENDING"
+    TRANSITION = "TRANSITION"
+    RANGING = "RANGING"
+
 
 class Signal(BaseModel):
-    type: SignalType; symbol: str; price: float; size: float = 0.0
-    confidence: float = 0.0; meta: dict[str, Any] = Field(default_factory=dict)
+    type: SignalType
+    symbol: str
+    price: float
+    size: float = 0.0
+    confidence: float = 0.0
+    meta: dict[str, Any] = Field(default_factory=dict)
     ts: datetime = Field(default_factory=datetime.utcnow)
+
 
 class SweepResult(BaseModel):
-    swept: bool; direction: SignalType | None = None
-    level: float = 0.0; reclaim_confirmed: bool = False
+    swept: bool
+    direction: SignalType | None = None
+    level: float = 0.0
+    reclaim_confirmed: bool = False
+
 
 class Position(BaseModel):
-    symbol: str; side: str; entry_price: float; size: float
-    unrealized_pnl: float = 0.0; opened_at: datetime = Field(default_factory=datetime.utcnow)
+    symbol: str
+    side: str
+    entry_price: float
+    size: float
+    unrealized_pnl: float = 0.0
+    opened_at: datetime = Field(default_factory=datetime.utcnow)
+
 
 class Fill(BaseModel):
-    symbol: str; side: str; price: float; size: float
-    fee: float = 0.0; realized_pnl: float = 0.0
+    symbol: str
+    side: str
+    price: float
+    size: float
+    fee: float = 0.0
+    realized_pnl: float = 0.0
     ts: datetime = Field(default_factory=datetime.utcnow)
 
+
 class BotConfig(BaseModel):
-    name: str; symbol: str; tier: Tier; baseline_usd: float; starting_capital_usd: float
-    max_leverage: float = 1.0; risk_per_trade_pct: float = 1.0
-    daily_loss_cap_pct: float = 2.5; max_dd_kill_pct: float = 8.0
+    name: str
+    symbol: str
+    tier: Tier
+    baseline_usd: float
+    starting_capital_usd: float
+    max_leverage: float = 1.0
+    risk_per_trade_pct: float = 1.0
+    daily_loss_cap_pct: float = 2.5
+    max_dd_kill_pct: float = 8.0
     margin_mode: MarginMode = MarginMode.CROSS
 
+
 class BotState(BaseModel):
-    equity: float = 0.0; peak_equity: float = 0.0; todays_pnl: float = 0.0
+    equity: float = 0.0
+    peak_equity: float = 0.0
+    todays_pnl: float = 0.0
     open_positions: list[Position] = Field(default_factory=list)
-    trades_today: int = 0; is_killed: bool = False; is_paused: bool = False
+    trades_today: int = 0
+    is_killed: bool = False
+    is_paused: bool = False
+
 
 class BaseBot(abc.ABC):
     """Abstract base for every EVOLUTIONARY TRADING ALGO bot."""

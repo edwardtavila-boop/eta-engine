@@ -13,6 +13,7 @@ allows trading (regime, session, kill-switch etc. are supplied via the
 
 The named strategies mirror the founder-brief ranking 1..6.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -141,11 +142,7 @@ def liquidity_sweep_displacement(
     sweep = detect_liquidity_sweep(bars)
     disp = detect_displacement(bars)
     if sweep is None or disp is None:
-        tags = (
-            ("no_sweep",) if sweep is None else ()
-        ) + (
-            ("no_displacement",) if disp is None else ()
-        )
+        tags = (("no_sweep",) if sweep is None else ()) + (("no_displacement",) if disp is None else ())
         return _flat(strategy, tags)
 
     # Sweep-low + bull displacement = LONG; sweep-high + bear = SHORT

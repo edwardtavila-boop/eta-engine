@@ -79,6 +79,7 @@ live data from reports, and writes
 ``Base/firm_command_center.jsx``. After this bump, running the skill
 will render the Chain of Command panel automatically.
 """
+
 from __future__ import annotations
 
 import json
@@ -104,13 +105,9 @@ def main() -> None:
     sa["eta_engine_v0_1_29_jarvis_admin_cc"] = {
         "timestamp_utc": now,
         "version": "v0.1.29",
-        "bundle_name": (
-            "JARVIS ADMIN COMMAND CENTER INTEGRATION -- "
-            "surface the chain-of-command"
-        ),
+        "bundle_name": ("JARVIS ADMIN COMMAND CENTER INTEGRATION -- surface the chain-of-command"),
         "directive": (
-            "make jarvis the admin of all my projects -- "
-            "make everyone report to him throughout my framework"
+            "make jarvis the admin of all my projects -- make everyone report to him throughout my framework"
         ),
         "theme": (
             "v0.1.27 wired JarvisAdmin as the central approval authority; "
@@ -120,10 +117,7 @@ def main() -> None:
             "authority relationships at a glance."
         ),
         "artifacts_touched": [
-            (
-                "mnq_bot/.claude/skills/firm-tracker/references/"
-                "artifact_template.jsx"
-            ),
+            ("mnq_bot/.claude/skills/firm-tracker/references/artifact_template.jsx"),
         ],
         "jsx_components_added": {
             "data_constant": {
@@ -145,10 +139,7 @@ def main() -> None:
                 {
                     "name": "AdminAuditTailPanel",
                     "props": "{ audit }",
-                    "renders": (
-                        "rolling audit tail: verdict pill + "
-                        "subsystem->action + reason + size cap + timestamp"
-                    ),
+                    "renders": ("rolling audit tail: verdict pill + subsystem->action + reason + size cap + timestamp"),
                 },
             ],
             "mount_site": (
@@ -160,17 +151,31 @@ def main() -> None:
         },
         "commandTree": {
             "Bot Fleet (eta_engine)": [
-                "crypto_seed", "eth_perp", "mnq", "nq",
+                "crypto_seed",
+                "eth_perp",
+                "mnq",
+                "nq",
             ],
             "Framework (mnq_bot v3)": [
-                "autopilot", "firm_engine", "court_of_appeals",
-                "confluence", "webhook", "meta_orch",
+                "autopilot",
+                "firm_engine",
+                "court_of_appeals",
+                "confluence",
+                "webhook",
+                "meta_orch",
             ],
             "The Firm (6 agents)": [
-                "quant", "red_team", "risk", "macro", "micro", "pm",
+                "quant",
+                "red_team",
+                "risk",
+                "macro",
+                "micro",
+                "pm",
             ],
             "Guards & Operator": [
-                "gate_chain", "autopilot_watchdog", "operator",
+                "gate_chain",
+                "autopilot_watchdog",
+                "operator",
             ],
         },
         "bundle_metadata_updates": {
@@ -191,8 +196,7 @@ def main() -> None:
                 "after": "v0.1.29",
             },
             "moduleNames_additions": [
-                "brain/jarvis_admin  (v0.1.29 -- chain-of-command "
-                "authority, 46 tests)",
+                "brain/jarvis_admin  (v0.1.29 -- chain-of-command authority, 46 tests)",
             ],
             "moduleNames_annotations_added": [
                 "obs/autopilot_watchdog  (admin-wired, 21 tests)",
@@ -228,14 +232,13 @@ def main() -> None:
     state["overall_progress_pct"] = state.get("overall_progress_pct", 99)
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.29 at {now}")
-    print(f"  tests_passing: {prev_tests} -> {new_tests} "
-          f"({new_tests - prev_tests:+d})  [JSX-only bundle]")
+    print(f"  tests_passing: {prev_tests} -> {new_tests} ({new_tests - prev_tests:+d})  [JSX-only bundle]")
     print("  shared_artifacts.eta_engine_v0_1_29_jarvis_admin_cc written")
-    print("  directive satisfied: 'make jarvis the admin ... "
-          "everyone reports to him'")
+    print("  directive satisfied: 'make jarvis the admin ... everyone reports to him'")
     print("  Command Center now renders Chain of Command + Admin Audit Tail")
 
 

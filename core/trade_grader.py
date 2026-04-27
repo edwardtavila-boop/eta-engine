@@ -41,6 +41,7 @@ Public API
   * ``TradeGrade`` -- final with letter
   * ``TradeGrader`` class with ``grade(trade) -> TradeGrade``
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -99,7 +100,8 @@ class ClosedTrade(BaseModel):
         description="Initial protective stop placed at entry time.",
     )
     target_price: float | None = Field(
-        default=None, gt=0.0,
+        default=None,
+        gt=0.0,
         description="Optional first-target; used only for reporting.",
     )
     mfe_price: float = Field(
@@ -111,16 +113,19 @@ class ClosedTrade(BaseModel):
         description="Max-adverse excursion price during trade life.",
     )
     first_pullback_frac: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of MFE captured before first adverse pullback >= 0.5R",
     )
     confluence_score: float = Field(
-        ge=0.0, le=10.0,
+        ge=0.0,
+        le=10.0,
         description="Pre-trade confluence score (0-10 from confluence_scorer).",
     )
     regime_at_entry: TradeRegime
     gate_overrides: int = Field(
-        default=0, ge=0,
+        default=0,
+        ge=0,
         description="Number of times an operator overrode a gate for this trade.",
     )
 
@@ -167,11 +172,7 @@ class GradeBreakdown(BaseModel):
     @property
     def total(self) -> float:
         return round(
-            self.entry_timing
-            + self.regime_fit
-            + self.confluence_accuracy
-            + self.exit_efficiency
-            + self.rule_adherence,
+            self.entry_timing + self.regime_fit + self.confluence_accuracy + self.exit_efficiency + self.rule_adherence,
             2,
         )
 
@@ -243,19 +244,22 @@ class TradeGrader:
     # --- components -------------------------------------------------------
 
     def _score_entry_timing(
-        self, trade: ClosedTrade, leaks: list[str],
+        self,
+        trade: ClosedTrade,
+        leaks: list[str],
     ) -> float:
         """20 pts * first_pullback_frac."""
         pts = 20.0 * trade.first_pullback_frac
         if trade.first_pullback_frac < 0.3:
             leaks.append(
-                f"entry_timing: gave back {(1 - trade.first_pullback_frac):.0%} "
-                f"of MFE before moving in your favor",
+                f"entry_timing: gave back {(1 - trade.first_pullback_frac):.0%} of MFE before moving in your favor",
             )
         return round(pts, 2)
 
     def _score_regime_fit(
-        self, trade: ClosedTrade, leaks: list[str],
+        self,
+        trade: ClosedTrade,
+        leaks: list[str],
     ) -> float:
         r = trade.regime_at_entry
         side = trade.side
@@ -287,7 +291,9 @@ class TradeGrader:
         return 10.0
 
     def _score_confluence_accuracy(
-        self, trade: ClosedTrade, leaks: list[str],
+        self,
+        trade: ClosedTrade,
+        leaks: list[str],
     ) -> float:
         """20 pts iff score and outcome align.
 
@@ -316,7 +322,9 @@ class TradeGrader:
         return 8.0
 
     def _score_exit_efficiency(
-        self, trade: ClosedTrade, leaks: list[str],
+        self,
+        trade: ClosedTrade,
+        leaks: list[str],
     ) -> float:
         """20 pts * (R captured / R available), clipped at 0..20."""
         if trade.r_available <= 0:
@@ -328,20 +336,20 @@ class TradeGrader:
         pts = 20.0 * ratio
         if ratio < 0.5:
             leaks.append(
-                f"exit_efficiency: captured {ratio:.0%} of "
-                f"{trade.r_available:.2f}R available",
+                f"exit_efficiency: captured {ratio:.0%} of {trade.r_available:.2f}R available",
             )
         return round(pts, 2)
 
     def _score_rule_adherence(
-        self, trade: ClosedTrade, leaks: list[str],
+        self,
+        trade: ClosedTrade,
+        leaks: list[str],
     ) -> float:
         pts = 20.0 - 5.0 * trade.gate_overrides
         pts = max(0.0, pts)
         if trade.gate_overrides > 0:
             leaks.append(
-                f"rule_adherence: {trade.gate_overrides} gate override(s) "
-                f"during trade lifetime",
+                f"rule_adherence: {trade.gate_overrides} gate override(s) during trade lifetime",
             )
         return pts
 

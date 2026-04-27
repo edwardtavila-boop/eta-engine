@@ -174,13 +174,13 @@ CONSERVATIVE: RiskProfile = RiskProfile(
         "confluence setups. Designed for users who care more about not "
         "blowing up than about catching every trade."
     ),
-    risk_per_trade_pct=0.005,         # 0.5 % of equity per entry
+    risk_per_trade_pct=0.005,  # 0.5 % of equity per entry
     max_concurrent_positions=1,
     stop_atr_multiple=1.0,
-    daily_loss_cap_pct=0.015,         # -1.5 % halts the day
-    trailing_dd_halt_pct=0.03,        # -3 % from peak halts the campaign
+    daily_loss_cap_pct=0.015,  # -1.5 % halts the day
+    trailing_dd_halt_pct=0.03,  # -3 % from peak halts the campaign
     consecutive_loss_pause=2,
-    min_confluence_score=7,           # only 7+ / 8 setups
+    min_confluence_score=7,  # only 7+ / 8 setups
     recommended_min_capital_usd=2_500.0,
     recommended_capital_note=(
         "At this floor, a worst-case day (-1.5%) is $37.50 — small "
@@ -197,13 +197,13 @@ BALANCED: RiskProfile = RiskProfile(
         "1 % per trade, 1.5×ATR stops, takes the full set of validated "
         "signals. The profile the back-tests on /track-record assume."
     ),
-    risk_per_trade_pct=0.010,         # 1 % of equity per entry
+    risk_per_trade_pct=0.010,  # 1 % of equity per entry
     max_concurrent_positions=2,
     stop_atr_multiple=1.5,
-    daily_loss_cap_pct=0.030,         # -3 % halts the day
-    trailing_dd_halt_pct=0.05,        # -5 % from peak halts the campaign
+    daily_loss_cap_pct=0.030,  # -3 % halts the day
+    trailing_dd_halt_pct=0.05,  # -5 % from peak halts the campaign
     consecutive_loss_pause=3,
-    min_confluence_score=6,           # 6+ / 8 setups
+    min_confluence_score=6,  # 6+ / 8 setups
     recommended_min_capital_usd=5_000.0,
     recommended_capital_note=(
         "Matches the back-tested track record's assumed account size. "
@@ -222,13 +222,13 @@ AGGRESSIVE: RiskProfile = RiskProfile(
         "drawdown — both directions amplified. Not for accounts "
         "the user can't afford to see -8 % from peak."
     ),
-    risk_per_trade_pct=0.020,         # 2 % of equity per entry
+    risk_per_trade_pct=0.020,  # 2 % of equity per entry
     max_concurrent_positions=3,
     stop_atr_multiple=2.0,
-    daily_loss_cap_pct=0.050,         # -5 % halts the day
-    trailing_dd_halt_pct=0.08,        # -8 % from peak halts the campaign
+    daily_loss_cap_pct=0.050,  # -5 % halts the day
+    trailing_dd_halt_pct=0.08,  # -8 % from peak halts the campaign
     consecutive_loss_pause=4,
-    min_confluence_score=5,           # 5+ / 8 setups
+    min_confluence_score=5,  # 5+ / 8 setups
     recommended_min_capital_usd=10_000.0,
     recommended_capital_note=(
         "At this floor, a worst-case day (-5%) is $500 and the "
@@ -247,8 +247,8 @@ AGGRESSIVE: RiskProfile = RiskProfile(
 
 PROFILES: dict[ProfileName, RiskProfile] = {
     "conservative": CONSERVATIVE,
-    "balanced":     BALANCED,
-    "aggressive":   AGGRESSIVE,
+    "balanced": BALANCED,
+    "aggressive": AGGRESSIVE,
 }
 
 #: Default profile when none is specified. The published methodology and
@@ -266,9 +266,7 @@ def get_profile(name: str | ProfileName) -> RiskProfile:
     key = (name or "").strip().lower()
     if key not in PROFILES:
         valid = ", ".join(PROFILES)
-        raise ValueError(
-            f"unknown risk profile {name!r}; expected one of: {valid}"
-        )
+        raise ValueError(f"unknown risk profile {name!r}; expected one of: {valid}")
     return PROFILES[key]  # type: ignore[index]
 
 

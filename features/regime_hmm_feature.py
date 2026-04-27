@@ -71,12 +71,12 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _REGIME_SCORE_MAP: dict[RegimeType, float] = {
-    RegimeType.TRENDING:   1.00,
-    RegimeType.LOW_VOL:    0.75,
-    RegimeType.RANGING:    0.55,
+    RegimeType.TRENDING: 1.00,
+    RegimeType.LOW_VOL: 0.75,
+    RegimeType.RANGING: 0.55,
     RegimeType.TRANSITION: 0.50,
-    RegimeType.HIGH_VOL:   0.25,
-    RegimeType.CRISIS:     0.10,
+    RegimeType.HIGH_VOL: 0.25,
+    RegimeType.CRISIS: 0.10,
 }
 
 
@@ -126,6 +126,7 @@ class RegimeHMMFeature(Feature):
 # ---------------------------------------------------------------------------
 # Helper: fit HMM on a window of returns and build the ctx payload.
 # ---------------------------------------------------------------------------
+
 
 def build_hmm_ctx(
     returns: list[float],

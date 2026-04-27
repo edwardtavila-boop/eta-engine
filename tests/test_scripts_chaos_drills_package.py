@@ -12,6 +12,7 @@ CLOSURE a hard contract: if any drill silently starts returning
 ``passed=False``, pytest fails; if any drill stops being registered,
 pytest fails; if the shared-shape helper drifts, pytest fails.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -41,18 +42,18 @@ if TYPE_CHECKING:
 
 # Canonical drill-name → callable mapping for the parametrized contract test.
 _NEW_DRILLS = (
-    ("kill_switch_runtime",    drill_kill_switch_runtime),
-    ("risk_engine",            drill_risk_engine),
-    ("order_state_reconcile",  drill_order_state_reconcile),
-    ("cftc_nfa_compliance",    drill_cftc_nfa_compliance),
-    ("two_factor",             drill_two_factor),
-    ("smart_router",           drill_smart_router),
-    ("firm_gate",              drill_firm_gate),
-    ("oos_qualifier",          drill_oos_qualifier),
-    ("shadow_paper_tracker",   drill_shadow_paper_tracker),
-    ("live_shadow_guard",      drill_live_shadow_guard),
-    ("pnl_drift",              drill_pnl_drift),
-    ("runtime_allowlist",      drill_runtime_allowlist),
+    ("kill_switch_runtime", drill_kill_switch_runtime),
+    ("risk_engine", drill_risk_engine),
+    ("order_state_reconcile", drill_order_state_reconcile),
+    ("cftc_nfa_compliance", drill_cftc_nfa_compliance),
+    ("two_factor", drill_two_factor),
+    ("smart_router", drill_smart_router),
+    ("firm_gate", drill_firm_gate),
+    ("oos_qualifier", drill_oos_qualifier),
+    ("shadow_paper_tracker", drill_shadow_paper_tracker),
+    ("live_shadow_guard", drill_live_shadow_guard),
+    ("pnl_drift", drill_pnl_drift),
+    ("runtime_allowlist", drill_runtime_allowlist),
 )
 
 
@@ -92,9 +93,7 @@ class TestDrillPasses:
     @pytest.mark.parametrize(("name", "drill"), _NEW_DRILLS)
     def test_passes(self, tmp_path: Path, name: str, drill):
         result = drill(tmp_path)
-        assert result["passed"] is True, (
-            f"{name} failed: {result['details']}  observed={result['observed']!r}"
-        )
+        assert result["passed"] is True, f"{name} failed: {result['details']}  observed={result['observed']!r}"
 
 
 class TestDrillRunnerRegistry:

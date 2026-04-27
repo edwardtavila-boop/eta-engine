@@ -12,6 +12,7 @@ Responsibilities:
 
 Invoked by: deploy/systemd/avengers-fleet.service
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,13 +55,15 @@ class AvengersDaemon:
         self.usage = UsageTracker.load(state_dir / "usage_tracker.json")
         self.distiller = Distiller.load(state_dir / "distiller.json")
         self.governor = CostGovernor(
-            usage=self.usage, distiller=self.distiller,
+            usage=self.usage,
+            distiller=self.distiller,
         )
         # Fleet with dry-run executor by default -- production wires in
         # the real Anthropic client at deploy time.
         self.fleet = Fleet(executor=DryRunExecutor())
         self.dispatch = AvengersDispatch(
-            governor=self.governor, fleet=self.fleet,
+            governor=self.governor,
+            fleet=self.fleet,
         )
 
         # Persistent HTTP/2 client for Anthropic (optimization #8). Saves
@@ -72,6 +75,7 @@ class AvengersDaemon:
     def _init_anthropic_client(self) -> None:
         """Build a long-lived Anthropic client with HTTP/2 + pooling."""
         import os
+
         if not os.environ.get("ANTHROPIC_API_KEY"):
             logger.info("anthropic client: no API key, pooling skipped")
             return
@@ -132,7 +136,8 @@ class AvengersDaemon:
         while self.running:
             hb = self.heartbeat()
             (self.state_dir / "avengers_heartbeat.json").write_text(
-                json.dumps(hb, indent=2), encoding="utf-8",
+                json.dumps(hb, indent=2),
+                encoding="utf-8",
             )
             # Persist every 5 minutes
             if time.monotonic() - last_persist > 300:
@@ -148,8 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR))
-    ap.add_argument("--tick", type=float, default=30.0,
-                    help="heartbeat tick in seconds")
+    ap.add_argument("--tick", type=float, default=30.0, help="heartbeat tick in seconds")
     args = ap.parse_args(argv)
 
     logging.basicConfig(

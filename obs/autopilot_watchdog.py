@@ -32,6 +32,7 @@ Public API
   * ``AutopilotMode``           -- ACTIVE / REQUIRE_ACK / FROZEN
   * ``AutopilotWatchdog``       -- main watcher
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime  # noqa: TC003  -- pydantic needs runtime
@@ -59,9 +60,9 @@ class WatchdogAlertLevel(StrEnum):
 
 
 class AutopilotMode(StrEnum):
-    ACTIVE = "ACTIVE"           # no pending alerts
+    ACTIVE = "ACTIVE"  # no pending alerts
     REQUIRE_ACK = "REQUIRE_ACK"  # one or more positions need ack
-    FROZEN = "FROZEN"           # hard stop -- something was flattened
+    FROZEN = "FROZEN"  # hard stop -- something was flattened
 
 
 class PositionState(BaseModel):
@@ -81,26 +82,29 @@ class PositionState(BaseModel):
 
 class WatchdogPolicy(BaseModel):
     ack_ttl_sec: float = Field(
-        default=1800.0, gt=0.0,
+        default=1800.0,
+        gt=0.0,
         description="Seconds without an ack before REQUIRE_ACK triggers.",
     )
     tighten_after_sec: float = Field(
-        default=3600.0, gt=0.0,
+        default=3600.0,
+        gt=0.0,
         description="Seconds without an ack before suggest tightening stop.",
     )
     tighten_factor: float = Field(
-        default=0.75, gt=0.0, lt=1.0,
+        default=0.75,
+        gt=0.0,
+        lt=1.0,
         description="Multiply current stop distance by this -- 0.75 = tighten 25%.",
     )
     max_age_sec: float = Field(
-        default=7200.0, gt=0.0,
+        default=7200.0,
+        gt=0.0,
         description="Seconds without an ack before FORCE_FLATTEN.",
     )
 
     def validate_ordering(self) -> WatchdogPolicy:
-        if not (
-            self.ack_ttl_sec < self.tighten_after_sec < self.max_age_sec
-        ):
+        if not (self.ack_ttl_sec < self.tighten_after_sec < self.max_age_sec):
             raise ValueError(
                 "policy must satisfy ack_ttl < tighten_after < max_age",
             )
@@ -203,24 +207,28 @@ class AutopilotWatchdog:
     # --- helpers -----------------------------------------------------------
 
     def _alert_for(
-        self, state: PositionState, elapsed: float, now: datetime,
+        self,
+        state: PositionState,
+        elapsed: float,
+        now: datetime,
     ) -> WatchdogAlert | None:
         p = self._policy
         if elapsed >= p.max_age_sec:
             return WatchdogAlert(
-                ts=now, trade_id=state.trade_id, symbol=state.symbol,
+                ts=now,
+                trade_id=state.trade_id,
+                symbol=state.symbol,
                 level=WatchdogAlertLevel.FORCE_FLATTEN,
-                reason=(
-                    f"position idle {elapsed:.0f}s >= max_age {p.max_age_sec:.0f}s "
-                    "-- flatten immediately"
-                ),
+                reason=(f"position idle {elapsed:.0f}s >= max_age {p.max_age_sec:.0f}s -- flatten immediately"),
                 seconds_since_ack=elapsed,
                 suggested_stop_distance=None,
             )
         if elapsed >= p.tighten_after_sec:
             new_dist = state.current_stop_distance * p.tighten_factor
             return WatchdogAlert(
-                ts=now, trade_id=state.trade_id, symbol=state.symbol,
+                ts=now,
+                trade_id=state.trade_id,
+                symbol=state.symbol,
                 level=WatchdogAlertLevel.TIGHTEN_STOP,
                 reason=(
                     f"position idle {elapsed:.0f}s >= tighten_after "
@@ -232,12 +240,11 @@ class AutopilotWatchdog:
             )
         if elapsed >= p.ack_ttl_sec:
             return WatchdogAlert(
-                ts=now, trade_id=state.trade_id, symbol=state.symbol,
+                ts=now,
+                trade_id=state.trade_id,
+                symbol=state.symbol,
                 level=WatchdogAlertLevel.REQUIRE_ACK,
-                reason=(
-                    f"position idle {elapsed:.0f}s >= ack_ttl "
-                    f"{p.ack_ttl_sec:.0f}s -- operator ack required"
-                ),
+                reason=(f"position idle {elapsed:.0f}s >= ack_ttl {p.ack_ttl_sec:.0f}s -- operator ack required"),
                 seconds_since_ack=elapsed,
                 suggested_stop_distance=None,
             )
@@ -251,11 +258,8 @@ class AutopilotWatchdog:
             Actor,
             Outcome,
         )
-        outcome = (
-            Outcome.EXECUTED
-            if alert.level == WatchdogAlertLevel.FORCE_FLATTEN
-            else Outcome.NOTED
-        )
+
+        outcome = Outcome.EXECUTED if alert.level == WatchdogAlertLevel.FORCE_FLATTEN else Outcome.NOTED
         self._journal.record(
             actor=Actor.WATCHDOG,
             intent=f"watchdog:{alert.level}:{alert.trade_id}",
@@ -266,9 +270,7 @@ class AutopilotWatchdog:
                 "symbol": alert.symbol,
                 "seconds_since_ack": str(alert.seconds_since_ack),
                 "suggested_stop_distance": (
-                    str(alert.suggested_stop_distance)
-                    if alert.suggested_stop_distance is not None
-                    else "none"
+                    str(alert.suggested_stop_distance) if alert.suggested_stop_distance is not None else "none"
                 ),
             },
             ts=alert.ts,
@@ -277,7 +279,8 @@ class AutopilotWatchdog:
     # --- Jarvis admin integration ------------------------------------------
 
     def request_flatten_approval(
-        self, alert: WatchdogAlert,
+        self,
+        alert: WatchdogAlert,
     ) -> ActionResponse:
         """Ask Jarvis to approve a FORCE_FLATTEN on the position.
 
@@ -294,13 +297,11 @@ class AutopilotWatchdog:
         """
         if self._admin is None:
             raise RuntimeError(
-                "watchdog has no JarvisAdmin wired; "
-                "construct with admin=JarvisAdmin(...) first",
+                "watchdog has no JarvisAdmin wired; construct with admin=JarvisAdmin(...) first",
             )
         if alert.level != WatchdogAlertLevel.FORCE_FLATTEN:
             raise ValueError(
-                f"request_flatten_approval only applies to FORCE_FLATTEN; "
-                f"got {alert.level.value}",
+                f"request_flatten_approval only applies to FORCE_FLATTEN; got {alert.level.value}",
             )
         # Deferred import to avoid cycles at module load.
         from eta_engine.brain.jarvis_admin import (  # noqa: PLC0415
@@ -308,6 +309,7 @@ class AutopilotWatchdog:
             SubsystemId,
             make_action_request,
         )
+
         req = make_action_request(
             subsystem=SubsystemId.AUTOPILOT_WATCHDOG,
             action=ActionType.POSITION_FLATTEN,

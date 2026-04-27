@@ -1,4 +1,5 @@
 """Tail hedge calculator tests — P4_SHIELD tail_hedge."""
+
 from __future__ import annotations
 
 import pytest
@@ -13,6 +14,7 @@ from eta_engine.core.tail_hedge import (
 # ---------------------------------------------------------------------------
 # Black-Scholes sanity
 # ---------------------------------------------------------------------------
+
 
 def test_otm_put_premium_positive() -> None:
     quote = price_otm_put(spy_spot=500.0, otm_pct=10.0, days_to_expiry=30, implied_vol=0.22)
@@ -41,6 +43,7 @@ def test_inverse_perp_short_cost_scales_with_days() -> None:
 # ---------------------------------------------------------------------------
 # Policy engine
 # ---------------------------------------------------------------------------
+
 
 def test_decide_not_armed_when_dd_below_trigger() -> None:
     decision = decide(

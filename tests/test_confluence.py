@@ -14,7 +14,6 @@ from eta_engine.core.confluence_scorer import (
 
 
 class TestConfluenceScorer:
-
     def test_perfect_score(self) -> None:
         """All factors at maximum strength -> near 10."""
         result = score_confluence(

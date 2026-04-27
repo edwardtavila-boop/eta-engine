@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import random
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -20,7 +20,8 @@ from eta_engine.brain.regime import RegimeType
 # Types
 # ---------------------------------------------------------------------------
 
-class RLAction(str, Enum):
+
+class RLAction(StrEnum):
     LONG = "LONG"
     SHORT = "SHORT"
     HOLD = "HOLD"
@@ -41,6 +42,7 @@ class RLState(BaseModel):
 # ---------------------------------------------------------------------------
 # Agent
 # ---------------------------------------------------------------------------
+
 
 class RLAgent:
     """RL agent with pluggable policy.

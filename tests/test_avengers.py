@@ -12,6 +12,7 @@ Covers:
   * Fleet metrics accumulation
   * Streamlit console module imports without Streamlit runtime
 """
+
 from __future__ import annotations
 
 import json
@@ -79,10 +80,10 @@ class _RecordingExecutor:
     ) -> str:
         self.calls.append(
             {
-                "tier":          tier,
+                "tier": tier,
                 "system_prompt": system_prompt,
-                "user_prompt":   user_prompt,
-                "envelope":      envelope,
+                "user_prompt": user_prompt,
+                "envelope": envelope,
             },
         )
         return f"ARTIFACT({tier.value})::{envelope.goal}"
@@ -110,7 +111,8 @@ class _BoomExecutor:
 class TestEnvelope:
     def test_make_envelope_defaults(self) -> None:
         env = make_envelope(
-            category=TaskCategory.DEBUG, goal="fix a failing test",
+            category=TaskCategory.DEBUG,
+            goal="fix a failing test",
         )
         assert isinstance(env, TaskEnvelope)
         assert env.category == TaskCategory.DEBUG
@@ -135,7 +137,8 @@ class TestEnvelope:
 
     def test_envelope_json_roundtrip(self) -> None:
         env = make_envelope(
-            category=TaskCategory.CODE_REVIEW, goal="review change",
+            category=TaskCategory.CODE_REVIEW,
+            goal="review change",
         )
         raw = env.model_dump_json()
         back = TaskEnvelope.model_validate_json(raw)
@@ -154,7 +157,7 @@ class TestTierLock:
         [
             (Batman, PersonaId.BATMAN, ModelTier.OPUS),
             (Alfred, PersonaId.ALFRED, ModelTier.SONNET),
-            (Robin,  PersonaId.ROBIN,  ModelTier.HAIKU),
+            (Robin, PersonaId.ROBIN, ModelTier.HAIKU),
         ],
     )
     def test_persona_is_locked_to_tier(
@@ -189,10 +192,12 @@ class TestTierLock:
         assert res.artifact == ""
 
     def test_alfred_rejects_architectural_task(
-        self, tmp_journal: Path,
+        self,
+        tmp_journal: Path,
     ) -> None:
         env = make_envelope(
-            category=TaskCategory.RED_TEAM_SCORING, goal="audit promotion",
+            category=TaskCategory.RED_TEAM_SCORING,
+            goal="audit promotion",
         )
         res = Alfred(journal_path=tmp_journal).dispatch(env)
         assert res.success is False
@@ -200,7 +205,8 @@ class TestTierLock:
 
     def test_robin_rejects_sonnet_task(self, tmp_journal: Path) -> None:
         env = make_envelope(
-            category=TaskCategory.CODE_REVIEW, goal="review diff",
+            category=TaskCategory.CODE_REVIEW,
+            goal="review diff",
         )
         res = Robin(journal_path=tmp_journal).dispatch(env)
         assert res.success is False
@@ -214,7 +220,8 @@ class TestTierLock:
 
 class TestDispatch:
     def test_batman_happy_path_with_recording_executor(
-        self, tmp_journal: Path,
+        self,
+        tmp_journal: Path,
     ) -> None:
         exe = _RecordingExecutor()
         env = make_envelope(
@@ -232,14 +239,18 @@ class TestDispatch:
         assert len(exe.calls) == 1
         assert exe.calls[0]["tier"] == ModelTier.OPUS
         assert "BATMAN" in exe.calls[0]["system_prompt"]  # type: ignore[index]
-        assert "attack the new sizing policy" in (
-            exe.calls[0]["user_prompt"]  # type: ignore[index]
+        assert (
+            "attack the new sizing policy"
+            in (
+                exe.calls[0]["user_prompt"]  # type: ignore[index]
+            )
         )
 
     def test_alfred_happy_path(self, tmp_journal: Path) -> None:
         exe = _RecordingExecutor()
         env = make_envelope(
-            category=TaskCategory.DOC_WRITING, goal="update CLAUDE.md",
+            category=TaskCategory.DOC_WRITING,
+            goal="update CLAUDE.md",
         )
         res = Alfred(executor=exe, journal_path=tmp_journal).dispatch(env)
         assert res.success is True
@@ -249,7 +260,8 @@ class TestDispatch:
     def test_robin_happy_path(self, tmp_journal: Path) -> None:
         exe = _RecordingExecutor()
         env = make_envelope(
-            category=TaskCategory.COMMIT_MESSAGE, goal="draft commit msg",
+            category=TaskCategory.COMMIT_MESSAGE,
+            goal="draft commit msg",
         )
         res = Robin(executor=exe, journal_path=tmp_journal).dispatch(env)
         assert res.success is True
@@ -257,13 +269,16 @@ class TestDispatch:
         assert "ROBIN" in exe.calls[0]["system_prompt"]  # type: ignore[index]
 
     def test_executor_exception_becomes_failed_result(
-        self, tmp_journal: Path,
+        self,
+        tmp_journal: Path,
     ) -> None:
         env = make_envelope(
-            category=TaskCategory.DEBUG, goal="never mind",
+            category=TaskCategory.DEBUG,
+            goal="never mind",
         )
         res = Alfred(
-            executor=_BoomExecutor(), journal_path=tmp_journal,
+            executor=_BoomExecutor(),
+            journal_path=tmp_journal,
         ).dispatch(env)
         assert res.success is False
         assert res.reason_code == "executor_error"
@@ -271,7 +286,8 @@ class TestDispatch:
 
     def test_dryrun_executor_produces_markdown_structure(self) -> None:
         env = make_envelope(
-            category=TaskCategory.DEBUG, goal="test dryrun",
+            category=TaskCategory.DEBUG,
+            goal="test dryrun",
         )
         out = DryRunExecutor()(
             tier=ModelTier.SONNET,
@@ -298,6 +314,7 @@ class _DenyingAdmin:
             ActionSuggestion,
             SessionPhase,
         )
+
         return ActionResponse(
             request_id=req.request_id,
             verdict=Verdict.DENIED,
@@ -321,6 +338,7 @@ class _ApprovingAdmin:
             ActionSuggestion,
             SessionPhase,
         )
+
         assert req.action == ActionType.LLM_INVOCATION
         return ActionResponse(
             request_id=req.request_id,
@@ -338,7 +356,8 @@ class TestJarvisPreflight:
     def test_denial_short_circuits_persona(self, tmp_journal: Path) -> None:
         exe = _RecordingExecutor()
         env = make_envelope(
-            category=TaskCategory.DEBUG, goal="should not run",
+            category=TaskCategory.DEBUG,
+            goal="should not run",
         )
         res = Alfred(
             executor=exe,
@@ -354,7 +373,8 @@ class TestJarvisPreflight:
     def test_approval_permits_dispatch(self, tmp_journal: Path) -> None:
         exe = _RecordingExecutor()
         env = make_envelope(
-            category=TaskCategory.DEBUG, goal="should run",
+            category=TaskCategory.DEBUG,
+            goal="should run",
         )
         res = Alfred(
             executor=exe,
@@ -373,7 +393,8 @@ class TestJarvisPreflight:
 
 class TestJournal:
     def test_dispatch_writes_one_line_per_call(
-        self, tmp_journal: Path,
+        self,
+        tmp_journal: Path,
     ) -> None:
         batman = Batman(executor=_RecordingExecutor(), journal_path=tmp_journal)
         for _ in range(3):
@@ -392,7 +413,9 @@ class TestJournal:
             assert rec["result"]["success"] is True
 
     def test_append_journal_ignores_os_error(
-        self, tmp_path: Path, monkeypatch,
+        self,
+        tmp_path: Path,
+        monkeypatch,
     ) -> None:
         # Point to an unwritable path and assert we still don't raise.
         class _ExplodingPath:
@@ -449,14 +472,16 @@ class TestFleet:
         # Sonnet-bound
         r2 = fleet.dispatch(
             make_envelope(
-                category=TaskCategory.REFACTOR, goal="rename module",
+                category=TaskCategory.REFACTOR,
+                goal="rename module",
             ),
         )
         assert r2.persona_id == PersonaId.ALFRED
         # Haiku-bound
         r3 = fleet.dispatch(
             make_envelope(
-                category=TaskCategory.LOG_PARSING, goal="tail logs",
+                category=TaskCategory.LOG_PARSING,
+                goal="tail logs",
             ),
         )
         assert r3.persona_id == PersonaId.ROBIN
@@ -476,7 +501,8 @@ class TestFleet:
         assert res.reason_code == "tier_mismatch"
 
     def test_pool_dispatches_to_every_persona(
-        self, tmp_journal: Path,
+        self,
+        tmp_journal: Path,
     ) -> None:
         fleet = Fleet(journal_path=tmp_journal)
         env = make_envelope(
@@ -485,7 +511,9 @@ class TestFleet:
         )
         results = fleet.pool(env)
         assert {r.persona_id for r in results} == {
-            PersonaId.BATMAN, PersonaId.ALFRED, PersonaId.ROBIN,
+            PersonaId.BATMAN,
+            PersonaId.ALFRED,
+            PersonaId.ROBIN,
         }
         # Only Alfred should succeed; the others should tier-mismatch.
         by_persona = {r.persona_id: r for r in results}
@@ -497,7 +525,8 @@ class TestFleet:
         fleet = Fleet(journal_path=tmp_journal)
         fleet.dispatch(
             make_envelope(
-                category=TaskCategory.RED_TEAM_SCORING, goal="x",
+                category=TaskCategory.RED_TEAM_SCORING,
+                goal="x",
             ),
         )
         fleet.dispatch(
@@ -558,16 +587,15 @@ class TestConsoleImport:
     def test_console_module_imports_without_streamlit_runtime(self) -> None:
         # The console module should be importable even if streamlit isn't
         # actively running -- it gates UI work behind `if st is not None`.
-        mod_path = (
-            Path(__file__).resolve().parents[2]
-            / "launchers" / "avengers_console.py"
-        )
+        mod_path = Path(__file__).resolve().parents[2] / "launchers" / "avengers_console.py"
         assert mod_path.exists(), f"missing launcher: {mod_path}"
         # Direct import via importlib -- the launcher folder isn't a
         # package so we can't `import launchers.avengers_console`.
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
-            "avengers_console_smoke", mod_path,
+            "avengers_console_smoke",
+            mod_path,
         )
         assert spec is not None and spec.loader is not None
         mod = importlib.util.module_from_spec(spec)

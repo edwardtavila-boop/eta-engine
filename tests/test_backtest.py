@@ -26,28 +26,41 @@ def _win_ctx(bar: BarData, hist: list[BarData]) -> dict:
     now = bar.timestamp
     return {
         "daily_ema": [3000, 3100, 3200, 3300, 3400],
-        "h4_struct": "HH_HL", "bias": 1,
-        "atr_history": [20] * 10, "atr_current": 20.0,
-        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol,
-                                        rate=-0.0008, predicted_rate=-0.0008)] * 8,
-        "onchain": {"whale_transfers": 40, "whale_transfers_baseline": 20,
-                    "exchange_netflow_usd": -30_000_000.0,
-                    "active_addresses": 1300, "active_addresses_baseline": 1000},
-        "sentiment": {"galaxy_score": 85.0, "alt_rank": 15,
-                      "social_volume": 600, "social_volume_baseline": 200, "fear_greed": 20},
+        "h4_struct": "HH_HL",
+        "bias": 1,
+        "atr_history": [20] * 10,
+        "atr_current": 20.0,
+        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)] * 8,
+        "onchain": {
+            "whale_transfers": 40,
+            "whale_transfers_baseline": 20,
+            "exchange_netflow_usd": -30_000_000.0,
+            "active_addresses": 1300,
+            "active_addresses_baseline": 1000,
+        },
+        "sentiment": {
+            "galaxy_score": 85.0,
+            "alt_rank": 15,
+            "social_volume": 600,
+            "social_volume_baseline": 200,
+            "fear_greed": 20,
+        },
     }
 
 
 def _make_cfg(bars: list[BarData], threshold: float = 7.0) -> BacktestConfig:
     return BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=bars[0].symbol, initial_equity=10_000.0, risk_per_trade_pct=0.01,
-        confluence_threshold=threshold, max_trades_per_day=10,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=bars[0].symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=threshold,
+        max_trades_per_day=10,
     )
 
 
 class TestSyntheticBars:
-
     def test_produces_requested_count(self) -> None:
         assert len(BarReplay.synthetic_bars(n=50, seed=7)) == 50
 
@@ -60,7 +73,7 @@ class TestSyntheticBars:
 
     def test_timestamps_monotonic(self) -> None:
         bars = BarReplay.synthetic_bars(n=20, seed=3, interval_minutes=1)
-        for a, b in zip(bars, bars[1:]):
+        for a, b in zip(bars, bars[1:], strict=False):
             assert b.timestamp > a.timestamp
 
     def test_zero_count_returns_empty(self) -> None:
@@ -68,7 +81,6 @@ class TestSyntheticBars:
 
 
 class TestEngineRun:
-
     def test_run_produces_result(self) -> None:
         bars = BarReplay.synthetic_bars(n=60, drift=0.001, vol=0.005, seed=11)
         r = BacktestEngine(FeaturePipeline.default(), _make_cfg(bars), ctx_builder=_win_ctx).run(bars)
@@ -83,7 +95,6 @@ class TestEngineRun:
 
 
 class TestMetrics:
-
     def test_sharpe_positive_with_varied_gains(self) -> None:
         rets = [0.01, 0.008, 0.012, 0.009, 0.011, 0.007, 0.013, 0.01, 0.009, 0.011]
         assert compute_sharpe(rets) > 0
@@ -102,7 +113,6 @@ class TestMetrics:
 
 
 class TestTearsheet:
-
     def test_renders_headline_with_trades(self) -> None:
         bars = BarReplay.synthetic_bars(n=40, drift=0.001, vol=0.005, seed=9)
         r = BacktestEngine(FeaturePipeline.default(), _make_cfg(bars), ctx_builder=_win_ctx).run(bars)
@@ -113,8 +123,18 @@ class TestTearsheet:
         assert "Total Return" in sheet
 
     def test_handles_empty_trades(self) -> None:
-        r = BacktestResult(strategy_id="empty", n_trades=0, win_rate=0.0,
-                           avg_win_r=0.0, avg_loss_r=0.0, expectancy_r=0.0,
-                           profit_factor=0.0, sharpe=0.0, sortino=0.0,
-                           max_dd_pct=0.0, total_return_pct=0.0, trades=[])
+        r = BacktestResult(
+            strategy_id="empty",
+            n_trades=0,
+            win_rate=0.0,
+            avg_win_r=0.0,
+            avg_loss_r=0.0,
+            expectancy_r=0.0,
+            profit_factor=0.0,
+            sharpe=0.0,
+            sortino=0.0,
+            max_dd_pct=0.0,
+            total_return_pct=0.0,
+            trades=[],
+        )
         assert "No trades" in TearsheetBuilder.from_result(r)

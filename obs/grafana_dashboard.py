@@ -19,6 +19,7 @@ user selects which Prometheus instance to query at import time.
 
 No Grafana HTTP client dependency — this just writes a JSON blob.
 """
+
 from __future__ import annotations
 
 import json
@@ -115,33 +116,30 @@ def build_dashboard() -> dict[str, Any]:
     panels: list[dict[str, Any]] = []
 
     # Row 1: core equity / drawdown gauges
-    panels.append({**_panel_gauge(1, "Portfolio Equity", EQUITY_USD, unit="currencyUSD"),
-                   "gridPos": _position(0, 0)})
-    panels.append({**_panel_gauge(2, "Drawdown", DRAWDOWN_PCT, unit="percent"),
-                   "gridPos": _position(6, 0)})
-    panels.append({**_panel_gauge(3, "Confluence Score", CONFLUENCE_SCORE, unit="none"),
-                   "gridPos": _position(12, 0)})
-    panels.append({**_panel_gauge(4, "Firm Verdict", FIRM_VERDICT, unit="none"),
-                   "gridPos": _position(18, 0)})
+    panels.append({**_panel_gauge(1, "Portfolio Equity", EQUITY_USD, unit="currencyUSD"), "gridPos": _position(0, 0)})
+    panels.append({**_panel_gauge(2, "Drawdown", DRAWDOWN_PCT, unit="percent"), "gridPos": _position(6, 0)})
+    panels.append({**_panel_gauge(3, "Confluence Score", CONFLUENCE_SCORE, unit="none"), "gridPos": _position(12, 0)})
+    panels.append({**_panel_gauge(4, "Firm Verdict", FIRM_VERDICT, unit="none"), "gridPos": _position(18, 0)})
 
     # Row 2: counters (rate over 5m)
-    panels.append({**_panel_timeseries(5, "Trades Opened (5m rate)",
-                                       f"rate({TRADES_OPENED}[5m])"),
-                   "gridPos": _position(0, 6)})
-    panels.append({**_panel_timeseries(6, "Trades Closed (5m rate)",
-                                       f"rate({TRADES_CLOSED}[5m])"),
-                   "gridPos": _position(6, 6)})
-    panels.append({**_panel_timeseries(7, "Realized PnL", PNL_REALIZED_USD, unit="currencyUSD"),
-                   "gridPos": _position(12, 6)})
-    panels.append({**_panel_timeseries(8, "Kill-Switch Triggers",
-                                       f"{KILL_SWITCH_TRIGGERED}"),
-                   "gridPos": _position(18, 6)})
+    panels.append(
+        {**_panel_timeseries(5, "Trades Opened (5m rate)", f"rate({TRADES_OPENED}[5m])"), "gridPos": _position(0, 6)}
+    )
+    panels.append(
+        {**_panel_timeseries(6, "Trades Closed (5m rate)", f"rate({TRADES_CLOSED}[5m])"), "gridPos": _position(6, 6)}
+    )
+    panels.append(
+        {**_panel_timeseries(7, "Realized PnL", PNL_REALIZED_USD, unit="currencyUSD"), "gridPos": _position(12, 6)}
+    )
+    panels.append(
+        {**_panel_timeseries(8, "Kill-Switch Triggers", f"{KILL_SWITCH_TRIGGERED}"), "gridPos": _position(18, 6)}
+    )
 
     # Row 3: latency histogram + failover
-    panels.append({**_panel_histogram(9, "Order Latency (ms)", LATENCY_ORDER_MS),
-                   "gridPos": _position(0, 12, w=12, h=8)})
-    panels.append({**_panel_timeseries(10, "Venue Failovers", VENUE_FAILOVER),
-                   "gridPos": _position(12, 12, w=12, h=8)})
+    panels.append(
+        {**_panel_histogram(9, "Order Latency (ms)", LATENCY_ORDER_MS), "gridPos": _position(0, 12, w=12, h=8)}
+    )
+    panels.append({**_panel_timeseries(10, "Venue Failovers", VENUE_FAILOVER), "gridPos": _position(12, 12, w=12, h=8)})
 
     return {
         "title": DASHBOARD_TITLE,

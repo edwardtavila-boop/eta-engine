@@ -42,6 +42,7 @@ On a violation: ``ComplianceCheckResult.pass_ = False`` and the offending
 rule id is returned. The caller (typically ``core.risk_engine`` or a
 pre-order gate) must abort the order and log the kill-log entry.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -53,6 +54,7 @@ from pydantic import BaseModel, Field, model_validator
 # ---------------------------------------------------------------------------
 # Rule ids / types
 # ---------------------------------------------------------------------------
+
 
 class ComplianceRuleId(StrEnum):
     """Stable machine-readable rule ids we can cite in kill-log entries."""
@@ -71,13 +73,14 @@ class ComplianceRuleId(StrEnum):
 class Severity(StrEnum):
     """How loud the failure is."""
 
-    BLOCKING = "BLOCKING"   # refuse the order
-    ADVISORY = "ADVISORY"   # allow but log
+    BLOCKING = "BLOCKING"  # refuse the order
+    ADVISORY = "ADVISORY"  # allow but log
 
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
 
 class PreTradeContext(BaseModel):
     """Snapshot of everything the compliance engine needs for one order."""
@@ -132,6 +135,7 @@ class ComplianceCheckResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Individual rule checks
 # ---------------------------------------------------------------------------
+
 
 def _check_owns_account(ctx: PreTradeContext) -> ComplianceViolation | None:
     if not ctx.operator_owned_account:
@@ -207,10 +211,7 @@ def _check_apex_one_account(ctx: PreTradeContext) -> ComplianceViolation | None:
     # An Apex eval rule: do not copy-trade across accounts. We approximate
     # this by requiring that eta_account_id, when present, is the only
     # Apex account currently engaged in the same symbol.
-    if (
-        ctx.eta_account_id is not None
-        and len(ctx.other_eta_account_ids) > 0
-    ):
+    if ctx.eta_account_id is not None and len(ctx.other_eta_account_ids) > 0:
         return ComplianceViolation(
             rule=ComplianceRuleId.APEX_ONE_ACCOUNT,
             severity=Severity.ADVISORY,
@@ -251,10 +252,7 @@ def _check_apex_news_blackout(ctx: PreTradeContext) -> ComplianceViolation | Non
 
 
 def _check_nfa_2_29(ctx: PreTradeContext) -> ComplianceViolation | None:
-    if (
-        ctx.is_promotional_communication
-        and not ctx.promotional_disclaimer_included
-    ):
+    if ctx.is_promotional_communication and not ctx.promotional_disclaimer_included:
         return ComplianceViolation(
             rule=ComplianceRuleId.NFA_2_29_PROMOTIONAL,
             severity=Severity.BLOCKING,

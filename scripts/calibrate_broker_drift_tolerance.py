@@ -69,6 +69,7 @@ Exit codes
 3 -- log file present but no broker_equity ticks found (calibration
      impossible; operator must run paper longer)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,7 +87,7 @@ DEFAULT_LOG = ROOT / "docs" / "runtime_log.jsonl"
 class DriftSamples:
     """One direction's worth of drift samples."""
 
-    direction: str   # "below" or "above"
+    direction: str  # "below" or "above"
     n: int
     usd: list[float]
     pct: list[float]
@@ -210,20 +211,10 @@ def recommend(
     that direction (caller decides whether to fall back to a default).
     """
     return {
-        "tolerance_below_usd": (
-            _percentile(below.usd, percentile) if below.usd else None
-        ),
-        "tolerance_below_pct": (
-            _percentile(below.pct, percentile) if below.pct else None
-        ),
-        "tolerance_above_usd": (
-            above_slack * _percentile(above.usd, percentile)
-            if above.usd else None
-        ),
-        "tolerance_above_pct": (
-            above_slack * _percentile(above.pct, percentile)
-            if above.pct else None
-        ),
+        "tolerance_below_usd": (_percentile(below.usd, percentile) if below.usd else None),
+        "tolerance_below_pct": (_percentile(below.pct, percentile) if below.pct else None),
+        "tolerance_above_usd": (above_slack * _percentile(above.usd, percentile) if above.usd else None),
+        "tolerance_above_pct": (above_slack * _percentile(above.pct, percentile) if above.pct else None),
     }
 
 
@@ -240,15 +231,13 @@ def _human_report(
     lines.append("BROKER EQUITY DRIFT TOLERANCE CALIBRATOR")
     lines.append("=" * 50)
     lines.append(
-        f"Samples: below={below.n}  above={above.n}  "
-        f"total_directional={below.n + above.n}",
+        f"Samples: below={below.n}  above={above.n}  total_directional={below.n + above.n}",
     )
     lines.append(f"Percentile target: p{int(percentile * 100)}")
     lines.append(f"Above-direction slack: {above_slack:.1f}x")
     lines.append("")
     for label, samples in (("below", below), ("above", above)):
-        lines.append(f"  {label.upper()} direction (drift_usd sign = "
-                     f"{'+' if label == 'below' else '-'})")
+        lines.append(f"  {label.upper()} direction (drift_usd sign = {'+' if label == 'below' else '-'})")
         if samples.n == 0:
             lines.append(f"    (no {label}-direction samples in log)")
             lines.append("")
@@ -331,7 +320,8 @@ def main(argv: list[str] | None = None) -> int:
 
     below, above = collect(args.log)
     rec = recommend(
-        below, above,
+        below,
+        above,
         percentile=args.percentile,
         above_slack=args.above_slack,
     )
@@ -347,22 +337,31 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     if args.json:
-        print(json.dumps({
-            "log_path": str(args.log),
-            "percentile": args.percentile,
-            "above_slack": args.above_slack,
-            "samples": {
-                "below_n": below.n,
-                "above_n": above.n,
-            },
-            "recommendation": rec,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "log_path": str(args.log),
+                    "percentile": args.percentile,
+                    "above_slack": args.above_slack,
+                    "samples": {
+                        "below_n": below.n,
+                        "above_n": above.n,
+                    },
+                    "recommendation": rec,
+                },
+                indent=2,
+            )
+        )
     else:
-        print(_human_report(
-            below, above, rec,
-            percentile=args.percentile,
-            above_slack=args.above_slack,
-        ))
+        print(
+            _human_report(
+                below,
+                above,
+                rec,
+                percentile=args.percentile,
+                above_slack=args.above_slack,
+            )
+        )
 
     return 0
 

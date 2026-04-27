@@ -150,6 +150,7 @@ Delta
     at 100%; this bump is durable-safety plus OOS-edge honesty
     rather than new-scope expansion
 """
+
 from __future__ import annotations
 
 import json
@@ -190,9 +191,7 @@ def main() -> None:
             "real OOS R-distribution replaces the point-estimate "
             "headline with an honest CI that straddles zero at n=14."
         ),
-        "operator_directive_quote": (
-            "do all."
-        ),
+        "operator_directive_quote": ("do all."),
         "modules_added": [
             "eta_engine/core/trailing_dd_tracker.py",
             "eta_engine/core/consistency_guard.py",
@@ -201,23 +200,19 @@ def main() -> None:
             "eta_engine/scripts/run_eta_live.py "
             "(trailing_dd_tracker kwarg + consistency_guard kwarg + "
             "tick-loop wiring + TYPE_CHECKING import hygiene)",
-            "eta_engine/bots/mnq/bot.py "
-            "(SessionGate attach + on_bar EoD flatten path)",
-            "eta_engine/venues/router_adapter.py "
-            "(session gate surface + should_flatten_eod signal)",
+            "eta_engine/bots/mnq/bot.py (SessionGate attach + on_bar EoD flatten path)",
+            "eta_engine/venues/router_adapter.py (session gate surface + should_flatten_eod signal)",
         ],
         "tests_added": [
             "eta_engine/tests/test_trailing_dd_tracker.py (30)",
             "eta_engine/tests/test_consistency_guard.py (32)",
         ],
         "tests_extended": [
-            "eta_engine/tests/test_run_eta_live.py "
-            "(TrailingDDTrackerIntegration + ConsistencyGuardIntegration)",
+            "eta_engine/tests/test_run_eta_live.py (TrailingDDTrackerIntegration + ConsistencyGuardIntegration)",
             "eta_engine/tests/test_kill_switch_latch.py",
             "eta_engine/tests/test_session_gate.py",
             "eta_engine/tests/test_mnq_bot.py (EoD flatten path)",
-            "eta_engine/tests/test_router_adapter.py (session gate "
-            "+ should_flatten_eod)",
+            "eta_engine/tests/test_router_adapter.py (session gate + should_flatten_eod)",
         ],
         "d_series_wiring": {
             "D1_session_gate": (
@@ -264,14 +259,8 @@ def main() -> None:
             "ci95_high_r": 1.0690,
             "p_gt_zero": 0.6695,
             "verdict": "NOISE",
-            "artifact_json": (
-                "eta_engine/docs/cross_regime/"
-                "bootstrap_ci_mnq5m_rth_oos.json"
-            ),
-            "artifact_md": (
-                "eta_engine/docs/cross_regime/"
-                "bootstrap_ci_mnq5m_rth_oos.md"
-            ),
+            "artifact_json": ("eta_engine/docs/cross_regime/bootstrap_ci_mnq5m_rth_oos.json"),
+            "artifact_md": ("eta_engine/docs/cross_regime/bootstrap_ci_mnq5m_rth_oos.md"),
             "note": (
                 "CI95 straddles zero; n=14 too thin to reject null. "
                 "Point estimate +0.188R is informative but not "
@@ -348,8 +337,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

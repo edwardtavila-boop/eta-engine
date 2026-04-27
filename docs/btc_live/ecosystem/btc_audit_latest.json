@@ -1,0 +1,31 @@
+{
+  "artifact_audit": {
+    "health": "YELLOW",
+    "missing": [
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_ecosystem_latest.json"
+    ],
+    "missing_count": 1,
+    "present": [
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc_broker_fleet_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-directional-tastytrade.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-directional-ibkr.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-grid-tastytrade.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-grid-ibkr.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_keeper_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_autolearn_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_shadow_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_risk_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_optimizer_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_broker_probe_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_resource_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_journal_latest.json",
+      "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_dashboard_latest.json"
+    ],
+    "present_count": 14
+  },
+  "generated_at_utc": "2026-04-26T14:51:31.019541+00:00",
+  "pid": 3288,
+  "role": "audit",
+  "safety": "artifact audit only; no broker order placement",
+  "status": "DEGRADED"
+}

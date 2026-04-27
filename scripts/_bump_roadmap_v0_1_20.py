@@ -22,6 +22,7 @@ Rationale for parametric over neural:
   tree, brain.rl_agent is a seeded baseline -- brain.synthetic follows
   the same shape).
 """
+
 from __future__ import annotations
 
 import json

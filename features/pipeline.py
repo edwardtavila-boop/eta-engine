@@ -8,15 +8,17 @@ Compose → score → feed to confluence_scorer.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData
-from eta_engine.features.base import Feature, FeatureResult
 from eta_engine.features.funding_skew import FundingSkewFeature
 from eta_engine.features.onchain import OnchainFeature, fetch_onchain_snapshot
 from eta_engine.features.sentiment import SentimentFeature, fetch_sentiment_snapshot
 from eta_engine.features.trend_bias import TrendBiasFeature
 from eta_engine.features.vol_regime import VolRegimeFeature
+
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
+    from eta_engine.features.base import Feature, FeatureResult
 
 ConfluenceTuple = tuple[float, float, float, float, float]
 
@@ -67,10 +69,7 @@ class FeaturePipeline:
         Returns (trend_bias, vol_regime, funding_skew, onchain_delta, sentiment).
         Missing features default to 0.0.
         """
-        return tuple(
-            results[name].normalized_score if name in results else 0.0
-            for name in self._DEFAULT_ORDER
-        )  # type: ignore[return-value]
+        return tuple(results[name].normalized_score if name in results else 0.0 for name in self._DEFAULT_ORDER)  # type: ignore[return-value]
 
     async def refresh_external(self, asset: str) -> dict[str, dict[str, Any]]:
         """Fan out async fetches for onchain + sentiment snapshots in parallel."""

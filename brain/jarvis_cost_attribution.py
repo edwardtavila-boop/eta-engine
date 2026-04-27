@@ -29,6 +29,7 @@ Design
   per-call cost), ROUTINE second, GRUNT last. Operator scans top-down
   and immediately sees the Opus hotspots.
 """
+
 from __future__ import annotations
 
 import json
@@ -159,14 +160,113 @@ class CostLedger:
         self._events.append(event)
         return event
 
-    def events_in_window(
-        self, start: datetime, end: datetime
-    ) -> list[CostEvent]:
+    def events_in_window(self, start: datetime, end: datetime) -> list[CostEvent]:
         return [e for e in self._events if start <= e.ts_utc < end]
 
-    def rollup(
-        self, *, window_start: datetime | None = None, window_end: datetime | None = None
-    ) -> CostReport:
+    # ---- v3.5 upgrade #16 (2026-04-26) — persistence -------------------
+
+    def save_to_jsonl(self, path: Path) -> None:
+        """Persist every CostEvent to a JSONL file (one event per line).
+
+        Atomic via tmp + replace so a crash mid-write can't corrupt
+        the audit trail.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            for e in self._events:
+                fh.write(
+                    json.dumps(
+                        {
+                            "task_category": e.task_category.value,
+                            "tier": e.tier.value,
+                            "input_tokens": e.input_tokens,
+                            "output_tokens": e.output_tokens,
+                            "ts_utc": e.ts_utc.isoformat(),
+                        }
+                    )
+                    + "\n"
+                )
+        tmp.replace(path)
+
+    @classmethod
+    def load_from_jsonl(cls, path: Path) -> CostLedger:
+        """Reconstruct a CostLedger from a JSONL file.
+
+        Skips lines that fail to parse (best-effort). Returns an empty
+        ledger if the file doesn't exist.
+        """
+        if not path.exists():
+            return cls()
+        events: list[CostEvent] = []
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw = json.loads(line)
+                    events.append(
+                        CostEvent(
+                            task_category=TaskCategory(raw["task_category"]),
+                            tier=ModelTier(raw["tier"]),
+                            input_tokens=int(raw["input_tokens"]),
+                            output_tokens=int(raw["output_tokens"]),
+                            ts_utc=datetime.fromisoformat(raw["ts_utc"]),
+                        )
+                    )
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    continue
+        return cls(events=events)
+
+    def demotion_savings(
+        self,
+        *,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> dict:
+        """Sum the cost savings from deployment-phase tier demotions.
+
+        Compares each event's actual tier against the static (search-phase)
+        mapping. If actual is CHEAPER, the delta counts as savings.
+        """
+        scoped = list(self._events)
+        if (window_start is not None or window_end is not None) and scoped:
+            ws = window_start or min(e.ts_utc for e in scoped)
+            we = window_end or (max(e.ts_utc for e in scoped) + timedelta(seconds=1))
+            scoped = [e for e in scoped if ws <= e.ts_utc < we]
+
+        n_demoted = 0
+        tokens_demoted = 0
+        units_saved = 0.0
+        by_cat: dict[TaskCategory, dict[str, float]] = {}
+        for e in scoped:
+            nominal_tier = tier_for(e.task_category)
+            if nominal_tier == e.tier:
+                continue
+            nominal_units = float(e.total_tokens) * COST_RATIO[nominal_tier]
+            actual_units = e.sonnet_equiv_units
+            if nominal_units <= actual_units:
+                continue
+            saved = nominal_units - actual_units
+            n_demoted += 1
+            tokens_demoted += e.total_tokens
+            units_saved += saved
+            slot = by_cat.setdefault(
+                e.task_category,
+                {"n": 0.0, "tokens": 0.0, "units_saved": 0.0},
+            )
+            slot["n"] += 1
+            slot["tokens"] += e.total_tokens
+            slot["units_saved"] += saved
+        return {
+            "n_demoted_events": n_demoted,
+            "tokens_demoted": tokens_demoted,
+            "sonnet_equiv_saved": units_saved,
+            "by_category": {cat.value: stats for cat, stats in by_cat.items()},
+        }
+
+    def rollup(self, *, window_start: datetime | None = None, window_end: datetime | None = None) -> CostReport:
         """Aggregate events in ``[window_start, window_end)`` into a report."""
         if not self._events:
             ws = window_start or datetime.now(UTC)
@@ -209,9 +309,7 @@ class CostLedger:
             TaskBucket.ROUTINE: 1,
             TaskBucket.GRUNT: 2,
         }
-        category_totals.sort(
-            key=lambda c: (bucket_order[c.bucket], -c.sonnet_equiv_units)
-        )
+        category_totals.sort(key=lambda c: (bucket_order[c.bucket], -c.sonnet_equiv_units))
 
         grand_units = sum(c.sonnet_equiv_units for c in category_totals) or 1.0
         by_bucket: dict[TaskBucket, list[CategoryTotal]] = defaultdict(list)
@@ -243,9 +341,7 @@ class CostLedger:
             window_end=we,
             n_events=len(scoped),
             total_tokens=sum(e.total_tokens for e in scoped),
-            total_sonnet_equiv_units=sum(
-                e.sonnet_equiv_units for e in scoped
-            ),
+            total_sonnet_equiv_units=sum(e.sonnet_equiv_units for e in scoped),
             by_category=tuple(category_totals),
             by_bucket=tuple(bucket_totals),
         )
@@ -256,9 +352,7 @@ class CostLedger:
 # ---------------------------------------------------------------------------
 
 
-def weekly_report(
-    ledger: CostLedger, *, week_start: datetime | None = None
-) -> CostReport:
+def weekly_report(ledger: CostLedger, *, week_start: datetime | None = None) -> CostReport:
     """Convenience wrapper: rollup events in the week starting ``week_start``."""
     ws = week_start or (datetime.now(UTC) - timedelta(days=7))
     we = ws + timedelta(days=7)
@@ -270,10 +364,7 @@ def render_markdown(report: CostReport) -> str:
     lines: list[str] = []
     lines.append("# EVOLUTIONARY TRADING ALGO // JARVIS Cost Telemetry")
     lines.append("")
-    lines.append(
-        f"**Window:** `{report.window_start.isoformat()}` -> "
-        f"`{report.window_end.isoformat()}`"
-    )
+    lines.append(f"**Window:** `{report.window_start.isoformat()}` -> `{report.window_end.isoformat()}`")
     lines.append(
         f"**Events:** {report.n_events}  "
         f"**Tokens:** {report.total_tokens:,}  "
@@ -347,7 +438,5 @@ def write_report(
                 for c in report.by_category
             ],
         }
-        output.with_suffix(".json").write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
-        )
+        output.with_suffix(".json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return output

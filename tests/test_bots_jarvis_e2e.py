@@ -23,6 +23,7 @@ flips context mid-session.
 The journal is the single source of truth for "what happened" -- we
 assert on intent counts + outcome distribution, not log lines.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -52,7 +53,12 @@ _ET = ZoneInfo("America/New_York")
 
 def _midday_ts(minute_offset: int = 0) -> datetime:
     return datetime(
-        2026, 4, 15, 11, 30 + minute_offset, tzinfo=_ET,
+        2026,
+        4,
+        15,
+        11,
+        30 + minute_offset,
+        tzinfo=_ET,
     ).astimezone(UTC)
 
 
@@ -62,8 +68,11 @@ def _ctx_for_phase(phase: str):  # type: ignore[no-untyped-def]
         return build_snapshot(
             macro=MacroSnapshot(vix_level=16.0, macro_bias="neutral"),
             equity=EquitySnapshot(
-                account_equity=50_000.0, daily_pnl=0.0,
-                daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+                account_equity=50_000.0,
+                daily_pnl=0.0,
+                daily_drawdown_pct=0.0,
+                open_positions=0,
+                open_risk_r=0.0,
             ),
             regime=RegimeSnapshot(regime="TREND_UP", confidence=0.75),
             journal=JournalSnapshot(),
@@ -73,8 +82,11 @@ def _ctx_for_phase(phase: str):  # type: ignore[no-untyped-def]
         return build_snapshot(
             macro=MacroSnapshot(vix_level=20.0, macro_bias="neutral"),
             equity=EquitySnapshot(
-                account_equity=50_000.0, daily_pnl=-1_250.0,
-                daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+                account_equity=50_000.0,
+                daily_pnl=-1_250.0,
+                daily_drawdown_pct=0.025,
+                open_positions=1,
+                open_risk_r=1.0,
             ),
             regime=RegimeSnapshot(regime="TREND_UP", confidence=0.55),
             journal=JournalSnapshot(),
@@ -84,8 +96,11 @@ def _ctx_for_phase(phase: str):  # type: ignore[no-untyped-def]
         return build_snapshot(
             macro=MacroSnapshot(vix_level=28.0, macro_bias="bearish"),
             equity=EquitySnapshot(
-                account_equity=50_000.0, daily_pnl=-3_500.0,
-                daily_drawdown_pct=0.07, open_positions=0, open_risk_r=0.0,
+                account_equity=50_000.0,
+                daily_pnl=-3_500.0,
+                daily_drawdown_pct=0.07,
+                open_positions=0,
+                open_risk_r=0.0,
             ),
             regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
             journal=JournalSnapshot(kill_switch_active=True),
@@ -102,7 +117,10 @@ class _PhaseRouter:
         self.orders: list[OrderRequest] = []
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency
         self.orders.append(req)
@@ -154,9 +172,7 @@ async def test_30_bar_session_trade_reduce_kill(tmp_path: Path) -> None:
         await bot.on_signal(_make_entry_signal())
 
     trade_orders = list(router.orders)
-    assert len(trade_orders) == 10, (
-        f"TRADE phase should route all 10 orders, got {len(trade_orders)}"
-    )
+    assert len(trade_orders) == 10, f"TRADE phase should route all 10 orders, got {len(trade_orders)}"
 
     # --- Phase 2: REDUCE (10 bars, CONDITIONAL cap halves qty) ---
     current_phase[0] = "reduce"
@@ -164,9 +180,7 @@ async def test_30_bar_session_trade_reduce_kill(tmp_path: Path) -> None:
         await bot.on_signal(_make_entry_signal())
 
     reduce_orders = router.orders[10:]
-    assert len(reduce_orders) == 10, (
-        f"REDUCE phase should still route orders, got {len(reduce_orders)}"
-    )
+    assert len(reduce_orders) == 10, f"REDUCE phase should still route orders, got {len(reduce_orders)}"
     # Cap halves 5-contract base -> 2 (int(5*0.5)=2). Verify qty shrunk.
     assert all(o.qty < trade_orders[0].qty for o in reduce_orders), (
         "REDUCE orders must be smaller than TRADE orders (cap applied)"
@@ -180,8 +194,7 @@ async def test_30_bar_session_trade_reduce_kill(tmp_path: Path) -> None:
         assert result is None, "KILL phase must deny every order"
 
     assert len(router.orders) == orders_before_kill, (
-        f"KILL phase should add zero orders, "
-        f"got {len(router.orders) - orders_before_kill} new"
+        f"KILL phase should add zero orders, got {len(router.orders) - orders_before_kill} new"
     )
 
     # --- Close the session ---
@@ -197,15 +210,11 @@ async def test_30_bar_session_trade_reduce_kill(tmp_path: Path) -> None:
 
     # 20 total routed orders (TRADE 10 + REDUCE 10)
     routed = [e for e in events if e.intent == "mnq_order_routed"]
-    assert len(routed) == 20, (
-        f"expected 20 routed events, got {len(routed)}"
-    )
+    assert len(routed) == 20, f"expected 20 routed events, got {len(routed)}"
 
     # 10 blocked orders in KILL phase
     blocked = [e for e in events if e.intent == "mnq_order_blocked"]
-    assert len(blocked) == 10, (
-        f"expected 10 blocked events, got {len(blocked)}"
-    )
+    assert len(blocked) == 10, f"expected 10 blocked events, got {len(blocked)}"
 
     # Outcome distribution: EXECUTED >= 21 (20 routes + 1 start),
     # BLOCKED >= 10 (the kill denials)
@@ -218,9 +227,7 @@ async def test_30_bar_session_trade_reduce_kill(tmp_path: Path) -> None:
     # Every _ask_jarvis call should have appended to the admin's
     # audit trail (30 entries = 1 start + 20 trade/reduce + 10 kill).
     audit = jarvis.audit_tail(n=100)
-    assert len(audit) >= 31, (
-        f"jarvis audit should have >=31 entries, got {len(audit)}"
-    )
+    assert len(audit) >= 31, f"jarvis audit should have >=31 entries, got {len(audit)}"
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,7 @@ class _StaticStream:
             for tick in self._ticks:
                 yield tick
                 await asyncio.sleep(0)
+
         return gen()
 
 
@@ -49,6 +50,7 @@ class _RaisingStream:
             yield {"symbol": "MNQ", "close": 21500.0}
             await asyncio.sleep(0)
             raise RuntimeError("upstream feed exploded")
+
         return gen()
 
 
@@ -62,6 +64,7 @@ class _InfiniteStream:
                 yield {"symbol": "BTC", "close": 60000.0 + i, "idx": i}
                 i += 1
                 await asyncio.sleep(0)
+
         return gen()
 
 
@@ -183,7 +186,9 @@ async def test_external_stop_event_terminates_run(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_hits_max_ticks_and_stops(tmp_path: Path) -> None:
     cfg = CollectorConfig(
-        out_dir=tmp_path, jarvis_interval_s=0.01, max_ticks=4,
+        out_dir=tmp_path,
+        jarvis_interval_s=0.01,
+        max_ticks=4,
     )
     collector = DualDataCollector(
         config=cfg,

@@ -82,14 +82,18 @@ def fake_session() -> _FakeSession:
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_place_order_http_success(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "retCode": 0,
-        "retMsg": "OK",
-        "result": {"orderId": "4e7f6d2d", "orderLinkId": "link-1"},
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "retCode": 0,
+            "retMsg": "OK",
+            "result": {"orderId": "4e7f6d2d", "orderLinkId": "link-1"},
+        },
+    )
     req = OrderRequest(symbol="ETHUSDT", side=Side.BUY, qty=0.5)
     res = await creds_venue.place_order(req)
     assert res.status is OrderStatus.OPEN
@@ -110,14 +114,18 @@ async def test_place_order_http_success(
 
 @pytest.mark.asyncio
 async def test_place_order_retcode_nonzero_is_rejected(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "retCode": 110007,
-        "retMsg": "insufficient balance",
-        "result": {"orderLinkId": "link-2"},
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "retCode": 110007,
+            "retMsg": "insufficient balance",
+            "result": {"orderLinkId": "link-2"},
+        },
+    )
     req = OrderRequest(symbol="ETHUSDT", side=Side.BUY, qty=999)
     res = await creds_venue.place_order(req)
     assert res.status is OrderStatus.REJECTED
@@ -126,7 +134,8 @@ async def test_place_order_retcode_nonzero_is_rejected(
 
 @pytest.mark.asyncio
 async def test_place_order_http_5xx_is_rejected(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(503, {"error": "service unavailable"})
@@ -152,7 +161,8 @@ async def test_place_order_no_creds_returns_mock() -> None:
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_cancel_order_http_success(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"retCode": 0, "retMsg": "OK", "result": {}})
@@ -167,7 +177,8 @@ async def test_cancel_order_http_success(
 
 @pytest.mark.asyncio
 async def test_cancel_order_retcode_nonzero_returns_false(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"retCode": 110001, "retMsg": "order not exist"})
@@ -180,13 +191,17 @@ async def test_cancel_order_retcode_nonzero_returns_false(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_get_positions_parses_list(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "retCode": 0,
-        "result": {"list": [{"symbol": "ETHUSDT", "size": "0.5"}]},
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "retCode": 0,
+            "result": {"list": [{"symbol": "ETHUSDT", "size": "0.5"}]},
+        },
+    )
     positions = await creds_venue.get_positions("ETHUSDT")
     assert positions == [{"symbol": "ETHUSDT", "size": "0.5"}]
     assert "/v5/position/list" in fake_session.calls[-1]["url"]
@@ -195,23 +210,34 @@ async def test_get_positions_parses_list(
 
 @pytest.mark.asyncio
 async def test_get_balance_sums_unified_coin(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "retCode": 0,
-        "result": {"list": [{"coin": [
-            {"coin": "USDT", "walletBalance": "1234.56"},
-            {"coin": "BTC", "walletBalance": "0.1"},
-        ]}]},
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "retCode": 0,
+            "result": {
+                "list": [
+                    {
+                        "coin": [
+                            {"coin": "USDT", "walletBalance": "1234.56"},
+                            {"coin": "BTC", "walletBalance": "0.1"},
+                        ]
+                    }
+                ]
+            },
+        },
+    )
     bal = await creds_venue.get_balance("USDT")
     assert bal == {"USDT": 1234.56}
 
 
 @pytest.mark.asyncio
 async def test_get_balance_retcode_failure_returns_zero(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"retCode": 10001, "retMsg": "nope"})
@@ -224,7 +250,8 @@ async def test_get_balance_retcode_failure_returns_zero(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_set_leverage_posts_payload(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"retCode": 0})
@@ -237,7 +264,8 @@ async def test_set_leverage_posts_payload(
 
 @pytest.mark.asyncio
 async def test_set_isolated_margin_treats_already_isolated_as_success(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
     fake_session.enqueue(200, {"retCode": 110026, "retMsg": "already isolated"})
@@ -258,16 +286,24 @@ async def test_close_closes_session(creds_venue: BybitVenue, fake_session: _Fake
 
 @pytest.mark.asyncio
 async def test_place_limit_order_includes_price(
-    creds_venue: BybitVenue, fake_session: _FakeSession,
+    creds_venue: BybitVenue,
+    fake_session: _FakeSession,
 ) -> None:
     creds_venue._session = fake_session
-    fake_session.enqueue(200, {
-        "retCode": 0, "retMsg": "OK",
-        "result": {"orderId": "lim-1", "orderLinkId": "lnk"},
-    })
+    fake_session.enqueue(
+        200,
+        {
+            "retCode": 0,
+            "retMsg": "OK",
+            "result": {"orderId": "lim-1", "orderLinkId": "lnk"},
+        },
+    )
     req = OrderRequest(
-        symbol="ETHUSDT", side=Side.BUY, qty=0.1,
-        order_type=OrderType.LIMIT, price=2500.0,
+        symbol="ETHUSDT",
+        side=Side.BUY,
+        qty=0.1,
+        order_type=OrderType.LIMIT,
+        price=2500.0,
     )
     res = await creds_venue.place_order(req)
     assert res.status is OrderStatus.OPEN

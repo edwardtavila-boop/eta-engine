@@ -1,4 +1,5 @@
 """Tests for eta_engine.brain.indicator_suite -- regime-aware weighting."""
+
 from __future__ import annotations
 
 import pytest
@@ -145,8 +146,11 @@ def test_score_regime_aware_crisis_scores_lower_than_default() -> None:
 
 def test_score_regime_aware_returns_full_confluence_result_shape() -> None:
     res = score_confluence_regime_aware(
-        trend_bias=0.5, vol_regime=0.5, funding_skew=0.0005,
-        onchain_delta=0.5, sentiment=0.5,
+        trend_bias=0.5,
+        vol_regime=0.5,
+        funding_skew=0.0005,
+        onchain_delta=0.5,
+        sentiment=0.5,
         regime=RegimeType.TRENDING,
     )
     assert hasattr(res, "total_score")
@@ -160,12 +164,16 @@ def test_score_regime_aware_returns_full_confluence_result_shape() -> None:
 def test_score_regime_aware_restores_default_weights_after_call() -> None:
     # Pre-capture defaults
     import eta_engine.core.confluence_scorer as scorer  # noqa: PLC0415
+
     before = dict(scorer.WEIGHT_TABLE)
     before_total = scorer._TOTAL_WEIGHT
 
     score_confluence_regime_aware(
-        trend_bias=0.5, vol_regime=0.5, funding_skew=0.0005,
-        onchain_delta=0.5, sentiment=0.5,
+        trend_bias=0.5,
+        vol_regime=0.5,
+        funding_skew=0.0005,
+        onchain_delta=0.5,
+        sentiment=0.5,
         regime=RegimeType.CRISIS,
     )
     assert dict(scorer.WEIGHT_TABLE) == before
@@ -176,17 +184,23 @@ def test_score_regime_aware_restores_defaults_even_on_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import eta_engine.core.confluence_scorer as scorer  # noqa: PLC0415
+
     before = dict(scorer.WEIGHT_TABLE)
 
     def boom(**_kw: object) -> None:
         raise RuntimeError("scorer exploded")
+
     monkeypatch.setattr(
-        "eta_engine.brain.indicator_suite.score_confluence", boom,
+        "eta_engine.brain.indicator_suite.score_confluence",
+        boom,
     )
     with pytest.raises(RuntimeError, match="exploded"):
         score_confluence_regime_aware(
-            trend_bias=0.5, vol_regime=0.5, funding_skew=0.0005,
-            onchain_delta=0.5, sentiment=0.5,
+            trend_bias=0.5,
+            vol_regime=0.5,
+            funding_skew=0.0005,
+            onchain_delta=0.5,
+            sentiment=0.5,
             regime=RegimeType.TRENDING,
         )
     # Weights still restored
@@ -200,17 +214,20 @@ def test_score_regime_aware_restores_defaults_even_on_exception(
 
 def _fake_result(name: str, score: float) -> FeatureResult:
     return FeatureResult(
-        name=name, raw_value=score, normalized_score=score, weight=1.0,
+        name=name,
+        raw_value=score,
+        normalized_score=score,
+        weight=1.0,
     )
 
 
 def test_weighted_confluence_tuple_returns_five_floats() -> None:
     results = {
-        "trend_bias":    _fake_result("trend_bias",    0.8),
-        "vol_regime":    _fake_result("vol_regime",    0.6),
-        "funding_skew":  _fake_result("funding_skew",  0.4),
+        "trend_bias": _fake_result("trend_bias", 0.8),
+        "vol_regime": _fake_result("vol_regime", 0.6),
+        "funding_skew": _fake_result("funding_skew", 0.4),
         "onchain_delta": _fake_result("onchain_delta", 0.5),
-        "sentiment":     _fake_result("sentiment",     0.5),
+        "sentiment": _fake_result("sentiment", 0.5),
     }
     t = weighted_confluence_tuple(results, RegimeType.TRENDING)
     assert len(t) == 5
@@ -224,11 +241,11 @@ def test_weighted_confluence_tuple_upscales_trend_in_trending() -> None:
     # One perfect trend-bias score, everything else zero. Verify the
     # slot-0 value is proportional to the regime weight for trend_bias.
     results = {
-        "trend_bias":    _fake_result("trend_bias",    1.0),
-        "vol_regime":    _fake_result("vol_regime",    0.0),
-        "funding_skew":  _fake_result("funding_skew",  0.0),
+        "trend_bias": _fake_result("trend_bias", 1.0),
+        "vol_regime": _fake_result("vol_regime", 0.0),
+        "funding_skew": _fake_result("funding_skew", 0.0),
         "onchain_delta": _fake_result("onchain_delta", 0.0),
-        "sentiment":     _fake_result("sentiment",     0.0),
+        "sentiment": _fake_result("sentiment", 0.0),
     }
     trending = weighted_confluence_tuple(results, RegimeType.TRENDING)
     ranging = weighted_confluence_tuple(results, RegimeType.RANGING)
@@ -240,7 +257,7 @@ def test_weighted_confluence_tuple_handles_missing_features() -> None:
     # Only 2 of the 5 features populated -- rest should be 0
     results = {
         "trend_bias": _fake_result("trend_bias", 1.0),
-        "sentiment":  _fake_result("sentiment",  1.0),
+        "sentiment": _fake_result("sentiment", 1.0),
     }
     t = weighted_confluence_tuple(results, RegimeType.TRENDING)
     # Index 0 = trend_bias, 4 = sentiment, others zero

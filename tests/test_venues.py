@@ -29,7 +29,6 @@ from eta_engine.venues.router import CircuitBreaker
 
 
 class TestOrderRequest:
-
     def test_valid_request(self) -> None:
         req = OrderRequest(symbol="ETH/USDT:USDT", side=Side.BUY, qty=0.5, order_type=OrderType.LIMIT, price=3500.0)
         assert req.qty == 0.5
@@ -46,7 +45,6 @@ class TestOrderRequest:
 
 
 class TestIdempotency:
-
     def test_idempotency_deterministic(self) -> None:
         venue = BybitVenue()
         req = OrderRequest(symbol="ETH/USDT:USDT", side=Side.BUY, qty=0.5, price=3500.0)
@@ -66,7 +64,6 @@ class TestIdempotency:
 
 
 class TestBybitSigning:
-
     def test_bybit_signing_deterministic(self) -> None:
         venue = BybitVenue(api_key="KEY", api_secret="SECRET")
         sig_a = venue._sign("1700000000000", "5000", '{"symbol":"ETHUSDT"}')
@@ -101,7 +98,6 @@ class TestBybitSigning:
 
 
 class TestTradovateContracts:
-
     def test_tradovate_contract_resolution_quarterly(self) -> None:
         venue = TradovateVenue()
         # Mid-January 2026 → should pick March (H) contract
@@ -130,7 +126,6 @@ class TestTradovateContracts:
 
 
 class TestCircuitBreaker:
-
     def test_circuit_breaker_opens_after_threshold(self) -> None:
         cb = CircuitBreaker(failure_threshold=3, reset_timeout_s=60)
         assert cb.is_open() is False
@@ -157,7 +152,6 @@ class TestCircuitBreaker:
 
 
 class TestSmartRouter:
-
     def test_crypto_routes_to_bybit(self) -> None:
         router = SmartRouter()
         assert isinstance(router.choose_venue("ETH/USDT:USDT", 0.5), BybitVenue)

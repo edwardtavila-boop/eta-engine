@@ -48,6 +48,7 @@ Hardening modules (opt-in; compose via ``HardenedFleet``)
   * ``PushBus``          -- Pushover / Telegram / local alert fan-out
   * ``Watchdog``         -- sibling-daemon healer
 """
+
 from eta_engine.brain.avengers.adaptive_cron import (
     GateDecision,
     RegimeGate,

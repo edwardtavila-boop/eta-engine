@@ -19,6 +19,7 @@ tier-B parameter sweeps and the 6-agent Firm board. Its guarantees are:
 A silent regression would either let a KILL'd candidate slip through
 or crash the sweep on a bad board run.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -88,8 +89,7 @@ def drill_firm_gate(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
             "firm_gate",
             passed=False,
             details=(
-                f"raising runner was not coerced to HOLD fallback "
-                f"(code={raised.code}, promotes={raised.promotes})"
+                f"raising runner was not coerced to HOLD fallback (code={raised.code}, promotes={raised.promotes})"
             ),
         )
 
@@ -121,10 +121,10 @@ def drill_firm_gate(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         passed=True,
         details="GO promoted; KILL / raising runner / None runner all coerced to a non-promoting verdict",
         observed={
-            "go":       go.code.value,
-            "kill":     kill.code.value,
-            "raised":   raised.code.value,
-            "missing":  missing.code.value,
+            "go": go.code.value,
+            "kill": kill.code.value,
+            "raised": raised.code.value,
+            "missing": missing.code.value,
             "promoted_ids": [c.strategy_id for c in promoted],
         },
     )

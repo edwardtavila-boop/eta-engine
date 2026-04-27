@@ -47,6 +47,7 @@ Every row looks like::
 * ``BLOCKED`` when kill-switch / risk-gate refused the signal.
 * ``NOTED`` (default) when we only want to audit the decision.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -24,6 +24,7 @@ hostile market.
 
 No SDK coupling, no live order flow. Pure offline analysis.
 """
+
 from __future__ import annotations
 
 import logging
@@ -115,11 +116,7 @@ def _fill_price(stop_price: float, side: Side, policy: StopHuntPolicy) -> float:
 
 def _pnl_usd(position: Position, fill_price: float) -> float:
     """Realized PnL if position hit a stop-out at ``fill_price``."""
-    delta = (
-        fill_price - position.entry_price
-        if position.side == "long"
-        else position.entry_price - fill_price
-    )
+    delta = fill_price - position.entry_price if position.side == "long" else position.entry_price - fill_price
     return float(delta * position.size_contracts * position.point_value_usd)
 
 
@@ -163,16 +160,18 @@ def simulate(
             slip_ticks = 0.0
             pnl = 0.0
 
-        results.append(PositionResult(
-            symbol=pos.symbol,
-            side=pos.side,
-            entry_price=pos.entry_price,
-            stop_price=pos.stop_price,
-            hunt_fill_price=round(fill_price, 4),
-            slippage_ticks=slip_ticks,
-            pnl_usd=round(pnl, 2),
-            hunted=hunted,
-        ))
+        results.append(
+            PositionResult(
+                symbol=pos.symbol,
+                side=pos.side,
+                entry_price=pos.entry_price,
+                stop_price=pos.stop_price,
+                hunt_fill_price=round(fill_price, 4),
+                slippage_ticks=slip_ticks,
+                pnl_usd=round(pnl, 2),
+                hunted=hunted,
+            )
+        )
 
     total_pnl = float(sum(r.pnl_usd for r in results))
     hit_rate = float(sum(1 for r in results if r.hunted) / max(len(results), 1))
@@ -187,10 +186,7 @@ def simulate(
 
     # Robustness score: fraction of equity left after adversarial drain, floored at 0.
     # We approximate "equity at risk" as sum of abs(entry - stop) * size * point_value.
-    total_risk = float(sum(
-        abs(p.entry_price - p.stop_price) * p.size_contracts * p.point_value_usd
-        for p in positions
-    ))
+    total_risk = float(sum(abs(p.entry_price - p.stop_price) * p.size_contracts * p.point_value_usd for p in positions))
     if total_risk > 0:
         drain_ratio = min(abs(total_pnl) / total_risk, 1.0) if total_pnl < 0 else 0.0
         robustness = max(0.0, 1.0 - drain_ratio)
@@ -204,7 +200,10 @@ def simulate(
 
     logger.info(
         "stop_hunt_sim | positions=%d hit_rate=%.2f total_pnl=%.2f robustness=%.3f",
-        len(positions), hit_rate, total_pnl, robustness,
+        len(positions),
+        hit_rate,
+        total_pnl,
+        robustness,
     )
 
     return StopHuntReport(

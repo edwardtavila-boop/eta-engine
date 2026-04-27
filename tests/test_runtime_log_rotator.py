@@ -37,6 +37,7 @@ TestEdgeCases
   Missing parent dir -> gzip / prune no-op.
   Same-second rotation collision -> archive name gets a counter suffix.
 """
+
 from __future__ import annotations
 
 import gzip
@@ -75,7 +76,6 @@ def _set_mtime(path: Path, age_seconds: float) -> None:
 
 
 class TestConstructorValidation:
-
     def test_default_values_are_sensible(self, tmp_path: Path) -> None:
         rotator = RuntimeLogRotator(log_path=tmp_path / "rt.jsonl")
         assert rotator.rotate_at_size_bytes == DEFAULT_ROTATE_AT_SIZE_BYTES
@@ -125,12 +125,12 @@ class TestConstructorValidation:
 
 
 class TestSizeTriggeredRotation:
-
     def test_under_threshold_is_noop(self, tmp_path: Path) -> None:
         log = tmp_path / "rt.jsonl"
         _write_bytes(log, 100)
         rotator = RuntimeLogRotator(
-            log_path=log, rotate_at_size_bytes=10_000,
+            log_path=log,
+            rotate_at_size_bytes=10_000,
         )
         result = rotator.maybe_rotate(datetime.now(UTC))
         assert result is None
@@ -138,12 +138,14 @@ class TestSizeTriggeredRotation:
         assert rotator.stats.rotations == 0
 
     def test_over_threshold_renames_to_timestamped_archive(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         log = tmp_path / "rt.jsonl"
         _write_bytes(log, 5_000)
         rotator = RuntimeLogRotator(
-            log_path=log, rotate_at_size_bytes=1_000,
+            log_path=log,
+            rotate_at_size_bytes=1_000,
         )
         now = datetime(2026, 4, 25, 17, 30, 45, tzinfo=UTC)
         archive = rotator.maybe_rotate(now)
@@ -163,12 +165,14 @@ class TestSizeTriggeredRotation:
         assert rotator.stats.rotations == 0
 
     def test_same_second_collision_appends_counter(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         log = tmp_path / "rt.jsonl"
         _write_bytes(log, 5_000)
         rotator = RuntimeLogRotator(
-            log_path=log, rotate_at_size_bytes=1_000,
+            log_path=log,
+            rotate_at_size_bytes=1_000,
         )
         now = datetime(2026, 4, 25, 17, 30, 45, tzinfo=UTC)
         first = rotator.maybe_rotate(now)
@@ -187,7 +191,6 @@ class TestSizeTriggeredRotation:
 
 
 class TestGzipAged:
-
     def test_recent_archive_not_gzipped(self, tmp_path: Path) -> None:
         archive = tmp_path / "rt.2026-04-25T15-00-00Z.jsonl"
         _write_bytes(archive, 1_000)
@@ -223,7 +226,8 @@ class TestGzipAged:
         assert rotator.stats.gzipped == 1
 
     def test_existing_gz_with_stale_uncompressed_cleans_up(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         archive = tmp_path / "rt.2026-04-25T01-00-00Z.jsonl"
         archive.write_bytes(b"stale leftover")
@@ -249,7 +253,6 @@ class TestGzipAged:
 
 
 class TestPruneAged:
-
     def test_recent_gzipped_archive_kept(self, tmp_path: Path) -> None:
         gz = tmp_path / "rt.2026-04-25T01-00-00Z.jsonl.gz"
         gz.write_bytes(b"")
@@ -284,7 +287,6 @@ class TestPruneAged:
 
 
 class TestRunComposition:
-
     def test_run_chains_rotate_gzip_prune(self, tmp_path: Path) -> None:
         log = tmp_path / "rt.jsonl"
         _write_bytes(log, 5_000)
@@ -314,12 +316,12 @@ class TestRunComposition:
 
 
 class TestStats:
-
     def test_stats_increment_across_calls(self, tmp_path: Path) -> None:
         log = tmp_path / "rt.jsonl"
         _write_bytes(log, 5_000)
         rotator = RuntimeLogRotator(
-            log_path=log, rotate_at_size_bytes=1_000,
+            log_path=log,
+            rotate_at_size_bytes=1_000,
         )
         rotator.maybe_rotate(datetime.now(UTC))
         _write_bytes(log, 5_000)
@@ -328,7 +330,8 @@ class TestStats:
         assert rotator.stats.rotations == 2
 
     def test_run_with_no_changes_increments_nothing(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         rotator = RuntimeLogRotator(
             log_path=tmp_path / "rt.jsonl",
@@ -347,7 +350,6 @@ class TestStats:
 
 
 class TestEdgeCases:
-
     def test_missing_parent_dir_does_not_crash(self, tmp_path: Path) -> None:
         rotator = RuntimeLogRotator(
             log_path=tmp_path / "nope" / "rt.jsonl",

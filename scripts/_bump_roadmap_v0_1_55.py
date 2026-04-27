@@ -62,6 +62,7 @@ Delta
   * Ruff-clean on every new file
   * No phase-level status change (overall_progress_pct stays at 99)
 """
+
 from __future__ import annotations
 
 import json
@@ -134,8 +135,7 @@ def main() -> None:
                 "via --fail-under."
             ),
             "mobile_push_severity_gated": (
-                "Default min_severity=CRITICAL. Operator not "
-                "woken for INFO / WARN chatter. Per-bus override."
+                "Default min_severity=CRITICAL. Operator not woken for INFO / WARN chatter. Per-bus override."
             ),
             "cost_ledger_sonnet_equiv_units": (
                 "$ price per token can change without "
@@ -181,8 +181,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

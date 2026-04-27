@@ -17,6 +17,7 @@ Usage:
     --zone evolutionarytradingalgo.live \
     --hostname status
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,8 +46,7 @@ def die(msg: str) -> None:
 def api(token: str) -> httpx.Client:
     return httpx.Client(
         base_url=CF_API,
-        headers={"Authorization": f"Bearer {token}",
-                 "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=60.0,
     )
 
@@ -61,8 +61,7 @@ def get_account_id(client: httpx.Client, zone: str) -> tuple[str, str]:
     return z["account"]["id"], z["id"]
 
 
-def ensure_project(client: httpx.Client, account_id: str, project: str,
-                   production_branch: str = "main") -> dict:
+def ensure_project(client: httpx.Client, account_id: str, project: str, production_branch: str = "main") -> dict:
     """Create the Pages project if missing. Returns the project record."""
     # Check existing
     r = client.get(f"/accounts/{account_id}/pages/projects/{project}")
@@ -82,8 +81,7 @@ def ensure_project(client: httpx.Client, account_id: str, project: str,
     return j["result"]
 
 
-def direct_upload(client: httpx.Client, account_id: str, project: str,
-                  source_dir: Path, branch: str = "main") -> dict:
+def direct_upload(client: httpx.Client, account_id: str, project: str, source_dir: Path, branch: str = "main") -> dict:
     """Upload the static files via direct-upload API.
 
     The CF direct-upload flow:
@@ -105,7 +103,8 @@ def direct_upload(client: httpx.Client, account_id: str, project: str,
 
     # Build a tar.gz archive with files at the TOP level (no wrapping dir)
     with tempfile.NamedTemporaryFile(
-        suffix=".tar.gz", delete=False,
+        suffix=".tar.gz",
+        delete=False,
     ) as tmp:
         tar_path = Path(tmp.name)
     try:
@@ -120,7 +119,9 @@ def direct_upload(client: httpx.Client, account_id: str, project: str,
             r = httpx.post(
                 f"{CF_API}/accounts/{account_id}/pages/projects/{project}/deployments",
                 headers={"Authorization": client.headers["Authorization"]},
-                files=files_arg, data=data, timeout=120.0,
+                files=files_arg,
+                data=data,
+                timeout=120.0,
             )
         j = r.json()
         if not j.get("success"):
@@ -131,28 +132,25 @@ def direct_upload(client: httpx.Client, account_id: str, project: str,
         return dep
     finally:
         import contextlib
+
         with contextlib.suppress(OSError):
             tar_path.unlink()
 
 
-def ensure_cname(client: httpx.Client, zone_id: str, hostname: str,
-                 target: str) -> dict:
+def ensure_cname(client: httpx.Client, zone_id: str, hostname: str, target: str) -> dict:
     """Create or update CNAME."""
     # Check existing
     r = client.get(f"/zones/{zone_id}/dns_records?name={hostname}&type=CNAME")
     j = r.json()
     if j.get("result"):
         rec = j["result"][0]
-        body = {"type": "CNAME", "name": hostname, "content": target,
-                "proxied": True, "ttl": 1}
-        r = client.put(f"/zones/{zone_id}/dns_records/{rec['id']}",
-                       json=body)
+        body = {"type": "CNAME", "name": hostname, "content": target, "proxied": True, "ttl": 1}
+        r = client.put(f"/zones/{zone_id}/dns_records/{rec['id']}", json=body)
         if r.json().get("success"):
             print(f"[OK] updated CNAME {hostname} -> {target}")
             return r.json()["result"]
         die(f"CNAME update failed: {r.text[:300]}")
-    body = {"type": "CNAME", "name": hostname, "content": target,
-            "proxied": True, "ttl": 1}
+    body = {"type": "CNAME", "name": hostname, "content": target, "proxied": True, "ttl": 1}
     r = client.post(f"/zones/{zone_id}/dns_records", json=body)
     j = r.json()
     if not j.get("success"):
@@ -161,8 +159,7 @@ def ensure_cname(client: httpx.Client, zone_id: str, hostname: str,
     return j["result"]
 
 
-def attach_custom_domain(client: httpx.Client, account_id: str, project: str,
-                        hostname: str) -> dict:
+def attach_custom_domain(client: httpx.Client, account_id: str, project: str, hostname: str) -> dict:
     """Attach hostname as a custom domain on the Pages project."""
     # Check existing
     r = client.get(f"/accounts/{account_id}/pages/projects/{project}/domains")
@@ -177,8 +174,7 @@ def attach_custom_domain(client: httpx.Client, account_id: str, project: str,
     j = r.json()
     if not j.get("success"):
         # Not fatal -- Pages sometimes needs the DNS to propagate first
-        print(f"[WARN] custom domain attach failed "
-              f"(will auto-retry later): {json.dumps(j)[:200]}")
+        print(f"[WARN] custom domain attach failed (will auto-retry later): {json.dumps(j)[:200]}")
         return {"name": hostname, "deferred": True}
     print(f"[OK] attached custom domain {hostname}")
     return j["result"]
@@ -186,14 +182,10 @@ def attach_custom_domain(client: httpx.Client, account_id: str, project: str,
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--project", default="apex-status",
-                    help="Cloudflare Pages project name")
+    ap.add_argument("--project", default="apex-status", help="Cloudflare Pages project name")
     ap.add_argument("--zone", required=True, help="CF zone, e.g. evolutionarytradingalgo.live")
-    ap.add_argument("--hostname", default="status",
-                    help="hostname prefix (status -> status.evolutionarytradingalgo.live)")
-    ap.add_argument("--source", default=str(
-        Path(__file__).resolve().parent.parent / "status_page"
-    ))
+    ap.add_argument("--hostname", default="status", help="hostname prefix (status -> status.evolutionarytradingalgo.live)")
+    ap.add_argument("--source", default=str(Path(__file__).resolve().parent.parent / "status_page"))
     args = ap.parse_args(argv)
 
     token = os.environ.get("CF_API_TOKEN", "").strip()

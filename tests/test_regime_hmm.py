@@ -8,6 +8,7 @@ Covers:
   * EM guarantees: log-likelihood non-decreasing across iterations
   * regime mapper: map_to_regime_labels produces RegimeType values
 """
+
 from __future__ import annotations
 
 import math
@@ -26,6 +27,7 @@ from eta_engine.brain.regime_hmm import (
 # ---------------------------------------------------------------------------
 # Constructor + shape sanity
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_k_states_at_least_one(self) -> None:
@@ -50,6 +52,7 @@ class TestConstruction:
 # ---------------------------------------------------------------------------
 # Fit -- degenerate + bimodal
 # ---------------------------------------------------------------------------
+
 
 class TestFitDegenerate:
     def test_fit_empty_raises(self) -> None:
@@ -140,9 +143,7 @@ class TestFitBimodal:
 class TestEmMonotonicity:
     def test_log_likelihood_non_decreasing_across_iterations(self) -> None:
         rng = random.Random(61)
-        xs = [rng.gauss(0.0, 0.005) for _ in range(150)] + [
-            rng.gauss(0.0, 0.025) for _ in range(150)
-        ]
+        xs = [rng.gauss(0.0, 0.005) for _ in range(150)] + [rng.gauss(0.0, 0.025) for _ in range(150)]
         hmm = GaussianHMM(n_states=2, max_iter=30, tol=1e-12, random_seed=5)
         result = hmm.fit(xs)
         # Accept tiny float drift but reject true decreases
@@ -156,14 +157,13 @@ class TestEmMonotonicity:
 # Transition-matrix recovery
 # ---------------------------------------------------------------------------
 
+
 class TestTransitionMatrixRecovery:
     def test_persistent_states_have_high_self_transition(self) -> None:
         """If the data is two long blocks, A[0][0] and A[1][1] should be large."""
         rng = random.Random(97)
         # 500 calm, then 500 turbulent -- switches exactly once
-        xs = [rng.gauss(0.0, 0.005) for _ in range(500)] + [
-            rng.gauss(0.0, 0.025) for _ in range(500)
-        ]
+        xs = [rng.gauss(0.0, 0.005) for _ in range(500)] + [rng.gauss(0.0, 0.025) for _ in range(500)]
         hmm = GaussianHMM(n_states=2, max_iter=60, tol=1e-5, random_seed=7)
         result = hmm.fit(xs)
         # Both self-transition probs should be > 0.95 for near-permanent states
@@ -174,6 +174,7 @@ class TestTransitionMatrixRecovery:
 # ---------------------------------------------------------------------------
 # Posterior probabilities -- shape + normalization
 # ---------------------------------------------------------------------------
+
 
 class TestPosteriorProbs:
     def test_rows_sum_to_one(self) -> None:
@@ -194,11 +195,12 @@ class TestPosteriorProbs:
 # Regime label mapper
 # ---------------------------------------------------------------------------
 
+
 class TestMapToRegimeLabels:
     def test_single_state_maps_to_transition(self) -> None:
         labels = map_to_regime_labels(
             means=[0.0],
-            variances=[0.01 ** 2],
+            variances=[0.01**2],
         )
         assert len(labels) == 1
         assert labels[0] == RegimeType.TRANSITION
@@ -207,7 +209,7 @@ class TestMapToRegimeLabels:
         # index 0 has small variance, index 1 has big variance
         labels = map_to_regime_labels(
             means=[0.0, 0.0],
-            variances=[0.005 ** 2, 0.030 ** 2],
+            variances=[0.005**2, 0.030**2],
         )
         assert labels[0] == RegimeType.LOW_VOL
         assert labels[1] == RegimeType.HIGH_VOL
@@ -216,7 +218,7 @@ class TestMapToRegimeLabels:
         # One state has positive drift >> noise; classifier calls it TRENDING
         labels = map_to_regime_labels(
             means=[0.0, 0.005],
-            variances=[0.010 ** 2, 0.003 ** 2],
+            variances=[0.010**2, 0.003**2],
         )
         assert RegimeType.TRENDING in labels
 
@@ -228,6 +230,7 @@ class TestMapToRegimeLabels:
 # ---------------------------------------------------------------------------
 # canonicalize_states -- label-switching defense
 # ---------------------------------------------------------------------------
+
 
 class TestCanonicalizeStates:
     """Risk-advocate blocker #1: EM has no canonical state ordering.
@@ -367,6 +370,7 @@ class TestCanonicalizeStates:
 # Absolute drift floor -- risk-advocate blocker #2
 # ---------------------------------------------------------------------------
 
+
 class TestMapToRegimeLabelsAbsoluteDriftFloor:
     """On 5m returns, realistic drift is ~1e-4; one-bar noise is ~1e-3.
 
@@ -408,6 +412,7 @@ class TestMapToRegimeLabelsAbsoluteDriftFloor:
 # ---------------------------------------------------------------------------
 # BIC / AIC -- risk-advocate blocker #3 (model selection)
 # ---------------------------------------------------------------------------
+
 
 class TestBicAic:
     """The pipeline pins ``n_states=2`` but callers need a principled way
@@ -482,6 +487,7 @@ class TestBicAic:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _var(xs: list[float]) -> float:
     n = len(xs)

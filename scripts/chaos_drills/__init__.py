@@ -17,6 +17,7 @@ Register each drill in :mod:`eta_engine.scripts.chaos_drill`'s
 ``DRILL_FUNCS`` table so ``python -m eta_engine.scripts.chaos_drill all``
 exercises it in the monthly drill run.
 """
+
 from __future__ import annotations
 
 from eta_engine.scripts.chaos_drills.cftc_nfa_compliance_drill import (

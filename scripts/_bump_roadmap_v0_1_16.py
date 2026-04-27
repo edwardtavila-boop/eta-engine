@@ -15,6 +15,7 @@ Closes:
 
 Bumps tests_passing 648 -> 752, P12_POLISH 20% -> 95%, overall 97 -> 98.
 """
+
 from __future__ import annotations
 
 import json

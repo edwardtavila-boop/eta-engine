@@ -1,4 +1,5 @@
 """Tests for eta_engine.core.l2_capture."""
+
 from __future__ import annotations
 
 import io
@@ -19,10 +20,14 @@ from eta_engine.core.l2_capture import (
 _T0 = datetime(2025, 1, 1, tzinfo=UTC)
 
 
-def _snap(symbol: str = "BTCUSDT", *, seq: int | None = 1,
-          bids: list[list[float]] | None = None,
-          asks: list[list[float]] | None = None,
-          ts: datetime | None = None) -> L2Update:
+def _snap(
+    symbol: str = "BTCUSDT",
+    *,
+    seq: int | None = 1,
+    bids: list[list[float]] | None = None,
+    asks: list[list[float]] | None = None,
+    ts: datetime | None = None,
+) -> L2Update:
     return L2Update(
         timestamp=ts or _T0,
         symbol=symbol,
@@ -33,10 +38,14 @@ def _snap(symbol: str = "BTCUSDT", *, seq: int | None = 1,
     )
 
 
-def _delta(symbol: str = "BTCUSDT", *, seq: int | None,
-           bids: list[list[float]] | None = None,
-           asks: list[list[float]] | None = None,
-           ts: datetime | None = None) -> L2Update:
+def _delta(
+    symbol: str = "BTCUSDT",
+    *,
+    seq: int | None,
+    bids: list[list[float]] | None = None,
+    asks: list[list[float]] | None = None,
+    ts: datetime | None = None,
+) -> L2Update:
     return L2Update(
         timestamp=ts or _T0,
         symbol=symbol,
@@ -55,36 +64,45 @@ def _delta(symbol: str = "BTCUSDT", *, seq: int | None,
 def test_update_rejects_malformed_level_pair() -> None:
     with pytest.raises(ValueError, match="price, qty"):
         L2Update(
-            timestamp=_T0, symbol="X",
+            timestamp=_T0,
+            symbol="X",
             update_type=L2UpdateType.SNAPSHOT,
-            bids=[[100.0]], asks=[],
+            bids=[[100.0]],
+            asks=[],
         )
 
 
 def test_update_rejects_non_positive_price() -> None:
     with pytest.raises(ValueError, match="price"):
         L2Update(
-            timestamp=_T0, symbol="X",
+            timestamp=_T0,
+            symbol="X",
             update_type=L2UpdateType.SNAPSHOT,
-            bids=[[0.0, 1.0]], asks=[],
+            bids=[[0.0, 1.0]],
+            asks=[],
         )
 
 
 def test_update_rejects_negative_qty() -> None:
     with pytest.raises(ValueError, match="qty"):
         L2Update(
-            timestamp=_T0, symbol="X",
+            timestamp=_T0,
+            symbol="X",
             update_type=L2UpdateType.SNAPSHOT,
-            bids=[[100.0, -1.0]], asks=[],
+            bids=[[100.0, -1.0]],
+            asks=[],
         )
 
 
 def test_update_allows_zero_qty_in_delta() -> None:
     # qty=0 is valid (signals remove). L2Update itself accepts >= 0.
     u = L2Update(
-        timestamp=_T0, symbol="X",
+        timestamp=_T0,
+        symbol="X",
         update_type=L2UpdateType.DELTA,
-        bids=[[100.0, 0.0]], asks=[], seq=2,
+        bids=[[100.0, 0.0]],
+        asks=[],
+        seq=2,
     )
     assert u.bids == [[100.0, 0.0]]
 
@@ -153,11 +171,9 @@ def test_snapshot_drops_zero_qty_levels() -> None:
 
 def test_delta_upserts_and_removes() -> None:
     book = L2OrderBookState(symbol="X")
-    book.apply(_snap("X", bids=[[100.0, 1.0], [99.0, 2.0]],
-                     asks=[[101.0, 1.0], [102.0, 2.0]], seq=1))
+    book.apply(_snap("X", bids=[[100.0, 1.0], [99.0, 2.0]], asks=[[101.0, 1.0], [102.0, 2.0]], seq=1))
     # Upsert 100 -> 5, remove 99, add 98
-    book.apply(_delta("X", seq=2,
-                      bids=[[100.0, 5.0], [99.0, 0.0], [98.0, 3.0]]))
+    book.apply(_delta("X", seq=2, bids=[[100.0, 5.0], [99.0, 0.0], [98.0, 3.0]]))
     snap = book.to_snapshot()
     bid_prices = [p for p, _ in snap.bids]
     assert bid_prices == [100.0, 98.0]  # 99 removed, sorted desc
@@ -260,9 +276,7 @@ def test_metrics_return_none_when_one_side_empty() -> None:
 
 def test_depth_and_notional_depth() -> None:
     book = L2OrderBookState(symbol="X")
-    book.apply(_snap("X",
-                     bids=[[100.0, 1.0], [99.0, 2.0], [98.0, 3.0]],
-                     asks=[[101.0, 2.0], [102.0, 1.0]]))
+    book.apply(_snap("X", bids=[[100.0, 1.0], [99.0, 2.0], [98.0, 3.0]], asks=[[101.0, 2.0], [102.0, 1.0]]))
     assert book.depth(3, side="bid") == pytest.approx(6.0)
     assert book.depth(2, side="ask") == pytest.approx(3.0)
     # notional: 100*1 + 99*2 + 98*3 = 100 + 198 + 294 = 592
@@ -282,9 +296,13 @@ def test_depth_rejects_invalid_k() -> None:
 
 def test_max_depth_clamps_snapshot_output() -> None:
     book = L2OrderBookState(symbol="X", max_depth_per_side=2)
-    book.apply(_snap("X",
-                     bids=[[100.0, 1.0], [99.0, 2.0], [98.0, 3.0], [97.0, 4.0]],
-                     asks=[[101.0, 1.0], [102.0, 2.0], [103.0, 3.0]]))
+    book.apply(
+        _snap(
+            "X",
+            bids=[[100.0, 1.0], [99.0, 2.0], [98.0, 3.0], [97.0, 4.0]],
+            asks=[[101.0, 1.0], [102.0, 2.0], [103.0, 3.0]],
+        )
+    )
     snap = book.to_snapshot()
     assert len(snap.bids) == 2
     assert len(snap.asks) == 2
@@ -297,9 +315,9 @@ def test_max_depth_clamps_snapshot_output() -> None:
 
 def test_snapshot_is_sorted_best_first() -> None:
     book = L2OrderBookState(symbol="X")
-    book.apply(_snap("X",
-                     bids=[[98.0, 1.0], [100.0, 2.0], [99.0, 3.0]],
-                     asks=[[103.0, 1.0], [101.0, 2.0], [102.0, 3.0]]))
+    book.apply(
+        _snap("X", bids=[[98.0, 1.0], [100.0, 2.0], [99.0, 3.0]], asks=[[103.0, 1.0], [101.0, 2.0], [102.0, 3.0]])
+    )
     snap = book.to_snapshot()
     assert [p for p, _ in snap.bids] == [100.0, 99.0, 98.0]
     assert [p for p, _ in snap.asks] == [101.0, 102.0, 103.0]
@@ -318,26 +336,30 @@ def test_sink_rejects_invalid_maxlen() -> None:
 def test_sink_ring_buffer_evicts_oldest() -> None:
     sink = L2CaptureSink(maxlen=3)
     for i in range(10):
-        sink.record(L2Snapshot(
-            timestamp=_T0 + timedelta(seconds=i),
-            symbol="X",
-            bids=[[100.0 - i, 1.0]],
-            asks=[[101.0 + i, 1.0]],
-        ))
+        sink.record(
+            L2Snapshot(
+                timestamp=_T0 + timedelta(seconds=i),
+                symbol="X",
+                bids=[[100.0 - i, 1.0]],
+                asks=[[101.0 + i, 1.0]],
+            )
+        )
     assert len(sink) == 3
     snaps = list(sink.iter_snapshots())
     # The three retained are i=7,8,9
-    assert [s.timestamp for s in snaps] == [
-        _T0 + timedelta(seconds=i) for i in (7, 8, 9)
-    ]
+    assert [s.timestamp for s in snaps] == [_T0 + timedelta(seconds=i) for i in (7, 8, 9)]
 
 
 def test_sink_csv_header_matches_row_length() -> None:
     sink = L2CaptureSink(maxlen=2)
-    sink.record(L2Snapshot(
-        timestamp=_T0, symbol="X",
-        bids=[[100.0, 1.0]], asks=[[101.0, 2.0]],
-    ))
+    sink.record(
+        L2Snapshot(
+            timestamp=_T0,
+            symbol="X",
+            bids=[[100.0, 1.0]],
+            asks=[[101.0, 2.0]],
+        )
+    )
     header = L2CaptureSink.csv_header()
     rows = sink.to_csv_rows()
     assert len(rows) == 1
@@ -346,15 +368,22 @@ def test_sink_csv_header_matches_row_length() -> None:
 
 def test_sink_write_csv_writes_header_plus_rows() -> None:
     sink = L2CaptureSink()
-    sink.record(L2Snapshot(
-        timestamp=_T0, symbol="X",
-        bids=[[100.0, 1.0], [99.0, 2.0]],
-        asks=[[101.0, 1.0], [102.0, 2.0]],
-    ))
-    sink.record(L2Snapshot(
-        timestamp=_T0 + timedelta(seconds=5), symbol="X",
-        bids=[[101.0, 1.0]], asks=[[102.0, 1.0]],
-    ))
+    sink.record(
+        L2Snapshot(
+            timestamp=_T0,
+            symbol="X",
+            bids=[[100.0, 1.0], [99.0, 2.0]],
+            asks=[[101.0, 1.0], [102.0, 2.0]],
+        )
+    )
+    sink.record(
+        L2Snapshot(
+            timestamp=_T0 + timedelta(seconds=5),
+            symbol="X",
+            bids=[[101.0, 1.0]],
+            asks=[[102.0, 1.0]],
+        )
+    )
     buf = io.StringIO()
     n = sink.write_csv(buf)
     assert n == 2
@@ -367,9 +396,14 @@ def test_sink_write_csv_writes_header_plus_rows() -> None:
 
 def test_sink_csv_handles_empty_side() -> None:
     sink = L2CaptureSink()
-    sink.record(L2Snapshot(
-        timestamp=_T0, symbol="X", bids=[[100.0, 1.0]], asks=[],
-    ))
+    sink.record(
+        L2Snapshot(
+            timestamp=_T0,
+            symbol="X",
+            bids=[[100.0, 1.0]],
+            asks=[],
+        )
+    )
     rows = sink.to_csv_rows()
     # Missing side cells should be empty strings
     assert rows[0][4] == ""  # best_ask
@@ -383,10 +417,7 @@ def test_sink_csv_handles_empty_side() -> None:
 
 def test_stream_snapshot_then_three_deltas_matches_final_state() -> None:
     book = L2OrderBookState(symbol="X")
-    book.apply(_snap("X",
-                     bids=[[100.0, 1.0], [99.0, 1.0]],
-                     asks=[[101.0, 1.0], [102.0, 1.0]],
-                     seq=1))
+    book.apply(_snap("X", bids=[[100.0, 1.0], [99.0, 1.0]], asks=[[101.0, 1.0], [102.0, 1.0]], seq=1))
     book.apply(_delta("X", seq=2, bids=[[98.0, 5.0]]))
     book.apply(_delta("X", seq=3, asks=[[103.0, 7.0]]))
     book.apply(_delta("X", seq=4, bids=[[99.0, 0.0]]))  # remove 99

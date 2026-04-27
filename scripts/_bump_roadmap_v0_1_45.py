@@ -74,6 +74,7 @@ The OOS qualification loop is truly end-to-end self-driving on any
 bot that flips the `auto_wire_ai_strategies` flag. No operator in
 the refresh loop. No hand-curated eligibility table.
 """
+
 from __future__ import annotations
 
 import json
@@ -124,10 +125,8 @@ def main() -> None:
         },
         "artifacts_modified": {
             "bots": [
-                "bots/mnq/bot.py (+auto_wire_ai_strategies, "
-                "+ai_strategy_config, start() auto-builds adapter)",
-                "bots/eth_perp/bot.py (same wiring; strips USDT "
-                "suffix when deriving the strategy asset key)",
+                "bots/mnq/bot.py (+auto_wire_ai_strategies, +ai_strategy_config, start() auto-builds adapter)",
+                "bots/eth_perp/bot.py (same wiring; strips USDT suffix when deriving the strategy asset key)",
             ],
         },
         "api_surface": {
@@ -145,16 +144,12 @@ def main() -> None:
             "DEFAULT_LIVE_REFRESH_EVERY_SECONDS": "3600.0",
             "DEFAULT_LIVE_MIN_BARS_BEFORE_FIRST": "200",
             "MnqBot.auto_wire_ai_strategies": (
-                "bool = False  -- when True + no strategy_adapter, "
-                "start() builds one via build_live_adapter()"
+                "bool = False  -- when True + no strategy_adapter, start() builds one via build_live_adapter()"
             ),
             "MnqBot.ai_strategy_config": (
-                "dict[str, Any] | None = None  -- forwarded as **kwargs "
-                "to build_live_adapter on auto-wire"
+                "dict[str, Any] | None = None  -- forwarded as **kwargs to build_live_adapter on auto-wire"
             ),
-            "EthPerpBot.auto_wire_ai_strategies": (
-                "same contract; strips USDT suffix from symbol"
-            ),
+            "EthPerpBot.auto_wire_ai_strategies": ("same contract; strips USDT suffix from symbol"),
         },
         "design_notes": {
             "defaults_sized_to_qualifier": (
@@ -279,11 +274,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/live_adapter.py factory + MnqBot "
-          "and EthPerpBot auto-wire. Live bots self-construct the "
-          "OOS-governed dispatch stack at start-up.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/live_adapter.py factory + MnqBot "
+        "and EthPerpBot auto-wire. Live bots self-construct the "
+        "OOS-governed dispatch stack at start-up."
+    )
 
 
 if __name__ == "__main__":

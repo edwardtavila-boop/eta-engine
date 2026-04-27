@@ -40,6 +40,7 @@ Why
 A cycle between packages means you can't reason about layering. Catch
 the first one before it becomes seven and the package boundary is mush.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,11 +52,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_PACKAGES = [
-    "bots", "strategies", "core", "brain", "obs", "funnel",
-    "backtest", "venues", "staking",
+    "bots",
+    "strategies",
+    "core",
+    "brain",
+    "obs",
+    "funnel",
+    "backtest",
+    "venues",
+    "staking",
 ]
-SKIP_DIRS = {"scripts", "tests", "__pycache__", ".git", ".venv",
-             ".pytest_cache", ".cache", ".ruff_cache"}
+SKIP_DIRS = {"scripts", "tests", "__pycache__", ".git", ".venv", ".pytest_cache", ".cache", ".ruff_cache"}
 
 
 def _edges_from_file(path: Path, packages: set[str]) -> set[str]:
@@ -113,7 +120,7 @@ def _find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
         for dep in sorted(graph.get(node, ())):
             if color[dep] == _GRAY:
                 # cycle: stack[stack.index(dep):]
-                cyc = tuple(stack[stack.index(dep):])
+                cyc = tuple(stack[stack.index(dep) :])
                 # normalize: rotate so smallest element is first
                 lo = min(range(len(cyc)), key=lambda i: cyc[i])
                 cyc_norm = cyc[lo:] + cyc[:lo]
@@ -132,8 +139,7 @@ def _find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--packages", nargs="+", default=DEFAULT_PACKAGES)
-    p.add_argument("--max-yellow", type=int, default=0,
-                   help="more than N cycles -> RED (default 0: any cycle is RED)")
+    p.add_argument("--max-yellow", type=int, default=0, help="more than N cycles -> RED (default 0: any cycle is RED)")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
@@ -141,10 +147,15 @@ def main(argv: list[str] | None = None) -> int:
     cycles = _find_cycles(graph)
 
     if args.json:
-        print(json.dumps({
-            "graph": {k: sorted(v) for k, v in graph.items()},
-            "cycles": cycles,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "graph": {k: sorted(v) for k, v in graph.items()},
+                    "cycles": cycles,
+                },
+                indent=2,
+            )
+        )
         if not cycles:
             return 0
         return 2 if len(cycles) > args.max_yellow else 1

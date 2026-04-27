@@ -23,6 +23,7 @@ It also exercises the graceful fallback: an empty bar list must
 return an empty report with ``insufficient_bars_no_windows`` in
 ``notes`` instead of raising.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -54,11 +55,11 @@ def drill_oos_qualifier(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         asset="MNQ",
         n_windows=4,
         avg_is_sharpe=2.2,
-        avg_oos_sharpe=-0.2,          # destroys DSR + degradation
-        avg_degradation_pct=0.95,     # >> max_degradation_pct (0.35)
-        dsr=0.10,                     # << dsr_threshold (0.5)
+        avg_oos_sharpe=-0.2,  # destroys DSR + degradation
+        avg_degradation_pct=0.95,  # >> max_degradation_pct (0.35)
+        dsr=0.10,  # << dsr_threshold (0.5)
         n_trades_is_total=120,
-        n_trades_oos_total=5,         # << min_trades_per_window=20
+        n_trades_oos_total=5,  # << min_trades_per_window=20
         passes_gate=False,
         fail_reasons=(
             "dsr 0.1000 <= threshold 0.5000",
@@ -120,9 +121,9 @@ def drill_oos_qualifier(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         passed=True,
         details="failing qualification demoted with 3 reasons; empty bars fell back gracefully",
         observed={
-            "failing_strategy":   first_sid.value,
-            "fail_reasons":       list(failing.fail_reasons),
-            "empty_notes":        list(empty_report.notes),
-            "empty_executed":     empty_report.n_windows_executed,
+            "failing_strategy": first_sid.value,
+            "fail_reasons": list(failing.fail_reasons),
+            "empty_notes": list(empty_report.notes),
+            "empty_executed": empty_report.n_windows_executed,
         },
     )

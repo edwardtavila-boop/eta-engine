@@ -53,6 +53,7 @@ CLI
     python -m eta_engine.scripts.chaos_drill deadman push drift
     python -m eta_engine.scripts.chaos_drill all --json
 """
+
 from __future__ import annotations
 
 import json
@@ -120,14 +121,18 @@ ALL_DRILLS: tuple[str, ...] = (
 
 
 def _result(
-    name: str, *, passed: bool, details: str, observed: dict[str, Any] | None = None,
+    name: str,
+    *,
+    passed: bool,
+    details: str,
+    observed: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "drill":    name,
-        "passed":   passed,
-        "details":  details,
+        "drill": name,
+        "passed": passed,
+        "details": details,
         "observed": observed or {},
-        "ts":       datetime.now(UTC).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }
 
 
@@ -140,32 +145,39 @@ def drill_breaker(sandbox: Path) -> dict[str, Any]:
     """Trip a SharedCircuitBreaker; verify disk propagation."""
     breaker_path = sandbox / "breaker.json"
     a = SharedCircuitBreaker(
-        path=breaker_path, max_consec_failures=2, cooldown_seconds=120,
+        path=breaker_path,
+        max_consec_failures=2,
+        cooldown_seconds=120,
     )
     b = SharedCircuitBreaker(
-        path=breaker_path, max_consec_failures=2, cooldown_seconds=120,
+        path=breaker_path,
+        max_consec_failures=2,
+        cooldown_seconds=120,
     )
 
     # Feed 2 failures into A.
     for i in range(2):
-        a.record(TaskResult(
-            task_id=f"chaos_{i}",
-            persona_id=PersonaId.ALFRED,
-            tier_used=None,
-            success=False,
-            artifact="",
-            reason_code="error",
-            reason=f"chaos_failure_{i}",
-            cost_multiplier=0.0,
-            jarvis_verdict=None,
-            ms_elapsed=1.0,
-            ts=datetime.now(UTC),
-        ))
+        a.record(
+            TaskResult(
+                task_id=f"chaos_{i}",
+                persona_id=PersonaId.ALFRED,
+                tier_used=None,
+                success=False,
+                artifact="",
+                reason_code="error",
+                reason=f"chaos_failure_{i}",
+                cost_multiplier=0.0,
+                jarvis_verdict=None,
+                ms_elapsed=1.0,
+                ts=datetime.now(UTC),
+            )
+        )
 
     # A should be OPEN.
     if a.status().state is not BreakerState.OPEN:
         return _result(
-            "breaker", passed=False,
+            "breaker",
+            passed=False,
             details=f"A failed to trip: state={a.status().state}",
         )
 
@@ -173,7 +185,8 @@ def drill_breaker(sandbox: Path) -> dict[str, Any]:
     disk = read_shared_status(path=breaker_path)
     if disk is None or disk.get("state") != "OPEN":
         return _result(
-            "breaker", passed=False,
+            "breaker",
+            passed=False,
             details=f"disk did not record OPEN: {disk}",
         )
 
@@ -182,18 +195,20 @@ def drill_breaker(sandbox: Path) -> dict[str, Any]:
         b.pre_dispatch()
     except BreakerTripped as exc:
         return _result(
-            "breaker", passed=True,
+            "breaker",
+            passed=True,
             details="A tripped, disk propagated, B adopted and refused",
             observed={
-                "a_state":      a.status().state.value,
-                "disk_state":   disk.get("state"),
-                "b_raised":     str(exc),
-                "tripped_at":   disk.get("tripped_at"),
-                "last_reason":  disk.get("last_reason"),
+                "a_state": a.status().state.value,
+                "disk_state": disk.get("state"),
+                "b_raised": str(exc),
+                "tripped_at": disk.get("tripped_at"),
+                "last_reason": disk.get("last_reason"),
             },
         )
     return _result(
-        "breaker", passed=False,
+        "breaker",
+        passed=False,
         details="B did not raise BreakerTripped after disk OPEN",
     )
 
@@ -201,29 +216,31 @@ def drill_breaker(sandbox: Path) -> dict[str, Any]:
 def drill_deadman(sandbox: Path) -> dict[str, Any]:
     """Stamp an aged sentinel; verify the switch flips to FROZEN."""
     sentinel = sandbox / "operator.sentinel"
-    journal  = sandbox / "operator_activity.jsonl"
+    journal = sandbox / "operator_activity.jsonl"
     # Create sentinel with mtime 96h in the past (past the 72h FROZEN line).
     sentinel.write_text("chaos", encoding="utf-8")
     t96h_ago = (datetime.now(UTC) - timedelta(hours=96)).timestamp()
     import os as _os
+
     _os.utime(sentinel, (t96h_ago, t96h_ago))
 
     sw = DeadmanSwitch(sentinel_path=sentinel, journal_path=journal)
     status = sw.status()
     if status.state is not DeadmanState.FROZEN:
         return _result(
-            "deadman", passed=False,
+            "deadman",
+            passed=False,
             details=(
-                f"aged sentinel did not trigger FROZEN: "
-                f"state={status.state.value} hours_since={status.hours_since:.1f}"
+                f"aged sentinel did not trigger FROZEN: state={status.state.value} hours_since={status.hours_since:.1f}"
             ),
         )
     return _result(
-        "deadman", passed=True,
+        "deadman",
+        passed=True,
         details="aged sentinel correctly produced FROZEN state",
         observed={
-            "state":        status.state.value,
-            "hours_since":  round(status.hours_since, 2),
+            "state": status.state.value,
+            "hours_since": round(status.hours_since, 2),
             "sentinel_age_target_hours": 96,
         },
     )
@@ -243,40 +260,46 @@ def drill_push(sandbox: Path) -> dict[str, Any]:
     )
     if not journal.exists():
         return _result(
-            "push", passed=False,
+            "push",
+            passed=False,
             details=f"alerts journal not created at {journal}",
         )
     lines = [ln for ln in journal.read_text().splitlines() if ln.strip()]
     if not lines:
         return _result(
-            "push", passed=False,
+            "push",
+            passed=False,
             details="alerts journal empty after push",
         )
     try:
         rec = json.loads(lines[-1])
     except json.JSONDecodeError as exc:
         return _result(
-            "push", passed=False,
+            "push",
+            passed=False,
             details=f"last alert line is not JSON: {exc}",
         )
     if rec.get("level") != "CRITICAL":
         return _result(
-            "push", passed=False,
+            "push",
+            passed=False,
             details=f"alert level wrong: {rec.get('level')!r}",
         )
     if "chaos" not in (rec.get("tags") or []):
         return _result(
-            "push", passed=False,
+            "push",
+            passed=False,
             details=f"alert tags missing 'chaos': {rec.get('tags')!r}",
         )
     return _result(
-        "push", passed=True,
+        "push",
+        passed=True,
         details="CRITICAL alert landed in journal with correct fields",
         observed={
             "records": len(lines),
-            "level":   rec.get("level"),
-            "title":   rec.get("title"),
-            "tags":    rec.get("tags"),
+            "level": rec.get("level"),
+            "title": rec.get("title"),
+            "tags": rec.get("tags"),
         },
     )
 
@@ -296,7 +319,8 @@ def drill_drift(sandbox: Path) -> dict[str, Any]:
     report = det.check("chaos_strat", bt, lv)
     if report.verdict is not DriftVerdict.AUTO_DEMOTE:
         return _result(
-            "drift", passed=False,
+            "drift",
+            passed=False,
             details=(
                 f"opposite-drift live series did not trigger AUTO_DEMOTE: "
                 f"verdict={report.verdict.value} "
@@ -306,22 +330,21 @@ def drill_drift(sandbox: Path) -> dict[str, Any]:
         )
     if report.recommendation is not PromotionAction.DEMOTE:
         return _result(
-            "drift", passed=False,
-            details=(
-                f"AUTO_DEMOTE verdict not accompanied by DEMOTE recommendation: "
-                f"got {report.recommendation!r}"
-            ),
+            "drift",
+            passed=False,
+            details=(f"AUTO_DEMOTE verdict not accompanied by DEMOTE recommendation: got {report.recommendation!r}"),
         )
     return _result(
-        "drift", passed=True,
+        "drift",
+        passed=True,
         details="opposite-drift live produced AUTO_DEMOTE + DEMOTE recommendation",
         observed={
-            "verdict":             report.verdict.value,
-            "sharpe_bt":           round(report.sharpe_bt, 2),
-            "sharpe_live":         round(report.sharpe_live, 2),
-            "sharpe_delta_sigma":  round(report.sharpe_delta_sigma, 2),
-            "kl_divergence":       round(report.kl_divergence, 3),
-            "recommendation":      report.recommendation.value,
+            "verdict": report.verdict.value,
+            "sharpe_bt": round(report.sharpe_bt, 2),
+            "sharpe_live": round(report.sharpe_live, 2),
+            "sharpe_delta_sigma": round(report.sharpe_delta_sigma, 2),
+            "kl_divergence": round(report.kl_divergence, 3),
+            "recommendation": report.recommendation.value,
         },
     )
 
@@ -334,26 +357,28 @@ def drill_drift(sandbox: Path) -> dict[str, Any]:
 DRILL_FUNCS: dict[str, Any] = {
     "breaker": drill_breaker,
     "deadman": drill_deadman,
-    "push":    drill_push,
-    "drift":   drill_drift,
+    "push": drill_push,
+    "drift": drill_drift,
     # v0.1.56 CHAOS DRILL CLOSURE: 12 surface-specific drills.
-    "kill_switch_runtime":    drill_kill_switch_runtime,
-    "risk_engine":            drill_risk_engine,
-    "order_state_reconcile":  drill_order_state_reconcile,
-    "cftc_nfa_compliance":    drill_cftc_nfa_compliance,
-    "two_factor":             drill_two_factor,
-    "smart_router":           drill_smart_router,
-    "firm_gate":              drill_firm_gate,
-    "oos_qualifier":          drill_oos_qualifier,
-    "shadow_paper_tracker":   drill_shadow_paper_tracker,
-    "live_shadow_guard":      drill_live_shadow_guard,
-    "pnl_drift":              drill_pnl_drift,
-    "runtime_allowlist":      drill_runtime_allowlist,
+    "kill_switch_runtime": drill_kill_switch_runtime,
+    "risk_engine": drill_risk_engine,
+    "order_state_reconcile": drill_order_state_reconcile,
+    "cftc_nfa_compliance": drill_cftc_nfa_compliance,
+    "two_factor": drill_two_factor,
+    "smart_router": drill_smart_router,
+    "firm_gate": drill_firm_gate,
+    "oos_qualifier": drill_oos_qualifier,
+    "shadow_paper_tracker": drill_shadow_paper_tracker,
+    "live_shadow_guard": drill_live_shadow_guard,
+    "pnl_drift": drill_pnl_drift,
+    "runtime_allowlist": drill_runtime_allowlist,
 }
 
 
 def run_drills(
-    drills: list[str] | None = None, *, sandbox: Path | None = None,
+    drills: list[str] | None = None,
+    *,
+    sandbox: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Run the named drills in a sandbox. Returns list of result dicts.
 
@@ -369,10 +394,7 @@ def run_drills(
     names = list(drills) if drills else list(ALL_DRILLS)
     unknown = [n for n in names if n not in DRILL_FUNCS]
     if unknown:
-        return [
-            _result(n, passed=False, details=f"unknown drill: {n}")
-            for n in unknown
-        ]
+        return [_result(n, passed=False, details=f"unknown drill: {n}") for n in unknown]
 
     own_sandbox = sandbox is None
     if own_sandbox:
@@ -390,10 +412,13 @@ def run_drills(
             try:
                 results.append(DRILL_FUNCS[name](sub))
             except Exception as exc:  # noqa: BLE001 - report and move on
-                results.append(_result(
-                    name, passed=False,
-                    details=f"drill raised {type(exc).__name__}: {exc}",
-                ))
+                results.append(
+                    _result(
+                        name,
+                        passed=False,
+                        details=f"drill raised {type(exc).__name__}: {exc}",
+                    )
+                )
     finally:
         if own_sandbox and sandbox is not None:
             shutil.rmtree(sandbox, ignore_errors=True)
@@ -443,22 +468,24 @@ def main(argv: list[str] | None = None) -> int:
             drill_args.append(a)
 
     # Expand 'all' to every drill.
-    drills = (
-        list(ALL_DRILLS)
-        if not drill_args or drill_args == ["all"]
-        else drill_args
-    )
+    drills = list(ALL_DRILLS) if not drill_args or drill_args == ["all"] else drill_args
 
     results = run_drills(drills)
     failed = [r for r in results if not r["passed"]]
 
     if as_json:
-        sys.stdout.write(json.dumps({
-            "results": results,
-            "passed":  len(results) - len(failed),
-            "failed":  len(failed),
-            "total":   len(results),
-        }, indent=2) + "\n")
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "results": results,
+                    "passed": len(results) - len(failed),
+                    "failed": len(failed),
+                    "total": len(results),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
     else:
         sys.stdout.write(format_report(results) + "\n")
 

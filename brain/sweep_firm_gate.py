@@ -25,6 +25,7 @@ Design
   in CI without the Firm package mounted), the adapter emits a
   ``HOLD`` verdict with a descriptive reason rather than blocking.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

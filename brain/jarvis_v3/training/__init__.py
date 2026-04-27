@@ -31,6 +31,7 @@ Design principles (same as rest of jarvis_v3)
 3. Every piece exposes itself via /api/personas on the dashboard.
 4. Tests assert no persona lacks identity/catalog/awareness/protocol entries.
 """
+
 from __future__ import annotations
 
 __all__ = [

@@ -24,6 +24,7 @@ When any guard trips the breaker enters ``OPEN`` state for
 ``TaskResult`` with ``reason_code='breaker_open'`` so callers see a
 structured response instead of an exception in the hot path.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -38,8 +39,8 @@ if TYPE_CHECKING:
 
 
 class BreakerState(StrEnum):
-    CLOSED    = "CLOSED"     # normal
-    OPEN      = "OPEN"       # tripped, rejecting dispatches
+    CLOSED = "CLOSED"  # normal
+    OPEN = "OPEN"  # tripped, rejecting dispatches
     HALF_OPEN = "HALF_OPEN"  # cooldown expired, probing
 
 
@@ -49,15 +50,16 @@ class BreakerTripped(RuntimeError):  # noqa: N818 - name is the public API
 
 class BreakerStatus(BaseModel):
     """Snapshot of breaker state. Serializable for dashboards."""
+
     model_config = ConfigDict(frozen=True)
 
-    state:            BreakerState
-    tripped_at:       datetime | None = None
-    reopen_at:        datetime | None = None
-    consec_failures:  int = Field(ge=0, default=0)
-    consec_denials:   int = Field(ge=0, default=0)
-    cost_window_sum:  float = Field(ge=0.0, default=0.0)
-    last_reason:      str = ""
+    state: BreakerState
+    tripped_at: datetime | None = None
+    reopen_at: datetime | None = None
+    consec_failures: int = Field(ge=0, default=0)
+    consec_denials: int = Field(ge=0, default=0)
+    cost_window_sum: float = Field(ge=0.0, default=0.0)
+    last_reason: str = ""
 
 
 class CircuitBreaker:
@@ -79,21 +81,21 @@ class CircuitBreaker:
         self,
         *,
         max_consec_failures: int = 10,
-        max_consec_denials:  int = 5,
+        max_consec_denials: int = 5,
         max_cost_per_minute: float = 50.0,
-        cooldown_seconds:    float = 120.0,
+        cooldown_seconds: float = 120.0,
         clock: callable | None = None,
     ) -> None:
         self.max_consec_failures = max_consec_failures
-        self.max_consec_denials  = max_consec_denials
+        self.max_consec_denials = max_consec_denials
         self.max_cost_per_minute = max_cost_per_minute
-        self.cooldown_seconds    = cooldown_seconds
+        self.cooldown_seconds = cooldown_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
         self._state = BreakerState.CLOSED
-        self._tripped_at:   datetime | None = None
-        self._reopen_at:    datetime | None = None
+        self._tripped_at: datetime | None = None
+        self._reopen_at: datetime | None = None
         self._consec_failures = 0
-        self._consec_denials  = 0
+        self._consec_denials = 0
         self._cost_window: deque[tuple[datetime, float]] = deque()
         self._last_reason = ""
 
@@ -137,12 +139,8 @@ class CircuitBreaker:
             reason = f"{self._consec_failures} consecutive failures"
         elif self._consec_denials >= self.max_consec_denials:
             reason = f"{self._consec_denials} consecutive JARVIS denials"
-        elif (self.max_cost_per_minute > 0
-                and window_sum > self.max_cost_per_minute):
-            reason = (
-                f"cost/min={window_sum:.2f} exceeds "
-                f"cap={self.max_cost_per_minute:.2f}"
-            )
+        elif self.max_cost_per_minute > 0 and window_sum > self.max_cost_per_minute:
+            reason = f"cost/min={window_sum:.2f} exceeds cap={self.max_cost_per_minute:.2f}"
 
         if reason is not None:
             self._trip(reason, now)

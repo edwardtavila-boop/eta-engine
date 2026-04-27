@@ -17,6 +17,7 @@ The bar stream is a protocol, so:
   * tests feed a deterministic synthetic stream
   * nothing in this module talks to a real exchange.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,7 +109,7 @@ class PaperRunResult:
     max_dd_pct: float
     overlay_win_rate: float
     kill_triggered: bool
-    verdict: str                 # "PASS" | "FAIL"
+    verdict: str  # "PASS" | "FAIL"
     verdict_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -121,16 +122,22 @@ class PaperRunResult:
             "overlay_blocked": self.overlay_blocked,
             "paper_fills": [
                 {
-                    "ts": f.ts.isoformat(), "symbol": f.symbol, "side": f.side,
-                    "qty": f.qty, "price": f.price, "fee": f.fee,
+                    "ts": f.ts.isoformat(),
+                    "symbol": f.symbol,
+                    "side": f.side,
+                    "qty": f.qty,
+                    "price": f.price,
+                    "fee": f.fee,
                     "order_id": f.order_id,
                 }
                 for f in self.paper_fills
             ],
             "equity_curve": [
                 {
-                    "ts": e.ts.isoformat(), "bar_idx": e.bar_idx,
-                    "close": e.close, "equity": e.equity,
+                    "ts": e.ts.isoformat(),
+                    "bar_idx": e.bar_idx,
+                    "close": e.close,
+                    "equity": e.equity,
                     "realized_pnl": e.realized_pnl,
                     "unrealized_pnl": e.unrealized_pnl,
                 }
@@ -355,8 +362,7 @@ class BtcPaperRunner:
             actor=Actor.TRADE_ENGINE,
             intent="btc_paper_run_end",
             rationale=(
-                f"bars={bar_idx} fills={len(self.router.fills)} "
-                f"verdict={verdict} final_equity=${final_equity:.2f}"
+                f"bars={bar_idx} fills={len(self.router.fills)} verdict={verdict} final_equity=${final_equity:.2f}"
             ),
             outcome=Outcome.EXECUTED if verdict == "PASS" else Outcome.NOTED,
             metadata={"verdict_reasons": reasons},
@@ -371,10 +377,7 @@ class BtcPaperRunner:
             self.journal.record(
                 actor=Actor.RISK_GATE,
                 intent="risk_block",
-                rationale=(
-                    f"bar_idx={bar_idx} killed={self.bot.state.is_killed} "
-                    f"paused={self.bot.state.is_paused}"
-                ),
+                rationale=(f"bar_idx={bar_idx} killed={self.bot.state.is_killed} paused={self.bot.state.is_paused}"),
                 outcome=Outcome.BLOCKED,
                 metadata={"close": bar["close"]},
             )
@@ -417,9 +420,7 @@ class BtcPaperRunner:
                 outcome=Outcome.EXECUTED,
                 metadata=signal_meta,
             )
-            notional = self.bot.state.equity * (
-                self.bot.config.risk_per_trade_pct / 100.0
-            )
+            notional = self.bot.state.equity * (self.bot.config.risk_per_trade_pct / 100.0)
             qty = round(notional / signal.price, 6) if signal.price > 0 else 0.0
             if qty > 0.0:
                 side = Side.BUY if signal.type.value == "LONG" else Side.SELL
@@ -454,9 +455,7 @@ class BtcPaperRunner:
         else:
             # Same-side repeat: treat as pyramiding, no PnL.
             return
-        notional = self.bot.state.equity * (
-            self.bot.config.risk_per_trade_pct / 100.0
-        )
+        notional = self.bot.state.equity * (self.bot.config.risk_per_trade_pct / 100.0)
         pnl_usd = notional * pnl_frac
         self.bot.state.equity += pnl_usd
         self._realized_pnl += pnl_usd
@@ -504,7 +503,7 @@ class BtcPaperRunner:
 # not edge. Live-enable still requires explicit operator confirmation.
 MIN_BARS_FOR_PASS: int = 30
 MIN_OVERLAY_SIGNALS_FOR_PASS: int = 1
-MAX_DD_PCT_FOR_PASS: float = 0.10     # 10% equity DD during paper
+MAX_DD_PCT_FOR_PASS: float = 0.10  # 10% equity DD during paper
 MIN_FINAL_EQUITY_RATIO: float = 0.90  # don't end below 90% of start
 
 
@@ -522,18 +521,16 @@ def _assess_verdict(
         reasons.append("kill_switch tripped during paper run")
     if max_dd_pct > MAX_DD_PCT_FOR_PASS:
         reasons.append(
-            f"max_dd_pct {max_dd_pct*100:.2f}% exceeds "
-            f"{MAX_DD_PCT_FOR_PASS*100:.0f}% threshold",
+            f"max_dd_pct {max_dd_pct * 100:.2f}% exceeds {MAX_DD_PCT_FOR_PASS * 100:.0f}% threshold",
         )
     if starting_equity > 0 and final_equity / starting_equity < MIN_FINAL_EQUITY_RATIO:
         reasons.append(
             f"final_equity ${final_equity:.2f} < "
-            f"{MIN_FINAL_EQUITY_RATIO*100:.0f}% of starting ${starting_equity:.2f}",
+            f"{MIN_FINAL_EQUITY_RATIO * 100:.0f}% of starting ${starting_equity:.2f}",
         )
     if overlay_signals < MIN_OVERLAY_SIGNALS_FOR_PASS:
         reasons.append(
-            f"overlay signals {overlay_signals} < "
-            f"{MIN_OVERLAY_SIGNALS_FOR_PASS} (sample too small to verify wiring)",
+            f"overlay signals {overlay_signals} < {MIN_OVERLAY_SIGNALS_FOR_PASS} (sample too small to verify wiring)",
         )
     verdict = "PASS" if not reasons else "FAIL"
     return verdict, reasons
@@ -579,8 +576,13 @@ async def synthetic_btc_stream(
             ema21 = price
             confluence = 3.0
         yield {
-            "open": price, "high": high, "low": low, "close": price,
-            "volume": 100.0, "ema_9": ema9, "ema_21": ema21,
+            "open": price,
+            "high": high,
+            "low": low,
+            "close": price,
+            "volume": 100.0,
+            "ema_9": ema9,
+            "ema_21": ema21,
             "confluence_score": confluence,
         }
         await asyncio.sleep(0)  # yield control for cooperative scheduling
@@ -593,14 +595,14 @@ async def synthetic_btc_stream(
 
 def _cli_parse(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="BTC paper-trading harness")
-    p.add_argument("--bars", type=int, default=120,
-                   help="max bars to run (default 120)")
-    p.add_argument("--start-equity", type=float, default=None,
-                   help="override starting equity (default SEED_CONFIG)")
-    p.add_argument("--gate-floor", type=float, default=None,
-                   help="ConfluenceFloorGate threshold (default: always-approve)")
+    p.add_argument("--bars", type=int, default=120, help="max bars to run (default 120)")
+    p.add_argument("--start-equity", type=float, default=None, help="override starting equity (default SEED_CONFIG)")
     p.add_argument(
-        "--out-dir", type=str,
+        "--gate-floor", type=float, default=None, help="ConfluenceFloorGate threshold (default: always-approve)"
+    )
+    p.add_argument(
+        "--out-dir",
+        type=str,
         default=str(ROOT / "docs" / "btc_paper"),
         help="artifact output directory",
     )
@@ -616,18 +618,17 @@ async def _amain(argv: list[str] | None = None) -> int:
     router = PaperRouter()
     # Bot's internal router is UNSET (paper runner owns the fills). The bot
     # will log-only its on_signal fallback; we intercept before that anyway.
-    gate: JarvisPaperGate = (
-        ConfluenceFloorGate(args.gate_floor)
-        if args.gate_floor is not None
-        else AlwaysApproveGate()
-    )
+    gate: JarvisPaperGate = ConfluenceFloorGate(args.gate_floor) if args.gate_floor is not None else AlwaysApproveGate()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     journal_path = out_dir / "btc_paper_journal.jsonl"
     journal = DecisionJournal(journal_path)
 
     runner = BtcPaperRunner(
-        bot=bot, router=router, gate=gate, journal=journal,
+        bot=bot,
+        router=router,
+        gate=gate,
+        journal=journal,
         max_bars=args.bars,
     )
     stream = synthetic_btc_stream(n_bars=args.bars)
@@ -647,13 +648,15 @@ async def _amain(argv: list[str] | None = None) -> int:
     )
 
     print(f"bars:             {result.bars_processed}")
-    print(f"overlay signals:  {result.overlay_signals}  "
-          f"(approved={result.overlay_approved} blocked={result.overlay_blocked})")
+    print(
+        f"overlay signals:  {result.overlay_signals}  "
+        f"(approved={result.overlay_approved} blocked={result.overlay_blocked})"
+    )
     print(f"fills:            {len(result.paper_fills)}")
     print(f"starting equity:  ${result.starting_equity:.2f}")
     print(f"final equity:     ${result.final_equity:.2f}")
-    print(f"max dd:           {result.max_dd_pct*100:.2f}%")
-    print(f"overlay wr:       {result.overlay_win_rate*100:.1f}%")
+    print(f"max dd:           {result.max_dd_pct * 100:.2f}%")
+    print(f"overlay wr:       {result.overlay_win_rate * 100:.1f}%")
     print(f"verdict:          {result.verdict}")
     for r in result.verdict_reasons:
         print(f"    - {r}")

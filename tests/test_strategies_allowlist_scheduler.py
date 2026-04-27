@@ -18,6 +18,7 @@ cadence. Tests exercise:
   - End-to-end: scheduler + cache + dispatch stays consistent across
     multiple tick iterations.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -248,9 +249,7 @@ class TestBarCountTrigger:
         entry1 = sched.tick("MNQ", bars, qualifier=q)
         assert entry1 is not None
         # Next tick with +3 bars -> NOT enough to retrigger
-        bars.extend(
-            _bar(ts + timedelta(minutes=i)) for i in range(5, 8)
-        )
+        bars.extend(_bar(ts + timedelta(minutes=i)) for i in range(5, 8))
         entry2 = sched.tick("MNQ", bars, qualifier=q)
         assert entry2 is None
         assert len(q.calls) == 1
@@ -601,7 +600,9 @@ class TestEndToEndWithDispatch:
         idx = [0]
 
         def staged_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             r = reports[idx[0]]
             idx[0] = min(idx[0] + 1, len(reports) - 1)
@@ -627,7 +628,9 @@ class TestEndToEndWithDispatch:
         sched = AllowlistScheduler(cache=cache, trigger=trigger, clock=clock)
 
         def staged_qualifier(
-            bars: list[Bar], asset: str, **_: object,
+            bars: list[Bar],
+            asset: str,
+            **_: object,
         ) -> QualificationReport:
             return _report(
                 asset,
@@ -650,6 +653,7 @@ class TestEndToEndWithDispatch:
                     risk_mult=1.0,
                     rationale_tags=(sid.value,),
                 )
+
             return fn
 
         registry = {

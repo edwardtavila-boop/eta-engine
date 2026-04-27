@@ -41,6 +41,7 @@ Public API
   * ``SupervisorPolicy``       -- tunable thresholds
   * ``JarvisSupervisor``       -- the supervisor itself
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -68,12 +69,13 @@ logger = logging.getLogger(__name__)
 # Enums + models
 # ---------------------------------------------------------------------------
 
+
 class JarvisHealth(StrEnum):
     """Tri-state supervisor verdict."""
 
-    GREEN = "GREEN"    # fresh + balanced
+    GREEN = "GREEN"  # fresh + balanced
     YELLOW = "YELLOW"  # drifting or stale but not dead
-    RED = "RED"        # dead / invalid / silent beyond threshold
+    RED = "RED"  # dead / invalid / silent beyond threshold
 
 
 class JarvisHealthReport(BaseModel):
@@ -249,14 +251,12 @@ class JarvisSupervisor:
         if self._last_tick_at is not None:
             if stale_s >= self.policy.dead_after_s:
                 reasons.append(
-                    f"engine DEAD: {stale_s:.1f}s since last tick "
-                    f"(>= {self.policy.dead_after_s:.1f}s)",
+                    f"engine DEAD: {stale_s:.1f}s since last tick (>= {self.policy.dead_after_s:.1f}s)",
                 )
                 health = JarvisHealth.RED
             elif stale_s >= self.policy.stale_after_s:
                 reasons.append(
-                    f"engine STALE: {stale_s:.1f}s since last tick "
-                    f"(>= {self.policy.stale_after_s:.1f}s)",
+                    f"engine STALE: {stale_s:.1f}s since last tick (>= {self.policy.stale_after_s:.1f}s)",
                 )
                 health = _max_health(health, JarvisHealth.YELLOW)
 
@@ -275,8 +275,7 @@ class JarvisSupervisor:
             c = last_ctx.stress_score.composite
             if not _valid_composite(c):
                 reasons.append(
-                    f"invalid stress composite: {c!r} "
-                    "(expected float in [0.0, 1.0])",
+                    f"invalid stress composite: {c!r} (expected float in [0.0, 1.0])",
                 )
                 health = JarvisHealth.RED
 
@@ -297,10 +296,7 @@ class JarvisSupervisor:
         flat_run = 0
         if len(snapshots) >= self.policy.flatline_run:
             comps = _tail_composites(snapshots, self.policy.flatline_run)
-            if (
-                len(comps) == self.policy.flatline_run
-                and all(c <= self.policy.flatline_threshold for c in comps)
-            ):
+            if len(comps) == self.policy.flatline_run and all(c <= self.policy.flatline_threshold for c in comps):
                 flat_run = self.policy.flatline_run
                 reasons.append(
                     f"composite FLATLINE: all last {flat_run} below "

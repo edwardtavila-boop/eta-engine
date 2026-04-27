@@ -94,6 +94,7 @@ Expected state changes
   * New key eta_engine_v0_1_63_r1_end_to_end with the full ledger.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -222,8 +223,7 @@ def main() -> None:
                 "swapped for a router-driven selector in v0.2.x."
             ),
             "no_multi_broker_drift_fanout": (
-                "Apex evals are single-account. Cross-broker drift "
-                "(IBKR vs Tastytrade) is a future-state concern."
+                "Apex evals are single-account. Cross-broker drift (IBKR vs Tastytrade) is a future-state concern."
             ),
             "no_replace_logical_with_broker_mtm": (
                 "The tracker still consumes logical equity. Whether "
@@ -234,10 +234,7 @@ def main() -> None:
         },
         "r1_closure_state": {
             "v0_1_58": "HIGH residual risk, accepted for v0.2.x.",
-            "v0_1_59": (
-                "SCAFFOLDED -- BrokerEquityReconciler module added + "
-                "21 tests. No runtime call site yet."
-            ),
+            "v0_1_59": ("SCAFFOLDED -- BrokerEquityReconciler module added + 21 tests. No runtime call site yet."),
             "v0_1_62": (
                 "SCAFFOLDED (still) -- BrokerEquityAdapter Protocol + "
                 "NullBrokerEquityAdapter + make_poller_for factory "
@@ -254,9 +251,7 @@ def main() -> None:
         "tests_passing_before": prev_tests,
         "tests_passing_after": NEW_TESTS_ABS,
         "tests_added_in_this_bundle": R1_TESTS_ADDED,
-        "tests_delta_residual_from_other_modules": (
-            NEW_TESTS_ABS - prev_tests - R1_TESTS_ADDED
-        ),
+        "tests_delta_residual_from_other_modules": (NEW_TESTS_ABS - prev_tests - R1_TESTS_ADDED),
         "ruff_green_touched_files": True,
         "full_suite_runtime_seconds": 126.75,
     }

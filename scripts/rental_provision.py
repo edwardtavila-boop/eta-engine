@@ -129,10 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             "current_period_end": sub.current_period_end.isoformat(),
             "price_paid_usd": price_for(tier, args.cycle),
         },
-        "planned_containers": [
-            {"sku": s.sku.value, "tier": s.tier.value, "cpu_limit": s.cpu_limit}
-            for s in specs
-        ],
+        "planned_containers": [{"sku": s.sku.value, "tier": s.tier.value, "cpu_limit": s.cpu_limit} for s in specs],
     }
     (tenants_dir / f"{tenant.tenant_id}.json").write_text(
         json.dumps(tenant_record, indent=2, default=str) + "\n",
@@ -155,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     bundle_path = tenants_dir / f"{tenant.tenant_id}_client_bundle.json"
     bundle_path.write_text(
-        json.dumps(bundle, indent=2, default=str) + "\n", encoding="utf-8",
+        json.dumps(bundle, indent=2, default=str) + "\n",
+        encoding="utf-8",
     )
 
     # -- catalog snapshot (idempotent -- overwritten each run) -------------

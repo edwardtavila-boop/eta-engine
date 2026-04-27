@@ -27,6 +27,7 @@ A trading firm whose tests don't cover its alpha strategies is
 flying blind. The general test_coverage_gap script reports across
 all packages; this one zooms in on the part that matters most.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,15 +69,14 @@ def _is_pure_data(strat: Path) -> bool:
         if isinstance(node, ast.ClassDef):
             has_class = True
             decorated = any(
-                (isinstance(d, ast.Name) and d.id == "dataclass") or
-                (isinstance(d, ast.Call) and isinstance(d.func, ast.Name)
-                 and d.func.id == "dataclass") or
-                (isinstance(d, ast.Attribute) and d.attr == "dataclass")
+                (isinstance(d, ast.Name) and d.id == "dataclass")
+                or (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id == "dataclass")
+                or (isinstance(d, ast.Attribute) and d.attr == "dataclass")
                 for d in node.decorator_list
             )
             base_data = any(
-                (isinstance(b, ast.Name) and b.id in ("NamedTuple", "TypedDict")) or
-                (isinstance(b, ast.Attribute) and b.attr in ("NamedTuple", "TypedDict"))
+                (isinstance(b, ast.Name) and b.id in ("NamedTuple", "TypedDict"))
+                or (isinstance(b, ast.Attribute) and b.attr in ("NamedTuple", "TypedDict"))
                 for b in node.bases
             )
             if not (decorated or base_data):
@@ -89,8 +89,7 @@ def _is_pure_data(strat: Path) -> bool:
 def _loc(strat: Path) -> int:
     try:
         return sum(
-            1 for ln in strat.read_text(encoding="utf-8").splitlines()
-            if ln.strip() and not ln.strip().startswith("#")
+            1 for ln in strat.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.strip().startswith("#")
         )
     except OSError:
         return 0

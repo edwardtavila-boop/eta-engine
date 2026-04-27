@@ -1,4 +1,5 @@
 """Tests for scripts.monthly_deep_review."""
+
 from __future__ import annotations
 
 import json
@@ -126,13 +127,15 @@ def test_run_full_pipeline_proposes_tweaks(tmp_path: Path) -> None:
     _write_jsonl(mae, [_mae_mfe_row(i, leak=True) for i in range(6)])
     _write_jsonl(
         ra,
-        [_rationale_row(i, losing=True) for i in range(3)]
-        + [_rationale_row(i, losing=False) for i in range(3, 6)],
+        [_rationale_row(i, losing=True) for i in range(3)] + [_rationale_row(i, losing=False) for i in range(3, 6)],
     )
     out_dir = tmp_path / "docs"
     payload = run(
-        trades_path=trades, mae_mfe_path=mae, rationales_path=ra,
-        out_dir=out_dir, now=_T0,
+        trades_path=trades,
+        mae_mfe_path=mae,
+        rationales_path=ra,
+        out_dir=out_dir,
+        now=_T0,
     )
     assert len(payload["proposed_tweaks"]) > 0
     assert len(payload["proposed_tweaks"]) <= 3
@@ -147,9 +150,7 @@ def test_run_writes_latest_copies(tmp_path: Path) -> None:
 
 def test_malformed_jsonl_skipped(tmp_path: Path) -> None:
     trades = tmp_path / "t.jsonl"
-    rows = [json.dumps(_trade_row(0, win=True)),
-            "this is not json",
-            json.dumps(_trade_row(1, win=False))]
+    rows = [json.dumps(_trade_row(0, win=True)), "this is not json", json.dumps(_trade_row(1, win=False))]
     trades.write_text("\n".join(rows) + "\n", encoding="utf-8")
     out_dir = tmp_path / "docs"
     payload = run(trades_path=trades, out_dir=out_dir, now=_T0)

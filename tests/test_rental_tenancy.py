@@ -90,7 +90,9 @@ def _past(days: int = 1) -> datetime:
 
 def test_entitlement_active_when_not_expired() -> None:
     ent = entitlement_from_tier(
-        tenant_id="t1", tier=PORTFOLIO, expires_utc=_future(30),
+        tenant_id="t1",
+        tier=PORTFOLIO,
+        expires_utc=_future(30),
     )
     ok, reason = ent.is_entitled_now()
     assert ok
@@ -99,7 +101,9 @@ def test_entitlement_active_when_not_expired() -> None:
 
 def test_entitlement_expired_blocks() -> None:
     ent = entitlement_from_tier(
-        tenant_id="t1", tier=PORTFOLIO, expires_utc=_past(1),
+        tenant_id="t1",
+        tier=PORTFOLIO,
+        expires_utc=_past(1),
     )
     ok, reason = ent.is_entitled_now()
     assert not ok
@@ -108,7 +112,9 @@ def test_entitlement_expired_blocks() -> None:
 
 def test_entitlement_sku_membership() -> None:
     ent = entitlement_from_tier(
-        tenant_id="t1", tier=PORTFOLIO, expires_utc=_future(30),
+        tenant_id="t1",
+        tier=PORTFOLIO,
+        expires_utc=_future(30),
     )
     ok, _ = ent.is_entitled_sku(BotSku.BTC_SEED)
     assert ok
@@ -134,7 +140,9 @@ def _active_tenant() -> Tenant:
 def test_attach_safe_key_succeeds() -> None:
     tenant = _active_tenant()
     key = ApiKeyRecord.from_secret(
-        exchange="bybit", key_id="k1", secret="x",
+        exchange="bybit",
+        key_id="k1",
+        secret="x",
         declared_permissions=("TRADE",),
     )
     tenant.attach_key(BotSku.BTC_SEED, key)
@@ -144,7 +152,9 @@ def test_attach_safe_key_succeeds() -> None:
 def test_attach_unsafe_key_raises() -> None:
     tenant = _active_tenant()
     bad = ApiKeyRecord.from_secret(
-        exchange="bybit", key_id="k1", secret="x",
+        exchange="bybit",
+        key_id="k1",
+        secret="x",
         declared_permissions=("WITHDRAW",),
     )
     with pytest.raises(PermissionError, match="unsafe"):
@@ -154,7 +164,9 @@ def test_attach_unsafe_key_raises() -> None:
 def test_is_entitled_composite_ok() -> None:
     tenant = _active_tenant()
     key = ApiKeyRecord.from_secret(
-        exchange="bybit", key_id="k1", secret="x",
+        exchange="bybit",
+        key_id="k1",
+        secret="x",
         declared_permissions=("TRADE",),
     )
     tenant.attach_key(BotSku.BTC_SEED, key)
@@ -182,7 +194,9 @@ def test_is_entitled_fails_on_out_of_tier_sku() -> None:
     # PORTFOLIO excludes MNQ_APEX
     tenant = _active_tenant()
     key = ApiKeyRecord.from_secret(
-        exchange="bybit", key_id="k1", secret="x",
+        exchange="bybit",
+        key_id="k1",
+        secret="x",
         declared_permissions=("TRADE",),
     )
     tenant.attach_key(BotSku.BTC_SEED, key)
@@ -199,7 +213,9 @@ def test_is_entitled_fails_after_expiry() -> None:
         expires_utc=_past(1),
     )
     key = ApiKeyRecord.from_secret(
-        exchange="bybit", key_id="k1", secret="x",
+        exchange="bybit",
+        key_id="k1",
+        secret="x",
         declared_permissions=("TRADE",),
     )
     tenant.attach_key(BotSku.BTC_SEED, key)
@@ -273,7 +289,9 @@ def test_build_active_tenant_populates_entitlement() -> None:
 
 def test_entitlement_from_tier_uses_tier_fields() -> None:
     ent = entitlement_from_tier(
-        tenant_id="t1", tier=PORTFOLIO, expires_utc=_future(30),
+        tenant_id="t1",
+        tier=PORTFOLIO,
+        expires_utc=_future(30),
     )
     assert ent.max_concurrent_positions == PORTFOLIO.max_concurrent_positions
     assert ent.max_equity_managed_usd == PORTFOLIO.max_equity_managed_usd

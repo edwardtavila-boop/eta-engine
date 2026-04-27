@@ -166,7 +166,8 @@ async def _amain(argv: list[str] | None = None) -> dict[str, Any]:
     summary_path = out_dir / "collector_last_run.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
-        json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8",
+        json.dumps(summary, indent=2, default=str) + "\n",
+        encoding="utf-8",
     )
     return summary
 

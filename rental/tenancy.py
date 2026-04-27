@@ -26,17 +26,18 @@ from eta_engine.rental.tiers import BotSku, RentalTier, Tier, TierCatalog
 
 
 class TenantStatus(StrEnum):
-    PENDING = "PENDING"         # record created, waiting for payment + keys
+    PENDING = "PENDING"  # record created, waiting for payment + keys
     ACTIVE = "ACTIVE"
-    PAUSED = "PAUSED"           # billing grace / manual pause
-    CANCELLED = "CANCELLED"     # sub ended, entitlements stripped
+    PAUSED = "PAUSED"  # billing grace / manual pause
+    CANCELLED = "CANCELLED"  # sub ended, entitlements stripped
 
 
 class ApiKeyScope(StrEnum):
     """What the customer key is permitted to do at their exchange."""
+
     TRADE_ONLY = "TRADE_ONLY"
     READ_ONLY = "READ_ONLY"
-    REJECTED = "REJECTED"   # anything with withdrawal permission lands here
+    REJECTED = "REJECTED"  # anything with withdrawal permission lands here
 
 
 @dataclass(frozen=True)
@@ -47,10 +48,11 @@ class ApiKeyRecord:
     digest of the secret so tests + local dev have a real hash shape without
     ever touching the raw bytes after creation.
     """
-    exchange: str                         # "bybit", "okx", "binance"
-    key_id: str                           # public half of the exchange key
-    secret_sha256: str                    # salted digest, NEVER the raw
-    salt_hex: str                         # per-key salt
+
+    exchange: str  # "bybit", "okx", "binance"
+    key_id: str  # public half of the exchange key
+    secret_sha256: str  # salted digest, NEVER the raw
+    salt_hex: str  # per-key salt
     scope: ApiKeyScope = ApiKeyScope.TRADE_ONLY
     declared_permissions: tuple[str, ...] = ()
 
@@ -69,11 +71,7 @@ class ApiKeyRecord:
         """Build a record from a raw secret. The secret is hashed + dropped."""
         salt = secrets.token_bytes(16)
         digest = hashlib.sha256(salt + secret.encode("utf-8")).hexdigest()
-        scope = (
-            ApiKeyScope.REJECTED
-            if "WITHDRAW" in declared_permissions
-            else ApiKeyScope.TRADE_ONLY
-        )
+        scope = ApiKeyScope.REJECTED if "WITHDRAW" in declared_permissions else ApiKeyScope.TRADE_ONLY
         return ApiKeyRecord(
             exchange=exchange,
             key_id=key_id,
@@ -87,6 +85,7 @@ class ApiKeyRecord:
 @dataclass(frozen=True)
 class Entitlement:
     """What a tenant's paid-up subscription currently permits."""
+
     tenant_id: str
     tier: RentalTier
     bot_skus: frozenset[BotSku]
@@ -110,6 +109,7 @@ class Entitlement:
 @dataclass
 class Tenant:
     """One rental customer."""
+
     tenant_id: str
     email: str
     tier: RentalTier
@@ -222,7 +222,9 @@ def build_active_tenant(
     cat = catalog if catalog is not None else TierCatalog()
     tier = cat.by_id(tier_id)
     ent = entitlement_from_tier(
-        tenant_id=tenant_id, tier=tier, expires_utc=expires_utc,
+        tenant_id=tenant_id,
+        tier=tier,
+        expires_utc=expires_utc,
     )
     return Tenant(
         tenant_id=tenant_id,

@@ -1,4 +1,5 @@
 """Unit tests for ``eta_engine.obs.probes`` registry semantics."""
+
 from __future__ import annotations
 
 import contextlib
@@ -38,10 +39,7 @@ def _isolated_registry(monkeypatch: pytest.MonkeyPatch):
     # Evict any cached probe submodules so module-level @register_probe
     # decorators re-run on next import.
     pkg_prefix = "eta_engine.obs.probes."
-    evicted = [
-        name for name in list(sys.modules)
-        if name.startswith(pkg_prefix)
-    ]
+    evicted = [name for name in list(sys.modules) if name.startswith(pkg_prefix)]
     for name in evicted:
         del sys.modules[name]
     yield
@@ -68,7 +66,7 @@ def test_register_probe_adds_to_registry() -> None:
     assert "pp" in reg
     assert reg["pp"].category == "test"
     assert reg["pp"].severity == "advisory"
-    assert reg["pp"].fn() .status == "pass"
+    assert reg["pp"].fn().status == "pass"
 
 
 def test_register_probe_rejects_duplicate_name() -> None:
@@ -77,6 +75,7 @@ def test_register_probe_rejects_duplicate_name() -> None:
         return probes.ProbeResult("dup", "pass", "")
 
     with pytest.raises(ValueError, match="dup.*already registered"):
+
         @probes.register_probe(name="dup", category="test")
         def _b() -> probes.ProbeResult:
             return probes.ProbeResult("dup", "pass", "")
@@ -86,6 +85,7 @@ def test_severity_defaults_to_important() -> None:
     @probes.register_probe(name="ds")
     def _p() -> probes.ProbeResult:
         return probes.ProbeResult("ds", "pass", "")
+
     assert probes.get_registry()["ds"].severity == "important"
 
 
@@ -94,10 +94,17 @@ def test_discover_imports_real_probe_modules() -> None:
     probe names appear in the registry."""
     reg = probes.discover_probes()
     expected = {
-        "python_version", "dependencies", "config_loadable",
-        "roadmap_state_fresh", "broker_dormancy", "preflight",
-        "firm_bridge", "firm_runtime_shim", "obs_paths",
-        "dashboard_importable", "kill_switch_state",
+        "python_version",
+        "dependencies",
+        "config_loadable",
+        "roadmap_state_fresh",
+        "broker_dormancy",
+        "preflight",
+        "firm_bridge",
+        "firm_runtime_shim",
+        "obs_paths",
+        "dashboard_importable",
+        "kill_switch_state",
     }
     actual = set(reg)
     missing = expected - actual

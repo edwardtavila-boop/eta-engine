@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from eta_engine.core.data_pipeline import BarData
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
 
 
 class FeatureResult(BaseModel):

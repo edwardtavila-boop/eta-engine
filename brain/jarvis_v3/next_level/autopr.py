@@ -19,6 +19,7 @@ This module contains the PURE planning layer:
 The EXECUTOR is injected -- actual sub-agent spawning + git PR ops live
 in ``scripts/autopr_executor.py``. Keeps this module test-friendly.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable  # noqa: TC003  (used in type alias at runtime)
@@ -35,45 +36,48 @@ if TYPE_CHECKING:
 
 
 class Scope(StrEnum):
-    S  = "S"   # < 1 hour, single file, clear diff
-    M  = "M"   # 1-4 hours, multiple files, tests required
-    L  = "L"   # half-day, cross-module change
+    S = "S"  # < 1 hour, single file, clear diff
+    M = "M"  # 1-4 hours, multiple files, tests required
+    L = "L"  # half-day, cross-module change
     XL = "XL"  # multi-day; do NOT auto-PR, escalate to operator
 
 
 class PRPlan(BaseModel):
     """Plan for one auto-generated PR."""
+
     model_config = ConfigDict(frozen=True)
 
-    ticket_id:       str = Field(min_length=1)
-    title:           str = Field(min_length=1)
-    branch_name:     str = Field(min_length=1)
-    scope:           Scope
-    tier:            ModelTier
-    prompt:          str = Field(min_length=20)
-    proposed_files:  list[str]     = Field(default_factory=list)
-    tests_required:  list[str]     = Field(default_factory=list)
-    acceptance:      list[str]     = Field(default_factory=list)
-    estimated_hours: float         = Field(ge=0.0)
-    notes:           str = ""
+    ticket_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    branch_name: str = Field(min_length=1)
+    scope: Scope
+    tier: ModelTier
+    prompt: str = Field(min_length=20)
+    proposed_files: list[str] = Field(default_factory=list)
+    tests_required: list[str] = Field(default_factory=list)
+    acceptance: list[str] = Field(default_factory=list)
+    estimated_hours: float = Field(ge=0.0)
+    notes: str = ""
 
 
 class AutoPRResult(BaseModel):
     """Outcome after an executor ran the plan."""
+
     model_config = ConfigDict(frozen=True)
 
-    plan:        PRPlan
-    success:     bool
-    pr_url:      str | None = None
-    branch:      str
-    ts_started:  datetime
+    plan: PRPlan
+    success: bool
+    pr_url: str | None = None
+    branch: str
+    ts_started: datetime
     ts_finished: datetime
-    message:     str
+    message: str
 
 
 # ---------------------------------------------------------------------------
 # Scope estimation
 # ---------------------------------------------------------------------------
+
 
 def estimate_scope(ticket: KaizenTicket) -> Scope:
     """Rough scope estimation from the ticket's impact + title heuristics."""
@@ -82,13 +86,26 @@ def estimate_scope(ticket: KaizenTicket) -> Scope:
         return Scope.XL
     if ticket.impact == "large":
         return Scope.L
-    if any(word in title for word in (
-        "rewrite", "refactor module", "migrate", "architecture",
-    )):
+    if any(
+        word in title
+        for word in (
+            "rewrite",
+            "refactor module",
+            "migrate",
+            "architecture",
+        )
+    ):
         return Scope.L
-    if any(word in title for word in (
-        "fix typo", "rename", "lint", "docstring", "comment",
-    )):
+    if any(
+        word in title
+        for word in (
+            "fix typo",
+            "rename",
+            "lint",
+            "docstring",
+            "comment",
+        )
+    ):
         return Scope.S
     return Scope.M
 
@@ -109,6 +126,7 @@ def select_model_tier(scope: Scope) -> ModelTier:
 # ---------------------------------------------------------------------------
 # Prompt construction
 # ---------------------------------------------------------------------------
+
 
 def build_agent_prompt(ticket: KaizenTicket) -> str:
     """Build a self-contained prompt for the sub-agent.
@@ -159,8 +177,7 @@ def build_plan(ticket: KaizenTicket, now: datetime | None = None) -> PRPlan:
             "single-purpose change only",
         ],
         estimated_hours=hours,
-        notes="XL scope requires operator review before auto-submit"
-              if scope == Scope.XL else "",
+        notes="XL scope requires operator review before auto-submit" if scope == Scope.XL else "",
     )
 
 
@@ -173,7 +190,8 @@ Executor = Callable[[PRPlan], "AutoPRResult"]
 
 
 def submit_plan(
-    plan: PRPlan, executor: Executor | None,
+    plan: PRPlan,
+    executor: Executor | None,
     now: datetime | None = None,
 ) -> AutoPRResult:
     """Hand the plan to the executor. No executor -> dry-run result."""
@@ -181,14 +199,22 @@ def submit_plan(
     if plan.scope == Scope.XL:
         # XL scope always returns a dry-run "pending operator review"
         return AutoPRResult(
-            plan=plan, success=False, pr_url=None, branch=plan.branch_name,
-            ts_started=now, ts_finished=now,
+            plan=plan,
+            success=False,
+            pr_url=None,
+            branch=plan.branch_name,
+            ts_started=now,
+            ts_finished=now,
             message="XL scope -- escalated to operator, NOT auto-submitted",
         )
     if executor is None:
         return AutoPRResult(
-            plan=plan, success=False, pr_url=None, branch=plan.branch_name,
-            ts_started=now, ts_finished=now,
+            plan=plan,
+            success=False,
+            pr_url=None,
+            branch=plan.branch_name,
+            ts_started=now,
+            ts_finished=now,
             message="dry-run: no executor wired",
         )
     return executor(plan)

@@ -21,6 +21,7 @@ correlation matrix, compute:
 Pure / deterministic. Correlation matrix is injected by caller (typically
 from ``firm.correlation_universe``).
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,24 +29,26 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Exposure(BaseModel):
     """One open or proposed position's R at risk."""
+
     model_config = ConfigDict(frozen=True)
 
     subsystem: str = Field(min_length=1)
-    symbol:    str = Field(min_length=1)
+    symbol: str = Field(min_length=1)
     r_at_risk: float = Field(description="Signed R. Positive = long, negative = short.")
 
 
 class PortfolioAssessment(BaseModel):
     """Output of ``assess_portfolio``."""
+
     model_config = ConfigDict(frozen=True)
 
-    gross_r:                float
-    net_r:                  float
+    gross_r: float
+    net_r: float
     correlation_weighted_r: float
-    cluster_breach:         bool
-    breached_cluster:       list[str] = Field(default_factory=list)
-    notes:                  list[str] = Field(default_factory=list)
-    verdict_downgrade:      str   = Field(
+    cluster_breach: bool
+    breached_cluster: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    verdict_downgrade: str = Field(
         default="NONE",
         description="NONE / CONDITIONAL / DENIED -- recommendation to caller.",
     )
@@ -90,7 +93,7 @@ def assess_portfolio(
             parent[ra] = rb
 
     for i, a in enumerate(symbols):
-        for b in symbols[i + 1:]:
+        for b in symbols[i + 1 :]:
             rho = abs(corr.get((a, b), corr.get((b, a), 0.0)))
             if rho >= CLUSTER_CORR_CUTOFF:
                 _union(a, b)

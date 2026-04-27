@@ -3,6 +3,7 @@
 Unit tests for :mod:`eta_engine.strategies.models` -- the shared
 value objects for the strategies package.
 """
+
 from __future__ import annotations
 
 import pytest

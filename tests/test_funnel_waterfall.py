@@ -200,10 +200,7 @@ def test_correlation_guard_skips_when_only_one_high() -> None:
         LAYER_1_MNQ=_layer(LayerId.LAYER_1_MNQ, equity=50_000.0, vol=VolRegime.HIGH),
     )
     plan = FunnelWaterfall().plan(snap)
-    assert not any(
-        d.reason.startswith("correlation_guard")
-        for d in plan.directives
-    )
+    assert not any(d.reason.startswith("correlation_guard") for d in plan.directives)
 
 
 def test_correlation_guard_does_not_re_cut_halted_layer() -> None:
@@ -212,7 +209,7 @@ def test_correlation_guard_does_not_re_cut_halted_layer() -> None:
         LAYER_1_MNQ=_layer(
             LayerId.LAYER_1_MNQ,
             equity=40_000.0,
-            peak=50_000.0,   # 20% DD > 12% kill
+            peak=50_000.0,  # 20% DD > 12% kill
             vol=VolRegime.HIGH,
         ),
         LAYER_2_BTC=_layer(LayerId.LAYER_2_BTC, vol=VolRegime.HIGH),
@@ -233,10 +230,7 @@ def test_vol_scale_reduces_size_with_positive_z() -> None:
         LAYER_1_MNQ=_layer(LayerId.LAYER_1_MNQ, vol_z=2.0),
     )
     plan = FunnelWaterfall().plan(snap)
-    cuts = [
-        d for d in plan.directives
-        if d.layer == LayerId.LAYER_1_MNQ and d.action == RiskAction.REDUCE_SIZE
-    ]
+    cuts = [d for d in plan.directives if d.layer == LayerId.LAYER_1_MNQ and d.action == RiskAction.REDUCE_SIZE]
     assert len(cuts) == 1
     # 1 / (1 + 2 * 0.5) = 0.5
     assert cuts[0].size_mult == pytest.approx(0.5)
@@ -247,20 +241,14 @@ def test_vol_scale_floor_at_quarter() -> None:
         LAYER_1_MNQ=_layer(LayerId.LAYER_1_MNQ, vol_z=10.0),
     )
     plan = FunnelWaterfall().plan(snap)
-    cuts = [
-        d for d in plan.directives
-        if d.layer == LayerId.LAYER_1_MNQ and d.action == RiskAction.REDUCE_SIZE
-    ]
+    cuts = [d for d in plan.directives if d.layer == LayerId.LAYER_1_MNQ and d.action == RiskAction.REDUCE_SIZE]
     assert cuts[0].size_mult == pytest.approx(0.25)
 
 
 def test_vol_scale_noop_when_z_zero() -> None:
     plan = FunnelWaterfall().plan(_snap())
     # Nothing should scale when everything is at baseline vol
-    vol_cuts = [
-        d for d in plan.directives
-        if d.action == RiskAction.REDUCE_SIZE and "vol_scale" in d.reason
-    ]
+    vol_cuts = [d for d in plan.directives if d.action == RiskAction.REDUCE_SIZE and "vol_scale" in d.reason]
     assert vol_cuts == []
 
 
@@ -319,7 +307,10 @@ def test_profit_sweep_skipped_when_src_halted() -> None:
     # L1 is drawdown-killed; any profit sweep from it should be skipped.
     snap = _snap(
         LAYER_1_MNQ=_layer(
-            LayerId.LAYER_1_MNQ, equity=40_000.0, peak=50_000.0, realized=1_000.0,
+            LayerId.LAYER_1_MNQ,
+            equity=40_000.0,
+            peak=50_000.0,
+            realized=1_000.0,
         ),
     )
     plan = FunnelWaterfall(global_kill_pct=0.99).plan(snap)
@@ -338,6 +329,7 @@ def test_negative_pnl_never_sweeps() -> None:
 
 def test_plan_as_dict_is_json_safe() -> None:
     import json as _json
+
     snap = _snap(
         LAYER_1_MNQ=_layer(LayerId.LAYER_1_MNQ, equity=51_000.0, realized=1_000.0),
     )
@@ -357,7 +349,9 @@ def test_plan_as_dict_is_json_safe() -> None:
 def test_format_digest_renders_sweeps_and_directives() -> None:
     snap = _snap(
         LAYER_1_MNQ=_layer(
-            LayerId.LAYER_1_MNQ, equity=51_000.0, realized=1_000.0,
+            LayerId.LAYER_1_MNQ,
+            equity=51_000.0,
+            realized=1_000.0,
         ),
     )
     plan = FunnelWaterfall().plan(snap)

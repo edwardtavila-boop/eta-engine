@@ -20,8 +20,8 @@ from eta_engine.core.session_filter import (
 # Session windows
 # ---------------------------------------------------------------------------
 
-class TestSessionWindow:
 
+class TestSessionWindow:
     def test_session_window_has_required_fields(self) -> None:
         w = SessionWindow(name="ny_open", start_time=time(9, 30), end_time=time(11, 30))
         assert w.name == "ny_open"
@@ -53,8 +53,8 @@ class TestSessionWindow:
 # News blackout
 # ---------------------------------------------------------------------------
 
-class TestNewsBlackout:
 
+class TestNewsBlackout:
     def test_fomc_is_high_impact(self) -> None:
         assert "FOMC" in HIGH_IMPACT_TAGS
 

@@ -49,6 +49,7 @@ Design choices
   tuple of strings describing why it failed, so downstream dashboards
   can display the drop cause without re-running the analysis.
 """
+
 from __future__ import annotations
 
 import math
@@ -254,8 +255,8 @@ def _moments(rs: list[float]) -> tuple[float, float]:
     if var <= 0.0:
         return 0.0, 3.0
     sd = math.sqrt(var)
-    skew = sum((r - m) ** 3 for r in rs) / (n * sd ** 3)
-    kurt = sum((r - m) ** 4 for r in rs) / (n * sd ** 4)
+    skew = sum((r - m) ** 3 for r in rs) / (n * sd**3)
+    kurt = sum((r - m) ** 4 for r in rs) / (n * sd**4)
     return skew, kurt
 
 
@@ -395,14 +396,20 @@ def qualify_strategies(
         is_bars = bars[is_start:is_end]
         oos_bars = bars[is_end:oos_end]
         is_report = run_harness(
-            is_bars, asset,
-            ctx_builder=ctx_builder, config=cfg,
-            eligibility=eligibility, registry=registry,
+            is_bars,
+            asset,
+            ctx_builder=ctx_builder,
+            config=cfg,
+            eligibility=eligibility,
+            registry=registry,
         )
         oos_report = run_harness(
-            oos_bars, asset,
-            ctx_builder=ctx_builder, config=cfg,
-            eligibility=eligibility, registry=registry,
+            oos_bars,
+            asset,
+            ctx_builder=ctx_builder,
+            config=cfg,
+            eligibility=eligibility,
+            registry=registry,
         )
         is_trades_by_strat = _add_trades(is_report)
         oos_trades_by_strat = _add_trades(oos_report)
@@ -420,16 +427,9 @@ def qualify_strategies(
             oos_total = sum(oos_rs)
             is_n = len(is_rs)
             oos_n = len(oos_rs)
-            is_hit = (
-                sum(1 for r in is_rs if r > 0.0) / is_n if is_n else 0.0
-            )
-            oos_hit = (
-                sum(1 for r in oos_rs if r > 0.0) / oos_n if oos_n else 0.0
-            )
-            min_met = (
-                is_n >= gate.min_trades_per_window
-                and oos_n >= gate.min_trades_per_window
-            )
+            is_hit = sum(1 for r in is_rs if r > 0.0) / is_n if is_n else 0.0
+            oos_hit = sum(1 for r in oos_rs if r > 0.0) / oos_n if oos_n else 0.0
+            min_met = is_n >= gate.min_trades_per_window and oos_n >= gate.min_trades_per_window
             deg = _degradation(is_sr, oos_sr)
 
             per_window.append(
@@ -489,13 +489,11 @@ def qualify_strategies(
             )
         if avg_deg >= gate.max_degradation_pct:
             fail_reasons.append(
-                f"avg_degradation {avg_deg:.4f} >= "
-                f"max {gate.max_degradation_pct:.4f}",
+                f"avg_degradation {avg_deg:.4f} >= max {gate.max_degradation_pct:.4f}",
             )
         if not all(mins):
             fail_reasons.append(
-                f"min_trades_per_window {gate.min_trades_per_window} "
-                "not met in every window",
+                f"min_trades_per_window {gate.min_trades_per_window} not met in every window",
             )
 
         qualifications.append(

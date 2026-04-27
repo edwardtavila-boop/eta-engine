@@ -14,6 +14,7 @@ Each bot class gets:
 The stubs mirror :mod:`tests.test_bots_mnq_router_adapter` so the
 behavioural contract is identical across the portfolio.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -239,7 +240,10 @@ class TestEthPerpBotRouterAdapter:
             [OrderResult(order_id="E-1", status=OrderStatus.FILLED, filled_qty=0.5)],
         )
         adapter = _stub_long_adapter(
-            asset="ETHUSDT", entry=3018.0, stop=3010.0, target=3050.0,
+            asset="ETHUSDT",
+            entry=3018.0,
+            stop=3010.0,
+            target=3050.0,
         )
         bot = EthPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_eth_trend_bar())
@@ -247,10 +251,7 @@ class TestEthPerpBotRouterAdapter:
         assert router.calls[0].side is VenueSide.BUY
         # Leverage should have been computed and stamped onto the signal meta
         assert adapter.last_decision is not None
-        assert (
-            adapter.last_decision.winner.strategy
-            is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
-        )
+        assert adapter.last_decision.winner.strategy is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
 
     @pytest.mark.asyncio
     async def test_adapter_flat_falls_through_to_legacy_trend(self) -> None:
@@ -269,7 +270,10 @@ class TestEthPerpBotRouterAdapter:
     async def test_kill_switch_short_circuits_before_adapter(self) -> None:
         router = _FakeRouter()
         adapter = _stub_long_adapter(
-            asset="ETHUSDT", entry=3018.0, stop=3010.0, target=3050.0,
+            asset="ETHUSDT",
+            entry=3018.0,
+            stop=3010.0,
+            target=3050.0,
         )
         bot = EthPerpBot(router=router, strategy_adapter=adapter)
         bot.state.is_killed = True
@@ -301,17 +305,17 @@ class TestNqBotRouterAdapter:
         # NQ POINT_VALUE_USD=$20 and 1% of $12k=$120 risk, so stop must be
         # tight enough for at least 1 contract: 120 / (stop_pts * 20) >= 1.
         adapter = _stub_long_adapter(
-            asset="NQ", entry=25_050.0, stop=25_045.0, target=25_065.0,
+            asset="NQ",
+            entry=25_050.0,
+            stop=25_045.0,
+            target=25_065.0,
         )
         bot = NqBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_orb_bar_long())
         assert len(router.calls) == 1
         assert router.calls[0].side is VenueSide.BUY
         assert adapter.last_decision is not None
-        assert (
-            adapter.last_decision.winner.strategy
-            is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
-        )
+        assert adapter.last_decision.winner.strategy is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
 
     @pytest.mark.asyncio
     async def test_adapter_flat_falls_through_to_legacy_orb(self) -> None:
@@ -355,7 +359,10 @@ class TestSolPerpBotRouterAdapter:
             [OrderResult(order_id="S-1", status=OrderStatus.FILLED, filled_qty=2.0)],
         )
         adapter = _stub_long_adapter(
-            asset="SOLUSDT", entry=151.9, stop=150.0, target=155.0,
+            asset="SOLUSDT",
+            entry=151.9,
+            stop=150.0,
+            target=155.0,
         )
         bot = SolPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_sol_trend_bar())
@@ -368,7 +375,10 @@ class TestSolPerpBotRouterAdapter:
             [OrderResult(order_id="S-2", status=OrderStatus.FILLED, filled_qty=2.0)],
         )
         adapter = _stub_long_adapter(
-            asset="SOLUSDT", entry=149.0, stop=147.5, target=152.0,
+            asset="SOLUSDT",
+            entry=149.0,
+            stop=147.5,
+            target=152.0,
         )
         bot = SolPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_sol_ranging_bar())
@@ -419,7 +429,10 @@ class TestXrpPerpBotRouterAdapter:
             [OrderResult(order_id="X-1", status=OrderStatus.FILLED, filled_qty=10.0)],
         )
         adapter = _stub_long_adapter(
-            asset="XRPUSDT", entry=0.619, stop=0.615, target=0.640,
+            asset="XRPUSDT",
+            entry=0.619,
+            stop=0.615,
+            target=0.640,
         )
         bot = XrpPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_xrp_trend_bar())
@@ -448,7 +461,10 @@ class TestXrpPerpBotRouterAdapter:
             [OrderResult(order_id="XP-1", status=OrderStatus.FILLED, filled_qty=10.0)],
         )
         adapter = _stub_long_adapter(
-            asset="XRPUSDT", entry=0.619, stop=0.615, target=0.640,
+            asset="XRPUSDT",
+            entry=0.619,
+            stop=0.615,
+            target=0.640,
         )
         bot = XrpPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_xrp_trend_bar())
@@ -465,7 +481,10 @@ class TestXrpPerpBotRouterAdapter:
             [OrderResult(order_id="E-UR", status=OrderStatus.FILLED, filled_qty=0.5)],
         )
         adapter = _stub_long_adapter(
-            asset="ETHUSDT", entry=3018.0, stop=3010.0, target=3050.0,
+            asset="ETHUSDT",
+            entry=3018.0,
+            stop=3010.0,
+            target=3050.0,
         )
         bot = EthPerpBot(router=router, strategy_adapter=adapter)
         await bot.on_bar(_eth_trend_bar())
@@ -495,7 +514,10 @@ class TestCryptoSeedBotRouterAdapter:
             [OrderResult(order_id="BTC-1", status=OrderStatus.FILLED, filled_qty=0.001)],
         )
         adapter = _stub_long_adapter(
-            asset="BTCUSDT", entry=60_250.0, stop=60_100.0, target=60_600.0,
+            asset="BTCUSDT",
+            entry=60_250.0,
+            stop=60_100.0,
+            target=60_600.0,
         )
         bot = CryptoSeedBot(router=router, strategy_adapter=adapter)
         # Seed adapter bounds so grid management does not blow up
@@ -697,17 +719,19 @@ class TestCryptoSeedBotRouterAdapter:
             order_id=filled.order_id,
             side=VenueSide.BUY,
         )
-        await bot.on_bar({
-            "open": 60_000,
-            "high": 60_010,
-            "low": 59_990,
-            "close": 60_000,
-            "volume": 1,
-            "avg_volume": 1,
-            "confluence_score": 0.0,
-            "ema_9": 60_000,
-            "ema_21": 60_000,
-        })
+        await bot.on_bar(
+            {
+                "open": 60_000,
+                "high": 60_010,
+                "low": 59_990,
+                "close": 60_000,
+                "volume": 1,
+                "avg_volume": 1,
+                "confluence_score": 0.0,
+                "ema_9": 60_000,
+                "ema_21": 60_000,
+            }
+        )
         snapshot = next(order for order in bot.grid_state.active_orders if order.price == filled.price)
         assert snapshot.is_active is False
         assert snapshot.status_hint == "FILLED"
@@ -736,9 +760,7 @@ class TestAdapterCrossBotSanity:
             bot._router = router
             bot.state.is_killed = True
             await bot.on_bar(bar)
-            assert router.calls == [], (
-                f"{bot.__class__.__name__} routed orders while killed"
-            )
+            assert router.calls == [], f"{bot.__class__.__name__} routed orders while killed"
 
     def test_all_bots_accept_strategy_adapter_kwarg(self) -> None:
         """Every v0.1.35 wired bot takes ``strategy_adapter`` at construction."""
@@ -752,6 +774,4 @@ class TestAdapterCrossBotSanity:
         assert NqBot(strategy_adapter=adapter_nq)._strategy_adapter is adapter_nq
         assert SolPerpBot(strategy_adapter=adapter_sol)._strategy_adapter is adapter_sol
         assert XrpPerpBot(strategy_adapter=adapter_xrp)._strategy_adapter is adapter_xrp
-        assert (
-            CryptoSeedBot(strategy_adapter=adapter_btc)._strategy_adapter is adapter_btc
-        )
+        assert CryptoSeedBot(strategy_adapter=adapter_btc)._strategy_adapter is adapter_btc

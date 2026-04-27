@@ -122,6 +122,7 @@ Design guarantees
     :mod:`eta_engine.funnel.waterfall` -- single source of truth
     shared with the 4-layer profit planner.
 """
+
 from __future__ import annotations
 
 import json
@@ -148,10 +149,7 @@ def main() -> None:
     sa["eta_engine_v0_1_31_ai_optimized_strategies"] = {
         "timestamp_utc": now,
         "version": "v0.1.31",
-        "bundle_name": (
-            "AI-OPTIMIZED EVOLUTIONARY TRADING ALGO STRATEGY STACK -- "
-            "SMC/ICT playbook + RL bridge"
-        ),
+        "bundle_name": ("AI-OPTIMIZED EVOLUTIONARY TRADING ALGO STRATEGY STACK -- SMC/ICT playbook + RL bridge"),
         "directive": (
             "Absorb the founder-brief AI-Optimized Evolutionary Trading Algo "
             "strategy list (6 ranked playbooks) into a pure, composable "
@@ -203,8 +201,7 @@ def main() -> None:
         "six_named_strategies": {
             "1_liquidity_sweep_displacement": {
                 "hypothesis": (
-                    "Liquidity raids create equal-level sweeps that "
-                    "reverse on displacement. Trade the close-back."
+                    "Liquidity raids create equal-level sweeps that reverse on displacement. Trade the close-back."
                 ),
                 "primitives": [
                     "find_equal_levels",
@@ -231,8 +228,7 @@ def main() -> None:
             },
             "3_fvg_fill_confluence": {
                 "hypothesis": (
-                    "Unfilled FVGs on 15m/1H are imbalance reservoirs. "
-                    "Price returns to fill, confluence-weighted R:R."
+                    "Unfilled FVGs on 15m/1H are imbalance reservoirs. Price returns to fill, confluence-weighted R:R."
                 ),
                 "primitives": ["detect_fvg"],
                 "adaptive_rr": "3.0 in TRENDING, 1.5 otherwise",
@@ -240,10 +236,7 @@ def main() -> None:
                 "assets": ["MNQ", "BTC", "ETH", "SOL", "XRP"],
             },
             "4_mtf_trend_following": {
-                "hypothesis": (
-                    "200-MA aligned BOS = regime-confirmed trend. "
-                    "Chop regime cuts risk to zero."
-                ),
+                "hypothesis": ("200-MA aligned BOS = regime-confirmed trend. Chop regime cuts risk to zero."),
                 "primitives": [
                     "above_moving_average",
                     "detect_break_of_structure",
@@ -326,22 +319,22 @@ def main() -> None:
             "ruff_clean": True,
             "guardrails_in_one_place": "_risk_mult helper in eta_policy",
             "router_supports_stub_injection": True,
-            "single_source_of_truth_for_layers": (
-                "funnel.waterfall.LayerId + VolRegime"
-            ),
+            "single_source_of_truth_for_layers": ("funnel.waterfall.LayerId + VolRegime"),
         },
         "bundle_shape": "python_only",
         "jsx_touched": False,
     }
 
     hist = state.setdefault("milestones", [])
-    hist.append({
-        "version": "v0.1.31",
-        "timestamp_utc": now,
-        "title": "AI-Optimized Evolutionary Trading Algo strategy stack",
-        "tests_delta": new_tests - prev_tests,
-        "tests_passing": new_tests,
-    })
+    hist.append(
+        {
+            "version": "v0.1.31",
+            "timestamp_utc": now,
+            "title": "AI-Optimized Evolutionary Trading Algo strategy stack",
+            "tests_delta": new_tests - prev_tests,
+            "tests_passing": new_tests,
+        }
+    )
 
     STATE_PATH.write_text(
         json.dumps(state, indent=2, sort_keys=False) + "\n",

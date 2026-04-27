@@ -1,0 +1,276 @@
+{
+  "fleet_summary": {
+    "by_broker": {
+      "ibkr": 2,
+      "tastytrade": 2
+    },
+    "by_lane": {
+      "directional": 2,
+      "grid": 2
+    },
+    "live_money_orders": "blocked",
+    "order_routing": "paper_broker_enabled",
+    "paper_broker_orders": "allowed",
+    "paper_starting_cash_per_worker": 5000.0,
+    "paper_starting_cash_total": 20000.0,
+    "requested_workers": 4,
+    "running_workers": 4
+  },
+  "generated_at_utc": "2026-04-26T14:51:33.135951+00:00",
+  "health": "GREEN",
+  "live_money_orders": "blocked",
+  "live_paper_trading_bots": 4,
+  "order_routing": "paper_broker_enabled",
+  "paper_broker_orders": "allowed",
+  "paper_starting_cash_per_bot": 5000.0,
+  "paper_starting_cash_total": 20000.0,
+  "pid": 68012,
+  "requested_bots": 4,
+  "role": "dashboard",
+  "roles": {
+    "audit": {
+      "artifact_audit": {
+        "health": "YELLOW",
+        "missing": [
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_ecosystem_latest.json"
+        ],
+        "missing_count": 1,
+        "present": [
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc_broker_fleet_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-directional-tastytrade.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-directional-ibkr.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-grid-tastytrade.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\broker_fleet\\btc-grid-ibkr.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_keeper_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_autolearn_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_shadow_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_risk_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_optimizer_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_broker_probe_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_resource_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_journal_latest.json",
+          "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\btc_live\\ecosystem\\btc_dashboard_latest.json"
+        ],
+        "present_count": 14
+      },
+      "generated_at_utc": "2026-04-26T14:51:31.019541+00:00",
+      "pid": 3288,
+      "role": "audit",
+      "safety": "artifact audit only; no broker order placement",
+      "status": "DEGRADED"
+    },
+    "autolearn": {
+      "champion_candidate": {
+        "broker_balance": {
+          "ibkr": 2,
+          "tastytrade": 2
+        },
+        "cash_per_bot": 5000.0,
+        "lane_balance": {
+          "directional": 2,
+          "grid": 2
+        }
+      },
+      "fleet_summary": {
+        "by_broker": {
+          "ibkr": 2,
+          "tastytrade": 2
+        },
+        "by_lane": {
+          "directional": 2,
+          "grid": 2
+        },
+        "live_money_orders": "blocked",
+        "order_routing": "paper_broker_enabled",
+        "paper_broker_orders": "allowed",
+        "paper_starting_cash_per_worker": 5000.0,
+        "paper_starting_cash_total": 20000.0,
+        "requested_workers": 4,
+        "running_workers": 4
+      },
+      "generated_at_utc": "2026-04-26T14:51:31.848196+00:00",
+      "pid": 68056,
+      "recommendations": [
+        {
+          "action": "continue_observation",
+          "priority": "normal",
+          "reason": "all BTC paper workers are alive and safety posture is unchanged"
+        }
+      ],
+      "role": "autolearn",
+      "safety": "analysis only; recommendations do not mutate broker routing",
+      "status": "RUNNING"
+    },
+    "broker_probe": {
+      "broker_preflight": {
+        "health": "GREEN",
+        "missing_ready": [],
+        "overall_ok": true,
+        "ready": [
+          "ibkr",
+          "tastytrade"
+        ],
+        "reports": {
+          "ibkr": {
+            "creds_present": true,
+            "positions_count": 0,
+            "status": "READY"
+          },
+          "tastytrade": {
+            "creds_present": true,
+            "positions_count": 0,
+            "status": "READY"
+          }
+        }
+      },
+      "generated_at_utc": "2026-04-26T14:51:31.367528+00:00",
+      "pid": 65180,
+      "role": "broker_probe",
+      "safety": "read-only broker readiness probe; no orders",
+      "status": "RUNNING"
+    },
+    "journal": {
+      "generated_at_utc": "2026-04-26T14:50:31.583269+00:00",
+      "journal": {
+        "by_broker": {
+          "ibkr": 2,
+          "tastytrade": 2
+        },
+        "by_lane": {
+          "directional": 2,
+          "grid": 2
+        },
+        "health": "GREEN",
+        "paper_cash_total": 20000.0,
+        "paper_equity_total": 20000.0,
+        "paper_pnl_total": 0.0,
+        "requested_workers": 4,
+        "running_workers": 4
+      },
+      "pid": 54996,
+      "role": "journal",
+      "safety": "paper ledger journal only; no broker order placement",
+      "status": "RUNNING"
+    },
+    "keeper": {
+      "action": "observe",
+      "fleet_summary": {
+        "by_broker": {
+          "ibkr": 2,
+          "tastytrade": 2
+        },
+        "by_lane": {
+          "directional": 2,
+          "grid": 2
+        },
+        "live_money_orders": "blocked",
+        "order_routing": "paper_broker_enabled",
+        "paper_broker_orders": "allowed",
+        "paper_starting_cash_per_worker": 5000.0,
+        "paper_starting_cash_total": 20000.0,
+        "requested_workers": 4,
+        "running_workers": 4
+      },
+      "generated_at_utc": "2026-04-26T14:51:04.649821+00:00",
+      "pid": 67520,
+      "role": "keeper",
+      "safety": "watchdog only; no broker order placement",
+      "status": "RUNNING"
+    },
+    "optimizer": {
+      "generated_at_utc": "2026-04-26T14:51:31.208242+00:00",
+      "pid": 59716,
+      "promotion_gate": {
+        "next_action": "hold promotion and keep observing",
+        "reasons": [
+          "shadow exit_code=4"
+        ],
+        "state": "HOLD"
+      },
+      "role": "optimizer",
+      "safety": "optimizer writes recommendations only; no broker order placement",
+      "status": "RUNNING"
+    },
+    "resource": {
+      "generated_at_utc": "2026-04-26T14:51:16.845926+00:00",
+      "pid": 66488,
+      "resource": {
+        "fleet_pid_count": 4,
+        "fleet_pids": [
+          68004,
+          57068,
+          62620,
+          57516
+        ],
+        "health": "GREEN",
+        "missing_roles": [],
+        "stale_workers": [],
+        "support_pid_count": 10,
+        "support_pids": [
+          67520,
+          68056,
+          58700,
+          59364,
+          3288,
+          59716,
+          65180,
+          66488,
+          54996,
+          68012
+        ],
+        "total_btc_pid_count": 14
+      },
+      "role": "resource",
+      "safety": "process telemetry only; no broker order placement",
+      "status": "RUNNING"
+    },
+    "risk": {
+      "generated_at_utc": "2026-04-26T14:51:25.812218+00:00",
+      "pid": 59364,
+      "risk": {
+        "expected_cash_per_bot": 5000.0,
+        "findings": [],
+        "fleet_summary": {
+          "by_broker": {
+            "ibkr": 2,
+            "tastytrade": 2
+          },
+          "by_lane": {
+            "directional": 2,
+            "grid": 2
+          },
+          "live_money_orders": "blocked",
+          "order_routing": "paper_broker_enabled",
+          "paper_broker_orders": "allowed",
+          "paper_starting_cash_per_worker": 5000.0,
+          "paper_starting_cash_total": 20000.0,
+          "requested_workers": 4,
+          "running_workers": 4
+        },
+        "health": "GREEN"
+      },
+      "role": "risk",
+      "safety": "risk sentinel only; no broker order placement",
+      "status": "RUNNING"
+    },
+    "shadow": {
+      "duration_s": 1.706,
+      "exit_code": 4,
+      "generated_at_utc": "2026-04-26T14:51:23.054859+00:00",
+      "pid": 58700,
+      "role": "shadow",
+      "safety": "pytest shadow checks only; no broker order placement",
+      "status": "DEGRADED",
+      "stderr_tail": "ERROR: file or directory not found: tests/test_btc_broker_fleet.py\n\n",
+      "stdout_tail": "\nno tests ran in 0.33s\n",
+      "tests": [
+        "tests/test_btc_broker_fleet.py",
+        "tests/test_btc_bootstrap.py",
+        "tests/test_btc_live.py"
+      ]
+    }
+  },
+  "safety": "BTC helper swarm allows paper broker order routing and blocks live-money orders.",
+  "status": "RUNNING",
+  "surface": "btc_eta_dashboard_state"
+}

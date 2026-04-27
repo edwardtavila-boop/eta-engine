@@ -14,6 +14,7 @@ Live paths
 * ``get_apy`` — DefiLlama (pool "flare" + chain "Flare" + symbol "SFLR").
 * ``stake/unstake`` — structured payloads against the Flare WNat / sFLR contracts.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -64,10 +65,14 @@ class FlareAdapter(StakingAdapter):
             build_contract_call(self._sflr_address, "submit", int(amount * 1e18)),
         ]
         if self._ftso_data_provider:
-            steps.append(build_contract_call(
-                FLARE_FTSO_MANAGER, "delegate",
-                self._ftso_data_provider, int(amount * 1e18),
-            ))
+            steps.append(
+                build_contract_call(
+                    FLARE_FTSO_MANAGER,
+                    "delegate",
+                    self._ftso_data_provider,
+                    int(amount * 1e18),
+                )
+            )
         logger.info(
             "Flare stake plan | amount=%.6f FLR delegate=%s steps=%d",
             amount,
@@ -92,7 +97,10 @@ class FlareAdapter(StakingAdapter):
     async def get_balance(self) -> float:
         """sFLR balance — on-chain if configured, else in-memory."""
         real = await asyncio.to_thread(
-            read_balance, self._rpc_url, self._wallet_address, self._sflr_address,
+            read_balance,
+            self._rpc_url,
+            self._wallet_address,
+            self._sflr_address,
         )
         if real is not None:
             return real

@@ -21,6 +21,7 @@ Plus:
 
 Total: 46 tests.
 """
+
 from __future__ import annotations
 
 import json
@@ -84,8 +85,11 @@ def _ctx_trade(ts: datetime | None = None) -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(),
@@ -98,8 +102,11 @@ def _ctx_kill(ts: datetime | None = None) -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-3_000.0,
-            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
         journal=JournalSnapshot(kill_switch_active=True),
@@ -112,8 +119,11 @@ def _ctx_stand_aside(ts: datetime | None = None) -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(autopilot_mode="REQUIRE_ACK"),
@@ -126,8 +136,11 @@ def _ctx_reduce(ts: datetime | None = None) -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-1_250.0,
-            daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+            account_equity=50_000.0,
+            daily_pnl=-1_250.0,
+            daily_drawdown_pct=0.025,
+            open_positions=1,
+            open_risk_r=1.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
         journal=JournalSnapshot(),
@@ -140,8 +153,11 @@ def _ctx_review(ts: datetime | None = None) -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
         journal=JournalSnapshot(overrides_last_24h=4),
@@ -565,7 +581,8 @@ class TestTrade:
 class TestModels:
     def test_request_id_default_is_populated(self) -> None:
         req = ActionRequest(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         assert req.request_id
         assert len(req.request_id) == 12
@@ -573,7 +590,8 @@ class TestModels:
     def test_request_ts_defaults_to_now(self) -> None:
         before = datetime.now(UTC)
         req = ActionRequest(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         after = datetime.now(UTC)
         assert before <= req.ts <= after
@@ -581,7 +599,8 @@ class TestModels:
     def test_response_size_cap_range(self) -> None:
         ctx = _ctx_trade()
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         resp = evaluate_request(req, ctx)
         assert resp.size_cap_mult is None or 0.0 <= resp.size_cap_mult <= 1.0
@@ -589,7 +608,8 @@ class TestModels:
     def test_response_roundtrips_through_json(self) -> None:
         ctx = _ctx_trade()
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         resp = evaluate_request(req, ctx)
         payload = resp.model_dump(mode="json")
@@ -610,7 +630,8 @@ class TestAuditLog:
         admin = JarvisAdmin(audit_path=audit)
         ctx = _ctx_trade()
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         admin.request_approval(req, ctx=ctx)
         assert audit.exists()
@@ -624,7 +645,8 @@ class TestAuditLog:
         admin = JarvisAdmin()
         ctx = _ctx_trade()
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         # should not raise; no file-system side effects
         resp = admin.request_approval(req, ctx=ctx)
@@ -662,7 +684,8 @@ class TestEngineIntegration:
     def test_admin_without_engine_or_ctx_raises(self) -> None:
         admin = JarvisAdmin()
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         with pytest.raises(RuntimeError, match="engine"):
             admin.request_approval(req)
@@ -671,8 +694,11 @@ class TestEngineIntegration:
         """When no ctx is supplied, admin should call engine.tick()."""
         macro = MacroSnapshot(vix_level=17.0, macro_bias="neutral")
         equity = EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         )
         regime = RegimeSnapshot(regime="TREND_UP", confidence=0.7)
         journal = JournalSnapshot()
@@ -680,10 +706,13 @@ class TestEngineIntegration:
         class _Providers:
             def get_macro(self) -> MacroSnapshot:
                 return macro
+
             def get_equity(self) -> EquitySnapshot:
                 return equity
+
             def get_regime(self) -> RegimeSnapshot:
                 return regime
+
             def get_journal_snapshot(self) -> JournalSnapshot:
                 return journal
 
@@ -702,7 +731,8 @@ class TestEngineIntegration:
         engine = JarvisContextEngine(builder=builder)
         admin = JarvisAdmin(engine=engine)
         req = make_action_request(
-            subsystem=SubsystemId.BOT_MNQ, action=ActionType.ORDER_PLACE,
+            subsystem=SubsystemId.BOT_MNQ,
+            action=ActionType.ORDER_PLACE,
         )
         resp = admin.request_approval(req)
         assert resp.verdict == Verdict.APPROVED
@@ -722,7 +752,9 @@ class TestFactory:
             subsystem=SubsystemId.BOT_MNQ,
             action=ActionType.ORDER_PLACE,
             rationale="test",
-            side="long", qty=2, stop=100.0,
+            side="long",
+            qty=2,
+            stop=100.0,
         )
         assert req.payload == {"side": "long", "qty": 2, "stop": 100.0}
         assert req.rationale == "test"

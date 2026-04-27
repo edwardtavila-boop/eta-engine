@@ -44,6 +44,7 @@ Supporting pieces:
 Everything here is pure Python. Actual network calls to Anthropic are
 injected via the ``ClaudeClient`` protocol so tests use fakes.
 """
+
 from __future__ import annotations
 
 __all__ = [

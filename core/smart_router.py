@@ -18,6 +18,7 @@ Ideas here follow the FIX-style parent/child pattern used in Tradovate and
 Bybit; venue-specific quirks (iceberg hidden liquidity on Bybit, Tradovate
 stop-limit child) are handled by the adapter.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,6 +73,7 @@ class RoutingPlan(BaseModel):
 # Policies
 # ---------------------------------------------------------------------------
 
+
 def _route_iceberg(
     parent: ParentOrder,
     now: datetime,
@@ -87,15 +89,17 @@ def _route_iceberg(
     # a full queue to work against.
     while remaining > 1e-9:
         qty = min(reveal, remaining)
-        children.append(ChildOrder(
-            parent_symbol=parent.symbol,
-            side=parent.side,
-            qty=round(qty, 8),
-            limit_price=parent.limit_price,
-            order_type="LIMIT",
-            scheduled_ts=now,
-            slice_index=idx,
-        ))
+        children.append(
+            ChildOrder(
+                parent_symbol=parent.symbol,
+                side=parent.side,
+                qty=round(qty, 8),
+                limit_price=parent.limit_price,
+                order_type="LIMIT",
+                scheduled_ts=now,
+                slice_index=idx,
+            )
+        )
         remaining -= qty
         idx += 1
     return RoutingPlan(
@@ -168,15 +172,17 @@ def _route_post_only(
     if would_cross and parent.allow_market_fallback:
         order_type = "MARKET"
         notes.append("would cross → market fallback invoked")
-    children = [ChildOrder(
-        parent_symbol=parent.symbol,
-        side=parent.side,
-        qty=parent.total_qty,
-        limit_price=parent.limit_price,
-        order_type=order_type,
-        scheduled_ts=now,
-        slice_index=0,
-    )]
+    children = [
+        ChildOrder(
+            parent_symbol=parent.symbol,
+            side=parent.side,
+            qty=parent.total_qty,
+            limit_price=parent.limit_price,
+            order_type=order_type,
+            scheduled_ts=now,
+            slice_index=0,
+        )
+    ]
     return RoutingPlan(
         parent_symbol=parent.symbol,
         policy="post_only",
@@ -189,6 +195,7 @@ def _route_post_only(
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
+
 
 def route(
     parent: ParentOrder,

@@ -7,16 +7,28 @@ from eta_engine.scripts import sweep_simulation as mod
 
 def _std_buckets() -> tuple[mod.Bucket, mod.Bucket, mod.Bucket]:
     mnq = mod.Bucket(
-        name="mnq_compounder", allocation_pct=0.60,
-        trades_per_week=30, win_rate=0.59, expectancy_r=0.47, risk_per_trade_pct=0.01,
+        name="mnq_compounder",
+        allocation_pct=0.60,
+        trades_per_week=30,
+        win_rate=0.59,
+        expectancy_r=0.47,
+        risk_per_trade_pct=0.01,
     )
     perp = mod.Bucket(
-        name="perp_basket", allocation_pct=0.30,
-        trades_per_week=42, win_rate=0.50, expectancy_r=0.30, risk_per_trade_pct=0.008,
+        name="perp_basket",
+        allocation_pct=0.30,
+        trades_per_week=42,
+        win_rate=0.50,
+        expectancy_r=0.30,
+        risk_per_trade_pct=0.008,
     )
     grid = mod.Bucket(
-        name="grid_seed", allocation_pct=0.10,
-        trades_per_week=40, win_rate=0.46, expectancy_r=0.15, risk_per_trade_pct=0.005,
+        name="grid_seed",
+        allocation_pct=0.10,
+        trades_per_week=40,
+        win_rate=0.46,
+        expectancy_r=0.15,
+        risk_per_trade_pct=0.005,
     )
     return mnq, perp, grid
 
@@ -41,21 +53,30 @@ def test_week_pnl_positive_expectancy_yields_positive_pnl():
 def test_simulate_grows_equity_with_positive_expectancy():
     mnq, perp, grid = _std_buckets()
     mnq_f, perp_f, grid_f, timeline = mod.simulate(
-        27_000.0, 12, mnq, perp, grid, rebalance_every_weeks=4,
+        27_000.0,
+        12,
+        mnq,
+        perp,
+        grid,
+        rebalance_every_weeks=4,
     )
     final = mnq_f.equity + perp_f.equity + grid_f.equity
     assert final > 27_000.0
     assert len(timeline) == 12
     # Totals strictly non-decreasing
     totals = [row["total"] for row in timeline]
-    for earlier, later in zip(totals, totals[1:]):
+    for earlier, later in zip(totals, totals[1:], strict=False):
         assert later >= earlier - 1e-6
 
 
 def test_simulate_respects_zero_weeks():
     mnq, perp, grid = _std_buckets()
     mnq_f, perp_f, grid_f, timeline = mod.simulate(
-        10_000.0, 0, mnq, perp, grid,
+        10_000.0,
+        0,
+        mnq,
+        perp,
+        grid,
     )
     assert timeline == []
     # After 0 weeks buckets were initialized but not traded

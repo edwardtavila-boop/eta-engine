@@ -12,6 +12,7 @@ Closes out P2_FUEL (88% -> 100%). One task lands:
 
 Adds 32 tests (896 -> 928).
 """
+
 from __future__ import annotations
 
 import json
@@ -77,14 +78,27 @@ def main() -> None:
             "L2Update rejects price<=0 and qty<0",
         ],
         "metrics": [
-            "spread", "mid", "weighted_mid", "microprice",
-            "imbalance(k)", "depth(k, side)", "notional_depth(k, side)",
+            "spread",
+            "mid",
+            "weighted_mid",
+            "microprice",
+            "imbalance(k)",
+            "depth(k, side)",
+            "notional_depth(k, side)",
         ],
         "csv_columns": [
-            "ts", "symbol",
-            "best_bid", "best_bid_qty", "best_ask", "best_ask_qty",
-            "spread", "mid", "weighted_mid", "imbalance_top5",
-            "depth_bid_top5", "depth_ask_top5",
+            "ts",
+            "symbol",
+            "best_bid",
+            "best_bid_qty",
+            "best_ask",
+            "best_ask_qty",
+            "spread",
+            "mid",
+            "weighted_mid",
+            "imbalance_top5",
+            "depth_bid_top5",
+            "depth_ask_top5",
         ],
         "notes": (
             "Zero venue dependencies in this module; bybit_ws.py / "

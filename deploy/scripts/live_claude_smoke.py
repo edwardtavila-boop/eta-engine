@@ -16,6 +16,7 @@ Run (from C:\\eta_engine):
 
 Exits 0 on success, non-zero on any failure.
 """
+
 from __future__ import annotations
 
 import json
@@ -158,9 +159,7 @@ def main() -> int:
         print(f"[live-smoke] FAIL: {type(exc).__name__}: {exc}")
         return 6
 
-    text = "".join(
-        b.text for b in resp.content if getattr(b, "type", None) == "text"
-    )
+    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
     usage = resp.usage
     print("[live-smoke] === Claude response received ===")
     print(f"[live-smoke]   model          = {resp.model}")
@@ -190,19 +189,25 @@ def main() -> int:
     state_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     smoke_out = state_dir / "live_claude_smoke.json"
-    smoke_out.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "model": resp.model,
-        "input_tokens": usage.input_tokens,
-        "output_tokens": usage.output_tokens,
-        "cache_read": cache_read,
-        "cache_write": cache_write,
-        "vote": verdict.vote,
-        "confidence": verdict.confidence,
-        "reasons": verdict.reasons,
-        "evidence": verdict.evidence,
-        "raw_response": text,
-    }, indent=2), encoding="utf-8")
+    smoke_out.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "model": resp.model,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cache_read": cache_read,
+                "cache_write": cache_write,
+                "vote": verdict.vote,
+                "confidence": verdict.confidence,
+                "reasons": verdict.reasons,
+                "evidence": verdict.evidence,
+                "raw_response": text,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(f"[live-smoke] wrote {smoke_out}")
     print("[live-smoke] SUCCESS")
     return 0

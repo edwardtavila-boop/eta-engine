@@ -10,6 +10,7 @@ Closes:
 
 Bumps tests_passing 604 -> 648, P10_AI 30% -> 80%, overall 96 -> 97.
 """
+
 from __future__ import annotations
 
 import json

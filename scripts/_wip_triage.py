@@ -8,6 +8,7 @@ Reads `git status --short` and bins each untracked file as one of:
 - docs/ artifacts (Bucket E: report outputs, low-priority)
 - broken .py (Bucket F: doesn't compile)
 """
+
 from __future__ import annotations
 
 import pathlib

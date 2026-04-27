@@ -7,6 +7,7 @@ Covers:
   * Flatten stubs honor dry-run and missing-creds paths
   * Execute-trigger flow aggregates flatten results + alerts
 """
+
 from __future__ import annotations
 
 import time
@@ -136,16 +137,22 @@ async def test_flatten_hyperliquid_disabled_by_default_returns_false() -> None:
 
 @pytest.mark.asyncio
 async def test_flatten_hyperliquid_dry_run_returns_true() -> None:
-    assert await wd.flatten_hyperliquid_positions(
-        _config(dry_run=True, hyperliquid=True),
-    ) is True
+    assert (
+        await wd.flatten_hyperliquid_positions(
+            _config(dry_run=True, hyperliquid=True),
+        )
+        is True
+    )
 
 
 @pytest.mark.asyncio
 async def test_flatten_hyperliquid_without_signer_returns_false() -> None:
-    assert await wd.flatten_hyperliquid_positions(
-        _config(hyperliquid=True),
-    ) is False
+    assert (
+        await wd.flatten_hyperliquid_positions(
+            _config(hyperliquid=True),
+        )
+        is False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +165,12 @@ async def test_send_alert_without_any_creds_still_increments_counter(
     monkeypatch,  # type: ignore[no-untyped-def]
 ) -> None:
     for key in [
-        "WATCHDOG_TELEGRAM_TOKEN", "WATCHDOG_TELEGRAM_CHAT_ID",
-        "WATCHDOG_TWILIO_ACCOUNT_SID", "WATCHDOG_TWILIO_AUTH_TOKEN",
-        "WATCHDOG_TWILIO_FROM", "WATCHDOG_SMS_TO",
+        "WATCHDOG_TELEGRAM_TOKEN",
+        "WATCHDOG_TELEGRAM_CHAT_ID",
+        "WATCHDOG_TWILIO_ACCOUNT_SID",
+        "WATCHDOG_TWILIO_AUTH_TOKEN",
+        "WATCHDOG_TWILIO_FROM",
+        "WATCHDOG_SMS_TO",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -218,7 +228,11 @@ async def test_send_alert_fires_twilio_when_configured(
     calls: list[tuple[str, str, str, str, str]] = []
 
     async def fake_twilio(
-        sid: str, auth: str, from_n: str, to_n: str, message: str,
+        sid: str,
+        auth: str,
+        from_n: str,
+        to_n: str,
+        message: str,
     ) -> bool:
         calls.append((sid, auth, from_n, to_n, message))
         return True

@@ -10,6 +10,7 @@ What this buys us over the existing single aggregate DSR:
   * median + pass-fraction are more honest than mean(SR) over folds
   * optional stricter gate: median fold DSR > 0.5 AND pass-fraction >= X
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -32,28 +33,41 @@ from eta_engine.features.pipeline import FeaturePipeline
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _ctx(bar: BarData, _hist: list[BarData]) -> dict:
     now = bar.timestamp
     return {
         "daily_ema": [3000, 3100, 3200, 3300, 3400],
-        "h4_struct": "HH_HL", "bias": 1,
-        "atr_history": [20] * 10, "atr_current": 20.0,
-        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol,
-                                        rate=-0.0008, predicted_rate=-0.0008)] * 8,
-        "onchain": {"whale_transfers": 40, "whale_transfers_baseline": 20,
-                    "exchange_netflow_usd": -30_000_000.0,
-                    "active_addresses": 1300, "active_addresses_baseline": 1000},
-        "sentiment": {"galaxy_score": 85.0, "alt_rank": 15,
-                      "social_volume": 600, "social_volume_baseline": 200,
-                      "fear_greed": 20},
+        "h4_struct": "HH_HL",
+        "bias": 1,
+        "atr_history": [20] * 10,
+        "atr_current": 20.0,
+        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)] * 8,
+        "onchain": {
+            "whale_transfers": 40,
+            "whale_transfers_baseline": 20,
+            "exchange_netflow_usd": -30_000_000.0,
+            "active_addresses": 1300,
+            "active_addresses_baseline": 1000,
+        },
+        "sentiment": {
+            "galaxy_score": 85.0,
+            "alt_rank": 15,
+            "social_volume": 600,
+            "social_volume_baseline": 200,
+            "fear_greed": 20,
+        },
     }
 
 
 def _cfg(bars: list[BarData]) -> BacktestConfig:
     return BacktestConfig(
-        start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
-        symbol=bars[0].symbol, initial_equity=10_000.0,
-        risk_per_trade_pct=0.01, confluence_threshold=7.0,
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=bars[0].symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=7.0,
         max_trades_per_day=10,
     )
 
@@ -62,27 +76,45 @@ def _cfg(bars: list[BarData]) -> BacktestConfig:
 # compute_per_fold_dsr -- pure helper
 # ---------------------------------------------------------------------------
 
+
 class TestComputePerFoldDsr:
     def test_single_fold_reduces_to_psr_zero(self) -> None:
         """With 1 fold, threshold collapses to 0 -> plain PSR."""
         from eta_engine.backtest.deflated_sharpe import (
             compute_probabilistic_sharpe,
         )
+
         psr = compute_probabilistic_sharpe(
-            sharpe=1.2, threshold=0.0, n_trades=80, skew=0.0, kurtosis=3.0,
+            sharpe=1.2,
+            threshold=0.0,
+            n_trades=80,
+            skew=0.0,
+            kurtosis=3.0,
         )
         dsr = compute_per_fold_dsr(
-            sharpe=1.2, n_trades=80, skew=0.0, kurtosis=3.0, n_folds=1,
+            sharpe=1.2,
+            n_trades=80,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=1,
         )
         assert abs(dsr - psr) < 1e-9
 
     def test_more_folds_lowers_dsr(self) -> None:
         """More folds = more trials = higher threshold = lower DSR."""
         low = compute_per_fold_dsr(
-            sharpe=1.2, n_trades=80, skew=0.0, kurtosis=3.0, n_folds=2,
+            sharpe=1.2,
+            n_trades=80,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=2,
         )
         high = compute_per_fold_dsr(
-            sharpe=1.2, n_trades=80, skew=0.0, kurtosis=3.0, n_folds=20,
+            sharpe=1.2,
+            n_trades=80,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=20,
         )
         assert high < low
 
@@ -93,16 +125,28 @@ class TestComputePerFoldDsr:
         # denominator term can FLIP the sign of the effect -- that's a
         # well-known DSR artifact, not a bug.)
         symm = compute_per_fold_dsr(
-            sharpe=0.3, n_trades=40, skew=0.0, kurtosis=3.0, n_folds=1,
+            sharpe=0.3,
+            n_trades=40,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=1,
         )
         neg = compute_per_fold_dsr(
-            sharpe=0.3, n_trades=40, skew=-1.5, kurtosis=3.0, n_folds=1,
+            sharpe=0.3,
+            n_trades=40,
+            skew=-1.5,
+            kurtosis=3.0,
+            n_folds=1,
         )
         assert neg < symm
 
     def test_returns_float_bounded_unit(self) -> None:
         dsr = compute_per_fold_dsr(
-            sharpe=2.0, n_trades=100, skew=0.0, kurtosis=3.0, n_folds=5,
+            sharpe=2.0,
+            n_trades=100,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=5,
         )
         assert 0.0 <= dsr <= 1.0
 
@@ -110,6 +154,7 @@ class TestComputePerFoldDsr:
 # ---------------------------------------------------------------------------
 # _fold_moments_from_trades -- skew/kurt from Trade.pnl_r
 # ---------------------------------------------------------------------------
+
 
 class TestFoldMomentsFromTrades:
     def test_empty_trades_returns_normal_defaults(self) -> None:
@@ -145,6 +190,7 @@ class TestFoldMomentsFromTrades:
 # WalkForwardResult + Engine wiring
 # ---------------------------------------------------------------------------
 
+
 class TestWalkForwardResultFields:
     def test_new_fields_default_to_empty(self) -> None:
         res = WalkForwardResult()
@@ -160,16 +206,23 @@ class TestWalkForwardResultFields:
 class TestEngineWiresPerFoldDsr:
     def test_run_populates_per_fold_dsr_list(self) -> None:
         bars = BarReplay.synthetic_bars(
-            n=4 * 24 * 20, drift=0.0015, vol=0.004, seed=11,
-            start=datetime(2025, 1, 1, tzinfo=UTC), interval_minutes=15,
+            n=4 * 24 * 20,
+            drift=0.0015,
+            vol=0.004,
+            seed=11,
+            start=datetime(2025, 1, 1, tzinfo=UTC),
+            interval_minutes=15,
         )
         eng = WalkForwardEngine()
         res = eng.run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
             config=WalkForwardConfig(
-                window_days=5, step_days=3, anchored=False,
-                oos_fraction=0.3, min_trades_per_window=1,
+                window_days=5,
+                step_days=3,
+                anchored=False,
+                oos_fraction=0.3,
+                min_trades_per_window=1,
             ),
             base_backtest_config=_cfg(bars),
             ctx_builder=_ctx,
@@ -187,16 +240,23 @@ class TestEngineWiresPerFoldDsr:
 
     def test_median_and_pass_fraction_consistent(self) -> None:
         bars = BarReplay.synthetic_bars(
-            n=4 * 24 * 20, drift=0.0015, vol=0.004, seed=13,
-            start=datetime(2025, 1, 1, tzinfo=UTC), interval_minutes=15,
+            n=4 * 24 * 20,
+            drift=0.0015,
+            vol=0.004,
+            seed=13,
+            start=datetime(2025, 1, 1, tzinfo=UTC),
+            interval_minutes=15,
         )
         eng = WalkForwardEngine()
         res = eng.run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
             config=WalkForwardConfig(
-                window_days=5, step_days=3, anchored=False,
-                oos_fraction=0.3, min_trades_per_window=1,
+                window_days=5,
+                step_days=3,
+                anchored=False,
+                oos_fraction=0.3,
+                min_trades_per_window=1,
             ),
             base_backtest_config=_cfg(bars),
             ctx_builder=_ctx,
@@ -206,11 +266,7 @@ class TestEngineWiresPerFoldDsr:
         # Median check
         sorted_dsr = sorted(res.per_fold_dsr)
         n = len(sorted_dsr)
-        expected_median = (
-            sorted_dsr[n // 2]
-            if n % 2 == 1
-            else 0.5 * (sorted_dsr[n // 2 - 1] + sorted_dsr[n // 2])
-        )
+        expected_median = sorted_dsr[n // 2] if n % 2 == 1 else 0.5 * (sorted_dsr[n // 2 - 1] + sorted_dsr[n // 2])
         assert abs(res.fold_dsr_median - expected_median) < 1e-9
         # Pass-fraction check
         expected_frac = sum(1 for d in res.per_fold_dsr if d > 0.5) / n
@@ -225,7 +281,9 @@ class TestEngineWiresPerFoldDsr:
             base_backtest_config=BacktestConfig(
                 start_date=datetime(2025, 1, 1, tzinfo=UTC),
                 end_date=datetime(2025, 1, 2, tzinfo=UTC),
-                symbol="T", initial_equity=10_000.0, risk_per_trade_pct=0.01,
+                symbol="T",
+                initial_equity=10_000.0,
+                risk_per_trade_pct=0.01,
             ),
         )
         assert res.per_fold_dsr == []
@@ -237,15 +295,24 @@ class TestEngineWiresPerFoldDsr:
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _mk_trade(*, pnl_r: float):
     """Build a minimal Trade with just pnl_r populated meaningfully."""
     from eta_engine.backtest.models import Trade
+
     t0 = datetime(2025, 1, 1, 10, 0, tzinfo=UTC)
     t1 = datetime(2025, 1, 1, 11, 0, tzinfo=UTC)
     return Trade(
-        entry_time=t0, exit_time=t1, symbol="MNQ", side="BUY",
-        qty=1.0, entry_price=20000.0, exit_price=20010.0,
-        pnl_r=pnl_r, pnl_usd=abs(pnl_r) * 100.0,
-        confluence_score=7.0, leverage_used=1.0,
+        entry_time=t0,
+        exit_time=t1,
+        symbol="MNQ",
+        side="BUY",
+        qty=1.0,
+        entry_price=20000.0,
+        exit_price=20010.0,
+        pnl_r=pnl_r,
+        pnl_usd=abs(pnl_r) * 100.0,
+        confluence_score=7.0,
+        leverage_used=1.0,
         max_drawdown_during=0.0,
     )

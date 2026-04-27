@@ -71,8 +71,11 @@ async def test_fetch_trades_no_creds_yields_nothing() -> None:
     c = mod.DataBentoClient(api_key="")
     # Big window to cross the rounding threshold
     rows = [
-        t async for t in c.fetch_trades(
-            "MNQH6", datetime(2026, 1, 1), datetime(2026, 2, 1),
+        t
+        async for t in c.fetch_trades(
+            "MNQH6",
+            datetime(2026, 1, 1),
+            datetime(2026, 2, 1),
         )
     ]
     assert rows == []
@@ -88,7 +91,7 @@ async def test_fetch_bars_with_fake_sdk(monkeypatch: pytest.MonkeyPatch) -> None
     rows = [
         _FakeRow(
             ts_event=1_700_000_000_000_000_000,  # ns
-            open=25000_000_000_000,   # $25,000 in 1e9 fp
+            open=25000_000_000_000,  # $25,000 in 1e9 fp
             high=25010_000_000_000,
             low=24990_000_000_000,
             close=25005_000_000_000,
@@ -101,6 +104,7 @@ async def test_fetch_bars_with_fake_sdk(monkeypatch: pytest.MonkeyPatch) -> None
 
     fake_pkg = types.SimpleNamespace(Historical=fake_hist)
     import sys
+
     monkeypatch.setitem(sys.modules, "databento", fake_pkg)
 
     c = mod.DataBentoClient(api_key="KEY")
@@ -131,12 +135,16 @@ async def test_fetch_trades_with_fake_sdk(monkeypatch: pytest.MonkeyPatch) -> No
 
     fake_pkg = types.SimpleNamespace(Historical=fake_hist)
     import sys
+
     monkeypatch.setitem(sys.modules, "databento", fake_pkg)
 
     c = mod.DataBentoClient(api_key="KEY")
     trades = [
-        t async for t in c.fetch_trades(
-            "MNQH6", datetime(2026, 1, 1), datetime(2026, 1, 1, 0, 1),
+        t
+        async for t in c.fetch_trades(
+            "MNQH6",
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, 0, 1),
         )
     ]
     assert len(trades) == 1
@@ -161,12 +169,17 @@ async def test_fetch_mbp_level_with_fake_sdk(monkeypatch: pytest.MonkeyPatch) ->
 
     fake_pkg = types.SimpleNamespace(Historical=fake_hist)
     import sys
+
     monkeypatch.setitem(sys.modules, "databento", fake_pkg)
 
     c = mod.DataBentoClient(api_key="KEY")
     snaps = [
-        s async for s in c.fetch_mbp_level(
-            "MNQH6", datetime(2026, 1, 1), datetime(2026, 1, 1, 0, 1), levels=3,
+        s
+        async for s in c.fetch_mbp_level(
+            "MNQH6",
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, 0, 1),
+            levels=3,
         )
     ]
     assert len(snaps) == 1
@@ -193,12 +206,16 @@ async def test_fetch_bars_handles_sdk_exception(monkeypatch: pytest.MonkeyPatch)
 
     fake_pkg = types.SimpleNamespace(Historical=_BoomHist)
     import sys
+
     monkeypatch.setitem(sys.modules, "databento", fake_pkg)
 
     c = mod.DataBentoClient(api_key="KEY")
     bars = [
-        b async for b in c.fetch_bars(
-            "MNQH6", datetime(2026, 1, 1), datetime(2026, 1, 1, 1),
+        b
+        async for b in c.fetch_bars(
+            "MNQH6",
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, 1),
         )
     ]
     assert bars == []

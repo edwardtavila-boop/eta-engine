@@ -24,6 +24,7 @@ Closes out P6_FUNNEL (90% -> 100%). Two tasks land:
 
 Adds 62 tests (928 -> 990).
 """
+
 from __future__ import annotations
 
 import json
@@ -106,37 +107,50 @@ def main() -> None:
         "tests_new": 62,
         "transfer_policy": {
             "per_txn_limit_usd": "bounded per single transfer",
-            "daily_limit_usd": "rolling 24h window; first tx at _T0, "
-                               "+25h tx executes (window rolls off)",
-            "approval_threshold_usd": "transfers above this require "
-                                      "requires_approval=True on the req",
-            "whitelist": "empty dict == permissive; non-empty "
-                         "dict[from_bot, set[to_bot]] == strict",
+            "daily_limit_usd": "rolling 24h window; first tx at _T0, +25h tx executes (window rolls off)",
+            "approval_threshold_usd": "transfers above this require requires_approval=True on the req",
+            "whitelist": "empty dict == permissive; non-empty dict[from_bot, set[to_bot]] == strict",
         },
         "onramp_pipeline": {
             "stages": [
-                "INITIATED", "FIAT_DEPOSITED", "CONVERTING",
-                "CONVERTED", "WITHDRAWING", "COMPLETE", "FAILED",
+                "INITIATED",
+                "FIAT_DEPOSITED",
+                "CONVERTING",
+                "CONVERTED",
+                "WITHDRAWING",
+                "COMPLETE",
+                "FAILED",
             ],
             "providers": [
-                "COINBASE", "KRAKEN", "STRIKE", "BINANCE_US", "GEMINI",
+                "COINBASE",
+                "KRAKEN",
+                "STRIKE",
+                "BINANCE_US",
+                "GEMINI",
             ],
             "fiat_sources": [
-                "BANK_WIRE", "ACH", "CARD", "ZELLE", "CASH_APP",
+                "BANK_WIRE",
+                "ACH",
+                "CARD",
+                "ZELLE",
+                "CASH_APP",
             ],
             "crypto_targets": [
-                "BTC", "ETH", "SOL", "XRP", "USDC", "USDT",
+                "BTC",
+                "ETH",
+                "SOL",
+                "XRP",
+                "USDC",
+                "USDT",
             ],
         },
         "safety_guards": [
             "OnrampPolicy rejects non-whitelisted (src, provider, target)",
             "OnrampPolicy rejects over per_txn_limit_usd",
             "OnrampPolicy rejects under provider_min_usd",
-            "Pipeline.start rejects monthly rollover breach via "
-            "injected running_monthly_usd callback",
+            "Pipeline.start rejects monthly rollover breach via injected running_monthly_usd callback",
             "OnrampStageError on out-of-order transitions",
-            "Executor exceptions caught and routed to FAILED with "
-            "last_error set; pipeline does not leak exceptions",
+            "Executor exceptions caught and routed to FAILED with last_error set; pipeline does not leak exceptions",
         ],
         "notes": (
             "StubOnrampExecutor is deterministic (fixed prices + "
@@ -153,8 +167,7 @@ def main() -> None:
     STATE_PATH.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     print(f"bumped roadmap_state.json to v0.1.22 at {now}")
     print("  tests_passing: 928 -> 990 (+62)")
-    print("  P6_FUNNEL: 90% -> 100% "
-          "(exchange_transfer + fiat_to_crypto -> done)")
+    print("  P6_FUNNEL: 90% -> 100% (exchange_transfer + fiat_to_crypto -> done)")
     print("  overall_progress_pct: 99")
 
 

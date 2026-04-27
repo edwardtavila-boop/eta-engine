@@ -5,6 +5,7 @@ Unit tests for the RL policy wrapper.
 The real PPO agent is replaced with a stub implementing
 :class:`RLAgentProto` so tests stay hermetic (no torch, no checkpoint).
 """
+
 from __future__ import annotations
 
 import pytest

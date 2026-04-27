@@ -29,6 +29,7 @@ Public API
   * ``DecisionJournal`` -- append/read wrapper over a Path
   * ``default_journal()`` -- singleton tied to docs/decision_journal.jsonl
 """
+
 from __future__ import annotations
 
 import json
@@ -209,10 +210,7 @@ class DecisionJournal:
 
     def override_rate(self) -> float:
         """Fraction of RISK_GATE/KILL_SWITCH events that were OVERRIDDEN."""
-        gated = [
-            e for e in self._iter_events()
-            if e.actor in (Actor.RISK_GATE, Actor.KILL_SWITCH)
-        ]
+        gated = [e for e in self._iter_events() if e.actor in (Actor.RISK_GATE, Actor.KILL_SWITCH)]
         if not gated:
             return 0.0
         overridden = sum(1 for e in gated if e.outcome == Outcome.OVERRIDDEN)

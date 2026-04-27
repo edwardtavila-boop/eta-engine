@@ -16,28 +16,33 @@ from pydantic import BaseModel, Field
 # Config
 # ---------------------------------------------------------------------------
 
+
 class SweepSplit(BaseModel):
     """How excess profits get allocated."""
 
     cold_stake_pct: float = Field(
-        default=60.0, ge=0, le=100,
+        default=60.0,
+        ge=0,
+        le=100,
         description="% to cold staking / yield",
     )
     reinvest_pct: float = Field(
-        default=30.0, ge=0, le=100,
+        default=30.0,
+        ge=0,
+        le=100,
         description="% back into trading capital",
     )
     reserve_pct: float = Field(
-        default=10.0, ge=0, le=100,
+        default=10.0,
+        ge=0,
+        le=100,
         description="% to emergency reserve",
     )
 
     def model_post_init(self, __context: Any) -> None:
         total = self.cold_stake_pct + self.reinvest_pct + self.reserve_pct
         if abs(total - 100.0) > 0.01:
-            raise ValueError(
-                f"Split must sum to 100%, got {total:.2f}%"
-            )
+            raise ValueError(f"Split must sum to 100%, got {total:.2f}%")
 
 
 class SweepConfig(BaseModel):
@@ -46,7 +51,8 @@ class SweepConfig(BaseModel):
     bot_name: str
     baseline_usd: float = Field(gt=0, description="Target equity baseline")
     trigger_multiplier: float = Field(
-        default=1.10, gt=1.0,
+        default=1.10,
+        gt=1.0,
         description="Sweep when equity >= baseline * multiplier",
     )
     split: SweepSplit = Field(default_factory=SweepSplit)
@@ -56,27 +62,23 @@ class SweepConfig(BaseModel):
 # Result
 # ---------------------------------------------------------------------------
 
+
 class SweepResult(BaseModel):
     """Outcome of a sweep check."""
 
-    excess_usd: float = Field(
-        ge=0, description="Amount above trigger threshold"
-    )
+    excess_usd: float = Field(ge=0, description="Amount above trigger threshold")
     to_stake: float = Field(ge=0)
     to_reinvest: float = Field(ge=0)
     to_reserve: float = Field(ge=0)
-    action_required: bool = Field(
-        description="True if excess > 0 and sweep should execute"
-    )
+    action_required: bool = Field(description="True if excess > 0 and sweep should execute")
     bot_name: str = ""
-    trigger_price: float = Field(
-        default=0, description="Equity level that triggered sweep"
-    )
+    trigger_price: float = Field(default=0, description="Equity level that triggered sweep")
 
 
 # ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
+
 
 def check_sweep(
     current_equity: float,
@@ -122,6 +124,7 @@ def check_sweep(
 # Execution stub
 # ---------------------------------------------------------------------------
 
+
 async def execute_sweep(
     result: SweepResult,
     destination: str | None = None,
@@ -155,7 +158,7 @@ async def execute_sweep(
         },
         "destination": destination,
         "tx_ids": {
-            "stake_tx": None,   # TODO: fill after API call
+            "stake_tx": None,  # TODO: fill after API call
             "reinvest_tx": None,
             "reserve_tx": None,
         },

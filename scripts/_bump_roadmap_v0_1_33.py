@@ -100,6 +100,7 @@ How a bot uses this
 ...         await self.on_signal(sig)
 ...     # also inspect adapter.last_decision for observability
 """
+
 from __future__ import annotations
 
 import json
@@ -176,44 +177,23 @@ def main() -> None:
             ),
         },
         "design_guarantees": {
-            "pure_helpers": (
-                "bar_from_dict, context_from_dict, "
-                "strategy_signal_to_bot_signal are stateless"
-            ),
+            "pure_helpers": ("bar_from_dict, context_from_dict, strategy_signal_to_bot_signal are stateless"),
             "no_new_deps": (
-                "uses only stdlib (collections.deque, dataclasses) + "
-                "existing pydantic Signal + strategies package"
+                "uses only stdlib (collections.deque, dataclasses) + existing pydantic Signal + strategies package"
             ),
-            "defensive_copy": (
-                "RouterAdapter.bars returns list(self._bars) so callers "
-                "cannot mutate buffer"
-            ),
+            "defensive_copy": ("RouterAdapter.bars returns list(self._bars) so callers cannot mutate buffer"),
             "kill_switch_path": (
                 "kill_switch_active flows through context_from_dict into "
                 "StrategyContext -> _risk_mult zeros risk, regardless of "
                 "detector output"
             ),
-            "session_gate": (
-                "session_allows_entries=False forces every strategy to "
-                "FLAT via StrategyContext"
-            ),
-            "backwards_compatible": (
-                "adapter is additive; no existing bot or test was modified"
-            ),
+            "session_gate": ("session_allows_entries=False forces every strategy to FLAT via StrategyContext"),
+            "backwards_compatible": ("adapter is additive; no existing bot or test was modified"),
         },
         "integration_contract": {
-            "entry_point": (
-                "RouterAdapter(asset='MNQ').push_bar(bar_dict) -> "
-                "Signal | None"
-            ),
-            "seed_pattern": (
-                "adapter.seed(historical_bars); then loop push_bar in "
-                "on_bar hook"
-            ),
-            "observability": (
-                "adapter.last_decision: RouterDecision | None after each "
-                "tick"
-            ),
+            "entry_point": ("RouterAdapter(asset='MNQ').push_bar(bar_dict) -> Signal | None"),
+            "seed_pattern": ("adapter.seed(historical_bars); then loop push_bar in on_bar hook"),
+            "observability": ("adapter.last_decision: RouterDecision | None after each tick"),
             "mnq_example": (
                 "adapter = RouterAdapter(asset='MNQ'); in MnqBot.on_bar, "
                 "do `sig = adapter.push_bar(bar); if sig: await "
@@ -277,12 +257,9 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/engine_adapter.py + "
-          "tests/test_strategies_engine_adapter.py")
-    print("  the six AI-Optimized strategies now have a live-bot "
-          "integration surface")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print("  shipped: strategies/engine_adapter.py + tests/test_strategies_engine_adapter.py")
+    print("  the six AI-Optimized strategies now have a live-bot integration surface")
 
 
 if __name__ == "__main__":

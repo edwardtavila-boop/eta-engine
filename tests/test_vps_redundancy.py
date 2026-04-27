@@ -1,4 +1,5 @@
 """Tests for obs.vps_redundancy -- failover controller + DNS switcher."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -28,6 +29,7 @@ _T0 = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
 def _clock_at(t: datetime) -> Callable[[], datetime]:
     def fn() -> datetime:
         return t
+
     return fn
 
 
@@ -179,7 +181,8 @@ def test_controller_degraded_counts_as_unhealthy_by_default() -> None:
 def test_controller_degraded_ignored_when_disabled() -> None:
     c = FailoverController(
         policy=FailoverPolicy(
-            primary_unhealthy_threshold=3, degraded_counts_as_unhealthy=False,
+            primary_unhealthy_threshold=3,
+            degraded_counts_as_unhealthy=False,
         ),
     )
     for _ in range(3):
@@ -197,7 +200,8 @@ def test_controller_degraded_ignored_when_disabled() -> None:
 def test_controller_flips_back_to_primary_after_recovery() -> None:
     c = FailoverController(
         policy=FailoverPolicy(
-            primary_unhealthy_threshold=2, primary_recovery_threshold=4,
+            primary_unhealthy_threshold=2,
+            primary_recovery_threshold=4,
         ),
         initial_role=VpsRole.SECONDARY,
     )
@@ -267,7 +271,8 @@ def test_controller_secondary_degraded_false_when_healthy() -> None:
 def test_controller_records_events() -> None:
     c = FailoverController(
         policy=FailoverPolicy(
-            primary_unhealthy_threshold=2, primary_recovery_threshold=2,
+            primary_unhealthy_threshold=2,
+            primary_recovery_threshold=2,
         ),
     )
     # Fail over
@@ -292,7 +297,8 @@ async def test_redundancy_controller_tick_no_flip_on_healthy() -> None:
     probe = StubHealthProbe()
     dns = StubDnsSwitchProvider()
     ctrl = VpsRedundancyController(
-        probe=probe, dns=dns,
+        probe=probe,
+        dns=dns,
         policy=FailoverPolicy(primary_unhealthy_threshold=2),
         clock=_clock_at(_T0),
     )
@@ -307,7 +313,8 @@ async def test_redundancy_controller_flips_and_calls_dns() -> None:
     probe.set_health(VpsRole.PRIMARY, VpsHealth.DOWN)
     dns = StubDnsSwitchProvider()
     ctrl = VpsRedundancyController(
-        probe=probe, dns=dns,
+        probe=probe,
+        dns=dns,
         policy=FailoverPolicy(primary_unhealthy_threshold=2),
         clock=_clock_at(_T0),
     )
@@ -327,7 +334,8 @@ async def test_redundancy_controller_records_dns_failure() -> None:
     probe.set_health(VpsRole.PRIMARY, VpsHealth.DOWN)
     dns = StubDnsSwitchProvider(fail=True)
     ctrl = VpsRedundancyController(
-        probe=probe, dns=dns,
+        probe=probe,
+        dns=dns,
         policy=FailoverPolicy(primary_unhealthy_threshold=1),
         clock=_clock_at(_T0),
     )
@@ -347,7 +355,8 @@ async def test_redundancy_controller_treats_probe_exception_as_down() -> None:
     probe = BoomProbe()
     dns = StubDnsSwitchProvider()
     ctrl = VpsRedundancyController(
-        probe=probe, dns=dns,
+        probe=probe,
+        dns=dns,
         policy=FailoverPolicy(primary_unhealthy_threshold=1),
         clock=_clock_at(_T0),
     )
@@ -362,7 +371,8 @@ async def test_redundancy_controller_run_respects_max_ticks() -> None:
     probe = StubHealthProbe()
     dns = StubDnsSwitchProvider()
     ctrl = VpsRedundancyController(
-        probe=probe, dns=dns,
+        probe=probe,
+        dns=dns,
         policy=FailoverPolicy(primary_unhealthy_threshold=2),
         clock=_clock_at(_T0),
     )
@@ -383,8 +393,11 @@ def test_health_snapshot_default_ts_is_aware() -> None:
 
 def test_health_snapshot_fields() -> None:
     s = HealthSnapshot(
-        ts=_T0, role=VpsRole.PRIMARY, health=VpsHealth.DEGRADED,
-        latency_ms=120.5, detail="slow",
+        ts=_T0,
+        role=VpsRole.PRIMARY,
+        health=VpsHealth.DEGRADED,
+        latency_ms=120.5,
+        detail="slow",
     )
     assert s.latency_ms == 120.5
     assert s.detail == "slow"

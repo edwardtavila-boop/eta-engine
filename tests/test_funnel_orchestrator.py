@@ -36,11 +36,15 @@ def _build_orch() -> FunnelOrchestrator:
     em.register_bot("eth_perp", baseline=5_000.0)
     configs = {
         "mnq": SweepConfig(
-            bot_name="mnq", baseline_usd=10_000.0, trigger_multiplier=1.10,
+            bot_name="mnq",
+            baseline_usd=10_000.0,
+            trigger_multiplier=1.10,
             split=SweepSplit(cold_stake_pct=60.0, reinvest_pct=30.0, reserve_pct=10.0),
         ),
         "eth_perp": SweepConfig(
-            bot_name="eth_perp", baseline_usd=5_000.0, trigger_multiplier=1.10,
+            bot_name="eth_perp",
+            baseline_usd=5_000.0,
+            trigger_multiplier=1.10,
             split=SweepSplit(cold_stake_pct=60.0, reinvest_pct=30.0, reserve_pct=10.0),
         ),
     }
@@ -48,7 +52,6 @@ def _build_orch() -> FunnelOrchestrator:
 
 
 class TestOrchestratorTick:
-
     @pytest.mark.asyncio
     async def test_tick_below_baseline_no_sweep(self) -> None:
         orch = _build_orch()
@@ -87,9 +90,7 @@ class TestOrchestratorTick:
         # Reinvest is from bot to itself
         assert any(t.from_bot == "mnq" and t.to_bot == "mnq" for t in result.transfers_queued)
         # Stake allocator sums to 1200
-        stake_total = sum(
-            t.amount_usd for t in result.transfers_queued if t.to_bot.startswith("staking_")
-        )
+        stake_total = sum(t.amount_usd for t in result.transfers_queued if t.to_bot.startswith("staking_"))
         assert stake_total == pytest.approx(1200.0, abs=0.02)
 
     @pytest.mark.asyncio

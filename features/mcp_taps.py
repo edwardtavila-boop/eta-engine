@@ -32,6 +32,7 @@ Design
 * **Snapshot shape identical to REST path.** Downstream scorers cannot
   distinguish between sources -- by design.
 """
+
 from __future__ import annotations
 
 import os
@@ -150,10 +151,7 @@ def blockscout_snapshot(
     the module pure and testable without loading MCP schemas.
     """
     transfers = mcp.get_token_transfers(address=address, chain_id=chain_id) or []
-    whales = [
-        t for t in transfers
-        if _transfer_value_usd(t) >= whale_threshold_usd
-    ]
+    whales = [t for t in transfers if _transfer_value_usd(t) >= whale_threshold_usd]
     whale_count = len(whales)
     whale_baseline = max(1, whale_count // 2 or 1)
     netflow = sum(_signed_netflow_usd(t, target=address) for t in transfers)
@@ -201,6 +199,7 @@ def lunarcrush_snapshot(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _transfer_value_usd(t: dict[str, Any]) -> float:
     total = t.get("total") if isinstance(t.get("total"), dict) else {}
     token = t.get("token") if isinstance(t.get("token"), dict) else {}
@@ -217,7 +216,7 @@ def _transfer_value_usd(t: dict[str, Any]) -> float:
     except (TypeError, ValueError):
         rate = 1.0
     if decimals > 0:
-        value /= 10 ** decimals
+        value /= 10**decimals
     return max(0.0, value * rate)
 
 

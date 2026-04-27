@@ -1,4 +1,5 @@
 """Stress scenario generator tests — P3_PROOF stress."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,6 +16,7 @@ from eta_engine.backtest.stress_scenarios import (
 # ---------------------------------------------------------------------------
 # Individual scenarios
 # ---------------------------------------------------------------------------
+
 
 def test_2008_slow_grind_produces_negative_drift() -> None:
     returns, spec = scenario_2008_slow_grind(n_bars=250, seed=42)
@@ -60,6 +62,7 @@ def test_2022_regime_change_has_rising_vol() -> None:
 # ---------------------------------------------------------------------------
 # Dispatcher + reproducibility
 # ---------------------------------------------------------------------------
+
 
 def test_generate_dispatches_by_name() -> None:
     r1, _ = generate("2008_slow_grind", n_bars=100)

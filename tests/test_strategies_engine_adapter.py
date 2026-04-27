@@ -4,6 +4,7 @@ Unit tests for :mod:`eta_engine.strategies.engine_adapter` -- the
 bridge that lets the live bot loop talk to the pure-function policy
 router.
 """
+
 from __future__ import annotations
 
 import pytest

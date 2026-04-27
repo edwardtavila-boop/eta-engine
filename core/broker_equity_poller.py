@@ -32,6 +32,7 @@ Usage
     ...
     await poller.stop()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -82,10 +83,7 @@ class BrokerEquityPoller:
             msg = f"stale_after_s must be > 0 (got {stale_after_s})"
             raise ValueError(msg)
         if identical_warn_after < 0:
-            msg = (
-                f"identical_warn_after must be >= 0 "
-                f"(got {identical_warn_after})"
-            )
+            msg = f"identical_warn_after must be >= 0 (got {identical_warn_after})"
             raise ValueError(msg)
         self.name = name
         self._fetch = fetch_fn
@@ -161,7 +159,8 @@ class BrokerEquityPoller:
         # the first ``refresh_s`` interval.
         await self._poll_once()
         self._task = asyncio.create_task(
-            self._loop(), name=f"broker-equity-poller:{self.name}",
+            self._loop(),
+            name=f"broker-equity-poller:{self.name}",
         )
 
     async def stop(self) -> None:
@@ -190,7 +189,9 @@ class BrokerEquityPoller:
         if age_s > self._stale_after_s:
             log.debug(
                 "%s: cached broker equity stale (%.1fs > %.1fs) -- returning None",
-                self.name, age_s, self._stale_after_s,
+                self.name,
+                age_s,
+                self._stale_after_s,
             )
             return None
         return self._last_value
@@ -199,7 +200,8 @@ class BrokerEquityPoller:
         while not self._stopping.is_set():
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
-                    self._stopping.wait(), timeout=self._refresh_s,
+                    self._stopping.wait(),
+                    timeout=self._refresh_s,
                 )
             if self._stopping.is_set():
                 return
@@ -212,7 +214,9 @@ class BrokerEquityPoller:
             self._fetch_error += 1
             log.warning(
                 "%s: broker equity fetch raised %s",
-                self.name, exc, exc_info=True,
+                self.name,
+                exc,
+                exc_info=True,
             )
             return
         if value is None:
@@ -224,15 +228,9 @@ class BrokerEquityPoller:
         # compare on the cached float, not the raw response, so a
         # single noise byte in a JSON timestamp field doesn't make us
         # think the snapshot moved when net-liq itself didn't.
-        if (
-            self._last_value is not None
-            and new_value == self._last_value
-        ):
+        if self._last_value is not None and new_value == self._last_value:
             self._consecutive_identical += 1
-            if (
-                self._identical_warn_after > 0
-                and self._consecutive_identical == self._identical_warn_after
-            ):
+            if self._identical_warn_after > 0 and self._consecutive_identical == self._identical_warn_after:
                 # Fire the warn exactly once at the boundary (==, not >=)
                 # so a sustained-identical condition does not log-spam.
                 log.warning(
@@ -241,7 +239,9 @@ class BrokerEquityPoller:
                     "active hours the broker may be serving a stale "
                     "snapshot. Check with: python -m eta_engine."
                     "scripts.connect_brokers --probe",
-                    self.name, self._consecutive_identical, new_value,
+                    self.name,
+                    self._consecutive_identical,
+                    new_value,
                 )
         else:
             self._consecutive_identical = 0

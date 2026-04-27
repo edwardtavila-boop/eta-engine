@@ -18,6 +18,7 @@ This module provides:
 The ACTUAL invocation still happens in the Claude harness via the Skill
 tool -- this registry is the allowlist / audit layer.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,32 +30,34 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class SkillTier(StrEnum):
     """Risk tier of a skill. Higher tier -> stricter approval flow."""
-    LOW     = "LOW"      # read-only, idempotent (bot-status, firm-status)
-    MEDIUM  = "MEDIUM"   # writes to disk but reversible
-    HIGH    = "HIGH"     # destructive / irreversible (deploy, kill)
+
+    LOW = "LOW"  # read-only, idempotent (bot-status, firm-status)
+    MEDIUM = "MEDIUM"  # writes to disk but reversible
+    HIGH = "HIGH"  # destructive / irreversible (deploy, kill)
 
 
 class SkillDescriptor(BaseModel):
     """One skill entry."""
+
     model_config = ConfigDict(frozen=False)
 
-    name:             str = Field(min_length=1)
-    tier:             SkillTier
+    name: str = Field(min_length=1)
+    tier: SkillTier
     allowed_subsystems: list[str] = Field(default_factory=lambda: ["operator.edward"])
-    description:      str = ""
-    categories:       list[str] = Field(default_factory=list)
+    description: str = ""
+    categories: list[str] = Field(default_factory=list)
     # If true, every invocation is logged even if tier is LOW.
-    always_audit:     bool = True
+    always_audit: bool = True
     # How much of the doctrine bias applies (0.0 = none, 1.0 = full).
-    doctrine_weight:  float = Field(default=1.0, ge=0.0, le=1.0)
+    doctrine_weight: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class SkillInvocationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    skill:     str
-    allowed:   bool
-    reason:    str
+    skill: str
+    allowed: bool
+    reason: str
     audit_ref: str = ""
 
 
@@ -77,21 +80,26 @@ class SkillRegistry:
         return [d for d in self._by_name.values() if d.tier == tier]
 
     def can_invoke(
-        self, skill: str, subsystem: str,
+        self,
+        skill: str,
+        subsystem: str,
     ) -> SkillInvocationResult:
         d = self._by_name.get(skill)
         if d is None:
             return SkillInvocationResult(
-                skill=skill, allowed=False,
+                skill=skill,
+                allowed=False,
                 reason=f"skill '{skill}' not registered",
             )
         if _matches_any(subsystem, d.allowed_subsystems):
             return SkillInvocationResult(
-                skill=skill, allowed=True,
+                skill=skill,
+                allowed=True,
                 reason=f"{subsystem} on allowlist for {skill} (tier={d.tier.value})",
             )
         return SkillInvocationResult(
-            skill=skill, allowed=False,
+            skill=skill,
+            allowed=False,
             reason=f"{subsystem} not in allowlist for {skill}",
         )
 
@@ -135,15 +143,22 @@ def default_registry() -> SkillRegistry:
 
     # === Status / observability (LOW) ==========================================
     for name in (
-        "bot-status", "bot-update", "firm-status", "board-status",
-        "pdf-viewer:open", "pdf-viewer:annotate",
+        "bot-status",
+        "bot-update",
+        "firm-status",
+        "board-status",
+        "pdf-viewer:open",
+        "pdf-viewer:annotate",
     ):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.LOW,
-            allowed_subsystems=["operator.edward", "watchdog.autopilot"],
-            description=f"Read-only status/view skill: {name}",
-            categories=["observability"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.LOW,
+                allowed_subsystems=["operator.edward", "watchdog.autopilot"],
+                description=f"Read-only status/view skill: {name}",
+                categories=["observability"],
+            )
+        )
 
     # === Research / analysis (MEDIUM) =========================================
     for name in (
@@ -155,29 +170,38 @@ def default_registry() -> SkillRegistry:
         "data:explore-data",
         "claude-api",
     ):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.MEDIUM,
-            allowed_subsystems=["operator.edward"],
-            description=f"Research / analysis skill: {name}",
-            categories=["research"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.MEDIUM,
+                allowed_subsystems=["operator.edward"],
+                description=f"Research / analysis skill: {name}",
+                categories=["research"],
+            )
+        )
 
     # === Board orchestration (MEDIUM) =========================================
     for name in ("board-start", "board-iterate", "board-promote"):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.MEDIUM,
-            allowed_subsystems=["operator.edward"],
-            description=f"Quant board cycle: {name}",
-            categories=["strategy"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.MEDIUM,
+                allowed_subsystems=["operator.edward"],
+                description=f"Quant board cycle: {name}",
+                categories=["strategy"],
+            )
+        )
 
     # === Firm / trading (HIGH) ================================================
-    reg.register(SkillDescriptor(
-        name="firm:the-firm", tier=SkillTier.HIGH,
-        allowed_subsystems=["operator.edward", "firm.pm"],
-        description="Adversarial firm review of a strategy; can alter gates",
-        categories=["trading", "risk"],
-    ))
+    reg.register(
+        SkillDescriptor(
+            name="firm:the-firm",
+            tier=SkillTier.HIGH,
+            allowed_subsystems=["operator.edward", "firm.pm"],
+            description="Adversarial firm review of a strategy; can alter gates",
+            categories=["trading", "risk"],
+        )
+    )
 
     # === Engineering (MEDIUM) =================================================
     for name in (
@@ -189,12 +213,15 @@ def default_registry() -> SkillRegistry:
         "superpowers:receiving-code-review",
         "superpowers:requesting-code-review",
     ):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.MEDIUM,
-            allowed_subsystems=["operator.edward"],
-            description=f"Engineering skill: {name}",
-            categories=["engineering"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.MEDIUM,
+                allowed_subsystems=["operator.edward"],
+                description=f"Engineering skill: {name}",
+                categories=["engineering"],
+            )
+        )
 
     # === Ops (HIGH) ===========================================================
     for name in (
@@ -202,20 +229,26 @@ def default_registry() -> SkillRegistry:
         "operations:risk-assessment",
         "operations:runbook",
     ):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.HIGH,
-            allowed_subsystems=["operator.edward"],
-            description=f"Ops skill: {name}",
-            categories=["ops"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.HIGH,
+                allowed_subsystems=["operator.edward"],
+                description=f"Ops skill: {name}",
+                categories=["ops"],
+            )
+        )
 
     # === Setup / meta =========================================================
     for name in ("update-config", "keybindings-help", "schedule", "loop"):
-        reg.register(SkillDescriptor(
-            name=name, tier=SkillTier.MEDIUM,
-            allowed_subsystems=["operator.edward"],
-            description=f"Harness meta-skill: {name}",
-            categories=["meta"],
-        ))
+        reg.register(
+            SkillDescriptor(
+                name=name,
+                tier=SkillTier.MEDIUM,
+                allowed_subsystems=["operator.edward"],
+                description=f"Harness meta-skill: {name}",
+                categories=["meta"],
+            )
+        )
 
     return reg

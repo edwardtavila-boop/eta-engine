@@ -43,6 +43,7 @@ Window
 ------
 Default = last 24h. Override with ``--hours N`` for sweeps.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -159,10 +160,7 @@ def _check_kill_storm(alerts_window: list[dict], pct_threshold: float) -> tuple[
 
 
 def _check_jarvis_drops(btc_window: list[dict]) -> tuple[str, str]:
-    approvals = [
-        r for r in btc_window
-        if r.get("actor") == "JARVIS" and r.get("intent") == "overlay_approved"
-    ]
+    approvals = [r for r in btc_window if r.get("actor") == "JARVIS" and r.get("intent") == "overlay_approved"]
     drops = [r for r in approvals if r.get("outcome") != "EXECUTED"]
     if not approvals:
         return ("GREEN", "no JARVIS overlay approvals in window")
@@ -172,7 +170,10 @@ def _check_jarvis_drops(btc_window: list[dict]) -> tuple[str, str]:
 
 
 def _check_btc_journal_freshness(
-    btc_records: list[dict], alerts_window: list[dict], stale_hours: float, now_ts: float,
+    btc_records: list[dict],
+    alerts_window: list[dict],
+    stale_hours: float,
+    now_ts: float,
 ) -> tuple[str, str]:
     """If runtime_starts in window but btc journal stale, alert."""
     has_runtime = any(r.get("event") == "runtime_start" for r in alerts_window)
@@ -209,7 +210,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kill-storm-pct", type=float, default=25.0)
     p.add_argument("--btc-stale-h", type=float, default=36.0)
     p.add_argument(
-        "--now-utc", type=float, default=None, help="override 'now' for testing",
+        "--now-utc",
+        type=float,
+        default=None,
+        help="override 'now' for testing",
     )
     args = p.parse_args(argv)
 

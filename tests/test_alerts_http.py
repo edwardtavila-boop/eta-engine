@@ -69,8 +69,7 @@ async def test_telegram_posts_json_with_chat_id_and_formatted_text() -> None:
     fake.enqueue(200, '{"ok":true}')
     alerter._session = fake
 
-    a = Alert(level=AlertLevel.KILL, title="boom", message="tripped",
-              context={"bot": "mnq"})
+    a = Alert(level=AlertLevel.KILL, title="boom", message="tripped", context={"bot": "mnq"})
     assert await alerter.send(a) is True
 
     call = fake.calls[0]

@@ -367,10 +367,10 @@ def test_ibkr_get_balance_parses_portfolio_summary(
     async def fake_get(path: str) -> dict[str, object]:
         assert "/portfolio/DU123456/summary" in path
         return {
-            "netliquidation":      {"amount": 50_123.45, "currency": "USD"},
+            "netliquidation": {"amount": 50_123.45, "currency": "USD"},
             "equitywithloanvalue": {"amount": 50_100.00, "currency": "USD"},
-            "totalcashvalue":      {"amount": 10_000.00, "currency": "USD"},
-            "availablefunds":      {"amount":  9_800.00, "currency": "USD"},
+            "totalcashvalue": {"amount": 10_000.00, "currency": "USD"},
+            "availablefunds": {"amount": 9_800.00, "currency": "USD"},
         }
 
     monkeypatch.setattr(venue, "_get", fake_get)

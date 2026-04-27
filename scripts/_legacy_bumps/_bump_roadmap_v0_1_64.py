@@ -86,6 +86,7 @@ Expected state changes
     ledger.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -231,8 +232,7 @@ def main() -> None:
                 "router-driven selector."
             ),
             "v0_1_63_status": (
-                "Still deferred -- runtime wiring landed but adapter "
-                "selection remained a call-site decision."
+                "Still deferred -- runtime wiring landed but adapter selection remained a call-site decision."
             ),
             "v0_1_64_status": (
                 "CLOSED -- RouterBackedBrokerEquityAdapter ships. "
@@ -245,9 +245,7 @@ def main() -> None:
         "tests_passing_before": prev_tests,
         "tests_passing_after": NEW_TESTS_ABS,
         "tests_added_in_this_bundle": ROUTER_TESTS_ADDED,
-        "tests_delta_residual_from_other_modules": (
-            NEW_TESTS_ABS - prev_tests - ROUTER_TESTS_ADDED
-        ),
+        "tests_delta_residual_from_other_modules": (NEW_TESTS_ABS - prev_tests - ROUTER_TESTS_ADDED),
         "ruff_green_touched_files": True,
     }
 

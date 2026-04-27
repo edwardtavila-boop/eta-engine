@@ -20,6 +20,7 @@ canonical topology + the live status into a
 Produced by ``scripts.build_integrations_report``, consumed by the
 firm-tracker Command Center artifact.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -145,10 +146,7 @@ def canonical_venues() -> list[VenueIntegration]:
             module="eta_engine.venues.tastytrade",
             asset_classes=["MNQ", "NQ", "ES", "MES", "RTY"],
             status="READY",
-            notes=(
-                "Active futures fallback per operator mandate 2026-04-24. "
-                "Tastytrade adapter, paper by default."
-            ),
+            notes=("Active futures fallback per operator mandate 2026-04-24. Tastytrade adapter, paper by default."),
         ),
         VenueIntegration(
             name="tradovate",
@@ -329,7 +327,9 @@ def canonical_funnel_layers() -> list[FunnelLayer]:
 
 
 def canonical_onramp_routes(
-    *, per_txn_limit_usd: float = 10_000.0, monthly_limit_usd: float = 50_000.0,
+    *,
+    per_txn_limit_usd: float = 10_000.0,
+    monthly_limit_usd: float = 50_000.0,
 ) -> list[OnrampRoute]:
     """Mirror of the default ``OnrampPolicy.allowed_triples`` in tests."""
     return [
@@ -404,10 +404,7 @@ def canonical_observability() -> list[ObservabilityIntegration]:
             module="eta_engine.obs.jarvis_supervisor",
             kind="supervisor",
             status="ACTIVE",
-            notes=(
-                "Health watchdog around JarvisContextEngine. Runs at 60s "
-                "cadence via scripts.jarvis_live."
-            ),
+            notes=("Health watchdog around JarvisContextEngine. Runs at 60s cadence via scripts.jarvis_live."),
         ),
         ObservabilityIntegration(
             name="TelegramAlerter",
@@ -530,9 +527,7 @@ def build_integrations_report(
         "onramp_routes": len(routes),
         "staking_protocols": len(staking),
         "observability_surfaces": len(obs),
-        "alerters_active": sum(
-            1 for o in obs if o.kind == "alerter" and o.status == "ACTIVE"
-        ),
+        "alerters_active": sum(1 for o in obs if o.kind == "alerter" and o.status == "ACTIVE"),
     }
     if "summary" in live_status and isinstance(live_status["summary"], dict):
         summary.update(live_status["summary"])
@@ -558,9 +553,7 @@ def render_text(report: IntegrationsReport) -> str:
     lines: list[str] = []
     bar = "=" * 72
     lines.append(bar)
-    lines.append(
-        f"EVOLUTIONARY TRADING ALGO  //  INTEGRATIONS MAP  (schema v{report.schema_version})"
-    )
+    lines.append(f"EVOLUTIONARY TRADING ALGO  //  INTEGRATIONS MAP  (schema v{report.schema_version})")
     lines.append(f"ts: {report.timestamp_utc}")
     lines.append(bar)
     lines.append("")
@@ -579,19 +572,13 @@ def render_text(report: IntegrationsReport) -> str:
     lines.append("")
     lines.append("VENUES")
     for v in report.venues:
-        lines.append(
-            f"  {v.name:<12} {v.kind:<12} [{v.status:<13}] "
-            f"assets={','.join(v.asset_classes)}"
-        )
+        lines.append(f"  {v.name:<12} {v.kind:<12} [{v.status:<13}] assets={','.join(v.asset_classes)}")
         if v.notes:
             lines.append(f"    - {v.notes}")
     lines.append("")
     lines.append("BOTS  (venue -> funnel layer, risk tier)")
     for b in report.bots:
-        lines.append(
-            f"  {b.name:<12} -> {b.venue:<10} {b.funnel_layer:<16} "
-            f"tier={b.risk_tier:<6} [{b.status}]"
-        )
+        lines.append(f"  {b.name:<12} -> {b.venue:<10} {b.funnel_layer:<16} tier={b.risk_tier:<6} [{b.status}]")
         if b.notes:
             lines.append(f"    - {b.notes}")
     lines.append("")
@@ -615,9 +602,7 @@ def render_text(report: IntegrationsReport) -> str:
     lines.append("STAKING  (protocol -> asset, target APY)")
     for st in report.staking:
         lines.append(
-            f"  {st.protocol:<8} {st.chain:<10} "
-            f"{st.asset_in:<6} -> {st.asset_out:<10} "
-            f"apy={st.target_apy_pct:>5.2f}%"
+            f"  {st.protocol:<8} {st.chain:<10} {st.asset_in:<6} -> {st.asset_out:<10} apy={st.target_apy_pct:>5.2f}%"
         )
     lines.append("")
     lines.append("OBSERVABILITY")

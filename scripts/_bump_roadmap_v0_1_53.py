@@ -57,6 +57,7 @@ Delta
   * Eleven new modules + hardened JARVIS admin
   * Ruff-clean on every new file
 """
+
 from __future__ import annotations
 
 import json
@@ -164,8 +165,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

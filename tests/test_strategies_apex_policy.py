@@ -6,6 +6,7 @@ These tests construct deterministic bar streams that make each
 strategy fire, then also prove that the guardrails (kill-switch,
 session gate, high-vol regime, HTF-bias mismatch) correctly abstain.
 """
+
 from __future__ import annotations
 
 from eta_engine.strategies.eta_policy import (
@@ -53,8 +54,20 @@ def _sweep_plus_displacement_stream() -> list[Bar]:
 def _bos_stream() -> list[Bar]:
     """Stepped up-then-pullback-then-break pattern for BOS + OB retest."""
     closes = [
-        100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0,
-        110.0, 108.0, 107.0, 108.5,
+        100.0,
+        101.0,
+        102.0,
+        103.0,
+        104.0,
+        105.0,
+        106.0,
+        107.0,
+        108.0,
+        109.0,
+        110.0,
+        108.0,
+        107.0,
+        108.5,
     ]
     bars: list[Bar] = []
     for i, c in enumerate(closes):
@@ -96,9 +109,20 @@ def _mtf_trend_stream(n: int = 210) -> list[Bar]:
         bars.append(_bar(i, o, h, lo, close))
     # Append stepped BOS tail so detect_break_of_structure fires LONG
     closes_tail = [
-        close + 1.0, close + 2.0, close + 3.0, close + 4.0, close + 5.0,
-        close + 6.0, close + 4.0, close + 2.0, close + 3.0, close + 6.5,
-        close + 7.0, close + 7.5, close + 8.0, close + 9.0,
+        close + 1.0,
+        close + 2.0,
+        close + 3.0,
+        close + 4.0,
+        close + 5.0,
+        close + 6.0,
+        close + 4.0,
+        close + 2.0,
+        close + 3.0,
+        close + 6.5,
+        close + 7.0,
+        close + 7.5,
+        close + 8.0,
+        close + 9.0,
     ]
     for i, c in enumerate(closes_tail, start=n - 14):
         o = closes_tail[i - (n - 14) - 1] if i > (n - 14) else closes_tail[0] - 1
@@ -202,9 +226,7 @@ class TestFvgFillConfluence:
         bars[-1] = _bar(4, 104.0, 110.0, 108.0, 109.5)
         sig = fvg_fill_confluence(bars, StrategyContext())
         assert sig.side is Side.FLAT
-        assert (
-            "price_not_in_fvg" in sig.rationale_tags or "no_fvg" in sig.rationale_tags
-        )
+        assert "price_not_in_fvg" in sig.rationale_tags or "no_fvg" in sig.rationale_tags
 
 
 # ---------------------------------------------------------------------------

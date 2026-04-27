@@ -1,4 +1,5 @@
 """Tests for eta_engine.core.two_factor -- TOTP + cold-wallet gate."""
+
 from __future__ import annotations
 
 import time
@@ -64,10 +65,10 @@ def test_verify_totp_rejects_code_outside_window() -> None:
 
 def test_verify_totp_rejects_wrong_length_or_non_numeric() -> None:
     t = 1_700_000_000.0
-    assert verify_totp(_RFC6238_SECRET, "12345", now=t) is False       # too short
-    assert verify_totp(_RFC6238_SECRET, "1234567", now=t) is False     # too long
-    assert verify_totp(_RFC6238_SECRET, "abcdef", now=t) is False      # non-digit
-    assert verify_totp(_RFC6238_SECRET, "", now=t) is False             # empty
+    assert verify_totp(_RFC6238_SECRET, "12345", now=t) is False  # too short
+    assert verify_totp(_RFC6238_SECRET, "1234567", now=t) is False  # too long
+    assert verify_totp(_RFC6238_SECRET, "abcdef", now=t) is False  # non-digit
+    assert verify_totp(_RFC6238_SECRET, "", now=t) is False  # empty
 
 
 def test_generate_base32_secret_is_verifiable() -> None:
@@ -132,10 +133,16 @@ def test_gate_totp_only_accepts_valid_code() -> None:
         policy=CopyPolicy.TOTP_ONLY,
     )
     resolver = _FakeSecrets({"OPERATOR_TOTP": secret})
-    assert gate_cold_wallet_op(
-        "withdraw_cold", registry=reg, totp_code=code,
-        secrets_resolver=resolver, now=t,
-    ) is True
+    assert (
+        gate_cold_wallet_op(
+            "withdraw_cold",
+            registry=reg,
+            totp_code=code,
+            secrets_resolver=resolver,
+            now=t,
+        )
+        is True
+    )
 
 
 def test_gate_totp_only_raises_required_when_no_code() -> None:
@@ -156,8 +163,11 @@ def test_gate_totp_only_raises_failed_when_bad_code() -> None:
     resolver = _FakeSecrets({"OPERATOR_TOTP": _RFC6238_SECRET})
     with pytest.raises(TwoFactorFailed):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg, totp_code="000000",
-            secrets_resolver=resolver, now=t,
+            "withdraw_cold",
+            registry=reg,
+            totp_code="000000",
+            secrets_resolver=resolver,
+            now=t,
         )
 
 
@@ -166,12 +176,19 @@ def test_gate_hardware_only_requires_registered_kid() -> None:
         hardware_keys=[HardwareKey(kid="k-abc", nickname="blue-yubi")],
         policy=CopyPolicy.HARDWARE_ONLY,
     )
-    assert gate_cold_wallet_op(
-        "withdraw_cold", registry=reg, hardware_kid="k-abc",
-    ) is True
+    assert (
+        gate_cold_wallet_op(
+            "withdraw_cold",
+            registry=reg,
+            hardware_kid="k-abc",
+        )
+        is True
+    )
     with pytest.raises(TwoFactorFailed):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg, hardware_kid="k-unknown",
+            "withdraw_cold",
+            registry=reg,
+            hardware_kid="k-unknown",
         )
     with pytest.raises(TwoFactorRequired):
         gate_cold_wallet_op("withdraw_cold", registry=reg)
@@ -188,14 +205,25 @@ def test_gate_totp_or_hardware_either_path() -> None:
     )
     resolver = _FakeSecrets({"OPERATOR_TOTP": secret})
     # TOTP path
-    assert gate_cold_wallet_op(
-        "withdraw_cold", registry=reg, totp_code=code,
-        secrets_resolver=resolver, now=t,
-    ) is True
+    assert (
+        gate_cold_wallet_op(
+            "withdraw_cold",
+            registry=reg,
+            totp_code=code,
+            secrets_resolver=resolver,
+            now=t,
+        )
+        is True
+    )
     # HW path
-    assert gate_cold_wallet_op(
-        "withdraw_cold", registry=reg, hardware_kid="k-abc",
-    ) is True
+    assert (
+        gate_cold_wallet_op(
+            "withdraw_cold",
+            registry=reg,
+            hardware_kid="k-abc",
+        )
+        is True
+    )
 
 
 def test_gate_both_requires_two_claims_and_both_valid() -> None:
@@ -209,23 +237,35 @@ def test_gate_both_requires_two_claims_and_both_valid() -> None:
     )
     resolver = _FakeSecrets({"OPERATOR_TOTP": secret})
     # Both valid -> ok
-    assert gate_cold_wallet_op(
-        "withdraw_cold", registry=reg,
-        totp_code=code, hardware_kid="k-abc",
-        secrets_resolver=resolver, now=t,
-    ) is True
+    assert (
+        gate_cold_wallet_op(
+            "withdraw_cold",
+            registry=reg,
+            totp_code=code,
+            hardware_kid="k-abc",
+            secrets_resolver=resolver,
+            now=t,
+        )
+        is True
+    )
     # Only TOTP -> TwoFactorRequired (claim not presented)
     with pytest.raises(TwoFactorRequired):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg, totp_code=code,
-            secrets_resolver=resolver, now=t,
+            "withdraw_cold",
+            registry=reg,
+            totp_code=code,
+            secrets_resolver=resolver,
+            now=t,
         )
     # Both presented, TOTP bad -> TwoFactorFailed
     with pytest.raises(TwoFactorFailed):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg,
-            totp_code="000000", hardware_kid="k-abc",
-            secrets_resolver=resolver, now=t,
+            "withdraw_cold",
+            registry=reg,
+            totp_code="000000",
+            hardware_kid="k-abc",
+            secrets_resolver=resolver,
+            now=t,
         )
 
 
@@ -249,8 +289,11 @@ def test_gate_resolver_missing_secret_is_treated_as_invalid() -> None:
     resolver = _FakeSecrets({})  # nothing stored
     with pytest.raises(TwoFactorFailed):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg, totp_code="123456",
-            secrets_resolver=resolver, now=t,
+            "withdraw_cold",
+            registry=reg,
+            totp_code="123456",
+            secrets_resolver=resolver,
+            now=t,
         )
 
 
@@ -263,7 +306,10 @@ def test_gate_without_resolver_treats_totp_as_invalid() -> None:
     # No resolver at all -> cannot verify -> reject
     with pytest.raises(TwoFactorFailed):
         gate_cold_wallet_op(
-            "withdraw_cold", registry=reg, totp_code="123456", now=t,
+            "withdraw_cold",
+            registry=reg,
+            totp_code="123456",
+            now=t,
         )
 
 

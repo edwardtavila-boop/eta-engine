@@ -92,6 +92,7 @@ def test_basis_zscore_above_threshold_flatten_both() -> None:
     # Low-jitter ~5bps history + sudden 100bps = z-score > 4.
     # Needs non-zero variance or stdev=0 kills the z-score.
     import random
+
     rng = random.Random(11)
     prior = tuple(5.0 + rng.gauss(0.0, 0.5) for _ in range(49))
     history = prior + (100.0,)

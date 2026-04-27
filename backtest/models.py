@@ -6,15 +6,17 @@ Pydantic v2 models for backtest trades, results, and config.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+if TYPE_CHECKING:
+    from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # Trade
 # ---------------------------------------------------------------------------
+
 
 class Trade(BaseModel):
     """A single completed trade from a backtest run."""
@@ -40,6 +42,7 @@ class Trade(BaseModel):
 # Result
 # ---------------------------------------------------------------------------
 
+
 class BacktestResult(BaseModel):
     """Aggregate output of a single backtest run."""
 
@@ -60,6 +63,7 @@ class BacktestResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 class BacktestConfig(BaseModel):
     """Configuration for a single backtest run."""

@@ -1,4 +1,5 @@
 """RL agent baseline tests — P10_AI ppo_sac_agent."""
+
 from __future__ import annotations
 
 import json
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # RLState + RLAction types
 # ---------------------------------------------------------------------------
+
 
 def test_rl_state_defaults() -> None:
     s = RLState(features=[0.1, 0.2])
@@ -45,6 +47,7 @@ def test_rl_action_enum_covers_expected_actions() -> None:
 # ---------------------------------------------------------------------------
 # RLAgent.select_action — stub policy is deterministic given the seed
 # ---------------------------------------------------------------------------
+
 
 def test_select_action_is_deterministic_under_fixed_seed() -> None:
     a = RLAgent(seed=123)
@@ -97,6 +100,7 @@ def test_select_action_increments_step_count() -> None:
 # RLAgent.update — replay buffer
 # ---------------------------------------------------------------------------
 
+
 def test_update_stores_experience_in_replay_buffer() -> None:
     agent = RLAgent(seed=0)
     state = RLState(features=[0.1])
@@ -110,6 +114,7 @@ def test_update_stores_experience_in_replay_buffer() -> None:
 # ---------------------------------------------------------------------------
 # RLAgent.save_model + load_model
 # ---------------------------------------------------------------------------
+
 
 def test_save_model_writes_metadata_json(tmp_path: Path) -> None:
     agent = RLAgent(seed=0)

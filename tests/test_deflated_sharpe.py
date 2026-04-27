@@ -9,45 +9,83 @@ from eta_engine.backtest.deflated_sharpe import (
 
 
 class TestProbabilisticSharpe:
-
     def test_psr_equal_to_threshold_is_half(self) -> None:
         # When observed SR == threshold, z=0 -> PSR = 0.5
-        assert abs(compute_probabilistic_sharpe(
-            sharpe=1.0, threshold=1.0, n_trades=100, skew=0.0, kurtosis=3.0,
-        ) - 0.5) < 1e-6
+        assert (
+            abs(
+                compute_probabilistic_sharpe(
+                    sharpe=1.0,
+                    threshold=1.0,
+                    n_trades=100,
+                    skew=0.0,
+                    kurtosis=3.0,
+                )
+                - 0.5
+            )
+            < 1e-6
+        )
 
     def test_psr_above_threshold_gt_half(self) -> None:
-        assert compute_probabilistic_sharpe(
-            sharpe=1.5, threshold=1.0, n_trades=100, skew=0.0, kurtosis=3.0,
-        ) > 0.5
+        assert (
+            compute_probabilistic_sharpe(
+                sharpe=1.5,
+                threshold=1.0,
+                n_trades=100,
+                skew=0.0,
+                kurtosis=3.0,
+            )
+            > 0.5
+        )
 
     def test_psr_below_threshold_lt_half(self) -> None:
-        assert compute_probabilistic_sharpe(
-            sharpe=0.5, threshold=1.0, n_trades=100, skew=0.0, kurtosis=3.0,
-        ) < 0.5
+        assert (
+            compute_probabilistic_sharpe(
+                sharpe=0.5,
+                threshold=1.0,
+                n_trades=100,
+                skew=0.0,
+                kurtosis=3.0,
+            )
+            < 0.5
+        )
 
     def test_psr_monotonic_in_sample_size(self) -> None:
         low_n = compute_probabilistic_sharpe(
-            sharpe=1.2, threshold=0.8, n_trades=30, skew=0.0, kurtosis=3.0,
+            sharpe=1.2,
+            threshold=0.8,
+            n_trades=30,
+            skew=0.0,
+            kurtosis=3.0,
         )
         high_n = compute_probabilistic_sharpe(
-            sharpe=1.2, threshold=0.8, n_trades=500, skew=0.0, kurtosis=3.0,
+            sharpe=1.2,
+            threshold=0.8,
+            n_trades=500,
+            skew=0.0,
+            kurtosis=3.0,
         )
         assert high_n > low_n
 
     def test_psr_penalizes_negative_skew(self) -> None:
         # Small sample + modest SR so the z-score does not saturate to 1.0
         symm = compute_probabilistic_sharpe(
-            sharpe=0.3, threshold=0.0, n_trades=30, skew=0.0, kurtosis=3.0,
+            sharpe=0.3,
+            threshold=0.0,
+            n_trades=30,
+            skew=0.0,
+            kurtosis=3.0,
         )
         neg_skew = compute_probabilistic_sharpe(
-            sharpe=0.3, threshold=0.0, n_trades=30, skew=-1.5, kurtosis=3.0,
+            sharpe=0.3,
+            threshold=0.0,
+            n_trades=30,
+            skew=-1.5,
+            kurtosis=3.0,
         )
         assert neg_skew < symm
 
 
 class TestDeflatedSharpe:
-
     def test_dsr_ne_psr_when_trials_gt_one(self) -> None:
         # With 100 trials, threshold rises -> DSR < PSR(threshold=0)
         psr = compute_probabilistic_sharpe(1.5, 0.0, 200, 0.0, 3.0)

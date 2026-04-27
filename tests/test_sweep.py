@@ -12,6 +12,7 @@ import pytest
 # Sweep logic (self-contained for testing — mirrors sweep_engine.py contract)
 # ---------------------------------------------------------------------------
 
+
 def check_sweep_trigger(
     current_equity: float,
     baseline_usd: float,
@@ -50,8 +51,8 @@ def calculate_sweep_split(
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestSweepTrigger:
 
+class TestSweepTrigger:
     def test_triggers_above_baseline(self) -> None:
         assert check_sweep_trigger(51_000.0, 50_000.0, 100.0) is True
 
@@ -70,7 +71,6 @@ class TestSweepTrigger:
 
 
 class TestSweepSplit:
-
     def test_correct_split_math(self) -> None:
         split = calculate_sweep_split(1000.0)
         assert split["reinvest"] == 500.0

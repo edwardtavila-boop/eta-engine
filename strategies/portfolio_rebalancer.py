@@ -39,6 +39,7 @@ unwind is handled by the waterfall's HALT directives, not by this
 module. This is intentional: two competing transfer streams during a
 kill event would race each other.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -103,14 +104,8 @@ class RebalancePlan:
                 }
                 for s in self.sweeps
             ],
-            "drift_pct_by_layer": {
-                layer.value: round(pct, 6)
-                for layer, pct in self.drift_pct_by_layer.items()
-            },
-            "target_usd_by_layer": {
-                layer.value: round(usd, 2)
-                for layer, usd in self.target_usd_by_layer.items()
-            },
+            "drift_pct_by_layer": {layer.value: round(pct, 6) for layer, pct in self.drift_pct_by_layer.items()},
+            "target_usd_by_layer": {layer.value: round(usd, 2) for layer, usd in self.target_usd_by_layer.items()},
             "notes": list(self.notes),
             "global_kill_skipped": self.global_kill_skipped,
         }
@@ -187,8 +182,7 @@ def plan_rebalance(
         )
 
     target_usd_by_layer: dict[LayerId, float] = {
-        layer: (weight / weight_sum) * total_equity
-        for layer, weight in allocation.weights.items()
+        layer: (weight / weight_sum) * total_equity for layer, weight in allocation.weights.items()
     }
 
     drift_usd_by_layer: dict[LayerId, float] = {}
@@ -203,14 +197,10 @@ def plan_rebalance(
     # Layers strictly above the threshold source transfers; strictly
     # below receive them. Exactly at threshold is treated as on plan.
     over = {
-        layer: delta
-        for layer, delta in drift_usd_by_layer.items()
-        if drift_pct_by_layer[layer] > drift_threshold_pct
+        layer: delta for layer, delta in drift_usd_by_layer.items() if drift_pct_by_layer[layer] > drift_threshold_pct
     }
     under = {
-        layer: -delta
-        for layer, delta in drift_usd_by_layer.items()
-        if drift_pct_by_layer[layer] < -drift_threshold_pct
+        layer: -delta for layer, delta in drift_usd_by_layer.items() if drift_pct_by_layer[layer] < -drift_threshold_pct
     }
 
     if not over or not under:
@@ -245,8 +235,7 @@ def plan_rebalance(
             move = min(remaining, dst_need)
             if move < min_transfer_usd:
                 notes.append(
-                    f"skip {src_layer.value}->{dst_layer.value}: "
-                    f"${move:.2f} < min ${min_transfer_usd:.2f}",
+                    f"skip {src_layer.value}->{dst_layer.value}: ${move:.2f} < min ${min_transfer_usd:.2f}",
                 )
                 continue
             sweeps.append(
@@ -254,10 +243,7 @@ def plan_rebalance(
                     src=src_layer,
                     dst=dst_layer,
                     amount_usd=move,
-                    reason=(
-                        f"rebalance:{src_layer.value}_overweight"
-                        f"_to_{dst_layer.value}_underweight"
-                    ),
+                    reason=(f"rebalance:{src_layer.value}_overweight_to_{dst_layer.value}_underweight"),
                 ),
             )
             remaining -= move

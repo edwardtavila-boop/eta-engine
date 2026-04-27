@@ -1,10 +1,8 @@
 """Tests for features.mcp_taps."""
+
 from __future__ import annotations
 
-import os
-from typing import Any
-
-import pytest
+from typing import TYPE_CHECKING, Any
 
 from eta_engine.features.mcp_taps import (
     OnchainSnapshot,
@@ -13,6 +11,9 @@ from eta_engine.features.mcp_taps import (
     lunarcrush_snapshot,
     use_mcp_taps_enabled,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class FakeMcp:
@@ -36,9 +37,7 @@ class FakeMcp:
     def get_address_info(self, *, address: str, chain_id: int) -> dict[str, Any]:
         return {"address": address, "chain_id": chain_id}
 
-    def get_token_transfers(
-        self, *, address: str, chain_id: int, age_hours: int = 24
-    ) -> list[dict[str, Any]]:
+    def get_token_transfers(self, *, address: str, chain_id: int, age_hours: int = 24) -> list[dict[str, Any]]:
         return self._transfers
 
     def get_galaxy_score(self, *, symbol: str) -> float:

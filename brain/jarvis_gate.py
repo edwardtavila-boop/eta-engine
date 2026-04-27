@@ -20,6 +20,7 @@ copy of this logic for legacy reasons; new bots should prefer this
 module. The two implementations are intentionally kept in sync via
 the test suite.
 """
+
 from __future__ import annotations
 
 import logging
@@ -107,7 +108,9 @@ def ask_jarvis(
     except Exception as exc:  # noqa: BLE001 - fail-closed on unexpected errors
         logger.error(
             "%s jarvis.request_approval raised %s: %s -- failing closed",
-            log_name or subsystem.value, type(exc).__name__, exc,
+            log_name or subsystem.value,
+            type(exc).__name__,
+            exc,
         )
         return False, None, "jarvis_error"
     allowed = resp.verdict in _ALLOWED_VERDICTS
@@ -115,12 +118,16 @@ def ask_jarvis(
     if not allowed:
         logger.info(
             "%s jarvis refused %s: %s (%s)",
-            prefix, action.value, resp.reason, resp.reason_code,
+            prefix,
+            action.value,
+            resp.reason,
+            resp.reason_code,
         )
     elif resp.verdict is Verdict.CONDITIONAL:
         logger.info(
             "%s jarvis conditional %s: size_cap=%.3f (%s)",
-            prefix, action.value,
+            prefix,
+            action.value,
             resp.size_cap_mult if resp.size_cap_mult is not None else 1.0,
             resp.reason_code,
         )
@@ -148,6 +155,7 @@ def record_gate_event(
     # Local imports so this module stays importable in environments
     # that haven't wired the obs subpackage yet.
     from eta_engine.obs.decision_journal import Outcome as _Outcome
+
     final_outcome = outcome if outcome is not None else _Outcome.NOTED
     try:
         journal.record(
@@ -160,7 +168,8 @@ def record_gate_event(
     except Exception as exc:  # noqa: BLE001 - journal errors never kill trading
         logger.warning(
             "%s journal write failed: %s",
-            log_name or actor.value, exc,
+            log_name or actor.value,
+            exc,
         )
 
 
@@ -182,6 +191,7 @@ def pick_llm_tier(
     """
     # Local import to avoid pulling model_policy at module load time.
     from eta_engine.brain.model_policy import ModelTier as _ModelTier
+
     try:
         resp = jarvis.select_llm_tier(
             subsystem=subsystem,
@@ -191,7 +201,9 @@ def pick_llm_tier(
     except Exception as exc:  # noqa: BLE001 - default to SONNET on any error
         logger.warning(
             "%s select_llm_tier raised %s: %s -- defaulting to SONNET",
-            subsystem.value, type(exc).__name__, exc,
+            subsystem.value,
+            type(exc).__name__,
+            exc,
         )
         return _ModelTier.SONNET
     # Prefer the typed selected_model field; fall back to SONNET on

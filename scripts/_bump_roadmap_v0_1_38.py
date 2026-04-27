@@ -77,6 +77,7 @@ already knows how to consume. When v0.1.39 composes the harness with
 the WalkForwardEngine, the journal becomes the primary audit surface
 for strategy calibration.
 """
+
 from __future__ import annotations
 
 import json
@@ -104,10 +105,7 @@ def main() -> None:
     sa["eta_engine_v0_1_38_decision_journal_sink"] = {
         "timestamp_utc": now,
         "version": VERSION,
-        "bundle_name": (
-            "DECISION JOURNAL SINK -- RouterDecision audited on every "
-            "dispatch via Actor.STRATEGY_ROUTER"
-        ),
+        "bundle_name": ("DECISION JOURNAL SINK -- RouterDecision audited on every dispatch via Actor.STRATEGY_ROUTER"),
         "theme": (
             "Close the observability loop between policy_router and the "
             "unified decision journal. Every live dispatch becomes one "
@@ -123,30 +121,24 @@ def main() -> None:
         "artifacts_modified": {
             "obs": ["obs/decision_journal.py (+Actor.STRATEGY_ROUTER)"],
             "strategies": [
-                "strategies/engine_adapter.py (RouterAdapter."
-                "decision_sink + push_bar emit)",
+                "strategies/engine_adapter.py (RouterAdapter.decision_sink + push_bar emit)",
             ],
         },
         "api_surface": {
             "Actor.STRATEGY_ROUTER": (
-                "New enum value; join KILL_SWITCH / FIRM_BOARD / "
-                "TRADE_ENGINE / RISK_GATE / ... in the unified log."
+                "New enum value; join KILL_SWITCH / FIRM_BOARD / TRADE_ENGINE / RISK_GATE / ... in the unified log."
             ),
             "router_decision_to_event": (
-                "(decision, *, outcome=Outcome.NOTED, links=None, "
-                "include_candidates=False) -> JournalEvent"
+                "(decision, *, outcome=Outcome.NOTED, links=None, include_candidates=False) -> JournalEvent"
             ),
             "RouterDecisionSink": (
-                "journal, enabled=True, include_candidates=False, "
-                "default_outcome=Outcome.NOTED, also_log_flat=False"
+                "journal, enabled=True, include_candidates=False, default_outcome=Outcome.NOTED, also_log_flat=False"
             ),
             "RouterDecisionSink.emit": (
-                "(decision, *, outcome=None, links=None) -> "
-                "JournalEvent | None  -- swallows OSError"
+                "(decision, *, outcome=None, links=None) -> JournalEvent | None  -- swallows OSError"
             ),
             "RouterAdapter.decision_sink": (
-                "Optional sink attached at construction time; "
-                "push_bar emits one row per dispatch when set."
+                "Optional sink attached at construction time; push_bar emits one row per dispatch when set."
             ),
         },
         "design_notes": {
@@ -234,11 +226,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/decision_sink.py + Actor.STRATEGY_ROUTER "
-          "+ RouterAdapter.decision_sink field + 37 tests. Every live "
-          "router dispatch now audited to docs/decision_journal.jsonl.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/decision_sink.py + Actor.STRATEGY_ROUTER "
+        "+ RouterAdapter.decision_sink field + 37 tests. Every live "
+        "router dispatch now audited to docs/decision_journal.jsonl."
+    )
 
 
 if __name__ == "__main__":

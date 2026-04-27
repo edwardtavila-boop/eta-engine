@@ -30,6 +30,7 @@ All times internally are UTC; the gate converts once per call. A
 ``zoneinfo``-backed config keeps DST transitions correct (no hand-
 rolled offset math).
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,6 +61,7 @@ REASON_EOD_NOT_DUE = "no_eod_action"
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SessionGateConfig:
@@ -179,6 +181,7 @@ class SessionGate:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _to_utc(now: datetime) -> datetime:
     if now.tzinfo is None:

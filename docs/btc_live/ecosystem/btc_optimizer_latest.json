@@ -1,0 +1,14 @@
+{
+  "generated_at_utc": "2026-04-26T14:51:31.208242+00:00",
+  "pid": 59716,
+  "promotion_gate": {
+    "next_action": "hold promotion and keep observing",
+    "reasons": [
+      "shadow exit_code=4"
+    ],
+    "state": "HOLD"
+  },
+  "role": "optimizer",
+  "safety": "optimizer writes recommendations only; no broker order placement",
+  "status": "RUNNING"
+}

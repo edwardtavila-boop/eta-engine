@@ -42,6 +42,7 @@ Also pins corpus-level invariants:
 * The fixtures dir has a ``README.md`` documenting the naming
   convention.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,6 +68,7 @@ def _ibkr_with_payload(payload: dict[str, Any] | None):
         IbkrClientPortalConfig,
         IbkrClientPortalVenue,
     )
+
     cfg = IbkrClientPortalConfig(
         base_url="https://localhost:5000/v1/api",
         account_id="DU1234567",
@@ -81,7 +83,6 @@ def _ibkr_with_payload(payload: dict[str, Any] | None):
 
 
 class TestIbkrVariantFixtures:
-
     @pytest.mark.asyncio
     async def test_flat_amount_fixture_returns_value(self) -> None:
         venue = _ibkr_with_payload(_load("ibkr_summary_flat_amount.json"))
@@ -123,6 +124,7 @@ def _tasty_with_payload(payload: dict[str, Any] | None):
         TastytradeConfig,
         TastytradeVenue,
     )
+
     cfg = TastytradeConfig(
         base_url="https://api.cert.tastyworks.com",
         account_number="5WX12345",
@@ -138,7 +140,6 @@ def _tasty_with_payload(payload: dict[str, Any] | None):
 
 
 class TestTastytradeVariantFixtures:
-
     @pytest.mark.asyncio
     async def test_zero_balance_returns_zero_not_none(self) -> None:
         """A funded-but-empty paper account returns 0.0; reconciler
@@ -183,8 +184,7 @@ def test_every_fixture_is_parseable_json() -> None:
 def test_fixtures_dir_has_readme() -> None:
     """Pin the docs alongside the data."""
     assert (FIXTURES / "README.md").exists(), (
-        f"missing README in {FIXTURES} -- the fixture-naming convention "
-        f"and provenance rules live there"
+        f"missing README in {FIXTURES} -- the fixture-naming convention and provenance rules live there"
     )
 
 
@@ -201,11 +201,12 @@ def test_no_real_account_id_in_fixtures() -> None:
     Allow-list the synthetic placeholders below.
     """
     allow = {
-        "DU1234567",       # IBKR paper -- this corpus's variant fixtures
-        "5WX12345",        # Tastytrade -- this corpus's variant fixtures
-        "5WT12345",        # Tastytrade -- canonical operator fixture
+        "DU1234567",  # IBKR paper -- this corpus's variant fixtures
+        "5WX12345",  # Tastytrade -- this corpus's variant fixtures
+        "5WT12345",  # Tastytrade -- canonical operator fixture
     }
     import re
+
     pat_ibkr = re.compile(r'"DU\d{7,}"|"U\d{7,}"|"I\d{6,}"|"W\d{6,}"')
     pat_tasty = re.compile(r'"[1-9][A-Z]{2}[0-9]{5,}"')
     for p in FIXTURES.glob("*.json"):

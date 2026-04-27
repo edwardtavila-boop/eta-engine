@@ -67,7 +67,7 @@ class _RateLimiter:
 
     def allow(self, now: float) -> bool:
         if self.per_minute <= 0:
-            return True   # 0 means unthrottled
+            return True  # 0 means unthrottled
         # Prune older than 60s
         while self._hits and now - self._hits[0] > 60.0:
             self._hits.popleft()
@@ -89,11 +89,15 @@ def _send_pushover(
 ) -> bool:
     """POST to https://api.pushover.net/1/messages.json. Sync, stdlib-only."""
     url = "https://api.pushover.net/1/messages.json"
-    data = urllib.parse.urlencode({
-        "user": user, "token": token,
-        "title": title[:250], "message": message[:1024],
-        "priority": str(priority),
-    }).encode("utf-8")
+    data = urllib.parse.urlencode(
+        {
+            "user": user,
+            "token": token,
+            "title": title[:250],
+            "message": message[:1024],
+            "priority": str(priority),
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_S) as resp:  # noqa: S310
@@ -109,8 +113,14 @@ def _send_pushover(
 
 
 def _send_email(
-    smtp_host: str, smtp_port: int, smtp_user: str, smtp_pass: str,
-    from_addr: str, to_addr: str, subject: str, body: str,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_pass: str,
+    from_addr: str,
+    to_addr: str,
+    subject: str,
+    body: str,
 ) -> bool:
     """Send via SMTP STARTTLS. Sync, stdlib-only."""
     msg = MIMEText(body, "plain", "utf-8")
@@ -132,18 +142,31 @@ def _send_email(
 
 
 def _send_sms(
-    sid: str, token: str, from_number: str, to_number: str, body: str,
+    sid: str,
+    token: str,
+    from_number: str,
+    to_number: str,
+    body: str,
 ) -> bool:
     """POST to Twilio /Messages.json with basic auth. Sync, stdlib-only."""
     url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-    data = urllib.parse.urlencode({
-        "From": from_number, "To": to_number, "Body": body[:1600],
-    }).encode("utf-8")
+    data = urllib.parse.urlencode(
+        {
+            "From": from_number,
+            "To": to_number,
+            "Body": body[:1600],
+        }
+    ).encode("utf-8")
     credentials = base64.b64encode(f"{sid}:{token}".encode()).decode("ascii")
-    req = urllib.request.Request(url, data=data, method="POST", headers={
-        "Authorization": f"Basic {credentials}",
-        "Content-Type": "application/x-www-form-urlencoded",
-    })
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_S) as resp:  # noqa: S310
             if resp.status not in (200, 201):
@@ -167,8 +190,8 @@ class AlertDispatcher:
         # Build per-level rate limiters
         rl = cfg.get("rate_limit", {}) or {}
         self._rl = {
-            "info":     _RateLimiter(int(rl.get("info_per_minute", 10))),
-            "warn":     _RateLimiter(int(rl.get("warn_per_minute", 5))),
+            "info": _RateLimiter(int(rl.get("info_per_minute", 10))),
+            "warn": _RateLimiter(int(rl.get("warn_per_minute", 5))),
             "critical": _RateLimiter(int(rl.get("critical_per_minute", 0))),
         }
 
@@ -187,8 +210,10 @@ class AlertDispatcher:
         spec = routing.get(event)
         if spec is None:
             result = DispatchResult(
-                event=event, level="unknown",
-                channels=[], delivered=[],
+                event=event,
+                level="unknown",
+                channels=[],
+                delivered=[],
                 blocked=[f"unknown event '{event}'"],
                 ts=now,
             )
@@ -200,8 +225,12 @@ class AlertDispatcher:
         rl = self._rl.get(level) or self._rl["info"]
         if not rl.allow(now):
             result = DispatchResult(
-                event=event, level=level, channels=channels,
-                delivered=[], blocked=[f"rate_limited:{level}"], ts=now,
+                event=event,
+                level=level,
+                channels=channels,
+                delivered=[],
+                blocked=[f"rate_limited:{level}"],
+                ts=now,
             )
             self._log(result, payload)
             return result
@@ -221,8 +250,12 @@ class AlertDispatcher:
             else:
                 blocked.append(f"{ch}:send_failed")
         result = DispatchResult(
-            event=event, level=level, channels=channels,
-            delivered=delivered, blocked=blocked, ts=now,
+            event=event,
+            level=level,
+            channels=channels,
+            delivered=delivered,
+            blocked=blocked,
+            ts=now,
         )
         self._log(result, payload)
         return result
@@ -245,7 +278,7 @@ class AlertDispatcher:
 
     def _env(self, channel: str, logical_key: str) -> str:
         """Look up the env var name from channels.<ch>.env_keys.<logical_key>, then read os.environ."""
-        env_map = (self._channel_cfg(channel).get("env_keys") or {})
+        env_map = self._channel_cfg(channel).get("env_keys") or {}
         env_name = env_map.get(logical_key, "")
         return os.environ.get(env_name, "")
 
@@ -285,8 +318,14 @@ class AlertDispatcher:
                 logger.warning("email channel has no recipient configured")
                 return False
             return _send_email(
-                smtp_host, smtp_port, smtp_user, smtp_pass,
-                from_addr, to_addr, title, body,
+                smtp_host,
+                smtp_port,
+                smtp_user,
+                smtp_pass,
+                from_addr,
+                to_addr,
+                title,
+                body,
             )
 
         if channel == "sms":
@@ -307,13 +346,13 @@ class AlertDispatcher:
     def _log(self, result: DispatchResult, payload: dict[str, Any]) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         entry = {
-            "ts":         result.ts,
-            "event":      result.event,
-            "level":      result.level,
-            "channels":   result.channels,
-            "delivered":  result.delivered,
-            "blocked":    result.blocked,
-            "payload":    payload,
+            "ts": result.ts,
+            "event": result.event,
+            "level": result.level,
+            "channels": result.channels,
+            "delivered": result.delivered,
+            "blocked": result.blocked,
+            "payload": payload,
         }
         with self.log_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")

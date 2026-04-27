@@ -17,6 +17,7 @@ Tests:
 
 Small/fast -- designed to run every tick.
 """
+
 from __future__ import annotations
 
 import math
@@ -28,22 +29,29 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AnomalyReport(BaseModel):
     """One evaluation of a single field's drift."""
+
     model_config = ConfigDict(frozen=True)
 
-    field:       str = Field(min_length=1)
-    severity:    str = Field(pattern="^(GREEN|YELLOW|RED)$")
-    reason:      str = Field(min_length=1)
-    z_score:     float | None = None
-    ks_stat:     float | None = None
-    samples:     int = Field(ge=0)
+    field: str = Field(min_length=1)
+    severity: str = Field(pattern="^(GREEN|YELLOW|RED)$")
+    reason: str = Field(min_length=1)
+    z_score: float | None = None
+    ks_stat: float | None = None
+    samples: int = Field(ge=0)
 
 
 class DriftDetector:
     """Rolling-window drift tests on a single scalar input field."""
 
     def __init__(
-        self, field: str, *, window: int = 120, z_red: float = 4.0,
-        z_yellow: float = 2.5, ks_yellow: float = 0.25, ks_red: float = 0.40,
+        self,
+        field: str,
+        *,
+        window: int = 120,
+        z_red: float = 4.0,
+        z_yellow: float = 2.5,
+        ks_yellow: float = 0.25,
+        ks_red: float = 0.40,
     ) -> None:
         self.field = field
         self.window = window
@@ -58,7 +66,8 @@ class DriftDetector:
         n = len(self._buf)
         if n < 8:
             return AnomalyReport(
-                field=self.field, severity="GREEN",
+                field=self.field,
+                severity="GREEN",
                 reason=f"warmup ({n}/{self.window})",
                 samples=n,
             )
@@ -70,16 +79,16 @@ class DriftDetector:
         # Constant-feed guard: if the last N samples are identical, yellow.
         if _constant(vals):
             return AnomalyReport(
-                field=self.field, severity="YELLOW",
+                field=self.field,
+                severity="YELLOW",
                 reason=f"feed appears stuck at {value:.4f}",
-                z_score=0.0, ks_stat=0.0, samples=n,
+                z_score=0.0,
+                ks_stat=0.0,
+                samples=n,
             )
         if abs(z) >= self.z_red or ks >= self.ks_red:
             severity = "RED"
-            reason = (
-                f"z={z:+.2f} ks={ks:.2f} -- distribution shift "
-                f"(mu={mu:.4f}, sigma={sigma:.4f})"
-            )
+            reason = f"z={z:+.2f} ks={ks:.2f} -- distribution shift (mu={mu:.4f}, sigma={sigma:.4f})"
         elif abs(z) >= self.z_yellow or ks >= self.ks_yellow:
             severity = "YELLOW"
             reason = f"elevated z={z:+.2f} ks={ks:.2f}"
@@ -87,8 +96,12 @@ class DriftDetector:
             severity = "GREEN"
             reason = f"stable z={z:+.2f} ks={ks:.2f}"
         return AnomalyReport(
-            field=self.field, severity=severity, reason=reason,
-            z_score=round(z, 4), ks_stat=round(ks, 4), samples=n,
+            field=self.field,
+            severity=severity,
+            reason=reason,
+            z_score=round(z, 4),
+            ks_stat=round(ks, 4),
+            samples=n,
         )
 
 
@@ -124,9 +137,7 @@ class MultiFieldDetector:
     """
 
     def __init__(self, fields: list[str], **detector_kwargs: float) -> None:
-        self._by_field: dict[str, DriftDetector] = {
-            f: DriftDetector(f, **detector_kwargs) for f in fields
-        }
+        self._by_field: dict[str, DriftDetector] = {f: DriftDetector(f, **detector_kwargs) for f in fields}
 
     def observe(self, payload: dict[str, float]) -> list[AnomalyReport]:
         out: list[AnomalyReport] = []
@@ -138,11 +149,14 @@ class MultiFieldDetector:
             except (TypeError, ValueError):
                 continue
             if math.isnan(x) or math.isinf(x):
-                out.append(AnomalyReport(
-                    field=k, severity="RED",
-                    reason="invalid input (NaN/Inf)",
-                    samples=0,
-                ))
+                out.append(
+                    AnomalyReport(
+                        field=k,
+                        severity="RED",
+                        reason="invalid input (NaN/Inf)",
+                        samples=0,
+                    )
+                )
                 continue
             report = self._by_field[k].observe(x)
             if report.severity != "GREEN":

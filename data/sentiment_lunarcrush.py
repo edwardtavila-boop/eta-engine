@@ -70,6 +70,7 @@ class LunarCrushClient:
 # Module-level lru_cached stubs
 # ---------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=256)
 def _fetch_galaxy_cached(asset: str, bucket: int) -> float:
     """TODO: mcp__lunarcrush__Cryptocurrencies -> parse galaxy_score."""

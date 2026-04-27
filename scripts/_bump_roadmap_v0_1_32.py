@@ -108,6 +108,7 @@ Reconciliation
   * overall_progress_pct: 99 (unchanged -- still funding-gated on
     P9_ROLLOUT).
 """
+
 from __future__ import annotations
 
 import json
@@ -133,10 +134,7 @@ def main() -> None:
     sa["eta_engine_v0_1_32_cross_regime_validation"] = {
         "timestamp_utc": now,
         "version": "v0.1.32",
-        "bundle_name": (
-            "CROSS-REGIME OOS VALIDATION HARNESS -- "
-            "sign-flip overfit detection"
-        ),
+        "bundle_name": ("CROSS-REGIME OOS VALIDATION HARNESS -- sign-flip overfit detection"),
         "directive": "assist apex predator with all the task it needs to complete",
         "theme": (
             "P3_PROOF.regime_validation was marked done via the firm_v3 "
@@ -163,8 +161,7 @@ def main() -> None:
             "bars_per_regime": 1200,
             "is_fraction": 0.70,
             "bar_generator": (
-                "BarReplay.synthetic_bars (GBM) + "
-                "BarReplay.synthetic_bars_jump (jump-diffusion for HIGH_VOL)"
+                "BarReplay.synthetic_bars (GBM) + BarReplay.synthetic_bars_jump (jump-diffusion for HIGH_VOL)"
             ),
             "classifier_sanity_check": (
                 "each RegimeSpec.axes must classify to spec.expected_label "
@@ -173,8 +170,13 @@ def main() -> None:
                 "wrong regime"
             ),
             "metrics_per_split": [
-                "trades", "expectancy_r", "win_rate", "profit_factor",
-                "sharpe", "max_dd_pct", "total_return_pct",
+                "trades",
+                "expectancy_r",
+                "win_rate",
+                "profit_factor",
+                "sharpe",
+                "max_dd_pct",
+                "total_return_pct",
             ],
             "degradation_formula": "(IS_exp - OOS_exp) / max(|IS_exp|, 1e-9)",
         },
@@ -184,13 +186,9 @@ def main() -> None:
                 "oos_trades_min": 20,
                 "max_degradation_pct": 60.0,
             },
-            "pass_condition": (
-                "(>=1 regime live-tradeable) AND "
-                "(no sign-flip overfit anywhere)"
-            ),
+            "pass_condition": ("(>=1 regime live-tradeable) AND (no sign-flip overfit anywhere)"),
             "sign_flip_rule": (
-                "IS expectancy_r > 0 AND OOS expectancy_r < 0 -> red flag, "
-                "exclude that regime from deployment"
+                "IS expectancy_r > 0 AND OOS expectancy_r < 0 -> red flag, exclude that regime from deployment"
             ),
             "why_sign_flip_only": (
                 "Degradation alone flags regime-selectivity, which is "
@@ -237,7 +235,8 @@ def main() -> None:
                 "oos_trades": 17,
                 "degradation_pct": 80.0,
                 "reasons": [
-                    "OOS exp < 0.15R", "OOS trades < 20",
+                    "OOS exp < 0.15R",
+                    "OOS trades < 20",
                     "degradation > 60%",
                 ],
             },
@@ -304,17 +303,14 @@ def main() -> None:
     state["overall_progress_pct"] = state.get("overall_progress_pct", 99)
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.32 at {now}")
-    print(f"  tests_passing: {prev_tests} -> {new_tests} "
-          f"({new_tests - prev_tests:+d})")
-    print("  shipped: scripts/run_cross_regime_validation.py + "
-          "tests/test_cross_regime_validation.py")
-    print("  first verdict: TRENDING live-tradeable; HIGH_VOL sign-flip "
-          "overfit -> exclude")
-    print("  P3_PROOF.regime_validation proof is now reproducible "
-          "(re-runnable harness + unit tests)")
+    print(f"  tests_passing: {prev_tests} -> {new_tests} ({new_tests - prev_tests:+d})")
+    print("  shipped: scripts/run_cross_regime_validation.py + tests/test_cross_regime_validation.py")
+    print("  first verdict: TRENDING live-tradeable; HIGH_VOL sign-flip overfit -> exclude")
+    print("  P3_PROOF.regime_validation proof is now reproducible (re-runnable harness + unit tests)")
 
 
 if __name__ == "__main__":

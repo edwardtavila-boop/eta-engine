@@ -40,6 +40,7 @@ Supercharge / Evolutionary Trading Algo Core
 Design principles carry from v2: pure / deterministic / pydantic-typed /
 opt-in (nothing breaks if a caller doesn't know about v3).
 """
+
 from __future__ import annotations
 
 __all__ = [

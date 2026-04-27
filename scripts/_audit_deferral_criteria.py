@@ -39,6 +39,7 @@ Exit codes
      OR --strict was not set)
 1 -- --strict and at least one deferral lacks an exit criterion
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,12 +56,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # every "todo:" comment). Each marker captures forward-looking work.
 _MARKER_RE = re.compile(
     r"(?i)"
-    r"(deferred?\s+to\s+v?\d+\.\d+\.[\dx]+"     # "deferred to v0.2.x"
-    r"|defer\s+to\s+v?\d+\.\d+\.[\dx]+"        # "defer to v0.2.x"
+    r"(deferred?\s+to\s+v?\d+\.\d+\.[\dx]+"  # "deferred to v0.2.x"
+    r"|defer\s+to\s+v?\d+\.\d+\.[\dx]+"  # "defer to v0.2.x"
     r"|v0\.2\.x\s+(scope|deferral|design|work)"  # "v0.2.x scope"
-    r"|v\d+\.\d+\.[\dx]+\s+scope"               # "v0.2.x scope"
-    r"|punted\s+to\s+v?\d+\.\d+\.[\dx]+"       # "punted to v0.2.x"
-    r"|TODO\(v?\d+\.\d+\.[\dx]+\)"             # "TODO(v0.2.x)"
+    r"|v\d+\.\d+\.[\dx]+\s+scope"  # "v0.2.x scope"
+    r"|punted\s+to\s+v?\d+\.\d+\.[\dx]+"  # "punted to v0.2.x"
+    r"|TODO\(v?\d+\.\d+\.[\dx]+\)"  # "TODO(v0.2.x)"
     r")",
 )
 
@@ -69,17 +70,17 @@ _MARKER_RE = re.compile(
 # marker, case-insensitive.
 _CRITERION_RE = re.compile(
     r"(?i)"
-    r"(KZN-\d+"                              # kaizen ticket id
-    r"|test_[a-z_][a-z0-9_]*"                # test function/file name
-    r"|exit\s+criteri"                       # "exit criterion"
-    r"|acceptance\s+criteri"                 # "acceptance criteria"
-    r"|lands?\s+when"                        # "lands when X"
-    r"|closes?\s+when"                       # "closes when X"
-    r"|closed\s+in\s+v\d+\.\d+\.\d+"        # "closed in v0.1.64"
-    r"|addressed\s+(in|by)"                  # "addressed by issue #N"
-    r"|issue\s*#\d+"                         # "issue #42"
-    r"|scope\s+ticket"                       # "scope ticket"
-    r"|see\s+docs/"                          # "see docs/foo.md"
+    r"(KZN-\d+"  # kaizen ticket id
+    r"|test_[a-z_][a-z0-9_]*"  # test function/file name
+    r"|exit\s+criteri"  # "exit criterion"
+    r"|acceptance\s+criteri"  # "acceptance criteria"
+    r"|lands?\s+when"  # "lands when X"
+    r"|closes?\s+when"  # "closes when X"
+    r"|closed\s+in\s+v\d+\.\d+\.\d+"  # "closed in v0.1.64"
+    r"|addressed\s+(in|by)"  # "addressed by issue #N"
+    r"|issue\s*#\d+"  # "issue #42"
+    r"|scope\s+ticket"  # "scope ticket"
+    r"|see\s+docs/"  # "see docs/foo.md"
     r")",
 )
 
@@ -116,9 +117,7 @@ def _scan_file(path: Path, *, root: Path) -> list[Hit]:
                 line=i + 1,
                 text=line.strip(),
                 has_criterion=crit_match is not None,
-                criterion_evidence=(
-                    crit_match.group(0) if crit_match else None
-                ),
+                criterion_evidence=(crit_match.group(0) if crit_match else None),
             ),
         )
     return hits
@@ -139,18 +138,27 @@ def scan(root: Path) -> list[Hit]:
     """
     out: list[Hit] = []
     skip_prefixes = (
-        "tests/", "scripts/_legacy_bumps/", "scripts/bumps/",
-        "docs/_backups/", ".cache/", ".venv/", "venv/",
-        "__pycache__/", ".git/", ".pytest_cache/", ".ruff_cache/",
-        ".mypy_cache/", "var/", "state/",
+        "tests/",
+        "scripts/_legacy_bumps/",
+        "scripts/bumps/",
+        "docs/_backups/",
+        ".cache/",
+        ".venv/",
+        "venv/",
+        "__pycache__/",
+        ".git/",
+        ".pytest_cache/",
+        ".ruff_cache/",
+        ".mypy_cache/",
+        "var/",
+        "state/",
     )
     self_path = "scripts/_audit_deferral_criteria.py"
     for p in root.rglob("*.py"):
         rel = p.relative_to(root).as_posix()
         if rel == self_path:
             continue
-        if any(rel.startswith(prefix) or "__pycache__" in rel
-               for prefix in skip_prefixes):
+        if any(rel.startswith(prefix) or "__pycache__" in rel for prefix in skip_prefixes):
             continue
         out.extend(_scan_file(p, root=root))
     return out
@@ -175,27 +183,31 @@ def main(argv: list[str] | None = None) -> int:
     pinned = [h for h in hits if h.has_criterion]
 
     if args.json:
-        print(json.dumps({
-            "total": len(hits),
-            "with_criterion": len(pinned),
-            "bare": len(bare),
-            "hits": [
+        print(
+            json.dumps(
                 {
-                    "file": h.file,
-                    "line": h.line,
-                    "text": h.text,
-                    "has_criterion": h.has_criterion,
-                    "criterion_evidence": h.criterion_evidence,
-                }
-                for h in hits
-            ],
-        }, indent=2))
+                    "total": len(hits),
+                    "with_criterion": len(pinned),
+                    "bare": len(bare),
+                    "hits": [
+                        {
+                            "file": h.file,
+                            "line": h.line,
+                            "text": h.text,
+                            "has_criterion": h.has_criterion,
+                            "criterion_evidence": h.criterion_evidence,
+                        }
+                        for h in hits
+                    ],
+                },
+                indent=2,
+            )
+        )
     else:
         print("DEFERRAL-CRITERIA AUDIT")
         print("=" * 50)
         print(
-            f"Markers found: {len(hits)}    with criterion: "
-            f"{len(pinned)}    bare: {len(bare)}",
+            f"Markers found: {len(hits)}    with criterion: {len(pinned)}    bare: {len(bare)}",
         )
         print()
         if pinned:

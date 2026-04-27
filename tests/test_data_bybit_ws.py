@@ -71,6 +71,7 @@ async def test_capture_writes_gzipped_jsonl(tmp_path: Path, monkeypatch: pytest.
 
     # Patch the lazy-imported websockets.connect by stubbing the module
     import types
+
     fake_mod = types.SimpleNamespace(connect=fake_connect)
     monkeypatch.setitem(__import__("sys").modules, "websockets", fake_mod)
 
@@ -107,7 +108,8 @@ async def test_capture_writes_gzipped_jsonl(tmp_path: Path, monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_capture_reconnects_on_transport_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     attempts: list[int] = []
 
@@ -118,6 +120,7 @@ async def test_capture_reconnects_on_transport_error(
         return _FakeWS([])  # empty frames -> clean exit
 
     import types
+
     fake_mod = types.SimpleNamespace(connect=fake_connect)
     monkeypatch.setitem(__import__("sys").modules, "websockets", fake_mod)
 
@@ -140,12 +143,14 @@ async def test_capture_reconnects_on_transport_error(
 
 @pytest.mark.asyncio
 async def test_capture_alert_fires_after_max_retries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def always_fail(*args: Any, **kwargs: Any) -> _FakeWS:  # noqa: ANN401 - websockets.connect signature
         raise OSError("permanent")
 
     import types
+
     fake_mod = types.SimpleNamespace(connect=always_fail)
     monkeypatch.setitem(__import__("sys").modules, "websockets", fake_mod)
 

@@ -35,6 +35,7 @@ Public API
   * ``build_report()``       -- given 10 answers -> ChecklistReport
   * ``score_to_letter()``    -- 0..1 -> A+/A/B/C/D/F
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime  # noqa: TC003  -- pydantic needs runtime
@@ -62,52 +63,62 @@ class Principle(BaseModel):
 
 DEFAULT_PRINCIPLES: tuple[Principle, ...] = (
     Principle(
-        index=0, slug="a_plus_only",
+        index=0,
+        slug="a_plus_only",
         question="Did I pass on B-grade setups?",
         description="Wait for A+ setups; no forcing.",
     ),
     Principle(
-        index=1, slug="process_over_outcome",
+        index=1,
+        slug="process_over_outcome",
         question="Did I follow my checklist on every trade?",
         description="Grade the process, not the P&L.",
     ),
     Principle(
-        index=2, slug="decision_log",
+        index=2,
+        slug="decision_log",
         question="Did every trade get a journaled rationale?",
         description="No silent entries; all decisions logged.",
     ),
     Principle(
-        index=3, slug="consult_jarvis",
+        index=3,
+        slug="consult_jarvis",
         question="Did I consult the Jarvis snapshot before entries?",
         description="Always check context before a new position.",
     ),
     Principle(
-        index=4, slug="never_autopilot",
+        index=4,
+        slug="never_autopilot",
         question="Did I ack all watchdog prompts in time?",
         description="Every position, eyes on; no dozing.",
     ),
     Principle(
-        index=5, slug="cadence_of_review",
+        index=5,
+        slug="cadence_of_review",
         question="Did I run the weekly review on schedule?",
         description="The review is the flywheel.",
     ),
     Principle(
-        index=6, slug="stress_testing",
+        index=6,
+        slug="stress_testing",
         question="Did I stress-test before any size/parameter change?",
         description="No untested knob turns in live.",
     ),
     Principle(
-        index=7, slug="risk_discipline",
+        index=7,
+        slug="risk_discipline",
         question="Did I stay under the daily DD limit?",
         description="Risk budget is sacrosanct.",
     ),
     Principle(
-        index=8, slug="override_discipline",
+        index=8,
+        slug="override_discipline",
         question="Did I keep override_rate <= 10%?",
         description="Overrides are expensive; count them.",
     ),
     Principle(
-        index=9, slug="continuous_learning",
+        index=9,
+        slug="continuous_learning",
         question="Did I extract a written lesson from every loser?",
         description="Losses paid; lessons owed.",
     ),
@@ -137,7 +148,8 @@ class ChecklistReport(BaseModel):
     score: float = Field(ge=0.0, le=1.0)
     letter_grade: str
     discipline_score: int = Field(
-        ge=0, le=10,
+        ge=0,
+        le=10,
         description="Number of 'yes' answers out of 10.",
     )
     critical_gaps: list[str] = Field(

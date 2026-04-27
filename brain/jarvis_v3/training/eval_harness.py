@@ -18,6 +18,7 @@ can render trends over time.
 This harness is pure + deterministic given the input Claude responses.
 Tests inject canned responses; production feeds real Claude output.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -30,32 +31,34 @@ from eta_engine.brain.jarvis_v3.training.skills_catalog import skills_for
 
 class ExerciseResult(BaseModel):
     """Score for a single curriculum exercise."""
+
     model_config = ConfigDict(frozen=True)
 
-    exercise_id:       str
-    skill_category:    str
-    format_ok:         bool
+    exercise_id: str
+    skill_category: str
+    format_ok: bool
     anti_pattern_hits: list[str] = Field(default_factory=list)
-    token_count:       int = Field(ge=0)
-    within_budget:     bool
-    score:             float = Field(ge=0.0, le=1.0)
-    notes:             str = ""
+    token_count: int = Field(ge=0)
+    within_budget: bool
+    score: float = Field(ge=0.0, le=1.0)
+    notes: str = ""
 
 
 class EvalReport(BaseModel):
     """Full persona evaluation -- one run across all exercises."""
+
     model_config = ConfigDict(frozen=True)
 
-    persona:           str
-    ts:                datetime
-    n_exercises:       int = Field(ge=0)
-    n_passed:          int = Field(ge=0)
-    mean_score:        float = Field(ge=0.0, le=1.0)
+    persona: str
+    ts: datetime
+    n_exercises: int = Field(ge=0)
+    n_passed: int = Field(ge=0)
+    mean_score: float = Field(ge=0.0, le=1.0)
     format_compliance: float = Field(ge=0.0, le=1.0)
     budget_compliance: float = Field(ge=0.0, le=1.0)
     anti_pattern_hits: int = Field(ge=0)
-    results:           list[ExerciseResult]
-    recommendation:    str = ""
+    results: list[ExerciseResult]
+    recommendation: str = ""
 
 
 def _count_tokens(text: str) -> int:
@@ -83,8 +86,7 @@ def _check_anti_patterns(response: str, persona: str) -> list[str]:
         if "## Check" not in response:
             hits.append("ALFRED missing '## Check' section")
     if persona.upper() == "BATMAN":
-        required = ("## Thesis", "## Attack Vectors", "## Evidence Check",
-                    "## Mitigations", "## Verdict")
+        required = ("## Thesis", "## Attack Vectors", "## Evidence Check", "## Mitigations", "## Verdict")
         for section in required:
             if section not in response:
                 hits.append(f"BATMAN missing '{section}' section")
@@ -100,8 +102,7 @@ def _check_format(response: str, persona: str) -> bool:
         return False
     if persona.upper() == "ROBIN":
         # ROBIN: must have ## Answer OR be a single-line diff/filename/etc
-        return "## Answer" in response or "\n" not in response.strip() or \
-               len(response) < 400
+        return "## Answer" in response or "\n" not in response.strip() or len(response) < 400
     if persona.upper() == "ALFRED":
         return all(s in response for s in ("## Plan", "## Deliverable", "## Check"))
     if persona.upper() == "BATMAN":
@@ -129,9 +130,7 @@ def grade_exercise(
         score *= 0.8
     score *= max(0.0, 1.0 - 0.15 * len(hits))
 
-    notes = "ok" if score >= 0.8 else (
-        f"format={format_ok} budget={within_budget} hits={len(hits)}"
-    )
+    notes = "ok" if score >= 0.8 else (f"format={format_ok} budget={within_budget} hits={len(hits)}")
     return ExerciseResult(
         exercise_id=exercise_id,
         skill_category=skill_category,
@@ -144,16 +143,20 @@ def grade_exercise(
     )
 
 
-def aggregate_report(persona: str,
-                     results: list[ExerciseResult]) -> EvalReport:
+def aggregate_report(persona: str, results: list[ExerciseResult]) -> EvalReport:
     """Roll up per-exercise results into a report."""
     n = len(results)
     if n == 0:
         return EvalReport(
-            persona=persona, ts=datetime.now(UTC),
-            n_exercises=0, n_passed=0, mean_score=0.0,
-            format_compliance=0.0, budget_compliance=0.0,
-            anti_pattern_hits=0, results=[],
+            persona=persona,
+            ts=datetime.now(UTC),
+            n_exercises=0,
+            n_passed=0,
+            mean_score=0.0,
+            format_compliance=0.0,
+            budget_compliance=0.0,
+            anti_pattern_hits=0,
+            results=[],
             recommendation="no exercises run",
         )
     passed = sum(1 for r in results if r.score >= 0.8)
@@ -166,15 +169,14 @@ def aggregate_report(persona: str,
     elif mean >= 0.75:
         rec = f"{persona} strong; focus on {_weakest_area(results)}"
     elif mean >= 0.5:
-        rec = (
-            f"{persona} needs calibration -- fmt={fmt:.0%} budget={bud:.0%} "
-            f"anti_pattern_hits={hits}"
-        )
+        rec = f"{persona} needs calibration -- fmt={fmt:.0%} budget={bud:.0%} anti_pattern_hits={hits}"
     else:
         rec = f"{persona} failing eval -- review peak_manual + re-train"
     return EvalReport(
-        persona=persona, ts=datetime.now(UTC),
-        n_exercises=n, n_passed=passed,
+        persona=persona,
+        ts=datetime.now(UTC),
+        n_exercises=n,
+        n_passed=passed,
         mean_score=round(mean, 4),
         format_compliance=round(fmt, 4),
         budget_compliance=round(bud, 4),

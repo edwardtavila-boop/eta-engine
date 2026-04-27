@@ -36,6 +36,7 @@ Exit codes
 2  RED (any module drops > red-pct)
 9  setup error (no coverage tooling, no report, etc.)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -109,7 +110,10 @@ def _severity(level: str) -> int:
 
 
 def _evaluate(
-    current: dict[str, float], baseline: dict, yellow: float, red: float,
+    current: dict[str, float],
+    baseline: dict,
+    yellow: float,
+    red: float,
 ) -> tuple[list[dict], dict]:
     new_baseline = {
         "per_module": dict(baseline.get("per_module", {})),
@@ -120,17 +124,29 @@ def _evaluate(
     for module, cur_pct in current.items():
         prev = baseline.get("per_module", {}).get(module)
         if prev is None:
-            diagnostics.append({
-                "module": module, "level": "GREEN", "drop": 0.0,
-                "current": cur_pct, "baseline": None, "seeded": True,
-            })
+            diagnostics.append(
+                {
+                    "module": module,
+                    "level": "GREEN",
+                    "drop": 0.0,
+                    "current": cur_pct,
+                    "baseline": None,
+                    "seeded": True,
+                }
+            )
             new_baseline["per_module"][module] = cur_pct
             continue
         level, drop = _classify(float(prev), cur_pct, yellow, red)
-        diagnostics.append({
-            "module": module, "level": level, "drop": drop,
-            "current": cur_pct, "baseline": float(prev), "seeded": False,
-        })
+        diagnostics.append(
+            {
+                "module": module,
+                "level": level,
+                "drop": drop,
+                "current": cur_pct,
+                "baseline": float(prev),
+                "seeded": False,
+            }
+        )
         # Ratchet upwards only
         new_baseline["per_module"][module] = max(cur_pct, float(prev))
     return diagnostics, new_baseline
@@ -162,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
 
     baseline = (
         json.loads(args.baseline.read_text(encoding="utf-8"))
-        if args.baseline.exists() else {"per_module": {}, "samples": 0}
+        if args.baseline.exists()
+        else {"per_module": {}, "samples": 0}
     )
     diagnostics, new_baseline = _evaluate(current, baseline, args.yellow_pct, args.red_pct)
 
@@ -170,8 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     code = _severity(overall)
 
     print(
-        f"coverage-drift: {overall} -- {len(diagnostics)} modules "
-        f"(samples={baseline.get('samples', 0)} prior)",
+        f"coverage-drift: {overall} -- {len(diagnostics)} modules (samples={baseline.get('samples', 0)} prior)",
     )
     # Show only non-green or seeded; full list is in the baseline file
     for d in sorted(diagnostics, key=lambda x: -_severity(x["level"])):
@@ -191,7 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_update:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
-            json.dumps(new_baseline, indent=2) + "\n", encoding="utf-8",
+            json.dumps(new_baseline, indent=2) + "\n",
+            encoding="utf-8",
         )
     return code
 

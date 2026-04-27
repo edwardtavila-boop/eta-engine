@@ -14,6 +14,7 @@ Registry-injection stubs let each test pin the winning strategy + its
 level structure, so the harness code paths are exercised in isolation
 without needing 200+ bars of real market tape.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -55,8 +56,12 @@ _RegistryType = dict[StrategyId, Callable[[list[Bar], object], StrategySignal]]
 
 
 def _long_stop_registry_factory(
-    entry: float, stop: float, target: float,
-    *, confidence: float = 8.0, fire_on_index: int | None = None,
+    entry: float,
+    stop: float,
+    target: float,
+    *,
+    confidence: float = 8.0,
+    fire_on_index: int | None = None,
 ) -> _RegistryType:
     """Return a registry whose dispatch produces LONG with given levels.
 
@@ -87,8 +92,12 @@ def _long_stop_registry_factory(
 
 
 def _short_stop_registry_factory(
-    entry: float, stop: float, target: float,
-    *, confidence: float = 8.0, fire_on_index: int | None = None,
+    entry: float,
+    stop: float,
+    target: float,
+    *,
+    confidence: float = 8.0,
+    fire_on_index: int | None = None,
 ) -> _RegistryType:
     def fn(bars: list[Bar], _ctx: object) -> StrategySignal:
         idx = bars[-1].ts if bars else 0
@@ -141,7 +150,9 @@ class TestHarnessGuards:
     def test_short_tape_below_warmup_produces_empty_report(self) -> None:
         bars = _flat_bars(5)
         report = run_harness(
-            bars, asset="TEST", config=HarnessConfig(warmup_bars=10),
+            bars,
+            asset="TEST",
+            config=HarnessConfig(warmup_bars=10),
         )
         assert report.total_bars == 5
         assert report.total_trades == 0
@@ -150,7 +161,9 @@ class TestHarnessGuards:
         # warmup requires `len(bars) >= warmup + 2`
         bars = _flat_bars(6)
         report = run_harness(
-            bars, asset="TEST", config=HarnessConfig(warmup_bars=5),
+            bars,
+            asset="TEST",
+            config=HarnessConfig(warmup_bars=5),
         )
         assert report.total_trades == 0
 
@@ -173,14 +186,21 @@ class TestExitResolution:
             _bar(ts=7, open_=102.5, high=103.0, low=102.0, close=102.8),
         ]
         registry = _long_stop_registry_factory(
-            entry=100.0, stop=99.0, target=102.0, fire_on_index=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=5, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=5,
+                slippage_bps=0.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         assert report.total_trades == 1
         t = report.trades[0]
@@ -197,14 +217,21 @@ class TestExitResolution:
             _bar(ts=7, open_=99.0, high=99.5, low=98.8, close=99.1),
         ]
         registry = _long_stop_registry_factory(
-            entry=100.0, stop=99.0, target=102.0, fire_on_index=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=5, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=5,
+                slippage_bps=0.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         assert report.total_trades == 1
         assert report.trades[0].exit_reason is ExitReason.STOP
@@ -219,14 +246,21 @@ class TestExitResolution:
         ]
         # Short: entry 100, stop 101, target 98 → stop_dist 1, target_dist 2 → 2R
         registry = _short_stop_registry_factory(
-            entry=100.0, stop=101.0, target=98.0, fire_on_index=5,
+            entry=100.0,
+            stop=101.0,
+            target=98.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=5, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=5,
+                slippage_bps=0.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         assert report.total_trades == 1
         assert report.trades[0].exit_reason is ExitReason.TARGET
@@ -241,14 +275,21 @@ class TestExitResolution:
             _bar(ts=7, open_=101.0, high=101.3, low=100.8, close=101.0),
         ]
         registry = _short_stop_registry_factory(
-            entry=100.0, stop=101.0, target=98.0, fire_on_index=5,
+            entry=100.0,
+            stop=101.0,
+            target=98.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=5, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=5,
+                slippage_bps=0.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         assert report.trades[0].exit_reason is ExitReason.STOP
         assert report.trades[0].r_multiple == pytest.approx(-1.0, abs=1e-6)
@@ -265,14 +306,21 @@ class TestExitResolution:
             _bar(ts=9, open_=100.3, high=100.4, low=99.9, close=100.4),
         ]
         registry = _long_stop_registry_factory(
-            entry=100.0, stop=99.0, target=102.0, fire_on_index=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=4, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=4,
+                slippage_bps=0.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         t = report.trades[0]
         assert t.exit_reason is ExitReason.TIMEOUT
@@ -294,14 +342,21 @@ class TestSlippageApplication:
             _bar(ts=6, open_=100.5, high=103.0, low=100.0, close=102.5),
         ]
         registry = _long_stop_registry_factory(
-            entry=100.0, stop=99.0, target=102.0, fire_on_index=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            fire_on_index=5,
         )
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=3, slippage_bps=10.0,
+                warmup_bars=5,
+                max_bars_per_trade=3,
+                slippage_bps=10.0,
             ),
-            eligibility=ELIG_LSD, registry=registry,
+            eligibility=ELIG_LSD,
+            registry=registry,
         )
         # 2.0 - 2 * 10 / 10000 = 2.0 - 0.002 = 1.998
         assert report.trades[0].r_multiple == pytest.approx(1.998, abs=1e-6)
@@ -336,8 +391,11 @@ class TestStatsAggregation:
             return StrategySignal(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
                 side=Side.LONG,
-                entry=100.0, stop=99.0, target=102.0,
-                confidence=8.0, risk_mult=1.0,
+                entry=100.0,
+                stop=99.0,
+                target=102.0,
+                confidence=8.0,
+                risk_mult=1.0,
             )
 
         bars: list[Bar] = []
@@ -350,9 +408,12 @@ class TestStatsAggregation:
                 bars.append(_bar(ts=i, open_=100, high=100.2, low=99.8, close=100))
 
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=2, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=2,
+                slippage_bps=0.0,
             ),
             eligibility=ELIG_LSD,
             registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn},
@@ -388,8 +449,11 @@ class TestStatsAggregation:
             return StrategySignal(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
                 side=Side.LONG,
-                entry=100.0, stop=99.0, target=102.0,
-                confidence=8.0, risk_mult=1.0,
+                entry=100.0,
+                stop=99.0,
+                target=102.0,
+                confidence=8.0,
+                risk_mult=1.0,
             )
 
         bars: list[Bar] = []
@@ -407,9 +471,12 @@ class TestStatsAggregation:
                 bars.append(_bar(ts=i, open_=100, high=100.1, low=99.9, close=100))
 
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, max_bars_per_trade=2, slippage_bps=0.0,
+                warmup_bars=5,
+                max_bars_per_trade=2,
+                slippage_bps=0.0,
             ),
             eligibility=ELIG_LSD,
             registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn},
@@ -441,9 +508,11 @@ class TestInjection:
 
         bars = _flat_bars(10, 100.0)
         run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5, slippage_bps=0.0),
-            eligibility=ELIG_LSD, registry=_flat_registry(),
+            eligibility=ELIG_LSD,
+            registry=_flat_registry(),
             ctx_builder=builder,
         )
         # The harness iterates from warmup (5) to end (9) → 5 builder calls
@@ -460,22 +529,29 @@ class TestInjection:
         ]
         # LSD registry fires, but eligibility only lists OB_BREAKER_RETEST
         registry = _long_stop_registry_factory(
-            entry=100.0, stop=99.0, target=102.0, fire_on_index=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            fire_on_index=5,
         )
         elig = {"TEST": (StrategyId.OB_BREAKER_RETEST,)}
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5, slippage_bps=0.0),
-            eligibility=elig, registry=registry,
+            eligibility=elig,
+            registry=registry,
         )
         assert report.total_trades == 0
 
     def test_flat_winner_produces_no_trades(self) -> None:
         bars = _flat_bars(20, 100.0)
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5, slippage_bps=0.0),
-            eligibility=ELIG_LSD, registry=_flat_registry(),
+            eligibility=ELIG_LSD,
+            registry=_flat_registry(),
         )
         assert report.total_trades == 0
 
@@ -498,8 +574,11 @@ class TestEdgeCases:
             return StrategySignal(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
                 side=Side.LONG,
-                entry=100.0, stop=100.0, target=101.0,  # same entry/stop
-                confidence=8.0, risk_mult=1.0,
+                entry=100.0,
+                stop=100.0,
+                target=101.0,  # same entry/stop
+                confidence=8.0,
+                risk_mult=1.0,
             )
 
         bars = [
@@ -508,7 +587,8 @@ class TestEdgeCases:
             _bar(ts=6, open_=100.5, high=102.0, low=100.0, close=101.5),
         ]
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5),
             eligibility=ELIG_LSD,
             registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn},
@@ -527,8 +607,11 @@ class TestEdgeCases:
             return StrategySignal(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
                 side=Side.LONG,
-                entry=100.0, stop=99.0, target=0.0,  # no target → fallback
-                confidence=8.0, risk_mult=1.0,
+                entry=100.0,
+                stop=99.0,
+                target=0.0,  # no target → fallback
+                confidence=8.0,
+                risk_mult=1.0,
             )
 
         bars = [
@@ -537,7 +620,8 @@ class TestEdgeCases:
             _bar(ts=6, open_=100.5, high=103.0, low=100.0, close=102.5),
         ]
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5, slippage_bps=0.0),
             eligibility=ELIG_LSD,
             registry={StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT: fn},
@@ -549,11 +633,15 @@ class TestEdgeCases:
     def test_record_decisions_populates_decision_tape(self) -> None:
         bars = _flat_bars(10, 100.0)
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(
-                warmup_bars=5, slippage_bps=0.0, record_decisions=True,
+                warmup_bars=5,
+                slippage_bps=0.0,
+                record_decisions=True,
             ),
-            eligibility=ELIG_LSD, registry=_flat_registry(),
+            eligibility=ELIG_LSD,
+            registry=_flat_registry(),
         )
         # Harness iterates from i=5..9 → 5 dispatches
         assert len(report.decisions) == 5
@@ -561,9 +649,11 @@ class TestEdgeCases:
     def test_record_decisions_default_empty(self) -> None:
         bars = _flat_bars(10, 100.0)
         report = run_harness(
-            bars, asset="TEST",
+            bars,
+            asset="TEST",
             config=HarnessConfig(warmup_bars=5, slippage_bps=0.0),
-            eligibility=ELIG_LSD, registry=_flat_registry(),
+            eligibility=ELIG_LSD,
+            registry=_flat_registry(),
         )
         assert report.decisions == ()
 
@@ -578,10 +668,15 @@ class TestSerialisation:
         t = StrategyTrade(
             strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
             side=Side.LONG,
-            entry_ts=5, entry=100.0, stop=99.0, target=102.0,
-            exit_ts=6, exit=102.0,
+            entry_ts=5,
+            entry=100.0,
+            stop=99.0,
+            target=102.0,
+            exit_ts=6,
+            exit=102.0,
             exit_reason=ExitReason.TARGET,
-            r_multiple=2.0, bars_held=1,
+            r_multiple=2.0,
+            bars_held=1,
         )
         d = t.as_dict()
         assert d["strategy"] == "liquidity_sweep_displacement"
@@ -592,9 +687,13 @@ class TestSerialisation:
     def test_stats_as_dict_rounds_floats(self) -> None:
         s = StrategyBacktestStats(
             strategy=StrategyId.MTF_TREND_FOLLOWING,
-            n_trades=10, hit_rate=0.123456789, avg_r=0.555555,
-            total_r=5.555555, max_consecutive_losses=3,
-            longest_trade_bars=12, avg_trade_bars=6.78901,
+            n_trades=10,
+            hit_rate=0.123456789,
+            avg_r=0.555555,
+            total_r=5.555555,
+            max_consecutive_losses=3,
+            longest_trade_bars=12,
+            avg_trade_bars=6.78901,
         )
         d = s.as_dict()
         assert d["strategy"] == "mtf_trend_following"
@@ -606,28 +705,48 @@ class TestSerialisation:
         trades = (
             StrategyTrade(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
-                side=Side.LONG, entry_ts=1, entry=100.0, stop=99.0, target=102.0,
-                exit_ts=2, exit=102.0, exit_reason=ExitReason.TARGET,
-                r_multiple=2.0, bars_held=1,
+                side=Side.LONG,
+                entry_ts=1,
+                entry=100.0,
+                stop=99.0,
+                target=102.0,
+                exit_ts=2,
+                exit=102.0,
+                exit_reason=ExitReason.TARGET,
+                r_multiple=2.0,
+                bars_held=1,
             ),
             StrategyTrade(
                 strategy=StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT,
-                side=Side.LONG, entry_ts=3, entry=100.0, stop=99.0, target=102.0,
-                exit_ts=4, exit=99.0, exit_reason=ExitReason.STOP,
-                r_multiple=-1.0, bars_held=1,
+                side=Side.LONG,
+                entry_ts=3,
+                entry=100.0,
+                stop=99.0,
+                target=102.0,
+                exit_ts=4,
+                exit=99.0,
+                exit_reason=ExitReason.STOP,
+                r_multiple=-1.0,
+                bars_held=1,
             ),
         )
         report = BacktestReport(
-            asset="TEST", total_bars=10, total_trades=2,
-            trades=trades, stats_by_strategy=(),
+            asset="TEST",
+            total_bars=10,
+            total_trades=2,
+            trades=trades,
+            stats_by_strategy=(),
         )
         assert report.total_r == 1.0
         assert report.hit_rate == 0.5
 
     def test_report_hit_rate_zero_trades(self) -> None:
         report = BacktestReport(
-            asset="TEST", total_bars=10, total_trades=0,
-            trades=(), stats_by_strategy=(),
+            asset="TEST",
+            total_bars=10,
+            total_trades=0,
+            trades=(),
+            stats_by_strategy=(),
         )
         assert report.hit_rate == 0.0
         assert report.total_r == 0.0

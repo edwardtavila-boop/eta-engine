@@ -12,6 +12,7 @@ Design constraints
   TLS + basic auth. ``bind_host`` is a boot-time knob for prod.
 * Handler is stateless; the only mutable thing is the aiohttp server ref.
 """
+
 from __future__ import annotations
 
 import logging

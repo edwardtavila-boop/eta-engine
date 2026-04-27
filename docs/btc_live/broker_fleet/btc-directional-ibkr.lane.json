@@ -1,0 +1,19 @@
+{
+  "active_order_avg_price": 0.0,
+  "active_order_filled_qty": 0.0,
+  "active_order_id": null,
+  "active_order_status": "NONE",
+  "anchor_price": 90000.0,
+  "broker": "ibkr",
+  "lane": "directional",
+  "last_event": "",
+  "last_event_utc": "",
+  "last_reconcile_utc": "2026-04-26T14:51:38.935903+00:00",
+  "notes": [],
+  "probe_qty": 1,
+  "reconciled_orders": 0,
+  "submitted_orders": 0,
+  "symbol": "BTCUSD",
+  "terminal_orders": 0,
+  "worker_id": "btc-directional-ibkr"
+}

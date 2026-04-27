@@ -44,13 +44,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Accepted phrase table — map to (action, required_preflight, target)
 PHRASES: dict[str, dict[str, str]] = {
-    "GO APEX MNQ LIVE-TINY":  {"action": "flip_live", "target": "tier_a_mnq",  "requires_preflight": "true"},
-    "GO APEX NQ LIVE-TINY":   {"action": "flip_live", "target": "tier_a_nq",   "requires_preflight": "true"},
-    "GO APEX BYBIT TESTNET":  {"action": "enable",    "target": "tier_b_testnet", "requires_preflight": "false"},
-    "GO APEX BYBIT MAINNET":  {"action": "flip_live", "target": "tier_b_mainnet", "requires_preflight": "true"},
-    "KILL APEX NOW":          {"action": "kill_all",  "target": "all",          "requires_preflight": "false"},
-    "RESUME APEX TIER-A":     {"action": "resume",    "target": "tier_a",       "requires_preflight": "true"},
-    "RESUME APEX TIER-B":     {"action": "resume",    "target": "tier_b",       "requires_preflight": "true"},
+    "GO APEX MNQ LIVE-TINY": {"action": "flip_live", "target": "tier_a_mnq", "requires_preflight": "true"},
+    "GO APEX NQ LIVE-TINY": {"action": "flip_live", "target": "tier_a_nq", "requires_preflight": "true"},
+    "GO APEX BYBIT TESTNET": {"action": "enable", "target": "tier_b_testnet", "requires_preflight": "false"},
+    "GO APEX BYBIT MAINNET": {"action": "flip_live", "target": "tier_b_mainnet", "requires_preflight": "true"},
+    "KILL APEX NOW": {"action": "kill_all", "target": "all", "requires_preflight": "false"},
+    "RESUME APEX TIER-A": {"action": "resume", "target": "tier_a", "requires_preflight": "true"},
+    "RESUME APEX TIER-B": {"action": "resume", "target": "tier_b", "requires_preflight": "true"},
 }
 
 
@@ -95,14 +95,17 @@ def _patch_roadmap_state(event: TriggerEvent) -> Path:
     except Exception:
         return rs_p
     sa = raw.setdefault("shared_artifacts", {})
-    state = sa.setdefault("apex_go_state", {
-        "tier_a_mnq_live": False,
-        "tier_a_nq_live": False,
-        "tier_b_testnet": False,
-        "tier_b_mainnet": False,
-        "kill_switch_active": False,
-        "last_trigger": None,
-    })
+    state = sa.setdefault(
+        "apex_go_state",
+        {
+            "tier_a_mnq_live": False,
+            "tier_a_nq_live": False,
+            "tier_b_testnet": False,
+            "tier_b_mainnet": False,
+            "kill_switch_active": False,
+            "last_trigger": None,
+        },
+    )
     if event.accepted:
         if event.action == "flip_live" and event.target == "tier_a_mnq":
             state["tier_a_mnq_live"] = True
@@ -117,9 +120,12 @@ def _patch_roadmap_state(event: TriggerEvent) -> Path:
             state["tier_a_mnq_live"] = False
             state["tier_a_nq_live"] = False
             state["tier_b_mainnet"] = False
-        elif event.action == "resume" and event.target == "tier_a":
-            state["kill_switch_active"] = False
-        elif event.action == "resume" and event.target == "tier_b":
+        elif (
+            event.action == "resume"
+            and event.target == "tier_a"
+            or event.action == "resume"
+            and event.target == "tier_b"
+        ):
             state["kill_switch_active"] = False
         state["last_trigger"] = asdict(event)
     rs_p.write_text(json.dumps(raw, indent=2))
@@ -131,10 +137,14 @@ def handle(phrase: str, reason: str, skip_preflight: bool = False) -> TriggerEve
     p = phrase.strip().upper()
     if p not in PHRASES:
         return TriggerEvent(
-            timestamp_utc=now, phrase=phrase, action="reject",
-            target="n/a", accepted=False,
+            timestamp_utc=now,
+            phrase=phrase,
+            action="reject",
+            target="n/a",
+            accepted=False,
             reason=f"unknown phrase; accepted phrases: {sorted(PHRASES)}",
-            preflight_verdict=None, operator_note=reason,
+            preflight_verdict=None,
+            operator_note=reason,
         )
 
     meta = PHRASES[p]
@@ -142,17 +152,25 @@ def handle(phrase: str, reason: str, skip_preflight: bool = False) -> TriggerEve
     pf = _preflight_verdict() if requires else "SKIPPED"
     if requires and pf != "GO":
         return TriggerEvent(
-            timestamp_utc=now, phrase=p, action=meta["action"],
-            target=meta["target"], accepted=False,
+            timestamp_utc=now,
+            phrase=p,
+            action=meta["action"],
+            target=meta["target"],
+            accepted=False,
             reason=f"preflight verdict is {pf}, not GO — blocked",
-            preflight_verdict=pf, operator_note=reason,
+            preflight_verdict=pf,
+            operator_note=reason,
         )
 
     return TriggerEvent(
-        timestamp_utc=now, phrase=p, action=meta["action"],
-        target=meta["target"], accepted=True,
+        timestamp_utc=now,
+        phrase=p,
+        action=meta["action"],
+        target=meta["target"],
+        accepted=True,
         reason="accepted",
-        preflight_verdict=pf, operator_note=reason,
+        preflight_verdict=pf,
+        operator_note=reason,
     )
 
 
@@ -160,10 +178,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="EVOLUTIONARY TRADING ALGO manual GO/KILL trigger")
     ap.add_argument("--phrase", required=True, help="Exact confirm phrase (case-insensitive)")
     ap.add_argument("--reason", default="", help="Operator note captured in log")
-    ap.add_argument("--skip-preflight", action="store_true",
-                    help="Override preflight gate (debug only; logged)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Print decision but do not patch state or log")
+    ap.add_argument("--skip-preflight", action="store_true", help="Override preflight gate (debug only; logged)")
+    ap.add_argument("--dry-run", action="store_true", help="Print decision but do not patch state or log")
     args = ap.parse_args()
 
     evt = handle(args.phrase, args.reason, skip_preflight=args.skip_preflight)

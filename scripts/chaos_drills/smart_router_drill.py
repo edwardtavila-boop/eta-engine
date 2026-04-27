@@ -23,6 +23,7 @@ The drill also validates the iceberg reveal path as a sanity regression
 gate -- if reveal slicing silently collapses to one big child, size
 concentration changes.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -102,9 +103,9 @@ def drill_smart_router(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         passed=True,
         details="strict post-only skipped, fallback produced MARKET, iceberg sliced 5x2",
         observed={
-            "strict_children":   len(strict.children),
-            "strict_remainder":  strict.remainder_qty,
-            "fallback_type":     fallback_child.order_type,
-            "iceberg_children":  len(iceberg.children),
+            "strict_children": len(strict.children),
+            "strict_remainder": strict.remainder_qty,
+            "fallback_type": fallback_child.order_type,
+            "iceberg_children": len(iceberg.children),
         },
     )

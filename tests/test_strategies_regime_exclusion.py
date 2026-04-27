@@ -11,6 +11,7 @@ Coverage:
   * Non-excluded regimes still receive their old multipliers
   * Cache invalidation works
 """
+
 from __future__ import annotations
 
 import json
@@ -98,12 +99,14 @@ class TestDiskOverride:
         cfg = rex._CONFIG_PATH
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(
-            json.dumps({
-                "spec_id": "REGIME_EXCLUSION_v1",
-                "excluded_regimes": {
-                    "RANGING": "test override -- temporarily blocked",
-                },
-            }),
+            json.dumps(
+                {
+                    "spec_id": "REGIME_EXCLUSION_v1",
+                    "excluded_regimes": {
+                        "RANGING": "test override -- temporarily blocked",
+                    },
+                }
+            ),
             encoding="utf-8",
         )
         rex._invalidate_cache()
@@ -135,7 +138,7 @@ class TestDiskOverride:
     def test_non_dict_payload_falls_back_to_defaults(self) -> None:
         cfg = rex._CONFIG_PATH
         cfg.parent.mkdir(parents=True, exist_ok=True)
-        cfg.write_text("[\"HIGH_VOL\"]", encoding="utf-8")
+        cfg.write_text('["HIGH_VOL"]', encoding="utf-8")
         rex._invalidate_cache()
         assert rex.is_regime_excluded("HIGH_VOL").excluded is True
 
@@ -222,18 +225,21 @@ class TestRiskMultIntegration:
 
     def test_kill_switch_overrides_anything(self) -> None:
         ctx = StrategyContext(
-            regime_label="TRENDING", kill_switch_active=True,
+            regime_label="TRENDING",
+            kill_switch_active=True,
         )
         assert _risk_mult(ctx, base_mult=1.0) == 0.0
 
     def test_session_closed_overrides_anything(self) -> None:
         ctx = StrategyContext(
-            regime_label="TRENDING", session_allows_entries=False,
+            regime_label="TRENDING",
+            session_allows_entries=False,
         )
         assert _risk_mult(ctx, base_mult=1.0) == 0.0
 
     def test_high_vol_can_be_re_enabled_via_config(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         cfg = rex._CONFIG_PATH
         cfg.parent.mkdir(parents=True, exist_ok=True)

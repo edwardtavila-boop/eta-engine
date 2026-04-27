@@ -8,7 +8,7 @@ Context is king — wrong regime = wrong everything.
 from __future__ import annotations
 
 from collections import Counter
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 # Types
 # ---------------------------------------------------------------------------
 
-class RegimeType(str, Enum):
+
+class RegimeType(StrEnum):
     TRENDING = "TRENDING"
     RANGING = "RANGING"
     HIGH_VOL = "HIGH_VOL"
@@ -38,6 +39,7 @@ class RegimeAxes(BaseModel):
 # ---------------------------------------------------------------------------
 # Classifier
 # ---------------------------------------------------------------------------
+
 
 def classify_regime(axes: RegimeAxes) -> RegimeType:
     """Decision-tree regime classifier on 5 axes.
@@ -80,6 +82,7 @@ def classify_regime(axes: RegimeAxes) -> RegimeType:
 # ---------------------------------------------------------------------------
 # Drift detection
 # ---------------------------------------------------------------------------
+
 
 def detect_drift(recent_regimes: list[RegimeType], window: int = 20) -> bool:
     """Detect regime drift: current regime differs from mode of last `window`.

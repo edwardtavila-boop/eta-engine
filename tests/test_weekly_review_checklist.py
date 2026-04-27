@@ -1,4 +1,5 @@
 """Tests for the checklist plumbing added to scripts.weekly_review."""
+
 from __future__ import annotations
 
 import json

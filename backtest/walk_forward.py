@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 # Config / result models
 # ---------------------------------------------------------------------------
 
+
 class WalkForwardConfig(BaseModel):
     window_days: int = Field(ge=1)
     step_days: int = Field(ge=1)
@@ -73,6 +74,7 @@ class WalkForwardResult(BaseModel):
 # Public helpers
 # ---------------------------------------------------------------------------
 
+
 def compute_per_fold_dsr(
     sharpe: float,
     n_trades: int,
@@ -99,6 +101,7 @@ def compute_per_fold_dsr(
 # Engine
 # ---------------------------------------------------------------------------
 
+
 class WalkForwardEngine:
     """Splits bars into IS/OOS windows and runs a fresh backtest per split."""
 
@@ -119,42 +122,48 @@ class WalkForwardEngine:
             oos_bars = [b for b in bars if is_end <= b.timestamp < oos_end]
             if not is_bars or not oos_bars:
                 continue
-            is_cfg = base_backtest_config.model_copy(update={
-                "start_date": is_bars[0].timestamp,
-                "end_date": is_bars[-1].timestamp,
-            })
-            oos_cfg = base_backtest_config.model_copy(update={
-                "start_date": oos_bars[0].timestamp,
-                "end_date": oos_bars[-1].timestamp,
-            })
-            is_res = BacktestEngine(pipeline, is_cfg, ctx_builder=ctx_builder,
-                                    strategy_id=f"wf-{i}-IS").run(is_bars)
-            oos_res = BacktestEngine(pipeline, oos_cfg, ctx_builder=ctx_builder,
-                                     strategy_id=f"wf-{i}-OOS").run(oos_bars)
+            is_cfg = base_backtest_config.model_copy(
+                update={
+                    "start_date": is_bars[0].timestamp,
+                    "end_date": is_bars[-1].timestamp,
+                }
+            )
+            oos_cfg = base_backtest_config.model_copy(
+                update={
+                    "start_date": oos_bars[0].timestamp,
+                    "end_date": oos_bars[-1].timestamp,
+                }
+            )
+            is_res = BacktestEngine(pipeline, is_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-IS").run(is_bars)
+            oos_res = BacktestEngine(pipeline, oos_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-OOS").run(
+                oos_bars
+            )
             oos_skew, oos_kurt = _fold_moments_from_trades(oos_res.trades)
-            win_results.append({
-                "window": i,
-                "is_start": is_start.isoformat(),
-                "is_end": is_end.isoformat(),
-                "oos_end": oos_end.isoformat(),
-                "is_sharpe": is_res.sharpe,
-                "oos_sharpe": oos_res.sharpe,
-                "is_trades": is_res.n_trades,
-                "oos_trades": oos_res.n_trades,
-                "is_return_pct": is_res.total_return_pct,
-                "oos_return_pct": oos_res.total_return_pct,
-                "degradation_pct": _degradation(is_res.sharpe, oos_res.sharpe),
-                "min_trades_met": (
-                    is_res.n_trades >= config.min_trades_per_window
-                    and oos_res.n_trades >= config.min_trades_per_window
-                ),
-                # Per-fold distribution shape + placeholder DSR. The DSR is
-                # filled in during aggregation once we know the total fold
-                # count (selection-bias denominator).
-                "oos_skew": round(oos_skew, 6),
-                "oos_kurt": round(oos_kurt, 6),
-                "oos_dsr": 0.0,
-            })
+            win_results.append(
+                {
+                    "window": i,
+                    "is_start": is_start.isoformat(),
+                    "is_end": is_end.isoformat(),
+                    "oos_end": oos_end.isoformat(),
+                    "is_sharpe": is_res.sharpe,
+                    "oos_sharpe": oos_res.sharpe,
+                    "is_trades": is_res.n_trades,
+                    "oos_trades": oos_res.n_trades,
+                    "is_return_pct": is_res.total_return_pct,
+                    "oos_return_pct": oos_res.total_return_pct,
+                    "degradation_pct": _degradation(is_res.sharpe, oos_res.sharpe),
+                    "min_trades_met": (
+                        is_res.n_trades >= config.min_trades_per_window
+                        and oos_res.n_trades >= config.min_trades_per_window
+                    ),
+                    # Per-fold distribution shape + placeholder DSR. The DSR is
+                    # filled in during aggregation once we know the total fold
+                    # count (selection-bias denominator).
+                    "oos_skew": round(oos_skew, 6),
+                    "oos_kurt": round(oos_kurt, 6),
+                    "oos_dsr": 0.0,
+                }
+            )
         return self._aggregate(win_results, config)
 
     # ------------------------------------------------------------------
@@ -228,22 +237,14 @@ class WalkForwardEngine:
             per_fold_dsr.append(fold_dsr)
 
         fold_median = _median(per_fold_dsr)
-        fold_pass_frac = (
-            sum(1 for d in per_fold_dsr if d > 0.5) / n_folds
-            if n_folds
-            else 0.0
-        )
+        fold_pass_frac = sum(1 for d in per_fold_dsr if d > 0.5) / n_folds if n_folds else 0.0
 
         # Gate: legacy checks always required; strict mode adds the
         # per-fold median + pass-fraction guardrails.
         all_met = all(w["min_trades_met"] for w in wins)
         legacy_gate = dsr > 0.5 and deg_avg < 0.35 and all_met
         if cfg.strict_fold_dsr_gate:
-            gate = (
-                legacy_gate
-                and fold_median > 0.5
-                and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
-            )
+            gate = legacy_gate and fold_median > 0.5 and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
         else:
             gate = legacy_gate
 
@@ -264,6 +265,7 @@ class WalkForwardEngine:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _degradation(is_sharpe: float, oos_sharpe: float) -> float:
     if is_sharpe <= 0.0:
         return 0.0 if oos_sharpe >= is_sharpe else 1.0
@@ -279,8 +281,8 @@ def _moments(xs: list[float]) -> tuple[float, float]:
     if var <= 0.0:
         return 0.0, 3.0
     sd = math.sqrt(var)
-    skew = sum((x - m) ** 3 for x in xs) / (n * sd ** 3)
-    kurt = sum((x - m) ** 4 for x in xs) / (n * sd ** 4)
+    skew = sum((x - m) ** 3 for x in xs) / (n * sd**3)
+    kurt = sum((x - m) ** 4 for x in xs) / (n * sd**4)
     return skew, kurt
 
 

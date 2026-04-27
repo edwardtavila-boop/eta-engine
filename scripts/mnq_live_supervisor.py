@@ -33,6 +33,7 @@ MnqBot runs in log-only mode (no venue calls), and without a JARVIS
 instance it runs in legacy-unchecked mode. Production VPS wiring
 supplies both.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -83,7 +84,10 @@ class _BarSource(Protocol):
 
 class _Router(Protocol):
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult: ...
 
 
@@ -94,7 +98,10 @@ class _IbkrRouterAdapter:
         self._venue = venue
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency  # IBKR has no urgency knob at this level; ignore.
         return await self._venue.place_order(req)
@@ -103,6 +110,7 @@ class _IbkrRouterAdapter:
 @dataclass
 class MnqSupervisorState:
     """Persistent supervisor state written to disk each tick."""
+
     started_at_utc: str = ""
     heartbeat_count: int = 0
     bars_consumed: int = 0
@@ -134,11 +142,7 @@ class MnqLiveSupervisor:
         self.bar_source = bar_source
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.journal = (
-            journal
-            if journal is not None
-            else DecisionJournal(self.out_dir / "mnq_live_decisions.jsonl")
-        )
+        self.journal = journal if journal is not None else DecisionJournal(self.out_dir / "mnq_live_decisions.jsonl")
         self.jarvis = jarvis
         self.clock = clock if clock is not None else (lambda: datetime.now(UTC))
         self.state = MnqSupervisorState()
@@ -149,9 +153,7 @@ class MnqLiveSupervisor:
         self.state.started_at_utc = self.clock().isoformat()
         self.state.paused = self.bot.state.is_paused
         self.state.router_name = (
-            type(self.bot._router).__name__
-            if getattr(self.bot, "_router", None) is not None
-            else "log_only"
+            type(self.bot._router).__name__ if getattr(self.bot, "_router", None) is not None else "log_only"
         )
         self._persist_state()
 
@@ -212,18 +214,16 @@ class MnqLiveSupervisor:
 
     def _routed_count(self) -> int:
         from eta_engine.obs.decision_journal import Outcome
+
         return sum(
-            1
-            for ev in self.journal.read_all()
-            if ev.intent == "mnq_order_routed" and ev.outcome == Outcome.EXECUTED
+            1 for ev in self.journal.read_all() if ev.intent == "mnq_order_routed" and ev.outcome == Outcome.EXECUTED
         )
 
     def _blocked_count(self) -> int:
         from eta_engine.obs.decision_journal import Outcome
+
         return sum(
-            1
-            for ev in self.journal.read_all()
-            if ev.intent == "mnq_order_blocked" and ev.outcome == Outcome.BLOCKED
+            1 for ev in self.journal.read_all() if ev.intent == "mnq_order_blocked" and ev.outcome == Outcome.BLOCKED
         )
 
     def _snapshot(self) -> dict[str, Any]:
@@ -298,8 +298,11 @@ def build_supervisor_from_env(
         tradovate_symbol=tradovate_symbol,
     )
     return MnqLiveSupervisor(
-        bot=bot, bar_source=bar_source, out_dir=out_dir,
-        journal=journal, jarvis=jarvis,
+        bot=bot,
+        bar_source=bar_source,
+        out_dir=out_dir,
+        journal=journal,
+        jarvis=jarvis,
     )
 
 
@@ -336,19 +339,26 @@ def _main(argv: list[str] | None = None) -> int:
         description="Drive an MnqBot through a bar stream in paper mode.",
     )
     parser.add_argument(
-        "--bars", type=Path, required=True,
+        "--bars",
+        type=Path,
+        required=True,
         help="Path to a JSONL bar file (one bar object per line).",
     )
     parser.add_argument(
-        "--out-dir", type=Path, default=DEFAULT_OUT_DIR,
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_OUT_DIR,
         help="Directory for journal + heartbeat state.",
     )
     parser.add_argument(
-        "--tradovate-symbol", default=None,
+        "--tradovate-symbol",
+        default=None,
         help="Tradovate contract symbol override (e.g. MNQH6).",
     )
     parser.add_argument(
-        "--max-bars", type=int, default=0,
+        "--max-bars",
+        type=int,
+        default=0,
         help="Stop after this many bars (0 = consume until exhausted).",
     )
     args = parser.parse_args(argv)

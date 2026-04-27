@@ -6,14 +6,17 @@ Pydantic v2 models for data catalog / lineage / integrity.
 
 from __future__ import annotations
 
-from datetime import datetime
-from enum import Enum
-from pathlib import Path
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+if TYPE_CHECKING:
+    from datetime import datetime
+    from pathlib import Path
 
-class DataSource(str, Enum):
+
+class DataSource(StrEnum):
     """Known upstream providers."""
 
     DATABENTO = "DATABENTO"
@@ -68,11 +71,7 @@ class DataIntegrityReport(BaseModel):
 
     @property
     def is_clean(self) -> bool:
-        return (
-            not self.missing_ranges
-            and self.duplicates == 0
-            and self.outliers == 0
-        )
+        return not self.missing_ranges and self.duplicates == 0 and self.outliers == 0
 
     def summary(self) -> str:
         return (

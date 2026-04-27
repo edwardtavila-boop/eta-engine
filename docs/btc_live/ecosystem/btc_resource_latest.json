@@ -1,0 +1,33 @@
+{
+  "generated_at_utc": "2026-04-26T14:51:16.845926+00:00",
+  "pid": 66488,
+  "resource": {
+    "fleet_pid_count": 4,
+    "fleet_pids": [
+      68004,
+      57068,
+      62620,
+      57516
+    ],
+    "health": "GREEN",
+    "missing_roles": [],
+    "stale_workers": [],
+    "support_pid_count": 10,
+    "support_pids": [
+      67520,
+      68056,
+      58700,
+      59364,
+      3288,
+      59716,
+      65180,
+      66488,
+      54996,
+      68012
+    ],
+    "total_btc_pid_count": 14
+  },
+  "role": "resource",
+  "safety": "process telemetry only; no broker order placement",
+  "status": "RUNNING"
+}

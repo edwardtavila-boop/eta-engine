@@ -38,6 +38,7 @@ Usage
     # Verbose: show the source of truth for each verdict
     python -m eta_engine.scripts.operator_action_queue --verbose
 """
+
 from __future__ import annotations
 
 import argparse
@@ -123,6 +124,7 @@ def _env_key_present(name: str) -> bool:
         return True
     with contextlib.suppress(Exception):
         from eta_engine.core.secrets import SecretsManager
+
         if SecretsManager().get(name, required=False):
             return True
     return False
@@ -164,10 +166,7 @@ def _op1_fund_ibkr() -> OpItem:
     )
     if creds_present:
         item.verdict = VERDICT_OBSERVED
-        item.detail = (
-            "IBKR creds populated; funding state cannot be probed "
-            "without auth -- check IBKR portal manually"
-        )
+        item.detail = "IBKR creds populated; funding state cannot be probed without auth -- check IBKR portal manually"
     else:
         item.verdict = VERDICT_BLOCKED
         item.detail = "IBKR creds absent; populate per OP-3 first"
@@ -236,10 +235,7 @@ def _op3_ibkr_creds() -> OpItem:
 def _op4_tastytrade_creds() -> OpItem:
     item = OpItem(
         op_id="OP-4",
-        title=(
-            "Populate TASTYTRADE_BASE_URL + _ACCOUNT_NUMBER + "
-            "_SESSION_TOKEN in keyring on trading host"
-        ),
+        title=("Populate TASTYTRADE_BASE_URL + _ACCOUNT_NUMBER + _SESSION_TOKEN in keyring on trading host"),
         where="Trading host (keyring or .env)",
     )
     keys = (
@@ -287,11 +283,7 @@ def _op5_telegram_creds() -> OpItem:
 
 def _op6_op7_op8_mcp_oauth(roadmap: dict[str, Any]) -> list[OpItem]:
     """OAuth state for the three needs_auth MCPs."""
-    mcp_status = (
-        roadmap.get("shared_artifacts", {}).get("mcp_status")
-        or roadmap.get("mcp_status")
-        or {}
-    )
+    mcp_status = roadmap.get("shared_artifacts", {}).get("mcp_status") or roadmap.get("mcp_status") or {}
     items: list[OpItem] = []
     for op_id, mcp in (
         ("OP-6", "jotform"),
@@ -306,9 +298,7 @@ def _op6_op7_op8_mcp_oauth(roadmap: dict[str, Any]) -> list[OpItem]:
         status = mcp_status.get(mcp)
         if status is None:
             item.verdict = VERDICT_UNKNOWN
-            item.detail = (
-                f"roadmap_state.json has no entry for mcp_status.{mcp}"
-            )
+            item.detail = f"roadmap_state.json has no entry for mcp_status.{mcp}"
         elif status == "needs_auth":
             item.verdict = VERDICT_BLOCKED
             item.detail = "needs_auth -- run OAuth flow in browser"
@@ -326,10 +316,7 @@ def _op6_op7_op8_mcp_oauth(roadmap: dict[str, Any]) -> list[OpItem]:
 def _op9_clock_drift(preflight: dict[str, Any]) -> OpItem:
     item = OpItem(
         op_id="OP-9",
-        title=(
-            "NTP resync (Windows w32tm /resync /force or Linux ntpdate) "
-            "if preflight clock_drift flips RED"
-        ),
+        title=("NTP resync (Windows w32tm /resync /force or Linux ntpdate) if preflight clock_drift flips RED"),
         where="Trading host",
     )
     gates = preflight.get("gates") or []
@@ -342,10 +329,7 @@ def _op9_clock_drift(preflight: dict[str, Any]) -> OpItem:
         item.detail = drift_gate.get("detail", "clock_drift PASS")
     else:
         item.verdict = VERDICT_BLOCKED
-        item.detail = (
-            f"clock_drift {drift_gate.get('status')}: "
-            f"{drift_gate.get('detail', '')}"
-        )
+        item.detail = f"clock_drift {drift_gate.get('status')}: {drift_gate.get('detail', '')}"
     item.evidence = drift_gate or {}
     return item
 
@@ -360,18 +344,14 @@ def _op10_tradovate_dormancy() -> OpItem:
     if "tradovate" in dormant:
         item.verdict = VERDICT_BLOCKED
         item.detail = (
-            f"Tradovate is DORMANT (set: {sorted(dormant)}). "
-            f"See live_launch_runbook.md Appendix A for un-dormancy."
+            f"Tradovate is DORMANT (set: {sorted(dormant)}). See live_launch_runbook.md Appendix A for un-dormancy."
         )
     elif not dormant:
         item.verdict = VERDICT_DONE
         item.detail = "DORMANT_BROKERS is empty -- all brokers active"
     else:
         item.verdict = VERDICT_OBSERVED
-        item.detail = (
-            f"Tradovate not in DORMANT_BROKERS but other brokers are: "
-            f"{sorted(dormant)}"
-        )
+        item.detail = f"Tradovate not in DORMANT_BROKERS but other brokers are: {sorted(dormant)}"
     item.evidence = {"dormant_brokers": sorted(dormant)}
     return item
 
@@ -395,13 +375,10 @@ def _op11_killverdict_synthesis() -> OpItem:
 def _op12_per_bot_drift() -> OpItem:
     return OpItem(
         op_id="OP-12",
-        title=(
-            "Authorize M1 per-bot drift detection (multi-account scope expansion)"
-        ),
+        title=("Authorize M1 per-bot drift detection (multi-account scope expansion)"),
         verdict=VERDICT_BLOCKED,
         detail=(
-            "Multi-account venue introspection is the prerequisite. "
-            "Single-account today; M1 ships when fleet grows."
+            "Multi-account venue introspection is the prerequisite. Single-account today; M1 ships when fleet grows."
         ),
         where="New scope",
     )
@@ -412,10 +389,7 @@ def _op13_strategy_review() -> OpItem:
         op_id="OP-13",
         title="Strategy-generator monthly review (Sonnet tier)",
         verdict=VERDICT_OBSERVED,
-        detail=(
-            "Standing cadence per docs/live_launch_runbook.md "
-            "post-launch review section"
-        ),
+        detail=("Standing cadence per docs/live_launch_runbook.md post-launch review section"),
         where="Cron / manual",
     )
 
@@ -436,10 +410,7 @@ def _op14_quarterly_adversarial() -> OpItem:
 def _op15_crypto_seed() -> OpItem:
     return OpItem(
         op_id="OP-15",
-        title=(
-            "Re-test crypto_seed (held at paper) on the v3 Wilder-ADX overlay "
-            "(Tier 3 research)"
-        ),
+        title=("Re-test crypto_seed (held at paper) on the v3 Wilder-ADX overlay (Tier 3 research)"),
         verdict=VERDICT_BLOCKED,
         detail=(
             "Strategy redesign needed -- BTC chop on 15m has no edge for "
@@ -452,14 +423,9 @@ def _op15_crypto_seed() -> OpItem:
 def _op16_eth_perp() -> OpItem:
     return OpItem(
         op_id="OP-16",
-        title=(
-            "Iterate eth_perp overlay to flip FAIL_BORDERLINE -> PASS "
-            "(Tier 3 research)"
-        ),
+        title=("Iterate eth_perp overlay to flip FAIL_BORDERLINE -> PASS (Tier 3 research)"),
         verdict=VERDICT_BLOCKED,
-        detail=(
-            "One more overlay iteration likely flips it; SOL/XRP both PASS"
-        ),
+        detail=("One more overlay iteration likely flips it; SOL/XRP both PASS"),
         where="bots/eth_perp/",
     )
 
@@ -467,15 +433,9 @@ def _op16_eth_perp() -> OpItem:
 def _op17_phase_advancement() -> OpItem:
     return OpItem(
         op_id="OP-17",
-        title=(
-            "Phase 4/5/6 live-tiny advancement decisions "
-            "(gauntlet to 2 contracts; add NQ; add tier-B)"
-        ),
+        title=("Phase 4/5/6 live-tiny advancement decisions (gauntlet to 2 contracts; add NQ; add tier-B)"),
         verdict=VERDICT_OBSERVED,
-        detail=(
-            "Cumulative-trade-count + drawdown gates. See "
-            "live_launch_runbook.md Phase 4-6 sections."
-        ),
+        detail=("Cumulative-trade-count + drawdown gates. See live_launch_runbook.md Phase 4-6 sections."),
         where="Runbook gates",
     )
 
@@ -577,18 +537,10 @@ def main(argv: list[str] | None = None) -> int:
         out = {
             "items": [item.as_dict() for item in items],
             "summary": {
-                "DONE": sum(
-                    1 for i in items if i.verdict == VERDICT_DONE
-                ),
-                "BLOCKED": sum(
-                    1 for i in items if i.verdict == VERDICT_BLOCKED
-                ),
-                "OBSERVED": sum(
-                    1 for i in items if i.verdict == VERDICT_OBSERVED
-                ),
-                "UNKNOWN": sum(
-                    1 for i in items if i.verdict == VERDICT_UNKNOWN
-                ),
+                "DONE": sum(1 for i in items if i.verdict == VERDICT_DONE),
+                "BLOCKED": sum(1 for i in items if i.verdict == VERDICT_BLOCKED),
+                "OBSERVED": sum(1 for i in items if i.verdict == VERDICT_OBSERVED),
+                "UNKNOWN": sum(1 for i in items if i.verdict == VERDICT_UNKNOWN),
             },
         }
         print(json.dumps(out, indent=2))

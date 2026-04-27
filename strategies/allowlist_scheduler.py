@@ -55,6 +55,7 @@ On a cold start the scheduler waits until ``len(bars) >=
 min_bars_before_first`` before firing its first refresh so the
 qualifier's walk-forward windows have enough warmup to be meaningful.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -112,10 +113,7 @@ class RefreshTrigger:
 
     def __post_init__(self) -> None:
         if self.every_n_bars is None and self.every_seconds is None:
-            msg = (
-                "RefreshTrigger requires at least one of "
-                "every_n_bars / every_seconds to be set"
-            )
+            msg = "RefreshTrigger requires at least one of every_n_bars / every_seconds to be set"
             raise ValueError(msg)
         if self.every_n_bars is not None and self.every_n_bars < 1:
             msg = "every_n_bars must be >= 1"
@@ -189,7 +187,11 @@ class AllowlistScheduler:
         if not self._should_refresh(asset_u, bar_count):
             return None
         return self._do_refresh(
-            asset_u, bars, bar_count, qualifier, **qualifier_kwargs,
+            asset_u,
+            bars,
+            bar_count,
+            qualifier,
+            **qualifier_kwargs,
         )
 
     # ------------------------------------------------------------------
@@ -208,7 +210,11 @@ class AllowlistScheduler:
         asset_u = asset.upper()
         bar_count = len(bars)
         return self._do_refresh(
-            asset_u, bars, bar_count, qualifier, **qualifier_kwargs,
+            asset_u,
+            bars,
+            bar_count,
+            qualifier,
+            **qualifier_kwargs,
         )
 
     # ------------------------------------------------------------------

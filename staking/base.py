@@ -12,8 +12,8 @@ import abc
 class StakingAdapter(abc.ABC):
     """Uniform interface for all staking/yield protocols."""
 
-    symbol: str       # underlying asset (ETH, SOL, XRP, USDT)
-    token: str        # receipt token (wstETH, JitoSOL, sFLR, sUSDe)
+    symbol: str  # underlying asset (ETH, SOL, XRP, USDT)
+    token: str  # receipt token (wstETH, JitoSOL, sFLR, sUSDe)
     target_apy: float  # expected annualized yield %
 
     @abc.abstractmethod

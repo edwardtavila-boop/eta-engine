@@ -14,6 +14,7 @@ Covers: MnqBot, NqBot, BtcHybridBot, EthPerpBot, SolPerpBot, XrpPerpBot,
 CryptoSeedBot. MNQ + BTC have dedicated test modules already; here we
 fill in the perps and the seed bot.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -47,8 +48,11 @@ def _trade_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.7),
         journal=JournalSnapshot(),
@@ -60,8 +64,11 @@ def _kill_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-3_000.0,
-            daily_drawdown_pct=0.06, open_positions=0, open_risk_r=0.0,
+            account_equity=50_000.0,
+            daily_pnl=-3_000.0,
+            daily_drawdown_pct=0.06,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="TREND_DOWN", confidence=0.7),
         journal=JournalSnapshot(kill_switch_active=True),
@@ -73,8 +80,11 @@ def _reduce_ctx():  # type: ignore[no-untyped-def]
     return build_snapshot(
         macro=MacroSnapshot(vix_level=17.0, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=50_000.0, daily_pnl=-1_250.0,
-            daily_drawdown_pct=0.025, open_positions=1, open_risk_r=1.0,
+            account_equity=50_000.0,
+            daily_pnl=-1_250.0,
+            daily_drawdown_pct=0.025,
+            open_positions=1,
+            open_risk_r=1.0,
         ),
         regime=RegimeSnapshot(regime="TREND_UP", confidence=0.6),
         journal=JournalSnapshot(),
@@ -89,7 +99,10 @@ class _FakeRouter:
         self.calls: list[OrderRequest] = []
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency
         self.calls.append(req)
@@ -105,7 +118,6 @@ class _FakeRouter:
 # SUBSYSTEM identities: each bot must have a distinct audit ID
 # --------------------------------------------------------------------------- #
 class TestSubsystemIdentities:
-
     def test_eth_subsystem(self) -> None:
         assert EthPerpBot().SUBSYSTEM == SubsystemId.BOT_ETH_PERP
 
@@ -132,7 +144,6 @@ class TestSubsystemIdentities:
 # ETH perp JARVIS integration
 # --------------------------------------------------------------------------- #
 class TestEthPerpJarvis:
-
     @pytest.mark.asyncio
     async def test_start_approved_under_trade(self) -> None:
         jarvis = JarvisAdmin()
@@ -154,8 +165,11 @@ class TestEthPerpJarvis:
         router = _FakeRouter()
         bot = EthPerpBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="ETHUSDT", price=3_500.0,
-            confidence=7.5, meta={"leverage": 10.0, "stop_distance": 35.0},
+            type=SignalType.LONG,
+            symbol="ETHUSDT",
+            price=3_500.0,
+            confidence=7.5,
+            meta={"leverage": 10.0, "stop_distance": 35.0},
         )
         result = await bot.on_signal(sig)
         assert result is None
@@ -168,8 +182,11 @@ class TestEthPerpJarvis:
         router = _FakeRouter()
         bot = EthPerpBot(jarvis=jarvis, provide_ctx=_reduce_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="ETHUSDT", price=3_500.0,
-            confidence=7.5, meta={"leverage": 10.0, "stop_distance": 35.0},
+            type=SignalType.LONG,
+            symbol="ETHUSDT",
+            price=3_500.0,
+            confidence=7.5,
+            meta={"leverage": 10.0, "stop_distance": 35.0},
         )
         result = await bot.on_signal(sig)
         # CONDITIONAL under reduce_ctx -> cap 0.5 -> leverage halved from 10
@@ -184,8 +201,11 @@ class TestEthPerpJarvis:
         router = _FakeRouter()
         bot = EthPerpBot(router=router)  # no jarvis
         sig = Signal(
-            type=SignalType.LONG, symbol="ETHUSDT", price=3_500.0,
-            confidence=7.5, meta={"leverage": 10.0, "stop_distance": 35.0},
+            type=SignalType.LONG,
+            symbol="ETHUSDT",
+            price=3_500.0,
+            confidence=7.5,
+            meta={"leverage": 10.0, "stop_distance": 35.0},
         )
         result = await bot.on_signal(sig)
         assert result is not None
@@ -196,7 +216,6 @@ class TestEthPerpJarvis:
 # SOL + XRP inherit from ETH -- minimal sanity tests
 # --------------------------------------------------------------------------- #
 class TestSolPerpJarvis:
-
     @pytest.mark.asyncio
     async def test_start_refused_under_kill(self) -> None:
         jarvis = JarvisAdmin()
@@ -210,8 +229,11 @@ class TestSolPerpJarvis:
         router = _FakeRouter()
         bot = SolPerpBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="SOLUSDT", price=180.0,
-            confidence=7.5, meta={"leverage": 10.0, "stop_distance": 1.8},
+            type=SignalType.LONG,
+            symbol="SOLUSDT",
+            price=180.0,
+            confidence=7.5,
+            meta={"leverage": 10.0, "stop_distance": 1.8},
         )
         result = await bot.on_signal(sig)
         assert result is None
@@ -219,7 +241,6 @@ class TestSolPerpJarvis:
 
 
 class TestXrpPerpJarvis:
-
     @pytest.mark.asyncio
     async def test_start_refused_under_kill(self) -> None:
         jarvis = JarvisAdmin()
@@ -233,8 +254,11 @@ class TestXrpPerpJarvis:
         router = _FakeRouter()
         bot = XrpPerpBot(jarvis=jarvis, provide_ctx=_kill_ctx, router=router)
         sig = Signal(
-            type=SignalType.LONG, symbol="XRPUSDT", price=2.5,
-            confidence=7.5, meta={"leverage": 10.0, "stop_distance": 0.025},
+            type=SignalType.LONG,
+            symbol="XRPUSDT",
+            price=2.5,
+            confidence=7.5,
+            meta={"leverage": 10.0, "stop_distance": 0.025},
         )
         result = await bot.on_signal(sig)
         assert result is None
@@ -245,7 +269,6 @@ class TestXrpPerpJarvis:
 # Crypto Seed bot -- directional overlay is gated; grid is orchestrator-driven
 # --------------------------------------------------------------------------- #
 class TestCryptoSeedJarvis:
-
     @pytest.mark.asyncio
     async def test_start_approved_under_trade(self) -> None:
         jarvis = JarvisAdmin()
@@ -265,11 +288,16 @@ class TestCryptoSeedJarvis:
         jarvis = JarvisAdmin()
         router = _FakeRouter()
         bot = CryptoSeedBot(
-            jarvis=jarvis, provide_ctx=_kill_ctx, router=router,
+            jarvis=jarvis,
+            provide_ctx=_kill_ctx,
+            router=router,
         )
         sig = Signal(
-            type=SignalType.LONG, symbol="BTCUSDT", price=90_000.0,
-            confidence=8.0, meta={},
+            type=SignalType.LONG,
+            symbol="BTCUSDT",
+            price=90_000.0,
+            confidence=8.0,
+            meta={},
         )
         result = await bot.on_signal(sig)
         assert result is None
@@ -280,8 +308,11 @@ class TestCryptoSeedJarvis:
         router = _FakeRouter()
         bot = CryptoSeedBot(router=router)  # no jarvis
         sig = Signal(
-            type=SignalType.LONG, symbol="BTCUSDT", price=90_000.0,
-            confidence=8.0, meta={},
+            type=SignalType.LONG,
+            symbol="BTCUSDT",
+            price=90_000.0,
+            confidence=8.0,
+            meta={},
         )
         result = await bot.on_signal(sig)
         # With router + no risk lockout, the directional overlay should fire.
@@ -295,12 +326,14 @@ class TestCryptoSeedJarvis:
 def test_all_bots_pick_model_tier_without_jarvis_returns_sonnet() -> None:
     """Every bot should fall back to SONNET when no JARVIS is wired."""
     from eta_engine.brain.model_policy import ModelTier, TaskCategory
+
     for bot in (EthPerpBot(), SolPerpBot(), XrpPerpBot(), CryptoSeedBot()):
         assert bot.pick_model_tier(TaskCategory.REFACTOR) == ModelTier.SONNET
 
 
 def test_all_bots_pick_model_tier_with_jarvis_routes_per_policy() -> None:
     from eta_engine.brain.model_policy import ModelTier, TaskCategory
+
     jarvis = JarvisAdmin()
     for ctor in (EthPerpBot, SolPerpBot, XrpPerpBot, CryptoSeedBot):
         bot = ctor(jarvis=jarvis)

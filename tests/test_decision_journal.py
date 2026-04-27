@@ -1,4 +1,5 @@
 """Tests for obs.decision_journal -- unified decision log."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -63,7 +64,9 @@ def test_empty_journal_has_zero_length(journal: DecisionJournal) -> None:
 
 def test_append_one_and_read_back(journal: DecisionJournal) -> None:
     journal.record(
-        ts=_T0, actor=Actor.TRADE_ENGINE, intent="open_mnq_long",
+        ts=_T0,
+        actor=Actor.TRADE_ENGINE,
+        intent="open_mnq_long",
         rationale="confluence=8 regime=TRENDING",
         outcome=Outcome.EXECUTED,
     )
@@ -76,10 +79,8 @@ def test_append_one_and_read_back(journal: DecisionJournal) -> None:
 
 def test_append_is_append_only(journal: DecisionJournal) -> None:
     journal.record(ts=_T0, actor=Actor.KILL_SWITCH, intent="armed")
-    journal.record(ts=_T0 + timedelta(seconds=1),
-                   actor=Actor.OPERATOR, intent="ack")
-    journal.record(ts=_T0 + timedelta(seconds=2),
-                   actor=Actor.FIRM_BOARD, intent="verdict_green")
+    journal.record(ts=_T0 + timedelta(seconds=1), actor=Actor.OPERATOR, intent="ack")
+    journal.record(ts=_T0 + timedelta(seconds=2), actor=Actor.FIRM_BOARD, intent="verdict_green")
     assert len(journal) == 3
 
 
@@ -96,7 +97,8 @@ def test_read_all_preserves_order(journal: DecisionJournal) -> None:
 
 def test_round_trip_preserves_metadata_links_gates(journal: DecisionJournal) -> None:
     journal.record(
-        ts=_T0, actor=Actor.RISK_GATE,
+        ts=_T0,
+        actor=Actor.RISK_GATE,
         intent="veto_low_confluence",
         rationale="score=3 < threshold=7",
         gate_checks=["+regime", "-confluence", "+session"],
@@ -112,8 +114,7 @@ def test_round_trip_preserves_metadata_links_gates(journal: DecisionJournal) -> 
 
 def test_iter_all_yields_same_as_read_all(journal: DecisionJournal) -> None:
     for i in range(3):
-        journal.record(ts=_T0 + timedelta(seconds=i),
-                       actor=Actor.TRADE_ENGINE, intent=f"e{i}")
+        journal.record(ts=_T0 + timedelta(seconds=i), actor=Actor.TRADE_ENGINE, intent=f"e{i}")
     via_iter = [e.intent for e in journal.iter_all()]
     via_all = [e.intent for e in journal.read_all()]
     assert via_iter == via_all
@@ -126,8 +127,7 @@ def test_iter_all_yields_same_as_read_all(journal: DecisionJournal) -> None:
 
 def test_read_since_filters_by_timestamp(journal: DecisionJournal) -> None:
     for i in range(5):
-        journal.record(ts=_T0 + timedelta(hours=i),
-                       actor=Actor.TRADE_ENGINE, intent=f"t{i}")
+        journal.record(ts=_T0 + timedelta(hours=i), actor=Actor.TRADE_ENGINE, intent=f"t{i}")
     cutoff = _T0 + timedelta(hours=2)
     kept = journal.read_since(cutoff)
     assert [e.intent for e in kept] == ["t2", "t3", "t4"]
@@ -142,12 +142,9 @@ def test_read_by_actor(journal: DecisionJournal) -> None:
 
 
 def test_read_by_outcome(journal: DecisionJournal) -> None:
-    journal.record(ts=_T0, actor=Actor.TRADE_ENGINE,
-                   intent="a", outcome=Outcome.EXECUTED)
-    journal.record(ts=_T0, actor=Actor.RISK_GATE,
-                   intent="b", outcome=Outcome.BLOCKED)
-    journal.record(ts=_T0, actor=Actor.OPERATOR,
-                   intent="c", outcome=Outcome.OVERRIDDEN)
+    journal.record(ts=_T0, actor=Actor.TRADE_ENGINE, intent="a", outcome=Outcome.EXECUTED)
+    journal.record(ts=_T0, actor=Actor.RISK_GATE, intent="b", outcome=Outcome.BLOCKED)
+    journal.record(ts=_T0, actor=Actor.OPERATOR, intent="c", outcome=Outcome.OVERRIDDEN)
     assert len(journal.read_by_outcome(Outcome.BLOCKED)) == 1
     assert len(journal.read_by_outcome(Outcome.EXECUTED)) == 1
     assert len(journal.read_by_outcome(Outcome.OVERRIDDEN)) == 1
@@ -160,11 +157,9 @@ def test_read_by_outcome(journal: DecisionJournal) -> None:
 
 def test_outcome_counts(journal: DecisionJournal) -> None:
     for _ in range(3):
-        journal.record(ts=_T0, actor=Actor.TRADE_ENGINE,
-                       intent="x", outcome=Outcome.EXECUTED)
+        journal.record(ts=_T0, actor=Actor.TRADE_ENGINE, intent="x", outcome=Outcome.EXECUTED)
     for _ in range(2):
-        journal.record(ts=_T0, actor=Actor.RISK_GATE,
-                       intent="y", outcome=Outcome.BLOCKED)
+        journal.record(ts=_T0, actor=Actor.RISK_GATE, intent="y", outcome=Outcome.BLOCKED)
     counts = journal.outcome_counts()
     assert counts[Outcome.EXECUTED] == 3
     assert counts[Outcome.BLOCKED] == 2
@@ -189,15 +184,11 @@ def test_override_rate_counts_overrides_over_gate_events(
     journal: DecisionJournal,
 ) -> None:
     # 3 gate events, 1 overridden = 33%
-    journal.record(ts=_T0, actor=Actor.RISK_GATE,
-                   intent="v", outcome=Outcome.BLOCKED)
-    journal.record(ts=_T0, actor=Actor.RISK_GATE,
-                   intent="v", outcome=Outcome.OVERRIDDEN)
-    journal.record(ts=_T0, actor=Actor.KILL_SWITCH,
-                   intent="k", outcome=Outcome.BLOCKED)
+    journal.record(ts=_T0, actor=Actor.RISK_GATE, intent="v", outcome=Outcome.BLOCKED)
+    journal.record(ts=_T0, actor=Actor.RISK_GATE, intent="v", outcome=Outcome.OVERRIDDEN)
+    journal.record(ts=_T0, actor=Actor.KILL_SWITCH, intent="k", outcome=Outcome.BLOCKED)
     # Non-gate event should not count
-    journal.record(ts=_T0, actor=Actor.TRADE_ENGINE,
-                   intent="x", outcome=Outcome.OVERRIDDEN)
+    journal.record(ts=_T0, actor=Actor.TRADE_ENGINE, intent="x", outcome=Outcome.OVERRIDDEN)
     assert journal.override_rate() == pytest.approx(1 / 3)
 
 
@@ -212,7 +203,7 @@ def test_malformed_lines_skipped(journal: DecisionJournal, journal_path: Path) -
     with journal_path.open("a", encoding="utf-8") as fh:
         fh.write("this is not json\n")
         fh.write("\n")
-        fh.write("{\"incomplete\": \n")
+        fh.write('{"incomplete": \n')
     journal.record(ts=_T0, actor=Actor.TRADE_ENGINE, intent="also_good")
     events = journal.read_all()
     assert [e.intent for e in events] == ["good", "also_good"]
@@ -246,6 +237,7 @@ def test_append_returns_event(journal: DecisionJournal) -> None:
 
 def test_default_journal_is_singleton() -> None:
     from eta_engine.obs.decision_journal import default_journal
+
     a = default_journal()
     b = default_journal()
     assert a is b

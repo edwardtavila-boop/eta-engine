@@ -33,6 +33,7 @@ Exit codes
 ----------
 0 GREEN, 1 YELLOW, 2 RED, 9 setup error
 """
+
 from __future__ import annotations
 
 import argparse
@@ -75,7 +76,8 @@ def _collect_pytest_count() -> int | None:
 
 
 def _check_test_count(
-    baseline_count: int | None, current_count: int | None,
+    baseline_count: int | None,
+    current_count: int | None,
 ) -> tuple[str, str, int]:
     """Return (level, msg, current_count_for_baseline_update)."""
     if current_count is None:
@@ -114,10 +116,7 @@ def _check_log_sizes(max_mb: float) -> tuple[str, str]:
     if bloated:
         items = ", ".join(f"{n}={mb:.1f}MB" for n, mb in bloated)
         return ("YELLOW", f"log files >cap ({max_mb:.0f}MB): {items}")
-    sizes = ", ".join(
-        f"{f.name}={f.stat().st_size / 1024 / 1024:.2f}MB"
-        for f in LOG_FILES if f.exists()
-    )
+    sizes = ", ".join(f"{f.name}={f.stat().st_size / 1024 / 1024:.2f}MB" for f in LOG_FILES if f.exists())
     return ("GREEN", f"log sizes OK ({sizes})")
 
 
@@ -147,8 +146,7 @@ def _check_untracked_backlog(max_untracked: int) -> tuple[str, str]:
     except (OSError, subprocess.TimeoutExpired) as e:
         return ("YELLOW", f"git ls-files failed: {e}")
     files = [
-        line for line in out.stdout.splitlines()
-        if line.endswith((".py", ".md", ".json", ".jsonl", ".yaml", ".yml"))
+        line for line in out.stdout.splitlines() if line.endswith((".py", ".md", ".json", ".jsonl", ".yaml", ".yml"))
     ]
     n = len(files)
     if n > max_untracked * 2:
@@ -177,11 +175,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-mb", type=float, default=25.0)
     p.add_argument("--max-untracked", type=int, default=20)
     p.add_argument(
-        "--skip-hook-check", action="store_true",
+        "--skip-hook-check",
+        action="store_true",
         help="skip pre-commit hook check (for cloud sessions)",
     )
     p.add_argument(
-        "--skip-pytest", action="store_true",
+        "--skip-pytest",
+        action="store_true",
         help="skip pytest --collect-only (for cloud sessions or quick checks)",
     )
     p.add_argument("--no-update", action="store_true", help="don't persist baseline updates")

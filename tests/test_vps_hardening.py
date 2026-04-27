@@ -1,4 +1,5 @@
 """VPS hardening config generator tests — P8_COMPLY security."""
+
 from __future__ import annotations
 
 from eta_engine.obs.vps_hardening import (
@@ -15,6 +16,7 @@ from eta_engine.obs.vps_hardening import (
 # ---------------------------------------------------------------------------
 # SSHD
 # ---------------------------------------------------------------------------
+
 
 def test_sshd_config_locks_down_root_and_passwords() -> None:
     cfg = build_sshd_config()
@@ -40,6 +42,7 @@ def test_sshd_config_defaults_to_apex_user() -> None:
 # Fail2ban
 # ---------------------------------------------------------------------------
 
+
 def test_fail2ban_config_sets_strict_ssh_jail() -> None:
     cfg = build_fail2ban_config()
     assert "[sshd]" in cfg
@@ -51,6 +54,7 @@ def test_fail2ban_config_sets_strict_ssh_jail() -> None:
 # ---------------------------------------------------------------------------
 # Systemd
 # ---------------------------------------------------------------------------
+
 
 def test_systemd_unit_has_sandbox_flags() -> None:
     unit = build_systemd_unit()
@@ -84,6 +88,7 @@ def test_systemd_unit_has_restart_policy() -> None:
 # UFW rules + CLI rendering
 # ---------------------------------------------------------------------------
 
+
 def test_build_config_returns_bundle_with_all_artifacts() -> None:
     cfg = build_config(operator_ip="1.2.3.4/32")
     assert isinstance(cfg, HardeningConfig)
@@ -113,7 +118,7 @@ def test_ufw_defaults_egress_https_ntp_dns() -> None:
     egress_ports = {r.port for r in cfg.ufw_rules if r.scope == "egress"}
     assert 443 in egress_ports
     assert 123 in egress_ports  # NTP
-    assert 53 in egress_ports   # DNS
+    assert 53 in egress_ports  # DNS
 
 
 def test_ufw_commands_render_allow_in_with_source() -> None:
@@ -159,6 +164,7 @@ def test_ufw_commands_handle_any_protocol() -> None:
 # ---------------------------------------------------------------------------
 # Runbook
 # ---------------------------------------------------------------------------
+
 
 def test_runbook_includes_all_sections() -> None:
     book = build_runbook()

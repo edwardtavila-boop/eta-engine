@@ -1,4 +1,5 @@
 """Grafana dashboard JSON generator tests — P7_OPS observability."""
+
 from __future__ import annotations
 
 import json
@@ -55,9 +56,7 @@ def test_every_panel_has_unique_id_and_gridpos() -> None:
 
 def test_latency_histogram_panel_has_three_targets() -> None:
     db = build_dashboard()
-    latency_panel = next(
-        p for p in db["panels"] if "Latency" in p.get("title", "")
-    )
+    latency_panel = next(p for p in db["panels"] if "Latency" in p.get("title", ""))
     assert len(latency_panel["targets"]) == 3
     legends = {t["legendFormat"] for t in latency_panel["targets"]}
     assert legends == {"p50", "p95", "p99"}

@@ -47,6 +47,7 @@ in turn keeps each commit reviewable. The operator was running these
 commands manually 10-30x per day -- this is a 5-second-per-invocation
 saver that compounds.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,10 +64,7 @@ def _run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess:
 
 def _staged_py() -> list[str]:
     out = _run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"])
-    return [
-        line.strip() for line in out.stdout.splitlines()
-        if line.strip().endswith(".py")
-    ]
+    return [line.strip() for line in out.stdout.splitlines() if line.strip().endswith(".py")]
 
 
 def _all_staged() -> list[str]:

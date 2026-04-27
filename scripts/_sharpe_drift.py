@@ -36,6 +36,7 @@ Exit codes
 ----------
 0 GREEN, 1 YELLOW, 2 RED, 9 data missing
 """
+
 from __future__ import annotations
 
 import argparse
@@ -93,7 +94,8 @@ def _classify_change(baseline: float, current: float) -> tuple[str, float]:
 
 
 def _evaluate(
-    report: dict, baseline: dict,
+    report: dict,
+    baseline: dict,
 ) -> tuple[list[dict], dict]:
     """Return (per-bot diagnostics, updated baseline dict)."""
     new_baseline = {
@@ -120,7 +122,10 @@ def _evaluate(
             seeded_only = False
             level, pct = _classify_change(float(base), cur)
             per_metric[m] = {
-                "baseline": float(base), "current": cur, "level": level, "pct": pct,
+                "baseline": float(base),
+                "current": cur,
+                "level": level,
+                "pct": pct,
             }
             if _severity(level) > _severity(worst):
                 worst, worst_pct, worst_metric = level, pct, m
@@ -128,14 +133,16 @@ def _evaluate(
                 # Track best comparison metric for display even if all-GREEN
                 worst_metric = m
                 worst_pct = pct
-        diagnostics.append({
-            "bot": name,
-            "level": worst,
-            "worst_metric": worst_metric,
-            "worst_pct": worst_pct,
-            "metrics": per_metric,
-            "seeded_only": seeded_only,
-        })
+        diagnostics.append(
+            {
+                "bot": name,
+                "level": worst,
+                "worst_metric": worst_metric,
+                "worst_pct": worst_pct,
+                "metrics": per_metric,
+                "seeded_only": seeded_only,
+            }
+        )
         # Update EMA in-place
         updated = {m: _ema(prev.get(m), cur_metrics[m]) for m in METRICS}
         new_baseline["per_bot"][name] = updated
@@ -158,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument(
-        "--no-update", action="store_true",
+        "--no-update",
+        action="store_true",
         help="don't persist the updated baseline (useful for dry-runs)",
     )
     args = p.parse_args(argv)
@@ -173,8 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     overall, code = _aggregate(diagnostics)
 
     print(
-        f"sharpe-drift: {overall} -- {len(diagnostics)} bots evaluated "
-        f"(samples={baseline.get('samples', 0)} prior)",
+        f"sharpe-drift: {overall} -- {len(diagnostics)} bots evaluated (samples={baseline.get('samples', 0)} prior)",
     )
     for d in diagnostics:
         if d.get("seeded_only"):
@@ -190,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_update:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
-            json.dumps(new_baseline, indent=2) + "\n", encoding="utf-8",
+            json.dumps(new_baseline, indent=2) + "\n",
+            encoding="utf-8",
         )
     return code
 

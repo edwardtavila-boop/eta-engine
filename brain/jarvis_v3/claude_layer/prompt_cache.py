@@ -25,6 +25,7 @@ Cost model (Anthropic, as of 2026):
 
 Pure stdlib + pydantic. Network calls are injected via protocol.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,52 +38,55 @@ from eta_engine.brain.model_policy import ModelTier
 
 # Model pricing per 1M tokens (input, output).
 MODEL_PRICES: dict[ModelTier, tuple[float, float]] = {
-    ModelTier.HAIKU:  (0.80, 4.00),
+    ModelTier.HAIKU: (0.80, 4.00),
     ModelTier.SONNET: (3.00, 15.00),
-    ModelTier.OPUS:   (15.00, 75.00),
+    ModelTier.OPUS: (15.00, 75.00),
 }
 
-CACHE_READ_MULT = 0.10    # cached input at 10% of full price
-CACHE_WRITE_MULT = 1.25   # cache write at 125% of full price
-CACHE_TTL_S = 5 * 60      # Anthropic 5-minute TTL
+CACHE_READ_MULT = 0.10  # cached input at 10% of full price
+CACHE_WRITE_MULT = 1.25  # cache write at 125% of full price
+CACHE_TTL_S = 5 * 60  # Anthropic 5-minute TTL
 
 
 class CachedPrompt(BaseModel):
     """A prompt split into cacheable prefix + per-call suffix."""
+
     model_config = ConfigDict(frozen=True)
 
-    system:          str
-    prefix:          str = Field(min_length=1)
-    suffix:          str
-    prefix_hash:     str = Field(min_length=8)
-    tokens_prefix:   int = Field(ge=0)
-    tokens_suffix:   int = Field(ge=0)
+    system: str
+    prefix: str = Field(min_length=1)
+    suffix: str
+    prefix_hash: str = Field(min_length=8)
+    tokens_prefix: int = Field(ge=0)
+    tokens_suffix: int = Field(ge=0)
 
 
 class ClaudeCallRequest(BaseModel):
     """What the Claude client needs to make a call."""
+
     model_config = ConfigDict(frozen=True)
 
-    model:       ModelTier
-    prompt:      CachedPrompt
-    max_tokens:  int = Field(ge=1, default=512)
-    persona:     str = ""   # informational -- which persona is calling
+    model: ModelTier
+    prompt: CachedPrompt
+    max_tokens: int = Field(ge=1, default=512)
+    persona: str = ""  # informational -- which persona is calling
 
 
 class ClaudeCallResult(BaseModel):
     """Response envelope with cost breakdown."""
+
     model_config = ConfigDict(frozen=True)
 
-    model:              ModelTier
-    persona:            str
-    output_text:        str
-    input_tokens:       int = Field(ge=0)
-    output_tokens:      int = Field(ge=0)
+    model: ModelTier
+    persona: str
+    output_text: str
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
     cached_read_tokens: int = Field(ge=0)
     cache_write_tokens: int = Field(ge=0)
-    cost_usd:           float = Field(ge=0.0)
-    cache_hit:          bool
-    ts:                 datetime
+    cost_usd: float = Field(ge=0.0)
+    cache_hit: bool
+    ts: datetime
 
 
 class ClaudeClient(Protocol):
@@ -99,6 +103,7 @@ class ClaudeClient(Protocol):
 # ---------------------------------------------------------------------------
 # Prompt splitting
 # ---------------------------------------------------------------------------
+
 
 def _approx_tokens(text: str) -> int:
     """Rough 4-chars-per-token approximation. Good enough for cost preview."""
@@ -133,6 +138,7 @@ def build_cached_prompt(
 # Local cache-hit tracker (mirrors the server-side cache so we can report)
 # ---------------------------------------------------------------------------
 
+
 class PromptCacheTracker:
     """Shadow record of which prefixes are currently cached server-side.
 
@@ -162,6 +168,7 @@ class PromptCacheTracker:
 # ---------------------------------------------------------------------------
 # Cost calculation
 # ---------------------------------------------------------------------------
+
 
 def estimate_cost(
     model: ModelTier,
@@ -203,6 +210,7 @@ def cost_of_call(result: ClaudeCallResult) -> float:
 # ---------------------------------------------------------------------------
 # Fake client for tests / dry-runs
 # ---------------------------------------------------------------------------
+
 
 class FakeClaudeClient:
     """Deterministic Claude client for tests. Tracks calls + applies cache."""
@@ -249,6 +257,7 @@ class FakeClaudeClient:
 # Production adapter scaffold (not wired -- would import anthropic SDK)
 # ---------------------------------------------------------------------------
 
+
 class AnthropicClaudeClient:
     """Thin adapter over the Anthropic SDK.
 
@@ -269,6 +278,4 @@ class AnthropicClaudeClient:
     def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:  # pragma: no cover
         # Deliberately NOT imported or exercised in tests -- this is the
         # production hook. Uncovered until wired at deploy time.
-        raise NotImplementedError(
-            "Wire Anthropic SDK at deploy time: see module docstring"
-        )
+        raise NotImplementedError("Wire Anthropic SDK at deploy time: see module docstring")

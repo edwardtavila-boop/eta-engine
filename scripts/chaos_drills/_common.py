@@ -7,6 +7,7 @@ already expects (``drill``, ``passed``, ``details``, ``observed``,
 ``ts``), so drills from this package are fully compatible with the
 existing runner and JSON report path.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -24,9 +25,9 @@ def drill_result(
 ) -> dict[str, Any]:
     """Build the standard chaos-drill result dict."""
     return {
-        "drill":    name,
-        "passed":   passed,
-        "details":  details,
+        "drill": name,
+        "passed": passed,
+        "details": details,
         "observed": observed or {},
-        "ts":       datetime.now(UTC).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }

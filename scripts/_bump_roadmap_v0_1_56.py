@@ -107,6 +107,7 @@ was lagging behind the true full-regression count at the end of
 v0.1.55. v0.1.56 syncs the field to the real post-closure count so
 downstream dashboards stop understating coverage.
 """
+
 from __future__ import annotations
 
 import json
@@ -144,12 +145,9 @@ def main() -> None:
             "v0.1.56 ships one rigorously-scoped drill per surface "
             "and pins every one at passed=True in pytest."
         ),
-        "operator_directive_quote": (
-            "every safety surface must have a drill or it does not "
-            "count as safe."
-        ),
+        "operator_directive_quote": ("every safety surface must have a drill or it does not count as safe."),
         "coverage_before": "4 / 16 (25%)",
-        "coverage_after":  "16 / 16 (100%)",
+        "coverage_after": "16 / 16 (100%)",
         "drill_modules_added": [
             "scripts/chaos_drills/__init__.py",
             "scripts/chaos_drills/_common.py",
@@ -240,8 +238,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

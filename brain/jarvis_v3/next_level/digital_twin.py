@@ -21,6 +21,7 @@ Capabilities:
 Pure; no actual trading or network. The caller integrates this into
 the nightly autopilot pipeline.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -31,67 +32,71 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeltaKind(StrEnum):
-    PARAM_CHANGE   = "PARAM_CHANGE"
+    PARAM_CHANGE = "PARAM_CHANGE"
     STRATEGY_TOGGLE = "STRATEGY_TOGGLE"
     REGIME_OVERRIDE = "REGIME_OVERRIDE"
-    SIZE_MULT_BUMP  = "SIZE_MULT_BUMP"
-    NEW_GATE        = "NEW_GATE"
+    SIZE_MULT_BUMP = "SIZE_MULT_BUMP"
+    NEW_GATE = "NEW_GATE"
 
 
 class TwinConfigDelta(BaseModel):
     """A proposed configuration change to run through the digital twin."""
+
     model_config = ConfigDict(frozen=True)
 
-    delta_id:     str = Field(min_length=1)
-    kind:         DeltaKind
-    description:  str = Field(min_length=1)
-    prod_value:   str = ""
-    twin_value:   str = ""
-    rationale:    str = ""
+    delta_id: str = Field(min_length=1)
+    kind: DeltaKind
+    description: str = Field(min_length=1)
+    prod_value: str = ""
+    twin_value: str = ""
+    rationale: str = ""
 
 
 class TwinSignal(BaseModel):
     """A single signal emitted by prod or twin side."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:          datetime
-    source:      str = Field(pattern="^(PROD|TWIN)$")
-    signal_id:   str = Field(min_length=1)
-    subsystem:   str
-    verdict:     str
-    size_mult:   float = Field(ge=0.0, le=1.0, default=1.0)
-    realized_r:  float | None = None   # populated after close
-    tag:         str = ""
+    ts: datetime
+    source: str = Field(pattern="^(PROD|TWIN)$")
+    signal_id: str = Field(min_length=1)
+    subsystem: str
+    verdict: str
+    size_mult: float = Field(ge=0.0, le=1.0, default=1.0)
+    realized_r: float | None = None  # populated after close
+    tag: str = ""
 
 
 class TwinDivergence(BaseModel):
     """One prod/twin mismatch in a matched signal."""
+
     model_config = ConfigDict(frozen=True)
 
-    signal_id:        str
-    prod_verdict:     str
-    twin_verdict:     str
-    prod_size_mult:   float
-    twin_size_mult:   float
-    realized_r_prod:  float | None = None
-    realized_r_twin:  float | None = None
-    notes:            str = ""
+    signal_id: str
+    prod_verdict: str
+    twin_verdict: str
+    prod_size_mult: float
+    twin_size_mult: float
+    realized_r_prod: float | None = None
+    realized_r_twin: float | None = None
+    notes: str = ""
 
 
 class TwinVerdict(BaseModel):
     """Aggregate judgment over a window of matched signals."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:              datetime
-    window_hours:    float
+    ts: datetime
+    window_hours: float
     matched_signals: int = Field(ge=0)
-    divergences:     int = Field(ge=0)
+    divergences: int = Field(ge=0)
     divergence_rate: float = Field(ge=0.0, le=1.0)
-    mean_r_prod:     float | None = None
-    mean_r_twin:     float | None = None
-    severity:        str = Field(pattern="^(GREEN|YELLOW|RED)$")
-    verdict:         str = Field(pattern="^(PROMOTE|FURTHER_SOAK|AVOID)$")
-    note:            str
+    mean_r_prod: float | None = None
+    mean_r_twin: float | None = None
+    severity: str = Field(pattern="^(GREEN|YELLOW|RED)$")
+    verdict: str = Field(pattern="^(PROMOTE|FURTHER_SOAK|AVOID)$")
+    note: str
 
 
 class TwinComparator:
@@ -110,7 +115,10 @@ class TwinComparator:
             self._twin[sig.signal_id] = sig
 
     def divergences(
-        self, *, window_hours: float = 24.0, now: datetime | None = None,
+        self,
+        *,
+        window_hours: float = 24.0,
+        now: datetime | None = None,
     ) -> list[TwinDivergence]:
         now = now or datetime.now(UTC)
         cutoff = now - timedelta(hours=window_hours)
@@ -123,17 +131,24 @@ class TwinComparator:
                 continue
             if p.verdict == t.verdict and abs(p.size_mult - t.size_mult) < 0.01:
                 continue
-            out.append(TwinDivergence(
-                signal_id=sid,
-                prod_verdict=p.verdict, twin_verdict=t.verdict,
-                prod_size_mult=p.size_mult, twin_size_mult=t.size_mult,
-                realized_r_prod=p.realized_r, realized_r_twin=t.realized_r,
-                notes="",
-            ))
+            out.append(
+                TwinDivergence(
+                    signal_id=sid,
+                    prod_verdict=p.verdict,
+                    twin_verdict=t.verdict,
+                    prod_size_mult=p.size_mult,
+                    twin_size_mult=t.size_mult,
+                    realized_r_prod=p.realized_r,
+                    realized_r_twin=t.realized_r,
+                    notes="",
+                )
+            )
         return out
 
     def verdict(
-        self, *, window_hours: float = 24.0,
+        self,
+        *,
+        window_hours: float = 24.0,
         max_divergence_rate_ok: float = 0.10,
         max_divergence_rate_yellow: float = 0.25,
         now: datetime | None = None,
@@ -151,49 +166,29 @@ class TwinComparator:
         n = len(matched)
         d = len(divs)
         rate = (d / n) if n else 0.0
-        prod_rs = [
-            self._prod[sid].realized_r for sid in matched
-            if self._prod[sid].realized_r is not None
-        ]
-        twin_rs = [
-            self._twin[sid].realized_r for sid in matched
-            if self._twin[sid].realized_r is not None
-        ]
+        prod_rs = [self._prod[sid].realized_r for sid in matched if self._prod[sid].realized_r is not None]
+        twin_rs = [self._twin[sid].realized_r for sid in matched if self._twin[sid].realized_r is not None]
         mean_r_prod = (sum(prod_rs) / len(prod_rs)) if prod_rs else None
         mean_r_twin = (sum(twin_rs) / len(twin_rs)) if twin_rs else None
         # Classify
         if rate >= max_divergence_rate_yellow:
             severity = "RED"
             verdict = "AVOID"
-            note = (
-                f"divergence {rate:.0%} >= {max_divergence_rate_yellow:.0%}"
-                " -- do NOT promote twin config"
-            )
+            note = f"divergence {rate:.0%} >= {max_divergence_rate_yellow:.0%} -- do NOT promote twin config"
         elif rate >= max_divergence_rate_ok:
             severity = "YELLOW"
             verdict = "FURTHER_SOAK"
-            note = (
-                f"divergence {rate:.0%} elevated -- continue shadow run"
-            )
+            note = f"divergence {rate:.0%} elevated -- continue shadow run"
         else:
             # Twin must also be at-least-as-profitable
-            if (
-                mean_r_twin is not None
-                and mean_r_prod is not None
-                and mean_r_twin + 0.02 < mean_r_prod
-            ):
+            if mean_r_twin is not None and mean_r_prod is not None and mean_r_twin + 0.02 < mean_r_prod:
                 severity = "YELLOW"
                 verdict = "FURTHER_SOAK"
-                note = (
-                    f"twin mean_r {mean_r_twin:+.2f} underperforms prod "
-                    f"{mean_r_prod:+.2f} -- need more evidence"
-                )
+                note = f"twin mean_r {mean_r_twin:+.2f} underperforms prod {mean_r_prod:+.2f} -- need more evidence"
             else:
                 severity = "GREEN"
                 verdict = "PROMOTE"
-                note = (
-                    f"divergence {rate:.0%} OK, mean_r prod/twin parity"
-                )
+                note = f"divergence {rate:.0%} OK, mean_r prod/twin parity"
         return TwinVerdict(
             ts=now,
             window_hours=window_hours,
@@ -207,8 +202,7 @@ class TwinComparator:
             note=note,
         )
 
-    def prune(self, *, keep_hours: float = 48.0,
-              now: datetime | None = None) -> int:
+    def prune(self, *, keep_hours: float = 48.0, now: datetime | None = None) -> int:
         """Drop signals older than ``keep_hours``. Returns # pruned."""
         now = now or datetime.now(UTC)
         cutoff = now - timedelta(hours=keep_hours)

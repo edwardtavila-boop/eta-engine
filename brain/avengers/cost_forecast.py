@@ -28,6 +28,7 @@ Cost convention
 ``sonnet_usd_per_call`` (rough blended estimate) to reach dollars.
 Default is $0.06 -- coarse but directionally correct.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,30 +48,32 @@ Severity = Literal["GREEN", "YELLOW", "RED"]
 
 class BurnWindow(BaseModel):
     """Dispatch + cost totals over one time window."""
+
     model_config = ConfigDict(frozen=True)
 
-    window_hours:       float = Field(gt=0.0)
-    dispatches:         int   = Field(ge=0, default=0)
-    total_cost_mult:    float = Field(ge=0.0, default=0.0)
-    total_usd:          float = Field(ge=0.0, default=0.0)
-    projected_monthly:  float = Field(ge=0.0, default=0.0)
-    cost_by_persona:    dict[str, float] = Field(default_factory=dict)
-    cost_by_category:   dict[str, float] = Field(default_factory=dict)
+    window_hours: float = Field(gt=0.0)
+    dispatches: int = Field(ge=0, default=0)
+    total_cost_mult: float = Field(ge=0.0, default=0.0)
+    total_usd: float = Field(ge=0.0, default=0.0)
+    projected_monthly: float = Field(ge=0.0, default=0.0)
+    cost_by_persona: dict[str, float] = Field(default_factory=dict)
+    cost_by_category: dict[str, float] = Field(default_factory=dict)
 
 
 class BurnReport(BaseModel):
     """Full snapshot. Persist / render as-is."""
+
     model_config = ConfigDict(frozen=True)
 
-    generated_at:         datetime
-    monthly_cap_usd:      float = Field(ge=0.0)
-    projected_monthly:    float = Field(ge=0.0)
-    headroom_usd:         float  # may go negative if over cap
-    severity:             Severity
-    last_hour:            BurnWindow
-    last_six_hours:       BurnWindow
-    last_day:             BurnWindow
-    top_callers:          list[tuple[str, float]]
+    generated_at: datetime
+    monthly_cap_usd: float = Field(ge=0.0)
+    projected_monthly: float = Field(ge=0.0)
+    headroom_usd: float  # may go negative if over cap
+    severity: Severity
+    last_hour: BurnWindow
+    last_six_hours: BurnWindow
+    last_day: BurnWindow
+    top_callers: list[tuple[str, float]]
 
 
 class CostForecast:
@@ -93,13 +96,13 @@ class CostForecast:
     def __init__(
         self,
         *,
-        journal_path:        Path | None = None,
-        monthly_cap_usd:     float = 200.0,
+        journal_path: Path | None = None,
+        monthly_cap_usd: float = 200.0,
         sonnet_usd_per_call: float = 0.06,
         clock: callable | None = None,
     ) -> None:
-        self.journal_path        = journal_path or AVENGERS_JOURNAL
-        self.monthly_cap_usd     = monthly_cap_usd
+        self.journal_path = journal_path or AVENGERS_JOURNAL
+        self.monthly_cap_usd = monthly_cap_usd
         self.sonnet_usd_per_call = sonnet_usd_per_call
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -134,13 +137,15 @@ class CostForecast:
                     continue
                 if ts < cutoff:
                     continue
-                out.append({
-                    "ts":              ts,
-                    "persona":         env.get("persona", res.get("persona_id", "")),
-                    "caller":          env.get("caller", ""),
-                    "category":        env.get("category", res.get("category", "")),
-                    "cost_multiplier": float(res.get("cost_multiplier", 0.0) or 0.0),
-                })
+                out.append(
+                    {
+                        "ts": ts,
+                        "persona": env.get("persona", res.get("persona_id", "")),
+                        "caller": env.get("caller", ""),
+                        "category": env.get("category", res.get("category", "")),
+                        "cost_multiplier": float(res.get("cost_multiplier", 0.0) or 0.0),
+                    }
+                )
         except OSError:
             return []
         return out
@@ -148,14 +153,14 @@ class CostForecast:
     def _window(self, *, hours: float) -> BurnWindow:
         rows = self._load(hours=hours)
         total_mult = sum(r["cost_multiplier"] for r in rows)
-        total_usd  = total_mult * self.sonnet_usd_per_call
-        per_hour   = total_usd / hours
-        projected  = per_hour * self._MONTH_HOURS
+        total_usd = total_mult * self.sonnet_usd_per_call
+        per_hour = total_usd / hours
+        projected = per_hour * self._MONTH_HOURS
 
-        by_persona:  Counter[str] = Counter()
+        by_persona: Counter[str] = Counter()
         by_category: Counter[str] = Counter()
         for r in rows:
-            by_persona[r["persona"] or "unknown"]   += r["cost_multiplier"]
+            by_persona[r["persona"] or "unknown"] += r["cost_multiplier"]
             by_category[r["category"] or "unknown"] += r["cost_multiplier"]
 
         return BurnWindow(
@@ -170,8 +175,8 @@ class CostForecast:
 
     def snapshot(self) -> BurnReport:
         """Produce a full burn report. Main entry point."""
-        w1  = self._window(hours=1.0)
-        w6  = self._window(hours=6.0)
+        w1 = self._window(hours=1.0)
+        w6 = self._window(hours=6.0)
         w24 = self._window(hours=24.0)
 
         # Use 24h as the canonical projection; it's smoother than 1h.
@@ -193,9 +198,7 @@ class CostForecast:
         for r in self._load(hours=24.0):
             caller_cost[r["caller"] or "unknown"] += r["cost_multiplier"]
         top = caller_cost.most_common(5)
-        top_dollars: list[tuple[str, float]] = [
-            (caller, mult * self.sonnet_usd_per_call) for caller, mult in top
-        ]
+        top_dollars: list[tuple[str, float]] = [(caller, mult * self.sonnet_usd_per_call) for caller, mult in top]
 
         return BurnReport(
             generated_at=self._clock(),

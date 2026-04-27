@@ -91,6 +91,7 @@ Usage
     # Every Nth tick:
     rotator.run(now=datetime.now(UTC))
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -161,22 +162,13 @@ class RuntimeLogRotator:
         retain_age_seconds: float = DEFAULT_RETAIN_AGE_SECONDS,
     ) -> None:
         if rotate_at_size_bytes <= 0:
-            msg = (
-                f"rotate_at_size_bytes must be > 0 "
-                f"(got {rotate_at_size_bytes})"
-            )
+            msg = f"rotate_at_size_bytes must be > 0 (got {rotate_at_size_bytes})"
             raise ValueError(msg)
         if gzip_after_age_seconds < 0:
-            msg = (
-                f"gzip_after_age_seconds must be >= 0 "
-                f"(got {gzip_after_age_seconds})"
-            )
+            msg = f"gzip_after_age_seconds must be >= 0 (got {gzip_after_age_seconds})"
             raise ValueError(msg)
         if retain_age_seconds < 0:
-            msg = (
-                f"retain_age_seconds must be >= 0 "
-                f"(got {retain_age_seconds})"
-            )
+            msg = f"retain_age_seconds must be >= 0 (got {retain_age_seconds})"
             raise ValueError(msg)
         if retain_age_seconds < gzip_after_age_seconds:
             msg = (
@@ -216,18 +208,13 @@ class RuntimeLogRotator:
         if not d.exists():
             return []
         # Exclude the live log itself -- it has no timestamp suffix.
-        return sorted(
-            p for p in d.glob(self._archive_pattern_jsonl())
-            if p != self.log_path and p.is_file()
-        )
+        return sorted(p for p in d.glob(self._archive_pattern_jsonl()) if p != self.log_path and p.is_file())
 
     def _list_gz_archives(self) -> list[Path]:
         d = self._live_archive_dir()
         if not d.exists():
             return []
-        return sorted(
-            p for p in d.glob(self._archive_pattern_gz()) if p.is_file()
-        )
+        return sorted(p for p in d.glob(self._archive_pattern_gz()) if p.is_file())
 
     # ------------------------------------------------------------------ #
     # Rotation
@@ -275,7 +262,9 @@ class RuntimeLogRotator:
         self._stats.last_rotate_ts = now.isoformat()
         log.info(
             "runtime_log_rotator: rotated %s -> %s (%d bytes)",
-            self.log_path, archive, size,
+            self.log_path,
+            archive,
+            size,
         )
         return archive
 
@@ -309,9 +298,13 @@ class RuntimeLogRotator:
                     self._stats.errors.append(f"unlink stale: {exc!r}")
                 continue
             try:
-                with archive.open("rb") as src, gzip.open(
-                    gz_path, "wb",
-                ) as dst:
+                with (
+                    archive.open("rb") as src,
+                    gzip.open(
+                        gz_path,
+                        "wb",
+                    ) as dst,
+                ):
                     shutil.copyfileobj(src, dst)
                 archive.unlink()
             except OSError as exc:
@@ -326,7 +319,8 @@ class RuntimeLogRotator:
             self._stats.last_gzip_ts = now.isoformat()
             log.info(
                 "runtime_log_rotator: gzipped %s -> %s",
-                archive, gz_path,
+                archive,
+                gz_path,
             )
         return compressed
 

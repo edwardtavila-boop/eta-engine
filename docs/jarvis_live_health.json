@@ -1,17 +1,20 @@
 {
-  "ts": "2026-04-17T16:46:08.692783Z",
-  "health": "GREEN",
-  "reasons": [],
+  "ts": "2026-04-27T01:52:38.114365Z",
+  "health": "YELLOW",
+  "reasons": [
+    "binding_constraint DOMINANCE: 'macro_event' for last 10 snapshots (weights may need rebalancing)",
+    "composite FLATLINE: all last 10 below 0.05 (Jarvis may be blind)"
+  ],
   "metrics": {
     "stale_s": 0.0,
-    "memory_len": 2.0,
-    "tick_count": 2.0,
-    "dominance_run": 0.0,
-    "flatline_run": 0.0,
+    "memory_len": 64.0,
+    "tick_count": 109.0,
+    "dominance_run": 10.0,
+    "flatline_run": 10.0,
     "last_composite": 0.0
   },
-  "last_tick_at": "2026-04-17T16:46:08.692780Z",
+  "last_tick_at": "2026-04-27T01:52:38.114363Z",
   "last_composite": 0.0,
   "last_binding": "macro_event",
-  "memory_len": 2
+  "memory_len": 64
 }

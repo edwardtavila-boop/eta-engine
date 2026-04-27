@@ -1,4 +1,5 @@
 """Multi-agent orchestrator tests — P10_AI multi_agent_orch."""
+
 from __future__ import annotations
 
 from eta_engine.brain.multi_agent import (
@@ -10,6 +11,7 @@ from eta_engine.brain.multi_agent import (
 # ---------------------------------------------------------------------------
 # Construction + registration
 # ---------------------------------------------------------------------------
+
 
 def test_empty_orchestrator_returns_hold_consensus() -> None:
     orch = MultiAgentOrchestrator()
@@ -36,6 +38,7 @@ def test_register_agent_stores_handler() -> None:
 # ---------------------------------------------------------------------------
 # broadcast
 # ---------------------------------------------------------------------------
+
 
 def test_broadcast_invokes_all_registered_agents_and_stores_responses() -> None:
     orch = MultiAgentOrchestrator()
@@ -86,9 +89,11 @@ def test_broadcast_captures_exception_as_error_message() -> None:
 # get_consensus — action routing
 # ---------------------------------------------------------------------------
 
+
 def _add(orch: MultiAgentOrchestrator, role: AgentRole, content: str, prio: int) -> None:
     def handler(_: AgentMessage) -> AgentMessage:
         return AgentMessage(role=role, content=content, priority=prio)
+
     orch.register_agent(role, handler)
 
 
@@ -170,6 +175,7 @@ def test_risk_advocate_priority_below_9_does_not_veto() -> None:
 # ---------------------------------------------------------------------------
 # AgentMessage defaults
 # ---------------------------------------------------------------------------
+
 
 def test_agent_message_default_priority_is_five() -> None:
     m = AgentMessage(role=AgentRole.SUPERVISOR, content="hi")

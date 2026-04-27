@@ -15,6 +15,7 @@ from eta_engine.funnel.transfer import TransferRequest
 # Config
 # ---------------------------------------------------------------------------
 
+
 class AllocationConfig(BaseModel):
     """Target allocation percentages across yield sources."""
 
@@ -23,7 +24,9 @@ class AllocationConfig(BaseModel):
     xrp_pct: float = Field(default=15.0, ge=0, le=100)
     stable_pct: float = Field(default=15.0, ge=0, le=100)
     diversification_cap: float = Field(
-        default=40.0, ge=0, le=100,
+        default=40.0,
+        ge=0,
+        le=100,
         description="Max allocation to any single asset class",
     )
 
@@ -39,9 +42,7 @@ class AllocationConfig(BaseModel):
         for name in ("eth_pct", "sol_pct", "xrp_pct", "stable_pct"):
             val = getattr(self, name)
             if val > self.diversification_cap:
-                raise ValueError(
-                    f"{name}={val}% exceeds diversification cap {self.diversification_cap}%"
-                )
+                raise ValueError(f"{name}={val}% exceeds diversification cap {self.diversification_cap}%")
         return self
 
 
@@ -75,6 +76,7 @@ def allocate(total_usd: float, config: AllocationConfig | None = None) -> dict[s
 # ---------------------------------------------------------------------------
 # Rebalancing
 # ---------------------------------------------------------------------------
+
 
 async def rebalance(
     current_balances: dict[str, float],
@@ -115,12 +117,14 @@ async def rebalance(
             move = min(src_excess, dst_need)
             if move < drift_threshold:
                 continue
-            transfers.append(TransferRequest(
-                from_bot=f"staking_{src}",
-                to_bot=f"staking_{dst}",
-                amount_usd=round(move, 2),
-                reason=f"Rebalance {src}->{dst}",
-            ))
+            transfers.append(
+                TransferRequest(
+                    from_bot=f"staking_{src}",
+                    to_bot=f"staking_{dst}",
+                    amount_usd=round(move, 2),
+                    reason=f"Rebalance {src}->{dst}",
+                )
+            )
             src_excess -= move
             under[dst] -= move
             if src_excess < drift_threshold:

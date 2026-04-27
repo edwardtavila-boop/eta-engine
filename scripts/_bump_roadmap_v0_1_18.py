@@ -16,6 +16,7 @@ Closes out P1_BRAIN (60% -> 100%). Three in-progress tasks land:
 Adds 46 tests (775 -> 821). Keeps P9_ROLLOUT.live_tiny_size blocker note
 (funding gate) intact.
 """
+
 from __future__ import annotations
 
 import json

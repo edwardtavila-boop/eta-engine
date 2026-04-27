@@ -14,6 +14,7 @@ Covers:
   * source callable raising -> treated as no_data (never crash the runtime)
   * running stats counters
 """
+
 from __future__ import annotations
 
 import pytest
@@ -48,7 +49,6 @@ class TestNoBrokerData:
 
 
 class TestWithinTolerance:
-
     def test_small_drift_usd_in_tolerance(self):
         rec = BrokerEquityReconciler(
             broker_equity_source=lambda: 50_025.0,
@@ -117,14 +117,13 @@ class TestBrokerAboveLogical:
 
 
 class TestToleranceBoundaries:
-
     def test_drift_exactly_at_usd_tolerance_is_in_tolerance(self):
         """Tolerance is strict: drift == tolerance is still in tolerance.
         Out-of-tolerance requires abs(drift) > tolerance."""
         rec = BrokerEquityReconciler(
             broker_equity_source=lambda: 49_950.0,
             tolerance_usd=50.0,
-            tolerance_pct=1.0,   # set high so USD threshold decides
+            tolerance_pct=1.0,  # set high so USD threshold decides
         )
         result = rec.reconcile(logical_equity_usd=50_000.0)
         assert result.drift_usd == pytest.approx(50.0)
@@ -145,7 +144,7 @@ class TestToleranceBoundaries:
         # even if drift < tolerance_usd=50 is impossible here anyway.
         rec = BrokerEquityReconciler(
             broker_equity_source=lambda: 149_800.0,
-            tolerance_usd=10_000.0,   # set huge so pct decides
+            tolerance_usd=10_000.0,  # set huge so pct decides
             tolerance_pct=0.001,
         )
         result = rec.reconcile(logical_equity_usd=150_000.0)
@@ -167,7 +166,6 @@ class TestToleranceBoundaries:
 
 
 class TestEdgeCases:
-
     def test_zero_logical_equity_short_circuits_to_no_data(self):
         # H5 closure (Red Team v0.1.64 review): when logical equity is
         # below the min_logical_usd floor (default 1.0), reconcile must
@@ -206,6 +204,7 @@ class TestEdgeCases:
         # raises on inf/nan if they leak through) and confirm no
         # "Infinity" / "NaN" tokens appear.
         import json as _json
+
         rec = BrokerEquityReconciler(broker_equity_source=lambda: 50_000.0)
         result = rec.reconcile(logical_equity_usd=0.0)
         # allow_nan=False makes json.dumps raise on inf/nan rather than
@@ -241,7 +240,6 @@ class TestEdgeCases:
 
 
 class TestReconcileResultShape:
-
     def test_as_dict_contains_all_fields(self):
         result = ReconcileResult(
             ts="2026-04-24T12:00:00+00:00",
@@ -257,8 +255,13 @@ class TestReconcileResultShape:
         # closure fields (is_in_drift_state + transition) that v0.1.66
         # adds to track the latched drift state across ticks.
         assert set(d.keys()) >= {
-            "ts", "logical_equity_usd", "broker_equity_usd",
-            "drift_usd", "drift_pct_of_logical", "in_tolerance", "reason",
+            "ts",
+            "logical_equity_usd",
+            "broker_equity_usd",
+            "drift_usd",
+            "drift_pct_of_logical",
+            "in_tolerance",
+            "reason",
         }
         assert d["reason"] == "broker_below_logical"
         # Spot-check the H3 fields exist with their default values
@@ -269,7 +272,6 @@ class TestReconcileResultShape:
 
 
 class TestStats:
-
     def test_max_drift_tracks_running_maximum(self):
         equities = iter([49_900.0, 50_100.0, 49_850.0, 50_000.0])
         rec = BrokerEquityReconciler(

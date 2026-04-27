@@ -18,6 +18,7 @@ different action (HALVE_SIZE) or no verdict at all.
 
 Sandbox: no disk artefacts beyond the config file we materialize.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -71,20 +72,14 @@ def drill_kill_switch_runtime(sandbox: Path) -> dict[str, Any]:
         return drill_result(
             "kill_switch_runtime",
             passed=False,
-            details=(
-                f"daily-loss breach did not produce FLATTEN_ALL: "
-                f"got action={first.action.value}"
-            ),
+            details=(f"daily-loss breach did not produce FLATTEN_ALL: got action={first.action.value}"),
             observed={"action": first.action.value, "scope": first.scope},
         )
     if first.severity is not KillSeverity.CRITICAL:
         return drill_result(
             "kill_switch_runtime",
             passed=False,
-            details=(
-                f"FLATTEN_ALL verdict was not CRITICAL severity: "
-                f"got severity={first.severity.value}"
-            ),
+            details=(f"FLATTEN_ALL verdict was not CRITICAL severity: got severity={first.severity.value}"),
         )
     if first.scope != "global":
         return drill_result(
@@ -103,10 +98,10 @@ def drill_kill_switch_runtime(sandbox: Path) -> dict[str, Any]:
         passed=True,
         details="daily-loss breach produced FLATTEN_ALL CRITICAL verdict",
         observed={
-            "action":   first.action.value,
+            "action": first.action.value,
             "severity": first.severity.value,
-            "scope":    first.scope,
-            "reason":   first.reason,
+            "scope": first.scope,
+            "reason": first.reason,
             "evidence": first.evidence,
         },
     )

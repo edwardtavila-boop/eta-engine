@@ -30,6 +30,7 @@ Exit codes
 2  RED    -- baseline doubled or more (suggests bulk untested merge)
 9  setup error
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,8 +43,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = ROOT / "docs" / "docstring_baseline.json"
 DEFAULT_PACKAGES = [
-    "bots", "strategies", "core", "brain", "obs", "funnel",
-    "backtest", "venues", "staking",
+    "bots",
+    "strategies",
+    "core",
+    "brain",
+    "obs",
+    "funnel",
+    "backtest",
+    "venues",
+    "staking",
 ]
 
 
@@ -141,7 +149,8 @@ def _severity(level: str) -> int:
 
 
 def _evaluate(
-    current: dict[str, list[dict]], baseline: dict,
+    current: dict[str, list[dict]],
+    baseline: dict,
 ) -> tuple[list[dict], dict]:
     new_baseline = {
         "per_module": dict(baseline.get("per_module", {})),
@@ -153,11 +162,16 @@ def _evaluate(
         cur_count = len(missing_list)
         prev = baseline.get("per_module", {}).get(module)
         level, delta = _classify(prev, cur_count)
-        diagnostics.append({
-            "module": module, "level": level, "delta": delta,
-            "current": cur_count, "baseline": prev,
-            "missing": missing_list,
-        })
+        diagnostics.append(
+            {
+                "module": module,
+                "level": level,
+                "delta": delta,
+                "current": cur_count,
+                "baseline": prev,
+                "missing": missing_list,
+            }
+        )
         # Ratchet DOWNWARDS only -- once we improve, hold the line
         if prev is None:
             new_baseline["per_module"][module] = cur_count
@@ -171,16 +185,21 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     p.add_argument(
-        "--packages", nargs="+", default=DEFAULT_PACKAGES,
+        "--packages",
+        nargs="+",
+        default=DEFAULT_PACKAGES,
         help="package directories to walk (default: all top-level eta_engine pkgs)",
     )
     p.add_argument(
-        "--list-only", action="store_true",
+        "--list-only",
+        action="store_true",
         help="just print all missing docstrings, no ratchet comparison",
     )
     p.add_argument("--no-update", action="store_true")
     p.add_argument(
-        "--max-show", type=int, default=10,
+        "--max-show",
+        type=int,
+        default=10,
         help="max worst-modules to show in output (default 10)",
     )
     args = p.parse_args(argv)
@@ -200,7 +219,8 @@ def main(argv: list[str] | None = None) -> int:
 
     baseline = (
         json.loads(args.baseline.read_text(encoding="utf-8"))
-        if args.baseline.exists() else {"per_module": {}, "samples": 0}
+        if args.baseline.exists()
+        else {"per_module": {}, "samples": 0}
     )
     diagnostics, new_baseline = _evaluate(current, baseline)
 
@@ -214,9 +234,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     # Sort by severity then by current count desc
     sorted_diag = sorted(
-        diagnostics, key=lambda d: (-_severity(d["level"]), -d["current"]),
+        diagnostics,
+        key=lambda d: (-_severity(d["level"]), -d["current"]),
     )
-    for d in sorted_diag[:args.max_show]:
+    for d in sorted_diag[: args.max_show]:
         if d["level"] == "SEED":
             print(f"  [SEED  ] {d['module']}: {d['current']} missing (baseline-seed)")
             continue
@@ -234,7 +255,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_update:
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
-            json.dumps(new_baseline, indent=2) + "\n", encoding="utf-8",
+            json.dumps(new_baseline, indent=2) + "\n",
+            encoding="utf-8",
         )
     return code
 

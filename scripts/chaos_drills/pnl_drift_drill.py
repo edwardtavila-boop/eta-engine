@@ -28,6 +28,7 @@ running state must re-initialize. The follow-on phase drives a second
 regime-break (stationary +0.10R baseline -> +0.80R breakout) to prove
 the reset was clean and the detector can fire an ``up`` alarm.
 """
+
 from __future__ import annotations
 
 import random
@@ -86,10 +87,7 @@ def drill_pnl_drift(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         return drill_result(
             "pnl_drift",
             passed=False,
-            details=(
-                f"detector did not reset after alarm: n={detector.n} "
-                f"running_mean={detector.running_mean}"
-            ),
+            details=(f"detector did not reset after alarm: n={detector.n} running_mean={detector.running_mean}"),
         )
 
     # Stationary baseline: 40 obs of ~+0.10R. No alarm allowed.
@@ -99,10 +97,7 @@ def drill_pnl_drift(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
             return drill_result(
                 "pnl_drift",
                 passed=False,
-                details=(
-                    f"post-reset baseline phase unexpectedly alarmed "
-                    f"at obs {i}: {got.direction}"
-                ),
+                details=(f"post-reset baseline phase unexpectedly alarmed at obs {i}: {got.direction}"),
             )
 
     # Regime break upward: 40 obs of ~+0.80R. Expect "up" alarm.
@@ -118,12 +113,9 @@ def drill_pnl_drift(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         return drill_result(
             "pnl_drift",
             passed=False,
-            details=(
-                f"post-reset up-drift did not fire an 'up' alarm within 40 "
-                f"obs (got {up_alarm!r})"
-            ),
+            details=(f"post-reset up-drift did not fire an 'up' alarm within 40 obs (got {up_alarm!r})"),
             observed={
-                "down_obs_idx":   dn_obs_idx,
+                "down_obs_idx": dn_obs_idx,
                 "down_cumulative": dn_alarm.cumulative,
             },
         )
@@ -133,9 +125,9 @@ def drill_pnl_drift(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         passed=True,
         details="down alarm fired; detector reset cleanly; up alarm also fired",
         observed={
-            "down_obs_idx":    dn_obs_idx,
-            "down_threshold":  dn_alarm.threshold,
-            "up_obs_idx":      up_obs_idx,
-            "up_direction":    up_alarm.direction,
+            "down_obs_idx": dn_obs_idx,
+            "down_threshold": dn_alarm.threshold,
+            "up_obs_idx": up_obs_idx,
+            "up_direction": up_alarm.direction,
         },
     )

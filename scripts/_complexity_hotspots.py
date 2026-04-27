@@ -28,6 +28,7 @@ Exit codes
 1  YELLOW -- 1..--max-yellow above threshold
 2  RED    -- >--max-yellow above threshold
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache",
-             ".cache", "node_modules", ".ruff_cache"}
+SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", ".cache", "node_modules", ".ruff_cache"}
 
 
 @dataclass
@@ -124,13 +124,16 @@ def _scan_file(path: Path) -> list[FuncScore]:
     out: list[FuncScore] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            n_lines = (
-                getattr(node, "end_lineno", node.lineno) - node.lineno + 1
+            n_lines = getattr(node, "end_lineno", node.lineno) - node.lineno + 1
+            out.append(
+                FuncScore(
+                    path=rel,
+                    line=node.lineno,
+                    name=node.name,
+                    score=_score_func(node),
+                    n_lines=n_lines,
+                )
             )
-            out.append(FuncScore(
-                path=rel, line=node.lineno, name=node.name,
-                score=_score_func(node), n_lines=n_lines,
-            ))
     return out
 
 
@@ -147,16 +150,14 @@ def _scan_all() -> list[FuncScore]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--top", type=int, default=20, help="show top N hotspots")
-    p.add_argument("--threshold", type=int, default=15,
-                   help="complexity threshold for YELLOW/RED (default 15)")
-    p.add_argument("--max-yellow", type=int, default=10,
-                   help="more than this many over threshold -> RED")
+    p.add_argument("--threshold", type=int, default=15, help="complexity threshold for YELLOW/RED (default 15)")
+    p.add_argument("--max-yellow", type=int, default=10, help="more than this many over threshold -> RED")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
     funcs = _scan_all()
     if args.json:
-        print(json.dumps([asdict(f) for f in funcs[:args.top]], indent=2))
+        print(json.dumps([asdict(f) for f in funcs[: args.top]], indent=2))
         return 0
 
     over = [f for f in funcs if f.score >= args.threshold]
@@ -169,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"  {'score':>5}  {'lines':>5}  {'function':<40}  location")
     print(f"  {'-' * 5}  {'-' * 5}  {'-' * 40}  {'-' * 40}")
-    for f in funcs[:args.top]:
+    for f in funcs[: args.top]:
         marker = "*" if f.score >= args.threshold else " "
         loc = f"{f.path}:{f.line}"
         print(f"  {f.score:>5}  {f.n_lines:>5}  {marker} {f.name[:38]:<40}  {loc}")

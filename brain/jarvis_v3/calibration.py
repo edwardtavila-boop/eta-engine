@@ -24,6 +24,7 @@ This module provides:
 
 Stdlib + pydantic only.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,14 +40,15 @@ if TYPE_CHECKING:
 
 class VerdictFeatures(BaseModel):
     """Scalar features consumed by the calibrator."""
+
     model_config = ConfigDict(frozen=True)
 
-    verdict:           str   = Field(min_length=1)
-    stress_composite:  float = Field(ge=0.0, le=1.0)
-    sizing_mult:       float = Field(ge=0.0, le=1.0, default=1.0)
-    session_phase:     str   = Field(default="OVERNIGHT")
-    binding_constraint: str  = Field(default="none")
-    event_within_1h:   bool  = Field(default=False)
+    verdict: str = Field(min_length=1)
+    stress_composite: float = Field(ge=0.0, le=1.0)
+    sizing_mult: float = Field(ge=0.0, le=1.0, default=1.0)
+    session_phase: str = Field(default="OVERNIGHT")
+    binding_constraint: str = Field(default="none")
+    event_within_1h: bool = Field(default=False)
 
 
 # Hand-picked coefficients that map a VerdictFeatures -> single scalar "score".
@@ -54,10 +56,10 @@ class VerdictFeatures(BaseModel):
 # "higher score = more likely correct verdict". After enough audit samples
 # accumulate, PlattSigmoid.fit() overwrites with learned coefficients.
 _PRIOR_COEFFS: dict[str, float] = {
-    "APPROVED":    +1.00,
+    "APPROVED": +1.00,
     "CONDITIONAL": +0.20,
-    "DEFERRED":    -0.10,
-    "DENIED":      -0.50,
+    "DEFERRED": -0.10,
+    "DENIED": -0.50,
 }
 
 
@@ -66,8 +68,8 @@ def _linear_score(f: VerdictFeatures) -> float:
     v_prior = _PRIOR_COEFFS.get(f.verdict.upper(), 0.0)
     score = (
         1.00 * v_prior
-        - 1.50 * f.stress_composite      # high stress -> wrong more often
-        + 0.50 * f.sizing_mult           # larger approved size -> more decisive
+        - 1.50 * f.stress_composite  # high stress -> wrong more often
+        + 0.50 * f.sizing_mult  # larger approved size -> more decisive
         + (-0.80 if f.event_within_1h else 0.0)  # event-adjacent is noisy
     )
     if f.session_phase in {"OVERNIGHT", "LUNCH"}:
@@ -79,6 +81,7 @@ def _linear_score(f: VerdictFeatures) -> float:
 
 class PlattSigmoid(BaseModel):
     """Two-parameter logistic sigmoid: p = 1 / (1 + exp(-(a*x + b)))."""
+
     model_config = ConfigDict(frozen=False)
 
     a: float = Field(default=1.0)
@@ -94,8 +97,7 @@ class PlattSigmoid(BaseModel):
         ez = math.exp(z)
         return ez / (1.0 + ez)
 
-    def fit(self, xs: list[float], ys: list[int], *, iters: int = 400,
-            lr: float = 0.1) -> None:
+    def fit(self, xs: list[float], ys: list[int], *, iters: int = 400, lr: float = 0.1) -> None:
         """Mini-batch gradient descent on negative log-likelihood.
 
         Uses full-batch since we expect small N. Doesn't need numpy.
@@ -125,16 +127,18 @@ class PlattSigmoid(BaseModel):
 
 class CalibratedVerdict(BaseModel):
     """Wraps v2 ActionResponse verdict + calibrated probability."""
+
     model_config = ConfigDict(frozen=True)
 
-    verdict:    str   = Field(min_length=1)
-    p_correct:  float = Field(ge=0.0, le=1.0)
-    score:      float
-    fit_samples: int  = Field(ge=0, default=0)
+    verdict: str = Field(min_length=1)
+    p_correct: float = Field(ge=0.0, le=1.0)
+    score: float
+    fit_samples: int = Field(ge=0, default=0)
 
 
 def calibrate_verdict(
-    features: VerdictFeatures, sigmoid: PlattSigmoid | None = None,
+    features: VerdictFeatures,
+    sigmoid: PlattSigmoid | None = None,
 ) -> CalibratedVerdict:
     """Return a calibrated verdict wrapper. Uses ``sigmoid`` if given,
     otherwise a bootstrapped one-parameter default (slope=1, intercept=0).
@@ -199,7 +203,8 @@ def fit_from_audit(
 
 
 def predict_batch(
-    features: Iterable[VerdictFeatures], sigmoid: PlattSigmoid | None = None,
+    features: Iterable[VerdictFeatures],
+    sigmoid: PlattSigmoid | None = None,
 ) -> list[CalibratedVerdict]:
     sg = sigmoid or PlattSigmoid()
     return [calibrate_verdict(f, sg) for f in features]

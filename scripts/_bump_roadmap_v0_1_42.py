@@ -93,6 +93,7 @@ moment it re-qualifies -- without a human editing
 ``DEFAULT_ELIGIBILITY``. The policy-router eligibility table is now
 DYNAMIC, OOS-GOVERNED, and CACHED.
 """
+
 from __future__ import annotations
 
 import json
@@ -146,31 +147,20 @@ def main() -> None:
                 "refreshed_at_utc)  -- frozen dataclass with as_dict()"
             ),
             "intersect_passing_with_base": (
-                "(report, *, base_eligibility=None, now=None) -> "
-                "AllowlistEntry  -- pure intersection helper"
+                "(report, *, base_eligibility=None, now=None) -> AllowlistEntry  -- pure intersection helper"
             ),
             "RuntimeAllowlistCache": (
-                "(ttl_seconds=DEFAULT_TTL_SECONDS, "
-                "base_eligibility=DEFAULT_ELIGIBILITY, "
-                "clock=datetime.now(UTC))"
+                "(ttl_seconds=DEFAULT_TTL_SECONDS, base_eligibility=DEFAULT_ELIGIBILITY, clock=datetime.now(UTC))"
             ),
-            "RuntimeAllowlistCache.update": (
-                "(report) -> AllowlistEntry  -- install fresh entry"
-            ),
-            "RuntimeAllowlistCache.get": (
-                "(asset) -> AllowlistEntry | None  -- None if missing/stale"
-            ),
+            "RuntimeAllowlistCache.update": ("(report) -> AllowlistEntry  -- install fresh entry"),
+            "RuntimeAllowlistCache.get": ("(asset) -> AllowlistEntry | None  -- None if missing/stale"),
             "RuntimeAllowlistCache.is_stale": "(asset) -> bool",
-            "RuntimeAllowlistCache.invalidate": (
-                "(asset=None) -> None  -- clear one or all entries"
-            ),
+            "RuntimeAllowlistCache.invalidate": ("(asset=None) -> None  -- clear one or all entries"),
             "RuntimeAllowlistCache.as_eligibility_map": (
-                "() -> dict[str, tuple[StrategyId, ...]]  -- ready for "
-                "dispatch(eligibility=...)"
+                "() -> dict[str, tuple[StrategyId, ...]]  -- ready for dispatch(eligibility=...)"
             ),
             "RuntimeAllowlistCache.ensure_fresh": (
-                "(asset, bars, *, qualifier=None, **kwargs) -> "
-                "AllowlistEntry  -- re-runs qualifier on miss/stale"
+                "(asset, bars, *, qualifier=None, **kwargs) -> AllowlistEntry  -- re-runs qualifier on miss/stale"
             ),
         },
         "design_notes": {
@@ -281,12 +271,13 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/runtime_allowlist.py + 34 tests. "
-          "Qualifier verdict is now the router's runtime eligibility "
-          "on a TTL cadence; curve-fit strategies drop out of dispatch "
-          "automatically.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/runtime_allowlist.py + 34 tests. "
+        "Qualifier verdict is now the router's runtime eligibility "
+        "on a TTL cadence; curve-fit strategies drop out of dispatch "
+        "automatically."
+    )
 
 
 if __name__ == "__main__":

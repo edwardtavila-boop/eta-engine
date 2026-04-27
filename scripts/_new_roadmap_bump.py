@@ -30,6 +30,7 @@ That's a maintenance smell -- one missed field and the roadmap gets
 inconsistent. A generator with a single source of truth makes the
 shape canonical.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -158,11 +159,7 @@ if __name__ == "__main__":
 def _next_version() -> str:
     """Find the highest v0.1.X bump script and return X+1 as a string."""
     pattern = re.compile(r"_bump_roadmap_v0_1_(\d+)\.py$")
-    nums = [
-        int(m.group(1))
-        for f in SCRIPTS_DIR.glob("_bump_roadmap_v0_1_*.py")
-        if (m := pattern.search(f.name))
-    ]
+    nums = [int(m.group(1)) for f in SCRIPTS_DIR.glob("_bump_roadmap_v0_1_*.py") if (m := pattern.search(f.name))]
     nxt = max(nums, default=0) + 1
     return f"0.1.{nxt}"
 
@@ -172,13 +169,15 @@ def _detect_tests() -> int:
     try:
         out = subprocess.run(
             ["python", "-m", "pytest", "--collect-only", "-q"],
-            cwd=ROOT, capture_output=True, text=True, check=False,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
             timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(
-            f"[new-bump] could not auto-detect tests: {exc!r}; "
-            f"using 0",
+            f"[new-bump] could not auto-detect tests: {exc!r}; using 0",
             file=sys.stderr,
         )
         return 0
@@ -240,8 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path = SCRIPTS_DIR / f"_bump_roadmap_v{version_us}.py"
     if out_path.exists() and not args.force:
         print(
-            f"[new-bump] {out_path.name} already exists; "
-            f"use --force to overwrite",
+            f"[new-bump] {out_path.name} already exists; use --force to overwrite",
             file=sys.stderr,
         )
         return 3

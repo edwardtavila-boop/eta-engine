@@ -19,6 +19,7 @@ asserts the reconciler emits the exact corrective actions:
 A silent regression here would let the bot double-fill or ignore
 venue truth on reconnect.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -40,7 +41,7 @@ __all__ = ["drill_order_state_reconcile"]
 def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
     """Verify the reconciler emits the expected action per divergence."""
     local = {
-        "coid_fill":   LocalOrder(
+        "coid_fill": LocalOrder(
             client_order_id="coid_fill",
             symbol="MNQ",
             status="OPEN",
@@ -56,7 +57,7 @@ def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG00
             filled_qty=0.0,
             venue_order_id="v_cancel",
         ),
-        "coid_ghost":  LocalOrder(
+        "coid_ghost": LocalOrder(
             client_order_id="coid_ghost",
             symbol="MNQ",
             status="OPEN",
@@ -66,7 +67,7 @@ def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG00
         ),
     }
     venue = {
-        "coid_fill":   VenueOrder(
+        "coid_fill": VenueOrder(
             venue_order_id="v_fill",
             client_order_id="coid_fill",
             symbol="MNQ",
@@ -96,9 +97,9 @@ def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG00
     kinds_by_coid = {a.client_order_id: a.kind for a in report.actions}
 
     expected = {
-        "coid_fill":   ReconcileActionKind.MARK_FILLED,
+        "coid_fill": ReconcileActionKind.MARK_FILLED,
         "coid_cancel": ReconcileActionKind.MARK_CANCELLED,
-        "coid_ghost":  ReconcileActionKind.MARK_CANCELLED,  # conservative=True
+        "coid_ghost": ReconcileActionKind.MARK_CANCELLED,  # conservative=True
         "coid_orphan": ReconcileActionKind.ACCEPT_VENUE,
     }
     mismatches: list[str] = []
@@ -126,7 +127,7 @@ def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG00
             passed=False,
             details="reconciler was not idempotent on re-run",
             observed={
-                "first":  {k: v.value for k, v in kinds_by_coid.items()},
+                "first": {k: v.value for k, v in kinds_by_coid.items()},
                 "second": {k: v.value for k, v in rerun_kinds.items()},
             },
         )
@@ -136,8 +137,8 @@ def drill_order_state_reconcile(sandbox: Path) -> dict[str, Any]:  # noqa: ARG00
         passed=True,
         details="reconciler produced MARK_FILLED / MARK_CANCELLED / ACCEPT_VENUE as expected and was idempotent",
         observed={
-            "actions":         {k: v.value for k, v in kinds_by_coid.items()},
-            "has_divergence":  report.has_divergence,
-            "n_actions":       len(report.actions),
+            "actions": {k: v.value for k, v in kinds_by_coid.items()},
+            "has_divergence": report.has_divergence,
+            "n_actions": len(report.actions),
         },
     )

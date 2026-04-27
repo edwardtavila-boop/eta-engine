@@ -66,6 +66,7 @@ v2:
     ``build_explanation``
   * ``JarvisMemory`` / ``JarvisContextEngine``
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -115,7 +116,8 @@ class EquitySnapshot(BaseModel):
     account_equity: float = Field(ge=0.0)
     daily_pnl: float
     daily_drawdown_pct: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Fraction of intraday high equity bled off. 0.02 = 2%.",
     )
     open_positions: int = Field(ge=0)
@@ -173,7 +175,8 @@ class JarvisAlert(BaseModel):
     )
     message: str = Field(min_length=1)
     severity: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="0 = gentle nudge, 1 = immediate action required.",
     )
 
@@ -192,7 +195,8 @@ class StressComponent(BaseModel):
 
 class StressScore(BaseModel):
     composite: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Weighted aggregate [0,1] -- 0 = all clear, 1 = maximal stress.",
     )
     components: list[StressComponent]
@@ -203,18 +207,19 @@ class StressScore(BaseModel):
 
 
 class SessionPhase(StrEnum):
-    OVERNIGHT = "OVERNIGHT"    # 16:00 -> 04:00 ET (globex chop)
-    PREMARKET = "PREMARKET"    # 04:00 -> 09:30 ET
+    OVERNIGHT = "OVERNIGHT"  # 16:00 -> 04:00 ET (globex chop)
+    PREMARKET = "PREMARKET"  # 04:00 -> 09:30 ET
     OPEN_DRIVE = "OPEN_DRIVE"  # 09:30 -> 10:30 ET (1st hour, high vol)
-    MORNING = "MORNING"        # 10:30 -> 12:00 ET
-    LUNCH = "LUNCH"            # 12:00 -> 13:30 ET (chop)
-    AFTERNOON = "AFTERNOON"    # 13:30 -> 15:30 ET
-    CLOSE = "CLOSE"            # 15:30 -> 16:00 ET (MOC)
+    MORNING = "MORNING"  # 10:30 -> 12:00 ET
+    LUNCH = "LUNCH"  # 12:00 -> 13:30 ET (chop)
+    AFTERNOON = "AFTERNOON"  # 13:30 -> 15:30 ET
+    CLOSE = "CLOSE"  # 15:30 -> 16:00 ET (MOC)
 
 
 class SizingHint(BaseModel):
     size_mult: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Suggested multiplier vs baseline risk. 1.0 = full size.",
     )
     reason: str = Field(min_length=1)
@@ -245,6 +250,7 @@ class JarvisMargins(BaseModel):
     All values in the native unit of the constraint. Positive = headroom,
     zero or negative = already breached.
     """
+
     dd_to_reduce: float = Field(
         description="DD_REDUCE_THRESHOLD - equity.daily_drawdown_pct",
     )
@@ -296,6 +302,20 @@ class JarvisContext(BaseModel):
     market_context_summary: dict[str, Any] | None = None
     market_context_summary_text: str | None = None
 
+    # v3 (2026-04-26) — JARVIS-as-admin needs phase / regime / bleed /
+    # gate-report state in context for the admin gate. Built via
+    # `eta_engine.brain.jarvis_session_state.snapshot()`. Optional so
+    # v1/v2 callers keep working.
+    session_state: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Denormalized SessionStateSnapshot.model_dump(mode='json') — "
+            "phase, freeze_label, slow_bleed_level, rolling_expectancy_r, "
+            "regime_composite, regime_label, gate_report_status, "
+            "trial_budget_remaining."
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Provider protocols
@@ -335,35 +355,35 @@ HOURS_TO_MAJOR_EVENT = 1.0  # stand aside 1h before FOMC/CPI
 OPEN_RISK_HARD_CAP_R = 3.0
 
 # v2 alert thresholds (fire BEFORE the rigid tier kicks in)
-DD_REDUCE_WARN_RATIO = 0.75        # warn at 75% of REDUCE threshold
-DD_STAND_ASIDE_WARN_RATIO = 0.85   # warn at 85% of STAND_ASIDE threshold
-DD_KILL_WARN_RATIO = 0.80          # warn at 80% of KILL threshold
-OVERRIDE_WARN_DELTA = 1            # warn when 1 below REVIEW threshold
-OPEN_RISK_WARN_RATIO = 0.80        # warn at 80% of cap
-HOURS_TO_EVENT_SOON = 4.0          # info at <4h to event
-HOURS_TO_EVENT_IMMINENT = 1.5      # warn at <1.5h
+DD_REDUCE_WARN_RATIO = 0.75  # warn at 75% of REDUCE threshold
+DD_STAND_ASIDE_WARN_RATIO = 0.85  # warn at 85% of STAND_ASIDE threshold
+DD_KILL_WARN_RATIO = 0.80  # warn at 80% of KILL threshold
+OVERRIDE_WARN_DELTA = 1  # warn when 1 below REVIEW threshold
+OPEN_RISK_WARN_RATIO = 0.80  # warn at 80% of cap
+HOURS_TO_EVENT_SOON = 4.0  # info at <4h to event
+HOURS_TO_EVENT_IMMINENT = 1.5  # warn at <1.5h
 
 # v2 stress component weights -- must sum to 1.0
 STRESS_WEIGHTS: dict[str, float] = {
-    "macro_event":  0.25,
-    "equity_dd":    0.25,
-    "open_risk":    0.15,
-    "regime_risk":  0.10,
-    "override_rate":0.10,
-    "autopilot":    0.07,
+    "macro_event": 0.25,
+    "equity_dd": 0.25,
+    "open_risk": 0.15,
+    "regime_risk": 0.10,
+    "override_rate": 0.10,
+    "autopilot": 0.07,
     "correlations": 0.05,
-    "macro_bias":   0.03,
+    "macro_bias": 0.03,
 }
 
 # v2 session-phase risk multipliers (applied to sizing hint)
 SESSION_SIZE_MULTIPLIERS: dict[SessionPhase, float] = {
-    SessionPhase.OVERNIGHT: 0.40,   # thin liquidity -- slash size
+    SessionPhase.OVERNIGHT: 0.40,  # thin liquidity -- slash size
     SessionPhase.PREMARKET: 0.70,
     SessionPhase.OPEN_DRIVE: 0.80,  # exciting but treacherous
     SessionPhase.MORNING: 1.00,
-    SessionPhase.LUNCH: 0.70,       # chop
+    SessionPhase.LUNCH: 0.70,  # chop
     SessionPhase.AFTERNOON: 0.95,
-    SessionPhase.CLOSE: 0.60,       # MOC noise
+    SessionPhase.CLOSE: 0.60,  # MOC noise
 }
 
 
@@ -402,8 +422,7 @@ def suggest_action(
     if equity.daily_drawdown_pct >= DD_KILL_THRESHOLD:
         return JarvisSuggestion(
             action=ActionSuggestion.KILL,
-            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} "
-                   f">= kill threshold {DD_KILL_THRESHOLD:.0%}",
+            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} >= kill threshold {DD_KILL_THRESHOLD:.0%}",
             confidence=1.0,
             warnings=["stop trading now"],
         )
@@ -416,8 +435,7 @@ def suggest_action(
     ):
         return JarvisSuggestion(
             action=ActionSuggestion.STAND_ASIDE,
-            reason=f"macro event '{macro.next_event_label}' in "
-                   f"{macro.hours_until_next_event:.1f}h",
+            reason=f"macro event '{macro.next_event_label}' in {macro.hours_until_next_event:.1f}h",
             confidence=0.9,
             warnings=["no new entries until event resolves"],
         )
@@ -433,8 +451,7 @@ def suggest_action(
     if equity.daily_drawdown_pct >= DD_STAND_ASIDE_THRESHOLD:
         return JarvisSuggestion(
             action=ActionSuggestion.STAND_ASIDE,
-            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} "
-                   f">= {DD_STAND_ASIDE_THRESHOLD:.0%}",
+            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} >= {DD_STAND_ASIDE_THRESHOLD:.0%}",
             confidence=0.85,
             warnings=["cooldown recommended"],
         )
@@ -442,16 +459,14 @@ def suggest_action(
         warnings.append(f"dd {equity.daily_drawdown_pct:.2%} -- half size")
         return JarvisSuggestion(
             action=ActionSuggestion.REDUCE,
-            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} "
-                   f">= reduce threshold {DD_REDUCE_THRESHOLD:.0%}",
+            reason=f"daily drawdown {equity.daily_drawdown_pct:.2%} >= reduce threshold {DD_REDUCE_THRESHOLD:.0%}",
             confidence=0.75,
             warnings=warnings,
         )
     if equity.open_risk_r > OPEN_RISK_HARD_CAP_R:
         return JarvisSuggestion(
             action=ActionSuggestion.REDUCE,
-            reason=f"open risk {equity.open_risk_r:.2f}R "
-                   f"> cap {OPEN_RISK_HARD_CAP_R}R",
+            reason=f"open risk {equity.open_risk_r:.2f}R > cap {OPEN_RISK_HARD_CAP_R}R",
             confidence=0.8,
             warnings=["trim positions to restore headroom"],
         )
@@ -475,8 +490,7 @@ def suggest_action(
         return JarvisSuggestion(
             action=ActionSuggestion.REVIEW,
             reason=f"regime flipped to {regime.regime}"
-                   + (f" from {regime.previous_regime}"
-                      if regime.previous_regime else ""),
+            + (f" from {regime.previous_regime}" if regime.previous_regime else ""),
             confidence=0.7,
             warnings=["playbook may have changed"],
         )
@@ -497,10 +511,7 @@ def suggest_action(
         if market_regime == "RISK_OFF" or market_quality <= 3.5:
             return JarvisSuggestion(
                 action=ActionSuggestion.REDUCE,
-                reason=(
-                    f"market context {market_regime.lower()} "
-                    f"(quality {market_quality:.1f})"
-                ),
+                reason=(f"market context {market_regime.lower()} (quality {market_quality:.1f})"),
                 confidence=0.72,
                 warnings=["market context weak", "size down"],
             )
@@ -510,10 +521,7 @@ def suggest_action(
             )
             return JarvisSuggestion(
                 action=ActionSuggestion.TRADE,
-                reason=(
-                    f"market context {market_regime.lower()} "
-                    f"(quality {market_quality:.1f})"
-                ),
+                reason=(f"market context {market_regime.lower()} (quality {market_quality:.1f})"),
                 confidence=0.76,
                 warnings=warnings,
             )
@@ -558,29 +566,41 @@ def compute_stress_score(
     else:
         hours = max(0.0, macro.hours_until_next_event)
         macro_event_raw = _clamp01(1.0 - hours / 6.0)
-    components.append(StressComponent(
-        name="macro_event", value=macro_event_raw,
-        weight=weights["macro_event"],
-        note=(
-            f"event in {macro.hours_until_next_event:.1f}h"
-            if macro.hours_until_next_event is not None else "no event"
-        ),
-    ))
+    components.append(
+        StressComponent(
+            name="macro_event",
+            value=macro_event_raw,
+            weight=weights["macro_event"],
+            note=(
+                f"event in {macro.hours_until_next_event:.1f}h"
+                if macro.hours_until_next_event is not None
+                else "no event"
+            ),
+        )
+    )
 
     # 2) equity_dd: linear ramp from 0 (0% dd) to 1 (>= KILL threshold).
     dd = equity.daily_drawdown_pct
     dd_raw = _clamp01(dd / DD_KILL_THRESHOLD)
-    components.append(StressComponent(
-        name="equity_dd", value=dd_raw, weight=weights["equity_dd"],
-        note=f"dd {dd:.2%}",
-    ))
+    components.append(
+        StressComponent(
+            name="equity_dd",
+            value=dd_raw,
+            weight=weights["equity_dd"],
+            note=f"dd {dd:.2%}",
+        )
+    )
 
     # 3) open_risk: linear ramp from 0 (0R) to 1 (>= OPEN_RISK_HARD_CAP_R * 1.5).
     or_raw = _clamp01(equity.open_risk_r / (OPEN_RISK_HARD_CAP_R * 1.5))
-    components.append(StressComponent(
-        name="open_risk", value=or_raw, weight=weights["open_risk"],
-        note=f"{equity.open_risk_r:.2f}R",
-    ))
+    components.append(
+        StressComponent(
+            name="open_risk",
+            value=or_raw,
+            weight=weights["open_risk"],
+            note=f"{equity.open_risk_r:.2f}R",
+        )
+    )
 
     # 4) regime_risk: CRISIS=1.0; flipped_recently=0.6; low confidence (<0.4)=0.3; else 0.
     reg_raw = 0.0
@@ -594,34 +614,50 @@ def compute_stress_score(
     elif regime.confidence < 0.4:
         reg_raw = 0.3
         reg_note = f"low conf {regime.confidence:.0%}"
-    components.append(StressComponent(
-        name="regime_risk", value=reg_raw, weight=weights["regime_risk"],
-        note=reg_note,
-    ))
+    components.append(
+        StressComponent(
+            name="regime_risk",
+            value=reg_raw,
+            weight=weights["regime_risk"],
+            note=reg_note,
+        )
+    )
 
     # 5) override_rate: linear ramp from 0 (0 overrides) to 1 (2x threshold).
     ov_raw = _clamp01(
         journal.overrides_last_24h / (2.0 * OVERRIDE_REVIEW_THRESHOLD),
     )
-    components.append(StressComponent(
-        name="override_rate", value=ov_raw, weight=weights["override_rate"],
-        note=f"{journal.overrides_last_24h} in 24h",
-    ))
+    components.append(
+        StressComponent(
+            name="override_rate",
+            value=ov_raw,
+            weight=weights["override_rate"],
+            note=f"{journal.overrides_last_24h} in 24h",
+        )
+    )
 
     # 6) autopilot: ACTIVE=0; PAUSED=0.5; REQUIRE_ACK=1.
     ap_map = {"ACTIVE": 0.0, "PAUSED": 0.5, "REQUIRE_ACK": 1.0, "FROZEN": 1.0}
     ap_raw = ap_map.get(journal.autopilot_mode, 0.4)
-    components.append(StressComponent(
-        name="autopilot", value=ap_raw, weight=weights["autopilot"],
-        note=journal.autopilot_mode,
-    ))
+    components.append(
+        StressComponent(
+            name="autopilot",
+            value=ap_raw,
+            weight=weights["autopilot"],
+            note=journal.autopilot_mode,
+        )
+    )
 
     # 7) correlations: boolean alert -> 1, else 0.
     corr_raw = 1.0 if journal.correlations_alert else 0.0
-    components.append(StressComponent(
-        name="correlations", value=corr_raw, weight=weights["correlations"],
-        note="alert" if journal.correlations_alert else "clear",
-    ))
+    components.append(
+        StressComponent(
+            name="correlations",
+            value=corr_raw,
+            weight=weights["correlations"],
+            note="alert" if journal.correlations_alert else "clear",
+        )
+    )
 
     # 8) macro_bias: crisis=1.0; hawkish/dovish=0.2; neutral=0.
     mb = macro.macro_bias.lower()
@@ -631,10 +667,14 @@ def compute_stress_score(
         mb_raw = 0.2
     else:
         mb_raw = 0.0
-    components.append(StressComponent(
-        name="macro_bias", value=mb_raw, weight=weights["macro_bias"],
-        note=macro.macro_bias,
-    ))
+    components.append(
+        StressComponent(
+            name="macro_bias",
+            value=mb_raw,
+            weight=weights["macro_bias"],
+            note=macro.macro_bias,
+        )
+    )
 
     composite = sum(c.contribution for c in components)
     composite = _clamp01(composite)
@@ -799,153 +839,215 @@ def detect_alerts(
     # DD approaching each tier. Escalate with proximity.
     dd = equity.daily_drawdown_pct
     if dd >= DD_KILL_THRESHOLD:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.CRITICAL, code="dd_at_kill",
-            message=f"daily DD {dd:.2%} >= kill {DD_KILL_THRESHOLD:.0%} -- flatten now",
-            severity=1.0,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.CRITICAL,
+                code="dd_at_kill",
+                message=f"daily DD {dd:.2%} >= kill {DD_KILL_THRESHOLD:.0%} -- flatten now",
+                severity=1.0,
+            )
+        )
     elif dd >= DD_KILL_THRESHOLD * DD_KILL_WARN_RATIO:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.CRITICAL, code="dd_approaching_kill",
-            message=f"daily DD {dd:.2%} within {(1 - DD_KILL_WARN_RATIO) * 100:.0f}% of kill",
-            severity=0.9,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.CRITICAL,
+                code="dd_approaching_kill",
+                message=f"daily DD {dd:.2%} within {(1 - DD_KILL_WARN_RATIO) * 100:.0f}% of kill",
+                severity=0.9,
+            )
+        )
     elif dd >= DD_STAND_ASIDE_THRESHOLD:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="dd_at_stand_aside",
-            message=f"daily DD {dd:.2%} >= stand-aside {DD_STAND_ASIDE_THRESHOLD:.0%}",
-            severity=0.75,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="dd_at_stand_aside",
+                message=f"daily DD {dd:.2%} >= stand-aside {DD_STAND_ASIDE_THRESHOLD:.0%}",
+                severity=0.75,
+            )
+        )
     elif dd >= DD_STAND_ASIDE_THRESHOLD * DD_STAND_ASIDE_WARN_RATIO:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="dd_approaching_stand_aside",
-            message=f"daily DD {dd:.2%} nearing stand-aside {DD_STAND_ASIDE_THRESHOLD:.0%}",
-            severity=0.6,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="dd_approaching_stand_aside",
+                message=f"daily DD {dd:.2%} nearing stand-aside {DD_STAND_ASIDE_THRESHOLD:.0%}",
+                severity=0.6,
+            )
+        )
     elif dd >= DD_REDUCE_THRESHOLD:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="dd_at_reduce",
-            message=f"daily DD {dd:.2%} >= reduce {DD_REDUCE_THRESHOLD:.0%}",
-            severity=0.5,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="dd_at_reduce",
+                message=f"daily DD {dd:.2%} >= reduce {DD_REDUCE_THRESHOLD:.0%}",
+                severity=0.5,
+            )
+        )
     elif dd >= DD_REDUCE_THRESHOLD * DD_REDUCE_WARN_RATIO:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.INFO, code="dd_approaching_reduce",
-            message=f"daily DD {dd:.2%} nearing reduce {DD_REDUCE_THRESHOLD:.0%}",
-            severity=0.3,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.INFO,
+                code="dd_approaching_reduce",
+                message=f"daily DD {dd:.2%} nearing reduce {DD_REDUCE_THRESHOLD:.0%}",
+                severity=0.3,
+            )
+        )
 
     # Open risk approaching cap
     if equity.open_risk_r > OPEN_RISK_HARD_CAP_R:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="open_risk_over_cap",
-            message=f"open risk {equity.open_risk_r:.2f}R over cap {OPEN_RISK_HARD_CAP_R}R",
-            severity=0.8,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="open_risk_over_cap",
+                message=f"open risk {equity.open_risk_r:.2f}R over cap {OPEN_RISK_HARD_CAP_R}R",
+                severity=0.8,
+            )
+        )
     elif equity.open_risk_r >= OPEN_RISK_HARD_CAP_R * OPEN_RISK_WARN_RATIO:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.INFO, code="open_risk_approaching_cap",
-            message=f"open risk {equity.open_risk_r:.2f}R nearing cap",
-            severity=0.4,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.INFO,
+                code="open_risk_approaching_cap",
+                message=f"open risk {equity.open_risk_r:.2f}R nearing cap",
+                severity=0.4,
+            )
+        )
 
     # Overrides approaching review
     oth = OVERRIDE_REVIEW_THRESHOLD
     if journal.overrides_last_24h >= oth:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="overrides_at_review",
-            message=f"{journal.overrides_last_24h} overrides in 24h -- review",
-            severity=0.6,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="overrides_at_review",
+                message=f"{journal.overrides_last_24h} overrides in 24h -- review",
+                severity=0.6,
+            )
+        )
     elif journal.overrides_last_24h >= oth - OVERRIDE_WARN_DELTA:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.INFO, code="overrides_approaching_review",
-            message=f"{journal.overrides_last_24h} overrides in 24h -- 1 from review",
-            severity=0.35,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.INFO,
+                code="overrides_approaching_review",
+                message=f"{journal.overrides_last_24h} overrides in 24h -- 1 from review",
+                severity=0.35,
+            )
+        )
 
     # Macro event proximity
     hrs = macro.hours_until_next_event
     label = macro.next_event_label
     if hrs is not None and label:
         if hrs <= HOURS_TO_MAJOR_EVENT:
-            alerts.append(JarvisAlert(
-                level=AlertLevel.CRITICAL, code="macro_event_imminent",
-                message=f"{label} in {hrs:.1f}h -- stand aside",
-                severity=0.9,
-            ))
+            alerts.append(
+                JarvisAlert(
+                    level=AlertLevel.CRITICAL,
+                    code="macro_event_imminent",
+                    message=f"{label} in {hrs:.1f}h -- stand aside",
+                    severity=0.9,
+                )
+            )
         elif hrs <= HOURS_TO_EVENT_IMMINENT:
-            alerts.append(JarvisAlert(
-                level=AlertLevel.WARN, code="macro_event_soon",
-                message=f"{label} in {hrs:.1f}h -- size down",
-                severity=0.6,
-            ))
+            alerts.append(
+                JarvisAlert(
+                    level=AlertLevel.WARN,
+                    code="macro_event_soon",
+                    message=f"{label} in {hrs:.1f}h -- size down",
+                    severity=0.6,
+                )
+            )
         elif hrs <= HOURS_TO_EVENT_SOON:
-            alerts.append(JarvisAlert(
-                level=AlertLevel.INFO, code="macro_event_upcoming",
-                message=f"{label} in {hrs:.1f}h",
-                severity=0.3,
-            ))
+            alerts.append(
+                JarvisAlert(
+                    level=AlertLevel.INFO,
+                    code="macro_event_upcoming",
+                    message=f"{label} in {hrs:.1f}h",
+                    severity=0.3,
+                )
+            )
 
     # Regime flip
     if regime.flipped_recently:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="regime_flipped",
-            message=f"regime flipped -> {regime.regime}"
-                    + (f" (from {regime.previous_regime})"
-                       if regime.previous_regime else ""),
-            severity=0.5,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="regime_flipped",
+                message=f"regime flipped -> {regime.regime}"
+                + (f" (from {regime.previous_regime})" if regime.previous_regime else ""),
+                severity=0.5,
+            )
+        )
     elif regime.confidence < 0.4:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.INFO, code="regime_low_confidence",
-            message=f"regime {regime.regime} low conf {regime.confidence:.0%}",
-            severity=0.25,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.INFO,
+                code="regime_low_confidence",
+                message=f"regime {regime.regime} low conf {regime.confidence:.0%}",
+                severity=0.25,
+            )
+        )
 
     # Autopilot state
     if journal.autopilot_mode == "REQUIRE_ACK":
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="autopilot_require_ack",
-            message="watchdog requires ack on a stale position",
-            severity=0.7,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="autopilot_require_ack",
+                message="watchdog requires ack on a stale position",
+                severity=0.7,
+            )
+        )
     elif journal.autopilot_mode == "FROZEN":
-        alerts.append(JarvisAlert(
-            level=AlertLevel.CRITICAL, code="autopilot_frozen",
-            message="autopilot frozen after force-flatten",
-            severity=1.0,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.CRITICAL,
+                code="autopilot_frozen",
+                message="autopilot frozen after force-flatten",
+                severity=1.0,
+            )
+        )
     elif journal.autopilot_mode not in {"ACTIVE"}:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.INFO, code="autopilot_non_standard_mode",
-            message=f"autopilot_mode={journal.autopilot_mode}",
-            severity=0.2,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.INFO,
+                code="autopilot_non_standard_mode",
+                message=f"autopilot_mode={journal.autopilot_mode}",
+                severity=0.2,
+            )
+        )
 
     # Correlations
     if journal.correlations_alert:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.WARN, code="correlations_alert",
-            message="correlation cluster active -- trim concentrated exposure",
-            severity=0.55,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.WARN,
+                code="correlations_alert",
+                message="correlation cluster active -- trim concentrated exposure",
+                severity=0.55,
+            )
+        )
 
     # Kill switch
     if journal.kill_switch_active:
-        alerts.append(JarvisAlert(
-            level=AlertLevel.CRITICAL, code="kill_switch_active",
-            message="kill switch is ACTIVE -- manual reset required",
-            severity=1.0,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.CRITICAL,
+                code="kill_switch_active",
+                message="kill switch is ACTIVE -- manual reset required",
+                severity=1.0,
+            )
+        )
 
     # Crisis macro bias (independent of event proximity)
     if macro.macro_bias.lower() == "crisis":
-        alerts.append(JarvisAlert(
-            level=AlertLevel.CRITICAL, code="macro_bias_crisis",
-            message="macro_bias=CRISIS -- defensive stance",
-            severity=0.85,
-        ))
+        alerts.append(
+            JarvisAlert(
+                level=AlertLevel.CRITICAL,
+                code="macro_bias_crisis",
+                message="macro_bias=CRISIS -- defensive stance",
+                severity=0.85,
+            )
+        )
 
     # Sort by severity descending for operator readability.
     alerts.sort(key=lambda a: a.severity, reverse=True)
@@ -1018,8 +1120,7 @@ def build_playbook(
     if suggestion.action == ActionSuggestion.TRADE and stress is not None:
         if stress.composite >= 0.4:
             base.append(
-                f"stress {stress.composite:.0%} -- tighten stops and "
-                "cut size vs normal",
+                f"stress {stress.composite:.0%} -- tighten stops and cut size vs normal",
             )
         base.append(f"binding constraint: {stress.binding_constraint}")
 
@@ -1050,31 +1151,20 @@ def build_explanation(
     """One-paragraph operator-grade summary of why Jarvis says what it says."""
     parts: list[str] = []
     parts.append(
-        f"Jarvis says {suggestion.action.value} "
-        f"(confidence {suggestion.confidence:.0%}) because {suggestion.reason}."
+        f"Jarvis says {suggestion.action.value} (confidence {suggestion.confidence:.0%}) because {suggestion.reason}."
     )
-    parts.append(
-        f"Composite stress is {stress.composite:.0%}, "
-        f"dominated by {stress.binding_constraint}."
-    )
+    parts.append(f"Composite stress is {stress.composite:.0%}, dominated by {stress.binding_constraint}.")
     # Margins to the next DD tier that hasn't fired yet.
     if margins.dd_to_kill > 0 and margins.dd_to_stand_aside <= 0:
-        parts.append(
-            f"Already past stand-aside; {margins.dd_to_kill * 100:.2f}% to kill."
-        )
+        parts.append(f"Already past stand-aside; {margins.dd_to_kill * 100:.2f}% to kill.")
     elif margins.dd_to_stand_aside > 0 and margins.dd_to_reduce <= 0:
-        parts.append(
-            f"In REDUCE range; {margins.dd_to_stand_aside * 100:.2f}% "
-            "of headroom before stand-aside."
-        )
+        parts.append(f"In REDUCE range; {margins.dd_to_stand_aside * 100:.2f}% of headroom before stand-aside.")
     elif margins.dd_to_reduce > 0:
         parts.append(
             f"DD headroom: {margins.dd_to_reduce * 100:.2f}% before REDUCE, "
             f"{margins.dd_to_stand_aside * 100:.2f}% before STAND_ASIDE."
         )
-    parts.append(
-        f"Session {session.value}. Suggested size {sizing.size_mult:.0%}."
-    )
+    parts.append(f"Session {session.value}. Suggested size {sizing.size_mult:.0%}.")
     return " ".join(parts)
 
 
@@ -1115,7 +1205,11 @@ def build_snapshot(
     margins = compute_margins(equity, journal)
     playbook = build_playbook(suggestion, stress=stress, session=session)
     explanation = build_explanation(
-        suggestion, stress, margins, session, sizing,
+        suggestion,
+        stress,
+        margins,
+        session,
+        sizing,
     )
     merged_notes = list(notes or [])
     if market_context:
@@ -1209,8 +1303,8 @@ class JarvisContextBuilder:
 # ---------------------------------------------------------------------------
 
 
-_TRAJ_EPS_DD = 0.0025      # 0.25% DD delta counts as movement
-_TRAJ_EPS_STRESS = 0.05    # 5-point stress delta counts as movement
+_TRAJ_EPS_DD = 0.0025  # 0.25% DD delta counts as movement
+_TRAJ_EPS_STRESS = 0.05  # 5-point stress delta counts as movement
 
 
 def _trajectory(series: list[float], eps: float) -> TrajectoryState:
@@ -1255,10 +1349,7 @@ class JarvisMemory:
         if len(self._buf) < 2:
             return Trajectory()
         dd_series = [c.equity.daily_drawdown_pct for c in self._buf]
-        stress_series = [
-            (c.stress_score.composite if c.stress_score else 0.0)
-            for c in self._buf
-        ]
+        stress_series = [(c.stress_score.composite if c.stress_score else 0.0) for c in self._buf]
         first = self._buf[0].ts
         last = self._buf[-1].ts
         window = (last - first).total_seconds()
@@ -1281,13 +1372,14 @@ def _as_macro_provider(obj: object) -> MacroProvider:
     if isinstance(obj, MacroProvider):
         return obj
     if callable(obj):
+
         class _MacroAdapter:
             def get_macro(self) -> MacroSnapshot:
                 return obj()
+
         return _MacroAdapter()
     raise TypeError(
-        "macro_provider must be a MacroProvider or a callable returning "
-        "MacroSnapshot",
+        "macro_provider must be a MacroProvider or a callable returning MacroSnapshot",
     )
 
 
@@ -1295,13 +1387,14 @@ def _as_equity_provider(obj: object) -> EquityProvider:
     if isinstance(obj, EquityProvider):
         return obj
     if callable(obj):
+
         class _EquityAdapter:
             def get_equity(self) -> EquitySnapshot:
                 return obj()
+
         return _EquityAdapter()
     raise TypeError(
-        "equity_provider must be an EquityProvider or a callable returning "
-        "EquitySnapshot",
+        "equity_provider must be an EquityProvider or a callable returning EquitySnapshot",
     )
 
 
@@ -1309,13 +1402,14 @@ def _as_regime_provider(obj: object) -> RegimeProvider:
     if isinstance(obj, RegimeProvider):
         return obj
     if callable(obj):
+
         class _RegimeAdapter:
             def get_regime(self) -> RegimeSnapshot:
                 return obj()
+
         return _RegimeAdapter()
     raise TypeError(
-        "regime_provider must be a RegimeProvider or a callable returning "
-        "RegimeSnapshot",
+        "regime_provider must be a RegimeProvider or a callable returning RegimeSnapshot",
     )
 
 
@@ -1323,13 +1417,14 @@ def _as_journal_provider(obj: object) -> JournalProvider:
     if isinstance(obj, JournalProvider):
         return obj
     if callable(obj):
+
         class _JournalAdapter:
             def get_journal_snapshot(self) -> JournalSnapshot:
                 return obj()
+
         return _JournalAdapter()
     raise TypeError(
-        "journal_provider must be a JournalProvider or a callable returning "
-        "JournalSnapshot",
+        "journal_provider must be a JournalProvider or a callable returning JournalSnapshot",
     )
 
 
@@ -1382,8 +1477,7 @@ class JarvisContextEngine:
             ]
             if missing:
                 raise TypeError(
-                    "JarvisContextEngine requires either builder= or all "
-                    f"four provider kwargs; missing: {missing}",
+                    f"JarvisContextEngine requires either builder= or all four provider kwargs; missing: {missing}",
                 )
             builder = JarvisContextBuilder(
                 macro_provider=_as_macro_provider(macro_provider),
@@ -1405,5 +1499,32 @@ class JarvisContextEngine:
         traj = self.memory.trajectory()
         if traj.samples > 0:
             ctx = ctx.model_copy(update={"trajectory": traj})
+        # v3.5 upgrade #10 (2026-04-26) — auto-populate session_state on
+        # every tick so downstream consumers (jarvis_admin.evaluate_request)
+        # never see a stale or absent snapshot. Failures here must NEVER
+        # raise — falling back to None keeps v1/v2 callers working.
+        if ctx.session_state is None:
+            try:
+                from eta_engine.brain.jarvis_session_state import snapshot
+
+                snap = snapshot()
+                ctx = ctx.model_copy(
+                    update={
+                        "session_state": snap.model_dump(mode="json"),
+                    }
+                )
+                # v3.6 upgrade #14 — append the snapshot to the state
+                # journal so post-hoc audit can replay "what did JARVIS
+                # know at this ts?". Best-effort — never blocks the tick.
+                try:
+                    from eta_engine.brain.jarvis_state_journal import (
+                        JarvisStateJournal,
+                    )
+
+                    JarvisStateJournal().append(snap)
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
         self.memory.append(ctx)
         return ctx

@@ -4,6 +4,7 @@ Covers the regime-selectivity gate logic in isolation (no engine run
 required) plus one full end-to-end smoke test that exercises the
 whole script and confirms the artifacts land.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,23 +27,31 @@ if TYPE_CHECKING:
 
 def _regime_body(
     *,
-    is_exp: float = 0.5, is_trades: int = 40,
-    oos_exp: float = 0.5, oos_trades: int = 25,
+    is_exp: float = 0.5,
+    is_trades: int = 40,
+    oos_exp: float = 0.5,
+    oos_trades: int = 25,
 ) -> dict:
     return {
         "expected_label": "TRENDING",
         "classifier_label_for_axes": "TRENDING",
         "label_axes_agree": True,
         "is": {
-            "trades": is_trades, "expectancy_r": is_exp,
-            "win_rate": 0.6, "profit_factor": 2.0,
-            "sharpe": 1.5, "max_dd_pct": 5.0,
+            "trades": is_trades,
+            "expectancy_r": is_exp,
+            "win_rate": 0.6,
+            "profit_factor": 2.0,
+            "sharpe": 1.5,
+            "max_dd_pct": 5.0,
             "total_return_pct": 15.0,
         },
         "oos": {
-            "trades": oos_trades, "expectancy_r": oos_exp,
-            "win_rate": 0.55, "profit_factor": 1.8,
-            "sharpe": 1.2, "max_dd_pct": 6.0,
+            "trades": oos_trades,
+            "expectancy_r": oos_exp,
+            "win_rate": 0.55,
+            "profit_factor": 1.8,
+            "sharpe": 1.2,
+            "max_dd_pct": 6.0,
             "total_return_pct": 10.0,
         },
         "degradation_r": rcr._degradation(is_exp, oos_exp),
@@ -57,10 +66,16 @@ def _regime_body(
 def test_gate_passes_with_one_robust_regime() -> None:
     per = {
         "TRENDING": _regime_body(
-            is_exp=1.0, is_trades=50, oos_exp=1.0, oos_trades=25,
+            is_exp=1.0,
+            is_trades=50,
+            oos_exp=1.0,
+            oos_trades=25,
         ),
         "RANGING": _regime_body(
-            is_exp=0.05, is_trades=30, oos_exp=0.04, oos_trades=12,
+            is_exp=0.05,
+            is_trades=30,
+            oos_exp=0.04,
+            oos_trades=12,
         ),
     }
     passed, gate = rcr._apply_gate(per)
@@ -72,10 +87,16 @@ def test_gate_passes_with_one_robust_regime() -> None:
 def test_gate_fails_when_no_regime_meets_bar() -> None:
     per = {
         "RANGING": _regime_body(
-            is_exp=0.05, is_trades=30, oos_exp=0.05, oos_trades=10,
+            is_exp=0.05,
+            is_trades=30,
+            oos_exp=0.05,
+            oos_trades=10,
         ),
         "LOW_VOL": _regime_body(
-            is_exp=0.10, is_trades=30, oos_exp=0.08, oos_trades=12,
+            is_exp=0.10,
+            is_trades=30,
+            oos_exp=0.08,
+            oos_trades=12,
         ),
     }
     passed, gate = rcr._apply_gate(per)
@@ -87,10 +108,16 @@ def test_gate_fails_when_no_regime_meets_bar() -> None:
 def test_gate_fails_on_sign_flip_overfit() -> None:
     per = {
         "TRENDING": _regime_body(
-            is_exp=1.0, is_trades=50, oos_exp=1.0, oos_trades=25,
+            is_exp=1.0,
+            is_trades=50,
+            oos_exp=1.0,
+            oos_trades=25,
         ),
         "HIGH_VOL": _regime_body(
-            is_exp=0.30, is_trades=40, oos_exp=-0.40, oos_trades=15,
+            is_exp=0.30,
+            is_trades=40,
+            oos_exp=-0.40,
+            oos_trades=15,
         ),
     }
     passed, gate = rcr._apply_gate(per)
@@ -105,10 +132,16 @@ def test_gate_tolerates_selectivity_without_sign_flip() -> None:
     # regime-selective. Shouldn't red-flag.
     per = {
         "TRENDING": _regime_body(
-            is_exp=1.0, is_trades=50, oos_exp=1.0, oos_trades=25,
+            is_exp=1.0,
+            is_trades=50,
+            oos_exp=1.0,
+            oos_trades=25,
         ),
         "RANGING": _regime_body(
-            is_exp=0.40, is_trades=40, oos_exp=0.05, oos_trades=15,
+            is_exp=0.40,
+            is_trades=40,
+            oos_exp=0.05,
+            oos_trades=15,
         ),
     }
     passed, gate = rcr._apply_gate(per)
@@ -119,10 +152,16 @@ def test_gate_tolerates_selectivity_without_sign_flip() -> None:
 def test_gate_reports_non_tradeable_reasons_explicitly() -> None:
     per = {
         "TRENDING": _regime_body(
-            is_exp=1.0, is_trades=50, oos_exp=1.0, oos_trades=25,
+            is_exp=1.0,
+            is_trades=50,
+            oos_exp=1.0,
+            oos_trades=25,
         ),
         "RANGING": _regime_body(
-            is_exp=0.30, is_trades=40, oos_exp=0.05, oos_trades=12,
+            is_exp=0.30,
+            is_trades=40,
+            oos_exp=0.05,
+            oos_trades=12,
         ),
     }
     _, gate = rcr._apply_gate(per)
@@ -173,11 +212,11 @@ def test_split_bars_70_30() -> None:
 
 def test_regime_specs_axes_classify_correctly() -> None:
     from eta_engine.brain.regime import classify_regime  # noqa: PLC0415
+
     for spec in rcr._specs():
         actual = classify_regime(spec.axes)
         assert actual == spec.expected_label, (
-            f"{spec.name} axes classify as {actual.value}, "
-            f"expected {spec.expected_label.value}"
+            f"{spec.name} axes classify as {actual.value}, expected {spec.expected_label.value}"
         )
 
 
@@ -192,17 +231,18 @@ def test_full_run_writes_artifacts_and_exits_cleanly(tmp_path: Path) -> None:
     # Run the script; it writes into eta_engine/docs/cross_regime/
     result = subprocess.run(
         [
-            sys.executable, "-m",
+            sys.executable,
+            "-m",
             "eta_engine.scripts.run_cross_regime_validation",
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
         cwd=str(_repo_root()),
     )
     # Exit 0 or 2 (PASS or gate FAIL) both indicate the harness RAN
     # correctly. Exit 3 would mean internal error.
-    assert result.returncode in (0, 2), (
-        f"returncode={result.returncode}, stderr={result.stderr[:500]}"
-    )
+    assert result.returncode in (0, 2), f"returncode={result.returncode}, stderr={result.stderr[:500]}"
     assert "cross-regime validation:" in result.stdout
 
     # Artifacts landed under eta_engine/docs/cross_regime/
@@ -215,7 +255,10 @@ def test_full_run_writes_artifacts_and_exits_cleanly(tmp_path: Path) -> None:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["spec_id"] == "CROSS_REGIME_OOS_v1"
     assert set(payload["per_regime"].keys()) == {
-        "TRENDING", "RANGING", "HIGH_VOL", "LOW_VOL",
+        "TRENDING",
+        "RANGING",
+        "HIGH_VOL",
+        "LOW_VOL",
     }
     # Every regime must report both IS and OOS summaries
     for rg, body in payload["per_regime"].items():
@@ -228,4 +271,5 @@ def test_full_run_writes_artifacts_and_exits_cleanly(tmp_path: Path) -> None:
 def _repo_root() -> Path:
     """Return the Base/ directory (parent of eta_engine/)."""
     from pathlib import Path  # noqa: PLC0415
+
     return Path(__file__).resolve().parents[2]

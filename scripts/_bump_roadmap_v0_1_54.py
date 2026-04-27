@@ -62,6 +62,7 @@ Delta
   * tail_hedge.py extended (new Literal + new pricer function)
   * Ruff-clean on every new / modified file
 """
+
 from __future__ import annotations
 
 import json
@@ -142,13 +143,10 @@ def main() -> None:
                 "tail-hedge skeleton."
             ),
             "calendar_bisect": (
-                "O(log n) next_event / blackout_active via bisect. "
-                "High-impact tags: FOMC, CPI, PCE, NFP, ECB, etc."
+                "O(log n) next_event / blackout_active via bisect. High-impact tags: FOMC, CPI, PCE, NFP, ECB, etc."
             ),
             "synthetic_seeded": (
-                "Every scenario run with the same seed emits "
-                "byte-identical bars. Matches the CI replay "
-                "contract."
+                "Every scenario run with the same seed emits byte-identical bars. Matches the CI replay contract."
             ),
         },
         "tests_passing_before": prev_tests,
@@ -182,8 +180,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

@@ -261,9 +261,7 @@ def load_runtime_config(
     # We read the cushion out of the just-loaded kill_switch.yaml. Non-live
     # runs are exempt (paper / backtest can tolerate arbitrary cadence).
     cushion_usd = float(
-        ((cfg.kill_switch.get("tier_a", {}) or {})
-         .get("apex_eval_preemptive", {}) or {})
-        .get("cushion_usd", 500.0),
+        ((cfg.kill_switch.get("tier_a", {}) or {}).get("apex_eval_preemptive", {}) or {}).get("cushion_usd", 500.0),
     )
     validate_apex_tick_cadence(
         tick_interval_s=max(tick_interval_s, 1e-9),
@@ -281,51 +279,57 @@ class BotBinding:
     """Maps a bot name → go_state flag + factory + tier letter."""
 
     name: str
-    tier: str                          # "A" | "B"
-    flag: str                          # key in apex_go_state
-    factory: Callable[[], Any]         # lazy import inside factory
-    symbol: str                        # for logging + funding lookup
+    tier: str  # "A" | "B"
+    flag: str  # key in apex_go_state
+    factory: Callable[[], Any]  # lazy import inside factory
+    symbol: str  # for logging + funding lookup
 
 
 def _mk_mnq() -> Any:
     from eta_engine.bots.mnq.bot import MnqBot
+
     return MnqBot()
 
 
 def _mk_nq() -> Any:
     from eta_engine.bots.nq.bot import NqBot
+
     return NqBot()
 
 
 def _mk_crypto_seed() -> Any:
     from eta_engine.bots.crypto_seed.bot import CryptoSeedBot
+
     return CryptoSeedBot()
 
 
 def _mk_eth_perp() -> Any:
     from eta_engine.bots.eth_perp.bot import EthPerpBot
+
     return EthPerpBot()
 
 
 def _mk_sol_perp() -> Any:
     from eta_engine.bots.sol_perp.bot import SolPerpBot
+
     return SolPerpBot()
 
 
 def _mk_xrp_perp() -> Any:
     from eta_engine.bots.xrp_perp.bot import XrpPerpBot
+
     return XrpPerpBot()
 
 
 # The bindings live here (not in a YAML) because which bots exist is a
 # code-level decision; only *whether they run* is configurable.
 BOT_BINDINGS: list[BotBinding] = [
-    BotBinding("mnq",         "A", "tier_a_mnq_live",  _mk_mnq,         "MNQ"),
-    BotBinding("nq",          "A", "tier_a_nq_live",   _mk_nq,          "NQ"),
-    BotBinding("crypto_seed", "B", "tier_b_testnet",   _mk_crypto_seed, "BTCUSDT"),
-    BotBinding("eth_perp",    "B", "tier_b_mainnet",   _mk_eth_perp,    "ETHUSDT"),
-    BotBinding("sol_perp",    "B", "tier_b_mainnet",   _mk_sol_perp,    "SOLUSDT"),
-    BotBinding("xrp_perp",    "B", "tier_b_mainnet",   _mk_xrp_perp,    "XRPUSDT"),
+    BotBinding("mnq", "A", "tier_a_mnq_live", _mk_mnq, "MNQ"),
+    BotBinding("nq", "A", "tier_a_nq_live", _mk_nq, "NQ"),
+    BotBinding("crypto_seed", "B", "tier_b_testnet", _mk_crypto_seed, "BTCUSDT"),
+    BotBinding("eth_perp", "B", "tier_b_mainnet", _mk_eth_perp, "ETHUSDT"),
+    BotBinding("sol_perp", "B", "tier_b_mainnet", _mk_sol_perp, "SOLUSDT"),
+    BotBinding("xrp_perp", "B", "tier_b_mainnet", _mk_xrp_perp, "XRPUSDT"),
 ]
 
 
@@ -407,9 +411,7 @@ def build_apex_eval_snapshot(cfg: RuntimeConfig, snapshots: list[BotSnapshot]) -
     peak = sum(s.peak_equity_usd for s in ta)
     # cfg.tradovate is {} when tradovate.yaml is absent (DORMANT path);
     # the .get(..., 2500.0) fallback then yields the Apex-eval default.
-    trailing_dd = float(
-        (cfg.tradovate.get("apex_eval", {}) or {}).get("trailing_drawdown_usd", 2500.0)
-    )
+    trailing_dd = float((cfg.tradovate.get("apex_eval", {}) or {}).get("trailing_drawdown_usd", 2500.0))
     dd = max(0.0, peak - current)
     distance = max(0.0, trailing_dd - dd)
     return ApexEvalSnapshot(trailing_dd_limit_usd=trailing_dd, distance_to_limit_usd=distance)
@@ -541,12 +543,12 @@ def _synthetic_bar(symbol: str, i: int) -> dict[str, Any]:
         "symbol": symbol,
         "open": 100.0 + i * 0.01,
         "high": 100.5 + i * 0.01,
-        "low":  99.5 + i * 0.01,
+        "low": 99.5 + i * 0.01,
         "close": 100.25 + i * 0.01,
         "volume": 1000,
         "avg_volume": 1000,
         "orb_high": 0.0,
-        "orb_low":  0.0,
+        "orb_low": 0.0,
         "ema_21": 100.0,
         "adx_14": 22.0,
         "atr_14": 1.0,
@@ -705,15 +707,21 @@ class ApexRuntime:
             return 3
 
         bots_instantiated = self._instantiate_active_bots()
-        self._log(kind="runtime_start", meta={
-            "mode": "live" if (self.cfg.live and not self.cfg.dry_run) else "dry_run",
-            "active_bots": [b.name for b, _ in bots_instantiated],
-            "go_state": self.cfg.go_state,
-        })
-        self.dispatcher.send("runtime_start", {
-            "active_bots": [b.name for b, _ in bots_instantiated],
-            "live": self.cfg.live and not self.cfg.dry_run,
-        })
+        self._log(
+            kind="runtime_start",
+            meta={
+                "mode": "live" if (self.cfg.live and not self.cfg.dry_run) else "dry_run",
+                "active_bots": [b.name for b, _ in bots_instantiated],
+                "go_state": self.cfg.go_state,
+            },
+        )
+        self.dispatcher.send(
+            "runtime_start",
+            {
+                "active_bots": [b.name for b, _ in bots_instantiated],
+                "live": self.cfg.live and not self.cfg.dry_run,
+            },
+        )
 
         if not bots_instantiated:
             self._log(kind="no_active_bots", meta={"go_state": self.cfg.go_state})
@@ -739,7 +747,8 @@ class ApexRuntime:
                 await self.broker_equity_poller.start()
             except Exception as exc:  # pragma: no cover — defensive
                 logger.error(
-                    "broker_equity_poller.start failed: %s", exc,
+                    "broker_equity_poller.start failed: %s",
+                    exc,
                 )
 
         exit_code = 0
@@ -764,22 +773,17 @@ class ApexRuntime:
                         outcome = self.runtime_log_rotator.run()
                     except Exception as exc:  # pragma: no cover -- defensive
                         logger.warning(
-                            "runtime_log_rotator.run failed: %s", exc,
+                            "runtime_log_rotator.run failed: %s",
+                            exc,
                         )
                     else:
                         if any(outcome.values()):
                             self._log(
                                 kind="log_rotation",
                                 meta={
-                                    "rotated": [
-                                        str(p) for p in outcome["rotated"]
-                                    ],
-                                    "gzipped": [
-                                        str(p) for p in outcome["gzipped"]
-                                    ],
-                                    "pruned": [
-                                        str(p) for p in outcome["pruned"]
-                                    ],
+                                    "rotated": [str(p) for p in outcome["rotated"]],
+                                    "gzipped": [str(p) for p in outcome["gzipped"]],
+                                    "pruned": [str(p) for p in outcome["pruned"]],
                                 },
                             )
                 bar_i += 1
@@ -798,7 +802,8 @@ class ApexRuntime:
                     await self.broker_equity_poller.stop()
                 except Exception as exc:  # pragma: no cover — defensive
                     logger.error(
-                        "broker_equity_poller.stop failed: %s", exc,
+                        "broker_equity_poller.stop failed: %s",
+                        exc,
                     )
             for b, bot in bots_instantiated:
                 try:
@@ -859,19 +864,21 @@ class ApexRuntime:
         from eta_engine.core.eta_account_invariant import (
             validate_tier_a_aggregate_equity,
         )
+
         invariant_result = validate_tier_a_aggregate_equity(
             snapshots=snapshots,
             expected_account_size_usd=getattr(
-                self.cfg, "tier_a_account_size_usd", None,
+                self.cfg,
+                "tier_a_account_size_usd",
+                None,
             ),
         )
         prior_inv_verdict = self._last_tier_a_invariant_verdict
         self._last_tier_a_invariant_verdict = invariant_result.verdict
-        if not invariant_result.ok and (
-            prior_inv_verdict != invariant_result.verdict
-        ):
+        if not invariant_result.ok and (prior_inv_verdict != invariant_result.verdict):
             logger.warning(
-                "tier_a_invariant: %s", invariant_result.reason,
+                "tier_a_invariant: %s",
+                invariant_result.reason,
             )
             self.dispatcher.send(
                 "tier_a_invariant_violation",
@@ -911,7 +918,8 @@ class ApexRuntime:
                 )
             except Exception as exc:  # pragma: no cover — defensive
                 logger.error(
-                    "broker_equity_reconciler.reconcile failed: %s", exc,
+                    "broker_equity_reconciler.reconcile failed: %s",
+                    exc,
                 )
             else:
                 rec_reason = rec_result.reason
@@ -940,10 +948,7 @@ class ApexRuntime:
                     self._last_broker_drift_alert_ts = None
                 elif rec_result.is_in_drift_state:
                     last_ts = self._last_broker_drift_alert_ts
-                    if last_ts is not None and (
-                        now_mono - last_ts
-                        >= self.broker_drift_realert_interval_s
-                    ):
+                    if last_ts is not None and (now_mono - last_ts >= self.broker_drift_realert_interval_s):
                         drift_kind = "sustained"
                         self._last_broker_drift_alert_ts = now_mono
                 if drift_kind is not None:
@@ -991,9 +996,10 @@ class ApexRuntime:
                     )
             except Exception as exc:  # pragma: no cover — defensive
                 logger.error(
-                    "kill_switch_latch.record_verdict failed "
-                    "(action=%s scope=%s): %s",
-                    v.action.value, v.scope, exc,
+                    "kill_switch_latch.record_verdict failed (action=%s scope=%s): %s",
+                    v.action.value,
+                    v.scope,
+                    exc,
                 )
 
             rep = await apply_verdict(v, bots, self.router, self.dispatcher)
@@ -1019,26 +1025,23 @@ class ApexRuntime:
         # 17:00-CT rollover only; R4 closure in v0.1.59 adds the calendar.
         if self.consistency_guard is not None:
             today = apex_trading_day_iso_cme()
-            today_ta_pnl = float(
-                sum(
-                    s.session_realized_pnl_usd
-                    for s in snapshots
-                    if s.tier == "A"
-                )
-            )
+            today_ta_pnl = float(sum(s.session_realized_pnl_usd for s in snapshots if s.tier == "A"))
             try:
                 verdict = self.consistency_guard.record_intraday(
-                    today, today_ta_pnl,
+                    today,
+                    today_ta_pnl,
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.error(
-                    "consistency_guard.record_intraday failed: %s", exc,
+                    "consistency_guard.record_intraday failed: %s",
+                    exc,
                 )
             else:
                 prior = self._last_consistency_status
                 self._last_consistency_status = verdict.status
                 is_transition = (
-                    verdict.status in (
+                    verdict.status
+                    in (
                         ConsistencyStatus.WARNING,
                         ConsistencyStatus.VIOLATION,
                     )
@@ -1055,22 +1058,21 @@ class ApexRuntime:
                             "largest_day_usd": verdict.largest_day_usd,
                             "largest_day_date": verdict.largest_day_date,
                             "largest_day_ratio": verdict.largest_day_ratio,
-                            "total_net_profit_usd": (
-                                verdict.total_net_profit_usd
-                            ),
-                            "max_allowed_day_usd": (
-                                verdict.max_allowed_day_usd
-                            ),
+                            "total_net_profit_usd": (verdict.total_net_profit_usd),
+                            "max_allowed_day_usd": (verdict.max_allowed_day_usd),
                             "headroom_today_usd": verdict.headroom_today_usd,
                             "today_pnl_usd": verdict.today_pnl_usd,
                         },
                     )
-                    self._log(kind="consistency_status", meta={
-                        "status": verdict.status.value,
-                        "today_pnl_usd": verdict.today_pnl_usd,
-                        "largest_day_usd": verdict.largest_day_usd,
-                        "ratio": verdict.largest_day_ratio,
-                    })
+                    self._log(
+                        kind="consistency_status",
+                        meta={
+                            "status": verdict.status.value,
+                            "today_pnl_usd": verdict.today_pnl_usd,
+                            "largest_day_usd": verdict.largest_day_usd,
+                            "ratio": verdict.largest_day_ratio,
+                        },
+                    )
 
                 # VIOLATION enforcement: synthesize a PAUSE_NEW_ENTRIES
                 # verdict so every tier-A bot flips is_paused. Fire on
@@ -1097,20 +1099,21 @@ class ApexRuntime:
                             "largest_day_usd": verdict.largest_day_usd,
                             "largest_day_date": verdict.largest_day_date,
                             "largest_day_ratio": verdict.largest_day_ratio,
-                            "total_net_profit_usd": (
-                                verdict.total_net_profit_usd
-                            ),
+                            "total_net_profit_usd": (verdict.total_net_profit_usd),
                             "threshold_pct": verdict.threshold_pct,
                         },
                     )
                     try:
                         pause_rep = await apply_verdict(
-                            pause_verdict, bots, self.router, self.dispatcher,
+                            pause_verdict,
+                            bots,
+                            self.router,
+                            self.dispatcher,
                         )
                     except Exception as exc:  # pragma: no cover - defensive
                         logger.error(
-                            "consistency_guard PAUSE_NEW_ENTRIES dispatch "
-                            "failed: %s", exc,
+                            "consistency_guard PAUSE_NEW_ENTRIES dispatch failed: %s",
+                            exc,
                         )
                     else:
                         reports.append(pause_rep)
@@ -1130,7 +1133,7 @@ class ApexRuntime:
                 for v in verdicts
             ],
             "executed": [e for rep in reports for e in rep.executed],
-            "errors":   [e for rep in reports for e in rep.errors],
+            "errors": [e for rep in reports for e in rep.errors],
         }
         # R1 closure: surface the broker-drift classification in the
         # tick log whenever the reconciler is wired. Keeps the alert
@@ -1186,6 +1189,7 @@ def _tradovate_creds_present() -> bool:
 def _build_real_router(cfg: RuntimeConfig) -> Any:
     """Build the real SmartRouter. Isolated so dry-run never imports live deps."""
     from eta_engine.venues.router import SmartRouter
+
     _ = cfg  # reserved for per-venue config in future
     return SmartRouter()
 
@@ -1195,19 +1199,20 @@ def _build_real_router(cfg: RuntimeConfig) -> Any:
 # ---------------------------------------------------------------------------- #
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="EVOLUTIONARY TRADING ALGO live runtime loop")
-    ap.add_argument("--dry-run", action="store_true", default=True,
-                    help="No orders — mock router only (default True)")
-    ap.add_argument("--live", action="store_true",
-                    help="Flip off --dry-run and use the real router. Requires creds.")
-    ap.add_argument("--bot", dest="bot", default=None,
-                    help="Only run this bot name (mnq|nq|crypto_seed|eth_perp|sol_perp|xrp_perp)")
-    ap.add_argument("--max-bars", type=int, default=0,
-                    help="Stop after N ticks (0 = forever). Used by CI smoke-tests.")
-    ap.add_argument("--tick-interval", type=float, default=1.0,
-                    help=(
-                        "Seconds between ticks (0 = tight loop for tests; "
-                        "default 1.0 post-R2 to match Apex sub-second DD window)"
-                    ))
+    ap.add_argument("--dry-run", action="store_true", default=True, help="No orders — mock router only (default True)")
+    ap.add_argument("--live", action="store_true", help="Flip off --dry-run and use the real router. Requires creds.")
+    ap.add_argument(
+        "--bot", dest="bot", default=None, help="Only run this bot name (mnq|nq|crypto_seed|eth_perp|sol_perp|xrp_perp)"
+    )
+    ap.add_argument("--max-bars", type=int, default=0, help="Stop after N ticks (0 = forever). Used by CI smoke-tests.")
+    ap.add_argument(
+        "--tick-interval",
+        type=float,
+        default=1.0,
+        help=(
+            "Seconds between ticks (0 = tight loop for tests; default 1.0 post-R2 to match Apex sub-second DD window)"
+        ),
+    )
     ap.add_argument("--state-path", type=Path, default=ROOT / "roadmap_state.json")
     ap.add_argument("--config-dir", type=Path, default=ROOT / "configs")
     ap.add_argument("--log-path", type=Path, default=ROOT / "docs" / "runtime_log.jsonl")
@@ -1241,6 +1246,7 @@ def _install_signal_handlers(runtime: ApexRuntime) -> None:
     def _handler(signum, _frame) -> None:  # noqa: ANN001
         logger.info("signal %s received — draining", signum)
         runtime.request_stop()
+
     try:
         signal.signal(signal.SIGINT, _handler)
         if hasattr(signal, "SIGTERM"):
@@ -1300,6 +1306,7 @@ def _build_broker_equity_adapter(
     # Live mode -- try IBKR first.
     try:
         from eta_engine.venues.ibkr import IbkrClientPortalVenue
+
         ibkr = IbkrClientPortalVenue()
         if ibkr.has_credentials():
             return SafeBrokerEquityAdapter(ibkr)
@@ -1311,6 +1318,7 @@ def _build_broker_equity_adapter(
     # IBKR not available -- try Tastytrade as fallback.
     try:
         from eta_engine.venues.tastytrade import TastytradeVenue
+
         tasty = TastytradeVenue()
         if tasty.has_credentials():
             return SafeBrokerEquityAdapter(tasty)
@@ -1365,14 +1373,12 @@ async def _amain(argv: list[str] | None = None) -> int:
             if fh_mode == "strict" and verdict != "READY":
                 bad = [r for r in results if r.status in ("fail", "warn", "skip_broken")]
                 logger.error(
-                    "firm_health gate REFUSED boot (verdict=%s, mode=strict). "
-                    "Issues:\n%s",
+                    "firm_health gate REFUSED boot (verdict=%s, mode=strict). Issues:\n%s",
                     verdict,
                     "\n".join(f"  [{r.status}] {r.name}: {r.detail}" for r in bad),
                 )
                 logger.error(
-                    "Override with `--require-firm-health off` (NOT recommended "
-                    "for live) or fix the failing probes."
+                    "Override with `--require-firm-health off` (NOT recommended for live) or fix the failing probes."
                 )
                 return 4
 
@@ -1414,7 +1420,9 @@ async def _amain(argv: list[str] | None = None) -> int:
     # fire so it cannot log-spam, and observation-only -- it never
     # demotes the cached value to no_broker_data.
     broker_poller = make_poller_for(
-        broker_adapter, refresh_s=5.0, identical_warn_after=12,
+        broker_adapter,
+        refresh_s=5.0,
+        identical_warn_after=12,
     )
     # H2 closure (Red Team v0.1.64 review, shipped v0.1.66):
     # asymmetric tolerances. broker_below_logical is the dangerous
@@ -1426,10 +1434,10 @@ async def _amain(argv: list[str] | None = None) -> int:
     # configs/kill_switch.yaml in v0.1.67+.
     broker_reconciler = BrokerEquityReconciler(
         broker_equity_source=broker_poller.current,
-        tolerance_below_usd=20.0,    # tight: $20 ~ 1 MNQ tick of cushion
+        tolerance_below_usd=20.0,  # tight: $20 ~ 1 MNQ tick of cushion
         tolerance_below_pct=0.0005,  # tight: 0.05% of $50K = $25
-        tolerance_above_usd=200.0,   # loose: 4x below, anti-spam
-        tolerance_above_pct=0.005,   # loose: 0.5% of $50K = $250
+        tolerance_above_usd=200.0,  # loose: 4x below, anti-spam
+        tolerance_above_pct=0.005,  # loose: 0.5% of $50K = $250
     )
 
     # R3 + D2 closure (v0.1.65 wave 2): wire ConsistencyGuard and
@@ -1449,6 +1457,7 @@ async def _amain(argv: list[str] | None = None) -> int:
     # In production with the default ``--state-path roadmap_state.json``,
     # this resolves to ``ROOT / "state"`` -- same path as before.
     from eta_engine.core.trailing_dd_tracker import TrailingDDTracker
+
     state_dir = cfg.state_path.parent / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     consistency_guard = ConsistencyGuard.load_or_init(
@@ -1499,8 +1508,7 @@ async def _amain(argv: list[str] | None = None) -> int:
         f"refresh_s=5.0)",
     )
     print(
-        f"consistency   : 30%-rule guard wired "
-        f"(state={(state_dir / 'consistency_guard.json').name})",
+        f"consistency   : 30%-rule guard wired (state={(state_dir / 'consistency_guard.json').name})",
     )
     _tdd_state = trailing_dd_tracker.state()
     print(
@@ -1520,8 +1528,7 @@ async def _amain(argv: list[str] | None = None) -> int:
     _ta_acct_size = getattr(cfg, "tier_a_account_size_usd", None)
     if _ta_acct_size is None:
         print(
-            "tier_a_invar  : aggregate-equity validator advisory "
-            "(size unset; only negative/non-finite checks fire)",
+            "tier_a_invar  : aggregate-equity validator advisory (size unset; only negative/non-finite checks fire)",
         )
     else:
         print(

@@ -28,6 +28,7 @@ Exit codes
 1  YELLOW -- 1..--max-yellow orphans
 2  RED    -- > --max-yellow orphans
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,11 +38,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_PACKAGES = [
-    "bots", "strategies", "core", "brain", "obs", "funnel",
-    "backtest", "venues", "staking",
+    "bots",
+    "strategies",
+    "core",
+    "brain",
+    "obs",
+    "funnel",
+    "backtest",
+    "venues",
+    "staking",
 ]
-SKIP_DIRS = {"scripts", "tests", "__pycache__", ".git", ".venv",
-             ".pytest_cache", ".cache", ".ruff_cache"}
+SKIP_DIRS = {"scripts", "tests", "__pycache__", ".git", ".venv", ".pytest_cache", ".cache", ".ruff_cache"}
 
 
 def _dotted(rel: Path) -> str:
@@ -75,7 +82,7 @@ def _is_imported_anywhere(target: Path, dotted: str, parent_dotted: str, name: s
         if f"from {parent_dotted} import" in text and name in text:
             # Quick verification: name appears within 200 chars of the import
             idx = text.find(f"from {parent_dotted} import")
-            window = text[idx: idx + 400]
+            window = text[idx : idx + 400]
             if name in window:
                 return True
     return False
@@ -100,7 +107,8 @@ def _find_orphans(packages: list[str]) -> list[tuple[str, int]]:
                 continue
             try:
                 loc = sum(
-                    1 for ln in path.read_text(encoding="utf-8").splitlines()
+                    1
+                    for ln in path.read_text(encoding="utf-8").splitlines()
                     if ln.strip() and not ln.strip().startswith("#")
                 )
             except OSError:
@@ -126,8 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     for rel, loc in orphans:
         print(f"  {loc:>4} loc  {rel}")
     print(
-        "\nIf intentional (entry point or experimental), add the path to "
-        "your skip list. Otherwise consider deletion.",
+        "\nIf intentional (entry point or experimental), add the path to your skip list. Otherwise consider deletion.",
     )
     return 1 if level == "YELLOW" else 2
 

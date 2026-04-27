@@ -6,7 +6,10 @@ Markdown tearsheet + ASCII drawdown sparkline.
 
 from __future__ import annotations
 
-from eta_engine.backtest.models import BacktestResult, Trade
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from eta_engine.backtest.models import BacktestResult, Trade
 
 
 class TearsheetBuilder:

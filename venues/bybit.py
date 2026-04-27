@@ -111,11 +111,13 @@ class BybitVenue(VenueBase):
             logger.error("bybit rejected retCode=%s retMsg=%s", code, raw.get("retMsg"))
             return OrderResult(
                 order_id=str(result.get("orderLinkId") or fallback_id),
-                status=OrderStatus.REJECTED, raw=raw,
+                status=OrderStatus.REJECTED,
+                raw=raw,
             )
         return OrderResult(
             order_id=str(result.get("orderId") or result.get("orderLinkId") or fallback_id),
-            status=OrderStatus.OPEN, raw=raw,
+            status=OrderStatus.OPEN,
+            raw=raw,
         )
 
     @staticmethod
@@ -243,6 +245,7 @@ class BybitVenue(VenueBase):
     async def _ensure_session(self) -> Any:  # noqa: ANN401 - aiohttp imported lazily; real type is aiohttp.ClientSession
         if self._session is None:
             import aiohttp  # noqa: PLC0415
+
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT_S),
             )
@@ -316,17 +319,21 @@ class BybitVenue(VenueBase):
             mock_raw = {
                 "retCode": 0,
                 "result": {"orderId": f"mock-{int(time.time() * 1000)}", "orderLinkId": payload["orderLinkId"]},
-                "retExtInfo": {}, "time": int(time.time() * 1000),
+                "retExtInfo": {},
+                "time": int(time.time() * 1000),
             }
             return self._store_mock_order(self._parse_order_response(mock_raw, fallback_id=payload["orderLinkId"]))
 
         status, data = await self._http_post("/v5/order/create", body, headers)
         if status != 200:
             logger.error("bybit.place_order http=%s body=%s", status, data)
-            return self._store_mock_order(OrderResult(
-                order_id=payload["orderLinkId"], status=OrderStatus.REJECTED,
-                raw={"http_status": status, **(data if isinstance(data, dict) else {})},
-            ))
+            return self._store_mock_order(
+                OrderResult(
+                    order_id=payload["orderLinkId"],
+                    status=OrderStatus.REJECTED,
+                    raw={"http_status": status, **(data if isinstance(data, dict) else {})},
+                )
+            )
         return self._store_mock_order(self._parse_order_response(data, fallback_id=payload["orderLinkId"]))
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -400,8 +407,10 @@ class BybitVenue(VenueBase):
     async def set_leverage(self, symbol: str, leverage: int) -> bool:
         self._mark_request()
         payload = {
-            "category": "linear", "symbol": self._native_symbol(symbol),
-            "buyLeverage": str(leverage), "sellLeverage": str(leverage),
+            "category": "linear",
+            "symbol": self._native_symbol(symbol),
+            "buyLeverage": str(leverage),
+            "sellLeverage": str(leverage),
         }
         body = json.dumps(payload, separators=(",", ":"))
         headers = self._headers(body)
@@ -419,8 +428,11 @@ class BybitVenue(VenueBase):
     async def set_isolated_margin(self, symbol: str) -> bool:
         self._mark_request()
         payload = {
-            "category": "linear", "symbol": self._native_symbol(symbol),
-            "tradeMode": 1, "buyLeverage": "10", "sellLeverage": "10",
+            "category": "linear",
+            "symbol": self._native_symbol(symbol),
+            "tradeMode": 1,
+            "buyLeverage": "10",
+            "sellLeverage": "10",
         }
         body = json.dumps(payload, separators=(",", ":"))
         headers = self._headers(body)
@@ -483,15 +495,9 @@ class BybitVenue(VenueBase):
         depth_total = bid_depth + ask_depth
         book_imbalance = ((bid_depth - ask_depth) / depth_total) if depth_total > 0.0 else 0.0
         microprice = (
-            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty)
-            if (bid_qty + ask_qty) > 0.0
-            else mid
+            (ask_price * bid_qty + bid_price * ask_qty) / (bid_qty + ask_qty) if (bid_qty + ask_qty) > 0.0 else mid
         )
-        weighted_mid = (
-            (bid_price * ask_depth + ask_price * bid_depth) / depth_total
-            if depth_total > 0.0
-            else mid
-        )
+        weighted_mid = (bid_price * ask_depth + ask_price * bid_depth) / depth_total if depth_total > 0.0 else mid
         ts_raw = result.get("ts") or data.get("time")
         try:
             ts_ms = int(float(ts_raw))

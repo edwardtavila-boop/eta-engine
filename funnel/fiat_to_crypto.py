@@ -37,6 +37,7 @@ Public API
   * ``OnrampPipeline`` -- drives the state machine
   * Error hierarchy rooted at ``OnrampError``
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -49,6 +50,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class FiatSource(StrEnum):
     BANK_WIRE = "BANK_WIRE"
@@ -100,6 +102,7 @@ _NEXT_STAGE: dict[OnrampStage, OnrampStage] = {
 # Errors
 # ---------------------------------------------------------------------------
 
+
 class OnrampError(RuntimeError):
     """Root of all on-ramp failure modes."""
 
@@ -120,6 +123,7 @@ class OnrampExecutorError(OnrampError):
 # Models
 # ---------------------------------------------------------------------------
 
+
 class OnrampRequest(BaseModel):
     """One fiat-to-crypto ticket."""
 
@@ -130,8 +134,7 @@ class OnrampRequest(BaseModel):
     venue_address: str = Field(
         min_length=4,
         description=(
-            "Destination address on the downstream trading venue "
-            "(Bybit deposit addr, or a bot's hot-wallet addr)."
+            "Destination address on the downstream trading venue (Bybit deposit addr, or a bot's hot-wallet addr)."
         ),
     )
     note: str = ""
@@ -168,6 +171,7 @@ class OnrampState(BaseModel):
 # Policy
 # ---------------------------------------------------------------------------
 
+
 class OnrampPolicy(BaseModel):
     """Which (source, provider, target) triples are allowed + fiat limits.
 
@@ -201,20 +205,19 @@ class OnrampPolicy(BaseModel):
             )
         if req.fiat_amount_usd > self.per_txn_limit_usd:
             raise OnrampPolicyError(
-                f"fiat ${req.fiat_amount_usd:.2f} exceeds per-txn "
-                f"limit ${self.per_txn_limit_usd:.2f}",
+                f"fiat ${req.fiat_amount_usd:.2f} exceeds per-txn limit ${self.per_txn_limit_usd:.2f}",
             )
         min_req = self.provider_min_usd.get(req.provider)
         if min_req is not None and req.fiat_amount_usd < min_req:
             raise OnrampPolicyError(
-                f"provider {req.provider.value} requires minimum "
-                f"${min_req:.2f}; got ${req.fiat_amount_usd:.2f}",
+                f"provider {req.provider.value} requires minimum ${min_req:.2f}; got ${req.fiat_amount_usd:.2f}",
             )
 
 
 # ---------------------------------------------------------------------------
 # Executor protocol
 # ---------------------------------------------------------------------------
+
 
 class OrderFill(BaseModel):
     """What the executor returns after a successful order."""
@@ -235,7 +238,11 @@ class OnrampExecutor(Protocol):
     """Async boundary between the pipeline and a real provider client."""
 
     async def place_order(
-        self, *, provider: OnrampProvider, target: CryptoTarget, fiat_amount_usd: float,
+        self,
+        *,
+        provider: OnrampProvider,
+        target: CryptoTarget,
+        fiat_amount_usd: float,
     ) -> OrderFill: ...
 
     async def withdraw(
@@ -280,7 +287,11 @@ class StubOnrampExecutor:
         self._tx_counter = 0
 
     async def place_order(
-        self, *, provider: OnrampProvider, target: CryptoTarget, fiat_amount_usd: float,
+        self,
+        *,
+        provider: OnrampProvider,
+        target: CryptoTarget,
+        fiat_amount_usd: float,
     ) -> OrderFill:
         if self.fail_orders:
             raise OnrampExecutorError(
@@ -362,18 +373,28 @@ class OnrampPipeline:
         if nxt is None:
             raise OnrampStageError(f"no forward transition defined from {frm}")
         state.stage = nxt
-        state.events.append(OnrampEvent(
-            ts=self._clock(), from_stage=frm, to_stage=nxt, detail=detail,
-        ))
+        state.events.append(
+            OnrampEvent(
+                ts=self._clock(),
+                from_stage=frm,
+                to_stage=nxt,
+                detail=detail,
+            )
+        )
         return state
 
     def _fail(self, state: OnrampState, err: str) -> OnrampState:
         frm = state.stage
         state.stage = OnrampStage.FAILED
         state.last_error = err
-        state.events.append(OnrampEvent(
-            ts=self._clock(), from_stage=frm, to_stage=OnrampStage.FAILED, detail=err,
-        ))
+        state.events.append(
+            OnrampEvent(
+                ts=self._clock(),
+                from_stage=frm,
+                to_stage=OnrampStage.FAILED,
+                detail=err,
+            )
+        )
         return state
 
     # -- entrypoint --------------------------------------------------------
@@ -410,8 +431,7 @@ class OnrampPipeline:
         """Transition FIAT_DEPOSITED -> CONVERTING -> CONVERTED."""
         if state.stage != OnrampStage.FIAT_DEPOSITED:
             raise OnrampStageError(
-                f"place_and_record_order requires FIAT_DEPOSITED; "
-                f"state is {state.stage}",
+                f"place_and_record_order requires FIAT_DEPOSITED; state is {state.stage}",
             )
         # FIAT_DEPOSITED -> CONVERTING
         self._advance(state, detail="placing order")
@@ -431,10 +451,7 @@ class OnrampPipeline:
         state.fill_price_usd = fill.fill_price_usd
         return self._advance(
             state,
-            detail=(
-                f"order_id={fill.order_id} qty={fill.crypto_qty:.8f} "
-                f"price={fill.fill_price_usd:.2f}"
-            ),
+            detail=(f"order_id={fill.order_id} qty={fill.crypto_qty:.8f} price={fill.fill_price_usd:.2f}"),
         )
 
     async def withdraw_to_venue(self, state: OnrampState) -> OnrampState:

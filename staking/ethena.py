@@ -13,6 +13,7 @@ Live paths
 * ``stake/unstake`` — structured payloads against Ethena mint + StakedUSDe.
   7-day cooldown on unstake is enforced by the protocol, not the adapter.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,14 +61,17 @@ class EthenaAdapter(StakingAdapter):
         steps = [
             # Ethena mint() takes (collateral_asset, collateral_amount, min_usde_out).
             build_contract_call(
-                ETHENA_MINT_CONTRACT, "mint",
+                ETHENA_MINT_CONTRACT,
+                "mint",
                 "USDT",  # collateral_asset symbol
                 int(amount * 1e6),  # USDT has 6 decimals
                 int(amount * 1e18 * 0.998),  # min_usde_out with 0.2% slippage
             ),
             build_contract_call(
-                self._susde_address, "deposit",
-                int(amount * 1e18), self._wallet_address or "0x0",
+                self._susde_address,
+                "deposit",
+                int(amount * 1e18),
+                self._wallet_address or "0x0",
             ),
         ]
         logger.info("Ethena stake plan | amount=%.2f USDT steps=%d", amount, len(steps))
@@ -94,7 +98,10 @@ class EthenaAdapter(StakingAdapter):
     async def get_balance(self) -> float:
         """sUSDe balance — on-chain via web3 if configured, else in-memory."""
         real = await asyncio.to_thread(
-            read_balance, self._rpc_url, self._wallet_address, self._susde_address,
+            read_balance,
+            self._rpc_url,
+            self._wallet_address,
+            self._susde_address,
         )
         if real is not None:
             return real

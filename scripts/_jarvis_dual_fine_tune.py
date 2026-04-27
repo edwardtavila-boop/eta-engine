@@ -22,6 +22,7 @@ Outputs
   docs/fine_tune_v1/btc_tweaks.json
   docs/fine_tune_v1/fine_tune_report.txt
 """
+
 from __future__ import annotations
 
 import json
@@ -106,7 +107,7 @@ def _stage_jarvis() -> dict[str, Any]:
         macro_bias="neutral",
     )
     equity = EquitySnapshot(
-        account_equity=52_000.0,       # MNQ $5k + BTC $2k + reserve
+        account_equity=52_000.0,  # MNQ $5k + BTC $2k + reserve
         daily_pnl=0.0,
         daily_drawdown_pct=0.0,
         open_positions=0,
@@ -127,15 +128,15 @@ def _stage_jarvis() -> dict[str, Any]:
         correlations_alert=False,
     )
     ctx = build_snapshot(
-        macro=macro, equity=equity, regime=regime, journal=journal,
+        macro=macro,
+        equity=equity,
+        regime=regime,
+        journal=journal,
         ts=datetime.now(UTC),
         notes=["dual fine-tune snapshot", "bots: mnq_apex + crypto_seed"],
     )
     suggestion = ctx.suggestion
-    action_value = (
-        suggestion.action.value if hasattr(suggestion.action, "value")
-        else str(suggestion.action)
-    )
+    action_value = suggestion.action.value if hasattr(suggestion.action, "value") else str(suggestion.action)
     return {
         "ctx_json": json.loads(ctx.model_dump_json()),
         "suggested_action": action_value,
@@ -229,10 +230,7 @@ def _score_btc(params: dict[str, Any]) -> CellScore:
     blend_weight_overlay = max(0.15, 1.0 - 0.08 * conf)
     blend_weight_grid = 1.0 - blend_weight_overlay * 0.5
 
-    expectancy = (
-        blend_weight_grid * grid_r
-        + blend_weight_overlay * overlay_r
-    )
+    expectancy = blend_weight_grid * grid_r + blend_weight_overlay * overlay_r
 
     # DD cap too tight -> choppy exits in grid
     if dd <= 2.0:
@@ -341,22 +339,14 @@ def _glide_step(
     out: dict[str, Any] = {}
     for k, new in target.items():
         old = baseline.get(k)
-        if (
-            isinstance(new, (int, float))
-            and isinstance(old, (int, float))
-            and old not in (0, 0.0)
-        ):
+        if isinstance(new, (int, float)) and isinstance(old, (int, float)) and old not in (0, 0.0):
             max_delta = abs(old) * cap_rel
             raw_delta = new - old
             clipped = raw_delta
             if abs(raw_delta) > max_delta:
                 clipped = max_delta if raw_delta > 0 else -max_delta
             proposed = old + clipped
-            proposed = (
-                int(round(proposed))
-                if isinstance(old, int) and isinstance(new, int)
-                else round(proposed, 4)
-            )
+            proposed = int(round(proposed)) if isinstance(old, int) and isinstance(new, int) else round(proposed, 4)
             out[k] = proposed
         else:
             out[k] = old if old is not None else new
@@ -426,25 +416,27 @@ def _run_one_bot(
     glide_score = scorer(glide_params)
     glide_gate_pass = gate.evaluate(glide_score)
     glide_stab = (
-        statistics.pstdev(glide_score.walk_forward_scores)
-        if len(glide_score.walk_forward_scores) >= 2
-        else 0.0
+        statistics.pstdev(glide_score.walk_forward_scores) if len(glide_score.walk_forward_scores) >= 2 else 0.0
     )
     glide_cell = SweepCell(
-        params=glide_params, score=glide_score,
-        gate_pass=glide_gate_pass, stability=round(glide_stab, 4),
+        params=glide_params,
+        score=glide_score,
+        gate_pass=glide_gate_pass,
+        stability=round(glide_stab, 4),
     )
 
     baselines_map = {bot: baseline}
 
     # Full-winner tweaks (usually AGGRESSIVE, rejected -- documented)
     full_tweaks = propose_tweaks(
-        winners={bot: winner}, baselines=baselines_map,
+        winners={bot: winner},
+        baselines=baselines_map,
         source=f"dual_fine_tune_v0_1_30_{bot}_full_winner",
     )
     # Glide-step tweaks (MODERATE, applied)
     glide_tweaks = propose_tweaks(
-        winners={bot: glide_cell}, baselines=baselines_map,
+        winners={bot: glide_cell},
+        baselines=baselines_map,
         source=f"dual_fine_tune_v0_1_30_{bot}_glide_step",
     )
 
@@ -485,9 +477,7 @@ def _dump_tweak(t: Tweak) -> dict[str, Any]:
         "bot": t.bot,
         "source": t.source,
         "reason": t.reason,
-        "risk_tag": (
-            t.risk_tag.value if hasattr(t.risk_tag, "value") else str(t.risk_tag)
-        ),
+        "risk_tag": (t.risk_tag.value if hasattr(t.risk_tag, "value") else str(t.risk_tag)),
         "proposal": t.proposal,
         "expected_expectancy_r": t.expected_expectancy_r,
         "expected_dd_pct": t.expected_dd_pct,
@@ -501,7 +491,10 @@ def _dump_tweak(t: Tweak) -> dict[str, Any]:
 
 
 def _write_report(
-    *, jarvis: dict[str, Any], mnq: dict[str, Any], btc: dict[str, Any],
+    *,
+    jarvis: dict[str, Any],
+    mnq: dict[str, Any],
+    btc: dict[str, Any],
 ) -> str:
     lines: list[str] = []
     lines.append("=" * 72)
@@ -518,21 +511,27 @@ def _write_report(
 
     for bot, data in (("MNQ (apex_engine)", mnq), ("BTC (crypto_seed)", btc)):
         lines.append(f"-- {bot} ".ljust(72, "-"))
-        lines.append(f"candidates: {data['total_candidates']}  "
-                     f"gate-pass: {data['gate_pass_count']}  "
-                     f"pareto: {data['pareto_frontier_count']}")
+        lines.append(
+            f"candidates: {data['total_candidates']}  "
+            f"gate-pass: {data['gate_pass_count']}  "
+            f"pareto: {data['pareto_frontier_count']}"
+        )
         lines.append(f"winner:     {data['winner_params']}")
         wm = data["winner_metrics"]
-        lines.append(f"            exp={wm['expectancy_r']:.3f}  "
-                     f"dd={wm['max_dd_pct']:.4f}  "
-                     f"wr={wm['win_rate']:.3f}  "
-                     f"stab={wm['stability']:.3f}")
+        lines.append(
+            f"            exp={wm['expectancy_r']:.3f}  "
+            f"dd={wm['max_dd_pct']:.4f}  "
+            f"wr={wm['win_rate']:.3f}  "
+            f"stab={wm['stability']:.3f}"
+        )
         lines.append(f"glide:      {data['glide_params']}")
         gm = data["glide_metrics"]
-        lines.append(f"            exp={gm['expectancy_r']:.3f}  "
-                     f"dd={gm['max_dd_pct']:.4f}  "
-                     f"wr={gm['win_rate']:.3f}  "
-                     f"gate={gm['gate_pass']}")
+        lines.append(
+            f"            exp={gm['expectancy_r']:.3f}  "
+            f"dd={gm['max_dd_pct']:.4f}  "
+            f"wr={gm['win_rate']:.3f}  "
+            f"gate={gm['gate_pass']}"
+        )
         proposed = data.get("tweaks_proposed", [])
         for t in proposed:
             lines.append(f"tweak:      [{t['risk_tag']}] -> {t['proposal']}")
@@ -546,11 +545,7 @@ def _write_report(
     lines.append("-- READY ------------------------------------------------------------")
     mnq_ok = any(r["applied"] for r in mnq.get("applied", {}).values())
     btc_ok = any(r["applied"] for r in btc.get("applied", {}).values())
-    ready = (
-        jarvis["suggested_action"] == "TRADE"
-        and mnq_ok
-        and btc_ok
-    )
+    ready = jarvis["suggested_action"] == "TRADE" and mnq_ok and btc_ok
     lines.append(f"MNQ glide-step applied: {mnq_ok}")
     lines.append(f"BTC glide-step applied: {btc_ok}")
     lines.append(f"Jarvis action:          {jarvis['suggested_action']}")
@@ -569,18 +564,22 @@ def main() -> None:
     print("[1/4] Jarvis snapshot (fleet view)...")
     jarvis = _stage_jarvis()
     (OUT_DIR / "jarvis_context.json").write_text(
-        json.dumps(jarvis, indent=2, default=str), encoding="utf-8",
+        json.dumps(jarvis, indent=2, default=str),
+        encoding="utf-8",
     )
-    print(f"      -> action={jarvis['suggested_action']}  "
-          f"reason={jarvis['suggested_reason']}")
+    print(f"      -> action={jarvis['suggested_action']}  reason={jarvis['suggested_reason']}")
 
     print("[2/4] MNQ basement sweep + glide-step...")
     mnq = _run_one_bot(
-        bot="mnq_apex", baseline=MNQ_BASELINE,
-        grid=_mnq_grid(), gate=_mnq_gate(), scorer=_score_mnq,
+        bot="mnq_apex",
+        baseline=MNQ_BASELINE,
+        grid=_mnq_grid(),
+        gate=_mnq_gate(),
+        scorer=_score_mnq,
     )
     (OUT_DIR / "mnq_sweep.json").write_text(
-        json.dumps(mnq, indent=2, default=str), encoding="utf-8",
+        json.dumps(mnq, indent=2, default=str),
+        encoding="utf-8",
     )
     (OUT_DIR / "mnq_tweaks.json").write_text(
         json.dumps(
@@ -589,21 +588,28 @@ def main() -> None:
                 "tweaks_proposed": mnq.get("tweaks_proposed", []),
                 "applied": mnq.get("applied", {}),
             },
-            indent=2, default=str,
+            indent=2,
+            default=str,
         ),
         encoding="utf-8",
     )
-    print(f"      -> {mnq['total_candidates']} candidates, "
-          f"{mnq['gate_pass_count']} gate-pass, "
-          f"{len(mnq.get('tweaks_proposed', []))} tweak(s) proposed")
+    print(
+        f"      -> {mnq['total_candidates']} candidates, "
+        f"{mnq['gate_pass_count']} gate-pass, "
+        f"{len(mnq.get('tweaks_proposed', []))} tweak(s) proposed"
+    )
 
     print("[3/4] BTC basement sweep + glide-step...")
     btc = _run_one_bot(
-        bot="crypto_seed", baseline=BTC_BASELINE,
-        grid=_btc_grid(), gate=_btc_gate(), scorer=_score_btc,
+        bot="crypto_seed",
+        baseline=BTC_BASELINE,
+        grid=_btc_grid(),
+        gate=_btc_gate(),
+        scorer=_score_btc,
     )
     (OUT_DIR / "btc_sweep.json").write_text(
-        json.dumps(btc, indent=2, default=str), encoding="utf-8",
+        json.dumps(btc, indent=2, default=str),
+        encoding="utf-8",
     )
     (OUT_DIR / "btc_tweaks.json").write_text(
         json.dumps(
@@ -612,13 +618,16 @@ def main() -> None:
                 "tweaks_proposed": btc.get("tweaks_proposed", []),
                 "applied": btc.get("applied", {}),
             },
-            indent=2, default=str,
+            indent=2,
+            default=str,
         ),
         encoding="utf-8",
     )
-    print(f"      -> {btc['total_candidates']} candidates, "
-          f"{btc['gate_pass_count']} gate-pass, "
-          f"{len(btc.get('tweaks_proposed', []))} tweak(s) proposed")
+    print(
+        f"      -> {btc['total_candidates']} candidates, "
+        f"{btc['gate_pass_count']} gate-pass, "
+        f"{len(btc.get('tweaks_proposed', []))} tweak(s) proposed"
+    )
 
     print("[4/4] combined report...")
     report = _write_report(jarvis=jarvis, mnq=mnq, btc=btc)

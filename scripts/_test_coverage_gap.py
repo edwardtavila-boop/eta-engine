@@ -34,6 +34,7 @@ Exit codes
 1  YELLOW -- 1..--max-yellow untested modules
 2  RED    -- > --max-yellow untested modules
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,8 +45,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = ROOT / "tests"
 DEFAULT_PACKAGES = [
-    "bots", "strategies", "core", "brain", "obs", "funnel",
-    "backtest", "venues", "staking",
+    "bots",
+    "strategies",
+    "core",
+    "brain",
+    "obs",
+    "funnel",
+    "backtest",
+    "venues",
+    "staking",
 ]
 
 
@@ -104,14 +112,14 @@ def _is_pure_data(src: Path) -> bool:
             has_class = True
             # Look for @dataclass / NamedTuple base / TypedDict base
             decorated = any(
-                (isinstance(d, ast.Name) and d.id == "dataclass") or
-                (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id == "dataclass") or
-                (isinstance(d, ast.Attribute) and d.attr == "dataclass")
+                (isinstance(d, ast.Name) and d.id == "dataclass")
+                or (isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id == "dataclass")
+                or (isinstance(d, ast.Attribute) and d.attr == "dataclass")
                 for d in node.decorator_list
             )
             base_data = any(
-                (isinstance(b, ast.Name) and b.id in ("NamedTuple", "TypedDict")) or
-                (isinstance(b, ast.Attribute) and b.attr in ("NamedTuple", "TypedDict"))
+                (isinstance(b, ast.Name) and b.id in ("NamedTuple", "TypedDict"))
+                or (isinstance(b, ast.Attribute) and b.attr in ("NamedTuple", "TypedDict"))
                 for b in node.bases
             )
             if not (decorated or base_data):
@@ -125,7 +133,8 @@ def _is_pure_data(src: Path) -> bool:
 def _loc(src: Path) -> int:
     try:
         return sum(
-            1 for line in src.read_text(encoding="utf-8").splitlines()
+            1
+            for line in src.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.strip().startswith("#")
         )
     except OSError:
@@ -154,14 +163,13 @@ def _find_gaps(packages: list[str], min_loc: int) -> list[dict]:
             if _has_test_via_import(src):
                 continue
             rel = str(src.relative_to(ROOT)).replace("\\", "/")
-            out.append({
-                "module": rel,
-                "loc": loc,
-                "candidates": [
-                    str(c.relative_to(ROOT)).replace("\\", "/")
-                    for c in candidates
-                ],
-            })
+            out.append(
+                {
+                    "module": rel,
+                    "loc": loc,
+                    "candidates": [str(c.relative_to(ROOT)).replace("\\", "/") for c in candidates],
+                }
+            )
     out.sort(key=lambda d: -d["loc"])
     return out
 
@@ -171,11 +179,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--packages", nargs="+", default=DEFAULT_PACKAGES)
     p.add_argument("--min-loc", type=int, default=20)
     p.add_argument(
-        "--max-yellow", type=int, default=10,
+        "--max-yellow",
+        type=int,
+        default=10,
         help="more than this many gaps -> RED",
     )
     p.add_argument(
-        "--show-candidates", action="store_true",
+        "--show-candidates",
+        action="store_true",
         help="for each gap, print the candidate test paths",
     )
     args = p.parse_args(argv)
@@ -187,8 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     level = "RED" if n > args.max_yellow else "YELLOW"
     print(
-        f"test-coverage-gap: {level} -- {n} untested modules "
-        f"(min-loc={args.min_loc})",
+        f"test-coverage-gap: {level} -- {n} untested modules (min-loc={args.min_loc})",
     )
     for g in gaps:
         print(f"  {g['loc']:>4} loc  {g['module']}")
@@ -196,8 +206,7 @@ def main(argv: list[str] | None = None) -> int:
             for c in g["candidates"]:
                 print(f"           expected: {c}")
     print(
-        "\nNext: python scripts/_test_scaffold.py <module> "
-        "(scaffolds tests/test_<pkg>_<name>.py)",
+        "\nNext: python scripts/_test_scaffold.py <module> (scaffolds tests/test_<pkg>_<name>.py)",
     )
     return 1 if level == "YELLOW" else 2
 

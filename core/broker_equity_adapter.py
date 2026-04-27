@@ -108,6 +108,7 @@ Usage
     null: BrokerEquityAdapter = NullBrokerEquityAdapter(name="paper")
     paper_poller = make_poller_for(null)  # returns no-data forever
 """
+
 from __future__ import annotations
 
 import logging
@@ -174,8 +175,7 @@ class BrokerEquityAdapter(Protocol):
 
     name: str
 
-    async def get_net_liquidation(self) -> float | None:
-        ...
+    async def get_net_liquidation(self) -> float | None: ...
 
 
 class NullBrokerEquityAdapter:
@@ -271,11 +271,9 @@ class RouterBackedBrokerEquityAdapter:
         # router (which pulls in every venue's HTTP client). The runtime
         # check still rejects non-router objects.
         from eta_engine.venues.router import SmartRouter as _SmartRouter
+
         if not isinstance(router, _SmartRouter):
-            msg = (
-                f"RouterBackedBrokerEquityAdapter requires a SmartRouter, "
-                f"got {type(router).__name__}"
-            )
+            msg = f"RouterBackedBrokerEquityAdapter requires a SmartRouter, got {type(router).__name__}"
             raise TypeError(msg)
         self._router = router
         self._probe_symbol = probe_symbol
@@ -324,7 +322,8 @@ class RouterBackedBrokerEquityAdapter:
         except Exception as exc:  # noqa: BLE001
             log.debug(
                 "router_backed_adapter: %s.get_net_liquidation raised: %s",
-                getattr(venue, "name", "unknown"), exc,
+                getattr(venue, "name", "unknown"),
+                exc,
             )
             return None
         return value
@@ -381,10 +380,7 @@ class SafeBrokerEquityAdapter:
         name: str | None = None,
     ) -> None:
         if not isinstance(adapter, BrokerEquityAdapter):
-            msg = (
-                f"SafeBrokerEquityAdapter requires a BrokerEquityAdapter, "
-                f"got {type(adapter).__name__}"
-            )
+            msg = f"SafeBrokerEquityAdapter requires a BrokerEquityAdapter, got {type(adapter).__name__}"
             raise TypeError(msg)
         self._adapter = adapter
         self.name = name if name is not None else f"safe({adapter.name})"
@@ -395,7 +391,8 @@ class SafeBrokerEquityAdapter:
         except Exception as exc:  # noqa: BLE001
             log.debug(
                 "safe_broker_adapter: wrapped %s.get_net_liquidation raised: %s",
-                getattr(self._adapter, "name", "unknown"), exc,
+                getattr(self._adapter, "name", "unknown"),
+                exc,
             )
             return None
 

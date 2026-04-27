@@ -8,6 +8,7 @@ Covers:
 * :func:`dump_snapshot` + :func:`from_json` round-trip.
 * :func:`render_text` formatting contract.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,6 +42,7 @@ def _monitor_with(states: dict[str, tuple[float, float]]) -> EquityMonitor:
 # build_snapshot
 # ---------------------------------------------------------------------------
 
+
 def test_empty_portfolio_snapshot() -> None:
     em = EquityMonitor()
     snap = build_snapshot(em.get_portfolio_state())
@@ -71,10 +73,12 @@ def test_bot_below_95pct_baseline_emits_note() -> None:
 
 
 def test_portfolio_below_90pct_baseline_downgrades_to_watch() -> None:
-    em = _monitor_with({
-        "mnq": (10_000.0, 8_000.0),
-        "eth": (5_000.0, 4_000.0),
-    })
+    em = _monitor_with(
+        {
+            "mnq": (10_000.0, 8_000.0),
+            "eth": (5_000.0, 4_000.0),
+        }
+    )
     snap = build_snapshot(em.get_portfolio_state())
     assert snap.portfolio_health == "WATCH"
     assert any("< 90% baseline" in n for n in snap.notes)
@@ -145,6 +149,7 @@ def test_withdrawn_cold_is_reported() -> None:
 # dump + from_json round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_dump_and_reload_round_trip(tmp_path: Path) -> None:
     em = _monitor_with({"mnq": (10_000.0, 10_200.0)})
     snap = build_snapshot(em.get_portfolio_state(), withdrawn_cold_usd=500.0)
@@ -165,6 +170,7 @@ def test_dump_and_reload_round_trip(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # render_text
 # ---------------------------------------------------------------------------
+
 
 def test_render_text_has_key_lines() -> None:
     em = _monitor_with({"mnq": (10_000.0, 10_100.0)})

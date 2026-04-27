@@ -53,12 +53,7 @@ def _perfect_ctx() -> dict:
         "atr_history": [40, 42, 44, 45, 46, 48, 50],
         "atr_current": 45.0,
         # funding_skew: hot positive funding while we're short
-        "funding_history": [
-            FundingRate(
-                timestamp=now, symbol="ETHUSDT", rate=0.0008, predicted_rate=0.0008
-            )
-        ]
-        * 8,
+        "funding_history": [FundingRate(timestamp=now, symbol="ETHUSDT", rate=0.0008, predicted_rate=0.0008)] * 8,
         # onchain: +1 sigma whale activity
         "onchain_whale_delta": 2.5,
         "onchain_netflow": -5_000_000.0,
@@ -108,9 +103,7 @@ class TestFullPipeline:
         chosen_lev = min(max_lev, float(score.recommended_leverage))
         assert chosen_lev >= 0.0
 
-        qty = dynamic_position_size(
-            equity=3000.0, risk_pct=0.03, atr=45.0, price=bar.close
-        )
+        qty = dynamic_position_size(equity=3000.0, risk_pct=0.03, atr=45.0, price=bar.close)
         assert qty > 0.0
 
     def test_pipeline_produces_order_request(self) -> None:
@@ -123,9 +116,7 @@ class TestFullPipeline:
         if score.recommended_leverage <= 0:
             pytest.skip(f"confluence said {score.signal} @ {score.total_score:.2f} — pipeline correctly rejected")
 
-        qty = dynamic_position_size(
-            equity=3000.0, risk_pct=0.03, atr=45.0, price=bar.close
-        )
+        qty = dynamic_position_size(equity=3000.0, risk_pct=0.03, atr=45.0, price=bar.close)
         req = OrderRequest(
             symbol=bar.symbol,
             side=Side.BUY,

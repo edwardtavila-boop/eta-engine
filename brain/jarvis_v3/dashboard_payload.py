@@ -24,6 +24,7 @@ This is pure transformation -- no live I/O. Caller assembles the
 sources, calls ``build_payload(...)``, writes JSON to disk or pushes
 via WebSocket.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -34,21 +35,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class DashboardPayload(BaseModel):
     """Top-level payload the JARVIS tile consumes."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:               datetime
-    health:           str = Field(min_length=1)
-    stress:           dict[str, Any]
-    horizons:         dict[str, float]
-    projection:       dict[str, Any]
-    regime:           str
-    session_phase:    str
-    suggestion:       str
-    recent_verdicts:  list[dict[str, Any]] = Field(default_factory=list)
-    active_gates:     list[str]            = Field(default_factory=list)
-    budget:           dict[str, Any]       = Field(default_factory=dict)
-    critique_flags:   list[str]            = Field(default_factory=list)
-    precedent_hint:   str = ""
+    ts: datetime
+    health: str = Field(min_length=1)
+    stress: dict[str, Any]
+    horizons: dict[str, float]
+    projection: dict[str, Any]
+    regime: str
+    session_phase: str
+    suggestion: str
+    recent_verdicts: list[dict[str, Any]] = Field(default_factory=list)
+    active_gates: list[str] = Field(default_factory=list)
+    budget: dict[str, Any] = Field(default_factory=dict)
+    critique_flags: list[str] = Field(default_factory=list)
+    precedent_hint: str = ""
 
 
 def build_payload(

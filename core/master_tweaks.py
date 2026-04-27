@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 # Tweak + risk classification
 # ---------------------------------------------------------------------------
 
+
 class RiskTag(StrEnum):
     SAFE = "SAFE"
     MODERATE = "MODERATE"
@@ -67,8 +68,7 @@ class TweakPolicy(BaseModel):
         default=0.50,
         gt=0,
         description=(
-            "Max allowed |new - old| / max(|old|, 1e-9) for numeric params. "
-            "Per-parameter, not portfolio-wide."
+            "Max allowed |new - old| / max(|old|, 1e-9) for numeric params. Per-parameter, not portfolio-wide."
         ),
     )
     require_gate_pass: bool = Field(
@@ -80,6 +80,7 @@ class TweakPolicy(BaseModel):
 # ---------------------------------------------------------------------------
 # Risk classification
 # ---------------------------------------------------------------------------
+
 
 def classify_risk(
     baseline: dict[str, Any],
@@ -121,6 +122,7 @@ def classify_risk(
 # ---------------------------------------------------------------------------
 # Proposal generation
 # ---------------------------------------------------------------------------
+
 
 def propose_tweaks(
     winners: dict[str, SweepCell],
@@ -175,6 +177,7 @@ def _reason_for(cell: SweepCell) -> str:
 # Application + rejection
 # ---------------------------------------------------------------------------
 
+
 class TweakApplyResult(BaseModel):
     """Outcome of attempting to apply a single tweak."""
 
@@ -221,11 +224,7 @@ def apply_tweak(
     rejected: list[str] = []
     for k, new in tweak.proposal.items():
         old = baseline.get(k)
-        if (
-            old is not None
-            and isinstance(new, (int, float))
-            and isinstance(old, (int, float))
-        ):
+        if old is not None and isinstance(new, (int, float)) and isinstance(old, (int, float)):
             rel = abs(new - old) / max(abs(old), 1e-9)
             if rel > p.max_relative_change:
                 rejected.append(k)

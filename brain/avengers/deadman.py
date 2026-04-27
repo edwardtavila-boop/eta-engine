@@ -42,6 +42,7 @@ State              Hours   What changes
 The state machine is monotone until the operator touches the sentinel
 (``record_activity``), which snaps back to ``LIVE``.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,68 +58,75 @@ if TYPE_CHECKING:
 
 
 DEADMAN_SENTINEL: Path = Path.home() / ".jarvis" / "operator.sentinel"
-DEADMAN_JOURNAL:  Path = Path.home() / ".jarvis" / "operator_activity.jsonl"
+DEADMAN_JOURNAL: Path = Path.home() / ".jarvis" / "operator_activity.jsonl"
 
 
 # Categories whose cost or blast radius we want to block when STALE.
 # These strings match ``TaskCategory`` values (the enum's string values,
 # e.g. ``"red_team_scoring"``). We keep the list as strings on purpose
 # so a missing enum value in one branch doesn't blow up import.
-_STALE_BLOCKED: frozenset[str] = frozenset({
-    # Architectural OPUS spend -- most expensive tier.
-    "red_team_scoring",
-    "gauntlet_gate_design",
-    "risk_policy_design",
-    "architecture_decision",
-    "adversarial_review",
-    "state_machine_design",
-    # Routine SONNET spend that can touch live strategy code.
-    "strategy_edit",
-})
+_STALE_BLOCKED: frozenset[str] = frozenset(
+    {
+        # Architectural OPUS spend -- most expensive tier.
+        "red_team_scoring",
+        "gauntlet_gate_design",
+        "risk_policy_design",
+        "architecture_decision",
+        "adversarial_review",
+        "state_machine_design",
+        # Routine SONNET spend that can touch live strategy code.
+        "strategy_edit",
+    }
+)
 
 # Categories that remain allowed even in FROZEN mode. Everything outside
 # this set is denied when frozen. Only safe, cheap, read-only work.
-_FROZEN_ALLOWED: frozenset[str] = frozenset({
-    "log_parsing",
-    "trivial_lookup",
-    "formatting",
-    "boilerplate",
-    "commit_message",
-    "simple_edit",
-    "lint_fix",
-})
+_FROZEN_ALLOWED: frozenset[str] = frozenset(
+    {
+        "log_parsing",
+        "trivial_lookup",
+        "formatting",
+        "boilerplate",
+        "commit_message",
+        "simple_edit",
+        "lint_fix",
+    }
+)
 
 
 class DeadmanState(StrEnum):
     """Current operator-presence state."""
-    LIVE   = "LIVE"     # fresh operator activity
-    DROWSY = "DROWSY"   # stale-ish, still allowed
-    STALE  = "STALE"    # conservative mode
-    FROZEN = "FROZEN"   # deny all spend actions
+
+    LIVE = "LIVE"  # fresh operator activity
+    DROWSY = "DROWSY"  # stale-ish, still allowed
+    STALE = "STALE"  # conservative mode
+    FROZEN = "FROZEN"  # deny all spend actions
 
 
 class DeadmanDecision(BaseModel):
     """One gate decision for a given envelope."""
+
     model_config = ConfigDict(frozen=True)
 
-    state:         DeadmanState
-    allow:         bool
-    reason:        str
-    hours_since:   float = Field(ge=0.0)
+    state: DeadmanState
+    allow: bool
+    reason: str
+    hours_since: float = Field(ge=0.0)
     last_activity: datetime | None = None
 
 
 class DeadmanStatus(BaseModel):
     """Snapshot for dashboards / CLI."""
+
     model_config = ConfigDict(frozen=True)
 
-    state:              DeadmanState
-    last_activity:      datetime | None
-    hours_since:        float = Field(ge=0.0)
-    soft_stale_hours:   float
-    hard_stale_hours:   float
-    freeze_hours:       float
-    sentinel_path:      str
+    state: DeadmanState
+    last_activity: datetime | None
+    hours_since: float = Field(ge=0.0)
+    soft_stale_hours: float
+    hard_stale_hours: float
+    freeze_hours: float
+    sentinel_path: str
 
 
 class DeadmanSwitch:
@@ -140,23 +148,20 @@ class DeadmanSwitch:
         self,
         *,
         sentinel_path: Path | None = None,
-        journal_path:  Path | None = None,
+        journal_path: Path | None = None,
         soft_stale_hours: float = 12.0,
         hard_stale_hours: float = 24.0,
-        freeze_hours:     float = 72.0,
+        freeze_hours: float = 72.0,
         clock: callable | None = None,
     ) -> None:
         if not (0 < soft_stale_hours < hard_stale_hours < freeze_hours):
-            msg = (
-                "deadman thresholds must satisfy "
-                "0 < soft < hard < freeze"
-            )
+            msg = "deadman thresholds must satisfy 0 < soft < hard < freeze"
             raise ValueError(msg)
-        self.sentinel_path    = sentinel_path or DEADMAN_SENTINEL
-        self.journal_path     = journal_path  or DEADMAN_JOURNAL
+        self.sentinel_path = sentinel_path or DEADMAN_SENTINEL
+        self.journal_path = journal_path or DEADMAN_JOURNAL
         self.soft_stale_hours = soft_stale_hours
         self.hard_stale_hours = hard_stale_hours
-        self.freeze_hours     = freeze_hours
+        self.freeze_hours = freeze_hours
         self._clock = clock or (lambda: datetime.now(UTC))
 
     # --- operator API ------------------------------------------------------
@@ -173,11 +178,16 @@ class DeadmanSwitch:
         # Append activity log.
         try:
             with self.journal_path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps({
-                    "ts":     self._clock().isoformat(),
-                    "source": source,
-                    "note":   note,
-                }) + "\n")
+                fh.write(
+                    json.dumps(
+                        {
+                            "ts": self._clock().isoformat(),
+                            "source": source,
+                            "note": note,
+                        }
+                    )
+                    + "\n"
+                )
         except OSError:
             # Activity log is best-effort; the sentinel is the real signal.
             return
@@ -219,63 +229,60 @@ class DeadmanSwitch:
     def decide(self, envelope: TaskEnvelope) -> DeadmanDecision:
         """Gate decision for one envelope. Compose into dispatch pipeline."""
         state = self.state()
-        hrs   = self.hours_since_activity()
-        last  = self.last_activity()
+        hrs = self.hours_since_activity()
+        last = self.last_activity()
         category = envelope.category.value
 
         if state is DeadmanState.LIVE:
             return DeadmanDecision(
-                state=state, allow=True,
+                state=state,
+                allow=True,
                 reason="operator active",
-                hours_since=hrs, last_activity=last,
+                hours_since=hrs,
+                last_activity=last,
             )
 
         if state is DeadmanState.DROWSY:
             return DeadmanDecision(
-                state=state, allow=True,
-                reason=(
-                    f"operator drowsy ({hrs:.1f}h since last activity); "
-                    f"still firing"
-                ),
-                hours_since=hrs, last_activity=last,
+                state=state,
+                allow=True,
+                reason=(f"operator drowsy ({hrs:.1f}h since last activity); still firing"),
+                hours_since=hrs,
+                last_activity=last,
             )
 
         if state is DeadmanState.STALE:
             if category in _STALE_BLOCKED:
                 return DeadmanDecision(
-                    state=state, allow=False,
-                    reason=(
-                        f"STALE mode ({hrs:.1f}h since operator); "
-                        f"blocking {category}"
-                    ),
-                    hours_since=hrs, last_activity=last,
+                    state=state,
+                    allow=False,
+                    reason=(f"STALE mode ({hrs:.1f}h since operator); blocking {category}"),
+                    hours_since=hrs,
+                    last_activity=last,
                 )
             return DeadmanDecision(
-                state=state, allow=True,
-                reason=(
-                    f"STALE mode ({hrs:.1f}h); "
-                    f"{category} still allowed"
-                ),
-                hours_since=hrs, last_activity=last,
+                state=state,
+                allow=True,
+                reason=(f"STALE mode ({hrs:.1f}h); {category} still allowed"),
+                hours_since=hrs,
+                last_activity=last,
             )
 
         # FROZEN
         if category in _FROZEN_ALLOWED:
             return DeadmanDecision(
-                state=state, allow=True,
-                reason=(
-                    f"FROZEN mode ({hrs:.1f}h since operator); "
-                    f"{category} on allow-list"
-                ),
-                hours_since=hrs, last_activity=last,
+                state=state,
+                allow=True,
+                reason=(f"FROZEN mode ({hrs:.1f}h since operator); {category} on allow-list"),
+                hours_since=hrs,
+                last_activity=last,
             )
         return DeadmanDecision(
-            state=state, allow=False,
-            reason=(
-                f"FROZEN mode ({hrs:.1f}h since operator); "
-                f"all spend actions denied"
-            ),
-            hours_since=hrs, last_activity=last,
+            state=state,
+            allow=False,
+            reason=(f"FROZEN mode ({hrs:.1f}h since operator); all spend actions denied"),
+            hours_since=hrs,
+            last_activity=last,
         )
 
     # --- reporting ---------------------------------------------------------
@@ -309,6 +316,7 @@ class DeadmanSwitch:
         try:
             ts = old_ts.timestamp()
             import os
+
             os.utime(self.sentinel_path, (ts, ts))
         except OSError:
             pass

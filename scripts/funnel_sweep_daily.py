@@ -131,7 +131,8 @@ def _apply_plan_to_state(
         new_state[src]["current_equity"] -= amt
         new_state[dst]["current_equity"] += amt
         new_state[dst]["peak_equity"] = max(
-            new_state[dst]["peak_equity"], new_state[dst]["current_equity"],
+            new_state[dst]["peak_equity"],
+            new_state[dst]["current_equity"],
         )
     return new_state
 
@@ -179,10 +180,12 @@ def main(argv: list[str] | None = None) -> int:
     ts_label = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     plan_path = out_dir / f"funnel_plan_{ts_label}.json"
     plan_path.write_text(
-        json.dumps(plan_dict, indent=2) + "\n", encoding="utf-8",
+        json.dumps(plan_dict, indent=2) + "\n",
+        encoding="utf-8",
     )
     (out_dir / "funnel_plan_latest.json").write_text(
-        json.dumps(plan_dict, indent=2) + "\n", encoding="utf-8",
+        json.dumps(plan_dict, indent=2) + "\n",
+        encoding="utf-8",
     )
 
     digest = format_digest(snapshot, plan)
@@ -192,7 +195,8 @@ def main(argv: list[str] | None = None) -> int:
     new_state = _apply_plan_to_state(state, snapshot, plan_dict)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
-        json.dumps(new_state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(new_state, indent=2) + "\n",
+        encoding="utf-8",
     )
 
     print("APEX funnel sweep complete")

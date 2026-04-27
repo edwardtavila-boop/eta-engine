@@ -20,6 +20,7 @@ Public API
   * ``GateTelemetrySummary``  -- cached stats snapshot
   * ``summarize(registry, journal=None)`` -- produce the snapshot
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -63,6 +64,7 @@ def record_gate_block(
     if journal is not None:
         # Import here to avoid circular dep at module load
         from eta_engine.obs.decision_journal import Outcome  # noqa: PLC0415
+
         journal.record(
             actor=actor,
             intent=f"gate:{gate}:block",
@@ -96,6 +98,7 @@ def record_gate_override(
     registry.inc(GATE_OVERRIDES_TOTAL, labels=labels)
     if journal is not None:
         from eta_engine.obs.decision_journal import Outcome  # noqa: PLC0415
+
         journal.record(
             actor=actor,
             intent=f"gate:{gate}:override",
@@ -117,7 +120,8 @@ class GateTelemetrySummary(BaseModel):
     total_blocks: int = Field(ge=0)
     total_overrides: int = Field(ge=0)
     override_rate: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="overrides / (overrides + blocks); 0 if no data.",
     )
     per_gate: dict[str, tuple[int, int]] = Field(

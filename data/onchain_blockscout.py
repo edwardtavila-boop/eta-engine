@@ -36,7 +36,10 @@ class BlockscoutClient:
     ) -> list[dict]:
         """Return list of {tx_hash, from, to, value_usd, ts} above threshold."""
         return _fetch_whale_transfers_cached(
-            asset, threshold_usd, self.chain_id, _five_min_bucket(),
+            asset,
+            threshold_usd,
+            self.chain_id,
+            _five_min_bucket(),
         )
 
     # ------------------------------------------------------------------
@@ -49,7 +52,10 @@ class BlockscoutClient:
     ) -> float:
         exchanges = exchanges or ["binance", "coinbase", "bybit"]
         return _fetch_netflow_cached(
-            asset, tuple(exchanges), self.chain_id, _five_min_bucket(),
+            asset,
+            tuple(exchanges),
+            self.chain_id,
+            _five_min_bucket(),
         )
 
     # ------------------------------------------------------------------
@@ -61,13 +67,17 @@ class BlockscoutClient:
         window_days: int = 7,
     ) -> float:
         return _fetch_addr_delta_cached(
-            asset, window_days, self.chain_id, _five_min_bucket(),
+            asset,
+            window_days,
+            self.chain_id,
+            _five_min_bucket(),
         )
 
 
 # ---------------------------------------------------------------------------
 # Module-level lru_cached stubs — bucket arg forces 5-minute rollover.
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=512)
 def _fetch_whale_transfers_cached(
@@ -77,8 +87,7 @@ def _fetch_whale_transfers_cached(
     bucket: int,
 ) -> list[dict]:
     """TODO: call mcp__blockscout__get_token_transfers_by_address for each whale."""
-    log.debug("[stub] whale transfers %s >$%.0f chain=%d bucket=%d",
-              asset, threshold_usd, chain_id, bucket)
+    log.debug("[stub] whale transfers %s >$%.0f chain=%d bucket=%d", asset, threshold_usd, chain_id, bucket)
     _ = (asset, threshold_usd, chain_id, bucket)
     return []
 
@@ -91,8 +100,7 @@ def _fetch_netflow_cached(
     bucket: int,
 ) -> float:
     """TODO: aggregate deposits/withdrawals across known exchange addresses."""
-    log.debug("[stub] netflow %s exch=%s chain=%d bucket=%d",
-              asset, exchanges, chain_id, bucket)
+    log.debug("[stub] netflow %s exch=%s chain=%d bucket=%d", asset, exchanges, chain_id, bucket)
     _ = (asset, exchanges, chain_id, bucket)
     return 0.0
 
@@ -105,7 +113,6 @@ def _fetch_addr_delta_cached(
     bucket: int,
 ) -> float:
     """TODO: call blockscout stats endpoint; compute z-score vs 30d baseline."""
-    log.debug("[stub] active-addr delta %s win=%dd chain=%d bucket=%d",
-              asset, window_days, chain_id, bucket)
+    log.debug("[stub] active-addr delta %s win=%dd chain=%d bucket=%d", asset, window_days, chain_id, bucket)
     _ = (asset, window_days, chain_id, bucket)
     return 0.0

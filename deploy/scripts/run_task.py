@@ -19,6 +19,7 @@ Exit codes:
   1 -- task skipped (preconditions not met)
   2 -- task failed; error logged
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,6 +40,7 @@ from eta_engine.brain.avengers import (
 # for critical alerts; noop if even that's missing.
 try:
     from eta_engine.brain.avengers import AlertLevel, push  # type: ignore[attr-defined]
+
     _HAS_PUSH = True
 except ImportError:
     _HAS_PUSH = False
@@ -53,9 +55,11 @@ except ImportError:
     def push(level: object, title: str, body: str) -> None:  # type: ignore[misc]
         try:
             from eta_engine.deploy.scripts.telegram_alerts import send_from_env
+
             send_from_env(f"*{title}*\n{body}", priority=str(level))
         except Exception:  # noqa: BLE001
             pass
+
 
 logger = logging.getLogger("deploy.run_task")
 
@@ -68,6 +72,7 @@ DEFAULT_LOG_DIR = Path.home() / ".local" / "log" / "eta_engine"
 # Task handlers (one per BackgroundTask)
 # ---------------------------------------------------------------------------
 
+
 def _task_kaizen_retro(state_dir: Path) -> dict:
     """ALFRED: close the day with a retrospective + emit a +1 ticket."""
     from eta_engine.brain.jarvis_v3.kaizen import (
@@ -75,6 +80,7 @@ def _task_kaizen_retro(state_dir: Path) -> dict:
         KaizenLedger,
         close_cycle,
     )
+
     now = datetime.now(UTC)
     ledger_path = state_dir / "kaizen_ledger.json"
     ledger = KaizenLedger.load(ledger_path) if ledger_path.exists() else KaizenLedger()
@@ -100,6 +106,7 @@ def _task_distill_train(state_dir: Path) -> dict:
         Distiller,
         DistillSample,
     )
+
     samples_path = state_dir / "distill_samples.jsonl"
     if not samples_path.exists():
         return {"trained": False, "reason": "no samples yet"}
@@ -116,13 +123,13 @@ def _task_distill_train(state_dir: Path) -> dict:
     d = Distiller.load(state_dir / "distiller.json")
     model = d.fit(samples, iters=500)
     d.save(state_dir / "distiller.json")
-    return {"trained": True, "samples": len(samples),
-            "version": model.version, "accuracy": model.accuracy}
+    return {"trained": True, "samples": len(samples), "version": model.version, "accuracy": model.accuracy}
 
 
 def _task_shadow_tick(state_dir: Path) -> dict:
     """ALFRED: resolve any open shadow trades at current prices."""
     from eta_engine.brain.jarvis_v3.next_level.shadow import ShadowLedger
+
     path = state_dir / "shadow_ledger.json"
     ledger = ShadowLedger.load(path) if path.exists() else ShadowLedger()
     # Price feed is injected; for the cron job we use the last-close
@@ -142,11 +149,17 @@ def _task_drift_summary(state_dir: Path) -> dict:
         return {"skipped": True, "reason": "no live health snapshot yet"}
     data = json.loads(snap_path.read_text(encoding="utf-8"))
     out_path = state_dir / "drift_summary.json"
-    out_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "last_health": data.get("health", "UNKNOWN"),
-        "last_composite": data.get("last_composite"),
-    }, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "last_health": data.get("health", "UNKNOWN"),
+                "last_composite": data.get("last_composite"),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return {"written": str(out_path)}
 
 
@@ -154,13 +167,13 @@ def _task_strategy_mine(state_dir: Path) -> dict:
     """BATMAN: mine precedent graph for candidate strategies."""
     from eta_engine.brain.jarvis_v3.next_level import strategy_synthesis
     from eta_engine.brain.jarvis_v3.precedent import PrecedentGraph
+
     path = state_dir / "precedent_graph.json"
     graph = PrecedentGraph.load(path) if path.exists() else PrecedentGraph()
     report = strategy_synthesis.mine(graph)
     out_path = state_dir / "strategy_candidates.json"
     strategy_synthesis.export_specs(report, out_path)
-    return {"candidates_found": report.candidates_found,
-            "buckets_scanned": report.buckets_scanned}
+    return {"candidates_found": report.candidates_found, "buckets_scanned": report.buckets_scanned}
 
 
 def _task_causal_review(state_dir: Path) -> dict:
@@ -168,14 +181,21 @@ def _task_causal_review(state_dir: Path) -> dict:
     # Scaffold -- a real implementation populates the CausalDAG from the
     # audit log. Stub writes a report file so downstream cron can chain.
     from eta_engine.brain.jarvis_v3.next_level.causal import CausalDAG
+
     dag = CausalDAG()
     out_path = state_dir / "causal_review.json"
-    out_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "nodes": len(dag.nodes()),
-        "observations": len(dag.observations()),
-        "note": "scaffold -- populate from audit log",
-    }, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "nodes": len(dag.nodes()),
+                "observations": len(dag.observations()),
+                "note": "scaffold -- populate from audit log",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return {"written": str(out_path)}
 
 
@@ -184,17 +204,18 @@ def _task_twin_verdict(state_dir: Path) -> dict:
     from eta_engine.brain.jarvis_v3.next_level.digital_twin import (
         TwinComparator,
     )
+
     cmp_ = TwinComparator()
     v = cmp_.verdict()
     out_path = state_dir / "twin_verdict.json"
-    out_path.write_text(json.dumps(v.model_dump(mode="json"), indent=2),
-                        encoding="utf-8")
+    out_path.write_text(json.dumps(v.model_dump(mode="json"), indent=2), encoding="utf-8")
     return {"verdict": v.verdict, "severity": v.severity}
 
 
 def _task_doctrine_review(state_dir: Path) -> dict:
     """BATMAN: quarterly doctrine review. Produces a delta proposal."""
     from eta_engine.brain.jarvis_v3.philosophy import summarize_doctrine
+
     out_path = state_dir / "doctrine_review.md"
     out_path.write_text(
         f"# Doctrine Review ({datetime.now(UTC).isoformat()})\n\n"
@@ -231,6 +252,7 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     10% cache-read discount on the prefix.
     """
     import os
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"skipped": True, "reason": "no API key"}
 
@@ -246,6 +268,7 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     # Use dotenv to load .env if present (harmless if already loaded)
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
@@ -261,40 +284,42 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
                 model="claude-haiku-4-5",
                 max_tokens=20,  # tiny -- just enough to prove cache
                 system=[
-                    {"type": "text", "text": prefix,
-                     "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": prefix, "cache_control": {"type": "ephemeral"}},
                 ],
                 messages=[{"role": "user", "content": "warmup_ping"}],
             )
-            cache_read  = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
+            cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
             cache_write = getattr(resp.usage, "cache_creation_input_tokens", 0) or 0
             results[persona] = {
-                "input_tokens":  resp.usage.input_tokens,
+                "input_tokens": resp.usage.input_tokens,
                 "output_tokens": resp.usage.output_tokens,
-                "cache_read":    cache_read,
-                "cache_write":   cache_write,
+                "cache_read": cache_read,
+                "cache_write": cache_write,
             }
             total_tokens += resp.usage.input_tokens + resp.usage.output_tokens
             # Estimated cost for Haiku warmup (tiny)
-            total_cost_est += (
-                resp.usage.input_tokens   * 0.80  / 1_000_000 +
-                resp.usage.output_tokens  * 4.00  / 1_000_000
-            )
+            total_cost_est += resp.usage.input_tokens * 0.80 / 1_000_000 + resp.usage.output_tokens * 4.00 / 1_000_000
         except Exception as exc:  # noqa: BLE001
             results[persona] = {"error": str(exc)[:200]}
 
     out_path = state_dir / "cache_warmup.json"
-    out_path.write_text(json.dumps({
-        "ts": datetime.now(UTC).isoformat(),
-        "personas_warmed":  [p for p, r in results.items() if "error" not in r],
-        "personas_failed":  [p for p, r in results.items() if "error" in r],
-        "total_tokens":     total_tokens,
-        "estimated_cost_usd": round(total_cost_est, 6),
-        "per_persona":      results,
-    }, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "personas_warmed": [p for p, r in results.items() if "error" not in r],
+                "personas_failed": [p for p, r in results.items() if "error" in r],
+                "total_tokens": total_tokens,
+                "estimated_cost_usd": round(total_cost_est, 6),
+                "per_persona": results,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return {
-        "warmed":  sum(1 for r in results.values() if "error" not in r),
-        "failed":  sum(1 for r in results.values() if "error" in r),
+        "warmed": sum(1 for r in results.values() if "error" not in r),
+        "failed": sum(1 for r in results.values() if "error" in r),
         "est_cost_usd": round(total_cost_est, 6),
     }
 
@@ -319,7 +344,8 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
     try:
         before = subprocess.check_output(
             ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
-            text=True, timeout=15,
+            text=True,
+            timeout=15,
         ).strip()
         report["before"] = before
     except Exception as exc:  # noqa: BLE001
@@ -331,7 +357,9 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
     try:
         pull_out = subprocess.check_output(
             ["git", "-C", str(repo_dir), "pull", "--ff-only"],
-            text=True, stderr=subprocess.STDOUT, timeout=60,
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=60,
         )
         report["pull_output"] = pull_out[-500:]
     except subprocess.CalledProcessError as exc:
@@ -341,7 +369,8 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
 
     after = subprocess.check_output(
         ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
-        text=True, timeout=15,
+        text=True,
+        timeout=15,
     ).strip()
     report["after"] = after
 
@@ -362,15 +391,24 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
 
     try:
         pytest_out = subprocess.check_output(
-            [str(venv_python), "-m", "pytest",
-             "tests/test_jarvis_v3.py",
-             "tests/test_jarvis_v3_supercharge.py",
-             "tests/test_jarvis_v3_next_level.py",
-             "tests/test_jarvis_v3_claude_layer.py",
-             "tests/test_avengers_dispatch.py",
-             "tests/test_deploy.py",
-             "-q", "--tb=no", "-x"],
-            cwd=str(repo_dir), text=True, stderr=subprocess.STDOUT, timeout=180,
+            [
+                str(venv_python),
+                "-m",
+                "pytest",
+                "tests/test_jarvis_v3.py",
+                "tests/test_jarvis_v3_supercharge.py",
+                "tests/test_jarvis_v3_next_level.py",
+                "tests/test_jarvis_v3_claude_layer.py",
+                "tests/test_avengers_dispatch.py",
+                "tests/test_deploy.py",
+                "-q",
+                "--tb=no",
+                "-x",
+            ],
+            cwd=str(repo_dir),
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=180,
         )
         report["test_output"] = pytest_out[-600:]
         report["tests_pass"] = True
@@ -384,14 +422,18 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
     # 4. Tests green -> restart services (Windows only; Linux systemd path TBD)
     restarted: list[str] = []
     if shutil.which("powershell"):
-        for svc in ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard",
-                    "Apex-Cloudflare-Tunnel"):
+        for svc in ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard", "Apex-Cloudflare-Tunnel"):
             try:
                 subprocess.run(
-                    ["powershell", "-NoProfile", "-Command",
-                     f"Stop-ScheduledTask -TaskName {svc} -ErrorAction SilentlyContinue; "
-                     f"Start-Sleep -Seconds 1; Start-ScheduledTask -TaskName {svc}"],
-                    timeout=30, check=False,
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-Command",
+                        f"Stop-ScheduledTask -TaskName {svc} -ErrorAction SilentlyContinue; "
+                        f"Start-Sleep -Seconds 1; Start-ScheduledTask -TaskName {svc}",
+                    ],
+                    timeout=30,
+                    check=False,
                 )
                 restarted.append(svc)
             except Exception:  # noqa: BLE001
@@ -415,35 +457,40 @@ def _write_meta_report(state_dir: Path, report: dict) -> None:
 # SUPERCHARGE ROUND -- 6 additional handlers (#14 #16 #17 #18 #19 #20)
 # ===========================================================================
 
+
 def _task_health_watchdog(state_dir: Path) -> dict:
     """ALFRED: auto-heal. Every 5min check the 3 boot services are Running;
     restart any that have been Ready for > 2 min. Telegram on first restart."""
     import subprocess
+
     report: dict = {"ts": datetime.now(UTC).isoformat(), "actions": []}
-    services = ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard",
-                "Apex-Cloudflare-Tunnel")
+    services = ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard", "Apex-Cloudflare-Tunnel")
     if os.name != "nt":
         return {"skipped": True, "reason": "watchdog is Windows-only"}
 
     for svc in services:
         try:
             out = subprocess.check_output(
-                ["powershell", "-NoProfile", "-Command",
-                 f"(Get-ScheduledTask -TaskName {svc} -ErrorAction SilentlyContinue).State"],
-                text=True, timeout=15,
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-ScheduledTask -TaskName {svc} -ErrorAction SilentlyContinue).State",
+                ],
+                text=True,
+                timeout=15,
             ).strip()
         except Exception as exc:  # noqa: BLE001
-            report["actions"].append({"svc": svc, "state": "PROBE_FAIL",
-                                      "error": str(exc)[:100]})
+            report["actions"].append({"svc": svc, "state": "PROBE_FAIL", "error": str(exc)[:100]})
             continue
         if not out:
             continue
         if out != "Running":
             try:
                 subprocess.run(
-                    ["powershell", "-NoProfile", "-Command",
-                     f"Start-ScheduledTask -TaskName {svc}"],
-                    timeout=15, check=False,
+                    ["powershell", "-NoProfile", "-Command", f"Start-ScheduledTask -TaskName {svc}"],
+                    timeout=15,
+                    check=False,
                 )
                 report["actions"].append(
                     {"svc": svc, "state_before": out, "state_after": "Started"},
@@ -458,8 +505,8 @@ def _task_health_watchdog(state_dir: Path) -> dict:
     if report["actions"] and any("state_after" in a for a in report["actions"]):
         try:
             from eta_engine.deploy.scripts.telegram_alerts import send_from_env
-            restarted = [a["svc"] for a in report["actions"]
-                         if a.get("state_after")]
+
+            restarted = [a["svc"] for a in report["actions"] if a.get("state_after")]
             if restarted:
                 send_from_env(
                     f"*Watchdog auto-healed*: {', '.join(restarted)}",
@@ -467,9 +514,10 @@ def _task_health_watchdog(state_dir: Path) -> dict:
                 )
         except Exception:  # noqa: BLE001
             pass
-    return {"actions": len(report["actions"]),
-            "restarted": [a["svc"] for a in report["actions"]
-                          if a.get("state_after")]}
+    return {
+        "actions": len(report["actions"]),
+        "restarted": [a["svc"] for a in report["actions"] if a.get("state_after")],
+    }
 
 
 def _task_self_test(state_dir: Path) -> dict:
@@ -482,10 +530,12 @@ def _task_self_test(state_dir: Path) -> dict:
     # 1. local health endpoint
     try:
         with urllib.request.urlopen(
-            "http://127.0.0.1:8000/health", timeout=5,
+            "http://127.0.0.1:8000/health",
+            timeout=5,
         ) as resp:
             report["checks"]["local_health"] = {
-                "status": resp.status, "ok": resp.status == 200,
+                "status": resp.status,
+                "ok": resp.status == 200,
             }
     except (urllib.error.URLError, TimeoutError) as exc:
         report["checks"]["local_health"] = {"ok": False, "error": str(exc)[:100]}
@@ -498,7 +548,8 @@ def _task_self_test(state_dir: Path) -> dict:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             report["checks"]["public_tunnel"] = {
-                "status": resp.status, "ok": resp.status == 200,
+                "status": resp.status,
+                "ok": resp.status == 200,
             }
     except (urllib.error.URLError, TimeoutError) as exc:
         report["checks"]["public_tunnel"] = {"ok": False, "error": str(exc)[:100]}
@@ -511,30 +562,31 @@ def _task_self_test(state_dir: Path) -> dict:
             ts = datetime.fromisoformat(hb["ts"].replace("Z", "+00:00"))
             age = (datetime.now(UTC) - ts).total_seconds()
             report["checks"]["heartbeat_fresh"] = {
-                "ok": age < 120, "age_seconds": int(age),
+                "ok": age < 120,
+                "age_seconds": int(age),
             }
         except Exception as exc:  # noqa: BLE001
-            report["checks"]["heartbeat_fresh"] = {"ok": False,
-                                                    "error": str(exc)[:100]}
+            report["checks"]["heartbeat_fresh"] = {"ok": False, "error": str(exc)[:100]}
     else:
-        report["checks"]["heartbeat_fresh"] = {"ok": False,
-                                                "error": "no heartbeat file"}
+        report["checks"]["heartbeat_fresh"] = {"ok": False, "error": "no heartbeat file"}
 
     # 4. Live Claude call if key present (budget-sensitive: once per day is cheap)
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
             import anthropic
+
             client = anthropic.Anthropic()
             resp = client.messages.create(
-                model="claude-haiku-4-5", max_tokens=5,
+                model="claude-haiku-4-5",
+                max_tokens=5,
                 messages=[{"role": "user", "content": "ping"}],
             )
             report["checks"]["claude_live"] = {
-                "ok": True, "tokens": resp.usage.output_tokens,
+                "ok": True,
+                "tokens": resp.usage.output_tokens,
             }
         except Exception as exc:  # noqa: BLE001
-            report["checks"]["claude_live"] = {"ok": False,
-                                                "error": str(exc)[:150]}
+            report["checks"]["claude_live"] = {"ok": False, "error": str(exc)[:150]}
 
     # Overall verdict
     all_ok = all(c.get("ok") for c in report["checks"].values())
@@ -546,8 +598,8 @@ def _task_self_test(state_dir: Path) -> dict:
     if not all_ok:
         try:
             from eta_engine.deploy.scripts.telegram_alerts import send_from_env
-            failures = [k for k, v in report["checks"].items()
-                        if not v.get("ok")]
+
+            failures = [k for k, v in report["checks"].items() if not v.get("ok")]
             send_from_env(
                 f"*Self-test FAILED* failures: {', '.join(failures)}",
                 priority="CRITICAL",
@@ -562,8 +614,8 @@ def _task_log_rotate(state_dir: Path, log_dir: Path) -> dict:
     gzip anything older; delete gzips older than 30 days."""
     import gzip
     import shutil
-    report: dict = {"ts": datetime.now(UTC).isoformat(),
-                    "archived": [], "pruned": []}
+
+    report: dict = {"ts": datetime.now(UTC).isoformat(), "archived": [], "pruned": []}
     now_ts = datetime.now(UTC).timestamp()
     # Archive .log files > 3 days old
     for log_file in log_dir.glob("*.log"):
@@ -591,7 +643,8 @@ def _task_log_rotate(state_dir: Path, log_dir: Path) -> dict:
         except Exception:  # noqa: BLE001
             pass
     (state_dir / "log_rotate.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8",
+        json.dumps(report, indent=2),
+        encoding="utf-8",
     )
     return {"archived": len(report["archived"]), "pruned": len(report["pruned"])}
 
@@ -599,8 +652,7 @@ def _task_log_rotate(state_dir: Path, log_dir: Path) -> dict:
 def _task_disk_cleanup(state_dir: Path) -> dict:
     """ROBIN: weekly cleanup. Purge %TEMP% files > 7 days,
     .pytest_cache + __pycache__ directories in the repo, and old package caches."""
-    report: dict = {"ts": datetime.now(UTC).isoformat(),
-                    "bytes_freed": 0, "files_deleted": 0}
+    report: dict = {"ts": datetime.now(UTC).isoformat(), "bytes_freed": 0, "files_deleted": 0}
     cutoff_ts = datetime.now(UTC).timestamp() - 7 * 86400
 
     targets: list[Path] = []
@@ -641,7 +693,8 @@ def _task_disk_cleanup(state_dir: Path) -> dict:
             except Exception:  # noqa: BLE001
                 continue
     (state_dir / "disk_cleanup.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8",
+        json.dumps(report, indent=2),
+        encoding="utf-8",
     )
     return report
 
@@ -677,13 +730,13 @@ def _task_backup(state_dir: Path) -> dict:
     except Exception as exc:  # noqa: BLE001
         report["error"] = str(exc)[:200]
         (state_dir / "backup.json").write_text(
-            json.dumps(report, indent=2), encoding="utf-8",
+            json.dumps(report, indent=2),
+            encoding="utf-8",
         )
         return report
 
     # Rotate: keep last 7 archives
-    existing = sorted(backup_dir.glob("apex-backup-*.tar.gz"),
-                      key=lambda p: p.stat().st_mtime, reverse=True)
+    existing = sorted(backup_dir.glob("apex-backup-*.tar.gz"), key=lambda p: p.stat().st_mtime, reverse=True)
     pruned = 0
     for old in existing[7:]:
         try:
@@ -694,7 +747,8 @@ def _task_backup(state_dir: Path) -> dict:
     report["retained"] = len(existing) - pruned
     report["pruned"] = pruned
     (state_dir / "backup.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8",
+        json.dumps(report, indent=2),
+        encoding="utf-8",
     )
     return report
 
@@ -721,26 +775,28 @@ def _task_prometheus_export(state_dir: Path) -> dict:
     if hb_path.exists():
         try:
             hb = json.loads(hb_path.read_text(encoding="utf-8"))
-            lines.extend([
-                "# HELP apex_quota_hourly_pct Fraction of hourly USD budget consumed",
-                "# TYPE apex_quota_hourly_pct gauge",
-                f"apex_quota_hourly_pct {hb.get('hourly_pct', 0.0)}",
-                "# HELP apex_quota_daily_pct Fraction of daily USD budget consumed",
-                "# TYPE apex_quota_daily_pct gauge",
-                f"apex_quota_daily_pct {hb.get('daily_pct', 0.0)}",
-                "# HELP apex_cache_hit_rate Anthropic prompt-cache hit rate in last hour",
-                "# TYPE apex_cache_hit_rate gauge",
-                f"apex_cache_hit_rate {hb.get('cache_hit_rate', 0.0)}",
-                "# HELP apex_distiller_version Current classifier version",
-                "# TYPE apex_distiller_version gauge",
-                f"apex_distiller_version {hb.get('distiller_version', 0)}",
-                "# HELP apex_distiller_trained 1 if classifier has training data, 0 otherwise",
-                "# TYPE apex_distiller_trained gauge",
-                f"apex_distiller_trained {1 if hb.get('distiller_trained') else 0}",
-                "# HELP apex_quota_state JARVIS quota state code (OK=0, WARN=1, DOWNSHIFT=2, FREEZE=3)",
-                "# TYPE apex_quota_state gauge",
-                f"apex_quota_state {_prom_quota_code(hb.get('quota_state', 'OK'))}",
-            ])
+            lines.extend(
+                [
+                    "# HELP apex_quota_hourly_pct Fraction of hourly USD budget consumed",
+                    "# TYPE apex_quota_hourly_pct gauge",
+                    f"apex_quota_hourly_pct {hb.get('hourly_pct', 0.0)}",
+                    "# HELP apex_quota_daily_pct Fraction of daily USD budget consumed",
+                    "# TYPE apex_quota_daily_pct gauge",
+                    f"apex_quota_daily_pct {hb.get('daily_pct', 0.0)}",
+                    "# HELP apex_cache_hit_rate Anthropic prompt-cache hit rate in last hour",
+                    "# TYPE apex_cache_hit_rate gauge",
+                    f"apex_cache_hit_rate {hb.get('cache_hit_rate', 0.0)}",
+                    "# HELP apex_distiller_version Current classifier version",
+                    "# TYPE apex_distiller_version gauge",
+                    f"apex_distiller_version {hb.get('distiller_version', 0)}",
+                    "# HELP apex_distiller_trained 1 if classifier has training data, 0 otherwise",
+                    "# TYPE apex_distiller_trained gauge",
+                    f"apex_distiller_trained {1 if hb.get('distiller_trained') else 0}",
+                    "# HELP apex_quota_state JARVIS quota state code (OK=0, WARN=1, DOWNSHIFT=2, FREEZE=3)",
+                    "# TYPE apex_quota_state gauge",
+                    f"apex_quota_state {_prom_quota_code(hb.get('quota_state', 'OK'))}",
+                ]
+            )
         except Exception as exc:  # noqa: BLE001
             lines.append(f"# error reading heartbeat: {exc}"[:200])
 
@@ -748,18 +804,18 @@ def _task_prometheus_export(state_dir: Path) -> dict:
         try:
             d = json.loads(dash_path.read_text(encoding="utf-8"))
             stress = d.get("stress", {}) or {}
-            lines.extend([
-                "# HELP apex_stress_composite Weighted stress composite [0,1]",
-                "# TYPE apex_stress_composite gauge",
-                f"apex_stress_composite {stress.get('composite', 0.0)}",
-            ])
+            lines.extend(
+                [
+                    "# HELP apex_stress_composite Weighted stress composite [0,1]",
+                    "# TYPE apex_stress_composite gauge",
+                    f"apex_stress_composite {stress.get('composite', 0.0)}",
+                ]
+            )
         except Exception:  # noqa: BLE001
             pass
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"written": str(out_path), "metrics": sum(
-        1 for line in lines if not line.startswith("#")
-    )}
+    return {"written": str(out_path), "metrics": sum(1 for line in lines if not line.startswith("#"))}
 
 
 def _prom_quota_code(state: str) -> int:
@@ -769,6 +825,7 @@ def _prom_quota_code(state: str) -> int:
 def _task_dashboard_assemble(state_dir: Path) -> dict:
     """ROBIN: assemble the dashboard payload JSON."""
     from eta_engine.brain.jarvis_v3.dashboard_payload import build_payload
+
     # Pull the latest JARVIS snapshot if available
     snap_path = state_dir / "jarvis_live_health.json"
     health = "UNKNOWN"
@@ -778,15 +835,16 @@ def _task_dashboard_assemble(state_dir: Path) -> dict:
         health = str(d.get("health", "UNKNOWN"))
         stress["composite"] = float(d.get("last_composite") or 0.0)
     payload = build_payload(
-        health=health, stress=stress,
+        health=health,
+        stress=stress,
         horizons={"now": 0.0, "next_15m": 0.0, "next_1h": 0.0, "overnight": 0.0},
         projection={"level": 0.0, "trend": 0.0, "forecast_5": 0.0},
-        regime="UNKNOWN", session_phase="OVERNIGHT",
+        regime="UNKNOWN",
+        session_phase="OVERNIGHT",
         suggestion="TRADE",
     )
     out_path = state_dir / "dashboard_payload.json"
-    out_path.write_text(json.dumps(payload.model_dump(mode="json"), indent=2),
-                        encoding="utf-8")
+    out_path.write_text(json.dumps(payload.model_dump(mode="json"), indent=2), encoding="utf-8")
     return {"written": str(out_path)}
 
 
@@ -802,6 +860,7 @@ def _task_chaos_drill(state_dir: Path) -> dict:
     is signal, not a crash. The verdict is in the journal.
     """
     from eta_engine.scripts.chaos_drill import run_drills
+
     results = run_drills()
     passed = sum(1 for r in results if r.get("passed"))
     failed = len(results) - passed
@@ -844,40 +903,41 @@ def _task_audit_summarize(state_dir: Path) -> dict:
     if not audit_path.exists():
         return {"skipped": True, "reason": "no audit log"}
     from eta_engine.brain.jarvis_v3 import nl_query
+
     r = nl_query.reason_freq(audit_path, hours=24.0)
     out_path = state_dir / "audit_daily_summary.json"
-    out_path.write_text(json.dumps(r.model_dump(mode="json"), indent=2),
-                        encoding="utf-8")
+    out_path.write_text(json.dumps(r.model_dump(mode="json"), indent=2), encoding="utf-8")
     return {"summary": r.summary}
 
 
 HANDLERS: dict[BackgroundTask, callable] = {
-    BackgroundTask.KAIZEN_RETRO:       lambda s, _l: _task_kaizen_retro(s),
-    BackgroundTask.DISTILL_TRAIN:      lambda s, _l: _task_distill_train(s),
-    BackgroundTask.SHADOW_TICK:        lambda s, _l: _task_shadow_tick(s),
-    BackgroundTask.DRIFT_SUMMARY:      lambda s, _l: _task_drift_summary(s),
-    BackgroundTask.STRATEGY_MINE:      lambda s, _l: _task_strategy_mine(s),
-    BackgroundTask.CAUSAL_REVIEW:      lambda s, _l: _task_causal_review(s),
-    BackgroundTask.TWIN_VERDICT:       lambda s, _l: _task_twin_verdict(s),
-    BackgroundTask.DOCTRINE_REVIEW:    lambda s, _l: _task_doctrine_review(s),
-    BackgroundTask.LOG_COMPACT:        lambda s, ld: _task_log_compact(s, ld),
-    BackgroundTask.PROMPT_WARMUP:      lambda s, _l: _task_prompt_warmup(s),
+    BackgroundTask.KAIZEN_RETRO: lambda s, _l: _task_kaizen_retro(s),
+    BackgroundTask.DISTILL_TRAIN: lambda s, _l: _task_distill_train(s),
+    BackgroundTask.SHADOW_TICK: lambda s, _l: _task_shadow_tick(s),
+    BackgroundTask.DRIFT_SUMMARY: lambda s, _l: _task_drift_summary(s),
+    BackgroundTask.STRATEGY_MINE: lambda s, _l: _task_strategy_mine(s),
+    BackgroundTask.CAUSAL_REVIEW: lambda s, _l: _task_causal_review(s),
+    BackgroundTask.TWIN_VERDICT: lambda s, _l: _task_twin_verdict(s),
+    BackgroundTask.DOCTRINE_REVIEW: lambda s, _l: _task_doctrine_review(s),
+    BackgroundTask.LOG_COMPACT: lambda s, ld: _task_log_compact(s, ld),
+    BackgroundTask.PROMPT_WARMUP: lambda s, _l: _task_prompt_warmup(s),
     BackgroundTask.DASHBOARD_ASSEMBLE: lambda s, _l: _task_dashboard_assemble(s),
-    BackgroundTask.AUDIT_SUMMARIZE:    lambda s, _l: _task_audit_summarize(s),
-    BackgroundTask.META_UPGRADE:       lambda s, _l: _task_meta_upgrade(s),
-    BackgroundTask.CHAOS_DRILL:        lambda s, _l: _task_chaos_drill(s),
-    BackgroundTask.HEALTH_WATCHDOG:    lambda s, _l: _task_health_watchdog(s),
-    BackgroundTask.SELF_TEST:          lambda s, _l: _task_self_test(s),
-    BackgroundTask.LOG_ROTATE:         lambda s, ld: _task_log_rotate(s, ld),
-    BackgroundTask.DISK_CLEANUP:       lambda s, _l: _task_disk_cleanup(s),
-    BackgroundTask.BACKUP:             lambda s, _l: _task_backup(s),
-    BackgroundTask.PROMETHEUS_EXPORT:  lambda s, _l: _task_prometheus_export(s),
+    BackgroundTask.AUDIT_SUMMARIZE: lambda s, _l: _task_audit_summarize(s),
+    BackgroundTask.META_UPGRADE: lambda s, _l: _task_meta_upgrade(s),
+    BackgroundTask.CHAOS_DRILL: lambda s, _l: _task_chaos_drill(s),
+    BackgroundTask.HEALTH_WATCHDOG: lambda s, _l: _task_health_watchdog(s),
+    BackgroundTask.SELF_TEST: lambda s, _l: _task_self_test(s),
+    BackgroundTask.LOG_ROTATE: lambda s, ld: _task_log_rotate(s, ld),
+    BackgroundTask.DISK_CLEANUP: lambda s, _l: _task_disk_cleanup(s),
+    BackgroundTask.BACKUP: lambda s, _l: _task_backup(s),
+    BackgroundTask.PROMETHEUS_EXPORT: lambda s, _l: _task_prometheus_export(s),
 }
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -899,8 +959,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         task = BackgroundTask(args.task.upper())
     except ValueError:
-        logger.error("unknown task %r -- options: %s",
-                     args.task, ", ".join(t.value for t in BackgroundTask))
+        logger.error("unknown task %r -- options: %s", args.task, ", ".join(t.value for t in BackgroundTask))
         return 2
 
     owner = TASK_OWNERS[task]
@@ -910,16 +969,21 @@ def main(argv: list[str] | None = None) -> int:
         out = handler(state_dir, log_dir)
         logger.info("[%s] task=%s done -- %s", owner, task.value, out)
         # Persist one-line result for dashboard
-        (state_dir / "last_task.json").write_text(json.dumps({
-            "ts": datetime.now(UTC).isoformat(),
-            "task": task.value,
-            "owner": owner,
-            "result": out,
-        }, indent=2), encoding="utf-8")
+        (state_dir / "last_task.json").write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "task": task.value,
+                    "owner": owner,
+                    "result": out,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         return 0
     except Exception as exc:  # noqa: BLE001
-        logger.error("[%s] task=%s failed: %s\n%s",
-                     owner, task.value, exc, traceback.format_exc())
+        logger.error("[%s] task=%s failed: %s\n%s", owner, task.value, exc, traceback.format_exc())
         # Fan out the failure so the operator knows cron is silently
         # broken. PushBus dedups repeat titles within a 10-minute
         # window so a task that fails every 5 min does NOT spam

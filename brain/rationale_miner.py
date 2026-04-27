@@ -29,6 +29,7 @@ Public API
   * ``RationaleMiner`` -- tokenize + cluster + score
   * ``tokenize_rationale`` -- exposed for testing
 """
+
 from __future__ import annotations
 
 import math
@@ -41,15 +42,58 @@ from pydantic import BaseModel, Field
 # Token utilities
 # ---------------------------------------------------------------------------
 
-_STOPWORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been",
-    "to", "of", "on", "in", "at", "by", "for", "with", "from",
-    "this", "that", "these", "those", "it", "its",
-    "i", "we", "you", "me", "my", "your", "our",
-    "and", "or", "but", "not", "no", "yes",
-    "did", "do", "does", "had", "has", "have",
-    "just", "then", "than", "so", "as",
-})
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "to",
+        "of",
+        "on",
+        "in",
+        "at",
+        "by",
+        "for",
+        "with",
+        "from",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "i",
+        "we",
+        "you",
+        "me",
+        "my",
+        "your",
+        "our",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "yes",
+        "did",
+        "do",
+        "does",
+        "had",
+        "has",
+        "have",
+        "just",
+        "then",
+        "than",
+        "so",
+        "as",
+    }
+)
 
 _TOKEN_RE = re.compile(r"[A-Za-z]+")
 
@@ -66,7 +110,7 @@ def ngrams(tokens: list[str], *, n: int) -> list[str]:
     """Space-joined contiguous n-grams."""
     if n <= 0 or len(tokens) < n:
         return []
-    return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+    return [" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +186,7 @@ class RationaleMiner:
 
     def mine(self, records: list[RationaleRecord]) -> MiningReport:
         if not records:
-            return MiningReport(n_records=0, clusters=[],
-                                top_winners=[], top_losers=[])
+            return MiningReport(n_records=0, clusters=[], top_winners=[], top_losers=[])
 
         phrase_to_trades = self._build_inverted_index(records)
         record_by_id = {r.trade_id: r for r in records}
@@ -160,9 +203,7 @@ class RationaleMiner:
         clustered_ids: set[str] = set()
         for c in clusters:
             clustered_ids.update(c.trade_ids)
-        uncategorized = [
-            r.trade_id for r in records if r.trade_id not in clustered_ids
-        ]
+        uncategorized = [r.trade_id for r in records if r.trade_id not in clustered_ids]
 
         top_winners = [c for c in clusters if c.mean_r > 0][:5]
         top_losers = [c for c in clusters if c.mean_r < 0][-5:][::-1]
@@ -178,7 +219,8 @@ class RationaleMiner:
     # --- internals --------------------------------------------------------
 
     def _build_inverted_index(
-        self, records: list[RationaleRecord],
+        self,
+        records: list[RationaleRecord],
     ) -> dict[str, list[str]]:
         """For each phrase, list the trade_ids where it occurs."""
         out: dict[str, list[str]] = {}
@@ -194,7 +236,9 @@ class RationaleMiner:
         return out
 
     def _score_cluster(
-        self, phrase: str, records: list[RationaleRecord],
+        self,
+        phrase: str,
+        records: list[RationaleRecord],
     ) -> Cluster:
         n = len(records)
         rs = [r.r_captured for r in records]
@@ -203,10 +247,7 @@ class RationaleMiner:
         mean_r = sum(rs) / n
         sorted_rs = sorted(rs)
         mid = n // 2
-        median_r = (
-            sorted_rs[mid] if n % 2 == 1
-            else 0.5 * (sorted_rs[mid - 1] + sorted_rs[mid])
-        )
+        median_r = sorted_rs[mid] if n % 2 == 1 else 0.5 * (sorted_rs[mid - 1] + sorted_rs[mid])
 
         if n > 1:
             var = sum((r - mean_r) ** 2 for r in rs) / (n - 1)
@@ -217,13 +258,15 @@ class RationaleMiner:
         graded = [r for r in records if r.grade_total is not None]
         mean_grade = (
             sum(r.grade_total for r in graded) / len(graded)  # type: ignore[misc]
-            if graded else None
+            if graded
+            else None
         )
 
         sharpe = mean_r / std_r if std_r > 0 else 0.0
 
         return Cluster(
-            phrase=phrase, n=n,
+            phrase=phrase,
+            n=n,
             trade_ids=[r.trade_id for r in records],
             win_rate=round(win_rate, 4),
             mean_r=round(mean_r, 4),
@@ -243,7 +286,9 @@ class RationaleMiner:
 def winners_minus_losers(report: MiningReport) -> list[tuple[str, float]]:
     """Return (phrase, expectancy) sorted desc. Handy for quick printout."""
     ranked = sorted(
-        report.clusters, key=lambda c: c.expectancy, reverse=True,
+        report.clusters,
+        key=lambda c: c.expectancy,
+        reverse=True,
     )
     return [(c.phrase, c.expectancy) for c in ranked]
 
@@ -256,8 +301,7 @@ def coverage(report: MiningReport) -> float:
     return round(1.0 - uncov / report.n_records, 4)
 
 
-def phrase_frequency(records: list[RationaleRecord], *, top_k: int = 10,
-                     max_ngram: int = 2) -> list[tuple[str, int]]:
+def phrase_frequency(records: list[RationaleRecord], *, top_k: int = 10, max_ngram: int = 2) -> list[tuple[str, int]]:
     """Most common phrases across the batch. Useful for sanity-checking
     tokenization and deciding what min_cluster_size should be.
     """

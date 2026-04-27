@@ -14,6 +14,7 @@ Covers:
     and ``_admin_note`` reports sibling PID state.
   * ``run_daemon_cli`` rejects unknown persona names.
 """
+
 from __future__ import annotations
 
 import json
@@ -66,6 +67,7 @@ def _fleet_with_journal(path: Path) -> Fleet:
 def _fixed_clock(dt: datetime):
     def _clk() -> datetime:
         return dt
+
     return _clk
 
 
@@ -86,7 +88,7 @@ class TestIsDue:
 
     def test_star_slash_n(self):
         # */5 matches 0,5,10,15,...55
-        fires  = datetime(2026, 4, 23, 14, 15, tzinfo=UTC)
+        fires = datetime(2026, 4, 23, 14, 15, tzinfo=UTC)
         misses = datetime(2026, 4, 23, 14, 16, tzinfo=UTC)
         assert is_due("*/5 * * * *", fires) is True
         assert is_due("*/5 * * * *", misses) is False
@@ -136,11 +138,10 @@ class TestEnvelopeForTask:
         expected_tier = {
             "BATMAN": ModelTier.OPUS,
             "ALFRED": ModelTier.SONNET,
-            "ROBIN":  ModelTier.HAIKU,
+            "ROBIN": ModelTier.HAIKU,
         }[owner]
         assert category_tier == expected_tier, (
-            f"{task.value} -> {env.category.value} -> {category_tier} "
-            f"but owner {owner} expects {expected_tier}"
+            f"{task.value} -> {env.category.value} -> {category_tier} but owner {owner} expects {expected_tier}"
         )
 
     def test_envelope_includes_task_id_in_context(self):
@@ -320,9 +321,7 @@ class TestTick:
         monkeypatch.setattr(
             dm,
             "_run_local_background_task",
-            lambda active_task: {"written": f"{active_task.value.lower()}.json"}
-            if active_task is task
-            else None,
+            lambda active_task: {"written": f"{active_task.value.lower()}.json"} if active_task is task else None,
         )
 
         d = AvengerDaemon(
@@ -358,9 +357,9 @@ class TestTick:
         monkeypatch.setattr(
             dm,
             "_run_local_background_task",
-            lambda task: {"warmed": 3, "failed": 0, "est_cost_usd": 0.0123}
-            if task is BackgroundTask.PROMPT_WARMUP
-            else None,
+            lambda task: (
+                {"warmed": 3, "failed": 0, "est_cost_usd": 0.0123} if task is BackgroundTask.PROMPT_WARMUP else None
+            ),
         )
 
         d = AvengerDaemon(
@@ -467,9 +466,17 @@ class TestRunDaemonCli:
 
     def test_all_valid_personas_enumerated(self):
         # Insurance against a rename somewhere in the codebase.
-        assert frozenset({
-            "JARVIS", "BATMAN", "ALFRED", "ROBIN",
-        }) == VALID_PERSONAS
+        assert (
+            frozenset(
+                {
+                    "JARVIS",
+                    "BATMAN",
+                    "ALFRED",
+                    "ROBIN",
+                }
+            )
+            == VALID_PERSONAS
+        )
 
     def test_runs_and_exits_cleanly(
         self,
@@ -481,6 +488,7 @@ class TestRunDaemonCli:
         # write into the real ~/.jarvis/avengers.jsonl.
         journal = tmp_path / "avengers.jsonl"
         import eta_engine.brain.avengers.daemon as dm
+
         monkeypatch.setattr(dm, "AVENGERS_JOURNAL", journal)
         ticks = run_daemon_cli(
             "ROBIN",

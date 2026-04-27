@@ -14,6 +14,7 @@ Covers:
   * brain.avengers.watchdog        -- HEALTHY / STUCK / OFFLINE classification
   * brain.avengers.hardened_fleet  -- composed middleware behaviour
 """
+
 from __future__ import annotations
 
 import json
@@ -83,7 +84,9 @@ def _env(
     caller: SubsystemId = SubsystemId.OPERATOR,
 ) -> TaskEnvelope:
     return TaskEnvelope(
-        category=category, goal=goal, caller=caller,
+        category=category,
+        goal=goal,
+        caller=caller,
     )
 
 
@@ -134,9 +137,11 @@ class TestPushBus:
         class Boom:
             def send(self, alert):  # noqa: ANN001, ANN201
                 raise RuntimeError("nope")
+
             @property
             def name(self) -> str:
                 return "boom"
+
         local = LocalFileNotifier(path=tmp_path / "alerts.jsonl")
         bus = PushBus(notifiers=[Boom(), local])
         # Should not raise.
@@ -154,7 +159,12 @@ class TestPushBus:
 
 class TestPrecedentCache:
     def _seed_journal(
-        self, path: Path, *, count: int, success: bool, goal: str,
+        self,
+        path: Path,
+        *,
+        count: int,
+        success: bool,
+        goal: str,
     ) -> None:
         now = datetime.now(UTC)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,11 +174,11 @@ class TestPrecedentCache:
                     "ts": (now - timedelta(hours=i)).isoformat(),
                     "envelope": {
                         "category": TaskCategory.STRATEGY_EDIT.value,
-                        "caller":   SubsystemId.OPERATOR.value,
-                        "goal":     goal,
+                        "caller": SubsystemId.OPERATOR.value,
+                        "goal": goal,
                     },
                     "result": {
-                        "success":  success,
+                        "success": success,
                         "artifact": f"artifact {i}",
                     },
                 }
@@ -178,7 +188,9 @@ class TestPrecedentCache:
         j = tmp_path / "avengers.jsonl"
         self._seed_journal(j, count=5, success=True, goal="tighten orb")
         cache = PrecedentCache(
-            journal_path=j, min_precedents=3, min_similarity=0.3,
+            journal_path=j,
+            min_precedents=3,
+            min_similarity=0.3,
         )
         env = _env(goal="tighten orb filter")
         verdict = cache.should_skip(env)
@@ -189,7 +201,9 @@ class TestPrecedentCache:
         j = tmp_path / "avengers.jsonl"
         self._seed_journal(j, count=5, success=False, goal="tighten orb")
         cache = PrecedentCache(
-            journal_path=j, min_precedents=3, min_similarity=0.3,
+            journal_path=j,
+            min_precedents=3,
+            min_similarity=0.3,
         )
         verdict = cache.should_skip(_env(goal="tighten orb filter"))
         assert verdict is None
@@ -218,16 +232,20 @@ class TestCalibrationLoop:
         # Pre-seed the journal.
         jp.parent.mkdir(parents=True, exist_ok=True)
         with jp.open("w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "ts": datetime.now(UTC).isoformat(),
-                "persona": PersonaId.ALFRED.value,
-                "category": TaskCategory.STRATEGY_EDIT.value,
-                "success": True,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "ts": datetime.now(UTC).isoformat(),
+                        "persona": PersonaId.ALFRED.value,
+                        "category": TaskCategory.STRATEGY_EDIT.value,
+                        "success": True,
+                    }
+                )
+                + "\n"
+            )
         cal = CalibrationLoop(journal_path=jp, rehydrate=True)
         # Should see the seeded record as 1 success.
-        snap = [s for s in cal.snapshot()
-                if s.persona == PersonaId.ALFRED.value]
+        snap = [s for s in cal.snapshot() if s.persona == PersonaId.ALFRED.value]
         assert snap, "expected at least one bucket after rehydrate"
         assert snap[0].successes == 1
 
@@ -256,8 +274,7 @@ class TestCircuitBreaker:
     def test_trips_on_cost_burst(self) -> None:
         br = CircuitBreaker(max_cost_per_minute=2.0, cooldown_seconds=0.01)
         # 3 opus calls at 5.0x -> 15.0 in the minute window, way over 2.0
-        br.record(_result(cost_multiplier=5.0, persona_id=PersonaId.BATMAN,
-                         tier_used=ModelTier.OPUS))
+        br.record(_result(cost_multiplier=5.0, persona_id=PersonaId.BATMAN, tier_used=ModelTier.OPUS))
         assert br.status().state is BreakerState.OPEN
 
     def test_half_open_closes_on_probe_success(self) -> None:
@@ -281,28 +298,44 @@ class TestPreflightCache:
     def test_put_get_hit(self) -> None:
         cache = PreflightCache(ttl_seconds=60.0)
         cache.put(
-            category="c", caller="caller.x", action_type="llm",
+            category="c",
+            caller="caller.x",
+            action_type="llm",
             verdict="APPROVE",
         )
-        assert cache.get(
-            category="c", caller="caller.x", action_type="llm",
-        ) == "APPROVE"
+        assert (
+            cache.get(
+                category="c",
+                caller="caller.x",
+                action_type="llm",
+            )
+            == "APPROVE"
+        )
 
     def test_never_caches_deny(self) -> None:
         cache = PreflightCache(ttl_seconds=60.0)
         cache.put(
-            category="c", caller="caller.x", action_type="llm",
+            category="c",
+            caller="caller.x",
+            action_type="llm",
             verdict="DENIED",
         )
-        assert cache.get(
-            category="c", caller="caller.x", action_type="llm",
-        ) is None
+        assert (
+            cache.get(
+                category="c",
+                caller="caller.x",
+                action_type="llm",
+            )
+            is None
+        )
 
     def test_ttl_expiry(self) -> None:
         # Controlled clock.
         t = [datetime(2026, 1, 1, tzinfo=UTC)]
+
         def clk() -> datetime:
             return t[0]
+
         cache = PreflightCache(ttl_seconds=10.0, clock=clk)
         cache.put(category="c", caller="a", action_type="llm", verdict="APPROVE")
         # Warp 20s forward.
@@ -324,10 +357,7 @@ class TestAdaptiveCron:
 
     def test_sparse_ok_skipped_in_calm(self) -> None:
         gate = RegimeGate(regime_getter=lambda: RegimeTag.CALM, calm_skip_ratio=3)
-        fires = [
-            gate.should_fire(BackgroundTask.DRIFT_SUMMARY).fire
-            for _ in range(6)
-        ]
+        fires = [gate.should_fire(BackgroundTask.DRIFT_SUMMARY).fire for _ in range(6)]
         # 1-in-3 schedule -> indices 0 and 3 fire.
         assert sum(fires) == 2
 
@@ -345,8 +375,10 @@ class TestAdaptiveCron:
 class TestDeadmanSwitch:
     def _ds(self, tmp_path: Path, *, clock: datetime | None = None) -> DeadmanSwitch:
         t = [clock or datetime.now(UTC)]
+
         def clk() -> datetime:
             return t[0]
+
         ds = DeadmanSwitch(
             sentinel_path=tmp_path / "op.sentinel",
             journal_path=tmp_path / "op.jsonl",
@@ -422,10 +454,17 @@ class TestPromotionGate:
     def test_promote_shadow_to_paper_when_clean(self, tmp_path: Path) -> None:
         gate = self._gate(tmp_path)
         gate.register("strat_B")
-        gate.update_metrics("strat_B", StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
-        ))
+        gate.update_metrics(
+            "strat_B",
+            StageMetrics(
+                trades=100,
+                days_active=30.0,
+                sharpe=2.0,
+                max_dd_pct=1.0,
+                win_rate=0.6,
+                mean_slippage_bps=1.0,
+            ),
+        )
         decision = gate.evaluate("strat_B")
         assert decision.action is PromotionAction.PROMOTE
         assert decision.to_stage is PromotionStage.PAPER
@@ -433,10 +472,17 @@ class TestPromotionGate:
     def test_hard_break_demotes(self, tmp_path: Path) -> None:
         gate = self._gate(tmp_path)
         gate.register("strat_C", stage=PromotionStage.LIVE_1LOT)
-        gate.update_metrics("strat_C", StageMetrics(
-            trades=50, days_active=10.0, sharpe=-1.0,
-            max_dd_pct=15.0, win_rate=0.3, mean_slippage_bps=10.0,
-        ))
+        gate.update_metrics(
+            "strat_C",
+            StageMetrics(
+                trades=50,
+                days_active=10.0,
+                sharpe=-1.0,
+                max_dd_pct=15.0,
+                win_rate=0.3,
+                mean_slippage_bps=10.0,
+            ),
+        )
         decision = gate.evaluate("strat_C")
         assert decision.action is PromotionAction.DEMOTE
         assert decision.to_stage is PromotionStage.PAPER
@@ -444,10 +490,16 @@ class TestPromotionGate:
     def test_shadow_hard_break_retires(self, tmp_path: Path) -> None:
         gate = self._gate(tmp_path)
         gate.register("strat_D")
-        gate.update_metrics("strat_D", StageMetrics(
-            trades=50, days_active=10.0, sharpe=-1.0,
-            max_dd_pct=15.0, win_rate=0.3,
-        ))
+        gate.update_metrics(
+            "strat_D",
+            StageMetrics(
+                trades=50,
+                days_active=10.0,
+                sharpe=-1.0,
+                max_dd_pct=15.0,
+                win_rate=0.3,
+            ),
+        )
         decision = gate.evaluate("strat_D")
         assert decision.action is PromotionAction.RETIRE
         assert decision.to_stage is PromotionStage.RETIRED
@@ -455,10 +507,17 @@ class TestPromotionGate:
     def test_apply_mutates_state(self, tmp_path: Path) -> None:
         gate = self._gate(tmp_path)
         gate.register("strat_E")
-        gate.update_metrics("strat_E", StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
-        ))
+        gate.update_metrics(
+            "strat_E",
+            StageMetrics(
+                trades=100,
+                days_active=30.0,
+                sharpe=2.0,
+                max_dd_pct=1.0,
+                win_rate=0.6,
+                mean_slippage_bps=1.0,
+            ),
+        )
         decision = gate.evaluate("strat_E")
         spec = gate.apply(decision)
         assert spec.current_stage is PromotionStage.PAPER
@@ -489,18 +548,22 @@ class TestCostForecast:
         # over 24h -> projection ~$9125/mo. Cap at $200 -> RED.
         lines = []
         for i in range(1000):
-            lines.append(json.dumps({
-                "ts": (now - timedelta(minutes=i)).isoformat(),
-                "envelope": {
-                    "category": TaskCategory.STRATEGY_EDIT.value,
-                    "caller":   SubsystemId.OPERATOR.value,
-                    "goal":     "x",
-                },
-                "result": {
-                    "cost_multiplier": 5.0,
-                    "success": True,
-                },
-            }))
+            lines.append(
+                json.dumps(
+                    {
+                        "ts": (now - timedelta(minutes=i)).isoformat(),
+                        "envelope": {
+                            "category": TaskCategory.STRATEGY_EDIT.value,
+                            "caller": SubsystemId.OPERATOR.value,
+                            "goal": "x",
+                        },
+                        "result": {
+                            "cost_multiplier": 5.0,
+                            "success": True,
+                        },
+                    }
+                )
+            )
         j.write_text("\n".join(lines) + "\n", encoding="utf-8")
         cf = CostForecast(journal_path=j, monthly_cap_usd=200.0)
         report = cf.snapshot()
@@ -515,9 +578,11 @@ class TestCostForecast:
 
 class TestWatchdog:
     def _bus(self, tmp_path: Path) -> PushBus:
-        return PushBus(notifiers=[
-            LocalFileNotifier(path=tmp_path / "alerts.jsonl"),
-        ])
+        return PushBus(
+            notifiers=[
+                LocalFileNotifier(path=tmp_path / "alerts.jsonl"),
+            ]
+        )
 
     def test_offline_when_no_heartbeat(self, tmp_path: Path) -> None:
         wd = Watchdog(
@@ -538,11 +603,15 @@ class TestWatchdog:
         now = datetime.now(UTC)
         lines = []
         for p in ("JARVIS", "BATMAN", "ALFRED", "ROBIN"):
-            lines.append(json.dumps({
-                "ts":      now.isoformat(),
-                "kind":    "heartbeat",
-                "persona": p,
-            }))
+            lines.append(
+                json.dumps(
+                    {
+                        "ts": now.isoformat(),
+                        "kind": "heartbeat",
+                        "persona": p,
+                    }
+                )
+            )
         jp.write_text("\n".join(lines) + "\n", encoding="utf-8")
         wd = Watchdog(
             journal_path=jp,
@@ -594,7 +663,8 @@ class TestHardenedFleet:
         br.record(_result(success=False, reason_code="executor_error"))
         assert br.status().state is BreakerState.OPEN
         hfleet = HardenedFleet(
-            fleet, breaker=br,
+            fleet,
+            breaker=br,
             push_bus=PushBus(notifiers=[LocalFileNotifier(path=tmp_path / "a.jsonl")]),
         )
         res = hfleet.dispatch(_env())
@@ -607,18 +677,24 @@ class TestHardenedFleet:
             journal_path=tmp_path / "j.jsonl",
         )
         t = [datetime.now(UTC)]
-        def clk() -> datetime: return t[0]
+
+        def clk() -> datetime:
+            return t[0]
+
         ds = DeadmanSwitch(
             sentinel_path=tmp_path / "sentinel",
             journal_path=tmp_path / "op.jsonl",
-            soft_stale_hours=1.0, hard_stale_hours=2.0, freeze_hours=3.0,
+            soft_stale_hours=1.0,
+            hard_stale_hours=2.0,
+            freeze_hours=3.0,
             clock=clk,
         )
         ds.record_activity(source="bootstrap")
         t[0] = t[0] + timedelta(hours=10)
         assert ds.state() is DeadmanState.FROZEN
         hfleet = HardenedFleet(
-            fleet, deadman=ds,
+            fleet,
+            deadman=ds,
             push_bus=PushBus(notifiers=[LocalFileNotifier(path=tmp_path / "a.jsonl")]),
         )
         res = hfleet.dispatch(_env(category=TaskCategory.STRATEGY_EDIT))
@@ -631,7 +707,8 @@ class TestHardenedFleet:
             journal_path=tmp_path / "j.jsonl",
         )
         cal = CalibrationLoop(
-            journal_path=tmp_path / "cal.jsonl", rehydrate=False,
+            journal_path=tmp_path / "cal.jsonl",
+            rehydrate=False,
         )
         hfleet = HardenedFleet(fleet, calibration=cal)
         hfleet.dispatch(_env())
@@ -654,13 +731,16 @@ class TestSharedCircuitBreaker:
         # Sanity: the module-level default points at ~/.jarvis/breaker.json
         # so production wiring lands in the expected location.
         from eta_engine.brain.avengers import DEFAULT_BREAKER_PATH
+
         assert DEFAULT_BREAKER_PATH.name == "breaker.json"
         assert DEFAULT_BREAKER_PATH.parent.name == ".jarvis"
 
     def test_trip_writes_open_to_disk(self, tmp_path: Path) -> None:
         path = self._bpath(tmp_path)
         br = SharedCircuitBreaker(
-            path=path, max_consec_failures=2, cooldown_seconds=60,
+            path=path,
+            max_consec_failures=2,
+            cooldown_seconds=60,
             rehydrate_on_init=False,
         )
         br.record(_result(success=False, reason_code="executor_error"))
@@ -679,7 +759,9 @@ class TestSharedCircuitBreaker:
         """A second instance constructed after A tripped adopts OPEN."""
         path = self._bpath(tmp_path)
         a = SharedCircuitBreaker(
-            path=path, max_consec_failures=1, cooldown_seconds=3600,
+            path=path,
+            max_consec_failures=1,
+            cooldown_seconds=3600,
             rehydrate_on_init=False,
         )
         a.record(_result(success=False, reason_code="executor_error"))
@@ -695,7 +777,9 @@ class TestSharedCircuitBreaker:
         """When A resets, a live instance B adopts CLOSED on refresh."""
         path = self._bpath(tmp_path)
         a = SharedCircuitBreaker(
-            path=path, max_consec_failures=1, cooldown_seconds=3600,
+            path=path,
+            max_consec_failures=1,
+            cooldown_seconds=3600,
             rehydrate_on_init=False,
         )
         a.record(_result(success=False, reason_code="executor_error"))
@@ -713,11 +797,16 @@ class TestSharedCircuitBreaker:
         """Disk only stores OPEN/CLOSED; HALF_OPEN is process-local."""
         path = self._bpath(tmp_path)
         t = [datetime(2026, 1, 1, tzinfo=UTC)]
+
         def clk() -> datetime:
             return t[0]
+
         br = SharedCircuitBreaker(
-            path=path, max_consec_failures=1, cooldown_seconds=10,
-            rehydrate_on_init=False, clock=clk,
+            path=path,
+            max_consec_failures=1,
+            cooldown_seconds=10,
+            rehydrate_on_init=False,
+            clock=clk,
         )
         br.record(_result(success=False, reason_code="executor_error"))
         assert br.status().state is BreakerState.OPEN
@@ -736,15 +825,17 @@ class TestSharedCircuitBreaker:
         path = self._bpath(tmp_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps({
-                "version":     9999,
-                "state":       "OPEN",
-                "tripped_at":  datetime.now(UTC).isoformat(),
-                "reopen_at":   (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
-                "last_reason": "future schema",
-                "written_at":  datetime.now(UTC).isoformat(),
-                "writer_pid":  1,
-            }),
+            json.dumps(
+                {
+                    "version": 9999,
+                    "state": "OPEN",
+                    "tripped_at": datetime.now(UTC).isoformat(),
+                    "reopen_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                    "last_reason": "future schema",
+                    "written_at": datetime.now(UTC).isoformat(),
+                    "writer_pid": 1,
+                }
+            ),
             encoding="utf-8",
         )
         br = SharedCircuitBreaker(path=path, rehydrate_on_init=True)
@@ -765,7 +856,9 @@ class TestSharedCircuitBreaker:
         """The operator CLI hook writes a CLOSED record atomically."""
         path = self._bpath(tmp_path)
         br = SharedCircuitBreaker(
-            path=path, max_consec_failures=1, cooldown_seconds=3600,
+            path=path,
+            max_consec_failures=1,
+            cooldown_seconds=3600,
             rehydrate_on_init=False,
         )
         br.record(_result(success=False, reason_code="executor_error"))
@@ -784,15 +877,17 @@ class TestSharedCircuitBreaker:
         now = datetime.now(UTC)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps({
-                "version":     1,
-                "state":       "OPEN",
-                "tripped_at":  (now - timedelta(minutes=30)).isoformat(),
-                "reopen_at":   (now - timedelta(minutes=1)).isoformat(),
-                "last_reason": "stale cooldown",
-                "written_at":  now.isoformat(),
-                "writer_pid":  0,
-            }),
+            json.dumps(
+                {
+                    "version": 1,
+                    "state": "OPEN",
+                    "tripped_at": (now - timedelta(minutes=30)).isoformat(),
+                    "reopen_at": (now - timedelta(minutes=1)).isoformat(),
+                    "last_reason": "stale cooldown",
+                    "written_at": now.isoformat(),
+                    "writer_pid": 0,
+                }
+            ),
             encoding="utf-8",
         )
         br = SharedCircuitBreaker(path=path, rehydrate_on_init=True)
@@ -805,9 +900,12 @@ class TestSharedCircuitBreaker:
     def test_status_includes_writer_pid(self, tmp_path: Path) -> None:
         """The writer_pid field is populated so dashboards can show origin."""
         import os as _os
+
         path = self._bpath(tmp_path)
         br = SharedCircuitBreaker(
-            path=path, max_consec_failures=1, cooldown_seconds=60,
+            path=path,
+            max_consec_failures=1,
+            cooldown_seconds=60,
             rehydrate_on_init=False,
         )
         br.record(_result(success=False, reason_code="executor_error"))
@@ -827,8 +925,12 @@ class TestPromotionRedTeam:
     def _full_metrics(self) -> StageMetrics:
         """Metrics that clear every threshold on SHADOW->PAPER."""
         return StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.6,
+            mean_slippage_bps=1.0,
         )
 
     def test_no_gate_passthrough_promotes(self, tmp_path: Path) -> None:
@@ -896,6 +998,7 @@ class TestPromotionRedTeam:
 
     def test_callable_raises_fails_closed(self, tmp_path: Path) -> None:
         """A broken red team callable must not silently PROMOTE."""
+
         def boom(spec: PromotionSpec, tentative: PromotionDecision) -> RedTeamVerdict:
             raise RuntimeError("red team is offline")
 
@@ -931,10 +1034,17 @@ class TestPromotionRedTeam:
             red_team_gate=tracker,
         )
         gate.register("rt_live", stage=PromotionStage.LIVE_1LOT)
-        gate.update_metrics("rt_live", StageMetrics(
-            trades=200, days_active=45.0, sharpe=1.8,
-            max_dd_pct=1.0, win_rate=0.55, mean_slippage_bps=1.5,
-        ))
+        gate.update_metrics(
+            "rt_live",
+            StageMetrics(
+                trades=200,
+                days_active=45.0,
+                sharpe=1.8,
+                max_dd_pct=1.0,
+                win_rate=0.55,
+                mean_slippage_bps=1.5,
+            ),
+        )
         decision = gate.evaluate("rt_live")
         # Transition should PROMOTE without consulting the gate.
         assert decision.action is PromotionAction.PROMOTE
@@ -943,9 +1053,12 @@ class TestPromotionRedTeam:
 
     def test_apply_stamps_red_team_into_journal(self, tmp_path: Path) -> None:
         """apply() persists the verdict under the 'red_team' key."""
+
         def approve(spec: PromotionSpec, tentative: PromotionDecision) -> RedTeamVerdict:
             return RedTeamVerdict(
-                approve=True, reasons=["passed adversarial review"], risk_score=0.1,
+                approve=True,
+                reasons=["passed adversarial review"],
+                risk_score=0.1,
             )
 
         journal = tmp_path / "p.jsonl"
@@ -963,11 +1076,7 @@ class TestPromotionRedTeam:
         assert gate.last_red_team_verdict("rt_journal") is None
 
         # The applied journal entry must carry the red_team payload.
-        apply_records = [
-            json.loads(ln)
-            for ln in journal.read_text(encoding="utf-8").splitlines()
-            if ln.strip()
-        ]
+        apply_records = [json.loads(ln) for ln in journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
         apply_rec = next(r for r in apply_records if r.get("event") == "apply")
         assert "red_team" in apply_rec
         rt = apply_rec["red_team"]
@@ -977,14 +1086,15 @@ class TestPromotionRedTeam:
 
     def test_gated_transitions_are_exactly_two(self) -> None:
         """The gated set is intentionally frozen at two entries."""
-        expected = frozenset({
-            (PromotionStage.SHADOW, PromotionStage.PAPER),
-            (PromotionStage.PAPER,  PromotionStage.LIVE_1LOT),
-        })
+        expected = frozenset(
+            {
+                (PromotionStage.SHADOW, PromotionStage.PAPER),
+                (PromotionStage.PAPER, PromotionStage.LIVE_1LOT),
+            }
+        )
         assert expected == RED_TEAM_GATED_TRANSITIONS
         # Terminal sizing transition must NOT be in the gated set.
-        assert (PromotionStage.LIVE_1LOT, PromotionStage.LIVE_FULL) \
-            not in RED_TEAM_GATED_TRANSITIONS
+        assert (PromotionStage.LIVE_1LOT, PromotionStage.LIVE_FULL) not in RED_TEAM_GATED_TRANSITIONS
 
     def test_hold_without_thresholds_does_not_call_gate(self, tmp_path: Path) -> None:
         """When threshold checks already produce HOLD, red team is skipped."""
@@ -1001,10 +1111,17 @@ class TestPromotionRedTeam:
         )
         gate.register("rt_hold_thr")
         # Metrics fail min_days threshold -> HOLD before the red team branch.
-        gate.update_metrics("rt_hold_thr", StageMetrics(
-            trades=100, days_active=1.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
-        ))
+        gate.update_metrics(
+            "rt_hold_thr",
+            StageMetrics(
+                trades=100,
+                days_active=1.0,
+                sharpe=2.0,
+                max_dd_pct=1.0,
+                win_rate=0.6,
+                mean_slippage_bps=1.0,
+            ),
+        )
         decision = gate.evaluate("rt_hold_thr")
         assert decision.action is PromotionAction.HOLD
         assert calls == []
@@ -1073,7 +1190,8 @@ class TestDriftDetector:
             )
         with pytest.raises(ValueError):
             DriftDetector(
-                warn_kl=0.5, demote_kl=0.1,  # demote < warn
+                warn_kl=0.5,
+                demote_kl=0.1,  # demote < warn
                 journal_path=tmp_path / "drift.jsonl",
             )
         with pytest.raises(ValueError):
@@ -1154,9 +1272,8 @@ class TestChaosDrill:
         # v0.1.56 CHAOS DRILL CLOSURE: 4 legacy drills + 12 new surface drills.
         assert len(results) == len(chaos_drill.ALL_DRILLS)
         failures = [r for r in results if not r["passed"]]
-        assert not failures, (
-            "All chaos drills must pass; failures:\n"
-            + "\n".join(f"  {r['drill']}: {r['details']}" for r in failures)
+        assert not failures, "All chaos drills must pass; failures:\n" + "\n".join(
+            f"  {r['drill']}: {r['details']}" for r in failures
         )
         # Every result should have a drill name, details, and observed dict.
         for r in results:
@@ -1166,7 +1283,8 @@ class TestChaosDrill:
 
     def test_unknown_drill_reports_failure(self, tmp_path: Path) -> None:
         results = chaos_drill.run_drills(
-            ["breaker", "bogus"], sandbox=tmp_path / "chaos",
+            ["breaker", "bogus"],
+            sandbox=tmp_path / "chaos",
         )
         bogus = [r for r in results if r["drill"] == "bogus"]
         assert bogus, "unknown drill must still surface in the result set"
@@ -1176,7 +1294,8 @@ class TestChaosDrill:
     def test_subset_selection(self, tmp_path: Path) -> None:
         """Running a subset returns only the named drills."""
         results = chaos_drill.run_drills(
-            ["push"], sandbox=tmp_path / "chaos",
+            ["push"],
+            sandbox=tmp_path / "chaos",
         )
         assert len(results) == 1
         assert results[0]["drill"] == "push"
@@ -1188,9 +1307,7 @@ class TestChaosDrill:
         chaos_drill.run_drills(sandbox=sandbox)
         # After the run, each sub-sandbox directory should exist.
         for name in chaos_drill.ALL_DRILLS:
-            assert (sandbox / name).exists(), (
-                f"drill {name} did not get its own sandbox dir"
-            )
+            assert (sandbox / name).exists(), f"drill {name} did not get its own sandbox dir"
 
     def test_format_report_contains_pass_markers(self, tmp_path: Path) -> None:
         results = chaos_drill.run_drills(sandbox=tmp_path / "chaos")
@@ -1245,11 +1362,13 @@ class TestChaosDrillCronHandler:
 
     def test_enum_exists_and_owned_by_alfred(self) -> None:
         from eta_engine.brain.avengers import TASK_OWNERS
+
         assert BackgroundTask.CHAOS_DRILL in TASK_OWNERS
         assert TASK_OWNERS[BackgroundTask.CHAOS_DRILL] == "ALFRED"
 
     def test_cadence_is_monthly_first_at_3am(self) -> None:
         from eta_engine.brain.avengers.dispatch import TASK_CADENCE
+
         assert TASK_CADENCE[BackgroundTask.CHAOS_DRILL] == "0 3 1 * *"
 
     def test_crontab_contains_chaos_drill_entry(self) -> None:
@@ -1257,6 +1376,7 @@ class TestChaosDrillCronHandler:
         from pathlib import Path
 
         import eta_engine
+
         # Package root -> parent is eta_engine/
         repo = Path(eta_engine.__file__).resolve().parent
         crontab = repo / "deploy" / "cron" / "avengers.crontab"
@@ -1268,6 +1388,7 @@ class TestChaosDrillCronHandler:
     def test_handler_writes_report_and_history(self, tmp_path: Path) -> None:
         """_task_chaos_drill runs the drills and journals to state_dir."""
         from eta_engine.deploy.scripts.run_task import _task_chaos_drill
+
         out = _task_chaos_drill(tmp_path)
         n = len(chaos_drill.ALL_DRILLS)
         assert out["total"] == n
@@ -1289,6 +1410,7 @@ class TestChaosDrillCronHandler:
     def test_handler_history_appends(self, tmp_path: Path) -> None:
         """Running twice produces two JSONL rows without overwriting."""
         from eta_engine.deploy.scripts.run_task import _task_chaos_drill
+
         _task_chaos_drill(tmp_path)
         _task_chaos_drill(tmp_path)
         history_file = tmp_path / "chaos_drill_history.jsonl"
@@ -1313,12 +1435,14 @@ class TestDashboardDriftPanel:
     def dashboard_module(self, tmp_path: Path, monkeypatch):
         """Import jarvis_dashboard with DRIFT_JOURNAL pointed at a temp path."""
         import eta_engine.scripts.jarvis_dashboard as mod
+
         drift_path = tmp_path / "drift.jsonl"
         monkeypatch.setattr(mod, "DRIFT_JOURNAL", drift_path)
         return mod, drift_path
 
     def test_render_drift_no_data_when_journal_missing(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         mod, _ = dashboard_module
         out = mod._render_drift()
@@ -1326,13 +1450,15 @@ class TestDashboardDriftPanel:
         assert "journal" in out
 
     def test_render_drift_surfaces_last_verdict(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         """Writes a real DriftReport, confirms field mapping."""
         from eta_engine.brain.avengers.drift_detector import (
             DriftDetector,
             DriftVerdict,
         )
+
         mod, drift_path = dashboard_module
         # Use the real detector so we exercise the exact journal schema.
         detector = DriftDetector(journal_path=drift_path)
@@ -1359,45 +1485,54 @@ class TestDashboardDriftPanel:
         assert len(out["reason"]) > 0
 
     def test_render_drift_counts_rolling_window(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         """Multiple entries accumulate per-verdict counts."""
         mod, drift_path = dashboard_module
         # Hand-write 3 entries, mixed verdicts.
         drift_path.parent.mkdir(parents=True, exist_ok=True)
         rows = [
-            {"verdict": "OK",          "generated_at": "2026-04-24T00:00:00+00:00"},
-            {"verdict": "WARN",        "generated_at": "2026-04-24T00:05:00+00:00"},
-            {"verdict": "AUTO_DEMOTE", "generated_at": "2026-04-24T00:10:00+00:00",
-             "strategy_id": "strat_Z", "reasons": ["kl exceeded"]},
+            {"verdict": "OK", "generated_at": "2026-04-24T00:00:00+00:00"},
+            {"verdict": "WARN", "generated_at": "2026-04-24T00:05:00+00:00"},
+            {
+                "verdict": "AUTO_DEMOTE",
+                "generated_at": "2026-04-24T00:10:00+00:00",
+                "strategy_id": "strat_Z",
+                "reasons": ["kl exceeded"],
+            },
         ]
         drift_path.write_text(
             "\n".join(json.dumps(r) for r in rows) + "\n",
             encoding="utf-8",
         )
         out = mod._render_drift()
-        assert out["state"] == "AUTO_DEMOTE"           # last entry
+        assert out["state"] == "AUTO_DEMOTE"  # last entry
         assert out["strategy_id"] == "strat_Z"
         assert out["reason"] == "kl exceeded"
         assert out["counts"] == {"OK": 1, "WARN": 1, "AUTO_DEMOTE": 1}
         assert out["entries"] == 3
 
     def test_render_drift_joins_multiple_reasons(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         mod, drift_path = dashboard_module
         drift_path.parent.mkdir(parents=True, exist_ok=True)
-        row = {"verdict": "WARN",
-               "generated_at": "2026-04-24T00:00:00+00:00",
-               "reasons": ["kl=0.20 >= warn=0.15", "sharpe delta = 1.7 sigma"]}
+        row = {
+            "verdict": "WARN",
+            "generated_at": "2026-04-24T00:00:00+00:00",
+            "reasons": ["kl=0.20 >= warn=0.15", "sharpe delta = 1.7 sigma"],
+        }
         drift_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
         out = mod._render_drift()
         assert "kl=0.20" in out["reason"]
         assert "sharpe delta" in out["reason"]
-        assert "; " in out["reason"]                    # joined with "; "
+        assert "; " in out["reason"]  # joined with "; "
 
     def test_render_drift_tolerates_malformed_journal(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         """Garbage lines are skipped by read_drift_journal() without raising."""
         mod, drift_path = dashboard_module
@@ -1414,23 +1549,23 @@ class TestDashboardDriftPanel:
         assert out["entries"] == 2
 
     def test_collect_state_includes_drift_key(
-        self, dashboard_module,
+        self,
+        dashboard_module,
     ) -> None:
         """collect_state() must expose 'drift' to the HTML layer."""
         mod, _ = dashboard_module
         state = mod.collect_state()
         assert "drift" in state
         # All other core panels should still be present.
-        for key in ("breaker", "deadman", "forecast", "daemons",
-                    "promotion", "calibration", "journal", "alerts"):
+        for key in ("breaker", "deadman", "forecast", "daemons", "promotion", "calibration", "journal", "alerts"):
             assert key in state
 
     def test_html_template_has_drift_card_slots(self) -> None:
         """The HTML still carries every element id our JS binds against."""
         import eta_engine.scripts.jarvis_dashboard as mod
+
         html = mod.INDEX_HTML
-        for elt_id in ("drift-state", "drift-kl", "drift-dsharpe",
-                       "drift-dmean", "drift-n", "drift-reason"):
+        for elt_id in ("drift-state", "drift-kl", "drift-dsharpe", "drift-dmean", "drift-n", "drift-reason"):
             assert f'id="{elt_id}"' in html
 
 
@@ -1452,12 +1587,17 @@ class TestDefaultRedTeamGate:
     def _fat_margin(self) -> StageMetrics:
         """Metrics that clear SHADOW thresholds with plenty of margin."""
         return StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.6,
+            mean_slippage_bps=1.0,
         )
 
     def _shadow_promote(self, metrics: StageMetrics) -> tuple[PromotionSpec, PromotionDecision]:
         from datetime import UTC, datetime
+
         spec = PromotionSpec(
             strategy_id="strat",
             current_stage=PromotionStage.SHADOW,
@@ -1486,8 +1626,12 @@ class TestDefaultRedTeamGate:
     def test_vetoes_tight_sharpe_clearance(self) -> None:
         """Sharpe clears 1.0 but only barely (1.02 < 1.0 * 1.10 = 1.10)."""
         m = StageMetrics(
-            trades=100, days_active=30.0, sharpe=1.02,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=1.02,
+            max_dd_pct=1.0,
+            win_rate=0.6,
+            mean_slippage_bps=1.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1498,8 +1642,12 @@ class TestDefaultRedTeamGate:
     def test_vetoes_tight_drawdown_clearance(self) -> None:
         """max_dd 4.8 clears 5.0 but fails 0.9 * 5.0 = 4.5 ceiling."""
         m = StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=4.8, win_rate=0.6, mean_slippage_bps=1.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=4.8,
+            win_rate=0.6,
+            mean_slippage_bps=1.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1508,8 +1656,12 @@ class TestDefaultRedTeamGate:
 
     def test_vetoes_tight_win_rate(self) -> None:
         m = StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.455, mean_slippage_bps=1.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.455,
+            mean_slippage_bps=1.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1519,8 +1671,12 @@ class TestDefaultRedTeamGate:
     def test_vetoes_undersampled_trades(self) -> None:
         """trades=55 clears min=50 but not 1.3 * 50 = 65 safety floor."""
         m = StageMetrics(
-            trades=55, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=1.0,
+            trades=55,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.6,
+            mean_slippage_bps=1.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1533,8 +1689,12 @@ class TestDefaultRedTeamGate:
 
         # SHADOW->PAPER: zero slippage still approved.
         m = StageMetrics(
-            trades=100, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.6, mean_slippage_bps=0.0,
+            trades=100,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.6,
+            mean_slippage_bps=0.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1542,8 +1702,12 @@ class TestDefaultRedTeamGate:
 
         # PAPER->LIVE_1LOT: zero slippage triggers a veto.
         m2 = StageMetrics(
-            trades=200, days_active=30.0, sharpe=2.0,
-            max_dd_pct=1.0, win_rate=0.7, mean_slippage_bps=0.0,
+            trades=200,
+            days_active=30.0,
+            sharpe=2.0,
+            max_dd_pct=1.0,
+            win_rate=0.7,
+            mean_slippage_bps=0.0,
         )
         spec2 = PromotionSpec(
             strategy_id="s2",
@@ -1567,8 +1731,12 @@ class TestDefaultRedTeamGate:
         """Each failed check adds 1/5 to risk_score."""
         # Fail every fragility check: all tight.
         m = StageMetrics(
-            trades=55, days_active=30.0, sharpe=1.02,
-            max_dd_pct=4.8, win_rate=0.455, mean_slippage_bps=1.0,
+            trades=55,
+            days_active=30.0,
+            sharpe=1.02,
+            max_dd_pct=4.8,
+            win_rate=0.455,
+            mean_slippage_bps=1.0,
         )
         spec, decision = self._shadow_promote(m)
         verdict = default_red_team_gate(spec, decision)
@@ -1580,6 +1748,7 @@ class TestDefaultRedTeamGate:
     def test_never_raises_on_unknown_stage_thresholds(self) -> None:
         """If thresholds lookup yields None, default to approve."""
         from datetime import UTC, datetime
+
         m = StageMetrics(trades=0, days_active=0.0, sharpe=0.0)
         spec = PromotionSpec(
             strategy_id="unknown",
@@ -1596,8 +1765,9 @@ class TestDefaultRedTeamGate:
             metrics=m,
         )
         verdict = default_red_team_gate(
-            spec, decision,
-            thresholds={},           # empty -> thresholds.get() returns None
+            spec,
+            decision,
+            thresholds={},  # empty -> thresholds.get() returns None
         )
         assert verdict.approve is True
 
@@ -1615,10 +1785,17 @@ class TestDefaultRedTeamGate:
         )
         gate.register("tight")
         # Clears SHADOW thresholds exactly, no margin.
-        gate.update_metrics("tight", StageMetrics(
-            trades=50, days_active=14.0, sharpe=1.0,
-            max_dd_pct=5.0, win_rate=0.45, mean_slippage_bps=1.0,
-        ))
+        gate.update_metrics(
+            "tight",
+            StageMetrics(
+                trades=50,
+                days_active=14.0,
+                sharpe=1.0,
+                max_dd_pct=5.0,
+                win_rate=0.45,
+                mean_slippage_bps=1.0,
+            ),
+        )
         decision = gate.evaluate("tight")
         # Would have been PROMOTE; default red-team vetoes to HOLD.
         assert decision.action is PromotionAction.HOLD
@@ -1632,10 +1809,17 @@ class TestDefaultRedTeamGate:
             red_team_gate=None,
         )
         gate.register("tight2")
-        gate.update_metrics("tight2", StageMetrics(
-            trades=50, days_active=14.0, sharpe=1.0,
-            max_dd_pct=5.0, win_rate=0.45, mean_slippage_bps=1.0,
-        ))
+        gate.update_metrics(
+            "tight2",
+            StageMetrics(
+                trades=50,
+                days_active=14.0,
+                sharpe=1.0,
+                max_dd_pct=5.0,
+                win_rate=0.45,
+                mean_slippage_bps=1.0,
+            ),
+        )
         decision = gate.evaluate("tight2")
         assert decision.action is PromotionAction.PROMOTE
 
@@ -1650,6 +1834,7 @@ class TestPushBusDedup:
 
     class _Counter:
         """Notifier stub that counts send() calls."""
+
         def __init__(self) -> None:
             self.calls = 0
 
@@ -1659,25 +1844,28 @@ class TestPushBusDedup:
 
     def test_dedup_suppresses_repeat_titles(self) -> None:
         from eta_engine.brain.avengers import AlertLevel, PushBus
+
         remote = self._Counter()
         bus = PushBus([remote], dedup_window_seconds=600.0)
         bus.push(AlertLevel.WARN, "task_x failed", "boom")
         bus.push(AlertLevel.WARN, "task_x failed", "boom again")
         bus.push(AlertLevel.WARN, "task_x failed", "boom 3")
-        assert remote.calls == 1                       # only first fires
+        assert remote.calls == 1  # only first fires
 
     def test_dedup_different_titles_all_fire(self) -> None:
         from eta_engine.brain.avengers import AlertLevel, PushBus
+
         remote = self._Counter()
         bus = PushBus([remote], dedup_window_seconds=600.0)
         bus.push(AlertLevel.WARN, "task_a failed", "...")
         bus.push(AlertLevel.WARN, "task_b failed", "...")
         bus.push(AlertLevel.WARN, "task_c failed", "...")
-        assert remote.calls == 3                       # all distinct
+        assert remote.calls == 3  # all distinct
 
     def test_critical_always_fires(self) -> None:
         """CRITICAL breaks through dedup -- kill-switch must never be silent."""
         from eta_engine.brain.avengers import AlertLevel, PushBus
+
         remote = self._Counter()
         bus = PushBus([remote], dedup_window_seconds=600.0)
         bus.push(AlertLevel.CRITICAL, "breaker tripped", "")
@@ -1687,6 +1875,7 @@ class TestPushBusDedup:
 
     def test_dedup_window_zero_disables(self) -> None:
         from eta_engine.brain.avengers import AlertLevel, PushBus
+
         remote = self._Counter()
         bus = PushBus([remote], dedup_window_seconds=0.0)
         for _ in range(5):
@@ -1694,7 +1883,8 @@ class TestPushBusDedup:
         assert remote.calls == 5
 
     def test_local_file_notifier_always_writes_even_on_dup(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Local audit trail must be complete even under heavy dedup."""
         from eta_engine.brain.avengers import (
@@ -1702,6 +1892,7 @@ class TestPushBusDedup:
             LocalFileNotifier,
             PushBus,
         )
+
         local_path = tmp_path / "alerts.jsonl"
         local = LocalFileNotifier(path=local_path)
         remote = self._Counter()
@@ -1746,6 +1937,7 @@ def capture_bus():
     import importlib
 
     from eta_engine.brain.avengers import PushBus
+
     push_mod = importlib.import_module("eta_engine.brain.avengers.push")
 
     capture = _CaptureNotifier()
@@ -1761,7 +1953,10 @@ class TestRunTaskAlertWiring:
     """Failed tasks + failed chaos drills push via the PushBus."""
 
     def test_main_pushes_on_handler_exception(
-        self, tmp_path: Path, monkeypatch, capture_bus,
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        capture_bus,
     ) -> None:
         capture = capture_bus
         from eta_engine.deploy.scripts import run_task
@@ -1775,12 +1970,16 @@ class TestRunTaskAlertWiring:
             BackgroundTask.KAIZEN_RETRO,
             boom,
         )
-        rc = run_task.main([
-            "KAIZEN_RETRO",
-            "--state-dir", str(tmp_path / "state"),
-            "--log-dir",   str(tmp_path / "log"),
-        ])
-        assert rc == 2                                   # failure exit code
+        rc = run_task.main(
+            [
+                "KAIZEN_RETRO",
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--log-dir",
+                str(tmp_path / "log"),
+            ]
+        )
+        assert rc == 2  # failure exit code
         # Push fired exactly once with WARN + task-namespaced source.
         assert len(capture.sent) == 1
         level, title, source = capture.sent[0]
@@ -1789,7 +1988,10 @@ class TestRunTaskAlertWiring:
         assert source == "run_task:KAIZEN_RETRO"
 
     def test_chaos_drill_pushes_on_failure(
-        self, tmp_path: Path, monkeypatch, capture_bus,
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        capture_bus,
     ) -> None:
         """If any drill fails, _task_chaos_drill pushes CRITICAL."""
         capture = capture_bus
@@ -1797,10 +1999,10 @@ class TestRunTaskAlertWiring:
 
         # Synthesize a failing drill result set by monkeypatching run_drills.
         fake_results = [
-            {"name": "breaker_isolation", "passed": True,  "detail": "ok"},
-            {"name": "deadman_trigger",   "passed": False, "detail": "stuck"},
-            {"name": "daemon_restart",    "passed": True,  "detail": "ok"},
-            {"name": "drift_autodemote",  "passed": False, "detail": "timeout"},
+            {"name": "breaker_isolation", "passed": True, "detail": "ok"},
+            {"name": "deadman_trigger", "passed": False, "detail": "stuck"},
+            {"name": "daemon_restart", "passed": True, "detail": "ok"},
+            {"name": "drift_autodemote", "passed": False, "detail": "timeout"},
         ]
         monkeypatch.setattr(
             "eta_engine.scripts.chaos_drill.run_drills",
@@ -1816,10 +2018,14 @@ class TestRunTaskAlertWiring:
         assert source == "chaos_drill"
 
     def test_chaos_drill_no_push_on_all_pass(
-        self, tmp_path: Path, monkeypatch, capture_bus,
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        capture_bus,
     ) -> None:
         capture = capture_bus
         from eta_engine.deploy.scripts.run_task import _task_chaos_drill
+
         monkeypatch.setattr(
             "eta_engine.scripts.chaos_drill.run_drills",
             lambda: [{"name": f"d{i}", "passed": True} for i in range(4)],

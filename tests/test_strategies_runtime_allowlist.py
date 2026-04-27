@@ -23,6 +23,7 @@ Tests below exercise:
     install, then run :func:`dispatch` with the cache's eligibility
     map and verify the router only dispatches against allowed sids.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -576,6 +577,7 @@ class TestEndToEnd:
                     risk_mult=1.0,
                     rationale_tags=(sid.value,),
                 )
+
             return fn
 
         registry = {

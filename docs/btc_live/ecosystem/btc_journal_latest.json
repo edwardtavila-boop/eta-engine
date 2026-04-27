@@ -1,0 +1,23 @@
+{
+  "generated_at_utc": "2026-04-26T14:51:33.700528+00:00",
+  "journal": {
+    "by_broker": {
+      "ibkr": 2,
+      "tastytrade": 2
+    },
+    "by_lane": {
+      "directional": 2,
+      "grid": 2
+    },
+    "health": "GREEN",
+    "paper_cash_total": 20000.0,
+    "paper_equity_total": 20000.0,
+    "paper_pnl_total": 0.0,
+    "requested_workers": 4,
+    "running_workers": 4
+  },
+  "pid": 54996,
+  "role": "journal",
+  "safety": "paper ledger journal only; no broker order placement",
+  "status": "RUNNING"
+}

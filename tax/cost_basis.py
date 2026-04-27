@@ -8,8 +8,7 @@ Tracks lots per (asset, account_tier). Handles partial fills.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from eta_engine.tax.models import (
     AccountTier,
@@ -17,6 +16,9 @@ from eta_engine.tax.models import (
     InstrumentType,
     TaxableEvent,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 Method = Literal["FIFO", "LIFO", "HIFO", "SPEC_ID"]
 
@@ -67,7 +69,11 @@ class CostBasisCalculator:
         book.lot_counter += 1
         lot = Lot(
             lot_id=f"{asset}-{account_tier.value}-{book.lot_counter}",
-            asset=asset, qty=qty, price=price, timestamp=timestamp, fees=fees,
+            asset=asset,
+            qty=qty,
+            price=price,
+            timestamp=timestamp,
+            fees=fees,
         )
         book.lots.append(lot)
         return lot
@@ -108,28 +114,28 @@ class CostBasisCalculator:
             gain = proceeds - lot_cost
             holding = max((timestamp - lot.timestamp).days, 0)
             self._event_counter += 1
-            events.append(TaxableEvent(
-                event_id=f"sell-{self._event_counter}",
-                timestamp=timestamp,
-                event_type=EventType.TRADE_CLOSE,
-                asset=asset,
-                qty=take,
-                cost_basis_usd=round(lot_cost, 6),
-                proceeds_usd=round(proceeds, 6),
-                realized_gain_usd=round(gain, 6),
-                holding_days=holding,
-                account_tier=account_tier,
-                instrument_type=instrument_type,
-            ))
+            events.append(
+                TaxableEvent(
+                    event_id=f"sell-{self._event_counter}",
+                    timestamp=timestamp,
+                    event_type=EventType.TRADE_CLOSE,
+                    asset=asset,
+                    qty=take,
+                    cost_basis_usd=round(lot_cost, 6),
+                    proceeds_usd=round(proceeds, 6),
+                    realized_gain_usd=round(gain, 6),
+                    holding_days=holding,
+                    account_tier=account_tier,
+                    instrument_type=instrument_type,
+                )
+            )
             lot.qty -= take
-            lot.fees *= (1.0 - frac)
+            lot.fees *= 1.0 - frac
             remaining -= take
         # Evict fully consumed lots
         book.lots = [lot for lot in book.lots if lot.qty > 1e-12]
         if remaining > 1e-9:
-            raise ValueError(
-                f"Oversell: {remaining:g} {asset} beyond available lots"
-            )
+            raise ValueError(f"Oversell: {remaining:g} {asset} beyond available lots")
         return events
 
     # ------------------------------------------------------------------

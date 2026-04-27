@@ -141,11 +141,7 @@ async def probe_required_brokers(required: list[str] | None = None) -> dict[str,
         }
         for report in summary.reports
     }
-    ready = sorted(
-        report.venue
-        for report in summary.reports
-        if report.status is ConnectionStatus.READY
-    )
+    ready = sorted(report.venue for report in summary.reports if report.status is ConnectionStatus.READY)
     missing = sorted(set(required or ["tastytrade", "ibkr"]) - set(ready))
     return {
         "health": summary.health(),
@@ -328,20 +324,12 @@ def build_fleet_status(
     out_dir: Path = DEFAULT_OUT_DIR,
 ) -> dict[str, Any]:
     running = [worker for worker in workers if worker.get("status") == "RUNNING"]
-    in_trade_workers = [
-        worker
-        for worker in workers
-        if worker.get("position_state", {}).get("in_trade")
-    ]
+    in_trade_workers = [worker for worker in workers if worker.get("position_state", {}).get("in_trade")]
     blocked_execution_workers = [
         worker for worker in workers if str(worker.get("execution_state") or "").upper() == "BLOCKED"
     ]
-    order_submission_ready_workers = [
-        worker for worker in workers if bool(worker.get("order_submission_ready"))
-    ]
-    fill_lifecycle_ready_workers = [
-        worker for worker in workers if bool(worker.get("fill_lifecycle_ready"))
-    ]
+    order_submission_ready_workers = [worker for worker in workers if bool(worker.get("order_submission_ready"))]
+    fill_lifecycle_ready_workers = [worker for worker in workers if bool(worker.get("fill_lifecycle_ready"))]
     return {
         "generated_at_utc": utc_now(),
         "fleet": "btc_broker_paper_fleet",
@@ -364,7 +352,8 @@ def build_fleet_status(
             "fill_lifecycle_ready_workers": len(fill_lifecycle_ready_workers),
             "blocked_execution_workers": len(blocked_execution_workers),
             "limited_execution_workers": max(
-                0, len(workers) - len(blocked_execution_workers),
+                0,
+                len(workers) - len(blocked_execution_workers),
             ),
             "operator_note": (
                 "BTC broker-paper lanes now run PaperLaneRunner ticks each "

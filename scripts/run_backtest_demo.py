@@ -26,27 +26,26 @@ def _ctx_builder(bar: BarData, hist: list[BarData]) -> dict:
     now = bar.timestamp
     # Use recent bars to seed a mock daily EMA series (rising = bull)
     tail = hist[-20:] if len(hist) >= 20 else hist
-    if len(tail) >= 2:
-        ema_series = [b.close for b in tail[::max(1, len(tail) // 5)]]
-    else:
-        ema_series = [bar.close * 0.95, bar.close]
+    ema_series = [b.close for b in tail[:: max(1, len(tail) // 5)]] if len(tail) >= 2 else [bar.close * 0.95, bar.close]
     return {
         "daily_ema": ema_series,
         "h4_struct": "HH_HL",
         "bias": 1,
         "atr_history": [bar.high - bar.low or 1.0] * 10,
         "atr_current": max(bar.high - bar.low, 1.0),
-        "funding_history": [
-            FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)
-        ] * 8,
+        "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)] * 8,
         "onchain": {
-            "whale_transfers": 40, "whale_transfers_baseline": 20,
+            "whale_transfers": 40,
+            "whale_transfers_baseline": 20,
             "exchange_netflow_usd": -30_000_000.0,
-            "active_addresses": 1300, "active_addresses_baseline": 1000,
+            "active_addresses": 1300,
+            "active_addresses_baseline": 1000,
         },
         "sentiment": {
-            "galaxy_score": 85.0, "alt_rank": 15,
-            "social_volume": 600, "social_volume_baseline": 200,
+            "galaxy_score": 85.0,
+            "alt_rank": 15,
+            "social_volume": 600,
+            "social_volume_baseline": 200,
             "fear_greed": 20,
         },
     }
@@ -54,7 +53,12 @@ def _ctx_builder(bar: BarData, hist: list[BarData]) -> dict:
 
 def main() -> int:
     bars = BarReplay.synthetic_bars(
-        n=400, start_price=3500.0, drift=0.0008, vol=0.008, symbol="APEX-SYN", seed=42,
+        n=400,
+        start_price=3500.0,
+        drift=0.0008,
+        vol=0.008,
+        symbol="APEX-SYN",
+        seed=42,
     )
     cfg = BacktestConfig(
         start_date=bars[0].timestamp,

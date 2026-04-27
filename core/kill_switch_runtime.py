@@ -54,14 +54,15 @@ class KillVerdict:
     action: KillAction
     severity: KillSeverity
     reason: str
-    scope: str                   # "bot:<name>" | "tier_a" | "tier_b" | "global"
+    scope: str  # "bot:<name>" | "tier_a" | "tier_b" | "global"
     evidence: dict[str, Any] = field(default_factory=dict)
 
 
 class BotSnapshot(BaseModel):
     """Minimal live state for one bot — fed into KillSwitch.evaluate."""
+
     name: str
-    tier: str                    # "A" | "B"
+    tier: str  # "A" | "B"
     equity_usd: float
     peak_equity_usd: float
     session_realized_pnl_usd: float = 0.0
@@ -73,6 +74,7 @@ class BotSnapshot(BaseModel):
 
 class PortfolioSnapshot(BaseModel):
     """Aggregate state across all bots."""
+
     total_equity_usd: float
     peak_equity_usd: float
     daily_realized_pnl_usd: float = 0.0
@@ -80,6 +82,7 @@ class PortfolioSnapshot(BaseModel):
 
 class CorrelationSnapshot(BaseModel):
     """Rolling correlation summary for Tier-B kill."""
+
     window_minutes: int = 60
     pair_abs_corr: dict[str, float] = Field(default_factory=dict)
     # key example: "BTC-ETH", value in [0, 1]
@@ -87,11 +90,13 @@ class CorrelationSnapshot(BaseModel):
 
 class FundingSnapshot(BaseModel):
     """Per-symbol funding-rate in bps."""
+
     symbol_to_bps: dict[str, float] = Field(default_factory=dict)
 
 
 class ApexEvalSnapshot(BaseModel):
     """Apex account cushion vs trailing DD."""
+
     trailing_dd_limit_usd: float = 2500.0
     distance_to_limit_usd: float = 2500.0  # how close we are (smaller = worse)
 
@@ -268,12 +273,14 @@ class KillSwitch:
                 verdicts.append(bv)
 
         if not verdicts:
-            verdicts.append(KillVerdict(
-                action=KillAction.CONTINUE,
-                severity=KillSeverity.INFO,
-                reason="no trip",
-                scope="global",
-            ))
+            verdicts.append(
+                KillVerdict(
+                    action=KillAction.CONTINUE,
+                    severity=KillSeverity.INFO,
+                    reason="no trip",
+                    scope="global",
+                )
+            )
         return verdicts
 
     # ------------------------------------------------------------------ #
@@ -311,9 +318,7 @@ class KillSwitch:
             return KillVerdict(
                 action=KillAction.FLATTEN_TIER_A_PREEMPTIVE,
                 severity=KillSeverity.CRITICAL,
-                reason=(
-                    f"apex cushion {ae.distance_to_limit_usd:.0f} <= preempt {cushion:.0f}"
-                ),
+                reason=(f"apex cushion {ae.distance_to_limit_usd:.0f} <= preempt {cushion:.0f}"),
                 scope="tier_a",
                 evidence={
                     "distance_to_limit_usd": ae.distance_to_limit_usd,
@@ -334,9 +339,7 @@ class KillSwitch:
             return KillVerdict(
                 action=KillAction.FLATTEN_TIER_B,
                 severity=KillSeverity.WARN,
-                reason=(
-                    f"{len(high)}/{need_pairs} pairs >= |corr|={thr}: {high}"
-                ),
+                reason=(f"{len(high)}/{need_pairs} pairs >= |corr|={thr}: {high}"),
                 scope="tier_b",
                 evidence={"high_corr_pairs": high, "threshold": thr},
             )
@@ -350,25 +353,29 @@ class KillSwitch:
         for sym, bps in f.symbol_to_bps.items():
             bps_abs = abs(bps)
             if bps_abs >= hard:
-                out.append(KillVerdict(
-                    action=KillAction.FLATTEN_BOT,
-                    severity=KillSeverity.WARN,
-                    reason=f"{sym} funding |{bps:.1f}bps| >= hard {hard}",
-                    scope=f"bot:{sym}",
-                    evidence={"symbol": sym, "bps": bps, "hard_bps": hard},
-                ))
+                out.append(
+                    KillVerdict(
+                        action=KillAction.FLATTEN_BOT,
+                        severity=KillSeverity.WARN,
+                        reason=f"{sym} funding |{bps:.1f}bps| >= hard {hard}",
+                        scope=f"bot:{sym}",
+                        evidence={"symbol": sym, "bps": bps, "hard_bps": hard},
+                    )
+                )
             elif bps_abs >= soft:
-                out.append(KillVerdict(
-                    action=KillAction.HALVE_SIZE,
-                    severity=KillSeverity.INFO,
-                    reason=f"{sym} funding |{bps:.1f}bps| >= soft {soft}",
-                    scope=f"bot:{sym}",
-                    evidence={"symbol": sym, "bps": bps, "soft_bps": soft},
-                ))
+                out.append(
+                    KillVerdict(
+                        action=KillAction.HALVE_SIZE,
+                        severity=KillSeverity.INFO,
+                        reason=f"{sym} funding |{bps:.1f}bps| >= soft {soft}",
+                        scope=f"bot:{sym}",
+                        evidence={"symbol": sym, "bps": bps, "soft_bps": soft},
+                    )
+                )
         return out
 
     def _check_bot(self, bot: BotSnapshot) -> KillVerdict | None:
-        tier_spec = (self._ta if bot.tier == "A" else self._tb)
+        tier_spec = self._ta if bot.tier == "A" else self._tb
         per_bucket = (tier_spec.get("per_bucket", {}) or {}).get(bot.name, {}) or {}
 
         # Tier A uses max_loss_usd absolute; Tier B uses max_loss_pct of bucket.
@@ -379,8 +386,7 @@ class KillSwitch:
                     action=KillAction.FLATTEN_BOT,
                     severity=KillSeverity.WARN,
                     reason=(
-                        f"{bot.name} session pnl {bot.session_realized_pnl_usd:.0f} "
-                        f"<= -${max_loss_usd:.0f} trip-wire"
+                        f"{bot.name} session pnl {bot.session_realized_pnl_usd:.0f} <= -${max_loss_usd:.0f} trip-wire"
                     ),
                     scope=f"bot:{bot.name}",
                     evidence={
@@ -391,17 +397,12 @@ class KillSwitch:
         else:
             max_loss_pct = float(per_bucket.get("max_loss_pct", 100.0))
             if bot.peak_equity_usd > 0:
-                loss_pct = (
-                    (bot.peak_equity_usd - bot.equity_usd)
-                    / bot.peak_equity_usd * 100.0
-                )
+                loss_pct = (bot.peak_equity_usd - bot.equity_usd) / bot.peak_equity_usd * 100.0
                 if loss_pct >= max_loss_pct:
                     return KillVerdict(
                         action=KillAction.FLATTEN_BOT,
                         severity=KillSeverity.WARN,
-                        reason=(
-                            f"{bot.name} equity drawdown {loss_pct:.2f}% >= {max_loss_pct}%"
-                        ),
+                        reason=(f"{bot.name} equity drawdown {loss_pct:.2f}% >= {max_loss_pct}%"),
                         scope=f"bot:{bot.name}",
                         evidence={"loss_pct": loss_pct, "cap_pct": max_loss_pct},
                     )

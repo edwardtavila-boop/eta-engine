@@ -27,6 +27,7 @@ branches:
 4. The intersected ``entry.allowed`` tuple preserves the base-
    eligibility ordering from :data:`DEFAULT_ELIGIBILITY`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -121,10 +122,7 @@ def drill_runtime_allowlist(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         return drill_result(
             "runtime_allowlist",
             passed=False,
-            details=(
-                f"get() returned a different entry than update(): "
-                f"{got_fresh.allowed} vs {installed.allowed}"
-            ),
+            details=(f"get() returned a different entry than update(): {got_fresh.allowed} vs {installed.allowed}"),
         )
 
     # intersect_passing_with_base must preserve base-declared ordering.
@@ -133,10 +131,7 @@ def drill_runtime_allowlist(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         return drill_result(
             "runtime_allowlist",
             passed=False,
-            details=(
-                f"allowed ordering {got_fresh.allowed} did not match base "
-                f"ordering {expected_order}"
-            ),
+            details=(f"allowed ordering {got_fresh.allowed} did not match base ordering {expected_order}"),
         )
 
     # Eligibility map snapshot (fresh branch) must round-trip.
@@ -146,8 +141,7 @@ def drill_runtime_allowlist(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
             "runtime_allowlist",
             passed=False,
             details=(
-                f"as_eligibility_map fresh branch returned "
-                f"{elig_map_fresh.get('MNQ')!r} (expected {expected_order!r})"
+                f"as_eligibility_map fresh branch returned {elig_map_fresh.get('MNQ')!r} (expected {expected_order!r})"
             ),
         )
 
@@ -204,9 +198,9 @@ def drill_runtime_allowlist(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
             "as_eligibility_map; invalidate dropped the entry; base ordering preserved"
         ),
         observed={
-            "ttl_seconds":       ttl,
-            "allowed":           [s.value for s in got_fresh.allowed],
-            "expected_order":    [s.value for s in expected_order],
-            "mnq_base_len":      len(mnq_base),
+            "ttl_seconds": ttl,
+            "allowed": [s.value for s in got_fresh.allowed],
+            "expected_order": [s.value for s in expected_order],
+            "mnq_base_len": len(mnq_base),
         },
     )

@@ -13,6 +13,7 @@ Three concentric layers are covered:
 * Live :class:`RouterAdapter` integration -- end-to-end, every
   ``push_bar`` writes one event when a sink is wired.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

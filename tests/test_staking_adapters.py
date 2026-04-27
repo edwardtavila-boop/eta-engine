@@ -10,6 +10,7 @@ Covers:
   on-chain balance path (with monkey-patched read_balance), APY live-vs-fallback,
   Lido restake premium, Ethena 7-day cooldown payload.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -28,6 +29,7 @@ from eta_engine.staking.web3_client import build_contract_call, read_balance
 # ---------------------------------------------------------------------------
 # web3_client
 # ---------------------------------------------------------------------------
+
 
 def test_read_balance_no_rpc_returns_none() -> None:
     assert read_balance(None, "0xwallet", "0xtoken") is None
@@ -61,6 +63,7 @@ def test_read_balance_rpc_exception_returns_none(monkeypatch: pytest.MonkeyPatch
 
 def test_read_balance_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fake Web3 returns a wei balance; we divide by 10**18 to get 1.5 ETH."""
+
     class _FakeContract:
         def __init__(self, *, address: str, abi: list[dict[str, Any]]) -> None:  # noqa: ARG002
             self.address = address
@@ -70,12 +73,14 @@ def test_read_balance_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
             class _Call:
                 def call(self) -> int:
                     return 1_500_000_000_000_000_000  # 1.5 * 1e18
+
             return _Call()
 
         def decimals(self) -> Any:  # noqa: ANN401 - ERC-20 callable shape
             class _Call:
                 def call(self) -> int:
                     return 18
+
             return _Call()
 
     class _FakeEth:
@@ -112,6 +117,7 @@ def test_build_contract_call_shape() -> None:
 # ---------------------------------------------------------------------------
 # ApyTracker
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_apy_tracker_unknown_key_returns_none() -> None:
@@ -151,11 +157,13 @@ async def test_apy_tracker_network_error_returns_none(monkeypatch: pytest.Monkey
 
 
 def test_apy_tracker_match_pool_picks_best() -> None:
-    payload = {"data": [
-        {"project": "lido", "chain": "Ethereum", "symbol": "STETH", "apy": 3.6},
-        {"project": "lido", "chain": "Ethereum", "symbol": "STETH-FOO", "apy": 4.1},
-        {"project": "rocket", "chain": "Ethereum", "symbol": "RETH", "apy": 5.0},  # shouldn't match
-    ]}
+    payload = {
+        "data": [
+            {"project": "lido", "chain": "Ethereum", "symbol": "STETH", "apy": 3.6},
+            {"project": "lido", "chain": "Ethereum", "symbol": "STETH-FOO", "apy": 4.1},
+            {"project": "rocket", "chain": "Ethereum", "symbol": "RETH", "apy": 5.0},  # shouldn't match
+        ]
+    }
     best = ApyTracker._match_pool(payload, {"project": "lido", "chain": "Ethereum", "symbol": "STETH"})
     assert best == 4.1
 
@@ -179,6 +187,7 @@ async def test_shared_tracker_singleton_lifecycle() -> None:
 # ---------------------------------------------------------------------------
 # LidoAdapter
 # ---------------------------------------------------------------------------
+
 
 class _StubTracker:
     """Minimal ApyTracker stand-in returning a preset value (or None)."""
@@ -229,8 +238,10 @@ async def test_lido_apy_live_value(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_lido_on_chain_balance_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """When RPC + wallet are set AND read_balance returns non-None, use it."""
     from eta_engine.staking import lido as lido_module
+
     def _fake_read(*_args: Any, **_kwargs: Any) -> float | None:  # noqa: ANN401 - mirrors read_balance signature
         return 7.25
+
     monkeypatch.setattr(lido_module, "read_balance", _fake_read)
     adapter = LidoAdapter(
         rpc_url="https://eth.llamarpc.com",
@@ -243,6 +254,7 @@ async def test_lido_on_chain_balance_path(monkeypatch: pytest.MonkeyPatch) -> No
 # ---------------------------------------------------------------------------
 # JitoAdapter
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_jito_stake_unstake_cycle() -> None:
@@ -262,8 +274,10 @@ async def test_jito_apy_live_falls_back() -> None:
 @pytest.mark.asyncio
 async def test_jito_spl_balance_path(monkeypatch: pytest.MonkeyPatch) -> None:
     from eta_engine.staking import jito as jito_module
+
     def _fake_spl(*_args: Any, **_kwargs: Any) -> float | None:  # noqa: ANN401 - mirrors _fetch_spl_balance signature
         return 12.5
+
     monkeypatch.setattr(jito_module, "_fetch_spl_balance", _fake_spl)
     adapter = JitoAdapter(
         rpc_url="https://rpc.mainnet.sol",
@@ -277,9 +291,11 @@ async def test_jito_spl_balance_path(monkeypatch: pytest.MonkeyPatch) -> None:
 # FlareAdapter
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_flare_stake_with_delegation(caplog: pytest.LogCaptureFixture) -> None:
     import logging
+
     adapter = FlareAdapter(ftso_data_provider="0xdelegate", apy_tracker=_StubTracker(None))
     with caplog.at_level(logging.INFO, logger="eta_engine.staking.flare"):
         await adapter.stake(100.0)
@@ -291,6 +307,7 @@ async def test_flare_stake_with_delegation(caplog: pytest.LogCaptureFixture) -> 
 @pytest.mark.asyncio
 async def test_flare_stake_without_delegation(caplog: pytest.LogCaptureFixture) -> None:
     import logging
+
     adapter = FlareAdapter(apy_tracker=_StubTracker(None))
     with caplog.at_level(logging.INFO, logger="eta_engine.staking.flare"):
         await adapter.stake(100.0)
@@ -309,6 +326,7 @@ async def test_flare_apy_live_value() -> None:
 # EthenaAdapter
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_ethena_stake_cycle() -> None:
     adapter = EthenaAdapter(apy_tracker=_StubTracker(None))
@@ -322,6 +340,7 @@ async def test_ethena_stake_cycle() -> None:
 @pytest.mark.asyncio
 async def test_ethena_unstake_logs_cooldown(caplog: pytest.LogCaptureFixture) -> None:
     import logging
+
     adapter = EthenaAdapter(apy_tracker=_StubTracker(None))
     await adapter.stake(1000.0)
     with caplog.at_level(logging.INFO, logger="eta_engine.staking.ethena"):

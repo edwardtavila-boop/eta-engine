@@ -5,6 +5,7 @@ introduced in v0.1.34 -- the AI-Optimized strategy stack should fire
 first, and on a miss we should fall through to the legacy 4-setup loop
 without regression.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,7 +24,10 @@ class _FakeRouter:
         self.calls: list[OrderRequest] = []
 
     async def place_with_failover(
-        self, req: OrderRequest, *, urgency: str = "normal",
+        self,
+        req: OrderRequest,
+        *,
+        urgency: str = "normal",
     ) -> OrderResult:
         _ = urgency
         self.calls.append(req)
@@ -133,10 +137,7 @@ class TestOnBarAdapterPriority:
         assert router.calls[0].side is VenueSide.BUY
         # Meta should carry the strategy id -- not the legacy "orb_breakout"
         assert adapter.last_decision is not None
-        assert (
-            adapter.last_decision.winner.strategy
-            is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
-        )
+        assert adapter.last_decision.winner.strategy is StrategyId.LIQUIDITY_SWEEP_DISPLACEMENT
 
     @pytest.mark.asyncio
     async def test_adapter_flat_falls_through_to_legacy_setups(self) -> None:

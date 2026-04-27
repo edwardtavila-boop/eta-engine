@@ -35,6 +35,7 @@ Usage
         payload = {"action": msg, "nonce": nonce, "signature": sig}
         # POST payload to /exchange
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,10 +76,7 @@ class HyperliquidSigner:
         if key.startswith("0x") or key.startswith("0X"):
             key = key[2:]
         if len(key) != 64:
-            msg = (
-                "Hyperliquid private key must be 32 bytes (64 hex chars); "
-                f"got {len(key)} chars"
-            )
+            msg = f"Hyperliquid private key must be 32 bytes (64 hex chars); got {len(key)} chars"
             raise HyperliquidSignerConfigError(msg)
         try:
             int(key, 16)
@@ -106,10 +104,7 @@ class HyperliquidSigner:
         if os.name == "posix":
             mode = key_path.stat().st_mode & 0o777
             if mode & 0o077:
-                msg = (
-                    f"Hyperliquid signer key file {key_path} has mode {oct(mode)}; "
-                    "must be 0o600 (owner-only)"
-                )
+                msg = f"Hyperliquid signer key file {key_path} has mode {oct(mode)}; must be 0o600 (owner-only)"
                 raise HyperliquidSignerConfigError(msg)
         raw = key_path.read_text(encoding="utf-8").strip()
         return cls(raw)
@@ -128,6 +123,7 @@ class HyperliquidSigner:
         if not self.is_available():
             return None
         from eth_account import Account  # noqa: PLC0415
+
         return Account.from_key(self._key_hex).address
 
     def sign_l1_action(
@@ -166,10 +162,7 @@ class HyperliquidSigner:
             When ``eth_account`` is not installed.
         """
         if not self.is_available():
-            msg = (
-                "eth_account is required to sign Hyperliquid L1 actions. "
-                "Install with: pip install eth-account"
-            )
+            msg = "eth_account is required to sign Hyperliquid L1 actions. Install with: pip install eth-account"
             raise HyperliquidSignerUnavailableError(msg)
 
         from eth_account import Account  # noqa: PLC0415

@@ -17,6 +17,7 @@ so it survives daemon restarts.
 
 Pure stdlib + pydantic.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,35 +31,35 @@ from eta_engine.brain.jarvis_v3.bandit import PINNED_CATEGORIES
 from eta_engine.brain.model_policy import COST_RATIO, ModelTier, TaskCategory
 
 HOURLY_WINDOW = timedelta(hours=1)
-DAILY_WINDOW  = timedelta(days=1)
+DAILY_WINDOW = timedelta(days=1)
 
 # Default: budget is expressed as "cost units" where 1 unit = 1 Sonnet call.
 # Operator can override at construction time.
-DEFAULT_HOURLY_BUDGET = 150.0   # 150 Sonnet-equivalents/hour
-DEFAULT_DAILY_BUDGET  = 2000.0
+DEFAULT_HOURLY_BUDGET = 150.0  # 150 Sonnet-equivalents/hour
+DEFAULT_DAILY_BUDGET = 2000.0
 
 
 class InvocationRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    ts:    datetime
-    tier:  ModelTier
-    cost:  float = Field(ge=0.0)
+    ts: datetime
+    tier: ModelTier
+    cost: float = Field(ge=0.0)
     category: TaskCategory | None = None
 
 
 class BudgetStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    hourly_spend:    float = Field(ge=0.0)
-    daily_spend:     float = Field(ge=0.0)
-    hourly_budget:   float = Field(ge=0.0)
-    daily_budget:    float = Field(ge=0.0)
+    hourly_spend: float = Field(ge=0.0)
+    daily_spend: float = Field(ge=0.0)
+    hourly_budget: float = Field(ge=0.0)
+    daily_budget: float = Field(ge=0.0)
     hourly_burn_pct: float = Field(ge=0.0)
-    daily_burn_pct:  float = Field(ge=0.0)
-    tier_state:      str   = Field(min_length=1)
+    daily_burn_pct: float = Field(ge=0.0)
+    tier_state: str = Field(min_length=1)
     downgrade_active: bool = False
-    note:            str
+    note: str
 
 
 class BudgetTracker:
@@ -81,17 +82,26 @@ class BudgetTracker:
         self._records: deque[InvocationRecord] = deque()
 
     def record(
-        self, tier: ModelTier, category: TaskCategory | None = None,
+        self,
+        tier: ModelTier,
+        category: TaskCategory | None = None,
         now: datetime | None = None,
     ) -> None:
         now = now or datetime.now(UTC)
-        self._records.append(InvocationRecord(
-            ts=now, tier=tier, cost=COST_RATIO[tier], category=category,
-        ))
+        self._records.append(
+            InvocationRecord(
+                ts=now,
+                tier=tier,
+                cost=COST_RATIO[tier],
+                category=category,
+            )
+        )
         self._prune(now)
 
     def spend(
-        self, window: timedelta, now: datetime | None = None,
+        self,
+        window: timedelta,
+        now: datetime | None = None,
     ) -> float:
         now = now or datetime.now(UTC)
         cutoff = now - window
@@ -101,7 +111,7 @@ class BudgetTracker:
         now = now or datetime.now(UTC)
         self._prune(now)
         hourly = self.spend(HOURLY_WINDOW, now=now)
-        daily  = self.spend(DAILY_WINDOW, now=now)
+        daily = self.spend(DAILY_WINDOW, now=now)
         hpct = hourly / self.hourly_budget if self.hourly_budget else 0.0
         dpct = daily / self.daily_budget if self.daily_budget else 0.0
         if hpct >= self.hourly_critical_pct:
@@ -110,10 +120,7 @@ class BudgetTracker:
             downgrade = True
         elif hpct >= self.hourly_downshift_pct or dpct >= self.daily_downshift_pct:
             state = "DOWNSHIFT"
-            note = (
-                f"hourly {hpct:.0%} / daily {dpct:.0%} "
-                f">= downshift threshold -- Opus demoted to Sonnet"
-            )
+            note = f"hourly {hpct:.0%} / daily {dpct:.0%} >= downshift threshold -- Opus demoted to Sonnet"
             downgrade = True
         else:
             state = "OK"
@@ -192,10 +199,12 @@ class BudgetTracker:
         )
         for r in data.get("records", []):
             cat = TaskCategory(r["category"]) if r.get("category") else None
-            inst._records.append(InvocationRecord(
-                ts=datetime.fromisoformat(r["ts"]),
-                tier=ModelTier(r["tier"]),
-                cost=float(r["cost"]),
-                category=cat,
-            ))
+            inst._records.append(
+                InvocationRecord(
+                    ts=datetime.fromisoformat(r["ts"]),
+                    tier=ModelTier(r["tier"]),
+                    cost=float(r["cost"]),
+                    category=cat,
+                )
+            )
         return inst

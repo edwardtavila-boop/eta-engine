@@ -17,6 +17,7 @@ that gate."
 
 Stdlib + pydantic only.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,30 +31,32 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class OverrideEvent(BaseModel):
     """Single operator intervention on a Jarvis verdict."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:           datetime
-    subsystem:    str = Field(min_length=1)
-    action:       str = Field(min_length=1)
-    reason_code:  str = Field(min_length=1)
+    ts: datetime
+    subsystem: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    reason_code: str = Field(min_length=1)
     # direction: 'loosen' (operator approved what Jarvis denied), 'tighten'
     # (operator capped what Jarvis approved), 'veto' (operator flattened).
-    direction:    str = Field(pattern="^(loosen|tighten|veto)$")
-    rationale:    str = ""
+    direction: str = Field(pattern="^(loosen|tighten|veto)$")
+    rationale: str = ""
 
 
 class PreferenceNudge(BaseModel):
     """How to bias a future verdict for this (subsystem, action, reason_code)."""
+
     model_config = ConfigDict(frozen=True)
 
-    subsystem:    str
-    action:       str
-    reason_code:  str
+    subsystem: str
+    action: str
+    reason_code: str
     # Score in [-1, 1]. Positive = operator tends to loosen; negative = tighten.
-    score:        float = Field(ge=-1.0, le=1.0)
-    sample_count: int   = Field(ge=0)
-    confidence:   float = Field(ge=0.0, le=1.0)
-    suggestion:   str   = Field(min_length=1)
+    score: float = Field(ge=-1.0, le=1.0)
+    sample_count: int = Field(ge=0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    suggestion: str = Field(min_length=1)
 
 
 class OperatorPreferenceLearner:
@@ -89,7 +92,10 @@ class OperatorPreferenceLearner:
         self._sample_count[key] += 1
 
     def nudge_for(
-        self, subsystem: str, action: str, reason_code: str,
+        self,
+        subsystem: str,
+        action: str,
+        reason_code: str,
         now: datetime | None = None,
     ) -> PreferenceNudge | None:
         key = (subsystem, action, reason_code)
@@ -135,7 +141,9 @@ class OperatorPreferenceLearner:
             "tally": [
                 {
                     "key": list(k),
-                    "loosen": v[0], "tighten": v[1], "last_ts": v[2],
+                    "loosen": v[0],
+                    "tighten": v[1],
+                    "last_ts": v[2],
                     "samples": self._sample_count[k],
                 }
                 for k, v in self._tally.items()

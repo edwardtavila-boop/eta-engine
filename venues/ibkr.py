@@ -50,15 +50,15 @@ IBKR_CLIENT_PORTAL_BASE_URL = "https://127.0.0.1:5000/v1/api"
 # override these via IBKR_CONID_MNQ etc. so rolls don't silently break.
 # The values here are the 2026-H (March 2026) expiry.
 _DEFAULT_CONIDS: dict[str, int] = {
-    "BTCUSD":  764777976,   # Paxos BTCUSD spot at IBKR
-    "ETHUSD":  764777977,   # Paxos ETHUSD spot at IBKR (paper-tradable)
+    "BTCUSD": 764777976,  # Paxos BTCUSD spot at IBKR
+    "ETHUSD": 764777977,  # Paxos ETHUSD spot at IBKR (paper-tradable)
 }
 
 # Per-symbol listing-exchange override. Symbols not in this table fall
 # back to ``IbkrClientPortalConfig.default_exchange`` (CME for futures).
 _DEFAULT_EXCHANGES: dict[str, str] = {
-    "BTCUSD":  "PAXOS",
-    "ETHUSD":  "PAXOS",
+    "BTCUSD": "PAXOS",
+    "ETHUSD": "PAXOS",
 }
 
 
@@ -168,6 +168,21 @@ class IbkrClientPortalVenue(VenueBase):
         )
 
     async def place_order(self, request: OrderRequest) -> OrderResult:
+        # SAFETY GATE — MNQ-side live orders require operator opt-in env var
+        # AND firm not halted. Raises LiveTradingDisabled if either fails.
+        from eta_engine.safety.live_gate import assert_live_allowed
+
+        assert_live_allowed()
+
+        # POSITION CAP — fail-closed if this order would push us over the
+        # configured contract limit (Apex eval-friendly default = 1).
+        from eta_engine.safety.position_cap import assert_within_caps
+
+        signed_qty = float(getattr(request, "quantity", 0) or 0)
+        side_str = str(getattr(request, "side", "buy")).lower()
+        signed_qty = -abs(signed_qty) if side_str in ("sell", "short") else abs(signed_qty)
+        assert_within_caps(side="mnq", venue="ibkr", symbol=request.symbol, requested_delta=signed_qty)
+
         if not self.has_credentials():
             return OrderResult(
                 order_id=self.idempotency_key(request),
@@ -182,12 +197,64 @@ class IbkrClientPortalVenue(VenueBase):
                 raw={"venue": self.name, "reason": f"missing IBKR conid for {request.symbol}"},
             )
         order_id = self.idempotency_key(request)
+
+        # IDEMPOTENCY GUARD — dedup retries via Supabase-backed log.
+        # Each request has a deterministic idempotency_key — same intent yields
+        # same id, so a retry maps to the same row.
+        try:
+            from eta_engine.safety.idempotency import (
+                IdempotencyError,
+                check_or_register,
+                record_result,
+            )
+
+            intent = {
+                "symbol": request.symbol,
+                "side": getattr(request, "side", "?"),
+                "quantity": float(getattr(request, "quantity", 0) or 0),
+                "conid": conid,
+            }
+            idem = check_or_register(
+                client_order_id=order_id,
+                venue="ibkr",
+                symbol=request.symbol,
+                intent_payload=intent,
+            )
+            if not idem.is_new:
+                return OrderResult(
+                    order_id=idem.broker_order_id or order_id,
+                    status=OrderStatus.OPEN if idem.status == "submitted" else OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "deduped": True,
+                        "note": idem.note,
+                        "cached_response": idem.response_payload or {},
+                    },
+                )
+        except IdempotencyError as exc:
+            # Fail-closed: refuse to route without dedup
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={"venue": self.name, "reason": f"idempotency unavailable: {exc!r}"},
+            )
+
         result = OrderResult(
             order_id=order_id,
             status=OrderStatus.OPEN,
             raw={"venue": self.name, "payload": self.build_order_payload(request, conid=conid), "mode": "paper"},
         )
         self._mock_orders[order_id] = result
+        # Record the submission so retries dedup against this row
+        try:
+            record_result(
+                client_order_id=order_id,
+                status="submitted",
+                broker_order_id=order_id,
+                response_payload={"venue": self.name, "mode": "paper"},
+            )
+        except Exception:
+            pass  # bookkeeping only; the order is already submitted
         return result
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -214,10 +281,10 @@ class IbkrClientPortalVenue(VenueBase):
         out: dict[str, float] = {}
         # Client Portal returns fields like {"netliquidation": {"amount": 50123.45}, ...}
         for ibkr_key, out_key in (
-            ("netliquidation",       "net_liquidation"),
-            ("equitywithloanvalue",  "equity_with_loan"),
-            ("totalcashvalue",       "total_cash"),
-            ("availablefunds",       "available_funds"),
+            ("netliquidation", "net_liquidation"),
+            ("equitywithloanvalue", "equity_with_loan"),
+            ("totalcashvalue", "total_cash"),
+            ("availablefunds", "available_funds"),
         ):
             field = resp.get(ibkr_key)
             raw = field.get("amount") if isinstance(field, dict) else field
@@ -260,7 +327,8 @@ class IbkrClientPortalVenue(VenueBase):
         url = f"{self.config.base_url}{path}"
         try:
             async with httpx.AsyncClient(
-                timeout=8.0, verify=False,  # noqa: S501 -- localhost self-signed cert
+                timeout=8.0,
+                verify=False,  # noqa: S501 -- localhost self-signed cert
             ) as client:
                 resp = await client.get(url)
         except Exception:  # noqa: BLE001
@@ -339,7 +407,7 @@ def _load_symbol_conids(env: Mapping[str, str]) -> dict[str, int]:
     prefix = "IBKR_CONID_"
     for key, value in env.items():
         if key.startswith(prefix) and str(value).strip():
-            mapping[key[len(prefix):].upper().lstrip("/")] = int(value)
+            mapping[key[len(prefix) :].upper().lstrip("/")] = int(value)
     return mapping
 
 

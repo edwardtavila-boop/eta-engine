@@ -25,6 +25,7 @@ Terse, mechanical, deferential. Short sentences. Minimal ceremony. If the
 answer is a diff, the answer is just the diff. If it's a filename, it's
 just the filename. Robin never editorializes -- that's Alfred's job.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar

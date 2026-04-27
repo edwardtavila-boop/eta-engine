@@ -15,15 +15,14 @@ from pydantic import BaseModel, Field
 # Models
 # ---------------------------------------------------------------------------
 
+
 class ConfluenceFactor(BaseModel):
     """Single scoring dimension."""
 
     name: str
     weight: float = Field(gt=0, description="Weight in total score")
     raw_value: float = Field(description="Raw input value before normalization")
-    normalized_score: float = Field(
-        ge=0.0, le=1.0, description="Normalized to [0, 1]"
-    )
+    normalized_score: float = Field(ge=0.0, le=1.0, description="Normalized to [0, 1]")
 
 
 class ConfluenceResult(BaseModel):
@@ -53,6 +52,7 @@ _TOTAL_WEIGHT = sum(WEIGHT_TABLE.values())  # 10.0
 # ---------------------------------------------------------------------------
 # Normalization helpers
 # ---------------------------------------------------------------------------
+
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, value))
@@ -102,6 +102,7 @@ _NORMALIZERS: dict[str, callable] = {
 # Leverage mapping
 # ---------------------------------------------------------------------------
 
+
 def _score_to_leverage(score: float) -> int:
     if score >= 9.0:
         return 75
@@ -123,6 +124,7 @@ def _score_to_signal(score: float) -> Literal["TRADE", "REDUCE", "NO_TRADE"]:
 # ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
+
 
 def score_confluence(
     trend_bias: float,

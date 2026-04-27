@@ -1,4 +1,5 @@
 """Tests for core.session_gate -- RTH / news / EoD unified entry gate."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
@@ -81,7 +82,7 @@ class TestEodCutoff:
         # narrow window so EoD cutoff is the primary trip.
         narrow = SessionGateConfig(
             rth_start_local=time(8, 30),
-            rth_end_local=time(16, 0),           # later RTH end
+            rth_end_local=time(16, 0),  # later RTH end
             eod_cutoff_local=time(15, 59),
         )
         gate2 = SessionGate(config=narrow)
@@ -136,13 +137,15 @@ class TestEodCutoff:
 # --------------------------------------------------------------------------- #
 class TestNewsBlackout:
     def test_entry_blocked_inside_news_window(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FOMC",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),  # 13:00 CT
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FOMC",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),  # 13:00 CT
+                    impact="high",
+                ),
+            ]
+        )
         gate = SessionGate(calendar=cal)
         # 12:50 CT is inside the 15-min pre-blackout window
         ok, reason = gate.entries_allowed(_ct_to_utc(2026, 5, 15, 12, 50))
@@ -151,13 +154,15 @@ class TestNewsBlackout:
         assert "FOMC" in reason
 
     def test_entry_allowed_outside_news_window(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FOMC",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FOMC",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
+                    impact="high",
+                ),
+            ]
+        )
         gate = SessionGate(calendar=cal)
         # 12:00 CT is 60min before event -- outside blackout
         ok, reason = gate.entries_allowed(_ct_to_utc(2026, 5, 15, 12, 0))
@@ -165,26 +170,30 @@ class TestNewsBlackout:
         assert reason == REASON_ALLOWED
 
     def test_medium_impact_event_does_not_block(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="RETAIL_SALES",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
-                impact="medium",  # below high-impact threshold
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="RETAIL_SALES",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
+                    impact="medium",  # below high-impact threshold
+                ),
+            ]
+        )
         gate = SessionGate(calendar=cal)
         ok, reason = gate.entries_allowed(_ct_to_utc(2026, 5, 15, 12, 55))
         assert ok is True
         assert reason == REASON_ALLOWED
 
     def test_news_not_enforced_when_disabled(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FOMC",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FOMC",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 13, 0),
+                    impact="high",
+                ),
+            ]
+        )
         cfg = SessionGateConfig(block_entries_during_news=False)
         gate = SessionGate(config=cfg, calendar=cal)
         ok, reason = gate.entries_allowed(_ct_to_utc(2026, 5, 15, 12, 50))
@@ -211,26 +220,30 @@ class TestPrecedence:
         """If we're outside RTH the gate returns outside_rth, not a news
         tag; reporting 'news blackout' for a weekend bar would be silly.
         """
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FOMC",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 6, 0),  # pre-RTH
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FOMC",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 6, 0),  # pre-RTH
+                    impact="high",
+                ),
+            ]
+        )
         gate = SessionGate(calendar=cal)
         ok, reason = gate.entries_allowed(_ct_to_utc(2026, 5, 15, 6, 0))
         assert ok is False
         assert reason == REASON_OUTSIDE_RTH
 
     def test_eod_cutoff_beats_news(self) -> None:
-        cal = EventsCalendar(events=[
-            CalendarEvent(
-                tag="FED_SPEAK",
-                scheduled_utc=_ct_to_utc(2026, 5, 15, 16, 0),
-                impact="high",
-            ),
-        ])
+        cal = EventsCalendar(
+            events=[
+                CalendarEvent(
+                    tag="FED_SPEAK",
+                    scheduled_utc=_ct_to_utc(2026, 5, 15, 16, 0),
+                    impact="high",
+                ),
+            ]
+        )
         cfg = SessionGateConfig(
             rth_end_local=time(16, 0),
             eod_cutoff_local=time(15, 59),

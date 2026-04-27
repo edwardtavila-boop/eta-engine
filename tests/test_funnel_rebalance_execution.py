@@ -13,6 +13,7 @@ Three layers:
 * End-to-end -- real ``plan_rebalance`` output flowing through the
   orchestrator, including kill-switch deference.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -381,18 +382,22 @@ class TestRebalanceExecutionEndToEnd:
         # MNQ is 30k over target (40k target, 70k actual). Both PERPS
         # and STAKING sit strictly below the 5% threshold, so MNQ excess
         # is paired with them greedily.
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 70_000.0,
-            LayerId.LAYER_2_BTC: 26_000.0,
-            LayerId.LAYER_3_PERPS: 2_000.0,
-            LayerId.LAYER_4_STAKING: 2_000.0,
-        })
-        alloc = AllocationPlan(weights={
-            LayerId.LAYER_1_MNQ: 0.40,
-            LayerId.LAYER_2_BTC: 0.30,
-            LayerId.LAYER_3_PERPS: 0.20,
-            LayerId.LAYER_4_STAKING: 0.10,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 70_000.0,
+                LayerId.LAYER_2_BTC: 26_000.0,
+                LayerId.LAYER_3_PERPS: 2_000.0,
+                LayerId.LAYER_4_STAKING: 2_000.0,
+            }
+        )
+        alloc = AllocationPlan(
+            weights={
+                LayerId.LAYER_1_MNQ: 0.40,
+                LayerId.LAYER_2_BTC: 0.30,
+                LayerId.LAYER_3_PERPS: 0.20,
+                LayerId.LAYER_4_STAKING: 0.10,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         assert plan.sweeps, "expected at least one sweep for drifted snapshot"
 
@@ -406,18 +411,22 @@ class TestRebalanceExecutionEndToEnd:
     @pytest.mark.asyncio
     async def test_on_plan_snapshot_produces_no_executor_calls(self) -> None:
         # Layers sit exactly on target -> empty plan.
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
-        alloc = AllocationPlan(weights={
-            LayerId.LAYER_1_MNQ: 0.40,
-            LayerId.LAYER_2_BTC: 0.30,
-            LayerId.LAYER_3_PERPS: 0.20,
-            LayerId.LAYER_4_STAKING: 0.10,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
+        alloc = AllocationPlan(
+            weights={
+                LayerId.LAYER_1_MNQ: 0.40,
+                LayerId.LAYER_2_BTC: 0.30,
+                LayerId.LAYER_3_PERPS: 0.20,
+                LayerId.LAYER_4_STAKING: 0.10,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         assert plan.sweeps == ()
 
@@ -429,12 +438,14 @@ class TestRebalanceExecutionEndToEnd:
 
     @pytest.mark.asyncio
     async def test_kill_switch_plan_produces_no_executor_calls(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 70_000.0,
-            LayerId.LAYER_2_BTC: 26_000.0,
-            LayerId.LAYER_3_PERPS: 2_000.0,
-            LayerId.LAYER_4_STAKING: 2_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 70_000.0,
+                LayerId.LAYER_2_BTC: 26_000.0,
+                LayerId.LAYER_3_PERPS: 2_000.0,
+                LayerId.LAYER_4_STAKING: 2_000.0,
+            }
+        )
         alloc = AllocationPlan(
             weights={
                 LayerId.LAYER_1_MNQ: 0.0,
@@ -457,18 +468,22 @@ class TestRebalanceExecutionEndToEnd:
 
     @pytest.mark.asyncio
     async def test_partial_layer_map_executes_only_reachable_sweeps(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 70_000.0,
-            LayerId.LAYER_2_BTC: 26_000.0,
-            LayerId.LAYER_3_PERPS: 2_000.0,
-            LayerId.LAYER_4_STAKING: 2_000.0,
-        })
-        alloc = AllocationPlan(weights={
-            LayerId.LAYER_1_MNQ: 0.40,
-            LayerId.LAYER_2_BTC: 0.30,
-            LayerId.LAYER_3_PERPS: 0.20,
-            LayerId.LAYER_4_STAKING: 0.10,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 70_000.0,
+                LayerId.LAYER_2_BTC: 26_000.0,
+                LayerId.LAYER_3_PERPS: 2_000.0,
+                LayerId.LAYER_4_STAKING: 2_000.0,
+            }
+        )
+        alloc = AllocationPlan(
+            weights={
+                LayerId.LAYER_1_MNQ: 0.40,
+                LayerId.LAYER_2_BTC: 0.30,
+                LayerId.LAYER_3_PERPS: 0.20,
+                LayerId.LAYER_4_STAKING: 0.10,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         # Drop STAKING from the layer map -> any sweep into staking is
         # silently dropped, but sweeps into perps still flow.
@@ -487,18 +502,22 @@ class TestRebalanceExecutionEndToEnd:
 
     @pytest.mark.asyncio
     async def test_zero_equity_plan_produces_no_executor_calls(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 0.0,
-            LayerId.LAYER_2_BTC: 0.0,
-            LayerId.LAYER_3_PERPS: 0.0,
-            LayerId.LAYER_4_STAKING: 0.0,
-        })
-        alloc = AllocationPlan(weights={
-            LayerId.LAYER_1_MNQ: 0.40,
-            LayerId.LAYER_2_BTC: 0.30,
-            LayerId.LAYER_3_PERPS: 0.20,
-            LayerId.LAYER_4_STAKING: 0.10,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 0.0,
+                LayerId.LAYER_2_BTC: 0.0,
+                LayerId.LAYER_3_PERPS: 0.0,
+                LayerId.LAYER_4_STAKING: 0.0,
+            }
+        )
+        alloc = AllocationPlan(
+            weights={
+                LayerId.LAYER_1_MNQ: 0.40,
+                LayerId.LAYER_2_BTC: 0.30,
+                LayerId.LAYER_3_PERPS: 0.20,
+                LayerId.LAYER_4_STAKING: 0.10,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         assert "zero_total_equity" in plan.notes
 

@@ -20,6 +20,7 @@ UPHOLDS the doctrine. The doctrine is the constitution.
 
 Pure / frozen / deterministic.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,22 +32,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Tenet(StrEnum):
     """The seven Evolutionary Trading Algo tenets. Ordered by priority."""
-    CAPITAL_FIRST         = "CAPITAL_FIRST"         # never blow up
-    EDGE_IS_FRAGILE       = "EDGE_IS_FRAGILE"       # assume it decays
-    PROCESS_OVER_OUTCOME  = "PROCESS_OVER_OUTCOME"  # grade the trade, not the P&L
-    KAIZEN                = "KAIZEN"                # 1% better every cycle
-    ADVERSARIAL_HONESTY   = "ADVERSARIAL_HONESTY"   # red team your own data
-    OBSERVABILITY         = "OBSERVABILITY"         # if you didn't log it, it didn't happen
-    NEVER_ON_AUTOPILOT    = "NEVER_ON_AUTOPILOT"    # human in the loop at every tier
+
+    CAPITAL_FIRST = "CAPITAL_FIRST"  # never blow up
+    EDGE_IS_FRAGILE = "EDGE_IS_FRAGILE"  # assume it decays
+    PROCESS_OVER_OUTCOME = "PROCESS_OVER_OUTCOME"  # grade the trade, not the P&L
+    KAIZEN = "KAIZEN"  # 1% better every cycle
+    ADVERSARIAL_HONESTY = "ADVERSARIAL_HONESTY"  # red team your own data
+    OBSERVABILITY = "OBSERVABILITY"  # if you didn't log it, it didn't happen
+    NEVER_ON_AUTOPILOT = "NEVER_ON_AUTOPILOT"  # human in the loop at every tier
 
 
 @dataclass(frozen=True)
 class TenetSpec:
     """One tenet's contract with the system."""
+
     tenet: Tenet
     statement: str
-    bias: float               # [-1, +1]: sign of the nudge JARVIS applies
-    violation_code: str        # stable alert code on breach
+    bias: float  # [-1, +1]: sign of the nudge JARVIS applies
+    violation_code: str  # stable alert code on breach
     applies_to: tuple[str, ...]  # which subsystem categories it bites on
 
 
@@ -108,8 +111,7 @@ DOCTRINE: dict[Tenet, TenetSpec] = {
     Tenet.OBSERVABILITY: TenetSpec(
         tenet=Tenet.OBSERVABILITY,
         statement=(
-            "If you didn't log it, it didn't happen. Every decision, every "
-            "override, every fill. Audit trail is sacred."
+            "If you didn't log it, it didn't happen. Every decision, every override, every fill. Audit trail is sacred."
         ),
         bias=+0.05,
         violation_code="audit_gap",
@@ -141,15 +143,16 @@ PRIORITY_ORDER: tuple[Tenet, ...] = (
 
 class DoctrineVerdict(BaseModel):
     """Outcome of applying the doctrine to a proposed action."""
+
     model_config = ConfigDict(frozen=True)
 
     proposed_verdict: str
     doctrine_verdict: str
-    net_bias:         float = Field(ge=-1.0, le=1.0)
-    tenets_applied:   list[str]
-    violations:       list[str] = Field(default_factory=list)
-    rationale:        str
-    ts:               datetime
+    net_bias: float = Field(ge=-1.0, le=1.0)
+    tenets_applied: list[str]
+    violations: list[str] = Field(default_factory=list)
+    rationale: str
+    ts: datetime
 
 
 def apply_doctrine(
@@ -199,10 +202,7 @@ def apply_doctrine(
         new_idx = idx
     new_verdict = ladder[new_idx]
 
-    rationale = (
-        f"doctrine bias={net:+.2f}; {len(applied)} tenets applied; "
-        f"{proposed_verdict.upper()} -> {new_verdict}"
-    )
+    rationale = f"doctrine bias={net:+.2f}; {len(applied)} tenets applied; {proposed_verdict.upper()} -> {new_verdict}"
 
     return DoctrineVerdict(
         proposed_verdict=proposed_verdict.upper(),
@@ -242,8 +242,7 @@ def kaizen_pre_condition(
         return True, f"{retrospectives_last_7d} retrospectives in last 7d -- KAIZEN honored"
     return (
         False,
-        f"only {retrospectives_last_7d} retrospectives in last 7d "
-        f"(need {min_required}) -- KAIZEN breached",
+        f"only {retrospectives_last_7d} retrospectives in last 7d (need {min_required}) -- KAIZEN breached",
     )
 
 

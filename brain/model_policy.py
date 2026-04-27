@@ -39,6 +39,7 @@ Cost multipliers are anchored to SONNET = 1.0x:
   * SONNET  = 1.0x  (baseline, the new default)
   * HAIKU  ~= 0.2x  (user directive: "literally 1/5 the cost of Sonnet")
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -56,18 +57,19 @@ class ModelTier(StrEnum):
     Values match what Claude Code expects in sub-agent frontmatter
     (``model: opus`` etc.) so this enum can be written straight to disk.
     """
-    OPUS   = "opus"
+
+    OPUS = "opus"
     SONNET = "sonnet"
-    HAIKU  = "haiku"
+    HAIKU = "haiku"
 
 
 # Cost ratios vs. SONNET = 1.0x. Used by reporting / burn-rate dashboards.
 # OPUS at ~5.0x is directly from the operator's "5x burn rate" comment;
 # HAIKU at ~0.2x is "literally 1/5 the cost of Sonnet".
 COST_RATIO: dict[ModelTier, float] = {
-    ModelTier.OPUS:   5.0,
+    ModelTier.OPUS: 5.0,
     ModelTier.SONNET: 1.0,
-    ModelTier.HAIKU:  0.2,
+    ModelTier.HAIKU: 0.2,
 }
 
 
@@ -78,9 +80,10 @@ COST_RATIO: dict[ModelTier, float] = {
 
 class TaskBucket(StrEnum):
     """Coarse grouping used for reporting. Each TaskCategory maps to one."""
-    ARCHITECTURAL = "architectural"   # -> OPUS
-    ROUTINE       = "routine"         # -> SONNET (default)
-    GRUNT         = "grunt"           # -> HAIKU
+
+    ARCHITECTURAL = "architectural"  # -> OPUS
+    ROUTINE = "routine"  # -> SONNET (default)
+    GRUNT = "grunt"  # -> HAIKU
 
 
 class TaskCategory(StrEnum):
@@ -90,71 +93,72 @@ class TaskCategory(StrEnum):
     New categories must be added to ``_CATEGORY_TO_TIER`` below (enforced
     by ``test_every_category_has_a_tier``).
     """
+
     # --- ARCHITECTURAL -> OPUS ---------------------------------------------
     # Gnarly design decisions that benefit from Opus's deeper reasoning.
-    RED_TEAM_SCORING       = "red_team_scoring"       # firm.red_team logic
-    GAUNTLET_GATE_DESIGN   = "gauntlet_gate_design"   # promotion gates
-    RISK_POLICY_DESIGN     = "risk_policy_design"     # kill-switch, tiered rollout
-    ARCHITECTURE_DECISION  = "architecture_decision"  # module layout, boundaries
-    ADVERSARIAL_REVIEW     = "adversarial_review"     # devil's advocate pass
-    STATE_MACHINE_DESIGN   = "state_machine_design"   # tiered_rollout, regimes
+    RED_TEAM_SCORING = "red_team_scoring"  # firm.red_team logic
+    GAUNTLET_GATE_DESIGN = "gauntlet_gate_design"  # promotion gates
+    RISK_POLICY_DESIGN = "risk_policy_design"  # kill-switch, tiered rollout
+    ARCHITECTURE_DECISION = "architecture_decision"  # module layout, boundaries
+    ADVERSARIAL_REVIEW = "adversarial_review"  # devil's advocate pass
+    STATE_MACHINE_DESIGN = "state_machine_design"  # tiered_rollout, regimes
 
     # --- ROUTINE -> SONNET (default) ---------------------------------------
     # The bulk of day-to-day development work.
-    STRATEGY_EDIT          = "strategy_edit"          # confluence / sweep / orb tweaks
-    TEST_RUN               = "test_run"               # write / run pytest
-    REFACTOR               = "refactor"               # rename, move, extract
-    SKELETON_SCAFFOLD      = "skeleton_scaffold"      # new module skeleton, stubs
-    CODE_REVIEW            = "code_review"            # normal PR review
-    DEBUG                  = "debug"                  # fix a failing test / bug
-    DOC_WRITING            = "doc_writing"            # CLAUDE.md / README updates
-    DATA_PIPELINE          = "data_pipeline"          # databento / parquet plumbing
+    STRATEGY_EDIT = "strategy_edit"  # confluence / sweep / orb tweaks
+    TEST_RUN = "test_run"  # write / run pytest
+    REFACTOR = "refactor"  # rename, move, extract
+    SKELETON_SCAFFOLD = "skeleton_scaffold"  # new module skeleton, stubs
+    CODE_REVIEW = "code_review"  # normal PR review
+    DEBUG = "debug"  # fix a failing test / bug
+    DOC_WRITING = "doc_writing"  # CLAUDE.md / README updates
+    DATA_PIPELINE = "data_pipeline"  # databento / parquet plumbing
 
     # --- GRUNT -> HAIKU -----------------------------------------------------
     # Mechanical work where a mid-tier model is overkill.
-    LOG_PARSING            = "log_parsing"            # tail logs / grep / summarize
-    SIMPLE_EDIT            = "simple_edit"            # rename var, fix typo
-    COMMIT_MESSAGE         = "commit_message"         # draft commit / PR body
-    FORMATTING             = "formatting"             # whitespace, imports
-    LINT_FIX               = "lint_fix"               # ruff / mypy mechanical fixes
-    TRIVIAL_LOOKUP         = "trivial_lookup"         # find a file / symbol
-    BOILERPLATE            = "boilerplate"            # __init__.py re-exports
+    LOG_PARSING = "log_parsing"  # tail logs / grep / summarize
+    SIMPLE_EDIT = "simple_edit"  # rename var, fix typo
+    COMMIT_MESSAGE = "commit_message"  # draft commit / PR body
+    FORMATTING = "formatting"  # whitespace, imports
+    LINT_FIX = "lint_fix"  # ruff / mypy mechanical fixes
+    TRIVIAL_LOOKUP = "trivial_lookup"  # find a file / symbol
+    BOILERPLATE = "boilerplate"  # __init__.py re-exports
 
 
 # Single source of truth. Adding a TaskCategory without adding it here will
 # trip test_every_category_has_a_tier.
 _CATEGORY_TO_TIER: dict[TaskCategory, ModelTier] = {
     # Architectural -> OPUS
-    TaskCategory.RED_TEAM_SCORING:      ModelTier.OPUS,
-    TaskCategory.GAUNTLET_GATE_DESIGN:  ModelTier.OPUS,
-    TaskCategory.RISK_POLICY_DESIGN:    ModelTier.OPUS,
+    TaskCategory.RED_TEAM_SCORING: ModelTier.OPUS,
+    TaskCategory.GAUNTLET_GATE_DESIGN: ModelTier.OPUS,
+    TaskCategory.RISK_POLICY_DESIGN: ModelTier.OPUS,
     TaskCategory.ARCHITECTURE_DECISION: ModelTier.OPUS,
-    TaskCategory.ADVERSARIAL_REVIEW:    ModelTier.OPUS,
-    TaskCategory.STATE_MACHINE_DESIGN:  ModelTier.OPUS,
+    TaskCategory.ADVERSARIAL_REVIEW: ModelTier.OPUS,
+    TaskCategory.STATE_MACHINE_DESIGN: ModelTier.OPUS,
     # Routine -> SONNET (default)
-    TaskCategory.STRATEGY_EDIT:         ModelTier.SONNET,
-    TaskCategory.TEST_RUN:              ModelTier.SONNET,
-    TaskCategory.REFACTOR:              ModelTier.SONNET,
-    TaskCategory.SKELETON_SCAFFOLD:     ModelTier.SONNET,
-    TaskCategory.CODE_REVIEW:           ModelTier.SONNET,
-    TaskCategory.DEBUG:                 ModelTier.SONNET,
-    TaskCategory.DOC_WRITING:           ModelTier.SONNET,
-    TaskCategory.DATA_PIPELINE:         ModelTier.SONNET,
+    TaskCategory.STRATEGY_EDIT: ModelTier.SONNET,
+    TaskCategory.TEST_RUN: ModelTier.SONNET,
+    TaskCategory.REFACTOR: ModelTier.SONNET,
+    TaskCategory.SKELETON_SCAFFOLD: ModelTier.SONNET,
+    TaskCategory.CODE_REVIEW: ModelTier.SONNET,
+    TaskCategory.DEBUG: ModelTier.SONNET,
+    TaskCategory.DOC_WRITING: ModelTier.SONNET,
+    TaskCategory.DATA_PIPELINE: ModelTier.SONNET,
     # Grunt -> HAIKU
-    TaskCategory.LOG_PARSING:           ModelTier.HAIKU,
-    TaskCategory.SIMPLE_EDIT:           ModelTier.HAIKU,
-    TaskCategory.COMMIT_MESSAGE:        ModelTier.HAIKU,
-    TaskCategory.FORMATTING:            ModelTier.HAIKU,
-    TaskCategory.LINT_FIX:              ModelTier.HAIKU,
-    TaskCategory.TRIVIAL_LOOKUP:        ModelTier.HAIKU,
-    TaskCategory.BOILERPLATE:           ModelTier.HAIKU,
+    TaskCategory.LOG_PARSING: ModelTier.HAIKU,
+    TaskCategory.SIMPLE_EDIT: ModelTier.HAIKU,
+    TaskCategory.COMMIT_MESSAGE: ModelTier.HAIKU,
+    TaskCategory.FORMATTING: ModelTier.HAIKU,
+    TaskCategory.LINT_FIX: ModelTier.HAIKU,
+    TaskCategory.TRIVIAL_LOOKUP: ModelTier.HAIKU,
+    TaskCategory.BOILERPLATE: ModelTier.HAIKU,
 }
 
 
 _TIER_TO_BUCKET: dict[ModelTier, TaskBucket] = {
-    ModelTier.OPUS:   TaskBucket.ARCHITECTURAL,
+    ModelTier.OPUS: TaskBucket.ARCHITECTURAL,
     ModelTier.SONNET: TaskBucket.ROUTINE,
-    ModelTier.HAIKU:  TaskBucket.GRUNT,
+    ModelTier.HAIKU: TaskBucket.GRUNT,
 }
 
 
@@ -169,13 +173,14 @@ class ModelSelection(BaseModel):
     All fields are denormalized so the selection can be written straight
     into an audit log without re-deriving anything.
     """
+
     model_config = ConfigDict(frozen=True)
 
-    category:        TaskCategory
-    tier:            ModelTier
-    bucket:          TaskBucket
+    category: TaskCategory
+    tier: ModelTier
+    bucket: TaskBucket
     cost_multiplier: float = Field(ge=0.0, le=10.0)
-    reason:          str   = Field(min_length=1)
+    reason: str = Field(min_length=1)
 
 
 # ---------------------------------------------------------------------------
@@ -219,19 +224,15 @@ def tier_for(category: TaskCategory) -> ModelTier:
 
 
 _BUCKET_BLURB: dict[TaskBucket, str] = {
-    TaskBucket.ARCHITECTURAL: (
-        "architectural work -- deeper reasoning justifies the Opus burn"
-    ),
-    TaskBucket.ROUTINE: (
-        "routine development -- Sonnet is the operator-mandated default"
-    ),
-    TaskBucket.GRUNT: (
-        "mechanical / grunt work -- Haiku at ~1/5 cost of Sonnet is plenty"
-    ),
+    TaskBucket.ARCHITECTURAL: ("architectural work -- deeper reasoning justifies the Opus burn"),
+    TaskBucket.ROUTINE: ("routine development -- Sonnet is the operator-mandated default"),
+    TaskBucket.GRUNT: ("mechanical / grunt work -- Haiku at ~1/5 cost of Sonnet is plenty"),
 }
 
 
 def _reason_for(
-    category: TaskCategory, tier: ModelTier, bucket: TaskBucket,
+    category: TaskCategory,
+    tier: ModelTier,
+    bucket: TaskBucket,
 ) -> str:
     return f"{category.value} -> {tier.value} ({_BUCKET_BLURB[bucket]})"

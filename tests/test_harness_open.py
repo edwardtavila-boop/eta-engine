@@ -1,4 +1,5 @@
 """Open-testing harness tests -- P12_POLISH.open_testing."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -23,8 +24,12 @@ _Scorer = Callable[[Mapping[str, Any]], CellScore]
 # run_parameter_sweep
 # ---------------------------------------------------------------------------
 
+
 def _constant_scorer(
-    exp: float, dd: float = 5.0, wr: float = 0.55, trades: int = 100,
+    exp: float,
+    dd: float = 5.0,
+    wr: float = 0.55,
+    trades: int = 100,
 ) -> _Scorer:
     def scorer(params: Mapping[str, Any]) -> CellScore:
         return CellScore(
@@ -33,6 +38,7 @@ def _constant_scorer(
             win_rate=wr,
             n_trades=trades,
         )
+
     return scorer
 
 
@@ -45,8 +51,7 @@ def test_run_parameter_sweep_evaluates_full_grid() -> None:
 def test_run_parameter_sweep_returns_dicts_with_expected_keys() -> None:
     ranges = {"a": [1, 2]}
     results = run_parameter_sweep(ranges, _constant_scorer(0.40))
-    keys = {"params", "expectancy_r", "max_dd_pct", "win_rate",
-            "n_trades", "stability", "gate_pass"}
+    keys = {"params", "expectancy_r", "max_dd_pct", "win_rate", "n_trades", "stability", "gate_pass"}
     assert keys.issubset(results[0].keys())
 
 
@@ -55,8 +60,11 @@ def test_run_parameter_sweep_orders_results_best_first() -> None:
         # Higher conf => higher expectancy
         return CellScore(
             expectancy_r=0.1 * params["conf"],
-            max_dd_pct=5.0, win_rate=0.55, n_trades=100,
+            max_dd_pct=5.0,
+            win_rate=0.55,
+            n_trades=100,
         )
+
     ranges = {"conf": [1, 2, 3, 4, 5]}
     results = run_parameter_sweep(ranges, scorer)
     assert results[0]["params"]["conf"] == 5
@@ -82,19 +90,29 @@ def test_run_parameter_sweep_empty_ranges_returns_empty_list() -> None:
 # pareto_frontier_for
 # ---------------------------------------------------------------------------
 
+
 def test_pareto_frontier_for_returns_non_dominated_cells() -> None:
     # 3 cells: A dominates B on everything, C is dominated by A
     def scorer(p: Mapping[str, Any]) -> CellScore:
         if p["x"] == "a":
             return CellScore(
-                expectancy_r=0.6, max_dd_pct=5.0, win_rate=0.5, n_trades=50,
+                expectancy_r=0.6,
+                max_dd_pct=5.0,
+                win_rate=0.5,
+                n_trades=50,
             )
         if p["x"] == "b":
             return CellScore(
-                expectancy_r=0.3, max_dd_pct=10.0, win_rate=0.5, n_trades=50,
+                expectancy_r=0.3,
+                max_dd_pct=10.0,
+                win_rate=0.5,
+                n_trades=50,
             )  # dominated
         return CellScore(
-            expectancy_r=0.5, max_dd_pct=3.0, win_rate=0.5, n_trades=50,
+            expectancy_r=0.5,
+            max_dd_pct=3.0,
+            win_rate=0.5,
+            n_trades=50,
         )  # non-dominated (better dd)
 
     ranges = {"x": ["a", "b", "c"]}
@@ -112,15 +130,22 @@ def test_pareto_frontier_for_empty_ranges() -> None:
 # run_forward_test_comparator
 # ---------------------------------------------------------------------------
 
+
 def test_forward_test_comparator_picks_higher_expectancy_winner() -> None:
     def scorer_a(p: Mapping[str, Any]) -> CellScore:
         return CellScore(
-            expectancy_r=0.50, max_dd_pct=5.0, win_rate=0.55, n_trades=100,
+            expectancy_r=0.50,
+            max_dd_pct=5.0,
+            win_rate=0.55,
+            n_trades=100,
         )
 
     def scorer_b(p: Mapping[str, Any]) -> CellScore:
         return CellScore(
-            expectancy_r=0.30, max_dd_pct=5.0, win_rate=0.50, n_trades=100,
+            expectancy_r=0.30,
+            max_dd_pct=5.0,
+            win_rate=0.50,
+            n_trades=100,
         )
 
     out = run_forward_test_comparator(scorer_a, scorer_b, {"conf": 5.5})
@@ -132,7 +157,10 @@ def test_forward_test_comparator_picks_higher_expectancy_winner() -> None:
 def test_forward_test_comparator_reports_tie_on_equal_expectancy() -> None:
     def s(p: Mapping[str, Any]) -> CellScore:
         return CellScore(
-            expectancy_r=0.40, max_dd_pct=5.0, win_rate=0.5, n_trades=100,
+            expectancy_r=0.40,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=100,
         )
 
     out = run_forward_test_comparator(s, s, {"x": 1})
@@ -143,12 +171,18 @@ def test_forward_test_comparator_reports_tie_on_equal_expectancy() -> None:
 def test_forward_test_comparator_edge_pct_on_near_zero_does_not_divide_by_zero() -> None:
     def s_a(p: Mapping[str, Any]) -> CellScore:
         return CellScore(
-            expectancy_r=0.0, max_dd_pct=0.0, win_rate=0.5, n_trades=0,
+            expectancy_r=0.0,
+            max_dd_pct=0.0,
+            win_rate=0.5,
+            n_trades=0,
         )
 
     def s_b(p: Mapping[str, Any]) -> CellScore:
         return CellScore(
-            expectancy_r=0.0001, max_dd_pct=0.0, win_rate=0.5, n_trades=0,
+            expectancy_r=0.0001,
+            max_dd_pct=0.0,
+            win_rate=0.5,
+            n_trades=0,
         )
 
     out = run_forward_test_comparator(s_a, s_b, {"x": 1})
@@ -158,6 +192,7 @@ def test_forward_test_comparator_edge_pct_on_near_zero_does_not_divide_by_zero()
 # ---------------------------------------------------------------------------
 # run_regime_slice_evaluator
 # ---------------------------------------------------------------------------
+
 
 def test_regime_slice_evaluator_groups_bars_by_regime() -> None:
     bars = [{"c": 1.0}, {"c": 2.0}, {"c": 3.0}, {"c": 4.0}]
@@ -173,7 +208,10 @@ def test_regime_slice_evaluator_groups_bars_by_regime() -> None:
     def scorer(p: Mapping[str, Any]) -> CellScore:
         seen[p["regime"]] = len(p["bars"])
         return CellScore(
-            expectancy_r=0.4, max_dd_pct=5.0, win_rate=0.5, n_trades=10,
+            expectancy_r=0.4,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=10,
         )
 
     out = run_regime_slice_evaluator(scorer, bars, regimes)
@@ -199,7 +237,10 @@ def test_regime_slice_evaluator_forwards_params_to_scorer() -> None:
     def scorer(p: Mapping[str, Any]) -> CellScore:
         captured.update(p)
         return CellScore(
-            expectancy_r=0.4, max_dd_pct=5.0, win_rate=0.5, n_trades=10,
+            expectancy_r=0.4,
+            max_dd_pct=5.0,
+            win_rate=0.5,
+            n_trades=10,
         )
 
     run_regime_slice_evaluator(scorer, bars, regimes, params={"risk": 0.01})
@@ -212,6 +253,7 @@ def test_regime_slice_evaluator_forwards_params_to_scorer() -> None:
 # summarize_sweep / pick_winner_from_results
 # ---------------------------------------------------------------------------
 
+
 def test_summarize_sweep_handles_empty() -> None:
     s = summarize_sweep([])
     assert s["n_cells"] == 0
@@ -220,12 +262,33 @@ def test_summarize_sweep_handles_empty() -> None:
 
 def test_summarize_sweep_reports_pass_count_and_stats() -> None:
     results = [
-        {"params": {"x": 1}, "expectancy_r": 0.50, "gate_pass": True,
-         "max_dd_pct": 5.0, "win_rate": 0.5, "n_trades": 100, "stability": 0.0},
-        {"params": {"x": 2}, "expectancy_r": 0.40, "gate_pass": True,
-         "max_dd_pct": 5.0, "win_rate": 0.5, "n_trades": 100, "stability": 0.0},
-        {"params": {"x": 3}, "expectancy_r": 0.10, "gate_pass": False,
-         "max_dd_pct": 5.0, "win_rate": 0.5, "n_trades": 100, "stability": 0.0},
+        {
+            "params": {"x": 1},
+            "expectancy_r": 0.50,
+            "gate_pass": True,
+            "max_dd_pct": 5.0,
+            "win_rate": 0.5,
+            "n_trades": 100,
+            "stability": 0.0,
+        },
+        {
+            "params": {"x": 2},
+            "expectancy_r": 0.40,
+            "gate_pass": True,
+            "max_dd_pct": 5.0,
+            "win_rate": 0.5,
+            "n_trades": 100,
+            "stability": 0.0,
+        },
+        {
+            "params": {"x": 3},
+            "expectancy_r": 0.10,
+            "gate_pass": False,
+            "max_dd_pct": 5.0,
+            "win_rate": 0.5,
+            "n_trades": 100,
+            "stability": 0.0,
+        },
     ]
     s = summarize_sweep(results)
     assert s["n_cells"] == 3
@@ -247,12 +310,14 @@ def test_pick_winner_from_results_returns_none_on_empty() -> None:
 # End-to-end: sweep + regime slicing on realistic-shaped inputs
 # ---------------------------------------------------------------------------
 
+
 def test_harness_end_to_end_realistic_bot_surface() -> None:
     """Simulate how a bot would call the harness:
-       1. parameter sweep to find best (conf, risk)
-       2. regime slice the winner
-       3. summary for dashboard
+    1. parameter sweep to find best (conf, risk)
+    2. regime slice the winner
+    3. summary for dashboard
     """
+
     def bot_scorer(p: Mapping[str, Any]) -> CellScore:
         conf = p.get("conf", 5.0)
         risk = p.get("risk", 0.01)
@@ -276,8 +341,10 @@ def test_harness_end_to_end_realistic_bot_surface() -> None:
     assert winner["params"]["conf"] == 7.0
 
     regimes = [
-        RegimeType.TRENDING, RegimeType.TRENDING,
-        RegimeType.RANGING, RegimeType.HIGH_VOL,
+        RegimeType.TRENDING,
+        RegimeType.TRENDING,
+        RegimeType.RANGING,
+        RegimeType.HIGH_VOL,
     ]
     bars = [{"close": 100.0 + i} for i in range(4)]
     sliced = run_regime_slice_evaluator(bot_scorer, bars, regimes, params={"conf": 7.0})

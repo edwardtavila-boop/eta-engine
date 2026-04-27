@@ -55,11 +55,16 @@ def _run_cell(
     seed: int,
 ) -> SweepCell:
     from eta_engine.scripts import paper_run_harness as prh
+
     base = dict(prh.BOT_PLAN[bot])
     base["confluence_threshold"] = float(conf_thr)
     base["risk_per_trade_pct"] = float(risk_pct)
     r = prh._run_one_bot(
-        bot, base, weeks=weeks, seed=seed, reqs=prh.PaperPhaseRequirements(),
+        bot,
+        base,
+        weeks=weeks,
+        seed=seed,
+        reqs=prh.PaperPhaseRequirements(),
     )
     return SweepCell(
         bot=bot,
@@ -118,8 +123,11 @@ def main() -> int:
         for conf in CONFLUENCE_GRID:
             for risk in RISK_GRID:
                 cell = _run_cell(
-                    bot, conf, risk,
-                    weeks=args.weeks, seed=args.seed + bot_i * 7,
+                    bot,
+                    conf,
+                    risk,
+                    weeks=args.weeks,
+                    seed=args.seed + bot_i * 7,
                 )
                 bot_cells.append(cell)
                 all_cells.append(cell)

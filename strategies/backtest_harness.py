@@ -37,6 +37,7 @@ borrow, partial fills, venue queueing). Those belong in
 strategy edge exist on this tape at all?"* — the cheapest first
 question to ask when vetting a new AI-Optimized combination.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -275,8 +276,7 @@ def _exit_trade(
         r = (final_bar.close - entry) / stop_dist if stop_dist > 0 else 0.0
     else:
         r = (entry - final_bar.close) / stop_dist if stop_dist > 0 else 0.0
-    return _finalise(open_trade, last_idx, final_bar, final_bar.close, r,
-                      ExitReason.TIMEOUT, cfg)
+    return _finalise(open_trade, last_idx, final_bar, final_bar.close, r, ExitReason.TIMEOUT, cfg)
 
 
 def _finalise(
@@ -439,10 +439,7 @@ def run_harness(
             entry_ts=current.ts,
             entry=winner.entry,
             stop=winner.stop,
-            target=(
-                winner.target if winner.target > 0.0
-                else _fallback_target(winner)
-            ),
+            target=(winner.target if winner.target > 0.0 else _fallback_target(winner)),
         )
         open_per_strategy[winner.strategy] = ot
         strategies_seen.add(winner.strategy)

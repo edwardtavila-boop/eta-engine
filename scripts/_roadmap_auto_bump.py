@@ -28,6 +28,7 @@ after, files touched) are derivable; the operator's narrative
 ("THEME -- what shipped, why it matters") is not. This script does
 the boring half so the operator can focus on the half that matters.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,7 +65,12 @@ def _find_next_version() -> tuple[str, str, Path | None]:
 
 def _run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, cwd=str(ROOT), capture_output=True, text=True, check=False, **kw,  # type: ignore[arg-type]
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+        **kw,  # type: ignore[arg-type]
     )
 
 
@@ -236,18 +242,23 @@ if __name__ == "__main__":
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument(
-        "--version", help="override the auto-detected version (e.g. v0.1.99)",
+        "--version",
+        help="override the auto-detected version (e.g. v0.1.99)",
     )
     p.add_argument(
-        "--write", action="store_true",
+        "--write",
+        action="store_true",
         help="actually create the file (default: print to stdout)",
     )
     p.add_argument(
-        "--no-pytest", action="store_true",
+        "--no-pytest",
+        action="store_true",
         help="skip pytest --collect-only (use --tests-now to set explicitly)",
     )
     p.add_argument(
-        "--tests-now", type=int, default=None,
+        "--tests-now",
+        type=int,
+        default=None,
         help="override the test count (default: auto via pytest --collect-only)",
     )
     args = p.parse_args(argv)
@@ -277,8 +288,7 @@ def main(argv: list[str] | None = None) -> int:
 
     git = _git_data_since(prev_path)
     print(
-        f"[auto-bump] {len(git['files'])} files touched, "
-        f"{len(git['subjects'])} commits since {prev_v}",
+        f"[auto-bump] {len(git['files'])} files touched, {len(git['subjects'])} commits since {prev_v}",
         file=sys.stderr,
     )
 

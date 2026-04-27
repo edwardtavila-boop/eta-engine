@@ -60,6 +60,7 @@ mode" -- JARVIS gates every order. In this mode:
 * ``record_event()`` writes one journal line per decision for the
   operator dashboard.
 """
+
 from __future__ import annotations
 
 import logging
@@ -109,9 +110,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MNQ_CONFIG = BotConfig(
-    name="MNQ-Engine", symbol="MNQ", tier=Tier.FUTURES, baseline_usd=5500.0,
-    starting_capital_usd=5000.0, max_leverage=5.0, risk_per_trade_pct=1.0,
-    daily_loss_cap_pct=2.5, max_dd_kill_pct=8.0, margin_mode=MarginMode.CROSS,
+    name="MNQ-Engine",
+    symbol="MNQ",
+    tier=Tier.FUTURES,
+    baseline_usd=5500.0,
+    starting_capital_usd=5000.0,
+    max_leverage=5.0,
+    risk_per_trade_pct=1.0,
+    daily_loss_cap_pct=2.5,
+    max_dd_kill_pct=8.0,
+    margin_mode=MarginMode.CROSS,
 )
 TICK_SIZE: float = 0.25
 TICK_VALUE: float = 0.50
@@ -179,17 +187,11 @@ class MnqBot(BaseBot):
         self._trailing_drawdown_r = trailing_drawdown_r
         self._strategy_adapter = strategy_adapter
         self._auto_wire_ai_strategies = auto_wire_ai_strategies
-        self._ai_strategy_config: dict[str, Any] = (
-            dict(ai_strategy_config) if ai_strategy_config else {}
-        )
+        self._ai_strategy_config: dict[str, Any] = dict(ai_strategy_config) if ai_strategy_config else {}
         self._retrospective_manager = retrospective_manager
         self._auto_wire_retrospective = auto_wire_retrospective
-        self._retrospective_config: dict[str, Any] = (
-            dict(retrospective_config) if retrospective_config else {}
-        )
-        self._default_retrospective_strategy = (
-            default_retrospective_strategy
-        )
+        self._retrospective_config: dict[str, Any] = dict(retrospective_config) if retrospective_config else {}
+        self._default_retrospective_strategy = default_retrospective_strategy
         # D1/D4/D5 -- session gate + persistent kill-switch latch.
         # Both are opt-in (legacy callers pass None; the bot stays
         # backward-compatible). When present:
@@ -273,6 +275,7 @@ class MnqBot(BaseBot):
         """
         if self._jarvis is None:
             from eta_engine.brain.model_policy import ModelTier as _ModelTier
+
             return _ModelTier.SONNET
         return pick_llm_tier(
             self._jarvis,
@@ -335,12 +338,14 @@ class MnqBot(BaseBot):
             from eta_engine.strategies.live_adapter import (
                 build_live_adapter,
             )
+
             self._strategy_adapter = build_live_adapter(
-                self.config.symbol, **self._ai_strategy_config,
+                self.config.symbol,
+                **self._ai_strategy_config,
             )
             logger.info(
-                "MNQ bot auto-wired AI-Optimized strategy adapter "
-                "(asset=%s, scheduler=on)", self.config.symbol,
+                "MNQ bot auto-wired AI-Optimized strategy adapter (asset=%s, scheduler=on)",
+                self.config.symbol,
             )
         # D1/D4: wire the SessionGate into the RouterAdapter so
         # ``session_allows_entries`` is driven by the fused RTH / news /
@@ -351,33 +356,28 @@ class MnqBot(BaseBot):
         if self._strategy_adapter is not None and self._session_gate is not None:
             self._strategy_adapter.session_gate = self._session_gate
             logger.info(
-                "MNQ bot attached SessionGate to strategy adapter "
-                "(tz=%s, rth=%s..%s, eod=%s)",
+                "MNQ bot attached SessionGate to strategy adapter (tz=%s, rth=%s..%s, eod=%s)",
                 self._session_gate.config.timezone_name,
                 self._session_gate.config.rth_start_local.isoformat(),
                 self._session_gate.config.rth_end_local.isoformat(),
                 self._session_gate.config.eod_cutoff_local.isoformat(),
             )
         # Auto-wire the v0.1.48 retrospective loop if requested.
-        if (
-            self._auto_wire_retrospective
-            and self._retrospective_manager is None
-        ):
+        if self._auto_wire_retrospective and self._retrospective_manager is None:
             from eta_engine.strategies.retrospective_wiring import (
                 RetrospectiveManager,
             )
+
             self._retrospective_manager = RetrospectiveManager(
                 starting_equity=self.config.starting_capital_usd,
                 **self._retrospective_config,
             )
             logger.info(
-                "MNQ bot auto-wired RetrospectiveManager "
-                "(starting_equity=$%.2f)",
+                "MNQ bot auto-wired RetrospectiveManager (starting_equity=$%.2f)",
                 self.config.starting_capital_usd,
             )
         logger.info(
-            "MNQ bot starting | capital=$%.2f symbol=%s levels=%d "
-            "router=%s jarvis=%s retrospective=%s",
+            "MNQ bot starting | capital=$%.2f symbol=%s levels=%d router=%s jarvis=%s retrospective=%s",
             self.config.starting_capital_usd,
             self._tradovate_symbol,
             len(self._liquidity_levels),
@@ -422,7 +422,8 @@ class MnqBot(BaseBot):
         open_count = len(self.state.open_positions)
         logger.warning(
             "MNQ EoD flatten fired (reason=%s, open_positions=%d)",
-            reason, open_count,
+            reason,
+            open_count,
         )
         self._record_event(
             intent="mnq_eod_flatten",
@@ -437,23 +438,21 @@ class MnqBot(BaseBot):
         # partial view.
         last_close = float(bar.get("close", 0.0))
         for pos in list(self.state.open_positions):
-            close_type = (
-                SignalType.CLOSE_LONG
-                if pos.side.lower() in {"long", "buy"}
-                else SignalType.CLOSE_SHORT
+            close_type = SignalType.CLOSE_LONG if pos.side.lower() in {"long", "buy"} else SignalType.CLOSE_SHORT
+            await self.on_signal(
+                Signal(
+                    type=close_type,
+                    symbol=pos.symbol,
+                    price=last_close,
+                    size=pos.size,
+                    confidence=10.0,  # forced close; confidence irrelevant
+                    meta={
+                        "setup": "eod_flatten",
+                        "gate_reason": reason,
+                        "source": "session_gate",
+                    },
+                )
             )
-            await self.on_signal(Signal(
-                type=close_type,
-                symbol=pos.symbol,
-                price=last_close,
-                size=pos.size,
-                confidence=10.0,  # forced close; confidence irrelevant
-                meta={
-                    "setup": "eod_flatten",
-                    "gate_reason": reason,
-                    "source": "session_gate",
-                },
-            ))
 
     async def stop(self) -> None:
         logger.info("MNQ bot stopping | equity=$%.2f pnl=$%.2f", self.state.equity, self.state.todays_pnl)
@@ -537,8 +536,7 @@ class MnqBot(BaseBot):
         ``None`` in log-only mode. Entry signals convert to market orders
         sized from ``_size_from_signal``; exit signals use ``reduce_only``.
         """
-        logger.info("MNQ signal: %s @ %.2f conf=%.1f",
-                    signal.type.value, signal.price, signal.confidence)
+        logger.info("MNQ signal: %s @ %.2f conf=%.1f", signal.type.value, signal.price, signal.confidence)
 
         # JARVIS gate -- refuses orders during kill / stand-aside.
         # Exit signals ALWAYS proceed (they reduce risk); JARVIS
@@ -585,7 +583,8 @@ class MnqBot(BaseBot):
         if qty <= 0.0:
             logger.debug(
                 "MNQ signal skipped: qty=%.4f <= 0 (base=%.4f cap=%s)",
-                qty, base_qty,
+                qty,
+                base_qty,
                 f"{cap:.3f}" if cap is not None else "none",
             )
             self._record_event(
@@ -722,7 +721,9 @@ class MnqBot(BaseBot):
     # ── Retrospective entry tracking (v0.1.50) ──
 
     def _track_entry_from_signal(
-        self, signal: Signal, regime: RegimeType,
+        self,
+        signal: Signal,
+        regime: RegimeType,
     ) -> None:
         """Stash the entry context for later pnl_r computation.
 
@@ -744,6 +745,7 @@ class MnqBot(BaseBot):
             is_entry_signal_type,
             map_regime,
         )
+
         if not is_entry_signal_type(signal.type):
             return
         risk_usd = compute_risk_usd(
@@ -752,11 +754,9 @@ class MnqBot(BaseBot):
         )
         if risk_usd <= 0.0:
             return
-        strat = (
-            self._default_retrospective_strategy
-            or default_strategy_for_symbol(self.config.symbol)
-        )
+        strat = self._default_retrospective_strategy or default_strategy_for_symbol(self.config.symbol)
         from datetime import UTC, datetime
+
         self._active_entries[signal.symbol] = ActiveEntry(
             symbol=signal.symbol,
             risk_usd=risk_usd,
@@ -798,6 +798,7 @@ class MnqBot(BaseBot):
         """
         self.update_state(fill)
         from eta_engine.bots.retrospective_adapter import is_close_fill
+
         if not is_close_fill(fill):
             return None
         active = self._active_entries.pop(fill.symbol, None)
@@ -812,13 +813,15 @@ class MnqBot(BaseBot):
             regime = None
         if risk_usd <= 0.0:
             logger.debug(
-                "MNQ record_fill: no risk-at-entry for %s; "
-                "skipping retrospective auto-invoke", fill.symbol,
+                "MNQ record_fill: no risk-at-entry for %s; skipping retrospective auto-invoke",
+                fill.symbol,
             )
             return None
         pnl_r = fill.realized_pnl / risk_usd
         return self.record_trade_outcome(
-            pnl_r=pnl_r, strategy=strategy, regime=regime,
+            pnl_r=pnl_r,
+            strategy=strategy,
+            regime=regime,
         )
 
     # ── Retrospective wiring (v0.1.49) ──
@@ -843,6 +846,7 @@ class MnqBot(BaseBot):
         if self._retrospective_manager is None:
             return
         from eta_engine.bots.retrospective_adapter import map_regime
+
         try:
             self._retrospective_manager.on_bar(
                 regime=map_regime(regime),
@@ -890,11 +894,8 @@ class MnqBot(BaseBot):
             default_strategy_for_symbol,
         )
         from eta_engine.strategies.adaptive_sizing import RegimeLabel
-        strat = (
-            strategy
-            or self._default_retrospective_strategy
-            or default_strategy_for_symbol(self.config.symbol)
-        )
+
+        strat = strategy or self._default_retrospective_strategy or default_strategy_for_symbol(self.config.symbol)
         reg = regime or RegimeLabel.TRANSITION
         outcome = build_trade_outcome(
             strategy=strat,
@@ -923,7 +924,10 @@ class MnqBot(BaseBot):
     # ── 4 Setups (from APEX v3 framework) ──
 
     def orb_breakout(
-        self, bar: dict[str, Any], regime: RegimeType, sweep: SweepResult | None,  # noqa: ARG002 - regime/sweep reserved for future filters
+        self,
+        bar: dict[str, Any],
+        regime: RegimeType,
+        sweep: SweepResult | None,  # noqa: ARG002 - regime/sweep reserved for future filters
     ) -> Signal | None:
         """Opening Range Breakout — first-30m high/low break with volume confirmation."""
         orb_high: float = bar.get("orb_high", 0.0)
@@ -934,18 +938,27 @@ class MnqBot(BaseBot):
         stop_dist = abs(bar.get("atr_14", 5.0)) * 1.5
         if bar["close"] > orb_high and vol_ok:
             return Signal(
-                type=SignalType.LONG, symbol=self.config.symbol, price=bar["close"],
-                confidence=7.0, meta={"setup": "orb_breakout", "stop_distance": stop_dist},
+                type=SignalType.LONG,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=7.0,
+                meta={"setup": "orb_breakout", "stop_distance": stop_dist},
             )
         if bar["close"] < orb_low and vol_ok:
             return Signal(
-                type=SignalType.SHORT, symbol=self.config.symbol, price=bar["close"],
-                confidence=7.0, meta={"setup": "orb_breakout", "stop_distance": stop_dist},
+                type=SignalType.SHORT,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=7.0,
+                meta={"setup": "orb_breakout", "stop_distance": stop_dist},
             )
         return None
 
     def ema_pullback(
-        self, bar: dict[str, Any], regime: RegimeType, sweep: SweepResult | None,  # noqa: ARG002 - sweep reserved
+        self,
+        bar: dict[str, Any],
+        regime: RegimeType,
+        sweep: SweepResult | None,  # noqa: ARG002 - sweep reserved
     ) -> Signal | None:
         """EMA pullback — touch 21 EMA in trend, bounce confirmed by hammer/engulf."""
         if regime != RegimeType.TRENDING:
@@ -957,18 +970,27 @@ class MnqBot(BaseBot):
         stop_dist = abs(bar.get("atr_14", 5.0))
         if dist < _EMA_TOUCH_FRAC and bar["close"] > bar["open"]:  # bullish bounce off EMA
             return Signal(
-                type=SignalType.LONG, symbol=self.config.symbol, price=bar["close"],
-                confidence=6.5, meta={"setup": "ema_pullback", "stop_distance": stop_dist},
+                type=SignalType.LONG,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=6.5,
+                meta={"setup": "ema_pullback", "stop_distance": stop_dist},
             )
         if dist < _EMA_TOUCH_FRAC and bar["close"] < bar["open"]:  # bearish rejection at EMA
             return Signal(
-                type=SignalType.SHORT, symbol=self.config.symbol, price=bar["close"],
-                confidence=6.5, meta={"setup": "ema_pullback", "stop_distance": stop_dist},
+                type=SignalType.SHORT,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=6.5,
+                meta={"setup": "ema_pullback", "stop_distance": stop_dist},
             )
         return None
 
     def sweep_reclaim(
-        self, bar: dict[str, Any], regime: RegimeType, sweep: SweepResult | None,  # noqa: ARG002 - regime reserved
+        self,
+        bar: dict[str, Any],
+        regime: RegimeType,
+        sweep: SweepResult | None,  # noqa: ARG002 - regime reserved
     ) -> Signal | None:
         """Liquidity sweep + reclaim — wick beyond level then close back inside."""
         if sweep is None or not sweep.reclaim_confirmed:
@@ -983,7 +1005,10 @@ class MnqBot(BaseBot):
         )
 
     def mean_reversion(
-        self, bar: dict[str, Any], regime: RegimeType, sweep: SweepResult | None,  # noqa: ARG002 - sweep reserved
+        self,
+        bar: dict[str, Any],
+        regime: RegimeType,
+        sweep: SweepResult | None,  # noqa: ARG002 - sweep reserved
     ) -> Signal | None:
         """Mean reversion — extended move from VWAP in ranging regime."""
         if regime != RegimeType.RANGING:
@@ -996,12 +1021,18 @@ class MnqBot(BaseBot):
         stop_dist = abs(atr) * 1.2
         if dev < -_MR_Z_ENTRY:
             return Signal(
-                type=SignalType.LONG, symbol=self.config.symbol, price=bar["close"],
-                confidence=6.0, meta={"setup": "mean_reversion", "stop_distance": stop_dist},
+                type=SignalType.LONG,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=6.0,
+                meta={"setup": "mean_reversion", "stop_distance": stop_dist},
             )
         if dev > _MR_Z_ENTRY:
             return Signal(
-                type=SignalType.SHORT, symbol=self.config.symbol, price=bar["close"],
-                confidence=6.0, meta={"setup": "mean_reversion", "stop_distance": stop_dist},
+                type=SignalType.SHORT,
+                symbol=self.config.symbol,
+                price=bar["close"],
+                confidence=6.0,
+                meta={"setup": "mean_reversion", "stop_distance": stop_dist},
             )
         return None

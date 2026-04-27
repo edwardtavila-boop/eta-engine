@@ -11,6 +11,7 @@ on a batch of bot PnL series to answer questions like:
 Output is a :class:`PortfolioCorrelationReport` — a pydantic record suitable
 for dumping into ``docs/`` alongside the tearsheet and walk-forward report.
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,7 +82,7 @@ def analyze(
     worst_redundant_r = 0.0
 
     for i, a in enumerate(names):
-        for b in names[i + 1:]:
+        for b in names[i + 1 :]:
             r = float(corr_matrix.loc[a, b])
             pair = _pair_key(a, b)
             pairwise[pair] = r
@@ -117,7 +118,12 @@ def analyze(
 
     logger.info(
         "portfolio_correlation | N=%d samples=%d max=%.3f mean=%.3f eff_n=%.2f flags=%d",
-        n, sample_count, max_corr, mean_offdiag, eff_n, len(flags),
+        n,
+        sample_count,
+        max_corr,
+        mean_offdiag,
+        eff_n,
+        len(flags),
     )
 
     return PortfolioCorrelationReport(

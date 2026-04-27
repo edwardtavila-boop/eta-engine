@@ -1,4 +1,5 @@
 """Tests for core.events_calendar."""
+
 from __future__ import annotations
 
 import json
@@ -164,9 +165,7 @@ class FakeBigDataMcp:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
 
-    def events_calendar(
-        self, *, start_utc: datetime, end_utc: datetime, impact: str = "high"
-    ) -> list[dict[str, Any]]:
+    def events_calendar(self, *, start_utc: datetime, end_utc: datetime, impact: str = "high") -> list[dict[str, Any]]:
         return self._rows
 
 

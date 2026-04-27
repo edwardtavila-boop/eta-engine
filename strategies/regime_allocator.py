@@ -28,6 +28,7 @@ Pure function. No floats of doom. All clamps exposed. Written so the
 ``Command Center`` panel can display "weights" + "regime override"
 straight from the dataclass.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -116,9 +117,7 @@ def plan_allocation(
     corr_map = correlations or {}
     notes: list[str] = []
 
-    weights: dict[LayerId, float] = {
-        inp.layer: base_map.get(inp.layer, 0.0) for inp in inputs
-    }
+    weights: dict[LayerId, float] = {inp.layer: base_map.get(inp.layer, 0.0) for inp in inputs}
 
     # 2. Vol adjustment for risky layers
     for inp in inputs:
@@ -140,8 +139,7 @@ def plan_allocation(
             else:
                 weights[b] = weights.get(b, 0.0) * corr_penalty_mult
             notes.append(
-                f"corr_penalty:{a.value}<->{b.value}={rho:.2f}>"
-                f"{corr_threshold:.2f}",
+                f"corr_penalty:{a.value}<->{b.value}={rho:.2f}>{corr_threshold:.2f}",
             )
             corr_penalty_applied = True
 
@@ -159,9 +157,7 @@ def plan_allocation(
         notes.append("global_kill_risky_zeroed")
 
     # 6. Normalise
-    risky_sum = sum(
-        v for k, v in weights.items() if k is not LayerId.LAYER_4_STAKING
-    )
+    risky_sum = sum(v for k, v in weights.items() if k is not LayerId.LAYER_4_STAKING)
     if risky_sum > 0.0:
         scale = (1.0 - sink_weight) / risky_sum
         for layer in list(weights.keys()):

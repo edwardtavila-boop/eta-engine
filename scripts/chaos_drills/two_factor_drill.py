@@ -18,6 +18,7 @@ code. A silent regression in the constant-time compare or the step
 window would either accept the stale code (silent auth break) or reject
 the fresh one (false lockout).
 """
+
 from __future__ import annotations
 
 import time
@@ -72,6 +73,7 @@ def drill_two_factor(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
 
     # Scenario 1: no claim at all must raise TwoFactorRequiredError.
     from eta_engine.core.two_factor import gate_cold_wallet_op  # local import keeps top-level tidy
+
     try:
         gate_cold_wallet_op(_COLD_OP, registry=registry, secrets_resolver=resolver, now=now)
     except TwoFactorRequiredError as exc:

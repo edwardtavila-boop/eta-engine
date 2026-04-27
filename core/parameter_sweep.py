@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 # Grid specification
 # ---------------------------------------------------------------------------
 
+
 class SweepParam(BaseModel):
     """A single parameter axis for the sweep grid."""
 
@@ -69,6 +70,7 @@ class SweepGrid(BaseModel):
 # Scoring contract
 # ---------------------------------------------------------------------------
 
+
 class CellScore(BaseModel):
     """The metrics a scorer returns for one param combination.
 
@@ -97,8 +99,7 @@ class SweepCell(BaseModel):
     stability: float = Field(
         default=0.0,
         description=(
-            "Lower is more stable. Standard deviation of walk_forward_scores, "
-            "or 0.0 if fewer than 2 windows."
+            "Lower is more stable. Standard deviation of walk_forward_scores, or 0.0 if fewer than 2 windows."
         ),
     )
 
@@ -144,11 +145,7 @@ def run_sweep(
     cells: list[SweepCell] = []
     for combo in grid.iter_combinations():
         s = scorer(combo)
-        stab = (
-            statistics.pstdev(s.walk_forward_scores)
-            if len(s.walk_forward_scores) >= 2
-            else 0.0
-        )
+        stab = statistics.pstdev(s.walk_forward_scores) if len(s.walk_forward_scores) >= 2 else 0.0
         cells.append(
             SweepCell(
                 params=dict(combo),
@@ -163,6 +160,7 @@ def run_sweep(
 # ---------------------------------------------------------------------------
 # Ranking + winner selection
 # ---------------------------------------------------------------------------
+
 
 def rank_cells(cells: list[SweepCell]) -> list[SweepCell]:
     """Return cells sorted from best to worst.
@@ -235,6 +233,7 @@ def _dominates(a: SweepCell, b: SweepCell) -> bool:
 # ---------------------------------------------------------------------------
 # Walk-forward helper
 # ---------------------------------------------------------------------------
+
 
 def walk_forward_windows(
     n_bars: int,

@@ -24,6 +24,7 @@ clean. We feed the tracker:
 Plus a :meth:`reinstate` call to confirm the bucket is cleared after
 the operator acts on the signal.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -52,11 +53,17 @@ def _feed_window(
     """Feed one full window of trades."""
     for _ in range(wins):
         tracker.record_shadow_trade(
-            _STRATEGY, _REGIME, pnl_r=pnl_per_win, is_win=True,
+            _STRATEGY,
+            _REGIME,
+            pnl_r=pnl_per_win,
+            is_win=True,
         )
     for _ in range(losses):
         tracker.record_shadow_trade(
-            _STRATEGY, _REGIME, pnl_r=pnl_per_loss, is_win=False,
+            _STRATEGY,
+            _REGIME,
+            pnl_r=pnl_per_loss,
+            is_win=False,
         )
 
 
@@ -114,8 +121,8 @@ def drill_shadow_paper_tracker(sandbox: Path) -> dict[str, Any]:  # noqa: ARG001
         passed=True,
         details="tracker enforced 3-window streak; losing windows held gate; reinstate() cleared bucket",
         observed={
-            "window_size":        tracker.window_size,
-            "reinstate_windows":  tracker.reinstate_windows,
-            "win_rate_floor":     tracker.win_rate_floor,
+            "window_size": tracker.window_size,
+            "reinstate_windows": tracker.reinstate_windows,
+            "win_rate_floor": tracker.win_rate_floor,
         },
     )

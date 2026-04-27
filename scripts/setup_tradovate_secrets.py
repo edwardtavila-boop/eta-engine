@@ -26,6 +26,7 @@ TRADOVATE_APP_SECRET  Secret issued when your CID was registered. Found
 TRADOVATE_CID         Numeric Client ID for the registered app. Same
                       location as APP_SECRET.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -98,6 +99,7 @@ def _store(key: str, value: str) -> None:
 def _delete(key: str) -> None:
     try:
         import keyring  # noqa: PLC0415
+
         keyring.delete_password("eta_engine", key)
     except Exception:  # noqa: BLE001
         pass  # Not present is fine.
@@ -159,10 +161,8 @@ def cmd_interactive() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Setup Tradovate OAuth2 secrets")
     group = ap.add_mutually_exclusive_group()
-    group.add_argument("--check", action="store_true",
-                       help="Just report which secrets are present; no prompts.")
-    group.add_argument("--reset", action="store_true",
-                       help="Delete existing Tradovate secrets from keyring.")
+    group.add_argument("--check", action="store_true", help="Just report which secrets are present; no prompts.")
+    group.add_argument("--reset", action="store_true", help="Delete existing Tradovate secrets from keyring.")
     args = ap.parse_args()
 
     if args.check:

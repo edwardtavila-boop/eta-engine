@@ -135,8 +135,14 @@ def test_send_email_login_and_sendmail(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(mod.smtplib, "SMTP", factory)
     ok = mod._send_email(
-        "smtp.example.com", 587, "user@x", "secret",
-        "from@x", "to@x", "APEX KILL", "Body here",
+        "smtp.example.com",
+        587,
+        "user@x",
+        "secret",
+        "from@x",
+        "to@x",
+        "APEX KILL",
+        "Body here",
     )
     assert ok is True
     smtp = holder["smtp"]
@@ -224,5 +230,6 @@ def test_send_sms_truncates_body_to_1600(monkeypatch: pytest.MonkeyPatch) -> Non
     mod._send_sms("s", "t", "+1", "+2", "Z" * 2000)
     # Inspect URL-decoded body length for Body= param
     import urllib.parse as up
+
     parsed = dict(up.parse_qsl(captured["data"].decode()))
     assert len(parsed["Body"]) == 1600

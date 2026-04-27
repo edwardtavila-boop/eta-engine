@@ -1,4 +1,5 @@
 """Tests for scripts.jarvis_live -- the live supervised daemon."""
+
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +39,7 @@ _T0 = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
 def _clock_fixed(t: datetime) -> Callable[[], datetime]:
     def fn() -> datetime:
         return t
+
     return fn
 
 
@@ -144,18 +146,23 @@ def test_load_inputs_missing_file_returns_neutral(tmp_path: Path) -> None:
 
 def test_load_inputs_valid_json(tmp_path: Path) -> None:
     path = tmp_path / "inputs.json"
-    path.write_text(json.dumps({
-        "macro": {"vix_level": 18.5, "macro_bias": "risk_on"},
-        "equity": {
-            "account_equity": 25_000.0,
-            "daily_pnl": 120.0,
-            "daily_drawdown_pct": 0.01,
-            "open_positions": 1,
-            "open_risk_r": 0.5,
-        },
-        "regime": {"regime": "bull_quiet", "confidence": 0.75},
-        "journal": {},
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "macro": {"vix_level": 18.5, "macro_bias": "risk_on"},
+                "equity": {
+                    "account_equity": 25_000.0,
+                    "daily_pnl": 120.0,
+                    "daily_drawdown_pct": 0.01,
+                    "open_positions": 1,
+                    "open_risk_r": 0.5,
+                },
+                "regime": {"regime": "bull_quiet", "confidence": 0.75},
+                "journal": {},
+            }
+        ),
+        encoding="utf-8",
+    )
     inp = jarvis_live._load_inputs_file(path)
     assert inp.equity.account_equity == 25_000.0
     assert inp.regime.regime == "bull_quiet"
@@ -184,29 +191,39 @@ def test_load_inputs_invalid_schema_returns_neutral(tmp_path: Path) -> None:
 
 def test_file_backed_providers_hot_reload(tmp_path: Path) -> None:
     path = tmp_path / "inputs.json"
-    path.write_text(json.dumps({
-        "equity": {
-            "account_equity": 10_000.0,
-            "daily_pnl": 0.0,
-            "daily_drawdown_pct": 0.0,
-            "open_positions": 0,
-            "open_risk_r": 0.0,
-        },
-        "regime": {"regime": "neutral", "confidence": 0.6},
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "equity": {
+                    "account_equity": 10_000.0,
+                    "daily_pnl": 0.0,
+                    "daily_drawdown_pct": 0.0,
+                    "open_positions": 0,
+                    "open_risk_r": 0.0,
+                },
+                "regime": {"regime": "neutral", "confidence": 0.6},
+            }
+        ),
+        encoding="utf-8",
+    )
     providers = jarvis_live._FileBackedProviders(path)
     assert providers.get_equity().account_equity == 10_000.0
     # Overwrite and re-read.
-    path.write_text(json.dumps({
-        "equity": {
-            "account_equity": 20_000.0,
-            "daily_pnl": 100.0,
-            "daily_drawdown_pct": 0.0,
-            "open_positions": 2,
-            "open_risk_r": 1.0,
-        },
-        "regime": {"regime": "neutral", "confidence": 0.6},
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "equity": {
+                    "account_equity": 20_000.0,
+                    "daily_pnl": 100.0,
+                    "daily_drawdown_pct": 0.0,
+                    "open_positions": 2,
+                    "open_risk_r": 1.0,
+                },
+                "regime": {"regime": "neutral", "confidence": 0.6},
+            }
+        ),
+        encoding="utf-8",
+    )
     assert providers.get_equity().account_equity == 20_000.0
     assert providers.get_equity().open_positions == 2
 
@@ -265,8 +282,10 @@ def test_build_alerter_from_env_no_env_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for v in (
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-        "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "DISCORD_WEBHOOK_URL",
+        "SLACK_WEBHOOK_URL",
     ):
         monkeypatch.delenv(v, raising=False)
     assert jarvis_live.build_alerter_from_env() is None
@@ -301,7 +320,9 @@ def test_build_alerter_from_env_partial_telegram_dropped(
 ) -> None:
     # Only bot token, no chat id -> telegram not created.
     for v in (
-        "TELEGRAM_CHAT_ID", "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL",
+        "TELEGRAM_CHAT_ID",
+        "DISCORD_WEBHOOK_URL",
+        "SLACK_WEBHOOK_URL",
     ):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "abc")
@@ -317,28 +338,40 @@ def test_run_live_rejects_nonpositive_interval(tmp_path: Path) -> None:
     engine = _StubEngine()
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
     with pytest.raises(ValueError):
-        asyncio.run(jarvis_live.run_live(
-            supervisor=sup, alerter=None,
-            out_dir=tmp_path, interval_s=0.0,
-            max_ticks=1,
-        ))
+        asyncio.run(
+            jarvis_live.run_live(
+                supervisor=sup,
+                alerter=None,
+                out_dir=tmp_path,
+                interval_s=0.0,
+                max_ticks=1,
+            )
+        )
 
 
 def test_run_live_bounded_by_max_ticks(tmp_path: Path) -> None:
     engine = _StubEngine()
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
-    reports = asyncio.run(jarvis_live.run_live(
-        supervisor=sup, alerter=None,
-        out_dir=tmp_path,
-        interval_s=0.01,  # small to keep test fast
-        max_ticks=3,
-    ))
+    reports = asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=None,
+            out_dir=tmp_path,
+            interval_s=0.01,  # small to keep test fast
+            max_ticks=3,
+        )
+    )
     assert len(reports) == 3
     assert sup.tick_count == 3
     assert (tmp_path / "jarvis_live_health.json").exists()
-    log_lines = (tmp_path / "jarvis_live_log.jsonl").read_text(
-        encoding="utf-8",
-    ).strip().splitlines()
+    log_lines = (
+        (tmp_path / "jarvis_live_log.jsonl")
+        .read_text(
+            encoding="utf-8",
+        )
+        .strip()
+        .splitlines()
+    )
     assert len(log_lines) == 3
 
 
@@ -349,13 +382,16 @@ def test_run_live_stop_event_exits(tmp_path: Path) -> None:
 
     async def _drive() -> list:
         # Start the loop, then set stop after first tick settles.
-        task = asyncio.create_task(jarvis_live.run_live(
-            supervisor=sup, alerter=None,
-            out_dir=tmp_path,
-            interval_s=60.0,  # would hang, but we stop first
-            max_ticks=None,
-            stop_event=stop,
-        ))
+        task = asyncio.create_task(
+            jarvis_live.run_live(
+                supervisor=sup,
+                alerter=None,
+                out_dir=tmp_path,
+                interval_s=60.0,  # would hang, but we stop first
+                max_ticks=None,
+                stop_event=stop,
+            )
+        )
         # Yield control so the loop can complete first tick + enter wait.
         await asyncio.sleep(0.05)
         stop.set()
@@ -369,12 +405,15 @@ def test_run_live_stop_event_exits(tmp_path: Path) -> None:
 def test_run_live_tick_exception_does_not_crash(tmp_path: Path) -> None:
     engine = _StubEngine(raises=True)
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
-    reports = asyncio.run(jarvis_live.run_live(
-        supervisor=sup, alerter=None,
-        out_dir=tmp_path,
-        interval_s=0.01,
-        max_ticks=2,
-    ))
+    reports = asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=None,
+            out_dir=tmp_path,
+            interval_s=0.01,
+            max_ticks=2,
+        )
+    )
     assert len(reports) == 2
     # Engine tick was attempted each loop iteration.
     assert engine.tick_calls == 2
@@ -384,12 +423,15 @@ def test_run_live_closes_alerter_on_exit(tmp_path: Path) -> None:
     engine = _StubEngine()
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
     alerter = _RecordingAlerter()
-    asyncio.run(jarvis_live.run_live(
-        supervisor=sup, alerter=alerter,  # type: ignore[arg-type]
-        out_dir=tmp_path,
-        interval_s=0.01,
-        max_ticks=1,
-    ))
+    asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=alerter,  # type: ignore[arg-type]
+            out_dir=tmp_path,
+            interval_s=0.01,
+            max_ticks=1,
+        )
+    )
     assert alerter.closed is True
 
 
@@ -397,12 +439,15 @@ def test_run_live_no_alert_on_green(tmp_path: Path) -> None:
     engine = _StubEngine()
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
     alerter = _RecordingAlerter()
-    asyncio.run(jarvis_live.run_live(
-        supervisor=sup, alerter=alerter,  # type: ignore[arg-type]
-        out_dir=tmp_path,
-        interval_s=0.01,
-        max_ticks=2,
-    ))
+    asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=alerter,  # type: ignore[arg-type]
+            out_dir=tmp_path,
+            interval_s=0.01,
+            max_ticks=2,
+        )
+    )
     assert alerter.sent == []
 
 
@@ -416,12 +461,15 @@ def test_run_live_alerts_on_red(tmp_path: Path) -> None:
     engine = _StubEngine(queue=[bad_ctx])
     sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
     alerter = _RecordingAlerter()
-    asyncio.run(jarvis_live.run_live(
-        supervisor=sup, alerter=alerter,  # type: ignore[arg-type]
-        out_dir=tmp_path,
-        interval_s=0.01,
-        max_ticks=1,
-    ))
+    asyncio.run(
+        jarvis_live.run_live(
+            supervisor=sup,
+            alerter=alerter,  # type: ignore[arg-type]
+            out_dir=tmp_path,
+            interval_s=0.01,
+            max_ticks=1,
+        )
+    )
     assert len(alerter.sent) == 1
 
 
@@ -461,15 +509,23 @@ def test_main_runs_one_tick_and_returns_zero(
 ) -> None:
     # Ensure no env alerters so we exercise dry-run.
     for v in (
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-        "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "DISCORD_WEBHOOK_URL",
+        "SLACK_WEBHOOK_URL",
     ):
         monkeypatch.delenv(v, raising=False)
-    rc = jarvis_live.main([
-        "--inputs", str(tmp_path / "no_inputs.json"),
-        "--out-dir", str(tmp_path),
-        "--interval", "0.01",
-        "--max-ticks", "1",
-    ])
+    rc = jarvis_live.main(
+        [
+            "--inputs",
+            str(tmp_path / "no_inputs.json"),
+            "--out-dir",
+            str(tmp_path),
+            "--interval",
+            "0.01",
+            "--max-ticks",
+            "1",
+        ]
+    )
     assert rc == 0
     assert (tmp_path / "jarvis_live_health.json").exists()

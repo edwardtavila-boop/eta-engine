@@ -33,6 +33,7 @@ Usage
     python scripts/_roadmap_drift.py --no-pytest
     python scripts/_roadmap_drift.py --tolerance 20
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,9 +48,17 @@ ROOT = Path(__file__).resolve().parents[1]
 ROADMAP_STATE = ROOT / "roadmap_state.json"
 
 KNOWN_PHASES = {
-    "P0_FOUNDATIONS", "P1_CORE", "P2_STRATEGIES", "P3_BACKTEST",
-    "P4_OBS", "P5_FUNNEL", "P6_VENUES", "P7_STAKING",
-    "P8_INTEGRATION", "P9_ROLLOUT", "P10_LIVE",
+    "P0_FOUNDATIONS",
+    "P1_CORE",
+    "P2_STRATEGIES",
+    "P3_BACKTEST",
+    "P4_OBS",
+    "P5_FUNNEL",
+    "P6_VENUES",
+    "P7_STAKING",
+    "P8_INTEGRATION",
+    "P9_ROLLOUT",
+    "P10_LIVE",
 }
 
 
@@ -57,8 +66,11 @@ def _pytest_count(quiet: bool = False) -> int | None:
     try:
         out = subprocess.run(
             [sys.executable, "-m", "pytest", "--collect-only", "-q"],
-            cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=120,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -74,8 +86,15 @@ def _pytest_count(quiet: bool = False) -> int | None:
 def _python_file_count() -> int:
     """Count *.py files in package dirs (excludes scripts/ and tests/)."""
     pkg_dirs = [
-        "bots", "strategies", "core", "brain", "obs", "funnel",
-        "backtest", "venues", "staking",
+        "bots",
+        "strategies",
+        "core",
+        "brain",
+        "obs",
+        "funnel",
+        "backtest",
+        "venues",
+        "staking",
     ]
     total = 0
     for d in pkg_dirs:
@@ -85,12 +104,9 @@ def _python_file_count() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    p.add_argument("--tolerance", type=int, default=10,
-                   help="acceptable test_count drift (default 10)")
-    p.add_argument("--file-tolerance", type=int, default=10,
-                   help="acceptable python_files drift (default 10)")
-    p.add_argument("--max-age-days", type=int, default=14,
-                   help="last_updated must be within N days (default 14)")
+    p.add_argument("--tolerance", type=int, default=10, help="acceptable test_count drift (default 10)")
+    p.add_argument("--file-tolerance", type=int, default=10, help="acceptable python_files drift (default 10)")
+    p.add_argument("--max-age-days", type=int, default=14, help="last_updated must be within N days (default 14)")
     p.add_argument("--no-pytest", action="store_true", help="skip pytest collection check")
     args = p.parse_args(argv)
 
@@ -179,8 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             age = now - ts if ts.tzinfo else now.replace(tzinfo=None) - ts
             if age > timedelta(days=args.max_age_days):
                 drifts.append(
-                    f"C6 last_updated: {age.days}d ago "
-                    f"(max {args.max_age_days}d)",
+                    f"C6 last_updated: {age.days}d ago (max {args.max_age_days}d)",
                 )
             else:
                 print(f"  C6 last_updated: OK ({age.days}d old)")

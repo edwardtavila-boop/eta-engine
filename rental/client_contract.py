@@ -28,7 +28,7 @@ from typing import Any
 
 
 class ClientCommandKind(StrEnum):
-    HELLO = "HELLO"                                 # auth handshake
+    HELLO = "HELLO"  # auth handshake
     BOT_START = "BOT_START"
     BOT_STOP = "BOT_STOP"
     BOT_RESET = "BOT_RESET"
@@ -43,7 +43,7 @@ class ClientCommandKind(StrEnum):
 class ServerMessageKind(StrEnum):
     HELLO_OK = "HELLO_OK"
     ERROR = "ERROR"
-    STATUS = "STATUS"                               # periodic bot status update
+    STATUS = "STATUS"  # periodic bot status update
     JARVIS_ANSWER = "JARVIS_ANSWER"
     LOG_CHUNK = "LOG_CHUNK"
     DAILY_REPORT = "DAILY_REPORT"
@@ -58,7 +58,7 @@ class ServerMessageKind(StrEnum):
 @dataclass(frozen=True)
 class ClientCommand:
     kind: ClientCommandKind
-    session_token: str                              # rotates per connection
+    session_token: str  # rotates per connection
     tenant_id: str
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -97,26 +97,28 @@ class ServerMessage:
 
 # Params schemas: kind -> (required_keys, optional_keys)
 _COMMAND_SCHEMAS: dict[ClientCommandKind, tuple[frozenset[str], frozenset[str]]] = {
-    ClientCommandKind.HELLO:               (frozenset({"client_version"}), frozenset({"os"})),
-    ClientCommandKind.BOT_START:           (frozenset({"sku"}), frozenset({"mode"})),
-    ClientCommandKind.BOT_STOP:            (frozenset({"sku"}), frozenset()),
-    ClientCommandKind.BOT_RESET:           (frozenset({"sku"}), frozenset({"confirm"})),
-    ClientCommandKind.SUBSCRIBE_STATUS:    (frozenset({"sku"}), frozenset({"interval_s"})),
-    ClientCommandKind.UNSUBSCRIBE_STATUS:  (frozenset({"sku"}), frozenset()),
-    ClientCommandKind.QUERY_JARVIS:        (frozenset({"question"}), frozenset({"sku"})),
-    ClientCommandKind.FETCH_LOGS:          (frozenset(), frozenset({"since_utc", "limit", "sku"})),
-    ClientCommandKind.FETCH_DAILY_REPORT:  (frozenset(), frozenset({"date"})),
-    ClientCommandKind.PING:                (frozenset(), frozenset()),
+    ClientCommandKind.HELLO: (frozenset({"client_version"}), frozenset({"os"})),
+    ClientCommandKind.BOT_START: (frozenset({"sku"}), frozenset({"mode"})),
+    ClientCommandKind.BOT_STOP: (frozenset({"sku"}), frozenset()),
+    ClientCommandKind.BOT_RESET: (frozenset({"sku"}), frozenset({"confirm"})),
+    ClientCommandKind.SUBSCRIBE_STATUS: (frozenset({"sku"}), frozenset({"interval_s"})),
+    ClientCommandKind.UNSUBSCRIBE_STATUS: (frozenset({"sku"}), frozenset()),
+    ClientCommandKind.QUERY_JARVIS: (frozenset({"question"}), frozenset({"sku"})),
+    ClientCommandKind.FETCH_LOGS: (frozenset(), frozenset({"since_utc", "limit", "sku"})),
+    ClientCommandKind.FETCH_DAILY_REPORT: (frozenset(), frozenset({"date"})),
+    ClientCommandKind.PING: (frozenset(), frozenset()),
 }
 
 
-_FORBIDDEN_PARAMS = frozenset({
-    "reward_weights",
-    "confluence_axes",
-    "regime_weights",
-    "pine_source",
-    "model_checkpoint",
-})
+_FORBIDDEN_PARAMS = frozenset(
+    {
+        "reward_weights",
+        "confluence_axes",
+        "regime_weights",
+        "pine_source",
+        "model_checkpoint",
+    }
+)
 
 
 def validate_command(cmd: ClientCommand) -> tuple[bool, str]:

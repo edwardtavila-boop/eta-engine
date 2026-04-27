@@ -41,6 +41,7 @@ Call :meth:`ensure_fresh` on a cadence (e.g. once per hour, once per
 session roll) and the router's eligibility table stays consistent with
 the most-recent OOS verdict without blocking the hot path.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -159,9 +160,7 @@ def intersect_passing_with_base(
         Optional wall-clock injection for deterministic tests; defaults
         to ``datetime.now(UTC)``.
     """
-    base = (
-        base_eligibility if base_eligibility is not None else DEFAULT_ELIGIBILITY
-    )
+    base = base_eligibility if base_eligibility is not None else DEFAULT_ELIGIBILITY
     asset_u = report.asset.upper()
     base_eligible = base.get(asset_u, ())
     passing_set = set(report.passing_strategies)

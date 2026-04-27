@@ -1,4 +1,5 @@
 """Smart order router tests — P5_EXEC smart_router."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ def _now() -> datetime:
 # Validation
 # ---------------------------------------------------------------------------
 
+
 def test_rejects_zero_qty() -> None:
     with pytest.raises(ValueError, match="total_qty must be positive"):
         route(
@@ -42,6 +44,7 @@ def test_rejects_unknown_policy() -> None:
 # ---------------------------------------------------------------------------
 # Iceberg
 # ---------------------------------------------------------------------------
+
 
 def test_iceberg_splits_into_reveal_chunks() -> None:
     parent = ParentOrder(
@@ -87,6 +90,7 @@ def test_iceberg_rejects_zero_reveal() -> None:
 # TWAP
 # ---------------------------------------------------------------------------
 
+
 def test_twap_slices_evenly() -> None:
     parent = ParentOrder(
         symbol="MNQ",
@@ -119,6 +123,7 @@ def test_twap_without_limit_uses_market() -> None:
 # ---------------------------------------------------------------------------
 # Post-only
 # ---------------------------------------------------------------------------
+
 
 def test_post_only_requires_limit_price() -> None:
     parent = ParentOrder(symbol="MNQ", side="buy", total_qty=10.0)

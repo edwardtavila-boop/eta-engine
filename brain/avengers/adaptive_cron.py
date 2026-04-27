@@ -24,6 +24,7 @@ current regime?" before dispatching. The policy is simple:
 The daemon still owns the base schedule -- this is a boolean gate
 layered on top, not a replacement for the cron table.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -45,45 +46,51 @@ class RegimeTag(StrEnum):
     in ``brain.regime`` is finer-grained; this enum is a projection of
     that onto {CALM, NORMAL, STRESSED, NEWS}.
     """
-    CALM     = "CALM"       # low vol, no event risk
-    NORMAL   = "NORMAL"     # default
-    STRESSED = "STRESSED"   # elevated stress score
-    NEWS     = "NEWS"       # event window (FOMC, CPI, earnings peak)
+
+    CALM = "CALM"  # low vol, no event risk
+    NORMAL = "NORMAL"  # default
+    STRESSED = "STRESSED"  # elevated stress score
+    NEWS = "NEWS"  # event window (FOMC, CPI, earnings peak)
 
 
 # Which tasks are "sparse-ok" in calm regimes. These are diagnostics /
 # retrospectives that can safely be skipped 1-in-N ticks when nothing
 # interesting is happening.
-_SPARSE_OK: frozenset[BackgroundTask] = frozenset({
-    BackgroundTask.DRIFT_SUMMARY,
-    BackgroundTask.DASHBOARD_ASSEMBLE,
-    BackgroundTask.LOG_COMPACT,
-    BackgroundTask.SHADOW_TICK,
-})
+_SPARSE_OK: frozenset[BackgroundTask] = frozenset(
+    {
+        BackgroundTask.DRIFT_SUMMARY,
+        BackgroundTask.DASHBOARD_ASSEMBLE,
+        BackgroundTask.LOG_COMPACT,
+        BackgroundTask.SHADOW_TICK,
+    }
+)
 
 # Which tasks should NEVER be skipped regardless of regime -- they
 # either carry safety duties or are already rare.
-_FIRE_ALWAYS: frozenset[BackgroundTask] = frozenset({
-    BackgroundTask.AUDIT_SUMMARIZE,
-    BackgroundTask.KAIZEN_RETRO,
-    BackgroundTask.DISTILL_TRAIN,
-    BackgroundTask.CAUSAL_REVIEW,
-    BackgroundTask.TWIN_VERDICT,
-    BackgroundTask.DOCTRINE_REVIEW,
-    BackgroundTask.STRATEGY_MINE,
-    BackgroundTask.PROMPT_WARMUP,
-})
+_FIRE_ALWAYS: frozenset[BackgroundTask] = frozenset(
+    {
+        BackgroundTask.AUDIT_SUMMARIZE,
+        BackgroundTask.KAIZEN_RETRO,
+        BackgroundTask.DISTILL_TRAIN,
+        BackgroundTask.CAUSAL_REVIEW,
+        BackgroundTask.TWIN_VERDICT,
+        BackgroundTask.DOCTRINE_REVIEW,
+        BackgroundTask.STRATEGY_MINE,
+        BackgroundTask.PROMPT_WARMUP,
+    }
+)
 
 
 class GateDecision(BaseModel):
     """Why the gate said fire/skip. For journaling / CLI."""
+
     model_config = ConfigDict(frozen=True)
 
-    task:      str
-    regime:    str
-    fire:      bool
-    reason:    str = ""
-    call_idx:  int = Field(ge=0, default=0)
+    task: str
+    regime: str
+    fire: bool
+    reason: str = ""
+    call_idx: int = Field(ge=0, default=0)
 
 
 class RegimeGate:
@@ -116,15 +123,19 @@ class RegimeGate:
 
         if task in _FIRE_ALWAYS:
             return GateDecision(
-                task=task.value, regime=regime.value,
-                fire=True, reason="fire-always task",
+                task=task.value,
+                regime=regime.value,
+                fire=True,
+                reason="fire-always task",
                 call_idx=idx,
             )
 
         if regime in {RegimeTag.STRESSED, RegimeTag.NEWS}:
             return GateDecision(
-                task=task.value, regime=regime.value,
-                fire=True, reason=f"fire on {regime.value}",
+                task=task.value,
+                regime=regime.value,
+                fire=True,
+                reason=f"fire on {regime.value}",
                 call_idx=idx,
             )
 
@@ -132,17 +143,18 @@ class RegimeGate:
             # Skip everything except every Nth call.
             fire = (idx % self.calm_skip_ratio) == 0
             return GateDecision(
-                task=task.value, regime=regime.value,
+                task=task.value,
+                regime=regime.value,
                 fire=fire,
-                reason=(
-                    f"calm regime, 1-in-{self.calm_skip_ratio} schedule"
-                ),
+                reason=(f"calm regime, 1-in-{self.calm_skip_ratio} schedule"),
                 call_idx=idx,
             )
 
         return GateDecision(
-            task=task.value, regime=regime.value,
-            fire=True, reason="normal regime",
+            task=task.value,
+            regime=regime.value,
+            fire=True,
+            reason="normal regime",
             call_idx=idx,
         )
 

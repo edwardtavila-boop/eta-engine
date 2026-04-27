@@ -1,4 +1,5 @@
 """Tests for obs.gate_override_telemetry."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,20 +41,30 @@ def journal(tmp_path: Path) -> DecisionJournal:
 
 def test_block_bumps_counter(registry: MetricsRegistry) -> None:
     record_gate_block(
-        gate="kill_switch", reason="daily dd exceeded",
-        actor=Actor.KILL_SWITCH, registry=registry,
+        gate="kill_switch",
+        reason="daily dd exceeded",
+        actor=Actor.KILL_SWITCH,
+        registry=registry,
     )
-    assert registry.get_counter(
-        GATE_BLOCKS_TOTAL, labels={"gate": "kill_switch"},
-    ) == 1.0
+    assert (
+        registry.get_counter(
+            GATE_BLOCKS_TOTAL,
+            labels={"gate": "kill_switch"},
+        )
+        == 1.0
+    )
 
 
 def test_block_also_writes_journal(
-    registry: MetricsRegistry, journal: DecisionJournal,
+    registry: MetricsRegistry,
+    journal: DecisionJournal,
 ) -> None:
     record_gate_block(
-        gate="kill_switch", reason="dd exceeded",
-        actor=Actor.KILL_SWITCH, registry=registry, journal=journal,
+        gate="kill_switch",
+        reason="dd exceeded",
+        actor=Actor.KILL_SWITCH,
+        registry=registry,
+        journal=journal,
     )
     events = journal.read_all()
     assert len(events) == 1
@@ -64,16 +75,20 @@ def test_block_also_writes_journal(
 def test_block_rejects_empty_gate(registry: MetricsRegistry) -> None:
     with pytest.raises(ValueError, match="gate"):
         record_gate_block(
-            gate="", reason="x",
-            actor=Actor.KILL_SWITCH, registry=registry,
+            gate="",
+            reason="x",
+            actor=Actor.KILL_SWITCH,
+            registry=registry,
         )
 
 
 def test_block_rejects_empty_reason(registry: MetricsRegistry) -> None:
     with pytest.raises(ValueError, match="reason"):
         record_gate_block(
-            gate="g", reason="",
-            actor=Actor.KILL_SWITCH, registry=registry,
+            gate="g",
+            reason="",
+            actor=Actor.KILL_SWITCH,
+            registry=registry,
         )
 
 
@@ -84,20 +99,30 @@ def test_block_rejects_empty_reason(registry: MetricsRegistry) -> None:
 
 def test_override_bumps_counter(registry: MetricsRegistry) -> None:
     record_gate_override(
-        gate="kill_switch", reason="operator override -- small size trade",
-        actor=Actor.OPERATOR, registry=registry,
+        gate="kill_switch",
+        reason="operator override -- small size trade",
+        actor=Actor.OPERATOR,
+        registry=registry,
     )
-    assert registry.get_counter(
-        GATE_OVERRIDES_TOTAL, labels={"gate": "kill_switch"},
-    ) == 1.0
+    assert (
+        registry.get_counter(
+            GATE_OVERRIDES_TOTAL,
+            labels={"gate": "kill_switch"},
+        )
+        == 1.0
+    )
 
 
 def test_override_writes_journal(
-    registry: MetricsRegistry, journal: DecisionJournal,
+    registry: MetricsRegistry,
+    journal: DecisionJournal,
 ) -> None:
     record_gate_override(
-        gate="confluence_gate", reason="operator override",
-        actor=Actor.OPERATOR, registry=registry, journal=journal,
+        gate="confluence_gate",
+        reason="operator override",
+        actor=Actor.OPERATOR,
+        registry=registry,
+        journal=journal,
     )
     events = journal.read_all()
     assert len(events) == 1
@@ -108,8 +133,10 @@ def test_override_writes_journal(
 def test_override_rejects_empty_gate(registry: MetricsRegistry) -> None:
     with pytest.raises(ValueError):
         record_gate_override(
-            gate="", reason="x",
-            actor=Actor.OPERATOR, registry=registry,
+            gate="",
+            reason="x",
+            actor=Actor.OPERATOR,
+            registry=registry,
         )
 
 
@@ -129,19 +156,34 @@ def test_summarize_empty(registry: MetricsRegistry) -> None:
 def test_summarize_mix(registry: MetricsRegistry) -> None:
     # 4 blocks across two gates, 1 override
     record_gate_block(
-        gate="g1", reason="r", actor=Actor.KILL_SWITCH, registry=registry,
+        gate="g1",
+        reason="r",
+        actor=Actor.KILL_SWITCH,
+        registry=registry,
     )
     record_gate_block(
-        gate="g1", reason="r", actor=Actor.KILL_SWITCH, registry=registry,
+        gate="g1",
+        reason="r",
+        actor=Actor.KILL_SWITCH,
+        registry=registry,
     )
     record_gate_block(
-        gate="g2", reason="r", actor=Actor.RISK_GATE, registry=registry,
+        gate="g2",
+        reason="r",
+        actor=Actor.RISK_GATE,
+        registry=registry,
     )
     record_gate_block(
-        gate="g2", reason="r", actor=Actor.RISK_GATE, registry=registry,
+        gate="g2",
+        reason="r",
+        actor=Actor.RISK_GATE,
+        registry=registry,
     )
     record_gate_override(
-        gate="g1", reason="r", actor=Actor.OPERATOR, registry=registry,
+        gate="g1",
+        reason="r",
+        actor=Actor.OPERATOR,
+        registry=registry,
     )
 
     s = summarize(registry)
@@ -154,10 +196,16 @@ def test_summarize_mix(registry: MetricsRegistry) -> None:
 
 def test_summarize_updates_rate_gauge(registry: MetricsRegistry) -> None:
     record_gate_block(
-        gate="g", reason="r", actor=Actor.KILL_SWITCH, registry=registry,
+        gate="g",
+        reason="r",
+        actor=Actor.KILL_SWITCH,
+        registry=registry,
     )
     record_gate_override(
-        gate="g", reason="r", actor=Actor.OPERATOR, registry=registry,
+        gate="g",
+        reason="r",
+        actor=Actor.OPERATOR,
+        registry=registry,
     )
     summarize(registry)
     rate = registry.get_gauge(GATE_OVERRIDE_RATE)
@@ -174,7 +222,10 @@ def test_override_rate_capped_1() -> None:
     # If there are only overrides and no blocks -- override_rate == 1.0
     r = MetricsRegistry()
     record_gate_override(
-        gate="g", reason="r", actor=Actor.OPERATOR, registry=r,
+        gate="g",
+        reason="r",
+        actor=Actor.OPERATOR,
+        registry=r,
     )
     s = summarize(r)
     assert s.override_rate == 1.0

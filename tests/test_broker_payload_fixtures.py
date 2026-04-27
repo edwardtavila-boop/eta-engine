@@ -29,6 +29,7 @@ Each fixture also has a couple of *negative* cases derived from it:
 The negative cases assert the "MUST NOT raise" guarantee of the
 :class:`BrokerEquityAdapter` Protocol holds even on malformed input.
 """
+
 from __future__ import annotations
 
 import copy
@@ -68,6 +69,7 @@ def _make_ibkr_with_payload(payload: dict | None):
         IbkrClientPortalConfig,
         IbkrClientPortalVenue,
     )
+
     cfg = IbkrClientPortalConfig(
         base_url="https://localhost:5000/v1/api",
         account_id="DU1234567",
@@ -148,6 +150,7 @@ class TestIbkrFixtureReplay:
             IbkrClientPortalConfig,
             IbkrClientPortalVenue,
         )
+
         # Empty config -> no creds.
         cfg = IbkrClientPortalConfig(base_url="", account_id="")
         venue = IbkrClientPortalVenue(config=cfg)
@@ -166,6 +169,7 @@ def _make_tasty_with_payload(payload: dict | None):
         TastytradeConfig,
         TastytradeVenue,
     )
+
     cfg = TastytradeConfig(
         base_url="https://api.cert.tastyworks.com",
         account_number="5WT12345",
@@ -251,6 +255,7 @@ class TestTastyFixtureReplay:
             TastytradeConfig,
             TastytradeVenue,
         )
+
         cfg = TastytradeConfig(base_url="", account_number="", session_token="")
         venue = TastytradeVenue(config=cfg)
         assert venue.has_credentials() is False
@@ -277,6 +282,7 @@ class TestParsersStillSatisfyProtocol:
             BrokerEquityAdapter,
         )
         from eta_engine.venues.ibkr import IbkrClientPortalVenue
+
         assert isinstance(IbkrClientPortalVenue(), BrokerEquityAdapter)
 
     def test_tastytrade_satisfies_protocol(self) -> None:
@@ -284,4 +290,5 @@ class TestParsersStillSatisfyProtocol:
             BrokerEquityAdapter,
         )
         from eta_engine.venues.tastytrade import TastytradeVenue
+
         assert isinstance(TastytradeVenue(), BrokerEquityAdapter)

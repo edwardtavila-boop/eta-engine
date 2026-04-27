@@ -7,10 +7,12 @@ HTF trend alignment: daily EMA slope + 4H market structure.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData
 from eta_engine.features.base import Feature
+
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
 
 
 def ema_slope_score(values: list[float]) -> float:

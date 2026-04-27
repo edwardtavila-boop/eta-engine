@@ -35,6 +35,7 @@ One key for the operator's pre-push muscle memory. Replaces:
 with:
     python scripts/_ci_gate.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,8 +51,12 @@ def _run(cmd: list[str]) -> tuple[int, str, float]:
     t0 = time.monotonic()
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=300,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
         )
         out = proc.stdout + proc.stderr
         rc = proc.returncode
@@ -67,10 +72,8 @@ def _last_lines(s: str, n: int = 8) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    p.add_argument("--strict", action="store_true",
-                   help="yellow sentinels also fail")
-    p.add_argument("--strict-ruff", action="store_true",
-                   help="lint the entire repo (default: staged files only)")
+    p.add_argument("--strict", action="store_true", help="yellow sentinels also fail")
+    p.add_argument("--strict-ruff", action="store_true", help="lint the entire repo (default: staged files only)")
     p.add_argument("--no-pytest", action="store_true", help="skip pytest stage")
     p.add_argument("--no-sent", action="store_true", help="skip sentinel stage")
     p.add_argument("--no-ruff", action="store_true", help="skip ruff stage")
@@ -83,13 +86,16 @@ def main(argv: list[str] | None = None) -> int:
             ruff_targets = ["."]
             mode_label = "whole repo"
         else:
-            rc, files, _ = _run([
-                "git", "diff", "--cached", "--name-only", "--diff-filter=ACMR",
-            ])
-            ruff_targets = [
-                ln.strip() for ln in files.splitlines()
-                if ln.strip().endswith(".py")
-            ]
+            rc, files, _ = _run(
+                [
+                    "git",
+                    "diff",
+                    "--cached",
+                    "--name-only",
+                    "--diff-filter=ACMR",
+                ]
+            )
+            ruff_targets = [ln.strip() for ln in files.splitlines() if ln.strip().endswith(".py")]
             mode_label = f"{len(ruff_targets)} staged file(s)"
         if ruff_targets:
             print(f"\n[1/3] ruff check ({mode_label})...")
@@ -111,8 +117,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         # Pull the summary line
         summary = next(
-            (ln for ln in reversed(out.splitlines())
-             if " passed" in ln or " failed" in ln),
+            (ln for ln in reversed(out.splitlines()) if " passed" in ln or " failed" in ln),
             "",
         )
         print(f"  OK ({dt:.1f}s)  {summary}")

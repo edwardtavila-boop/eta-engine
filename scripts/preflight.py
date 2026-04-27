@@ -150,7 +150,7 @@ def check_tick_cadence() -> CheckResult:
     except Exception as e:  # noqa: BLE001
         return ("tick_cadence", False, f"kill_switch.yaml unreadable: {type(e).__name__}")
     ks = ks or {}
-    preempt = ((ks.get("tier_a", {}) or {}).get("apex_eval_preemptive", {}) or {})
+    preempt = (ks.get("tier_a", {}) or {}).get("apex_eval_preemptive", {}) or {}
     cushion_usd = float(preempt.get("cushion_usd", 500.0))
     try:
         validate_apex_tick_cadence(

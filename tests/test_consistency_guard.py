@@ -18,6 +18,7 @@ Coverage:
   * ISO-date validation
   * corrupt file fail-closed
 """
+
 from __future__ import annotations
 
 import json
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def guard_path(tmp_path: Path) -> Path:
     return tmp_path / "consistency.json"
@@ -50,7 +52,9 @@ def guard_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def guard(guard_path: Path) -> ConsistencyGuard:
     return ConsistencyGuard.load_or_init(
-        path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+        path=guard_path,
+        threshold_pct=0.30,
+        warning_pct=0.25,
     )
 
 
@@ -58,9 +62,11 @@ def guard(guard_path: Path) -> ConsistencyGuard:
 # Init + persistence
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_fresh_init_writes_empty_days(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         s = guard.state()
         assert s.threshold_pct == 0.30
@@ -68,7 +74,9 @@ class TestInit:
         assert s.days == {}
 
     def test_fresh_init_persists(
-        self, guard: ConsistencyGuard, guard_path: Path,
+        self,
+        guard: ConsistencyGuard,
+        guard_path: Path,
     ) -> None:
         assert guard_path.exists()
         raw = json.loads(guard_path.read_text())
@@ -79,33 +87,46 @@ class TestInit:
     def test_invalid_threshold_raises(self, guard_path: Path) -> None:
         with pytest.raises(ValueError, match="threshold_pct"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=1.5, warning_pct=0.25,
+                path=guard_path,
+                threshold_pct=1.5,
+                warning_pct=0.25,
             )
         with pytest.raises(ValueError, match="threshold_pct"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=0.0, warning_pct=0.25,
+                path=guard_path,
+                threshold_pct=0.0,
+                warning_pct=0.25,
             )
 
     def test_invalid_warning_raises(self, guard_path: Path) -> None:
         with pytest.raises(ValueError, match="warning_pct"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=0.30, warning_pct=0.40,
+                path=guard_path,
+                threshold_pct=0.30,
+                warning_pct=0.40,
             )
         with pytest.raises(ValueError, match="warning_pct"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=0.30, warning_pct=0.0,
+                path=guard_path,
+                threshold_pct=0.30,
+                warning_pct=0.0,
             )
 
     def test_roundtrip_loads_prior_days(
-        self, guard_path: Path,
+        self,
+        guard_path: Path,
     ) -> None:
         g1 = ConsistencyGuard.load_or_init(
-            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+            path=guard_path,
+            threshold_pct=0.30,
+            warning_pct=0.25,
         )
         g1.record_eod("2026-04-20", 500.0)
         g1.record_eod("2026-04-21", 300.0)
         g2 = ConsistencyGuard.load_or_init(
-            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+            path=guard_path,
+            threshold_pct=0.30,
+            warning_pct=0.25,
         )
         assert g2.state().days == {
             "2026-04-20": 500.0,
@@ -127,20 +148,27 @@ class TestInit:
         guard_path.write_text("not-json-at-all", encoding="utf-8")
         with pytest.raises(ConsistencyCorruptError, match="corrupt"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+                path=guard_path,
+                threshold_pct=0.30,
+                warning_pct=0.25,
             )
 
     def test_corrupt_date_key_raises(self, guard_path: Path) -> None:
         guard_path.write_text(
-            json.dumps({
-                "threshold_pct": 0.30, "warning_pct": 0.25,
-                "days": {"not-a-date": 500.0},
-            }),
+            json.dumps(
+                {
+                    "threshold_pct": 0.30,
+                    "warning_pct": 0.25,
+                    "days": {"not-a-date": 500.0},
+                }
+            ),
             encoding="utf-8",
         )
         with pytest.raises(ConsistencyCorruptError, match="invalid date"):
             ConsistencyGuard.load_or_init(
-                path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+                path=guard_path,
+                threshold_pct=0.30,
+                warning_pct=0.25,
             )
 
 
@@ -148,28 +176,33 @@ class TestInit:
 # Recording + status
 # ---------------------------------------------------------------------------
 
+
 class TestRecording:
     def test_record_eod_persists_day(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", 500.0)
         assert guard.state().days == {"2026-04-20": 500.0}
 
     def test_record_eod_overwrites_same_day(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", 500.0)
         guard.record_eod("2026-04-20", 620.0)
         assert guard.state().days == {"2026-04-20": 620.0}
 
     def test_record_intraday_is_same_as_record_eod(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_intraday("2026-04-20", 420.0)
         assert guard.state().days == {"2026-04-20": 420.0}
 
     def test_invalid_date_format_raises(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         with pytest.raises(ValueError, match="ISO"):
             guard.record_eod("2026/04/20", 500.0)
@@ -181,37 +214,46 @@ class TestRecording:
 # Status derivation
 # ---------------------------------------------------------------------------
 
+
 class TestStatus:
     def test_insufficient_data_when_no_days(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         v = guard.evaluate()
         assert v.status is ConsistencyStatus.INSUFFICIENT_DATA
 
     def test_insufficient_data_when_net_negative(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", -500.0)
         v = guard.evaluate()
         assert v.status is ConsistencyStatus.INSUFFICIENT_DATA
 
     def test_ok_when_largest_below_warning(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # 4 winning days of 500 each => largest ratio = 500/2000 = 25% < 25? No, =25%
         # Use 400s instead => 400/1600 = 25%. Let's use 200s + one 200.
         # Need ratio < 0.25. Try 3 winners of 500 each, 1 winner of 500 => 500/2000 = 25%.
         # To stay < 25%, use 4 winners of 500 + one 400 = 2400 total, ratio = 500/2400 ~= 20.8%.
-        for d, p in [("2026-04-20", 500.0), ("2026-04-21", 500.0),
-                     ("2026-04-22", 500.0), ("2026-04-23", 500.0),
-                     ("2026-04-24", 400.0)]:
+        for d, p in [
+            ("2026-04-20", 500.0),
+            ("2026-04-21", 500.0),
+            ("2026-04-22", 500.0),
+            ("2026-04-23", 500.0),
+            ("2026-04-24", 400.0),
+        ]:
             guard.record_eod(d, p)
         v = guard.evaluate()
         assert v.status is ConsistencyStatus.OK
         assert v.largest_day_ratio == pytest.approx(500 / 2400, abs=1e-6)
 
     def test_warning_when_between_warning_and_threshold(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # 700/2500 = 28% -> WARNING (25% <= r < 30%)
         guard.record_eod("2026-04-20", 700.0)
@@ -226,7 +268,8 @@ class TestStatus:
         assert v.largest_day_ratio == pytest.approx(700 / 2500, abs=1e-6)
 
     def test_violation_when_ratio_at_or_above_threshold(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # 1500 on day 1 out of 2500 total = 60% -> VIOLATION
         guard.record_eod("2026-04-20", 1500.0)
@@ -239,7 +282,8 @@ class TestStatus:
         assert v.largest_day_ratio == pytest.approx(0.60, abs=1e-6)
 
     def test_losing_days_reduce_total_and_can_trigger_violation(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # $500 win, $500 loss, $300 win, $200 win => total=500, largest=500
         # ratio = 500/500 = 100% -> VIOLATION
@@ -253,7 +297,8 @@ class TestStatus:
         assert v.total_net_profit_usd == 500.0
 
     def test_max_allowed_day_scales_with_total(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", 300.0)
         guard.record_eod("2026-04-21", 400.0)
@@ -266,16 +311,19 @@ class TestStatus:
 # Headroom math
 # ---------------------------------------------------------------------------
 
+
 class TestHeadroom:
     def test_no_prior_days_zero_headroom(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # Prior total = 0, today_pnl = 0 -> regime-B cap = 0
         v = guard.evaluate(today_date="2026-04-24", today_pnl_usd=0.0)
         assert v.headroom_today_usd == pytest.approx(0.0)
 
     def test_regime_b_cap_exact(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # prior days total = 1000, all losers/small-ish so prior_max_win
         # is below regime_b_cap. regime_b_cap = 0.30 * 1000 / 0.70 = 428.57
@@ -292,26 +340,26 @@ class TestHeadroom:
         assert v.headroom_today_usd == pytest.approx(0.0)
 
     def test_clean_prior_regime_b_cap_applies(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # Build a prior where prior_max_win <= regime_b_cap
         # 5 days of 300 each => total=1500, prior_max_win=300
         # regime_b_cap = 0.30*1500/0.70 = 642.857
         # 300 <= 642.857, clean case
         # Today pnl=0 -> headroom = 642.857 - 0 = 642.857
-        for d in ["2026-04-20", "2026-04-21", "2026-04-22",
-                  "2026-04-23", "2026-04-24"]:
+        for d in ["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24"]:
             guard.record_eod(d, 300.0)
         v = guard.evaluate(today_date="2026-04-25", today_pnl_usd=0.0)
         expected_cap = 0.30 * 1500.0 / 0.70
         assert v.headroom_today_usd == pytest.approx(expected_cap, abs=1e-4)
 
     def test_headroom_shrinks_as_today_pnl_grows(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # Same prior as above, but today already made 200
-        for d in ["2026-04-20", "2026-04-21", "2026-04-22",
-                  "2026-04-23", "2026-04-24"]:
+        for d in ["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24"]:
             guard.record_eod(d, 300.0)
         v = guard.evaluate(today_date="2026-04-25", today_pnl_usd=200.0)
         expected_cap = 0.30 * 1500.0 / 0.70
@@ -319,20 +367,20 @@ class TestHeadroom:
         assert v.headroom_today_usd == pytest.approx(expected_headroom, abs=1e-4)
 
     def test_headroom_clipped_to_zero_when_at_cap(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
-        for d in ["2026-04-20", "2026-04-21", "2026-04-22",
-                  "2026-04-23", "2026-04-24"]:
+        for d in ["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24"]:
             guard.record_eod(d, 300.0)
         cap = 0.30 * 1500.0 / 0.70
         v = guard.evaluate(today_date="2026-04-25", today_pnl_usd=cap)
         assert v.headroom_today_usd == pytest.approx(0.0, abs=1e-4)
 
     def test_headroom_clipped_to_zero_above_cap(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
-        for d in ["2026-04-20", "2026-04-21", "2026-04-22",
-                  "2026-04-23", "2026-04-24"]:
+        for d in ["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24"]:
             guard.record_eod(d, 300.0)
         v = guard.evaluate(today_date="2026-04-25", today_pnl_usd=9_999.0)
         assert v.headroom_today_usd == pytest.approx(0.0)
@@ -342,14 +390,20 @@ class TestHeadroom:
 # Intraday scenarios
 # ---------------------------------------------------------------------------
 
+
 class TestIntradayScenarios:
     def test_intraday_update_progresses_toward_violation(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         # Build a prior with total=2000 and clean distribution.
-        for d, p in [("2026-04-20", 400.0), ("2026-04-21", 400.0),
-                     ("2026-04-22", 400.0), ("2026-04-23", 400.0),
-                     ("2026-04-24", 400.0)]:
+        for d, p in [
+            ("2026-04-20", 400.0),
+            ("2026-04-21", 400.0),
+            ("2026-04-22", 400.0),
+            ("2026-04-23", 400.0),
+            ("2026-04-24", 400.0),
+        ]:
             guard.record_eod(d, p)
         # Today opens flat
         v0 = guard.record_intraday("2026-04-25", 0.0)
@@ -373,7 +427,8 @@ class TestIntradayScenarios:
         assert v3.status is ConsistencyStatus.VIOLATION
 
     def test_intraday_entry_does_not_duplicate_day(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_intraday("2026-04-25", 100.0)
         guard.record_intraday("2026-04-25", 300.0)
@@ -385,6 +440,7 @@ class TestIntradayScenarios:
 # Reset
 # ---------------------------------------------------------------------------
 
+
 class TestReset:
     def test_reset_clears_days(self, guard: ConsistencyGuard) -> None:
         guard.record_eod("2026-04-20", 500.0)
@@ -393,7 +449,8 @@ class TestReset:
         assert guard.state().days == {}
 
     def test_reset_preserves_thresholds(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", 500.0)
         guard.reset()
@@ -401,12 +458,16 @@ class TestReset:
         assert guard.state().warning_pct == 0.25
 
     def test_reset_persists(
-        self, guard: ConsistencyGuard, guard_path: Path,
+        self,
+        guard: ConsistencyGuard,
+        guard_path: Path,
     ) -> None:
         guard.record_eod("2026-04-20", 500.0)
         guard.reset()
         g2 = ConsistencyGuard.load_or_init(
-            path=guard_path, threshold_pct=0.30, warning_pct=0.25,
+            path=guard_path,
+            threshold_pct=0.30,
+            warning_pct=0.25,
         )
         assert g2.state().days == {}
 
@@ -415,9 +476,11 @@ class TestReset:
 # Verdict serialization
 # ---------------------------------------------------------------------------
 
+
 class TestVerdictSerialization:
     def test_as_dict_includes_status_string(
-        self, guard: ConsistencyGuard,
+        self,
+        guard: ConsistencyGuard,
     ) -> None:
         guard.record_eod("2026-04-20", 900.0)
         guard.record_eod("2026-04-21", 100.0)
@@ -432,6 +495,7 @@ class TestVerdictSerialization:
 # Apex session-day rollover (17:00 CT, DST-aware)
 # ---------------------------------------------------------------------------
 
+
 class TestApexTradingDayIso:
     """Verify ``apex_trading_day_iso`` uses the 17:00 US/Central rollover.
 
@@ -445,30 +509,35 @@ class TestApexTradingDayIso:
     def test_before_rollover_summer_cdt(self) -> None:
         """21:00 UTC in July = 16:00 CDT → still today's date."""
         from datetime import UTC, datetime
+
         t = datetime(2026, 7, 15, 21, 0, tzinfo=UTC)  # 16:00 CDT
         assert apex_trading_day_iso(t) == "2026-07-15"
 
     def test_after_rollover_summer_cdt(self) -> None:
         """22:30 UTC in July = 17:30 CDT → NEXT trading day."""
         from datetime import UTC, datetime
+
         t = datetime(2026, 7, 15, 22, 30, tzinfo=UTC)  # 17:30 CDT
         assert apex_trading_day_iso(t) == "2026-07-16"
 
     def test_before_rollover_winter_cst(self) -> None:
         """22:00 UTC in January = 16:00 CST → still today's date."""
         from datetime import UTC, datetime
+
         t = datetime(2026, 1, 15, 22, 0, tzinfo=UTC)  # 16:00 CST
         assert apex_trading_day_iso(t) == "2026-01-15"
 
     def test_after_rollover_winter_cst(self) -> None:
         """23:30 UTC in January = 17:30 CST → NEXT trading day."""
         from datetime import UTC, datetime
+
         t = datetime(2026, 1, 15, 23, 30, tzinfo=UTC)  # 17:30 CST
         assert apex_trading_day_iso(t) == "2026-01-16"
 
     def test_exactly_at_17_ct_is_next_day(self) -> None:
         """17:00:00 local IS the rollover -- belongs to NEXT day."""
         from datetime import UTC, datetime
+
         # 17:00 CDT = 22:00 UTC
         t = datetime(2026, 7, 15, 22, 0, tzinfo=UTC)
         assert apex_trading_day_iso(t) == "2026-07-16"
@@ -476,6 +545,7 @@ class TestApexTradingDayIso:
     def test_one_second_before_rollover_is_current_day(self) -> None:
         """16:59:59 CDT stays on the current trading day."""
         from datetime import UTC, datetime
+
         t = datetime(2026, 7, 15, 21, 59, 59, tzinfo=UTC)  # 16:59:59 CDT
         assert apex_trading_day_iso(t) == "2026-07-15"
 
@@ -486,6 +556,7 @@ class TestApexTradingDayIso:
         buckets; the session-day helper keeps them together.
         """
         from datetime import UTC, datetime
+
         # July 15, 22:30 UTC = 17:30 CDT July 15 → Apex day = July 16
         t_evening = datetime(2026, 7, 15, 22, 30, tzinfo=UTC)
         # July 16, 02:00 UTC = 21:00 CDT July 15 → Apex day = July 16
@@ -496,6 +567,7 @@ class TestApexTradingDayIso:
     def test_naive_datetime_treated_as_utc(self) -> None:
         """Input without tzinfo is assumed UTC (not local machine tz)."""
         from datetime import datetime
+
         t_naive = datetime(2026, 7, 15, 21, 0)
         # Same as tz-aware UTC 21:00 → 16:00 CDT → 2026-07-15
         assert apex_trading_day_iso(t_naive) == "2026-07-15"
@@ -510,23 +582,31 @@ class TestApexTradingDayIso:
         assert s[7] == "-"
 
     def test_fallback_when_zoneinfo_missing(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """If zoneinfo is unavailable the helper uses a fixed 23:00-UTC
         rollover. This is wrong by 1h in summer but never mid-RTH."""
         from datetime import UTC, datetime
 
         import eta_engine.core.consistency_guard as cg
+
         monkeypatch.setattr(cg, "ZoneInfo", None)
 
         # 22:00 UTC → before 23:00 UTC → current date
-        assert cg.apex_trading_day_iso(
-            datetime(2026, 1, 15, 22, 0, tzinfo=UTC),
-        ) == "2026-01-15"
+        assert (
+            cg.apex_trading_day_iso(
+                datetime(2026, 1, 15, 22, 0, tzinfo=UTC),
+            )
+            == "2026-01-15"
+        )
         # 23:30 UTC → past fallback rollover → next date
-        assert cg.apex_trading_day_iso(
-            datetime(2026, 1, 15, 23, 30, tzinfo=UTC),
-        ) == "2026-01-16"
+        assert (
+            cg.apex_trading_day_iso(
+                datetime(2026, 1, 15, 23, 30, tzinfo=UTC),
+            )
+            == "2026-01-16"
+        )
 
     def test_different_from_utc_today_on_overnight_tick(self) -> None:
         """The two helpers MUST disagree on an evening-session tick.
@@ -729,7 +809,7 @@ class TestApexTradingDayIsoCme:
 
         assert _is_trading_day(date(2026, 4, 18)) is False  # Saturday
         assert _is_trading_day(date(2026, 4, 19)) is False  # Sunday
-        assert _is_trading_day(date(2026, 4, 20)) is True   # Monday
+        assert _is_trading_day(date(2026, 4, 20)) is True  # Monday
 
     def test_next_trading_day_through_thanksgiving_weekend(self) -> None:
         """Next-trading-day from Thanksgiving crosses holiday + weekend."""

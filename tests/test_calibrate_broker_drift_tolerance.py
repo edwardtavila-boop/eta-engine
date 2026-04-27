@@ -13,6 +13,7 @@ Covers:
   * malformed JSON lines tolerated
   * exit codes (0 ok, 2 missing log, 3 no samples)
 """
+
 from __future__ import annotations
 
 import json
@@ -40,7 +41,6 @@ from eta_engine.scripts.calibrate_broker_drift_tolerance import (  # noqa: E402
 
 
 class TestPercentile:
-
     def test_empty_returns_zero(self):
         assert _percentile([], 0.5) == 0.0
 
@@ -64,7 +64,6 @@ class TestPercentile:
 
 
 class TestSummarize:
-
     def test_empty(self):
         s = _summarize([])
         assert s.n == 0
@@ -106,14 +105,16 @@ def _tick(drift_usd: float | None, drift_pct: float | None = None) -> dict:
 
 
 class TestCollect:
-
     def test_partitions_by_sign(self, tmp_path: Path):
-        log = _write_log(tmp_path, [
-            _tick(50.0, 0.001),    # below: broker is $50 below logical
-            _tick(-30.0, 0.0006),  # above: broker is $30 above logical
-            _tick(75.0, 0.0015),   # below
-            _tick(-10.0, 0.0002),  # above
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                _tick(50.0, 0.001),  # below: broker is $50 below logical
+                _tick(-30.0, 0.0006),  # above: broker is $30 above logical
+                _tick(75.0, 0.0015),  # below
+                _tick(-10.0, 0.0002),  # above
+            ],
+        )
         below, above = collect(log)
         assert below.n == 2
         assert above.n == 2
@@ -122,31 +123,40 @@ class TestCollect:
         assert above.usd == [30.0, 10.0]
 
     def test_skips_non_tick_entries(self, tmp_path: Path):
-        log = _write_log(tmp_path, [
-            {"kind": "runtime_start"},
-            {"kind": "boot_refused"},
-            _tick(100.0, 0.002),
-            {"kind": "no_active_bots"},
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                {"kind": "runtime_start"},
+                {"kind": "boot_refused"},
+                _tick(100.0, 0.002),
+                {"kind": "no_active_bots"},
+            ],
+        )
         below, above = collect(log)
         assert below.n == 1
         assert above.n == 0
 
     def test_skips_no_data_ticks(self, tmp_path: Path):
-        log = _write_log(tmp_path, [
-            _tick(None),   # no_broker_data
-            _tick(50.0),
-            _tick(None),
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                _tick(None),  # no_broker_data
+                _tick(50.0),
+                _tick(None),
+            ],
+        )
         below, above = collect(log)
         assert below.n == 1
 
     def test_skips_zero_drift_ticks(self, tmp_path: Path):
         # Exact-zero drift contributes no signal in either direction.
-        log = _write_log(tmp_path, [
-            _tick(0.0, 0.0),
-            _tick(50.0),
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                _tick(0.0, 0.0),
+                _tick(50.0),
+            ],
+        )
         below, above = collect(log)
         assert below.n == 1
         assert above.n == 0
@@ -162,11 +172,14 @@ class TestCollect:
         assert below.n == 2  # Two valid lines; the malformed one is skipped
 
     def test_handles_missing_broker_equity_block(self, tmp_path: Path):
-        log = _write_log(tmp_path, [
-            {"kind": "tick", "meta": {}},        # tick without broker_equity
-            {"kind": "tick"},                    # tick without meta
-            _tick(50.0),
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                {"kind": "tick", "meta": {}},  # tick without broker_equity
+                {"kind": "tick"},  # tick without meta
+                _tick(50.0),
+            ],
+        )
         below, above = collect(log)
         assert below.n == 1
 
@@ -177,10 +190,10 @@ class TestCollect:
 
 
 class TestRecommend:
-
     def test_returns_p99_for_below_default(self):
         below = DriftSamples(
-            "below", n=100,
+            "below",
+            n=100,
             usd=[float(i) for i in range(1, 101)],
             pct=[i / 100_000 for i in range(1, 101)],
         )
@@ -197,7 +210,8 @@ class TestRecommend:
     def test_above_slack_doubles_above_threshold(self):
         below = DriftSamples("below", n=0, usd=[], pct=[])
         above = DriftSamples(
-            "above", n=10,
+            "above",
+            n=10,
             usd=[10.0] * 10,
             pct=[0.001] * 10,
         )
@@ -218,25 +232,30 @@ class TestRecommend:
 
 
 class TestMain:
-
     def test_missing_log_returns_2(self, tmp_path: Path):
         rc = main(["--log", str(tmp_path / "does_not_exist.jsonl")])
         assert rc == 2
 
     def test_no_samples_returns_3(self, tmp_path: Path):
         # File exists but has no broker_equity ticks -- can't calibrate.
-        log = _write_log(tmp_path, [
-            {"kind": "runtime_start"},
-            _tick(None),  # no_broker_data
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                {"kind": "runtime_start"},
+                _tick(None),  # no_broker_data
+            ],
+        )
         rc = main(["--log", str(log)])
         assert rc == 3
 
     def test_with_samples_returns_0(self, tmp_path: Path, capsys):
-        log = _write_log(tmp_path, [
-            _tick(50.0, 0.001),
-            _tick(-30.0, 0.0006),
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                _tick(50.0, 0.001),
+                _tick(-30.0, 0.0006),
+            ],
+        )
         rc = main(["--log", str(log)])
         assert rc == 0
         captured = capsys.readouterr()
@@ -244,10 +263,13 @@ class TestMain:
         assert "below" in captured.out.lower()
 
     def test_json_mode_emits_machine_dict(self, tmp_path: Path, capsys):
-        log = _write_log(tmp_path, [
-            _tick(50.0, 0.001),
-            _tick(-30.0, 0.0006),
-        ])
+        log = _write_log(
+            tmp_path,
+            [
+                _tick(50.0, 0.001),
+                _tick(-30.0, 0.0006),
+            ],
+        )
         rc = main(["--log", str(log), "--json"])
         assert rc == 0
         captured = capsys.readouterr()

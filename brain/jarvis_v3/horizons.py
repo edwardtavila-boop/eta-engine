@@ -9,6 +9,7 @@ horizons and let callers pick the one matching the action's time scope.
 
 Pure / deterministic.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -17,9 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Horizon(StrEnum):
-    NOW       = "NOW"
-    NEXT_15M  = "NEXT_15M"
-    NEXT_1H   = "NEXT_1H"
+    NOW = "NOW"
+    NEXT_15M = "NEXT_15M"
+    NEXT_1H = "NEXT_1H"
     OVERNIGHT = "OVERNIGHT"
 
 
@@ -30,15 +31,16 @@ class Horizon(StrEnum):
 #   * NEXT_1H   -- fires 0..1h
 #   * OVERNIGHT -- fires if any event is within the next 16h
 _HORIZON_HOURS: dict[Horizon, float] = {
-    Horizon.NOW:       0.25,
-    Horizon.NEXT_15M:  0.50,
-    Horizon.NEXT_1H:   1.50,
+    Horizon.NOW: 0.25,
+    Horizon.NEXT_15M: 0.50,
+    Horizon.NEXT_1H: 1.50,
     Horizon.OVERNIGHT: 16.0,
 }
 
 
 class HorizonStress(BaseModel):
     """Stress projected onto a specific horizon."""
+
     model_config = ConfigDict(frozen=True)
 
     horizon: Horizon
@@ -49,34 +51,47 @@ class HorizonStress(BaseModel):
 
 class HorizonContext(BaseModel):
     """A set of stress projections keyed by horizon."""
+
     model_config = ConfigDict(frozen=True)
 
-    now:       HorizonStress
-    next_15m:  HorizonStress
-    next_1h:   HorizonStress
+    now: HorizonStress
+    next_15m: HorizonStress
+    next_1h: HorizonStress
     overnight: HorizonStress
 
     def pick(self, h: Horizon) -> HorizonStress:
         return {
-            Horizon.NOW:       self.now,
-            Horizon.NEXT_15M:  self.next_15m,
-            Horizon.NEXT_1H:   self.next_1h,
+            Horizon.NOW: self.now,
+            Horizon.NEXT_15M: self.next_15m,
+            Horizon.NEXT_1H: self.next_1h,
             Horizon.OVERNIGHT: self.overnight,
         }[h]
 
     @property
     def max_composite(self) -> float:
-        return max(h.composite for h in (
-            self.now, self.next_15m, self.next_1h, self.overnight,
-        ))
+        return max(
+            h.composite
+            for h in (
+                self.now,
+                self.next_15m,
+                self.next_1h,
+                self.overnight,
+            )
+        )
 
     @property
     def binding_horizon(self) -> Horizon:
         """Which horizon has the highest composite -- the one to worry about."""
         ranked = sorted(
-            ((h.horizon, h.composite) for h in (
-                self.now, self.next_15m, self.next_1h, self.overnight,
-            )),
+            (
+                (h.horizon, h.composite)
+                for h in (
+                    self.now,
+                    self.next_15m,
+                    self.next_1h,
+                    self.overnight,
+                )
+            ),
             key=lambda kv: kv[1],
             reverse=True,
         )
@@ -108,16 +123,12 @@ def project(
         composite = base
         reasons = [f"base={base:.2f}"]
         binding = base_binding
-        if (
-            hours_until_event is not None
-            and 0 <= hours_until_event <= scope_h
-        ):
+        if hours_until_event is not None and 0 <= hours_until_event <= scope_h:
             bump = max(0.0, 1.0 - hours_until_event / scope_h) * 0.6
             composite = min(1.0, composite + bump)
             if event_label:
                 reasons.append(
-                    f"event '{event_label}' in {hours_until_event:.2f}h "
-                    f"-> +{bump:.2f}",
+                    f"event '{event_label}' in {hours_until_event:.2f}h -> +{bump:.2f}",
                 )
             binding = "macro_event"
         if h == Horizon.OVERNIGHT and is_overnight_now:

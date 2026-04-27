@@ -61,6 +61,7 @@ The adapter priority design keeps the legacy 4-setup loop as a
 safety net on router-flat / warmup-insufficient ticks, so there's
 zero regression risk if the AI stack abstains.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,10 +89,7 @@ def main() -> None:
     sa["eta_engine_v0_1_34_mnq_router_wiring"] = {
         "timestamp_utc": now,
         "version": VERSION,
-        "bundle_name": (
-            "MNQ WIRING -- RouterAdapter threaded into MnqBot.on_bar "
-            "(additive, backwards compatible)"
-        ),
+        "bundle_name": ("MNQ WIRING -- RouterAdapter threaded into MnqBot.on_bar (additive, backwards compatible)"),
         "theme": (
             "First real bot integration of the v0.1.33 engine adapter. "
             "MnqBot now asks the AI-Optimized strategy stack BEFORE "
@@ -107,9 +105,7 @@ def main() -> None:
             "scripts": ["scripts/_bump_roadmap_v0_1_34.py"],
         },
         "integration_points": {
-            "constructor": (
-                "MnqBot(..., strategy_adapter: RouterAdapter | None = None)"
-            ),
+            "constructor": ("MnqBot(..., strategy_adapter: RouterAdapter | None = None)"),
             "on_bar_priority": (
                 "1) check_risk(); 2) if adapter wired -> sync "
                 "kill_switch_active and call push_bar; 3) if adapter "
@@ -122,8 +118,7 @@ def main() -> None:
                 "kills propagate even without an explicit reset"
             ),
             "backwards_compatible": (
-                "strategy_adapter default is None. All 20 pre-existing "
-                "MnqBot tests pass unchanged."
+                "strategy_adapter default is None. All 20 pre-existing MnqBot tests pass unchanged."
             ),
         },
         "test_coverage": {
@@ -141,14 +136,8 @@ def main() -> None:
         ],
         "phase_reconciliation": {
             "overall_progress_pct": 99,
-            "status": (
-                "unchanged -- still funding-gated on P9_ROLLOUT; MNQ "
-                "integration surface is now live-ready"
-            ),
-            "note": (
-                "v0.1.35 will port the same wiring to the 5 remaining "
-                "bots (NQ/BTC-ETH-SOL-XRP perps)."
-            ),
+            "status": ("unchanged -- still funding-gated on P9_ROLLOUT; MNQ integration surface is now live-ready"),
+            "note": ("v0.1.35 will port the same wiring to the 5 remaining bots (NQ/BTC-ETH-SOL-XRP perps)."),
         },
         "python_touched": True,
         "jsx_touched": False,
@@ -180,10 +169,8 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: MnqBot.on_bar now threads RouterAdapter with "
-          "kill-switch propagation + legacy fallback")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print("  shipped: MnqBot.on_bar now threads RouterAdapter with kill-switch propagation + legacy fallback")
 
 
 if __name__ == "__main__":

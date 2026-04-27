@@ -10,6 +10,7 @@ onto a DefiLlama pool-id filter. When the API is unavailable or the pool
 isn't matched, the tracker returns ``None`` and the adapter falls back to the
 hardcoded ``target_apy`` — the allocator still has a number to work with.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,10 +29,10 @@ CACHE_TTL_SECONDS: int = 300  # 5 minutes — respects free-tier rate limits
 # production call filters /pools by project+chain+symbol and picks the winner.
 # We use name fragments here for robustness against id rotation.
 _POOL_FILTERS: dict[str, dict[str, str]] = {
-    "lido":   {"project": "lido",    "chain": "Ethereum", "symbol": "STETH"},
-    "jito":   {"project": "jito",    "chain": "Solana",   "symbol": "JITOSOL"},
-    "ethena": {"project": "ethena",  "chain": "Ethereum", "symbol": "SUSDE"},
-    "flare":  {"project": "flare",   "chain": "Flare",    "symbol": "SFLR"},
+    "lido": {"project": "lido", "chain": "Ethereum", "symbol": "STETH"},
+    "jito": {"project": "jito", "chain": "Solana", "symbol": "JITOSOL"},
+    "ethena": {"project": "ethena", "chain": "Ethereum", "symbol": "SUSDE"},
+    "flare": {"project": "flare", "chain": "Flare", "symbol": "SFLR"},
 }
 
 
@@ -105,11 +106,7 @@ class ApyTracker:
             proj = str(p.get("project", "")).lower()
             chain = str(p.get("chain", "")).lower()
             symbol = str(p.get("symbol", "")).upper()
-            if (
-                filt["project"].lower() in proj
-                and filt["chain"].lower() in chain
-                and filt["symbol"].upper() in symbol
-            ):
+            if filt["project"].lower() in proj and filt["chain"].lower() in chain and filt["symbol"].upper() in symbol:
                 apy = p.get("apy")
                 if isinstance(apy, (int, float)) and (best is None or apy > best):
                     best = float(apy)

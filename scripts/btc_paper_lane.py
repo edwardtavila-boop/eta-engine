@@ -25,6 +25,7 @@ broker POST happens. Without the opt-in the runner only reconciles
 existing orders recorded in the ledger — making this module safe to
 import from the supervisor without accidentally sending anything.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -71,8 +72,8 @@ _AUTO_SUBMIT_ENV = "BTC_PAPER_LANE_AUTO_SUBMIT"
 # ``BTC_PAPER_LANE_ANCHOR_PRICE``.
 _DEFAULT_ANCHOR = 90_000.0
 _PROBE_PRICE_FRAC_BY_LANE: dict[str, float] = {
-    "grid":        0.70,   # grid lane: far BUY, rests as passive liquidity
-    "directional": 0.90,   # directional lane: closer BUY, still won't fill
+    "grid": 0.70,  # grid lane: far BUY, rests as passive liquidity
+    "directional": 0.90,  # directional lane: closer BUY, still won't fill
 }
 
 _DEFAULT_PROBE_QTY = 1  # 1 unit of the native symbol (1 BTC on Paxos)
@@ -83,7 +84,9 @@ class _BrokerAdapter(Protocol):
 
     async def place_order(self, request: OrderRequest) -> OrderResult: ...
     async def get_order_status(
-        self, symbol: str, order_id: str,
+        self,
+        symbol: str,
+        order_id: str,
     ) -> OrderResult | None: ...
     async def cancel_order(self, symbol: str, order_id: str) -> bool: ...
 
@@ -91,6 +94,7 @@ class _BrokerAdapter(Protocol):
 @dataclass
 class LaneState:
     """Persisted lane state. One file per worker."""
+
     worker_id: str
     broker: str
     lane: str
@@ -147,14 +151,32 @@ class PaperLaneRunner:
         self.ledger_path = Path(ledger_path)
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
         self._state_file = self.state_dir / f"{worker_id}.lane.json"
-        anchor = anchor_price if anchor_price is not None else _float_env(
-            env_map, "BTC_PAPER_LANE_ANCHOR_PRICE", _DEFAULT_ANCHOR,
+        anchor = (
+            anchor_price
+            if anchor_price is not None
+            else _float_env(
+                env_map,
+                "BTC_PAPER_LANE_ANCHOR_PRICE",
+                _DEFAULT_ANCHOR,
+            )
         )
-        qty = probe_qty if probe_qty is not None else _int_env(
-            env_map, "BTC_PAPER_LANE_PROBE_QTY", _DEFAULT_PROBE_QTY,
+        qty = (
+            probe_qty
+            if probe_qty is not None
+            else _int_env(
+                env_map,
+                "BTC_PAPER_LANE_PROBE_QTY",
+                _DEFAULT_PROBE_QTY,
+            )
         )
-        submit = auto_submit if auto_submit is not None else _bool_env(
-            env_map, _AUTO_SUBMIT_ENV, default=False,
+        submit = (
+            auto_submit
+            if auto_submit is not None
+            else _bool_env(
+                env_map,
+                _AUTO_SUBMIT_ENV,
+                default=False,
+            )
         )
         self._auto_submit = submit
         self.state = self._load_state(worker_id, broker, self.lane, self.symbol, anchor, qty)
@@ -200,15 +222,23 @@ class PaperLaneRunner:
     ) -> LaneState:
         if not self._state_file.exists():
             return LaneState(
-                worker_id=worker_id, broker=broker, lane=lane, symbol=symbol,
-                anchor_price=anchor_price, probe_qty=probe_qty,
+                worker_id=worker_id,
+                broker=broker,
+                lane=lane,
+                symbol=symbol,
+                anchor_price=anchor_price,
+                probe_qty=probe_qty,
             )
         try:
             raw = json.loads(self._state_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return LaneState(
-                worker_id=worker_id, broker=broker, lane=lane, symbol=symbol,
-                anchor_price=anchor_price, probe_qty=probe_qty,
+                worker_id=worker_id,
+                broker=broker,
+                lane=lane,
+                symbol=symbol,
+                anchor_price=anchor_price,
+                probe_qty=probe_qty,
             )
         return LaneState(
             worker_id=raw.get("worker_id", worker_id),
@@ -290,22 +320,24 @@ class PaperLaneRunner:
         self.state.submitted_orders += 1
         self.state.last_event = f"submitted:{result.status.value}"
         self.state.last_event_utc = _utc_now()
-        self._append_ledger({
-            "ts_utc": self.state.last_event_utc,
-            "worker_id": self.worker_id,
-            "broker": self.broker,
-            "lane": self.lane,
-            "symbol": self.symbol,
-            "order_id": result.order_id,
-            "order_status": result.status.value,
-            "side": "BUY",
-            "qty": float(self.state.probe_qty),
-            "entry_price": price,
-            "status": "OPEN" if result.status is OrderStatus.OPEN else result.status.value,
-            "updated_at_utc": self.state.last_event_utc,
-            "event": "submit",
-            "note": "paper-lane probe submitted",
-        })
+        self._append_ledger(
+            {
+                "ts_utc": self.state.last_event_utc,
+                "worker_id": self.worker_id,
+                "broker": self.broker,
+                "lane": self.lane,
+                "symbol": self.symbol,
+                "order_id": result.order_id,
+                "order_status": result.status.value,
+                "side": "BUY",
+                "qty": float(self.state.probe_qty),
+                "entry_price": price,
+                "status": "OPEN" if result.status is OrderStatus.OPEN else result.status.value,
+                "updated_at_utc": self.state.last_event_utc,
+                "event": "submit",
+                "note": "paper-lane probe submitted",
+            }
+        )
 
     async def _reconcile_active(self) -> None:
         oid = self.state.active_order_id
@@ -331,21 +363,23 @@ class PaperLaneRunner:
         if new_status != old_status:
             self.state.last_event = f"transition:{old_status}->{new_status}"
             self.state.last_event_utc = _utc_now()
-            self._append_ledger({
-                "ts_utc": self.state.last_event_utc,
-                "worker_id": self.worker_id,
-                "broker": self.broker,
-                "lane": self.lane,
-                "symbol": self.symbol,
-                "order_id": oid,
-                "order_status": new_status,
-                "filled_qty": result.filled_qty,
-                "avg_price": result.avg_price,
-                "status": new_status,
-                "updated_at_utc": self.state.last_event_utc,
-                "event": "transition",
-                "prior_status": old_status,
-            })
+            self._append_ledger(
+                {
+                    "ts_utc": self.state.last_event_utc,
+                    "worker_id": self.worker_id,
+                    "broker": self.broker,
+                    "lane": self.lane,
+                    "symbol": self.symbol,
+                    "order_id": oid,
+                    "order_status": new_status,
+                    "filled_qty": result.filled_qty,
+                    "avg_price": result.avg_price,
+                    "status": new_status,
+                    "updated_at_utc": self.state.last_event_utc,
+                    "event": "transition",
+                    "prior_status": old_status,
+                }
+            )
         # Terminal state -> clear so the next tick can submit a new probe
         # (subject to auto_submit gate).
         if result.status in {OrderStatus.FILLED, OrderStatus.REJECTED}:
@@ -398,7 +432,9 @@ class PaperLaneRunner:
             except Exception as exc:  # noqa: BLE001 - callback must never kill the lane
                 logger.warning(
                     "on_terminal_fill raised %s for %s: %s",
-                    type(exc).__name__, self.worker_id, exc,
+                    type(exc).__name__,
+                    self.worker_id,
+                    exc,
                 )
 
     async def cancel_active(self) -> bool:
@@ -414,18 +450,20 @@ class PaperLaneRunner:
         if ok:
             self.state.last_event = "cancelled"
             self.state.last_event_utc = _utc_now()
-            self._append_ledger({
-                "ts_utc": self.state.last_event_utc,
-                "worker_id": self.worker_id,
-                "broker": self.broker,
-                "lane": self.lane,
-                "symbol": self.symbol,
-                "order_id": oid,
-                "order_status": "CANCELLED",
-                "status": "CANCELLED",
-                "updated_at_utc": self.state.last_event_utc,
-                "event": "cancel",
-            })
+            self._append_ledger(
+                {
+                    "ts_utc": self.state.last_event_utc,
+                    "worker_id": self.worker_id,
+                    "broker": self.broker,
+                    "lane": self.lane,
+                    "symbol": self.symbol,
+                    "order_id": oid,
+                    "order_status": "CANCELLED",
+                    "status": "CANCELLED",
+                    "updated_at_utc": self.state.last_event_utc,
+                    "event": "cancel",
+                }
+            )
             self.state.active_order_id = None
             self.state.active_order_status = "NONE"
             self._persist()

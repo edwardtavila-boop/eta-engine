@@ -24,6 +24,7 @@ bypass parsing by calling the intent functions directly.
 
 Stdlib only.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,17 +39,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class QueryResult(BaseModel):
     """Structured answer to an NL query."""
+
     model_config = ConfigDict(frozen=True)
 
-    intent:  str = Field(min_length=1)
+    intent: str = Field(min_length=1)
     summary: str = Field(min_length=1)
     records: list[dict[str, Any]] = Field(default_factory=list)
-    stats:   dict[str, float] = Field(default_factory=dict)
+    stats: dict[str, float] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
 # Log loader
 # ---------------------------------------------------------------------------
+
 
 def _load_records(audit_path: Path | str) -> list[dict[str, Any]]:
     p = Path(audit_path)
@@ -79,7 +82,9 @@ def _parse_ts(r: dict[str, Any]) -> datetime | None:
 
 
 def _filter_window(
-    records: list[dict[str, Any]], *, hours: float | None = None,
+    records: list[dict[str, Any]],
+    *,
+    hours: float | None = None,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     if hours is None:
@@ -98,14 +103,15 @@ def _filter_window(
 # Intent handlers
 # ---------------------------------------------------------------------------
 
+
 def why_verdict(audit_path: Path | str, request_id: str) -> QueryResult:
     for r in _load_records(audit_path):
         if r.get("request_id") == request_id:
             return QueryResult(
                 intent="WHY_VERDICT",
                 summary=(
-                    f"{r.get('verdict','?')} -- {r.get('reason','no reason logged')} "
-                    f"(reason_code={r.get('reason_code','?')})"
+                    f"{r.get('verdict', '?')} -- {r.get('reason', 'no reason logged')} "
+                    f"(reason_code={r.get('reason_code', '?')})"
                 ),
                 records=[r],
                 stats={"stress_composite": float(r.get("stress_composite", 0.0))},
@@ -117,7 +123,9 @@ def why_verdict(audit_path: Path | str, request_id: str) -> QueryResult:
 
 
 def count_verdict(
-    audit_path: Path | str, verdict: str, hours: float = 24.0,
+    audit_path: Path | str,
+    verdict: str,
+    hours: float = 24.0,
 ) -> QueryResult:
     recs = _filter_window(_load_records(audit_path), hours=hours)
     vnorm = verdict.upper()
@@ -130,8 +138,11 @@ def count_verdict(
 
 
 def list_verdict(
-    audit_path: Path | str, verdict: str, subsystem: str | None = None,
-    hours: float = 24.0, limit: int = 20,
+    audit_path: Path | str,
+    verdict: str,
+    subsystem: str | None = None,
+    hours: float = 24.0,
+    limit: int = 20,
 ) -> QueryResult:
     recs = _filter_window(_load_records(audit_path), hours=hours)
     vnorm = verdict.upper()
@@ -152,7 +163,9 @@ def list_verdict(
 
 
 def reason_freq(
-    audit_path: Path | str, hours: float = 24.0, top: int = 10,
+    audit_path: Path | str,
+    hours: float = 24.0,
+    top: int = 10,
 ) -> QueryResult:
     recs = _filter_window(_load_records(audit_path), hours=hours)
     counts = Counter(r.get("reason_code", "unknown") for r in recs)
@@ -165,28 +178,20 @@ def reason_freq(
     )
 
 
-def subsystem_stats(audit_path: Path | str, subsystem: str,
-                    hours: float = 24.0) -> QueryResult:
-    recs = [r for r in _filter_window(_load_records(audit_path), hours=hours)
-            if r.get("subsystem") == subsystem]
+def subsystem_stats(audit_path: Path | str, subsystem: str, hours: float = 24.0) -> QueryResult:
+    recs = [r for r in _filter_window(_load_records(audit_path), hours=hours) if r.get("subsystem") == subsystem]
     n = len(recs)
-    by_verdict: Counter[str] = Counter(
-        str(r.get("verdict", "")).upper() for r in recs
-    )
+    by_verdict: Counter[str] = Counter(str(r.get("verdict", "")).upper() for r in recs)
     return QueryResult(
         intent="SUBSYSTEM_STATS",
-        summary=(
-            f"{subsystem}: {n} requests in last {hours}h  "
-            f"({dict(by_verdict)})"
-        ),
+        summary=(f"{subsystem}: {n} requests in last {hours}h  ({dict(by_verdict)})"),
         stats={k: float(v) for k, v in by_verdict.items()},
     )
 
 
 def last_binding(audit_path: Path | str, hours: float = 6.0) -> QueryResult:
     recs = _filter_window(_load_records(audit_path), hours=hours)
-    bindings = [r.get("binding_constraint", "none") for r in recs
-                if r.get("binding_constraint")]
+    bindings = [r.get("binding_constraint", "none") for r in recs if r.get("binding_constraint")]
     counts = Counter(bindings)
     top = counts.most_common(5)
     summary = ", ".join(f"{k}={v}" for k, v in top) or "no binding data"
@@ -202,12 +207,13 @@ def health(audit_path: Path | str) -> QueryResult:
     n = len(recs)
     if n == 0:
         return QueryResult(
-            intent="HEALTH", summary="no audit records -- JARVIS has not decided anything yet",
+            intent="HEALTH",
+            summary="no audit records -- JARVIS has not decided anything yet",
         )
     last = recs[-1]
     return QueryResult(
         intent="HEALTH",
-        summary=f"{n} records total; last {last.get('verdict','?')} at {last.get('ts','?')}",
+        summary=f"{n} records total; last {last.get('verdict', '?')} at {last.get('ts', '?')}",
         stats={"count": n},
     )
 
@@ -265,5 +271,5 @@ def dispatch(audit_path: Path | str, query: str) -> QueryResult:
     return QueryResult(
         intent="UNPARSED",
         summary="couldn't parse query; intents: WHY_VERDICT, COUNT_VERDICT, "
-                "LIST_VERDICT, REASON_FREQ, SUBSYSTEM_STATS, LAST_BINDING, HEALTH",
+        "LIST_VERDICT, REASON_FREQ, SUBSYSTEM_STATS, LAST_BINDING, HEALTH",
     )

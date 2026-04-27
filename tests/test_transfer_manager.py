@@ -1,4 +1,5 @@
 """Tests for TransferManager / TransferPolicy / executors in funnel.transfer."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -29,14 +30,18 @@ _T0 = datetime(2025, 1, 1, 12, 0, tzinfo=UTC)
 def _clock_at(t: datetime) -> Callable[[], datetime]:
     def fn() -> datetime:
         return t
+
     return fn
 
 
-def _req(amount: float = 100.0, *, from_bot: str = "mnq", to_bot: str = "stake_pool",
-         requires_approval: bool = False) -> TransferRequest:
+def _req(
+    amount: float = 100.0, *, from_bot: str = "mnq", to_bot: str = "stake_pool", requires_approval: bool = False
+) -> TransferRequest:
     return TransferRequest(
-        from_bot=from_bot, to_bot=to_bot,
-        amount_usd=amount, reason="test",
+        from_bot=from_bot,
+        to_bot=to_bot,
+        amount_usd=amount,
+        reason="test",
         requires_approval=requires_approval,
     )
 

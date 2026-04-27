@@ -82,6 +82,7 @@ Reconciliation
     issuance).
   * overall_progress_pct: 99 (unchanged).
 """
+
 from __future__ import annotations
 
 import json
@@ -137,12 +138,9 @@ def main() -> None:
                 "dedup_prefix": "jarvis_supervisor",
             },
             "detection_rules": [
-                "staleness: last_tick older than stale_after_s -> YELLOW; "
-                "older than dead_after_s -> RED",
-                "dominance: same binding_constraint for last N snapshots "
-                "-> YELLOW (weights need rebalancing)",
-                "flatline: composite <= flatline_threshold for N "
-                "consecutive snapshots -> YELLOW (Jarvis may be blind)",
+                "staleness: last_tick older than stale_after_s -> YELLOW; older than dead_after_s -> RED",
+                "dominance: same binding_constraint for last N snapshots -> YELLOW (weights need rebalancing)",
+                "flatline: composite <= flatline_threshold for N consecutive snapshots -> YELLOW (Jarvis may be blind)",
                 "invalid: composite is NaN / inf / outside [0,1] -> RED",
             ],
             "alert_level_map": {
@@ -192,8 +190,7 @@ def main() -> None:
             "load_inputs_file: missing / valid / malformed / invalid schema",
             "file-backed providers hot-reload on mtime change",
             "write_health: latest + append-log semantics + missing dir",
-            "build_alerter_from_env: no-env, telegram-only, all-three, "
-            "partial-telegram-dropped",
+            "build_alerter_from_env: no-env, telegram-only, all-three, partial-telegram-dropped",
             "run_live: rejects nonpositive interval",
             "run_live: bounded by max_ticks",
             "run_live: stop_event exits loop promptly",
@@ -225,11 +222,11 @@ def main() -> None:
     state["overall_progress_pct"] = state.get("overall_progress_pct", 99)
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.28 at {now}")
-    print(f"  tests_passing: {prev_tests} -> {new_tests} "
-          f"({new_tests - prev_tests:+d})")
+    print(f"  tests_passing: {prev_tests} -> {new_tests} ({new_tests - prev_tests:+d})")
     print("  shipped: obs/jarvis_supervisor.py + scripts/jarvis_live.py")
     print("  directive satisfied: 'make sure jarvis stays optimized live'")
     print("  P9_ROLLOUT still funding-blocked; everything else green.")

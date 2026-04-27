@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
 from eta_engine.obs import alert_dispatcher as mod
 from eta_engine.obs.alert_dispatcher import AlertDispatcher, _RateLimiter
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 # --------------------------------------------------------------------------- #
@@ -20,8 +23,8 @@ from eta_engine.obs.alert_dispatcher import AlertDispatcher, _RateLimiter
 @pytest.fixture(autouse=True)
 def _stub_transports(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(mod, "_send_pushover", lambda *a, **kw: True)
-    monkeypatch.setattr(mod, "_send_email",    lambda *a, **kw: True)
-    monkeypatch.setattr(mod, "_send_sms",      lambda *a, **kw: True)
+    monkeypatch.setattr(mod, "_send_email", lambda *a, **kw: True)
+    monkeypatch.setattr(mod, "_send_sms", lambda *a, **kw: True)
 
 
 # --------------------------------------------------------------------------- #
@@ -42,10 +45,12 @@ def _cfg() -> dict:
             "email": {
                 "enabled": True,
                 "env_keys": {
-                    "smtp_host": "SMTP_HOST", "smtp_port": "SMTP_PORT",
-                    "smtp_user": "SMTP_USER", "smtp_pass": "SMTP_PASS",
+                    "smtp_host": "SMTP_HOST",
+                    "smtp_port": "SMTP_PORT",
+                    "smtp_user": "SMTP_USER",
+                    "smtp_pass": "SMTP_PASS",
                 },
-                "to":   "edward.t.avila@gmail.com",
+                "to": "edward.t.avila@gmail.com",
                 "from": "eta-engine@thefirm.local",
             },
             "sms": {
@@ -60,9 +65,9 @@ def _cfg() -> dict:
         },
         "routing": {
             "events": {
-                "bot_entry":   {"level": "info",     "channels": ["pushover"]},
+                "bot_entry": {"level": "info", "channels": ["pushover"]},
                 "kill_switch": {"level": "critical", "channels": ["pushover", "email", "sms"]},
-                "weekly_review": {"level": "info",   "channels": ["email"]},
+                "weekly_review": {"level": "info", "channels": ["email"]},
             },
         },
     }

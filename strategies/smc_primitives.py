@@ -20,6 +20,7 @@ Primitives provided
     returns to.)
   * :func:`above_moving_average`    -- multi-timeframe trend filter.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ class SweepSide(StrEnum):
     """Which side of the liquidity pool was raided."""
 
     HIGH = "HIGH"  # wick above equal highs -> bearish sweep
-    LOW = "LOW"    # wick below equal lows -> bullish sweep
+    LOW = "LOW"  # wick below equal lows -> bullish sweep
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +116,8 @@ class LiquiditySweep:
     side: SweepSide
     level: float
     sweep_bar_index: int
-    close_back: float          # closing price of the sweep bar
-    depth_pct: float           # how far the wick punched past ``level``
+    close_back: float  # closing price of the sweep bar
+    depth_pct: float  # how far the wick punched past ``level``
 
 
 def detect_liquidity_sweep(
@@ -193,7 +194,7 @@ def detect_displacement(
     """
     if len(bars) < lookback + 1:
         return None
-    window = bars[-(lookback + 1):-1]
+    window = bars[-(lookback + 1) : -1]
     bodies = sorted(bar.body for bar in window)
     median = bodies[len(bodies) // 2] if bodies else 0.0
     if median <= 0.0:
@@ -241,7 +242,7 @@ def detect_fvg(bars: list[Bar]) -> FairValueGap | None:
         a, _, c = bars[i], bars[i + 1], bars[i + 2]
         # Bullish FVG: a.high < c.low
         if a.high < c.low:
-            filled = any(bar.low <= a.high for bar in bars[i + 3:])
+            filled = any(bar.low <= a.high for bar in bars[i + 3 :])
             if not filled:
                 return FairValueGap(
                     direction=Side.LONG,
@@ -252,7 +253,7 @@ def detect_fvg(bars: list[Bar]) -> FairValueGap | None:
                 )
         # Bearish FVG: a.low > c.high
         if a.low > c.high:
-            filled = any(bar.high >= a.low for bar in bars[i + 3:])
+            filled = any(bar.high >= a.low for bar in bars[i + 3 :])
             if not filled:
                 return FairValueGap(
                     direction=Side.SHORT,
@@ -281,15 +282,17 @@ class BreakOfStructure:
 
 def _swing_high_indices(bars: list[Bar], window: int) -> list[int]:
     return [
-        i for i in range(window, len(bars) - window)
-        if bars[i].high == max(b.high for b in bars[i - window:i + window + 1])
+        i
+        for i in range(window, len(bars) - window)
+        if bars[i].high == max(b.high for b in bars[i - window : i + window + 1])
     ]
 
 
 def _swing_low_indices(bars: list[Bar], window: int) -> list[int]:
     return [
-        i for i in range(window, len(bars) - window)
-        if bars[i].low == min(b.low for b in bars[i - window:i + window + 1])
+        i
+        for i in range(window, len(bars) - window)
+        if bars[i].low == min(b.low for b in bars[i - window : i + window + 1])
     ]
 
 
@@ -346,7 +349,7 @@ class OrderBlock:
     of [``low``, ``high``].
     """
 
-    direction: Side   # direction of the subsequent impulse
+    direction: Side  # direction of the subsequent impulse
     bar_index: int
     low: float
     high: float

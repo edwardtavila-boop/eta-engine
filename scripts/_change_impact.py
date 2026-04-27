@@ -36,6 +36,7 @@ Operator was running full pytest sweep (~9s for 2255 tests) after
 every edit. For tight inner-loop work on one module, the impacted
 slice is usually <50 tests and runs in <1s. Speeds up iteration ~10x.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,11 @@ TESTS_DIR = ROOT / "tests"
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        cmd, cwd=str(ROOT), capture_output=True, text=True, check=False,
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 

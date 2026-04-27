@@ -36,6 +36,7 @@ Design
 The Fleet owns a shared ``JarvisAdmin`` reference so every persona runs
 its LLM_INVOCATION pre-flight through the same audit log.
 """
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -72,20 +73,21 @@ if TYPE_CHECKING:
 # OPUS we route to Batman; SONNET -> Alfred; HAIKU -> Robin. These are
 # the only three personas in the Fleet today.
 _TIER_TO_PERSONA: dict[ModelTier, PersonaId] = {
-    ModelTier.OPUS:   PersonaId.BATMAN,
+    ModelTier.OPUS: PersonaId.BATMAN,
     ModelTier.SONNET: PersonaId.ALFRED,
-    ModelTier.HAIKU:  PersonaId.ROBIN,
+    ModelTier.HAIKU: PersonaId.ROBIN,
 }
 
 
 class FleetMetrics(BaseModel):
     """Rolling totals for the admin console. Reset on every Fleet init."""
+
     model_config = ConfigDict(frozen=False)
 
-    calls_by_persona:     dict[str, int] = Field(default_factory=dict)
-    failures_by_persona:  dict[str, int] = Field(default_factory=dict)
-    cost_by_persona:      dict[str, float] = Field(default_factory=dict)
-    last_call_ts:         datetime | None = None
+    calls_by_persona: dict[str, int] = Field(default_factory=dict)
+    failures_by_persona: dict[str, int] = Field(default_factory=dict)
+    cost_by_persona: dict[str, float] = Field(default_factory=dict)
+    last_call_ts: datetime | None = None
 
     @property
     def total_calls(self) -> int:
@@ -126,13 +128,19 @@ class Fleet:
         # instance per Fleet is enough.
         self._personas: dict[PersonaId, Persona] = {
             PersonaId.BATMAN: Batman(
-                executor=exe, admin=admin, journal_path=path,
+                executor=exe,
+                admin=admin,
+                journal_path=path,
             ),
             PersonaId.ALFRED: Alfred(
-                executor=exe, admin=admin, journal_path=path,
+                executor=exe,
+                admin=admin,
+                journal_path=path,
             ),
             PersonaId.ROBIN: Robin(
-                executor=exe, admin=admin, journal_path=path,
+                executor=exe,
+                admin=admin,
+                journal_path=path,
             ),
         }
         # Metrics counters. Plain Counter/defaultdict so arithmetic is easy;
@@ -148,7 +156,8 @@ class Fleet:
         """Translate envelope -> persona id. Fall back to Alfred (Sonnet)."""
         if envelope.requested_tier is not None:
             return _TIER_TO_PERSONA.get(
-                envelope.requested_tier, PersonaId.ALFRED,
+                envelope.requested_tier,
+                PersonaId.ALFRED,
             )
         policy_tier = tier_for(envelope.category)
         return _TIER_TO_PERSONA.get(policy_tier, PersonaId.ALFRED)
@@ -202,9 +211,15 @@ class Fleet:
         personas
             Which personas to poll. Defaults to ``[BATMAN, ALFRED, ROBIN]``.
         """
-        targets = list(personas) if personas else [
-            PersonaId.BATMAN, PersonaId.ALFRED, PersonaId.ROBIN,
-        ]
+        targets = (
+            list(personas)
+            if personas
+            else [
+                PersonaId.BATMAN,
+                PersonaId.ALFRED,
+                PersonaId.ROBIN,
+            ]
+        )
         results: list[TaskResult] = []
         for pid in targets:
             persona = self._personas.get(pid)
@@ -220,22 +235,17 @@ class Fleet:
     def metrics(self) -> FleetMetrics:
         """Return a denormalized snapshot of the Fleet's usage."""
         return FleetMetrics(
-            calls_by_persona={
-                pid.value: n for pid, n in self._calls.items()
-            },
-            failures_by_persona={
-                pid.value: n for pid, n in self._failures.items()
-            },
-            cost_by_persona={
-                pid.value: c for pid, c in self._cost.items()
-            },
+            calls_by_persona={pid.value: n for pid, n in self._calls.items()},
+            failures_by_persona={pid.value: n for pid, n in self._failures.items()},
+            cost_by_persona={pid.value: c for pid, c in self._cost.items()},
             last_call_ts=self._last_call_ts,
         )
 
     def describe(self) -> list[str]:
         """Human-readable summary of the personas -- for the console."""
         return [
-            describe_persona(pid) for pid in (
+            describe_persona(pid)
+            for pid in (
                 PersonaId.JARVIS,
                 PersonaId.BATMAN,
                 PersonaId.ALFRED,

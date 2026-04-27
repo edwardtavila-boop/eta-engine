@@ -15,6 +15,7 @@ Coverage:
   * pipeline integration: registering the feature exposes it through
     compute_all but NEVER enters the 5-tuple to_confluence_inputs
 """
+
 from __future__ import annotations
 
 import random
@@ -34,12 +35,17 @@ from eta_engine.features.regime_hmm_feature import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def bar() -> BarData:
     return BarData(
         timestamp=datetime.now(UTC),
         symbol="MNQ",
-        open=20000.0, high=20010.0, low=19990.0, close=20005.0, volume=1000.0,
+        open=20000.0,
+        high=20010.0,
+        low=19990.0,
+        close=20005.0,
+        volume=1000.0,
     )
 
 
@@ -61,8 +67,8 @@ def _hmm_ctx(
 # Score mapping
 # ---------------------------------------------------------------------------
 
-class TestScoreMapping:
 
+class TestScoreMapping:
     def test_trending_state_scores_high(self, bar: BarData) -> None:
         ctx = _hmm_ctx(
             posterior=[0.1, 0.9],
@@ -111,8 +117,8 @@ class TestScoreMapping:
 # Graceful defaults
 # ---------------------------------------------------------------------------
 
-class TestGracefulDefaults:
 
+class TestGracefulDefaults:
     def test_missing_ctx_returns_neutral(self, bar: BarData) -> None:
         score = RegimeHMMFeature().compute(bar, {})
         assert score == 0.5
@@ -151,13 +157,11 @@ class TestGracefulDefaults:
 # build_hmm_ctx helper -- fits HMM, canonicalizes, produces ctx payload
 # ---------------------------------------------------------------------------
 
-class TestBuildHmmCtx:
 
+class TestBuildHmmCtx:
     def test_returns_regime_hmm_dict(self) -> None:
         rng = random.Random(101)
-        xs = [rng.gauss(0.0, 0.005) for _ in range(200)] + [
-            rng.gauss(0.0, 0.025) for _ in range(200)
-        ]
+        xs = [rng.gauss(0.0, 0.005) for _ in range(200)] + [rng.gauss(0.0, 0.025) for _ in range(200)]
         ctx = build_hmm_ctx(returns=xs, n_states=2, random_seed=7)
         assert "regime_hmm" in ctx
         payload = ctx["regime_hmm"]
@@ -169,9 +173,7 @@ class TestBuildHmmCtx:
     def test_canonical_ordering_by_variance(self) -> None:
         """State 0 should always be the lowest-variance regime."""
         rng = random.Random(103)
-        xs = [rng.gauss(0.0, 0.003) for _ in range(250)] + [
-            rng.gauss(0.0, 0.030) for _ in range(250)
-        ]
+        xs = [rng.gauss(0.0, 0.003) for _ in range(250)] + [rng.gauss(0.0, 0.030) for _ in range(250)]
         ctx_a = build_hmm_ctx(returns=xs, n_states=2, random_seed=1)
         ctx_b = build_hmm_ctx(returns=xs, n_states=2, random_seed=99)
         # Variances in ascending order in both fits
@@ -204,8 +206,8 @@ class TestBuildHmmCtx:
 # FeaturePipeline integration -- must NOT break the 5-tuple contract
 # ---------------------------------------------------------------------------
 
-class TestPipelineIntegration:
 
+class TestPipelineIntegration:
     def test_default_pipeline_does_not_include_hmm(self) -> None:
         """FeaturePipeline.default() is the untouched 5-feature pipeline."""
         p = FeaturePipeline.default()
@@ -213,7 +215,8 @@ class TestPipelineIntegration:
         assert "regime_hmm" not in p._features  # noqa: SLF001
 
     def test_opt_in_registration_exposes_via_compute_all(
-        self, bar: BarData,
+        self,
+        bar: BarData,
     ) -> None:
         p = FeaturePipeline.default()
         p.register(RegimeHMMFeature())
@@ -222,25 +225,38 @@ class TestPipelineIntegration:
             regime_labels=[RegimeType.LOW_VOL, RegimeType.HIGH_VOL],
         )
         # Rest of ctx must still cover the 5 defaults
-        ctx.update({
-            "daily_ema": [3000, 3100, 3200, 3300, 3400],
-            "h4_struct": "HH_HL", "bias": 1,
-            "atr_history": [20] * 10, "atr_current": 20.0,
-            "funding_history": [],
-            "onchain": {"whale_transfers": 0, "whale_transfers_baseline": 0,
-                        "exchange_netflow_usd": 0.0,
-                        "active_addresses": 0, "active_addresses_baseline": 0},
-            "sentiment": {"galaxy_score": 50.0, "alt_rank": 50,
-                          "social_volume": 0, "social_volume_baseline": 0,
-                          "fear_greed": 50},
-        })
+        ctx.update(
+            {
+                "daily_ema": [3000, 3100, 3200, 3300, 3400],
+                "h4_struct": "HH_HL",
+                "bias": 1,
+                "atr_history": [20] * 10,
+                "atr_current": 20.0,
+                "funding_history": [],
+                "onchain": {
+                    "whale_transfers": 0,
+                    "whale_transfers_baseline": 0,
+                    "exchange_netflow_usd": 0.0,
+                    "active_addresses": 0,
+                    "active_addresses_baseline": 0,
+                },
+                "sentiment": {
+                    "galaxy_score": 50.0,
+                    "alt_rank": 50,
+                    "social_volume": 0,
+                    "social_volume_baseline": 0,
+                    "fear_greed": 50,
+                },
+            }
+        )
         results = p.compute_all(bar, ctx)
         assert "regime_hmm" in results
         # HIGH_VOL dominant -> score low (~0.25 per mapping)
         assert results["regime_hmm"].normalized_score <= 0.35
 
     def test_confluence_tuple_remains_5_even_after_registration(
-        self, bar: BarData,
+        self,
+        bar: BarData,
     ) -> None:
         """to_confluence_inputs is still (trend, vol, funding, onchain, sentiment)."""
         p = FeaturePipeline.default()
@@ -252,15 +268,25 @@ class TestPipelineIntegration:
                 "n_states": 2,
             },
             "daily_ema": [3000, 3100, 3200, 3300, 3400],
-            "h4_struct": "HH_HL", "bias": 1,
-            "atr_history": [20] * 10, "atr_current": 20.0,
+            "h4_struct": "HH_HL",
+            "bias": 1,
+            "atr_history": [20] * 10,
+            "atr_current": 20.0,
             "funding_history": [],
-            "onchain": {"whale_transfers": 0, "whale_transfers_baseline": 0,
-                        "exchange_netflow_usd": 0.0,
-                        "active_addresses": 0, "active_addresses_baseline": 0},
-            "sentiment": {"galaxy_score": 50.0, "alt_rank": 50,
-                          "social_volume": 0, "social_volume_baseline": 0,
-                          "fear_greed": 50},
+            "onchain": {
+                "whale_transfers": 0,
+                "whale_transfers_baseline": 0,
+                "exchange_netflow_usd": 0.0,
+                "active_addresses": 0,
+                "active_addresses_baseline": 0,
+            },
+            "sentiment": {
+                "galaxy_score": 50.0,
+                "alt_rank": 50,
+                "social_volume": 0,
+                "social_volume_baseline": 0,
+                "fear_greed": 50,
+            },
         }
         results = p.compute_all(bar, ctx)
         tup = p.to_confluence_inputs(results)

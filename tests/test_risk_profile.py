@@ -34,6 +34,7 @@ from eta_engine.core.risk_profile import (
 # 1. Schema sanity
 # ---------------------------------------------------------------------------
 
+
 class TestProfileSchema:
     """Every profile is fully populated and its values are in valid ranges."""
 
@@ -50,8 +51,7 @@ class TestProfileSchema:
         # risk_engine.dynamic_position_size). Anything ≥ 5% would be
         # flagged in code review even if it's technically allowed.
         assert 0 < p.risk_per_trade_pct <= 0.05, (
-            f"{p.name}: risk_per_trade_pct={p.risk_per_trade_pct} "
-            "outside (0, 0.05]"
+            f"{p.name}: risk_per_trade_pct={p.risk_per_trade_pct} outside (0, 0.05]"
         )
         assert 0 < p.daily_loss_cap_pct <= 0.10
         assert 0 < p.trailing_dd_halt_pct <= 0.20
@@ -90,30 +90,19 @@ class TestProfileSchema:
 #    three profiles. Catches the "tweaked one knob without the others" bug.
 # ---------------------------------------------------------------------------
 
+
 class TestProfileMonotonicity:
     """Conservative < Balanced < Aggressive on every aggressiveness axis."""
 
     def test_risk_per_trade_increases(self) -> None:
-        assert (
-            CONSERVATIVE.risk_per_trade_pct
-            < BALANCED.risk_per_trade_pct
-            < AGGRESSIVE.risk_per_trade_pct
-        )
+        assert CONSERVATIVE.risk_per_trade_pct < BALANCED.risk_per_trade_pct < AGGRESSIVE.risk_per_trade_pct
 
     def test_daily_loss_cap_relaxes(self) -> None:
         # More aggressive ⇒ allows bigger daily loss before halting.
-        assert (
-            CONSERVATIVE.daily_loss_cap_pct
-            < BALANCED.daily_loss_cap_pct
-            < AGGRESSIVE.daily_loss_cap_pct
-        )
+        assert CONSERVATIVE.daily_loss_cap_pct < BALANCED.daily_loss_cap_pct < AGGRESSIVE.daily_loss_cap_pct
 
     def test_trailing_dd_halt_relaxes(self) -> None:
-        assert (
-            CONSERVATIVE.trailing_dd_halt_pct
-            < BALANCED.trailing_dd_halt_pct
-            < AGGRESSIVE.trailing_dd_halt_pct
-        )
+        assert CONSERVATIVE.trailing_dd_halt_pct < BALANCED.trailing_dd_halt_pct < AGGRESSIVE.trailing_dd_halt_pct
 
     def test_max_positions_increases(self) -> None:
         assert (
@@ -126,18 +115,12 @@ class TestProfileMonotonicity:
         # More aggressive ⇒ willing to ride through a longer losing
         # streak before stepping away.
         assert (
-            CONSERVATIVE.consecutive_loss_pause
-            <= BALANCED.consecutive_loss_pause
-            <= AGGRESSIVE.consecutive_loss_pause
+            CONSERVATIVE.consecutive_loss_pause <= BALANCED.consecutive_loss_pause <= AGGRESSIVE.consecutive_loss_pause
         )
 
     def test_confluence_threshold_loosens(self) -> None:
         # Conservative requires 7+/8 confluence; aggressive accepts 5+/8.
-        assert (
-            CONSERVATIVE.min_confluence_score
-            > BALANCED.min_confluence_score
-            > AGGRESSIVE.min_confluence_score
-        )
+        assert CONSERVATIVE.min_confluence_score > BALANCED.min_confluence_score > AGGRESSIVE.min_confluence_score
 
     def test_capital_floor_increases_with_aggression(self) -> None:
         # Aggressive needs MORE capital, not less — the larger drawdowns
@@ -153,16 +136,13 @@ class TestProfileMonotonicity:
         # This is the one knob whose direction is debatable, but our
         # rationale: aggressive profiles take more borderline signals,
         # which need more room to work.
-        assert (
-            CONSERVATIVE.stop_atr_multiple
-            < BALANCED.stop_atr_multiple
-            < AGGRESSIVE.stop_atr_multiple
-        )
+        assert CONSERVATIVE.stop_atr_multiple < BALANCED.stop_atr_multiple < AGGRESSIVE.stop_atr_multiple
 
 
 # ---------------------------------------------------------------------------
 # 3. Registry + lookup
 # ---------------------------------------------------------------------------
+
 
 class TestRegistry:
     def test_three_canonical_profiles_registered(self) -> None:
@@ -210,10 +190,17 @@ class TestRegistry:
         assert d["recommended_min_capital_usd"] == BALANCED.recommended_min_capital_usd
         # All public fields covered
         expected_keys = {
-            "name", "label", "description",
-            "risk_per_trade_pct", "max_concurrent_positions", "stop_atr_multiple",
-            "daily_loss_cap_pct", "trailing_dd_halt_pct", "consecutive_loss_pause",
+            "name",
+            "label",
+            "description",
+            "risk_per_trade_pct",
+            "max_concurrent_positions",
+            "stop_atr_multiple",
+            "daily_loss_cap_pct",
+            "trailing_dd_halt_pct",
+            "consecutive_loss_pause",
             "min_confluence_score",
-            "recommended_min_capital_usd", "recommended_capital_note",
+            "recommended_min_capital_usd",
+            "recommended_capital_note",
         }
         assert set(d.keys()) == expected_keys

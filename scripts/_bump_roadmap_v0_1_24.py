@@ -26,6 +26,7 @@ Changes
 
 Tests unchanged: 1019.
 """
+
 from __future__ import annotations
 
 import json

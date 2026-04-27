@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from eta_engine.scripts import weekly_review as mod
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture()
@@ -21,7 +24,7 @@ def fake_docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "harness_run": {
             "per_bot": {
                 "mnq": {"trades": 168, "expectancy_r": 0.473, "max_dd_pct": 6.83, "gate": "PASS"},
-                "nq":  {"trades": 140, "expectancy_r": 0.607, "max_dd_pct": 3.94, "gate": "PASS"},
+                "nq": {"trades": 140, "expectancy_r": 0.607, "max_dd_pct": 3.94, "gate": "PASS"},
                 "crypto_seed": {"trades": 161, "expectancy_r": 0.149, "max_dd_pct": 4.93, "gate": "FAIL"},
             },
         },
@@ -39,6 +42,7 @@ def fake_docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_pick_latest_spec(fake_docs: Path):
     import os
     import time
+
     # Create v2 newer than v1 with explicit mtime bump (filesystem may batch mtimes)
     v1 = fake_docs / "firm_spec_paper_results_v1.json"
     v2 = fake_docs / "firm_spec_paper_results_v2.json"

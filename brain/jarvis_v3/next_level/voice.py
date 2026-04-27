@@ -15,6 +15,7 @@ in ``scripts/`` and passes inbound messages here via ``handle_inbound``.
 
 No network calls -- all I/O is injected.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable  # noqa: TC003  (runtime use in __init__ sig)
@@ -29,48 +30,52 @@ from eta_engine.brain.jarvis_v3 import nl_query
 
 class Channel(StrEnum):
     TELEGRAM = "TELEGRAM"
-    SMS      = "SMS"
-    TTS      = "TTS"
-    CONSOLE  = "CONSOLE"
+    SMS = "SMS"
+    TTS = "TTS"
+    CONSOLE = "CONSOLE"
 
 
 class InboundMessage(BaseModel):
     """A message the operator sent to JARVIS."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:       datetime
-    channel:  Channel
-    sender:   str = "operator.edward"
-    text:     str = Field(min_length=1)
+    ts: datetime
+    channel: Channel
+    sender: str = "operator.edward"
+    text: str = Field(min_length=1)
 
 
 class OutboundMessage(BaseModel):
     """A message JARVIS is sending out."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:       datetime
-    channel:  Channel
+    ts: datetime
+    channel: Channel
     priority: str = Field(pattern="^(INFO|WARN|CRITICAL)$", default="INFO")
-    text:     str = Field(min_length=1)
+    text: str = Field(min_length=1)
     # If True, adapter should try backup channels (e.g. SMS) on failure.
     fanout_on_failure: bool = False
 
 
 class BriefingRequest(BaseModel):
     """Short structured request for a voice briefing."""
+
     model_config = ConfigDict(frozen=True)
 
     horizon_minutes: int = 30
-    max_tokens:      int = 200
+    max_tokens: int = 200
 
 
 class BriefingScript(BaseModel):
     """The 30s TTS briefing, deterministically assembled."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:        datetime
-    script:    str = Field(min_length=1)
-    tokens:    int = Field(ge=0)
+    ts: datetime
+    script: str = Field(min_length=1)
+    tokens: int = Field(ge=0)
     highlights: list[str]
 
 
@@ -96,7 +101,7 @@ class VoiceHub:
         text = msg.text.strip()
         for prefix in ("jarvis", "@jarvis", "/jarvis"):
             if text.lower().startswith(prefix):
-                text = text[len(prefix):].strip(": ").strip()
+                text = text[len(prefix) :].strip(": ").strip()
                 break
         result = nl_query.dispatch(self.audit_path, text)
         return OutboundMessage(
@@ -107,45 +112,44 @@ class VoiceHub:
         )
 
     def emit_critical(
-        self, code: str, body: str,
+        self,
+        code: str,
+        body: str,
         channels: tuple[Channel, ...] = (Channel.TELEGRAM, Channel.SMS),
     ) -> list[OutboundMessage]:
         """Build CRITICAL alert messages across multiple channels."""
         now = datetime.now(UTC)
         out: list[OutboundMessage] = []
         for ch in channels:
-            out.append(OutboundMessage(
-                ts=now, channel=ch, priority="CRITICAL",
-                text=f"[{code}] {body}",
-                fanout_on_failure=(ch == Channel.TELEGRAM),
-            ))
+            out.append(
+                OutboundMessage(
+                    ts=now,
+                    channel=ch,
+                    priority="CRITICAL",
+                    text=f"[{code}] {body}",
+                    fanout_on_failure=(ch == Channel.TELEGRAM),
+                )
+            )
         return out
 
     def build_briefing(
         self,
         *,
-        regime: str, session_phase: str, stress: float,
-        open_risk_r: float, daily_dd_pct: float,
+        regime: str,
+        session_phase: str,
+        stress: float,
+        open_risk_r: float,
+        daily_dd_pct: float,
         active_alerts: list[str] | None = None,
         top_subsystems: list[str] | None = None,
     ) -> BriefingScript:
         """Assemble a 30s-ish TTS briefing script."""
         lines: list[str] = []
         highlights: list[str] = []
-        lines.append(
-            f"JARVIS briefing, {datetime.now(UTC).strftime('%H:%M UTC')}."
-        )
-        lines.append(
-            f"Regime is {regime}, session phase {session_phase}."
-        )
-        stress_word = (
-            "low" if stress < 0.3 else
-            "moderate" if stress < 0.5 else
-            "elevated" if stress < 0.7 else "high"
-        )
-        lines.append(
-            f"Stress is {stress_word} at {stress:.0%}."
-        )
+        lines.append(f"JARVIS briefing, {datetime.now(UTC).strftime('%H:%M UTC')}.")
+        lines.append(f"Regime is {regime}, session phase {session_phase}.")
+        stress_word = "low" if stress < 0.3 else "moderate" if stress < 0.5 else "elevated" if stress < 0.7 else "high"
+        lines.append(f"Stress is {stress_word} at {stress:.0%}.")
         highlights.append(f"regime={regime}")
         highlights.append(f"stress={stress:.0%}")
         if daily_dd_pct > 0.01:

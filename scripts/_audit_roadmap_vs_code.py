@@ -49,6 +49,7 @@ This is intentionally a pure-read script -- it does NOT touch
 ``roadmap_state.json`` or any other state. It is a reporter and a
 CI gate, never a mutator.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,7 +71,7 @@ ROOT = Path(__file__).resolve().parent.parent
 class RequirementProbe:
     """One thing we need to find in the codebase to consider an R-item closed."""
 
-    layer: str   # SCAFFOLDED | WIRED | ROUTED | TESTED
+    layer: str  # SCAFFOLDED | WIRED | ROUTED | TESTED
     description: str
     test: Callable[[], bool]
     detail: str = ""
@@ -86,6 +87,7 @@ class RItem:
 # ---------------------------------------------------------------------------
 # Probe helpers
 # ---------------------------------------------------------------------------
+
 
 def _file_contains(path: Path, needle: str) -> bool:
     if not path.exists():
@@ -122,6 +124,7 @@ def _test_file_exists(name: str) -> bool:
 # ---------------------------------------------------------------------------
 # R-item registry
 # ---------------------------------------------------------------------------
+
 
 def _build_registry() -> list[RItem]:
     """The R-id -> requirements map. Edit when adding an R-item."""
@@ -215,12 +218,14 @@ def _build_registry() -> list[RItem]:
                 RequirementProbe(
                     "TESTED",
                     "validator has a unit test",
-                    lambda: _grep_codebase(
-                        "validate_apex_tick_cadence", exclude_tests=False,
-                    )
-                    and any(
-                        _file_contains(p, "validate_apex_tick_cadence")
-                        for p in (ROOT / "tests").glob("test_*.py")
+                    lambda: (
+                        _grep_codebase(
+                            "validate_apex_tick_cadence",
+                            exclude_tests=False,
+                        )
+                        and any(
+                            _file_contains(p, "validate_apex_tick_cadence") for p in (ROOT / "tests").glob("test_*.py")
+                        )
                     ),
                 ),
             ],
@@ -240,12 +245,15 @@ def _build_registry() -> list[RItem]:
                 RequirementProbe(
                     "WIRED",
                     "_amain instantiates ConsistencyGuard (direct or load_or_init)",
-                    lambda: _file_contains(
-                        ROOT / "scripts" / "run_eta_live.py",
-                        "ConsistencyGuard(",
-                    ) or _file_contains(
-                        ROOT / "scripts" / "run_eta_live.py",
-                        "ConsistencyGuard.load_or_init",
+                    lambda: (
+                        _file_contains(
+                            ROOT / "scripts" / "run_eta_live.py",
+                            "ConsistencyGuard(",
+                        )
+                        or _file_contains(
+                            ROOT / "scripts" / "run_eta_live.py",
+                            "ConsistencyGuard.load_or_init",
+                        )
                     ),
                 ),
                 RequirementProbe(
@@ -288,12 +296,14 @@ def _build_registry() -> list[RItem]:
                 RequirementProbe(
                     "TESTED",
                     "calendar test asserts CME holiday roll-forward",
-                    lambda: _grep_codebase(
-                        "apex_trading_day_iso_cme", exclude_tests=False,
-                    )
-                    and any(
-                        _file_contains(p, "apex_trading_day_iso_cme")
-                        for p in (ROOT / "tests").glob("test_*.py")
+                    lambda: (
+                        _grep_codebase(
+                            "apex_trading_day_iso_cme",
+                            exclude_tests=False,
+                        )
+                        and any(
+                            _file_contains(p, "apex_trading_day_iso_cme") for p in (ROOT / "tests").glob("test_*.py")
+                        )
                     ),
                 ),
             ],
@@ -304,6 +314,7 @@ def _build_registry() -> list[RItem]:
 # ---------------------------------------------------------------------------
 # Reporter
 # ---------------------------------------------------------------------------
+
 
 def _audit() -> tuple[int, list[dict]]:
     items = _build_registry()
@@ -319,12 +330,14 @@ def _audit() -> tuple[int, list[dict]]:
                 req.detail = f"probe raised: {exc!r}"
             if not ok:
                 failures += 1
-            result["checks"].append({
-                "layer": req.layer,
-                "description": req.description,
-                "ok": ok,
-                "detail": req.detail,
-            })
+            result["checks"].append(
+                {
+                    "layer": req.layer,
+                    "description": req.description,
+                    "ok": ok,
+                    "detail": req.detail,
+                }
+            )
         rows.append(result)
     return failures, rows
 
@@ -341,15 +354,17 @@ def _print_table(rows: list[dict]) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="emit machine-readable JSON instead of the human table",
     )
     p.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="(reserved) fail on any drift even when item is not yet "
-             "claimed CLOSED in the roadmap. Today every probe is a hard "
-             "gate so this flag is a no-op; reserved for future when "
-             "claimed-status is parsed from roadmap_state.json.",
+        "claimed CLOSED in the roadmap. Today every probe is a hard "
+        "gate so this flag is a no-op; reserved for future when "
+        "claimed-status is parsed from roadmap_state.json.",
     )
     args = p.parse_args(argv)
 
@@ -360,8 +375,10 @@ def main(argv: list[str] | None = None) -> int:
         _print_table(rows)
         print()
         if failures:
-            print(f"FAIL -- {failures} requirement(s) missing across "
-                  f"{sum(1 for r in rows if any(not c['ok'] for c in r['checks']))} R-item(s)")
+            print(
+                f"FAIL -- {failures} requirement(s) missing across "
+                f"{sum(1 for r in rows if any(not c['ok'] for c in r['checks']))} R-item(s)"
+            )
         else:
             print("OK -- every R-item requirement is satisfied in code")
 

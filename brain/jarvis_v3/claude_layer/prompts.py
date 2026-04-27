@@ -19,6 +19,7 @@ Each persona gets a role-specific prefix. The suffix is identical across
 personas in a single debate (the shared decision context), so the suffix
 hits the cache too after the first call.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -73,11 +74,13 @@ def _peak_block(persona: str) -> str:
     except ImportError:
         return ""
     try:
-        return "\n\n".join([
-            render_manual(persona),
-            render_mcp_block(persona),
-            render_protocols(),
-        ])
+        return "\n\n".join(
+            [
+                render_manual(persona),
+                render_mcp_block(persona),
+                render_protocols(),
+            ]
+        )
     except Exception:  # noqa: BLE001
         return ""
 
@@ -87,11 +90,10 @@ def _bull_prefix() -> str:
         "You are BULL, one of four internal JARVIS personas. You argue the "
         "PRO-TRADE side: why the edge is alive, why the regime supports "
         "entry, why standing aside leaves money on the table.\n\n"
-        + _DOCTRINE_BLOCK +
-        "\nYour job: find the strongest affirmative case given the "
+        + _DOCTRINE_BLOCK
+        + "\nYour job: find the strongest affirmative case given the "
         "structured context below. Be disciplined -- a weak bull case is "
-        "worse than no bull case; vote CONDITIONAL if the evidence is thin.\n"
-        + _OUTPUT_SCHEMA
+        "worse than no bull case; vote CONDITIONAL if the evidence is thin.\n" + _OUTPUT_SCHEMA
     )
 
 
@@ -100,11 +102,10 @@ def _bear_prefix() -> str:
         "You are BEAR, one of four internal JARVIS personas. You argue "
         "CAPITAL PRESERVATION: reasons to stand aside, reasons the regime "
         "is hostile, reasons the system should NOT add risk now.\n\n"
-        + _DOCTRINE_BLOCK +
-        "\nYour job: name the three strongest reasons to withhold approval. "
+        + _DOCTRINE_BLOCK
+        + "\nYour job: name the three strongest reasons to withhold approval. "
         "Doctrine CAPITAL_FIRST outranks everything else -- when in doubt, "
-        "vote DENY.\n"
-        + _OUTPUT_SCHEMA
+        "vote DENY.\n" + _OUTPUT_SCHEMA
     )
 
 
@@ -113,15 +114,14 @@ def _skeptic_prefix() -> str:
         "You are SKEPTIC, one of four internal JARVIS personas. You are the "
         "devil's advocate on BOTH sides: 'what's everyone missing? What "
         "would make a smart adversary laugh at this decision?'\n\n"
-        + _DOCTRINE_BLOCK +
-        "\nYour job: surface at least one CONCRETE blind spot in JARVIS's "
+        + _DOCTRINE_BLOCK
+        + "\nYour job: surface at least one CONCRETE blind spot in JARVIS's "
         "current assessment. Common blind spots include low-confidence "
         "regime classifier, stale macro feed, unusual session behavior, "
         "correlation you're not pricing in, operator fatigue, cache-induced "
         "staleness.\n\nDefault vote: DEFER if you find a blind spot that "
         "can't be cleared cheaply; CONDITIONAL if the decision is workable "
-        "with a cap.\n"
-        + _OUTPUT_SCHEMA
+        "with a cap.\n" + _OUTPUT_SCHEMA
     )
 
 
@@ -131,11 +131,10 @@ def _historian_prefix() -> str:
         "translate precedent data into a vote. You ONLY cite evidence that "
         "is explicitly in the provided context (sample_support, win_rate, "
         "mean_r, similar bucket outcomes). You do NOT invent analogues.\n\n"
-        + _DOCTRINE_BLOCK +
-        "\nYour job: if the precedent is strong (n>=20, wr>=0.55, "
+        + _DOCTRINE_BLOCK
+        + "\nYour job: if the precedent is strong (n>=20, wr>=0.55, "
         "mean_r>0.30), vote APPROVE. If precedent is strong but negative "
-        "(mean_r<-0.30), vote DENY. If n<20, vote CONDITIONAL and say so.\n"
-        + _OUTPUT_SCHEMA
+        "(mean_r<-0.30), vote DENY. If n<20, vote CONDITIONAL and say so.\n" + _OUTPUT_SCHEMA
     )
 
 
@@ -152,9 +151,9 @@ def _wrap_with_peak(persona: str, base: str) -> str:
 # BATMAN's internal voices). ROBIN + ALFRED + JARVIS have their own manuals
 # and are used through separate dispatch paths.
 PERSONA_PREFIXES: dict[str, str] = {
-    "BULL":      _wrap_with_peak("BATMAN", _bull_prefix()),
-    "BEAR":      _wrap_with_peak("BATMAN", _bear_prefix()),
-    "SKEPTIC":   _wrap_with_peak("BATMAN", _skeptic_prefix()),
+    "BULL": _wrap_with_peak("BATMAN", _bull_prefix()),
+    "BEAR": _wrap_with_peak("BATMAN", _bear_prefix()),
+    "SKEPTIC": _wrap_with_peak("BATMAN", _skeptic_prefix()),
     "HISTORIAN": _wrap_with_peak("BATMAN", _historian_prefix()),
 }
 
@@ -163,30 +162,32 @@ PERSONA_PREFIXES: dict[str, str] = {
 # Suffix composer -- the per-decision structured context
 # ---------------------------------------------------------------------------
 
+
 class StructuredContext(BaseModel):
     """The densest possible snapshot JARVIS hands to Claude."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:                  str
-    subsystem:           str
-    action:              str
-    regime:              str
-    regime_confidence:   float
-    session_phase:       str
-    stress_composite:    float
-    binding_constraint:  str
-    sizing_mult:         float
-    hours_until_event:   float | None
-    event_label:         str | None
-    r_at_risk:           float
-    daily_dd_pct:        float
-    portfolio_breach:    bool
-    doctrine_net_bias:   float
-    doctrine_tenets:     list[str] = Field(default_factory=list)
-    precedent_n:         int
-    precedent_win_rate:  float | None
-    precedent_mean_r:    float | None
-    anomaly_flags:       list[str] = Field(default_factory=list)
+    ts: str
+    subsystem: str
+    action: str
+    regime: str
+    regime_confidence: float
+    session_phase: str
+    stress_composite: float
+    binding_constraint: str
+    sizing_mult: float
+    hours_until_event: float | None
+    event_label: str | None
+    r_at_risk: float
+    daily_dd_pct: float
+    portfolio_breach: bool
+    doctrine_net_bias: float
+    doctrine_tenets: list[str] = Field(default_factory=list)
+    precedent_n: int
+    precedent_win_rate: float | None
+    precedent_mean_r: float | None
+    anomaly_flags: list[str] = Field(default_factory=list)
     operator_overrides_24h: int
     jarvis_baseline_verdict: str
 
@@ -226,7 +227,8 @@ def render_suffix(ctx: StructuredContext) -> str:
 
 
 def build_persona_prompts(
-    personas: list[str], context: StructuredContext,
+    personas: list[str],
+    context: StructuredContext,
 ) -> dict[str, dict[str, Any]]:
     """Build (prefix, suffix) pairs for a set of personas.
 
@@ -251,15 +253,17 @@ def build_persona_prompts(
 # Response parser -- cheap deterministic extraction
 # ---------------------------------------------------------------------------
 
+
 class ParsedVerdict(BaseModel):
     """Extracted verdict structure from Claude's text response."""
+
     model_config = ConfigDict(frozen=True)
 
-    vote:       str = "CONDITIONAL"
+    vote: str = "CONDITIONAL"
     confidence: float = 0.0
-    reasons:    list[str] = Field(default_factory=list)
-    evidence:   list[str] = Field(default_factory=list)
-    raw:        str
+    reasons: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    raw: str
 
 
 def parse_verdict(text: str) -> ParsedVerdict:
@@ -289,6 +293,9 @@ def parse_verdict(text: str) -> ParsedVerdict:
         elif ln.startswith("* "):
             evidence.append(ln[2:].strip())
     return ParsedVerdict(
-        vote=vote, confidence=round(conf, 4),
-        reasons=reasons[:3], evidence=evidence[:2], raw=text,
+        vote=vote,
+        confidence=round(conf, 4),
+        reasons=reasons[:3],
+        evidence=evidence[:2],
+        raw=text,
     )

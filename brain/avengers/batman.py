@@ -32,6 +32,7 @@ in an adversarial template, hands the prompts to the injected Executor,
 and returns the artifact unchanged. All tier / JARVIS gating is handled
 by the ``Persona`` base class.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar

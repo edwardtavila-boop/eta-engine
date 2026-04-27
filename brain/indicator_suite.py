@@ -20,6 +20,7 @@ Design contract
    module only decides *how much* each normalized score counts.
 5. TRANSITION / unknown regimes fall back to the scorer's default weights.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -109,6 +110,7 @@ _REGIME_PROFILES[RegimeType.TRANSITION] = _default_profile()
 # API
 # ---------------------------------------------------------------------------
 
+
 class RegimeWeightProfile(BaseModel):
     """Serializable view of one regime's weights."""
 
@@ -117,7 +119,8 @@ class RegimeWeightProfile(BaseModel):
         description="Feature -> weight. Sums to 10.0.",
     )
     total: float = Field(
-        10.0, description="Sum of all weights. Kept at 10.0 for scale consistency.",
+        10.0,
+        description="Sum of all weights. Kept at 10.0 for scale consistency.",
     )
 
 
@@ -143,6 +146,7 @@ def all_profiles() -> list[RegimeWeightProfile]:
 # ---------------------------------------------------------------------------
 # Scorer integration
 # ---------------------------------------------------------------------------
+
 
 def score_confluence_regime_aware(
     *,
@@ -200,7 +204,6 @@ def weighted_confluence_tuple(
     weights = weights_for(regime)
     total = sum(weights.values()) or 1.0
     return tuple(  # type: ignore[return-value]
-        (results[name].normalized_score if name in results else 0.0)
-        * (weights.get(name, 0.0) / total)
+        (results[name].normalized_score if name in results else 0.0) * (weights.get(name, 0.0) / total)
         for name in _FEATURES
     )

@@ -1,4 +1,5 @@
 """Tests for brain.jarvis_cost_attribution."""
+
 from __future__ import annotations
 
 import json
@@ -58,24 +59,18 @@ class TestCostEvent:
 class TestCostLedgerRecord:
     def test_record_looks_up_tier_from_category(self):
         ledger = CostLedger()
-        ev = ledger.record(
-            TaskCategory.CODE_REVIEW, input_tokens=100, output_tokens=50
-        )
+        ev = ledger.record(TaskCategory.CODE_REVIEW, input_tokens=100, output_tokens=50)
         assert ev.tier == ModelTier.SONNET
         assert ledger.events == (ev,)
 
     def test_record_architectural_gets_opus(self):
         ledger = CostLedger()
-        ev = ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=500, output_tokens=300
-        )
+        ev = ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=500, output_tokens=300)
         assert ev.tier == ModelTier.OPUS
 
     def test_record_grunt_gets_haiku(self):
         ledger = CostLedger()
-        ev = ledger.record(
-            TaskCategory.COMMIT_MESSAGE, input_tokens=80, output_tokens=40
-        )
+        ev = ledger.record(TaskCategory.COMMIT_MESSAGE, input_tokens=80, output_tokens=40)
         assert ev.tier == ModelTier.HAIKU
 
     def test_record_explicit_tier_overrides_lookup(self):
@@ -91,9 +86,7 @@ class TestCostLedgerRecord:
     def test_negative_tokens_rejected(self):
         ledger = CostLedger()
         with pytest.raises(ValueError):
-            ledger.record(
-                TaskCategory.CODE_REVIEW, input_tokens=-1, output_tokens=10
-            )
+            ledger.record(TaskCategory.CODE_REVIEW, input_tokens=-1, output_tokens=10)
 
 
 class TestRollupCounts:
@@ -114,26 +107,16 @@ class TestRollupCounts:
         """A single Opus call outweighs many Haiku calls."""
         ledger = CostLedger()
         # 1 Opus call: 1000 tokens * 5.0 = 5000 units
-        ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=500, output_tokens=500
-        )
+        ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=500, output_tokens=500)
         # 10 Haiku calls: 10 * 1000 tokens * 0.2 = 2000 units
         for _ in range(10):
-            ledger.record(
-                TaskCategory.LOG_PARSING, input_tokens=500, output_tokens=500
-            )
+            ledger.record(TaskCategory.LOG_PARSING, input_tokens=500, output_tokens=500)
         report = ledger.rollup()
         # ARCHITECTURAL bucket should be listed first in by_category
         assert report.by_category[0].bucket == TaskBucket.ARCHITECTURAL
         # And have higher units than the grunt work
-        arch_units = next(
-            b.sonnet_equiv_units for b in report.by_bucket
-            if b.bucket == TaskBucket.ARCHITECTURAL
-        )
-        grunt_units = next(
-            b.sonnet_equiv_units for b in report.by_bucket
-            if b.bucket == TaskBucket.GRUNT
-        )
+        arch_units = next(b.sonnet_equiv_units for b in report.by_bucket if b.bucket == TaskBucket.ARCHITECTURAL)
+        grunt_units = next(b.sonnet_equiv_units for b in report.by_bucket if b.bucket == TaskBucket.GRUNT)
         assert arch_units > grunt_units
 
 
@@ -165,25 +148,17 @@ class TestRollupWindow:
 class TestBucketPercentages:
     def test_bucket_pct_sums_to_100(self):
         ledger = CostLedger()
-        ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100
-        )
+        ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100)
         ledger.record(TaskCategory.DEBUG, input_tokens=100, output_tokens=100)
-        ledger.record(
-            TaskCategory.LOG_PARSING, input_tokens=100, output_tokens=100
-        )
+        ledger.record(TaskCategory.LOG_PARSING, input_tokens=100, output_tokens=100)
         report = ledger.rollup()
         total_pct = sum(b.pct_of_grand_total for b in report.by_bucket)
         assert total_pct == pytest.approx(100.0, abs=0.3)
 
     def test_bucket_order_is_arch_routine_grunt(self):
         ledger = CostLedger()
-        ledger.record(
-            TaskCategory.LOG_PARSING, input_tokens=100, output_tokens=100
-        )
-        ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100
-        )
+        ledger.record(TaskCategory.LOG_PARSING, input_tokens=100, output_tokens=100)
+        ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100)
         report = ledger.rollup()
         buckets = [b.bucket for b in report.by_bucket]
         assert buckets == [
@@ -218,9 +193,7 @@ class TestWeeklyReport:
 class TestRenderMarkdown:
     def test_header_and_bucket_sections_present(self):
         ledger = CostLedger()
-        ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100
-        )
+        ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100)
         md = render_markdown(ledger.rollup())
         assert "# EVOLUTIONARY TRADING ALGO // JARVIS Cost Telemetry" in md
         assert "## Bucket summary" in md
@@ -235,9 +208,7 @@ class TestRenderMarkdown:
 class TestWriteReport:
     def test_writes_markdown(self, tmp_path: Path):
         ledger = CostLedger()
-        ledger.record(
-            TaskCategory.CODE_REVIEW, input_tokens=100, output_tokens=50
-        )
+        ledger.record(TaskCategory.CODE_REVIEW, input_tokens=100, output_tokens=50)
         out = tmp_path / "cost.md"
         written = write_report(ledger.rollup(), out)
         assert written.exists()
@@ -245,13 +216,9 @@ class TestWriteReport:
 
     def test_writes_json_sidecar(self, tmp_path: Path):
         ledger = CostLedger()
-        ledger.record(
-            TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100
-        )
+        ledger.record(TaskCategory.RED_TEAM_SCORING, input_tokens=100, output_tokens=100)
         out = tmp_path / "cost.md"
         write_report(ledger.rollup(), out, also_json=True)
         payload = json.loads(out.with_suffix(".json").read_text())
         assert payload["n_events"] == 1
-        assert any(
-            b["bucket"] == "architectural" for b in payload["by_bucket"]
-        )
+        assert any(b["bucket"] == "architectural" for b in payload["by_bucket"])

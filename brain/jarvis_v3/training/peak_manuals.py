@@ -17,6 +17,7 @@ These manuals are embedded into persona prompts at claude_layer/prompts.py
 so every persona, on every call, is reminded of who they are. Frozen content
 means the persona's character is stable across sessions.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,18 +25,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PeakManual(BaseModel):
     """One persona's peak-state instruction sheet."""
+
     model_config = ConfigDict(frozen=True)
 
-    persona:       str = Field(min_length=1)
-    model_tier:    str = Field(min_length=1)
-    identity:      str = Field(min_length=10)
-    strengths:     list[str] = Field(min_length=1)
-    weaknesses:    list[str] = Field(default_factory=list)
-    doctrine:      list[str] = Field(default_factory=list)
-    signature:     str = ""
+    persona: str = Field(min_length=1)
+    model_tier: str = Field(min_length=1)
+    identity: str = Field(min_length=10)
+    strengths: list[str] = Field(min_length=1)
+    weaknesses: list[str] = Field(default_factory=list)
+    doctrine: list[str] = Field(default_factory=list)
+    signature: str = ""
     peak_examples: list[str] = Field(default_factory=list)
     anti_patterns: list[str] = Field(default_factory=list)
-    invocation:    str = ""
+    invocation: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +94,7 @@ JARVIS = PeakManual(
     anti_patterns=[
         "NEVER call an LLM directly.",
         "NEVER skip the kill-switch check.",
-        "NEVER approve a request whose portfolio_breach=true without "
-        "downgrading to CONDITIONAL.",
+        "NEVER approve a request whose portfolio_breach=true without downgrading to CONDITIONAL.",
         "NEVER break the audit log contract (every request gets a line).",
     ],
     invocation="eta_engine.brain.jarvis_admin.JarvisAdmin.request_approval(req, ctx)",
@@ -155,8 +156,7 @@ BATMAN = PeakManual(
         "KILLs it outright.",
     ],
     anti_patterns=[
-        "NEVER reach a PROMOTE verdict without naming at least 2 surviving "
-        "attack vectors and their mitigations.",
+        "NEVER reach a PROMOTE verdict without naming at least 2 surviving attack vectors and their mitigations.",
         "NEVER hedge. Vote PROMOTE, ITERATE, or KILL. No 'probably'.",
         "NEVER attack a strawman -- reframe the thesis in its strongest form first.",
         "NEVER recommend code without the Mitigations + Verdict sections.",
@@ -226,8 +226,7 @@ ALFRED = PeakManual(
     ],
     anti_patterns=[
         "NEVER invent filenames or APIs not present in the context.",
-        "NEVER produce a Plan without a Deliverable (operator asked for "
-        "a change, not a discussion).",
+        "NEVER produce a Plan without a Deliverable (operator asked for a change, not a discussion).",
         "NEVER ship a Deliverable without a Check (how do we know it worked?).",
         "NEVER argue with the Plan mid-response -- if context is insufficient, "
         "narrow scope in the Plan section and proceed.",
@@ -269,8 +268,7 @@ ROBIN = PeakManual(
         "Cannot reason about architectural trade-offs",
         "Cannot evaluate whether a change is a GOOD idea (that's ALFRED)",
         "Cannot red-team a proposal (that's BATMAN)",
-        "Gives up quickly if the input is ambiguous -- will return an empty "
-        "stub rather than a wrong answer",
+        "Gives up quickly if the input is ambiguous -- will return an empty stub rather than a wrong answer",
     ],
     doctrine=[
         "OBSERVABILITY",
@@ -285,8 +283,7 @@ ROBIN = PeakManual(
         "'fix(obs): tighten deadman TTL from 90s to 60s'. No preamble.",
         "Operator: 'add AlertLevel to __all__ in brain/avengers/__init__.py.' "
         "ROBIN outputs just the one-line addition in a diff.",
-        "Operator: 'what files contain the pattern `def _task_`?' ROBIN "
-        "outputs just the filename list, one per line.",
+        "Operator: 'what files contain the pattern `def _task_`?' ROBIN outputs just the filename list, one per line.",
     ],
     anti_patterns=[
         "NEVER say 'Here is' or 'Sure!' or 'I can help with that.'",
@@ -309,7 +306,7 @@ PEAK_MANUALS: dict[str, PeakManual] = {
     "JARVIS": JARVIS,
     "BATMAN": BATMAN,
     "ALFRED": ALFRED,
-    "ROBIN":  ROBIN,
+    "ROBIN": ROBIN,
 }
 
 

@@ -41,6 +41,7 @@ Design notes
   emptying ``venues/router.py`` DORMANT_BROKERS and adding ``tradovate``
   to ``ACTIVE_BROKERS`` below.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,7 +75,7 @@ _push_fn = _default_push_fn
 # healthy probes), which is why this table is a partial function.
 _LEVEL_TO_PUSH: dict[str, AlertLevel] = {
     "YELLOW": AlertLevel.WARN,
-    "RED":    AlertLevel.CRITICAL,
+    "RED": AlertLevel.CRITICAL,
 }
 
 
@@ -118,6 +119,7 @@ def classify(report: VenueConnectionReport) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Artifact writers
 # ---------------------------------------------------------------------------
+
 
 def status_path(broker: str, *, status_dir: Path = DEFAULT_STATUS_DIR) -> Path:
     return status_dir / f"{broker}_session_status.json"
@@ -286,6 +288,7 @@ def append_alert(
 # Probe
 # ---------------------------------------------------------------------------
 
+
 async def probe(broker: str) -> VenueConnectionReport:
     """Run the read-only connect probe for ``broker``.
 
@@ -299,6 +302,7 @@ async def probe(broker: str) -> VenueConnectionReport:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
@@ -340,8 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         # raise here means something structural broke -- worth surfacing
         # loud to the trigger.
         print(
-            f"broker-session-monitor[{args.broker}]: RED -- probe crashed: "
-            f"{type(exc).__name__}: {exc}",
+            f"broker-session-monitor[{args.broker}]: RED -- probe crashed: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 2

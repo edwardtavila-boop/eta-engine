@@ -87,37 +87,41 @@ def simulate(
     for w in range(1, weeks + 1):
         for b in (mnq, perp, grid):
             pnl, n = _week_pnl(
-                b.equity, b.trades_per_week, b.expectancy_r,
-                b.risk_per_trade_pct, b.win_rate,
+                b.equity,
+                b.trades_per_week,
+                b.expectancy_r,
+                b.risk_per_trade_pct,
+                b.win_rate,
             )
             b.equity = max(0.0, b.equity + pnl)
             b.trades_cum += n
             b.pnl_cum += pnl
-            b.history.append({"week": w, "equity": round(b.equity, 2),
-                              "pnl": round(pnl, 2), "trades": n})
+            b.history.append({"week": w, "equity": round(b.equity, 2), "pnl": round(pnl, 2), "trades": n})
         total = mnq.equity + perp.equity + grid.equity
         # Rebalance periodically back to targets
         if rebalance_every_weeks > 0 and w % rebalance_every_weeks == 0:
             mnq.equity = total * mnq.allocation_pct
             perp.equity = total * perp.allocation_pct
             grid.equity = total * grid.allocation_pct
-        timeline.append({
-            "week": w,
-            "total": round(total, 2),
-            "mnq": round(mnq.equity, 2),
-            "perp": round(perp.equity, 2),
-            "grid": round(grid.equity, 2),
-        })
+        timeline.append(
+            {
+                "week": w,
+                "total": round(total, 2),
+                "mnq": round(mnq.equity, 2),
+                "perp": round(perp.equity, 2),
+                "grid": round(grid.equity, 2),
+            }
+        )
     return mnq, perp, grid, timeline
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Apex Tier-A sweep allocation sim")
-    p.add_argument("--start", type=float, default=27_000.0,
-                   help="Starting equity post live-tiny promotion (default $27k)")
+    p.add_argument(
+        "--start", type=float, default=27_000.0, help="Starting equity post live-tiny promotion (default $27k)"
+    )
     p.add_argument("--weeks", type=int, default=12)
-    p.add_argument("--rebalance-weeks", type=int, default=4,
-                   help="Rebalance to 60/30/10 every N weeks (0 = never)")
+    p.add_argument("--rebalance-weeks", type=int, default=4, help="Rebalance to 60/30/10 every N weeks (0 = never)")
 
     # Allocation weights
     p.add_argument("--mnq-alloc", type=float, default=0.60)
@@ -149,27 +153,36 @@ def main() -> int:
         return 2
 
     mnq = Bucket(
-        name="mnq_compounder", allocation_pct=args.mnq_alloc,
-        trades_per_week=args.mnq_tpw, win_rate=args.mnq_wr,
-        expectancy_r=args.mnq_exp, risk_per_trade_pct=args.mnq_risk,
+        name="mnq_compounder",
+        allocation_pct=args.mnq_alloc,
+        trades_per_week=args.mnq_tpw,
+        win_rate=args.mnq_wr,
+        expectancy_r=args.mnq_exp,
+        risk_per_trade_pct=args.mnq_risk,
     )
     perp = Bucket(
-        name="perp_basket", allocation_pct=args.perp_alloc,
-        trades_per_week=args.perp_tpw, win_rate=args.perp_wr,
-        expectancy_r=args.perp_exp, risk_per_trade_pct=args.perp_risk,
+        name="perp_basket",
+        allocation_pct=args.perp_alloc,
+        trades_per_week=args.perp_tpw,
+        win_rate=args.perp_wr,
+        expectancy_r=args.perp_exp,
+        risk_per_trade_pct=args.perp_risk,
     )
     grid = Bucket(
-        name="grid_seed", allocation_pct=args.grid_alloc,
-        trades_per_week=args.grid_tpw, win_rate=args.grid_wr,
-        expectancy_r=args.grid_exp, risk_per_trade_pct=args.grid_risk,
+        name="grid_seed",
+        allocation_pct=args.grid_alloc,
+        trades_per_week=args.grid_tpw,
+        win_rate=args.grid_wr,
+        expectancy_r=args.grid_exp,
+        risk_per_trade_pct=args.grid_risk,
     )
 
     print("EVOLUTIONARY TRADING ALGO -- Tier-A Sweep Simulation")
     print("=" * 100)
     print(
         f"Start: ${args.start:,.0f}   Weeks: {args.weeks}   "
-        f"Allocations: MNQ={args.mnq_alloc*100:.0f}% "
-        f"PERP={args.perp_alloc*100:.0f}% GRID={args.grid_alloc*100:.0f}%",
+        f"Allocations: MNQ={args.mnq_alloc * 100:.0f}% "
+        f"PERP={args.perp_alloc * 100:.0f}% GRID={args.grid_alloc * 100:.0f}%",
     )
     print(
         f"Rebalance every {args.rebalance_weeks}w",
@@ -177,7 +190,12 @@ def main() -> int:
     print("-" * 100)
 
     mnq, perp, grid, timeline = simulate(
-        args.start, args.weeks, mnq, perp, grid, args.rebalance_weeks,
+        args.start,
+        args.weeks,
+        mnq,
+        perp,
+        grid,
+        args.rebalance_weeks,
     )
 
     # Per-week table
@@ -211,19 +229,38 @@ def main() -> int:
                 "grid_seed": args.grid_alloc,
             },
             "bucket_params": {
-                "mnq_compounder": {"tpw": args.mnq_tpw, "wr": args.mnq_wr,
-                                   "exp_r": args.mnq_exp, "risk": args.mnq_risk},
-                "perp_basket":    {"tpw": args.perp_tpw, "wr": args.perp_wr,
-                                   "exp_r": args.perp_exp, "risk": args.perp_risk},
-                "grid_seed":      {"tpw": args.grid_tpw, "wr": args.grid_wr,
-                                   "exp_r": args.grid_exp, "risk": args.grid_risk},
+                "mnq_compounder": {
+                    "tpw": args.mnq_tpw,
+                    "wr": args.mnq_wr,
+                    "exp_r": args.mnq_exp,
+                    "risk": args.mnq_risk,
+                },
+                "perp_basket": {
+                    "tpw": args.perp_tpw,
+                    "wr": args.perp_wr,
+                    "exp_r": args.perp_exp,
+                    "risk": args.perp_risk,
+                },
+                "grid_seed": {"tpw": args.grid_tpw, "wr": args.grid_wr, "exp_r": args.grid_exp, "risk": args.grid_risk},
             },
         },
         "timeline": timeline,
         "buckets_final": {
-            "mnq_compounder": {"equity": round(mnq.equity, 2), "trades": mnq.trades_cum, "pnl_cum": round(mnq.pnl_cum, 2)},
-            "perp_basket":    {"equity": round(perp.equity, 2), "trades": perp.trades_cum, "pnl_cum": round(perp.pnl_cum, 2)},
-            "grid_seed":      {"equity": round(grid.equity, 2), "trades": grid.trades_cum, "pnl_cum": round(grid.pnl_cum, 2)},
+            "mnq_compounder": {
+                "equity": round(mnq.equity, 2),
+                "trades": mnq.trades_cum,
+                "pnl_cum": round(mnq.pnl_cum, 2),
+            },
+            "perp_basket": {
+                "equity": round(perp.equity, 2),
+                "trades": perp.trades_cum,
+                "pnl_cum": round(perp.pnl_cum, 2),
+            },
+            "grid_seed": {
+                "equity": round(grid.equity, 2),
+                "trades": grid.trades_cum,
+                "pnl_cum": round(grid.pnl_cum, 2),
+            },
         },
         "total_final": round(final_total, 2),
         "total_return_pct": round(ret_pct, 4),
@@ -237,8 +274,8 @@ def main() -> int:
     lines.append("=" * 100)
     lines.append(
         f"Start: ${args.start:,.0f}   Weeks: {args.weeks}   "
-        f"Allocations: MNQ={args.mnq_alloc*100:.0f}% "
-        f"PERP={args.perp_alloc*100:.0f}% GRID={args.grid_alloc*100:.0f}%   "
+        f"Allocations: MNQ={args.mnq_alloc * 100:.0f}% "
+        f"PERP={args.perp_alloc * 100:.0f}% GRID={args.grid_alloc * 100:.0f}%   "
         f"Rebalance: {args.rebalance_weeks}w",
     )
     lines.append("-" * 100)

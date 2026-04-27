@@ -109,6 +109,7 @@ Expected state changes
     full ledger of R1..R4 disposition.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -150,9 +151,7 @@ def main() -> None:
             "was designed to prevent. v0.1.59 closes three and "
             "scaffolds the fourth."
         ),
-        "operator_directive_quote": (
-            "do all."
-        ),
+        "operator_directive_quote": ("do all."),
         "modules_added": [
             "eta_engine/core/events_calendar.py (R4: CME Globex "
             "session calendar, Good Friday via dateutil.easter + "
@@ -190,8 +189,7 @@ def main() -> None:
         ],
         "tests_added": [
             "eta_engine/tests/test_core_events_calendar.py (NEW, R4)",
-            "eta_engine/tests/test_consistency_guard.py "
-            "(R4 extensions for calendar rollover)",
+            "eta_engine/tests/test_consistency_guard.py (R4 extensions for calendar rollover)",
             "eta_engine/tests/test_trailing_dd_tracker.py "
             "(R3: 6 new classes -- TestAuditLogInitAndLoad, "
             "TestAuditLogFreezeAndBreach, "
@@ -199,12 +197,9 @@ def main() -> None:
             "TestResetAcknowledgment, "
             "TestAuditLogSurvivesStateDeletion, "
             "TestTrailingDDAuditLogUnit)",
-            "eta_engine/tests/test_kill_switch_runtime.py "
-            "(R2: TestValidateApexTickCadence, 12 tests)",
-            "eta_engine/tests/test_run_eta_live.py "
-            "(R2: TestLoadRuntimeConfigTickCadence, 4 tests)",
-            "eta_engine/tests/test_broker_equity_reconciler.py "
-            "(NEW, R1, 21 tests across 8 classes)",
+            "eta_engine/tests/test_kill_switch_runtime.py (R2: TestValidateApexTickCadence, 12 tests)",
+            "eta_engine/tests/test_run_eta_live.py (R2: TestLoadRuntimeConfigTickCadence, 4 tests)",
+            "eta_engine/tests/test_broker_equity_reconciler.py (NEW, R1, 21 tests across 8 classes)",
         ],
         "residuals_disposition": {
             "R1_logical_vs_broker_mtm": {
@@ -262,10 +257,7 @@ def main() -> None:
                     "load_runtime_config and raises "
                     "ApexTickCadenceError in live mode on violation."
                 ),
-                "tests": (
-                    "TestValidateApexTickCadence (12 tests) + "
-                    "TestLoadRuntimeConfigTickCadence (4 tests)."
-                ),
+                "tests": ("TestValidateApexTickCadence (12 tests) + TestLoadRuntimeConfigTickCadence (4 tests)."),
             },
             "R3_freeze_rule_reentrancy": {
                 "severity": "HIGH",
@@ -417,8 +409,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 

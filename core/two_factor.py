@@ -37,6 +37,7 @@ It only gates the APEX-side operations that move USD or crypto between
 accounts (cold-funnel transfers, staking withdrawals, strategy promotion
 to LIVE tier).
 """
+
 from __future__ import annotations
 
 import base64
@@ -75,12 +76,13 @@ def _hotp(secret_bytes: bytes, counter: int, digits: int = _TOTP_DIGITS) -> str:
         | ((digest[offset + 2] & 0xFF) << 8)
         | (digest[offset + 3] & 0xFF)
     )
-    code = truncated % (10 ** digits)
+    code = truncated % (10**digits)
     return str(code).zfill(digits)
 
 
-def compute_totp(secret_base32: str, now: float | None = None,
-                 step: int = _TOTP_STEP_SECONDS, digits: int = _TOTP_DIGITS) -> str:
+def compute_totp(
+    secret_base32: str, now: float | None = None, step: int = _TOTP_STEP_SECONDS, digits: int = _TOTP_DIGITS
+) -> str:
     """Compute the current TOTP code for a base32-encoded shared secret."""
     if now is None:
         now = time.time()
@@ -88,9 +90,14 @@ def compute_totp(secret_base32: str, now: float | None = None,
     return _hotp(_b32decode_padded(secret_base32), counter, digits=digits)
 
 
-def verify_totp(secret_base32: str, code: str, now: float | None = None,
-                window: int = 1, step: int = _TOTP_STEP_SECONDS,
-                digits: int = _TOTP_DIGITS) -> bool:
+def verify_totp(
+    secret_base32: str,
+    code: str,
+    now: float | None = None,
+    window: int = 1,
+    step: int = _TOTP_STEP_SECONDS,
+    digits: int = _TOTP_DIGITS,
+) -> bool:
     """Verify a TOTP code against a +/- window of step intervals.
 
     ``window=1`` (default) tolerates 30s clock drift (previous + current +
@@ -124,6 +131,7 @@ def generate_base32_secret(n_bytes: int = 20) -> str:
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
 
 class TotpSecret(BaseModel):
     """Opaque wrapper. ``str()`` redacts."""
@@ -182,6 +190,7 @@ class SecurityRegistry(BaseModel):
 # Gate
 # ---------------------------------------------------------------------------
 
+
 class TwoFactorRequiredError(Exception):
     """Raised when a gated cold-wallet op is attempted without a claim."""
 
@@ -196,14 +205,16 @@ TwoFactorRequired = TwoFactorRequiredError
 TwoFactorFailed = TwoFactorFailedError
 
 
-_COLD_WALLET_OPS: frozenset[str] = frozenset({
-    "withdraw_cold",
-    "stake_withdraw",
-    "cross_wallet_transfer",
-    "promote_strategy_to_live",
-    "register_new_api_key",
-    "disable_kill_switch",
-})
+_COLD_WALLET_OPS: frozenset[str] = frozenset(
+    {
+        "withdraw_cold",
+        "stake_withdraw",
+        "cross_wallet_transfer",
+        "promote_strategy_to_live",
+        "register_new_api_key",
+        "disable_kill_switch",
+    }
+)
 
 
 def is_cold_wallet_op(op: str) -> bool:

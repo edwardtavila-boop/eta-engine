@@ -4,6 +4,7 @@ Auto-scaffolded by scripts/_test_scaffold.py -- the import smoke and
 the per-symbol smoke tests are boilerplate. Edit freely; the
 operator-specific edge cases belong here.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -19,6 +20,7 @@ def test_import_smoke() -> None:
 def test_staking_adapter_smoke() -> None:
     """``StakingAdapter`` instantiates with no args (or skips if it requires args)."""
     from eta_engine.staking.base import StakingAdapter
+
     try:
         obj = StakingAdapter()  # type: ignore[call-arg]
     except TypeError as e:

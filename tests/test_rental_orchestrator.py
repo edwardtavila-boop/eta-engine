@@ -203,6 +203,7 @@ def test_reconcile_replaces_stored_specs_on_tier_downgrade() -> None:
     # Simulate downgrade -> drop entitlement to STARTER (only BTC_SEED)
     from eta_engine.rental.tenancy import entitlement_from_tier
     from eta_engine.rental.tiers import STARTER as STARTER_TIER
+
     tenant.tier = RentalTier.STARTER
     tenant.entitlement = entitlement_from_tier(
         tenant_id=tenant.tenant_id,
@@ -244,13 +245,16 @@ def test_container_spec_is_frozen() -> None:
     tenant = _portfolio_tenant()
     spec = orch.plan(tenant)[0]
     import pytest
+
     with pytest.raises((AttributeError, TypeError)):
         spec.image = "malicious/image:latest"  # type: ignore[misc]
 
 
 def test_container_spec_defaults() -> None:
     spec = TenantContainerSpec(
-        tenant_id="t", sku=BotSku.BTC_SEED, tier=RentalTier.STARTER,
+        tenant_id="t",
+        sku=BotSku.BTC_SEED,
+        tier=RentalTier.STARTER,
     )
     assert spec.image == "evolutionarytradingalgo/bot:current"
     assert spec.restart_policy == "on-failure"

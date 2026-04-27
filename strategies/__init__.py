@@ -17,6 +17,7 @@ Design intent: every detector is a pure function of a list of bars.
 No I/O. No hidden state. That keeps them composable with the existing
 ``funnel.waterfall``, ``brain.jarvis_admin``, and the bot fleet.
 """
+
 from __future__ import annotations
 
 from eta_engine.strategies.models import (

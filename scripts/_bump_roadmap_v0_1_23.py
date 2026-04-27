@@ -11,6 +11,7 @@ Closes out P7_OPS (95% -> 100%). One task lands:
 
 Adds 29 tests (990 -> 1019).
 """
+
 from __future__ import annotations
 
 import json
@@ -79,13 +80,10 @@ def main() -> None:
             "degraded_counts_as_unhealthy": True,
         },
         "safety_guards": [
-            "Fast fail-over (3 probes) / slow fail-back (10 probes) "
-            "prevents flap",
+            "Fast fail-over (3 probes) / slow fail-back (10 probes) prevents flap",
             "Probe exceptions caught and recorded as DOWN snapshots",
-            "DNS switch exceptions caught; FailoverEvent.dns_error is "
-            "set but controller does not crash",
-            "secondary_degraded() signals blind-redundancy condition "
-            "for operator paging",
+            "DNS switch exceptions caught; FailoverEvent.dns_error is set but controller does not crash",
+            "secondary_degraded() signals blind-redundancy condition for operator paging",
             "FailoverPolicy validates thresholds are >= 1",
         ],
         "notes": (

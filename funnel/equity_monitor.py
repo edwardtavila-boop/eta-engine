@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 # Models
 # ---------------------------------------------------------------------------
 
+
 class BotEquity(BaseModel):
     """Snapshot of a single bot's equity state."""
 
@@ -41,6 +42,7 @@ class PortfolioState(BaseModel):
 # ---------------------------------------------------------------------------
 # Monitor
 # ---------------------------------------------------------------------------
+
 
 class EquityMonitor:
     """Tracks equity across the bot fleet in real time."""

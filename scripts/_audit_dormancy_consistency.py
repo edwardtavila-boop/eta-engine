@@ -36,6 +36,7 @@ Usage
     # Just print findings (default; exit 0 even if findings present).
     python -m eta_engine.scripts._audit_dormancy_consistency --report
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,89 +50,93 @@ ROOT = Path(__file__).resolve().parents[1]
 #: relative path (POSIX-style) under ``eta_engine/``. The exemption
 #: is per-file, not per-line; the auditor will not scan these files at
 #: all.
-ALLOWLIST: frozenset[str] = frozenset({
-    # The mandates themselves -- canonical references, mention Tradovate
-    # freely in their own discussion of the dormancy.
-    "memory/databento_mandate.md",
-    "memory/broker_dormancy_mandate.md",
-    # Historical sprint briefs / lineage docs -- frozen-in-time records
-    # of decisions, not operator-facing instructions.
-    "docs/sprint_closing_brief_20260424.md",
-    "docs/canonical_v1_verdict_full.md",
-    "docs/p9_real_data_verdict.md",
-    # Cross-regime / optimization analysis writeups -- historical record
-    # of cost assumptions used during a specific sweep, not live-routing
-    # instructions.
-    "docs/cross_regime",
-    # Latency-stress + analysis writeups -- assume-the-venue context,
-    # historical analysis. Not operationally load-bearing.
-    "docs/mnq_latency_stress.md",
-    "docs/latency_stress_mnq_only_v2_2_dow_thu.md",
-    "docs/tradingview_data_substitution.md",
-    # Architecture overview -- describes adapter slots, not active
-    # routing. The Tradovate adapter still ships; it just isn't routed.
-    "docs/ARCHITECTURE.md",
-    "docs/MNQ_ENGINE_BRIDGE.md",
-    # The live-launch runbook's Appendix A is the un-dormancy procedure
-    # itself; allowlisting the file would also skip the body, so we
-    # special-case it via the context-token "Appendix A" check (which
-    # the appendix's own header line carries). The file therefore is
-    # NOT in the allowlist; instead the Appendix A heading propagates
-    # dormancy-context across the rest of the appendix.
-    # Bump-script archive -- versioned narratives, frozen. Match both
-    # the archive subdirectory and any top-level bump scripts that
-    # haven't been moved yet (each is a one-shot from a v0.1.x
-    # release that we don't rewrite).
-    "scripts/_legacy_bumps",
-    "scripts/_bump_roadmap_v*.py",
-    # The auditor itself naturally mentions Tradovate.
-    "scripts/_audit_dormancy_consistency.py",
-    # Tradovate-specific tooling whose entire purpose is the dormancy
-    # un-dormancy procedure. These scripts exist to set up / authorize
-    # / monitor Tradovate; they are inherently Tradovate-keyed.
-    "scripts/setup_tradovate_secrets.py",
-    "scripts/authorize_tradovate.py",
-    "scripts/_tradovate_session_drift.py",
-    # connect_brokers exposes per-venue CLI flags (--tradovate-demo /
-    # --tradovate-live) for completeness; using those flags while
-    # dormant is the operator's call. Allowlist file-level since the
-    # flag-name strings are the only matches.
-    "scripts/connect_brokers.py",
-    # Historical / analysis scripts that reference Tradovate in
-    # context-only (cost assumptions, CSV format, comments) -- not
-    # live-routing instructions.
-    "scripts/optimize_confluence_params.py",
-    "scripts/slippage_stress_mnq.py",
-    "scripts/sweep_real_mnq.py",
-    "scripts/latency_stress_mnq.py",
-    "scripts/dual_data_collector.py",
-    "scripts/fetch_tradingview_bars.py",
-    "scripts/paper_run_harness.py",
-    "scripts/_jarvis_final_revision.py",
-    # live_vs_paper_drift parses a Tradovate fill CSV format; the
-    # CLI flag and parser stay regardless of dormancy.
-    "scripts/live_vs_paper_drift.py",
-    # mnq_live_supervisor exposes --tradovate-symbol; CLI flag-name
-    # stays through dormancy.
-    "scripts/mnq_live_supervisor.py",
-})
+ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # The mandates themselves -- canonical references, mention Tradovate
+        # freely in their own discussion of the dormancy.
+        "memory/databento_mandate.md",
+        "memory/broker_dormancy_mandate.md",
+        # Historical sprint briefs / lineage docs -- frozen-in-time records
+        # of decisions, not operator-facing instructions.
+        "docs/sprint_closing_brief_20260424.md",
+        "docs/canonical_v1_verdict_full.md",
+        "docs/p9_real_data_verdict.md",
+        # Cross-regime / optimization analysis writeups -- historical record
+        # of cost assumptions used during a specific sweep, not live-routing
+        # instructions.
+        "docs/cross_regime",
+        # Latency-stress + analysis writeups -- assume-the-venue context,
+        # historical analysis. Not operationally load-bearing.
+        "docs/mnq_latency_stress.md",
+        "docs/latency_stress_mnq_only_v2_2_dow_thu.md",
+        "docs/tradingview_data_substitution.md",
+        # Architecture overview -- describes adapter slots, not active
+        # routing. The Tradovate adapter still ships; it just isn't routed.
+        "docs/ARCHITECTURE.md",
+        "docs/MNQ_ENGINE_BRIDGE.md",
+        # The live-launch runbook's Appendix A is the un-dormancy procedure
+        # itself; allowlisting the file would also skip the body, so we
+        # special-case it via the context-token "Appendix A" check (which
+        # the appendix's own header line carries). The file therefore is
+        # NOT in the allowlist; instead the Appendix A heading propagates
+        # dormancy-context across the rest of the appendix.
+        # Bump-script archive -- versioned narratives, frozen. Match both
+        # the archive subdirectory and any top-level bump scripts that
+        # haven't been moved yet (each is a one-shot from a v0.1.x
+        # release that we don't rewrite).
+        "scripts/_legacy_bumps",
+        "scripts/_bump_roadmap_v*.py",
+        # The auditor itself naturally mentions Tradovate.
+        "scripts/_audit_dormancy_consistency.py",
+        # Tradovate-specific tooling whose entire purpose is the dormancy
+        # un-dormancy procedure. These scripts exist to set up / authorize
+        # / monitor Tradovate; they are inherently Tradovate-keyed.
+        "scripts/setup_tradovate_secrets.py",
+        "scripts/authorize_tradovate.py",
+        "scripts/_tradovate_session_drift.py",
+        # connect_brokers exposes per-venue CLI flags (--tradovate-demo /
+        # --tradovate-live) for completeness; using those flags while
+        # dormant is the operator's call. Allowlist file-level since the
+        # flag-name strings are the only matches.
+        "scripts/connect_brokers.py",
+        # Historical / analysis scripts that reference Tradovate in
+        # context-only (cost assumptions, CSV format, comments) -- not
+        # live-routing instructions.
+        "scripts/optimize_confluence_params.py",
+        "scripts/slippage_stress_mnq.py",
+        "scripts/sweep_real_mnq.py",
+        "scripts/latency_stress_mnq.py",
+        "scripts/dual_data_collector.py",
+        "scripts/fetch_tradingview_bars.py",
+        "scripts/paper_run_harness.py",
+        "scripts/_jarvis_final_revision.py",
+        # live_vs_paper_drift parses a Tradovate fill CSV format; the
+        # CLI flag and parser stay regardless of dormancy.
+        "scripts/live_vs_paper_drift.py",
+        # mnq_live_supervisor exposes --tradovate-symbol; CLI flag-name
+        # stays through dormancy.
+        "scripts/mnq_live_supervisor.py",
+    }
+)
 
 #: Words / phrases that, if they appear within ±CONTEXT_LINES of a
 #: Tradovate reference, mark the reference as dormancy-aware.
-DORMANCY_CONTEXT_TOKENS: frozenset[str] = frozenset({
-    "DORMANT",
-    "dormant",
-    "DORMANT_BROKERS",
-    "Appendix A",
-    "appendix-a",
-    "un-dormancy",
-    "un-dormants",
-    "un-dormanted",
-    "dormancy_mandate",
-    "dormancy mandate",
-    "dormancy banner",
-    "DORMANCY",
-})
+DORMANCY_CONTEXT_TOKENS: frozenset[str] = frozenset(
+    {
+        "DORMANT",
+        "dormant",
+        "DORMANT_BROKERS",
+        "Appendix A",
+        "appendix-a",
+        "un-dormancy",
+        "un-dormants",
+        "un-dormanted",
+        "dormancy_mandate",
+        "dormancy mandate",
+        "dormancy banner",
+        "DORMANCY",
+    }
+)
 
 #: How many lines above + below the matched line to scan for context.
 #: 5 was too narrow for markdown files where a section header (e.g.
@@ -147,6 +152,7 @@ _TRADOVATE_RE = re.compile(r"\btradovate\b", re.IGNORECASE)
 def _is_allowlisted(rel_path: str) -> bool:
     """Return True if any allowlist prefix or glob pattern matches."""
     import fnmatch as _fnmatch
+
     for entry in ALLOWLIST:
         if rel_path == entry or rel_path.startswith(entry + "/"):
             return True
@@ -225,8 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print(
-        f"dormancy_audit: {len(findings)} stale Tradovate reference(s) "
-        f"in operator-facing docs / scripts:",
+        f"dormancy_audit: {len(findings)} stale Tradovate reference(s) in operator-facing docs / scripts:",
     )
     for rel, line_no, text in findings:
         print(f"  {rel}:{line_no}: {text}")

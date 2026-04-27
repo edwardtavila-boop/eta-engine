@@ -23,6 +23,7 @@ Design
 No network I/O by default. A remote notifier that raises is caught, the
 failure is logged to the local file, and the loop continues.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,21 +50,23 @@ ALERTS_JOURNAL: Path = Path.home() / ".jarvis" / "alerts.jsonl"
 
 class AlertLevel(StrEnum):
     """Severity tiers. Maps to push priority in remote channels."""
-    INFO     = "INFO"
-    WARN     = "WARN"
+
+    INFO = "INFO"
+    WARN = "WARN"
     CRITICAL = "CRITICAL"
 
 
 class Alert(BaseModel):
     """One push payload. Serialized JSONL-style to the alerts log."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:       datetime = Field(default_factory=lambda: datetime.now(UTC))
-    level:    AlertLevel
-    title:    str = Field(min_length=1)
-    body:     str = ""
-    source:   str = "jarvis"
-    tags:     list[str] = Field(default_factory=list)
+    ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    level: AlertLevel
+    title: str = Field(min_length=1)
+    body: str = ""
+    source: str = "jarvis"
+    tags: list[str] = Field(default_factory=list)
 
 
 @runtime_checkable
@@ -81,8 +84,7 @@ class LocalFileNotifier:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(alert.model_dump(mode="json"),
-                                    default=str) + "\n")
+                fh.write(json.dumps(alert.model_dump(mode="json"), default=str) + "\n")
         except OSError as exc:
             logger.warning("LocalFileNotifier failed: %s", exc)
             return False
@@ -94,7 +96,7 @@ class PushoverNotifier:
 
     def __init__(self, token: str | None = None, user: str | None = None) -> None:
         self.token = token or os.environ.get("PUSHOVER_TOKEN", "")
-        self.user  = user  or os.environ.get("PUSHOVER_USER", "")
+        self.user = user or os.environ.get("PUSHOVER_USER", "")
 
     def configured(self) -> bool:
         return bool(self.token and self.user)
@@ -105,15 +107,14 @@ class PushoverNotifier:
         # Lazy import so the module loads even if ``requests`` isn't present.
         try:
             import urllib.request
+
             priority = {
-                AlertLevel.INFO:     -1,
-                AlertLevel.WARN:      0,
-                AlertLevel.CRITICAL:  1,
+                AlertLevel.INFO: -1,
+                AlertLevel.WARN: 0,
+                AlertLevel.CRITICAL: 1,
             }[alert.level]
             data = (
-                f"token={self.token}&user={self.user}"
-                f"&title={alert.title}&message={alert.body}"
-                f"&priority={priority}"
+                f"token={self.token}&user={self.user}&title={alert.title}&message={alert.body}&priority={priority}"
             ).encode()
             req = urllib.request.Request(  # noqa: S310 -- fixed https URL
                 "https://api.pushover.net/1/messages.json",
@@ -131,7 +132,7 @@ class TelegramNotifier:
 
     def __init__(self, token: str | None = None, chat: str | None = None) -> None:
         self.token = token or os.environ.get("TELEGRAM_TOKEN", "")
-        self.chat  = chat  or os.environ.get("TELEGRAM_CHAT", "")
+        self.chat = chat or os.environ.get("TELEGRAM_CHAT", "")
 
     def configured(self) -> bool:
         return bool(self.token and self.chat)
@@ -142,14 +143,19 @@ class TelegramNotifier:
         try:
             import urllib.parse
             import urllib.request
+
             text = f"[{alert.level.value}] {alert.title}\n{alert.body}"
-            params = urllib.parse.urlencode({
-                "chat_id": self.chat,
-                "text":    text,
-            }).encode("utf-8")
+            params = urllib.parse.urlencode(
+                {
+                    "chat_id": self.chat,
+                    "text": text,
+                }
+            ).encode("utf-8")
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
             with urllib.request.urlopen(  # noqa: S310 -- fixed https URL
-                url, data=params, timeout=5,
+                url,
+                data=params,
+                timeout=5,
             ) as resp:
                 return resp.status == 200
         except Exception as exc:  # noqa: BLE001 -- never crash caller
@@ -178,9 +184,13 @@ class PushBus:
         *,
         dedup_window_seconds: float = 600.0,
     ) -> None:
-        self._notifiers: list[Notifier] = list(notifiers) if notifiers else [
-            LocalFileNotifier(),
-        ]
+        self._notifiers: list[Notifier] = (
+            list(notifiers)
+            if notifiers
+            else [
+                LocalFileNotifier(),
+            ]
+        )
         self.dedup_window_seconds = max(0.0, dedup_window_seconds)
         # (level, title, source) -> last_dispatch_ts (UTC-aware)
         self._last_seen: dict[tuple[str, str, str], datetime] = {}
@@ -213,8 +223,11 @@ class PushBus:
         tags: list[str] | None = None,
     ) -> dict[str, bool]:
         alert = Alert(
-            level=level, title=title, body=body,
-            source=source, tags=tags or [],
+            level=level,
+            title=title,
+            body=body,
+            source=source,
+            tags=tags or [],
         )
         dup = self._is_duplicate(alert)
         results: dict[str, bool] = {}
@@ -261,12 +274,20 @@ def set_default_bus(bus: PushBus | None) -> None:
 
 
 def push(
-    level: AlertLevel, title: str, body: str = "",
-    *, source: str = "jarvis", tags: list[str] | None = None,
+    level: AlertLevel,
+    title: str,
+    body: str = "",
+    *,
+    source: str = "jarvis",
+    tags: list[str] | None = None,
 ) -> dict[str, bool]:
     """Top-level convenience: fire through the default bus."""
     return default_bus().push(
-        level, title, body, source=source, tags=tags,
+        level,
+        title,
+        body,
+        source=source,
+        tags=tags,
     )
 
 

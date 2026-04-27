@@ -66,6 +66,7 @@ answers. v0.1.38 will compose it with the existing
 ``WalkForwardEngine`` + ``DSR`` gate to graduate strategies from
 "compiled" to "calibrated" state.
 """
+
 from __future__ import annotations
 
 import json
@@ -94,8 +95,7 @@ def main() -> None:
         "timestamp_utc": now,
         "version": VERSION,
         "bundle_name": (
-            "BACKTEST HARNESS -- pure-replay driver for the 6 "
-            "AI-Optimized strategies with per-strategy stats"
+            "BACKTEST HARNESS -- pure-replay driver for the 6 AI-Optimized strategies with per-strategy stats"
         ),
         "theme": (
             "First calibration tool for the strategies package. "
@@ -109,18 +109,11 @@ def main() -> None:
             "scripts": ["scripts/_bump_roadmap_v0_1_36.py"],
         },
         "api_surface": {
-            "HarnessConfig": (
-                "warmup_bars=200, max_bars_per_trade=48, "
-                "slippage_bps=5.0, record_decisions=False"
-            ),
+            "HarnessConfig": ("warmup_bars=200, max_bars_per_trade=48, slippage_bps=5.0, record_decisions=False"),
             "run_harness": (
-                "(bars, asset, *, ctx_builder=None, config=None, "
-                "eligibility=None, registry=None) -> BacktestReport"
+                "(bars, asset, *, ctx_builder=None, config=None, eligibility=None, registry=None) -> BacktestReport"
             ),
-            "BacktestReport": (
-                "asset, total_bars, total_trades, trades, "
-                "stats_by_strategy, decisions (opt-in)"
-            ),
+            "BacktestReport": ("asset, total_bars, total_trades, trades, stats_by_strategy, decisions (opt-in)"),
             "StrategyBacktestStats": (
                 "strategy, n_trades, hit_rate, avg_r, total_r, "
                 "max_consecutive_losses, longest_trade_bars, "
@@ -213,11 +206,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/backtest_harness.py + 23 tests. "
-          "Calibration-ready replay driver for the 6 AI-Optimized "
-          "strategies.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/backtest_harness.py + 23 tests. "
+        "Calibration-ready replay driver for the 6 AI-Optimized "
+        "strategies."
+    )
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ Tests
 -----
 +123 new tests. Existing suite rolled forward.
 """
+
 from __future__ import annotations
 
 import json
@@ -97,16 +98,17 @@ def main() -> None:
             "docs/weekly_checklist_latest.{json,txt}."
         ),
         "jarvis_action_vocabulary": [
-            "TRADE", "STAND_ASIDE", "REDUCE", "REVIEW", "KILL",
+            "TRADE",
+            "STAND_ASIDE",
+            "REDUCE",
+            "REVIEW",
+            "KILL",
         ],
         "jarvis_priority_order": [
             "1. KILL   -- kill_switch OR daily_dd >= 5%",
-            "2. STAND_ASIDE -- macro event < 1h OR REQUIRE_ACK "
-                          "OR daily_dd >= 3%",
-            "3. REDUCE -- daily_dd >= 2% OR open_risk > 3R "
-                      "OR macro_bias = CRISIS",
-            "4. REVIEW -- overrides >= 3 OR regime flipped "
-                      "OR correlations_alert",
+            "2. STAND_ASIDE -- macro event < 1h OR REQUIRE_ACK OR daily_dd >= 3%",
+            "3. REDUCE -- daily_dd >= 2% OR open_risk > 3R OR macro_bias = CRISIS",
+            "4. REVIEW -- overrides >= 3 OR regime flipped OR correlations_alert",
             "5. TRADE  -- all gates green",
         ],
         "watchdog_policy": {
@@ -134,8 +136,12 @@ def main() -> None:
             "9 continuous_learning",
         ],
         "grading_bands": {
-            "A+": 0.95, "A": 0.85, "B": 0.75,
-            "C": 0.60, "D": 0.40, "F": 0.0,
+            "A+": 0.95,
+            "A": 0.85,
+            "B": 0.75,
+            "C": 0.60,
+            "D": 0.40,
+            "F": 0.0,
         },
         "new_test_files": [
             "tests/test_jarvis_context.py (25)",
@@ -168,10 +174,7 @@ def main() -> None:
         ],
         "command_center_integration": {
             "skill": "firm-tracker",
-            "artifact": (
-                ".claude/skills/firm-tracker/references/"
-                "artifact_template.jsx"
-            ),
+            "artifact": (".claude/skills/firm-tracker/references/artifact_template.jsx"),
             "changes": [
                 "Added JARVIS constant block (premarket + checklist + "
                 "monthly + bundle) with source-file mapping comment.",
@@ -180,12 +183,10 @@ def main() -> None:
                 "(Discipline/Equity/DD/OpenRisk/Overrides/Autopilot), "
                 "10-principles report card, context snapshot, bundle "
                 "status, monthly deep review.",
-                "Added jarvisActionColor helper (TRADE/STAND_ASIDE/"
-                "REDUCE/REVIEW/KILL -> pill color + hex).",
+                "Added jarvisActionColor helper (TRADE/STAND_ASIDE/REDUCE/REVIEW/KILL -> pill color + hex).",
                 "Added 'Jarvis' to TABS array (2nd tab).",
                 "Added JARVIS top-bar pill showing current action.",
-                "Command Center tab now shows Jarvis + Discipline "
-                "KPIs in an expanded 7-column KPI row.",
+                "Command Center tab now shows Jarvis + Discipline KPIs in an expanded 7-column KPI row.",
             ],
             "docs_sources_updated": [
                 "data_sources.md documents premarket_latest.json / "
@@ -196,7 +197,8 @@ def main() -> None:
     }
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to v0.1.25 at {now}")
     print(f"  tests_passing: {prev_tests} -> {new_tests} (+123)")

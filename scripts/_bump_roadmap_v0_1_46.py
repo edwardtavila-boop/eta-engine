@@ -138,6 +138,7 @@ PriorSuccessMetrics. Together those two bundles convert the bot
 from a mechanical executor into a self-questioning, self-evolving
 risk engine.
 """
+
 from __future__ import annotations
 
 import json
@@ -203,15 +204,9 @@ def main() -> None:
         },
         "artifacts_modified": {},
         "api_surface": {
-            "RegimeLabel": (
-                "StrEnum -- TRENDING / RANGING / TRANSITION / HIGH_VOL"
-            ),
-            "EquityBand": (
-                "StrEnum -- GROWTH / NEUTRAL / DRAWDOWN / CRITICAL"
-            ),
-            "SizeTier": (
-                "StrEnum -- CONVICTION / STANDARD / REDUCED / PROBE / SKIP"
-            ),
+            "RegimeLabel": ("StrEnum -- TRENDING / RANGING / TRANSITION / HIGH_VOL"),
+            "EquityBand": ("StrEnum -- GROWTH / NEUTRAL / DRAWDOWN / CRITICAL"),
+            "SizeTier": ("StrEnum -- CONVICTION / STANDARD / REDUCED / PROBE / SKIP"),
             "PriorSuccessMetrics": (
                 "frozen dataclass -- n_trades, hit_rate, expectancy_r, "
                 "avg_win_r, avg_loss_r, consecutive_losses, "
@@ -369,10 +364,7 @@ def main() -> None:
             "STANDARD_1x": {
                 "threshold_total_score": 0.15,
                 "multiplier": 1.0,
-                "rationale": (
-                    "Baseline tradeable setup. Meets gate but "
-                    "doesn't earn size bonus."
-                ),
+                "rationale": ("Baseline tradeable setup. Meets gate but doesn't earn size bonus."),
             },
             "REDUCED_0_5x": {
                 "threshold_total_score": -0.10,
@@ -386,10 +378,7 @@ def main() -> None:
             "PROBE_0_25x": {
                 "threshold_total_score": -0.35,
                 "multiplier": 0.25,
-                "rationale": (
-                    "Uncertain conditions, but still worth a probe "
-                    "to feel the market. Floor 0.01% risk."
-                ),
+                "rationale": ("Uncertain conditions, but still worth a probe to feel the market. Floor 0.01% risk."),
             },
             "SKIP_0x": {
                 "threshold_total_score": "below -0.35",
@@ -421,14 +410,11 @@ def main() -> None:
                 "sniper_shot_path: regime TRENDING + confluence "
                 "high + htf aligned + prior winning + GROWTH band -> "
                 "CONVICTION 3.0x",
-                "risk_off_path: kill_switch_active -> SKIP "
-                "regardless of axis scores",
+                "risk_off_path: kill_switch_active -> SKIP regardless of axis scores",
                 "critical_drawdown_suppresses_conviction: CRITICAL "
                 "band can veto a high-confluence trade into "
                 "REDUCED/PROBE",
-                "losing_streak_downsizes: 3 consecutive_losses + "
-                "negative expectancy -> REDUCED/PROBE on next "
-                "setup",
+                "losing_streak_downsizes: 3 consecutive_losses + negative expectancy -> REDUCED/PROBE on next setup",
                 "safety_bounds_clamp: max_risk_pct=5.00 caps "
                 "conviction trades even if the policy multiplier "
                 "tries to push higher",
@@ -502,13 +488,14 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/adaptive_sizing.py pure-function "
-          "sizer + 49 tests. Tier-based multipliers wire the Apex "
-          "'sniper shot when odds stacked, probe/skip when "
-          "uncertain' thesis. Self-evolving via "
-          "PriorSuccessMetrics feedback.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/adaptive_sizing.py pure-function "
+        "sizer + 49 tests. Tier-based multipliers wire the Apex "
+        "'sniper shot when odds stacked, probe/skip when "
+        "uncertain' thesis. Self-evolving via "
+        "PriorSuccessMetrics feedback."
+    )
 
 
 if __name__ == "__main__":

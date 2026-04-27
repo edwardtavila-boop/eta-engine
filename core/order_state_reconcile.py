@@ -26,6 +26,7 @@ Design
 * **Idempotent.** Running :meth:`reconcile` twice produces the same action
   set, so a retry after a partial recovery is safe.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -108,9 +109,7 @@ class ReconcileReport:
         return any(a.kind != ReconcileActionKind.NOOP for a in self.actions)
 
 
-_TERMINAL_STATES: frozenset[str] = frozenset(
-    {"FILLED", "CANCELLED", "REJECTED", "EXPIRED"}
-)
+_TERMINAL_STATES: frozenset[str] = frozenset({"FILLED", "CANCELLED", "REJECTED", "EXPIRED"})
 
 
 class OrderStateReconciler:
@@ -173,11 +172,7 @@ class OrderStateReconciler:
                         )
                     )
                     continue
-                kind = (
-                    ReconcileActionKind.MARK_CANCELLED
-                    if self.conservative
-                    else ReconcileActionKind.RESOLVE_MISSING
-                )
+                kind = ReconcileActionKind.MARK_CANCELLED if self.conservative else ReconcileActionKind.RESOLVE_MISSING
                 actions.append(
                     ReconcileAction(
                         kind=kind,
@@ -196,9 +191,7 @@ class OrderStateReconciler:
 
         return ReconcileReport(actions=tuple(actions))
 
-    def _reconcile_pair(
-        self, local_order: LocalOrder, venue_order: VenueOrder
-    ) -> ReconcileAction:
+    def _reconcile_pair(self, local_order: LocalOrder, venue_order: VenueOrder) -> ReconcileAction:
         coid = local_order.client_order_id
         local_status = local_order.status.upper()
         venue_status = venue_order.status.upper()

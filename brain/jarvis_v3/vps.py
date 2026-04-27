@@ -20,6 +20,7 @@ usual policy engine. Actual shell execution happens in the VPS driver
 
 Pure / no os.system. Only the driver runs shells.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -29,71 +30,73 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ServiceState(StrEnum):
-    RUNNING  = "RUNNING"
-    STOPPED  = "STOPPED"
-    FAILED   = "FAILED"
-    UNKNOWN  = "UNKNOWN"
+    RUNNING = "RUNNING"
+    STOPPED = "STOPPED"
+    FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
 
 
 class VPSServiceSpec(BaseModel):
     """Declarative description of a systemd-managed service."""
+
     model_config = ConfigDict(frozen=True)
 
-    name:        str = Field(min_length=1)
+    name: str = Field(min_length=1)
     description: str = ""
-    desired:     ServiceState = ServiceState.RUNNING
+    desired: ServiceState = ServiceState.RUNNING
     # Path glob to logs (for journalctl-style tail on alerts).
-    log_path:    str | None = None
+    log_path: str | None = None
     # Optional URL for HTTP health probe.
-    health_url:  str | None = None
+    health_url: str | None = None
 
 
 class VPSSnapshot(BaseModel):
     """A moment-in-time system capacity snapshot."""
+
     model_config = ConfigDict(frozen=True)
 
-    ts:             datetime
-    cpu_pct:        float = Field(ge=0.0, le=100.0)
-    mem_pct:        float = Field(ge=0.0, le=100.0)
-    disk_pct:       float = Field(ge=0.0, le=100.0)
-    load_1m:        float = Field(ge=0.0)
-    load_5m:        float = Field(ge=0.0)
-    load_15m:       float = Field(ge=0.0)
+    ts: datetime
+    cpu_pct: float = Field(ge=0.0, le=100.0)
+    mem_pct: float = Field(ge=0.0, le=100.0)
+    disk_pct: float = Field(ge=0.0, le=100.0)
+    load_1m: float = Field(ge=0.0)
+    load_5m: float = Field(ge=0.0)
+    load_15m: float = Field(ge=0.0)
     network_up_kbps: float = Field(ge=0.0, default=0.0)
     network_dn_kbps: float = Field(ge=0.0, default=0.0)
 
 
 class VPSActionType(StrEnum):
-    START     = "START"
-    STOP      = "STOP"
-    RESTART   = "RESTART"
-    RELOAD    = "RELOAD"
-    TAIL_LOG  = "TAIL_LOG"
+    START = "START"
+    STOP = "STOP"
+    RESTART = "RESTART"
+    RELOAD = "RELOAD"
+    TAIL_LOG = "TAIL_LOG"
     DISK_PRUNE = "DISK_PRUNE"
-    KILL_PID  = "KILL_PID"
+    KILL_PID = "KILL_PID"
 
 
 class VPSActionRequest(BaseModel):
     """A proposed VPS action. This object is handed to JarvisAdmin."""
+
     model_config = ConfigDict(frozen=True)
 
-    action:     VPSActionType
-    service:    str | None = None
-    pid:        int | None = None
-    extra:      dict[str, str] = Field(default_factory=dict)
-    rationale:  str = Field(min_length=1)
-    urgency:    str = Field(pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$",
-                            default="MEDIUM")
+    action: VPSActionType
+    service: str | None = None
+    pid: int | None = None
+    extra: dict[str, str] = Field(default_factory=dict)
+    rationale: str = Field(min_length=1)
+    urgency: str = Field(pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$", default="MEDIUM")
 
 
 class VPSHealthReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    ts:           datetime
-    services:     dict[str, str]   # service_name -> state
-    snapshot:     VPSSnapshot
-    alerts:       list[str] = Field(default_factory=list)
-    overall:      str  = Field(pattern="^(GREEN|YELLOW|RED)$")
+    ts: datetime
+    services: dict[str, str]  # service_name -> state
+    snapshot: VPSSnapshot
+    alerts: list[str] = Field(default_factory=list)
+    overall: str = Field(pattern="^(GREEN|YELLOW|RED)$")
     proposed_actions: list[VPSActionRequest] = Field(default_factory=list)
 
 
@@ -133,19 +136,23 @@ def assess_vps(
             )
             # Proposed action -- RESTART if failed, START if stopped-but-wanted
             if actual == ServiceState.FAILED:
-                proposed.append(VPSActionRequest(
-                    action=VPSActionType.RESTART,
-                    service=name,
-                    rationale=f"{name} in FAILED state; attempt restart",
-                    urgency="HIGH",
-                ))
+                proposed.append(
+                    VPSActionRequest(
+                        action=VPSActionType.RESTART,
+                        service=name,
+                        rationale=f"{name} in FAILED state; attempt restart",
+                        urgency="HIGH",
+                    )
+                )
             elif actual == ServiceState.STOPPED and spec.desired == ServiceState.RUNNING:
-                proposed.append(VPSActionRequest(
-                    action=VPSActionType.START,
-                    service=name,
-                    rationale=f"{name} stopped but should be running",
-                    urgency="HIGH",
-                ))
+                proposed.append(
+                    VPSActionRequest(
+                        action=VPSActionType.START,
+                        service=name,
+                        rationale=f"{name} stopped but should be running",
+                        urgency="HIGH",
+                    )
+                )
 
     # Capacity alerts
     if snapshot.cpu_pct >= CPU_CRIT:
@@ -158,11 +165,13 @@ def assess_vps(
         alerts.append(f"MEM {snapshot.mem_pct:.0f}% >= warn {MEM_WARN:.0f}%")
     if snapshot.disk_pct >= DISK_CRIT:
         alerts.append(f"DISK {snapshot.disk_pct:.0f}% >= critical {DISK_CRIT:.0f}%")
-        proposed.append(VPSActionRequest(
-            action=VPSActionType.DISK_PRUNE,
-            rationale=f"disk {snapshot.disk_pct:.0f}% -- prune old logs/caches",
-            urgency="CRITICAL",
-        ))
+        proposed.append(
+            VPSActionRequest(
+                action=VPSActionType.DISK_PRUNE,
+                rationale=f"disk {snapshot.disk_pct:.0f}% -- prune old logs/caches",
+                urgency="CRITICAL",
+            )
+        )
     elif snapshot.disk_pct >= DISK_WARN:
         alerts.append(f"DISK {snapshot.disk_pct:.0f}% >= warn {DISK_WARN:.0f}%")
 
@@ -213,10 +222,7 @@ DEFAULT_CATALOG: dict[str, VPSServiceSpec] = {
     ),
     "tradovate-md.service": VPSServiceSpec(
         name="tradovate-md.service",
-        description=(
-            "Tradovate market-data websocket self-capture "
-            "[DORMANT 2026-04-24 -- broker funding-blocked]"
-        ),
+        description=("Tradovate market-data websocket self-capture [DORMANT 2026-04-24 -- broker funding-blocked]"),
         desired=ServiceState.STOPPED,
     ),
     "trading-dashboard.service": VPSServiceSpec(

@@ -6,6 +6,7 @@ payloads MUST produce identical ``client_order_id`` values, so a
 post-reconnect retry resubmits the same id and the venue's existing
 duplicate-rejection mechanism kicks in.
 """
+
 from __future__ import annotations
 
 from eta_engine.scripts.live_supervisor import JarvisAwareRouter
@@ -57,10 +58,7 @@ class TestIdempotency:
     def test_coid_is_deterministic_across_runs(self) -> None:
         """The same request payload must always hash to the same coid
         -- this is what lets reconnect-replay logic dedupe at the venue."""
-        coids = {
-            JarvisAwareRouter._ensure_client_order_id(_req()).client_order_id
-            for _ in range(10)
-        }
+        coids = {JarvisAwareRouter._ensure_client_order_id(_req()).client_order_id for _ in range(10)}
         assert len(coids) == 1
 
 
@@ -143,7 +141,6 @@ class TestDistinctness:
 
 
 class TestEdgeCases:
-
     def test_market_order_with_no_price_hashes_cleanly(self) -> None:
         """Market orders pass price=None; the helper must handle that
         without crashing or producing a nonsensical hash."""

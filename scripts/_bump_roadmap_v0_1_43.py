@@ -89,6 +89,7 @@ OR seconds, whichever first). Curve-fit strategies drop out, fresh
 strategies re-enter, with no operator intervention -- the pipeline is
 fully closed.
 """
+
 from __future__ import annotations
 
 import json
@@ -141,28 +142,19 @@ def main() -> None:
                 "least one trigger must be set"
             ),
             "AllowlistScheduler": (
-                "(cache, trigger, clock=datetime.now(UTC))  -- ticks "
-                "the cache on a per-bar cadence"
+                "(cache, trigger, clock=datetime.now(UTC))  -- ticks the cache on a per-bar cadence"
             ),
             "AllowlistScheduler.tick": (
                 "(asset, bars, *, qualifier=None, **qualifier_kwargs) "
                 "-> AllowlistEntry | None  -- returns entry if refreshed"
             ),
             "AllowlistScheduler.force_refresh": (
-                "(asset, bars, ...)  -- bypass trigger; always "
-                "refreshes + updates bookkeeping"
+                "(asset, bars, ...)  -- bypass trigger; always refreshes + updates bookkeeping"
             ),
-            "AllowlistScheduler.last_refresh_at": (
-                "(asset) -> datetime | None"
-            ),
-            "AllowlistScheduler.last_refresh_bar_count": (
-                "(asset) -> int | None"
-            ),
+            "AllowlistScheduler.last_refresh_at": ("(asset) -> datetime | None"),
+            "AllowlistScheduler.last_refresh_bar_count": ("(asset) -> int | None"),
             "AllowlistScheduler.tracked_assets": "() -> tuple[str, ...]",
-            "AllowlistScheduler.reset": (
-                "(asset=None)  -- clear scheduler bookkeeping (cache "
-                "retained)"
-            ),
+            "AllowlistScheduler.reset": ("(asset=None)  -- clear scheduler bookkeeping (cache retained)"),
         },
         "design_notes": {
             "cheap_no_op_tick": (
@@ -270,11 +262,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
-    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-          f"({NEW_TESTS_ABS - prev_tests:+d})")
-    print("  shipped: strategies/allowlist_scheduler.py + 32 tests. "
-          "The OOS qualification loop is now self-driving via the "
-          "bot controller's per-bar tick path.")
+    print(f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})")
+    print(
+        "  shipped: strategies/allowlist_scheduler.py + 32 tests. "
+        "The OOS qualification loop is now self-driving via the "
+        "bot controller's per-bar tick path."
+    )
 
 
 if __name__ == "__main__":

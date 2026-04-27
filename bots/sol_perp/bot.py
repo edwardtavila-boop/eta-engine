@@ -129,11 +129,7 @@ class SolPerpBot(EthPerpBot):
             return signal
         if signal.type not in (SignalType.LONG, SignalType.SHORT):
             return signal
-        flipped_type = (
-            SignalType.SHORT
-            if signal.type is SignalType.LONG
-            else SignalType.LONG
-        )
+        flipped_type = SignalType.SHORT if signal.type is SignalType.LONG else SignalType.LONG
         meta = dict(signal.meta)
         meta["regime_overlay"] = "SOL_RANGING_FLIP"
         meta["regime_overlay_adx"] = round(float(bar.get("adx_14", 0.0)), 2)

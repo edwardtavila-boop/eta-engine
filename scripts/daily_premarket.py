@@ -28,6 +28,7 @@ fields expected by the corresponding pydantic model in
 If the inputs file is absent the script writes a stub with neutral defaults
 and exits 0, so cron / scheduler won't noisily alert on a missing feed.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,8 +58,11 @@ def _stub_context() -> JarvisContext:
     return build_snapshot(
         macro=MacroSnapshot(vix_level=None, macro_bias="neutral"),
         equity=EquitySnapshot(
-            account_equity=0.0, daily_pnl=0.0,
-            daily_drawdown_pct=0.0, open_positions=0, open_risk_r=0.0,
+            account_equity=0.0,
+            daily_pnl=0.0,
+            daily_drawdown_pct=0.0,
+            open_positions=0,
+            open_risk_r=0.0,
         ),
         regime=RegimeSnapshot(regime="UNKNOWN", confidence=0.5),
         journal=JournalSnapshot(),
@@ -98,8 +102,7 @@ def _render_text(ctx: JarvisContext) -> str:
     if ctx.stress_score is not None:
         lines.append("STRESS")
         lines.append(
-            f"  composite:   {ctx.stress_score.composite:.0%}"
-            f"   binding: {ctx.stress_score.binding_constraint}",
+            f"  composite:   {ctx.stress_score.composite:.0%}   binding: {ctx.stress_score.binding_constraint}",
         )
         for c in sorted(
             ctx.stress_score.components,
@@ -107,24 +110,20 @@ def _render_text(ctx: JarvisContext) -> str:
             reverse=True,
         ):
             lines.append(
-                f"    {c.name:<14}  raw={c.value:.2f}  "
-                f"w={c.weight:.2f}  ctr={c.contribution:.3f}  "
-                f"({c.note})",
+                f"    {c.name:<14}  raw={c.value:.2f}  w={c.weight:.2f}  ctr={c.contribution:.3f}  ({c.note})",
             )
         lines.append("")
     if ctx.sizing_hint is not None:
         lines.append("SIZING")
         lines.append(
-            f"  size_mult:   {ctx.sizing_hint.size_mult:.0%}"
-            f"   ({ctx.sizing_hint.reason})",
+            f"  size_mult:   {ctx.sizing_hint.size_mult:.0%}   ({ctx.sizing_hint.reason})",
         )
         lines.append("")
     if ctx.alerts:
         lines.append(f"ALERTS ({len(ctx.alerts)})")
         for a in ctx.alerts[:10]:  # top 10
             lines.append(
-                f"  [{a.level.value:<8}] {a.code:<28} "
-                f"sev={a.severity:.2f}  {a.message}",
+                f"  [{a.level.value:<8}] {a.code:<28} sev={a.severity:.2f}  {a.message}",
             )
         if len(ctx.alerts) > 10:
             lines.append(f"  ... +{len(ctx.alerts) - 10} more")
@@ -138,8 +137,7 @@ def _render_text(ctx: JarvisContext) -> str:
             f"   dd->KILL: {m.dd_to_kill * 100:+.2f}%",
         )
         lines.append(
-            f"  overrides->REVIEW: {m.overrides_to_review:+d}"
-            f"   open_risk->CAP:    {m.open_risk_to_cap_r:+.2f}R",
+            f"  overrides->REVIEW: {m.overrides_to_review:+d}   open_risk->CAP:    {m.open_risk_to_cap_r:+.2f}R",
         )
         lines.append("")
     if ctx.trajectory is not None and ctx.trajectory.samples > 0:
@@ -163,8 +161,7 @@ def _render_text(ctx: JarvisContext) -> str:
     # -- raw facts ----------------------------------------------------------
     lines.append("REGIME")
     lines.append(
-        f"  current:     {ctx.regime.regime} "
-        f"(conf {ctx.regime.confidence:.0%})",
+        f"  current:     {ctx.regime.regime} (conf {ctx.regime.confidence:.0%})",
     )
     if ctx.regime.previous_regime:
         lines.append(f"  previous:    {ctx.regime.previous_regime}")
@@ -227,7 +224,9 @@ def _write_outputs(ctx: JarvisContext, out_dir: Path) -> dict[str, Path]:
 
 
 def run(
-    *, inputs_path: Path = DEFAULT_INPUTS, out_dir: Path = DEFAULT_OUT_DIR,
+    *,
+    inputs_path: Path = DEFAULT_INPUTS,
+    out_dir: Path = DEFAULT_OUT_DIR,
 ) -> JarvisContext:
     ctx = _load_inputs(inputs_path) if inputs_path.exists() else _stub_context()
     _write_outputs(ctx, out_dir)
@@ -243,8 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     ctx = run(inputs_path=args.inputs_path, out_dir=args.out_dir)
-    sys.stdout.write(f"[premarket] {ctx.ts.isoformat()} -> "
-                     f"{ctx.suggestion.action} ({ctx.suggestion.reason})\n")
+    sys.stdout.write(f"[premarket] {ctx.ts.isoformat()} -> {ctx.suggestion.action} ({ctx.suggestion.reason})\n")
     return 0
 
 

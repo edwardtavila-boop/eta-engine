@@ -2,6 +2,7 @@
 Tests for brain/jarvis_v3/training/* -- peak manuals, skills catalog,
 MCP awareness, collaboration, eval harness, curriculum.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,8 +20,8 @@ from eta_engine.brain.jarvis_v3.training import (
 # peak_manuals
 # ---------------------------------------------------------------------------
 
-class TestPeakManuals:
 
+class TestPeakManuals:
     def test_all_four_personas_present(self):
         for p in ("JARVIS", "BATMAN", "ALFRED", "ROBIN"):
             assert p in peak_manuals.PEAK_MANUALS
@@ -54,26 +55,25 @@ class TestPeakManuals:
 # skills_catalog
 # ---------------------------------------------------------------------------
 
-class TestSkillsCatalog:
 
+class TestSkillsCatalog:
     def test_each_persona_has_skills(self):
         for p in ("BATMAN", "ALFRED", "ROBIN"):
             assert len(skills_catalog.skills_for(p)) >= 3
 
     def test_can_handle_known_skill(self):
         from eta_engine.brain.model_policy import TaskCategory
+
         assert skills_catalog.can_handle("BATMAN", TaskCategory.RED_TEAM_SCORING)
         assert skills_catalog.can_handle("ALFRED", TaskCategory.DOC_WRITING)
         assert skills_catalog.can_handle("ROBIN", TaskCategory.COMMIT_MESSAGE)
 
     def test_persona_routing(self):
         from eta_engine.brain.model_policy import TaskCategory
-        assert skills_catalog.persona_for_category(
-            TaskCategory.RED_TEAM_SCORING) == "BATMAN"
-        assert skills_catalog.persona_for_category(
-            TaskCategory.DOC_WRITING) == "ALFRED"
-        assert skills_catalog.persona_for_category(
-            TaskCategory.COMMIT_MESSAGE) == "ROBIN"
+
+        assert skills_catalog.persona_for_category(TaskCategory.RED_TEAM_SCORING) == "BATMAN"
+        assert skills_catalog.persona_for_category(TaskCategory.DOC_WRITING) == "ALFRED"
+        assert skills_catalog.persona_for_category(TaskCategory.COMMIT_MESSAGE) == "ROBIN"
 
     def test_categories_rollup(self):
         r = skills_catalog.categories_by_persona()
@@ -85,8 +85,8 @@ class TestSkillsCatalog:
 # mcp_awareness
 # ---------------------------------------------------------------------------
 
-class TestMCPAwareness:
 
+class TestMCPAwareness:
     def test_batman_has_pine_analyze(self):
         mcps = mcp_awareness.mcps_for("BATMAN")
         assert any(m.tool == "pine_analyze" for m in mcps)
@@ -95,8 +95,7 @@ class TestMCPAwareness:
         assert mcp_awareness.mcps_for("JARVIS") == []
 
     def test_robin_has_read_file(self):
-        assert any(m.tool == "read_file"
-                   for m in mcp_awareness.mcps_for("ROBIN"))
+        assert any(m.tool == "read_file" for m in mcp_awareness.mcps_for("ROBIN"))
 
     def test_render_mcp_block_non_empty(self):
         block = mcp_awareness.render_mcp_block("ALFRED")
@@ -112,8 +111,8 @@ class TestMCPAwareness:
 # collaboration
 # ---------------------------------------------------------------------------
 
-class TestCollaboration:
 
+class TestCollaboration:
     def test_kill_switch_highest_priority(self):
         protos = collaboration.PROTOCOLS
         # The KILL_SWITCH protocol should be highest priority (10)
@@ -138,8 +137,8 @@ class TestCollaboration:
 # curriculum
 # ---------------------------------------------------------------------------
 
-class TestCurriculum:
 
+class TestCurriculum:
     def test_each_persona_has_exercises(self):
         counts = curriculum.count_per_persona()
         for p in ("BATMAN", "ALFRED", "ROBIN"):
@@ -148,8 +147,7 @@ class TestCurriculum:
     def test_exercises_have_skill_match(self):
         for ex in curriculum.EXERCISES:
             assert skills_catalog.can_handle(ex.persona, ex.skill), (
-                f"Exercise {ex.id} targets skill "
-                f"{ex.skill.value} but {ex.persona} doesn't list it"
+                f"Exercise {ex.id} targets skill {ex.skill.value} but {ex.persona} doesn't list it"
             )
 
     def test_tier_filter(self):
@@ -161,8 +159,8 @@ class TestCurriculum:
 # eval_harness
 # ---------------------------------------------------------------------------
 
-class TestEvalHarness:
 
+class TestEvalHarness:
     def test_grade_perfect_robin_response(self):
         r = eval_harness.grade_exercise(
             persona="ROBIN",
@@ -238,7 +236,11 @@ class TestEvalHarness:
     def test_aggregate_report_peak(self):
         results = [
             eval_harness.grade_exercise(
-                "ROBIN", "t1", "TEST", "fix(x): y", 50,
+                "ROBIN",
+                "t1",
+                "TEST",
+                "fix(x): y",
+                50,
             )
             for _ in range(5)
         ]
@@ -251,13 +253,14 @@ class TestEvalHarness:
 # integration with claude_layer.prompts
 # ---------------------------------------------------------------------------
 
-class TestPromptIntegration:
 
+class TestPromptIntegration:
     def test_persona_prompts_embed_peak_manual(self):
         """BULL/BEAR/SKEPTIC/HISTORIAN prefixes should now include BATMAN's peak manual."""
         from eta_engine.brain.jarvis_v3.claude_layer.prompts import (
             PERSONA_PREFIXES,
         )
+
         for name in ("BULL", "BEAR", "SKEPTIC", "HISTORIAN"):
             prefix = PERSONA_PREFIXES[name]
             assert "PEAK MANUAL" in prefix

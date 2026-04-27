@@ -14,6 +14,7 @@ from eta_engine.funnel.equity_monitor import BotEquity, PortfolioState
 # Market data fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def sample_bar() -> dict[str, float]:
     """Standard 5-min OHLCV bar for MNQ."""

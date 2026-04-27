@@ -1,4 +1,5 @@
 """Tests for core.principles_checklist."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -118,9 +119,7 @@ def test_build_all_no_gives_f() -> None:
 
 
 def test_build_mixed_gives_correct_score() -> None:
-    answers = [
-        ChecklistAnswer(index=i, yes=i < 7) for i in range(10)
-    ]
+    answers = [ChecklistAnswer(index=i, yes=i < 7) for i in range(10)]
     r = build_report(answers, period_label="x")
     assert r.score == 0.7
     assert r.letter_grade == "C"
@@ -135,10 +134,7 @@ def test_build_rejects_missing_index() -> None:
 
 
 def test_build_rejects_duplicate_index() -> None:
-    answers = (
-        [ChecklistAnswer(index=i, yes=True) for i in range(10)]
-        + [ChecklistAnswer(index=0, yes=False)]
-    )
+    answers = [ChecklistAnswer(index=i, yes=True) for i in range(10)] + [ChecklistAnswer(index=0, yes=False)]
     with pytest.raises(ValueError, match="duplicate"):
         build_report(answers, period_label="x")
 
@@ -151,18 +147,13 @@ def test_build_preserves_ts() -> None:
 
 def test_build_critical_gaps_slugs() -> None:
     # Fail exactly risk_discipline (index 7) and override_discipline (index 8)
-    answers = [
-        ChecklistAnswer(index=i, yes=i not in {7, 8})
-        for i in range(10)
-    ]
+    answers = [ChecklistAnswer(index=i, yes=i not in {7, 8}) for i in range(10)]
     r = build_report(answers, period_label="x")
     assert set(r.critical_gaps) == {"risk_discipline", "override_discipline"}
 
 
 def test_failed_slugs_helper() -> None:
-    answers = [
-        ChecklistAnswer(index=i, yes=i != 0) for i in range(10)
-    ]
+    answers = [ChecklistAnswer(index=i, yes=i != 0) for i in range(10)]
     r = build_report(answers, period_label="x")
     assert r.failed_slugs() == ["a_plus_only"]
 
@@ -170,6 +161,7 @@ def test_failed_slugs_helper() -> None:
 def test_report_keeps_order_of_answers() -> None:
     # Feed them in a shuffled order; the report should re-sort by index.
     import random
+
     src = _all_yes()
     random.shuffle(src)
     r = build_report(src, period_label="x")

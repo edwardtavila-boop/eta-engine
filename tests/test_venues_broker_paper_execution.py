@@ -11,6 +11,7 @@ Covers the v0.1.58 real-paper wiring:
     (764777976) without an env-supplied map, and picks PAXOS as the
     listing exchange for BTC/ETH spot.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,7 +38,6 @@ from eta_engine.venues.tastytrade import (
 # IBKR baked-in BTCUSD conid + PAXOS exchange
 # --------------------------------------------------------------------------- #
 class TestIbkrBakedInConids:
-
     def test_default_btcusd_conid(self) -> None:
         cfg = IbkrClientPortalConfig(account_id="DU1234567")
         assert cfg.conid_for("BTCUSD") == 764777976
@@ -64,7 +64,8 @@ class TestIbkrBakedInConids:
 
     def test_futures_fall_through_to_default_exchange(self) -> None:
         cfg = IbkrClientPortalConfig(
-            account_id="DU1234567", default_exchange="CME",
+            account_id="DU1234567",
+            default_exchange="CME",
         )
         assert cfg.exchange_for("MNQ") == "CME"
         assert cfg.exchange_for("NQ") == "CME"
@@ -80,7 +81,9 @@ class TestIbkrBakedInConids:
         cfg = IbkrClientPortalConfig(account_id="DU1234567")
         venue = IbkrClientPortalVenue(cfg)
         req = OrderRequest(
-            symbol="BTCUSD", side=Side.BUY, qty=1.0,
+            symbol="BTCUSD",
+            side=Side.BUY,
+            qty=1.0,
             order_type=OrderType.MARKET,
         )
         conid = cfg.conid_for("BTCUSD")
@@ -98,7 +101,9 @@ class TestIbkrBakedInConids:
 # --------------------------------------------------------------------------- #
 class _StubPostResponse:
     def __init__(
-        self, status_code: int, body: dict[str, Any] | None = None,
+        self,
+        status_code: int,
+        body: dict[str, Any] | None = None,
     ) -> None:
         self.status_code = status_code
         self._body = body or {}
@@ -132,7 +137,11 @@ class _StubAsyncClient:
         return None
 
     async def post(
-        self, url: str, *, json: dict[str, Any], headers: dict[str, str],
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str],
     ) -> _StubPostResponse:
         _ = headers
         self.post_calls.append((url, json))
@@ -141,7 +150,10 @@ class _StubAsyncClient:
         return self._post_response
 
     async def get(
-        self, url: str, *, headers: dict[str, str],
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
     ) -> _StubPostResponse:
         _ = headers
         self.get_calls.append(url)
@@ -150,7 +162,10 @@ class _StubAsyncClient:
         return self._get_response
 
     async def delete(
-        self, url: str, *, headers: dict[str, str],
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
     ) -> _StubPostResponse:
         _ = headers
         self.delete_calls.append(url)
@@ -167,7 +182,6 @@ def _tastytrade_venue() -> TastytradeVenue:
 
 
 class TestTastytradePaperExecution:
-
     def test_missing_creds_returns_rejected(self) -> None:
         venue = TastytradeVenue(TastytradeConfig())
         req = OrderRequest(symbol="BTCUSD", side=Side.BUY, qty=1.0)
@@ -176,7 +190,8 @@ class TestTastytradePaperExecution:
         assert "missing Tastytrade" in result.raw["reason"]
 
     def test_place_order_with_server_round_trip(
-        self, monkeypatch,  # type: ignore[no-untyped-def]
+        self,
+        monkeypatch,  # type: ignore[no-untyped-def]
     ) -> None:
         venue = _tastytrade_venue()
         server_body = {
@@ -193,10 +208,14 @@ class TestTastytradePaperExecution:
 
         # Inject stub into the venue's lazy httpx import.
         import httpx as _real_httpx  # noqa: PLC0415 -- ensure module exists
+
         monkeypatch.setattr(_real_httpx, "AsyncClient", lambda *a, **kw: stub)
 
         req = OrderRequest(
-            symbol="BTCUSD", side=Side.BUY, qty=1.0, order_type=OrderType.MARKET,
+            symbol="BTCUSD",
+            side=Side.BUY,
+            qty=1.0,
+            order_type=OrderType.MARKET,
         )
         result = asyncio.run(venue.place_order(req))
         assert result.order_id == "srv-12345"
@@ -208,11 +227,13 @@ class TestTastytradePaperExecution:
         assert posted_body["legs"][0]["symbol"] == "/BTCUSD"
 
     def test_place_order_degrades_on_transport_error(
-        self, monkeypatch,  # type: ignore[no-untyped-def]
+        self,
+        monkeypatch,  # type: ignore[no-untyped-def]
     ) -> None:
         venue = _tastytrade_venue()
         # httpx import fails -> _post_order returns None -> mock fallback.
         import builtins  # noqa: PLC0415
+
         orig_import = builtins.__import__
 
         def _blocked(name: str, *a: Any, **kw: Any) -> Any:
@@ -228,12 +249,14 @@ class TestTastytradePaperExecution:
         assert result.raw["note"] == "mock_fallback_no_transport_or_network_error"
 
     def test_place_order_degrades_on_non_2xx(
-        self, monkeypatch,  # type: ignore[no-untyped-def]
+        self,
+        monkeypatch,  # type: ignore[no-untyped-def]
     ) -> None:
         venue = _tastytrade_venue()
         # API returns 500 -> _post_order returns None -> mock fallback.
         stub = _StubAsyncClient(post_response=_StubPostResponse(500, {"error": "oops"}))
         import httpx as _real_httpx  # noqa: PLC0415
+
         monkeypatch.setattr(_real_httpx, "AsyncClient", lambda *a, **kw: stub)
 
         req = OrderRequest(symbol="BTCUSD", side=Side.BUY, qty=1.0)
@@ -242,7 +265,8 @@ class TestTastytradePaperExecution:
         assert "mock_fallback" in result.raw["note"]
 
     def test_get_order_status_reflects_server_filled(
-        self, monkeypatch,  # type: ignore[no-untyped-def]
+        self,
+        monkeypatch,  # type: ignore[no-untyped-def]
     ) -> None:
         venue = _tastytrade_venue()
         filled = {
@@ -257,6 +281,7 @@ class TestTastytradePaperExecution:
         }
         stub = _StubAsyncClient(get_response=_StubPostResponse(200, filled))
         import httpx as _real_httpx  # noqa: PLC0415
+
         monkeypatch.setattr(_real_httpx, "AsyncClient", lambda *a, **kw: stub)
 
         result = asyncio.run(venue.get_order_status("BTCUSD", "srv-999"))
@@ -266,19 +291,28 @@ class TestTastytradePaperExecution:
         assert result.avg_price == 91234.5
 
     def test_reconcile_batches_multiple_orders(
-        self, monkeypatch,  # type: ignore[no-untyped-def]
+        self,
+        monkeypatch,  # type: ignore[no-untyped-def]
     ) -> None:
         venue = _tastytrade_venue()
         # Stub returns FILLED for every GET
-        stub = _StubAsyncClient(get_response=_StubPostResponse(200, {
-            "data": {
-                "order": {
-                    "id": "srv-1", "status": "Filled",
-                    "filled-quantity": 1, "average-fill-price": 90000.0,
+        stub = _StubAsyncClient(
+            get_response=_StubPostResponse(
+                200,
+                {
+                    "data": {
+                        "order": {
+                            "id": "srv-1",
+                            "status": "Filled",
+                            "filled-quantity": 1,
+                            "average-fill-price": 90000.0,
+                        },
+                    },
                 },
-            },
-        }))
+            )
+        )
         import httpx as _real_httpx  # noqa: PLC0415
+
         monkeypatch.setattr(_real_httpx, "AsyncClient", lambda *a, **kw: stub)
 
         results = asyncio.run(venue.reconcile_orders(["a", "b", "c"]))
@@ -291,7 +325,6 @@ class TestTastytradePaperExecution:
 # Status mapping
 # --------------------------------------------------------------------------- #
 class TestTastytradeStatusMap:
-
     def test_filled(self) -> None:
         assert _map_tasty_status("Filled") == OrderStatus.FILLED
 

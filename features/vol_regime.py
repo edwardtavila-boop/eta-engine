@@ -7,10 +7,12 @@ We want live vol but not chaos — 30-70th pctile is the kill zone.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData
 from eta_engine.features.base import Feature
+
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData
 
 
 def atr_percentile(atrs: list[float], current: float) -> float:

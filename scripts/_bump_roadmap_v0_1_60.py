@@ -88,6 +88,7 @@ Expected state changes
     full bundle ledger.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -152,9 +153,7 @@ def main() -> None:
         "closure_surface_map": {
             "R2_tick_cadence": {
                 "runtime_enforcer": (
-                    "core/kill_switch_runtime.py::"
-                    "validate_apex_tick_cadence (live=True raises "
-                    "ApexTickCadenceError)"
+                    "core/kill_switch_runtime.py::validate_apex_tick_cadence (live=True raises ApexTickCadenceError)"
                 ),
                 "preflight_surface": (
                     "scripts/preflight.py::check_tick_cadence "
@@ -175,9 +174,7 @@ def main() -> None:
             },
             "R3_audit_log_fsync": {
                 "runtime_enforcer": (
-                    "core/trailing_dd_tracker.py::"
-                    "TrailingDDAuditLog.append "
-                    "(os.fsync per append; raises on OSError)"
+                    "core/trailing_dd_tracker.py::TrailingDDAuditLog.append (os.fsync per append; raises on OSError)"
                 ),
                 "preflight_surface": (
                     "scripts/preflight.py::check_audit_log_readiness "
@@ -266,9 +263,7 @@ def main() -> None:
         "tests_passing_after": NEW_TESTS_ABS,
         "tests_delta_full_regression": NEW_TESTS_ABS - prev_tests,
         "tests_added_in_this_bundle": PREFLIGHT_TESTS_ADDED,
-        "tests_delta_residual_from_other_modules": (
-            NEW_TESTS_ABS - prev_tests - PREFLIGHT_TESTS_ADDED
-        ),
+        "tests_delta_residual_from_other_modules": (NEW_TESTS_ABS - prev_tests - PREFLIGHT_TESTS_ADDED),
         "residual_delta_note": (
             "Full-regression delta > bundle-scope delta because "
             "several untracked test files in tests/ (added during "

@@ -22,6 +22,7 @@ CLI
     python -m eta_engine.scripts._chaos_drill_matrix
     # → writes reports/chaos_drill_matrix.md + returns exit code
 """
+
 from __future__ import annotations
 
 import argparse
@@ -181,20 +182,14 @@ def render_markdown(report: CoverageReport) -> str:
     lines: list[str] = []
     lines.append("# EVOLUTIONARY TRADING ALGO // Chaos Drill Coverage Matrix")
     lines.append("")
-    lines.append(
-        f"**Coverage:** {report.covered} / {report.total}  "
-        f"({report.coverage_pct:.1f}%)"
-    )
+    lines.append(f"**Coverage:** {report.covered} / {report.total}  ({report.coverage_pct:.1f}%)")
     lines.append("")
     lines.append("| Surface | Module | Drill | Status | Notes |")
     lines.append("|---|---|---|---|---|")
     for surface in report.details:
         status = "[PASS]" if surface.has_drill else "[GAP]"
         drill = surface.drill_id or "(missing)"
-        lines.append(
-            f"| {surface.surface} | `{surface.module_path}` | {drill} | "
-            f"{status} | {surface.notes} |"
-        )
+        lines.append(f"| {surface.surface} | `{surface.module_path}` | {drill} | {status} | {surface.notes} |")
     lines.append("")
     if report.missing:
         lines.append("## Missing drills (priority order)")
@@ -246,14 +241,11 @@ def main(argv: list[str] | None = None) -> int:
                 for s in report.details
             ],
         }
-        args.output.with_suffix(".json").write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
-        )
+        args.output.with_suffix(".json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     if args.fail_under and report.coverage_pct < args.fail_under:
         print(
-            f"chaos drill coverage {report.coverage_pct:.1f}% "
-            f"below threshold {args.fail_under:.1f}%",
+            f"chaos drill coverage {report.coverage_pct:.1f}% below threshold {args.fail_under:.1f}%",
             file=sys.stderr,
         )
         return 1

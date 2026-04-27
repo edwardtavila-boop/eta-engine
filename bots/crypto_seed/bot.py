@@ -13,6 +13,7 @@ Injectable dependencies
 * ``initial_grid_bounds`` — pre-computed ``(high, low)`` to seed the grid at
   construction. If omitted, the grid is empty until ``init_grid`` is called.
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,9 +61,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 SEED_CONFIG = BotConfig(
-    name="Crypto-Seed", symbol="BTCUSDT", tier=Tier.SEED, baseline_usd=2000.0,
-    starting_capital_usd=2000.0, max_leverage=3.0, risk_per_trade_pct=0.5,
-    daily_loss_cap_pct=3.0, max_dd_kill_pct=10.0, margin_mode=MarginMode.ISOLATED,
+    name="Crypto-Seed",
+    symbol="BTCUSDT",
+    tier=Tier.SEED,
+    baseline_usd=2000.0,
+    starting_capital_usd=2000.0,
+    max_leverage=3.0,
+    risk_per_trade_pct=0.5,
+    daily_loss_cap_pct=3.0,
+    max_dd_kill_pct=10.0,
+    margin_mode=MarginMode.ISOLATED,
 )
 
 
@@ -221,6 +229,7 @@ class CryptoSeedBot(BaseBot):
         """Ask JARVIS which model tier to use for a given task."""
         if self._jarvis is None:
             from eta_engine.brain.model_policy import ModelTier as _ModelTier
+
             return _ModelTier.SONNET
         return pick_llm_tier(
             self._jarvis,
@@ -239,7 +248,8 @@ class CryptoSeedBot(BaseBot):
         )
         if not allowed:
             logger.warning(
-                "Crypto Seed bot refused to start: %s", code,
+                "Crypto Seed bot refused to start: %s",
+                code,
             )
             self._record_event(
                 intent="crypto_seed_start_blocked",
@@ -249,9 +259,9 @@ class CryptoSeedBot(BaseBot):
             self.state.is_paused = True
             return
         logger.info(
-            "Crypto Seed bot starting | capital=$%.2f symbol=%s "
-            "grid_levels=%d router=%s jarvis=%s",
-            self.config.starting_capital_usd, self._venue_symbol,
+            "Crypto Seed bot starting | capital=$%.2f symbol=%s grid_levels=%d router=%s jarvis=%s",
+            self.config.starting_capital_usd,
+            self._venue_symbol,
             len(self.grid_state.levels),
             "yes" if self._router is not None else "no",
             "yes" if self._jarvis is not None else "no",
@@ -449,11 +459,10 @@ class CryptoSeedBot(BaseBot):
                     0.0,
                     min(  # noqa: E501 -- microstructure clamp formula kept inline
                         10.0,
-                        microstructure_score
-                        if microstructure_score is not None
-                        else self._last_microstructure_score,
+                        microstructure_score if microstructure_score is not None else self._last_microstructure_score,
                     ),
-                ) * 0.016,
+                )
+                * 0.016,
             ),
         )
         edge = max(
@@ -464,7 +473,8 @@ class CryptoSeedBot(BaseBot):
                 + max(
                     0.0,
                     min(10.0, pattern_edge_score if pattern_edge_score is not None else self._last_pattern_edge_score),
-                ) * 0.020,
+                )
+                * 0.020,
             ),
         )
         book_quality = max(
@@ -475,7 +485,8 @@ class CryptoSeedBot(BaseBot):
                 + max(
                     0.0,
                     min(10.0, order_book_quality if order_book_quality is not None else self._last_order_book_quality),
-                ) * 0.016,
+                )
+                * 0.016,
             ),
         )
         quality_bucket_bias = self._profile_bias(
@@ -495,12 +506,20 @@ class CryptoSeedBot(BaseBot):
                         if order_book_freshness_score is not None
                         else self._last_order_book_freshness_score,
                     ),
-                ) * 0.012,
+                )
+                * 0.012,
             ),
         )
         combined = (
-            session_bias * timeframe_bias * session_timeframe_bias * spread_bias
-            * micro * edge * book_quality * freshness * quality_bucket_bias
+            session_bias
+            * timeframe_bias
+            * session_timeframe_bias
+            * spread_bias
+            * micro
+            * edge
+            * book_quality
+            * freshness
+            * quality_bucket_bias
         )
         return max(0.65, min(1.35, combined))
 
@@ -567,8 +586,16 @@ class CryptoSeedBot(BaseBot):
             ),
         )
         combined = (
-            5.0 * session_fit * timeframe_fit * session_timeframe_fit * micro_fit
-            * spread_fit * book_fit * depth_fit * freshness_fit * quality_fit
+            5.0
+            * session_fit
+            * timeframe_fit
+            * session_timeframe_fit
+            * micro_fit
+            * spread_fit
+            * book_fit
+            * depth_fit
+            * freshness_fit
+            * quality_fit
             * quality_bucket_fit
         )
         return max(0.0, min(10.0, combined))
@@ -694,9 +721,11 @@ class CryptoSeedBot(BaseBot):
             bar.get("order_book_venue") or bar.get("venue") or self._last_order_book_venue or "",
         )
         try:
-            self._last_order_book_depth = int(float(  # noqa: E501 -- one-line depth fallback chain
-                bar.get("order_book_depth") or self._last_order_book_depth or 0,
-            ))
+            self._last_order_book_depth = int(
+                float(  # noqa: E501 -- one-line depth fallback chain
+                    bar.get("order_book_depth") or self._last_order_book_depth or 0,
+                )
+            )
         except (TypeError, ValueError):
             self._last_order_book_depth = int(self._last_order_book_depth or 0)
         self._last_order_book_age_ms = float(  # noqa: E501 -- one-line age fallback chain
@@ -744,16 +773,20 @@ class CryptoSeedBot(BaseBot):
         self._last_microstructure_score = microstructure_score
         self._last_pattern_edge_score = pattern_edge_score
         self._last_session_size_bias = self._profile_bias(
-            "session_phase_size_bias", session_phase,
+            "session_phase_size_bias",
+            session_phase,
         )
         self._last_timeframe_size_bias = self._profile_bias(
-            "timeframe_size_bias", timeframe_label,
+            "timeframe_size_bias",
+            timeframe_label,
         )
         self._last_session_timeframe_size_bias = self._profile_bias(
-            "session_timeframe_size_bias", session_timeframe_key,
+            "session_timeframe_size_bias",
+            session_timeframe_key,
         )
         self._last_spread_size_bias = self._profile_bias(
-            "spread_regime_size_bias", spread_regime,
+            "spread_regime_size_bias",
+            spread_regime,
         )
         self._last_temporal_size_mult = self._temporal_size_mult(
             session_phase=session_phase,
@@ -813,22 +846,15 @@ class CryptoSeedBot(BaseBot):
         if self._as_float(enriched.get("avg_volume"), 0.0) <= 0.0 and volumes:
             enriched["avg_volume"] = statistics.fmean(volumes[-20:])
         if self._as_float(enriched.get("atr_14"), 0.0) <= 0.0 and closes:
-            ranges = [
-                abs(closes[idx] - closes[idx - 1])
-                for idx in range(1, len(closes))
-            ]
+            ranges = [abs(closes[idx] - closes[idx - 1]) for idx in range(1, len(closes))]
             if ranges:
                 enriched["atr_14"] = statistics.fmean(ranges[-14:])
         if self._as_float(enriched.get("avg_atr_50"), 0.0) <= 0.0 and closes:
-            ranges = [
-                abs(closes[idx] - closes[idx - 1])
-                for idx in range(1, len(closes))
-            ]
+            ranges = [abs(closes[idx] - closes[idx - 1]) for idx in range(1, len(closes))]
             if ranges:
                 enriched["avg_atr_50"] = statistics.fmean(ranges[-50:])
         if (
-            self._as_float(enriched.get("bb_upper"), 0.0) <= 0.0
-            or self._as_float(enriched.get("bb_lower"), 0.0) <= 0.0
+            self._as_float(enriched.get("bb_upper"), 0.0) <= 0.0 or self._as_float(enriched.get("bb_lower"), 0.0) <= 0.0
         ) and len(closes) >= 5:
             tail = closes[-20:]
             center = statistics.fmean(tail)
@@ -969,7 +995,7 @@ class CryptoSeedBot(BaseBot):
         if high <= low or n <= 0:
             return []
         r = (high / low) ** (1.0 / n)
-        return [low * (r ** i) for i in range(n + 1)]
+        return [low * (r**i) for i in range(n + 1)]
 
     def init_grid(self, price_high: float, price_low: float) -> None:
         """Set grid bounds and compute levels + per-level capital."""
@@ -1009,8 +1035,7 @@ class CryptoSeedBot(BaseBot):
     def _refresh_grid_snapshot(self, current_price: float) -> None:
         snapshot = self.manage_grid(current_price, self.grid_state)
         active_by_key = {
-            (float(order.price), self._coerce_side(order.side)): order
-            for order in self.grid_state.active_orders
+            (float(order.price), self._coerce_side(order.side)): order for order in self.grid_state.active_orders
         }
         for order in snapshot:
             previous = active_by_key.get((float(order.price), self._coerce_side(order.side)))
@@ -1048,9 +1073,13 @@ class CryptoSeedBot(BaseBot):
             return None
         session_phase = str(bar.get("session_phase", self._last_session_phase)).strip().upper() or "UNKNOWN"
         timeframe_minutes = self._as_float(bar.get("timeframe_minutes"), self._last_timeframe_minutes)
-        timeframe_label = str(
-            bar.get("timeframe_label", self._timeframe_label(timeframe_minutes)),
-        ).strip().upper()
+        timeframe_label = (
+            str(
+                bar.get("timeframe_label", self._timeframe_label(timeframe_minutes)),
+            )
+            .strip()
+            .upper()
+        )
         if timeframe_label == "UNKNOWN":
             timeframe_label = self._timeframe_label(timeframe_minutes)
         session_timeframe_key = self._session_timeframe_key(session_phase, timeframe_label)

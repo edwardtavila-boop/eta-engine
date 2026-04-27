@@ -94,6 +94,7 @@ class BaseAlerter(ABC):
     async def _ensure_session(self) -> Any:  # noqa: ANN401 - aiohttp imported lazily; real type is aiohttp.ClientSession
         if self._session is None:
             import aiohttp  # noqa: PLC0415
+
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=_HTTP_TIMEOUT_S),
             )

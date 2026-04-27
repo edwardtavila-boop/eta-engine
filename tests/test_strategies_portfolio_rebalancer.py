@@ -14,6 +14,7 @@ Layers covered:
 * multi-source / multi-destination greedy pairing
 * RebalancePlan.as_dict serialisation
 """
+
 from __future__ import annotations
 
 from eta_engine.funnel.waterfall import (
@@ -75,12 +76,14 @@ def _balanced_allocation(
 
 class TestPlanRebalanceBasics:
     def test_returns_rebalance_plan(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert isinstance(plan, RebalancePlan)
 
@@ -91,33 +94,39 @@ class TestPlanRebalanceBasics:
 
     def test_balanced_portfolio_emits_no_sweeps(self) -> None:
         """Every layer exactly at target -> zero transfers."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert plan.sweeps == ()
         assert "all_layers_within_drift_threshold" in plan.notes
 
     def test_total_equity_recorded(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert plan.total_equity_usd == 100_000.0
 
     def test_drift_map_populated(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         # All four layers on target -> drift pct ~ 0 each
         assert len(plan.drift_pct_by_layer) == 4
@@ -125,12 +134,14 @@ class TestPlanRebalanceBasics:
             assert abs(pct) < 1e-9
 
     def test_target_usd_map_reflects_total_equity(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 40_000.0,
-            LayerId.LAYER_2_BTC: 30_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 40_000.0,
+                LayerId.LAYER_2_BTC: 30_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert plan.target_usd_by_layer[LayerId.LAYER_1_MNQ] == 40_000.0
         assert plan.target_usd_by_layer[LayerId.LAYER_4_STAKING] == 10_000.0
@@ -144,23 +155,27 @@ class TestPlanRebalanceBasics:
 class TestDriftThreshold:
     def test_drift_below_threshold_no_sweep(self) -> None:
         """MNQ 2% overweight (below 5% threshold) -> no transfer."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 42_000.0,   # +2%
-            LayerId.LAYER_2_BTC: 28_000.0,   # -2%
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 42_000.0,  # +2%
+                LayerId.LAYER_2_BTC: 28_000.0,  # -2%
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert plan.sweeps == ()
 
     def test_drift_above_threshold_emits_sweep(self) -> None:
         """MNQ 10% overweight, BTC 10% underweight -> one transfer."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,   # +10%
-            LayerId.LAYER_2_BTC: 20_000.0,   # -10%
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,  # +10%
+                LayerId.LAYER_2_BTC: 20_000.0,  # -10%
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert len(plan.sweeps) == 1
         sweep = plan.sweeps[0]
@@ -170,12 +185,14 @@ class TestDriftThreshold:
 
     def test_custom_drift_threshold_looser(self) -> None:
         """20% threshold means a 10% drift does not trigger."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(
             snap,
             _balanced_allocation(),
@@ -185,12 +202,14 @@ class TestDriftThreshold:
 
     def test_custom_drift_threshold_tighter(self) -> None:
         """1% threshold means a 2% drift DOES trigger."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 42_000.0,   # +2%
-            LayerId.LAYER_2_BTC: 28_000.0,   # -2%
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 42_000.0,  # +2%
+                LayerId.LAYER_2_BTC: 28_000.0,  # -2%
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(
             snap,
             _balanced_allocation(),
@@ -214,12 +233,14 @@ class TestMinTransferUsd:
 
     def test_transfer_below_min_is_skipped(self) -> None:
         """Small total equity + wide drift pct -> small USD -> skip."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 500.0,
-            LayerId.LAYER_2_BTC: 200.0,
-            LayerId.LAYER_3_PERPS: 200.0,
-            LayerId.LAYER_4_STAKING: 100.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 500.0,
+                LayerId.LAYER_2_BTC: 200.0,
+                LayerId.LAYER_3_PERPS: 200.0,
+                LayerId.LAYER_4_STAKING: 100.0,
+            }
+        )
         plan = plan_rebalance(
             snap,
             _balanced_allocation(),
@@ -230,12 +251,14 @@ class TestMinTransferUsd:
         assert any("skip" in n or "no_transfers" in n for n in plan.notes)
 
     def test_transfer_above_min_is_emitted(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(
             snap,
             _balanced_allocation(),
@@ -253,12 +276,14 @@ class TestMinTransferUsd:
 class TestGlobalKill:
     def test_kill_switch_skips_rebalance(self) -> None:
         """allocation.global_kill_applied=True -> no sweeps, flag set."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         alloc = AllocationPlan(
             weights={LayerId.LAYER_4_STAKING: 0.10},
             global_kill_applied=True,
@@ -276,10 +301,12 @@ class TestGlobalKill:
 
 class TestGuardPaths:
     def test_zero_total_equity_returns_empty(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 0.0,
-            LayerId.LAYER_4_STAKING: 0.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 0.0,
+                LayerId.LAYER_4_STAKING: 0.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         assert plan.sweeps == ()
         assert plan.total_equity_usd == 0.0
@@ -301,12 +328,14 @@ class TestGuardPaths:
 class TestMultiLayerPairing:
     def test_two_over_one_under(self) -> None:
         """Two overweight layers drain into one underweight layer."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 48_000.0,     # +8%
-            LayerId.LAYER_2_BTC: 38_000.0,     # +8%
-            LayerId.LAYER_3_PERPS:  4_000.0,   # -16%
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 48_000.0,  # +8%
+                LayerId.LAYER_2_BTC: 38_000.0,  # +8%
+                LayerId.LAYER_3_PERPS: 4_000.0,  # -16%
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         # Both over-weights source transfers into LAYER_3_PERPS
         src_layers = {s.src for s in plan.sweeps}
@@ -316,12 +345,14 @@ class TestMultiLayerPairing:
 
     def test_one_over_two_under(self) -> None:
         """One overweight layer feeds two underweight layers."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 70_000.0,     # +30%
-            LayerId.LAYER_2_BTC: 14_000.0,     # -16%
-            LayerId.LAYER_3_PERPS:  6_000.0,   # -14%
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 70_000.0,  # +30%
+                LayerId.LAYER_2_BTC: 14_000.0,  # -16%
+                LayerId.LAYER_3_PERPS: 6_000.0,  # -14%
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         src_layers = {s.src for s in plan.sweeps}
         dst_layers = {s.dst for s in plan.sweeps}
@@ -332,12 +363,14 @@ class TestMultiLayerPairing:
 
     def test_largest_source_paired_with_largest_destination_first(self) -> None:
         """Greedy: biggest overweight -> biggest underweight."""
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 80_000.0,     # +40% (biggest over)
-            LayerId.LAYER_2_BTC: 20_000.0,     # -10%
-            LayerId.LAYER_3_PERPS:  0.0,       # -20% (biggest under)
-            LayerId.LAYER_4_STAKING: 0.0,      # -10%
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 80_000.0,  # +40% (biggest over)
+                LayerId.LAYER_2_BTC: 20_000.0,  # -10%
+                LayerId.LAYER_3_PERPS: 0.0,  # -20% (biggest under)
+                LayerId.LAYER_4_STAKING: 0.0,  # -10%
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         first = plan.sweeps[0]
         assert first.src is LayerId.LAYER_1_MNQ
@@ -351,12 +384,14 @@ class TestMultiLayerPairing:
 
 class TestReasonStrings:
     def test_reason_identifies_overweight_and_underweight(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         reason = plan.sweeps[0].reason
         assert "rebalance:" in reason
@@ -371,12 +406,14 @@ class TestReasonStrings:
 
 class TestSerialisation:
     def test_as_dict_basic_keys(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         d = plan.as_dict()
         assert d["ts_utc"] == _TS
@@ -388,12 +425,14 @@ class TestSerialisation:
         assert d["global_kill_skipped"] is False
 
     def test_as_dict_sweep_entries(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_2_BTC: 20_000.0,
-            LayerId.LAYER_3_PERPS: 20_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_2_BTC: 20_000.0,
+                LayerId.LAYER_3_PERPS: 20_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, _balanced_allocation())
         d = plan.as_dict()
         assert len(d["sweeps"]) == 1
@@ -404,10 +443,12 @@ class TestSerialisation:
         assert "rebalance:" in sweep["reason"]
 
     def test_as_dict_kill_switch_flag(self) -> None:
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 50_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 50_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         alloc = AllocationPlan(
             weights={LayerId.LAYER_4_STAKING: 0.10},
             global_kill_applied=True,
@@ -451,12 +492,14 @@ class TestEndToEndComposition:
             ),
         ]
         alloc = plan_allocation(inputs)
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 60_000.0,     # overweight
-            LayerId.LAYER_2_BTC: 20_000.0,     # underweight
-            LayerId.LAYER_3_PERPS: 15_000.0,
-            LayerId.LAYER_4_STAKING: 5_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 60_000.0,  # overweight
+                LayerId.LAYER_2_BTC: 20_000.0,  # underweight
+                LayerId.LAYER_3_PERPS: 15_000.0,
+                LayerId.LAYER_4_STAKING: 5_000.0,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         # Total equity = 100k; MNQ is ~20k above target -> single sweep.
         assert len(plan.sweeps) >= 1
@@ -491,10 +534,7 @@ class TestEndToEndComposition:
         # MNQ weight is shrunk by VOL_MULT[HIGH]=0.55.
         mnq_weight = alloc.weights[LayerId.LAYER_1_MNQ]
         btc_weight = alloc.weights[LayerId.LAYER_2_BTC]
-        assert mnq_weight < btc_weight, (
-            f"HIGH vol should shrink MNQ below BTC; got mnq={mnq_weight}, "
-            f"btc={btc_weight}"
-        )
+        assert mnq_weight < btc_weight, f"HIGH vol should shrink MNQ below BTC; got mnq={mnq_weight}, btc={btc_weight}"
 
     def test_global_kill_from_allocator_skips_rebalance(self) -> None:
         from eta_engine.strategies.regime_allocator import (
@@ -513,10 +553,12 @@ class TestEndToEndComposition:
             ),
         ]
         alloc = plan_allocation(inputs, global_kill=True)
-        snap = _snapshot({
-            LayerId.LAYER_1_MNQ: 90_000.0,
-            LayerId.LAYER_4_STAKING: 10_000.0,
-        })
+        snap = _snapshot(
+            {
+                LayerId.LAYER_1_MNQ: 90_000.0,
+                LayerId.LAYER_4_STAKING: 10_000.0,
+            }
+        )
         plan = plan_rebalance(snap, alloc)
         assert plan.sweeps == ()
         assert plan.global_kill_skipped is True

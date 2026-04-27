@@ -71,6 +71,7 @@ DEFAULT_LIVE_LOG_DIR = ROOT / "docs" / "btc_live"
 @dataclass(frozen=True)
 class LiveGateDecision:
     """Why btc_live chose PAPER vs LIVE and how it got there."""
+
     allow_live: bool
     mode: str  # "PAPER" or "LIVE"
     reasons: tuple[str, ...]
@@ -128,6 +129,7 @@ def _bybit_adapter_available() -> bool:
     """
     try:
         import importlib  # noqa: PLC0415  -- defer to runtime
+
         importlib.import_module("eta_engine.venues.bybit")
     except ImportError:
         return False
@@ -211,11 +213,7 @@ async def _run_paper(
     """
     bot = CryptoSeedBot(SEED_CONFIG)
     router = PaperRouter(fee_bps=2.0)
-    gate = (
-        AlwaysApproveGate()
-        if gate_floor <= 0
-        else ConfluenceFloorGate(floor=gate_floor)
-    )
+    gate = AlwaysApproveGate() if gate_floor <= 0 else ConfluenceFloorGate(floor=gate_floor)
     runner = BtcPaperRunner(
         bot=bot,
         router=router,
@@ -269,11 +267,13 @@ async def _run_live(
         "note": "BTC live activation recorded; launcher does not place orders.",
     }
     activation_path.write_text(
-        json.dumps(activation, indent=2) + "\n", encoding="utf-8",
+        json.dumps(activation, indent=2) + "\n",
+        encoding="utf-8",
     )
     latest = out_dir / "btc_live_latest.json"
     latest.write_text(
-        json.dumps(activation, indent=2) + "\n", encoding="utf-8",
+        json.dumps(activation, indent=2) + "\n",
+        encoding="utf-8",
     )
     return {"mode": "LIVE", "artifact": str(activation_path)}
 

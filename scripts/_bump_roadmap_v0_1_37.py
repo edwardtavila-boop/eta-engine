@@ -96,6 +96,7 @@ Acceptance criteria
   * Operator override path proven: empty exclusion map restores the
     previous behaviour
 """
+
 from __future__ import annotations
 
 import json
@@ -121,14 +122,8 @@ def main() -> None:
     sa["eta_engine_v0_1_37_high_vol_exclusion"] = {
         "timestamp_utc": now,
         "version": "v0.1.37",
-        "bundle_name": (
-            "HIGH_VOL EXCLUSION GATE -- operationalising the "
-            "cross_regime sign-flip finding"
-        ),
-        "directive": (
-            "ok be a support for the main apex predator and "
-            "automate the rest of the phases"
-        ),
+        "bundle_name": ("HIGH_VOL EXCLUSION GATE -- operationalising the cross_regime sign-flip finding"),
+        "directive": ("ok be a support for the main apex predator and automate the rest of the phases"),
         "theme": (
             "v0.1.32 produced a FAIL verdict (HIGH_VOL sign-flip "
             "overfit, IS +0.216R -> OOS -0.559R) but eta_policy "
@@ -148,16 +143,10 @@ def main() -> None:
         "regime_exclusion_module": {
             "spec_id": "REGIME_EXCLUSION_v1",
             "default_excluded_regimes": ["HIGH_VOL", "CRISIS"],
-            "config_path": (
-                "docs/cross_regime/regime_exclusions.json"
-            ),
-            "cache_strategy": (
-                "mtime-keyed; edits picked up live on next call, "
-                "no restart required"
-            ),
+            "config_path": ("docs/cross_regime/regime_exclusions.json"),
+            "cache_strategy": ("mtime-keyed; edits picked up live on next call, no restart required"),
             "fail_open_policy": (
-                "unknown regime labels are NEVER excluded -- a typo "
-                "in the classifier must not silently kill all sizing"
+                "unknown regime labels are NEVER excluded -- a typo in the classifier must not silently kill all sizing"
             ),
             "graceful_fallback": (
                 "corrupt JSON, non-dict payload, missing file all "
@@ -166,23 +155,18 @@ def main() -> None:
             ),
             "supported_config_shapes": [
                 '{"excluded_regimes": {label: reason}}',
-                '{label: reason}  (flat)',
+                "{label: reason}  (flat)",
             ],
         },
         "eta_policy_patch": {
             "function": "_risk_mult",
-            "before": (
-                "HIGH_VOL: mult *= 0.5  (half-discount, pre-OOS)"
-            ),
+            "before": ("HIGH_VOL: mult *= 0.5  (half-discount, pre-OOS)"),
             "after": (
                 "exclusion gate consulted first; HIGH_VOL/CRISIS "
                 "-> return 0.0; LOW_VOL legacy structural zero "
                 "preserved; vol_z>2.5 penalty preserved"
             ),
-            "import_added": (
-                "from eta_engine.strategies.regime_exclusion "
-                "import is_regime_excluded"
-            ),
+            "import_added": ("from eta_engine.strategies.regime_exclusion import is_regime_excluded"),
         },
         "test_coverage": {
             "fast_tests_added": 24,
@@ -257,7 +241,8 @@ def main() -> None:
     }
 
     STATE_PATH.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
+        json.dumps(state, indent=2) + "\n",
+        encoding="utf-8",
     )
     print("roadmap_state.json bumped to v0.1.37")
     print(f"  tests: {prev_tests} -> {new_tests}")

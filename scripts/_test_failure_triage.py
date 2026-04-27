@@ -28,6 +28,7 @@ Why
 A 50-line pytest tail tells you SOMETHING failed. This tells you WHAT
 is failing in a structured shape so triage takes seconds, not minutes.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,14 +52,17 @@ ERROR_RE = re.compile(
 
 
 def _run_pytest(pattern: str | None) -> tuple[int, str]:
-    cmd = [sys.executable, "-m", "pytest", "-q", "--tb=line",
-           "--no-header", "--maxfail=200"]
+    cmd = [sys.executable, "-m", "pytest", "-q", "--tb=line", "--no-header", "--maxfail=200"]
     if pattern:
         cmd.append(pattern)
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            check=False, timeout=600,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
         )
     except subprocess.TimeoutExpired:
         return (124, "(pytest timed out after 600s)")
@@ -94,28 +98,32 @@ def main(argv: list[str] | None = None) -> int:
     total = sum(by_file.values())
 
     if args.json:
-        print(json.dumps({
-            "rc": rc, "total_failures": total,
-            "by_file": dict(by_file.most_common(args.top)),
-            "by_error": dict(by_err.most_common(args.top)),
-            "failures": lines[:args.top * 5],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "rc": rc,
+                    "total_failures": total,
+                    "by_file": dict(by_file.most_common(args.top)),
+                    "by_error": dict(by_err.most_common(args.top)),
+                    "failures": lines[: args.top * 5],
+                },
+                indent=2,
+            )
+        )
         return {0: 0, 1: 1}.get(rc, 2) if rc != 0 else 0
 
     if rc == 0:
         print("test-failure-triage: GREEN -- pytest passed")
         return 0
     if total == 0:
-        print(f"test-failure-triage: YELLOW -- pytest exited {rc} but no "
-              "FAILED/ERROR lines parsed; tail:")
+        print(f"test-failure-triage: YELLOW -- pytest exited {rc} but no FAILED/ERROR lines parsed; tail:")
         print("\n".join(out.splitlines()[-15:]))
         return 1
 
     n_files = len(by_file)
     level = "RED" if n_files > 1 else "YELLOW"
     print(
-        f"test-failure-triage: {level} -- {total} failure(s) "
-        f"across {n_files} file(s), {len(by_err)} error class(es)",
+        f"test-failure-triage: {level} -- {total} failure(s) across {n_files} file(s), {len(by_err)} error class(es)",
     )
     print()
     print(f"  By file (top {args.top}):")
@@ -128,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     if lines:
         print()
         print(f"  First {min(args.top, len(lines))} failure lines:")
-        for line in lines[:args.top]:
+        for line in lines[: args.top]:
             print(f"    {line}")
     return 1 if level == "YELLOW" else 2
 

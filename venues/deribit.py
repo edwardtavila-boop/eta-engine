@@ -25,6 +25,7 @@ Scope
   (``mcp__deribit__*`` shape) and falls back to the public REST API at
   ``www.deribit.com/api/v2``. Both paths produce the same schema.
 """
+
 from __future__ import annotations
 
 import json
@@ -91,9 +92,7 @@ class OptionChain:
 class DeribitMcp(Protocol):
     """Minimal shape of an `mcp__deribit__*` wrapper."""
 
-    def get_instruments(
-        self, *, currency: str, kind: str, expired: bool = False
-    ) -> list[dict[str, Any]]: ...
+    def get_instruments(self, *, currency: str, kind: str, expired: bool = False) -> list[dict[str, Any]]: ...
 
     def get_tickers(self, *, instrument_names: list[str]) -> list[dict[str, Any]]: ...
 
@@ -131,9 +130,7 @@ class DeribitClient(VenueBase):
     def fetch_option_chain(self, *, underlying: str, expiry_ts_ms: int) -> OptionChain:
         """Return the option chain for one expiry (filtered from full instrument list)."""
         instruments = self._fetch_instruments(underlying=underlying)
-        tickers = self._fetch_tickers(
-            [i["instrument_name"] for i in instruments if _expiry_of(i) == expiry_ts_ms]
-        )
+        tickers = self._fetch_tickers([i["instrument_name"] for i in instruments if _expiry_of(i) == expiry_ts_ms])
         ticker_map = {t["instrument_name"]: t for t in tickers}
 
         puts: list[OptionContract] = []
@@ -182,9 +179,7 @@ class DeribitClient(VenueBase):
         Returns 0.0 when no data is available (safe fallback for the
         tail-hedge pricer, which will then skip the Deribit leg).
         """
-        chain = self.fetch_option_chain(
-            underlying=underlying, expiry_ts_ms=expiry_ts_ms
-        )
+        chain = self.fetch_option_chain(underlying=underlying, expiry_ts_ms=expiry_ts_ms)
         spot = spot_override if spot_override is not None else self._fetch_index_price(underlying)
         if spot <= 0.0:
             return 0.0
@@ -215,8 +210,7 @@ class DeribitClient(VenueBase):
         # Intentionally not implemented; guarded by allow_orders to keep
         # the venue safely read-only until the operator explicitly opts in.
         raise NotImplementedError(
-            "DeribitClient.place_order not yet wired. "
-            "Route options execution through the Firm board before enabling."
+            "DeribitClient.place_order not yet wired. Route options execution through the Firm board before enabling."
         )
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -235,9 +229,7 @@ class DeribitClient(VenueBase):
     def _fetch_instruments(self, *, underlying: str) -> list[dict[str, Any]]:
         if self._mcp is not None:
             try:
-                return self._mcp.get_instruments(
-                    currency=underlying.upper(), kind="option"
-                ) or []
+                return self._mcp.get_instruments(currency=underlying.upper(), kind="option") or []
             except Exception as exc:  # noqa: BLE001
                 log.debug("deribit MCP instruments failed: %s", exc)
         url = (
@@ -258,10 +250,7 @@ class DeribitClient(VenueBase):
         out: list[dict[str, Any]] = []
         # Public API is per-instrument; batch here is best-effort.
         for name in instrument_names[:50]:  # cap to avoid blowing up free tier
-            url = (
-                f"{self.base_url}/public/ticker?"
-                f"{urllib.parse.urlencode({'instrument_name': name})}"
-            )
+            url = f"{self.base_url}/public/ticker?{urllib.parse.urlencode({'instrument_name': name})}"
             try:
                 payload = _json_get(url, timeout_s=self.timeout_s)
             except Exception as exc:  # noqa: BLE001
@@ -280,10 +269,7 @@ class DeribitClient(VenueBase):
                 return _float(resp.get("index_price") or resp.get("price"))
             except Exception as exc:  # noqa: BLE001
                 log.debug("deribit MCP index_price failed: %s", exc)
-        url = (
-            f"{self.base_url}/public/get_index_price?"
-            f"{urllib.parse.urlencode({'index_name': index_name})}"
-        )
+        url = f"{self.base_url}/public/get_index_price?{urllib.parse.urlencode({'index_name': index_name})}"
         try:
             payload = _json_get(url, timeout_s=self.timeout_s)
         except Exception as exc:  # noqa: BLE001
@@ -296,6 +282,7 @@ class DeribitClient(VenueBase):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def atm_iv_to_tail_sigma(atm_iv_annualized: float, days_to_expiry: int) -> float:
     """Convert annualized ATM IV to a per-period sigma for the tail-hedge pricer.

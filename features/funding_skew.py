@@ -7,10 +7,12 @@ When funding is hot opposite to our bias, we fade the crowd.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from eta_engine.core.data_pipeline import BarData, FundingRate
 from eta_engine.features.base import Feature
+
+if TYPE_CHECKING:
+    from eta_engine.core.data_pipeline import BarData, FundingRate
 
 # Threshold: rates above 0.05% (8h equivalent) are "hot".
 _HOT_THRESHOLD = 0.0005

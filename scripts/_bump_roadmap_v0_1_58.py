@@ -125,6 +125,7 @@ Expected state changes
     ledger of the three BLOCKERs and their fixes.
   * New milestone appended.
 """
+
 from __future__ import annotations
 
 import json
@@ -164,9 +165,7 @@ def main() -> None:
             "false confidence. Every BLOCKER that could let the Apex "
             "eval bust while the runtime appears green is closed."
         ),
-        "operator_directive_quote": (
-            "continue all."
-        ),
+        "operator_directive_quote": ("continue all."),
         "modules_modified": [
             "eta_engine/core/consistency_guard.py "
             "(new apex_trading_day_iso helper + deprecation "
@@ -180,12 +179,9 @@ def main() -> None:
             "eta_engine/docs/red_team_d2_d3_review.md",
         ],
         "tests_added": [
-            "eta_engine/tests/test_consistency_guard.py::"
-            "TestApexTradingDayIso (11 tests)",
-            "eta_engine/tests/test_run_eta_live.py::"
-            "TestLiveModeTrackerGate (4 tests)",
-            "eta_engine/tests/test_run_eta_live.py::"
-            "TestConsistencyViolationPauses (2 tests)",
+            "eta_engine/tests/test_consistency_guard.py::TestApexTradingDayIso (11 tests)",
+            "eta_engine/tests/test_run_eta_live.py::TestLiveModeTrackerGate (4 tests)",
+            "eta_engine/tests/test_run_eta_live.py::TestConsistencyViolationPauses (2 tests)",
         ],
         "blockers_closed": {
             "B1_session_day_bucketing": {
@@ -330,8 +326,7 @@ def main() -> None:
     )
     print(f"bumped roadmap_state.json to {VERSION} at {now}")
     print(
-        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} "
-        f"({NEW_TESTS_ABS - prev_tests:+d})",
+        f"  tests_passing: {prev_tests} -> {NEW_TESTS_ABS} ({NEW_TESTS_ABS - prev_tests:+d})",
     )
 
 
