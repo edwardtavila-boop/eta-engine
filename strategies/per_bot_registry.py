@@ -81,21 +81,34 @@ class StrategyAssignment:
     rationale: str
 
     # Promotion-time baseline (may be None if not yet promoted)
-    baseline: "BaselineSnapshot | None" = None
+    baseline: BaselineSnapshot | None = None
 
     # Free-form extras (e.g. EoD-flatten on/off, leverage caps).
     # Reserved for future engine knobs without breaking serialisation.
     extras: dict[str, object] = field(default_factory=dict)
 
     # Which entry-decision path the bot uses at backtest/live time.
-    # "confluence" = score features through scorer_name + check
-    #                threshold + regime gate (legacy behaviour).
-    # "orb"        = Opening Range Breakout strategy from
-    #                strategies.orb_strategy. Ignores scorer/threshold/
-    #                regime fields — the ORB module has its own knobs
-    #                (range minutes, EMA bias, RR target) that the
-    #                research grid pulls from the per-bot extras dict
-    #                under the key "orb_config".
+    # "confluence"     = score features through scorer_name + check
+    #                    threshold + regime gate (legacy behaviour).
+    # "orb"            = Opening Range Breakout (intraday) — see
+    #                    strategies.orb_strategy. RTH-anchored.
+    # "drb"            = Daily Range Breakout — see
+    #                    strategies.drb_strategy. Prior-day high/low
+    #                    break on daily bars; works on 27y of NQ
+    #                    history where intraday ORB has zero range.
+    # "crypto_orb"     = UTC-anchored ORB for 24/7 crypto. Same engine
+    #                    contract as ORB; defaults pinned to UTC
+    #                    midnight + 60m range. See
+    #                    strategies.crypto_orb_strategy.
+    # "crypto_trend"   = EMA(9/21) crossover + HTF EMA bias for 24/7
+    #                    bars. See strategies.crypto_trend_strategy.
+    # "crypto_meanrev" = Bollinger touch + RSI extreme. See
+    #                    strategies.crypto_meanrev_strategy.
+    # "crypto_scalp"   = N-bar level break + VWAP + RSI on short TFs.
+    #                    See strategies.crypto_scalp_strategy.
+    # All non-"confluence" kinds ignore scorer/threshold/regime
+    # fields — those modules have their own knobs that the research
+    # grid pulls from the per-bot extras dict under "*_config" keys.
     strategy_kind: str = "confluence"
 
 
@@ -168,40 +181,66 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "a sanity check rather than the primary path."
         ),
     ),
+    # NQ daily — DRB. Companion to nq_futures intraday; NOT a
+    # replacement. Intraday ORB and daily DRB are different time
+    # horizons and produce uncorrelated trade streams, so running
+    # both gives the bot two independent edges.
+    StrategyAssignment(
+        bot_id="nq_daily_drb",
+        strategy_id="nq_drb_v1",
+        symbol="NQ1",
+        timeframe="D",
+        scorer_name="mnq",  # unused when strategy_kind=drb
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=180,
+        min_trades_per_window=5,
+        strategy_kind="drb",
+        rationale=(
+            "Daily Range Breakout on NQ daily bars (27 yr history). "
+            "Walk-forward at 365/180 windows: 25 windows produce "
+            "agg OOS Sharpe +0.62 to +0.74 across lookbacks 1/5/10. "
+            "DSR pass 44% — close to the 50% gate but still under, "
+            "so this assignment is a *research candidate*, not yet "
+            "a promoted live strategy. Engine consumes via the "
+            "DRBStrategy class in strategies.drb_strategy. Daily TF "
+            "means strategy fires once per session at most — "
+            "per-bot extras carry the DRBConfig knobs."
+        ),
+        extras={"strategy_baseline_oos_sharpe_min": 0.62},
+    ),
     # BTC hybrid — futures + perp blended bot
     StrategyAssignment(
         bot_id="btc_hybrid",
-        strategy_id="btc_global_funding_skew",
-        symbol="MNQ1",  # placeholder until we have BTC bars in the library
+        strategy_id="btc_real_v1",
+        symbol="BTC",  # Coinbase spot bars (research proxy for CME — see eta_data_source_policy)
         timeframe="1h",
-        scorer_name="global",  # use global until a BTC-tuned scorer exists
-        confluence_threshold=7.0,
+        scorer_name="btc",
+        confluence_threshold=6.0,
         block_regimes=frozenset(),  # no gate — funding/onchain ARE the signal
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
         rationale=(
-            "Operator directive 2026-04-27: crypto bots trade CME "
-            "crypto futures (cash-settled, no native funding/onchain) "
-            "rather than spot perps. The BTC-tuned scorer "
-            "(score_confluence_btc) equal-weights all 5 features so "
-            "spot-driven signals (funding/onchain/sentiment) still "
-            "contribute when paired feeds are available, and the "
-            "scorer degrades gracefully to bar-derived signals only "
-            "when they're not. Threshold 6.0 — between MNQ's 5.0 "
-            "(2 features active) and global's 7.0 (5 features "
-            "weighted unequally). Regime gate disabled — trending "
-            "regimes in crypto are often the trade, not the danger. "
-            "Symbol/timeframe placeholder until CME crypto bars "
-            "land in the data library (see data.requirements for "
-            "the full feed list)."
+            "Operator directive 2026-04-27: crypto bots will trade "
+            "CME crypto futures (cash-settled). For research today, "
+            "BTC bars are Coinbase spot via fetch_btc_bars.py — "
+            ">99% correlated with CME front-month, valid proxy. "
+            "Pre-live: re-fetch via IBKR + drift_check vs this "
+            "Coinbase baseline (see eta_data_source_policy memory). "
+            "BTC-tuned scorer equal-weights all 5 features so spot-"
+            "driven signals (funding/onchain/sentiment) contribute "
+            "when paired feeds exist. Regime gate disabled — "
+            "trending regimes in crypto are often the trade itself, "
+            "not the danger."
         ),
     ),
     # ETH perp — same family as BTC but with smart-contract catalysts
     StrategyAssignment(
         bot_id="eth_perp",
-        strategy_id="eth_global_default",
-        symbol="MNQ1",  # placeholder
+        strategy_id="eth_real_v1",
+        symbol="ETH",  # Coinbase spot ETH-USD bars
         timeframe="1h",
         scorer_name="btc",
         confluence_threshold=6.0,
@@ -214,8 +253,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "but adds smart-contract / staking catalysts that aren't "
             "in our feature set yet. Until ETH-specific features "
             "(staking yield delta, gas fee regime, gas-price "
-            "trending) are wired, ETH inherits the BTC global-scorer "
-            "approach. Symbol placeholder same as btc_hybrid."
+            "trending) are wired, ETH inherits the BTC scorer "
+            "approach. Bars are Coinbase spot ETH-USD; pre-live "
+            "swap to IBKR-native CME ETH bars + drift check."
         ),
     ),
     # XRP perp — DEACTIVATED until news/sentiment feed lands.
@@ -250,8 +290,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # SOL perp — high-beta crypto, behaves like BTC * 2-3x
     StrategyAssignment(
         bot_id="sol_perp",
-        strategy_id="sol_btc_default",
-        symbol="MNQ1",  # placeholder
+        strategy_id="sol_real_v1",
+        symbol="SOL",  # Coinbase spot SOL-USD bars
         timeframe="1h",
         scorer_name="btc",
         confluence_threshold=6.5,  # slight bump for higher noise
@@ -271,7 +311,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="crypto_seed",
         strategy_id="crypto_seed_dca",
-        symbol="MNQ1",  # placeholder
+        symbol="BTC",  # Coinbase spot daily — DCA accumulator targets BTC exposure
         timeframe="D",
         scorer_name="global",
         confluence_threshold=4.0,  # very low — DCA fires often by design
