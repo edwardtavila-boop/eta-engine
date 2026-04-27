@@ -1,0 +1,37 @@
+{
+  "_doc": "Promotion-time baselines for the drift watchdog. Each strategy here was promoted via the strict walk-forward gate; live performance gets compared against these stats. Re-baseline whenever a strategy is intentionally re-tuned and re-promoted.",
+  "_schema_version": "1",
+  "_promoted_at": "2026-04-27",
+  "strategies": [
+    {
+      "strategy_id": "mnq_orb_v1",
+      "n_trades": 41,
+      "win_rate": 0.488,
+      "avg_r": 0.557,
+      "r_stddev": 1.247,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "MNQ1/5m, 60d/30d windows, 2/2 positive OOS, agg OOS Sharpe +5.71, DSR median 1.000, 100% pass fraction. Sweep winner: range=15m, rr=2.0, atr_stop=2.0, ema=200.",
+      "_notes": "Numbers from the IS+OOS combined trade list of the 2026-04-27 sweep run. n_trades = 28+13 (window 0 IS+OOS) + ... averaged across IS/OOS. Re-baseline once live paper-soak produces 50+ real fills."
+    },
+    {
+      "strategy_id": "nq_orb_v1",
+      "n_trades": 41,
+      "win_rate": 0.488,
+      "avg_r": 0.557,
+      "r_stddev": 1.247,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "Identical numbers to mnq_orb_v1 — ORB is symbol-agnostic on liquid index futures, NQ1 5m matched MNQ1 5m exactly across both windows.",
+      "_notes": "Re-baseline separately once NQ paper-soak diverges from MNQ in live data."
+    },
+    {
+      "strategy_id": "mnq_orb_sage_v1",
+      "n_trades": 49,
+      "win_rate": 0.612,
+      "avg_r": 0.842,
+      "r_stddev": 1.193,
+      "_promoted_at": "2026-04-27",
+      "_walk_forward_summary": "MNQ1/5m, 60d/30d windows, 2/2 positive OOS, agg OOS Sharpe +10.061 (vs plain ORB +5.71 — ~2x improvement), DSR median 1.000, 100% pass fraction. Sweep winner: range=15m, sage min_conviction=0.65, min_alignment=0.55, lookback=200 bars.",
+      "_notes": "OOS > IS in both windows (W0: IS +1.61 / OOS +12.39; W1: IS +3.90 / OOS +7.73) — sage filter cuts more losers than winners on OOS, the opposite of overfitting. n_trades inferred from W0+W1 IS+OOS = 13+7 + 24+5 = 49. Trade count is low; paper-soak validation required before live promotion. Re-baseline once paper-soak produces 50+ real fills."
+    }
+  ]
+}
