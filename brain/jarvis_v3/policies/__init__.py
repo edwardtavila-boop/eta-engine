@@ -34,6 +34,7 @@ from eta_engine.brain.jarvis_v3.policies import (  # noqa: F401
     v19_drift_aware,
     v20_overnight_tighten,
     v21_drawdown_proximity,
+    v22_sage_confluence,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "v19_drift_aware",
     "v20_overnight_tighten",
     "v21_drawdown_proximity",
+    "v22_sage_confluence",
 ]
