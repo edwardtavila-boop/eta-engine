@@ -23,16 +23,25 @@ class Bias(StrEnum):
 class MarketContext:
     """Input to every school analyzer.
 
-    ``bars`` is a list of dicts with at least ``open/high/low/close/volume``;
+    ``bars`` is the PRIMARY-timeframe bar list (back-compat: many schools
+    only consult one TF). For multi-timeframe schools, populate
+    ``bars_by_tf`` with a dict like ``{"1m": [...], "5m": [...], "1h": [...]}``.
+
+    Bars are plain dicts with at least ``open/high/low/close/volume``;
     additional keys like ``ts`` are passed through. We use plain dicts
     rather than a Bar dataclass so the sage works with any data
-    pipeline that produces OHLCV (parquet, ccxt, ibkr_bbo1m, etc.).
+    pipeline (parquet, ccxt, ibkr_bbo1m, etc.).
     """
 
     bars: list[dict[str, Any]]
     side: str = "long"  # the bot's PROPOSED entry side
     entry_price: float = 0.0
     symbol: str = ""
+    # Multi-timeframe (Wave-5 #1, 2026-04-27): optional dict of
+    # {tf_label: [bars]}. When present, schools that opt in (via the
+    # `MULTI_TIMEFRAME = True` class attribute) consult each TF and
+    # aggregate within their own analyze() method.
+    bars_by_tf: dict[str, list[dict[str, Any]]] | None = None
     # Optional extras a school may use if present
     order_book_imbalance: float | None = None     # -1.0 to +1.0
     cumulative_delta: float | None = None
@@ -41,6 +50,12 @@ class MarketContext:
     account_equity_usd: float | None = None
     risk_per_trade_pct: float | None = None       # for risk school
     stop_distance_pct: float | None = None        # for risk school
+    # Wave-5 #2 (regime conditioning): when present, the regime detector
+    # has run and tagged the current state. Confluence layer uses this
+    # to reweight schools.
+    detected_regime: str | None = None  # one of {trending, ranging, volatile, quiet}
+    # Wave-5 #6: per-instrument activation -- the symbol class
+    instrument_class: str | None = None  # one of {equity, crypto, futures, fx, options}
 
     @property
     def n_bars(self) -> int:
@@ -57,6 +72,36 @@ class MarketContext:
 
     def volumes(self) -> list[float]:
         return [float(b.get("volume", 0.0)) for b in self.bars]
+
+    def has_tf(self, tf: str) -> bool:
+        """True if `bars_by_tf` contains the given timeframe label."""
+        return self.bars_by_tf is not None and tf in self.bars_by_tf
+
+    def for_tf(self, tf: str) -> "MarketContext":
+        """Return a new MarketContext rebound to the bars at `tf`.
+
+        Preserves all other fields. Useful for schools that need to
+        re-run their own analyze() against a different timeframe.
+        """
+        if not self.has_tf(tf):
+            return self
+        new_bars = self.bars_by_tf[tf]  # type: ignore[index]
+        return MarketContext(
+            bars=new_bars,
+            side=self.side,
+            entry_price=self.entry_price,
+            symbol=self.symbol,
+            bars_by_tf=self.bars_by_tf,
+            order_book_imbalance=self.order_book_imbalance,
+            cumulative_delta=self.cumulative_delta,
+            realized_vol=self.realized_vol,
+            session_phase=self.session_phase,
+            account_equity_usd=self.account_equity_usd,
+            risk_per_trade_pct=self.risk_per_trade_pct,
+            stop_distance_pct=self.stop_distance_pct,
+            detected_regime=self.detected_regime,
+            instrument_class=self.instrument_class,
+        )
 
 
 @dataclass(frozen=True)
@@ -134,7 +179,35 @@ class SchoolBase(abc.ABC):
 
     NAME: str = ""
     KNOWLEDGE: str = ""
-    WEIGHT: float = 1.0  # confluence aggregator weight
+    WEIGHT: float = 1.0  # confluence aggregator weight (default; learned weights override at runtime)
+
+    # Wave-5 #6 (per-instrument activation): which instrument classes
+    # this school is meaningfully designed for. Empty set = applies to all.
+    INSTRUMENTS: frozenset[str] = frozenset()  # e.g. {"equity", "futures"}
+
+    # Wave-5 #1 (multi-timeframe): set True when the school opts into
+    # consulting multiple timeframes from MarketContext.bars_by_tf.
+    MULTI_TIMEFRAME: bool = False
+
+    # Wave-5 #2 (regime gates): regimes in which this school is
+    # MEANINGFULLY useful. Empty set = applies in all regimes.
+    REGIMES: frozenset[str] = frozenset()  # e.g. {"trending"}
+
+    def applies_to(self, ctx: MarketContext) -> bool:
+        """True when this school is enabled for the given context.
+
+        Off by default if INSTRUMENTS specified + ctx.instrument_class
+        not in the set, OR REGIMES specified + ctx.detected_regime not
+        in the set. Schools with empty INSTRUMENTS+REGIMES apply
+        universally (back-compat with the original 14 schools).
+        """
+        if self.INSTRUMENTS and ctx.instrument_class is not None:
+            if ctx.instrument_class not in self.INSTRUMENTS:
+                return False
+        if self.REGIMES and ctx.detected_regime is not None:
+            if ctx.detected_regime not in self.REGIMES:
+                return False
+        return True
 
     @abc.abstractmethod
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:

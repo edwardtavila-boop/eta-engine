@@ -19,6 +19,8 @@ def aggregate(
     schools: dict[str, SchoolBase],
     *,
     entry_side: str = "long",
+    regime: str | None = None,
+    apply_edge_weights: bool = True,
 ) -> SageReport:
     """Combine per-school verdicts into a single SageReport.
 
@@ -51,9 +53,29 @@ def aggregate(
 
     entry_bias = Bias.LONG if entry_side.lower() == "long" else Bias.SHORT
 
+    # Wave-5 #2 + #3: weight = base * regime_modulator * learned_edge_modifier
+    edge_mods: dict[str, float] = {}
+    if apply_edge_weights:
+        try:
+            from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+            edge_mods = default_tracker().all_weight_modifiers()
+        except Exception:  # noqa: BLE001
+            edge_mods = {}
+
+    regime_mod_fn = None
+    if regime is not None:
+        try:
+            from eta_engine.brain.jarvis_v3.sage.regime import regime_weight_modulator
+            regime_mod_fn = regime_weight_modulator
+        except Exception:  # noqa: BLE001
+            regime_mod_fn = None
+
     for name, v in verdicts.items():
         school = schools.get(name)
-        weight = school.WEIGHT if school is not None else 1.0
+        base_weight = school.WEIGHT if school is not None else 1.0
+        regime_mod = regime_mod_fn(name, regime) if regime_mod_fn else 1.0
+        edge_mod = edge_mods.get(name, 1.0)
+        weight = base_weight * regime_mod * edge_mod
         contrib = weight * v.conviction
         if v.bias == Bias.LONG:
             long_score += contrib
