@@ -6,12 +6,15 @@ Pydantic v2 models for backtest trades, results, and config.
 
 from __future__ import annotations
 
+import datetime as _datetime_runtime  # noqa: F401  -- pydantic v2 forward-ref resolution
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from datetime import datetime
+else:
+    datetime = _datetime_runtime.datetime
 
 # ---------------------------------------------------------------------------
 # Trade

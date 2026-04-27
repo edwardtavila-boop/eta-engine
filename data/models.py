@@ -6,6 +6,8 @@ Pydantic v2 models for data catalog / lineage / integrity.
 
 from __future__ import annotations
 
+import datetime as _datetime_runtime  # noqa: F401  -- pydantic v2 forward-ref resolution
+import pathlib as _pathlib_runtime  # noqa: F401  -- pydantic v2 forward-ref resolution
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -14,6 +16,9 @@ from pydantic import BaseModel, Field
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
+else:
+    datetime = _datetime_runtime.datetime
+    Path = _pathlib_runtime.Path
 
 
 class DataSource(StrEnum):

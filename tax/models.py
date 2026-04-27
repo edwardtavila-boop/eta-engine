@@ -6,6 +6,7 @@ Pydantic v2 models for taxable events, reports, and tiered account types.
 
 from __future__ import annotations
 
+import datetime as _datetime_runtime  # noqa: F401  -- pydantic v2 forward-ref resolution
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,8 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from datetime import datetime
+else:
+    datetime = _datetime_runtime.datetime
 
 
 class EventType(StrEnum):

@@ -7,6 +7,7 @@ One interface. Multiple venues. Zero excuses.
 
 from __future__ import annotations
 
+import datetime as _datetime_runtime  # noqa: F401  -- pydantic v2 forward-ref resolution
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
@@ -15,6 +16,8 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from datetime import datetime
+else:
+    datetime = _datetime_runtime.datetime
 
 # ---------------------------------------------------------------------------
 # Data models

@@ -1,0 +1,77 @@
+{
+  "generated_at_utc": "2026-04-27T03:35:19.375883+00:00",
+  "config_path": "C:\\Users\\edwar\\AppData\\Local\\Temp\\pytest-of-edwar\\pytest-4651\\test_check_venues_reads_venues0\\config.json",
+  "configured_brokers": [
+    "tradovate",
+    "bybit",
+    "okx",
+    "binance"
+  ],
+  "source": "broker_connect",
+  "reports": [
+    {
+      "venue": "tradovate",
+      "status": "STUBBED",
+      "creds_present": false,
+      "balance": {
+        "USD": 0.0
+      },
+      "positions_count": 0,
+      "details": {
+        "endpoint": "https://demo.tradovateapi.com/v1"
+      },
+      "error": "",
+      "connected_utc": "2026-04-27T03:35:19.375780+00:00"
+    },
+    {
+      "venue": "bybit",
+      "status": "STUBBED",
+      "creds_present": false,
+      "balance": {
+        "USDT": 0.0
+      },
+      "positions_count": 0,
+      "details": {
+        "endpoint": "https://api.bybit.com"
+      },
+      "error": "",
+      "connected_utc": "2026-04-27T03:35:19.375835+00:00"
+    },
+    {
+      "venue": "okx",
+      "status": "STUBBED",
+      "creds_present": false,
+      "balance": {
+        "USDT": 0.0
+      },
+      "positions_count": 0,
+      "details": {
+        "endpoint": "https://www.okx.com"
+      },
+      "error": "",
+      "connected_utc": "2026-04-27T03:35:19.375848+00:00"
+    },
+    {
+      "venue": "binance",
+      "status": "UNAVAILABLE",
+      "creds_present": false,
+      "balance": {},
+      "positions_count": 0,
+      "details": {
+        "reason": "Binance adapter not implemented in the current repo"
+      },
+      "error": "Binance adapter not implemented in the current repo",
+      "connected_utc": "2026-04-27T03:35:19.375857+00:00"
+    }
+  ],
+  "summary": {
+    "health": "GREEN",
+    "overall_ok": true,
+    "ready": 0,
+    "degraded": 0,
+    "stubbed": 3,
+    "failed": 0,
+    "unavailable": 1
+  },
+  "broker_connections_sha256": "9e4da19039469d76c8b5ead562510bc9c519277a8524fae0aca01e4f220c2abb"
+}

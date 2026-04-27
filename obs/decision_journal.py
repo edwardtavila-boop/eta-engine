@@ -117,17 +117,32 @@ class DecisionJournal:
     rows and the bot portfolio is single-process).
     """
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, supabase_mirror: bool = True) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # When True, every append also fire-and-forget POSTs to Supabase
+        # public.decision_journal (silently no-op if env vars unset).
+        # Local JSONL stays authoritative regardless of mirror state.
+        self._supabase_mirror = supabase_mirror
 
     # -- write ---------------------------------------------------------------
 
     def append(self, event: JournalEvent) -> JournalEvent:
-        """Write one event. Returns the same event for chaining."""
+        """Write one event. Returns the same event for chaining.
+
+        Local JSONL append is always synchronous and atomic. If
+        ``supabase_mirror=True`` (default), the event is also forwarded
+        to Supabase ``public.decision_journal`` via the
+        ``obs.supabase_sink`` module — best effort, errors swallowed.
+        """
         line = event.model_dump_json()
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+        if self._supabase_mirror:
+            # Local import keeps the sink module optional and avoids
+            # circular references at startup.
+            from eta_engine.obs import supabase_sink
+            supabase_sink.post_event(event)
         return event
 
     def record(

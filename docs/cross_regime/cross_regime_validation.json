@@ -1,6 +1,6 @@
 {
   "spec_id": "CROSS_REGIME_OOS_v1",
-  "generated_at_utc": "2026-04-18T01:21:22.689348+00:00",
+  "generated_at_utc": "2026-04-27T03:38:55.037832+00:00",
   "gate_config": {
     "max_degradation": 0.6,
     "live_trade_expectancy_r": 0.15,
@@ -13,13 +13,13 @@
       "classifier_label_for_axes": "TRENDING",
       "label_axes_agree": true,
       "is": {
-        "trades": 53,
-        "expectancy_r": 0.9446,
-        "win_rate": 0.7736,
-        "profit_factor": 5.1961,
-        "sharpe": 14.4287,
+        "trades": 54,
+        "expectancy_r": 0.9548,
+        "win_rate": 0.7778,
+        "profit_factor": 5.3081,
+        "sharpe": 14.6859,
         "max_dd_pct": 1.99,
-        "total_return_pct": 64.129
+        "total_return_pct": 66.5911
       },
       "oos": {
         "trades": 23,
@@ -30,7 +30,7 @@
         "max_dd_pct": 1.0,
         "total_return_pct": 25.9148
       },
-      "degradation_r": -0.0708
+      "degradation_r": -0.0594
     },
     "RANGING": {
       "expected_label": "RANGING",

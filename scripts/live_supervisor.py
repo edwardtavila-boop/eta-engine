@@ -57,9 +57,9 @@ class JarvisAwareRouter:
     #: Truncation length for the hex client-order-id. 32 hex chars =
     #: 128 bits = collision-resistant in practice for any single
     #: account's order stream while staying short enough to fit in
-    #: every supported venue's COID field (Tradovate cOID 64ch, Bybit
-    #: orderLinkId 36ch, IBKR cOID 64ch, OKX clOrdId 32ch — 32 fits
-    #: the tightest constraint).
+    #: every supported venue's COID field (Tradovate cOID 64ch [DORMANT
+    #: per dormancy_mandate / Appendix A], Bybit orderLinkId 36ch, IBKR
+    #: cOID 64ch, OKX clOrdId 32ch — 32 fits the tightest constraint).
     COID_LEN: int = 32
 
     @staticmethod
