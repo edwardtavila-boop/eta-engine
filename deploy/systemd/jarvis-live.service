@@ -5,7 +5,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# Type=notify lets the daemon report READY=1 + WATCHDOG=1 via sd_notify.
+# The daemon implementation lives in eta_engine.obs.watchdog --
+# see WatchdogPinger() and notify_ready().
+Type=notify
+NotifyAccess=main
+WatchdogSec=60
 WorkingDirectory=__INSTALL_DIR__
 EnvironmentFile=__INSTALL_DIR__/.env
 ExecStart=__INSTALL_DIR__/.venv/bin/python -m eta_engine.scripts.jarvis_live \
@@ -14,6 +19,8 @@ ExecStart=__INSTALL_DIR__/.venv/bin/python -m eta_engine.scripts.jarvis_live \
   --interval 60
 Restart=always
 RestartSec=15
+# If WatchdogSec triggers, escalate to a full restart (don't just kill).
+WatchdogSignal=SIGTERM
 StandardOutput=append:%h/.local/log/eta_engine/jarvis-live.log
 StandardError=append:%h/.local/log/eta_engine/jarvis-live.err
 

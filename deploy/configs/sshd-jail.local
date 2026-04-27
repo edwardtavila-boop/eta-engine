@@ -1,0 +1,36 @@
+# EVOLUTIONARY TRADING ALGO  //  fail2ban jail
+#
+# Drop into /etc/fail2ban/jail.local on the VPS (alongside jail.conf).
+# Settings here override the distro defaults.
+
+[DEFAULT]
+# Email on ban
+destemail = edward.t.avila@gmail.com
+sender    = fail2ban@thefirm.local
+mta       = sendmail
+action    = %(action_mwl)s
+
+# Ignore the operator's known IPs (replace with your own; leave the
+# loopback so local dev is never accidentally banned).
+ignoreip  = 127.0.0.1/8 ::1
+
+# Ban policy
+bantime   = 1h
+findtime  = 10m
+maxretry  = 5
+backend   = systemd
+
+[sshd]
+enabled   = true
+port      = ssh
+logpath   = %(sshd_log)s
+backend   = %(sshd_backend)s
+maxretry  = 4
+bantime   = 24h
+
+[recidive]
+# Ban repeat offenders for a week.
+enabled   = true
+bantime   = 1w
+findtime  = 1d
+maxretry  = 3

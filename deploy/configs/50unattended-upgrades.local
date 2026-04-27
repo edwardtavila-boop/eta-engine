@@ -1,0 +1,46 @@
+// EVOLUTIONARY TRADING ALGO  //  unattended-upgrades local override
+//
+// Drop into /etc/apt/apt.conf.d/50unattended-upgrades.local on the VPS
+// (alongside the distro-provided 50unattended-upgrades). Settings here
+// take precedence and survive distro upgrades.
+//
+// Policy:
+//   * Apply security updates automatically every day.
+//   * Do NOT auto-reboot during US trading hours (13:30 - 21:00 UTC).
+//     Reboot at 04:00 UTC (00:00 ET) which is outside both ETH session
+//     reset and the European open.
+//   * Email on failure to the operator address.
+
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+    "${distro_id}:${distro_codename}-updates";
+};
+
+Unattended-Upgrade::Package-Blacklist {
+    // Block kernel auto-upgrades; we want explicit control of reboots
+    // around the trading session.
+    "linux-image-.*";
+    "linux-headers-.*";
+    "linux-modules-.*";
+    "linux-modules-extra-.*";
+};
+
+// Email
+Unattended-Upgrade::Mail "edward.t.avila@gmail.com";
+Unattended-Upgrade::MailReport "on-change";
+
+// Reboot policy
+Unattended-Upgrade::Automatic-Reboot           "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+Unattended-Upgrade::Automatic-Reboot-Time      "04:00";
+
+// Cleanup
+Unattended-Upgrade::Remove-Unused-Kernel-Packages   "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies  "true";
+Unattended-Upgrade::Remove-Unused-Dependencies      "true";
+
+// Verbose log so we can audit what happened from /var/log/unattended-upgrades/
+Unattended-Upgrade::Verbose "true";

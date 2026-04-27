@@ -5,7 +5,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# Type=notify -- the capture daemon's main supervisor calls
+# notify_ready() once Playwright has both opened the browser AND
+# loaded the auth state, then pings WATCHDOG=1 from each tab loop.
+Type=notify
+NotifyAccess=main
+WatchdogSec=180
 WorkingDirectory=__INSTALL_DIR__
 EnvironmentFile=__INSTALL_DIR__/.env
 ExecStart=__INSTALL_DIR__/.venv/bin/python -m eta_engine.scripts.run_tradingview_capture \
@@ -15,6 +20,7 @@ ExecStart=__INSTALL_DIR__/.venv/bin/python -m eta_engine.scripts.run_tradingview
   --log-level    INFO
 Restart=always
 RestartSec=30
+WatchdogSignal=SIGTERM
 StandardOutput=append:%h/.local/log/eta_engine/tradingview-capture.log
 StandardError=append:%h/.local/log/eta_engine/tradingview-capture.err
 

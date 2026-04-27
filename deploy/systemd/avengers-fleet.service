@@ -5,7 +5,12 @@ After=jarvis-live.service
 Requires=jarvis-live.service
 
 [Service]
-Type=simple
+# Type=notify -- daemon pings sd_notify(WATCHDOG=1) every tick.
+# Daemon entry must call eta_engine.obs.watchdog.notify_ready() at
+# startup and run inside `async with WatchdogPinger():`.
+Type=notify
+NotifyAccess=main
+WatchdogSec=120
 WorkingDirectory=__INSTALL_DIR__
 EnvironmentFile=__INSTALL_DIR__/.env
 ExecStart=__INSTALL_DIR__/.venv/bin/python -m deploy.scripts.avengers_daemon \
@@ -13,6 +18,7 @@ ExecStart=__INSTALL_DIR__/.venv/bin/python -m deploy.scripts.avengers_daemon \
   --log-dir %h/.local/log/eta_engine
 Restart=always
 RestartSec=15
+WatchdogSignal=SIGTERM
 StandardOutput=append:%h/.local/log/eta_engine/avengers-fleet.log
 StandardError=append:%h/.local/log/eta_engine/avengers-fleet.err
 

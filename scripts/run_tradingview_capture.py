@@ -114,6 +114,11 @@ def main(argv: list[str] | None = None) -> int:
         TradingViewUnavailable,
     )
     from eta_engine.data.tradingview.journal import TradingViewJournal
+    from eta_engine.obs.watchdog import (
+        WatchdogPinger,
+        notify_ready,
+        notify_stopping,
+    )
 
     if not TradingViewClient.is_available():
         sys.stderr.write(
@@ -148,24 +153,28 @@ def main(argv: list[str] | None = None) -> int:
             signal.signal(getattr(signal, sig_name), _request_stop)
 
     async def _supervised() -> None:
-        run_task = asyncio.create_task(client.run())
-        watchdog: asyncio.Task[None] | None = None
-        if args.max_runtime_seconds > 0:
-            async def _watchdog() -> None:
-                await asyncio.sleep(args.max_runtime_seconds)
-                client.request_stop()
-                stop_event.set()
-            watchdog = asyncio.create_task(_watchdog())
-        await stop_event.wait()
-        run_task.cancel()
-        if watchdog:
-            watchdog.cancel()
-        try:
-            await run_task
-        except asyncio.CancelledError:
-            pass
-        except TradingViewUnavailable as e:
-            log.error("tradingview capture: %s", e)
+        # Tell systemd we're up; start sd_notify(WATCHDOG=1) keepalive.
+        notify_ready()
+        async with WatchdogPinger():
+            run_task = asyncio.create_task(client.run())
+            watchdog: asyncio.Task[None] | None = None
+            if args.max_runtime_seconds > 0:
+                async def _runtime_cap() -> None:
+                    await asyncio.sleep(args.max_runtime_seconds)
+                    client.request_stop()
+                    stop_event.set()
+                watchdog = asyncio.create_task(_runtime_cap())
+            await stop_event.wait()
+            run_task.cancel()
+            if watchdog:
+                watchdog.cancel()
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                pass
+            except TradingViewUnavailable as e:
+                log.error("tradingview capture: %s", e)
+        notify_stopping()
 
     try:
         loop.run_until_complete(_supervised())
