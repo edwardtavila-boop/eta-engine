@@ -83,24 +83,71 @@ def fetch_bot_positions() -> dict[str, dict[str, float]]:
     return {}
 
 
-def fetch_broker_positions() -> dict[str, dict[str, float]]:
-    """TODO: query IBKR + Tastytrade for current positions.
+async def _fetch_broker_positions_async() -> dict[str, dict[str, float]]:
+    """Query IBKR + Tastytrade for current positions, asyncio version.
 
-    Pseudocode::
+    Returns ``{symbol: {venue_name: qty}}``. When a venue has no creds
+    populated, ``get_positions()`` returns ``[]`` -- the missing data
+    silently falls out of the diff (no false-positive alerts).
 
-        from eta_engine.venues.ibkr import IbkrClientPortalVenue
-        from eta_engine.venues.tastytrade import TastytradeVenue
-        ibkr = IbkrClientPortalVenue()
-        tt   = TastytradeVenue()
-        positions = {}
-        for venue in (ibkr, tt):
-            for pos in await venue.get_positions():
-                positions.setdefault(pos.symbol, {})[venue.name] = pos.qty
-        return positions
-
-    Until the venue handshake is wired, return empty.
+    Each position dict from the venue layer is normalized to:
+      * symbol  (string, e.g. "MNQ" or "BTCUSDT")
+      * qty     (float, signed: + long, - short)
     """
-    return {}
+    out: dict[str, dict[str, float]] = {}
+    venues: list[Any] = []
+    try:
+        from eta_engine.venues.ibkr import IbkrClientPortalVenue
+        venues.append(IbkrClientPortalVenue())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("IBKR venue unavailable: %s", exc)
+    try:
+        from eta_engine.venues.tastytrade import TastytradeVenue
+        venues.append(TastytradeVenue())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Tastytrade venue unavailable: %s", exc)
+
+    for venue in venues:
+        try:
+            positions = await venue.get_positions()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("get_positions failed for venue=%s: %s",
+                           getattr(venue, "name", "?"), exc)
+            continue
+        for pos in positions or []:
+            sym = str(pos.get("symbol") or pos.get("ticker") or "").upper()
+            if not sym:
+                continue
+            try:
+                qty = float(pos.get("qty") or pos.get("position") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            out.setdefault(sym, {})[getattr(venue, "name", "venue")] = qty
+    return out
+
+
+def fetch_broker_positions() -> dict[str, dict[str, float]]:
+    """Synchronous wrapper for venue position polling. Returns
+    ``{symbol: {venue_name: qty}}``.
+
+    Empty dict means: no broker reported any position. That's the safe
+    default -- the diff against bot state will then either:
+      (a) match (both empty) -> no alert
+      (b) bot says +N, broker says 0 -> drift alert (which is correct;
+          we don't have any data from the broker but the bot thinks it
+          does, so the operator should be told)
+    """
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Already inside an event loop; can't nest. Run in a thread.
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                return ex.submit(asyncio.run, _fetch_broker_positions_async()).result(timeout=30)
+    except RuntimeError:
+        pass
+    return asyncio.run(_fetch_broker_positions_async())
 
 
 def fire_drift_alert(diffs: list[PositionDiff], *, alerts_yaml: Path) -> None:

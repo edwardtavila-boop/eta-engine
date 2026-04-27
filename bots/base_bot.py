@@ -102,6 +102,50 @@ class BaseBot(abc.ABC):
     def __init__(self, config: BotConfig) -> None:
         self.config = config
         self.state = BotState(equity=config.starting_capital_usd, peak_equity=config.starting_capital_usd)
+        # Tier-4 #11 (2026-04-27): equity-ceiling injection point so the
+        # portfolio rebalancer can dynamically allocate budget across
+        # bots without touching their static config. None = no override.
+        self._equity_ceiling_usd: float | None = None
+        # Tier-3 #10 (2026-04-27): optional fleet-wide structured logger.
+        # When set via attach_eta_logger(), every loggable event flows
+        # through state/logs/eta.jsonl with bot=name attached.
+        self._eta_logger: Any | None = None
+
+    def set_equity_ceiling(self, usd: float | None) -> None:
+        """Cap (or uncap) the bot's effective equity.
+
+        Set by the portfolio rebalancer to redistribute budget across
+        bots based on rolling Sharpe + drawdown brakes (see
+        ``brain/portfolio_rebalancer_v2.py``). Pass ``None`` to remove
+        the cap -- bot uses its full ``config.starting_capital_usd``.
+
+        Sizing logic that respects this cap should call
+        ``self.effective_equity()`` instead of ``self.state.equity``.
+        """
+        if usd is not None and usd <= 0:
+            raise ValueError(f"equity ceiling must be positive or None, got {usd}")
+        self._equity_ceiling_usd = float(usd) if usd is not None else None
+
+    def effective_equity(self) -> float:
+        """Bot equity after applying any portfolio-rebalancer ceiling.
+
+        Returns ``min(state.equity, ceiling)`` when a ceiling is set,
+        else ``state.equity`` unchanged. Bots that opt into the
+        rebalancer should use this in their sizing math.
+        """
+        if self._equity_ceiling_usd is None:
+            return self.state.equity
+        return min(self.state.equity, self._equity_ceiling_usd)
+
+    def attach_eta_logger(self, logger: Any) -> None:
+        """Wire a fleet-wide ``EtaLogger`` (from ``obs.log_aggregator``).
+
+        Idempotent: re-calling with the same logger is a no-op. Bots
+        that opt in get one ``state/logs/eta.jsonl`` line per call to
+        ``self.log()``. Bots that don't call this fall back to the
+        plain ``logging.getLogger`` they already use.
+        """
+        self._eta_logger = logger
 
     @abc.abstractmethod
     async def start(self) -> None: ...
