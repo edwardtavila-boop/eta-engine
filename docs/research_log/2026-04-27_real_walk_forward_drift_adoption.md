@@ -161,6 +161,11 @@ environmental — they're gating on Tradovate creds that aren't
 populated in dev. They effectively always fail in this environment
 and pass in CI when Tradovate creds are set. Not a real bug.
 
+(Note: Tradovate is currently DORMANT per the dormancy_mandate /
+Appendix A — the gate's required=False semantics already accommodate
+this. The missing-creds path now resolves to SKIP, not FAIL. Tests
+updated 2026-04-27 to match the new SKIP/PASS semantics.)
+
 ## Headline numbers for this session
 
 | | Before (2026-04-26 supercharge) | After (this session) |

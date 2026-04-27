@@ -25,7 +25,7 @@ function Die  { param($m) Write-Host "[FAIL] $m" -ForegroundColor Red }
 Log "Step 1/4 -- Defender exclusions"
 $paths = @(
     "C:\eta_engine",
-    "C:\TheFirm",
+    "C:\EvolutionaryTradingAlgo\firm_command_center",
     "$env:LOCALAPPDATA\eta_engine"
 )
 $processes = @("python.exe", "cloudflared.exe", "pwsh.exe")

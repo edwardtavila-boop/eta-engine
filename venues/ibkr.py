@@ -456,7 +456,7 @@ def _runtime_secret_root(env: Mapping[str, str]) -> Path:
     runtime_root = (
         str(env.get("APEX_RUNTIME_ROOT") or "").strip()
         or str(env.get("FIRM_RUNTIME_ROOT") or "").strip()
-        or r"C:\TheFirm"
+        or r"C:\EvolutionaryTradingAlgo\firm_command_center"
     )
     return Path(runtime_root) / "secrets"
 

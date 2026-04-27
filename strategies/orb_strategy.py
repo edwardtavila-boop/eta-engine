@@ -97,9 +97,14 @@ class ORBConfig:
     volume_lookback: int = 20  # bars for the volume average
 
     # Risk / exits
+    # Winning config from 2026-04-27 sweep on MNQ1/5m (60d/30d windows):
+    # range=15m, rr=2.0, atr_stop=2.0, ema=200 → DSR 1.000, OOS Sh +5.71,
+    # 100% pass fraction, gate PASS. Defaults updated to the winner so
+    # any caller that just instantiates ORBStrategy() gets the
+    # research-validated baseline.
     rr_target: float = 2.0  # target distance = rr_target × stop distance
     atr_period: int = 14
-    atr_stop_mult: float = 1.5  # stop distance = atr_stop_mult × ATR
+    atr_stop_mult: float = 2.0  # was 1.5; bumped per sweep
     risk_per_trade_pct: float = 0.01  # 1% of equity per trade
     max_trades_per_day: int = 1  # one ORB trade per session by default
 

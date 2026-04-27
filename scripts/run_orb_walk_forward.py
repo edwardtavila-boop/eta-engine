@@ -59,7 +59,7 @@ def _orb_config_from_env():  # type: ignore[no-untyped-def]
         volume_mult=float(os.environ.get("ORB_VOLUME_MULT", "1.0")),
         rr_target=float(os.environ.get("ORB_RR_TARGET", "2.0")),
         atr_period=int(os.environ.get("ORB_ATR_PERIOD", "14")),
-        atr_stop_mult=float(os.environ.get("ORB_ATR_STOP_MULT", "1.5")),
+        atr_stop_mult=float(os.environ.get("ORB_ATR_STOP_MULT", "2.0")),
         risk_per_trade_pct=float(os.environ.get("ORB_RISK_PCT", "0.01")),
         max_trades_per_day=int(os.environ.get("ORB_MAX_TRADES_PER_DAY", "1")),
     )
