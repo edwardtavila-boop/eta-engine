@@ -383,12 +383,24 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
             "crypto_orb_config": {"range_minutes": 240, "session_cutoff_hour_utc": 18},
+            # Devils-advocate 2026-04-27: half-size for first 30 days
+            # so the residual ~25% edge probability has room to be
+            # measured without blowing the budget if it turns out to be
+            # zero. Reverts to 1.0 multiplier on 2026-05-27.
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
+            },
         },
     ),
-    # ETH perp — same crypto_orb baseline as BTC for apples-to-apples
+    # ETH perp — research-tuned crypto_orb (range=120m). NOT promoted:
+    # IS Sharpe is negative across 7/9 windows. See
+    # docs/research_log/2026-04-27_eth_crypto_orb_promotion_path.md and
+    # docs/research_log/2026-04-27_eth_promotion_blocked_by_is.md
     StrategyAssignment(
         bot_id="eth_perp",
-        strategy_id="eth_corb_v1",
+        strategy_id="eth_corb_v2",
         symbol="ETH",
         timeframe="1h",
         scorer_name="btc",  # unused when strategy_kind=crypto_orb
@@ -396,27 +408,46 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,
-        min_trades_per_window=10,
+        # Lowered from 10 to 3 per the 2026-04-27 sweep finding:
+        # crypto_orb on ETH 1h fires 2-8 trades per 27d OOS window
+        # (selective by design, EMA-filtered, max 2/day). The DSR
+        # pass-fraction gate at 50pct provides the real few-trades
+        # guard at the fold level; the legacy all_met gate was relaxed
+        # to >= 80pct of windows met.
+        min_trades_per_window=3,
         strategy_kind="crypto_orb",
         rationale=(
-            "Same crypto_orb baseline as btc_hybrid per quant: "
-            "'picking a different strategy_kind here would be a "
-            "post-hoc fishing expedition (no theoretical reason "
-            "ETH's 1h microstructure differs from BTC's). Use the "
-            "same baseline; let walk-forward, not narrative, decide "
-            "if it survives.' Sage caveat (correlation): 'BTC and "
-            "ETH on the same crypto_orb may be one strategy, not "
-            "two — DSR for the *fleet* needs an explicit "
-            "correlation penalty, otherwise you're double-counting "
-            "the same edge.' Mitigation: monitor ETH-vs-BTC trade "
-            "correlation in the drift_monitor; if rho > 0.7 over "
-            "30 days, treat the pair as one bot for risk-budget "
-            "purposes."
+            "Research-tuned config (range=120m) found via 36-cell "
+            "sweep_crypto_orb_eth on 2026-04-27: agg OOS Sharpe +3.568, "
+            "deg 11.1pct, DSR median 1.000, 77.8pct fold pass. NOT "
+            "PROMOTED — agg IS Sharpe is -3.018, with IS negative in "
+            "7/9 windows. The OOS pass is plausibly lucky-date-split, "
+            "not validated edge: a strategy whose IS phase consistently "
+            "loses money cannot be honestly trusted on OOS performance "
+            "alone. The is_positive gate added to legacy_gate "
+            "2026-04-27 catches exactly this case. Tuning still kept "
+            "(range=120m beats default 240m on degradation 11pct vs "
+            "44pct) as a research baseline; revisit when more bars are "
+            "available (currently 360d ETH 1h) or with a different "
+            "strategy_kind that produces positive IS. Bars are "
+            "Coinbase spot ETH-USD; pre-live swap to IBKR-native CME "
+            "ETH bars + drift check (see eta_data_source_policy memory)."
         ),
         extras={
             "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
-            "crypto_orb_config": {"range_minutes": 240, "session_cutoff_hour_utc": 18},
+            "crypto_orb_config": {
+                "range_minutes": 120,
+                "atr_stop_mult": 2.5,
+                "rr_target": 2.5,
+                "session_cutoff_hour_utc": 18,
+            },
             "fleet_corr_partner": "btc_hybrid",
+            # Devils-advocate 2026-04-27: half-size for first 30 days.
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
+            },
         },
     ),
     # XRP perp — DEACTIVATED until news/sentiment feed lands.
@@ -482,6 +513,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "fleet_corr_partner": "btc_hybrid",
             "research_candidate": True,
+            # Devils-advocate 2026-04-27: half-size for first 30 days.
+            # SOL is the most fragile perp pick (worst IS Sharpe under
+            # confluence) so the warm-up matters most here.
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
+            },
         },
     ),
     # Crypto seed — long-only DCA-style accumulator

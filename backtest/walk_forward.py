@@ -52,6 +52,14 @@ class WalkForwardConfig(BaseModel):
     anchored: bool = False
     oos_fraction: float = Field(default=0.3, gt=0.0, lt=1.0)
     min_trades_per_window: int = Field(default=20, ge=1)
+    # Fraction of windows that must individually meet the
+    # ``min_trades_per_window`` threshold for the legacy gate to pass.
+    # 1.0 = strict (every window), 0.8 = "most" (default — accommodates
+    # selective strategies that fire only a handful of trades per OOS
+    # window). The DSR pass-fraction gate already guards against
+    # pathological few-trade windows at the fold level, so requiring
+    # 100pct here was duplicate strictness.
+    min_trades_met_fraction: float = Field(default=0.8, ge=0.0, le=1.0)
     # Per-fold DSR gating (additive, default off for back-compat) ----------
     strict_fold_dsr_gate: bool = False
     fold_dsr_min_pass_fraction: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -257,8 +265,23 @@ class WalkForwardEngine:
 
         # Gate: legacy checks always required; strict mode adds the
         # per-fold median + pass-fraction guardrails.
-        all_met = all(w["min_trades_met"] for w in wins)
-        legacy_gate = dsr > 0.5 and deg_avg < 0.35 and all_met
+        # `min_trades_met_fraction` defaults to 0.8 (was strict `all`
+        # before 2026-04-27) — selective crypto strategies fire 2-8
+        # trades per OOS window, so demanding every single window
+        # clear the threshold is duplicate strictness vs the per-fold
+        # DSR pass-fraction gate. Set to 1.0 for the original behaviour.
+        n_met = sum(1 for w in wins if w["min_trades_met"])
+        met_frac = n_met / n_folds if n_folds else 0.0
+        all_met = met_frac >= cfg.min_trades_met_fraction
+        # Require a positive aggregate IN-SAMPLE Sharpe. Without this
+        # check, a strategy with persistently negative IS but lucky-
+        # date-split positive OOS would PASS — the engine's
+        # `_degradation` returns 0 when IS<=0, masking the bad IS.
+        # (Surfaced 2026-04-27 by ETH crypto_orb tuned config: agg
+        # IS -3.02, agg OOS +3.57. Walk-forward should validate
+        # IS+ AND OOS+, not just OOS+.)
+        is_positive = agg_is > 0.0
+        legacy_gate = dsr > 0.5 and deg_avg < 0.35 and all_met and is_positive
         if cfg.strict_fold_dsr_gate:
             gate = legacy_gate and fold_median > 0.5 and fold_pass_frac >= cfg.fold_dsr_min_pass_fraction
         else:
