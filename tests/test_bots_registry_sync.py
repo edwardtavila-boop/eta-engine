@@ -52,6 +52,14 @@ DIR_TO_BOT_ID: dict[str, str] = {
     "crypto_seed": "crypto_seed",
 }
 
+# Strategy-variant bot_ids that share an underlying ``bots/<dir>/bot.py``
+# with another entry above. Listed separately so the orphan check
+# accepts them — they don't need their own dir, but they do need
+# their own requirements row and registry entry.
+VARIANT_BOT_IDS: set[str] = {
+    "nq_daily_drb",  # daily-DRB variant; bot dir = bots/nq/
+}
+
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -112,18 +120,22 @@ def test_every_dir_bot_id_is_in_requirements_registry() -> None:
 
 def test_no_orphan_registry_rows() -> None:
     """Every per_bot_registry / requirements row must point at a real
-    bot directory. Catches "left dead config behind" drift."""
+    bot directory OR be listed in VARIANT_BOT_IDS. Catches "left dead
+    config behind" drift while allowing strategy variants that share
+    a bot directory."""
     from eta_engine.data.requirements import REQUIREMENTS
     from eta_engine.strategies.per_bot_registry import bots
 
-    real = set(DIR_TO_BOT_ID.values())
+    real = set(DIR_TO_BOT_ID.values()) | VARIANT_BOT_IDS
     strat_extra = set(bots()) - real
     req_extra = {r.bot_id for r in REQUIREMENTS} - real
     assert not strat_extra, (
-        f"per_bot_registry rows without a matching bot dir: {sorted(strat_extra)}"
+        f"per_bot_registry rows without a matching bot dir or VARIANT: "
+        f"{sorted(strat_extra)}"
     )
     assert not req_extra, (
-        f"requirements rows without a matching bot dir: {sorted(req_extra)}"
+        f"requirements rows without a matching bot dir or VARIANT: "
+        f"{sorted(req_extra)}"
     )
 
 

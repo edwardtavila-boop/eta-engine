@@ -99,6 +99,19 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("tradingview-mcp",),
     ),
+    # nq_daily_drb is a daily-timeframe DRB variant of nq_futures. Same
+    # underlying bot directory, different strategy_kind in the per_bot
+    # registry. Listed here as a separate bot_id so the audit + sync
+    # tests treat it as its own promotable subject.
+    BotRequirements(
+        bot_id="nq_daily_drb",
+        requirements=(
+            DataRequirement("bars", "NQ1", "D", critical=True,
+                note="DRB walk-forward needs the 27-yr daily history"),
+            DataRequirement("correlation", "ES1", "5m", critical=False),
+        ),
+        sources_hint=("tradingview-mcp",),
+    ),
     # ── Crypto bots ── (placeholder symbols until real feeds wired)
     BotRequirements(
         bot_id="btc_hybrid",
