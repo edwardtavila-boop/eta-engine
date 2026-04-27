@@ -727,6 +727,28 @@ class ApexRuntime:
             self._log(kind="no_active_bots", meta={"go_state": self.cfg.go_state})
             return 0
 
+        # 2026-04-27 risk-sage hardening: register the fleet-wide
+        # FleetRiskGate BEFORE starting any bot. The bootstrap helper
+        # sums starting_capital_usd across the active bot set,
+        # constructs a gate sized for that fleet, registers it as the
+        # process singleton (so every venue client's
+        # assert_fleet_within_budget() call sees it), and attaches it
+        # to each bot so closing fills feed the running aggregate.
+        # Failure to register is non-fatal — the gate becomes a no-op
+        # rather than blocking startup, but the operator dashboard
+        # will surface the missing aggregator. See
+        # safety/fleet_bootstrap.py for the contract.
+        try:
+            from eta_engine.safety.fleet_bootstrap import bootstrap_fleet_risk
+            fleet_bots = [bot for _b, bot in bots_instantiated]
+            bootstrap_fleet_risk(fleet_bots)
+            self._log(
+                kind="fleet_risk_gate_registered",
+                meta={"n_bots": len(fleet_bots)},
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.error("bootstrap_fleet_risk failed: %s", exc)
+
         # Boot hooks
         for b, bot in bots_instantiated:
             self.heartbeat.register(b.name, timeout_s=120)
