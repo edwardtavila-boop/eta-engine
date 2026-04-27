@@ -174,6 +174,23 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "data/sentiment_lunarcrush.py (sentiment)",
         ),
     ),
+    # btc_hybrid_sage is a sage-overlay variant of btc_hybrid. Same
+    # underlying bot directory + same data needs as plain BTC crypto_orb;
+    # only the decision-time sage-consensus gate differs.
+    BotRequirements(
+        bot_id="btc_hybrid_sage",
+        requirements=(
+            DataRequirement("bars", "BTC", "1h", critical=True),
+            DataRequirement("bars", "BTC", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("funding", "BTC", "8h", critical=False,
+                note="sage panel reads funding skew when available"),
+        ),
+        sources_hint=(
+            "scripts/fetch_btc_bars.py (Coinbase spot bars)",
+            "scripts/fetch_funding_rates.py (OKX funding)",
+        ),
+    ),
     BotRequirements(
         bot_id="eth_perp",
         requirements=(

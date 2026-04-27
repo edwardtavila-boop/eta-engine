@@ -53,12 +53,25 @@ def compute_sharpe(returns: list[float], risk_free: float = 0.0) -> float:
     sd = _stdev(excess)
     if sd == 0.0:
         return 0.0
-    # FP-noise guard. abs(mu) of the sample is the natural scale; if
-    # sd is more than ~12 orders of magnitude smaller, the dispersion
-    # is rounding error, not signal. The 1e-12 threshold corresponds
-    # to ~4 decimal digits of relative precision, well above what
-    # honest market data exhibits.
-    if abs(mu) > 0.0 and sd / abs(mu) < 1e-12:
+    # Constant-returns guard. abs(mu) of the sample is the natural
+    # scale; if sd is much smaller than the mean magnitude, the
+    # dispersion is either FP-rounding noise (~1e-17) OR deterministic
+    # strategy outcomes (every winner hits the same rr_target = same
+    # +R, so n_wins identical-R returns produce sd/mean ratios down
+    # to ~1e-5). Both cases produce meaningless Sharpe ratios.
+    #
+    # Threshold 1e-3 means: if the cross-trade dispersion is below
+    # 0.1pct of the mean return magnitude, treat the series as
+    # effectively constant. Honest strategy returns have far more
+    # cross-trade variance than this — slippage, partial fills,
+    # variable target distances, etc. Anything tighter is the kind
+    # of degenerate return distribution that breaks Sharpe by design.
+    #
+    # Originally caught the FP-noise case (sd=1.3e-17, ratio ~1e-15)
+    # 2026-04-27. Tightened on the same day after the ETH crypto_orb
+    # sweep surfaced a deterministic-R case (sd=1.7e-7, ratio 1.15e-5)
+    # producing Sharpe=1.4e+6 from 4 trades all hitting +1.5R.
+    if abs(mu) > 0.0 and sd / abs(mu) < 1e-3:
         return 0.0
     return round(mu / sd * math.sqrt(252), 4)
 

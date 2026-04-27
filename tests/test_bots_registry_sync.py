@@ -60,6 +60,7 @@ VARIANT_BOT_IDS: set[str] = {
     "nq_daily_drb",  # daily-DRB variant; bot dir = bots/nq/
     "mnq_futures_sage",  # sage-gated ORB variant; bot dir = bots/mnq/
     "nq_futures_sage",  # sage-gated ORB variant; bot dir = bots/nq/
+    "btc_hybrid_sage",  # sage-gated crypto_orb variant; bot dir = bots/btc_hybrid/
 }
 
 
