@@ -39,9 +39,9 @@ class BotAudit:
     """Per-bot data coverage report."""
 
     bot_id: str
-    available: list[tuple["DataRequirement", "DatasetMeta"]] = field(default_factory=list)
-    missing_critical: list["DataRequirement"] = field(default_factory=list)
-    missing_optional: list["DataRequirement"] = field(default_factory=list)
+    available: list[tuple[DataRequirement, DatasetMeta]] = field(default_factory=list)
+    missing_critical: list[DataRequirement] = field(default_factory=list)
+    missing_optional: list[DataRequirement] = field(default_factory=list)
     sources_hint: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -63,9 +63,9 @@ def _is_bar_kind(kind: str) -> bool:
 
 
 def _resolve_library_lookup(
-    req: "DataRequirement",
-    lib: "DataLibrary",
-) -> "DatasetMeta | None":
+    req: DataRequirement,
+    lib: DataLibrary,
+) -> DatasetMeta | None:
     """Map a DataRequirement to a library dataset.
 
     * ``bars`` / ``correlation`` — direct (symbol, timeframe) lookup.
@@ -99,7 +99,7 @@ def _resolve_library_lookup(
     return None
 
 
-def audit_bot(bot_id: str, library: "DataLibrary | None" = None) -> BotAudit | None:
+def audit_bot(bot_id: str, library: DataLibrary | None = None) -> BotAudit | None:
     """Return coverage for ``bot_id`` or None if no requirements registered."""
     from eta_engine.data.library import default_library
     from eta_engine.data.requirements import get_requirements
@@ -121,7 +121,7 @@ def audit_bot(bot_id: str, library: "DataLibrary | None" = None) -> BotAudit | N
     return out
 
 
-def audit_all(library: "DataLibrary | None" = None) -> list[BotAudit]:
+def audit_all(library: DataLibrary | None = None) -> list[BotAudit]:
     """Audit every bot in the requirements registry."""
     from eta_engine.data.requirements import all_requirements
 

@@ -47,7 +47,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from eta_engine.core.data_pipeline import BarData
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +160,7 @@ def _probe(path: Path, schema_kind: str) -> tuple[int, datetime, datetime] | Non
     """
     try:
         with path.open("r", encoding="utf-8", newline="") as fh:
-            header = fh.readline()
+            fh.readline()  # skip header
             first_data = fh.readline()
             if not first_data:
                 return None
@@ -209,7 +208,7 @@ def _parse_ts_from_row(line: str, schema_kind: str) -> datetime | None:
 class DataLibrary:
     """Lazy catalog of every recognised CSV under the configured roots."""
 
-    def __init__(self, roots: "Iterable[Path] | None" = None) -> None:
+    def __init__(self, roots: Iterable[Path] | None = None) -> None:
         self.roots: tuple[Path, ...] = tuple(roots) if roots else DEFAULT_ROOTS
         self._datasets: list[DatasetMeta] = []
         self._discover()

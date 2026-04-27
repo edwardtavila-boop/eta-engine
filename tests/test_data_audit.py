@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - pytest fixtures use Path at runtime
 
 import pytest
 
@@ -12,19 +12,16 @@ from eta_engine.data.library import DataLibrary
 from eta_engine.data.requirements import (
     REQUIREMENTS,
     BotRequirements,
-    DataRequirement,
-    all_requirements,
     critical_requirements_for,
     get_requirements,
 )
-
 
 # ---------------------------------------------------------------------------
 # Requirements registry
 # ---------------------------------------------------------------------------
 
 
-def test_requirements_is_tuple_of_BotRequirements() -> None:
+def test_requirements_is_tuple_of_BotRequirements() -> None:  # noqa: N802
     assert isinstance(REQUIREMENTS, tuple)
     assert all(isinstance(r, BotRequirements) for r in REQUIREMENTS)
 
@@ -36,7 +33,7 @@ def test_bot_ids_are_unique_in_requirements() -> None:
 
 def test_requirements_are_immutable() -> None:
     r = REQUIREMENTS[0]
-    with pytest.raises(Exception):  # frozen=True → AttributeError or FrozenInstanceError
+    with pytest.raises(Exception):  # noqa: B017 - frozen=True raises AttributeError|FrozenInstanceError|dataclasses.FrozenInstanceError; the exact class differs by Python version
         r.bot_id = "tampered"  # type: ignore[misc]
 
 
