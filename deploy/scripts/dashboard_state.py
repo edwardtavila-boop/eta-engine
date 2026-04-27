@@ -24,6 +24,7 @@ def read_json_safe(path: Path) -> dict[str, Any]:
       * ``{...}``                       when file exists and parses
       * ``{"_warning": "no_data", ...}`` when file missing
       * ``{"_error_code": "state_corrupt", ...}`` when JSON parse fails
+      * ``{"_error_code": "state_io_error", ...}`` when the file can't be read (permission, is a directory, etc.)
 
     Never raises. The dashboard relies on this to keep cold-start UI sane.
     """

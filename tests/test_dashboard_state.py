@@ -32,3 +32,12 @@ def test_read_json_safe_returns_error_on_corrupt(tmp_path: Path) -> None:
     out = read_json_safe(f)
     assert out["_error_code"] == "state_corrupt"
     assert "bad.json" in out["_path"]
+
+
+def test_read_json_safe_returns_error_on_io_error(tmp_path: Path) -> None:
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
+    # tmp_path itself IS a directory; reading it as a file raises IsADirectoryError (OSError subclass)
+    out = read_json_safe(tmp_path)
+    assert out["_error_code"] == "state_io_error"
+    assert str(tmp_path) in out["_path"]
