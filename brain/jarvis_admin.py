@@ -49,6 +49,7 @@ Public API
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime  # noqa: TC003  -- pydantic needs runtime
 from enum import StrEnum
@@ -72,6 +73,8 @@ from eta_engine.core.market_quality import (
     build_market_context_summary,
     format_market_context_summary,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Subsystem registry -- every autonomous actor in the fleet
@@ -570,6 +573,16 @@ class JarvisAdmin:
 
         If ``ctx`` is provided, uses it directly (handy for deterministic
         tests). Otherwise ticks the engine to get a fresh context.
+
+        Live-path policy selection (2026-04-27, pre-live plumbing):
+          * Default: champion ``evaluate_request`` (v17 logic).
+          * When feature flag ``V22_SAGE_MODULATION=true``, route through
+            ``evaluate_v22`` so the multi-school sage confluence modulates
+            the verdict on every order. v22 calls v17 internally and only
+            modulates when ``req.payload['sage_bars']`` is present and
+            sage conviction is high enough -- otherwise it returns the
+            v17 verdict unchanged. So flipping the flag is safe even if
+            not every bot is yet feeding sage_bars.
         """
         if ctx is None:
             if self._engine is None:
@@ -577,7 +590,32 @@ class JarvisAdmin:
                     "JarvisAdmin needs either an engine or an explicit ctx",
                 )
             ctx = self._engine.tick()
-        resp = evaluate_request(req, ctx)
+
+        # Wave-6 pre-live plumbing: optionally route through v22 sage.
+        # Lazy import + lazy flag check so we never pay the cost when
+        # the flag is off.
+        try:
+            from eta_engine.brain.feature_flags import is_enabled as _ff_enabled
+            sage_live = _ff_enabled("V22_SAGE_MODULATION")
+        except Exception:  # noqa: BLE001 -- feature_flags import must never crash JARVIS
+            sage_live = False
+
+        if sage_live:
+            try:
+                from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
+                    evaluate_v22,
+                )
+                resp = evaluate_v22(req, ctx)
+            except Exception as exc:  # noqa: BLE001 -- fall back to champion on any failure
+                logger.warning(
+                    "v22_sage_confluence raised %s -- falling back to v17: %s",
+                    type(exc).__name__,
+                    exc,
+                )
+                resp = evaluate_request(req, ctx)
+        else:
+            resp = evaluate_request(req, ctx)
+
         self._audit(req, resp, ctx)
         return resp
 

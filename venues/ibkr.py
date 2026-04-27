@@ -174,6 +174,14 @@ class IbkrClientPortalVenue(VenueBase):
 
         assert_live_allowed()
 
+        # FLEET RISK GATE (2026-04-27 risk-sage hardening) — refuse new
+        # orders when the fleet's same-day aggregate PnL has breached the
+        # daily-loss budget. No-op when no gate has been registered (paper
+        # / unit-test paths). Raises FleetRiskBreach when tripped.
+        from eta_engine.safety.fleet_risk_gate import assert_fleet_within_budget
+
+        assert_fleet_within_budget(bot_id=getattr(request, "bot_id", None))
+
         # POSITION CAP — fail-closed if this order would push us over the
         # configured contract limit (Apex eval-friendly default = 1).
         from eta_engine.safety.position_cap import assert_within_caps
@@ -245,16 +253,17 @@ class IbkrClientPortalVenue(VenueBase):
             raw={"venue": self.name, "payload": self.build_order_payload(request, conid=conid), "mode": "paper"},
         )
         self._mock_orders[order_id] = result
-        # Record the submission so retries dedup against this row
-        try:
+        # Record the submission so retries dedup against this row.
+        # Bookkeeping only; the order is already submitted, so any
+        # failure here must NOT propagate.
+        import contextlib
+        with contextlib.suppress(Exception):
             record_result(
                 client_order_id=order_id,
                 status="submitted",
                 broker_order_id=order_id,
                 response_payload={"venue": self.name, "mode": "paper"},
             )
-        except Exception:
-            pass  # bookkeeping only; the order is already submitted
         return result
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:

@@ -1773,6 +1773,8 @@ class BtcHybridBot(BaseBot):
     # ------------------------------------------------------------------
 
     async def on_bar(self, bar: dict[str, Any]) -> None:
+        # Wave-6 sage plumbing (2026-04-27): rolling sage-bar buffer.
+        self.observe_bar_for_sage(bar)
         if not self.check_risk():
             return
         bar_idx = self._bar_index_for(bar)
@@ -2076,6 +2078,7 @@ class BtcHybridBot(BaseBot):
                 bar_idx=self._current_bar_idx,
             )
             return None
+        sage_bars = self.recent_sage_bars()
         allowed, cap, code = self._ask_jarvis(
             ActionType.ORDER_PLACE,
             rationale=f"{signal.type.value} {signal.meta.get('mode', '?')}",
@@ -2084,6 +2087,8 @@ class BtcHybridBot(BaseBot):
             price=signal.price,
             confidence=signal.confidence,
             overnight_explicit=True,
+            sage_bars=sage_bars,
+            entry_price=signal.price,
         )
         if not allowed:
             return None

@@ -481,6 +481,10 @@ class MnqBot(BaseBot):
     # ── Market Events ──
 
     async def on_bar(self, bar: dict[str, Any]) -> None:
+        # Wave-6 sage plumbing (2026-04-27): keep a rolling 200-bar buffer
+        # so JARVIS v22 can consult the multi-school sage on every order.
+        # No-op cost when V22_SAGE_MODULATION=false (just one deque append).
+        self.observe_bar_for_sage(bar)
         if not self.check_risk():
             return
         # D1: EoD flatten check. When the gate tells us we've crossed
@@ -546,6 +550,11 @@ class MnqBot(BaseBot):
         _is_entry = signal.type in (SignalType.LONG, SignalType.SHORT)
         cap: float | None = None
         if _is_entry:
+            # Wave-6 sage plumbing: hand JARVIS the rolling bar history
+            # so v22_sage_confluence can run the 23-school consultation
+            # when V22_SAGE_MODULATION=true. Empty list when the buffer
+            # hasn't filled yet -- v22 falls back to v17 silently.
+            sage_bars = self.recent_sage_bars()
             allowed, cap, code = self._ask_jarvis(
                 ActionType.ORDER_PLACE,
                 rationale=f"{signal.type.value} {signal.meta.get('setup', '?')}",
@@ -553,6 +562,8 @@ class MnqBot(BaseBot):
                 symbol=signal.symbol,
                 price=signal.price,
                 confidence=signal.confidence,
+                sage_bars=sage_bars,
+                entry_price=signal.price,
             )
             if not allowed:
                 self._record_event(

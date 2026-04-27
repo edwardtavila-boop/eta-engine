@@ -227,3 +227,51 @@ class FleetRiskGate:
             self._today = today
             self._net_pnl_usd = 0.0
             self._per_bot_pnl.clear()
+
+
+# ---------------------------------------------------------------------------
+# Process-level singleton + assert helper
+# ---------------------------------------------------------------------------
+#
+# Venue clients call ``assert_fleet_within_budget()`` from their
+# ``place_order`` path so the fleet trip threshold is enforced
+# upstream of every order submission, regardless of which bot fired
+# the order. This mirrors the ``assert_live_allowed()`` pattern in
+# safety/live_gate.py — fail-shut when the gate is tripped, no-op
+# when no gate has been registered (paper / unit-test paths).
+
+_singleton: FleetRiskGate | None = None
+
+
+def register_fleet_risk_gate(gate: FleetRiskGate | None) -> None:
+    """Register the process-wide gate.
+
+    The orchestrator calls this once at startup with the gate
+    instance constructed for the active fleet. Subsequent calls
+    overwrite the previous registration; pass ``None`` to clear
+    (test resets, fleet shutdown).
+    """
+    global _singleton
+    _singleton = gate
+
+
+def get_fleet_risk_gate() -> FleetRiskGate | None:
+    """Return the process-wide gate (or None if not registered)."""
+    return _singleton
+
+
+def assert_fleet_within_budget(*, bot_id: str | None = None) -> None:
+    """Raise :class:`FleetRiskBreach` iff the registered gate is tripped.
+
+    No-op when no gate has been registered — keeps paper /
+    unit-test paths frictionless. Venue clients call this from
+    ``place_order`` BEFORE submitting orders so a fleet that's
+    already over its daily-loss budget is denied new exposure.
+
+    Pass ``bot_id`` so the structured exception attributes the
+    block to the bot whose order is being rejected.
+    """
+    gate = _singleton
+    if gate is None:
+        return
+    gate.require_ok(bot_id=bot_id)

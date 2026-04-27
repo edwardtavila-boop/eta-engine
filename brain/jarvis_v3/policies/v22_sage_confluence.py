@@ -25,6 +25,7 @@ the bot supplies bars in the request payload (key: ``payload['sage_bars']``)
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from eta_engine.brain.jarvis_admin import (
     ActionRequest,
@@ -32,8 +33,10 @@ from eta_engine.brain.jarvis_admin import (
     Verdict,
     evaluate_request,
 )
-from eta_engine.brain.jarvis_context import JarvisContext
 from eta_engine.brain.jarvis_v3.candidate_policy import register_candidate
+
+if TYPE_CHECKING:
+    from eta_engine.brain.jarvis_context import JarvisContext
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,15 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     except Exception as exc:  # noqa: BLE001
         logger.warning("sage consultation failed (non-fatal): %s", exc)
         return base
+
+    # Wave-6 (2026-04-27): stash the report so the bot's record_fill_outcome
+    # can attribute the realized R back to each school via EdgeTracker.
+    # Last-write-wins per (symbol, side); read-once on pop.
+    try:
+        from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
+        set_last(symbol, side, report)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("last_report_cache.set_last raised %s (non-fatal)", exc)
 
     # Below conviction floor -> don't modulate
     if report.conviction < SAGE_CONVICTION_FLOOR:

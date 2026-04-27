@@ -173,6 +173,61 @@ def test_breach_exception_carries_structured_attrs() -> None:
         pytest.fail("FleetRiskBreach should have raised")
 
 
+def test_register_and_get_singleton_round_trip() -> None:
+    from eta_engine.safety.fleet_risk_gate import (
+        get_fleet_risk_gate,
+        register_fleet_risk_gate,
+    )
+    g = _gate()
+    register_fleet_risk_gate(g)
+    try:
+        assert get_fleet_risk_gate() is g
+    finally:
+        register_fleet_risk_gate(None)
+    assert get_fleet_risk_gate() is None
+
+
+def test_assert_fleet_within_budget_noop_when_unregistered() -> None:
+    from eta_engine.safety.fleet_risk_gate import (
+        assert_fleet_within_budget,
+        register_fleet_risk_gate,
+    )
+    register_fleet_risk_gate(None)
+    # Should not raise; this is the paper / unit-test default path
+    assert_fleet_within_budget(bot_id="any")
+
+
+def test_assert_fleet_within_budget_raises_when_tripped() -> None:
+    from eta_engine.safety.fleet_risk_gate import (
+        FleetRiskBreach,
+        assert_fleet_within_budget,
+        register_fleet_risk_gate,
+    )
+    g = _gate(equity=100_000.0)
+    g.record_pnl("btc_hybrid", -5_000.0)  # past the -3500 limit
+    register_fleet_risk_gate(g)
+    try:
+        with pytest.raises(FleetRiskBreach) as exc_info:
+            assert_fleet_within_budget(bot_id="sol_perp")
+        assert exc_info.value.bot_id == "sol_perp"
+    finally:
+        register_fleet_risk_gate(None)
+
+
+def test_assert_fleet_within_budget_silent_under_budget() -> None:
+    from eta_engine.safety.fleet_risk_gate import (
+        assert_fleet_within_budget,
+        register_fleet_risk_gate,
+    )
+    g = _gate(equity=100_000.0)
+    g.record_pnl("btc_hybrid", -1_000.0)
+    register_fleet_risk_gate(g)
+    try:
+        assert_fleet_within_budget(bot_id="any")  # should not raise
+    finally:
+        register_fleet_risk_gate(None)
+
+
 def test_thread_safety_smoke() -> None:
     """Concurrent record_pnl from multiple threads should not corrupt
     the aggregate. We can't deterministically detect torn writes, but

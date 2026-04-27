@@ -1191,6 +1191,8 @@ class CryptoSeedBot(BaseBot):
     # ── Market Events ──
 
     async def on_bar(self, bar: dict[str, Any]) -> None:
+        # Wave-6 sage plumbing (2026-04-27): rolling sage-bar buffer.
+        self.observe_bar_for_sage(bar)
         if not self.check_risk():
             return
         self._bar_index_for(bar)
@@ -1235,6 +1237,7 @@ class CryptoSeedBot(BaseBot):
         _is_entry = signal.type in {SignalType.LONG, SignalType.SHORT}
         cap: float | None = None
         if _is_entry:
+            sage_bars = self.recent_sage_bars()
             allowed, cap, code = self._ask_jarvis(
                 ActionType.ORDER_PLACE,
                 rationale=f"{signal.type.value} directional overlay",
@@ -1242,6 +1245,8 @@ class CryptoSeedBot(BaseBot):
                 symbol=signal.symbol,
                 price=signal.price,
                 confidence=signal.confidence,
+                sage_bars=sage_bars,
+                entry_price=signal.price,
             )
             if not allowed:
                 self._record_event(

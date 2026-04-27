@@ -37,7 +37,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +58,7 @@ class PreflightDecision:
 
 def bot_pre_flight(
     *,
-    bot: Any,
+    bot: Any,  # noqa: ANN401 -- duck-typed bot (BaseBot subclass or stub)
     symbol: str,
     side: str,
     confluence: float,
@@ -101,6 +104,18 @@ def bot_pre_flight(
     })
     if rationale:
         payload["rationale"] = rationale
+    # Wave-6 (2026-04-27): auto-attach sage_bars when the bot maintains
+    # a sage-bar history. v22_sage_confluence picks them up from
+    # payload['sage_bars'] when V22_SAGE_MODULATION=true. Bots that
+    # don't opt in (no recent_sage_bars method or empty buffer) skip
+    # this step -- sage falls back to v17 silently.
+    if "sage_bars" not in payload and hasattr(bot, "recent_sage_bars"):
+        try:
+            sage_bars = bot.recent_sage_bars()
+            if sage_bars:
+                payload["sage_bars"] = sage_bars
+        except Exception:  # noqa: BLE001 -- never break the trading loop
+            pass
     allowed, jarvis_cap, code = bot._ask_jarvis(ActionType.ORDER_PLACE, **payload)
     if not allowed:
         return PreflightDecision(
@@ -127,7 +142,7 @@ def bot_pre_flight(
 
 
 def record_fill_with_realized_r(
-    journal: Any,
+    journal: Any,  # noqa: ANN401 -- duck-typed DecisionJournal
     intent: str,
     *,
     r_multiple: float,

@@ -280,6 +280,24 @@ $tasks = @(
         Cwd        = $EtaEngineDir
         Trigger    = "Every1Min"
         Notes      = "Every 1 min -- forward DENIED verdicts (default) to ETA_VERDICT_WEBHOOK_URL (Slack/Discord)."
+    },
+    # Wave-6 pre-live (2026-04-27): sage on-chain cache warmer for crypto bots
+    @{
+        Name       = "Eta-Sage-OnChain-Warm"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.sage_onchain_warm --symbols BTCUSDT,ETHUSDT"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Every5Min"
+        Notes      = "Every 5 min -- pre-fetch BTC + ETH on-chain metrics (mempool.space, defillama, coingecko) so the OnChainSchool sees warm data when crypto bots ask sage."
+    },
+    # Wave-6 pre-live: sage health watchdog (silently-broken school detector)
+    @{
+        Name       = "Eta-Sage-Health-Daily"
+        Exec       = $Python
+        Args       = "-m eta_engine.scripts.sage_health_check --json-out state/sage/last_health_report.json"
+        Cwd        = $EtaEngineDir
+        Trigger    = "Daily-2315"
+        Notes      = "Daily 23:15 -- check every school's neutral_rate; alert on critical (>=95% neutral over >=30 consultations). Writes snapshot for the dashboard."
     }
 )
 

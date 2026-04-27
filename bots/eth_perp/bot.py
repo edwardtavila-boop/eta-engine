@@ -415,6 +415,8 @@ class EthPerpBot(BaseBot):
     # ── Market Events ──
 
     async def on_bar(self, bar: dict[str, Any]) -> None:
+        # Wave-6 sage plumbing (2026-04-27): rolling sage-bar buffer.
+        self.observe_bar_for_sage(bar)
         if not self.check_risk():
             return
         regime = self._infer_regime(bar)
@@ -480,6 +482,7 @@ class EthPerpBot(BaseBot):
         _is_entry = signal.type in (SignalType.LONG, SignalType.SHORT)
         cap: float | None = None
         if _is_entry:
+            sage_bars = self.recent_sage_bars()
             allowed, cap, code = self._ask_jarvis(
                 ActionType.ORDER_PLACE,
                 rationale=f"{signal.type.value} {self.config.symbol}",
@@ -488,6 +491,8 @@ class EthPerpBot(BaseBot):
                 price=signal.price,
                 confidence=signal.confidence,
                 leverage=float(lev) if isinstance(lev, int | float) else 1.0,
+                sage_bars=sage_bars,
+                entry_price=signal.price,
             )
             if not allowed:
                 self._record_event(

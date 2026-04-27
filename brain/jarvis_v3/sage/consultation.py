@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
 
 from eta_engine.brain.jarvis_v3.sage.base import (
     MarketContext,
@@ -185,6 +184,17 @@ def consult_sage(
         regime=ctx.detected_regime,
         apply_edge_weights=apply_edge_weights,
     )
+
+    # Wave-6 (2026-04-27): feed each per-school verdict into the
+    # health monitor so silently-broken schools (e.g. always NEUTRAL,
+    # always raising) get flagged automatically. Lazy import + try/except
+    # so health bugs never crash the consultation loop.
+    try:
+        from eta_engine.brain.jarvis_v3.sage.health import default_monitor
+        monitor = default_monitor()
+        monitor.observe(report)
+    except Exception as exc:  # noqa: BLE001 -- health is best-effort
+        logger.debug("sage health monitor.observe raised %s (non-fatal)", exc)
 
     if use_cache:
         with _CACHE_LOCK:

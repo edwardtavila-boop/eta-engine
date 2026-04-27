@@ -19,6 +19,7 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,26 @@ class SageHealthMonitor:
             # Save every 10 observations so we don't thrash the disk
             if h.n_consultations % 10 == 0:
                 self._save()
+
+    def observe(self, report: Any) -> None:  # noqa: ANN401 -- duck-typed SageReport
+        """Convenience: feed a full SageReport. Iterates per_school
+        verdicts and calls ``observe_consultation`` for each.
+
+        Used by ``consult_sage`` so every live consultation auto-feeds
+        the health monitor without the consultation layer needing to
+        understand per-school iteration.
+        """
+        per_school = getattr(report, "per_school", None) or {}
+        for name, verdict in per_school.items():
+            try:
+                bias_value = verdict.bias.value
+            except AttributeError:
+                # Duck-type: if bias is already a string-ish, compare directly
+                bias_value = str(getattr(verdict, "bias", ""))
+            self.observe_consultation(
+                school=name,
+                was_neutral=(bias_value == "neutral"),
+            )
 
     def check_health(self) -> list[HealthIssue]:
         """Surface every school whose neutral_rate breaches threshold."""
