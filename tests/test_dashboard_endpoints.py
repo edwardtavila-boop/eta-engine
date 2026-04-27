@@ -56,3 +56,74 @@ def test_js_module_rejects_dot_prefix(tmp_path, monkeypatch) -> None:
     with pytest.raises(HTTPException) as exc:
         dashboard_api.serve_js_module(".env")
     assert exc.value.status_code == 400
+
+
+def test_governor_returns_warning_when_state_missing(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/jarvis/governor")
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("_warning") == "no_data"
+
+
+def test_governor_returns_data_when_state_present(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    gov = tmp_path / "jarvis_governor.json"
+    gov.write_text('{"grade":"A","score":0.92}', encoding="utf-8")
+    r = client.get("/api/jarvis/governor")
+    assert r.status_code == 200
+    assert r.json()["grade"] == "A"
+
+
+def test_edge_leaderboard_cold_start(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/jarvis/edge_leaderboard")
+    assert r.status_code == 200
+    body = r.json()
+    assert "top" in body and "bottom" in body
+    assert body["top"] == [] and body["bottom"] == []
+
+
+def test_edge_leaderboard_with_data(client, tmp_path, monkeypatch) -> None:
+    import json
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    edge = tmp_path / "sage" / "edge_tracker.json"
+    edge.parent.mkdir(parents=True)
+    edge.write_text(json.dumps({
+        "schools": {
+            "dow_theory": {"n_obs": 50, "n_aligned_wins": 35, "n_aligned_losses": 10, "sum_r": 12.5},
+            "fibonacci":  {"n_obs": 50, "n_aligned_wins": 10, "n_aligned_losses": 35, "sum_r": -8.0},
+        }
+    }), encoding="utf-8")
+    r = client.get("/api/jarvis/edge_leaderboard")
+    assert r.status_code == 200
+    body = r.json()
+    assert any(s["school"] == "dow_theory" for s in body["top"])
+    assert any(s["school"] == "fibonacci" for s in body["bottom"])
+
+
+def test_model_tier_cold_start(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/jarvis/model_tier")
+    assert r.status_code == 200
+    assert r.json().get("_warning") == "no_data"
+
+
+def test_kaizen_latest_cold_start(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/jarvis/kaizen_latest")
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("_warning") == "no_data"
+
+
+def test_kaizen_latest_returns_markdown(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    tickets = tmp_path / "kaizen" / "tickets"
+    tickets.mkdir(parents=True)
+    (tickets / "2026-04-26_TKT-001.md").write_text("# Ticket 001\nbody", encoding="utf-8")
+    r = client.get("/api/jarvis/kaizen_latest")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["title"] == "Ticket 001"
+    assert "body" in body["markdown"]

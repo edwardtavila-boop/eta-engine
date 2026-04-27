@@ -46,6 +46,11 @@ STATE_DIR = Path(os.environ.get("APEX_STATE_DIR", _DEFAULT_STATE))
 LOG_DIR = Path(os.environ.get("APEX_LOG_DIR", _DEFAULT_LOG))
 
 
+def _state_dir() -> Path:
+    """Lazy state-dir resolver so tests can monkeypatch APEX_STATE_DIR."""
+    return Path(os.environ.get("APEX_STATE_DIR", str(_DEFAULT_STATE)))
+
+
 app = FastAPI(
     title="Evolutionary Trading Algo Dashboard",
     description="Read-only state surface for the JARVIS + Avengers stack",
@@ -471,6 +476,87 @@ def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
         }
     except Exception as exc:  # noqa: BLE001
         return {"error_code": "heatmap_failed", "error_detail": str(exc)}
+
+
+@app.get("/api/jarvis/governor")
+def jarvis_governor() -> dict:
+    """Governor snapshot from state/jarvis_governor.json."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    return read_json_safe(_state_dir() / "jarvis_governor.json")
+
+
+@app.get("/api/jarvis/edge_leaderboard")
+def jarvis_edge_leaderboard(bot: str | None = None, limit: int = 5) -> dict:
+    """Top + bottom schools by expectancy. Optional ?bot=<id> for per-bot."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    edge_path = _state_dir() / "sage" / "edge_tracker.json"
+    if bot:
+        edge_path = _state_dir() / "sage" / f"edge_tracker_{bot}.json"
+    data = read_json_safe(edge_path)
+    schools = data.get("schools") or {}
+    rows = []
+    for name, e in schools.items():
+        n = (e.get("n_aligned_wins", 0) + e.get("n_aligned_losses", 0))
+        avg_r = (e.get("sum_r", 0.0) / n) if n > 0 else 0.0
+        rows.append({
+            "school": name,
+            "n_obs": e.get("n_obs", 0),
+            "n_aligned": n,
+            "avg_r": round(avg_r, 4),
+            "sum_r": e.get("sum_r", 0.0),
+        })
+    rows.sort(key=lambda r: r["avg_r"], reverse=True)
+    return {
+        "top": rows[:limit],
+        "bottom": list(reversed(rows[-limit:])) if rows else [],
+    }
+
+
+@app.get("/api/jarvis/model_tier")
+def jarvis_model_tier() -> dict:
+    """Most recent LLM tier routing decision from today's audit log."""
+    from datetime import UTC, datetime
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    audit = _state_dir() / "jarvis_audit" / f"{today}.jsonl"
+    if not audit.exists():
+        return {"_warning": "no_data", "_path": str(audit)}
+    last_llm: dict | None = None
+    try:
+        for line in audit.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("request", {}).get("action") == "LLM_INVOCATION":
+                last_llm = row
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"_error_code": "audit_parse_failed", "_error_detail": str(exc)}
+    if last_llm is None:
+        return {"_warning": "no_llm_invocation_today"}
+    return {
+        "tier": last_llm.get("response", {}).get("selected_model"),
+        "ts": last_llm.get("ts"),
+        "subsystem": last_llm.get("request", {}).get("subsystem"),
+        "task_category": last_llm.get("request", {}).get("payload", {}).get("task_category"),
+    }
+
+
+@app.get("/api/jarvis/kaizen_latest")
+def jarvis_kaizen_latest() -> dict:
+    """Latest kaizen ticket from state/kaizen/tickets/."""
+    tickets_dir = _state_dir() / "kaizen" / "tickets"
+    if not tickets_dir.exists():
+        return {"_warning": "no_data", "_path": str(tickets_dir)}
+    files = sorted(tickets_dir.glob("*.md"))
+    if not files:
+        return {"_warning": "no_tickets"}
+    latest = files[-1]
+    md = latest.read_text(encoding="utf-8")
+    title = md.splitlines()[0].lstrip("# ").strip() if md else latest.stem
+    return {
+        "title": title,
+        "filename": latest.name,
+        "markdown": md,
+    }
 
 
 # ─── Cross-policy verdict diff (Tier-4 #17, 2026-04-27) ────────────
