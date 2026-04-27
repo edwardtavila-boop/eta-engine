@@ -145,6 +145,43 @@ def last_task() -> dict:
     return _read_json("last_task.json")
 
 
+# ─── JARVIS verdict-stream panel (Tier-2 #6, 2026-04-27) ────────────
+@app.get("/api/jarvis/today_verdicts")
+def jarvis_today_verdicts() -> dict:
+    """Aggregated JARVIS audit records for today.
+
+    Powers the dashboard panel showing by-bot verdict counts, top denial
+    reasons, average size_cap_mult on CONDITIONAL verdicts, hourly
+    timeline, and the policy versions seen today.
+
+    Lazy-imports the aggregator so this endpoint stays alive even if
+    eta_engine.obs.jarvis_today_verdicts is broken at import time.
+    """
+    try:
+        from eta_engine.obs.jarvis_today_verdicts import aggregate_today
+        return aggregate_today()
+    except ImportError as exc:
+        return {
+            "ts": None,
+            "error_code": "eta_engine_unavailable",
+            "error_detail": str(exc),
+            "totals": {},
+            "by_subsystem": {},
+            "top_denial_reasons": [],
+            "avg_conditional_cap": 1.0,
+            "hourly_timeline": [],
+            "policy_versions_seen": [],
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"aggregate failed: {exc}") from exc
+
+
+@app.get("/api/jarvis/health")
+def jarvis_router_health() -> dict:
+    """Liveness probe for the JARVIS-routes layer."""
+    return {"status": "ok", "router": "jarvis"}
+
+
 @app.get("/api/kaizen")
 def kaizen_summary() -> dict:
     """Kaizen ledger -- retrospectives + tickets."""
