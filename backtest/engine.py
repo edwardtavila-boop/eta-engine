@@ -9,8 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from collections.abc import Callable
-
 from eta_engine.backtest.metrics import (
     compute_expectancy,
     compute_max_dd,
@@ -22,7 +20,7 @@ from eta_engine.backtest.models import BacktestConfig, BacktestResult, Trade
 from eta_engine.core.confluence_scorer import ConfluenceResult, score_confluence
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from eta_engine.core.data_pipeline import BarData
     from eta_engine.features.pipeline import FeaturePipeline
@@ -60,12 +58,13 @@ class BacktestEngine:
         self,
         pipeline: FeaturePipeline,
         config: BacktestConfig,
-        ctx_builder: Any | None = None,
+        ctx_builder: Any | None = None,  # noqa: ANN401 - intentionally Any: ctx-builder protocol is duck-typed
         strategy_id: str = "eta_default",
         scorer: Callable[..., ConfluenceResult] | None = None,
         block_regimes: frozenset[str] | set[str] | None = None,
         require_ctx_true: tuple[str, ...] | None = None,
-        strategy: Any | None = None,
+        strategy: Any | None = None,  # noqa: ANN401 - duck-typed Strategy protocol
+        on_trade_close: Callable[[Trade], None] | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.config = config
@@ -97,6 +96,23 @@ class BacktestEngine:
         # ``maybe_enter(bar, hist, equity, config) -> _Open | None``
         # works (Protocol-style; no ABC required).
         self.strategy = strategy
+        # Trade-close callback. Fires once per realized trade with
+        # the full Trade object (pnl_r, pnl_usd, side, exit_reason,
+        # etc.). Built for AdaptiveKellySizing's trade-level ledger
+        # — proper trade-PnL signal vs the previous equity-delta
+        # inference. Optional; None = no callback (legacy behaviour).
+        # The callback runs in-engine BEFORE the trade is appended
+        # to the trades list and the equity is updated, but AFTER
+        # _close() has produced the realized Trade. If the callback
+        # raises, the engine swallows the exception so a buggy
+        # listener can't break the backtest. Caller is responsible
+        # for keeping the callback fast (it runs on every closed
+        # trade in walk-forward → many invocations).
+        self._on_trade_close = on_trade_close
+        # Audit: count callback invocations + exceptions for
+        # post-mortem visibility when something goes wrong.
+        self._n_callback_invocations: int = 0
+        self._n_callback_exceptions: int = 0
 
     def run(self, bars: Iterable[BarData]) -> BacktestResult:
         equity, curve, trades, hist = self.config.initial_equity, [], [], []
@@ -111,6 +127,7 @@ class BacktestEngine:
             if open_t is not None:
                 closed = self._exit(open_t, bar)
                 if closed is not None:
+                    self._fire_close_callback(closed)
                     equity += closed.pnl_usd
                     curve.append(equity)
                     trades.append(closed)
@@ -129,10 +146,39 @@ class BacktestEngine:
                     open_t.peak_adverse = max(0.0, adv)
         if open_t is not None and hist:
             final = self._close(open_t, hist[-1], hist[-1].close)
+            self._fire_close_callback(final)
             equity += final.pnl_usd
             curve.append(equity)
             trades.append(final)
         return self._finalize(trades, curve)
+
+    # ── Trade-close callback infrastructure ──
+    def attach_trade_close_callback(
+        self, callback: Callable[[Trade], None] | None,
+    ) -> None:
+        """Attach (or detach) a trade-close callback after construction.
+
+        Useful when the strategy wraps the engine and needs to register
+        its own listener at startup. ``None`` detaches.
+        """
+        self._on_trade_close = callback
+
+    def _fire_close_callback(self, trade: Trade) -> None:
+        """Invoke the trade-close callback with exception isolation."""
+        if self._on_trade_close is None:
+            return
+        self._n_callback_invocations += 1
+        try:
+            self._on_trade_close(trade)
+        except Exception:  # noqa: BLE001 - listener isolation
+            self._n_callback_exceptions += 1
+
+    @property
+    def callback_stats(self) -> dict[str, int]:
+        return {
+            "invocations": self._n_callback_invocations,
+            "exceptions": self._n_callback_exceptions,
+        }
 
     # ── Entry / exit ──
 

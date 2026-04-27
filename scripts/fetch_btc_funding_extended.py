@@ -40,11 +40,74 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 
-# Binance is US-geo-blocked; Bybit is the US-friendly default.
-# Bybit funding history: https://api.bybit.com/v5/market/funding/history
+# Binance + Bybit are US-geo-blocked. BitMEX is fully US-friendly
+# AND has the longest history (XBTUSD funding back to 2016-05-13).
+# That's the WINNER source.
+# BitMEX funding history: https://www.bitmex.com/api/v1/funding
+_BITMEX_BASE = "https://www.bitmex.com/api/v1/funding"
 _BYBIT_BASE = "https://api.bybit.com/v5/market/funding/history"
 _BINANCE_BASE = "https://fapi.binance.com/fapi/v1/fundingRate"
 _USER_AGENT = "eta-engine/fetch_btc_funding_extended"
+
+# BitMEX symbol mapping. XBTUSD = inverse perpetual (the canonical
+# 10-year-history BTC funding contract).
+_BITMEX_SYMBOL_MAP: dict[str, str] = {
+    "BTCUSDT": "XBTUSD",
+    "BTCUSD": "XBTUSD",
+    "BTC": "XBTUSD",
+    "ETHUSDT": "ETHUSD",
+    "ETHUSD": "ETHUSD",
+    "ETH": "ETHUSD",
+}
+
+
+def _fetch_chunk_bitmex(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
+    """BitMEX funding history (US-friendly, 10-year history).
+
+    BitMEX accepts startTime / endTime as ISO timestamps and `count`
+    up to 500 records per call. Returns oldest-first by default
+    (perfect for forward-cursor pagination).
+
+    Schema: {timestamp, symbol, fundingInterval, fundingRate, fundingRateDaily}
+    """
+    bitmex_sym = _BITMEX_SYMBOL_MAP.get(symbol)
+    if bitmex_sym is None:
+        return []
+    # BitMEX accepts plain YYYY-MM-DD (or ISO with Z suffix). Avoid
+    # ISO+offset (+00:00) — BitMEX rejects it as invalid.
+    start_d = datetime.fromtimestamp(start_ms / 1000, UTC).strftime("%Y-%m-%d")
+    end_d = datetime.fromtimestamp(end_ms / 1000, UTC).strftime("%Y-%m-%d")
+    url = (
+        f"{_BITMEX_BASE}?symbol={bitmex_sym}"
+        f"&startTime={start_d}&endTime={end_d}&count=500"
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(data, list):
+                return []
+            out = []
+            for r in data:
+                try:
+                    # Convert ISO timestamp to ms since epoch
+                    ts = datetime.fromisoformat(
+                        r["timestamp"].replace("Z", "+00:00"),
+                    )
+                    out.append({
+                        "fundingTime": int(ts.timestamp() * 1000),
+                        "fundingRate": float(r["fundingRate"]),
+                    })
+                except (KeyError, ValueError, TypeError):
+                    continue
+            return out
+    except urllib.error.HTTPError as exc:
+        body = exc.read()[:200] if hasattr(exc, "read") else b""
+        print(f"  BitMEX HTTP {exc.code}: {body!r}")
+        return []
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"  BitMEX fetch error: {exc!r}")
+        return []
 
 
 def _fetch_chunk_bybit(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
@@ -101,7 +164,14 @@ def _fetch_chunk_binance(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
 
 
 def _fetch_chunk(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
-    """Try Bybit first (US-friendly), fall back to Binance."""
+    """Try BitMEX first (US-friendly, 10y history), then Bybit, then Binance.
+
+    BitMEX is the WINNER for US users — confirmed working 2026-04-27
+    with funding back to 2016-05-13 for XBTUSD.
+    """
+    rows = _fetch_chunk_bitmex(symbol, start_ms, end_ms)
+    if rows:
+        return rows
     rows = _fetch_chunk_bybit(symbol, start_ms, end_ms)
     if rows:
         return rows
@@ -128,8 +198,9 @@ def fetch_funding(
     cursor_start_ms = int(start.timestamp() * 1000)
     end_ms = int(end.timestamp() * 1000)
 
-    # Funding events are 8h apart; 1000 events ≈ 333 days.
-    chunk_ms = 333 * 86400 * 1000
+    # Funding events are 8h apart. BitMEX gives 500 per call ≈ 166
+    # days; pick 150 days to stay safely under that and avoid trim.
+    chunk_ms = 150 * 86400 * 1000
     while cursor_start_ms < end_ms:
         chunk_end_ms = min(cursor_start_ms + chunk_ms, end_ms)
         print(
@@ -141,6 +212,7 @@ def fetch_funding(
         if not rows:
             cursor_start_ms = chunk_end_ms
             continue
+        new_count_before = len(all_rows)
         for r in rows:
             ts = int(r["fundingTime"])
             if ts in seen:
@@ -151,9 +223,17 @@ def fetch_funding(
             except (KeyError, ValueError):
                 continue
             all_rows.append({"time": ts // 1000, "funding_rate": rate})
-        # Advance: latest ts in chunk + 1
+        new_rows_added = len(all_rows) - new_count_before
+        # Advance: latest ts in chunk + 1. Guard against the
+        # rate-limited / duplicate-data case where the chunk returns
+        # rows but ALL are already seen — without this guard, the
+        # cursor wouldn't advance and we'd loop forever.
         latest_ts = max(int(r["fundingTime"]) for r in rows)
-        cursor_start_ms = latest_ts + 1
+        if new_rows_added == 0 and latest_ts < chunk_end_ms:
+            # Force-advance past this chunk to avoid stuck cursor
+            cursor_start_ms = chunk_end_ms
+        else:
+            cursor_start_ms = max(latest_ts + 1, cursor_start_ms + 1)
         time.sleep(0.20)
 
     all_rows.sort(key=lambda r: r["time"])

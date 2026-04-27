@@ -120,9 +120,11 @@ class FundingRateProvider:
     The funding rate file has columns: time (unix), funding_rate.
     A bar's funding is the most recent published rate <= bar.ts.
 
-    BTCFUND_8h has 96 days of coverage as of 2026-04-27, so this
-    provider returns 0.0 (neutral) outside that window — the
-    filter is then a no-op.
+    BTCFUND_8h had 96 days of coverage prior to 2026-04-27. As of
+    that date, ``fetch_btc_funding_extended`` was extended to use
+    BitMEX (US-friendly, 10y XBTUSD history); the file now covers
+    ~5 years (5,475 rows). Outside the file's window the provider
+    returns 0.0 (neutral) so the filter is a no-op.
     """
 
     def __init__(self, csv_path: Path | str) -> None:

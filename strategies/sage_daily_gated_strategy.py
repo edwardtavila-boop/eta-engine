@@ -136,6 +136,9 @@ class SageDailyGatedStrategy:
     def attach_eth_alignment_provider(self, p: object) -> None:  # noqa: ANN001
         self._base.attach_eth_alignment_provider(p)
 
+    def attach_funding_provider(self, p: object) -> None:  # noqa: ANN001
+        self._base.attach_funding_provider(p)
+
     # -- main entry point -----------------------------------------------------
 
     def maybe_enter(

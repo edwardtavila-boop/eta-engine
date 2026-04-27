@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from eta_engine.backtest.engine import _Open
-    from eta_engine.backtest.models import BacktestConfig
+    from eta_engine.backtest.models import BacktestConfig, Trade
     from eta_engine.core.data_pipeline import BarData
 
     class _SubStrategy(Protocol):
@@ -119,10 +119,67 @@ class AdaptiveKellySizingStrategy:
         # ATR ledger for vol damping
         self._atr_history: deque[float] = deque(maxlen=self.cfg.vol_damping_lookback)
         self._last_atr: float | None = None
+        # When True, an upstream engine callback is feeding real trade
+        # PnL into ``on_trade_close`` — disable the heuristic equity-
+        # delta inference path so we don't double-count.
+        self._callback_attached: bool = False
+        # Audit counters
+        self._n_callback_trades: int = 0
+        self._n_inferred_trades: int = 0
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Trade-close callback (preferred path)
+    # ─────────────────────────────────────────────────────────────────────
+
+    def on_trade_close(self, trade: Trade) -> None:
+        """Receive realized trade outcome from the engine.
+
+        This is the CANONICAL signal path — the engine emits the full
+        Trade object once per realized exit, and we append the
+        observed R-multiple straight into the streak ledger.
+
+        Wiring: caller should pass ``strategy.on_trade_close`` to
+        ``BacktestEngine(on_trade_close=...)``. The walk-forward
+        harness should do this at construction time when the strategy
+        exposes the method.
+        """
+        self._callback_attached = True
+        self._n_callback_trades += 1
+        try:
+            r = float(trade.pnl_r)
+        except (AttributeError, TypeError, ValueError):
+            return
+        self._trade_R_history.append(r)
+        # Clear the inference state — the open is closed by the engine
+        # not us. Keeping inference state would risk double-counting.
+        self._last_open = None
+        self._equity_at_last_open = None
+
+    @property
+    def kelly_stats(self) -> dict[str, int | float]:
+        """Visibility for walk-forward post-mortems."""
+        n = len(self._trade_R_history)
+        mean_r = (
+            sum(self._trade_R_history) / n if n else 0.0
+        )
+        return {
+            "trade_history_len": n,
+            "mean_R": mean_r,
+            "callback_attached": int(self._callback_attached),
+            "n_callback_trades": self._n_callback_trades,
+            "n_inferred_trades": self._n_inferred_trades,
+        }
 
     def _record_close_if_any(self, equity_now: float) -> None:
-        """If we had an open trade and equity moved, attribute the
-        delta to that trade as a realized R-multiple."""
+        """Heuristic fallback when no engine callback is attached.
+
+        If we had an open trade and equity moved, attribute the
+        delta to that trade as a realized R-multiple. ONLY fires
+        when no engine callback has been received — otherwise we'd
+        double-count the same trade.
+        """
+        if self._callback_attached:
+            return
         if self._last_open is None or self._equity_at_last_open is None:
             return
         delta_usd = equity_now - self._equity_at_last_open
@@ -133,6 +190,7 @@ class AdaptiveKellySizingStrategy:
         # avoids spurious "trade closed" detections on neutral bars.
         if abs(delta_usd) >= 0.3 * risk:
             self._trade_R_history.append(r_realized)
+            self._n_inferred_trades += 1
             self._last_open = None
             self._equity_at_last_open = None
 

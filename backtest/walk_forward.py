@@ -152,15 +152,26 @@ class WalkForwardEngine:
             # windows would leak state. None = use confluence path.
             is_strategy = strategy_factory() if strategy_factory else None
             oos_strategy = strategy_factory() if strategy_factory else None
+            # If the strategy exposes ``on_trade_close``, wire it as
+            # the engine's trade-close callback. Duck-typed so any
+            # strategy can opt in (AdaptiveKellySizing is the
+            # canonical consumer; others may follow). The callback
+            # fires once per realized trade with the full Trade obj
+            # (pnl_r, pnl_usd, side, etc.) — proper signal vs the
+            # legacy equity-delta inference path.
+            is_cb = getattr(is_strategy, "on_trade_close", None) if is_strategy else None
+            oos_cb = getattr(oos_strategy, "on_trade_close", None) if oos_strategy else None
             is_res = BacktestEngine(
                 pipeline, is_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-IS",
                 scorer=scorer, block_regimes=block_regimes,
                 require_ctx_true=require_ctx_true, strategy=is_strategy,
+                on_trade_close=is_cb,
             ).run(is_bars)
             oos_res = BacktestEngine(
                 pipeline, oos_cfg, ctx_builder=ctx_builder, strategy_id=f"wf-{i}-OOS",
                 scorer=scorer, block_regimes=block_regimes,
                 require_ctx_true=require_ctx_true, strategy=oos_strategy,
+                on_trade_close=oos_cb,
             ).run(oos_bars)
             oos_skew, oos_kurt = _fold_moments_from_trades(oos_res.trades)
             win_results.append(
