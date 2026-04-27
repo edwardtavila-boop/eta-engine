@@ -183,6 +183,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per session, no entries after 11:00 ET. See "
             "strategies/orb_strategy.py."
         ),
+        extras={
+            # Standardized promotion safeguards (added 2026-04-27 to
+            # match the BTC/ETH/NQ-DRB rows). Half-size for first 30d
+            # post-promotion; daily loss capped at 4% of equity.
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
+            },
+            "daily_loss_limit_pct": 4.0,
+        },
     ),
     # NQ futures — ORB on intraday matches MNQ stack
     StrategyAssignment(
@@ -208,6 +219,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "ORB is the workable bot baseline; daily NQ stays as "
             "a sanity check rather than the primary path."
         ),
+        extras={
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
+            },
+            "daily_loss_limit_pct": 4.0,
+        },
     ),
     # MNQ futures — sage-gated ORB. Companion to mnq_futures (plain
     # ORB); the sage overlay vetoes breakouts the 22-school ensemble
@@ -322,6 +341,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "atr_stop_mult": 2.0,
                 "rr_target": 2.0,
                 "ema_bias_period": 50,
+            },
+            "daily_loss_limit_pct": 4.0,
+            "warmup_policy": {
+                "promoted_on": "2026-04-27",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 0.5,
             },
             "walk_forward_overrides": {
                 "long_haul_mode": True,
@@ -659,6 +684,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "rr_target": 1.5,
                 "session_cutoff_hour_utc": 18,
             },
+            "daily_loss_limit_pct": 4.0,
             # Half-size first 30 days post-promotion (re-promotion 2026-04-27).
             "warmup_policy": {
                 "promoted_on": "2026-04-27",
@@ -711,6 +737,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "session_cutoff_hour_utc": 18,
             },
             "fleet_corr_partner": "btc_hybrid",
+            "daily_loss_limit_pct": 4.0,
             # Half-size for first 30 days post-promotion.
             "warmup_policy": {
                 "promoted_on": "2026-04-27",

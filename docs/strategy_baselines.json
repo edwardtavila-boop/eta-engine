@@ -10,6 +10,7 @@
       "avg_r": 0.557,
       "r_stddev": 1.247,
       "_promoted_at": "2026-04-27",
+      "_promotion_status": "production",
       "_walk_forward_summary": "MNQ1/5m, 60d/30d windows, 2/2 positive OOS, agg OOS Sharpe +5.71, DSR median 1.000, 100% pass fraction. Sweep winner: range=15m, rr=2.0, atr_stop=2.0, ema=200.",
       "_notes": "Numbers from the IS+OOS combined trade list of the 2026-04-27 sweep run. n_trades = 28+13 (window 0 IS+OOS) + ... averaged across IS/OOS. Re-baseline once live paper-soak produces 50+ real fills."
     },
@@ -20,6 +21,7 @@
       "avg_r": 0.557,
       "r_stddev": 1.247,
       "_promoted_at": "2026-04-27",
+      "_promotion_status": "production",
       "_walk_forward_summary": "Identical numbers to mnq_orb_v1 — ORB is symbol-agnostic on liquid index futures, NQ1 5m matched MNQ1 5m exactly across both windows.",
       "_notes": "Re-baseline separately once NQ paper-soak diverges from MNQ in live data."
     },
