@@ -79,11 +79,14 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from eta_engine.strategies.htf_regime_classifier import (
+    HtfRegimeClassification,
     HtfRegimeClassifier,
     HtfRegimeClassifierConfig,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from datetime import date
     from typing import Protocol
 
     from eta_engine.backtest.engine import _Open
@@ -148,11 +151,33 @@ class RegimeGatedStrategy:
         self._sub = sub_strategy
         self.cfg = config or RegimeGatedConfig()
         self._classifier = HtfRegimeClassifier(self.cfg.classifier)
+        # Optional external regime-classification provider. When
+        # attached, the LTF-stream classifier is bypassed and the
+        # gate consults the provider by ``bar.timestamp.date()``.
+        # This is the right architecture when the regime read needs
+        # HTF (daily) cadence but the strategy fires on LTF (1h, 5m)
+        # bars — same pattern as the sage daily verdict provider.
+        self._regime_provider: (
+            Callable[[date], HtfRegimeClassification] | None
+        ) = None
         # Audit counters — useful in walk-forward post-mortems
         self._n_seen: int = 0
         self._n_proposed: int = 0
         self._n_vetoed: int = 0
         self._n_allowed: int = 0
+
+    def attach_regime_provider(
+        self,
+        provider: Callable[[date], HtfRegimeClassification] | None,
+    ) -> None:
+        """Attach a pre-computed regime-classification provider.
+
+        When attached, the gate consults ``provider(bar.timestamp.date())``
+        instead of the LTF-stream classifier. Caller is responsible for
+        pre-computing classifications on the desired HTF stream (daily
+        bars for BTC; 1h bars for MNQ intraday) and exposing the lookup.
+        """
+        self._regime_provider = provider
 
     # -- attribute forwarding -----------------------------------------------
     # Forward attach_* methods (and any unknown lookup) to the sub.
@@ -206,6 +231,9 @@ class RegimeGatedStrategy:
         config: BacktestConfig,
     ) -> _Open | None:
         # Update the classifier unconditionally so its EMAs evolve
+        # (only relevant when the provider is not attached, but we
+        # update unconditionally so swapping providers mid-run is
+        # cheap if ever needed).
         self._n_seen += 1
         self._classifier.update(bar)
 
@@ -216,8 +244,16 @@ class RegimeGatedStrategy:
 
         self._n_proposed += 1
 
-        # Read the live classification
-        cls = self._classifier.classify(bar)
+        # Read the live classification — provider takes priority
+        if self._regime_provider is not None:
+            try:
+                cls = self._regime_provider(bar.timestamp.date())
+            except Exception:  # noqa: BLE001 - provider isolation
+                # Provider failure → treat as worst-case, veto
+                self._n_vetoed += 1
+                return None
+        else:
+            cls = self._classifier.classify(bar)
 
         # Gate logic
         regime_ok = cls.regime in self.cfg.allowed_regimes
@@ -255,15 +291,46 @@ class RegimeGatedStrategy:
 # brand-new asset class.
 
 
-def btc_daily_preset(*, strict_long_only: bool = False) -> RegimeGatedConfig:
-    """Preset for BTC strategies whose LTF is 1h.
+def btc_daily_provider_preset(
+    *, strict_long_only: bool = False,
+) -> RegimeGatedConfig:
+    """BTC preset for use WITH a daily-bar regime provider.
 
-    The classifier runs on the LTF stream (1h bars) but its EMA
-    periods are scaled so the slow EMA spans ~200 days (200 * 24h
-    bars = 4800 bars). That gives the classifier a real "macro"
-    read on BTC's regime — which matches the cadence at which the
-    +6.00 champion actually had edge (multi-week trending bull
-    consolidations).
+    Pair with ``attach_regime_provider(...)`` where the provider
+    looks up a pre-computed daily classification by date. The
+    classifier_config is unused in this mode — the values are
+    placeholders to keep the dataclass valid.
+
+    This is the recommended preset for BTC swing strategies (the
+    +6.00 champion). The classification is computed externally on
+    the daily bar stream where 50/200 EMAs naturally span 50/200
+    days, then looked up by 1h-bar date. No warmup-bound issues
+    because the provider has access to all daily history.
+    """
+    return RegimeGatedConfig(
+        classifier=HtfRegimeClassifierConfig(),  # placeholder
+        allowed_regimes=frozenset({"trending", "ranging"}),
+        allowed_biases=(
+            frozenset({"long"}) if strict_long_only
+            else frozenset({"long", "short", "neutral"})
+        ),
+        allowed_modes=frozenset({"trend_follow", "mean_revert"}),
+        require_bias_match_side=strict_long_only,
+    )
+
+
+def btc_daily_preset(*, strict_long_only: bool = False) -> RegimeGatedConfig:
+    """Preset for BTC strategies whose LTF is 1h, using LTF-stream classifier.
+
+    DEPRECATED for walk-forward use — the warmup of 4800 bars (200
+    days × 24 1h bars) exceeds typical 90-day window sizes (2160
+    bars), so the classifier never leaves warmup and the gate
+    vetoes everything. Use ``btc_daily_provider_preset()`` with a
+    pre-computed daily-bar regime provider instead.
+
+    Kept for backwards compatibility with single-pass backtests
+    (no walk-forward fold reset) where the classifier can warm up
+    on the full bar history.
 
     Edge regime for BTC: trending OR ranging, NOT volatile. The
     +6.00 champion was a directional long-bias swing strategy;
