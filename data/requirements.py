@@ -252,6 +252,24 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
+    # btc_ensemble_2of3 is a vote-ensemble across regime_trend +
+    # regime_trend+ETF + sage-daily-gated. Same bar/ETF data needs as
+    # the components it votes across; only the decision-time vote logic
+    # differs.
+    BotRequirements(
+        bot_id="btc_ensemble_2of3",
+        requirements=(
+            DataRequirement("bars", "BTC", "1h", critical=True),
+            DataRequirement("bars", "BTC", "D", critical=True,
+                note="regime classifier baseline + sage daily cadence"),
+            DataRequirement("correlation", "ETH", "1h", critical=False,
+                note="ETH-BTC correlation as regime confirmation"),
+        ),
+        sources_hint=(
+            "scripts/fetch_btc_bars.py (Coinbase spot bars)",
+            "Farside ETF flow feed (per ensemble component)",
+        ),
+    ),
     BotRequirements(
         bot_id="eth_perp",
         requirements=(

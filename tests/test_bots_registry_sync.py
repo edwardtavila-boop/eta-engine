@@ -65,6 +65,7 @@ VARIANT_BOT_IDS: set[str] = {
     "mnq_sage_consensus",  # sage-consensus MNQ variant; bot dir = bots/mnq/
     "btc_sage_daily_etf",  # sage-daily ETF variant; bot dir = bots/btc_hybrid/
     "btc_regime_trend_etf",  # regime-trend ETF variant; bot dir = bots/btc_hybrid/
+    "btc_ensemble_2of3",  # ensemble vote variant; bot dir = bots/btc_hybrid/
 }
 
 

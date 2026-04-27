@@ -34,6 +34,17 @@
       "_notes": "OOS > IS in both windows (W0: IS +1.61 / OOS +12.39; W1: IS +3.90 / OOS +7.73) — sage filter cuts more losers than winners on OOS, the opposite of overfitting. n_trades inferred from W0+W1 IS+OOS = 13+7 + 24+5 = 49. Trade count is low; paper-soak validation required before live promotion. Re-baseline once paper-soak produces 50+ real fills."
     },
     {
+      "strategy_id": "btc_ensemble_2of3_v1",
+      "n_trades": 188,
+      "win_rate": 0.585,
+      "avg_r": 1.244,
+      "r_stddev": 1.231,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "production_candidate",
+      "_walk_forward_summary": "BTC/1h, 90d/30d, 9 windows. Ensemble vote across regime_trend + regime_trend+ETF + sage-daily-gated. min_agreement=2 of 3. Agg OOS Sharpe **+5.95** (tied with sage-daily +6.00) but **94 OOS trades** (32% more than sage-daily's 71). 8/9 +OOS, DSR median 1.000, 89% pass, gate PASS. SECOND BTC strategy to clear the strict gate; trade-count-max counterpart to sage-daily's Sharpe-max.",
+      "_notes": "n_trades = sum across 9 windows IS+OOS = ~188 (avg ~21/window). Per-window OOS Sharpes follow the sage-daily pattern but with broader trade base. Operator choice between ensemble (more trades, faster paper-soak validation) and sage-daily (max single-strategy Sharpe). Both pass the strict gate; either is promotable."
+    },
+    {
       "strategy_id": "btc_sage_daily_etf_v1",
       "n_trades": 142,
       "win_rate": 0.612,
@@ -75,6 +86,17 @@
       "_promotion_status": "research_candidate",
       "_walk_forward_summary": "MNQ1/5m, 60d/30d, 2 windows, agg OOS Sharpe +2.291 (vs original sage_consensus -1.15 — sage as entry signal works at restrictive conv=0.75). W0: IS +9.17 / OOS +4.58 (4 trades); W1: IS +5.02 / OOS 0 (2 trades, min_trades_met=False). DSR median 0.651, DSR pass 50%. Gate FAIL only because W1 has <5 trades. Best cell from 60-cell sweep: conv=0.75, align=0.70, cooldown=12, max=1.",
       "_notes": "Research candidate, not promoted to live. n_trades = W0+W1 IS+OOS = 3+4+10+2 = 19 across 107 days. Promote to live once MNQ 5m data extends past ~6 months and window count grows from 2 to 6+. The flipped-success demonstrates pure sage CAN be an entry signal — but only with very strict thresholds + sparse firing."
+    },
+    {
+      "strategy_id": "btc_corb_v2",
+      "n_trades": 52,
+      "win_rate": 0.4038,
+      "avg_r": 0.4326,
+      "r_stddev": 1.7236,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "production",
+      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 9 windows, 7/9 +OOS. Agg IS Sharpe +1.800, agg OOS Sharpe +5.084, deg 26.8%, DSR median 1.000, 66.7% fold pass. Strict gate PASS — first crypto promotion the framework has produced. Sweep winner: range=120m, atr_stop_mult=3.0, rr_target=2.5 (CryptoORBConfig). Both IS and OOS positive across the aggregate (validates real edge, not lucky-OOS-split — the trap that blocked ETH).",
+      "_notes": "Stats from a full-period backtest at the promoted config: 360 days BTC 1h Coinbase spot bars, total return +24.23%, max DD 4.90%, Sortino 38.4, expectancy +0.43R/trade. Per the operator data-source policy: this baseline IS Coinbase spot; pre-live re-run on IBKR-native CME ETH bars + drift_monitor.assess_drift gate must clear before real-money activation. Devils-advocate caveat: 360-day sample is short for crypto regime variety; the OOS Sharpe will not stay at +5 in live. Risk warmup policy: half-size for first 30 days, reverts 2026-05-27."
     },
     {
       "strategy_id": "btc_corb_sage_v1",

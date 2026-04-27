@@ -76,7 +76,7 @@ def test_thresholds_in_valid_range() -> None:
         "orb", "drb", "grid", "crypto_orb",
         "crypto_trend", "crypto_meanrev", "crypto_scalp",
         "sage_consensus", "orb_sage_gated", "crypto_regime_trend",
-        "crypto_macro_confluence", "sage_daily_gated",
+        "crypto_macro_confluence", "sage_daily_gated", "ensemble_voting",
     }
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:
