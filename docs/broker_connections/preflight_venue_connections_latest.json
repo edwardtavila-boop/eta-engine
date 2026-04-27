@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-04-27T03:35:19.375883+00:00",
-  "config_path": "C:\\Users\\edwar\\AppData\\Local\\Temp\\pytest-of-edwar\\pytest-4651\\test_check_venues_reads_venues0\\config.json",
+  "generated_at_utc": "2026-04-27T03:54:37.115729+00:00",
+  "config_path": "C:\\Users\\edwar\\AppData\\Local\\Temp\\pytest-of-edwar\\pytest-4661\\test_check_venues_reads_venues0\\config.json",
   "configured_brokers": [
     "tradovate",
     "bybit",
@@ -21,7 +21,7 @@
         "endpoint": "https://demo.tradovateapi.com/v1"
       },
       "error": "",
-      "connected_utc": "2026-04-27T03:35:19.375780+00:00"
+      "connected_utc": "2026-04-27T03:54:37.115630+00:00"
     },
     {
       "venue": "bybit",
@@ -35,7 +35,7 @@
         "endpoint": "https://api.bybit.com"
       },
       "error": "",
-      "connected_utc": "2026-04-27T03:35:19.375835+00:00"
+      "connected_utc": "2026-04-27T03:54:37.115680+00:00"
     },
     {
       "venue": "okx",
@@ -49,7 +49,7 @@
         "endpoint": "https://www.okx.com"
       },
       "error": "",
-      "connected_utc": "2026-04-27T03:35:19.375848+00:00"
+      "connected_utc": "2026-04-27T03:54:37.115692+00:00"
     },
     {
       "venue": "binance",
@@ -61,7 +61,7 @@
         "reason": "Binance adapter not implemented in the current repo"
       },
       "error": "Binance adapter not implemented in the current repo",
-      "connected_utc": "2026-04-27T03:35:19.375857+00:00"
+      "connected_utc": "2026-04-27T03:54:37.115708+00:00"
     }
   ],
   "summary": {
@@ -73,5 +73,5 @@
     "failed": 0,
     "unavailable": 1
   },
-  "broker_connections_sha256": "9e4da19039469d76c8b5ead562510bc9c519277a8524fae0aca01e4f220c2abb"
+  "broker_connections_sha256": "2b55b4e8df08880afa448462e43e0aa26d3c8eb45b14deae9be9931a48223b9b"
 }

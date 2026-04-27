@@ -21,6 +21,7 @@ class TearsheetBuilder:
         parts.append(cls._headline(result))
         parts.append(cls._trade_distribution(result.trades))
         parts.append(cls._regime_breakdown(result.trades))
+        parts.append(cls._exit_breakdown(result.trades))
         parts.append(cls._confluence_distribution(result.trades))
         parts.append(cls._drawdown_chart(result.trades, result.max_dd_pct))
         return "\n\n".join(parts) + "\n"
@@ -75,8 +76,56 @@ class TearsheetBuilder:
 
     @staticmethod
     def _regime_breakdown(trades: list[Trade]) -> str:
-        # Regime data not attached to Trade today — placeholder.
-        return "## Regime Breakdown\n\n_regime tags not attached to trades in this run._"
+        if not trades:
+            return "## Regime Breakdown\n\n_No trades._"
+        # Group trades by regime label. Trades whose regime is None are
+        # bucketed under '(unlabeled)' so the gap is visible.
+        groups: dict[str, list[Trade]] = {}
+        for t in trades:
+            key = t.regime or "(unlabeled)"
+            groups.setdefault(key, []).append(t)
+        if set(groups) == {"(unlabeled)"}:
+            return (
+                "## Regime Breakdown\n\n"
+                "_regime tags not attached to trades in this run "
+                "(ctx_builder did not populate `regime`)._"
+            )
+        lines = [
+            "## Regime Breakdown",
+            "",
+            "| Regime | Trades | Win Rate | Avg R | Sum R |",
+            "|---|---|---|---|---|",
+        ]
+        for regime, group in sorted(groups.items()):
+            n = len(group)
+            wins = sum(1 for t in group if t.pnl_r > 0.0)
+            sum_r = sum(t.pnl_r for t in group)
+            avg_r = sum_r / n if n else 0.0
+            wr = (wins / n * 100.0) if n else 0.0
+            lines.append(f"| {regime} | {n} | {wr:.1f}% | {avg_r:+.3f} | {sum_r:+.3f} |")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _exit_breakdown(trades: list[Trade]) -> str:
+        if not trades:
+            return "## Exit Reason Breakdown\n\n_No trades._"
+        groups: dict[str, list[Trade]] = {}
+        for t in trades:
+            key = t.exit_reason or "(unlabeled)"
+            groups.setdefault(key, []).append(t)
+        lines = [
+            "## Exit Reason Breakdown",
+            "",
+            "| Exit Reason | Trades | Win Rate | Avg R |",
+            "|---|---|---|---|",
+        ]
+        for reason, group in sorted(groups.items()):
+            n = len(group)
+            wins = sum(1 for t in group if t.pnl_r > 0.0)
+            avg_r = sum(t.pnl_r for t in group) / n if n else 0.0
+            wr = (wins / n * 100.0) if n else 0.0
+            lines.append(f"| `{reason}` | {n} | {wr:.1f}% | {avg_r:+.3f} |")
+        return "\n".join(lines)
 
     @staticmethod
     def _confluence_distribution(trades: list[Trade]) -> str:

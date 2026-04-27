@@ -102,6 +102,16 @@ class JournalEvent(BaseModel):
         description="External references: trade_id, order_id, tx_id, spec_id, ...",
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Lever 2 (kaizen scaffolding, 2026-04-26): policy version this event
+    # was produced under. 0 = pre-policy-versioning (legacy rows). When
+    # JARVIS evolves a new policy version through the kaizen+promotion
+    # gate, this field lets the replay engine compare v17-vs-v18 behavior
+    # over the same event stream.
+    policy_version: int = Field(
+        default=0,
+        ge=0,
+        description="JARVIS policy version under which this event was produced.",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,268 @@
+"""
+EVOLUTIONARY TRADING ALGO  //  scripts.run_walk_forward_mnq_real
+================================================================
+Real-data walk-forward on MNQ 5-minute bars.
+
+Reads ``C:\\mnq_data\\mnq_5m.csv`` (or whatever path is in
+``MNQ_DATA_PATH`` env var), converts rows to ``BarData``, and runs the
+strict per-fold DSR walk-forward pipeline. Same gate, same
+auto-explanation as the demo — but on actual MNQ history.
+
+Why this script
+---------------
+The demo on synthetic bars is enough to validate the framework
+machinery. To learn anything about real strategy edge, we need the
+strict gate evaluated on bars the strategy has never seen. This
+script is the smallest possible bridge from the existing
+WalkForwardEngine to ``C:\\mnq_data\\``.
+
+Usage::
+
+    # default path
+    python -m eta_engine.scripts.run_walk_forward_mnq_real
+
+    # custom path / time slice
+    MNQ_DATA_PATH=C:\\mnq_data\\mnq_5m.csv \\
+    MNQ_BARS_LIMIT=5000 \\
+        python -m eta_engine.scripts.run_walk_forward_mnq_real
+
+Notes
+-----
+- Confluence pipeline expects fields the CSV doesn't carry (funding,
+  on-chain, sentiment). The ctx_builder synthesizes plausible
+  placeholder values so the strategy fires; this is NOT a fair
+  representation of the strategy's real performance — it's a
+  smoke-test that the data path works end to end. Once the live data
+  collectors are wired (cf. ``scripts/dual_data_collector.py``), the
+  ctx_builder here should be replaced with one that pulls real
+  context for each bar.
+"""
+
+from __future__ import annotations
+
+import csv
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT.parent))
+
+
+def _load_csv(path: Path, limit: int | None = None) -> list:
+    """Read mnq_5m-style CSV. Returns a list of BarData objects."""
+    from eta_engine.core.data_pipeline import BarData
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"MNQ data file not found at {path}. "
+            "Set MNQ_DATA_PATH env var to override."
+        )
+    bars: list = []
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            ts_raw = row.get("timestamp_utc") or row.get("timestamp")
+            if not ts_raw:
+                continue
+            # Accept both "...Z" and "+00:00" suffixes.
+            if ts_raw.endswith("Z"):
+                ts_raw = ts_raw[:-1] + "+00:00"
+            ts = datetime.fromisoformat(ts_raw)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+            try:
+                bars.append(
+                    BarData(
+                        timestamp=ts,
+                        symbol="MNQ",
+                        open=float(row["open"]),
+                        high=float(row["high"]),
+                        low=float(row["low"]),
+                        close=float(row["close"]),
+                        volume=float(row.get("volume", 0.0) or 0.0),
+                    )
+                )
+            except (KeyError, ValueError):
+                continue
+            if limit and len(bars) >= limit:
+                break
+    return bars
+
+
+def _ctx(bar, hist) -> dict:  # noqa: ANN001
+    """Smoke-test ctx — placeholder values for non-bar features.
+
+    This is identical in shape to the synthetic demo's ctx but anchored
+    to the bar's actual price for sane EMAs. Real research must replace
+    this with a ctx_builder that pulls actual funding / on-chain /
+    sentiment from the same timestamp.
+    """
+    from eta_engine.core.data_pipeline import FundingRate
+
+    now = bar.timestamp
+    px = bar.close
+    # Coarse regime tag from recent close drift — same shape as the
+    # synthetic-demo ctx so the regime breakdown surfaces something.
+    if hist and len(hist) >= 20:
+        recent = hist[-20:]
+        ret = (recent[-1].close - recent[0].close) / recent[0].close
+        if ret > 0.005:
+            regime = "trending_up"
+        elif ret < -0.005:
+            regime = "trending_down"
+        else:
+            regime = "choppy"
+    else:
+        regime = "warmup"
+    return {
+        "daily_ema": [px * 0.97, px * 0.98, px * 0.99, px, px * 1.01],
+        "h4_struct": "HH_HL",
+        "bias": 1,
+        "atr_history": [bar.high - bar.low] * 10,
+        "atr_current": bar.high - bar.low,
+        "funding_history": [
+            FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0002, predicted_rate=-0.0002)
+        ] * 8,
+        "regime": regime,
+        # Placeholders — real ctx would pull from chain / sentiment feeds.
+        "onchain": {
+            "whale_transfers": 30,
+            "whale_transfers_baseline": 25,
+            "exchange_netflow_usd": -5_000_000.0,
+            "active_addresses": 1100,
+            "active_addresses_baseline": 1000,
+        },
+        "sentiment": {
+            "galaxy_score": 70.0,
+            "alt_rank": 50,
+            "social_volume": 300,
+            "social_volume_baseline": 200,
+            "fear_greed": 50,
+        },
+    }
+
+
+def _explain_gate(res, wf) -> list[str]:  # noqa: ANN001
+    """Mirror of run_walk_forward_demo._explain_gate — kept inline so this
+    script is self-contained and operators can run it without sharing
+    state with the demo.
+    """
+    reasons: list[str] = []
+    high_deg_windows = [
+        w for w in res.windows if w.get("degradation_pct", 0.0) > 0.50
+    ]
+    if high_deg_windows:
+        idxs = ", ".join(str(w["window"]) for w in high_deg_windows)
+        reasons.append(
+            f"OOS degradation > 50% in window(s): {idxs} (IS-overfit)"
+        )
+    if res.fold_dsr_median <= 0.5:
+        reasons.append(
+            f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold"
+        )
+    if res.fold_dsr_pass_fraction < wf.fold_dsr_min_pass_fraction:
+        reasons.append(
+            f"Per-fold DSR pass fraction {res.fold_dsr_pass_fraction * 100:.1f}% "
+            f"< {wf.fold_dsr_min_pass_fraction * 100:.0f}% threshold"
+        )
+    low_trade_windows = [
+        w for w in res.windows if w.get("oos_trades", 0) < wf.min_trades_per_window
+    ]
+    if low_trade_windows:
+        idxs = ", ".join(str(w["window"]) for w in low_trade_windows)
+        reasons.append(
+            f"OOS trade count below min ({wf.min_trades_per_window}) "
+            f"in window(s): {idxs}"
+        )
+    return reasons
+
+
+def main() -> int:
+    from eta_engine.backtest import (
+        BacktestConfig,
+        WalkForwardConfig,
+        WalkForwardEngine,
+    )
+    from eta_engine.features.pipeline import FeaturePipeline
+
+    data_path = Path(os.environ.get("MNQ_DATA_PATH", r"C:\mnq_data\mnq_5m.csv"))
+    limit_str = os.environ.get("MNQ_BARS_LIMIT", "")
+    limit = int(limit_str) if limit_str.isdigit() else None
+
+    bars = _load_csv(data_path, limit=limit)
+    if not bars:
+        print(f"ABORT: zero bars loaded from {data_path}")
+        return 1
+
+    cfg = BacktestConfig(
+        start_date=bars[0].timestamp,
+        end_date=bars[-1].timestamp,
+        symbol=bars[0].symbol,
+        initial_equity=10_000.0,
+        risk_per_trade_pct=0.01,
+        confluence_threshold=7.0,
+        max_trades_per_day=10,
+    )
+    wf = WalkForwardConfig(
+        window_days=30,
+        step_days=15,
+        anchored=True,
+        oos_fraction=0.3,
+        min_trades_per_window=5,
+        strict_fold_dsr_gate=True,
+        fold_dsr_min_pass_fraction=0.5,
+    )
+    res = WalkForwardEngine().run(
+        bars=bars,
+        pipeline=FeaturePipeline.default(),
+        config=wf,
+        base_backtest_config=cfg,
+        ctx_builder=_ctx,
+    )
+
+    print("EVOLUTIONARY TRADING ALGO -- MNQ Real-Data Walk-Forward")
+    print("=" * 82)
+    print(
+        f"Data: {data_path}  bars: {len(bars)}  "
+        f"range: {bars[0].timestamp.date()} -> {bars[-1].timestamp.date()}"
+    )
+    print(f"Anchored={wf.anchored}  windows={len(res.windows)}")
+    print("-" * 82)
+    print(
+        f"{'#':>2} {'IS_Sh':>7} {'OOS_Sh':>7} {'IS_tr':>6} {'OOS_tr':>6} "
+        f"{'IS_ret%':>8} {'OOS_ret%':>9} {'deg%':>6} {'DSR':>6}"
+    )
+    print("-" * 82)
+    for w in res.windows:
+        print(
+            f"{w['window']:>2} {w['is_sharpe']:>7.3f} {w['oos_sharpe']:>7.3f} "
+            f"{w['is_trades']:>6} {w['oos_trades']:>6} "
+            f"{w['is_return_pct']:>8.2f} {w['oos_return_pct']:>9.2f} "
+            f"{w['degradation_pct'] * 100:>6.1f} {w.get('oos_dsr', 0.0):>6.3f}"
+        )
+    print("-" * 82)
+    print(f"Aggregate IS Sharpe:         {res.aggregate_is_sharpe:>8.4f}")
+    print(f"Aggregate OOS Sharpe:        {res.aggregate_oos_sharpe:>8.4f}")
+    print(f"OOS degradation (avg):       {res.oos_degradation_avg * 100:>7.2f}%")
+    print(f"Aggregate Deflated Sharpe:   {res.deflated_sharpe:>8.4f}")
+    print(f"Per-fold DSR median:         {res.fold_dsr_median:>8.4f}")
+    print(
+        f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}% "
+        f"(threshold: {wf.fold_dsr_min_pass_fraction * 100:.0f}%)",
+    )
+    verdict = "PASS" if res.pass_gate else "FAIL"
+    print(f"Gate (strict): {verdict}")
+    if not res.pass_gate:
+        reasons = _explain_gate(res, wf)
+        if reasons:
+            print("Why it failed:")
+            for r in reasons:
+                print(f"  - {r}")
+    print("=" * 82)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

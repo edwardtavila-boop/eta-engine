@@ -38,6 +38,10 @@ class _Open:
     confluence: float
     leverage: float
     peak_adverse: float = 0.0
+    # Regime label active at trade entry; lifted from ctx_builder output
+    # (e.g. "trending_up", "choppy"). None if the ctx_builder doesn't
+    # populate one — preserves backward compatibility with old strategies.
+    regime: str | None = None
 
 
 def _atr(hist: list[BarData], period: int = 14) -> float:
@@ -55,7 +59,7 @@ class BacktestEngine:
         pipeline: FeaturePipeline,
         config: BacktestConfig,
         ctx_builder: Any | None = None,
-        strategy_id: str = "apex_default",
+        strategy_id: str = "eta_default",
     ) -> None:
         self.pipeline = pipeline
         self.config = config
@@ -115,9 +119,18 @@ class BacktestEngine:
         qty = risk_usd / stop_dist
         if qty <= 0.0:
             return None
+        # NOTE: target_r_multiple / stop_r_multiple is the RR ratio
+        # (default 3/2 = 1.5), so winning trades cap at +1.5R from
+        # entry — that's why the demo report shows no trades in the
+        # >2R bucket. To allow >2R winners, raise target_r_multiple
+        # (or refactor target_r_multiple to mean R-distance directly).
         rr = self.config.target_r_multiple / self.config.stop_r_multiple
         stop = bar.close - stop_dist if side == "BUY" else bar.close + stop_dist
         target = bar.close + rr * stop_dist if side == "BUY" else bar.close - rr * stop_dist
+        # Regime is conventionally surfaced by the ctx_builder under
+        # the "regime" key. Falls back to None for legacy ctx builders.
+        regime_raw = ctx.get("regime")
+        regime = str(regime_raw) if regime_raw is not None else None
         return _Open(
             entry_bar=bar,
             side=side,
@@ -128,18 +141,26 @@ class BacktestEngine:
             risk_usd=risk_usd,
             confluence=score.total_score,
             leverage=float(score.recommended_leverage),
+            regime=regime,
         )
 
     def _exit(self, t: _Open, bar: BarData) -> Trade | None:
         stop_hit = (t.side == "BUY" and bar.low <= t.stop) or (t.side == "SELL" and bar.high >= t.stop)
         tgt_hit = (t.side == "BUY" and bar.high >= t.target) or (t.side == "SELL" and bar.low <= t.target)
         if stop_hit:
-            return self._close(t, bar, t.stop)
+            return self._close(t, bar, t.stop, exit_reason="stop_hit")
         if tgt_hit:
-            return self._close(t, bar, t.target)
+            return self._close(t, bar, t.target, exit_reason="target_hit")
         return None
 
-    def _close(self, t: _Open, bar: BarData, exit_price: float) -> Trade:
+    def _close(
+        self,
+        t: _Open,
+        bar: BarData,
+        exit_price: float,
+        *,
+        exit_reason: str = "session_end",
+    ) -> Trade:
         direction = 1.0 if t.side == "BUY" else -1.0
         pnl_usd = direction * (exit_price - t.entry_price) * t.qty
         pnl_r = pnl_usd / t.risk_usd if t.risk_usd > 0.0 else 0.0
@@ -156,6 +177,8 @@ class BacktestEngine:
             confluence_score=round(t.confluence, 2),
             leverage_used=t.leverage,
             max_drawdown_during=round(t.peak_adverse, 2),
+            regime=t.regime,
+            exit_reason=exit_reason,
         )
 
     def _finalize(self, trades: list[Trade], curve: list[float]) -> BacktestResult:

@@ -539,11 +539,26 @@ class JarvisAdmin:
         *,
         engine: JarvisContextEngine | None = None,
         audit_path: Path | None = None,
+        policy_version: int = 0,
     ) -> None:
+        """Construct a JarvisAdmin.
+
+        ``policy_version`` (Lever 2, 2026-04-26): an integer label that's
+        attached to every audit record this admin writes. Bump when JARVIS's
+        decision logic changes (a kaizen-driven update gets promoted through
+        the gate). Lets the replay engine compare v17-vs-v18 behavior over
+        the same event stream.
+        """
         self._engine = engine
         self._audit_path = audit_path
+        self._policy_version = int(policy_version)
         if audit_path is not None:
             audit_path.parent.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def policy_version(self) -> int:
+        """Current JARVIS policy version. See __init__ docstring."""
+        return self._policy_version
 
     def request_approval(
         self,
@@ -576,6 +591,7 @@ class JarvisAdmin:
             return
         record = {
             "ts": resp.ts.isoformat(),
+            "policy_version": self._policy_version,  # Lever 2 (2026-04-26)
             "request": req.model_dump(mode="json"),
             "response": resp.model_dump(mode="json"),
             "jarvis_action": ctx.suggestion.action.value,
@@ -626,6 +642,7 @@ class JarvisAdmin:
         if self._audit_path is not None:
             record = {
                 "ts": resp.ts.isoformat(),
+                "policy_version": self._policy_version,  # Lever 2 (2026-04-26)
                 "request": req.model_dump(mode="json"),
                 "response": resp.model_dump(mode="json"),
                 "jarvis_action": "N/A (LLM routing)",

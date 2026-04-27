@@ -22,6 +22,20 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
     from eta_engine.core.data_pipeline import FundingRate
 
     now = bar.timestamp
+    # Synthetic regime label so the tearsheet's regime breakdown
+    # surfaces something meaningful in the demo. In a real run, the
+    # ctx_builder calls into eta_engine.brain regime classifier.
+    if hist and len(hist) >= 20:
+        recent = hist[-20:]
+        ret = (recent[-1].close - recent[0].close) / recent[0].close
+        if ret > 0.005:
+            regime = "trending_up"
+        elif ret < -0.005:
+            regime = "trending_down"
+        else:
+            regime = "choppy"
+    else:
+        regime = "warmup"
     return {
         "daily_ema": [3000, 3100, 3200, 3300, 3400],
         "h4_struct": "HH_HL",
@@ -29,6 +43,7 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
         "atr_history": [20] * 10,
         "atr_current": 20.0,
         "funding_history": [FundingRate(timestamp=now, symbol=bar.symbol, rate=-0.0008, predicted_rate=-0.0008)] * 8,
+        "regime": regime,
         "onchain": {
             "whale_transfers": 40,
             "whale_transfers_baseline": 20,
@@ -44,6 +59,53 @@ def _ctx(bar, hist) -> dict:  # noqa: ANN001
             "fear_greed": 20,
         },
     }
+
+
+def _explain_gate(res, wf) -> list[str]:  # noqa: ANN001
+    """Return a list of human-readable reasons why the strict gate failed.
+
+    Empty list = gate passed cleanly.
+
+    The gate is composed of multiple criteria; rather than make the
+    operator infer from the table which one tripped, surface each
+    failing condition explicitly. New criteria added to walk_forward
+    should be reflected here so the explanation stays current.
+    """
+    reasons: list[str] = []
+    # Per-window degradation: any window above the soft 50% line is
+    # worth calling out even if the strict gate doesn't fail on it
+    # alone, since high per-window degradation usually masks the real
+    # cause of an aggregate-DSR pass-fail.
+    high_deg_windows = [
+        w for w in res.windows
+        if w.get("degradation_pct", 0.0) > 0.50
+    ]
+    if high_deg_windows:
+        idxs = ", ".join(str(w["window"]) for w in high_deg_windows)
+        reasons.append(
+            f"OOS degradation > 50% in window(s): {idxs} "
+            f"(strategy IS-overfits in those folds)"
+        )
+    if res.fold_dsr_median <= 0.5:
+        reasons.append(
+            f"Per-fold DSR median {res.fold_dsr_median:.3f} <= 0.5 threshold"
+        )
+    if res.fold_dsr_pass_fraction < wf.fold_dsr_min_pass_fraction:
+        reasons.append(
+            f"Per-fold DSR pass fraction {res.fold_dsr_pass_fraction * 100:.1f}% "
+            f"< {wf.fold_dsr_min_pass_fraction * 100:.0f}% threshold"
+        )
+    low_trade_windows = [
+        w for w in res.windows
+        if w.get("oos_trades", 0) < wf.min_trades_per_window
+    ]
+    if low_trade_windows:
+        idxs = ", ".join(str(w["window"]) for w in low_trade_windows)
+        reasons.append(
+            f"OOS trade count below min ({wf.min_trades_per_window}) "
+            f"in window(s): {idxs}"
+        )
+    return reasons
 
 
 def main() -> int:
@@ -119,9 +181,24 @@ def main() -> int:
         f"Per-fold DSR pass fraction:  {res.fold_dsr_pass_fraction * 100:>7.2f}% "
         f"(threshold: {wf.fold_dsr_min_pass_fraction * 100:.0f}%)",
     )
-    print(
-        f"Gate (strict: DSR+deg+trades + median+pass-frac): {'PASS' if res.pass_gate else 'FAIL'}",
-    )
+    verdict = "PASS" if res.pass_gate else "FAIL"
+    print(f"Gate (strict: DSR+deg+trades + median+pass-frac): {verdict}")
+    if not res.pass_gate:
+        reasons = _explain_gate(res, wf)
+        if reasons:
+            print("Why it failed:")
+            for r in reasons:
+                print(f"  - {r}")
+        else:
+            # Aggregate gate failed but no per-window reason flagged —
+            # likely a strict-DSR aggregate threshold or trade-floor
+            # check inside walk_forward.py. Surface what we can.
+            print("Why it failed:")
+            print(
+                f"  - Aggregate DSR {res.deflated_sharpe:.3f} or "
+                f"OOS degradation {res.oos_degradation_avg * 100:.1f}% "
+                f"failed an aggregate threshold (see backtest/walk_forward.py)"
+            )
     print("=" * 82)
     return 0
 
