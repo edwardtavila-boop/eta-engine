@@ -35,6 +35,7 @@ param(
     [switch]$SkipTasks,
     [switch]$KeepDisabled,
     [switch]$IncludeFleetDaemons,   # also run register_tasks.ps1 (persona daemons)
+    [switch]$IncludeTradingView,    # also install TradingView + register AtLogOn task
     [switch]$DryRun
 )
 
@@ -142,11 +143,26 @@ if ($IncludeFleetDaemons) {
     Write-Banner "4/5  fleet daemons -- skipped (use -IncludeFleetDaemons to run register_tasks.ps1 too)"
 }
 
+# --- 4b. optionally install TradingView Desktop + AtLogOn task -------
+if ($IncludeTradingView) {
+    Write-Banner "4b/5  TradingView Desktop install + AtLogOn launcher"
+    $tvScript = Join-Path $ScriptDir "install_tradingview_vps.ps1"
+    if (Test-Path $tvScript) {
+        $tvArgs = @("-File", $tvScript)
+        if ($DryRun) { $tvArgs += "-DryRun" }
+        & powershell.exe @tvArgs
+    } else {
+        Write-Host "  ERROR: $tvScript not found" -ForegroundColor Red
+    }
+} else {
+    Write-Banner "4b/5  TradingView -- skipped (use -IncludeTradingView for mnq_tv_monitor_rth on VPS)"
+}
+
 # ---5. summary ──────────────────────────────────────────────────────
 Write-Banner "5/5  final state"
 
 Write-Host ""
-Write-Host "Repos under $InstallRoot:"
+Write-Host "Repos under ${InstallRoot}:"
 foreach ($d in @("eta_engine", "mnq_backtest", "mnq_eta_bot", "jarvis_identity")) {
     $p = Join-Path $InstallRoot $d
     if (Test-Path (Join-Path $p ".git")) {
