@@ -119,6 +119,20 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/dual_data_collector.py",
         ),
     ),
+    # nq_futures_sage mirrors mnq_futures_sage but on NQ — sage-overlay
+    # variant of plain ORB. Same data needs as nq_futures; only the
+    # decision-time gate differs.
+    BotRequirements(
+        bot_id="nq_futures_sage",
+        requirements=(
+            DataRequirement("bars", "NQ1", "5m", critical=True),
+            DataRequirement("bars", "NQ1", "1h", critical=True),
+            DataRequirement("correlation", "ES1", "5m", critical=True,
+                note="ES correlation feeds the sage's institutional school"),
+            DataRequirement("correlation", "VIX", "5m", critical=False),
+        ),
+        sources_hint=("tradingview-mcp",),
+    ),
     # nq_daily_drb is a daily-timeframe DRB variant of nq_futures. Same
     # underlying bot directory, different strategy_kind in the per_bot
     # registry. Listed here as a separate bot_id so the audit + sync
