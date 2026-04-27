@@ -83,11 +83,12 @@ def test_window_step_consistent() -> None:
 
 
 def test_scorer_name_is_known() -> None:
-    valid = {"global", "mnq"}
+    valid = {"global", "mnq", "btc"}
     for a in ASSIGNMENTS:
         assert a.scorer_name in valid, (
             f"{a.bot_id} unknown scorer {a.scorer_name!r}; add to "
-            f"_resolve_scorer in run_research_grid before registering"
+            f"_resolve_scorer in run_research_grid + this allowlist "
+            f"before registering"
         )
 
 

@@ -167,17 +167,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=30,
         min_trades_per_window=10,
         rationale=(
-            "BTC perps are funding/on-chain dominated, not "
-            "trend-bias dominated. The global scorer with all 5 "
-            "features matters here — funding_skew (weight 2.0) and "
-            "onchain_delta (weight 1.5) are real signals on crypto. "
-            "Regime gate disabled because trending regimes ARE often "
-            "the funding-arb opportunity (e.g. extreme positive "
-            "funding in a trending-up move). Symbol/timeframe is a "
-            "placeholder — wire to actual BTC bars once they're in "
-            "the data library; until then this assignment runs "
-            "against MNQ1 1h purely so the harness can exercise the "
-            "global scorer pathway."
+            "Operator directive 2026-04-27: crypto bots trade CME "
+            "crypto futures (cash-settled, no native funding/onchain) "
+            "rather than spot perps. The BTC-tuned scorer "
+            "(score_confluence_btc) equal-weights all 5 features so "
+            "spot-driven signals (funding/onchain/sentiment) still "
+            "contribute when paired feeds are available, and the "
+            "scorer degrades gracefully to bar-derived signals only "
+            "when they're not. Threshold 6.0 — between MNQ's 5.0 "
+            "(2 features active) and global's 7.0 (5 features "
+            "weighted unequally). Regime gate disabled — trending "
+            "regimes in crypto are often the trade, not the danger. "
+            "Symbol/timeframe placeholder until CME crypto bars "
+            "land in the data library (see data.requirements for "
+            "the full feed list)."
         ),
     ),
     # ETH perp — same family as BTC but with smart-contract catalysts
@@ -186,8 +189,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         strategy_id="eth_global_default",
         symbol="MNQ1",  # placeholder
         timeframe="1h",
-        scorer_name="global",
-        confluence_threshold=7.0,
+        scorer_name="btc",
+        confluence_threshold=6.0,
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,
@@ -201,35 +204,43 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "approach. Symbol placeholder same as btc_hybrid."
         ),
     ),
-    # XRP perp — speculative, news-driven, low TVL
+    # XRP perp — DEACTIVATED until news/sentiment feed lands.
     StrategyAssignment(
         bot_id="xrp_perp",
-        strategy_id="xrp_skip_baseline",
-        symbol="MNQ1",  # placeholder
+        strategy_id="xrp_DEACTIVATED",
+        symbol="MNQ1",  # placeholder; not used while bot is muted
         timeframe="1h",
-        scorer_name="global",
-        confluence_threshold=8.0,  # higher bar — XRP is news-driven, fewer real signals
+        scorer_name="btc",
+        confluence_threshold=10.0,  # impossible to reach — bot is muted
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
         rationale=(
-            "XRP is news/regulation-driven more than feature-driven. "
-            "No baseline strategy exists; keep the threshold high "
-            "(8.0 vs 7.0) so the bot fires only when ALL features "
-            "agree. Better path: a news-event gate that pauses XRP "
-            "around SEC headlines. Until that exists, XRP is "
-            "effectively muted. Placeholder symbol/timeframe."
+            "DEACTIVATED 2026-04-27. XRP price is dominated by "
+            "regulatory news (SEC headlines, lawsuit outcomes, ETF "
+            "approval cycles), none of which the current feature "
+            "set captures. Operating XRP without that signal is "
+            "noise-chasing. Threshold raised to 10.0 (mathematically "
+            "unreachable since the scorer caps at 10.0 only with "
+            "every feature at 1.0 normalized) so the bot fires zero "
+            "trades — explicitly muted, not silently broken. "
+            "Reactivate once: (1) a news/regulatory feed is wired "
+            "into the data library (see BotRequirements:xrp_perp), "
+            "and (2) a feature class consumes it (e.g. SECHeadline"
+            "Feature returning a time-decay signal around recent "
+            "rulings)."
         ),
+        extras={"deactivated": True, "deactivation_reason": "no news feed"},
     ),
     # SOL perp — high-beta crypto, behaves like BTC * 2-3x
     StrategyAssignment(
         bot_id="sol_perp",
-        strategy_id="sol_global_default",
+        strategy_id="sol_btc_default",
         symbol="MNQ1",  # placeholder
         timeframe="1h",
-        scorer_name="global",
-        confluence_threshold=7.5,  # slight bump for higher noise
+        scorer_name="btc",
+        confluence_threshold=6.5,  # slight bump for higher noise
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,

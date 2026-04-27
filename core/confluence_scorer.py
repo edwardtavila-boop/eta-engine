@@ -203,6 +203,79 @@ MNQ_WEIGHT_TABLE: dict[str, float] = {
 _MNQ_TOTAL_WEIGHT = sum(MNQ_WEIGHT_TABLE.values())  # 5.0
 
 
+# ---------------------------------------------------------------------------
+# BTC-tuned scorer (CME-aware)
+# ---------------------------------------------------------------------------
+# CME crypto futures (BTC, MBT, ETH, MET) are cash-settled to the CF
+# Reference Rate. They have NO native funding rate and NO on-chain
+# settlement — but spot crypto is what they're priced off, and spot is
+# moved by funding pressure + on-chain activity + sentiment. So all
+# five features remain signal-bearing, just with equal weighting
+# rather than the crypto-perp emphasis you'd want for native perp
+# trading. When the ctx doesn't carry funding/onchain (e.g. when only
+# CME bars are available without a paired perp feed), those inputs
+# default to 0 and the scorer still produces a meaningful score from
+# the bar-derived features.
+
+BTC_WEIGHT_TABLE: dict[str, float] = {
+    "trend_bias": 2.0,
+    "vol_regime": 2.0,
+    "funding_skew": 2.0,
+    "onchain_delta": 2.0,
+    "sentiment": 2.0,
+}
+_BTC_TOTAL_WEIGHT = sum(BTC_WEIGHT_TABLE.values())  # 10.0
+
+
+def score_confluence_btc(
+    trend_bias: float,
+    vol_regime: float,
+    funding_skew: float = 0.0,
+    onchain_delta: float = 0.0,
+    sentiment: float = 0.0,
+) -> ConfluenceResult:
+    """BTC-tuned confluence scorer (CME + perp friendly).
+
+    Equal weighting across the five features. Default zeros for
+    funding/onchain/sentiment so a caller with only CME bars (no
+    paired perp/spot/sentiment feed) still produces a valid score
+    from the bar-derived signals. When the perp-side feeds ARE
+    available (live BTC perp trading), passing real values gives
+    them meaningful contribution to the composite.
+    """
+    raw_inputs = {
+        "trend_bias": trend_bias,
+        "vol_regime": vol_regime,
+        "funding_skew": funding_skew,
+        "onchain_delta": onchain_delta,
+        "sentiment": sentiment,
+    }
+    factors: list[ConfluenceFactor] = []
+    weighted_sum = 0.0
+    for name, raw in raw_inputs.items():
+        weight = BTC_WEIGHT_TABLE.get(name, 0.0)
+        if weight <= 0.0:
+            continue
+        norm = _NORMALIZERS[name](raw)
+        factors.append(
+            ConfluenceFactor(
+                name=name,
+                weight=weight,
+                raw_value=raw,
+                normalized_score=round(norm, 4),
+            )
+        )
+        weighted_sum += norm * weight
+    total = round(weighted_sum / _BTC_TOTAL_WEIGHT * 10.0, 2)
+    total = min(total, 10.0)
+    return ConfluenceResult(
+        factors=factors,
+        total_score=total,
+        recommended_leverage=_score_to_leverage(total),
+        signal=_score_to_signal(total),
+    )
+
+
 def score_confluence_mnq(
     trend_bias: float,
     vol_regime: float,

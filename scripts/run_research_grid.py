@@ -79,10 +79,15 @@ class CellResult:
 def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]
     from eta_engine.core.confluence_scorer import (
         score_confluence,
+        score_confluence_btc,
         score_confluence_mnq,
     )
 
-    return {"global": score_confluence, "mnq": score_confluence_mnq}[name]
+    return {
+        "global": score_confluence,
+        "mnq": score_confluence_mnq,
+        "btc": score_confluence_btc,
+    }[name]
 
 
 def run_cell(cell: ResearchCell) -> CellResult:

@@ -57,6 +57,12 @@ if TYPE_CHECKING:
 DEFAULT_ROOTS: tuple[Path, ...] = (
     Path(r"C:\mnq_data"),
     Path(r"C:\mnq_data\history"),
+    # CME crypto bars (BTC/MBT/ETH/MET). Directory may not exist
+    # yet — DataLibrary._discover skips missing roots silently.
+    # When fetch_btc_bars.py starts writing here, the next library
+    # call surfaces the new datasets automatically.
+    Path(r"C:\crypto_data"),
+    Path(r"C:\crypto_data\history"),
 )
 
 
