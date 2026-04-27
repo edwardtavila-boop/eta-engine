@@ -271,44 +271,44 @@ class RouterAdapter:
     _bars: deque[Bar] = field(init=False, repr=False)
     _last_decision: RouterDecision | None = field(default=None, init=False, repr=False)
     _ts_counter: int = field(default=0, init=False, repr=False)
-    _eod_flatten_fired_for_session: str | None = field(default=None, init=False, repr=False)
 
     def should_flatten_eod(self, bar: dict[str, Any]) -> tuple[bool, str]:
-        """Decide whether the bot should flatten before session close.
+        """Ask the wired :class:`SessionGate` whether to flatten now.
 
-        Returns ``(should_flatten, reason)``. When :attr:`session_gate`
-        is ``None`` or the gate has no EOD logic configured, returns
-        ``(False, "no_eod_policy")`` -- the historical no-op behaviour
-        that production code relied on before the gate existed.
+        Returns ``(should_flatten, reason)`` -- ``reason`` is one of
+        ``REASON_EOD_PENDING`` / ``REASON_EOD_NOT_DUE`` from
+        :mod:`eta_engine.core.session_gate` when the gate is active,
+        or the sentinel ``"no_eod_policy"`` when no gate is wired.
 
-        The fire-once-per-session latch lives on the adapter (rather
-        than the gate) so the same bar feeding two bots wired to the
-        same gate doesn't double-fire.
+        The fire-once latch lives on the BOT (``bot._eod_flatten_fired``)
+        not the adapter -- the adapter is a stateless query layer here,
+        so a bot can ask repeatedly and decide for itself when to act.
         """
         gate = self.session_gate
         if gate is None:
             return False, "no_eod_policy"
-        # Defer to the gate when it implements an EOD predicate.
         eod_check = getattr(gate, "should_flatten_eod", None)
         if eod_check is None:
             return False, "no_eod_policy"
+        # Convert the bar's epoch-millisecond ``ts`` to a UTC datetime
+        # the gate expects. Fall back gracefully when ``ts`` is absent
+        # or malformed -- the hot loop must never crash on a bad bar.
+        from datetime import UTC, datetime as _dt
+
+        ts_raw = bar.get("ts") or bar.get("timestamp")
         try:
-            verdict = eod_check(bar)
+            now = _dt.fromtimestamp(float(ts_raw) / 1000.0, tz=UTC)
+        except (TypeError, ValueError):
+            return False, "eod_check_skipped_bad_ts"
+        try:
+            verdict = eod_check(now)
         except Exception:  # noqa: BLE001 -- never crash the hot loop
             return False, "eod_check_raised"
-        # Normalise: gate may return bool or (bool, str).
         if isinstance(verdict, tuple) and len(verdict) == 2:
             should, reason = verdict
         else:
             should, reason = bool(verdict), "eod_window"
-        if not should:
-            return False, str(reason)
-        # Latch: only fire once per session label.
-        session_id = str(bar.get("session_id") or bar.get("session") or "")
-        if session_id and session_id == self._eod_flatten_fired_for_session:
-            return False, "already_flattened_this_session"
-        self._eod_flatten_fired_for_session = session_id or self._eod_flatten_fired_for_session
-        return True, str(reason)
+        return bool(should), str(reason)
 
     def __post_init__(self) -> None:
         if self.max_bars < 2:

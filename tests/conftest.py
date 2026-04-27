@@ -22,6 +22,47 @@ collect_ignore = [
 ]
 
 
+@pytest.fixture
+def bypass_m2_us_person(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass the M2 IS_US_PERSON gate for tests that exercise the
+    router/venue failover paths against offshore perps.
+
+    The M2 mandate (2026-04-26) blocks LIVE orders to non-FCM venues
+    when ``APEX_IS_US_PERSON=true`` (the default). Tests that exist
+    to verify routing semantics — not the US-person gate itself —
+    flip the module-level constant to ``False`` so the gate is
+    transparent for the duration of the test.
+    """
+    import eta_engine.venues.router as _router_mod
+
+    monkeypatch.setattr(_router_mod, "IS_US_PERSON", False, raising=True)
+
+
+_M2_BYPASS_TEST_NODEIDS: frozenset[str] = frozenset(
+    {
+        "tests/test_venues.py::TestSmartRouter::test_place_with_failover_primary",
+        "tests/test_venues.py::TestSmartRouter::test_smart_router_failover_on_primary_reject",
+        "tests/test_venue_integration.py::TestRouterDispatch::test_router_failover_records_log",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def _auto_bypass_m2_for_known_tests(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-apply the M2 bypass fixture to a known set of routing tests
+    that pre-date the 2026-04-26 mandate. New tests should opt in
+    explicitly via the named ``bypass_m2_us_person`` fixture.
+    """
+    nodeid = request.node.nodeid.replace("\\", "/")
+    if nodeid in _M2_BYPASS_TEST_NODEIDS:
+        import eta_engine.venues.router as _router_mod
+
+        monkeypatch.setattr(_router_mod, "IS_US_PERSON", False, raising=True)
+
+
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001, ANN001
     """Class-level orphan quarantine.
 

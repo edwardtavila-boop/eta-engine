@@ -126,10 +126,14 @@ def test_gate_roadmap_state_fail_on_wrong_phase(fake_root: Path):
 
 
 def test_gate_tradovate_creds_reads_env(fake_root: Path, monkeypatch: pytest.MonkeyPatch):
+    # Post-dormancy mandate (2026-04-24): Tradovate is DORMANT, so
+    # missing creds resolve to SKIP rather than FAIL. The gate is
+    # ``required=False`` so the missing-creds path no longer blocks
+    # the live-tiny staging flow.
     monkeypatch.delenv("TRADOVATE_CLIENT_ID", raising=False)
     monkeypatch.delenv("TRADOVATE_CLIENT_SECRET", raising=False)
     g = mod._gate_tradovate_creds()
-    assert g.status == "FAIL"
+    assert g.status == "SKIP"
     monkeypatch.setenv("TRADOVATE_CLIENT_ID", "x")
     monkeypatch.setenv("TRADOVATE_CLIENT_SECRET", "y")
     g = mod._gate_tradovate_creds()
@@ -180,12 +184,22 @@ def test_inject_failures_flips_gate_state(fake_root: Path):
 
 
 def test_gate_venue_health_pass_with_all_configs(fake_root: Path):
+    # Post-dormancy mandate (2026-04-24): active futures venues are
+    # IBKR + Tastytrade; Tradovate yaml is no longer required. The
+    # gate derives required configs from
+    # ``venues.router.ACTIVE_FUTURES_VENUES`` so the test mirrors that.
     cfg = fake_root / "configs"
-    for fname in ("tradovate.yaml", "bybit.yaml", "alerts.yaml", "kill_switch.yaml"):
+    for fname in (
+        "ibkr.yaml",
+        "tastytrade.yaml",
+        "bybit.yaml",
+        "alerts.yaml",
+        "kill_switch.yaml",
+    ):
         (cfg / fname).write_text(f"# stub {fname}\n")
     g = mod._gate_venue_health()
     assert g.status == "PASS"
-    assert "4/4" in g.detail
+    assert "5/5" in g.detail
 
 
 def test_gate_venue_health_fail_if_any_config_missing(fake_root: Path):
