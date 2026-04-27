@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "eta-walkforward"
+version = "0.1.0"
+description = "Honest walk-forward strategy evaluation: strict gate, FP-noise guards, drift monitoring."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Evolutionary Trading Algo LLC" },
+]
+keywords = [
+  "trading",
+  "quant",
+  "backtesting",
+  "walk-forward",
+  "deflated-sharpe-ratio",
+  "drift-monitoring",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+  "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://evolutionarytradingalgo.com/research/"
+Source = "https://github.com/edwardtavila-boop/eta-walkforward"
+Issues = "https://github.com/edwardtavila-boop/eta-walkforward/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["eta_walkforward"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "PL", "RUF", "ANN"]
+ignore = [
+  # ANN101 / ANN102 (type-self/type-cls) deprecated in newer ruff —
+  # don't list them here so users on the latest ruff don't get a warning.
+  "PLR0913",             # too-many-arguments — fine in dataclass-y configs
+  "PLR0912", "PLR0915",  # branch / statement count — the gate is a single
+                         # multi-mode dispatch function by design
+  "PLR2004",             # gate thresholds (0.35, 0.5, 0.55, 1e-3) are
+                         # documented in the README and tests; not magic
+]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401"]    # test fixtures often need pytest imported even
+                         # when only @pytest.fixture etc. is used
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
