@@ -297,17 +297,13 @@ def _check_intel_verdict_log() -> ComponentHealth:
 
 def _check_macro_calendar() -> ComponentHealth:
     try:
-
         from eta_engine.brain.jarvis_v3.macro_calendar import (
-            DEFAULT_2026_USA_EVENTS,
             is_within_event_window,
+            upcoming_events,
         )
         now = datetime.now(UTC)
-        upcoming = [
-            e for e in DEFAULT_2026_USA_EVENTS
-            if 0 <= (e.when - now).total_seconds() < 86_400
-        ]
-        within = is_within_event_window(now, events=DEFAULT_2026_USA_EVENTS)
+        upcoming = upcoming_events(hours_ahead=24)
+        within = is_within_event_window(now)
     except Exception as exc:  # noqa: BLE001
         return ComponentHealth(
             name="macro_calendar",
