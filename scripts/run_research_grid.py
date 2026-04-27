@@ -77,6 +77,50 @@ class CellResult:
     note: str = ""
 
 
+def _build_crypto_strategy_factory(kind: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
+    """Return a zero-arg factory that builds a fresh crypto strategy
+    instance per walk-forward window. Kept inline here (not in the
+    registry) so the grid stays the single place that knows about the
+    strategy_kind → constructor mapping."""
+    if kind == "crypto_orb":
+        from eta_engine.strategies.crypto_orb_strategy import (
+            CryptoORBConfig,
+            crypto_orb_strategy,
+        )
+        cfg = CryptoORBConfig()
+        return lambda: crypto_orb_strategy(cfg)
+    if kind == "crypto_trend":
+        from eta_engine.strategies.crypto_trend_strategy import (
+            CryptoTrendConfig,
+            CryptoTrendStrategy,
+        )
+        cfg = CryptoTrendConfig()
+        return lambda: CryptoTrendStrategy(cfg)
+    if kind == "crypto_meanrev":
+        from eta_engine.strategies.crypto_meanrev_strategy import (
+            CryptoMeanRevConfig,
+            CryptoMeanRevStrategy,
+        )
+        cfg = CryptoMeanRevConfig()
+        return lambda: CryptoMeanRevStrategy(cfg)
+    if kind == "crypto_scalp":
+        from eta_engine.strategies.crypto_scalp_strategy import (
+            CryptoScalpConfig,
+            CryptoScalpStrategy,
+        )
+        cfg = CryptoScalpConfig()
+        return lambda: CryptoScalpStrategy(cfg)
+    if kind == "grid":
+        from eta_engine.strategies.grid_trading_strategy import (
+            GridConfig,
+            GridTradingStrategy,
+        )
+        cfg = GridConfig()
+        return lambda: GridTradingStrategy(cfg)
+    msg = f"unknown crypto strategy_kind: {kind!r}"
+    raise ValueError(msg)
+
+
 def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
     from eta_engine.core.confluence_scorer import (
         score_confluence,
@@ -166,6 +210,23 @@ def run_cell(cell: ResearchCell) -> CellResult:
             base_backtest_config=base_cfg,
             ctx_builder=lambda b, h: {},
             strategy_factory=lambda: DRBStrategy(drb_cfg),
+        )
+    elif cell.strategy_kind in (
+        "crypto_orb", "crypto_trend", "crypto_meanrev", "crypto_scalp", "grid",
+    ):
+        # Crypto-specific strategy variants. All share the same
+        # maybe_enter(bar, hist, equity, config) -> _Open|None contract
+        # as ORB/DRB, so they bypass the confluence-scorer path. The
+        # registry wires per-bot defaults; per-bot extras can override
+        # individual knobs once we start sweeping params per bot.
+        factory = _build_crypto_strategy_factory(cell.strategy_kind)
+        res = WalkForwardEngine().run(
+            bars=bars,
+            pipeline=FeaturePipeline.default(),
+            config=wf,
+            base_backtest_config=base_cfg,
+            ctx_builder=lambda b, h: {},
+            strategy_factory=factory,
         )
     else:
         res = WalkForwardEngine().run(

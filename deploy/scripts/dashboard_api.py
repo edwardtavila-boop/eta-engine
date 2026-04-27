@@ -182,6 +182,144 @@ def jarvis_router_health() -> dict:
     return {"status": "ok", "router": "jarvis"}
 
 
+# ─── Sage explain (Wave-6 #3, 2026-04-27) ──────────────────────────
+@app.get("/api/jarvis/sage_explain")
+def sage_explain_endpoint(symbol: str = "MNQ", side: str = "long") -> dict:
+    """1-paragraph LLM (or template-fallback) narrative of the current
+    sage report for ``symbol``.
+
+    Bars are fetched from state/raw_state/<symbol>_bars.json when present;
+    otherwise returns a stub indicating no recent bars available.
+    """
+    try:
+        from pathlib import Path
+        bars_file = Path(STATE_DIR) / "raw_state" / f"{symbol}_bars.json" if "STATE_DIR" in globals() else None
+        bars: list = []
+        if bars_file and bars_file.exists():
+            import json as _json
+            bars = _json.loads(bars_file.read_text(encoding="utf-8"))
+        if not bars or len(bars) < 30:
+            return {
+                "symbol": symbol, "side": side,
+                "narrative": f"No recent bars for {symbol} (need >= 30). "
+                             f"Drop bars at state/raw_state/{symbol}_bars.json.",
+                "status": "no_bars",
+            }
+        from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+        from eta_engine.brain.jarvis_v3.sage.narrative import explain_sage
+        ctx = MarketContext(bars=bars[-200:], side=side, symbol=symbol)
+        report = consult_sage(ctx, parallel=True, use_cache=True)
+        last_ts = bars[-1].get("ts") or bars[-1].get("timestamp") or ""
+        narrative = explain_sage(report, symbol=symbol, bar_ts_key=str(last_ts))
+        return {
+            "symbol": symbol,
+            "side": side,
+            "narrative": narrative,
+            "summary_line": report.summary_line(),
+            "composite_bias": report.composite_bias.value,
+            "conviction": report.conviction,
+            "alignment_score": report.alignment_score,
+            "schools_consulted": report.schools_consulted,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error_code": "sage_explain_failed", "error_detail": str(exc)}
+
+
+# ─── Sage timeline (Wave-6 #4, 2026-04-27) ─────────────────────────
+@app.get("/api/jarvis/sage_timeline")
+def sage_timeline_endpoint(symbol: str = "MNQ", hours: int = 24, side: str = "long") -> dict:
+    """Per-bar sage report (composite + conviction + alignment) over
+    the last ``hours`` of bars. Used by the dashboard timeline panel.
+
+    Returns ``{ts, composite_bias, conviction, alignment_score}`` array.
+    """
+    try:
+        from pathlib import Path
+        bars_file = Path(STATE_DIR) / "raw_state" / f"{symbol}_bars.json" if "STATE_DIR" in globals() else None
+        bars: list = []
+        if bars_file and bars_file.exists():
+            import json as _json
+            bars = _json.loads(bars_file.read_text(encoding="utf-8"))
+        if not bars or len(bars) < 60:
+            return {"symbol": symbol, "timeline": [], "status": "no_bars"}
+
+        from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+        from eta_engine.brain.jarvis_v3.sage.consultation import clear_sage_cache
+        clear_sage_cache()  # don't get same-key collisions across bars
+
+        # Sample every Nth bar to keep response under a reasonable size
+        approx_bars_per_hour = 12  # ~5min bars
+        target_pts = min(60, hours)
+        all_window = bars[-(hours * approx_bars_per_hour):]
+        step = max(1, len(all_window) // target_pts)
+
+        timeline = []
+        for end_idx in range(50, len(all_window), step):
+            window = all_window[max(0, end_idx - 50): end_idx]
+            if len(window) < 30:
+                continue
+            ctx = MarketContext(bars=window, side=side, symbol=symbol)
+            r = consult_sage(ctx, parallel=False, use_cache=False, apply_edge_weights=False)
+            ts = window[-1].get("ts") or window[-1].get("timestamp") or ""
+            timeline.append({
+                "ts": str(ts),
+                "composite_bias": r.composite_bias.value,
+                "conviction": round(r.conviction, 4),
+                "alignment_score": round(r.alignment_score, 4),
+            })
+        return {
+            "symbol": symbol, "side": side, "hours": hours,
+            "n_points": len(timeline), "timeline": timeline,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error_code": "sage_timeline_failed", "error_detail": str(exc)}
+
+
+# ─── Sage disagreement heatmap (Wave-6 #5, 2026-04-27) ─────────────
+@app.get("/api/jarvis/sage_disagreement_heatmap")
+def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
+    """Per-school disagreement counts vs the current composite bias
+    over the last cached sage consultation. Used to render the
+    disagreement heatmap on the operator + investor dashboards.
+    """
+    try:
+        from pathlib import Path
+        bars_file = Path(STATE_DIR) / "raw_state" / f"{symbol}_bars.json" if "STATE_DIR" in globals() else None
+        if not bars_file or not bars_file.exists():
+            return {"symbol": symbol, "status": "no_bars", "heatmap": {}}
+        import json as _json
+        bars = _json.loads(bars_file.read_text(encoding="utf-8"))
+        if not bars or len(bars) < 30:
+            return {"symbol": symbol, "status": "no_bars", "heatmap": {}}
+        from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+        from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
+        ctx = MarketContext(bars=bars[-200:], side="long", symbol=symbol)
+        report = consult_sage(ctx)
+        clashes = detect_clashes(report)
+        # Per-school: bias vs composite
+        per_school_disagree = {
+            name: {
+                "bias": v.bias.value,
+                "aligned_with_composite": v.bias == report.composite_bias,
+                "conviction": round(v.conviction, 4),
+            }
+            for name, v in report.per_school.items()
+        }
+        return {
+            "symbol": symbol,
+            "composite_bias": report.composite_bias.value,
+            "conviction": report.conviction,
+            "per_school": per_school_disagree,
+            "named_clashes": [
+                {"name": c.name, "interpretation": c.interpretation,
+                 "modifier": c.verdict_modifier, "cap_mult": c.cap_mult}
+                for c in clashes
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error_code": "heatmap_failed", "error_detail": str(exc)}
+
+
 # ─── Cross-policy verdict diff (Tier-4 #17, 2026-04-27) ────────────
 @app.get("/api/jarvis/policy_diff")
 def jarvis_policy_diff(window_days: int = 30) -> dict:
@@ -197,13 +335,20 @@ def jarvis_policy_diff(window_days: int = 30) -> dict:
     try:
         from datetime import UTC, datetime, timedelta
         from pathlib import Path
+
         from eta_engine.brain.jarvis_v3 import policies  # noqa: F401  (auto-register)
         from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
         from eta_engine.scripts.score_policy_candidate import (
-            candidate_metrics, champion_metrics, load_audit_records,
+            candidate_metrics,
+            champion_metrics,
+            load_audit_records,
         )
 
-        audit_dir = Path(STATE_DIR) / "jarvis_audit" if "STATE_DIR" in globals() else Path.home() / "AppData/Local/eta_engine/state/jarvis_audit"
+        audit_dir = (
+            Path(STATE_DIR) / "jarvis_audit"
+            if "STATE_DIR" in globals()
+            else Path.home() / "AppData/Local/eta_engine/state/jarvis_audit"
+        )
         if not audit_dir.exists():
             audit_dir = Path(__file__).resolve().parents[2] / "state" / "jarvis_audit"
         cutoff = datetime.now(UTC) - timedelta(days=window_days)
