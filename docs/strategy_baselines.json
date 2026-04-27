@@ -94,9 +94,31 @@
       "avg_r": 0.4326,
       "r_stddev": 1.7236,
       "_promoted_at": "2026-04-27",
+      "_promotion_status": "deprecated",
+      "_walk_forward_summary": "DEPRECATED 2026-04-27 by btc_corb_v3. v2 was promoted on a 1y BTC tape (90d/30d windows -> 9 windows). When the tape was extended to 5y the same config (range=120m / atr=3.0 / rr=2.5) no longer cleared the strict gate (DSR pass dropped from 66.7% to 43-49% across the wider param sweep). Small-sample artifact — kept here as the cautionary example.",
+      "_notes": "Replaced by btc_corb_v3 with longer windows (365d/90d) on the 5y sample. See docs/research_log/2026-04-27_fleet_optimization_summary.md."
+    },
+    {
+      "strategy_id": "btc_corb_v3",
+      "n_trades": 332,
+      "win_rate": 0.4548,
+      "avg_r": 0.1386,
+      "r_stddev": 1.2456,
+      "_promoted_at": "2026-04-27",
       "_promotion_status": "production",
-      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 9 windows, 7/9 +OOS. Agg IS Sharpe +1.800, agg OOS Sharpe +5.084, deg 26.8%, DSR median 1.000, 66.7% fold pass. Strict gate PASS — first crypto promotion the framework has produced. Sweep winner: range=120m, atr_stop_mult=3.0, rr_target=2.5 (CryptoORBConfig). Both IS and OOS positive across the aggregate (validates real edge, not lucky-OOS-split — the trap that blocked ETH).",
-      "_notes": "Stats from a full-period backtest at the promoted config: 360 days BTC 1h Coinbase spot bars, total return +24.23%, max DD 4.90%, Sortino 38.4, expectancy +0.43R/trade. Per the operator data-source policy: this baseline IS Coinbase spot; pre-live re-run on IBKR-native CME ETH bars + drift_monitor.assess_drift gate must clear before real-money activation. Devils-advocate caveat: 360-day sample is short for crypto regime variety; the OOS Sharpe will not stay at +5 in live. Risk warmup policy: half-size for first 30 days, reverts 2026-05-27."
+      "_walk_forward_summary": "BTC/1h, 365d/90d windows, 16 windows, 14/16 +OOS. Agg IS Sharpe +0.430, agg OOS Sharpe +1.948, deg 20.0%, DSR median 0.801, 56.2% fold pass. Strict gate PASS on the new 5y tape. Round-2 fleet sweep winner: range=120m, atr_stop_mult=3.0, rr_target=1.5 (tighter rr than v2's 2.5 — monetizes more breakouts in 5y of mixed-regime data).",
+      "_notes": "Stats from full-period backtest at the promoted config: 1800 days (5y) BTC 1h Coinbase spot bars, 332 trades, win rate 45.5%, avg +0.14R, expectancy +0.14R, total return +54.4%, max DD 17.5%, Sharpe 1.77. Replaces v2 — DD is higher (17.5% vs 4.9%) but the 5y sample includes 2022 bear regimes, the lower DD on v2 was 1y-bull-leaning. Pre-live IBKR/CME drift-check via scripts/compare_coinbase_vs_ibkr still required."
+    },
+    {
+      "strategy_id": "eth_corb_v3",
+      "n_trades": 73,
+      "win_rate": 0.4110,
+      "avg_r": 0.2329,
+      "r_stddev": 1.4862,
+      "_promoted_at": "2026-04-27",
+      "_promotion_status": "production",
+      "_walk_forward_summary": "ETH/1h, 90d/30d windows, 9 windows, 8/9 +OOS. Agg IS Sharpe +0.212, agg OOS Sharpe +16.104, deg 27.8%, DSR median 1.000, 88.9% fold pass. Strict gate PASS — second crypto promotion the framework has produced (first ETH PASS). Round-1 fleet sweep winner: range=60m, atr_stop_mult=3.0, rr_target=2.0. Tighter range (60m) than the prior eth_corb_v2 attempt (120m) makes ETH 1h breakouts qualify more often on session transitions; with atr=3.0 the wider stop absorbs noise that killed earlier configs' IS.",
+      "_notes": "Stats from full-period backtest: 360 days ETH 1h Coinbase spot bars, 73 trades, win rate 41.1%, avg +0.23R, expectancy +0.23R, total return +17.6%, max DD 9.6%, Sharpe 2.49. ETH OOS Sharpe of +16.1 is the highest the framework has seen; small-sample caveat (9 windows) — re-baseline once data extends to 720d+. Pre-live IBKR/CME drift-check via scripts/compare_coinbase_vs_ibkr still required. Devils-advocate caveat: '+16 OOS will not stay at +16 in live; expect mean-reversion to ~+5 range.'"
     },
     {
       "strategy_id": "btc_corb_sage_v1",
