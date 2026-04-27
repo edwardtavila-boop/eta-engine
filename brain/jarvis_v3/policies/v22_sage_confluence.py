@@ -53,6 +53,44 @@ SAGE_DISAGREE_THRESHOLD: float = 0.30
 #: Cap modulation when sage disagrees strongly
 SAGE_DISAGREE_TIGHTEN_CAP: float = 0.30
 
+#: Symbol-prefix map for instrument-class auto-detection. Bots can
+#: always override by passing ``instrument_class`` in the payload.
+_CRYPTO_PREFIXES: tuple[str, ...] = (
+    "BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "MATIC", "AVAX",
+    "LTC", "BNB", "ATOM", "NEAR", "DOT", "LINK", "UNI", "MBT", "MET",
+)
+_FUTURES_PREFIXES: tuple[str, ...] = (
+    "MNQ", "NQ", "MES", "ES", "MGC", "GC", "MCL", "CL", "MYM", "YM",
+    "M2K", "RTY", "MBT", "MET",  # MBT/MET are CME micro crypto futures
+)
+
+
+def _infer_instrument_class(symbol: str) -> str | None:
+    """Best-effort instrument class from symbol prefix.
+
+    Returns one of {"crypto", "futures", None}. None when the symbol
+    doesn't match any known prefix -- sage schools that gate on
+    instrument_class will then run for every class (default behavior).
+    """
+    if not symbol:
+        return None
+    s = symbol.upper()
+    # Spot/perp crypto first because BTC futures share the BTC prefix
+    if (
+        (s.endswith("USDT") or s.endswith("USD") or s.endswith("PERP"))
+        and any(s.startswith(p) for p in _CRYPTO_PREFIXES)
+    ):
+        return "crypto"
+    # CME-style micro / standard futures (no USD suffix)
+    if any(s == p or s.startswith(p + "!") or s.startswith(p + "Z")
+           or s.startswith(p + "H") or s.startswith(p + "M")
+           or s.startswith(p + "U") for p in _FUTURES_PREFIXES):
+        return "futures"
+    # Bare BTC / ETH (no suffix) -> crypto
+    if s in _CRYPTO_PREFIXES:
+        return "crypto"
+    return None
+
 
 def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     """v22: modulate v17 verdicts using multi-school sage confluence."""
@@ -69,6 +107,23 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     entry_price = float(req.payload.get("entry_price", 0))
     symbol = req.payload.get("symbol", "")
 
+    # Wave-6 pre-live (2026-04-27): infer instrument class from symbol
+    # so OnChainSchool / FundingBasisSchool / OptionsGreeksSchool gate
+    # correctly. Bots can override by passing instrument_class explicitly.
+    instrument_class = req.payload.get("instrument_class") or _infer_instrument_class(symbol)
+
+    # Wave-6 pre-live: pull warm on-chain metrics for BTC + ETH crypto
+    # bots so OnChainSchool sees real data instead of returning NEUTRAL.
+    # The fetcher caches for 5 min so this is a cheap dict lookup once
+    # the warmer task has run. Falls back silently to {} on failure.
+    onchain = req.payload.get("onchain") or {}
+    if instrument_class == "crypto" and not onchain:
+        try:
+            from eta_engine.brain.jarvis_v3.sage.onchain_fetcher import fetch_onchain
+            onchain = fetch_onchain(symbol) or {}
+        except Exception as exc:  # noqa: BLE001 -- on-chain is best-effort
+            logger.debug("fetch_onchain raised %s (non-fatal)", exc)
+
     try:
         from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
         m_ctx = MarketContext(
@@ -76,6 +131,7 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
             side=side,
             entry_price=entry_price,
             symbol=symbol,
+            instrument_class=instrument_class,
             order_book_imbalance=req.payload.get("order_book_imbalance"),
             cumulative_delta=req.payload.get("cumulative_delta"),
             realized_vol=req.payload.get("realized_vol"),
@@ -83,6 +139,9 @@ def evaluate_v22(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
             account_equity_usd=req.payload.get("account_equity_usd"),
             risk_per_trade_pct=req.payload.get("risk_per_trade_pct"),
             stop_distance_pct=req.payload.get("stop_distance_pct"),
+            onchain=onchain or None,
+            funding_basis=req.payload.get("funding_basis"),
+            options_greeks=req.payload.get("options_greeks"),
         )
         report = consult_sage(m_ctx)
     except Exception as exc:  # noqa: BLE001

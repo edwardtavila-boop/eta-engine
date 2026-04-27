@@ -145,6 +145,10 @@ def consult_sage(
             stop_distance_pct=ctx.stop_distance_pct,
             detected_regime=regime.value,
             instrument_class=ctx.instrument_class,
+            # Wave-6 pre-live: preserve scaffold-school payloads on rebuild
+            onchain=ctx.onchain,
+            funding=ctx.funding,
+            options=ctx.options,
         )
 
     # Filter to applicable schools (instrument/regime gates + enabled set)

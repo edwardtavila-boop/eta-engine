@@ -56,6 +56,12 @@ class MarketContext:
     detected_regime: str | None = None  # one of {trending, ranging, volatile, quiet}
     # Wave-5 #6: per-instrument activation -- the symbol class
     instrument_class: str | None = None  # one of {equity, crypto, futures, fx, options}
+    # Wave-6 pre-live (2026-04-27): scaffold-school payloads. Each is
+    # a free-form dict that the corresponding school reads. None means
+    # the school skips with a "missing" verdict (NEUTRAL, conv 0).
+    onchain: dict[str, Any] | None = None     # for OnChainSchool (BTC/ETH metrics)
+    funding: dict[str, Any] | None = None     # for FundingBasisSchool (perp funding + basis)
+    options: dict[str, Any] | None = None     # for OptionsGreeksSchool (IV / skew / GEX)
 
     @property
     def n_bars(self) -> int:
@@ -77,7 +83,7 @@ class MarketContext:
         """True if `bars_by_tf` contains the given timeframe label."""
         return self.bars_by_tf is not None and tf in self.bars_by_tf
 
-    def for_tf(self, tf: str) -> "MarketContext":
+    def for_tf(self, tf: str) -> MarketContext:
         """Return a new MarketContext rebound to the bars at `tf`.
 
         Preserves all other fields. Useful for schools that need to
@@ -101,6 +107,9 @@ class MarketContext:
             stop_distance_pct=self.stop_distance_pct,
             detected_regime=self.detected_regime,
             instrument_class=self.instrument_class,
+            onchain=self.onchain,
+            funding=self.funding,
+            options=self.options,
         )
 
 
@@ -201,13 +210,17 @@ class SchoolBase(abc.ABC):
         in the set. Schools with empty INSTRUMENTS+REGIMES apply
         universally (back-compat with the original 14 schools).
         """
-        if self.INSTRUMENTS and ctx.instrument_class is not None:
-            if ctx.instrument_class not in self.INSTRUMENTS:
-                return False
-        if self.REGIMES and ctx.detected_regime is not None:
-            if ctx.detected_regime not in self.REGIMES:
-                return False
-        return True
+        if (
+            self.INSTRUMENTS
+            and ctx.instrument_class is not None
+            and ctx.instrument_class not in self.INSTRUMENTS
+        ):
+            return False
+        return not (
+            self.REGIMES
+            and ctx.detected_regime is not None
+            and ctx.detected_regime not in self.REGIMES
+        )
 
     @abc.abstractmethod
     def analyze(self, ctx: MarketContext) -> SchoolVerdict:
