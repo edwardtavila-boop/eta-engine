@@ -147,13 +147,28 @@ def _solve_with_neal(  # noqa: ANN202 -- neal is optional dep
     num_reads: int,
     seed: int,
 ):
-    """Run dwave-neal simulated annealing locally."""
+    """Run simulated annealing locally.
+
+    Modern dwave-ocean-sdk replaced ``dwave-neal`` with
+    ``dwave-samplers.SimulatedAnnealingSampler``. We try the new
+    path first, then fall back to legacy ``neal`` for older Ocean
+    installs.
+    """
+    # New path (Ocean SDK 6+)
+    try:
+        from dwave.samplers import SimulatedAnnealingSampler
+        sampler = SimulatedAnnealingSampler()
+        return sampler.sample(bqm, num_reads=num_reads, seed=seed)
+    except ImportError:
+        pass
+    # Legacy path
     try:
         import neal
         sampler = neal.SimulatedAnnealingSampler()
         return sampler.sample(bqm, num_reads=num_reads, seed=seed)
     except ImportError as exc:
         raise ImportError(
-            f"neal (dwave-neal) not installed; install with "
-            f"`pip install dwave-neal` ({exc})",
+            "Neither dwave.samplers nor neal is installed; install "
+            "with `pip install dwave-ocean-sdk` "
+            f"(underlying error: {exc})",
         ) from exc

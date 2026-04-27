@@ -113,10 +113,14 @@ def solve_with_qaoa(
 
     # Defer all qiskit imports to call-time so the module loads even
     # without qiskit installed.
+    #
+    # Qiskit 2.x replaced V1 primitives with V2. The simplest portable
+    # path that works across Qiskit 1.x and 2.x is StatevectorEstimator
+    # from qiskit.primitives (pure-classical, no Aer-specific path).
+    # For larger problems, callers can swap in Aer's V2 primitives.
     try:
-        from qiskit.circuit.library import QAOAAnsatz
+        from qiskit.circuit.library import QAOAAnsatz  # noqa: F401
         from qiskit.quantum_info import SparsePauliOp
-        from qiskit_aer.primitives import Estimator as AerEstimator
         from qiskit_algorithms import QAOA
         from qiskit_algorithms.optimizers import COBYLA
     except ImportError as exc:
@@ -124,6 +128,43 @@ def solve_with_qaoa(
             f"qiskit submodule import failed ({exc}); ensure qiskit-aer "
             "and qiskit-algorithms are installed",
         ) from exc
+
+    # Sampler selection (qiskit_algorithms 0.4+ QAOA takes a Sampler,
+    # not an Estimator -- QAOA samples the optimal bitstring rather
+    # than estimating an expectation value).
+    sampler = None
+    sampler_kind = ""
+    if use_simulator:
+        try:
+            from qiskit_aer.primitives import SamplerV2 as _AerSampler
+            sampler = _AerSampler(seed=seed)
+            sampler_kind = "qiskit_aer.SamplerV2"
+        except (ImportError, TypeError):
+            pass
+        if sampler is None:
+            from qiskit.primitives import StatevectorSampler
+            sampler = StatevectorSampler(seed=seed)
+            sampler_kind = "qiskit.primitives.StatevectorSampler"
+    else:
+        # Cloud path: try IBM Runtime; fall back to local simulator
+        try:
+            from qiskit_ibm_runtime import (
+                QiskitRuntimeService,
+                SamplerV2 as IBMSampler,
+            )
+            service = QiskitRuntimeService(channel="ibm_quantum")
+            backend = service.least_busy(simulator=False)
+            sampler = IBMSampler(mode=backend)
+            sampler_kind = "qiskit_ibm_runtime.SamplerV2"
+        except (ImportError, Exception) as exc:  # noqa: BLE001
+            logger.warning(
+                "qaoa: IBM cloud unavailable (%s); falling back to "
+                "StatevectorSampler", exc,
+            )
+            from qiskit.primitives import StatevectorSampler
+            sampler = StatevectorSampler(seed=seed)
+            sampler_kind = "qiskit.primitives.StatevectorSampler (fallback)"
+    logger.debug("qaoa: using sampler %s", sampler_kind)
 
     # 1. Convert QUBO -> Ising Hamiltonian
     J, offset = qubo_to_ising(problem)  # noqa: N806 -- standard Ising notation
@@ -162,25 +203,9 @@ def solve_with_qaoa(
 
     hamiltonian = SparsePauliOp.from_list(pauli_terms)
 
-    # 3. Run QAOA
-    if use_simulator:
-        estimator = AerEstimator(seed=seed)
-    else:
-        # IBM cloud path -- requires QISKIT_IBM_TOKEN env var
-        # Falls back to simulator if the cloud path is unavailable
-        try:
-            from qiskit_ibm_runtime import Estimator as IBMEstimator
-            from qiskit_ibm_runtime import QiskitRuntimeService
-            service = QiskitRuntimeService(channel="ibm_quantum")
-            estimator = IBMEstimator(session=service.least_busy(simulator=False))
-        except (ImportError, Exception) as exc:
-            logger.warning(
-                "qaoa: IBM cloud unavailable (%s); falling back to simulator", exc,
-            )
-            estimator = AerEstimator(seed=seed)
-
+    # 3. Run QAOA -- sampler was selected above
     optimizer = COBYLA(maxiter=max_iter)
-    qaoa = QAOA(estimator=estimator, optimizer=optimizer, reps=p_layers)
+    qaoa = QAOA(sampler=sampler, optimizer=optimizer, reps=p_layers)
     result = qaoa.compute_minimum_eigenvalue(hamiltonian)
 
     # 4. Extract bitstring
