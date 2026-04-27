@@ -115,4 +115,6 @@ __all__ = [
     "pre_live_gate",
     "ab_framework",
     "regression_test_set",
+    # Wave-16 final integration: one entry point that wires every wave
+    "jarvis_full",
 ]
