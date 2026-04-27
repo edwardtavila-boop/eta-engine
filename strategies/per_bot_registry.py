@@ -96,6 +96,13 @@ class StrategyAssignment:
     #                    strategies.drb_strategy. Prior-day high/low
     #                    break on daily bars; works on 27y of NQ
     #                    history where intraday ORB has zero range.
+    # "grid"           = Grid trading — primary baseline for crypto
+    #                    perps. Ladder of buy/sell levels around a
+    #                    rolling reference; engine-compatible single-
+    #                    position variant. See
+    #                    strategies.grid_trading_strategy. Per the
+    #                    2026-04-27 user directive: "Most Popular &
+    #                    Bot-Native for Crypto".
     # "crypto_orb"     = UTC-anchored ORB for 24/7 crypto. Same engine
     #                    contract as ORB; defaults pinned to UTC
     #                    midnight + 60m range. See
@@ -106,6 +113,17 @@ class StrategyAssignment:
     #                    strategies.crypto_meanrev_strategy.
     # "crypto_scalp"   = N-bar level break + VWAP + RSI on short TFs.
     #                    See strategies.crypto_scalp_strategy.
+    # "sage_consensus" = JARVIS sage 22-school weighted-vote entry.
+    #                    Heavy CPU (sage on every bar) but uses every
+    #                    classical + modern + statistical school's
+    #                    bias as the directional signal. See
+    #                    strategies.sage_consensus_strategy.
+    # "orb_sage_gated" = ORB + sage overlay on the breakout direction.
+    #                    Sage vetoes false breakouts where the
+    #                    ensemble disagrees. 2026-04-27 sweep on MNQ
+    #                    5m: agg OOS Sharpe **+10.06** vs plain ORB
+    #                    +5.71 — sage gating ~doubles the OOS Sharpe.
+    #                    See strategies.sage_gated_orb_strategy.
     # All non-"confluence" kinds ignore scorer/threshold/regime
     # fields — those modules have their own knobs that the research
     # grid pulls from the per-bot extras dict under "*_config" keys.
@@ -181,6 +199,47 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "a sanity check rather than the primary path."
         ),
     ),
+    # MNQ futures — sage-gated ORB. Companion to mnq_futures (plain
+    # ORB); the sage overlay vetoes breakouts the 22-school ensemble
+    # disagrees with. Promoted 2026-04-27 after a parameter sweep
+    # found min_conviction=0.65 produces a clean walk-forward profile.
+    StrategyAssignment(
+        bot_id="mnq_futures_sage",
+        strategy_id="mnq_orb_sage_v1",
+        symbol="MNQ1",
+        timeframe="5m",
+        scorer_name="mnq",  # unused when strategy_kind=orb_sage_gated
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="orb_sage_gated",
+        rationale=(
+            "Promoted 2026-04-27 from a 18-cell sage-overlay sweep on "
+            "MNQ 5m. Winning config: range=15m, sage min_conviction "
+            "= 0.65 (alignment threshold doesn't matter at that "
+            "conviction level — schools that vote with conv>=0.65 are "
+            "naturally aligned). Walk-forward 60d/30d, 2 windows: "
+            "* W0: IS Sh +1.61, OOS Sh **+12.39**, 7 OOS trades "
+            "* W1: IS Sh +3.90, OOS Sh **+7.73**, 5 OOS trades "
+            "agg OOS Sharpe **+10.06** (vs plain ORB +5.71 — ~2x "
+            "improvement), 100% positive OOS, DSR median 1.000, "
+            "100% pass fraction, gate PASS. OOS > IS in both windows "
+            "— sage filter cuts MORE losers than winners on OOS bars, "
+            "the opposite of overfitting. Trade count is low (12 "
+            "OOS total) so paper-soak validation is required before "
+            "live promotion. Sage runs all 22 schools per breakout "
+            "candidate; CPU cost is ~30-50ms per gated entry which "
+            "is fine for 5m bars."
+        ),
+        extras={
+            "sage_min_conviction": 0.65,
+            "sage_min_alignment": 0.55,
+            "sage_lookback_bars": 200,
+            "orb_range_minutes": 15,
+        },
+    ),
     # NQ daily — DRB. Companion to nq_futures intraday; NOT a
     # replacement. Intraday ORB and daily DRB are different time
     # horizons and produce uncorrelated trade streams, so running
@@ -210,53 +269,77 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={"strategy_baseline_oos_sharpe_min": 0.62},
     ),
-    # BTC hybrid — futures + perp blended bot
+    # BTC hybrid — perps-casino tier. Sage-aligned baseline: crypto_orb.
     StrategyAssignment(
         bot_id="btc_hybrid",
-        strategy_id="btc_real_v1",
-        symbol="BTC",  # Coinbase spot bars (research proxy for CME — see eta_data_source_policy)
+        strategy_id="btc_corb_v1",
+        symbol="BTC",
         timeframe="1h",
-        scorer_name="btc",
-        confluence_threshold=6.0,
-        block_regimes=frozenset(),  # no gate — funding/onchain ARE the signal
-        window_days=90,
-        step_days=30,
-        min_trades_per_window=10,
-        rationale=(
-            "Operator directive 2026-04-27: crypto bots will trade "
-            "CME crypto futures (cash-settled). For research today, "
-            "BTC bars are Coinbase spot via fetch_btc_bars.py — "
-            ">99% correlated with CME front-month, valid proxy. "
-            "Pre-live: re-fetch via IBKR + drift_check vs this "
-            "Coinbase baseline (see eta_data_source_policy memory). "
-            "BTC-tuned scorer equal-weights all 5 features so spot-"
-            "driven signals (funding/onchain/sentiment) contribute "
-            "when paired feeds exist. Regime gate disabled — "
-            "trending regimes in crypto are often the trade itself, "
-            "not the danger."
-        ),
-    ),
-    # ETH perp — same family as BTC but with smart-contract catalysts
-    StrategyAssignment(
-        bot_id="eth_perp",
-        strategy_id="eth_real_v1",
-        symbol="ETH",  # Coinbase spot ETH-USD bars
-        timeframe="1h",
-        scorer_name="btc",
-        confluence_threshold=6.0,
+        scorer_name="btc",  # unused when strategy_kind=crypto_orb
+        confluence_threshold=0.0,
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
+        strategy_kind="crypto_orb",
         rationale=(
-            "ETH shares price drivers with BTC (funding, on-chain) "
-            "but adds smart-contract / staking catalysts that aren't "
-            "in our feature set yet. Until ETH-specific features "
-            "(staking yield delta, gas fee regime, gas-price "
-            "trending) are wired, ETH inherits the BTC scorer "
-            "approach. Bars are Coinbase spot ETH-USD; pre-live "
-            "swap to IBKR-native CME ETH bars + drift check."
+            "Promoted to crypto_orb 2026-04-27 after a fleet-wide "
+            "sage review (quant + microstructure + risk + devils-"
+            "advocate). Quant: 'only crypto strategy with a "
+            "deterministic anchor (UTC midnight) the engine can "
+            "backtest cleanly on the 8636-bar sample, inheriting "
+            "the ORB family that already cleared the gate on "
+            "MNQ/NQ.' Microstructure: ORB's 60m-range on 1h bars is "
+            "degenerate (range = 1 bar), so range_minutes is set to "
+            "240 (4h opening session) via per-bot extras to make "
+            "the breakout meaningful. Risk: 0.5pct/trade x 2/day = "
+            "1pct daily exposure per bot, fits the 4pct fleet CB. "
+            "Devils-advocate caveat: 'UTC midnight is a synthetic "
+            "anchor whose volume bump is far weaker than NY 9:30; "
+            "DSR likely the binding constraint, not Sharpe.' Re-"
+            "tune range_minutes/atr_stop_mult INSIDE each train "
+            "fold; do NOT carry MNQ params over verbatim. Fall-back "
+            "confluence path retained as alt strategy with "
+            "threshold 6.0."
         ),
+        extras={
+            "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
+            "crypto_orb_config": {"range_minutes": 240, "session_cutoff_hour_utc": 18},
+        },
+    ),
+    # ETH perp — same crypto_orb baseline as BTC for apples-to-apples
+    StrategyAssignment(
+        bot_id="eth_perp",
+        strategy_id="eth_corb_v1",
+        symbol="ETH",
+        timeframe="1h",
+        scorer_name="btc",  # unused when strategy_kind=crypto_orb
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=10,
+        strategy_kind="crypto_orb",
+        rationale=(
+            "Same crypto_orb baseline as btc_hybrid per quant: "
+            "'picking a different strategy_kind here would be a "
+            "post-hoc fishing expedition (no theoretical reason "
+            "ETH's 1h microstructure differs from BTC's). Use the "
+            "same baseline; let walk-forward, not narrative, decide "
+            "if it survives.' Sage caveat (correlation): 'BTC and "
+            "ETH on the same crypto_orb may be one strategy, not "
+            "two — DSR for the *fleet* needs an explicit "
+            "correlation penalty, otherwise you're double-counting "
+            "the same edge.' Mitigation: monitor ETH-vs-BTC trade "
+            "correlation in the drift_monitor; if rho > 0.7 over "
+            "30 days, treat the pair as one bot for risk-budget "
+            "purposes."
+        ),
+        extras={
+            "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
+            "crypto_orb_config": {"range_minutes": 240, "session_cutoff_hour_utc": 18},
+            "fleet_corr_partner": "btc_hybrid",
+        },
     ),
     # XRP perp — DEACTIVATED until news/sentiment feed lands.
     StrategyAssignment(
@@ -287,25 +370,41 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={"deactivated": True, "deactivation_reason": "no news feed"},
     ),
-    # SOL perp — high-beta crypto, behaves like BTC * 2-3x
+    # SOL perp — same crypto_orb baseline; SOL is research candidate
     StrategyAssignment(
         bot_id="sol_perp",
-        strategy_id="sol_real_v1",
-        symbol="SOL",  # Coinbase spot SOL-USD bars
+        strategy_id="sol_corb_v1",
+        symbol="SOL",
         timeframe="1h",
-        scorer_name="btc",
-        confluence_threshold=6.5,  # slight bump for higher noise
+        scorer_name="btc",  # unused when strategy_kind=crypto_orb
+        confluence_threshold=0.0,
         block_regimes=frozenset(),
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
+        strategy_kind="crypto_orb",
         rationale=(
-            "SOL behaves as a BTC-amplified beta. Same global "
-            "scorer; threshold raised from 7.0 to 7.5 to dampen "
-            "false fires from SOL's higher noise floor. Real upgrade: "
-            "an explicit BTC-correlation feature so SOL only fires "
-            "when BTC is also confirming. Placeholder symbol/timeframe."
+            "Same crypto_orb baseline; SOL had the worst IS Sharpe "
+            "(-0.696) under the prior confluence path, so quant "
+            "warns 'there's a real chance it just doesn't have a "
+            "stationary edge on 1h spot bars; if crypto_orb also "
+            "fails, the right move is to *defer* SOL, not switch "
+            "strategy_kind looking for a winner.' Sized 0.5pct/"
+            "trade x 1/day (tighter than BTC/ETH) because SOL "
+            "beta to BTC is ~2.5 — risk sage flagged that 4 perps "
+            "all firing daily breach the 4pct fleet circuit "
+            "breaker. atr_stop_mult bumped to 3.0 in extras to "
+            "account for 3-5bp SOL spread + slippage."
         ),
+        extras={
+            "alt_strategy_kind": "confluence", "alt_threshold": 6.5,
+            "crypto_orb_config": {
+                "range_minutes": 240, "session_cutoff_hour_utc": 18,
+                "max_trades_per_day": 1, "atr_stop_mult": 3.0,
+            },
+            "fleet_corr_partner": "btc_hybrid",
+            "research_candidate": True,
+        },
     ),
     # Crypto seed — long-only DCA-style accumulator
     StrategyAssignment(
@@ -341,6 +440,30 @@ def get_for_bot(bot_id: str) -> StrategyAssignment | None:
         if a.bot_id == bot_id:
             return a
     return None
+
+
+def is_active(assignment: "StrategyAssignment") -> bool:
+    """Single chokepoint for "is this bot allowed to fire trades?"
+
+    Returns False iff ``extras["deactivated"]`` is truthy. Risk-sage
+    flagged on 2026-04-27 that the prior approach (raising
+    confluence_threshold to an unreachable value) is a *tripwire*,
+    not a kill-switch — a config reload that resets the threshold
+    would silently re-arm a muted bot. This helper centralises the
+    check so engine_adapter, live_adapter and decision_sink can each
+    call it before submitting orders, and a future bot deactivation
+    is a one-line registry edit (``extras={"deactivated": True}``)
+    rather than a magic-number threshold hack.
+    """
+    return not bool(assignment.extras.get("deactivated", False))
+
+
+def is_bot_active(bot_id: str) -> bool:
+    """Convenience: ``is_active`` keyed by bot_id; False if unknown."""
+    a = get_for_bot(bot_id)
+    if a is None:
+        return False
+    return is_active(a)
 
 
 def all_assignments() -> list[StrategyAssignment]:

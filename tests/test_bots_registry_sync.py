@@ -157,3 +157,27 @@ def test_xrp_marked_deactivated_in_extras() -> None:
         "xrp_perp should be explicitly deactivated via extras['deactivated']=True; "
         "a high threshold alone is not enough — the marker is what tools should check."
     )
+
+
+def test_is_active_chokepoint_returns_false_for_deactivated_bots() -> None:
+    """Risk-sage 2026-04-27: extras['deactivated']=True must be the
+    canonical kill-switch, queried by engine_adapter/live_adapter.
+    The is_active helper is the single chokepoint — verify it
+    returns False for the muted xrp_perp and True for active bots."""
+    from eta_engine.strategies.per_bot_registry import (
+        get_for_bot, is_active, is_bot_active,
+    )
+
+    xrp = get_for_bot("xrp_perp")
+    assert xrp is not None
+    assert is_active(xrp) is False, "muted bot must return False"
+    assert is_bot_active("xrp_perp") is False
+
+    mnq = get_for_bot("mnq_futures")
+    assert mnq is not None
+    assert is_active(mnq) is True, "unmuted bot must return True"
+    assert is_bot_active("mnq_futures") is True
+
+    assert is_bot_active("does_not_exist") is False, (
+        "unknown bot_id must default to inactive — never silently active"
+    )

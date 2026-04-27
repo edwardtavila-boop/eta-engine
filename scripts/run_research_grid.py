@@ -34,7 +34,7 @@ to the engines, scorers, or feature pipeline.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -60,6 +60,10 @@ class ResearchCell:
     step_days: int
     min_trades_per_window: int
     strategy_kind: str = "confluence"  # "confluence" or "orb"
+    # Per-bot strategy knobs forwarded from per_bot_registry.extras.
+    # Picked up by _build_crypto_strategy_factory; ignored by the
+    # confluence/orb/drb branches that have no per-bot overrides yet.
+    extras: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,45 +81,60 @@ class CellResult:
     note: str = ""
 
 
-def _build_crypto_strategy_factory(kind: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
+def _filter_extras(extras: dict[str, object], prefix: str) -> dict[str, object]:
+    """Pick the subset of extras prefixed with ``<prefix>_`` and strip
+    the prefix so they map directly to dataclass field names.
+
+    Example: extras={"crypto_orb_range_minutes": 240, "deactivated": True}
+             _filter_extras(extras, "crypto_orb") -> {"range_minutes": 240}
+    """
+    pre = f"{prefix}_"
+    return {k[len(pre):]: v for k, v in extras.items() if k.startswith(pre)}
+
+
+def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
+    kind: str, extras: dict[str, object] | None = None,
+):
     """Return a zero-arg factory that builds a fresh crypto strategy
-    instance per walk-forward window. Kept inline here (not in the
-    registry) so the grid stays the single place that knows about the
-    strategy_kind → constructor mapping."""
+    instance per walk-forward window. Per-bot extras prefixed with the
+    strategy_kind (e.g. ``crypto_orb_range_minutes``) get applied to the
+    config dataclass; unknown keys are silently ignored so the registry
+    can carry non-strategy fields too."""
+    extras = extras or {}
     if kind == "crypto_orb":
         from eta_engine.strategies.crypto_orb_strategy import (
             CryptoORBConfig,
             crypto_orb_strategy,
         )
-        cfg = CryptoORBConfig()
+        cfg = CryptoORBConfig(**_filter_extras(extras, "crypto_orb"))
         return lambda: crypto_orb_strategy(cfg)
     if kind == "crypto_trend":
         from eta_engine.strategies.crypto_trend_strategy import (
             CryptoTrendConfig,
             CryptoTrendStrategy,
         )
-        cfg = CryptoTrendConfig()
+        cfg = CryptoTrendConfig(**_filter_extras(extras, "crypto_trend"))
         return lambda: CryptoTrendStrategy(cfg)
     if kind == "crypto_meanrev":
         from eta_engine.strategies.crypto_meanrev_strategy import (
             CryptoMeanRevConfig,
             CryptoMeanRevStrategy,
         )
-        cfg = CryptoMeanRevConfig()
+        cfg = CryptoMeanRevConfig(**_filter_extras(extras, "crypto_meanrev"))
         return lambda: CryptoMeanRevStrategy(cfg)
     if kind == "crypto_scalp":
         from eta_engine.strategies.crypto_scalp_strategy import (
             CryptoScalpConfig,
             CryptoScalpStrategy,
         )
-        cfg = CryptoScalpConfig()
+        cfg = CryptoScalpConfig(**_filter_extras(extras, "crypto_scalp"))
         return lambda: CryptoScalpStrategy(cfg)
     if kind == "grid":
         from eta_engine.strategies.grid_trading_strategy import (
             GridConfig,
             GridTradingStrategy,
         )
-        cfg = GridConfig()
+        cfg = GridConfig(**_filter_extras(extras, "grid"))
         return lambda: GridTradingStrategy(cfg)
     msg = f"unknown crypto strategy_kind: {kind!r}"
     raise ValueError(msg)
@@ -219,7 +238,7 @@ def run_cell(cell: ResearchCell) -> CellResult:
         # as ORB/DRB, so they bypass the confluence-scorer path. The
         # registry wires per-bot defaults; per-bot extras can override
         # individual knobs once we start sweeping params per bot.
-        factory = _build_crypto_strategy_factory(cell.strategy_kind)
+        factory = _build_crypto_strategy_factory(cell.strategy_kind, cell.extras)
         res = WalkForwardEngine().run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
@@ -303,6 +322,7 @@ def _matrix_from_registry() -> list[ResearchCell]:
                 step_days=a.step_days,
                 min_trades_per_window=a.min_trades_per_window,
                 strategy_kind=a.strategy_kind,
+                extras=dict(a.extras),
             )
         )
     return cells
