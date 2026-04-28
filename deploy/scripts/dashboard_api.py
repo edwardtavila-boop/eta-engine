@@ -726,10 +726,96 @@ class SageModulationToggleRequest(BaseModel):
 
 
 @app.get("/api/equity")
-def equity_curve() -> dict:
-    """Today + 30-day equity curve for the fleet."""
+def equity_curve(bot: str | None = None, range: str = "1d") -> dict:
+    """Equity curve + P&L summary for fleet or a specific bot.
+
+    Params:
+      bot:   optional bot_id (e.g. "mnq"); None = fleet aggregate
+      range: "1d" | "1w" | "1m" | "all" (default 1d)
+    """
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
-    return read_json_safe(_state_dir() / "blotter" / "equity_curve.json")
+
+    if bot is not None and not _BOT_ID_RE.match(bot):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
+
+    if range not in ("1d", "1w", "1m", "all"):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_range"})
+
+    # Resolve source file
+    if bot:
+        source = _state_dir() / "bots" / bot / "equity_curve.json"
+    else:
+        source = _state_dir() / "blotter" / "equity_curve.json"
+
+    data = read_json_safe(source)
+    if "_warning" in data:
+        return {
+            "bot_id": bot,
+            "range": range,
+            "series": [],
+            "summary": {
+                "current_equity": None,
+                "today_pnl": None,
+                "week_pnl": None,
+                "month_pnl": None,
+                "total_pnl": None,
+            },
+            "_warning": "no_data",
+        }
+
+    # Pick the right series for the requested range
+    series_key = {"1d": "today", "1w": "week", "1m": "month", "all": "all_time"}[range]
+    # If the file uses old `thirty_day` key, fall back to it for backwards-compat
+    series = data.get(series_key) or data.get("thirty_day") or []
+
+    # Compute summary if not pre-computed in the file
+    summary = data.get("summary") or _compute_pnl_summary(data)
+
+    # Preserve legacy keys (today/thirty_day) for backwards-compat with old test
+    out = {
+        "bot_id": bot,
+        "range": range,
+        "series": series,
+        "summary": summary,
+    }
+    # Carry through legacy keys so existing consumers (and the
+    # `test_equity_returns_curve` test) continue to work.
+    for legacy_key in ("today", "thirty_day", "week", "month", "all_time"):
+        if legacy_key in data:
+            out[legacy_key] = data[legacy_key]
+    return out
+
+
+def _compute_pnl_summary(data: dict) -> dict:
+    """Compute P&L summary from a curve file.
+
+    Falls back to today/thirty_day if explicit week/month series are missing.
+    """
+    today = data.get("today") or []
+    week = data.get("week") or data.get("thirty_day") or []
+    month = data.get("month") or data.get("thirty_day") or []
+    all_time = data.get("all_time") or month or week or today
+
+    def first_eq(s: list) -> float | None:
+        return s[0]["equity"] if s else None
+
+    def last_eq(s: list) -> float | None:
+        return s[-1]["equity"] if s else None
+
+    def diff(s: list) -> float | None:
+        f = first_eq(s)
+        last = last_eq(s)
+        return None if (f is None or last is None) else round(last - f, 2)
+
+    current = last_eq(today) or last_eq(week) or last_eq(month) or last_eq(all_time)
+
+    return {
+        "current_equity": current,
+        "today_pnl": diff(today),
+        "week_pnl": diff(week),
+        "month_pnl": diff(month),
+        "total_pnl": diff(all_time),
+    }
 
 
 @app.get("/api/preflight")

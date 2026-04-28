@@ -274,6 +274,62 @@ def test_equity_returns_curve(client, tmp_path, monkeypatch) -> None:
     assert "today" in r.json()
 
 
+def test_equity_default_returns_today(client, tmp_path, monkeypatch) -> None:
+    import json
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    blot = tmp_path / "blotter"
+    blot.mkdir()
+    (blot / "equity_curve.json").write_text(json.dumps({
+        "today": [{"ts": "2026-04-28T00:00Z", "equity": 50000},
+                  {"ts": "2026-04-28T03:00Z", "equity": 50150}],
+        "week":  [{"ts": "2026-04-21", "equity": 49500}],
+        "month": [{"ts": "2026-03-28", "equity": 48000}],
+    }), encoding="utf-8")
+    r = client.get("/api/equity")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["range"] == "1d"
+    assert len(body["series"]) == 2
+    assert body["summary"]["current_equity"] == 50150
+    assert body["summary"]["today_pnl"] == 150
+
+
+def test_equity_per_bot(client, tmp_path, monkeypatch) -> None:
+    import json
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    bot_dir = tmp_path / "bots" / "mnq"
+    bot_dir.mkdir(parents=True)
+    (bot_dir / "equity_curve.json").write_text(json.dumps({
+        "today": [{"ts": "2026-04-28T00:00Z", "equity": 12000},
+                  {"ts": "2026-04-28T03:00Z", "equity": 12150}],
+    }), encoding="utf-8")
+    r = client.get("/api/equity?bot=mnq")
+    body = r.json()
+    assert body["bot_id"] == "mnq"
+    assert body["summary"]["current_equity"] == 12150
+
+
+def test_equity_invalid_range_returns_400(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/equity?range=lifetime")
+    assert r.status_code == 400
+
+
+def test_equity_invalid_bot_returns_400(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/equity?bot=../../etc/passwd")
+    assert r.status_code == 400
+
+
+def test_equity_bot_with_no_data_returns_200_with_warning(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
+    r = client.get("/api/equity?bot=mnq")
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("_warning") == "no_data"
+    assert body["series"] == []
+
+
 def test_preflight_cold_start(client, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
     r = client.get("/api/preflight")

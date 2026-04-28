@@ -66,18 +66,163 @@ class DrilldownPanel extends Panel {
   }
 }
 
-// --- 3. Equity curve (Chart.js) ---
+// --- 3. Equity curve (Chart.js) — per-bot + timeframe selector + KPI cards ---
 class EquityCurvePanel extends Panel {
   constructor() {
-    super('fl-equity-curve', '/api/equity', 'Fleet Equity (today + 30d)');
+    super('fl-equity-curve', '/api/equity?range=1d', 'Fleet Equity');
     this.chart = null;
+    this.selectedBot = null;   // null = fleet aggregate
+    this.range = '1d';
+    this._buildShell();
+
+    // Auto-switch to selected bot when user clicks roster row
+    window.addEventListener('selection-changed', (e) => {
+      this.selectedBot = e.detail.botId;
+      this._updateEndpoint();
+      this.refresh();
+    });
   }
+
+  _buildShell() {
+    if (!this.body) return;
+    this.body.innerHTML = `
+      <div class="flex items-center justify-between mb-2 text-xs">
+        <select id="eq-bot-select" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-100">
+          <option value="">Fleet aggregate</option>
+        </select>
+        <div class="flex gap-1" id="eq-range-pills">
+          <button data-r="1d"  class="px-2 py-1 rounded bg-emerald-600 text-white">1D</button>
+          <button data-r="1w"  class="px-2 py-1 rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600">1W</button>
+          <button data-r="1m"  class="px-2 py-1 rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600">1M</button>
+          <button data-r="all" class="px-2 py-1 rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600">All</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-4 gap-2 mb-3" id="eq-kpis">
+        <div class="bg-zinc-800 rounded p-2"><div class="text-[10px] text-zinc-500 uppercase">current</div><div data-k="current_equity" class="text-sm font-mono">—</div></div>
+        <div class="bg-zinc-800 rounded p-2"><div class="text-[10px] text-zinc-500 uppercase">today</div><div data-k="today_pnl" class="text-sm font-mono">—</div></div>
+        <div class="bg-zinc-800 rounded p-2"><div class="text-[10px] text-zinc-500 uppercase">week</div><div data-k="week_pnl" class="text-sm font-mono">—</div></div>
+        <div class="bg-zinc-800 rounded p-2"><div class="text-[10px] text-zinc-500 uppercase">month</div><div data-k="month_pnl" class="text-sm font-mono">—</div></div>
+      </div>
+
+      <div style="height: 220px"><canvas id="eq-chart"></canvas></div>`;
+
+    // Wire range-pill clicks
+    this.body.querySelectorAll('#eq-range-pills button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.range = btn.dataset.r;
+        // visual state
+        this.body.querySelectorAll('#eq-range-pills button').forEach(b => {
+          b.className = (b === btn)
+            ? 'px-2 py-1 rounded bg-emerald-600 text-white'
+            : 'px-2 py-1 rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600';
+        });
+        this._updateEndpoint();
+        this.refresh();
+      });
+    });
+
+    // Wire bot selector
+    const sel = this.body.querySelector('#eq-bot-select');
+    sel.addEventListener('change', (e) => {
+      this.selectedBot = e.target.value || null;
+      this._updateEndpoint();
+      this.refresh();
+    });
+
+    // Populate bot list once we get the roster
+    this._populateBotSelectFromRoster();
+  }
+
+  async _populateBotSelectFromRoster() {
+    try {
+      const r = await fetch('/api/bot-fleet', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const body = await r.json();
+      const sel = this.body?.querySelector('#eq-bot-select');
+      if (!sel) return;
+      (body.bots || []).forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.name;
+        opt.textContent = `${b.name} (${b.symbol})`;
+        sel.appendChild(opt);
+      });
+    } catch (_e) { /* ignore */ }
+  }
+
+  _updateEndpoint() {
+    const params = new URLSearchParams();
+    params.set('range', this.range);
+    if (this.selectedBot) params.set('bot', this.selectedBot);
+    this.endpoint = `/api/equity?${params.toString()}`;
+    // Update title
+    if (this.element) {
+      const t = this.element.querySelector('.panel-title');
+      if (t) t.textContent = this.selectedBot
+        ? `Equity — ${this.selectedBot} (${this.range.toUpperCase()})`
+        : `Fleet Equity (${this.range.toUpperCase()})`;
+    }
+    // Sync the dropdown
+    const sel = this.body?.querySelector('#eq-bot-select');
+    if (sel) sel.value = this.selectedBot || '';
+  }
+
   render(data) {
-    if (data._warning) { this.body.innerHTML = `<div class="text-zinc-500 text-sm">${escapeHtml(data._warning)}</div>`; return; }
-    const series = (data.thirty_day || []).concat(data.today || []);
-    if (this.chart) this.chart.destroy();
-    this.body.innerHTML = '<canvas></canvas>';
-    const ctx = this.body.querySelector('canvas').getContext('2d');
+    if (data._warning) {
+      this._renderKPIs({});
+      this._renderChart([]);
+      return;
+    }
+    this._renderKPIs(data.summary || {});
+    this._renderChart(data.series || []);
+  }
+
+  _renderKPIs(summary) {
+    const fmt = (v) => {
+      if (v === null || v === undefined) return '—';
+      const sign = v >= 0 ? '+' : '';
+      return `${sign}${formatNumber(v)}`;
+    };
+    const pnlClass = (v) => {
+      if (v === null || v === undefined) return 'text-zinc-400';
+      return v >= 0 ? 'text-emerald-400' : 'text-red-400';
+    };
+
+    const grid = this.body?.querySelector('#eq-kpis');
+    if (!grid) return;
+    grid.querySelectorAll('[data-k]').forEach(el => {
+      const key = el.dataset.k;
+      const val = summary[key];
+      if (key === 'current_equity') {
+        el.textContent = val !== null && val !== undefined ? `$${formatNumber(val)}` : '—';
+        el.className = 'text-sm font-mono text-zinc-100';
+      } else {
+        el.textContent = fmt(val);
+        el.className = `text-sm font-mono ${pnlClass(val)}`;
+      }
+    });
+  }
+
+  _renderChart(series) {
+    if (this.chart) { this.chart.destroy(); this.chart = null; }
+    let canvas = this.body?.querySelector('#eq-chart');
+    // If someone replaced canvas with the empty-state div, restore it
+    if (!canvas) {
+      const wrap = document.createElement('div');
+      wrap.style.height = '220px';
+      wrap.innerHTML = '<canvas id="eq-chart"></canvas>';
+      this.body.appendChild(wrap);
+      canvas = this.body.querySelector('#eq-chart');
+    }
+    if (!series.length) {
+      const parent = canvas.parentElement;
+      parent.innerHTML = '<div class="text-zinc-500 text-sm py-12 text-center">no data for this range</div>';
+      return;
+    }
+    const ctx = canvas.getContext('2d');
+    const startEq = series[0].equity;
+    const endEq   = series[series.length - 1].equity;
+    const lineColor = endEq >= startEq ? '#10b981' : '#ef4444';
     this.chart = new Chart(ctx, {
       type: 'line',
       data: {
@@ -85,15 +230,21 @@ class EquityCurvePanel extends Panel {
         datasets: [{
           label: 'equity',
           data: series.map(p => p.equity),
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16,185,129,0.1)',
+          borderColor: lineColor,
+          backgroundColor: lineColor + '22',
           tension: 0.2,
+          pointRadius: 0,
+          fill: true,
         }],
       },
       options: {
         plugins: { legend: { display: false } },
-        scales: { x: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { ticks: { color: '#a1a1aa', font: { size: 10 } } },
+        },
         animation: false,
+        maintainAspectRatio: false,
       },
     });
   }
