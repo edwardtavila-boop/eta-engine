@@ -650,3 +650,64 @@ class TestDashboardAPI:
         s = str(_DEFAULT_STATE).replace("\\", "/")
         assert "AppData" not in s, f"state dir leaked into AppData: {s}"
         assert "eta_engine" in s.lower(), f"state dir not under eta_engine: {s}"
+
+    def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path):
+        """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["APEX_STATE_DIR"])
+        # Ensure state/bots/ exists but is empty (no legacy bots)
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+
+        # Write supervisor heartbeat
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        hb = {
+            "ts": "2026-04-28T12:00:00+00:00",
+            "mode": "paper_sim",
+            "bots": [
+                {
+                    "bot_id": "mnq_futures",
+                    "symbol": "MNQ1",
+                    "strategy_kind": "orb",
+                    "direction": "long",
+                    "n_entries": 5,
+                    "n_exits": 5,
+                    "realized_pnl": 2.0,
+                    "open_position": None,
+                    "last_jarvis_verdict": "APPROVED",
+                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                },
+                {
+                    "bot_id": "btc_hybrid",
+                    "symbol": "BTC",
+                    "strategy_kind": "hybrid",
+                    "direction": "long",
+                    "n_entries": 2,
+                    "n_exits": 1,
+                    "realized_pnl": -0.5,
+                    "open_position": {"side": "BUY", "entry_price": 67000.0},
+                    "last_jarvis_verdict": "CONDITIONAL",
+                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                },
+            ],
+        }
+        (sup_dir / "heartbeat.json").write_text(json.dumps(hb))
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        data = r.json()
+        names = [b["name"] for b in data["bots"]]
+        assert "mnq_futures" in names, f"mnq_futures missing from roster: {names}"
+        assert "btc_hybrid" in names, f"btc_hybrid missing from roster: {names}"
+
+        mnq = next(b for b in data["bots"] if b["name"] == "mnq_futures")
+        assert mnq["todays_pnl"] == 2.0
+        assert mnq["status"] == "running"
+        assert mnq["source"] == "jarvis_strategy_supervisor"
+        assert mnq["venue"] == "paper-sim"
+        assert mnq["tier"] == "orb"
+
+        assert data["confirmed_bots"] == 2

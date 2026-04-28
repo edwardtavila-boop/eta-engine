@@ -737,6 +737,50 @@ def jarvis_kaizen_latest() -> dict:
     }
 
 
+def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
+    """Convert a jarvis_supervisor_bot_accounts() row into /api/bot-fleet roster shape."""
+    from datetime import UTC, datetime
+    today = sup.get("today") or {}
+    updated_at = str(sup.get("updated_at") or "")
+    last_trade_age_s: int | None = None
+    if updated_at:
+        try:
+            dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            last_trade_age_s = max(0, int(now_ts - dt.timestamp()))
+        except (ValueError, OSError):
+            pass
+    open_pos = sup.get("open_position") or {}
+    last_side: str | None = None
+    if isinstance(open_pos, dict) and open_pos.get("side"):
+        last_side = str(open_pos["side"])
+    elif sup.get("direction"):
+        last_side = str(sup["direction"]).upper()
+    return {
+        "id":                  str(sup.get("id") or ""),
+        "name":                str(sup.get("name") or ""),
+        "symbol":              str(sup.get("symbol") or ""),
+        "tier":                str(sup.get("strategy") or ""),
+        "venue":               str(sup.get("broker") or "paper-sim"),
+        "status":              str(sup.get("status") or "unknown"),
+        "todays_pnl":          float(today.get("pnl") or 0.0),
+        "todays_pnl_source":   "supervisor_heartbeat",
+        "last_trade_ts":       updated_at or None,
+        "last_trade_age_s":    last_trade_age_s,
+        "last_trade_side":     last_side,
+        "last_trade_r":        None,
+        "last_trade_qty":      None,
+        "data_ts":             now_ts,
+        "data_age_s":          0.0,
+        "heartbeat_age_s":     last_trade_age_s,
+        "source":              "jarvis_strategy_supervisor",
+        "confirmed":           True,
+        "mode":                str(sup.get("mode") or ""),
+        "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
+    }
+
+
 @app.get("/api/bot-fleet")
 def bot_fleet_roster(
     response: Response,
@@ -748,8 +792,6 @@ def bot_fleet_roster(
 
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
     bots_dir = _state_dir() / "bots"
-    if not bots_dir.exists():
-        return {"bots": []}
     def _parse_ts(value: object) -> datetime | None:
         if not isinstance(value, str) or not value.strip():
             return None
@@ -772,7 +814,7 @@ def bot_fleet_roster(
     rows = []
     fills_stats = _fills_activity_snapshot()
     now_ts = time.time()
-    for bot_dir in sorted(bots_dir.iterdir()):
+    for bot_dir in (sorted(bots_dir.iterdir()) if bots_dir.exists() else []):
         if not bot_dir.is_dir():
             continue
         if bot and bot_dir.name != bot:
@@ -859,10 +901,35 @@ def bot_fleet_roster(
             else:
                 status["status"] = "stale"
         rows.append(status)
+    # --- Supervisor merge ---------------------------------------------------
+    # The JARVIS strategy supervisor writes its 16-bot roster to the heartbeat.
+    # Those bots never appear in state/bots/, so we merge them in here.
+    # Supervisor rows win on name collision (they carry live session data).
+    try:
+        from eta_engine.scripts.jarvis_supervisor_bridge import (
+            jarvis_supervisor_bot_accounts,
+        )
+        sup_hb = _state_dir() / "jarvis_intel" / "supervisor" / "heartbeat.json"
+        sup_accounts = jarvis_supervisor_bot_accounts(heartbeat_path=sup_hb)
+        if sup_accounts:
+            sup_ids = {str(s.get("id") or "") for s in sup_accounts}
+            rows = [
+                r for r in rows
+                if str(r.get("name") or r.get("id") or "") not in sup_ids
+            ]
+            rows.extend(_sup_bot_to_roster_row(s, now_ts) for s in sup_accounts)
+    except Exception:
+        pass  # Never crash the roster because the supervisor is unavailable
+
+    confirmed_bots = sum(
+        1 for r in rows
+        if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
+    )
     return {
-        "bots": rows,
-        "server_ts": now_ts,
-        "live": fills_stats,
+        "bots":              rows,
+        "confirmed_bots":    confirmed_bots,
+        "server_ts":         now_ts,
+        "live":              fills_stats,
         "window_since_days": since_days,
     }
 
