@@ -564,6 +564,64 @@ def jarvis_kaizen_latest() -> dict:
     }
 
 
+@app.get("/api/bot-fleet")
+def bot_fleet_roster() -> dict:
+    """Roster: scan state/bots/<name>/status.json for each bot."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    bots_dir = _state_dir() / "bots"
+    if not bots_dir.exists():
+        return {"bots": []}
+    rows = []
+    for bot_dir in sorted(bots_dir.iterdir()):
+        if not bot_dir.is_dir():
+            continue
+        status = read_json_safe(bot_dir / "status.json")
+        if "_warning" in status:
+            continue
+        rows.append(status)
+    return {"bots": rows}
+
+
+@app.get("/api/bot-fleet/{bot_id}")
+def bot_fleet_drilldown(bot_id: str) -> dict:
+    """Per-bot drill: status + recent fills + recent verdicts + sage effects."""
+    if not _BOT_ID_RE.match(bot_id):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    bot_dir = _state_dir() / "bots" / bot_id
+    if not bot_dir.exists():
+        raise HTTPException(status_code=404, detail=f"bot {bot_id!r} not found")
+    return {
+        "status": read_json_safe(bot_dir / "status.json"),
+        "recent_fills": read_json_safe(bot_dir / "recent_fills.json"),
+        "recent_verdicts": read_json_safe(bot_dir / "recent_verdicts.json"),
+        "sage_effects": read_json_safe(bot_dir / "sage_effects.json"),
+    }
+
+
+@app.get("/api/risk_gates")
+def risk_gates() -> dict:
+    """Per-bot kill latch + DD + cap state + fleet aggregate."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    latches = read_json_safe(_state_dir() / "safety" / "kill_switch_latch.json")
+    fleet_agg = read_json_safe(_state_dir() / "safety" / "fleet_risk_gate_state.json")
+    bots = []
+    if "_warning" not in latches:
+        for bot_id, row in latches.items():
+            if not isinstance(row, dict):
+                continue
+            row_out = {"bot_id": bot_id, **row}
+            bots.append(row_out)
+    return {"bots": bots, "fleet_aggregate": fleet_agg}
+
+
+@app.get("/api/positions/reconciler")
+def positions_reconciler() -> dict:
+    """Latest position reconciler snapshot."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+    return read_json_safe(_state_dir() / "safety" / "position_reconciler_latest.json")
+
+
 # ─── Cross-policy verdict diff (Tier-4 #17, 2026-04-27) ────────────
 @app.get("/api/jarvis/policy_diff")
 def jarvis_policy_diff(window_days: int = 30) -> dict:
