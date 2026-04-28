@@ -759,6 +759,75 @@ def post_sage_modulation_toggle(
     return {"enabled": req.enabled}
 
 
+# ─── Bot lifecycle endpoints (Wave-7 Task 8, 2026-04-27) ───────────
+def _write_control_signal(bot_id: str, action: str, by_user: str) -> Path:
+    """Write a control signal file the bot daemon polls."""
+    from datetime import UTC, datetime
+    sig_dir = _state_dir() / "bots" / bot_id / "control_signals"
+    sig_dir.mkdir(parents=True, exist_ok=True)
+    sig_path = sig_dir / f"{action}.json"
+    sig_path.write_text(json.dumps({
+        "ts": datetime.now(UTC).isoformat(),
+        "action": action,
+        "by": by_user,
+    }, indent=2), encoding="utf-8")
+    return sig_path
+
+
+def _validate_bot_id(bot_id: str) -> None:
+    """Raise 400 if bot_id is not a safe identifier."""
+    if not _BOT_ID_RE.match(bot_id):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
+
+
+@app.post("/api/bot/{bot_id}/pause")
+def bot_pause(bot_id: str, session: dict = Depends(require_session)) -> dict:  # noqa: B008
+    """Signal the bot to pause new entries (existing positions kept)."""
+    _validate_bot_id(bot_id)
+    _write_control_signal(bot_id, "pause", session["user"])
+    return {"ok": True, "action": "pause", "bot_id": bot_id}
+
+
+@app.post("/api/bot/{bot_id}/resume")
+def bot_resume(bot_id: str, session: dict = Depends(require_session)) -> dict:  # noqa: B008
+    """Signal the bot to resume taking new entries."""
+    _validate_bot_id(bot_id)
+    _write_control_signal(bot_id, "resume", session["user"])
+    return {"ok": True, "action": "resume", "bot_id": bot_id}
+
+
+@app.post("/api/bot/{bot_id}/flatten")
+def bot_flatten(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # noqa: B008
+    """Step-up gated: signal bot to flatten ALL positions (reduce_only)."""
+    _validate_bot_id(bot_id)
+    _write_control_signal(bot_id, "flatten", session["user"])
+    return {"ok": True, "action": "flatten", "bot_id": bot_id}
+
+
+@app.post("/api/bot/{bot_id}/kill")
+def bot_kill(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # noqa: B008
+    """Step-up gated: trip the kill-switch latch for this bot."""
+    from datetime import UTC, datetime
+    _validate_bot_id(bot_id)
+    latch_path = _state_dir() / "safety" / "kill_switch_latch.json"
+    latch_path.parent.mkdir(parents=True, exist_ok=True)
+    latches: dict = {}
+    if latch_path.exists():
+        try:
+            latches = json.loads(latch_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            latches = {}
+    latches[bot_id] = {
+        "latch_state": "tripped",
+        "reason": "operator_kill",
+        "tripped_at": datetime.now(UTC).isoformat(),
+        "tripped_by": session["user"],
+    }
+    latch_path.write_text(json.dumps(latches, indent=2), encoding="utf-8")
+    _write_control_signal(bot_id, "kill", session["user"])
+    return {"ok": True, "action": "kill", "bot_id": bot_id, "latch_state": "tripped"}
+
+
 # ─── Cross-policy verdict diff (Tier-4 #17, 2026-04-27) ────────────
 @app.get("/api/jarvis/policy_diff")
 def jarvis_policy_diff(window_days: int = 30) -> dict:
