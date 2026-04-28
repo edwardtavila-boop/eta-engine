@@ -24,8 +24,13 @@ if (-not (Test-Path $users)) {
 
 # PIN for step-up
 if (-not $env:ETA_DASHBOARD_STEP_UP_PIN) {
-    $env:ETA_DASHBOARD_STEP_UP_PIN = "1234"
-    Write-Host "Defaulting step-up PIN to '1234' (set ETA_DASHBOARD_STEP_UP_PIN to override)"
+    Write-Host "Step-up PIN not set. Operator destructive actions (kill / flatten / V22 toggle) will be UNAVAILABLE." -ForegroundColor Yellow
+    Write-Host "To enable: set `$env:ETA_DASHBOARD_STEP_UP_PIN = 'your-pin' before running this script." -ForegroundColor Yellow
+    Write-Host ""
+    $confirm = Read-Host "Continue without step-up PIN? (y/N)"
+    if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+        exit 1
+    }
 }
 
 Write-Host "Starting Stage 0 dashboard on http://127.0.0.1:8421/"

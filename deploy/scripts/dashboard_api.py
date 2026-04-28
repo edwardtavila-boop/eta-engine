@@ -23,15 +23,19 @@ Endpoints:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict, deque
 from pathlib import Path
 
+import portalocker
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
@@ -113,6 +117,7 @@ class StepUpRequest(BaseModel):
 # ─── Login rate-limit (per (username, IP) token bucket) ─────────────
 _LOGIN_WINDOW_SECONDS = 60
 _LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_FAILURES_MAX_ENTRIES = 10_000
 # {(username, client_ip): deque[float] of failed-attempt timestamps}
 _LOGIN_FAILURES: dict[tuple[str, str], deque] = defaultdict(
     lambda: deque(maxlen=_LOGIN_MAX_ATTEMPTS + 1),
@@ -131,6 +136,16 @@ def _login_allowed(username: str, client_ip: str) -> tuple[bool, int]:
     # Drop entries older than the window
     while fails and fails[0] < now - _LOGIN_WINDOW_SECONDS:
         fails.popleft()
+    # If this bucket emptied, drop the key entirely
+    if not fails:
+        _LOGIN_FAILURES.pop(key, None)
+        # Also opportunistically GC the dict if it's grown large
+        if len(_LOGIN_FAILURES) > _LOGIN_FAILURES_MAX_ENTRIES:
+            # Drop oldest 10% (insertion-order via dict iteration)
+            n_drop = len(_LOGIN_FAILURES) // 10
+            for k in list(_LOGIN_FAILURES.keys())[:n_drop]:
+                _LOGIN_FAILURES.pop(k, None)
+        return True, 0
     if len(fails) >= _LOGIN_MAX_ATTEMPTS:
         retry_after = int(_LOGIN_WINDOW_SECONDS - (now - fails[0])) + 1
         return False, max(retry_after, 1)
@@ -267,7 +282,9 @@ def auth_step_up(
     if session is None:
         raise HTTPException(status_code=401, detail={"error_code": "no_session"})
     pin = os.environ.get("ETA_DASHBOARD_STEP_UP_PIN", "")
-    if not pin or req.pin != pin:
+    if not pin:
+        raise HTTPException(status_code=503, detail={"error_code": "step_up_not_configured"})
+    if not secrets.compare_digest(req.pin, pin):
         raise HTTPException(status_code=403, detail={"error_code": "bad_pin"})
     mark_step_up(_sessions_path(), session)
     return {"stepped_up": True}
@@ -666,7 +683,13 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
     bot_dir = _state_dir() / "bots" / bot_id
     if not bot_dir.exists():
-        raise HTTPException(status_code=404, detail=f"bot {bot_id!r} not found")
+        return {
+            "_warning": "no_data",
+            "status": {"_warning": "no_data"},
+            "recent_fills": [],
+            "recent_verdicts": [],
+            "sage_effects": {"_warning": "no_data"},
+        }
     return {
         "status": read_json_safe(bot_dir / "status.json"),
         "recent_fills": read_json_safe(bot_dir / "recent_fills.json"),
@@ -748,14 +771,30 @@ def post_sage_modulation_toggle(
     os.environ["ETA_FF_V22_SAGE_MODULATION"] = val
     flag_path = _state_dir() / "feature_flags.json"
     flag_path.parent.mkdir(parents=True, exist_ok=True)
-    existing: dict = {}
-    if flag_path.exists():
+
+    # Lock + read + modify + atomic-write
+    lock_path = flag_path.with_suffix(".lock")
+    with portalocker.Lock(str(lock_path), mode="a", timeout=5,
+                          flags=portalocker.LOCK_EX):
+        existing: dict = {}
+        if flag_path.exists():
+            try:
+                existing = json.loads(flag_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                existing = {}
+        existing["ETA_FF_V22_SAGE_MODULATION"] = val
+        # Atomic write: write to temp file, then rename
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=str(flag_path.parent), prefix=".feature_flags_", suffix=".tmp",
+        )
         try:
-            existing = json.loads(flag_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            existing = {}
-    existing["ETA_FF_V22_SAGE_MODULATION"] = val
-    flag_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(existing, indent=2))
+            os.replace(tmp_name, str(flag_path))
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
     return {"enabled": req.enabled}
 
 
@@ -811,19 +850,35 @@ def bot_kill(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # 
     _validate_bot_id(bot_id)
     latch_path = _state_dir() / "safety" / "kill_switch_latch.json"
     latch_path.parent.mkdir(parents=True, exist_ok=True)
-    latches: dict = {}
-    if latch_path.exists():
+
+    # Lock + read + modify + atomic-write
+    lock_path = latch_path.with_suffix(".lock")
+    with portalocker.Lock(str(lock_path), mode="a", timeout=5,
+                          flags=portalocker.LOCK_EX):
+        latches: dict = {}
+        if latch_path.exists():
+            try:
+                latches = json.loads(latch_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                latches = {}
+        latches[bot_id] = {
+            "latch_state": "tripped",
+            "reason": "operator_kill",
+            "tripped_at": datetime.now(UTC).isoformat(),
+            "tripped_by": session["user"],
+        }
+        # Atomic write: write to temp file, then rename
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=str(latch_path.parent), prefix=".kill_switch_latch_", suffix=".tmp",
+        )
         try:
-            latches = json.loads(latch_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            latches = {}
-    latches[bot_id] = {
-        "latch_state": "tripped",
-        "reason": "operator_kill",
-        "tripped_at": datetime.now(UTC).isoformat(),
-        "tripped_by": session["user"],
-    }
-    latch_path.write_text(json.dumps(latches, indent=2), encoding="utf-8")
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(latches, indent=2))
+            os.replace(tmp_name, str(latch_path))
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
     _write_control_signal(bot_id, "kill", session["user"])
     return {"ok": True, "action": "kill", "bot_id": bot_id, "latch_state": "tripped"}
 

@@ -192,7 +192,11 @@ def test_bot_fleet_drilldown(client, tmp_path, monkeypatch) -> None:
 def test_bot_fleet_drilldown_unknown_bot(client, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("APEX_STATE_DIR", str(tmp_path))
     r = client.get("/api/bot-fleet/no-such-bot")
-    assert r.status_code == 404
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("_warning") == "no_data"
+    assert body["recent_fills"] == []
+    assert body["recent_verdicts"] == []
 
 
 def test_risk_gates_cold_start(client, tmp_path, monkeypatch) -> None:

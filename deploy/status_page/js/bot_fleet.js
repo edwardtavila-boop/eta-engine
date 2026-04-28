@@ -51,7 +51,7 @@ class DrilldownPanel extends Panel {
     });
   }
   render(data) {
-    if (data.detail) { this.setError(data.detail); return; }
+    if (data._warning) { this.body.innerHTML = `<div class="text-zinc-500 text-sm">no bot selected</div>`; return; }
     const fills = data.recent_fills || [];
     const verdicts = data.recent_verdicts || [];
     this.body.innerHTML = `
