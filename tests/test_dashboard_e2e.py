@@ -141,8 +141,22 @@ async def test_lifecycle_button_prompts_step_up(dashboard_server) -> None:
         await page.click('button[data-tab="fleet"]')
         await page.wait_for_selector('[data-panel-id="fl-controls"] button[data-act="kill"]')
 
-        # Accept the JS confirm() dialog
-        page.on("dialog", lambda d: d.accept())
+        # The kill button raises TWO dialogs in sequence:
+        #   1. ``confirm("KILL <id> -- are you sure?")``  -> accept
+        #   2. ``prompt('Type "kill <id>" to confirm')``  -> accept WITH the
+        #      exact phrase, otherwise the dashboard cancels the action with
+        #      "phrase mismatch" before ever reaching the step-up modal.
+        # The default selection.botId is "mnq" (see panels.js).
+        def _handle_dialog(dialog) -> None:
+            if dialog.type == "prompt":
+                # Type the exact confirmation phrase the dashboard expects
+                import asyncio as _asyncio
+                _asyncio.create_task(dialog.accept("kill mnq"))
+            else:
+                import asyncio as _asyncio
+                _asyncio.create_task(dialog.accept())
+
+        page.on("dialog", _handle_dialog)
 
         await page.click('[data-panel-id="fl-controls"] button[data-act="kill"]')
         # Step-up modal should appear

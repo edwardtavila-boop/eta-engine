@@ -499,10 +499,25 @@ class JarvisStrategySupervisor:
             self._maybe_exit(bot, bar)
 
     def _maybe_enter(self, bot: BotInstance, bar: dict[str, Any]) -> None:
-        # Mock entry signal: 1-in-30 random fire (paper-sim friendly cadence)
-        # In a real strategy, the bot's evaluate_entry on the bar history
-        # would drive this -- but we keep the supervisor strategy-agnostic.
-        if random.Random(int(time.time())).random() > (1.0 / 30):
+        # Mock entry signal: per-call independent dice, ~1-in-5 fire rate.
+        #
+        # The earlier ``random.Random(int(time.time())).random()`` was
+        # broken on two axes:
+        #
+        #   (a) ``int(time.time())`` is shared across all 16 bots in a
+        #       single tick, so every bot got the SAME dice roll. The
+        #       effective fleet entry rate was 1/30 per tick, not 16/30.
+        #   (b) ``random.Random(seed).random()`` is a deterministic
+        #       function of the seed, so the entire fleet walked through
+        #       a fixed sequence of dice values. A stretch of unlucky
+        #       seconds could silence the whole fleet for many ticks
+        #       (observed: 76 minutes with zero entries).
+        #
+        # Fix: use Python's module-level ``random.random()`` (per-process
+        # Mersenne Twister, seeded from os.urandom at import). Each call
+        # produces a fresh independent draw, and the rate is high enough
+        # that 16 bots produce visible activity every tick.
+        if random.random() > (1.0 / 5):
             return
 
         signal_id = f"{bot.bot_id}_{uuid.uuid4().hex[:8]}"
