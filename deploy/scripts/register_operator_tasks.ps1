@@ -298,6 +298,15 @@ $tasks = @(
         Cwd        = $EtaEngineDir
         Trigger    = "Daily-2315"
         Notes      = "Daily 23:15 -- check every school's neutral_rate; alert on critical (>=95% neutral over >=30 consultations). Writes snapshot for the dashboard."
+    },
+    # Wave-7 (2026-04-27): Stage 1 cutover -- new dashboard auto-launch on 8420.
+    @{
+        Name       = "Eta-Dashboard"
+        Exec       = $Python
+        Args       = "-m uvicorn eta_engine.deploy.scripts.dashboard_api:app --host 127.0.0.1 --port 8420"
+        Cwd        = $EtaEngineDir
+        Trigger    = "AtStartup"
+        Notes      = "Wave-7 dashboard: serves the JARVIS command center + bot fleet view at http://127.0.0.1:8420/. Replaces the firm command_center on 8420 (firm command_center kept in repo until Stage 2 decommission)."
     }
 )
 
@@ -305,6 +314,10 @@ $tasks = @(
 function New-EtaTrigger([string]$spec) {
     $maxDur = New-TimeSpan -Days 9999
     switch -Regex ($spec) {
+        '^AtStartup$' {
+            # Boot-time trigger -- fires once when the VPS comes up.
+            return New-ScheduledTaskTrigger -AtStartup
+        }
         '^Every(\d+)Min$' {
             $n = [int]$matches[1]
             return New-ScheduledTaskTrigger -Once -At (Get-Date) `
