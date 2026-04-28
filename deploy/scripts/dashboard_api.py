@@ -28,9 +28,11 @@ import os
 import re
 import subprocess
 import sys
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
@@ -108,6 +110,64 @@ class StepUpRequest(BaseModel):
     pin: str
 
 
+# ─── Login rate-limit (per (username, IP) token bucket) ─────────────
+_LOGIN_WINDOW_SECONDS = 60
+_LOGIN_MAX_ATTEMPTS = 5
+# {(username, client_ip): deque[float] of failed-attempt timestamps}
+_LOGIN_FAILURES: dict[tuple[str, str], deque] = defaultdict(
+    lambda: deque(maxlen=_LOGIN_MAX_ATTEMPTS + 1),
+)
+
+
+def _login_allowed(username: str, client_ip: str) -> tuple[bool, int]:
+    """Check whether (username, ip) can attempt login.
+
+    Returns (allowed, retry_after_seconds). When allowed=False, the
+    caller should return 429 with Retry-After header.
+    """
+    key = (username, client_ip)
+    now = time.time()
+    fails = _LOGIN_FAILURES[key]
+    # Drop entries older than the window
+    while fails and fails[0] < now - _LOGIN_WINDOW_SECONDS:
+        fails.popleft()
+    if len(fails) >= _LOGIN_MAX_ATTEMPTS:
+        retry_after = int(_LOGIN_WINDOW_SECONDS - (now - fails[0])) + 1
+        return False, max(retry_after, 1)
+    return True, 0
+
+
+def _record_login_failure(username: str, client_ip: str) -> None:
+    _LOGIN_FAILURES[(username, client_ip)].append(time.time())
+    # On the 5th failure within window, log a warning (best-effort).
+    fails = _LOGIN_FAILURES[(username, client_ip)]
+    if len(fails) >= _LOGIN_MAX_ATTEMPTS:
+        try:
+            log_line = json.dumps({
+                "ts": time.time(),
+                "level": "WARNING",
+                "event": "login_rate_limit_tripped",
+                "username": username,
+                "client_ip": client_ip,
+                "failures_in_window": len(fails),
+                "window_seconds": _LOGIN_WINDOW_SECONDS,
+            })
+            log_path = LOG_DIR / "dashboard.jsonl"
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("a", encoding="utf-8") as fh:
+                    fh.write(log_line + "\n")
+            except OSError:
+                # Fall back to stderr if dashboard log isn't wired
+                print(log_line, file=sys.stderr)
+        except Exception:  # noqa: BLE001 -- never let logging break auth
+            pass
+
+
+def _reset_login_failures(username: str, client_ip: str) -> None:
+    _LOGIN_FAILURES.pop((username, client_ip), None)
+
+
 def require_session(session: str | None = Cookie(default=None)) -> dict:
     """FastAPI dependency: returns session row or raises 401."""
     from eta_engine.deploy.scripts.dashboard_auth import get_session
@@ -144,13 +204,29 @@ def auth_session(session: str | None = Cookie(default=None)) -> dict:
 
 
 @app.post("/api/auth/login")
-def auth_login(req: LoginRequest, response: Response) -> dict:
+def auth_login(req: LoginRequest, request: Request, response: Response) -> dict:
     from eta_engine.deploy.scripts.dashboard_auth import (
         create_session,
         verify_password,
     )
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Rate-limit check (per (username, IP))
+    allowed, retry_after = _login_allowed(req.username, client_ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={"error_code": "rate_limited"},
+            headers={"Retry-After": str(retry_after)},
+        )
+
     if not verify_password(_users_path(), req.username, req.password):
+        _record_login_failure(req.username, client_ip)
         raise HTTPException(status_code=401, detail={"error_code": "bad_credentials"})
+
+    # Successful login -> reset counter
+    _reset_login_failures(req.username, client_ip)
+
     token = create_session(_sessions_path(), user=req.username)
     secure = os.environ.get("ETA_DASHBOARD_COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes", "on", "y")
     response.set_cookie(

@@ -10,6 +10,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_between_tests():
+    """Clear the module-level rate-limit dict before & after each test."""
+    from eta_engine.deploy.scripts.dashboard_api import _LOGIN_FAILURES
+    _LOGIN_FAILURES.clear()
+    yield
+    _LOGIN_FAILURES.clear()
+
+
 @pytest.fixture
 def auth_paths(tmp_path: Path, monkeypatch):
     """Point the dashboard at a temp users + sessions store."""
@@ -95,3 +104,49 @@ def test_step_up_endpoint_wrong_pin_returns_403(client, monkeypatch) -> None:
     })
     r = client.post("/api/auth/step-up", json={"pin": "0000"})
     assert r.status_code == 403
+
+
+def test_login_rate_limit_after_5_failures(client) -> None:
+    """6th failed attempt within window returns 429 with Retry-After."""
+    for _ in range(5):
+        r = client.post("/api/auth/login", json={
+            "username": "edward", "password": "wrong",
+        })
+        assert r.status_code == 401
+    r = client.post("/api/auth/login", json={
+        "username": "edward", "password": "wrong",
+    })
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+
+
+def test_login_rate_limit_resets_on_success(client) -> None:
+    """A successful login between failed attempts resets the counter."""
+    for _ in range(4):
+        client.post("/api/auth/login", json={
+            "username": "edward", "password": "wrong",
+        })
+    # Successful login resets
+    r = client.post("/api/auth/login", json={
+        "username": "edward", "password": "test-pass-123",
+    })
+    assert r.status_code == 200
+    # Now 5 more failed attempts should NOT immediately 429
+    # (the counter was reset by the success)
+    for i in range(5):
+        r = client.post("/api/auth/login", json={
+            "username": "edward", "password": "wrong",
+        })
+        assert r.status_code == 401, f"attempt {i+1} should be 401, not {r.status_code}"
+
+
+def test_login_rate_limit_isolated_per_user(client) -> None:
+    """Rate-limit is per-(username, IP), not global."""
+    # Exhaust attempts for "alice"
+    for _ in range(6):
+        client.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+    # "edward" should still be allowed
+    r = client.post("/api/auth/login", json={
+        "username": "edward", "password": "test-pass-123",
+    })
+    assert r.status_code == 200
