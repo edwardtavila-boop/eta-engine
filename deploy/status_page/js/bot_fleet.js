@@ -198,7 +198,12 @@ class RiskLadderPanel extends Panel {
 
 // --- 10. Lifecycle controls ---
 class ControlsPanel extends Panel {
-  constructor() { super('fl-controls', null, 'Lifecycle Controls'); }
+  constructor() {
+    super('fl-controls', null, 'Lifecycle Controls');
+    // ControlsPanel has no endpoint, so it's not poller-driven.
+    // Render immediately so the lifecycle buttons are present from page load.
+    if (this.body) this.render();
+  }
   refresh() { this.render(); }
   render() {
     const id = selection.botId;
