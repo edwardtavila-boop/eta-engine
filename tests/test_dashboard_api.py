@@ -643,3 +643,10 @@ class TestDashboardAPI:
         fleet = j["systems"]["btc_fleet"]
         assert fleet["status"] == "GREEN"
         assert "4/4" in fleet["detail"]
+
+    def test_default_state_dir_is_repo_relative(self):
+        """_DEFAULT_STATE must be under the eta_engine repo, not LOCALAPPDATA."""
+        from eta_engine.deploy.scripts.dashboard_api import _DEFAULT_STATE
+        s = str(_DEFAULT_STATE).replace("\\", "/")
+        assert "AppData" not in s, f"state dir leaked into AppData: {s}"
+        assert "eta_engine" in s.lower(), f"state dir not under eta_engine: {s}"

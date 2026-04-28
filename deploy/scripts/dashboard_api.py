@@ -33,31 +33,42 @@ import sys
 import tempfile
 import time
 from collections import defaultdict, deque
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import portalocker
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
+
+from eta_engine.deploy.scripts.dashboard_services import ensure_dir_writable, read_jsonl_tail, run_background_task
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _BOT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
-# State/log dirs: Windows defaults; overridable via env
-if os.name == "nt":
-    _DEFAULT_STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"
-    _DEFAULT_LOG = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "logs"
-else:
-    _DEFAULT_STATE = Path.home() / ".local" / "state" / "eta_engine"
-    _DEFAULT_LOG = Path.home() / ".local" / "log" / "eta_engine"
+# State/log dirs: repo-relative so every deployment reads the right directory.
+# APEX_STATE_DIR / APEX_LOG_DIR env vars still override (used by tests).
+_REPO_ROOT     = Path(__file__).resolve().parents[2]   # .../eta_engine/
+_DEFAULT_STATE = _REPO_ROOT / "state"
+_DEFAULT_LOG   = _REPO_ROOT / "logs"
 
-STATE_DIR = Path(os.environ.get("APEX_STATE_DIR", _DEFAULT_STATE))
-LOG_DIR = Path(os.environ.get("APEX_LOG_DIR", _DEFAULT_LOG))
+STATE_DIR = Path(os.environ.get("APEX_STATE_DIR", str(_DEFAULT_STATE)))
+LOG_DIR   = Path(os.environ.get("APEX_LOG_DIR",   str(_DEFAULT_LOG)))
+_START_TS = time.time()
 
 
 def _state_dir() -> Path:
     """Lazy state-dir resolver so tests can monkeypatch APEX_STATE_DIR."""
     return Path(os.environ.get("APEX_STATE_DIR", str(_DEFAULT_STATE)))
+
+
+def _log_dir() -> Path:
+    """Lazy log-dir resolver so tests can monkeypatch APEX_LOG_DIR."""
+    return Path(os.environ.get("APEX_LOG_DIR", str(_DEFAULT_LOG)))
 
 
 app = FastAPI(
@@ -73,15 +84,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_REQ_COUNTS: defaultdict[str, int] = defaultdict(int)
+_REQ_ERRORS: defaultdict[str, int] = defaultdict(int)
+_REQ_LAT_MS: defaultdict[str, deque[float]] = defaultdict(lambda: deque(maxlen=100))
+
+_API_PUBLIC_PATHS = frozenset({
+    "/api/auth/session",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/step-up",
+})
+
+
+def _check_session_token(session_token: str | None) -> dict | None:
+    if not session_token:
+        return None
+    from eta_engine.deploy.scripts.dashboard_auth import get_session
+    return get_session(_sessions_path(), session_token)
+
+
+@app.middleware("http")
+async def telemetry_and_api_auth_middleware(request: Request, call_next: Callable) -> Response:
+    path = request.url.path
+    started = time.perf_counter()
+
+    _mutating = request.method in {"POST", "PUT", "PATCH", "DELETE"}
+    if (
+        _mutating
+        and path.startswith("/api/")
+        and path not in _API_PUBLIC_PATHS
+        and _check_session_token(request.cookies.get("session")) is None
+    ):
+        return JSONResponse(status_code=401, content={"detail": {"error_code": "no_session"}})
+
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        _REQ_COUNTS[path] += 1
+        _REQ_LAT_MS[path].append(elapsed_ms)
+        status = getattr(response, "status_code", 500)
+        if status >= 400:
+            _REQ_ERRORS[path] += 1
+
 
 def _read_json(name: str) -> dict:
-    path = STATE_DIR / name
+    path = _state_dir() / name
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"{name} not found in {STATE_DIR}")
+        raise HTTPException(status_code=404, detail=f"{name} not found in {_state_dir()}")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"parse error: {e}") from e
+
+
+def _append_dashboard_event(event: str, payload: dict) -> None:
+    """Best-effort append to local dashboard event log."""
+    row = {"ts": time.time(), "event": event, **payload}
+    try:
+        events_log = _state_dir() / "dashboard_events.jsonl"
+        events_log.parent.mkdir(parents=True, exist_ok=True)
+        with events_log.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +305,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> dict:
 
     if not verify_password(_users_path(), req.username, req.password):
         _record_login_failure(req.username, client_ip)
+        _append_dashboard_event("auth_login_failed", {"username": req.username, "client_ip": client_ip})
         raise HTTPException(status_code=401, detail={"error_code": "bad_credentials"})
 
     # Successful login -> reset counter
@@ -252,6 +321,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> dict:
         secure=secure,
         max_age=24 * 3600,
     )
+    _append_dashboard_event("auth_login_ok", {"username": req.username, "client_ip": client_ip})
     return {"authenticated": True, "user": req.username}
 
 
@@ -270,6 +340,7 @@ def auth_logout(
         samesite="strict",
         secure=secure,
     )
+    _append_dashboard_event("auth_logout", {})
     return {"authenticated": False}
 
 
@@ -285,8 +356,10 @@ def auth_step_up(
     if not pin:
         raise HTTPException(status_code=503, detail={"error_code": "step_up_not_configured"})
     if not secrets.compare_digest(req.pin, pin):
+        _append_dashboard_event("auth_step_up_failed", {})
         raise HTTPException(status_code=403, detail={"error_code": "bad_pin"})
     mark_step_up(_sessions_path(), session)
+    _append_dashboard_event("auth_step_up_ok", {})
     return {"stepped_up": True}
 
 
@@ -373,11 +446,18 @@ def prometheus_metrics() -> PlainTextResponse:
 @app.get("/health")
 def health() -> dict:
     """Liveness probe."""
+    state_dir = _state_dir()
+    log_dir = _log_dir()
+    state_writable = ensure_dir_writable(state_dir)
     return {
         "status": "ok",
-        "state_dir": str(STATE_DIR),
-        "log_dir": str(LOG_DIR),
-        "state_dir_exists": STATE_DIR.exists(),
+        "state_dir": str(state_dir),
+        "log_dir": str(log_dir),
+        "state_dir_exists": state_dir.exists(),
+        "state_dir_writable": state_writable,
+        "auth_store_exists": _users_path().exists(),
+        "session_store_exists": _sessions_path().exists(),
+        "uptime_s": round(time.time() - _START_TS, 2),
     }
 
 
@@ -658,21 +738,133 @@ def jarvis_kaizen_latest() -> dict:
 
 
 @app.get("/api/bot-fleet")
-def bot_fleet_roster() -> dict:
+def bot_fleet_roster(
+    response: Response,
+    bot: str | None = None,
+    since_days: int = 1,
+) -> dict:
     """Roster: scan state/bots/<name>/status.json for each bot."""
+    from datetime import UTC, datetime
+
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
     bots_dir = _state_dir() / "bots"
     if not bots_dir.exists():
         return {"bots": []}
+    def _parse_ts(value: object) -> datetime | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        ts = value.strip().replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(ts)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+
+    if bot is not None and not _BOT_ID_RE.match(bot):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
+    since_days = max(0, min(int(since_days), 7))
+    fill_r_totals, live_latest, fills_mtime = _fill_r_by_bot_since_days(since_days)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     rows = []
+    fills_stats = _fills_activity_snapshot()
+    now_ts = time.time()
     for bot_dir in sorted(bots_dir.iterdir()):
         if not bot_dir.is_dir():
+            continue
+        if bot and bot_dir.name != bot:
             continue
         status = read_json_safe(bot_dir / "status.json")
         if "_warning" in status:
             continue
+        recent_fills = read_json_safe(bot_dir / "recent_fills.json")
+        fills_list = recent_fills if isinstance(recent_fills, list) else []
+        local_last_fill = fills_list[0] if fills_list else None
+        live_last_fill = live_latest.get(bot_dir.name)
+        local_ts = _parse_ts(local_last_fill.get("ts")) if isinstance(local_last_fill, dict) else None
+        live_ts = _parse_ts(live_last_fill.get("ts")) if isinstance(live_last_fill, dict) else None
+        last_fill = local_last_fill
+        if isinstance(live_last_fill, dict) and (
+            local_ts is None or (live_ts is not None and live_ts >= local_ts)
+        ):
+            last_fill = live_last_fill
+        if last_fill:
+            status["last_trade_ts"] = last_fill.get("ts")
+            status["last_trade_side"] = last_fill.get("side")
+            status["last_trade_qty"] = last_fill.get("qty")
+            status["last_trade_r"] = last_fill.get("realized_r")
+            duration_s = (
+                last_fill.get("hold_seconds")
+                or last_fill.get("duration_s")
+                or last_fill.get("time_in_trade_s")
+            )
+            if duration_s in (None, "", 0, 0.0):
+                open_positions = float(status.get("open_positions") or 0)
+                open_ts = _parse_ts(status.get("last_signal_ts"))
+                if open_positions > 0 and open_ts is not None:
+                    duration_s = max(0, int((datetime.now(UTC) - open_ts).total_seconds()))
+            status["last_trade_duration_s"] = duration_s
+        else:
+            status["last_trade_ts"] = None
+            status["last_trade_side"] = None
+            status["last_trade_qty"] = None
+            status["last_trade_r"] = None
+            status["last_trade_duration_s"] = None
+        last_trade_dt = _parse_fill_dt(status.get("last_trade_ts"))
+        status["last_trade_age_s"] = (
+            max(0, int((datetime.now(UTC) - last_trade_dt).total_seconds()))
+            if last_trade_dt is not None
+            else None
+        )
+        # Keep roster PnL live by deriving today's delta from the bot curve when available.
+        eq_curve = read_json_safe(bot_dir / "equity_curve.json")
+        curve_mtime = _safe_mtime(bot_dir / "equity_curve.json") or 0.0
+        if isinstance(eq_curve, dict):
+            today_curve = eq_curve.get("today")
+            if isinstance(today_curve, list) and len(today_curve) >= 2:
+                try:
+                    start_eq = float(today_curve[0].get("equity"))
+                    end_eq = float(today_curve[-1].get("equity"))
+                    status["todays_pnl"] = round(end_eq - start_eq, 2)
+                except (TypeError, ValueError):
+                    pass
+            summary = eq_curve.get("summary")
+            if isinstance(summary, dict) and summary.get("today_pnl") is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    status["todays_pnl"] = round(float(summary.get("today_pnl")), 2)
+        # Keep day PnL strictly live by sourcing from today's fills.
+        status["todays_pnl"] = round(float(fill_r_totals.get(bot_dir.name, 0.0)), 2)
+        status["todays_pnl_source"] = "fills_realized_r"
+
+        status_mtime = _safe_mtime(bot_dir / "status.json") or 0.0
+        status["data_ts"] = max(status_mtime, curve_mtime)
+        status["data_age_s"] = round(max(0.0, now_ts - float(status["data_ts"])), 1)
+        hb_dt = _parse_fill_dt(status.get("heartbeat_ts"))
+        hb_age = (
+            max(0, int((datetime.now(UTC) - hb_dt).total_seconds()))
+            if hb_dt is not None
+            else None
+        )
+        status["heartbeat_age_s"] = hb_age
+        if not status.get("status"):
+            if hb_age is None:
+                status["status"] = "unknown"
+            elif hb_age <= 90:
+                status["status"] = "running"
+            elif hb_age <= 300:
+                status["status"] = "delayed"
+            else:
+                status["status"] = "stale"
         rows.append(status)
-    return {"bots": rows}
+    return {
+        "bots": rows,
+        "server_ts": now_ts,
+        "live": fills_stats,
+        "window_since_days": since_days,
+    }
 
 
 @app.get("/api/bot-fleet/{bot_id}")
@@ -690,12 +882,82 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             "recent_verdicts": [],
             "sage_effects": {"_warning": "no_data"},
         }
+    status = read_json_safe(bot_dir / "status.json")
+    recent_fills = read_json_safe(bot_dir / "recent_fills.json")
+    local_fills = recent_fills if isinstance(recent_fills, list) else []
+    merged_fills: list[dict] = []
+    dedup_keys: set[tuple] = set()
+    for row in local_fills:
+        if not isinstance(row, dict):
+            continue
+        key = (row.get("ts"), row.get("side"), row.get("price"), row.get("qty"))
+        if key in dedup_keys:
+            continue
+        dedup_keys.add(key)
+        merged_fills.append(row)
+    fills_path = _state_dir() / "blotter" / "fills.jsonl"
+    if fills_path.exists():
+        try:
+            for raw in reversed(fills_path.read_text(encoding="utf-8").splitlines()):
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if str(row.get("bot") or "") != bot_id:
+                    continue
+                key = (row.get("ts"), row.get("side"), row.get("price"), row.get("qty"))
+                if key in dedup_keys:
+                    continue
+                dedup_keys.add(key)
+                merged_fills.append(row)
+                if len(merged_fills) >= 80:
+                    break
+        except OSError:
+            pass
+    merged_fills.sort(
+        key=lambda x: str(x.get("ts") or ""),
+        reverse=True,
+    )
     return {
-        "status": read_json_safe(bot_dir / "status.json"),
-        "recent_fills": read_json_safe(bot_dir / "recent_fills.json"),
+        "status": status,
+        "recent_fills": merged_fills[:50],
         "recent_verdicts": read_json_safe(bot_dir / "recent_verdicts.json"),
         "sage_effects": read_json_safe(bot_dir / "sage_effects.json"),
     }
+
+
+@app.get("/api/live/fills")
+def live_fills(limit: int = 30, response: Response = None) -> dict:
+    """Latest fills for tape bootstrap/fallback rendering."""
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    limit = max(1, min(limit, 100))
+    fills_path = _state_dir() / "blotter" / "fills.jsonl"
+    if not fills_path.exists():
+        return {"fills": [], "server_ts": time.time()}
+    rows: list[dict] = []
+    try:
+        for raw in reversed(fills_path.read_text(encoding="utf-8").splitlines()):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+    except OSError:
+        return {"fills": [], "server_ts": time.time()}
+    return {"fills": rows, "server_ts": time.time()}
 
 
 @app.get("/api/risk_gates")
@@ -726,7 +988,13 @@ class SageModulationToggleRequest(BaseModel):
 
 
 @app.get("/api/equity")
-def equity_curve(bot: str | None = None, range: str = "1d") -> dict:
+def equity_curve(
+    bot: str | None = None,
+    range: str = "1d",
+    normalize: bool = False,
+    since_days: int = 1,
+    response: Response = None,
+) -> dict:
     """Equity curve + P&L summary for fleet or a specific bot.
 
     Params:
@@ -735,17 +1003,25 @@ def equity_curve(bot: str | None = None, range: str = "1d") -> dict:
     """
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
 
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
     if bot is not None and not _BOT_ID_RE.match(bot):
         raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
 
     if range not in ("1d", "1w", "1m", "all"):
         raise HTTPException(status_code=400, detail={"error_code": "invalid_range"})
+    since_days = max(0, min(int(since_days), 7))
 
     # Resolve source file
     if bot:
         source = _state_dir() / "bots" / bot / "equity_curve.json"
     else:
         source = _state_dir() / "blotter" / "equity_curve.json"
+    source_mtime = _safe_mtime(source)
+    _fill_totals, _fill_latest, fills_mtime = _fill_r_by_bot_since_days(since_days)
 
     data = read_json_safe(source)
     if "_warning" in data:
@@ -761,15 +1037,80 @@ def equity_curve(bot: str | None = None, range: str = "1d") -> dict:
                 "total_pnl": None,
             },
             "_warning": "no_data",
+            "server_ts": time.time(),
         }
 
     # Pick the right series for the requested range
     series_key = {"1d": "today", "1w": "week", "1m": "month", "all": "all_time"}[range]
     # If the file uses old `thirty_day` key, fall back to it for backwards-compat
     series = data.get(series_key) or data.get("thirty_day") or []
+    series_source = "blotter_curve" if bot is None else "bot_curve"
 
-    # Compute summary if not pre-computed in the file
-    summary = data.get("summary") or _compute_pnl_summary(data)
+    if bot is None:
+        # If fleet blotter curve is stale/missing, aggregate from per-bot curves.
+        agg_series, agg_mtime = _aggregate_fleet_curve_from_bots(series_key)
+        prefer_agg = bool(agg_series) and (
+            not series
+            or source_mtime is None
+            or (agg_mtime is not None and agg_mtime > source_mtime)
+        )
+        if prefer_agg:
+            series = agg_series
+            data = dict(data)
+            data[series_key] = agg_series
+            # Keep compatibility keys coherent for summary math.
+            if series_key == "today":
+                data["today"] = agg_series
+            if series_key == "week":
+                data["week"] = agg_series
+            if series_key == "month":
+                data["month"] = agg_series
+            if series_key == "all_time":
+                data["all_time"] = agg_series
+            source_mtime = agg_mtime or source_mtime
+            series_source = "aggregated_bot_curves"
+
+    # For intraday view, always synthesize directly from today's fills.
+    if range == "1d":
+        live_baseline = 5000.0
+        if bot is None:
+            bots_dir = _state_dir() / "bots"
+            bot_count = (
+                sum(1 for p in bots_dir.iterdir() if p.is_dir())
+                if bots_dir.exists()
+                else 7
+            )
+            live_baseline = float(max(1, bot_count) * 5000)
+        series_live = _intraday_equity_from_fills(bot, live_baseline, since_days)
+        if series_live:
+            series = series_live
+            data = dict(data)
+            data["today"] = series_live
+            source_mtime = fills_mtime
+            series_source = "fills_intraday"
+
+    baseline = None
+    if normalize:
+        # Rebase to clean paper baselines:
+        # - per bot: 5,000 starting equity
+        # - fleet aggregate: 5,000 x active bot count (default 7 => 35,000)
+        baseline = 5000.0
+        if bot is None:
+            bots_dir = _state_dir() / "bots"
+            bot_count = (
+                sum(1 for p in bots_dir.iterdir() if p.is_dir())
+                if bots_dir.exists()
+                else 7
+            )
+            baseline = float(max(1, bot_count) * 5000)
+        rebased_data = dict(data)
+        for k in ("today", "week", "month", "all_time", "thirty_day"):
+            if isinstance(rebased_data.get(k), list):
+                rebased_data[k] = _rebase_series(rebased_data[k], baseline)
+        series = _rebase_series(series, baseline)
+        summary = _compute_pnl_summary(rebased_data)
+    else:
+        summary = data.get("summary") or _compute_pnl_summary(data)
 
     # Preserve legacy keys (today/thirty_day) for backwards-compat with old test
     out = {
@@ -777,6 +1118,12 @@ def equity_curve(bot: str | None = None, range: str = "1d") -> dict:
         "range": range,
         "series": series,
         "summary": summary,
+        "baseline_equity": baseline,
+        "server_ts": time.time(),
+        "data_ts": source_mtime,
+        "source": series_source,
+        "since_days": since_days,
+        "live": _fills_activity_snapshot(bot=bot),
     }
     # Carry through legacy keys so existing consumers (and the
     # `test_equity_returns_curve` test) continue to work.
@@ -816,6 +1163,202 @@ def _compute_pnl_summary(data: dict) -> dict:
         "month_pnl": diff(month),
         "total_pnl": diff(all_time),
     }
+
+
+def _rebase_series(series: list[dict], baseline: float) -> list[dict]:
+    """Rebase an equity curve to a clean baseline while preserving PnL deltas."""
+    if not series:
+        return []
+    first = series[0].get("equity")
+    if first is None:
+        return series
+    try:
+        anchor = float(first)
+    except (TypeError, ValueError):
+        return series
+    rebased: list[dict] = []
+    for point in series:
+        p = dict(point)
+        try:
+            eq = float(point.get("equity"))
+            p["equity"] = round(baseline + (eq - anchor), 2)
+        except (TypeError, ValueError):
+            pass
+        rebased.append(p)
+    return rebased
+
+
+def _safe_mtime(path: Path) -> float | None:
+    try:
+        if path.exists():
+            return float(path.stat().st_mtime)
+    except OSError:
+        return None
+    return None
+
+
+def _aggregate_fleet_curve_from_bots(range_key: str) -> tuple[list[dict], float | None]:
+    """Build fleet curve by summing per-bot curves by timestamp."""
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
+    bots_dir = _state_dir() / "bots"
+    if not bots_dir.exists():
+        return ([], None)
+
+    by_ts: dict[str, float] = defaultdict(float)
+    latest_source_ts: float | None = None
+    for bot_dir in bots_dir.iterdir():
+        if not bot_dir.is_dir():
+            continue
+        curve_path = bot_dir / "equity_curve.json"
+        curve = read_json_safe(curve_path)
+        if not isinstance(curve, dict):
+            continue
+        series = curve.get(range_key) or curve.get("thirty_day") or []
+        if not isinstance(series, list):
+            continue
+        for point in series:
+            if not isinstance(point, dict):
+                continue
+            ts = str(point.get("ts") or "")
+            eq = point.get("equity")
+            if not ts:
+                continue
+            try:
+                by_ts[ts] += float(eq)
+            except (TypeError, ValueError):
+                continue
+        mts = _safe_mtime(curve_path)
+        if mts is not None:
+            latest_source_ts = mts if latest_source_ts is None else max(latest_source_ts, mts)
+
+    if not by_ts:
+        return ([], latest_source_ts)
+
+    merged = [{"ts": ts, "equity": round(eq, 2)} for ts, eq in sorted(by_ts.items(), key=lambda item: item[0])]
+    return (merged, latest_source_ts)
+
+
+def _fill_r_by_bot_since_days(since_days: int = 0) -> tuple[dict[str, float], dict[str, dict], float | None]:
+    """Return per-bot realized-R totals since UTC day cutoff and latest fill row."""
+    fills_path = _state_dir() / "blotter" / "fills.jsonl"
+    totals: dict[str, float] = defaultdict(float)
+    latest: dict[str, dict] = {}
+    latest_mtime = _safe_mtime(fills_path)
+    if not fills_path.exists():
+        return (totals, latest, latest_mtime)
+    since_days = max(0, min(int(since_days), 7))
+    now_utc = datetime.now(UTC)
+    cutoff_dt = (now_utc - timedelta(days=since_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        for raw in fills_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            bot = str(row.get("bot") or "").strip()
+            if not bot:
+                continue
+            ts_dt = _parse_fill_dt(row.get("ts"))
+            if ts_dt is not None and ts_dt >= cutoff_dt:
+                with contextlib.suppress(TypeError, ValueError):
+                    totals[bot] += float(row.get("realized_r", 0.0))
+            curr = latest.get(bot)
+            if curr is None or str(row.get("ts") or "") >= str(curr.get("ts") or ""):
+                latest[bot] = row
+    except OSError:
+        pass
+    return (totals, latest, latest_mtime)
+
+
+def _intraday_equity_from_fills(bot: str | None, baseline: float, since_days: int = 0) -> list[dict]:
+    """Build an intraday equity-like curve from realized-R fills since UTC cutoff."""
+    fills_path = _state_dir() / "blotter" / "fills.jsonl"
+    if not fills_path.exists():
+        return []
+    since_days = max(0, min(int(since_days), 7))
+    now_utc = datetime.now(UTC)
+    cutoff_dt = (now_utc - timedelta(days=since_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows: list[dict] = []
+    try:
+        for raw in fills_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts_dt = _parse_fill_dt(row.get("ts"))
+            if ts_dt is None or ts_dt < cutoff_dt:
+                continue
+            if bot and str(row.get("bot") or "") != bot:
+                continue
+            rows.append(row)
+    except OSError:
+        return []
+    rows.sort(key=lambda r: str(r.get("ts") or ""))
+    eq = baseline
+    out: list[dict] = []
+    for row in rows:
+        with contextlib.suppress(TypeError, ValueError):
+            eq += float(row.get("realized_r", 0.0))
+        out.append({"ts": str(row.get("ts") or ""), "equity": round(eq, 2)})
+    return out
+
+
+def _parse_fill_dt(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    ts = value.strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _fills_activity_snapshot(bot: str | None = None) -> dict:
+    """Lightweight live telemetry so UI can distinguish idle vs stale."""
+    fills_path = _state_dir() / "blotter" / "fills.jsonl"
+    if not fills_path.exists():
+        return {"last_fill_ts": None, "fills_1h": 0, "fills_24h": 0}
+    now = datetime.now(UTC)
+    h1 = now - timedelta(hours=1)
+    h24 = now - timedelta(hours=24)
+    last_fill_ts: str | None = None
+    fills_1h = 0
+    fills_24h = 0
+    try:
+        for raw in fills_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if bot and str(row.get("bot") or "") != bot:
+                continue
+            ts_raw = row.get("ts")
+            ts_dt = _parse_fill_dt(ts_raw)
+            if ts_dt is None:
+                continue
+            ts_txt = str(ts_raw or "")
+            if last_fill_ts is None or ts_txt > last_fill_ts:
+                last_fill_ts = ts_txt
+            if ts_dt >= h24:
+                fills_24h += 1
+            if ts_dt >= h1:
+                fills_1h += 1
+    except OSError:
+        pass
+    return {"last_fill_ts": last_fill_ts, "fills_1h": fills_1h, "fills_24h": fills_24h}
 
 
 @app.get("/api/preflight")
@@ -881,6 +1424,10 @@ def post_sage_modulation_toggle(
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
             raise
+    _append_dashboard_event(
+        "sage_modulation_toggle",
+        {"enabled": req.enabled, "by": _["user"]},
+    )
     return {"enabled": req.enabled}
 
 
@@ -910,6 +1457,7 @@ def bot_pause(bot_id: str, session: dict = Depends(require_session)) -> dict:  #
     """Signal the bot to pause new entries (existing positions kept)."""
     _validate_bot_id(bot_id)
     _write_control_signal(bot_id, "pause", session["user"])
+    _append_dashboard_event("bot_pause", {"bot_id": bot_id, "by": session["user"]})
     return {"ok": True, "action": "pause", "bot_id": bot_id}
 
 
@@ -918,6 +1466,7 @@ def bot_resume(bot_id: str, session: dict = Depends(require_session)) -> dict:  
     """Signal the bot to resume taking new entries."""
     _validate_bot_id(bot_id)
     _write_control_signal(bot_id, "resume", session["user"])
+    _append_dashboard_event("bot_resume", {"bot_id": bot_id, "by": session["user"]})
     return {"ok": True, "action": "resume", "bot_id": bot_id}
 
 
@@ -926,6 +1475,7 @@ def bot_flatten(bot_id: str, session: dict = Depends(require_step_up)) -> dict: 
     """Step-up gated: signal bot to flatten ALL positions (reduce_only)."""
     _validate_bot_id(bot_id)
     _write_control_signal(bot_id, "flatten", session["user"])
+    _append_dashboard_event("bot_flatten", {"bot_id": bot_id, "by": session["user"]})
     return {"ok": True, "action": "flatten", "bot_id": bot_id}
 
 
@@ -966,6 +1516,7 @@ def bot_kill(bot_id: str, session: dict = Depends(require_step_up)) -> dict:  # 
                 os.unlink(tmp_name)
             raise
     _write_control_signal(bot_id, "kill", session["user"])
+    _append_dashboard_event("bot_kill", {"bot_id": bot_id, "by": session["user"]})
     return {"ok": True, "action": "kill", "bot_id": bot_id, "latch_state": "tripped"}
 
 
@@ -1148,7 +1699,7 @@ def jarvis_decisions(n: int = 20, subsystem: str | None = None) -> dict:
       * n: how many of the most recent records to return (default 20)
       * subsystem: optional filter like "bot.mnq" or "bot.btc_hybrid"
     """
-    audit_path = STATE_DIR / "jarvis_audit.jsonl"
+    audit_path = _state_dir() / "jarvis_audit.jsonl"
     if not audit_path.exists():
         return {
             "decisions": [],
@@ -1211,7 +1762,7 @@ def jarvis_summary(window: int = 500) -> dict:
     orders did JARVIS gate in the last 500 decisions, split across
     each bot and each verdict?"
     """
-    audit_path = STATE_DIR / "jarvis_audit.jsonl"
+    audit_path = _state_dir() / "jarvis_audit.jsonl"
     if not audit_path.exists():
         return {"window": window, "total": 0, "by_subsystem": {}, "by_verdict": {}}
     try:
@@ -1564,7 +2115,7 @@ def all_systems_status() -> dict:
     # Dashboard itself (always GREEN if we're answering)
     out["dashboard"] = {
         "status": "GREEN",
-        "detail": f"state_dir_exists={STATE_DIR.exists()}",
+        "detail": f"state_dir_exists={_state_dir().exists()}",
     }
 
     # Brokers: try readiness checks, tolerate import errors
@@ -1667,7 +2218,7 @@ def all_systems_status() -> dict:
                 }
 
     # JARVIS audit log: any recent activity?
-    audit_path = STATE_DIR / "jarvis_audit.jsonl"
+    audit_path = _state_dir() / "jarvis_audit.jsonl"
     if not audit_path.exists():
         out["jarvis"] = {
             "status": "YELLOW",
@@ -1699,7 +2250,7 @@ def all_systems_status() -> dict:
 
 
 @app.post("/api/tasks/{task}/fire")
-def fire_task(task: str) -> dict:
+def fire_task(task: str, session: dict = Depends(require_step_up)) -> dict:  # noqa: B008
     """Manually fire a BackgroundTask. Useful for ad-hoc retrospectives."""
     from eta_engine.brain.avengers import BackgroundTask
 
@@ -1707,25 +2258,64 @@ def fire_task(task: str) -> dict:
         BackgroundTask(task.upper())
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=f"unknown task: {task}") from exc
-    # Fire async via subprocess so we don't block the response
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "deploy.scripts.run_task",
-            task.upper(),
-            "--state-dir",
-            str(STATE_DIR),
-            "--log-dir",
-            str(LOG_DIR),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    return {
+    try:
+        result = run_background_task(task.upper(), _state_dir(), _log_dir(), timeout_s=120)
+    except subprocess.TimeoutExpired as exc:
+        _append_dashboard_event("task_fire_timeout", {"task": task.upper(), "by": session["user"]})
+        raise HTTPException(
+            status_code=504,
+            detail={"error_code": "task_timeout", "task": task.upper(), "detail": str(exc)},
+        ) from exc
+
+    payload = {
         "task": task.upper(),
         "returncode": result.returncode,
         "stdout": result.stdout[-1000:],
         "stderr": result.stderr[-1000:],
     }
+    _append_dashboard_event(
+        "task_fire",
+        {"task": task.upper(), "by": session["user"], "returncode": result.returncode},
+    )
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail={"error_code": "task_failed", **payload})
+    return payload
+
+
+@app.get("/api/ops/audit_timeline")
+def ops_audit_timeline(limit: int = 50) -> dict:
+    """Recent dashboard control/auth events."""
+    capped = max(1, min(limit, 200))
+    event_path = _state_dir() / "dashboard_events.jsonl"
+    if not event_path.exists():
+        return {"events": [], "source": str(event_path)}
+    try:
+        lines = read_jsonl_tail(event_path, capped)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"cannot read audit timeline: {exc}") from exc
+    events: list[dict] = []
+    for raw in lines:
+        try:
+            events.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+    return {"events": events, "source": str(event_path)}
+
+
+@app.get("/api/telemetry")
+def dashboard_telemetry() -> dict:
+    """Lightweight in-process telemetry for operator visibility."""
+    rows = []
+    for path, count in sorted(_REQ_COUNTS.items()):
+        lat = _REQ_LAT_MS.get(path, deque())
+        sorted_lat = sorted(lat)
+        rows.append(
+            {
+                "path": path,
+                "count": count,
+                "errors": _REQ_ERRORS.get(path, 0),
+                "avg_ms": round(sum(lat) / len(lat), 2) if lat else None,
+                "p95_ms": round(sorted_lat[max(0, int(len(sorted_lat) * 0.95) - 1)], 2) if lat else None,
+            },
+        )
+    return {"uptime_s": round(time.time() - _START_TS, 2), "routes": rows}
