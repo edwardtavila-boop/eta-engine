@@ -2,7 +2,7 @@
 EVOLUTIONARY TRADING ALGO  //  scripts.extend_nq_daily_yahoo
 =============================================================
 Append fresh NQ / MNQ daily bars from Yahoo Finance to the
-on-disk parquet/CSV history at ``C:\\mnq_data\\history\\``.
+on-disk parquet/CSV history under the workspace ``mnq_data/history`` root.
 
 Why this script
 ---------------
@@ -30,7 +30,7 @@ backfill.
 Usage
 -----
     python -m eta_engine.scripts.extend_nq_daily_yahoo \\
-        [--symbol NQ=F] [--out C:\\mnq_data\\history\\NQ1_D.csv] \\
+        [--symbol NQ=F] [--out <workspace>\\mnq_data\\history\\NQ1_D.csv] \\
         [--dry-run]
 """
 

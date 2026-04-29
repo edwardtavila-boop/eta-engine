@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from scripts import lint_stale_paths
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _write_sample(tmp_path: Path, line: str) -> Path:
@@ -54,3 +51,26 @@ def test_scan_file_allows_same_line_historical_marker(tmp_path: Path) -> None:
     )
 
     assert lint_stale_paths.scan_file(path) == []
+
+
+def test_active_data_operator_docs_do_not_advertise_forbidden_runtime_roots() -> None:
+    root = Path(__file__).resolve().parent.parent
+    targets = (
+        "data/requirements.py",
+        "scripts/compare_coinbase_vs_ibkr.py",
+        "scripts/extend_nq_daily_yahoo.py",
+        "scripts/fetch_btc_bars.py",
+        "scripts/fetch_funding_rates.py",
+        "scripts/fetch_ibkr_crypto_bars.py",
+        "scripts/fetch_onchain_history.py",
+        "scripts/fetch_xrp_news_history.py",
+        "scripts/run_walk_forward_mnq_real.py",
+    )
+
+    offenders = {}
+    for target in targets:
+        violations = lint_stale_paths.scan_file(root / target)
+        if violations:
+            offenders[target] = violations
+
+    assert offenders == {}

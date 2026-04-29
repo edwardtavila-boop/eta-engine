@@ -15,9 +15,9 @@ needs HISTORICAL daily series so requirements like::
              "Glassnode-style daily metrics")
 
 can be satisfied by the data library and audited as
-``MISSING -> AVAILABLE``. This fetcher writes
-``C:\\crypto_data\\onchain\\<X>ONCHAIN_D.csv`` with one row per
-calendar day so the audit picks the file up under the synthetic
+``MISSING -> AVAILABLE``. This fetcher writes one row per calendar day
+under the workspace ``data/crypto/onchain`` root so the audit picks the
+file up under the synthetic
 symbol ``<X>ONCHAIN`` (see ``data.audit._resolve_library_lookup``).
 
 What's covered

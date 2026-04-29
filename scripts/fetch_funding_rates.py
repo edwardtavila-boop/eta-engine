@@ -2,7 +2,7 @@
 EVOLUTIONARY TRADING ALGO  //  scripts.fetch_funding_rates
 ==========================================================
 Fetcher for perpetual-futures funding rates from OKX's public REST
-API. Writes CSVs into ``C:\\crypto_data\\history\\`` using the
+API. Writes CSVs into the workspace ``data/crypto/history`` root using the
 filename convention ``<SYMBOL>FUND_8h.csv`` (e.g. ``BTCFUND_8h.csv``).
 
 Why OKX (not Binance)

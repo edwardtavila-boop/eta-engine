@@ -12,9 +12,9 @@ explicit gate:
     the data library (see BotRequirements:xrp_perp), and (2) a
     feature class consumes it..."
 
-This script satisfies (1) — at the **structural** level. It
-populates ``C:\\crypto_data\\sentiment\\XRPSENT_D.csv`` with a
-daily mention-count time series so:
+This script satisfies (1) — at the **structural** level. It populates
+``XRPSENT_D.csv`` under the workspace ``data/crypto/sentiment`` root with
+a daily mention-count time series so:
 
   * ``data.audit`` flips XRP's sentiment requirement from
     MISSING -> AVAILABLE.

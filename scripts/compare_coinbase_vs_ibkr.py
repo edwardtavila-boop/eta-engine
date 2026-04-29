@@ -15,8 +15,8 @@ What it does
 1. Resolves the registry assignment for the named bot
    (e.g. ``btc_hybrid``) — same strategy_kind + extras config
    the strict gate promoted.
-2. Loads Coinbase bars from ``C:\\crypto_data\\history\\``.
-3. Loads IBKR-native bars from ``C:\\crypto_data\\ibkr\\history\\``
+2. Loads Coinbase bars from the workspace ``data/crypto/history`` root.
+3. Loads IBKR-native bars from the workspace ``data/crypto/ibkr/history`` root
    (populated by ``scripts.fetch_ibkr_crypto_bars``).
 4. Runs the promoted strategy on each tape independently —
    producing a Coinbase trade list and an IBKR trade list over

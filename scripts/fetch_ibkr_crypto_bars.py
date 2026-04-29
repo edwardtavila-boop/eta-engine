@@ -11,7 +11,7 @@ promoted via the Coinbase-spot baseline must be re-fetched from
 IBKR-native CME-aligned bars and drift-checked before real-money
 activation. This is the fetcher the policy points at.
 
-Outputs are written to ``C:\\crypto_data\\ibkr\\history\\`` —
+Outputs are written to the workspace ``data/crypto/ibkr/history`` root,
 deliberately a sibling of the Coinbase root, NOT the same root.
 Both feeds stay side-by-side so:
 

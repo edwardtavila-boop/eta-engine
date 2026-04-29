@@ -23,10 +23,10 @@ This module is the registry of requirements. The audit function in
 ``data.audit`` cross-references it with the library to produce a
 coverage report — "BTC bot is missing 1h bars + funding + onchain."
 
-When a new feed gets added (e.g. you start writing
-``C:\\crypto_data\\btc_1h.csv``), add a matching ``DataRequirement``
-here and the audit will flip from MISSING to AVAILABLE on the next
-``announce_data_library`` run.
+When a new feed gets added (e.g. you start writing a new CSV under the
+workspace ``data/crypto/history`` root), add a matching
+``DataRequirement`` here and the audit will flip from MISSING to
+AVAILABLE on the next ``announce_data_library`` run.
 """
 
 from __future__ import annotations

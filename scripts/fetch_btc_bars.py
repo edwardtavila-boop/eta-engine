@@ -3,8 +3,8 @@ EVOLUTIONARY TRADING ALGO  //  scripts.fetch_btc_bars
 ======================================================
 Fetcher for crypto bars from Coinbase's public REST API. Writes
 CSVs in the "history" schema (``time, open, high, low, close,
-volume``) into ``C:\\crypto_data\\history\\`` so the data library
-picks them up automatically.
+volume``) into the workspace ``data/crypto/history`` root so the data
+library picks them up automatically.
 
 Why Coinbase spot, not CME directly
 -----------------------------------

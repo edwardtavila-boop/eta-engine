@@ -3,10 +3,11 @@ EVOLUTIONARY TRADING ALGO  //  scripts.run_walk_forward_mnq_real
 ================================================================
 Real-data walk-forward on MNQ 5-minute bars.
 
-Reads ``C:\\mnq_data\\mnq_5m.csv`` (or whatever path is in
-``MNQ_DATA_PATH`` env var), converts rows to ``BarData``, and runs the
-strict per-fold DSR walk-forward pipeline. Same gate, same
-auto-explanation as the demo — but on actual MNQ history.
+Reads from the data library by default, or from the workspace
+``mnq_data/mnq_5m.csv`` style path supplied through ``MNQ_DATA_PATH``,
+converts rows to ``BarData``, and runs the strict per-fold DSR
+walk-forward pipeline. Same gate, same auto-explanation as the demo —
+but on actual MNQ history.
 
 Why this script
 ---------------
@@ -14,7 +15,7 @@ The demo on synthetic bars is enough to validate the framework
 machinery. To learn anything about real strategy edge, we need the
 strict gate evaluated on bars the strategy has never seen. This
 script is the smallest possible bridge from the existing
-WalkForwardEngine to ``C:\\mnq_data\\``.
+WalkForwardEngine to the workspace ``mnq_data`` root.
 
 Usage::
 
@@ -22,7 +23,7 @@ Usage::
     python -m eta_engine.scripts.run_walk_forward_mnq_real
 
     # custom path / time slice
-    MNQ_DATA_PATH=C:\\mnq_data\\mnq_5m.csv \\
+    MNQ_DATA_PATH=<workspace>\\mnq_data\\mnq_5m.csv \\
     MNQ_BARS_LIMIT=5000 \\
         python -m eta_engine.scripts.run_walk_forward_mnq_real
 
@@ -43,6 +44,7 @@ from __future__ import annotations
 import csv
 import os
 import sys
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -76,10 +78,8 @@ def _load_csv(path: Path, limit: int | None = None) -> list:
             if ts_raw:
                 if ts_raw.endswith("Z"):
                     ts_raw = ts_raw[:-1] + "+00:00"
-                try:
+                with suppress(ValueError):
                     ts = datetime.fromisoformat(ts_raw)
-                except ValueError:
-                    pass
             if ts is None:
                 # history/MNQ1_*.csv shape: epoch seconds in 'time' column
                 epoch_raw = row.get("time") or row.get("epoch_s")
@@ -111,7 +111,7 @@ def _load_csv(path: Path, limit: int | None = None) -> list:
     return bars
 
 
-def _load_es_bars_aligned(target_ts) -> list:  # type: ignore[no-untyped-def]
+def _load_es_bars_aligned(_target_ts: object) -> list:
     """Best-effort load of ES1 5m bars for the cross-asset correlation gate.
 
     Returns ``[]`` when the data library has no ES1 5m feed. The
