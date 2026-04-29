@@ -51,8 +51,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
-from eta_engine.scripts.workspace_roots import CRYPTO_HISTORY_ROOT, MNQ_HISTORY_ROOT  # noqa: E402
-
 # Strategy kinds we know how to resolve at runtime
 _RESOLVABLE_KINDS: frozenset[str] = frozenset({
     "confluence", "orb", "drb", "grid",
@@ -64,18 +62,10 @@ _RESOLVABLE_KINDS: frozenset[str] = frozenset({
 
 
 def _check_data_available(symbol: str, timeframe: str) -> bool:
-    """True if a bar CSV exists for this symbol/timeframe."""
-    # Try crypto root first, then mnq root
-    for root in (
-        CRYPTO_HISTORY_ROOT,
-        MNQ_HISTORY_ROOT,
-    ):
-        for variant in (f"{symbol}_{timeframe}.csv",
-                        f"{symbol}1_{timeframe}.csv"):
-            p = root / variant
-            if p.exists() and p.stat().st_size > 100:
-                return True
-    return False
+    """True if the canonical data library can resolve this dataset."""
+    from eta_engine.data.library import default_library
+
+    return default_library().get(symbol=symbol, timeframe=timeframe) is not None
 
 
 def _check_bot_dir_exists(bot_id: str) -> bool:
