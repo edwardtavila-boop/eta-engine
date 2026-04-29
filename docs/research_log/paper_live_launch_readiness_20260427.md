@@ -122,7 +122,9 @@ posture in `operator_queue_snapshot` / `operator_queue_heartbeat` via
 `bot_strategy_readiness_status`, `bot_strategy_blocked_data`, and
 `bot_strategy_paper_ready`. Daily premarket and `jarvis_live_health.json` now
 carry the same posture too, giving scheduled JARVIS context the launch-lane
-view without requiring a dashboard session.
+view without requiring a dashboard session. The JARVIS strategy supervisor
+heartbeat and `/api/bot-fleet` rows now preserve per-bot `strategy_readiness`
+fields as well.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

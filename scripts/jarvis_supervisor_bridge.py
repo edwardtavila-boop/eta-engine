@@ -87,6 +87,8 @@ def jarvis_supervisor_bot_accounts(
         wins = n_exits if realized_pnl > 0 else 0
         losses = n_exits if realized_pnl < 0 else 0
         last_verdict = str(bot.get("last_jarvis_verdict") or "")
+        strategy_readiness = bot.get("strategy_readiness")
+        readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
         running = bool(bot.get("open_position")) or n_entries > 0
         status = "running" if running else "idle"
         accounts.append({
@@ -112,6 +114,11 @@ def jarvis_supervisor_bot_accounts(
             "symbol": str(bot.get("symbol") or ""),
             "direction": str(bot.get("direction") or ""),
             "last_jarvis_verdict": last_verdict,
+            "strategy_readiness": readiness_payload,
+            "launch_lane": readiness_payload.get("launch_lane"),
+            "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),
+            "can_live_trade": bool(readiness_payload.get("can_live_trade")),
+            "readiness_next_action": readiness_payload.get("next_action"),
         })
     return accounts
 

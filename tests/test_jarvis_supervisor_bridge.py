@@ -63,6 +63,13 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
                 "open_position": None,
                 "last_jarvis_verdict": "APPROVED",
                 "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                "strategy_readiness": {
+                    "status": "ready",
+                    "launch_lane": "live_preflight",
+                    "can_paper_trade": True,
+                    "can_live_trade": False,
+                    "next_action": "Run per-bot promotion preflight before live routing.",
+                },
             },
             {
                 "bot_id": "btc_hybrid",
@@ -97,6 +104,10 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["today"]["pnl"] == 1.5
     assert mnq["source"] == "jarvis_strategy_supervisor"
     assert mnq["last_jarvis_verdict"] == "APPROVED"
+    assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
+    assert mnq["launch_lane"] == "live_preflight"
+    assert mnq["can_paper_trade"] is True
+    assert mnq["can_live_trade"] is False
 
     btc = accounts[1]
     assert btc["id"] == "btc_hybrid"

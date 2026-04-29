@@ -1340,6 +1340,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         last_side = str(open_pos["side"])
     elif sup.get("direction"):
         last_side = str(sup["direction"]).upper()
+    strategy_readiness = sup.get("strategy_readiness") if isinstance(sup.get("strategy_readiness"), dict) else {}
     return {
         "id":                  str(sup.get("id") or ""),
         "name":                str(sup.get("name") or ""),
@@ -1361,6 +1362,13 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "confirmed":           True,
         "mode":                str(sup.get("mode") or ""),
         "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
+        "strategy_readiness":  strategy_readiness,
+        "launch_lane":         str(sup.get("launch_lane") or strategy_readiness.get("launch_lane") or ""),
+        "can_paper_trade":     bool(sup.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
+        "can_live_trade":      bool(sup.get("can_live_trade") or strategy_readiness.get("can_live_trade")),
+        "readiness_next_action": str(
+            sup.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
+        ),
     }
 
 

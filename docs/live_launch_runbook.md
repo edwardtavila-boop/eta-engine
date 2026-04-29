@@ -185,6 +185,10 @@ python -m eta_engine.scripts.jarvis_live --max-ticks 1 --interval 1
 include bot strategy readiness notes/payloads so premarket and live-supervisor
 automation can see the launch posture without opening the dashboard.
 
+The JARVIS strategy supervisor heartbeat also enriches each bot row with
+`strategy_readiness`, and `/api/bot-fleet` preserves that per-bot
+`launch_lane` / paper-live readiness detail for operator and framework clients.
+
 ---
 
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)
