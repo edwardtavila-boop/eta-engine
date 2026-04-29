@@ -106,6 +106,22 @@ routing:
     jarvis_anomaly_detected:   { level: warn,     channels: [pushover, email] }
     kaizen_promotion_pending:  { level: info,     channels: [email] }
 
+  # Registered routes that are intentionally present before their
+  # production dispatcher hookup lands. Keeping this list explicit lets
+  # the audit distinguish reserved operator routes from dead config.
+  reserved_events:
+    apex_nightly_audit: "cron audit email route; emitted by scheduled audit wrapper"
+    apex_rule_violate: "future compliance gate route for Apex/JARVIS rule violations"
+    apex_sla_breach: "SLA watcher breach route reserved for service monitor wiring"
+    apex_sla_recovered: "SLA watcher recovery route reserved for service monitor wiring"
+    bot_entry: "trade lifecycle route reserved for broker execution hooks"
+    bot_exit_loss: "trade lifecycle route reserved for broker execution hooks"
+    bot_exit_win: "trade lifecycle route reserved for broker execution hooks"
+    dd_trip_wire_hit: "drawdown tripwire route reserved for risk-governor integration"
+    firm_red_gate: "operator red-gate route reserved for legacy Firm compatibility"
+    preflight_fail: "preflight gate route reserved for launch wrapper integration"
+    weekly_review: "weekly operator digest route reserved for review automation"
+
 # Rate limits
 rate_limit:
   info_per_minute: 10

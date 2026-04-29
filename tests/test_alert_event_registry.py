@@ -31,9 +31,9 @@ What this test does NOT enforce
 * It does not check that the level is correct (``info`` vs ``warn`` vs
   ``critical``) -- that's a judgement call per event, not a structural
   invariant.
-* It does not flag *registered-but-unused* events. Those are forward-
-  looking entries (e.g. ``bot_entry`` is in YAML but no code path
-  emits it yet). Removing them silently would break the next hookup.
+* It permits *registered-but-unused* events only when they are listed
+  under ``routing.reserved_events`` with an explicit reservation note.
+  Removing those routes silently would break the next hookup.
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ import re
 from pathlib import Path
 
 import yaml
+
+from scripts import _audit_alert_events
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -90,6 +92,19 @@ def test_every_dispatched_event_is_registered_in_alerts_yaml() -> None:
         f"Add a routing.events entry for each: {missing}.\n"
         + "\n".join(f"  {ev:<30s} -> {', '.join(p.relative_to(ROOT).as_posix() for p in called[ev])}" for ev in missing)
     )
+
+
+def test_registered_but_unused_alert_events_are_explicitly_reserved() -> None:
+    """
+    Forward-looking alert routes are allowed only when they are explicit.
+    Otherwise stale YAML can masquerade as production-ready paging.
+    """
+    report = _audit_alert_events.audit(ROOT)
+
+    assert report["missing"] == set()
+    assert report["unreserved_unused"] == set()
+    assert report["reserved_unused"], "expected at least one intentional reserved route"
+    assert report["reserved"] <= report["registered"]
 
 
 def test_no_event_is_dispatched_under_a_non_snake_case_name() -> None:
