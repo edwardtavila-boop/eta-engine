@@ -177,7 +177,7 @@ class DrilldownPanel extends Panel {
 // --- 3. Equity curve (Chart.js) — per-bot + timeframe selector + KPI cards ---
 class EquityCurvePanel extends Panel {
   constructor() {
-    super('fl-equity-curve', `/api/equity?range=1d&normalize=1&since_days=1&bot=${encodeURIComponent(selection.botId)}`, 'Fleet Equity Curve');
+    super('fl-equity-curve', `/api/fleet-equity?range=1d&normalize=1&since_days=1&bot=${encodeURIComponent(selection.botId)}`, 'Fleet Equity Curve');
     this.chart = null;
     this.selectedBot = null; // default to fleet overview mode
     this.range = '1d';
@@ -272,7 +272,7 @@ class EquityCurvePanel extends Panel {
     params.set('normalize', '1');
     params.set('since_days', '1');
     if (this.selectedBot) params.set('bot', this.selectedBot);
-    this.endpoint = `/api/equity?${params.toString()}`;
+    this.endpoint = `/api/fleet-equity?${params.toString()}`;
     // Update title
     if (this.element) {
       const t = this.element.querySelector('.panel-title');
@@ -289,7 +289,7 @@ class EquityCurvePanel extends Panel {
     if (!this.element) return;
     this.setLoading();
     this._updateEndpoint();
-    const base = this.endpoint || '/api/equity?range=1d&normalize=1';
+    const base = this.endpoint || '/api/fleet-equity?range=1d&normalize=1';
     const sep = base.includes('?') ? '&' : '?';
     const endpoints = [base, `${base}${sep}_t=${Date.now()}`];
     let payload = null;

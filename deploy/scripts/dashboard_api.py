@@ -167,7 +167,7 @@ DASHBOARD_CARD_REGISTRY = (
         "id": "fl-equity-curve",
         "title": "Fleet Equity Curve",
         "source": "endpoint",
-        "endpoint": "/api/equity?range=1d&normalize=1&since_days=1",
+        "endpoint": "/api/fleet-equity?range=1d&normalize=1&since_days=1",
         "required": True,
         "stale_after_s": 15,
     },

@@ -208,6 +208,8 @@ class TestStatusPage:
         assert "release_stage" in bot_fleet
         assert "ensureLiveBotSelection" in bot_fleet
         assert "selectBot(firstLiveBot.name" in bot_fleet
+        assert "/api/fleet-equity" in bot_fleet
+        assert "/api/equity?" not in bot_fleet
         assert "document.hidden" in panels
         assert "cache: 'no-store'" in auth
 
@@ -263,6 +265,7 @@ class TestStatusPage:
         assert "api_build" in supercharge
         assert "bot_fleet" in supercharge
         assert "equity" in supercharge
+        assert "/api/fleet-equity" in supercharge
         assert "eta-command-center-diagnostics" in supercharge
 
     def test_card_health_registry_covers_every_rendered_panel(self):

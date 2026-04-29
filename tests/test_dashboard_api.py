@@ -195,7 +195,7 @@ class TestDashboardAPI:
         assert cards["cc-verdict-stream"]["source"] == "sse"
         assert cards["fl-controls"]["source"] == "client"
         assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
-        assert cards["fl-equity-curve"]["endpoint"].startswith("/api/equity?")
+        assert cards["fl-equity-curve"]["endpoint"].startswith("/api/fleet-equity?")
         assert all(card["status"] not in {"dead", "stale"} for card in data["cards"])
 
     def test_dashboard_diagnostics_rollup_explains_live_sources(self, app_client):

@@ -887,7 +887,7 @@ function initConsistencyGuardrails() {
 function initLatencyBudgetGuardrails() {
   const budgets = {
     '/api/live/': 800,
-    '/api/equity': 1300,
+    '/api/fleet-equity': 1300,
     '/api/bot-fleet': 1100,
     '/api/jarvis': 1500,
     default: 1200,
@@ -897,7 +897,7 @@ function initLatencyBudgetGuardrails() {
     const endpoint = String(e.detail?.endpoint || '');
     const latency = Number(e.detail?.latencyMs || 0);
     const budget = endpoint.includes('/api/live/') ? budgets['/api/live/']
-      : endpoint.includes('/api/equity') ? budgets['/api/equity']
+      : endpoint.includes('/api/fleet-equity') ? budgets['/api/fleet-equity']
       : endpoint.includes('/api/bot-fleet') ? budgets['/api/bot-fleet']
       : endpoint.includes('/api/jarvis') ? budgets['/api/jarvis']
       : budgets.default;
