@@ -184,7 +184,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", default="apex-status", help="Cloudflare Pages project name")
     ap.add_argument("--zone", required=True, help="CF zone, e.g. evolutionarytradingalgo.live")
-    ap.add_argument("--hostname", default="status", help="hostname prefix (status -> status.evolutionarytradingalgo.live)")
+    ap.add_argument(
+        "--hostname",
+        default="status",
+        help="hostname prefix (status -> status.evolutionarytradingalgo.live)",
+    )
     ap.add_argument("--source", default=str(Path(__file__).resolve().parent.parent / "status_page"))
     args = ap.parse_args(argv)
 

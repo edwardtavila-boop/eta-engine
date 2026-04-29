@@ -123,7 +123,11 @@ class TelegramAdapter:
     def test(self) -> dict:
         """Send a heartbeat test message."""
         return self.send(
-            f"*Evolutionary Trading Algo adapter online* \nTime: `{datetime.now(UTC).isoformat()}`\nChat: `{self.chat_id}`",
+            (
+                "*Evolutionary Trading Algo adapter online* \n"
+                f"Time: `{datetime.now(UTC).isoformat()}`\n"
+                f"Chat: `{self.chat_id}`"
+            ),
             priority="INFO",
         )
 
