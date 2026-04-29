@@ -9,6 +9,7 @@ proceed if either fails. Exit codes:
   3 -> setup error (e.g. cannot find pytest or ruff)
   4 -> forbidden runtime artifact staged
   5 -> stale external path reference staged
+  6 -> potential secret staged
 
 Usage
 -----
@@ -172,6 +173,28 @@ def _stale_path_lint_check(*, root: Path) -> int:
     return 0
 
 
+def _secret_audit_candidates_from_lines(lines: list[str]) -> list[str]:
+    """Return staged files that should be scanned for secrets."""
+    return [line.replace("\\", "/") for line in lines]
+
+
+def _secret_audit_check(*, root: Path) -> int:
+    """Block staged files that look like they contain secrets."""
+    candidates = _secret_audit_candidates_from_lines(_staged_files(root=root))
+    if not candidates:
+        print("[pre-commit] no staged files for secret audit", file=sys.stderr)
+        return 0
+
+    rc = _run(["python", "scripts/_secret_audit.py", "--max-yellow", "0", *candidates], cwd=root)
+    if rc != 0:
+        print(
+            f"[pre-commit] FAIL: secret audit rejected {len(candidates)} staged file(s)",
+            file=sys.stderr,
+        )
+        return 6
+    return 0
+
+
 def _ruff_check(*, root: Path) -> int:
     """Ruff over staged .py files only.
 
@@ -253,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print("[pre-commit] running stale-path lint...", file=sys.stderr)
     rc = _stale_path_lint_check(root=ROOT)
+    if rc != 0:
+        return rc
+
+    print("[pre-commit] running secret audit...", file=sys.stderr)
+    rc = _secret_audit_check(root=ROOT)
     if rc != 0:
         return rc
 

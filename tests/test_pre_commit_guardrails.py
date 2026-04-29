@@ -65,6 +65,22 @@ def test_pre_commit_selects_text_files_for_stale_path_lint() -> None:
     ]
 
 
+def test_pre_commit_secret_audit_scans_all_staged_paths() -> None:
+    candidates = _pre_commit_check._secret_audit_candidates_from_lines(
+        [
+            "docs\\guide.md",
+            "assets\\chart.png",
+            "config\\settings.json",
+        ]
+    )
+
+    assert candidates == [
+        "docs/guide.md",
+        "assets/chart.png",
+        "config/settings.json",
+    ]
+
+
 def test_pre_commit_surfaces_docstring_ratchet_advisory() -> None:
     specs = _pre_commit_check._advisory_audit_specs()
 
