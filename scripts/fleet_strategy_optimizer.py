@@ -176,6 +176,65 @@ def _grid_grid() -> tuple[Candidate, ...]:
     return tuple(cells)
 
 
+def _candidate_key(candidate: Candidate) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """Stable key for deduping generated and registry-anchored cells."""
+    return (
+        candidate.kind,
+        tuple(sorted((key, repr(value)) for key, value in candidate.cfg.items())),
+    )
+
+
+def _dedupe_candidates(candidates: tuple[Candidate, ...]) -> tuple[Candidate, ...]:
+    """Preserve order while removing duplicate strategy/config cells."""
+    seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
+    deduped: list[Candidate] = []
+    for candidate in candidates:
+        key = _candidate_key(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return tuple(deduped)
+
+
+def _registered_candidate(bot_id: str) -> Candidate | None:
+    """Return the current registry config as a sweep candidate when possible."""
+    from eta_engine.strategies.per_bot_registry import get_for_bot
+
+    assignment = get_for_bot(bot_id)
+    if assignment is None:
+        return None
+    prefix_by_kind = {
+        "orb": "orb",
+        "crypto_orb": "crypto_orb",
+        "drb": "drb",
+        "grid": "grid",
+    }
+    prefix = prefix_by_kind.get(assignment.strategy_kind)
+    if prefix is None:
+        return None
+    extras = assignment.extras or {}
+    config = extras.get(f"{prefix}_config")
+    if not isinstance(config, dict) or not config:
+        return None
+    return Candidate(
+        kind=assignment.strategy_kind,
+        label=f"registered {assignment.strategy_id}",
+        cfg=dict(config),
+    )
+
+
+def _with_registered_candidate(
+    bot_id: str,
+    candidates: tuple[Candidate, ...],
+) -> tuple[Candidate, ...]:
+    """Append the bot's current registry config so challengers have a benchmark."""
+    registered = _registered_candidate(bot_id)
+    if registered is None:
+        return candidates
+    return _dedupe_candidates(candidates + (registered,))
+
+
 def _build_plans() -> list[BotPlan]:
     """Per-bot plans. Pre-narrowed candidate sets per market structure."""
     plans: list[BotPlan] = []
@@ -190,7 +249,7 @@ def _build_plans() -> list[BotPlan]:
                 window_days=60,
                 step_days=30,
                 min_trades_per_window=3,
-                candidates=_orb_grid(),
+                candidates=_with_registered_candidate(bot, _orb_grid()),
             ),
         )
 
@@ -203,7 +262,7 @@ def _build_plans() -> list[BotPlan]:
             window_days=365,
             step_days=180,
             min_trades_per_window=5,
-            candidates=_drb_grid(),
+            candidates=_with_registered_candidate("nq_daily_drb", _drb_grid()),
         ),
     )
 
@@ -216,7 +275,10 @@ def _build_plans() -> list[BotPlan]:
             window_days=90,
             step_days=30,
             min_trades_per_window=3,
-            candidates=_crypto_orb_grid() + _crypto_trend_grid() + _crypto_meanrev_grid(),
+            candidates=_with_registered_candidate(
+                "btc_hybrid",
+                _crypto_orb_grid() + _crypto_trend_grid() + _crypto_meanrev_grid(),
+            ),
         ),
     )
 
@@ -230,7 +292,10 @@ def _build_plans() -> list[BotPlan]:
             window_days=90,
             step_days=30,
             min_trades_per_window=3,
-            candidates=_crypto_meanrev_grid() + _crypto_orb_grid() + _crypto_trend_grid(),
+            candidates=_with_registered_candidate(
+                "eth_perp",
+                _crypto_meanrev_grid() + _crypto_orb_grid() + _crypto_trend_grid(),
+            ),
         ),
     )
 
@@ -243,7 +308,10 @@ def _build_plans() -> list[BotPlan]:
             window_days=90,
             step_days=30,
             min_trades_per_window=3,
-            candidates=_crypto_orb_grid() + _crypto_trend_grid(),
+            candidates=_with_registered_candidate(
+                "sol_perp",
+                _crypto_orb_grid() + _crypto_trend_grid(),
+            ),
         ),
     )
 
