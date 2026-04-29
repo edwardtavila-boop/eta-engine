@@ -190,6 +190,9 @@ def test_legacy_docs_decision_journal_is_ignored_runtime_state() -> None:
     gitignore = _read("eta_engine/.gitignore")
 
     assert "docs/decision_journal.jsonl" in gitignore
+    assert "docs/alerts_log.jsonl" in gitignore
+    assert "docs/runtime_log.jsonl" in gitignore
+    assert "docs/drift_watchdog.jsonl" in gitignore
 
 
 def test_smoke_check_uses_workspace_state_and_log_dirs() -> None:
