@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T21:20:03.1196927Z",
+  "last_updated": "2026-04-29T22:40:50.1610000Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -25,6 +25,31 @@
         "tests/test_optimizations.py::TestStatusPage::test_status_page_mobile_fleet_and_equity_contracts",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_includes_supervisor_bots",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_enriches_state_bots_from_readiness_snapshot"
+      ]
+    },
+    "eta_engine_jarvis_dashboard_drift_panel": {
+      "timestamp_utc": "2026-04-29T22:40:50.1610000Z",
+      "surface": "JARVIS dashboard drift-watch panel reads the canonical drift journal and exposes last verdict, rolling counts, metrics, samples, and investigation reasons",
+      "fields": [
+        "state",
+        "strategy_id",
+        "kl",
+        "sharpe_delta",
+        "mean_delta",
+        "n_live",
+        "n_backtest",
+        "counts",
+        "reason"
+      ],
+      "tests": [
+        "tests/test_jarvis_hardening.py::TestDashboardDriftPanel"
+      ]
+    },
+    "eta_engine_jarvis_nl_query_window_anchor": {
+      "timestamp_utc": "2026-04-29T22:40:50.1610000Z",
+      "surface": "JARVIS NL audit count/list/rollup windows anchor to the latest audit record when callers do not inject a clock, keeping archived audit answers deterministic",
+      "tests": [
+        "tests/test_brain_jarvis_v3_nl_query.py::test_nl_query_intents_ignore_bad_lines_and_answer_by_request"
       ]
     },
     "eta_engine_verify_all": "17/17 PASS",

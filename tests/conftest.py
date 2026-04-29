@@ -114,8 +114,6 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001, ANN001
     rest of the file still runs.
     """
     skip_classes = {
-        # eta_engine.scripts.jarvis_dashboard not implemented
-        "TestDashboardDriftPanel",
         # avengers.daemon helpers not implemented:
         # _build_anthropic_http_client, _run_local_background_task,
         # _default_fleet — referenced only from these test classes.

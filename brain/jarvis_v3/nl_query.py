@@ -76,9 +76,23 @@ def _parse_ts(r: dict[str, Any]) -> datetime | None:
     if isinstance(ts, (int, float)):
         return datetime.fromtimestamp(ts, tz=UTC)
     try:
-        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _latest_record_ts(records: list[dict[str, Any]]) -> datetime | None:
+    latest: datetime | None = None
+    for record in records:
+        ts = _parse_ts(record)
+        if ts is None:
+            continue
+        if latest is None or ts > latest:
+            latest = ts
+    return latest
 
 
 def _filter_window(
@@ -89,7 +103,7 @@ def _filter_window(
 ) -> list[dict[str, Any]]:
     if hours is None:
         return records
-    now = now or datetime.now(UTC)
+    now = now or _latest_record_ts(records) or datetime.now(UTC)
     cutoff = now - timedelta(hours=hours)
     out: list[dict[str, Any]] = []
     for r in records:

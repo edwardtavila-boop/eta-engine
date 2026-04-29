@@ -120,6 +120,13 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   snapshot writer with a quiet-by-default notification payload, letting
   10-minute automation emit operator-queue alerts only when drift actually
   changes.
+- `scripts/jarvis_dashboard.py` now exposes the JARVIS drift-watch panel from
+  the promotion drift journal, including last verdict, KL, Sharpe delta, mean
+  delta, sample counts, rolling verdict counts, and joined investigation
+  reasons.
+- JARVIS NL audit rollups now anchor relative windows to the latest audit-log
+  timestamp when no explicit clock is supplied, so archived logs answer
+  consistently instead of drifting with wall-clock time.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is
