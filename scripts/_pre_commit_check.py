@@ -332,6 +332,7 @@ def _advisory_audit_specs() -> list[tuple[str, str, list[str]]]:
         ("alert-events", "scripts/_audit_alert_events.py", []),
         ("roadmap-vs-code", "scripts/_audit_roadmap_vs_code.py", []),
         ("deferral-criteria", "scripts/_audit_deferral_criteria.py", ["--strict"]),
+        ("broker-dormancy", "scripts/_audit_dormancy_consistency.py", ["--strict"]),
         ("docstring-ratchet", "scripts/_docstring_audit.py", ["--no-update", "--max-show", "3"]),
     ]
 

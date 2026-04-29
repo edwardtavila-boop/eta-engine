@@ -101,6 +101,16 @@ def test_pre_commit_runs_deferral_advisory_in_strict_mode() -> None:
     ) in specs
 
 
+def test_pre_commit_surfaces_broker_dormancy_advisory() -> None:
+    specs = _pre_commit_check._advisory_audit_specs()
+
+    assert (
+        "broker-dormancy",
+        "scripts/_audit_dormancy_consistency.py",
+        ["--strict"],
+    ) in specs
+
+
 def test_pre_commit_blocks_timestamped_docs_runtime_snapshots() -> None:
     forbidden = _pre_commit_check._forbidden_staged_files_from_lines(
         [
