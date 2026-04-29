@@ -5,6 +5,25 @@ import json
 from eta_engine.scripts import jarvis_status, operator_queue_snapshot
 
 
+def _readiness(
+    *,
+    status: str = "ready",
+    blocked_data: int = 0,
+    paper_ready: int = 10,
+) -> dict[str, object]:
+    return {
+        "source": "bot_strategy_readiness",
+        "status": status,
+        "summary": {
+            "blocked_data": blocked_data,
+            "can_live_any": False,
+            "can_paper_trade": paper_ready,
+            "launch_lanes": {"blocked_data": blocked_data, "paper_soak": paper_ready},
+        },
+        "top_actions": [],
+    }
+
+
 def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(
         jarvis_status,
@@ -16,6 +35,7 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
             "error": None,
         },
     )
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     snapshot = operator_queue_snapshot.build_snapshot(limit=3)
 
@@ -25,6 +45,10 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
     assert snapshot["blocked_count"] == 2
     assert snapshot["first_blocker_op_id"] == "OP-18"
     assert snapshot["first_next_action"] == "cp .env.example .env && chmod 600 .env"
+    assert snapshot["bot_strategy_readiness_status"] == "ready"
+    assert snapshot["bot_strategy_blocked_data"] == 0
+    assert snapshot["bot_strategy_paper_ready"] == 10
+    assert snapshot["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 10
 
 
 def test_write_snapshot_uses_atomic_temp_then_target(tmp_path) -> None:
@@ -100,12 +124,39 @@ def test_compare_snapshots_reports_changed_fields() -> None:
     assert drift["changed_fields"] == ["blocked_count", "first_next_action"]
 
 
+def test_compare_snapshots_reports_bot_readiness_drift() -> None:
+    previous = {
+        "status": "blocked",
+        "blocked_count": 2,
+        "first_blocker_op_id": "OP-18",
+        "first_next_action": "same",
+        "bot_strategy_readiness_status": "ready",
+        "bot_strategy_blocked_data": 0,
+    }
+    current = {
+        **previous,
+        "bot_strategy_readiness_status": "blocked",
+        "bot_strategy_blocked_data": 2,
+    }
+
+    drift = operator_queue_snapshot.compare_snapshots(previous, current)
+
+    assert drift["changed"] is True
+    assert drift["bot_strategy_blocked_data_delta"] == 2
+    assert drift["changed_fields"] == [
+        "bot_strategy_readiness_status",
+        "bot_strategy_blocked_data",
+    ]
+
+
 def test_compare_snapshots_reports_unchanged() -> None:
     previous = {
         "status": "blocked",
         "blocked_count": 2,
         "first_blocker_op_id": "OP-18",
         "first_next_action": "same",
+        "bot_strategy_readiness_status": "ready",
+        "bot_strategy_blocked_data": 0,
     }
     current = dict(previous)
 
@@ -136,6 +187,7 @@ def test_main_no_write_json_does_not_create_default(monkeypatch, capsys, tmp_pat
             "error": None,
         },
     )
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_snapshot.main(["--out", str(target), "--json", "--no-write"])
 
@@ -157,6 +209,7 @@ def test_main_strict_returns_two_when_blocked(monkeypatch, tmp_path) -> None:  #
             "error": None,
         },
     )
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_snapshot.main(["--out", str(tmp_path / "snapshot.json"), "--strict"])
 

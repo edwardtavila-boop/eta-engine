@@ -161,6 +161,18 @@ commands. The V1 Command Center renders the same feed in the JARVIS view and
 the top-bar `bots` chip, so readiness posture remains visible even when the
 panel itself is off-screen.
 
+Wakeup automation gets the same posture through the operator queue snapshot
+and heartbeat:
+
+```bash
+python -m eta_engine.scripts.operator_queue_snapshot --json
+python -m eta_engine.scripts.operator_queue_heartbeat --json --changed-only
+```
+
+Those artifacts now include `bot_strategy_readiness_status`,
+`bot_strategy_blocked_data`, and `bot_strategy_paper_ready` alongside the
+operator blocker summary.
+
 ---
 
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)

@@ -16,6 +16,18 @@ def _queue(blocked: int, *, op_id: str | None = "OP-18", action: str | None = "f
     }
 
 
+def _readiness(*, blocked_data: int = 0, paper_ready: int = 10) -> dict[str, object]:
+    return {
+        "status": "ready" if blocked_data == 0 else "blocked",
+        "summary": {
+            "blocked_data": blocked_data,
+            "can_paper_trade": paper_ready,
+            "launch_lanes": {"blocked_data": blocked_data, "paper_soak": paper_ready},
+        },
+        "top_actions": [],
+    }
+
+
 def test_build_heartbeat_marks_notify_from_drift() -> None:
     heartbeat = operator_queue_heartbeat.build_heartbeat(
         {
@@ -24,6 +36,9 @@ def test_build_heartbeat_marks_notify_from_drift() -> None:
             "blocked_count": 2,
             "first_blocker_op_id": "OP-18",
             "first_next_action": "fix it",
+            "bot_strategy_readiness_status": "ready",
+            "bot_strategy_blocked_data": 0,
+            "bot_strategy_paper_ready": 10,
             "drift": {
                 "changed": True,
                 "summary": "operator queue drift detected: blocked_count",
@@ -38,6 +53,30 @@ def test_build_heartbeat_marks_notify_from_drift() -> None:
     assert heartbeat["drift_changed"] is True
     assert heartbeat["changed_fields"] == ["blocked_count"]
     assert heartbeat["blocked_count_delta"] == 1
+    assert heartbeat["bot_strategy_readiness_status"] == "ready"
+    assert heartbeat["bot_strategy_blocked_data"] == 0
+    assert heartbeat["bot_strategy_paper_ready"] == 10
+
+
+def test_render_text_includes_bot_readiness_fields() -> None:
+    line = operator_queue_heartbeat.render_text(
+        {
+            "notify": False,
+            "status": "clear",
+            "blocked_count": 0,
+            "first_blocker_op_id": None,
+            "first_next_action": None,
+            "changed_fields": [],
+            "drift_summary": "operator queue unchanged",
+            "bot_strategy_readiness_status": "ready",
+            "bot_strategy_blocked_data": 0,
+            "bot_strategy_paper_ready": 10,
+        }
+    )
+
+    assert "bot_readiness=ready" in line
+    assert "bot_blocked_data=0" in line
+    assert "bot_paper_ready=10" in line
 
 
 def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -49,11 +88,14 @@ def test_main_changed_only_suppresses_unchanged_output(monkeypatch, capsys, tmp_
                 "blocked_count": 1,
                 "first_blocker_op_id": "OP-18",
                 "first_next_action": "fix it",
+                "bot_strategy_readiness_status": "ready",
+                "bot_strategy_blocked_data": 0,
             }
         ),
         encoding="utf-8",
     )
     monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", lambda **_kwargs: _queue(1))
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_heartbeat.main(["--out", str(target), "--changed-only"])
 
@@ -70,11 +112,14 @@ def test_main_changed_only_emits_json_when_drift_changes(monkeypatch, capsys, tm
                 "blocked_count": 1,
                 "first_blocker_op_id": "OP-18",
                 "first_next_action": "fix it",
+                "bot_strategy_readiness_status": "ready",
+                "bot_strategy_blocked_data": 0,
             }
         ),
         encoding="utf-8",
     )
     monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", lambda **_kwargs: _queue(2))
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_heartbeat.main(["--out", str(target), "--changed-only", "--json"])
 
@@ -94,11 +139,14 @@ def test_main_strict_drift_returns_three(monkeypatch, tmp_path) -> None:  # type
                 "blocked_count": 0,
                 "first_blocker_op_id": None,
                 "first_next_action": None,
+                "bot_strategy_readiness_status": "ready",
+                "bot_strategy_blocked_data": 0,
             }
         ),
         encoding="utf-8",
     )
     monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", lambda **_kwargs: _queue(1))
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_heartbeat.main(["--out", str(target), "--strict-drift"])
 
@@ -107,6 +155,7 @@ def test_main_strict_drift_returns_three(monkeypatch, tmp_path) -> None:  # type
 
 def test_main_strict_blockers_returns_two(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", lambda **_kwargs: _queue(1))
+    monkeypatch.setattr(jarvis_status, "build_bot_strategy_readiness_summary", lambda **_kwargs: _readiness())
 
     rc = operator_queue_heartbeat.main(["--out", str(tmp_path / "snapshot.json"), "--strict-blockers"])
 

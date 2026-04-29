@@ -117,7 +117,10 @@ UI clients. JARVIS now exposes the same snapshot in
 surfaces it at `/api/jarvis/bot_strategy_readiness` plus the
 `bot_strategy_readiness` field in `/api/dashboard`. The V1 Command Center
 also renders that feed through the JARVIS Bot Strategy Readiness panel and the
-top-bar `bots` chip.
+top-bar `bots` chip. Operator wakeup artifacts now carry the same compact
+posture in `operator_queue_snapshot` / `operator_queue_heartbeat` via
+`bot_strategy_readiness_status`, `bot_strategy_blocked_data`, and
+`bot_strategy_paper_ready`.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

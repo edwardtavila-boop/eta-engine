@@ -32,10 +32,15 @@ def build_heartbeat(snapshot: dict[str, Any], snapshot_path: Path | None) -> dic
         "blocked_count": int(snapshot.get("blocked_count") or 0),
         "first_blocker_op_id": snapshot.get("first_blocker_op_id"),
         "first_next_action": snapshot.get("first_next_action"),
+        "bot_strategy_readiness_status": snapshot.get("bot_strategy_readiness_status"),
+        "bot_strategy_blocked_data": int(snapshot.get("bot_strategy_blocked_data") or 0),
+        "bot_strategy_paper_ready": int(snapshot.get("bot_strategy_paper_ready") or 0),
+        "bot_strategy_can_live_any": bool(snapshot.get("bot_strategy_can_live_any")),
         "drift_changed": changed,
         "drift_summary": drift.get("summary"),
         "changed_fields": drift.get("changed_fields") or [],
         "blocked_count_delta": drift.get("blocked_count_delta"),
+        "bot_strategy_blocked_data_delta": drift.get("bot_strategy_blocked_data_delta"),
         "snapshot_path": str(snapshot_path) if snapshot_path is not None else None,
     }
 
@@ -46,11 +51,15 @@ def render_text(heartbeat: dict[str, Any]) -> str:
     action = heartbeat.get("first_next_action") or "none"
     notify = "yes" if heartbeat.get("notify") else "no"
     fields = ",".join(heartbeat.get("changed_fields") or []) or "none"
+    bot_status = heartbeat.get("bot_strategy_readiness_status") or "unknown"
+    bot_blocked = heartbeat.get("bot_strategy_blocked_data")
+    bot_paper = heartbeat.get("bot_strategy_paper_ready")
     return (
         "operator_queue_heartbeat "
         f"notify={notify} status={heartbeat.get('status')} "
         f"blocked={heartbeat.get('blocked_count')} first={first} "
-        f"changed_fields={fields} next={action} "
+        f"bot_readiness={bot_status} bot_blocked_data={bot_blocked} "
+        f"bot_paper_ready={bot_paper} changed_fields={fields} next={action} "
         f"drift={heartbeat.get('drift_summary') or 'none'}"
     )
 
