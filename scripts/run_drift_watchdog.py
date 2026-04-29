@@ -127,22 +127,12 @@ def _build_strategy(assignment):  # type: ignore[no-untyped-def]  # noqa: ANN001
     watchdog can't drift away from how strategies are wired
     elsewhere.
     """
-    kind = assignment.strategy_kind
-    if kind == "orb":
-        from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
-        return ORBStrategy(ORBConfig())
-    if kind == "drb":
-        from eta_engine.strategies.drb_strategy import DRBConfig, DRBStrategy
-        return DRBStrategy(DRBConfig())
-    if kind == "orb_sage_gated":
-        from eta_engine.strategies.sage_gated_orb_strategy import (
-            SageGatedORBConfig,
-            SageGatedORBStrategy,
-        )
-        return SageGatedORBStrategy(SageGatedORBConfig())
-    # Crypto / sage / ensemble kinds share the grid's factory.
-    from eta_engine.scripts.run_research_grid import _build_crypto_strategy_factory
-    factory = _build_crypto_strategy_factory(kind, dict(assignment.extras))
+    from eta_engine.scripts.run_research_grid import _build_strategy_factory
+
+    factory = _build_strategy_factory(
+        assignment.strategy_kind,
+        dict(assignment.extras),
+    )
     return factory()
 
 

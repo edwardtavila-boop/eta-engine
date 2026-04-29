@@ -451,6 +451,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "production_candidate",
+            "underlying_strategy": "crypto_macro_confluence",
+            "crypto_regime_trend_config": {
+                "regime_ema": 100,
+                "pullback_ema": 21,
+                "pullback_tolerance_pct": 3.0,
+                "atr_stop_mult": 2.0,
+                "rr_target": 3.0,
+                "warmup_bars": 120,
+            },
+            "macro_confluence_config": {
+                "require_etf_flow_alignment": True,
+            },
             "min_daily_conviction": 0.50,
             "strict_mode": False,
             "sage_lookback_daily_bars": 200,
@@ -502,6 +514,21 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "min_agreement_count": 2,
             "voters": ["regime_trend", "regime_trend_etf", "sage_daily_gated"],
             "size_by_agreement": False,
+            "underlying_strategy": "crypto_macro_confluence",
+            "crypto_regime_trend_config": {
+                "regime_ema": 100,
+                "pullback_ema": 21,
+                "pullback_tolerance_pct": 3.0,
+                "atr_stop_mult": 2.0,
+                "rr_target": 3.0,
+                "warmup_bars": 120,
+            },
+            "macro_confluence_config": {
+                "require_etf_flow_alignment": True,
+            },
+            "min_daily_conviction": 0.50,
+            "strict_mode": False,
+            "sage_lookback_daily_bars": 200,
             "etf_csv_path": str(MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv"),
         },
     ),
@@ -542,6 +569,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "research_candidate": True,
+            "crypto_regime_trend_config": {
+                "regime_ema": 100,
+                "pullback_ema": 21,
+                "pullback_tolerance_pct": 3.0,
+                "atr_stop_mult": 2.0,
+                "rr_target": 3.0,
+                "warmup_bars": 120,
+            },
+            "macro_confluence_config": {
+                "require_etf_flow_alignment": True,
+            },
             "tier_4_filters": ["etf_flow"],
             "etf_csv_path": str(MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv"),
         },

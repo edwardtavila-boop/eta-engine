@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 @dataclass(frozen=True)
@@ -59,10 +59,10 @@ class ResearchCell:
     window_days: int
     step_days: int
     min_trades_per_window: int
-    strategy_kind: str = "confluence"  # "confluence" or "orb"
+    strategy_kind: str = "confluence"  # canonical per-bot strategy selector
     # Per-bot strategy knobs forwarded from per_bot_registry.extras.
-    # Picked up by _build_crypto_strategy_factory; ignored by the
-    # confluence/orb/drb branches that have no per-bot overrides yet.
+    # Resolved through the shared strategy factory so registry-backed
+    # tuning stays aligned across research, paper soak, and drift checks.
     extras: dict[str, object] = field(default_factory=dict)
 
 
@@ -131,6 +131,204 @@ def _safe_kwargs(cfg_cls: type, kwargs: dict[str, object]) -> dict[str, object]:
     return accepted
 
 
+def _merge_strategy_overrides(
+    extras: dict[str, object],
+    prefix: str,
+    cfg_cls: type,
+    *,
+    include_direct_fields: bool = False,
+    aliases: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """Merge nested/prefixed config with legacy direct-key fallbacks."""
+    import dataclasses
+
+    merged = _filter_extras(extras, prefix)
+    valid = {f.name for f in dataclasses.fields(cfg_cls)}
+    if include_direct_fields:
+        for field_name in valid:
+            if field_name in extras and field_name not in merged:
+                merged[field_name] = extras[field_name]
+    for source_key, target_key in (aliases or {}).items():
+        if (
+            source_key in extras
+            and target_key in valid
+            and target_key not in merged
+        ):
+            merged[target_key] = extras[source_key]
+    return merged
+
+
+def _build_orb_factory(
+    extras: dict[str, object] | None = None,
+    *,
+    crypto: bool = False,
+) -> Callable[[], object]:
+    extras = extras or {}
+    if crypto:
+        from eta_engine.strategies.crypto_orb_strategy import (
+            CryptoORBConfig,
+            crypto_orb_strategy,
+        )
+
+        overrides = _filter_extras(extras, "crypto_orb") or _filter_extras(extras, "orb")
+        cfg = CryptoORBConfig(
+            **_safe_kwargs(CryptoORBConfig, overrides),
+        )
+        return lambda: crypto_orb_strategy(cfg)
+
+    from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
+
+    cfg = ORBConfig(
+        **_safe_kwargs(ORBConfig, _filter_extras(extras, "orb")),
+    )
+    return lambda: ORBStrategy(cfg)
+
+
+def _build_drb_factory(
+    extras: dict[str, object] | None = None,
+) -> Callable[[], object]:
+    extras = extras or {}
+    from eta_engine.strategies.drb_strategy import DRBConfig, DRBStrategy
+
+    cfg = DRBConfig(
+        **_safe_kwargs(DRBConfig, _filter_extras(extras, "drb")),
+    )
+    return lambda: DRBStrategy(cfg)
+
+
+def _build_crypto_regime_trend_config(extras: dict[str, object]):  # type: ignore[no-untyped-def]  # noqa: ANN202
+    from eta_engine.strategies.crypto_regime_trend_strategy import (
+        CryptoRegimeTrendConfig,
+    )
+
+    overrides = _merge_strategy_overrides(
+        extras,
+        "crypto_regime_trend",
+        CryptoRegimeTrendConfig,
+        include_direct_fields=True,
+    )
+    return CryptoRegimeTrendConfig(
+        **_safe_kwargs(CryptoRegimeTrendConfig, overrides),
+    )
+
+
+def _build_sage_consensus_config(extras: dict[str, object]):  # type: ignore[no-untyped-def]  # noqa: ANN202
+    from eta_engine.strategies.sage_consensus_strategy import SageConsensusConfig
+
+    overrides = _merge_strategy_overrides(
+        extras,
+        "sage_consensus",
+        SageConsensusConfig,
+        include_direct_fields=True,
+        aliases={
+            "sage_min_conviction": "min_conviction",
+            "sage_min_consensus": "min_consensus",
+            "sage_min_alignment": "min_alignment",
+        },
+    )
+    return SageConsensusConfig(
+        **_safe_kwargs(SageConsensusConfig, overrides),
+    )
+
+
+def _build_macro_confluence_config(extras: dict[str, object]):  # type: ignore[no-untyped-def]  # noqa: ANN202
+    from eta_engine.strategies.crypto_macro_confluence_strategy import (
+        CryptoMacroConfluenceConfig,
+        MacroConfluenceConfig,
+    )
+
+    base_cfg = _build_crypto_regime_trend_config(extras)
+    filter_overrides = _merge_strategy_overrides(
+        extras,
+        "macro_confluence",
+        MacroConfluenceConfig,
+        include_direct_fields=True,
+    )
+
+    tier_4_filters = extras.get("tier_4_filters")
+    if (
+        "etf_csv_path" in extras
+        or (isinstance(tier_4_filters, list) and "etf_flow" in tier_4_filters)
+    ):
+        filter_overrides.setdefault("require_etf_flow_alignment", True)
+
+    filters_cfg = MacroConfluenceConfig(
+        **_safe_kwargs(MacroConfluenceConfig, filter_overrides),
+    )
+    return CryptoMacroConfluenceConfig(base=base_cfg, filters=filters_cfg)
+
+
+def _build_orb_sage_gated_factory(
+    extras: dict[str, object] | None = None,
+) -> Callable[[], object]:
+    extras = extras or {}
+    from eta_engine.strategies.sage_gated_orb_strategy import (
+        SageGatedORBConfig,
+        SageGatedORBStrategy,
+    )
+
+    instrument_class = str(extras.get("instrument_class") or "").lower()
+    orb_cfg = _build_orb_factory(extras, crypto=instrument_class == "crypto")().cfg
+    sage_cfg = _build_sage_consensus_config(extras)
+    overlay_enabled = bool(
+        extras.get("overlay_enabled", extras.get("sage_overlay_enabled", True)),
+    )
+    cfg = SageGatedORBConfig(
+        orb=orb_cfg,
+        sage=sage_cfg,
+        overlay_enabled=overlay_enabled,
+    )
+    return lambda: SageGatedORBStrategy(cfg)
+
+
+def _build_sage_daily_gated_factory(
+    extras: dict[str, object] | None = None,
+) -> Callable[[], object]:
+    extras = extras or {}
+    from eta_engine.strategies.generic_sage_daily_gate import (
+        GenericSageDailyGateConfig,
+        GenericSageDailyGateStrategy,
+    )
+    from eta_engine.strategies.sage_daily_gated_strategy import (
+        SageDailyGatedConfig,
+        SageDailyGatedStrategy,
+    )
+
+    gate_overrides = _filter_extras(extras, "sage_daily_gated")
+    if "min_daily_conviction" in extras and "min_daily_conviction" not in gate_overrides:
+        gate_overrides["min_daily_conviction"] = extras["min_daily_conviction"]
+    if "strict_mode" in extras and "strict_mode" not in gate_overrides:
+        gate_overrides["strict_mode"] = extras["strict_mode"]
+    if "sage_min_daily_conviction" in extras and "min_daily_conviction" not in gate_overrides:
+        gate_overrides["min_daily_conviction"] = extras["sage_min_daily_conviction"]
+    if "sage_strict_mode" in extras and "strict_mode" not in gate_overrides:
+        gate_overrides["strict_mode"] = extras["sage_strict_mode"]
+
+    min_daily_conviction = float(gate_overrides.get("min_daily_conviction", 0.30))
+    strict_mode = bool(gate_overrides.get("strict_mode", False))
+    underlying_strategy = str(
+        extras.get("underlying_strategy") or "crypto_macro_confluence",
+    ).lower()
+
+    if underlying_strategy not in ("", "crypto_macro_confluence"):
+        if underlying_strategy == "sage_daily_gated":
+            msg = "sage_daily_gated cannot wrap itself"
+            raise ValueError(msg)
+        sub_factory = _build_strategy_factory(underlying_strategy, extras)
+        gate_cfg = GenericSageDailyGateConfig(
+            min_daily_conviction=min_daily_conviction,
+            strict_mode=strict_mode,
+        )
+        return lambda: GenericSageDailyGateStrategy(sub_factory(), gate_cfg)
+
+    cfg = SageDailyGatedConfig(
+        base=_build_macro_confluence_config(extras),
+        min_daily_conviction=min_daily_conviction,
+        strict_mode=strict_mode,
+    )
+    return lambda: SageDailyGatedStrategy(cfg)
+
+
 def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
     kind: str, extras: dict[str, object] | None = None,
 ):
@@ -178,27 +376,15 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         return lambda: CryptoScalpStrategy(cfg)
     if kind == "crypto_regime_trend":
         from eta_engine.strategies.crypto_regime_trend_strategy import (
-            CryptoRegimeTrendConfig,
             CryptoRegimeTrendStrategy,
         )
-        cfg = CryptoRegimeTrendConfig(
-            **_safe_kwargs(
-                CryptoRegimeTrendConfig,
-                _filter_extras(extras, "crypto_regime_trend"),
-            ),
-        )
+        cfg = _build_crypto_regime_trend_config(extras)
         return lambda: CryptoRegimeTrendStrategy(cfg)
     if kind == "sage_consensus":
         from eta_engine.strategies.sage_consensus_strategy import (
-            SageConsensusConfig,
             SageConsensusStrategy,
         )
-        cfg = SageConsensusConfig(
-            **_safe_kwargs(
-                SageConsensusConfig,
-                _filter_extras(extras, "sage_consensus"),
-            ),
-        )
+        cfg = _build_sage_consensus_config(extras)
         return lambda: SageConsensusStrategy(cfg)
     if kind == "crypto_macro_confluence":
         # Macro-feature confluence (ETF flows, LTH, fear/greed, etc.).
@@ -209,33 +395,12 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         # claims should be re-run via their dedicated walk-forward
         # scripts before promotion.
         from eta_engine.strategies.crypto_macro_confluence_strategy import (
-            CryptoMacroConfluenceConfig,
             CryptoMacroConfluenceStrategy,
         )
-        cfg = CryptoMacroConfluenceConfig(
-            **_safe_kwargs(
-                CryptoMacroConfluenceConfig,
-                _filter_extras(extras, "crypto_macro_confluence"),
-            ),
-        )
+        cfg = _build_macro_confluence_config(extras)
         return lambda: CryptoMacroConfluenceStrategy(cfg)
     if kind == "sage_daily_gated":
-        # Composition strategy: embeds CryptoMacroConfluenceStrategy
-        # plus a daily-sage verdict provider. Without the provider
-        # attached the gate doesn't fire; the grid's evaluation is the
-        # "no veto" baseline. Real promotion uses the dedicated
-        # run_sage_walk_forward script that wires the provider.
-        from eta_engine.strategies.sage_daily_gated_strategy import (
-            SageDailyGatedConfig,
-            SageDailyGatedStrategy,
-        )
-        cfg = SageDailyGatedConfig(
-            **_safe_kwargs(
-                SageDailyGatedConfig,
-                _filter_extras(extras, "sage_daily_gated"),
-            ),
-        )
-        return lambda: SageDailyGatedStrategy(cfg)
+        return _build_sage_daily_gated_factory(extras)
     if kind == "grid":
         from eta_engine.strategies.grid_trading_strategy import (
             GridConfig,
@@ -306,6 +471,19 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         return lambda: SweepReclaimStrategy(cfg)
     msg = f"unknown crypto strategy_kind: {kind!r}"
     raise ValueError(msg)
+
+
+def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
+    kind: str, extras: dict[str, object] | None = None,
+):
+    extras = extras or {}
+    if kind == "orb":
+        return _build_orb_factory(extras, crypto=False)
+    if kind == "drb":
+        return _build_drb_factory(extras)
+    if kind == "orb_sage_gated":
+        return _build_orb_sage_gated_factory(extras)
+    return _build_crypto_strategy_factory(kind, extras)
 
 
 def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
@@ -383,54 +561,16 @@ def run_cell(cell: ResearchCell) -> CellResult:
         wf_kwargs["strict_fold_dsr_gate"] = False
     wf_kwargs.update(wf_overrides)
     wf = WalkForwardConfig(**wf_kwargs)
-    # ORB strategy bypasses the scorer/regime/ctx path entirely.
-    if cell.strategy_kind == "orb":
-        from eta_engine.strategies.orb_strategy import ORBConfig, ORBStrategy
-        orb_cfg = ORBConfig(
-            **_safe_kwargs(ORBConfig, _filter_extras(cell.extras, "orb")),
-        )
+    # Strategy-factory kinds bypass the scorer/regime/ctx path entirely.
+    if cell.strategy_kind in ("orb", "orb_sage_gated", "drb"):
+        factory = _build_strategy_factory(cell.strategy_kind, cell.extras)
         res = WalkForwardEngine().run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
             config=wf,
             base_backtest_config=base_cfg,
             ctx_builder=lambda b, h: {},
-            strategy_factory=lambda: ORBStrategy(orb_cfg),
-        )
-    elif cell.strategy_kind == "orb_sage_gated":
-        # ORB with the multi-school sage overlay as a veto filter.
-        # Composition strategy: embeds a real ORBStrategy and delegates
-        # to it, then runs sage-consensus and rejects entries the panel
-        # disagrees with. Same maybe_enter contract as ORB/DRB.
-        from eta_engine.strategies.sage_gated_orb_strategy import (
-            SageGatedORBConfig,
-            SageGatedORBStrategy,
-        )
-        sage_cfg = SageGatedORBConfig()
-        res = WalkForwardEngine().run(
-            bars=bars,
-            pipeline=FeaturePipeline.default(),
-            config=wf,
-            base_backtest_config=base_cfg,
-            ctx_builder=lambda b, h: {},
-            strategy_factory=lambda: SageGatedORBStrategy(sage_cfg),
-        )
-    elif cell.strategy_kind == "drb":
-        # DRB is the daily-timeframe sibling of ORB. It also bypasses
-        # the confluence-scorer path — without this branch the DRB bots
-        # silently fell through to confluence on daily bars and produced
-        # nonsense (OOS Sharpe 1e+14). 2026-04-27.
-        from eta_engine.strategies.drb_strategy import DRBConfig, DRBStrategy
-        drb_cfg = DRBConfig(
-            **_safe_kwargs(DRBConfig, _filter_extras(cell.extras, "drb")),
-        )
-        res = WalkForwardEngine().run(
-            bars=bars,
-            pipeline=FeaturePipeline.default(),
-            config=wf,
-            base_backtest_config=base_cfg,
-            ctx_builder=lambda b, h: {},
-            strategy_factory=lambda: DRBStrategy(drb_cfg),
+            strategy_factory=factory,
         )
     elif cell.strategy_kind == "ensemble_voting":
         # Ensemble vote across named sub-strategies. Voters list comes
@@ -457,7 +597,7 @@ def run_cell(cell: ResearchCell) -> CellResult:
         for name in voter_names:
             kind = _alias.get(name, name)
             try:
-                sub_factory = _build_crypto_strategy_factory(kind, cell.extras)
+                sub_factory = _build_strategy_factory(kind, cell.extras)
             except ValueError:
                 # Unknown voter — skip rather than crash. Logged so
                 # the gap is visible at grid time.
@@ -491,7 +631,7 @@ def run_cell(cell: ResearchCell) -> CellResult:
             for name in voter_names:
                 kind = _alias.get(name, name)
                 try:
-                    f = _build_crypto_strategy_factory(kind, cell.extras)
+                    f = _build_strategy_factory(kind, cell.extras)
                 except ValueError:
                     continue
                 voters.append((name, f()))
@@ -514,7 +654,7 @@ def run_cell(cell: ResearchCell) -> CellResult:
         # as ORB/DRB, so they bypass the confluence-scorer path. The
         # registry wires per-bot defaults; per-bot extras can override
         # individual knobs once we start sweeping params per bot.
-        factory = _build_crypto_strategy_factory(cell.strategy_kind, cell.extras)
+        factory = _build_strategy_factory(cell.strategy_kind, cell.extras)
         res = WalkForwardEngine().run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
