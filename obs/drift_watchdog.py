@@ -156,7 +156,7 @@ def run_once(
 def run_all(
     *,
     journal: DecisionJournal,
-    strategy_baselines: "Sequence[tuple[str, BaselineSnapshot]]",
+    strategy_baselines: Sequence[tuple[str, BaselineSnapshot]],
     **kwargs: object,
 ) -> dict[str, DriftAssessment]:
     """Convenience: run drift check across a portfolio of strategies.

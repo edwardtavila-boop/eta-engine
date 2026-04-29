@@ -22,11 +22,9 @@ Run as a 30-second scheduled task once the per-broker pollers land.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +151,7 @@ def fetch_broker_positions() -> dict[str, dict[str, float]]:
 def fire_drift_alert(diffs: list[PositionDiff], *, alerts_yaml: Path) -> None:
     try:
         import yaml
+
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
         cfg = yaml.safe_load(alerts_yaml.read_text(encoding="utf-8"))
         dispatcher = AlertDispatcher(cfg)

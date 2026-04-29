@@ -129,10 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     level_str = os.environ.get("ETA_VERDICT_WEBHOOK_LEVEL", "")
-    if level_str:
-        forward = {v.strip().upper() for v in level_str.split(",") if v.strip()}
-    else:
-        forward = DEFAULT_FORWARD_VERDICTS
+    forward = {v.strip().upper() for v in level_str.split(",") if v.strip()} if level_str else DEFAULT_FORWARD_VERDICTS
 
     # Load cursor
     cursor: dict[str, int] = {}

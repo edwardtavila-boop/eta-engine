@@ -25,7 +25,6 @@ from eta_engine.obs.decision_journal import (
     Outcome,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -193,9 +192,11 @@ def test_decision_journal_local_write_independent_of_sink(
 ) -> None:
     """Sink failure must never lose local JSONL writes."""
     journal = DecisionJournal(tmp_path / "j.jsonl")
-    with mock.patch.object(supabase_sink, "post_event", side_effect=RuntimeError("won't bubble")):
-        with pytest.raises(RuntimeError):
-            journal.append(sample_event)
+    with (
+        mock.patch.object(supabase_sink, "post_event", side_effect=RuntimeError("won't bubble")),
+        pytest.raises(RuntimeError),
+    ):
+        journal.append(sample_event)
     # Even with sink raising, the local line was written before the sink call.
     lines = (tmp_path / "j.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1

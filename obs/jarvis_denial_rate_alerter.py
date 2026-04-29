@@ -126,6 +126,7 @@ def fire_alert(stats: dict[str, Any], *, alerts_yaml: Path) -> bool:
     """Best-effort Resend dispatch. Returns True if delivered to >=1 channel."""
     try:
         import yaml
+
         from eta_engine.obs.alert_dispatcher import AlertDispatcher
 
         if not alerts_yaml.exists():
@@ -223,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.cooldown_min)
         return 0
 
-    print(f"\n  !! JARVIS DENIAL-RATE THRESHOLD BREACHED")
+    print("\n  !! JARVIS DENIAL-RATE THRESHOLD BREACHED")
     print(f"     rate:        {stats['denial_rate']:.1%}")
     print(f"     rejections:  {stats['rejections']} / {stats['total']}")
     print(f"     verdicts:    {stats['verdict_counts']}")

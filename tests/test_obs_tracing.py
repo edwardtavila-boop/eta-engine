@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import eta_engine.obs.tracing as tracing_mod
 import pytest
+
+import eta_engine.obs.tracing as tracing_mod
 from eta_engine.obs.tracing import (
     get_tracer,
     init_tracing,

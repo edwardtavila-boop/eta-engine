@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from eta_engine.obs.ws_reachability import (
     EndpointHealth,
     EndpointStatus,

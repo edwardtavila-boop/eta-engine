@@ -21,7 +21,8 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter, defaultdict
-from datetime import UTC, datetime, timedelta
+from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -119,10 +120,8 @@ def aggregate_today(
             hourly[hr]["approved"] += 1
         elif verdict == "CONDITIONAL":
             hourly[hr]["conditional"] += 1
-        try:
+        with suppress(TypeError, ValueError):
             policy_versions_seen.add(int(pv))
-        except (TypeError, ValueError):
-            pass
 
     avg_cap = sum(cond_caps) / len(cond_caps) if cond_caps else 1.0
 

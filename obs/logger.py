@@ -15,7 +15,6 @@ import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 AUDIT_LEVEL = 60  # above CRITICAL
 
@@ -48,7 +47,7 @@ class _JsonFormatter(logging.Formatter):
     }
 
     def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
+        payload: dict[str, object] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
@@ -76,10 +75,10 @@ class StructuredLogger:
         name: str = "eta_engine",
         file_sink: Path | str | None = None,
         level: int = logging.INFO,
-        context: dict[str, Any] | None = None,
+        context: dict[str, object] | None = None,
     ) -> None:
         self.name = name
-        self.context: dict[str, Any] = dict(context or {})
+        self.context: dict[str, object] = dict(context or {})
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level)
         self._logger.propagate = False
@@ -95,7 +94,7 @@ class StructuredLogger:
                 file_h.setFormatter(fmt)
                 self._logger.addHandler(file_h)
 
-    def with_context(self, **kwargs: Any) -> StructuredLogger:
+    def with_context(self, **kwargs: object) -> StructuredLogger:
         merged = {**self.context, **kwargs}
         clone = StructuredLogger.__new__(StructuredLogger)
         clone.name = self.name
@@ -103,23 +102,23 @@ class StructuredLogger:
         clone.context = merged
         return clone
 
-    def _emit(self, level: int, message: str, extra: dict[str, Any]) -> None:
+    def _emit(self, level: int, message: str, extra: dict[str, object]) -> None:
         merged = {**self.context, **extra}
         self._logger.log(level, message, extra=merged)
 
-    def info(self, message: str, **extra: Any) -> None:
+    def info(self, message: str, **extra: object) -> None:
         self._emit(logging.INFO, message, extra)
 
-    def warn(self, message: str, **extra: Any) -> None:
+    def warn(self, message: str, **extra: object) -> None:
         self._emit(logging.WARNING, message, extra)
 
-    def error(self, message: str, **extra: Any) -> None:
+    def error(self, message: str, **extra: object) -> None:
         self._emit(logging.ERROR, message, extra)
 
-    def critical(self, message: str, **extra: Any) -> None:
+    def critical(self, message: str, **extra: object) -> None:
         self._emit(logging.CRITICAL, message, extra)
 
-    def audit(self, message: str, **extra: Any) -> None:
+    def audit(self, message: str, **extra: object) -> None:
         """Audit records always emit regardless of current level."""
         prev = self._logger.level
         try:
