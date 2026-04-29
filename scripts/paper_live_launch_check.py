@@ -97,30 +97,110 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
     return bool(underlying and (bots_dir / underlying).exists())
 
 
-def _check_baseline_persisted(bot_id: str, strategy_id: str) -> bool:
-    """Does strategy_baselines.json have an entry?
+def _load_baseline_entry(bot_id: str, strategy_id: str) -> dict[str, Any] | None:
+    """Return the persisted baseline entry, if present.
 
     Schema: ``{"strategies": [{"strategy_id": ..., ...}, ...]}``.
     Either strategy_id or bot_id can match.
     """
     path = ROOT / "docs" / "strategy_baselines.json"
     if not path.exists():
-        return False
+        return None
     try:
         with path.open("r", encoding="utf-8") as f:
             baselines = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return False
+        return None
     if not isinstance(baselines, dict):
-        return False
+        return None
     strategies = baselines.get("strategies") or []
-    return any(
-        isinstance(s, dict) and (
+    for s in strategies:
+        if isinstance(s, dict) and (
             s.get("strategy_id") == strategy_id
             or s.get("bot_id") == bot_id
+        ):
+            return s
+    return None
+
+
+def _check_baseline_persisted(bot_id: str, strategy_id: str) -> bool:
+    """Does strategy_baselines.json have an entry?"""
+    return _load_baseline_entry(bot_id, strategy_id) is not None
+
+
+def _fmt_metric(value: object, *, pct: bool = False) -> str | None:
+    if not isinstance(value, (int, float)):
+        return None
+    if pct:
+        return f"{float(value) * 100:.1f}%"
+    return f"{float(value):+.3f}"
+
+
+def _research_evidence(extras: dict[str, object]) -> dict[str, object]:
+    tune = extras.get("research_tune")
+    if not isinstance(tune, dict):
+        return {}
+
+    evidence: dict[str, object] = {
+        k: tune[k]
+        for k in (
+            "scope",
+            "source_artifact",
+            "strict_gate",
+            "candidate_agg_oos_sharpe",
+            "candidate_dsr_pass_fraction",
+            "provider_backed",
         )
-        for s in strategies
+        if k in tune
+    }
+    full_history = tune.get("full_history_smoke")
+    if isinstance(full_history, dict):
+        evidence["full_history_smoke"] = {
+            k: full_history[k]
+            for k in (
+                "source_artifact",
+                "tradable_bars",
+                "raw_bars",
+                "windows",
+                "agg_oos_sharpe",
+                "dsr_pass_fraction",
+                "strict_gate",
+            )
+            if k in full_history
+        }
+    return evidence
+
+
+def _research_warning(extras: dict[str, object]) -> str:
+    evidence = _research_evidence(extras)
+    source = evidence.get("full_history_smoke")
+    if not isinstance(source, dict):
+        source = evidence
+
+    parts = ["research_candidate"]
+    if source.get("strict_gate") is False:
+        parts.append("strict gate failed")
+
+    oos = _fmt_metric(
+        source.get("agg_oos_sharpe", source.get("candidate_agg_oos_sharpe")),
     )
+    if oos is not None:
+        parts.append(f"OOS {oos}")
+
+    dsr = _fmt_metric(
+        source.get("dsr_pass_fraction", source.get("candidate_dsr_pass_fraction")),
+        pct=True,
+    )
+    if dsr is not None:
+        parts.append(f"DSR pass {dsr}")
+
+    artifact = source.get("source_artifact")
+    if isinstance(artifact, str):
+        parts.append(f"evidence {artifact}")
+
+    if len(parts) == 1:
+        parts.append("gate not fully passed")
+    return f"{parts[0]} ({'; '.join(parts[1:])})"
 
 
 def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
@@ -141,6 +221,7 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     issues: list[str] = []
     warnings: list[str] = []
     extras = assignment.extras or {}
+    evidence: dict[str, object] = {}
 
     if bool(extras.get("deactivated")):
         return {
@@ -172,7 +253,8 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     # 4. Promotion-status check (research_candidate is its own warning)
     promo_status = extras.get("promotion_status")
     if promo_status == "research_candidate":
-        warnings.append("research_candidate (gate not fully passed)")
+        evidence.update(_research_evidence(extras))
+        warnings.append(_research_warning(extras))
     elif promo_status == "deactivated":
         # Deactivated bots aren't warnings — they're explicitly off
         return {
@@ -194,14 +276,25 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
     #   standard warmup (30 days × 0.5 risk) applies unless overridden.
     # * No baseline → real validation gap, WARN.
     # * Explicit warmup_policy → applied as override.
-    has_baseline = _check_baseline_persisted(
+    baseline_entry = _load_baseline_entry(
         assignment.bot_id, assignment.strategy_id,
     )
+    has_baseline = baseline_entry is not None
     has_warmup_override = bool(
         extras.get("warmup_policy"),
     )
     if not has_baseline:
         warnings.append("baseline not in strategy_baselines.json")
+    elif promo_status == "research_candidate" and not evidence:
+        for key in (
+            "_latest_walk_forward_summary",
+            "_walk_forward_summary",
+            "_full_history_smoke",
+        ):
+            value = baseline_entry.get(key)
+            if isinstance(value, str) and value:
+                evidence["baseline_summary"] = value
+                break
     # warmup_policy is no longer a WARN by itself — implicit standard
     # applies. Only flag when the bot has neither baseline nor warmup
     # (caught by the no-baseline warning above).
@@ -224,13 +317,21 @@ def _audit_bot(assignment: Any) -> dict:  # noqa: ANN401
         "status": status,
         "issues": issues,
         "warnings": warnings,
+        "evidence": {
+            "baseline_present": has_baseline,
+            "warmup_policy": (
+                extras.get("warmup_policy")
+                if has_warmup_override else "implicit_standard_30d_half_risk"
+            ),
+            **evidence,
+        },
     }
 
 
 def _print_table(results: list[dict]) -> None:
     print(f"\n{'STATUS':<7}  {'bot_id':<22}  {'strategy_id':<28}"
           f"  {'kind':<22}  notes")
-    print("-" * 110)
+    print("-" * 150)
     for r in results:
         symbol_status = {
             "READY": "READY",
@@ -238,13 +339,13 @@ def _print_table(results: list[dict]) -> None:
             "BLOCK": "BLOCK",
         }[r["status"]]
         notes = "; ".join(r["issues"] + r["warnings"]) or "-"
-        if len(notes) > 50:
-            notes = notes[:47] + "..."
+        if len(notes) > 96:
+            notes = notes[:93] + "..."
         print(
             f"{symbol_status:<7}  {r['bot_id']:<22}  {r['strategy_id']:<28}"
             f"  {r['strategy_kind']:<22}  {notes}"
         )
-    print("-" * 110)
+    print("-" * 150)
     counts = {"READY": 0, "WARN": 0, "BLOCK": 0}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
