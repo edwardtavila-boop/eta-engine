@@ -251,6 +251,74 @@ class TestMcpOauthProbeUnderSyntheticState:
         assert all(i.verdict == VERDICT_UNKNOWN for i in items)
 
 
+class TestStrategyResearchCandidateProbe:
+    def test_research_warnings_mark_op16_blocked_with_next_commands(self, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from eta_engine.scripts import operator_action_queue
+
+        assignments = (
+            SimpleNamespace(
+                bot_id="eth_perp",
+                strategy_id="eth_corb_v4",
+                extras={"promotion_status": "research_candidate"},
+            ),
+            SimpleNamespace(
+                bot_id="btc_hybrid",
+                strategy_id="btc_corb_v3",
+                extras={"promotion_status": "promoted"},
+            ),
+        )
+
+        monkeypatch.setattr(
+            "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+            assignments,
+        )
+        monkeypatch.setattr(
+            "eta_engine.scripts.paper_live_launch_check._audit_bot",
+            lambda assignment: {
+                "bot_id": assignment.bot_id,
+                "strategy_id": assignment.strategy_id,
+                "status": "WARN",
+                "warnings": [
+                    "research_candidate (strict gate failed; OOS +1.929)",
+                ],
+                "evidence": {"candidate_agg_oos_sharpe": 1.929},
+            },
+        )
+
+        item = operator_action_queue._op16_strategy_research_candidates()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert "1 research candidate bot(s)" in item.detail
+        assert item.evidence["overall_severity"] == "amber"
+        assert item.evidence["blocked_bots"] == ["eth_perp"]
+        assert item.evidence["blockers"][0]["next_commands"] == [
+            "python -m eta_engine.scripts.paper_live_launch_check --bots eth_perp --json",
+        ]
+
+    def test_no_research_warnings_marks_op16_done(self, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr(
+            "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+            (
+                SimpleNamespace(
+                    bot_id="btc_hybrid",
+                    strategy_id="btc_corb_v3",
+                    extras={"promotion_status": "promoted"},
+                ),
+            ),
+        )
+
+        item = operator_action_queue._op16_strategy_research_candidates()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["overall_severity"] == "green"
+
+
 class TestVpsFailoverProbeUnderSyntheticState:
     def test_green_summary_marks_done(self, monkeypatch) -> None:
         from eta_engine.scripts import vps_failover_summary

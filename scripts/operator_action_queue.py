@@ -422,14 +422,70 @@ def _op15_crypto_seed() -> OpItem:
     )
 
 
-def _op16_eth_perp() -> OpItem:
-    return OpItem(
+def _op16_strategy_research_candidates() -> OpItem:
+    item = OpItem(
         op_id="OP-16",
-        title=("Iterate eth_perp overlay to flip FAIL_BORDERLINE -> PASS (Tier 3 research)"),
-        verdict=VERDICT_BLOCKED,
-        detail=("One more overlay iteration likely flips it; SOL/XRP both PASS"),
-        where="bots/eth_perp/",
+        title="Resolve research-candidate strategy gates before promotion",
+        where="python -m eta_engine.scripts.paper_live_launch_check --json",
     )
+    try:
+        from eta_engine.scripts.paper_live_launch_check import _audit_bot
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+    except Exception as exc:  # noqa: BLE001 -- operator queue must stay readable
+        item.verdict = VERDICT_UNKNOWN
+        item.detail = f"Unable to collect launch-check research warnings: {exc}"
+        item.evidence = {"error": str(exc)}
+        return item
+
+    warnings = [
+        _audit_bot(assignment)
+        for assignment in ASSIGNMENTS
+        if (assignment.extras or {}).get("promotion_status") == "research_candidate"
+    ]
+    active = [result for result in warnings if result.get("status") == "WARN"]
+    if not active:
+        item.verdict = VERDICT_DONE
+        item.detail = "No research-candidate launch warnings are active"
+        item.evidence = {"overall_severity": "green", "blocked_bots": []}
+        return item
+
+    blockers: list[dict[str, object]] = []
+    for result in active:
+        bot_id = str(result.get("bot_id") or "")
+        strategy_id = str(result.get("strategy_id") or "")
+        warnings_text = result.get("warnings") or []
+        summary = (
+            str(warnings_text[0])
+            if isinstance(warnings_text, list) and warnings_text
+            else "research candidate gate not fully passed"
+        )
+        blockers.append(
+            {
+                "name": bot_id,
+                "summary": summary,
+                "strategy_id": strategy_id,
+                "next_commands": [
+                    (
+                        "python -m eta_engine.scripts.paper_live_launch_check "
+                        f"--bots {bot_id} --json"
+                    ),
+                ],
+                "evidence": result.get("evidence", {}),
+            }
+        )
+
+    first = blockers[0]
+    item.verdict = VERDICT_BLOCKED
+    item.detail = (
+        f"{len(blockers)} research candidate bot(s) still below promotion gate; "
+        f"first={first['name']}: {first['summary']}"
+    )
+    item.evidence = {
+        "overall_severity": "amber",
+        "blocked_bots": [b["name"] for b in blockers],
+        "blockers": blockers,
+    }
+    return item
 
 
 def _op17_phase_advancement() -> OpItem:
@@ -511,7 +567,7 @@ def collect_items() -> list[OpItem]:
     items.append(_op13_strategy_review())
     items.append(_op14_quarterly_adversarial())
     items.append(_op15_crypto_seed())
-    items.append(_op16_eth_perp())
+    items.append(_op16_strategy_research_candidates())
     items.append(_op17_phase_advancement())
     items.append(_op18_vps_failover_readiness())
     return items
