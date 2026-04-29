@@ -37,6 +37,58 @@ from eta_engine.brain.jarvis_recommender import (
 from eta_engine.brain.jarvis_session_state import render_summary, snapshot
 
 
+def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
+    """Return a compact, fail-soft operator queue snapshot for dashboards."""
+    try:
+        from eta_engine.scripts import operator_action_queue
+
+        items = operator_action_queue.collect_items()
+    except Exception as exc:  # noqa: BLE001 -- status JSON must stay readable
+        return {
+            "source": "operator_action_queue",
+            "error": str(exc),
+            "summary": {},
+            "top_blockers": [],
+        }
+
+    verdict_order = (
+        operator_action_queue.VERDICT_DONE,
+        operator_action_queue.VERDICT_BLOCKED,
+        operator_action_queue.VERDICT_OBSERVED,
+        operator_action_queue.VERDICT_UNKNOWN,
+    )
+    summary = {
+        verdict: sum(1 for item in items if item.verdict == verdict)
+        for verdict in verdict_order
+    }
+    def blocker_priority(item: object) -> tuple[int, str]:
+        evidence = getattr(item, "evidence", {})
+        severity = evidence.get("overall_severity") if isinstance(evidence, dict) else None
+        severity_rank = {"red": 0, "amber": 1}.get(str(severity), 2)
+        return (severity_rank, str(getattr(item, "op_id", "")))
+
+    blocked_items = sorted(
+        (item for item in items if item.verdict == operator_action_queue.VERDICT_BLOCKED),
+        key=blocker_priority,
+    )
+    blockers = [
+        {
+            "op_id": item.op_id,
+            "title": item.title,
+            "detail": item.detail,
+            "where": item.where,
+            "evidence": item.evidence,
+        }
+        for item in blocked_items
+    ]
+    return {
+        "source": "operator_action_queue",
+        "error": None,
+        "summary": summary,
+        "top_blockers": blockers[:limit],
+    }
+
+
 def _print_status() -> int:
     """Default: print a concise status block."""
     snap = snapshot()
@@ -120,6 +172,7 @@ def _print_json() -> int:
         "recommendations": [r.model_dump(mode="json") for r in recs],
         "health_verdict": verdict.value,
         "health_results": [r.model_dump(mode="json") for r in health_results],
+        "operator_queue": _operator_queue_summary(),
     }
     print(json.dumps(out, indent=2, default=str))
     return 0

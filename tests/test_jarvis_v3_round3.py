@@ -270,3 +270,45 @@ class TestStatusCli:
         assert "session_state" in payload
         assert "recommendations" in payload
         assert "health_verdict" in payload
+        assert "operator_queue" in payload
+        assert "summary" in payload["operator_queue"]
+        assert "top_blockers" in payload["operator_queue"]
+
+    def test_json_subcommand_surfaces_operator_blockers(self, monkeypatch, capsys) -> None:
+        from eta_engine.scripts import operator_action_queue
+        from eta_engine.scripts.jarvis_status import main
+
+        monkeypatch.setattr(
+            operator_action_queue,
+            "collect_items",
+            lambda: [
+                operator_action_queue.OpItem(
+                    op_id="OP-1",
+                    title="Fund IBKR primary account",
+                    verdict=operator_action_queue.VERDICT_BLOCKED,
+                    detail="IBKR creds absent",
+                    where="IBKR portal",
+                    evidence={},
+                ),
+                operator_action_queue.OpItem(
+                    op_id="OP-18",
+                    title="Resolve current VPS failover red/amber blockers",
+                    verdict=operator_action_queue.VERDICT_BLOCKED,
+                    detail="AMBER with 2 blocker(s)",
+                    where="python -m eta_engine.scripts.vps_failover_summary --json",
+                    evidence={"overall_severity": "amber"},
+                )
+            ],
+        )
+
+        ret = main(["--json"])
+
+        assert ret == 0
+        import json
+
+        payload = json.loads(capsys.readouterr().out)
+        queue = payload["operator_queue"]
+        assert queue["error"] is None
+        assert queue["summary"]["BLOCKED"] == 2
+        assert queue["top_blockers"][0]["op_id"] == "OP-18"
+        assert queue["top_blockers"][0]["evidence"]["overall_severity"] == "amber"
