@@ -16,6 +16,11 @@ def test_bootstrap_status_is_read_only_by_default(monkeypatch, tmp_path) -> None
     assert status["created"] is False
     assert not (tmp_path / ".env").exists()
     assert status["values_emitted"] is False
+    assert status["ready_to_launch"] is False
+    assert set(status["required_pending"]) == {"runtime_mode", "jarvis_budget", "ibkr_primary"}
+    assert status["required_pending"]["runtime_mode"] == ["APEX_MODE=PAPER"]
+    assert status["next_actions"][0]["action"] == "create_env"
+    assert status["next_actions"][0]["blocking"] is True
 
 
 def test_bootstrap_create_copies_template_without_overwriting(monkeypatch, tmp_path) -> None:
@@ -57,6 +62,14 @@ def test_bootstrap_json_output_never_emits_values(monkeypatch, tmp_path, capsys)
 
     assert rc == 0
     assert payload["severity"] == "green"
+    assert payload["ready_to_launch"] is True
+    assert payload["required_pending"] == {}
     assert payload["values_emitted"] is False
+    assert payload["redaction_contract"] == {
+        "key_names_only": True,
+        "paths_only": True,
+        "values_emitted": False,
+    }
+    assert payload["next_actions"][-1]["action"] == "refresh_operator_queue"
     assert "secret-token" not in json.dumps(payload)
     assert "DU123" not in json.dumps(payload)

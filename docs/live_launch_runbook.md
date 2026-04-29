@@ -40,6 +40,14 @@ On the trading host. Populate **IBKR (primary)** first; **Tastytrade (fallback)*
 is recommended but optional for first live tick. **Tradovate is DORMANT — skip
 the Tradovate block** unless Appendix A says it has un-dormanted.
 
+Start with the redacted scaffold helper. It creates `eta_engine/.env` only
+when missing, never overwrites, and reports pending key names without printing
+secret values:
+
+```bash
+python -m eta_engine.scripts.operator_env_bootstrap --create --json
+```
+
 ```bash
 # Populate secrets via keyring (preferred) or .env file.
 python - <<'PY'
@@ -73,6 +81,8 @@ print("OK")
 PY
 
 # Verify the credential gate turns GREEN:
+python -m eta_engine.scripts.operator_env_bootstrap --json
+python -m eta_engine.scripts.operator_action_queue --json
 python -m eta_engine.scripts.live_tiny_preflight_dryrun | grep credential_probe_full
 # Expect: [opt] credential_probe_full   PASS   Tier-A present (... keys) ...
 ```

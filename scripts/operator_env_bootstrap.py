@@ -20,6 +20,73 @@ sys.path.insert(0, str(ROOT.parent))
 from eta_engine.scripts import vps_failover_drill  # noqa: E402
 
 
+def _as_group_dict(value: object) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    groups: dict[str, list[str]] = {}
+    for group, keys in value.items():
+        if isinstance(keys, list):
+            groups[str(group)] = [str(key) for key in keys]
+    return groups
+
+
+def _pending_groups(
+    details: dict[str, Any],
+    *,
+    env_exists: bool,
+    missing_key: str,
+    fallback_key: str,
+) -> dict[str, list[str]]:
+    missing = _as_group_dict(details.get(missing_key))
+    if missing:
+        return missing
+    if not env_exists:
+        return _as_group_dict(details.get(fallback_key))
+    return {}
+
+
+def _next_actions(
+    *,
+    env_exists: bool,
+    required_pending: dict[str, list[str]],
+    recommended_pending: dict[str, list[str]],
+) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    if not env_exists:
+        actions.append({
+            "action": "create_env",
+            "blocking": True,
+            "command": "python -m eta_engine.scripts.operator_env_bootstrap --create --json",
+        })
+    if required_pending:
+        actions.append({
+            "action": "fill_required_launch_keys",
+            "blocking": True,
+            "groups": required_pending,
+            "commands": ["notepad .env", "$EDITOR .env"],
+        })
+    if recommended_pending:
+        actions.append({
+            "action": "fill_recommended_fallback_keys",
+            "blocking": False,
+            "groups": recommended_pending,
+            "commands": ["notepad .env", "$EDITOR .env"],
+        })
+    actions.extend([
+        {
+            "action": "recheck_env",
+            "blocking": bool(required_pending),
+            "command": "python -m eta_engine.scripts.operator_env_bootstrap --json",
+        },
+        {
+            "action": "refresh_operator_queue",
+            "blocking": False,
+            "command": "python -m eta_engine.scripts.operator_action_queue --json",
+        },
+    ])
+    return actions
+
+
 def build_status(*, create: bool = False) -> dict[str, Any]:
     """Return redacted canonical env status, optionally creating .env."""
     env_path = ROOT / ".env"
@@ -38,16 +105,42 @@ def build_status(*, create: bool = False) -> dict[str, Any]:
 
     check = vps_failover_drill._check_secrets_present()
     details = check.details or {}
+    env_exists = env_path.exists()
+    required_pending = _pending_groups(
+        details,
+        env_exists=env_exists,
+        missing_key="required_missing",
+        fallback_key="required_groups",
+    )
+    recommended_pending = _pending_groups(
+        details,
+        env_exists=env_exists,
+        missing_key="recommended_missing",
+        fallback_key="recommended_groups",
+    )
     return {
         "env_path": str(env_path),
         "template_path": str(template_path),
-        "exists": env_path.exists(),
+        "exists": env_exists,
         "created": created,
         "create_error": create_error,
         "severity": check.severity,
         "summary": check.summary,
         "required_missing": details.get("required_missing", {}),
         "recommended_missing": details.get("recommended_missing", {}),
+        "required_pending": required_pending,
+        "recommended_pending": recommended_pending,
+        "ready_to_launch": check.severity == "green",
+        "next_actions": _next_actions(
+            env_exists=env_exists,
+            required_pending=required_pending,
+            recommended_pending=recommended_pending,
+        ),
+        "redaction_contract": {
+            "values_emitted": False,
+            "paths_only": True,
+            "key_names_only": True,
+        },
         "values_emitted": False,
         "check": asdict(check),
     }
@@ -70,6 +163,21 @@ def _print_human(status: dict[str, Any]) -> None:
         print("Recommended missing:")
         for group, keys in recommended_missing.items():
             print(f"- {group}: {', '.join(keys)}")
+    pending = status.get("required_pending") or {}
+    if pending and not required_missing:
+        print("Required pending:")
+        for group, keys in pending.items():
+            print(f"- {group}: {', '.join(keys)}")
+    actions = status.get("next_actions") or []
+    if actions:
+        print("Next actions:")
+        for action in actions:
+            command = action.get("command")
+            commands = action.get("commands")
+            if command:
+                print(f"- {action['action']}: {command}")
+            elif commands:
+                print(f"- {action['action']}: {' OR '.join(str(cmd) for cmd in commands)}")
     print("Secret values emitted: false")
 
 
