@@ -55,6 +55,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - Runtime helper defaults now write ETA state/logs under the canonical
   workspace (`var/eta_engine/state`, `logs/eta_engine`, or `var/cloudflare`)
   instead of `%LOCALAPPDATA%/eta_engine`, preserving the single-root contract.
+- Deploy smoke/readiness now probes canonical workspace state/log directories
+  and documents IBKR primary plus Tastytrade secondary as active broker setup;
+  Tradovate credentials stay dormant-only.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is

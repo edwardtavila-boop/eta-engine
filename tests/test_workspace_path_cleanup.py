@@ -134,6 +134,26 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     )
 
 
+def test_smoke_check_uses_workspace_state_and_log_dirs() -> None:
+    text = _read("eta_engine/deploy/scripts/smoke_check.py")
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in text
+    assert "workspace_roots.ETA_RUNTIME_LOG_DIR" in text
+    assert ".local" not in text
+
+
+def test_deploy_runbooks_use_workspace_state_and_log_dirs() -> None:
+    targets = (
+        "eta_engine/deploy/README.md",
+        "eta_engine/deploy/HOST_RUNBOOK.md",
+    )
+    for rel_path in targets:
+        text = _read(rel_path)
+        assert "~/.local/state/eta_engine" not in text
+        assert "~/.local/log/eta_engine" not in text
+        assert "var/eta_engine/state" in text
+        assert "logs/eta_engine" in text
+
+
 def test_doc_cleanup_wave_drops_legacy_paths() -> None:
     targets = (
         "eta_engine/docs/research_log/2026-04-26_post_rebrand_baseline.md",

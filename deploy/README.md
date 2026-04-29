@@ -11,7 +11,7 @@ One-shot install + operator runbook for the JARVIS + Avengers stack.
 sudo apt update && sudo apt install -y git python3.12 python3.12-venv cron
 git clone https://github.com/<you>/eta_engine.git ~/eta_engine
 cd ~/eta_engine && ./deploy/install_vps.sh
-$EDITOR .env                                   # fill in TRADOVATE_*, ANTHROPIC_API_KEY
+$EDITOR .env                                   # fill in ANTHROPIC + active broker keys
 sudo loginctl enable-linger $USER              # survive logout
 ```
 
@@ -36,8 +36,8 @@ journalctl --user -u jarvis-live -f            # tail JARVIS
 | Avengers dispatcher | `systemd --user avengers-fleet.service` | always |
 | Dashboard backend | `systemd --user eta-dashboard.service` | always |
 | Background tasks | crontab (12 entries tagged `eta-engine:avengers`) | per task cadence |
-| State | `~/.local/state/eta_engine/` | writable by services |
-| Logs | `~/.local/log/eta_engine/` | append-only |
+| State | `var/eta_engine/state/` under the workspace | writable by services |
+| Logs | `logs/eta_engine/` under the workspace | append-only |
 
 ---
 
@@ -81,7 +81,7 @@ Before starting services, run the smoke check:
 cd ~/eta_engine && .venv/bin/python -m deploy.scripts.smoke_check
 ```
 
-It verifies: imports, `.env` has required vars, state dirs writable, dispatch
+It verifies: imports, `.env` has required JARVIS vars, canonical workspace state/log dirs are writable, dispatch
 works with a dry-run executor, all 12 task handlers are wired, systemd units
 are installed, and crontab has the Avengers entries.
 
@@ -100,9 +100,10 @@ JARVIS_DAILY_USD_BUDGET=10.00
 JARVIS_DISTILL_SKIP_THRESHOLD=0.92
 ```
 
-Plus the standard eta_engine secrets (see `.env.example`):
-- `TRADOVATE_USERNAME`, `TRADOVATE_PASSWORD`, `TRADOVATE_CID`, `TRADOVATE_APP_SECRET`
-- Any broker-specific entries (tastytrade, IBKR, etc.)
+Plus active broker secrets (see `.env.example`):
+- IBKR primary: `IBKR_ACCOUNT_ID` and any required Client Portal/session settings.
+- Tastytrade secondary: `TASTY_ACCOUNT_NUMBER` plus session/auth settings.
+- Tradovate remains **DORMANT** and is not required unless the operator reactivates it in code and docs together.
 
 ---
 
@@ -112,7 +113,7 @@ Plus the standard eta_engine secrets (see `.env.example`):
 The JARVIS context engine + supervisor loop. Hot-path risk-gate.
 - `WorkingDirectory`: repo root
 - `ExecStart`: `python -m eta_engine.scripts.jarvis_live --interval 60`
-- Writes: `~/.local/state/eta_engine/jarvis_live_health.json`
+- Writes: `var/eta_engine/state/jarvis_live_health.json`
 - Restart: `always`
 - Hardening: `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`
 
@@ -144,13 +145,13 @@ systemctl --user restart jarvis-live avengers-fleet
 # Live logs
 journalctl --user -u jarvis-live -f
 journalctl --user -u avengers-fleet -f
-tail -f ~/.local/log/eta_engine/cron.log          # cron task output
+tail -f logs/eta_engine/cron.log                  # cron task output
 
 # Manual task fire (useful when debugging)
 cd ~/eta_engine && .venv/bin/python -m deploy.scripts.run_task KAIZEN_RETRO
 
 # Quota / cost check
-cat ~/.local/state/eta_engine/avengers_heartbeat.json | jq
+cat var/eta_engine/state/avengers_heartbeat.json | jq
 ```
 
 ---
@@ -197,7 +198,7 @@ systemctl --user restart jarvis-live avengers-fleet eta-dashboard
 → You need `loginctl enable-linger $USER`. This is a one-time sudo op.
 
 **Cron fires but nothing happens**
-→ Check `~/.local/log/eta_engine/cron.log`. Likely `PATH` issue; cron starts
+-> Check `logs/eta_engine/cron.log`. Likely `PATH` issue; cron starts
 with a minimal env. The cronfile sets `PATH` explicitly — if you edited it,
 ensure `/usr/local/bin` + `/usr/bin` are still in the list.
 

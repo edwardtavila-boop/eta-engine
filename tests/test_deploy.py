@@ -118,10 +118,22 @@ class TestSmokeCheck:
         assert ok
 
     def test_dirs_check_creates_dirs(self):
-        from eta_engine.deploy.scripts.smoke_check import check_dirs
+        from eta_engine.deploy.scripts import smoke_check
+        from eta_engine.scripts import workspace_roots
 
-        ok, _ = check_dirs()
+        ok, msg = smoke_check.check_dirs()
         assert ok
+        assert "canonical dirs OK" in msg
+        assert str(workspace_roots.ETA_RUNTIME_STATE_DIR) in msg
+        assert str(workspace_roots.ETA_RUNTIME_LOG_DIR) in msg
+
+    def test_smoke_check_broker_guidance_keeps_tradovate_dormant(self):
+        from eta_engine.deploy.scripts import smoke_check
+
+        assert "IBKR_ACCOUNT_ID" in smoke_check.ACTIVE_BROKER_ENV_HINTS
+        assert "TASTY_ACCOUNT_NUMBER" in smoke_check.ACTIVE_BROKER_ENV_HINTS
+        assert "TRADOVATE_USERNAME" in smoke_check.DORMANT_BROKER_ENV_HINTS
+        assert "TRADOVATE_USERNAME" not in smoke_check.REQUIRED_ENV_VARS
 
     def test_dispatch_check_runs(self):
         from eta_engine.deploy.scripts.smoke_check import check_dispatch

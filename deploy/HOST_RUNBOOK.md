@@ -163,20 +163,16 @@ From here, follow `deploy/README.md`. Condensed:
 sudo apt install -y git python3.14 python3.14-venv cron build-essential
 git clone <your-fork> ~/eta_engine
 cd ~/eta_engine && ./deploy/install_vps.sh
-$EDITOR .env     # TRADOVATE_*, ANTHROPIC_API_KEY, PUSHOVER_*, TELEGRAM_*
+$EDITOR .env     # ANTHROPIC_API_KEY, active broker keys, PUSHOVER_*, TELEGRAM_*
 ```
 
 ### 3.1 .env minimum
 
 ```ini
 APEX_MODE=PAPER                 # start PAPER; flip to LIVE only after smoke
-TRADOVATE_USERNAME=...
-TRADOVATE_PASSWORD=...
-TRADOVATE_APP_ID=...
-TRADOVATE_APP_VERSION=1.0
-TRADOVATE_CID=...
-TRADOVATE_SECRET=...
 ANTHROPIC_API_KEY=sk-ant-...
+IBKR_ACCOUNT_ID=DU...
+TASTY_ACCOUNT_NUMBER=...
 
 # Mobile push (obs/mobile_push.py) -- see 4.4
 PUSHOVER_APP_TOKEN=...
@@ -190,6 +186,11 @@ Permissions:
 ```bash
 chmod 600 ~/eta_engine/.env
 ```
+
+Tradovate remains **DORMANT** under the current broker mandate. Do not add
+`TRADOVATE_*` credentials for normal readiness; only use the Appendix A
+un-dormancy procedure if the operator explicitly reactivates that venue in
+code and docs together.
 
 ### 3.2 First-boot smoke
 
@@ -303,8 +304,8 @@ First print should show `MODE=LIVE`.
 
 Restore from snapshot. All state is in:
 - `~/eta_engine/.env`           (secrets)
-- `~/.local/state/eta_engine/`   (journals, ledgers, model state)
-- `~/.local/log/eta_engine/`     (audit trail)
+- `var/eta_engine/state/`       (journals, ledgers, model state)
+- `logs/eta_engine/`            (audit trail)
 
 Both `state` and `log` dirs are captured by provider-level snapshots.
 

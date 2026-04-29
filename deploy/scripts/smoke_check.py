@@ -5,8 +5,8 @@ Post-install sanity check. Run BEFORE starting the systemd services.
 
 Verifies:
   1. Python imports all core modules (no syntax / import errors)
-  2. .env file has required variables
-  3. State + log directories are writable
+  2. .env file has required JARVIS variables
+  3. Canonical workspace state + log directories are writable
   4. Avengers dispatch plan for a sample context runs without Claude
   5. All 12 BackgroundTask handlers can be instantiated
   6. systemd --user units are present (if install_vps.sh ran step 6)
@@ -23,16 +23,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+from eta_engine.scripts import workspace_roots
+
 REQUIRED_ENV_VARS = (
     "ANTHROPIC_API_KEY",
     "JARVIS_HOURLY_USD_BUDGET",
     "JARVIS_DAILY_USD_BUDGET",
 )
-OPTIONAL_ENV_VARS = (
-    "TRADOVATE_USERNAME",
-    "TRADOVATE_CID",
-    "TRADOVATE_APP_SECRET",
-)
+ACTIVE_BROKER_ENV_HINTS = ("IBKR_ACCOUNT_ID", "TASTY_ACCOUNT_NUMBER")
+DORMANT_BROKER_ENV_HINTS = ("TRADOVATE_USERNAME", "TRADOVATE_CID", "TRADOVATE_APP_SECRET")
 
 
 def check_imports() -> tuple[bool, str]:
@@ -60,21 +59,21 @@ def check_env(env_path: Path) -> tuple[bool, str]:
             missing.append(var)
     if missing:
         return False, f"missing required vars in .env: {', '.join(missing)}"
-    return True, ".env looks complete"
+    return True, ".env has required JARVIS vars; IBKR/Tastytrade active, Tradovate dormant"
 
 
 def check_dirs() -> tuple[bool, str]:
-    state_dir = Path.home() / ".local" / "state" / "eta_engine"
-    log_dir = Path.home() / ".local" / "log" / "eta_engine"
+    state_dir = workspace_roots.ETA_RUNTIME_STATE_DIR
+    log_dir = workspace_roots.ETA_RUNTIME_LOG_DIR
     for d in (state_dir, log_dir):
         try:
-            d.mkdir(parents=True, exist_ok=True)
+            workspace_roots.ensure_dir(d)
             probe = d / ".write_probe"
             probe.write_text("ok")
             probe.unlink()
         except Exception as exc:  # noqa: BLE001
             return False, f"{d} not writable: {exc}"
-    return True, f"dirs OK ({state_dir}, {log_dir})"
+    return True, f"canonical dirs OK ({state_dir}, {log_dir})"
 
 
 def check_dispatch() -> tuple[bool, str]:
