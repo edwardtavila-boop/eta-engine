@@ -12,6 +12,7 @@ const COLLAPSED_STACKS_KEY = 'eta.command_center.collapsed_stacks_v1';
 const MINIMAL_MODE_KEY = 'eta.command_center.minimal_mode';
 const SESSION_LOG_MAX = 400;
 const MACRO_COOLDOWN_MS = 20_000;
+const LIVE_CARD_WATCHDOG_GRACE_MS = 12_000;
 let lastDangerMacroAt = 0;
 const sessionLog = [];
 
@@ -467,11 +468,98 @@ function initCardHealthContract() {
   const chip = document.getElementById('top-card-health');
   if (!chip) return;
   const endpoint = chip.dataset.healthEndpoint || '/api/dashboard/card-health';
+  let latestCards = [];
+  let contractOk = false;
+  const bootedAt = Date.now();
 
   const setChip = (label, health, title = '') => {
     chip.textContent = label;
     chip.dataset.health = health;
     chip.title = title;
+  };
+
+  const renderedPanelMap = () => {
+    const rendered = new Map();
+    document.querySelectorAll('[data-panel-id]').forEach((el) => {
+      const id = String(el.getAttribute('data-panel-id') || '');
+      if (id) rendered.set(id, el);
+    });
+    return rendered;
+  };
+
+  const publish = (dead_cards, stale_cards, totalCards) => {
+    const dead = Array.isArray(dead_cards) ? dead_cards : [];
+    const stale = Array.isArray(stale_cards) ? stale_cards : [];
+    window.dispatchEvent(new CustomEvent('eta-card-health', {
+      detail: {
+        at: Date.now(),
+        total: totalCards,
+        dead_cards: dead,
+        stale_cards: stale,
+      },
+    }));
+    if (dead.length > 0) {
+      setChip(
+        `cards: ${dead.length} dead`,
+        'dead',
+        dead.map((card) => `${card.id}:${card.reason || card.status || 'dead'}`).join(', '),
+      );
+      return;
+    }
+    if (stale.length > 0) {
+      setChip(
+        `cards: ${stale.length} stale`,
+        'degraded',
+        stale.map((card) => `${card.id}:${card.reason || card.status || 'stale'}`).join(', '),
+      );
+      return;
+    }
+    setChip(`cards: ${totalCards} live`, 'ok', `${totalCards} registered cards, 0 dead, 0 stale`);
+  };
+
+  const classifyLiveCards = () => {
+    if (!contractOk || latestCards.length === 0) return;
+    const rendered = renderedPanelMap();
+    if (rendered.size === 0) {
+      setChip(`cards: warming`, 'degraded', 'waiting for authenticated panels to mount');
+      return;
+    }
+    const now = Date.now();
+    const dead = [];
+    const stale = [];
+    latestCards.forEach((card) => {
+      const id = String(card.id || '');
+      if (!id || card.required === false) return;
+      const el = rendered.get(id);
+      if (!el) {
+        dead.push({ id, reason: 'missing_dom_panel' });
+        return;
+      }
+      if (el.classList.contains('error')) {
+        dead.push({ id, reason: 'panel_error' });
+        return;
+      }
+      if (el.classList.contains('stale')) {
+        stale.push({ id, reason: 'panel_stale_class' });
+        return;
+      }
+      if (card.source === 'endpoint') {
+        const last = Number(el.dataset.lastRefreshAt || 0);
+        if (!last && now - bootedAt > LIVE_CARD_WATCHDOG_GRACE_MS) {
+          dead.push({ id, reason: 'never_refreshed' });
+          return;
+        }
+        const staleAfterMs = Number(card.stale_after_s || 30) * 1000;
+        if (last && now - last > staleAfterMs) {
+          stale.push({ id, reason: 'refresh_age_exceeded' });
+        }
+      }
+    });
+    const registeredIds = new Set(latestCards.map((card) => String(card.id || '')).filter(Boolean));
+    rendered.forEach((_el, id) => {
+      if (!registeredIds.has(id)) dead.push({ id, reason: 'missing_registry_card' });
+    });
+    publish(dead, stale, latestCards.length);
   };
 
   const refresh = async () => {
@@ -486,44 +574,25 @@ function initCardHealthContract() {
       }
       const payload = await resp.json();
       const cards = Array.isArray(payload.cards) ? payload.cards : [];
-      const registryIds = new Set(cards.map((card) => String(card.id || '')).filter(Boolean));
-      const renderedIds = new Set([...document.querySelectorAll('[data-panel-id]')]
-        .map((el) => String(el.getAttribute('data-panel-id') || ''))
-        .filter(Boolean));
-      const missingDom = cards.filter((card) => card.required !== false && !renderedIds.has(String(card.id || '')));
-      const orphanDom = [...renderedIds].filter((id) => !registryIds.has(id));
-      const dead_cards = [
-        ...(Array.isArray(payload.dead_cards) ? payload.dead_cards : []),
-        ...missingDom.map((card) => ({ id: card.id, reason: 'missing_dom_panel' })),
-        ...orphanDom.map((id) => ({ id, reason: 'missing_registry_card' })),
-      ];
-      const stale_cards = Array.isArray(payload.stale_cards) ? payload.stale_cards : [];
-      if (dead_cards.length > 0) {
-        setChip(
-          `cards: ${dead_cards.length} dead`,
-          'dead',
-          dead_cards.map((card) => `${card.id}:${card.reason || card.status || 'dead'}`).join(', '),
-        );
-        return;
-      }
-      if (stale_cards.length > 0) {
-        setChip(
-          `cards: ${stale_cards.length} stale`,
-          'degraded',
-          stale_cards.map((card) => `${card.id}:${card.reason || card.status || 'stale'}`).join(', '),
-        );
-        return;
-      }
-      setChip(`cards: ${cards.length} live`, 'ok', `${cards.length} registered cards, ${renderedIds.size} rendered panels`);
+      latestCards = cards;
+      contractOk = true;
+      publish(
+        Array.isArray(payload.dead_cards) ? payload.dead_cards : [],
+        Array.isArray(payload.stale_cards) ? payload.stale_cards : [],
+        cards.length,
+      );
+      classifyLiveCards();
     } catch (err) {
+      contractOk = false;
       setChip(`cards: contract down`, 'dead', String(err?.message || err));
     }
   };
 
   refresh();
+  setInterval(classifyLiveCards, 2000);
   setInterval(refresh, 10_000);
-  window.addEventListener('eta-panel-error', () => setTimeout(refresh, 100));
-  window.addEventListener('eta-panel-refresh', () => setTimeout(refresh, 100));
+  window.addEventListener('eta-panel-error', () => setTimeout(classifyLiveCards, 100));
+  window.addEventListener('eta-panel-refresh', () => setTimeout(classifyLiveCards, 100));
 }
 
 function initConsistencyGuardrails() {

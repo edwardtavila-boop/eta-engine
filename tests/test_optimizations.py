@@ -221,6 +221,11 @@ class TestStatusPage:
         assert "/api/dashboard/card-health" in supercharge
         assert "dead_cards" in supercharge
         assert "stale_cards" in supercharge
+        assert "LIVE_CARD_WATCHDOG_GRACE_MS" in supercharge
+        assert "eta-card-health" in supercharge
+        assert "never_refreshed" in supercharge
+        assert "panel_error" in supercharge
+        assert "refresh_age_exceeded" in supercharge
 
     def test_card_health_registry_covers_every_rendered_panel(self):
         from eta_engine.deploy.scripts.dashboard_api import DASHBOARD_CARD_REGISTRY
