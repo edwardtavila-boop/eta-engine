@@ -84,10 +84,16 @@ def main() -> int:
     if ds is None:
         print(f"ABORT: no dataset for {symbol}/{timeframe} in the data library.")
         return 1
-    bars = default_library().load_bars(ds)
+    bars = default_library().load_bars(ds, require_positive_prices=True)
+    if not bars:
+        print(
+            f"ABORT: no positive-price tradable bars for {symbol}/{timeframe} "
+            "after data-quality filtering.",
+        )
+        return 1
     print(
         f"[orb] using {ds.symbol}/{ds.timeframe}/{ds.schema_kind}: "
-        f"{ds.row_count} bars over {ds.days_span():.1f} days "
+        f"{len(bars)}/{ds.row_count} tradable bars over {ds.days_span():.1f} days "
         f"({ds.start_ts.date()} -> {ds.end_ts.date()})"
     )
 
