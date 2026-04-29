@@ -339,22 +339,36 @@ def _op9_clock_drift(preflight: dict[str, Any]) -> OpItem:
 def _op10_tradovate_dormancy() -> OpItem:
     item = OpItem(
         op_id="OP-10",
-        title="Decide if/when to flip DORMANT_BROKERS = frozenset() (Tradovate un-dormancy)",
+        title="Confirm Tradovate remains dormant unless explicitly reactivated",
         where="venues/router.py",
     )
     dormant = _read_dormant_brokers()
     if "tradovate" in dormant:
-        item.verdict = VERDICT_BLOCKED
+        item.verdict = VERDICT_DONE
         item.detail = (
-            f"Tradovate is DORMANT (set: {sorted(dormant)}). See live_launch_runbook.md Appendix A for un-dormancy."
+            f"Tradovate is DORMANT as required by current broker policy (set: {sorted(dormant)}). "
+            "IBKR remains primary and Tastytrade secondary."
         )
     elif not dormant:
-        item.verdict = VERDICT_DONE
-        item.detail = "DORMANT_BROKERS is empty -- all brokers active"
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "DORMANT_BROKERS is empty; Tradovate appears active. Current policy requires "
+            "Tradovate to stay dormant unless the operator explicitly reactivates it in code and docs together."
+        )
     else:
-        item.verdict = VERDICT_OBSERVED
-        item.detail = f"Tradovate not in DORMANT_BROKERS but other brokers are: {sorted(dormant)}"
-    item.evidence = {"dormant_brokers": sorted(dormant)}
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            f"Tradovate not in DORMANT_BROKERS but other brokers are: {sorted(dormant)}. "
+            "This violates the current broker policy unless an explicit reactivation batch landed."
+        )
+    item.evidence = {
+        "dormant_brokers": sorted(dormant),
+        "policy": {
+            "active_primary": "IBKR",
+            "active_secondary": "Tastytrade",
+            "tradovate": "dormant",
+        },
+    }
     return item
 
 
@@ -362,27 +376,38 @@ def _op11_killverdict_synthesis() -> OpItem:
     return OpItem(
         op_id="OP-11",
         title=(
-            "Authorize M2 KillVerdict synthesis on sustained drift "
+            "Track M2 KillVerdict synthesis on sustained drift "
             "after H1 calibrator empirics from >= 30-day live-paper window"
         ),
-        verdict=VERDICT_BLOCKED,
+        verdict=VERDICT_OBSERVED,
         detail=(
-            "Gated on H1 calibrator empirics (no live-paper data yet). "
-            "Reconciler stays observation-only until M2 closure."
+            "Parked until >=30 days of live-paper H1 calibrator empirics exist. "
+            "Reconciler correctly stays observation-only; no operator launch block today."
         ),
         where="core/broker_equity_reconciler.py + configs/kill_switch.yaml",
+        evidence={
+            "prerequisite": ">=30d live-paper H1 calibrator empirics",
+            "current_mode": "observation_only",
+            "launch_blocker": False,
+        },
     )
 
 
 def _op12_per_bot_drift() -> OpItem:
     return OpItem(
         op_id="OP-12",
-        title=("Authorize M1 per-bot drift detection (multi-account scope expansion)"),
-        verdict=VERDICT_BLOCKED,
+        title=("Track M1 per-bot drift detection (multi-account scope expansion)"),
+        verdict=VERDICT_OBSERVED,
         detail=(
-            "Multi-account venue introspection is the prerequisite. Single-account today; M1 ships when fleet grows."
+            "Parked until multi-account venue introspection exists. Single-account today; "
+            "M1 ships when fleet grows, so this is not a current launch block."
         ),
         where="New scope",
+        evidence={
+            "prerequisite": "multi-account venue introspection",
+            "current_scope": "single_account",
+            "launch_blocker": False,
+        },
     )
 
 
@@ -410,16 +435,44 @@ def _op14_quarterly_adversarial() -> OpItem:
 
 
 def _op15_crypto_seed() -> OpItem:
-    return OpItem(
+    item = OpItem(
         op_id="OP-15",
-        title=("Re-test crypto_seed (held at paper) on the v3 Wilder-ADX overlay (Tier 3 research)"),
-        verdict=VERDICT_BLOCKED,
-        detail=(
-            "Strategy redesign needed -- BTC chop on 15m has no edge for "
-            "the current confluence engine. real_data_v2_verdict explicit."
-        ),
-        where="bots/btc_hybrid/",
+        title="Confirm crypto_seed remains non-edge BTC exposure accumulator",
+        where="python -m eta_engine.scripts.paper_live_launch_check --bots crypto_seed --json",
     )
+    try:
+        from eta_engine.scripts.paper_live_launch_check import _audit_bot
+        from eta_engine.strategies.per_bot_registry import get_for_bot
+    except Exception as exc:  # noqa: BLE001 -- operator queue must stay readable
+        item.verdict = VERDICT_UNKNOWN
+        item.detail = f"Unable to audit crypto_seed readiness: {exc}"
+        item.evidence = {"error": str(exc)}
+        return item
+
+    assignment = get_for_bot("crypto_seed")
+    if assignment is None:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = "crypto_seed missing from per-bot strategy registry"
+        item.evidence = {"bot_id": "crypto_seed", "missing_assignment": True}
+        return item
+
+    result = _audit_bot(assignment)
+    evidence = result.get("evidence", {})
+    launch_role = evidence.get("launch_role") if isinstance(evidence, dict) else None
+    if result.get("status") == "READY" and launch_role == "non_edge_exposure":
+        item.verdict = VERDICT_DONE
+        item.detail = (
+            "crypto_seed is ready as a non-edge BTC exposure accumulator; "
+            "it is no longer treated as a blocked alpha redesign item."
+        )
+        item.evidence = result
+        return item
+
+    item.verdict = VERDICT_BLOCKED
+    warnings = result.get("warnings") or result.get("issues") or ["readiness check did not clear"]
+    item.detail = f"crypto_seed readiness still needs work: {warnings[0]}"
+    item.evidence = result
+    return item
 
 
 def _num(value: object) -> float | None:

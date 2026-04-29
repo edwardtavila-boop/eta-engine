@@ -95,6 +95,31 @@ def test_shadow_benchmark_is_ready_with_shadow_evidence(monkeypatch) -> None:
     assert result["evidence"]["shadow_reason"] == "plain ORB failed full-history validation"
 
 
+def test_non_edge_strategy_is_ready_with_exposure_evidence(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="crypto_seed",
+        strategy_id="crypto_seed_dca",
+        strategy_kind="confluence",
+        symbol="BTC",
+        timeframe="D",
+        extras={
+            "promotion_status": "non_edge_strategy",
+            "non_edge_reason": "DCA exposure accumulator, not an edge strategy",
+        },
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_load_baseline_entry", lambda *_: {"strategy_id": "crypto_seed_dca"})
+
+    result = mod._audit_bot(assignment)
+
+    assert result["status"] == "READY"
+    assert result["warnings"] == []
+    assert result["promotion_status"] == "non_edge_strategy"
+    assert result["evidence"]["launch_role"] == "non_edge_exposure"
+    assert result["evidence"]["non_edge_reason"] == "DCA exposure accumulator, not an edge strategy"
+
+
 def test_research_warning_includes_is_and_degradation_when_present() -> None:
     warning = mod._research_warning(
         {

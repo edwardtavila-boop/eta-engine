@@ -400,6 +400,90 @@ class TestStrategyResearchCandidateProbe:
         assert "first=eth_sage_daily" in item.detail
 
 
+class TestCryptoSeedProbeUnderSyntheticState:
+    def test_non_edge_exposure_readiness_marks_done(self, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from eta_engine.scripts import operator_action_queue
+
+        assignment = SimpleNamespace(bot_id="crypto_seed")
+        monkeypatch.setattr(
+            "eta_engine.strategies.per_bot_registry.get_for_bot",
+            lambda bot_id: assignment if bot_id == "crypto_seed" else None,
+        )
+        monkeypatch.setattr(
+            "eta_engine.scripts.paper_live_launch_check._audit_bot",
+            lambda _assignment: {
+                "bot_id": "crypto_seed",
+                "status": "READY",
+                "warnings": [],
+                "issues": [],
+                "evidence": {"launch_role": "non_edge_exposure"},
+            },
+        )
+
+        item = operator_action_queue._op15_crypto_seed()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["bot_id"] == "crypto_seed"
+        assert "non-edge BTC exposure accumulator" in item.detail
+
+    def test_missing_crypto_seed_assignment_stays_blocked(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr("eta_engine.strategies.per_bot_registry.get_for_bot", lambda _bot_id: None)
+
+        item = operator_action_queue._op15_crypto_seed()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["missing_assignment"] is True
+
+
+class TestTradovateDormancyPolicy:
+    def test_tradovate_dormant_is_policy_done(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr(operator_action_queue, "_read_dormant_brokers", lambda: {"tradovate"})
+
+        item = operator_action_queue._op10_tradovate_dormancy()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["policy"]["active_primary"] == "IBKR"
+        assert item.evidence["policy"]["tradovate"] == "dormant"
+
+    def test_tradovate_un_dormant_is_blocked_without_explicit_reactivation(
+        self, monkeypatch
+    ) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr(operator_action_queue, "_read_dormant_brokers", lambda: set())
+
+        item = operator_action_queue._op10_tradovate_dormancy()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert "Tradovate appears active" in item.detail
+
+
+class TestFutureScopeItems:
+    def test_killverdict_synthesis_is_observed_until_live_paper_empirics(self) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        item = operator_action_queue._op11_killverdict_synthesis()
+
+        assert item.verdict == VERDICT_OBSERVED
+        assert item.evidence["launch_blocker"] is False
+        assert ">=30 days" in item.detail
+
+    def test_per_bot_drift_is_observed_until_multi_account_scope(self) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        item = operator_action_queue._op12_per_bot_drift()
+
+        assert item.verdict == VERDICT_OBSERVED
+        assert item.evidence["current_scope"] == "single_account"
+        assert "not a current launch block" in item.detail
+
+
 class TestVpsFailoverProbeUnderSyntheticState:
     def test_green_summary_marks_done(self, monkeypatch) -> None:
         from eta_engine.scripts import vps_failover_summary
