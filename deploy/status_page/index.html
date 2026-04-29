@@ -2,7 +2,7 @@
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
@@ -15,12 +15,16 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col antialiased">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col antialiased"
+      data-command-center-shell="eta-live-status-page"
+      data-mobile-dashboard="adaptive">
+  <a class="skip-link" href="#command-center-main">Skip to Command Center</a>
 
   <!-- Login modal (hidden by default; shown by auth.js when unauthenticated) -->
   <div id="login-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur hidden items-center justify-center">
-    <form id="login-form" class="bg-zinc-900 border border-zinc-700 rounded p-6 w-96 space-y-3">
+    <form id="login-form" class="modal-card bg-zinc-900 border border-zinc-700 rounded p-6 w-96 space-y-3">
       <h2 class="text-lg font-semibold">ETA Live Dashboard</h2>
+      <p class="text-xs text-zinc-400">Secure operator access for ops.evolutionarytradingalgo.com.</p>
       <input id="login-username" type="text" placeholder="username"
              class="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" autocomplete="username" />
       <input id="login-password" type="password" placeholder="password"
@@ -34,7 +38,7 @@
 
   <!-- Step-up modal -->
   <div id="step-up-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur hidden items-center justify-center">
-    <form id="step-up-form" class="bg-zinc-900 border border-amber-700 rounded p-6 w-96 space-y-3">
+    <form id="step-up-form" class="modal-card bg-zinc-900 border border-amber-700 rounded p-6 w-96 space-y-3">
       <h2 class="text-lg font-semibold text-amber-400">Step-Up Required</h2>
       <p class="text-sm text-zinc-400" id="step-up-reason">Sensitive action requires PIN.</p>
       <input id="step-up-pin" type="password" inputmode="numeric" placeholder="PIN"
@@ -88,7 +92,8 @@
   </aside>
 
   <!-- Tab nav -->
-  <nav class="border-b border-zinc-800 bg-zinc-900/80 px-4 flex gap-1 text-sm backdrop-blur">
+  <nav class="border-b border-zinc-800 bg-zinc-900/80 px-4 flex gap-1 text-sm backdrop-blur"
+       aria-label="Primary dashboard tabs">
     <button data-tab="jarvis" class="tab-btn px-4 py-2 border-b-2 border-emerald-500 text-emerald-400">
       JARVIS Policy
     </button>
@@ -98,7 +103,7 @@
   </nav>
 
   <!-- Main content -->
-  <main class="flex-1 overflow-y-auto p-3 sm:p-4 pb-24">
+  <main id="command-center-main" class="flex-1 overflow-y-auto p-3 sm:p-4 pb-24" tabindex="-1">
 
     <!-- JARVIS view (visible by default) -->
     <section id="view-jarvis" class="section-rail section-jarvis grid grid-cols-1 lg:grid-cols-3 gap-4">

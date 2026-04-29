@@ -151,6 +151,15 @@ class TestStatusPage:
             assert module in html, f"missing JS module: {module}"
         # Theme css linked
         assert "/theme.css" in html
+        # Batches 1-4: phone-safe shell, login fit, adaptive nav, operator route marker
+        assert "viewport-fit=cover" in html
+        assert 'data-command-center-shell="eta-live-status-page"' in html
+        assert 'data-mobile-dashboard="adaptive"' in html
+        assert 'aria-label="Primary dashboard tabs"' in html
+        assert 'class="skip-link"' in html
+        assert 'class="modal-card' in html
+        assert 'id="command-center-main"' in html
+        assert "ops.evolutionarytradingalgo.com" in html
         # No hardcoded secrets or debug leftovers
         assert "localhost" not in html.lower() or "const API" in html
         assert "console.log" not in html
@@ -162,6 +171,48 @@ class TestStatusPage:
         assert "/api/jarvis/operator_queue" in js
         assert "top-operator-queue" in js
         assert "next_actions" in js
+
+    def test_status_page_mobile_fleet_and_equity_contracts(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        css = (root / "theme.css").read_text(encoding="utf-8")
+        bot_fleet = (root / "js" / "bot_fleet.js").read_text(encoding="utf-8")
+        panels = (root / "js" / "panels.js").read_text(encoding="utf-8")
+        auth = (root / "js" / "auth.js").read_text(encoding="utf-8")
+
+        # Batches 5-7: phone roster cards, equity sizing, live freshness cues.
+        assert "@media (max-width: 760px)" in css
+        assert "@media (max-width: 520px)" in css
+        assert ".mobile-card-table" in css
+        assert "content: attr(data-label)" in css
+        assert ".mobile-chart-shell" in css
+        assert "data-label=\"Bot\"" in bot_fleet
+        assert "data-label=\"Day PnL\"" in bot_fleet
+        assert "data-label=\"Last Trade\"" in bot_fleet
+        assert "mobile-card-table" in bot_fleet
+        assert "mobile-chart-shell" in bot_fleet
+        assert "data-quality" in bot_fleet
+        assert "server_ts" in bot_fleet
+        assert "source_age_s" in bot_fleet
+        assert "source_updated_at" in bot_fleet
+        assert "document.hidden" in panels
+        assert "cache: 'no-store'" in auth
+
+    def test_status_page_has_no_visible_mojibake_tokens(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        files = [
+            root / "index.html",
+            root / "theme.css",
+            root / "js" / "panels.js",
+            root / "js" / "command_center.js",
+            root / "js" / "bot_fleet.js",
+            root / "js" / "auth.js",
+            root / "js" / "live.js",
+        ]
+        bad_tokens = ("â", "Â", "Ï", "�")
+        for file in files:
+            text = file.read_text(encoding="utf-8")
+            for token in bad_tokens:
+                assert token not in text, f"{file.name} contains mojibake token {token!r}"
 
     def test_theme_css_exists(self):
         path = Path(__file__).resolve().parent.parent / "deploy" / "status_page" / "theme.css"
@@ -175,6 +226,11 @@ class TestStatusPage:
         assert ".panel.stale" in css
         assert ".sse-connected" in css
         assert ".toast" in css
+        # Batches 8-10: safe-area, touch targets, and readable phone density.
+        assert "env(safe-area-inset-top)" in css
+        assert "min-height: 44px" in css
+        assert "overflow-wrap: anywhere" in css
+        assert "prefers-reduced-motion" in css
 
 
 # ---------------------------------------------------------------------------

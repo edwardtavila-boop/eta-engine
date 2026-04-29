@@ -1269,20 +1269,29 @@ def _supervisor_equity_payload(
         if row_ts > latest_ts:
             latest_ts = row_ts
 
+    source_dt = None
+    if latest_ts:
+        with contextlib.suppress(ValueError, OSError):
+            source_dt = datetime.fromisoformat(latest_ts.replace("Z", "+00:00"))
+            if source_dt.tzinfo is None:
+                source_dt = source_dt.replace(tzinfo=UTC)
+    source_epoch = source_dt.timestamp() if source_dt is not None else now_ts
+    source_age_s = max(0, int(now_ts - source_epoch))
     baseline = 5000.0 if bot is not None else float(max(1, len(rows)) * 5000)
     current_equity = round(baseline + total_pnl, 2)
     today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     point_ts = latest_ts or datetime.fromtimestamp(now_ts, UTC).isoformat()
+    rounded_pnl = round(total_pnl, 2)
     series = [
         {"ts": today_start.isoformat().replace("+00:00", "Z"), "equity": round(baseline, 2)},
         {"ts": point_ts, "equity": current_equity},
     ]
     summary = {
         "current_equity": current_equity,
-        "today_pnl": round(total_pnl, 2),
-        "week_pnl": round(total_pnl, 2),
-        "month_pnl": round(total_pnl, 2),
-        "total_pnl": round(total_pnl, 2),
+        "today_pnl": rounded_pnl,
+        "week_pnl": rounded_pnl,
+        "month_pnl": rounded_pnl,
+        "total_pnl": rounded_pnl,
     }
     truth = _truth_snapshot(rows, server_ts=now_ts)
     return {
@@ -1293,11 +1302,16 @@ def _supervisor_equity_payload(
         "summary": summary,
         "baseline_equity": baseline if normalize else None,
         "server_ts": now_ts,
-        "data_ts": now_ts,
+        "data_ts": source_epoch,
+        "data_age_s": source_age_s,
+        "source_updated_at": latest_ts or point_ts,
+        "source_age_s": source_age_s,
+        "source_heartbeat_count": len(rows),
         "source": "supervisor_heartbeat",
         "since_days": since_days,
         "live": _fills_activity_snapshot(bot=bot),
-        "session_cum_pnl": round(total_pnl, 2),
+        "pnl": rounded_pnl,
+        "session_cum_pnl": rounded_pnl,
         "session_truth_status": truth["truth_status"],
         "session_truth_line": truth["truth_summary_line"],
         range_key: series,

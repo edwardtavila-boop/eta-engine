@@ -85,10 +85,12 @@ class RosterPanel extends Panel {
         </div>`;
       return;
     }
-    const srvTs = data.server_ts ? new Date(data.server_ts * 1000).toLocaleTimeString() : '—';
+    const srvTs = data.server_ts ? new Date(data.server_ts * 1000).toLocaleTimeString() : '-';
     const live = data.live || {};
-    const liveLine = `server ${srvTs} • fills 1h ${live.fills_1h ?? 0} • fills 24h ${live.fills_24h ?? 0} • last fill ${formatTime(live.last_fill_ts)}`;
-    this.body.innerHTML = `<div class="text-[10px] text-zinc-500 mb-1">live roster • ${escapeHtml(liveLine)} • window yesterday→now</div><table class="w-full text-xs"><thead class="text-zinc-500">
+    const dataAge = data.data_age_s ?? data.fleet_age_s ?? live.last_fill_age_s ?? null;
+    const quality = data.stale_payload_alert ? 'stale' : data.truth_status || 'live';
+    const liveLine = `server ${srvTs} | fills 1h ${live.fills_1h ?? 0} | fills 24h ${live.fills_24h ?? 0} | last fill ${formatTime(live.last_fill_ts)}`;
+    this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)} | window yesterday-&gt;now</div><table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
       <tr><th class="text-left">Bot</th><th class="text-left">Symbol</th><th class="text-left">Tier</th><th class="text-left">Venue</th><th class="text-left">Status</th><th class="text-right">Day PnL</th><th class="text-left">Last Trade</th><th class="text-left">Age</th><th class="text-right">R</th></tr>
       </thead><tbody>${bots.map(b => {
         const statusCls = b.status === 'running' ? 'text-emerald-400'
@@ -97,18 +99,18 @@ class RosterPanel extends Panel {
         const pnlCls = (b.todays_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
         const isSel = selection.botId === b.name ? 'bg-zinc-800' : '';
         const age = Number(b.last_trade_age_s || 0);
-        const ageLabel = age > 0 ? `${Math.floor(age / 60)}m` : '—';
-        const side = b.last_trade_side ? String(b.last_trade_side).toUpperCase() : '—';
+        const ageLabel = age > 0 ? `${Math.floor(age / 60)}m` : '-';
+        const side = b.last_trade_side ? String(b.last_trade_side).toUpperCase() : '-';
         return `<tr class="cursor-pointer hover:bg-zinc-800 ${isSel}" data-bot-id="${escapeHtml(b.name)}" data-symbol="${escapeHtml(b.symbol)}">
-          <td>${escapeHtml(b.name)}</td>
-          <td>${escapeHtml(b.symbol)}</td>
-          <td>${escapeHtml(b.tier)}</td>
-          <td>${escapeHtml(b.venue)}</td>
-          <td class="${statusCls}">${escapeHtml(b.status)}</td>
-          <td class="text-right ${pnlCls}">${formatNumber(b.todays_pnl)}</td>
-          <td class="text-zinc-300">${side} · ${formatTime(b.last_trade_ts)}</td>
-          <td class="text-zinc-500">${ageLabel}</td>
-          <td class="text-right ${(b.last_trade_r || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatR(b.last_trade_r)}</td>
+          <td data-label="Bot">${escapeHtml(b.name)}</td>
+          <td data-label="Symbol">${escapeHtml(b.symbol)}</td>
+          <td data-label="Tier">${escapeHtml(b.tier)}</td>
+          <td data-label="Venue">${escapeHtml(b.venue)}</td>
+          <td data-label="Status" class="${statusCls}">${escapeHtml(b.status)}</td>
+          <td data-label="Day PnL" class="text-right ${pnlCls}">${formatNumber(b.todays_pnl)}</td>
+          <td data-label="Last Trade" class="text-zinc-300">${side} | ${formatTime(b.last_trade_ts)}</td>
+          <td data-label="Age" class="text-zinc-500">${ageLabel}</td>
+          <td data-label="R" class="text-right ${(b.last_trade_r || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatR(b.last_trade_r)}</td>
         </tr>`;
       }).join('')}</tbody></table>`;
     this.body.querySelectorAll('tr[data-bot-id]').forEach(tr => {
@@ -205,7 +207,7 @@ class EquityCurvePanel extends Panel {
       <div id="eq-live-overview" class="text-[11px] text-zinc-400 mb-2"></div>
       <div id="eq-portfolio-overview" class="hidden mb-2"></div>
 
-      <div style="height: 220px"><canvas id="eq-chart"></canvas></div>`;
+      <div class="mobile-chart-shell"><canvas id="eq-chart"></canvas></div>`;
 
     // Wire range-pill clicks
     this.body.querySelectorAll('#eq-range-pills button').forEach(btn => {
@@ -333,13 +335,19 @@ class EquityCurvePanel extends Panel {
     }
     const t = this.element?.querySelector('.panel-title');
     if (t) {
-      const srv = data.server_ts ? new Date(data.server_ts * 1000).toLocaleTimeString() : '—';
-      t.textContent = `${this.selectedBot ? `Equity — ${this.selectedBot}` : 'Fleet Equity Curve'} (${this.range.toUpperCase()}) · ${data.source || 'live'} · ${srv}`;
+      const srv = data.server_ts ? new Date(data.server_ts * 1000).toLocaleTimeString() : '-';
+      t.textContent = `${this.selectedBot ? `Equity - ${this.selectedBot}` : 'Fleet Equity Curve'} (${this.range.toUpperCase()}) | ${data.source || 'live'} | ${srv}`;
     }
     const ov = this.body?.querySelector('#eq-live-overview');
     if (ov) {
       const lv = data.live || {};
-      ov.textContent = `last fill: ${formatTime(lv.last_fill_ts)} • fills 1h: ${lv.fills_1h ?? 0} • fills 24h: ${lv.fills_24h ?? 0}`;
+      const sourceAge = data.source_age_s ?? (
+        data.data_ts && data.server_ts ? Math.max(0, Math.round(data.server_ts - data.data_ts)) : null
+      );
+      const sourceUpdatedAt = data.source_updated_at || (
+        data.data_ts ? new Date(data.data_ts * 1000).toISOString() : null
+      );
+      ov.textContent = `source heartbeat: ${formatTime(sourceUpdatedAt)} | source age: ${sourceAge ?? 'n/a'}s | last fill: ${formatTime(lv.last_fill_ts)} | fills 1h: ${lv.fills_1h ?? 0} | fills 24h: ${lv.fills_24h ?? 0}`;
     }
     this._renderPortfolioOverview(this.rosterSnapshot);
     this._renderKPIs(data.summary || {}, series);
@@ -399,7 +407,7 @@ class EquityCurvePanel extends Panel {
                 <span class="font-mono">$${formatNumber(r.eq)} <span class="${r.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">(${r.pnl >= 0 ? '+' : ''}${formatNumber(r.pnl)})</span></span>
               </div>
               <div class="h-1.5 bg-zinc-800 rounded overflow-hidden"><div class="h-1.5 bg-cyan-400/70" style="width:${width}%"></div></div>
-              <div class="text-[10px] text-zinc-500">heartbeat <span class="${hb}">${Math.max(0, r.heartbeatAge)}s</span> • last trade ${Math.max(0, r.lastAge)}s ago</div>
+              <div class="text-[10px] text-zinc-500">heartbeat <span class="${hb}">${Math.max(0, r.heartbeatAge)}s</span> | last trade ${Math.max(0, r.lastAge)}s ago</div>
             </div>`;
           })
           .join('')}
@@ -459,7 +467,7 @@ class EquityCurvePanel extends Panel {
     // If someone replaced canvas with the empty-state div, restore it
     if (!canvas) {
       const wrap = document.createElement('div');
-      wrap.style.height = '220px';
+      wrap.className = 'mobile-chart-shell';
       wrap.innerHTML = '<canvas id="eq-chart"></canvas>';
       this.body.appendChild(wrap);
       canvas = this.body.querySelector('#eq-chart');

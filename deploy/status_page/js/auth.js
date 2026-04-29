@@ -31,7 +31,10 @@ export function onAuthenticated(cb) {
 
 export async function checkSession() {
   try {
-    const r = await fetch('/api/auth/session', { credentials: 'same-origin' });
+    const r = await fetch('/api/auth/session', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
     if (!r.ok) return false;
     const body = await r.json();
     session.authenticated = !!body.authenticated;

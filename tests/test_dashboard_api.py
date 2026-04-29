@@ -825,5 +825,11 @@ class TestDashboardAPI:
         assert data["summary"]["today_pnl"] == 1.5
         assert data["summary"]["current_equity"] == 10001.5
         assert len(data["series"]) == 2
+        assert data["pnl"] == 1.5
+        assert data["source_updated_at"] == now
+        assert data["source_heartbeat_count"] == 2
+        assert data["source_age_s"] <= 5
+        assert data["data_ts"] <= data["server_ts"]
+        assert data["data_ts"] > data["server_ts"] - 5
         assert data["session_truth_status"] == "live"
         assert data["truth_summary_line"] == "Live ETA truth: 2/2 bot heartbeat(s) are fresh."

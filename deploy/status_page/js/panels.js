@@ -14,25 +14,25 @@ function shouldDeferHiddenRefresh(panel) {
 
 function panelIcon(containerId) {
   const id = String(containerId || '');
-  if (id.includes('verdict')) return '◉';
-  if (id.includes('stress')) return '≈';
-  if (id.includes('toggle')) return '⌁';
-  if (id.includes('explain')) return '✧';
-  if (id.includes('health')) return '✦';
-  if (id.includes('disagreement')) return '⬢';
-  if (id.includes('edge')) return '⬡';
-  if (id.includes('policy')) return '⟠';
-  if (id.includes('model')) return '◈';
-  if (id.includes('kaizen')) return '✶';
-  if (id.includes('roster')) return '▦';
-  if (id.includes('drill')) return '⌬';
-  if (id.includes('equity')) return '◍';
-  if (id.includes('drawdown')) return '◔';
-  if (id.includes('correlation')) return '⟗';
-  if (id.includes('position')) return '⟂';
-  if (id.includes('risk')) return '△';
-  if (id.includes('controls')) return '⚙';
-  return '◈';
+  if (id.includes('verdict')) return 'V';
+  if (id.includes('stress')) return 'S';
+  if (id.includes('toggle')) return 'T';
+  if (id.includes('explain')) return 'X';
+  if (id.includes('health')) return 'H';
+  if (id.includes('disagreement')) return 'D';
+  if (id.includes('edge')) return 'E';
+  if (id.includes('policy')) return 'P';
+  if (id.includes('model')) return 'M';
+  if (id.includes('kaizen')) return 'K';
+  if (id.includes('roster')) return 'R';
+  if (id.includes('drill')) return 'Q';
+  if (id.includes('equity')) return '$';
+  if (id.includes('drawdown')) return 'DD';
+  if (id.includes('correlation')) return 'C';
+  if (id.includes('position')) return 'POS';
+  if (id.includes('risk')) return '!';
+  if (id.includes('controls')) return 'CTL';
+  return 'ETA';
 }
 
 function panelTone(containerId) {
@@ -160,7 +160,7 @@ export class Panel {
 // --- formatters ---
 
 export function formatNumber(n, digits = 2) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
+  if (n === null || n === undefined || isNaN(n)) return '-';
   return Number(n).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -168,20 +168,20 @@ export function formatNumber(n, digits = 2) {
 }
 
 export function formatPct(p, digits = 2) {
-  if (p === null || p === undefined || isNaN(p)) return '—';
+  if (p === null || p === undefined || isNaN(p)) return '-';
   return `${(Number(p) * 100).toFixed(digits)}%`;
 }
 
 export function formatR(r) {
-  if (r === null || r === undefined || isNaN(r)) return '—';
+  if (r === null || r === undefined || isNaN(r)) return '-';
   const sign = r >= 0 ? '+' : '';
   return `${sign}${Number(r).toFixed(2)}R`;
 }
 
 export function formatTime(isoOrEpoch) {
-  if (!isoOrEpoch) return '—';
+  if (!isoOrEpoch) return '-';
   const d = typeof isoOrEpoch === 'number' ? new Date(isoOrEpoch * 1000) : new Date(isoOrEpoch);
-  if (isNaN(d.getTime())) return '—';
+  if (isNaN(d.getTime())) return '-';
   return d.toLocaleTimeString();
 }
 
