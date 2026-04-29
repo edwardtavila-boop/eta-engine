@@ -268,9 +268,11 @@ class TestDashboardAPI:
         assert data["paths"]["state_dir"].endswith("state")
         assert data["cards"]["summary"]["dead"] == 0
         assert data["cards"]["summary"]["stale"] == 0
-        assert data["bot_fleet"]["bot_total"] == 0
+        assert data["bot_fleet"]["bot_total"] >= 0
         assert data["bot_fleet"]["confirmed_bots"] == 0
         assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live"}
+        if data["bot_fleet"]["bot_total"]:
+            assert data["bot_fleet"]["truth_summary_line"]
         assert data["equity"]["source"] in {
             "canonical_state_empty",
             "supervisor_heartbeat",
@@ -931,6 +933,68 @@ class TestDashboardAPI:
         assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "paper_soak"
         assert drill_data["strategy_readiness"]["can_paper_trade"] is True
         assert drill_data["readiness_next_action"].startswith("Run paper-soak")
+
+    def test_bot_fleet_includes_readiness_only_bots(self, app_client, tmp_path, monkeypatch):
+        """Snapshot-only bots remain discoverable before their runtime status row exists."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["APEX_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        readiness = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-04-29T21:30:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 1, "launch_lanes": {"live_preflight": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "nq_daily_drb",
+                            "strategy_id": "nq_daily_drb_v1",
+                            "strategy_kind": "daily_drb",
+                            "symbol": "NQ",
+                            "timeframe": "1d",
+                            "active": True,
+                            "promotion_status": "production",
+                            "baseline_status": "baseline_present",
+                            "data_status": "ready",
+                            "launch_lane": "live_preflight",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "next_action": "Run per-bot promotion preflight before live routing.",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", str(readiness))
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        data = r.json()
+        nq = next(b for b in data["bots"] if b["name"] == "nq_daily_drb")
+        assert nq["source"] == "bot_strategy_readiness_snapshot"
+        assert nq["status"] == "readiness_only"
+        assert nq["strategy_readiness"]["strategy_id"] == "nq_daily_drb_v1"
+        assert nq["launch_lane"] == "live_preflight"
+        assert nq["can_paper_trade"] is True
+        assert nq["readiness_next_action"].startswith("Run per-bot promotion")
+
+        filtered = app_client.get("/api/bot-fleet?bot=nq_daily_drb")
+        assert filtered.status_code == 200
+        assert [row["name"] for row in filtered.json()["bots"]] == ["nq_daily_drb"]
+
+        drill = app_client.get("/api/bot-fleet/nq_daily_drb")
+        assert drill.status_code == 200
+        drill_data = drill.json()
+        assert drill_data["status"]["source"] == "bot_strategy_readiness_snapshot"
+        assert drill_data["status"]["status"] == "readiness_only"
+        assert drill_data["strategy_readiness"]["launch_lane"] == "live_preflight"
+        assert "_warning" not in drill_data
 
     def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""

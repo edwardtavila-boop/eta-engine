@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T22:40:50.1610000Z",
+  "last_updated": "2026-04-29T23:05:37.1013765Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,11 +9,11 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5169,
+    "eta_engine_tests_passing": 5170,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
-      "timestamp_utc": "2026-04-29T21:20:03.1196927Z",
-      "surface": "V1 Fleet roster and selected-bot drill-down render per-bot strategy readiness chips from /api/bot-fleet, including plain state/bots rows enriched from the canonical readiness snapshot",
+      "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
+      "surface": "V1 Fleet roster and selected-bot drill-down render per-bot strategy readiness chips from /api/bot-fleet, including plain state/bots rows enriched from the canonical readiness snapshot and snapshot-only bots exposed as readiness_only rows",
       "fields": [
         "strategy_readiness",
         "launch_lane",
@@ -24,7 +24,8 @@
       "tests": [
         "tests/test_optimizations.py::TestStatusPage::test_status_page_mobile_fleet_and_equity_contracts",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_includes_supervisor_bots",
-        "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_enriches_state_bots_from_readiness_snapshot"
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_enriches_state_bots_from_readiness_snapshot",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_includes_readiness_only_bots"
       ]
     },
     "eta_engine_jarvis_dashboard_drift_panel": {
@@ -5186,7 +5187,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-29T21:20:03.1196927Z",
+  "last_updated_utc": "2026-04-29T23:05:37.1013765Z",
   "milestones": [
     {
       "version": "v0.1.31",

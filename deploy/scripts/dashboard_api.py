@@ -452,13 +452,11 @@ def _runtime_state_path() -> Path:
 
 
 def _bot_strategy_readiness_snapshot_path() -> Path:
-    """Canonical per-bot strategy readiness snapshot path."""
-    return Path(
-        os.environ.get(
-            "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH",
-            str(_DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT),
-        )
-    )
+    """Per-bot readiness snapshot path scoped to the active state root."""
+    explicit = os.environ.get("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH")
+    if explicit:
+        return Path(explicit)
+    return _state_dir() / _DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT.name
 
 
 def _bot_strategy_readiness_rows_by_bot() -> dict[str, dict]:
@@ -521,6 +519,36 @@ def _apply_bot_strategy_readiness(status: dict, readiness: dict) -> dict:
             or "",
         )
     return status
+
+
+def _readiness_only_roster_row(readiness: dict, *, now_ts: float) -> dict:
+    """Build a roster-compatible row for a bot known only by the readiness snapshot."""
+    bot_id = str(readiness.get("bot_id") or readiness.get("id") or readiness.get("name") or "").strip()
+    row = {
+        "id": bot_id,
+        "bot_id": bot_id,
+        "name": bot_id,
+        "symbol": str(readiness.get("symbol") or ""),
+        "tier": str(readiness.get("strategy_kind") or readiness.get("strategy_id") or ""),
+        "venue": "readiness-snapshot",
+        "status": "readiness_only",
+        "todays_pnl": 0.0,
+        "todays_pnl_source": "not_live",
+        "last_trade_ts": None,
+        "last_trade_age_s": None,
+        "last_trade_side": None,
+        "last_trade_r": None,
+        "last_trade_qty": None,
+        "data_ts": now_ts,
+        "data_age_s": 0.0,
+        "heartbeat_age_s": None,
+        "source": "bot_strategy_readiness_snapshot",
+        "confirmed": False,
+        "mode": "readiness_snapshot",
+        "last_jarvis_verdict": "",
+    }
+    _apply_bot_strategy_readiness(row, readiness)
+    return row
 
 
 def _read_runtime_state() -> dict:
@@ -1604,6 +1632,21 @@ def bot_fleet_roster(
             if str(r.get("name") or r.get("id") or "") not in sup_ids
         ]
         rows.extend(sup_rows)
+    existing_ids = {
+        str(value)
+        for row in rows
+        for value in (row.get("bot_id"), row.get("id"), row.get("name"))
+        if value
+    }
+    readiness_seen: set[str] = set()
+    for readiness in readiness_rows.values():
+        bot_id = str(readiness.get("bot_id") or readiness.get("id") or readiness.get("name") or "").strip()
+        if not bot_id or bot_id in readiness_seen or bot_id in existing_ids:
+            continue
+        if bot is not None and bot_id != bot:
+            continue
+        rows.append(_readiness_only_roster_row(readiness, now_ts=now_ts))
+        readiness_seen.add(bot_id)
 
     confirmed_bots = sum(
         1 for r in rows
@@ -1684,6 +1727,25 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
                     supervisor_status.get("readiness_next_action")
                     or strategy_readiness.get("next_action")
                     or "",
+                ),
+            }
+        readiness = _lookup_bot_strategy_readiness(readiness_rows, {}, bot_id)
+        if readiness:
+            status = _readiness_only_roster_row(readiness, now_ts=time.time())
+            strategy_readiness = (
+                status.get("strategy_readiness") if isinstance(status.get("strategy_readiness"), dict) else {}
+            )
+            return {
+                "status": status,
+                "recent_fills": [],
+                "recent_verdicts": [],
+                "sage_effects": {},
+                "strategy_readiness": strategy_readiness,
+                "launch_lane": status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
+                "can_paper_trade": bool(status.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
+                "can_live_trade": bool(status.get("can_live_trade") or strategy_readiness.get("can_live_trade")),
+                "readiness_next_action": str(
+                    status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
                 ),
             }
         return {
