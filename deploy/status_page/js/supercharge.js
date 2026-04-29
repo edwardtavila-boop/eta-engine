@@ -502,7 +502,24 @@ function initCardHealthContract() {
     inspector.querySelector('[data-close-card-health="1"]')?.addEventListener('click', () => {
       inspector?.classList.add('hidden');
     });
+    inspector.addEventListener('click', (event) => {
+      const target = event.target?.closest?.('[data-focus-card]');
+      if (!target) return;
+      focusCardHealthPanel(target.getAttribute('data-focus-card'));
+    });
     return inspector;
+  };
+
+  const focusCardHealthPanel = (panelId) => {
+    const id = String(panelId || '');
+    if (!id) return;
+    const panel = document.querySelector(`[data-panel-id="${CSS.escape(id)}"]`);
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    panel.classList.remove('card-health-focus');
+    void panel.offsetWidth;
+    panel.classList.add('card-health-focus');
+    setTimeout(() => panel.classList.remove('card-health-focus'), 2600);
   };
 
   const renderCardHealthInspector = () => {
@@ -522,10 +539,10 @@ function initCardHealthContract() {
       return;
     }
     body.innerHTML = rows.map((card) => `
-      <div class="card-health-row ${escapeText(card.tone)}">
+      <button type="button" class="card-health-row ${escapeText(card.tone)}" data-focus-card="${escapeText(card.id || '')}">
         <span>${escapeText(card.id || 'unknown-card')}</span>
         <code>${escapeText(card.reason || card.status || card.tone)}</code>
-      </div>`).join('');
+      </button>`).join('');
   };
 
   const toggleCardHealthInspector = () => {
@@ -557,6 +574,19 @@ function initCardHealthContract() {
     const dead = Array.isArray(dead_cards) ? dead_cards : [];
     const stale = Array.isArray(stale_cards) ? stale_cards : [];
     latestHealth = { dead_cards: dead, stale_cards: stale, total: totalCards, at: Date.now() };
+    document.querySelectorAll('[data-panel-id]').forEach((el) => {
+      el.classList.remove('card-health-dead', 'card-health-stale');
+    });
+    dead.forEach((card) => {
+      const id = String(card.id || '');
+      if (!id) return;
+      document.querySelector(`[data-panel-id="${CSS.escape(id)}"]`)?.classList.add('card-health-dead');
+    });
+    stale.forEach((card) => {
+      const id = String(card.id || '');
+      if (!id) return;
+      document.querySelector(`[data-panel-id="${CSS.escape(id)}"]`)?.classList.add('card-health-stale');
+    });
     if (inspector && !inspector.classList.contains('hidden')) renderCardHealthInspector();
     window.dispatchEvent(new CustomEvent('eta-card-health', {
       detail: {

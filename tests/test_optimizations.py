@@ -229,7 +229,15 @@ class TestStatusPage:
         assert "card-health-inspector" in supercharge
         assert "Card Health Inspector" in supercharge
         assert "toggleCardHealthInspector" in supercharge
+        assert "focusCardHealthPanel" in supercharge
+        assert "data-focus-card" in supercharge
+        assert "card-health-focus" in supercharge
+        assert "card-health-dead" in supercharge
+        assert "card-health-stale" in supercharge
         assert ".card-health-inspector" in css
+        assert ".panel.card-health-focus" in css
+        assert ".panel.card-health-dead" in css
+        assert ".panel.card-health-stale" in css
 
     def test_card_health_registry_covers_every_rendered_panel(self):
         from eta_engine.deploy.scripts.dashboard_api import DASHBOARD_CARD_REGISTRY
