@@ -34,3 +34,24 @@ def test_docstring_audit_ratchets_baseline_down_only() -> None:
         "core/new_module.py": 2,
     }
     assert [d["level"] for d in diagnostics] == ["GREEN", "SEED"]
+
+
+def test_docstring_audit_rewrites_baseline_only_when_counts_change() -> None:
+    baseline = {
+        "per_module": {"core/a.py": 2},
+        "samples": 3,
+        "last_updated": "older",
+    }
+    same_counts = {
+        "per_module": {"core/a.py": 2},
+        "samples": 4,
+        "last_updated": "newer",
+    }
+    changed_counts = {
+        "per_module": {"core/a.py": 1},
+        "samples": 4,
+        "last_updated": "newer",
+    }
+
+    assert not _docstring_audit._baseline_counts_changed(baseline, same_counts)
+    assert _docstring_audit._baseline_counts_changed(baseline, changed_counts)

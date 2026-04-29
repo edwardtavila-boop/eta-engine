@@ -181,6 +181,11 @@ def _evaluate(
     return diagnostics, new_baseline
 
 
+def _baseline_counts_changed(baseline: dict, new_baseline: dict) -> bool:
+    """True when ratchet counts changed enough to rewrite the baseline."""
+    return dict(baseline.get("per_module", {})) != dict(new_baseline.get("per_module", {}))
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
@@ -252,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     n_seeded = sum(1 for d in diagnostics if d["level"] == "SEED")
     print(f"  ({n_unchanged} at-or-better, {n_seeded} new modules seeded)")
 
-    if not args.no_update:
+    if not args.no_update and _baseline_counts_changed(baseline, new_baseline):
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
             json.dumps(new_baseline, indent=2) + "\n",
