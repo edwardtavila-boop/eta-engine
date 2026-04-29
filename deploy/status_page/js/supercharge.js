@@ -470,6 +470,8 @@ function initCardHealthContract() {
   const endpoint = chip.dataset.healthEndpoint || '/api/dashboard/card-health';
   let latestCards = [];
   let contractOk = false;
+  let latestHealth = { dead_cards: [], stale_cards: [], total: 0, at: Date.now() };
+  let inspector = null;
   const bootedAt = Date.now();
 
   const setChip = (label, health, title = '') => {
@@ -477,6 +479,70 @@ function initCardHealthContract() {
     chip.dataset.health = health;
     chip.title = title;
   };
+
+  const escapeText = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+  const ensureCardHealthInspector = () => {
+    if (inspector) return inspector;
+    inspector = document.createElement('aside');
+    inspector.id = 'card-health-inspector';
+    inspector.className = 'card-health-inspector hidden';
+    inspector.innerHTML = `
+      <div class="card-health-inspector-head">
+        <span>Card Health Inspector</span>
+        <button type="button" data-close-card-health="1">close</button>
+      </div>
+      <div class="card-health-inspector-body" data-card-health-body></div>`;
+    document.body.appendChild(inspector);
+    inspector.querySelector('[data-close-card-health="1"]')?.addEventListener('click', () => {
+      inspector?.classList.add('hidden');
+    });
+    return inspector;
+  };
+
+  const renderCardHealthInspector = () => {
+    const el = ensureCardHealthInspector();
+    const body = el.querySelector('[data-card-health-body]');
+    if (!body) return;
+    const dead = Array.isArray(latestHealth.dead_cards) ? latestHealth.dead_cards : [];
+    const stale = Array.isArray(latestHealth.stale_cards) ? latestHealth.stale_cards : [];
+    const rows = [
+      ...dead.map((card) => ({ ...card, tone: 'dead' })),
+      ...stale.map((card) => ({ ...card, tone: 'stale' })),
+    ];
+    if (!rows.length) {
+      body.innerHTML = `
+        <div class="card-health-ok">All ${Number(latestHealth.total || 0)} registered cards are live.</div>
+        <div class="card-health-note">The watchdog is checking mounted panels, refresh age, registry drift, and render errors.</div>`;
+      return;
+    }
+    body.innerHTML = rows.map((card) => `
+      <div class="card-health-row ${escapeText(card.tone)}">
+        <span>${escapeText(card.id || 'unknown-card')}</span>
+        <code>${escapeText(card.reason || card.status || card.tone)}</code>
+      </div>`).join('');
+  };
+
+  const toggleCardHealthInspector = () => {
+    const el = ensureCardHealthInspector();
+    renderCardHealthInspector();
+    el.classList.toggle('hidden');
+  };
+
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '0');
+  chip.addEventListener('click', toggleCardHealthInspector);
+  chip.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleCardHealthInspector();
+    }
+  });
 
   const renderedPanelMap = () => {
     const rendered = new Map();
@@ -490,6 +556,8 @@ function initCardHealthContract() {
   const publish = (dead_cards, stale_cards, totalCards) => {
     const dead = Array.isArray(dead_cards) ? dead_cards : [];
     const stale = Array.isArray(stale_cards) ? stale_cards : [];
+    latestHealth = { dead_cards: dead, stale_cards: stale, total: totalCards, at: Date.now() };
+    if (inspector && !inspector.classList.contains('hidden')) renderCardHealthInspector();
     window.dispatchEvent(new CustomEvent('eta-card-health', {
       detail: {
         at: Date.now(),
