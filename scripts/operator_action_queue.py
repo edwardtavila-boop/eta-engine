@@ -128,7 +128,7 @@ def _env_key_present(name: str) -> bool:
     with contextlib.suppress(Exception):
         from eta_engine.core.secrets import SecretsManager
 
-        if SecretsManager().get(name, required=False):
+        if SecretsManager(env_file=ROOT / ".env").get(name, required=False):
             return True
     return False
 

@@ -303,7 +303,7 @@ def test_vps_failover_env_template_completeness_fails_when_key_missing(
 
 
 def test_vps_failover_no_bash_reports_vps_validation_commands(monkeypatch) -> None:
-    monkeypatch.setattr(vps_failover_drill.shutil, "which", lambda _: None)
+    monkeypatch.setattr(vps_failover_drill, "_bash_candidates", lambda: [])
 
     result = vps_failover_drill._check_install_script_syntax()
 
@@ -314,7 +314,7 @@ def test_vps_failover_no_bash_reports_vps_validation_commands(monkeypatch) -> No
 
 
 def test_vps_failover_wsl_launcher_gap_is_amber(monkeypatch) -> None:
-    monkeypatch.setattr(vps_failover_drill.shutil, "which", lambda _: "bash")
+    monkeypatch.setattr(vps_failover_drill, "_bash_candidates", lambda: ["bash"])
 
     def fake_run(*_args, **_kwargs):
         return SimpleNamespace(
@@ -327,13 +327,38 @@ def test_vps_failover_wsl_launcher_gap_is_amber(monkeypatch) -> None:
     result = vps_failover_drill._check_install_script_syntax()
 
     assert result.severity == "amber"
-    assert "cannot run scripts" in result.summary
+    assert "none could run scripts locally" in result.summary
     assert result.details["reason"] == "local_bash_launcher_unavailable"
     assert "bash -n deploy/install_vps.sh" in result.details["vps_commands"][0]
 
 
+def test_vps_failover_falls_back_to_git_bash_after_wsl_launcher_gap(monkeypatch) -> None:
+    monkeypatch.setattr(
+        vps_failover_drill,
+        "_bash_candidates",
+        lambda: ["C:/Windows/System32/bash.exe", "C:/Program Files/Git/bin/bash.exe"],
+    )
+
+    def fake_run(args, **_kwargs):
+        if args[0].endswith("System32/bash.exe"):
+            return SimpleNamespace(
+                returncode=1,
+                stdout="Windows Subsystem for Linux has no installed distributions.",
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(vps_failover_drill.subprocess, "run", fake_run)
+
+    result = vps_failover_drill._check_install_script_syntax()
+
+    assert result.severity == "green"
+    assert result.details["local_shell_path"].endswith("Git/bin/bash.exe")
+    assert result.details["launcher_failures"][0]["reason"] == "local_bash_launcher_unavailable"
+
+
 def test_vps_failover_real_bash_syntax_error_is_red(monkeypatch) -> None:
-    monkeypatch.setattr(vps_failover_drill.shutil, "which", lambda _: "bash")
+    monkeypatch.setattr(vps_failover_drill, "_bash_candidates", lambda: ["bash"])
 
     def fake_run(*_args, **_kwargs):
         return SimpleNamespace(

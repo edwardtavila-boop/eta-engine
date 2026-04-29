@@ -172,6 +172,13 @@ _VPS_BASH_VALIDATION_COMMANDS = [
     "cd ~/eta_engine && bash -n deploy/install_vps.sh",
     "cd ~/eta_engine && .venv/bin/python -m eta_engine.scripts.vps_failover_drill --no-backup-test --json",
 ]
+_WINDOWS_BASH_FALLBACKS = (
+    Path("C:/Program Files/Git/bin/bash.exe"),
+    Path("C:/Program Files/Git/usr/bin/bash.exe"),
+    Path("C:/Program Files (x86)/Git/bin/bash.exe"),
+    Path("C:/Program Files (x86)/Git/usr/bin/bash.exe"),
+    Path("C:/msys64/usr/bin/bash.exe"),
+)
 
 _IDEMPOTENCY_EVIDENCE_FILES: list[tuple[str, Path, tuple[str, ...]]] = [
     (
@@ -307,13 +314,22 @@ def _missing_env_requirements(
     return missing
 
 
-def _vps_bash_validation_details(*, reason: str | None = None) -> dict[str, Any]:
+def _vps_bash_validation_details(
+    *,
+    reason: str | None = None,
+    local_shell_path: str | None = None,
+    launcher_failures: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
     """Return the exact remote validation commands for install_vps.sh."""
     details: dict[str, Any] = {
         "script": "deploy/install_vps.sh",
         "vps_commands": list(_VPS_BASH_VALIDATION_COMMANDS),
         "local_shell": "bash",
     }
+    if local_shell_path:
+        details["local_shell_path"] = local_shell_path
+    if launcher_failures:
+        details["launcher_failures"] = launcher_failures
     if reason:
         details["reason"] = reason
     return details
@@ -509,8 +525,8 @@ def _check_install_script_syntax() -> CheckResult:
             severity="red",
             summary="deploy/install_vps.sh missing",
         )
-    bash = shutil.which("bash")
-    if bash is None:
+    bash_candidates = _bash_candidates()
+    if not bash_candidates:
         return CheckResult(
             name="install_script_syntax",
             severity="amber",
@@ -520,46 +536,71 @@ def _check_install_script_syntax() -> CheckResult:
             ),
             details=_vps_bash_validation_details(reason="bash_not_on_path"),
         )
-    try:
-        result = subprocess.run(  # noqa: S603 -- localhost bash, fixed args
-            [bash, "-n", str(script)],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    launcher_failures: list[dict[str, str]] = []
+    script_arg = str(script).replace("\\", "/")
+    for bash in bash_candidates:
+        try:
+            result = subprocess.run(  # noqa: S603 -- localhost bash, fixed args
+                [bash, "-n", script_arg],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            launcher_failures.append({"path": bash, "reason": type(exc).__name__})
+            continue
+        output = _clean_process_output(result.stdout, result.stderr)
+        if result.returncode != 0 and _is_bash_launcher_unavailable(output):
+            launcher_failures.append(
+                {"path": bash, "reason": "local_bash_launcher_unavailable"},
+            )
+            continue
+        if result.returncode != 0:
+            return CheckResult(
+                name="install_script_syntax",
+                severity="red",
+                summary=f"bash -n found errors: {output[:200]}",
+                details={
+                    **_vps_bash_validation_details(
+                        reason="syntax_error",
+                        local_shell_path=bash,
+                        launcher_failures=launcher_failures,
+                    ),
+                    "output": output[:500],
+                },
+            )
         return CheckResult(
             name="install_script_syntax",
-            severity="amber",
-            summary=f"bash -n failed to run: {exc}",
-            details=_vps_bash_validation_details(reason=type(exc).__name__),
-        )
-    output = _clean_process_output(result.stdout, result.stderr)
-    if result.returncode != 0 and _is_bash_launcher_unavailable(output):
-        return CheckResult(
-            name="install_script_syntax",
-            severity="amber",
-            summary=(
-                "bash exists but cannot run scripts in this environment "
-                "(WSL/Git Bash unavailable). Validate deploy/install_vps.sh "
-                "on the VPS or a shell with bash installed."
+            severity="green",
+            summary="install_vps.sh syntax-clean",
+            details=_vps_bash_validation_details(
+                local_shell_path=bash,
+                launcher_failures=launcher_failures,
             ),
-            details=_vps_bash_validation_details(reason="local_bash_launcher_unavailable"),
-        )
-    if result.returncode != 0:
-        return CheckResult(
-            name="install_script_syntax",
-            severity="red",
-            summary=f"bash -n found errors: {output[:200]}",
-            details={**_vps_bash_validation_details(reason="syntax_error"), "output": output[:500]},
         )
     return CheckResult(
         name="install_script_syntax",
-        severity="green",
-        summary="install_vps.sh syntax-clean",
-        details=_vps_bash_validation_details(),
+        severity="amber",
+        summary=(
+            "bash launchers were found but none could run scripts locally. "
+            "Validate deploy/install_vps.sh on the VPS or a shell with bash installed."
+        ),
+        details=_vps_bash_validation_details(
+            reason="local_bash_launcher_unavailable",
+            launcher_failures=launcher_failures,
+        ),
     )
+
+
+def _bash_candidates() -> list[str]:
+    """Return unique bash executables, preferring PATH then Git Bash fallbacks."""
+    candidates: list[str] = []
+    path_bash = shutil.which("bash")
+    if path_bash:
+        candidates.append(path_bash)
+    candidates.extend(str(path) for path in _WINDOWS_BASH_FALLBACKS if path.exists())
+    return list(dict.fromkeys(candidates))
 
 
 def _clean_process_output(*chunks: str) -> str:

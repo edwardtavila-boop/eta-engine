@@ -265,6 +265,31 @@ class TestActiveBrokerCredentialProbes:
         assert item.verdict == VERDICT_DONE
         assert item.evidence["ibkr_cp_base_url"] is True
 
+    def test_ibkr_probe_reads_canonical_eta_engine_env_file(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from eta_engine.core.secrets import SecretsManager
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.delenv("IBKR_CP_BASE_URL", raising=False)
+        monkeypatch.delenv("IBKR_ACCOUNT_ID", raising=False)
+        monkeypatch.setattr(SecretsManager, "_try_keyring", lambda _self, _key: None)
+        monkeypatch.setattr(operator_action_queue, "ROOT", tmp_path)
+        (tmp_path / ".env").write_text(
+            "\n".join(
+                [
+                    "IBKR_CP_BASE_URL=https://127.0.0.1:5000/v1/api",
+                    "IBKR_ACCOUNT_ID=DU123",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        item = operator_action_queue._op3_ibkr_creds()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["ibkr_cp_base_url"] is True
+
     def test_tastytrade_probe_uses_runtime_consumed_tasty_keys(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 
