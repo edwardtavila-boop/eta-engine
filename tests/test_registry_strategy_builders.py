@@ -198,6 +198,8 @@ def test_mnq_registry_assignment_pins_latest_slice_orb_config() -> None:
     assert strategy.cfg.atr_stop_mult == 1.5
     assert strategy.cfg.ema_bias_period == 50
     assert assignment.extras["research_tune"]["strict_gate"] is False
+    assert assignment.extras["research_tune"]["full_history_smoke"]["strict_gate"] is False
+    assert assignment.extras["research_tune"]["full_history_smoke"]["agg_oos_sharpe"] < 0.0
 
 
 def test_sol_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:

@@ -22,6 +22,7 @@
       "r_stddev": 1.5495,
       "_promoted_at": "2026-04-29",
       "_promotion_status": "research_candidate",
+      "_full_history_smoke": "2026-04-29 positive-price-filtered full-history smoke: 487,725/490,103 tradable MNQ1 5m bars, 83 windows, 28/83 positive OOS, agg IS Sharpe -0.707, agg OOS Sharpe -2.958, degradation 51.8%, DSR median 0.000, DSR pass 13.2%, strict gate FAIL. This supersedes any interpretation of v2 as promotion-grade; keep it as a plain-ORB research/soak baseline only while mnq_orb_sage_v1 remains the stronger promoted MNQ lane.",
       "_walk_forward_summary": "MNQ1/5m latest 20k imported bars, 60d/30d windows, 1/2 positive OOS, agg OOS Sharpe +1.788, DSR median 0.651, 50% pass fraction. Latest-slice retune: range=5m, rr=3.0, atr_stop=1.5, ema=50. Strict gate remains FAIL because pass fraction is exactly 50% and the second OOS fold only fired one trade.",
       "_notes": "Research/paper baseline only, not final live promotion. Persisted so paper-live drift checks and launch readiness can compare the retuned assignment honestly. Full latest-20k combined backtest: 50 trades, 20.0% win rate, avg R -0.2593, max DD 18.306%, total return -12.6815%; the improvement is OOS-slice relative to the prior latest-slice smoke, not a complete production promotion."
     },
