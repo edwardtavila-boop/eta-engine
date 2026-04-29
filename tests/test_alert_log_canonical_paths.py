@@ -207,7 +207,7 @@ def test_vps_failover_missing_env_reports_template_and_active_brokers(
     assert result.details["template"].replace("\\", "/").endswith(".env.example")
     assert result.details["template_exists"] is True
     assert result.details["copy_commands"][0].startswith(
-        "python scripts/operator_env_bootstrap.py --create"
+        "python -m eta_engine.scripts.operator_env_bootstrap --create"
     )
     assert result.details["copy_commands"][1].startswith("Copy-Item")
     assert result.details["copy_commands"][-2] == "cp .env.example .env && chmod 600 .env"

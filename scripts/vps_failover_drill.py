@@ -102,7 +102,7 @@ _DEPLOY_FILES_REQUIRED: list[str] = [
 
 _ENV_EXAMPLE_FILE = ".env.example"
 _ENV_COPY_COMMANDS = [
-    "python scripts/operator_env_bootstrap.py --create --json",
+    "python -m eta_engine.scripts.operator_env_bootstrap --create --json",
     "Copy-Item -LiteralPath .env.example -Destination .env",
     'icacls .env /inheritance:r /grant:r "${env:USERNAME}:(R,W)"',
     "notepad .env",
