@@ -4,7 +4,9 @@ Operator mandate M1+M4 (2026-04-26): all data, code, state, logs, journals,
 and configs live under ``C:\\EvolutionaryTradingAlgo\\``. Earlier locations
 (``C:\\dev\\``, ``C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\``,
 ``C:\\Users\\edwar\\OneDrive\\The_Firm\\``,
-``C:\\Users\\edwar\\OneDrive\\Documents\\Claude\\Projects\\...``) are deprecated.
+``C:\\Users\\edwar\\OneDrive\\Documents\\Claude\\Projects\\...``,
+``%LOCALAPPDATA%\\eta_engine\\``, ``C:\\mnq_data\\``,
+``C:\\crypto_data\\``, and old ``C:\\TheFirm\\`` paths) are deprecated.
 
 This linter scans the files passed on argv (typically the pre-commit
 hook supplies the staged file list) and fails if any contain stale
@@ -67,6 +69,30 @@ STALE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "Path.home() / 'OneDrive' / ...",
         re.compile(r"home\(\)\s*/\s*[\"']OneDrive[\"']", re.IGNORECASE),
+    ),
+    (
+        r"%LOCALAPPDATA%\eta_engine",
+        re.compile(r"%LOCALAPPDATA%[\\/]+eta_engine(?:[\\/]|$)", re.IGNORECASE),
+    ),
+    (
+        r"$env:LOCALAPPDATA\eta_engine",
+        re.compile(r"\$env:LOCALAPPDATA[\\/]+eta_engine(?:[\\/]|$)", re.IGNORECASE),
+    ),
+    (
+        "LOCALAPPDATA eta_engine join",
+        re.compile(r"LOCALAPPDATA.*[\"']eta_engine[\"']|[\"']eta_engine[\"'].*LOCALAPPDATA", re.IGNORECASE),
+    ),
+    (
+        r"C:\mnq_data",
+        re.compile(r"C:[\\/]+mnq_data(?:[\\/]|$)", re.IGNORECASE),
+    ),
+    (
+        r"C:\crypto_data",
+        re.compile(r"C:[\\/]+crypto_data(?:[\\/]|$)", re.IGNORECASE),
+    ),
+    (
+        r"C:\TheFirm / C:\The_Firm",
+        re.compile(r"C:[\\/]+(?:TheFirm|The_Firm)(?:[\\/]|$)", re.IGNORECASE),
     ),
 ]
 
