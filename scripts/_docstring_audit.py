@@ -153,7 +153,7 @@ def _evaluate(
     baseline: dict,
 ) -> tuple[list[dict], dict]:
     new_baseline = {
-        "per_module": dict(baseline.get("per_module", {})),
+        "per_module": {},
         "samples": int(baseline.get("samples", 0)) + 1,
         "last_updated": datetime.now(UTC).isoformat(),
     }
