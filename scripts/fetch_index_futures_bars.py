@@ -56,6 +56,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,8 +81,34 @@ _YF_PERIOD_BY_TF: dict[str, str] = {
     "15m": "60d",
     "30m": "60d",
     "1h": "730d",
+    "4h": "730d",
     "1d": "max",
 }
+
+
+def _bucket_4h(ts: int) -> int:
+    dt = datetime.fromtimestamp(ts, UTC)
+    bucket = dt.replace(hour=(dt.hour // 4) * 4, minute=0, second=0, microsecond=0)
+    return int(bucket.timestamp())
+
+
+def _resample_4h(rows: list[dict]) -> list[dict]:
+    """Resample canonical 1h-ish OHLCV rows into 4h buckets."""
+    buckets: dict[int, list[dict]] = defaultdict(list)
+    for row in rows:
+        buckets[_bucket_4h(int(row["time"]))].append(row)
+    out: list[dict] = []
+    for bucket_ts in sorted(buckets):
+        bucket_rows = sorted(buckets[bucket_ts], key=lambda row: row["time"])
+        out.append({
+            "time": bucket_ts,
+            "open": bucket_rows[0]["open"],
+            "high": max(row["high"] for row in bucket_rows),
+            "low": min(row["low"] for row in bucket_rows),
+            "close": bucket_rows[-1]["close"],
+            "volume": sum(row["volume"] for row in bucket_rows),
+        })
+    return out
 
 
 def _fetch_via_yfinance(symbol: str, timeframe: str, period: str) -> list[dict]:
@@ -93,8 +120,9 @@ def _fetch_via_yfinance(symbol: str, timeframe: str, period: str) -> list[dict]:
         print(f"ERROR: no yfinance mapping for {symbol}")
         return []
 
-    print(f"[yfinance] {ticker} {timeframe} period={period}")
-    df = yf.Ticker(ticker).history(period=period, interval=timeframe)
+    fetch_interval = "1h" if timeframe == "4h" else timeframe
+    print(f"[yfinance] {ticker} {timeframe} period={period} interval={fetch_interval}")
+    df = yf.Ticker(ticker).history(period=period, interval=fetch_interval)
     if df is None or len(df) == 0:
         print("[yfinance] empty dataframe")
         return []
@@ -111,6 +139,8 @@ def _fetch_via_yfinance(symbol: str, timeframe: str, period: str) -> list[dict]:
             "close": float(r["Close"]),
             "volume": float(r.get("Volume", 0.0)),
         })
+    if timeframe == "4h":
+        rows = _resample_4h(rows)
     return rows
 
 

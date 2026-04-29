@@ -4,8 +4,12 @@ This is the safe operator entrypoint for the futures datasets that directly
 gate paper-live launch freshness:
 
 * MNQ1 5m via yfinance
+* MNQ1 1h via yfinance
 * NQ1 5m via yfinance
+* NQ1 1h via yfinance
+* NQ1 4h via yfinance 1h -> 4h resampling
 * NQ1 daily via Yahoo Finance
+* ES1 5m via yfinance
 
 Databento remains dormant here. The command only calls existing canonical ETA
 scripts and runs from ``C:\\EvolutionaryTradingAlgo`` so all writes stay under
@@ -48,8 +52,54 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "MNQ", "--timeframe", "5m"],
         ),
         (
+            "mnq_1h",
+            [
+                py,
+                "-m",
+                "eta_engine.scripts.fetch_index_futures_bars",
+                "--symbol",
+                "MNQ",
+                "--timeframe",
+                "1h",
+                "--period",
+                "730d",
+            ],
+        ),
+        (
             "nq_5m",
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "NQ", "--timeframe", "5m"],
+        ),
+        (
+            "nq_1h",
+            [
+                py,
+                "-m",
+                "eta_engine.scripts.fetch_index_futures_bars",
+                "--symbol",
+                "NQ",
+                "--timeframe",
+                "1h",
+                "--period",
+                "730d",
+            ],
+        ),
+        (
+            "nq_4h",
+            [
+                py,
+                "-m",
+                "eta_engine.scripts.fetch_index_futures_bars",
+                "--symbol",
+                "NQ",
+                "--timeframe",
+                "4h",
+                "--period",
+                "730d",
+            ],
+        ),
+        (
+            "es_5m",
+            [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "ES", "--timeframe", "5m"],
         ),
         (
             "nq_daily",
