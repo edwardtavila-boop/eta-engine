@@ -108,6 +108,10 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - Operator-queue summaries now flatten blocker `next_actions`, and the default
   `jarvis_status` text output prints the blocker count plus top OP id, so both
   humans and dashboards see the same next-step lane.
+- `scripts/operator_queue_snapshot.py` writes a canonical automation snapshot
+  to `var/eta_engine/state/operator_queue_snapshot.json` with blocker counts,
+  top OP id, and first next action, giving 10-minute wakeups a diffable status
+  artifact without starting the dashboard server.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is
