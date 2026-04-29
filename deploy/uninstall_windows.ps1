@@ -4,7 +4,15 @@
 # Usage: powershell -ExecutionPolicy Bypass -File .\deploy\uninstall_windows.ps1
 # ============================================================================
 [CmdletBinding()]
-param([switch]$Purge)
+param(
+    [switch]$Purge,
+    [string]$InstallDir = ""
+)
+
+if (-not $InstallDir) {
+    $InstallDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+$workspaceRoot = Split-Path -Parent $InstallDir
 
 Write-Host "[apex-uninstall] stopping + removing Apex-* scheduled tasks" -ForegroundColor Cyan
 Get-ScheduledTask -TaskName "Apex-*" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -14,8 +22,8 @@ Get-ScheduledTask -TaskName "Apex-*" -ErrorAction SilentlyContinue | ForEach-Obj
 }
 
 if ($Purge) {
-    $stateDir = Join-Path $env:LOCALAPPDATA "eta_engine\state"
-    $logDir   = Join-Path $env:LOCALAPPDATA "eta_engine\logs"
+    $stateDir = Join-Path $workspaceRoot "var\eta_engine\state"
+    $logDir   = Join-Path $workspaceRoot "logs\eta_engine"
     Write-Host "[apex-uninstall] PURGE: removing state + logs" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $logDir -ErrorAction SilentlyContinue

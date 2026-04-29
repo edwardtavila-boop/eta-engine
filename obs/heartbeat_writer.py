@@ -27,8 +27,12 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from eta_engine.scripts import workspace_roots
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +61,7 @@ class HeartbeatWriter:
 
     @staticmethod
     def _default_state_dir() -> Path:
-        # %LOCALAPPDATA%\eta_engine\state mirrors the avengers convention
-        # so daemon_recovery_watchdog finds heartbeats in one spot.
-        return Path(os.environ.get("LOCALAPPDATA", "")) / "eta_engine" / "state"
+        return workspace_roots.ETA_RUNTIME_STATE_DIR
 
     def tick(self, extras: dict[str, Any] | None = None) -> Path:
         """Emit one heartbeat. Returns the path written for diagnostic logging."""

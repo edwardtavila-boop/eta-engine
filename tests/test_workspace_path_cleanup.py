@@ -106,6 +106,34 @@ def test_windows_deploy_defaults_drop_legacy_install_and_localappdata_paths() ->
         assert r"LOCALAPPDATA\eta_engine" not in text
 
 
+def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
+    targets = (
+        "eta_engine/deploy/scripts/live_claude_smoke.py",
+        "eta_engine/deploy/scripts/register_cloudflare_quick.ps1",
+        "eta_engine/deploy/scripts/run_dashboard_8421.ps1",
+        "eta_engine/deploy/uninstall_windows.ps1",
+        "eta_engine/obs/daemon_recovery_watchdog.py",
+        "eta_engine/obs/heartbeat_writer.py",
+    )
+    for rel_path in targets:
+        text = _read(rel_path)
+        assert "LOCALAPPDATA" not in text
+        assert r"AppData\Local\eta_engine" not in text
+
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
+        "eta_engine/deploy/scripts/live_claude_smoke.py"
+    )
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
+        "eta_engine/obs/heartbeat_writer.py"
+    )
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read(
+        "eta_engine/obs/daemon_recovery_watchdog.py"
+    )
+    assert '$env:ETA_STATE_DIR = $stateDir' in _read(
+        "eta_engine/deploy/scripts/run_dashboard_8421.ps1"
+    )
+
+
 def test_doc_cleanup_wave_drops_legacy_paths() -> None:
     targets = (
         "eta_engine/docs/research_log/2026-04-26_post_rebrand_baseline.md",

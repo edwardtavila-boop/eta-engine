@@ -11,7 +11,7 @@ verifies:
   3. BATMAN returns a parsed verdict
   4. Cost is tracked in UsageTracker
 
-Run (from C:\\eta_engine):
+Run (from C:\\EvolutionaryTradingAlgo\\eta_engine):
     .venv\\Scripts\\python.exe -m deploy.scripts.live_claude_smoke
 
 Exits 0 on success, non-zero on any failure.
@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 
 from dotenv import load_dotenv
+
+from eta_engine.scripts import workspace_roots
 
 
 def main() -> int:
@@ -186,8 +187,7 @@ def main() -> int:
     print(f"[live-smoke]   evidence   = {verdict.evidence}")
 
     # 7. Persist for dashboard
-    state_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"
-    state_dir.mkdir(parents=True, exist_ok=True)
+    state_dir = workspace_roots.ensure_dir(workspace_roots.ETA_RUNTIME_STATE_DIR)
     smoke_out = state_dir / "live_claude_smoke.json"
     smoke_out.write_text(
         json.dumps(

@@ -13,8 +13,7 @@ Task Scheduler restart it.
 
 Heartbeats expected at::
 
-    %LOCALAPPDATA%\eta_engine\state\<daemon>_heartbeat.json
-    state/<daemon>_heartbeat.json
+    C:\EvolutionaryTradingAlgo\var\eta_engine\state\<daemon>_heartbeat.json
 
 Each daemon's expected heartbeat cadence is configured below.
 
@@ -27,11 +26,15 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+from eta_engine.scripts import workspace_roots
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger("daemon_recovery_watchdog")
 
@@ -96,9 +99,8 @@ WATCHED_DAEMONS = [
 def heartbeat_paths_for(name: str) -> list[Path]:
     """Common locations a daemon may have written its heartbeat to."""
     return [
-        Path(os.environ.get("LOCALAPPDATA", "")) / "eta_engine" / "state" / name,
-        Path(os.environ.get("LOCALAPPDATA", "")) / "eta_engine" / "state" / name,
-        Path(__file__).resolve().parents[1] / "state" / name,
+        workspace_roots.ETA_RUNTIME_STATE_DIR / name,
+        workspace_roots.ETA_ENGINE_ROOT / "state" / name,
     ]
 
 

@@ -9,8 +9,15 @@
 
 $ErrorActionPreference = "Stop"
 
+$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$stateDir = Join-Path $workspaceRoot "var\eta_engine\state"
+$logDir = Join-Path $workspaceRoot "logs\eta_engine"
+New-Item -ItemType Directory -Force -Path $stateDir, $logDir | Out-Null
+$env:ETA_STATE_DIR = $stateDir
+$env:ETA_LOG_DIR = $logDir
+
 # Ensure operator account exists (only on first run)
-$users = Join-Path $env:LOCALAPPDATA "eta_engine\state\auth\users.json"
+$users = Join-Path $stateDir "auth\users.json"
 if (-not (Test-Path $users)) {
     Write-Host "First-run: creating operator account..."
     $username = Read-Host "Operator username"
@@ -41,6 +48,8 @@ if ($existing) {
 }
 
 Write-Host "Starting ETA command center on http://127.0.0.1:8421/"
+Write-Host "  State: $stateDir"
+Write-Host "  Logs:  $logDir"
 Write-Host "  Press Ctrl+C to stop."
 Write-Host ""
 

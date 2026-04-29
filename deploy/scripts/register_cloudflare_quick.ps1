@@ -13,8 +13,9 @@ param(
     [string]$TaskName = "Apex-Cloudflare-Tunnel"
 )
 
-$logDir = Join-Path $env:LOCALAPPDATA "eta_engine\logs"
-$stateDir = Join-Path $env:LOCALAPPDATA "eta_engine\state"
+$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$logDir = Join-Path $workspaceRoot "logs\eta_engine"
+$stateDir = Join-Path $workspaceRoot "var\cloudflare"
 New-Item -ItemType Directory -Force -Path $logDir, $stateDir | Out-Null
 
 $logPath = Join-Path $logDir "cloudflare-tunnel.log"
