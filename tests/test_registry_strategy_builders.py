@@ -227,8 +227,11 @@ def test_eth_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:
     assert strategy.cfg.range_minutes == 180
     assert strategy.cfg.atr_stop_mult == 1.5
     assert strategy.cfg.rr_target == 1.0
-    assert assignment.extras["promotion_status"] == "research_candidate"
-    assert assignment.extras["research_tune"]["strict_gate"] is False
+    assert assignment.extras["promotion_status"] == "production_candidate"
+    assert assignment.extras["research_tune"]["strict_gate"] is True
+    assert assignment.extras["research_tune"]["source_artifact"] == (
+        "docs/research_log/fleet_optimization_20260429T182551Z.md"
+    )
 
 
 def test_btc_ensemble_registry_extras_rebuild_all_tuned_voters() -> None:

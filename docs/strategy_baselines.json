@@ -152,9 +152,9 @@
       "avg_r": 0.0282,
       "r_stddev": 1.0031,
       "_promoted_at": "2026-04-29",
-      "_promotion_status": "research_candidate",
-      "_walk_forward_summary": "ETH/1h latest imported 720d tape, 90d/30d windows, 12/21 positive OOS, agg IS Sharpe +0.506, agg OOS Sharpe +1.929, degradation 33.3%, DSR median 0.646, 52.4% pass fraction. Latest-slice retune: range=180m, atr_stop=1.5, rr=1.0. Strict gate remains FAIL, but this is safer than v3 on the wider tape.",
-      "_notes": "Research/paper baseline only, not final live promotion. Persisted so drift checks and launch readiness compare the retuned ETH assignment honestly. Full latest-20k combined backtest: 142 trades, 51.41% win rate, avg R +0.0282, max DD 11.6269%, total return +3.3450%."
+      "_promotion_status": "production_candidate",
+      "_walk_forward_summary": "ETH/1h latest imported 720d tape, 90d/30d windows, 12/21 positive OOS, agg IS Sharpe +0.506, agg OOS Sharpe +1.929, degradation 33.3%, DSR median 0.646, 52.4% pass fraction. Registered-anchor retest: range=180m, atr_stop=1.5, rr=1.0. Strict gate PASS under the registry's min_trades_per_window=3 policy.",
+      "_notes": "Production candidate with half-size warmup. Persisted so drift checks and launch readiness compare the retuned ETH assignment honestly. Full latest-20k combined backtest: 142 trades, 51.41% win rate, avg R +0.0282, max DD 11.6269%, total return +3.3450%. Pre-live IBKR/CME drift-check via scripts/compare_coinbase_vs_ibkr still required."
     },
     {
       "strategy_id": "btc_corb_sage_v1",

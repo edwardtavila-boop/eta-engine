@@ -778,8 +778,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     ),
     # ETH perp - latest-slice research candidate. v3 remains preserved
     # in strategy_baselines.json as the 2026-04-27 promotion snapshot;
-    # v4 reflects the wider imported tape and stays WARN-only until it
-    # clears the strict promotion gate.
+    # v4 reflects the wider imported tape and now clears the strict
+    # registry gate; keep it half-size until IBKR/CME drift is checked.
     StrategyAssignment(
         bot_id="eth_perp",
         strategy_id="eth_corb_v4",
@@ -793,20 +793,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="crypto_orb",
         rationale=(
-            "Retuned 2026-04-29 after the expanded 720d ETH tape; "
+            "PROMOTED 2026-04-29 after the expanded 720d ETH tape; "
             "old v3 config (range=60m, atr=3.0, rr=2.0) no longer "
             "clears the latest-slice gate: agg OOS +1.36, degradation "
-            "42.9pct. The broader 120-cell sweep found a safer research "
-            "candidate at range=180m, atr=1.5, rr=1.0: agg IS +0.51, "
-            "agg OOS +1.93, degradation 33.3pct, DSR pass 52.4pct. "
-            "Strict gate still does not pass, so ETH is now a paper/"
-            "research candidate rather than a promoted live champion. "
+            "42.9pct. The broader 120-cell sweep plus registered-anchor "
+            "retest confirmed a safer production candidate at range=180m, "
+            "atr=1.5, rr=1.0: 21 windows, 12/21 +OOS, agg IS +0.51, "
+            "agg OOS +1.93, degradation 33.3pct, DSR median 0.646, "
+            "DSR pass 52.4pct, strict gate PASS. "
             "Bars are Coinbase spot ETH-USD; pre-live swap to IBKR-"
             "native CME ETH bars plus drift check via "
             "scripts/compare_coinbase_vs_ibkr remains required."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
             "crypto_orb_config": {
                 "range_minutes": 180,
@@ -817,14 +817,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 4.0,
             "research_tune": {
                 "retuned_on": "2026-04-29",
-                "scope": "latest_20k_bar_research_candidate",
+                "validated_on": "2026-04-29",
+                "scope": "full_available_registered_anchor_retest",
                 "source_artifact": (
-                    "var/eta_engine/state/research_grid/"
-                    "eth_crypto_orb_sweep_20260429T171601_428622Z.md"
+                    "docs/research_log/"
+                    "fleet_optimization_20260429T182551Z.md"
                 ),
                 "previous_agg_oos_sharpe": 1.357,
                 "candidate_agg_oos_sharpe": 1.929,
-                "strict_gate": False,
+                "candidate_dsr_pass_fraction": 0.524,
+                "candidate_degradation": 0.333,
+                "candidate_windows": 21,
+                "strict_gate": True,
             },
             # Half-size for first 30 days post-promotion.
             "warmup_policy": {
@@ -1034,25 +1038,38 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="compression_breakout",
         rationale=(
-            "RESEARCH CANDIDATE 2026-04-27 from foundation supercharge "
-            "tight-knob sweep. Default BTC preset OOS +0.50 / 358 trades "
-            "(DSR 28%) — tightening volume z to 0.8, close-location to "
-            "0.80, and cooldown to 24 bars lifted the OOS to +2.30 / 269 "
-            "trades / DSR 39% (config #3 of the tight sweep). Still 11pp "
-            "below the strict 50% DSR pass-fraction gate, so promoted as "
-            "RESEARCH CANDIDATE rather than full production promotion. "
-            "Paper-soak validation will determine whether the per-fold "
-            "DSR shortfall is a real drag or a small-sample artifact "
-            "(57 windows is plenty but DSR estimation is sensitive to "
-            "fold trade counts). Half-size warmup_policy applies."
+            "RESEARCH CANDIDATE refreshed 2026-04-29 from the canonical "
+            "imported BTC 1h tape. The old 5y snapshot showed a strong "
+            "+2.30 OOS candidate, but the active 21-window tape no longer "
+            "confirms that edge. The best current tight-compression cell "
+            "uses volume z >= 1.0, close-location >= 0.80, cooldown 24 "
+            "bars, and rr=2.5: agg IS -1.034, agg OOS +0.139, 105 OOS "
+            "trades, DSR pass 47.6%, strict gate FAIL. Keep as a "
+            "research/paper candidate only until a provider-backed "
+            "retest clears positive IS+OOS and the 50% DSR pass gate. "
+            "Half-size warmup_policy applies."
         ),
         extras={
             "compression_preset": "btc",
-            "compression_min_volume_z": 0.8,
+            "compression_min_volume_z": 1.0,
             "compression_min_close_location": 0.80,
             "compression_min_bars_between_trades": 24,
             "compression_rr_target": 2.5,
             "promotion_status": "research_candidate",
+            "research_tune": {
+                "refreshed_on": "2026-04-29",
+                "scope": "canonical_btc_1h_compression_tight_retest",
+                "source_artifact": (
+                    "eta_engine/docs/research_log/"
+                    "foundation_supercharge_sweep_results_btc_compression_tight_20260429T182715Z.json"
+                ),
+                "candidate_agg_oos_sharpe": 0.139,
+                "candidate_dsr_pass_fraction": 0.476,
+                "candidate_degradation": 0.286,
+                "candidate_windows": 21,
+                "candidate_oos_trades": 105,
+                "strict_gate": False,
+            },
             "warmup_policy": {
                 "promoted_on": "2026-04-27",
                 "warmup_days": 30,
