@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T21:10:36.1537666Z",
+  "last_updated": "2026-04-29T21:14:40.0227902Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -12,8 +12,8 @@
     "eta_engine_tests_passing": 5168,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
-      "timestamp_utc": "2026-04-29T21:10:36.1537666Z",
-      "surface": "V1 Fleet roster renders per-bot strategy readiness chips from /api/bot-fleet",
+      "timestamp_utc": "2026-04-29T21:14:40.0227902Z",
+      "surface": "V1 Fleet roster and selected-bot drill-down render per-bot strategy readiness chips from /api/bot-fleet",
       "fields": [
         "strategy_readiness",
         "launch_lane",
@@ -22,7 +22,8 @@
         "readiness_next_action"
       ],
       "tests": [
-        "tests/test_optimizations.py::TestStatusPage::test_status_page_mobile_fleet_and_equity_contracts"
+        "tests/test_optimizations.py::TestStatusPage::test_status_page_mobile_fleet_and_equity_contracts",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_bot_fleet_includes_supervisor_bots"
       ]
     },
     "eta_engine_verify_all": "17/17 PASS",

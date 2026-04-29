@@ -1560,7 +1560,48 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
     bot_dir = _state_dir() / "bots" / bot_id
+    supervisor_statuses = _supervisor_roster_rows(time.time(), bot=bot_id)
+    supervisor_status = supervisor_statuses[0] if supervisor_statuses else None
+    readiness_keys = (
+        "strategy_readiness",
+        "launch_lane",
+        "can_paper_trade",
+        "can_live_trade",
+        "readiness_next_action",
+        "mode",
+        "last_jarvis_verdict",
+        "heartbeat_age_s",
+        "source",
+    )
+    if supervisor_status is not None:
+        strategy_readiness = supervisor_status.get("strategy_readiness")
+        if not isinstance(strategy_readiness, dict):
+            strategy_readiness = {}
+    else:
+        strategy_readiness = {}
     if not bot_dir.exists():
+        if supervisor_status is not None:
+            return {
+                "status": supervisor_status,
+                "recent_fills": [],
+                "recent_verdicts": [],
+                "sage_effects": {},
+                "strategy_readiness": strategy_readiness,
+                "launch_lane": supervisor_status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
+                "can_paper_trade": bool(
+                    supervisor_status.get("can_paper_trade")
+                    or strategy_readiness.get("can_paper_trade")
+                ),
+                "can_live_trade": bool(
+                    supervisor_status.get("can_live_trade")
+                    or strategy_readiness.get("can_live_trade")
+                ),
+                "readiness_next_action": str(
+                    supervisor_status.get("readiness_next_action")
+                    or strategy_readiness.get("next_action")
+                    or "",
+                ),
+            }
         return {
             "_warning": "no_data",
             "status": {"_warning": "no_data"},
@@ -1569,6 +1610,13 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             "sage_effects": {"_warning": "no_data"},
         }
     status = read_json_safe(bot_dir / "status.json")
+    if supervisor_status is not None:
+        for key in readiness_keys:
+            if key in supervisor_status:
+                status[key] = supervisor_status[key]
+        strategy_readiness = status.get("strategy_readiness")
+        if not isinstance(strategy_readiness, dict):
+            strategy_readiness = {}
     recent_fills = read_json_safe(bot_dir / "recent_fills.json")
     local_fills = recent_fills if isinstance(recent_fills, list) else []
     merged_fills: list[dict] = []
@@ -1612,6 +1660,13 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         "recent_fills": merged_fills[:50],
         "recent_verdicts": read_json_safe(bot_dir / "recent_verdicts.json"),
         "sage_effects": read_json_safe(bot_dir / "sage_effects.json"),
+        "strategy_readiness": strategy_readiness,
+        "launch_lane": status.get("launch_lane") or strategy_readiness.get("launch_lane") or "",
+        "can_paper_trade": bool(status.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
+        "can_live_trade": bool(status.get("can_live_trade") or strategy_readiness.get("can_live_trade")),
+        "readiness_next_action": str(
+            status.get("readiness_next_action") or strategy_readiness.get("next_action") or "",
+        ),
     }
 
 

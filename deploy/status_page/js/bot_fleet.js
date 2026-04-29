@@ -199,7 +199,17 @@ class DrilldownPanel extends Panel {
       }
     }
     const latestDurLabel = latestDur > 0 ? `${Math.floor(latestDur / 60)}m ${Math.floor(latestDur % 60)}s` : '—';
+    const readiness = formatBotStrategyReadiness(status);
+    const readinessAction = readiness.nextAction || readiness.laneLabel;
     this.body.innerHTML = `
+      <div class="strategy-readiness-detail mb-3" data-readiness-state="${escapeHtml(readiness.state)}">
+        <div class="strategy-readiness-detail-title">Strategy Readiness</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="strategy-readiness-chip" data-readiness-state="${escapeHtml(readiness.state)}">${escapeHtml(readiness.label)}</span>
+          <span class="text-[11px] text-zinc-400">${escapeHtml(readiness.laneLabel)}</span>
+        </div>
+        <div class="strategy-readiness-action">Next: ${escapeHtml(readinessAction)}</div>
+      </div>
       <div class="grid grid-cols-4 gap-2 mb-3 text-xs">
         <div class="metric-card p-2"><div class="metric-label">Last Side</div><div class="metric-value">${escapeHtml(String(latest?.side || '—').toUpperCase())}</div></div>
         <div class="metric-card p-2"><div class="metric-label">Last Size</div><div class="metric-value">${latest?.qty ?? '—'}</div></div>

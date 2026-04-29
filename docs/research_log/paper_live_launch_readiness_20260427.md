@@ -124,9 +124,9 @@ posture in `operator_queue_snapshot` / `operator_queue_heartbeat` via
 carry the same posture too, giving scheduled JARVIS context the launch-lane
 view without requiring a dashboard session. The JARVIS strategy supervisor
 heartbeat and `/api/bot-fleet` rows now preserve per-bot `strategy_readiness`
-fields as well. The V1 Fleet roster now renders those fields as per-bot
-readiness chips with the next readiness action, closing the gap between
-framework JSON and the operator-facing bot view.
+fields as well. The V1 Fleet roster and selected-bot drill-down now render
+those fields as per-bot readiness chips with the next readiness action, closing
+the gap between framework JSON and the operator-facing bot view.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

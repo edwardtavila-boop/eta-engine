@@ -933,6 +933,15 @@ class TestDashboardAPI:
         assert mnq["can_paper_trade"] is True
         assert mnq["can_live_trade"] is False
 
+        drill = app_client.get("/api/bot-fleet/mnq_futures")
+        assert drill.status_code == 200
+        drill_data = drill.json()
+        assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "live_preflight"
+        assert drill_data["status"]["can_paper_trade"] is True
+        assert drill_data["status"]["readiness_next_action"] == "Run per-bot promotion preflight before live routing."
+        assert drill_data["strategy_readiness"]["launch_lane"] == "live_preflight"
+        assert "_warning" not in drill_data
+
         assert data["confirmed_bots"] == 2
         assert data["dashboard_version"] == "v1"
         assert data["release_stage"] == "pre_beta"
