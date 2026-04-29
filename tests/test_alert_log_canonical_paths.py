@@ -140,6 +140,34 @@ def test_vps_failover_archives_workspace_paths_relative_to_workspace() -> None:
     assert vps_failover_drill._archive_name(workspace_log) == "logs/eta_engine/alerts_log.jsonl"
 
 
+def test_vps_failover_missing_env_reports_template_and_active_brokers(
+    monkeypatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".env.example").write_text("IBKR_ACCOUNT_ID=\n", encoding="utf-8")
+    monkeypatch.setattr(vps_failover_drill, "ROOT", tmp_path)
+
+    result = vps_failover_drill._check_secrets_present()
+
+    assert result.severity == "amber"
+    assert result.details["template"].replace("\\", "/").endswith(".env.example")
+    assert result.details["template_exists"] is True
+    assert result.details["active_brokers"] == ["IBKR", "Tastytrade"]
+    assert result.details["dormant_brokers"] == ["Tradovate"]
+    assert "IBKR_ACCOUNT_ID" in result.details["required_groups"]["ibkr_primary"]
+    assert "TASTY_SESSION_TOKEN" in result.details["required_groups"]["tastytrade_fallback"]
+
+
+def test_vps_failover_no_bash_reports_vps_validation_commands(monkeypatch) -> None:
+    monkeypatch.setattr(vps_failover_drill.shutil, "which", lambda _: None)
+
+    result = vps_failover_drill._check_install_script_syntax()
+
+    assert result.severity == "amber"
+    assert result.details["reason"] == "bash_not_on_path"
+    assert "bash -n deploy/install_vps.sh" in result.details["vps_commands"][0]
+    assert "vps_failover_drill --no-backup-test --json" in result.details["vps_commands"][1]
+
+
 def test_vps_failover_wsl_launcher_gap_is_amber(monkeypatch) -> None:
     monkeypatch.setattr(vps_failover_drill.shutil, "which", lambda _: "bash")
 
@@ -155,6 +183,8 @@ def test_vps_failover_wsl_launcher_gap_is_amber(monkeypatch) -> None:
 
     assert result.severity == "amber"
     assert "cannot run scripts" in result.summary
+    assert result.details["reason"] == "local_bash_launcher_unavailable"
+    assert "bash -n deploy/install_vps.sh" in result.details["vps_commands"][0]
 
 
 def test_vps_failover_real_bash_syntax_error_is_red(monkeypatch) -> None:

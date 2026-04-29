@@ -100,6 +100,32 @@ _DEPLOY_FILES_REQUIRED: list[str] = [
     "deploy/README.md",
 ]
 
+_ENV_EXAMPLE_FILE = ".env.example"
+_ENV_READINESS_REQUIREMENTS: dict[str, list[str]] = {
+    "runtime_mode": ["APEX_MODE=PAPER"],
+    "jarvis_budget": [
+        "ANTHROPIC_API_KEY",
+        "JARVIS_HOURLY_USD_BUDGET",
+        "JARVIS_DAILY_USD_BUDGET",
+    ],
+    "ibkr_primary": [
+        "IBKR_VENUE_TYPE=paper",
+        "IBKR_CP_BASE_URL",
+        "IBKR_ACCOUNT_ID",
+        "IBKR_SYMBOL_CONID_MAP or IBKR_CONID_<SYMBOL>",
+    ],
+    "tastytrade_fallback": [
+        "TASTY_VENUE_TYPE=paper",
+        "TASTY_API_BASE_URL",
+        "TASTY_ACCOUNT_NUMBER",
+        "TASTY_SESSION_TOKEN",
+    ],
+}
+_VPS_BASH_VALIDATION_COMMANDS = [
+    "cd ~/eta_engine && bash -n deploy/install_vps.sh",
+    "cd ~/eta_engine && .venv/bin/python -m eta_engine.scripts.vps_failover_drill --no-backup-test --json",
+]
+
 _IDEMPOTENCY_EVIDENCE_FILES: list[tuple[str, Path, tuple[str, ...]]] = [
     (
         "deterministic_router",
@@ -160,6 +186,33 @@ def _archive_name(path: Path) -> str:
         return path.relative_to(workspace_root).as_posix()
     except ValueError:
         return path.name
+
+
+def _env_readiness_details() -> dict[str, Any]:
+    """Return operator guidance for populating .env without reading secrets."""
+    example_path = ROOT / _ENV_EXAMPLE_FILE
+    return {
+        "env_path": _display_path(ROOT / _SECRETS_FILE),
+        "template": _display_path(example_path),
+        "template_exists": example_path.exists(),
+        "copy_command": f"cp {_ENV_EXAMPLE_FILE} .env && chmod 600 .env",
+        "active_brokers": ["IBKR", "Tastytrade"],
+        "dormant_brokers": ["Tradovate"],
+        "required_groups": _ENV_READINESS_REQUIREMENTS,
+        "note": "populate real values only; the DR drill never reads .env contents",
+    }
+
+
+def _vps_bash_validation_details(*, reason: str | None = None) -> dict[str, Any]:
+    """Return the exact remote validation commands for install_vps.sh."""
+    details: dict[str, Any] = {
+        "script": "deploy/install_vps.sh",
+        "vps_commands": list(_VPS_BASH_VALIDATION_COMMANDS),
+        "local_shell": "bash",
+    }
+    if reason:
+        details["reason"] = reason
+    return details
 
 
 @dataclass
@@ -256,11 +309,13 @@ def _check_secrets_present() -> CheckResult:
                 ".env missing — operator must populate broker keys "
                 "before flipping live (script never reads contents)"
             ),
+            details=_env_readiness_details(),
         )
     return CheckResult(
         name="secrets_present",
         severity="green",
         summary=f".env exists ({p.stat().st_size} bytes; contents not read)",
+        details=_env_readiness_details(),
     )
 
 
@@ -302,6 +357,7 @@ def _check_install_script_syntax() -> CheckResult:
                 "bash not on PATH; cannot syntax-check install_vps.sh "
                 "locally. The CI pipeline / VPS itself will validate it."
             ),
+            details=_vps_bash_validation_details(reason="bash_not_on_path"),
         )
     try:
         result = subprocess.run(  # noqa: S603 -- localhost bash, fixed args
@@ -316,6 +372,7 @@ def _check_install_script_syntax() -> CheckResult:
             name="install_script_syntax",
             severity="amber",
             summary=f"bash -n failed to run: {exc}",
+            details=_vps_bash_validation_details(reason=type(exc).__name__),
         )
     output = _clean_process_output(result.stdout, result.stderr)
     if result.returncode != 0 and _is_bash_launcher_unavailable(output):
@@ -327,17 +384,20 @@ def _check_install_script_syntax() -> CheckResult:
                 "(WSL/Git Bash unavailable). Validate deploy/install_vps.sh "
                 "on the VPS or a shell with bash installed."
             ),
+            details=_vps_bash_validation_details(reason="local_bash_launcher_unavailable"),
         )
     if result.returncode != 0:
         return CheckResult(
             name="install_script_syntax",
             severity="red",
             summary=f"bash -n found errors: {output[:200]}",
+            details={**_vps_bash_validation_details(reason="syntax_error"), "output": output[:500]},
         )
     return CheckResult(
         name="install_script_syntax",
         severity="green",
         summary="install_vps.sh syntax-clean",
+        details=_vps_bash_validation_details(),
     )
 
 

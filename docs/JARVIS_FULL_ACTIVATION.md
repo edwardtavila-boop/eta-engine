@@ -86,6 +86,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - `scripts/drift_watchdog_smoke.py` can append a safe `drift_watchdog_smoke`
   row to `var/eta_engine/state/drift_watchdog.jsonl` without strategy replay
   or broker access, giving DR/readiness checks canonical drift-state evidence.
+- The VPS failover drill now attaches `.env.example`, active/dormant broker
+  key groups, and exact VPS `bash -n deploy/install_vps.sh` validation commands
+  to the remaining operator/environment amber results.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is
