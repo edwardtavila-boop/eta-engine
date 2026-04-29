@@ -65,6 +65,7 @@ def test_active_data_operator_docs_do_not_advertise_forbidden_runtime_roots() ->
     root = Path(__file__).resolve().parent.parent
     targets = (
         "data/requirements.py",
+        "docs/JARVIS_FULL_ACTIVATION.md",
         "scripts/compare_coinbase_vs_ibkr.py",
         "scripts/extend_nq_daily_yahoo.py",
         "scripts/fetch_btc_bars.py",
