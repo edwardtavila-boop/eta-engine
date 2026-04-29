@@ -107,6 +107,22 @@ def test_registered_but_unused_alert_events_are_explicitly_reserved() -> None:
     assert report["reserved"] <= report["registered"]
 
 
+def test_alert_event_audit_main_returns_nonzero_on_unregistered_event(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "alerts.yaml").write_text("routing:\n  events: {}\n", encoding="utf-8")
+    (tmp_path / "runtime.py").write_text(
+        'dispatcher.send("missing_event", {})\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_audit_alert_events, "ROOT", tmp_path)
+
+    assert _audit_alert_events.main() == 1
+
+
 def test_no_event_is_dispatched_under_a_non_snake_case_name() -> None:
     """
     Defensive: the regex above only matches snake_case. If a future

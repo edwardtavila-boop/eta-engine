@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 from typing import Any
 
 import yaml
@@ -61,7 +62,7 @@ def audit(root: pathlib.Path = ROOT) -> dict[str, Any]:
     }
 
 
-def main() -> None:
+def main() -> int:
     report = audit(ROOT)
     called = report["called"]
     events = report["events"]
@@ -96,17 +97,20 @@ def main() -> None:
             f"registered in alerts.yaml; AlertDispatcher will silently "
             f"drop them.",
         )
+        return 1
     elif unreserved_unused:
         print(
             f"FAIL -- {len(unreserved_unused)} registered event(s) are "
             "unused and not listed under routing.reserved_events.",
         )
+        return 1
     else:
         print(
             "OK -- every dispatched event is registered in alerts.yaml, "
             "and every unused registered event is explicitly reserved.",
         )
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
