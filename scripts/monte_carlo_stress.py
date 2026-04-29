@@ -29,7 +29,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts.workspace_roots import (  # noqa: E402
+    ETA_RUNTIME_DECISION_JOURNAL_PATH,
+    ETA_RUNTIME_STATE_DIR,
+)
+
 logger = logging.getLogger("monte_carlo_stress")
+_DEFAULT_JOURNAL = ETA_RUNTIME_DECISION_JOURNAL_PATH
+_DEFAULT_OUT_DIR = ETA_RUNTIME_STATE_DIR / "monte_carlo"
 
 
 @dataclass
@@ -208,8 +215,8 @@ def run_stress(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--journal", type=Path,
-                   default=ROOT / "docs" / "decision_journal.jsonl")
+    p.add_argument("--journal", type=Path, default=_DEFAULT_JOURNAL,
+                   help="Decision journal JSONL (default: var/eta_engine/state/decision_journal.jsonl)")
     p.add_argument("--paths", type=int, default=1000)
     p.add_argument("--horizon-days", type=int, default=60,
                    help="Trades per simulated path (use ~1 trade/day for swing, more for intraday)")
@@ -220,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--allow-synthetic", action="store_true",
                    help="When journal empty, fall back to a synthetic R distribution")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--out", type=Path, default=ROOT / "state" / "monte_carlo")
+    p.add_argument("--out", type=Path, default=_DEFAULT_OUT_DIR)
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 

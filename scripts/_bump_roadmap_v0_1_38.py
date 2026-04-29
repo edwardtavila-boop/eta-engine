@@ -230,7 +230,7 @@ def main() -> None:
     print(
         "  shipped: strategies/decision_sink.py + Actor.STRATEGY_ROUTER "
         "+ RouterAdapter.decision_sink field + 37 tests. Every live "
-        "router dispatch now audited to docs/decision_journal.jsonl."
+        "router dispatch now audited to var/eta_engine/state/decision_journal.jsonl."
     )
 
 

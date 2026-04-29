@@ -13,7 +13,7 @@ JARVIS event with ``intent="data_inventory"`` is the canonical
 Usage::
 
     python -m eta_engine.scripts.announce_data_library
-        [--journal docs/decision_journal.jsonl]
+        [--journal var/eta_engine/state/decision_journal.jsonl]
         [--dry-run]
 
 The dry-run flag prints the markdown summary but doesn't append the
@@ -29,6 +29,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_DECISION_JOURNAL_PATH  # noqa: E402
+
+_DEFAULT_JOURNAL = ETA_RUNTIME_DECISION_JOURNAL_PATH
+
 
 def main() -> int:
     from eta_engine.data.library import default_library
@@ -41,7 +45,10 @@ def main() -> int:
 
     p = argparse.ArgumentParser(prog="announce_data_library")
     p.add_argument(
-        "--journal", type=Path, default=ROOT / "docs" / "decision_journal.jsonl",
+        "--journal",
+        type=Path,
+        default=_DEFAULT_JOURNAL,
+        help="Decision journal JSONL (default: var/eta_engine/state/decision_journal.jsonl)",
     )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()

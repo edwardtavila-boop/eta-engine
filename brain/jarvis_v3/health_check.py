@@ -44,6 +44,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_DECISION_JOURNAL_PATH
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -245,8 +247,8 @@ def _check_calibrator() -> ComponentHealth:
 
 def _check_decision_journal() -> ComponentHealth:
     candidates = [
+        ETA_RUNTIME_DECISION_JOURNAL_PATH,
         ROOT / "state" / "jarvis_audit",
-        ROOT / "docs" / "decision_journal.jsonl",
     ]
     for p in candidates:
         if p.exists():

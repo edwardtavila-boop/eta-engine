@@ -179,9 +179,7 @@ foreach ($p in $pyprocs) {
 # -- Layer 4: decision journal ----------------------------------------------
 $journal_paths = @(
     'C:\EvolutionaryTradingAlgo\var\eta_engine\state\decision_journal.jsonl',
-    'C:\EvolutionaryTradingAlgo\firm_command_center\var\reports\decision_journal.jsonl',
-    'C:\EvolutionaryTradingAlgo\firm_command_center\eta_engine\docs\decision_journal.jsonl',
-    'C:\EvolutionaryTradingAlgo\eta_engine\docs\decision_journal.jsonl'
+    'C:\EvolutionaryTradingAlgo\firm_command_center\var\reports\decision_journal.jsonl'
 )
 foreach ($jp in $journal_paths) {
     if (Test-Path -LiteralPath $jp) {

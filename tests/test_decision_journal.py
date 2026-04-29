@@ -259,9 +259,29 @@ def test_default_journal_uses_runtime_state_not_tracked_docs() -> None:
 
 
 def test_operator_watchdogs_default_to_runtime_journal() -> None:
-    from eta_engine.scripts import drift_check_all, fleet_corr_check, weekly_sharpe_check
+    from eta_engine.scripts import (
+        announce_data_library,
+        drift_check,
+        drift_check_all,
+        fleet_corr_check,
+        monte_carlo_stress,
+        vps_failover_drill,
+        weekly_sharpe_check,
+    )
     from eta_engine.scripts.workspace_roots import ETA_RUNTIME_DECISION_JOURNAL_PATH
 
+    assert announce_data_library._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
+    assert drift_check._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
     assert fleet_corr_check._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
+    assert monte_carlo_stress._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
     assert weekly_sharpe_check._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
     assert drift_check_all._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
+    assert "var/eta_engine/state/decision_journal.jsonl" in vps_failover_drill._STATE_FILES_REQUIRED
+    assert "docs/decision_journal.jsonl" not in vps_failover_drill._STATE_FILES_REQUIRED
+
+
+def test_operator_stress_outputs_default_to_runtime_state() -> None:
+    from eta_engine.scripts import monte_carlo_stress
+    from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR
+
+    assert monte_carlo_stress._DEFAULT_OUT_DIR == ETA_RUNTIME_STATE_DIR / "monte_carlo"

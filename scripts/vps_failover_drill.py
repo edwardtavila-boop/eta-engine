@@ -16,7 +16,7 @@ What it does (locally — safe to run anytime)
 1. **State-backup verifier**: confirms the files that matter for
    resuming trading after a host loss are present and recent:
    - ``docs/strategy_baselines.json`` (the frozen baselines)
-   - ``docs/decision_journal.jsonl`` (the audit trail)
+   - ``var/eta_engine/state/decision_journal.jsonl`` (the audit trail)
    - ``var/eta_engine/state/drift_watchdog.jsonl`` (drift history)
    - ``logs/eta_engine/alerts_log.jsonl`` (alert history)
    - ``logs/eta_engine/runtime_log.jsonl`` (runtime history)
@@ -88,7 +88,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 _STATE_FILES_REQUIRED: list[str] = [
     "docs/strategy_baselines.json",
-    "docs/decision_journal.jsonl",
+    "var/eta_engine/state/decision_journal.jsonl",
 ]
 _STATIC_STATE_FILES_RECOMMENDED: list[str] = []
 # .env is special — we verify presence but NEVER read contents

@@ -9,7 +9,7 @@ Usage::
 
     python -m eta_engine.scripts.drift_check \\
         --strategy mnq_v3 \\
-        --journal docs/decision_journal.jsonl \\
+        --journal var/eta_engine/state/decision_journal.jsonl \\
         --baseline-trades 200 \\
         --baseline-win-rate 0.6 \\
         --baseline-avg-r 0.4 \\
@@ -44,6 +44,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_DECISION_JOURNAL_PATH  # noqa: E402
+
+_DEFAULT_JOURNAL = ETA_RUNTIME_DECISION_JOURNAL_PATH
+
 
 def main() -> int:
     from eta_engine.obs.decision_journal import DecisionJournal
@@ -55,7 +59,12 @@ def main() -> int:
         description="Compute drift severity for a strategy and write a GRADER event back to the journal.",
     )
     p.add_argument("--strategy", required=True, help="strategy_id to monitor")
-    p.add_argument("--journal", required=True, type=Path, help="path to decision_journal.jsonl")
+    p.add_argument(
+        "--journal",
+        type=Path,
+        default=_DEFAULT_JOURNAL,
+        help="path to decision_journal.jsonl (default: var/eta_engine/state/decision_journal.jsonl)",
+    )
     p.add_argument("--baseline-trades", type=int, required=True)
     p.add_argument("--baseline-win-rate", type=float, required=True)
     p.add_argument("--baseline-avg-r", type=float, required=True)

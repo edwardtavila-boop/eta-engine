@@ -153,6 +153,19 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     assert "workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR" in _read(
         "eta_engine/scripts/run_research_grid.py"
     )
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
+        "eta_engine/scripts/announce_data_library.py"
+    )
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read("eta_engine/scripts/drift_check.py")
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
+        "eta_engine/scripts/monte_carlo_stress.py"
+    )
+    assert "eta_engine\\docs\\decision_journal.jsonl" not in _read(
+        "eta_engine/scripts/runtime_readiness_check.ps1"
+    )
+    assert "ETA_RUNTIME_DECISION_JOURNAL_PATH" in _read(
+        "eta_engine/brain/jarvis_v3/health_check.py"
+    )
     assert "workspace_roots.ETA_OPERATOR_QUEUE_SNAPSHOT_PATH" in _read(
         "eta_engine/scripts/operator_queue_snapshot.py"
     )
