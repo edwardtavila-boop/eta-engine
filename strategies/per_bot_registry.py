@@ -1060,8 +1060,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "refreshed_on": "2026-04-29",
                 "scope": "canonical_btc_1h_compression_tight_retest",
                 "source_artifact": (
-                    "eta_engine/docs/research_log/"
-                    "foundation_supercharge_sweep_results_btc_compression_tight_20260429T182715Z.json"
+                    "docs/research_log/"
+                    "foundation_supercharge_sweep_results_btc_compression-compression_tight_20260429T180652Z.json"
                 ),
                 "candidate_agg_oos_sharpe": 0.139,
                 "candidate_dsr_pass_fraction": 0.476,

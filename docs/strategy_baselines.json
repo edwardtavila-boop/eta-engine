@@ -241,8 +241,8 @@
       "r_stddev": 1.297,
       "_promoted_at": "2026-04-27",
       "_promotion_status": "research_candidate",
-      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 57 windows on 5y data. compression_breakout with tight knobs (vol_z=0.8, close_loc=0.80, cooldown=24, rr=2.5). Agg IS Sharpe +0.67, agg OOS Sharpe **+2.30**, 269 OOS trades, 39pct DSR pass. Gate FAIL on DSR pass (39pct vs 50pct gate).",
-      "_notes": "RESEARCH CANDIDATE. Tightening from the default sweep config (+0.50 OOS) to tight knobs delivered 4.6x lift (+2.30 OOS). Still 11pp below the strict 50pct DSR pass-fraction gate. Promoted as research candidate with risk_multiplier_during_warmup=0.3 (vs 0.5 for full promotions)."
+      "_walk_forward_summary": "BTC/1h, 90d/30d windows, 21 windows on the canonical imported tape. compression_breakout with tight knobs (vol_z=1.0, close_loc=0.80, cooldown=24, rr=2.5). Agg IS Sharpe -1.034, agg OOS Sharpe +0.139, 105 OOS trades, 47.6pct DSR pass. Gate FAIL: positive OOS but negative IS and below the 50pct DSR pass gate.",
+      "_notes": "RESEARCH CANDIDATE. The legacy 5y +2.30 OOS snapshot is no longer the active truth surface. Current canonical retest keeps BTC compression as paper/research only with risk_multiplier_during_warmup=0.3. Promote only after provider-backed retest clears positive IS+OOS and the 50pct DSR pass-fraction gate."
     },
     {
       "strategy_id": "xrp_DEACTIVATED",
