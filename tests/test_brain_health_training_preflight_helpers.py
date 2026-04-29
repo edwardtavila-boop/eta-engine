@@ -26,6 +26,14 @@ def test_jarvis_health_self_test_returns_structured_verdict() -> None:
     } <= names
 
 
+def test_jarvis_health_model_policy_routes_current_pure_policy() -> None:
+    results, _ = run_self_test()
+
+    route = next(result for result in results if result.name == "model_policy_routes")
+    assert route.passed, route.detail
+    assert route.detail == "canonical tier routing healthy (architectural=opus, routine=sonnet, grunt=haiku)"
+
+
 def test_preflight_cache_keeps_only_positive_verdicts_and_evicted_lru() -> None:
     now = [datetime(2026, 4, 29, 16, tzinfo=UTC)]
     cache = PreflightCache(ttl_seconds=10.0, max_entries=1, clock=lambda: now[0])

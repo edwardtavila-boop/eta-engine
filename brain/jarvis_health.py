@@ -76,18 +76,27 @@ def _check_model_policy() -> HealthCheckResult:
     try:
         from eta_engine.brain.model_policy import TaskCategory, select_model
 
-        s_search = select_model(TaskCategory.RED_TEAM_SCORING, iteration_phase="search")
-        s_deploy = select_model(TaskCategory.RED_TEAM_SCORING, iteration_phase="deployment")
-        if s_search.tier.value != "opus" or s_deploy.tier.value != "sonnet":
+        architectural = select_model(TaskCategory.RED_TEAM_SCORING)
+        routine = select_model(TaskCategory.STRATEGY_EDIT)
+        grunt = select_model(TaskCategory.LOG_PARSING)
+        if (
+            architectural.tier.value != "opus"
+            or routine.tier.value != "sonnet"
+            or grunt.tier.value != "haiku"
+        ):
             return HealthCheckResult(
                 name="model_policy_routes",
                 passed=False,
-                detail=f"phase-aware demotion broken: search={s_search.tier.value}, deploy={s_deploy.tier.value}",
+                detail=(
+                    "canonical tier routing broken: "
+                    f"architectural={architectural.tier.value}, "
+                    f"routine={routine.tier.value}, grunt={grunt.tier.value}"
+                ),
             )
         return HealthCheckResult(
             name="model_policy_routes",
             passed=True,
-            detail="phase-aware demotion working (search=opus, deploy=sonnet)",
+            detail="canonical tier routing healthy (architectural=opus, routine=sonnet, grunt=haiku)",
         )
     except Exception as exc:  # noqa: BLE001
         return HealthCheckResult(
