@@ -26,3 +26,11 @@ def test_secret_audit_skips_binary_files(tmp_path) -> None:
     path.write_bytes(b"\x00" + b"sk-" + b"C" * 32)
 
     assert _secret_audit._is_binary(path)
+    assert _secret_audit._should_skip_file(path)
+
+
+def test_secret_audit_explicit_file_paths_respect_skip_extensions(tmp_path) -> None:
+    path = tmp_path / "sample.png"
+    path.write_text("sk-" + "D" * 32, encoding="utf-8")
+
+    assert _secret_audit.main([str(path)]) == 0

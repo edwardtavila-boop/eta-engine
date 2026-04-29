@@ -117,15 +117,20 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
     return out
 
 
+def _should_skip_file(path: Path) -> bool:
+    """True when a file should not be scanned for text secrets."""
+    return (
+        any(p in SKIP_DIRS for p in path.parts)
+        or path.suffix.lower() in SKIP_EXTS
+        or _is_binary(path)
+    )
+
+
 def _walk(root: Path) -> Iterator[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if any(p in SKIP_DIRS for p in path.parts):
-            continue
-        if path.suffix.lower() in SKIP_EXTS:
-            continue
-        if _is_binary(path):
+        if _should_skip_file(path):
             continue
         yield path
 
@@ -140,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     findings: list[tuple[Path, int, str, str]] = []
     for target in targets:
         if target.is_file():
+            if _should_skip_file(target):
+                continue
             for ln, label, red in _scan_file(target):
                 findings.append((target, ln, label, red))
             continue
