@@ -214,6 +214,21 @@ def test_sol_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:
     assert assignment.extras["research_tune"]["strict_gate"] is False
 
 
+def test_eth_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:
+    assignment = get_for_bot("eth_perp")
+    assert assignment is not None
+
+    strategy = _build_strategy_factory(assignment.strategy_kind, assignment.extras)()
+
+    assert assignment.strategy_id == "eth_corb_v4"
+    assert isinstance(strategy.cfg, CryptoORBConfig)
+    assert strategy.cfg.range_minutes == 180
+    assert strategy.cfg.atr_stop_mult == 1.5
+    assert strategy.cfg.rr_target == 1.0
+    assert assignment.extras["promotion_status"] == "research_candidate"
+    assert assignment.extras["research_tune"]["strict_gate"] is False
+
+
 def test_btc_ensemble_registry_extras_rebuild_all_tuned_voters() -> None:
     assignment = get_for_bot("btc_ensemble_2of3")
     assert assignment is not None

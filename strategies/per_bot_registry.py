@@ -756,15 +756,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
         },
     ),
-    # ETH perp — research-tuned crypto_orb (range=120m). NOT promoted:
-    # ETH perp — PROMOTED 2026-04-27 (second crypto promotion).
-    # Tuned crypto_orb (range=60m, atr=3.0, rr=2.0) cleared the strict
-    # gate honestly: agg IS +0.212, agg OOS +16.104, deg 27.8pct,
-    # DSR med 1.000, 88.9pct fold pass. See
-    # docs/research_log/fleet_optimization_*.md.
+    # ETH perp - latest-slice research candidate. v3 remains preserved
+    # in strategy_baselines.json as the 2026-04-27 promotion snapshot;
+    # v4 reflects the wider imported tape and stays WARN-only until it
+    # clears the strict promotion gate.
     StrategyAssignment(
         bot_id="eth_perp",
-        strategy_id="eth_corb_v3",
+        strategy_id="eth_corb_v4",
         symbol="ETH",
         timeframe="1h",
         scorer_name="btc",  # unused when strategy_kind=crypto_orb
@@ -775,34 +773,42 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="crypto_orb",
         rationale=(
-            "PROMOTED 2026-04-27 — second crypto strategy to honestly "
-            "clear the strict gate. The fleet optimizer's wider sweep "
-            "(36 cells over range/atr/rr) found range=60m as the win. "
-            "Tighter range (60m vs the prior v2 attempt's 120m) makes "
-            "ETH 1h breakouts qualify more often on the volatile Asian/"
-            "London session transitions; with atr=3.0 the wider stop "
-            "absorbs the noisy false-breakouts that killed earlier "
-            "configs' IS. Walk-forward 90d/30d, 9 windows: agg IS "
-            "+0.212, agg OOS +16.104, deg 27.8pct, DSR median 1.000, "
-            "88.9pct fold pass. Both IS and OOS are positive across "
-            "the aggregate (IS-positive gate cleared — the trap that "
-            "blocked the prior eth_corb_v2 attempt). Bars are Coinbase "
-            "spot ETH-USD; pre-live swap to IBKR-native CME ETH bars "
-            "+ drift check via scripts/compare_coinbase_vs_ibkr (see "
-            "eta_data_source_policy memory)."
+            "Retuned 2026-04-29 after the expanded 720d ETH tape; "
+            "old v3 config (range=60m, atr=3.0, rr=2.0) no longer "
+            "clears the latest-slice gate: agg OOS +1.36, degradation "
+            "42.9pct. The broader 120-cell sweep found a safer research "
+            "candidate at range=180m, atr=1.5, rr=1.0: agg IS +0.51, "
+            "agg OOS +1.93, degradation 33.3pct, DSR pass 52.4pct. "
+            "Strict gate still does not pass, so ETH is now a paper/"
+            "research candidate rather than a promoted live champion. "
+            "Bars are Coinbase spot ETH-USD; pre-live swap to IBKR-"
+            "native CME ETH bars plus drift check via "
+            "scripts/compare_coinbase_vs_ibkr remains required."
         ),
         extras={
+            "promotion_status": "research_candidate",
             "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
             "crypto_orb_config": {
-                "range_minutes": 60,
-                "atr_stop_mult": 3.0,
-                "rr_target": 2.0,
+                "range_minutes": 180,
+                "atr_stop_mult": 1.5,
+                "rr_target": 1.0,
             },
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
+            "research_tune": {
+                "retuned_on": "2026-04-29",
+                "scope": "latest_20k_bar_research_candidate",
+                "source_artifact": (
+                    "var/eta_engine/state/research_grid/"
+                    "eth_crypto_orb_sweep_20260429T171601_428622Z.md"
+                ),
+                "previous_agg_oos_sharpe": 1.357,
+                "candidate_agg_oos_sharpe": 1.929,
+                "strict_gate": False,
+            },
             # Half-size for first 30 days post-promotion.
             "warmup_policy": {
-                "promoted_on": "2026-04-27",
+                "promoted_on": "2026-04-29",
                 "warmup_days": 30,
                 "risk_multiplier_during_warmup": 0.5,
             },

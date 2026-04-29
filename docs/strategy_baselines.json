@@ -145,6 +145,17 @@
       "_notes": "Stats from full-period backtest: 360 days ETH 1h Coinbase spot bars, 73 trades, win rate 41.1%, avg +0.23R, expectancy +0.23R, total return +17.6%, max DD 9.6%, Sharpe 2.49. ETH OOS Sharpe of +16.1 is the highest the framework has seen; small-sample caveat (9 windows) — re-baseline once data extends to 720d+. Pre-live IBKR/CME drift-check via scripts/compare_coinbase_vs_ibkr still required. Devils-advocate caveat: '+16 OOS will not stay at +16 in live; expect mean-reversion to ~+5 range.'"
     },
     {
+      "strategy_id": "eth_corb_v4",
+      "n_trades": 142,
+      "win_rate": 0.5141,
+      "avg_r": 0.0282,
+      "r_stddev": 1.0031,
+      "_promoted_at": "2026-04-29",
+      "_promotion_status": "research_candidate",
+      "_walk_forward_summary": "ETH/1h latest imported 720d tape, 90d/30d windows, 12/21 positive OOS, agg IS Sharpe +0.506, agg OOS Sharpe +1.929, degradation 33.3%, DSR median 0.646, 52.4% pass fraction. Latest-slice retune: range=180m, atr_stop=1.5, rr=1.0. Strict gate remains FAIL, but this is safer than v3 on the wider tape.",
+      "_notes": "Research/paper baseline only, not final live promotion. Persisted so drift checks and launch readiness compare the retuned ETH assignment honestly. Full latest-20k combined backtest: 142 trades, 51.41% win rate, avg R +0.0282, max DD 11.6269%, total return +3.3450%."
+    },
+    {
       "strategy_id": "btc_corb_sage_v1",
       "n_trades": 49,
       "win_rate": 0.490,
