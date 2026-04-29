@@ -91,6 +91,16 @@ def test_pre_commit_surfaces_docstring_ratchet_advisory() -> None:
     ) in specs
 
 
+def test_pre_commit_runs_deferral_advisory_in_strict_mode() -> None:
+    specs = _pre_commit_check._advisory_audit_specs()
+
+    assert (
+        "deferral-criteria",
+        "scripts/_audit_deferral_criteria.py",
+        ["--strict"],
+    ) in specs
+
+
 def test_pre_commit_blocks_timestamped_docs_runtime_snapshots() -> None:
     forbidden = _pre_commit_check._forbidden_staged_files_from_lines(
         [
