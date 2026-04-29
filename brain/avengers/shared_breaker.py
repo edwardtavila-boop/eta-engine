@@ -2,7 +2,7 @@
 EVOLUTIONARY TRADING ALGO  //  brain.avengers.shared_breaker
 ================================================
 File-backed CircuitBreaker that syncs trip state across processes via
-``~/.jarvis/breaker.json``.
+``var/eta_engine/state/breaker.json``.
 
 Why this exists
 ---------------
@@ -19,9 +19,12 @@ Design
 ------
 On every state transition (CLOSED->OPEN, OPEN->HALF_OPEN,
 HALF_OPEN->CLOSED, manual reset), write an atomic JSON snapshot to
-``~/.jarvis/breaker.json``. On every :meth:`pre_dispatch`, re-read the
-file and adopt the shared state if it's newer. Atomic writes use the
-tempfile + ``os.replace`` dance so a reader never sees a partial file.
+``var/eta_engine/state/breaker.json``. On every :meth:`pre_dispatch`,
+re-read the file and adopt the shared state if it's newer. If no
+canonical file exists yet, a legacy ``~/.jarvis/breaker.json`` snapshot
+can still be read so migration does not silently clear an active trip.
+Atomic writes use the tempfile + ``os.replace`` dance so a reader never
+sees a partial file.
 
 Last-writer-wins on contention. This is safe because:
 
@@ -68,18 +71,20 @@ from eta_engine.brain.avengers.circuit_breaker import (
     BreakerState,
     CircuitBreaker,
 )
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from eta_engine.brain.avengers.base import TaskResult
 
 _LOG = logging.getLogger(__name__)
 
-DEFAULT_BREAKER_PATH = Path.home() / ".jarvis" / "breaker.json"
+DEFAULT_BREAKER_PATH = workspace_roots.ETA_SHARED_BREAKER_STATE_PATH
+LEGACY_BREAKER_PATH = workspace_roots.ETA_LEGACY_SHARED_BREAKER_STATE_PATH
 SCHEMA_VERSION = 1
 
 
 class SharedCircuitBreaker(CircuitBreaker):
-    """CircuitBreaker that persists trip state to ``~/.jarvis/breaker.json``.
+    """CircuitBreaker that persists trip state to canonical ETA state.
 
     Drop-in replacement for :class:`CircuitBreaker`. On every
     ``pre_dispatch`` and every state transition the breaker syncs with
@@ -90,7 +95,7 @@ class SharedCircuitBreaker(CircuitBreaker):
     ----------
     path
         Override the shared state file. Defaults to
-        ``~/.jarvis/breaker.json``.
+        ``var/eta_engine/state/breaker.json``.
     rehydrate_on_init
         If True (default), read the file at construction so a freshly
         spawned process inherits an in-flight trip. Disable in tests.
@@ -142,7 +147,7 @@ class SharedCircuitBreaker(CircuitBreaker):
     # --- disk I/O ---------------------------------------------------------
 
     def _refresh_from_disk(self) -> None:
-        """Adopt state from ``~/.jarvis/breaker.json`` if present and fresh."""
+        """Adopt canonical or legacy state if present and fresh."""
         data = self._read_shared()
         if data is None:
             return  # no shared state, keep in-memory view
@@ -192,26 +197,14 @@ class SharedCircuitBreaker(CircuitBreaker):
 
     def _read_shared(self) -> dict[str, object] | None:
         """Return parsed JSON or None if file missing/corrupt."""
-        try:
-            raw = self._path.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        data = _read_shared_file(self._path, validate_schema=True)
+        if data is not None:
+            return data
+        if self._path != DEFAULT_BREAKER_PATH or self._path.exists():
             return None
-        except OSError as exc:
-            _LOG.warning("[shared_breaker] read failed: %s", exc)
+        if self._path == LEGACY_BREAKER_PATH:
             return None
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            _LOG.warning("[shared_breaker] bad JSON: %s", exc)
-            return None
-        if not isinstance(data, dict):
-            _LOG.warning("[shared_breaker] root is not an object")
-            return None
-        ver = data.get("version")
-        if ver != SCHEMA_VERSION:
-            _LOG.warning("[shared_breaker] schema version %r != %d", ver, SCHEMA_VERSION)
-            return None
-        return data
+        return _read_shared_file(LEGACY_BREAKER_PATH, validate_schema=True)
 
     def _write_shared(self) -> None:
         """Atomic write of current breaker snapshot to ``breaker.json``."""
@@ -268,15 +261,34 @@ def read_shared_status(path: Path | str | None = None) -> dict[str, object] | No
     back to in-memory defaults).
     """
     p = Path(path) if path else DEFAULT_BREAKER_PATH
+    data = _read_shared_file(p, validate_schema=False)
+    if data is not None:
+        return data
+    if path is not None or p.exists() or p == LEGACY_BREAKER_PATH:
+        return None
+    return _read_shared_file(LEGACY_BREAKER_PATH, validate_schema=False)
+
+
+def _read_shared_file(path: Path, *, validate_schema: bool) -> dict[str, object] | None:
+    """Read one breaker state file without choosing fallback paths."""
     try:
-        raw = p.read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError):
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        _LOG.warning("[shared_breaker] read failed: %s", exc)
         return None
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        _LOG.warning("[shared_breaker] bad JSON: %s", exc)
         return None
     if not isinstance(data, dict):
+        _LOG.warning("[shared_breaker] root is not an object")
+        return None
+    ver = data.get("version")
+    if validate_schema and ver != SCHEMA_VERSION:
+        _LOG.warning("[shared_breaker] schema version %r != %d", ver, SCHEMA_VERSION)
         return None
     return data
 
@@ -317,6 +329,7 @@ def reset_shared(path: Path | str | None = None) -> bool:
 
 __all__ = [
     "DEFAULT_BREAKER_PATH",
+    "LEGACY_BREAKER_PATH",
     "SCHEMA_VERSION",
     "SharedCircuitBreaker",
     "read_shared_status",

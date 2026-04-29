@@ -727,13 +727,46 @@ class TestSharedCircuitBreaker:
     def _bpath(self, tmp_path: Path) -> Path:
         return tmp_path / "breaker.json"
 
-    def test_default_path_is_home_jarvis(self) -> None:
-        # Sanity: the module-level default points at ~/.jarvis/breaker.json
-        # so production wiring lands in the expected location.
+    def test_default_path_is_canonical_workspace_state(self) -> None:
+        # Sanity: production writes stay inside the canonical workspace tree.
         from eta_engine.brain.avengers import DEFAULT_BREAKER_PATH
 
-        assert DEFAULT_BREAKER_PATH.name == "breaker.json"
-        assert DEFAULT_BREAKER_PATH.parent.name == ".jarvis"
+        assert DEFAULT_BREAKER_PATH == workspace_roots.ETA_SHARED_BREAKER_STATE_PATH
+        assert "EvolutionaryTradingAlgo" in str(DEFAULT_BREAKER_PATH)
+
+    def test_default_rehydrate_can_fall_back_to_legacy_home_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from eta_engine.brain.avengers import shared_breaker
+
+        canonical = tmp_path / "state" / "breaker.json"
+        legacy = tmp_path / ".jarvis" / "breaker.json"
+        now = datetime.now(UTC)
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "state": "OPEN",
+                    "tripped_at": now.isoformat(),
+                    "reopen_at": (now + timedelta(hours=1)).isoformat(),
+                    "last_reason": "legacy trip",
+                    "written_at": now.isoformat(),
+                    "writer_pid": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(shared_breaker, "DEFAULT_BREAKER_PATH", canonical)
+        monkeypatch.setattr(shared_breaker, "LEGACY_BREAKER_PATH", legacy)
+
+        br = SharedCircuitBreaker(cooldown_seconds=3600)
+
+        assert br.path == canonical
+        assert br.status().state is BreakerState.OPEN
+        status = shared_breaker.read_shared_status()
+        assert status is not None
+        assert status["last_reason"] == "legacy trip"
 
     def test_trip_writes_open_to_disk(self, tmp_path: Path) -> None:
         path = self._bpath(tmp_path)

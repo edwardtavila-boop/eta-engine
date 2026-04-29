@@ -128,6 +128,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   state path `var/eta_engine/state/jarvis_drift.jsonl` instead of a per-user
   home `.jarvis` write path, while readback still falls back to an older
   home-dir journal when the canonical file has not been created yet.
+- The shared JARVIS circuit-breaker state now defaults to
+  `var/eta_engine/state/breaker.json` with legacy home `.jarvis/breaker.json`
+  readback, so an existing safety trip is not lost during canonical migration.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

@@ -168,6 +168,7 @@ from eta_engine.brain.avengers.push import (
 from eta_engine.brain.avengers.robin import Robin
 from eta_engine.brain.avengers.shared_breaker import (
     DEFAULT_BREAKER_PATH,
+    LEGACY_BREAKER_PATH,
     SharedCircuitBreaker,
     read_shared_status,
     reset_shared,
@@ -194,6 +195,7 @@ __all__ = [
     "DEFAULT_TRADES_SAFETY_FACTOR",
     "DRIFT_JOURNAL",
     "FLEET_PERSONAS",
+    "LEGACY_BREAKER_PATH",
     "PERSONA_BUCKET",
     "PERSONA_TIER",
     "PROMOTION_JOURNAL",
