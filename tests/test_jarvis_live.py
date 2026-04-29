@@ -263,6 +263,30 @@ def test_write_health_writes_latest_and_appends_log(tmp_path: Path) -> None:
     assert len(lines) == 2
 
 
+def test_write_health_embeds_bot_strategy_readiness(tmp_path: Path) -> None:
+    engine = _StubEngine()
+    sup = JarvisSupervisor(engine=engine, clock=_clock_fixed(_T0))
+    sup.tick()
+    report = sup.snapshot_health()
+
+    jarvis_live._write_health(
+        report,
+        tmp_path,
+        bot_strategy_readiness={
+            "status": "ready",
+            "summary": {
+                "blocked_data": 0,
+                "can_paper_trade": 10,
+                "launch_lanes": {"live_preflight": 6, "paper_soak": 4},
+            },
+        },
+    )
+
+    payload = json.loads((tmp_path / "jarvis_live_health.json").read_text(encoding="utf-8"))
+    assert payload["bot_strategy_readiness"]["status"] == "ready"
+    assert payload["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 10
+
+
 def test_write_health_creates_missing_out_dir(tmp_path: Path) -> None:
     target = tmp_path / "nested" / "deep"
     engine = _StubEngine()

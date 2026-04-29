@@ -174,6 +174,17 @@ Those artifacts now include `bot_strategy_readiness_status`,
 operator blocker summary. `/api/dashboard/diagnostics` also includes a compact
 `bot_strategy_readiness` block and contract check for self-diagnostics.
 
+Scheduled JARVIS intelligence now consumes the same posture:
+
+```bash
+python -m eta_engine.scripts.daily_premarket
+python -m eta_engine.scripts.jarvis_live --max-ticks 1 --interval 1
+```
+
+`premarket_latest.json`, `premarket_latest.txt`, and `jarvis_live_health.json`
+include bot strategy readiness notes/payloads so premarket and live-supervisor
+automation can see the launch posture without opening the dashboard.
+
 ---
 
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)

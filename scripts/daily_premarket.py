@@ -48,9 +48,60 @@ from eta_engine.brain.jarvis_context import (  # noqa: E402
     RegimeSnapshot,
     build_snapshot,
 )
+from eta_engine.scripts import jarvis_status  # noqa: E402
 
 DEFAULT_INPUTS = ROOT / "docs" / "premarket_inputs.json"
 DEFAULT_OUT_DIR = ROOT / "docs"
+_READINESS_LANE_ORDER = (
+    "live_preflight",
+    "paper_soak",
+    "shadow_only",
+    "research",
+    "non_edge",
+    "blocked_data",
+    "deactivated",
+)
+
+
+def _bot_strategy_readiness_notes(*, limit: int = 3) -> list[str]:
+    """Return compact bot-readiness notes for scheduled JARVIS context."""
+    try:
+        readiness = jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
+    except Exception as exc:  # noqa: BLE001 -- premarket should stay scheduler-safe
+        return [f"bot readiness: unavailable ({exc})"]
+
+    status = str(readiness.get("status") or "unknown")
+    summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
+    lanes = summary.get("launch_lanes") if isinstance(summary.get("launch_lanes"), dict) else {}
+    blocked_data = int(summary.get("blocked_data") or lanes.get("blocked_data") or 0)
+    paper_ready = int(summary.get("can_paper_trade") or 0)
+    can_live_any = bool(summary.get("can_live_any"))
+    lane_text = ", ".join(
+        f"{lane}={lanes[lane]}"
+        for lane in _READINESS_LANE_ORDER
+        if lane in lanes
+    )
+    notes = [
+        (
+            f"bot readiness: status={status} paper_ready={paper_ready} "
+            f"blocked_data={blocked_data} live_any={can_live_any}"
+            f"{f' lanes={lane_text}' if lane_text else ''}"
+        )
+    ]
+    top_actions = readiness.get("top_actions") if isinstance(readiness.get("top_actions"), list) else []
+    for action in top_actions[:limit]:
+        if not isinstance(action, dict):
+            continue
+        bot_id = str(action.get("bot_id") or "bot")
+        next_action = str(action.get("next_action") or "").strip()
+        if next_action:
+            notes.append(f"bot readiness action: {bot_id}: {next_action}")
+    return notes
+
+
+def _append_bot_strategy_readiness(ctx: JarvisContext) -> JarvisContext:
+    notes = [*ctx.notes, *_bot_strategy_readiness_notes()]
+    return ctx.model_copy(update={"notes": notes})
 
 
 def _stub_context() -> JarvisContext:
@@ -229,6 +280,7 @@ def run(
     out_dir: Path = DEFAULT_OUT_DIR,
 ) -> JarvisContext:
     ctx = _load_inputs(inputs_path) if inputs_path.exists() else _stub_context()
+    ctx = _append_bot_strategy_readiness(ctx)
     _write_outputs(ctx, out_dir)
     return ctx
 

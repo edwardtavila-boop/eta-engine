@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING
 
 from eta_engine.brain.jarvis_context import ActionSuggestion
+from eta_engine.scripts import daily_premarket
 from eta_engine.scripts.daily_premarket import _render_text, run
 
 if TYPE_CHECKING:
@@ -60,6 +61,34 @@ def test_run_produces_three_outputs(tmp_path: Path) -> None:
     assert (out_dir / "premarket_latest.txt").exists()
     assert (out_dir / "premarket_log.jsonl").exists()
     assert ctx.suggestion.action == ActionSuggestion.TRADE
+
+
+def test_run_embeds_bot_strategy_readiness_notes(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        daily_premarket.jarvis_status,
+        "build_bot_strategy_readiness_summary",
+        lambda **_kwargs: {
+            "status": "ready",
+            "summary": {
+                "blocked_data": 0,
+                "can_live_any": False,
+                "can_paper_trade": 10,
+                "launch_lanes": {"live_preflight": 6, "paper_soak": 4},
+            },
+            "top_actions": [],
+        },
+    )
+    inputs = tmp_path / "premarket_inputs.json"
+    inputs.write_text(json.dumps(_green_inputs()), encoding="utf-8")
+    out_dir = tmp_path / "docs"
+
+    ctx = run(inputs_path=inputs, out_dir=out_dir)
+
+    note = "bot readiness: status=ready paper_ready=10 blocked_data=0 live_any=False"
+    assert any(note in item for item in ctx.notes)
+    assert note in (out_dir / "premarket_latest.txt").read_text(encoding="utf-8")
+    payload = json.loads((out_dir / "premarket_latest.json").read_text(encoding="utf-8"))
+    assert any(note in item for item in payload["notes"])
 
 
 def test_run_stubs_when_inputs_missing(tmp_path: Path) -> None:

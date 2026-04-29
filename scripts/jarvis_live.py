@@ -79,6 +79,7 @@ from eta_engine.obs.jarvis_supervisor import (  # noqa: E402
     JarvisSupervisor,
     SupervisorPolicy,
 )
+from eta_engine.scripts import jarvis_status  # noqa: E402
 
 if TYPE_CHECKING:
     from eta_engine.obs.alerts import MultiAlerter
@@ -170,11 +171,33 @@ class _FileBackedProviders:
 # ---------------------------------------------------------------------------
 
 
-def _write_health(report: JarvisHealthReport, out_dir: Path) -> None:
+def _bot_strategy_readiness_payload() -> dict:
+    """Return a fail-soft bot readiness block for live health output."""
+    try:
+        return jarvis_status.build_bot_strategy_readiness_summary()
+    except Exception as exc:  # noqa: BLE001 -- live health output must keep writing
+        return {
+            "source": "jarvis_status",
+            "status": "unavailable",
+            "error": str(exc),
+            "summary": {},
+            "top_actions": [],
+        }
+
+
+def _write_health(
+    report: JarvisHealthReport,
+    out_dir: Path,
+    *,
+    bot_strategy_readiness: dict | None = None,
+) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     latest = out_dir / "jarvis_live_health.json"
     log = out_dir / "jarvis_live_log.jsonl"
     payload = report.model_dump(mode="json")
+    payload["bot_strategy_readiness"] = (
+        bot_strategy_readiness if bot_strategy_readiness is not None else _bot_strategy_readiness_payload()
+    )
     latest.write_text(
         json.dumps(payload, indent=2, default=str) + "\n",
         encoding="utf-8",

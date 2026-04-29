@@ -120,7 +120,9 @@ also renders that feed through the JARVIS Bot Strategy Readiness panel and the
 top-bar `bots` chip. Operator wakeup artifacts now carry the same compact
 posture in `operator_queue_snapshot` / `operator_queue_heartbeat` via
 `bot_strategy_readiness_status`, `bot_strategy_blocked_data`, and
-`bot_strategy_paper_ready`.
+`bot_strategy_paper_ready`. Daily premarket and `jarvis_live_health.json` now
+carry the same posture too, giving scheduled JARVIS context the launch-lane
+view without requiring a dashboard session.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support
