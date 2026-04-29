@@ -54,6 +54,8 @@ class ParquetLoader:
                 bar = self._row_to_bar(row, default_symbol=symbol or path.stem)
                 if bar is None:
                     continue
+                if symbol is not None and bar.symbol != symbol:
+                    continue
                 if start is not None and bar.timestamp < start:
                     continue
                 if end is not None and bar.timestamp > end:

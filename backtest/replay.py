@@ -1,7 +1,7 @@
 """
 EVOLUTIONARY TRADING ALGO  //  backtest.replay
 ===================================
-Bar replay sources. Synthetic GBM for testing; parquet/databento stubs.
+Bar replay sources. Cached parquet and synthetic GBM for testing.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from eta_engine.core.data_pipeline import BarData
+from eta_engine.data.parquet_loader import ParquetLoader
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -21,22 +22,14 @@ if TYPE_CHECKING:
 class BarReplay:
     """Iterable of BarData from various sources."""
 
-    # ── Parquet ──
+    # -- Parquet --
 
     @staticmethod
     def from_parquet(path: Path, symbol: str) -> Iterator[BarData]:
-        """Stream BarData from a parquet file.
+        """Stream symbol-filtered ``BarData`` from a cached parquet file."""
+        yield from ParquetLoader().load(path, symbol=symbol)
 
-        TODO: implement with pyarrow.parquet.ParquetFile — iter_batches()
-        TODO: expected schema: [timestamp (int64 ns), open, high, low, close, volume]
-        TODO: filter by symbol column if present
-        """
-        raise NotImplementedError(
-            f"from_parquet not implemented yet (path={path}, symbol={symbol}). "
-            "Wire pyarrow.parquet.ParquetFile -> iter_batches -> BarData."
-        )
-
-    # ── Databento ──
+    # -- Databento --
 
     @staticmethod
     def from_databento(
@@ -55,7 +48,7 @@ class BarReplay:
             "Wire databento.Historical.timeseries.get_range with schema=ohlcv-1m."
         )
 
-    # ── Synthetic (WORKS) ──
+    # -- Synthetic (WORKS) --
 
     @staticmethod
     def synthetic_bars(
@@ -90,12 +83,12 @@ class BarReplay:
 
         bars: list[BarData] = []
         price = float(start_price)
-        dt = 1.0  # one bar per step — drift/vol already per-step
+        dt = 1.0  # one bar per step; drift/vol already per-step
         for i in range(n):
             z = rng.gauss(0.0, 1.0)
             log_ret = (drift - 0.5 * vol * vol) * dt + vol * math.sqrt(dt) * z
             new_price = max(price * math.exp(log_ret), 0.01)
-            # Build OHLC: high/low jitter proportional to vol
+            # Build OHLC: high/low jitter proportional to vol.
             high_jitter = abs(rng.gauss(0.0, vol * 0.5)) * price
             low_jitter = abs(rng.gauss(0.0, vol * 0.5)) * price
             hi = max(price, new_price) + high_jitter
@@ -114,7 +107,7 @@ class BarReplay:
             price = new_price
         return bars
 
-    # ── Synthetic (JUMP-DIFFUSION for crypto-like regimes) ──
+    # -- Synthetic (JUMP-DIFFUSION for crypto-like regimes) --
 
     @staticmethod
     def synthetic_bars_jump(

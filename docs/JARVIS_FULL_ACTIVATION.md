@@ -49,6 +49,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - `scripts/score_policy_candidate.py` now reports the registered-candidate
   replay lane honestly. `--candidate v18` is surfaced as active replay, while
   missing candidates are called out instead of mislabeled as scaffold status.
+- `BarReplay.from_parquet(...)` now streams cached parquet through the shared
+  loader with exact symbol filtering, so backtests can use local cache truth
+  without touching dormant Databento/network refresh paths.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is
