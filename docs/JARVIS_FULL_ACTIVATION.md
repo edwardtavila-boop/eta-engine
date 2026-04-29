@@ -59,8 +59,8 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   and documents IBKR primary plus Tastytrade secondary as active broker setup;
   Tradovate credentials stay dormant-only.
 - Decision-journal defaults now write operational GRADER/watchdog events to
-  `var/eta_engine/state/decision_journal.jsonl`, keeping tracked docs snapshots
-  clean unless a script explicitly targets them.
+  `var/eta_engine/state/decision_journal.jsonl`; live journal JSONL is runtime
+  state and is ignored if a legacy docs copy is recreated locally.
 - Runtime and alert-log defaults now write to `logs/eta_engine/runtime_log.jsonl`
   and `logs/eta_engine/alerts_log.jsonl`; cross-regime verification tests use
   explicit temp output so full gates do not churn tracked docs snapshots.

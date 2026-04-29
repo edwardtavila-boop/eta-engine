@@ -85,6 +85,7 @@ docs/*_stderr.log
 docs/*_stdout.log
 
 # Runtime telemetry — written by live JARVIS daemon, not source
+docs/decision_journal.jsonl
 docs/jarvis_live_health.json
 docs/jarvis_live_log.jsonl
 docs/preflight_dryrun_log.txt

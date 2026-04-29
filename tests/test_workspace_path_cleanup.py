@@ -186,6 +186,12 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     )
 
 
+def test_legacy_docs_decision_journal_is_ignored_runtime_state() -> None:
+    gitignore = _read("eta_engine/.gitignore")
+
+    assert "docs/decision_journal.jsonl" in gitignore
+
+
 def test_smoke_check_uses_workspace_state_and_log_dirs() -> None:
     text = _read("eta_engine/deploy/scripts/smoke_check.py")
     assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in text
