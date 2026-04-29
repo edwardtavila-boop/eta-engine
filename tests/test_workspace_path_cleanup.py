@@ -82,6 +82,7 @@ def test_third_path_cleanup_wave_uses_workspace_root_helpers() -> None:
     targets = (
         "eta_engine/scripts/fetch_index_futures_bars.py",
         "eta_engine/scripts/fetch_lth_proxy.py",
+        "eta_engine/scripts/fetch_market_context_bars.py",
         "eta_engine/scripts/fetch_onchain_history.py",
         "eta_engine/scripts/fetch_xrp_news_history.py",
         "eta_engine/scripts/resample_btc_timeframes.py",

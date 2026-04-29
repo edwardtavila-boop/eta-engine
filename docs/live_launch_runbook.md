@@ -89,6 +89,28 @@ python -m eta_engine.scripts.live_tiny_preflight_dryrun | grep credential_probe_
 
 ---
 
+## Phase 1.5 — Refresh launch data (≈5–10 min)
+
+Before venue smoke or live-tiny launch, refresh the launch-critical futures and
+context datasets from the canonical operator entrypoint:
+
+```bash
+python -m eta_engine.scripts.refresh_launch_data --json
+```
+
+Expect `ok: true` and a full step list covering:
+
+- `MNQ`, `NQ`, and `ES` futures bars
+- `DXY` 5m context bars
+- `VIX` 5m and 1m context bars
+- daily NQ extension
+- inventory republish + paper-live readiness verification
+
+If any step returns FAIL, stop here and fix the failing fetch or readiness gate
+before proceeding to broker smoke tests.
+
+---
+
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)
 
 Never point at a funded LIVE account for the first smoke test. Use the IBKR

@@ -11,6 +11,7 @@ gate paper-live launch freshness:
 * NQ1 4h via yfinance 1h -> 4h resampling
 * NQ1 daily via Yahoo Finance
 * ES1 5m via yfinance
+* DXY 5m, VIX 5m, and VIX 1m via yfinance context indexes
 
 Databento remains dormant here. The command only calls existing canonical ETA
 scripts and runs from ``C:\\EvolutionaryTradingAlgo`` so all writes stay under
@@ -115,6 +116,18 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
         (
             "es_5m",
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "ES", "--timeframe", "5m"],
+        ),
+        (
+            "dxy_5m",
+            [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "DXY", "--timeframe", "5m"],
+        ),
+        (
+            "vix_5m",
+            [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "VIX", "--timeframe", "5m"],
+        ),
+        (
+            "vix_1m",
+            [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "VIX", "--timeframe", "1m"],
         ),
         (
             "nq_daily",
