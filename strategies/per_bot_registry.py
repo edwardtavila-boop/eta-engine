@@ -831,6 +831,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="sage_daily_gated",
         rationale=(
+            "REFRESHED 2026-04-29: run_research_grid now attaches real "
+            "daily sage verdicts for sage_daily_gated cells. Latest 720d "
+            "provider-backed retest: agg IS Sh +3.383, agg OOS Sh +3.877, "
+            "13/21 +OOS, DSR median 0.995, DSR pass 57.1%, degradation "
+            "41.0%, gate FAIL. Small retune sweep kept this legacy120 "
+            "base as the best honest candidate; 180m/v4-base variants "
+            "were weaker, and 240m cells showed flashy OOS with "
+            "negative/weak IS and poor DSR. Historical 2026-04-27 note: "
             "Generalization test of the BTC sage-daily-gate breakthrough. "
             "Plain crypto_regime_trend on ETH baseline is NEGATIVE "
             "(IS -0.90, OOS -2.14, IS-negative in 7/9 windows), so we "
@@ -847,9 +855,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "(below 3-trade min_trades_met floor). RESEARCH CANDIDATE: "
             "the +5.77 lift is real and the IS-positive flip resolves "
             "the prior promotion blocker, but two single-trade-window "
-            "blowups stop the strict gate. Promote to live once data "
-            "extends past current 360d ETH 1h (so 9 windows -> 18+) "
-            "AND a single-window-loss circuit breaker is in place."
+            "blowups stop the strict gate. Still RESEARCH CANDIDATE only "
+            "until degradation and fold-consistency clear the strict "
+            "promotion gate."
         ),
         extras={
             "promotion_status": "research_candidate",
@@ -864,6 +872,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_min_daily_conviction": 0.40,
             "sage_strict_mode": True,
             "sage_lookback_daily_bars": 200,
+            "research_tune": {
+                "refreshed_on": "2026-04-29",
+                "scope": "latest_20k_bar_provider_backed_retest",
+                "source_artifact": (
+                    "var/eta_engine/state/research_grid/"
+                    "research_grid_20260429_172238_763839.md"
+                ),
+                "candidate_agg_oos_sharpe": 3.877,
+                "candidate_dsr_pass_fraction": 0.571,
+                "strict_gate": False,
+                "provider_backed": True,
+            },
         },
     ),
     # XRP perp — DEACTIVATED until news/sentiment feed lands.
