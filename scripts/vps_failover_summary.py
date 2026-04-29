@@ -46,6 +46,8 @@ def _commands_for_check(check: CheckResult) -> list[str]:
     missing = details.get("missing")
     if isinstance(missing, list):
         missing_text = " ".join(str(item) for item in missing)
+        if "decision_journal.jsonl" in missing_text:
+            commands.append("python -m eta_engine.scripts.decision_journal_smoke --json")
         if "runtime_log.jsonl" in missing_text:
             commands.append("python -m eta_engine.scripts.runtime_log_smoke --json")
         if "drift_watchdog.jsonl" in missing_text:

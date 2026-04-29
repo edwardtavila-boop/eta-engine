@@ -278,6 +278,8 @@ def test_operator_watchdogs_default_to_runtime_journal() -> None:
     assert drift_check_all._DEFAULT_JOURNAL == ETA_RUNTIME_DECISION_JOURNAL_PATH
     assert "var/eta_engine/state/decision_journal.jsonl" in vps_failover_drill._STATE_FILES_REQUIRED
     assert "docs/decision_journal.jsonl" not in vps_failover_drill._STATE_FILES_REQUIRED
+    required, _ = vps_failover_drill._state_file_paths()
+    assert ("var/eta_engine/state/decision_journal.jsonl", ETA_RUNTIME_DECISION_JOURNAL_PATH) in required
 
 
 def test_operator_stress_outputs_default_to_runtime_state() -> None:

@@ -120,6 +120,18 @@ def test_vps_failover_tracks_workspace_runtime_logs(monkeypatch, tmp_path: Path)
     assert runtime in recommended_paths
 
 
+def test_vps_failover_tracks_workspace_decision_journal(monkeypatch, tmp_path: Path) -> None:
+    journal = tmp_path / "var" / "eta_engine" / "state" / "decision_journal.jsonl"
+    legacy_child_journal = vps_failover_drill.ROOT / "var" / "eta_engine" / "state" / "decision_journal.jsonl"
+    monkeypatch.setattr(workspace_roots, "ETA_RUNTIME_DECISION_JOURNAL_PATH", journal)
+
+    required, _ = vps_failover_drill._state_file_paths()
+    required_paths = [path for _, path in required]
+
+    assert journal in required_paths
+    assert legacy_child_journal not in required_paths
+
+
 def test_vps_failover_requires_canonical_runtime_log_not_legacy_fallback(monkeypatch, tmp_path: Path) -> None:
     canonical = tmp_path / "logs" / "eta_engine" / "runtime_log.jsonl"
     legacy = tmp_path / "eta_engine" / "docs" / "runtime_log.jsonl"

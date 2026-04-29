@@ -53,6 +53,7 @@ def test_summary_adds_smoke_commands_for_missing_canonical_state(monkeypatch) ->
             summary="recommended state files missing",
             details={
                 "missing": [
+                    "var/eta_engine/state/decision_journal.jsonl",
                     "logs/eta_engine/runtime_log.jsonl",
                     "var/eta_engine/state/drift_watchdog.jsonl",
                 ]
@@ -64,6 +65,7 @@ def test_summary_adds_smoke_commands_for_missing_canonical_state(monkeypatch) ->
     summary = vps_failover_summary.build_summary()
 
     commands = summary["blockers"][0]["next_commands"]
+    assert "python -m eta_engine.scripts.decision_journal_smoke --json" in commands
     assert "python -m eta_engine.scripts.runtime_log_smoke --json" in commands
     assert "python -m eta_engine.scripts.drift_watchdog_smoke --json" in commands
 

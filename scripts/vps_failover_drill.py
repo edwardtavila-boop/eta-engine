@@ -161,7 +161,17 @@ def _display_path(path: Path) -> str:
 
 def _state_file_paths() -> tuple[list[tuple[str, Path]], list[tuple[str, Path]]]:
     """Return required/recommended DR state files as (label, path) pairs."""
-    required = [(rel, ROOT / rel) for rel in _STATE_FILES_REQUIRED]
+    required: list[tuple[str, Path]] = []
+    for rel in _STATE_FILES_REQUIRED:
+        if rel == "var/eta_engine/state/decision_journal.jsonl":
+            required.append(
+                (
+                    _display_path(workspace_roots.ETA_RUNTIME_DECISION_JOURNAL_PATH),
+                    workspace_roots.ETA_RUNTIME_DECISION_JOURNAL_PATH,
+                )
+            )
+        else:
+            required.append((rel, ROOT / rel))
     recommended = [(rel, ROOT / rel) for rel in _STATIC_STATE_FILES_RECOMMENDED]
     recommended.extend(
         [
