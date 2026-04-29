@@ -316,3 +316,28 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
         "missing critical feed: bars:NQ1/D",
         "missing critical feed: correlation:ES1/5m",
     ]
+
+
+def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    for filename in ("BTC_1h.csv", "BTC_D.csv", "BTCFUND_8h.csv", "BTCONCHAIN_D.csv"):
+        with (history / filename).open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["time", "open", "high", "low", "close", "volume"])
+            writer.writerow([1_775_000_000, 100.0, 101.0, 99.0, 100.5, 10_000.0])
+
+    findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
+        "btc_hybrid",
+        primary_symbol="BTC",
+        primary_timeframe="1h",
+        library=DataLibrary(roots=[history]),
+    )
+
+    evidence_by_key = {
+        item["dataset_key"]: item["resolution"]
+        for item in findings["evidence"]
+    }
+    assert evidence_by_key["BTC/D/history"]["mode"] == "direct"
+    assert evidence_by_key["BTCFUND/8h/history"]["mode"] == "synthetic"
+    assert evidence_by_key["BTCONCHAIN/D/history"]["mode"] == "synthetic"

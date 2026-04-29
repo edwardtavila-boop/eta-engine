@@ -392,6 +392,49 @@ def _bot_optional_freshness_summary(items: list[dict[str, Any]]) -> dict[str, An
     }
 
 
+def _bot_resolution_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    mode_counts = {
+        "direct": 0,
+        "proxy": 0,
+        "synthetic": 0,
+        "timeframe_fallback": 0,
+        "unknown": 0,
+    }
+    proxy_bots: list[dict[str, Any]] = []
+    synthetic_bots: list[dict[str, Any]] = []
+    timeframe_fallback_bots: list[dict[str, Any]] = []
+
+    for item in items:
+        bot_id = item["bot_id"]
+        for available in item["available"]:
+            resolution = available.get("resolution") or {}
+            mode = resolution.get("mode", "unknown")
+            if mode not in mode_counts:
+                mode = "unknown"
+            mode_counts[mode] += 1
+            entry = {
+                "bot_id": bot_id,
+                "requirement": available["requirement"],
+                "dataset_key": available["dataset"]["key"],
+            }
+            quality_note = resolution.get("quality_note")
+            if quality_note:
+                entry["quality_note"] = quality_note
+            if mode == "proxy":
+                proxy_bots.append(entry)
+            elif mode == "synthetic":
+                synthetic_bots.append(entry)
+            elif mode == "timeframe_fallback":
+                timeframe_fallback_bots.append(entry)
+
+    return {
+        "mode_counts": mode_counts,
+        "proxy_bots": proxy_bots,
+        "synthetic_bots": synthetic_bots,
+        "timeframe_fallback_bots": timeframe_fallback_bots,
+    }
+
+
 def _bot_critical_freshness_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     status_counts = {
         "fresh": 0,
@@ -475,6 +518,7 @@ def build_inventory_snapshot(
             "deactivated": deactivated,
             "critical_freshness": _bot_critical_freshness_summary(bot_items),
             "optional_freshness": _bot_optional_freshness_summary(bot_items),
+            "resolution_summary": _bot_resolution_summary(bot_items),
             "items": bot_items,
         },
     }

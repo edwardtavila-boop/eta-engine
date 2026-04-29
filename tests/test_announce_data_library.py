@@ -221,6 +221,29 @@ def test_inventory_payload_marks_proxy_and_synthetic_resolution(tmp_path: Path) 
     assert onchain["mode"] == "synthetic"
     assert onchain["expected_dataset_symbol"] == "SOLONCHAIN"
     assert onchain["dataset_symbol"] == "SOLONCHAIN"
+    summary = payload["bot_coverage"]["resolution_summary"]
+    assert summary["mode_counts"] == {
+        "direct": 0,
+        "proxy": 1,
+        "synthetic": 1,
+        "timeframe_fallback": 0,
+        "unknown": 0,
+    }
+    assert summary["proxy_bots"] == [
+        {
+            "bot_id": "proxy_test",
+            "requirement": {
+                "critical": False,
+                "kind": "sentiment",
+                "note": "",
+                "symbol": "BTC",
+                "timeframe": "1h",
+            },
+            "dataset_key": "FEAR_GREEDMACRO/D/history",
+            "quality_note": "crypto-wide Fear & Greed proxy for symbol-specific sentiment",
+        }
+    ]
+    assert summary["synthetic_bots"][0]["bot_id"] == "proxy_test"
 
 
 def test_write_inventory_snapshot_creates_parent_and_pretty_json(tmp_path: Path) -> None:

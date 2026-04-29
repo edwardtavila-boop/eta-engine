@@ -86,6 +86,11 @@ Inventory requirement rows now include `resolution.mode` metadata:
 feeds such as `SOLONCHAIN/D`, `timeframe_fallback` for same-feed lower-cadence
 fallbacks, and `proxy` for honest cross-symbol proxies such as
 Fear & Greed standing in for symbol-specific BTC/ETH sentiment.
+The bot coverage inventory also rolls those rows into
+`bot_coverage.resolution_summary`, so operators can see proxy, synthetic, and
+timeframe-fallback usage without scanning every bot. Paper-live launch critical
+feed evidence now includes the same resolution payload, keeping launch-gate
+proofs aligned with the inventory.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

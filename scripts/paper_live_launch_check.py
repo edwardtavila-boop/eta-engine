@@ -160,7 +160,7 @@ def _check_critical_data_requirements(
 ) -> dict[str, list[object]]:
     """Check every critical requirement beyond the primary launch dataset."""
     from eta_engine.data.audit import audit_bot
-    from eta_engine.scripts.announce_data_library import _dataset_freshness
+    from eta_engine.scripts.announce_data_library import _dataset_freshness, _resolution_payload
 
     audit = audit_bot(bot_id, library=library)
     if audit is None or audit.deactivated:
@@ -193,6 +193,7 @@ def _check_critical_data_requirements(
             "dataset_key": dataset.key,
             "rows": dataset.row_count,
             "end": dataset.end_ts.isoformat(),
+            "resolution": _resolution_payload(req, dataset),
             **freshness,
         }
         evidence.append(item)
