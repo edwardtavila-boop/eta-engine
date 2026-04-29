@@ -52,6 +52,35 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+DEFAULT_ASSETS = ("BTC", "ETH", "SOL", "MNQ1", "NQ1")
+DEFAULT_STRATEGIES = ("compression", "sweep")
+DEFAULT_OUT_JSON = (
+    ROOT / "docs" / "research_log" / "foundation_supercharge_sweep_results.json"
+)
+
+
+def _slug(parts: list[str]) -> str:
+    return "-".join(p.lower().replace("/", "-") for p in parts)
+
+
+def _resolve_out_json(
+    out_json: Path | None,
+    assets: list[str],
+    strategies: list[str],
+) -> Path:
+    if out_json is not None:
+        return out_json
+    if assets == list(DEFAULT_ASSETS) and strategies == list(DEFAULT_STRATEGIES):
+        return DEFAULT_OUT_JSON
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    scope = f"{_slug(assets)}_{_slug(strategies)}"
+    return (
+        ROOT
+        / "docs"
+        / "research_log"
+        / f"foundation_supercharge_sweep_results_{scope}_{stamp}.json"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Sweep grid per strategy
@@ -300,15 +329,26 @@ def main() -> int:
     )
     p.add_argument(
         "--out-json", type=Path,
-        default=Path(r"C:\EvolutionaryTradingAlgo\eta_engine\docs\research_log\foundation_supercharge_sweep_results.json"),
+        default=None,
+        help=(
+            "Output JSON path. Defaults to the canonical aggregate artifact "
+            "only for the full default asset/strategy sweep; scoped sweeps "
+            "write timestamped scoped artifacts unless this is explicit."
+        ),
     )
     args = p.parse_args()
 
     assets = [a.strip() for a in args.assets.split(",") if a.strip()]
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    out_json = _resolve_out_json(args.out_json, assets, strategies)
 
     print(f"[supercharge-sweep] assets={assets} strategies={strategies}")
     print(f"[supercharge-sweep] timestamp={datetime.now(UTC).isoformat()}")
+    if args.out_json is None and out_json != DEFAULT_OUT_JSON:
+        print(
+            "[supercharge-sweep] scoped run detected; writing scoped artifact "
+            f"instead of clobbering {DEFAULT_OUT_JSON}",
+        )
 
     all_results: dict = {}
     for asset in assets:
@@ -366,10 +406,10 @@ def main() -> int:
         )
 
     # Persist for follow-on registry promotion
-    args.out_json.parent.mkdir(parents=True, exist_ok=True)
-    with args.out_json.open("w", encoding="utf-8") as f:
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    with out_json.open("w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2, default=str)
-    print(f"\n[supercharge-sweep] results -> {args.out_json}")
+    print(f"\n[supercharge-sweep] results -> {out_json}")
     return 0
 
 
