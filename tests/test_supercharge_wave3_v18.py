@@ -309,6 +309,56 @@ def test_replay_metrics_shape(tmp_path: Path) -> None:
 # ─── jarvis_pre_flight helper ─────────────────────────────────────────
 
 
+def test_score_policy_candidate_cli_reports_active_candidate_replay(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from eta_engine.scripts.score_policy_candidate import main
+
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        "request": {
+            "subsystem": "bot.mnq",
+            "action": "ORDER_PLACE",
+            "payload": {"side": "long", "qty": 2},
+            "rationale": "synthetic",
+        },
+        "response": {
+            "verdict": "CONDITIONAL",
+            "stress_composite": 0.85,
+            "session_phase": "OPEN_DRIVE",
+            "size_cap_mult": 0.50,
+        },
+        "jarvis_action": "TRADE",
+    }
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+    (audit_dir / "audit.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    assert main(["--audit-dir", str(audit_dir), "--candidate", "v18"]) == 0
+    out = capsys.readouterr().out
+
+    assert "candidate replay active for registered policy 'v18'" in out
+    assert "SCAFFOLD" not in out
+    assert "replays as champion" not in out
+
+
+def test_score_policy_candidate_json_reports_missing_candidate(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from eta_engine.scripts.score_policy_candidate import main
+
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+
+    assert main(["--audit-dir", str(audit_dir), "--candidate", "not_registered", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["candidate_replay"]["mode"] == "candidate_missing"
+    assert payload["candidate_replay"]["registered"] is False
+
+
 class _StubBot:
     """Minimal bot stand-in with the _ask_jarvis helper signature."""
     def __init__(self, *, allowed=True, cap=None, code="ok") -> None:

@@ -46,6 +46,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - `brain.rl_agent` no longer uses stochastic random exploration. The default
   baseline is a deterministic guardrail policy with transparent action-score
   feedback, so JARVIS/risk layers do not see random direction flips.
+- `scripts/score_policy_candidate.py` now reports the registered-candidate
+  replay lane honestly. `--candidate v18` is surfaced as active replay, while
+  missing candidates are called out instead of mislabeled as scaffold status.
 - The portfolio rebalancer now emits an auditable advisory plan that preserves
   total baseline budget by default, dampens highly correlated winners, and only
   mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is

@@ -22,14 +22,14 @@ How it works
      - net P&L of approved orders
   3. Print a side-by-side comparison + WIN/LOSS verdict per metric
 
-Status: SCAFFOLD -- the candidate-simulation harness needs the policy
-to be a callable (def evaluate_candidate(req, ctx) -> ActionResponse).
-Once that interface is stable, this script wires up the comparison.
+Status: ACTIVE for registered candidate callables. Candidate policies register
+through ``eta_engine.brain.jarvis_v3.candidate_policy`` and this gate replays
+their callable over recent JARVIS audit records.
 
 Usage::
 
     python scripts/score_policy_candidate.py --window-days 30
-    python scripts/score_policy_candidate.py --candidate v18.py --champion v17.py
+    python scripts/score_policy_candidate.py --candidate v18
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def champion_metrics(records: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
-def _reconstruct_jarvis_context_minimal(record: dict[str, Any]) -> Any:
+def _reconstruct_jarvis_context_minimal(record: dict[str, Any]) -> object:
     """Build a minimal JarvisContext from an audit record.
 
     The audit record stores ``stress_composite`` + ``session_phase`` but
@@ -106,6 +106,7 @@ def _reconstruct_jarvis_context_minimal(record: dict[str, Any]) -> Any:
     just enough so a candidate policy can read the fields it cares about.
     """
     from datetime import UTC, datetime
+
     from eta_engine.brain.jarvis_admin import ActionSuggestion
     from eta_engine.brain.jarvis_context import (
         JarvisContext,
@@ -152,7 +153,7 @@ def _reconstruct_jarvis_context_minimal(record: dict[str, Any]) -> Any:
     )
 
 
-def _reconstruct_action_request(record: dict[str, Any]) -> Any:
+def _reconstruct_action_request(record: dict[str, Any]) -> object:
     from eta_engine.brain.jarvis_admin import ActionRequest, ActionType, SubsystemId
 
     req = record.get("request", {}) or {}
@@ -240,6 +241,42 @@ def candidate_metrics(records: list[dict[str, Any]], *, candidate_module: str | 
     }
 
 
+def candidate_replay_status(candidate_module: str | None) -> dict[str, object]:
+    """Return JSON-ready status for the candidate replay lane."""
+    if candidate_module is None:
+        return {
+            "mode": "champion_baseline",
+            "candidate": None,
+            "registered": False,
+            "message": "no candidate supplied; candidate metrics mirror champion baseline",
+        }
+
+    try:
+        from eta_engine.brain.jarvis_v3 import policies  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("policies package import failed: %s", exc)
+
+    from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
+
+    registered = {entry["name"] for entry in list_candidates()}
+    if candidate_module in registered:
+        return {
+            "mode": "candidate_replay",
+            "candidate": candidate_module,
+            "registered": True,
+            "message": f"candidate replay active for registered policy '{candidate_module}'",
+        }
+    return {
+        "mode": "candidate_missing",
+        "candidate": candidate_module,
+        "registered": False,
+        "message": (
+            f"candidate '{candidate_module}' is not registered; candidate "
+            "metrics mirror champion baseline"
+        ),
+    }
+
+
 def compare(champ: dict[str, float], cand: dict[str, float]) -> dict[str, str]:
     verdicts: dict[str, str] = {}
     # higher-is-better metrics: approval_rate (within reason), total
@@ -270,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="Directory containing JARVIS audit *.jsonl files")
     p.add_argument("--window-days", type=int, default=30)
     p.add_argument("--candidate", type=str, default=None,
-                   help="Module path to candidate policy (scaffold; not yet wired)")
+                   help="Registered candidate policy name, e.g. v18")
     p.add_argument("--json", action="store_true")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -287,23 +324,25 @@ def main(argv: list[str] | None = None) -> int:
     champ = champion_metrics(records)
     cand  = candidate_metrics(records, candidate_module=args.candidate)
     verdicts = compare(champ, cand)
+    replay_status = candidate_replay_status(args.candidate)
 
     if args.json:
         print(json.dumps({
             "window_days": args.window_days,
+            "candidate_replay": replay_status,
             "champion":    champ,
             "candidate":   cand,
             "verdicts":    verdicts,
         }, indent=2))
     else:
         print(f"\n  window: last {args.window_days} days  ({len(records)} records)")
-        print(f"  metric           champion       candidate      verdict")
+        print("  metric           champion       candidate      verdict")
         for k in sorted(verdicts.keys()):
             print(f"  {k:<16} {champ.get(k, '-'):>12}   {cand.get(k, '-'):>12}   {verdicts[k]}")
         print()
-        print("  [STATUS] candidate replay path is a SCAFFOLD -- replays as champion")
-        print("  Wire a callable evaluate_request_v2(req, ctx) -> ActionResponse")
-        print("  in the candidate module to enable real replay scoring.")
+        print(f"  [STATUS] {replay_status['message']}")
+        if replay_status["mode"] == "candidate_replay":
+            print(f"  Replayed {cand.get('total', 0)} records through candidate '{args.candidate}'.")
         print()
     return 0
 
