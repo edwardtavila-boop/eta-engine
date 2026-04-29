@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import date
 from typing import TYPE_CHECKING
 
 from eta_engine.scripts import hydrate_canonical_market_data as hydrate
@@ -127,6 +128,47 @@ def test_crypto_price_dry_run_does_not_fetch(monkeypatch, tmp_path: Path) -> Non
     written, skipped = hydrate._fetch_crypto_prices(dry_run=True)
 
     assert (written, skipped) == (0, 1)
+
+
+def test_onchain_dry_run_does_not_fetch(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(hydrate, "CRYPTO_ONCHAIN_ROOT", tmp_path)
+
+    def fail_fetch(days: int) -> dict[date, dict[str, float]]:
+        raise AssertionError("dry-run must not fetch on-chain series")
+
+    monkeypatch.setattr(hydrate, "_ONCHAIN_FETCHERS", {"ETH": fail_fetch})
+
+    written, skipped = hydrate._fetch_free_onchain_series(dry_run=True)
+
+    assert (written, skipped) == (0, 1)
+    assert not any(tmp_path.iterdir())
+
+
+def test_onchain_fetch_writes_canonical_btc_and_eth(monkeypatch, tmp_path: Path) -> None:
+    today = date.today()
+    monkeypatch.setattr(hydrate, "CRYPTO_ONCHAIN_ROOT", tmp_path)
+    monkeypatch.setattr(
+        hydrate,
+        "_ONCHAIN_FETCHERS",
+        {
+            "BTC": lambda days: {today: {"price_usd": 100.0}},
+            "ETH": lambda days: {today: {"price_usd": 10.0, "chain_tvl_usd": 1.0}},
+        },
+    )
+    monkeypatch.setattr(
+        hydrate,
+        "_ONCHAIN_COLUMNS",
+        {
+            "BTC": ["price_usd"],
+            "ETH": ["price_usd", "chain_tvl_usd"],
+        },
+    )
+
+    written, skipped = hydrate._fetch_free_onchain_series()
+
+    assert (written, skipped) == (2, 0)
+    assert (tmp_path / "BTCONCHAIN_D.csv").exists()
+    assert (tmp_path / "ETHONCHAIN_D.csv").exists()
 
 
 def test_resample_rows_aggregates_to_hourly() -> None:

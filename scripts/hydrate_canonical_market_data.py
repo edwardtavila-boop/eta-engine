@@ -61,8 +61,22 @@ from eta_engine.scripts.fetch_funding_rates import (  # noqa: E402
     write_csv as write_funding_csv,
 )
 from eta_engine.scripts.fetch_lth_proxy import compute_and_write as build_btc_lth_proxy  # noqa: E402
+from eta_engine.scripts.fetch_onchain_history import (  # noqa: E402
+    _COLUMNS_BY_SYMBOL as _ONCHAIN_COLUMNS,
+)
+from eta_engine.scripts.fetch_onchain_history import (  # noqa: E402
+    _btc_daily_series,
+    _eth_daily_series,
+)
+from eta_engine.scripts.fetch_onchain_history import (  # noqa: E402
+    _filename as _onchain_filename,
+)
+from eta_engine.scripts.fetch_onchain_history import (  # noqa: E402
+    write_csv as write_onchain_csv,
+)
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
     CRYPTO_HISTORY_ROOT,
+    CRYPTO_ONCHAIN_ROOT,
     MNQ_DATA_ROOT,
     MNQ_HISTORY_ROOT,
     ensure_dir,
@@ -103,6 +117,11 @@ _CRYPTO_BAR_PLAN: tuple[CryptoPlan, ...] = (
 )
 
 _CRYPTO_FUNDING_SYMBOLS: tuple[str, ...] = ("BTC", "ETH", "SOL")
+
+_ONCHAIN_FETCHERS = {
+    "BTC": _btc_daily_series,
+    "ETH": _eth_daily_series,
+}
 
 _FUTURES_RESAMPLE_PLAN: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("MNQ1", "1h", ("1m", "5m")),
@@ -556,6 +575,38 @@ def _fetch_supporting_btc_series(*, force: bool = False, dry_run: bool = False) 
     return wrote, skipped
 
 
+def _fetch_free_onchain_series(*, force: bool = False, dry_run: bool = False) -> tuple[int, int]:
+    ensure_dir(CRYPTO_ONCHAIN_ROOT)
+    wrote = 0
+    skipped = 0
+
+    cutoff = (datetime.now(UTC) - timedelta(days=365)).date()
+    for symbol, fetcher in _ONCHAIN_FETCHERS.items():
+        out_path = CRYPTO_ONCHAIN_ROOT / _onchain_filename(symbol)
+        if out_path.exists() and out_path.stat().st_size > 100 and not force:
+            print(f"[hydrate:onchain] skip {out_path.name} (already present)")
+            skipped += 1
+            continue
+
+        if dry_run:
+            print(f"[hydrate:onchain] would fetch {symbol} daily free on-chain series (365d)")
+            skipped += 1
+            continue
+
+        print(f"[hydrate:onchain] fetching {symbol} daily free on-chain series (365d)")
+        series = fetcher(365)
+        series = {day: row for day, row in series.items() if day >= cutoff}
+        if not series:
+            print(f"  [warn] zero rows fetched for {symbol} on-chain series")
+            skipped += 1
+            continue
+
+        write_onchain_csv(out_path, series, _ONCHAIN_COLUMNS[symbol])
+        print(f"  wrote {len(series):,} rows -> {out_path}")
+        wrote += 1
+    return wrote, skipped
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="hydrate_canonical_market_data")
     p.add_argument("--skip-futures", action="store_true")
@@ -589,8 +640,12 @@ def main() -> int:
         price_written, price_skipped = _fetch_crypto_prices(force=args.force, dry_run=args.dry_run)
         fund_written, fund_skipped = _fetch_crypto_funding(force=args.force, dry_run=args.dry_run)
         support_written, support_skipped = _fetch_supporting_btc_series(force=args.force, dry_run=args.dry_run)
-        imported += price_written + fund_written + support_written
-        skipped += price_skipped + fund_skipped + support_skipped
+        onchain_written, onchain_skipped = _fetch_free_onchain_series(
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        imported += price_written + fund_written + support_written + onchain_written
+        skipped += price_skipped + fund_skipped + support_skipped + onchain_skipped
 
     print(
         f"[hydrate] complete: imported={imported} skipped={skipped} "
