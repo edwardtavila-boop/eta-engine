@@ -53,9 +53,12 @@ exec python scripts/_pre_commit_check.py
 """
 FORBIDDEN_STAGED_PATHS = frozenset(
     {
-        # Runtime append-only journal. The canonical live JSONL is under
-        # var/eta_engine/state; the tracked docs copy is legacy/history only.
+        # Runtime append-only artifacts. Canonical live JSONL belongs under
+        # var/eta_engine/state or logs/eta_engine; docs copies are legacy only.
         "docs/decision_journal.jsonl",
+        "docs/alerts_log.jsonl",
+        "docs/runtime_log.jsonl",
+        "docs/drift_watchdog.jsonl",
     }
 )
 
