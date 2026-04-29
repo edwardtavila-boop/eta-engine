@@ -388,6 +388,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> dict:
     response.set_cookie(
         key="session",
         value=token,
+        path="/",
         httponly=True,
         samesite="strict",
         secure=secure,
@@ -408,6 +409,7 @@ def auth_logout(
     secure = os.environ.get("ETA_DASHBOARD_COOKIE_SECURE", "false").strip().lower() in ("1", "true", "yes", "on", "y")
     response.delete_cookie(
         key="session",
+        path="/",
         httponly=True,
         samesite="strict",
         secure=secure,

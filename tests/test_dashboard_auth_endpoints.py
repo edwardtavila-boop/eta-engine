@@ -51,6 +51,7 @@ def test_login_success_sets_cookie(client) -> None:
     assert r.status_code == 200
     assert r.json()["authenticated"] is True
     assert "session" in r.cookies
+    assert "Path=/" in r.headers["set-cookie"]
 
 
 def test_login_wrong_password_returns_401(client) -> None:
