@@ -296,7 +296,15 @@ class TestStatusCli:
                     verdict=operator_action_queue.VERDICT_BLOCKED,
                     detail="AMBER with 2 blocker(s)",
                     where="python -m eta_engine.scripts.vps_failover_summary --json",
-                    evidence={"overall_severity": "amber"},
+                    evidence={
+                        "overall_severity": "amber",
+                        "blockers": [
+                            {
+                                "name": "secrets_present",
+                                "next_commands": ["cp .env.example .env && chmod 600 .env"],
+                            }
+                        ],
+                    },
                 )
             ],
         )
@@ -312,3 +320,7 @@ class TestStatusCli:
         assert queue["summary"]["BLOCKED"] == 2
         assert queue["top_blockers"][0]["op_id"] == "OP-18"
         assert queue["top_blockers"][0]["evidence"]["overall_severity"] == "amber"
+        assert queue["top_blockers"][0]["next_actions"] == [
+            "cp .env.example .env && chmod 600 .env"
+        ]
+        assert queue["next_actions"][0] == "cp .env.example .env && chmod 600 .env"

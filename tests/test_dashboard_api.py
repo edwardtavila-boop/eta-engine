@@ -99,6 +99,73 @@ class TestDashboardAPI:
         r = app_client.get("/api/dashboard")
         assert r.status_code == 200
         assert r.json()["regime"] == "NEUTRAL"
+        assert "operator_queue" in r.json()
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
+        state = tmp_path / "state"
+        (state / "dashboard_payload.json").unlink()
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        assert r.json()["_warning"] == "no_data"
+        assert "operator_queue" in r.json()
+
+    def test_dashboard_uses_operator_queue_summary(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "error": None,
+                "summary": {"BLOCKED": 1},
+                "top_blockers": [{"op_id": "OP-18", "title": "Resolve DR blockers"}],
+            },
+        )
+
+        r = app_client.get("/api/dashboard")
+
+        assert r.status_code == 200
+        queue = r.json()["operator_queue"]
+        assert queue["summary"]["BLOCKED"] == 1
+        assert queue["top_blockers"][0]["op_id"] == "OP-18"
+
+    def test_jarvis_operator_queue_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "error": None,
+                "summary": {"BLOCKED": 0},
+                "top_blockers": [],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/operator_queue")
+
+        assert r.status_code == 200
+        assert r.json()["summary"]["BLOCKED"] == 0
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_operator_queue_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        def boom(**_kwargs):
+            raise RuntimeError("probe exploded")
+
+        monkeypatch.setattr(jarvis_status, "build_operator_queue_summary", boom)
+
+        r = app_client.get("/api/jarvis/operator_queue")
+
+        assert r.status_code == 200
+        assert r.json()["error"] == "probe exploded"
+        assert r.json()["top_blockers"] == []
 
     def test_kaizen_summary(self, app_client):
         r = app_client.get("/api/kaizen")

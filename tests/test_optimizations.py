@@ -136,9 +136,11 @@ class TestStatusPage:
             "login-modal",
             "step-up-modal",
             "top-bar",
+            "top-operator-queue",
             "top-sse-status",
             "view-jarvis",
             "view-fleet",
+            "cc-operator-queue",
             "fl-fill-tape",
             "toast-container",
         ):
@@ -152,6 +154,14 @@ class TestStatusPage:
         # No hardcoded secrets or debug leftovers
         assert "localhost" not in html.lower() or "const API" in html
         assert "console.log" not in html
+
+    def test_command_center_renders_operator_queue_panel(self):
+        path = Path(__file__).resolve().parent.parent / "deploy" / "status_page" / "js" / "command_center.js"
+        js = path.read_text(encoding="utf-8")
+        assert "OperatorQueuePanel" in js
+        assert "/api/jarvis/operator_queue" in js
+        assert "top-operator-queue" in js
+        assert "next_actions" in js
 
     def test_theme_css_exists(self):
         path = Path(__file__).resolve().parent.parent / "deploy" / "status_page" / "theme.css"

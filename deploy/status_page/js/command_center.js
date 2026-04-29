@@ -191,6 +191,51 @@ class StressMoodPanel extends Panel {
   }
 }
 
+// --- 5b. Operator blockers ---
+class OperatorQueuePanel extends Panel {
+  constructor() { super('cc-operator-queue', '/api/jarvis/operator_queue', 'Operator Blockers'); }
+  render(data) {
+    const summary = data.summary || {};
+    const blockers = data.top_blockers || [];
+    const blocked = Number(summary.BLOCKED || 0);
+    const observed = Number(summary.OBSERVED || 0);
+    const unknown = Number(summary.UNKNOWN || 0);
+    const top = document.getElementById('top-operator-queue');
+    if (top) {
+      const cls = blocked > 0 ? 'text-amber-300' : 'text-emerald-300';
+      top.innerHTML = `<span>ops</span><span class="${cls}">${blocked} blocked</span>`;
+    }
+    if (data.error) {
+      this.body.innerHTML = `<div class="text-amber-300 text-sm">Operator queue degraded: ${escapeHtml(data.error)}</div>`;
+      return;
+    }
+    const actions = data.next_actions || [];
+    const rows = blockers.slice(0, 5).map((item) => {
+      const sev = String(item?.evidence?.overall_severity || '').toUpperCase();
+      const sevChip = sev ? `<span class="text-amber-300">${escapeHtml(sev)}</span>` : '';
+      return `<li class="border-b border-zinc-800/70 pb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-mono text-cyan-300">${escapeHtml(item.op_id || 'OP')}</span>
+          ${sevChip}
+        </div>
+        <div class="text-zinc-100">${escapeHtml(item.title || '')}</div>
+        <div class="text-zinc-500">${escapeHtml(item.detail || item.where || '')}</div>
+      </li>`;
+    }).join('');
+    const actionRows = actions.slice(0, 3).map((action) =>
+      `<li class="font-mono text-zinc-300">${escapeHtml(action)}</li>`,
+    ).join('');
+    this.body.innerHTML = `
+      <div class="grid grid-cols-3 gap-2 text-xs mb-3">
+        <div><div class="text-zinc-500">blocked</div><div class="text-amber-300 text-lg font-mono">${blocked}</div></div>
+        <div><div class="text-zinc-500">observed</div><div class="text-cyan-300 text-lg font-mono">${observed}</div></div>
+        <div><div class="text-zinc-500">unknown</div><div class="text-zinc-300 text-lg font-mono">${unknown}</div></div>
+      </div>
+      <ul class="space-y-2 text-xs">${rows || '<li class="text-emerald-300">No active operator blockers.</li>'}</ul>
+      ${actionRows ? `<div class="text-xs text-zinc-500 mt-3 mb-1">next actions</div><ul class="space-y-1 text-xs">${actionRows}</ul>` : ''}`;
+  }
+}
+
 // --- 6. Policy diff ---
 class PolicyDiffPanel extends Panel {
   constructor() { super('cc-policy-diff', '/api/jarvis/policy_diff', 'Bandit Policy Diff'); }
@@ -302,6 +347,7 @@ onAuthenticated(() => {
     new SageHealthPanel(),
     new DisagreementHeatmapPanel(),
     new StressMoodPanel(),
+    new OperatorQueuePanel(),
     new PolicyDiffPanel(),
     new V22TogglePanel(),
     new EdgeLeaderboardPanel(),

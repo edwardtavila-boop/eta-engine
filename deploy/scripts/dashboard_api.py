@@ -212,6 +212,27 @@ def _read_json(name: str) -> dict:
         raise HTTPException(status_code=500, detail=f"parse error: {e}") from e
 
 
+def _operator_queue_payload() -> dict:
+    """Return JARVIS/operator blockers without letting status probes break the dashboard."""
+    try:
+        from eta_engine.scripts.jarvis_status import build_operator_queue_summary
+
+        payload = build_operator_queue_summary()
+    except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        return {
+            "source": "jarvis_status",
+            "error": str(exc),
+            "summary": {},
+            "top_blockers": [],
+        }
+    return payload if isinstance(payload, dict) else {
+        "source": "jarvis_status",
+        "error": "operator queue summary returned a non-object payload",
+        "summary": {},
+        "top_blockers": [],
+    }
+
+
 def _append_dashboard_event(event: str, payload: dict) -> None:
     """Best-effort append to local dashboard event log."""
     row = {"ts": time.time(), "event": event, **payload}
@@ -542,9 +563,21 @@ def heartbeat() -> dict:
 
 
 @app.get("/api/dashboard")
-def dashboard_payload() -> dict:
+def dashboard_payload(response: Response) -> dict:
     """Dashboard payload assembled by ROBIN every minute."""
-    return _read_json("dashboard_payload.json")
+    from eta_engine.deploy.scripts.dashboard_state import read_json_safe
+
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    payload = dict(read_json_safe(_state_dir() / "dashboard_payload.json"))
+    payload["operator_queue"] = _operator_queue_payload()
+    return payload
+
+
+@app.get("/api/jarvis/operator_queue")
+def jarvis_operator_queue(response: Response) -> dict:
+    """Current operator blockers, prioritized for dashboard rendering."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _operator_queue_payload()
 
 
 @app.get("/api/last-task")

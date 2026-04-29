@@ -71,6 +71,25 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         (item for item in items if item.verdict == operator_action_queue.VERDICT_BLOCKED),
         key=blocker_priority,
     )
+
+    def next_actions_for_item(item: object) -> list[str]:
+        evidence = getattr(item, "evidence", {})
+        actions: list[str] = []
+        if isinstance(evidence, dict):
+            blockers = evidence.get("blockers")
+            if isinstance(blockers, list):
+                for blocker in blockers:
+                    if not isinstance(blocker, dict):
+                        continue
+                    commands = blocker.get("next_commands")
+                    if isinstance(commands, list):
+                        actions.extend(str(command) for command in commands if command)
+        if not actions:
+            where = str(getattr(item, "where", "") or "").strip()
+            if where:
+                actions.append(where)
+        return list(dict.fromkeys(actions))
+
     blockers = [
         {
             "op_id": item.op_id,
@@ -78,15 +97,27 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
             "detail": item.detail,
             "where": item.where,
             "evidence": item.evidence,
+            "next_actions": next_actions_for_item(item),
         }
         for item in blocked_items
     ]
+    next_actions = [
+        action
+        for blocker in blockers
+        for action in blocker.get("next_actions", [])
+    ][:limit]
     return {
         "source": "operator_action_queue",
         "error": None,
         "summary": summary,
         "top_blockers": blockers[:limit],
+        "next_actions": next_actions,
     }
+
+
+def build_operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
+    """Public dashboard helper for the current operator blocker queue."""
+    return _operator_queue_summary(limit=limit)
 
 
 def _print_status() -> int:
@@ -104,6 +135,16 @@ def _print_status() -> int:
     print(f"Gate report:           {summary['gate_report']} ({summary['auto_gates']})")
     print(f"Gate report stale:     {summary['gate_report_stale']}")
     print(f"Applicable lessons:    {summary['applicable_lessons']}")
+    op_queue = build_operator_queue_summary(limit=1)
+    op_summary = op_queue.get("summary") if isinstance(op_queue, dict) else {}
+    op_blocked = op_summary.get("BLOCKED", 0) if isinstance(op_summary, dict) else 0
+    op_first = ""
+    top_blockers = op_queue.get("top_blockers") if isinstance(op_queue, dict) else []
+    if isinstance(top_blockers, list) and top_blockers:
+        first = top_blockers[0]
+        if isinstance(first, dict):
+            op_first = str(first.get("op_id") or "")
+    print(f"Operator blockers:     {op_blocked}{f' (top {op_first})' if op_first else ''}")
     print()
     if recs:
         print(f"=== {len(recs)} RECOMMENDATION(S) ===")
@@ -172,7 +213,7 @@ def _print_json() -> int:
         "recommendations": [r.model_dump(mode="json") for r in recs],
         "health_verdict": verdict.value,
         "health_results": [r.model_dump(mode="json") for r in health_results],
-        "operator_queue": _operator_queue_summary(),
+        "operator_queue": build_operator_queue_summary(),
     }
     print(json.dumps(out, indent=2, default=str))
     return 0
