@@ -26,8 +26,8 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 ## Funnel Logic
 
 1. **Engine (MNQ + NQ)** — tight risk, 1-2% per trade, max 5x, liquidation impossible. Excess above baseline (MNQ: $5.5k, NQ: $12k) → sweep.
-2. **Turbo-Seed (Crypto Seed)** — grid + directional on Bybit spot/perp. Funded ONLY by swept futures profits. Baseline $2k. Excess → splits to perp bots + cold wallet.
-3. **Turbo (ETH/SOL/XRP perps)** — CASINO TIER. Confluence-gated leverage (only 9+ score → up to 75x). Isolated margin. Dynamic sizing keeps liq distance > 3× ATR. Baseline $3k/$3k/$2k. Excess → cold wallet.
+2. **Turbo-Seed (Crypto Seed)** — grid + directional research on approved US-legal crypto rails. Offshore perp venues remain research-only/dormant for US-person live routing. Funded ONLY by swept futures profits. Baseline $2k. Excess → splits to approved crypto bots + cold wallet.
+3. **Turbo (ETH/SOL/XRP perps)** — CASINO TIER research lane only until a compliant venue is explicitly approved. Confluence-gated leverage ideas remain simulation/paper seeds; no US-person live routing to offshore perps.
 4. **Multiplier (Staking)** — Sweep splits 60% cold-stake / 30% reinvest seed / 10% USDT reserve. Stake: 40% wstETH (Lido), 30% JitoSOL, 15% sFLR/XRP, 15% sUSDe. Auto-compound.
 
 ---
@@ -38,10 +38,10 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 |-------|------|-------|-----------------|
 | **P0** | Scaffold & Blueprint Lock | 1 | This doc + config.json + package tree + live dashboard |
 | **P1** | Strategy & Research Foundation (Brain) | 3 | Top-down engine, confluence scorer 0-10, session filter, casino deltas |
-| **P2** | Data Infrastructure (Fuel) | 2 | DataBento futures, Bybit WS + L2, LunarCrush, Blockscout features |
+| **P2** | Data Infrastructure (Fuel) | 2 | Current cache/approved feeds first; Databento dormant until explicit refresh |
 | **P3** | Backtesting/Optimization/Validation (Proof) | 3 | Walk-forward, Monte Carlo, Deflated Sharpe, adversarial sim |
 | **P4** | Risk Framework (Shield) | 2 | Dynamic sizing, liq-proof cap, kill switch, Kelly, VaR |
-| **P5** | Broker/Exchange Layer (Execution) | 2 | Tradovate, Bybit v5, OKX backup, smart routing, failover |
+| **P5** | Broker/Exchange Layer (Execution) | 2 | IBKR primary, Tastytrade secondary, Tradovate dormant, US-legal routing guardrails |
 | **P6** | Profit Funnel & Baseline Automation | 2 | Equity monitor, sweep engine, cold-wallet API sweep |
 | **P7** | Execution/Monitoring/Ops | 2 | WS engine, circuit breakers, Grafana, tiered alerts, CI/CD |
 | **P8** | Security/Compliance/Legal | 1 | Secret manager, VPS hardening, 2FA, audit trail |
@@ -64,8 +64,8 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 - **Session & macro filters:** hard-coded FOMC/CPI/PCE/NFP/GDP blackouts, volatility-regime gates, order-flow zones.
 
 ### 2. Data Infrastructure (The Fuel)
-- **Futures:** DataBento tick + 1m via Tradovate WS. Backup: NinjaTrader.
-- **Crypto:** Bybit primary — ccxt.pro unified + raw websockets for native liquidation stream. 50-level L2 (snapshot + delta). 60s funding sampling.
+- **Futures:** current cache and approved broker/provider feeds first. Databento stays dormant until the operator explicitly refreshes it.
+- **Crypto:** approved US-legal rails first; offshore exchange adapters remain research-only/dormant for US-person live routing.
 - **Storage:** ArcticDB (LMDB) hot + Parquet cold. S3 archives.
 - **Cleaning:** gap fill, outlier removal, realistic slippage + commission model.
 - **Redundancy:** multiple feeds per asset.
@@ -96,14 +96,14 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 - **Correlation brake:** reduce exposure if cross-bot corr spikes.
 
 ### 6. Broker & Exchange Selection
-- **Futures:** Tradovate primary (Apex eval compatible), IBKR backup for scale.
-- **Crypto perps:** Bybit primary (cleanest v5 API, mature isolated margin, 100x ETH/SOL). Backups: OKX, Bitget.
+- **Futures:** IBKR primary, Tastytrade secondary. Tradovate is DORMANT unless reactivated in code and docs together.
+- **Crypto:** US-legal venue routing only for live US-person flows. Offshore perp adapters stay research-only/dormant unless compliance explicitly changes.
 - **Trade-only API keys.** Withdraw via separate flow with hardware approval.
 
 ### 7. Profit Funneling & Baseline Automation (The Funnel)
 - **Futures → crypto seed:** broker API equity probe → when > baseline × 1.10 at daily close → alert + semi-auto withdraw to bank → stablecoin on-ramp.
 - **Crypto seed → perp bots:** exchange internal transfer once seed > baseline × 1.20.
-- **Excess → cold wallet:** Bybit withdraw-to-address API with tightly-scoped key + Ledger Stax hardware approval.
+- **Excess → cold wallet:** approved broker/exchange withdrawal flow with tightly-scoped key + Ledger Stax hardware approval.
 - **Tax-aware logging** per sweep (60/40 futures, short-term crypto, ordinary staking income).
 
 ### 8. Execution, Monitoring & Ops
@@ -143,7 +143,7 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 - 3-6 month paper min before real capital.
 
 ### 13. Execution & Latency
-- Co-located VPS: Chicago (CME futures), Singapore/Tokyo (Bybit/OKX).
+- Co-located VPS: Chicago (CME futures); crypto venue locality only after US-legal venue approval.
 - WS-only. No HTTP polling.
 - Iceberg, post-only, TWAP, conditional orders.
 - Hyper-realistic slippage (variable by vol/time).
@@ -190,7 +190,7 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 ### 20. Integration & Phased Roadmap Extras
 - Modular monolith first; microservices later.
 - Use Freqtrade/Jesse/Hummingbot as crypto grid base to accelerate.
-- Data providers: DataBento (futures), Kaiko/CoinAPI/direct Bybit (crypto).
+- Data providers: current cache/default artifacts first; approved US-legal providers next; Databento/offshore feeds dormant until explicit refresh.
 
 ---
 
@@ -226,8 +226,8 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 - Versioned everything, rollback < 60s.
 
 ### 27. 2026 Execution Stack
-- Futures: Tradovate/IBKR + ib_insync + Chicago colo.
-- Crypto: Bybit primary; OKX/Bitget backup; CCXT Pro.
+- Futures: IBKR primary + Tastytrade secondary + Chicago colo; Tradovate dormant.
+- Crypto: approved US-legal venues for live routing; offshore adapters stay research-only/dormant.
 - Infra: Docker + K8s on low-latency VPS; GPU for RL training.
 - WS-only, zero HTTP polling.
 
@@ -287,7 +287,7 @@ The full-funnel money-making framework. Four bots → one cold wallet → compou
 
 ### 37. Execution & Platform Stack (Practical)
 - Futures: NinjaTrader/IBKR (tight spreads, Python API).
-- Crypto: Phemex/Bybit/OKX (superior risk tools, grid bots, isolated margin).
+- Crypto: approved US-legal venues for live routing; offshore exchange research remains paper/simulation only.
 - Bot bases: Freqtrade / Hummingbot / Jesse for crypto; custom Python for futures/RL.
 
 ### 38. Hidden Operational & Longevity
