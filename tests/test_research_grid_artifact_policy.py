@@ -87,6 +87,52 @@ def test_research_grid_report_path_uses_microseconds(tmp_path) -> None:
     assert path.name == "research_grid_20260429_160229_123456.md"
 
 
+def test_daily_sage_provider_wrapper_attaches_provider(monkeypatch) -> None:
+    provider = object()
+    calls = []
+
+    def fake_provider(symbol: str, instrument_class: str = "crypto") -> object:
+        calls.append((symbol, instrument_class))
+        return provider
+
+    class FakeStrategy:
+        attached_provider: object | None = None
+
+        def attach_daily_verdict_provider(self, value: object) -> None:
+            self.attached_provider = value
+
+    monkeypatch.setattr(run_research_grid, "_get_daily_sage_provider", fake_provider)
+
+    factory = run_research_grid._with_daily_sage_provider(
+        FakeStrategy,
+        symbol="ETH",
+        instrument_class="crypto",
+    )
+    strategy = factory()
+
+    assert isinstance(strategy, FakeStrategy)
+    assert strategy.attached_provider is provider
+    assert calls == [("ETH", "crypto")]
+
+
+def test_daily_sage_provider_wrapper_allows_strategies_without_hook(monkeypatch) -> None:
+    provider = object()
+    strategy = object()
+
+    monkeypatch.setattr(
+        run_research_grid,
+        "_get_daily_sage_provider",
+        lambda symbol, instrument_class="crypto": provider,
+    )
+
+    factory = run_research_grid._with_daily_sage_provider(
+        lambda: strategy,
+        symbol="BTC",
+    )
+
+    assert factory() is strategy
+
+
 def test_parse_bot_filter_returns_clean_set() -> None:
     assert run_research_grid._parse_bot_filter("mnq_futures, btc_hybrid ,,") == {
         "mnq_futures",

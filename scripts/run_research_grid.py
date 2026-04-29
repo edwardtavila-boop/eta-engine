@@ -48,6 +48,8 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+_DAILY_SAGE_PROVIDER_CACHE: dict[tuple[str, str], object] = {}
+
 
 @dataclass(frozen=True)
 class ResearchCell:
@@ -330,6 +332,40 @@ def _build_sage_daily_gated_factory(
         strict_mode=strict_mode,
     )
     return lambda: SageDailyGatedStrategy(cfg)
+
+
+def _get_daily_sage_provider(symbol: str, instrument_class: str = "crypto") -> object:
+    """Build/cache a daily-sage provider for generic sage-daily wrappers."""
+    key = (symbol, instrument_class)
+    if key not in _DAILY_SAGE_PROVIDER_CACHE:
+        from eta_engine.scripts.run_eth_sage_daily_walk_forward import (
+            _build_daily_verdicts,
+        )
+
+        _DAILY_SAGE_PROVIDER_CACHE[key] = _build_daily_verdicts(
+            symbol,
+            instrument_class=instrument_class,
+        )
+    return _DAILY_SAGE_PROVIDER_CACHE[key]
+
+
+def _with_daily_sage_provider(
+    factory: Callable[[], object],
+    *,
+    symbol: str,
+    instrument_class: str = "crypto",
+) -> Callable[[], object]:
+    """Attach daily-sage verdicts when a strategy exposes the hook."""
+    provider = _get_daily_sage_provider(symbol, instrument_class)
+
+    def _factory() -> object:
+        strategy = factory()
+        attach = getattr(strategy, "attach_daily_verdict_provider", None)
+        if callable(attach):
+            attach(provider)
+        return strategy
+
+    return _factory
 
 
 def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
@@ -662,6 +698,12 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
         # registry wires per-bot defaults; per-bot extras can override
         # individual knobs once we start sweeping params per bot.
         factory = _build_strategy_factory(cell.strategy_kind, cell.extras)
+        if cell.strategy_kind == "sage_daily_gated":
+            factory = _with_daily_sage_provider(
+                factory,
+                symbol=cell.symbol,
+                instrument_class=str(cell.extras.get("instrument_class") or "crypto"),
+            )
         res = WalkForwardEngine().run(
             bars=bars,
             pipeline=FeaturePipeline.default(),
