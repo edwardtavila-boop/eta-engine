@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T20:25:22.9654491Z",
+  "last_updated": "2026-04-29T20:28:08.2451049Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -5145,7 +5145,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-29T20:25:22.9654491Z",
+  "last_updated_utc": "2026-04-29T20:28:08.2451049Z",
   "milestones": [
     {
       "version": "v0.1.31",

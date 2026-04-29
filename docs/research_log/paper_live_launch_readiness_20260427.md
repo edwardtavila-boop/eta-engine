@@ -30,17 +30,17 @@ It runs the safe non-Databento refresh path:
 16. `paper_live_launch_check --json`
 
 On 2026-04-29 it refreshed:
-* `MNQ1_5m.csv`: 490,103 -> 493,046 rows, ending 2026-04-29.
-* `MNQ1_1h.csv`: 41,007 -> 41,285 rows, ending 2026-04-29.
-* `MNQ1_4h.csv`: 11,113 -> 11,180 rows, ending 2026-04-29.
-* `NQ1_5m.csv`: 20,726 -> 23,754 rows, ending 2026-04-29.
-* `NQ1_1h.csv`: 25,255 -> 25,539 rows, ending 2026-04-29.
-* `NQ1_4h.csv`: 20,442 -> 24,150 rows, ending 2026-04-29.
-* `ES1_5m.csv`: 491,074 -> 494,017 rows, ending 2026-04-29.
-* `DXY_5m.csv`: 1,888 -> 13,440 rows, ending 2026-04-29.
-* `DXY_1h.csv`: 0 -> 14,299 rows, ending 2026-04-29.
-* `VIX_5m.csv`: 0 -> 9,108 rows, ending 2026-04-29.
-* `VIX_1m.csv`: 0 -> 5,399 rows, ending 2026-04-29.
+* `MNQ1_5m.csv`: 490,103 -> 493,049 rows, ending 2026-04-29.
+* `MNQ1_1h.csv`: 41,007 -> 41,286 rows, ending 2026-04-29.
+* `MNQ1_4h.csv`: 11,113 -> 11,181 rows, ending 2026-04-29.
+* `NQ1_5m.csv`: 20,726 -> 23,757 rows, ending 2026-04-29.
+* `NQ1_1h.csv`: 25,255 -> 25,540 rows, ending 2026-04-29.
+* `NQ1_4h.csv`: 20,442 -> 24,151 rows, ending 2026-04-29.
+* `ES1_5m.csv`: 491,074 -> 494,020 rows, ending 2026-04-29.
+* `DXY_5m.csv`: 1,888 -> 13,443 rows, ending 2026-04-29.
+* `DXY_1h.csv`: 0 -> 14,300 rows, ending 2026-04-29.
+* `VIX_5m.csv`: 0 -> 9,111 rows, ending 2026-04-29.
+* `VIX_1m.csv`: 0 -> 5,415 rows, ending 2026-04-29.
 * `NQ1_D.csv`: 6,775 -> 6,787 rows, ending 2026-04-29.
 * `BTC_FEAR_GREED.csv`: 3,006 rows, ending 2026-04-29.
 * `SOLONCHAIN_D.csv`: 0 -> 366 rows, ending 2026-04-29.
@@ -91,6 +91,12 @@ The bot coverage inventory also rolls those rows into
 timeframe-fallback usage without scanning every bot. Paper-live launch critical
 feed evidence now includes the same resolution payload, keeping launch-gate
 proofs aligned with the inventory.
+After the 2026-04-29 inventory republish, the summary reports 62 direct
+requirements, 10 synthetic support feeds, 2 proxy requirements, 0 timeframe
+fallbacks, and 0 unknown resolutions. The only proxy rows are advisory
+sentiment feeds: `btc_hybrid` and `eth_perp` resolve symbol-specific
+`BTC/1h` and `ETH/1h` sentiment to the canonical `FEAR_GREEDMACRO/D`
+Fear & Greed proxy.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

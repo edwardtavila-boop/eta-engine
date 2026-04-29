@@ -117,6 +117,12 @@ summary. `failed_required` must be empty before broker smoke tests; non-empty
 `failed_optional` is advisory and should be reviewed but does not block the
 paper-live gate.
 
+After the inventory republish, inspect
+`bot_coverage.resolution_summary` in
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\data_inventory_latest.json`.
+Proxy rows are advisory quality caveats, synthetic rows are canonical support
+feeds, and any non-zero `unknown` count should be resolved before broker smoke.
+
 ---
 
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)
