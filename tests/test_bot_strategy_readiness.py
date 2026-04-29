@@ -138,3 +138,98 @@ def test_readiness_cli_json_is_machine_readable(tmp_path: Path, capsys) -> None:
     assert payload[0]["bot_id"] == "eth_compression"
     assert payload[0]["launch_lane"] == "paper_soak"
     assert payload[0]["data_status"] == "ready"
+
+
+def test_build_snapshot_summarizes_rows_and_keeps_live_flag_safe(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    _write_history_csv(history / "ETH_1h.csv")
+    _write_history_csv(history / "NQ1_D.csv")
+
+    rows = mod.build_readiness_matrix(
+        library=DataLibrary(roots=[history]),
+        bot_ids=["eth_compression", "nq_daily_drb"],
+    )
+    snapshot = mod.build_snapshot(rows, generated_at="2026-04-29T20:00:00+00:00")
+
+    assert snapshot["schema_version"] == 1
+    assert snapshot["generated_at"] == "2026-04-29T20:00:00+00:00"
+    assert snapshot["source"] == "bot_strategy_readiness"
+    assert snapshot["summary"] == {
+        "total_bots": 2,
+        "blocked_data": 0,
+        "can_live_any": False,
+        "can_paper_trade": 2,
+        "launch_lanes": {"live_preflight": 1, "paper_soak": 1},
+    }
+    assert [row["bot_id"] for row in snapshot["rows"]] == [
+        "eth_compression",
+        "nq_daily_drb",
+    ]
+
+
+def test_write_snapshot_creates_parent_and_pretty_json(tmp_path: Path) -> None:
+    path = tmp_path / "state" / "bot_strategy_readiness_latest.json"
+    snapshot = {
+        "schema_version": 1,
+        "generated_at": "2026-04-29T20:00:00+00:00",
+        "source": "bot_strategy_readiness",
+        "summary": {"total_bots": 0},
+        "rows": [],
+    }
+
+    written = mod.write_snapshot(snapshot, path)
+
+    assert written == path
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["source"] == "bot_strategy_readiness"
+    assert path.read_text(encoding="utf-8").endswith("\n")
+
+
+def test_cli_snapshot_no_write_prints_snapshot_without_creating_file(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    history = tmp_path / "history"
+    out = tmp_path / "state" / "bot_strategy_readiness_latest.json"
+    _write_history_csv(history / "ETH_1h.csv")
+
+    code = mod.main(
+        [
+            "--snapshot",
+            "--no-write",
+            "--json",
+            "--bot-id",
+            "eth_compression",
+            "--root",
+            str(history),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["launch_lanes"] == {"paper_soak": 1}
+    assert out.exists() is False
+
+
+def test_cli_snapshot_writes_to_out_path(tmp_path: Path, capsys) -> None:
+    history = tmp_path / "history"
+    out = tmp_path / "state" / "bot_strategy_readiness_latest.json"
+    _write_history_csv(history / "ETH_1h.csv")
+
+    code = mod.main(
+        [
+            "--snapshot",
+            "--bot-id",
+            "eth_compression",
+            "--root",
+            str(history),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert code == 0
+    assert out.exists()
+    assert "bot_strategy_readiness snapshot" in capsys.readouterr().out

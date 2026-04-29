@@ -107,6 +107,12 @@ which bots are `paper_soak`, `live_preflight`, `shadow_only`, `research`,
 4 `paper_soak`, 4 `shadow_only`, 3 `research`, 1 `non_edge`, 1 `deactivated`,
 and 0 `blocked_data`. The matrix deliberately keeps `can_live_trade=false`
 until the separate per-bot promotion preflight and broker smoke checks run.
+The same command now supports `--snapshot`, which writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\bot_strategy_readiness_latest.json`
+for dashboards and wakeup automation. The snapshot summary reports
+`can_live_any=false`, `can_paper_trade=10`, and the same launch-lane counts,
+making bot strategy posture accessible without re-running a shell command in
+UI clients.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

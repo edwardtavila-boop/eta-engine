@@ -135,6 +135,18 @@ into launch lanes such as `paper_soak`, `live_preflight`, `shadow_only`,
 to run the separate per-bot promotion preflight and broker smoke checks, not as
 permission to route live capital by itself.
 
+For dashboards and wakeup automation, publish the same view as a canonical
+runtime artifact:
+
+```bash
+python -m eta_engine.scripts.bot_strategy_readiness --snapshot
+```
+
+This writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\bot_strategy_readiness_latest.json`.
+The snapshot is read-only launch evidence; it must not be used as a broker
+execution switch.
+
 ---
 
 ## Phase 2 — Venue smoke test (≈5 min, paper account preferred)

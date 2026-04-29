@@ -32,6 +32,9 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_OPERATOR_QUEUE_PREVIOUS_SNAPSHOT_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "operator_queue_snapshot.previous.json"
     )
+    assert workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
+    )
     assert workspace_roots.ETA_DRIFT_WATCHDOG_LOG_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "drift_watchdog.jsonl"
     )

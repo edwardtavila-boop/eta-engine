@@ -11,11 +11,14 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots  # noqa: E402
 
 if TYPE_CHECKING:
     from eta_engine.data.library import DataLibrary
@@ -172,11 +175,53 @@ def build_readiness_matrix(
     return [_row_for_assignment(assignment, library=lib) for assignment in assignments]
 
 
+def build_snapshot(
+    rows: list[ReadinessRow],
+    *,
+    generated_at: str | None = None,
+) -> dict[str, object]:
+    """Return a canonical snapshot payload for dashboards and automation."""
+    lane_counts: dict[str, int] = {}
+    for row in rows:
+        lane_counts[row.launch_lane] = lane_counts.get(row.launch_lane, 0) + 1
+    return {
+        "schema_version": 1,
+        "generated_at": generated_at or datetime.now(UTC).isoformat(),
+        "source": "bot_strategy_readiness",
+        "summary": {
+            "total_bots": len(rows),
+            "blocked_data": lane_counts.get("blocked_data", 0),
+            "can_live_any": any(row.can_live_trade for row in rows),
+            "can_paper_trade": sum(row.can_paper_trade for row in rows),
+            "launch_lanes": dict(sorted(lane_counts.items())),
+        },
+        "rows": [asdict(row) for row in rows],
+    }
+
+
+def write_snapshot(
+    snapshot: dict[str, object],
+    path: Path = workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH,
+) -> Path:
+    """Atomically write the readiness snapshot and return the target path."""
+    workspace_roots.ensure_parent(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(snapshot, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="bot_strategy_readiness")
     parser.add_argument("--bot-id", action="append", default=[], help="bot id to include; repeatable")
     parser.add_argument("--root", action="append", default=[], help="data library root; repeatable")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON rows")
+    parser.add_argument("--snapshot", action="store_true", help="emit/write canonical snapshot payload")
+    parser.add_argument("--no-write", action="store_true", help="build snapshot without writing the artifact")
+    parser.add_argument("--out", type=Path, default=workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH)
     args = parser.parse_args(argv)
 
     library = None
@@ -186,7 +231,19 @@ def main(argv: list[str] | None = None) -> int:
         library = DataLibrary(roots=[Path(root) for root in args.root])
 
     rows = build_readiness_matrix(library=library, bot_ids=args.bot_id or None)
-    if args.json:
+    if args.snapshot:
+        snapshot = build_snapshot(rows)
+        written = None if args.no_write else write_snapshot(snapshot, args.out)
+        if args.json:
+            print(json.dumps(snapshot, indent=2, sort_keys=True, default=str))
+        else:
+            target = f" -> {written}" if written is not None else " (no-write)"
+            print(
+                "bot_strategy_readiness snapshot "
+                f"rows={snapshot['summary']['total_bots']} "
+                f"lanes={snapshot['summary']['launch_lanes']}{target}"
+            )
+    elif args.json:
         print(json.dumps([asdict(row) for row in rows], indent=2, sort_keys=True))
     else:
         for row in rows:
