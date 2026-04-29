@@ -188,9 +188,11 @@ automation can see the launch posture without opening the dashboard.
 The JARVIS strategy supervisor heartbeat also enriches each bot row with
 `strategy_readiness`, and `/api/bot-fleet` preserves that per-bot
 `launch_lane` / paper-live readiness detail for operator and framework clients.
-The V1 Fleet tab renders those same fields as per-bot readiness chips plus the
-next readiness action, so operators can spot paper-ready, live-preflight, and
-blocked bots directly from the roster and selected-bot drill-down.
+Plain `state/bots` rows now inherit the same posture from the canonical
+snapshot when the supervisor heartbeat is not the source. The V1 Fleet tab
+renders those same fields as per-bot readiness chips plus the next readiness
+action, so operators can spot paper-ready, live-preflight, and blocked bots
+directly from the roster and selected-bot drill-down.
 
 ---
 

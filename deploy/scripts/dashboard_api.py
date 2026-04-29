@@ -276,7 +276,9 @@ _WORKSPACE_ROOT = _REPO_ROOT.parent                     # .../EvolutionaryTradin
 _DEFAULT_STATE = _REPO_ROOT / "state"
 _DEFAULT_LOG   = _REPO_ROOT / "logs"
 _DEFAULT_RUNTIME_STATE = _WORKSPACE_ROOT / "firm_command_center" / "var" / "data" / "runtime_state.json"
-
+_DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT = (
+    _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
+)
 STATE_DIR = Path(os.environ.get("ETA_STATE_DIR", os.environ.get("APEX_STATE_DIR", str(_DEFAULT_STATE))))
 LOG_DIR   = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("APEX_LOG_DIR", str(_DEFAULT_LOG))))
 _START_TS = time.time()
@@ -449,6 +451,78 @@ def _runtime_state_path() -> Path:
     return Path(os.environ.get("ETA_RUNTIME_STATE_PATH", str(_DEFAULT_RUNTIME_STATE)))
 
 
+def _bot_strategy_readiness_snapshot_path() -> Path:
+    """Canonical per-bot strategy readiness snapshot path."""
+    return Path(
+        os.environ.get(
+            "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH",
+            str(_DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT),
+        )
+    )
+
+
+def _bot_strategy_readiness_rows_by_bot() -> dict[str, dict]:
+    """Load per-bot readiness rows by bot id, failing soft when the snapshot is absent."""
+    path = _bot_strategy_readiness_snapshot_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    out: dict[str, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        copy = dict(row)
+        for key in ("bot_id", "id", "name"):
+            bot_id = str(copy.get(key) or "").strip()
+            if bot_id:
+                out[bot_id] = copy
+    return out
+
+
+def _lookup_bot_strategy_readiness(
+    readiness_rows: dict[str, dict],
+    status: dict,
+    fallback_bot_id: str,
+) -> dict:
+    """Find the readiness row that best matches a dashboard status row."""
+    for key in (fallback_bot_id, status.get("bot_id"), status.get("id"), status.get("name")):
+        if isinstance(key, str) and key in readiness_rows:
+            return readiness_rows[key]
+    return {}
+
+
+def _apply_bot_strategy_readiness(status: dict, readiness: dict) -> dict:
+    """Attach launch-lane readiness without overwriting live supervisor fields."""
+    if not isinstance(status, dict):
+        return {}
+    existing = status.get("strategy_readiness") if isinstance(status.get("strategy_readiness"), dict) else {}
+    if readiness:
+        strategy_readiness = {**dict(readiness), **existing}
+        status["strategy_readiness"] = strategy_readiness
+    elif existing:
+        strategy_readiness = existing
+    else:
+        return status
+
+    if not status.get("launch_lane"):
+        status["launch_lane"] = str(strategy_readiness.get("launch_lane") or "")
+    if "can_paper_trade" not in status:
+        status["can_paper_trade"] = bool(strategy_readiness.get("can_paper_trade"))
+    if "can_live_trade" not in status:
+        status["can_live_trade"] = bool(strategy_readiness.get("can_live_trade"))
+    if not status.get("readiness_next_action"):
+        status["readiness_next_action"] = str(
+            strategy_readiness.get("next_action")
+            or strategy_readiness.get("next_promotion_step")
+            or "",
+        )
+    return status
+
+
 def _read_runtime_state() -> dict:
     """Read runtime state without letting service diagnostics break the dashboard."""
     path = _runtime_state_path()
@@ -609,7 +683,7 @@ def _bot_strategy_readiness_payload() -> dict:
     try:
         from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
 
-        payload = build_bot_strategy_readiness_summary()
+        payload = build_bot_strategy_readiness_summary(path=_bot_strategy_readiness_snapshot_path())
     except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
         return {
             "source": "jarvis_status",
@@ -1426,6 +1500,7 @@ def bot_fleet_roster(
     rows = []
     fills_stats = _fills_activity_snapshot()
     now_ts = time.time()
+    readiness_rows = _bot_strategy_readiness_rows_by_bot()
     for bot_dir in (sorted(bots_dir.iterdir()) if bots_dir.exists() else []):
         if not bot_dir.is_dir():
             continue
@@ -1512,6 +1587,10 @@ def bot_fleet_roster(
                 status["status"] = "delayed"
             else:
                 status["status"] = "stale"
+        _apply_bot_strategy_readiness(
+            status,
+            _lookup_bot_strategy_readiness(readiness_rows, status, bot_dir.name),
+        )
         rows.append(status)
     # --- Supervisor merge ---------------------------------------------------
     # The JARVIS strategy supervisor writes its 16-bot roster to the heartbeat.
@@ -1560,6 +1639,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         raise HTTPException(status_code=400, detail={"error_code": "invalid_bot_id"})
     from eta_engine.deploy.scripts.dashboard_state import read_json_safe
     bot_dir = _state_dir() / "bots" / bot_id
+    readiness_rows = _bot_strategy_readiness_rows_by_bot()
     supervisor_statuses = _supervisor_roster_rows(time.time(), bot=bot_id)
     supervisor_status = supervisor_statuses[0] if supervisor_statuses else None
     readiness_keys = (
@@ -1574,6 +1654,10 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         "source",
     )
     if supervisor_status is not None:
+        _apply_bot_strategy_readiness(
+            supervisor_status,
+            _lookup_bot_strategy_readiness(readiness_rows, supervisor_status, bot_id),
+        )
         strategy_readiness = supervisor_status.get("strategy_readiness")
         if not isinstance(strategy_readiness, dict):
             strategy_readiness = {}
@@ -1617,6 +1701,13 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         strategy_readiness = status.get("strategy_readiness")
         if not isinstance(strategy_readiness, dict):
             strategy_readiness = {}
+    _apply_bot_strategy_readiness(
+        status,
+        _lookup_bot_strategy_readiness(readiness_rows, status, bot_id),
+    )
+    strategy_readiness = status.get("strategy_readiness")
+    if not isinstance(strategy_readiness, dict):
+        strategy_readiness = {}
     recent_fills = read_json_safe(bot_dir / "recent_fills.json")
     local_fills = recent_fills if isinstance(recent_fills, list) else []
     merged_fills: list[dict] = []

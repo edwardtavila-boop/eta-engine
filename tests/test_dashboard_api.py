@@ -863,6 +863,75 @@ class TestDashboardAPI:
         assert "AppData" not in s, f"state dir leaked into AppData: {s}"
         assert "eta_engine" in s.lower(), f"state dir not under eta_engine: {s}"
 
+    def test_bot_fleet_enriches_state_bots_from_readiness_snapshot(self, app_client, tmp_path, monkeypatch):
+        """Plain state/bots rows inherit launch-lane posture from the canonical readiness snapshot."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["APEX_STATE_DIR"])
+        bot_dir = state / "bots" / "eth_compression"
+        bot_dir.mkdir(parents=True, exist_ok=True)
+        (bot_dir / "status.json").write_text(
+            json.dumps(
+                {
+                    "name": "eth_compression",
+                    "symbol": "ETH",
+                    "tier": "compression",
+                    "venue": "paper-sim",
+                    "status": "running",
+                    "todays_pnl": 0.0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        readiness = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-04-29T21:20:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 1, "launch_lanes": {"paper_soak": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "eth_compression",
+                            "strategy_id": "eth_compression_v1",
+                            "strategy_kind": "compression",
+                            "symbol": "ETH",
+                            "timeframe": "1h",
+                            "active": True,
+                            "promotion_status": "paper_ready",
+                            "baseline_status": "baseline_present",
+                            "data_status": "ready",
+                            "launch_lane": "paper_soak",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "next_action": "Run paper-soak and broker drift checks before live routing.",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", str(readiness))
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        eth = next(b for b in r.json()["bots"] if b["name"] == "eth_compression")
+        assert eth["strategy_readiness"]["strategy_id"] == "eth_compression_v1"
+        assert eth["launch_lane"] == "paper_soak"
+        assert eth["can_paper_trade"] is True
+        assert eth["can_live_trade"] is False
+        assert eth["readiness_next_action"] == "Run paper-soak and broker drift checks before live routing."
+
+        drill = app_client.get("/api/bot-fleet/eth_compression")
+        assert drill.status_code == 200
+        drill_data = drill.json()
+        assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "paper_soak"
+        assert drill_data["strategy_readiness"]["can_paper_trade"] is True
+        assert drill_data["readiness_next_action"].startswith("Run paper-soak")
+
     def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
         import json
