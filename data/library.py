@@ -316,10 +316,16 @@ class DataLibrary:
         *,
         limit: int | None = None,
         limit_from: str = "head",
+        require_positive_prices: bool = False,
     ) -> list:
         """Load ``BarData`` for the given dataset. Imports lazily to keep
         the library importable in environments where ``BarData`` (which
         depends on pydantic) hasn't been installed.
+
+        Set ``require_positive_prices=True`` for tradable OHLC streams.
+        Some long continuous futures histories are back-adjusted far enough
+        that early prices become zero/negative; those rows are useful for
+        raw data audit but cannot produce valid trade prices.
         """
         from eta_engine.core.data_pipeline import BarData
 
@@ -351,14 +357,23 @@ class DataLibrary:
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=UTC)
                 try:
+                    open_ = float(row["open"])
+                    high = float(row["high"])
+                    low = float(row["low"])
+                    close = float(row["close"])
+                    if (
+                        require_positive_prices
+                        and min(open_, high, low, close) <= 0.0
+                    ):
+                        continue
                     bars.append(
                         BarData(
                             timestamp=ts,
                             symbol=dataset.symbol,
-                            open=float(row["open"]),
-                            high=float(row["high"]),
-                            low=float(row["low"]),
-                            close=float(row["close"]),
+                            open=open_,
+                            high=high,
+                            low=low,
+                            close=close,
                             volume=float(row.get("volume", 0.0) or 0.0),
                         )
                     )
