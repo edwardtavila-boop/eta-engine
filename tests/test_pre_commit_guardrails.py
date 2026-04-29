@@ -45,3 +45,20 @@ def test_pre_commit_allows_source_files() -> None:
     )
 
     assert forbidden == []
+
+
+def test_pre_commit_blocks_timestamped_docs_runtime_snapshots() -> None:
+    forbidden = _pre_commit_check._forbidden_staged_files_from_lines(
+        [
+            "docs/btc_live/btc_live_paperfallback_20260417T201221Z.json",
+            "docs/btc_live/ecosystem/btc_audit_20260422T142220Z.json",
+            "docs/broker_connections/preflight_20260422T142220Z.json",
+            "docs/btc_live/btc_live_latest.json",
+        ]
+    )
+
+    assert forbidden == [
+        "docs/btc_live/btc_live_paperfallback_20260417T201221Z.json",
+        "docs/btc_live/ecosystem/btc_audit_20260422T142220Z.json",
+        "docs/broker_connections/preflight_20260422T142220Z.json",
+    ]

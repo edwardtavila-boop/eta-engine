@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -63,6 +64,11 @@ FORBIDDEN_STAGED_PATHS = frozenset(
 )
 FORBIDDEN_STAGED_PREFIXES = (
     "docs/live_data/",
+)
+FORBIDDEN_STAGED_REGEXES = (
+    re.compile(
+        r"^docs/(broker_connections|btc_live|btc_paper|btc_inventory)/.*_20\d{6}T.*Z\.json$",
+    ),
 )
 
 
@@ -100,6 +106,7 @@ def _forbidden_staged_files_from_lines(lines: list[str]) -> list[str]:
         for line in normalized
         if line in FORBIDDEN_STAGED_PATHS
         or any(line.startswith(prefix) for prefix in FORBIDDEN_STAGED_PREFIXES)
+        or any(pattern.search(line) for pattern in FORBIDDEN_STAGED_REGEXES)
     ]
 
 
