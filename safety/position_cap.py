@@ -1,7 +1,7 @@
 """EVOLUTIONARY TRADING ALGO // safety.position_cap.
 
 Per-(side, venue, symbol) contract-count cap. Fail-closed: if the
-cap is exceeded the call raises :class:`PositionCapExceeded` and the
+cap is exceeded the call raises :class:`PositionCapExceededError` and the
 caller is expected to NOT route the order.
 
 Caps are read from environment variables on every call so an
@@ -29,11 +29,10 @@ from __future__ import annotations
 
 import os
 
-
 DEFAULT_CAP: float = 10.0
 
 
-class PositionCapExceeded(RuntimeError):
+class PositionCapExceededError(RuntimeError):
     """Raised when an order would exceed the configured contract cap.
 
     The exception's ``.cap`` and ``.requested`` attributes carry the
@@ -102,7 +101,7 @@ def assert_within_caps(
     """
     cap = _resolve_cap(side, venue, symbol)
     if abs(float(requested_delta)) > cap:
-        raise PositionCapExceeded(
+        raise PositionCapExceededError(
             (
                 f"position cap exceeded: side={side} venue={venue} "
                 f"symbol={symbol} requested={requested_delta} cap={cap}"
@@ -115,8 +114,11 @@ def assert_within_caps(
         )
 
 
+PositionCapExceeded = PositionCapExceededError
+
 __all__ = [
     "DEFAULT_CAP",
+    "PositionCapExceededError",
     "PositionCapExceeded",
     "assert_within_caps",
 ]

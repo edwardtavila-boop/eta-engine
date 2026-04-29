@@ -1,7 +1,7 @@
 """EVOLUTIONARY TRADING ALGO // safety.live_gate.
 
 Operator-controlled live-trading gate. Permissive by default so paper
-/ test paths route freely; raises :class:`LiveTradingDisabled` the
+/ test paths route freely; raises :class:`LiveTradingDisabledError` the
 moment a firm-halt or explicit-disable signal is set.
 
 The gate reads three environment signals:
@@ -27,7 +27,7 @@ from __future__ import annotations
 import os
 
 
-class LiveTradingDisabled(RuntimeError):
+class LiveTradingDisabledError(RuntimeError):
     """Raised when an operator gate refuses a live order.
 
     The exception's ``.reason`` attribute carries a stable code
@@ -54,7 +54,7 @@ def assert_live_allowed() -> None:
     """
     if _is_truthy_env("FIRM_HALTED"):
         reason = os.environ.get("APEX_LIVE_KILL_REASON") or "firm halted"
-        raise LiveTradingDisabled(
+        raise LiveTradingDisabledError(
             f"live order blocked: FIRM_HALTED=true ({reason})",
             reason="firm_halted",
         )
@@ -63,10 +63,12 @@ def assert_live_allowed() -> None:
             os.environ.get("APEX_LIVE_KILL_REASON")
             or "live trading explicitly disabled"
         )
-        raise LiveTradingDisabled(
+        raise LiveTradingDisabledError(
             f"live order blocked: APEX_LIVE_TRADING_DISABLED=true ({reason})",
             reason="live_disabled",
         )
 
 
-__all__ = ["LiveTradingDisabled", "assert_live_allowed"]
+LiveTradingDisabled = LiveTradingDisabledError
+
+__all__ = ["LiveTradingDisabledError", "LiveTradingDisabled", "assert_live_allowed"]

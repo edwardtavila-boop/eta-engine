@@ -11,15 +11,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from eta_engine.brain.jarvis_v3.kaizen import CycleKind, KaizenLedger, close_cycle
 from eta_engine.obs.decision_journal import (
     Actor,
-    DecisionJournal,
     JournalEvent,
     Outcome,
 )
-
 
 # ─── Lever 2: policy_version field + threading ──────────────────────────
 
@@ -39,7 +38,7 @@ def test_journal_event_accepts_explicit_policy_version() -> None:
 
 
 def test_journal_event_rejects_negative_policy_version() -> None:
-    with pytest.raises(Exception):  # pydantic ValidationError
+    with pytest.raises(ValidationError):
         JournalEvent(actor=Actor.TRADE_ENGINE, intent="x", policy_version=-1)
 
 
@@ -66,9 +65,8 @@ def test_jarvis_admin_exposes_policy_version() -> None:
 
 def test_jarvis_admin_writes_policy_version_to_audit(tmp_path: Path) -> None:
     """An LLM-routing audit record must include the policy_version field."""
-    from eta_engine.brain.jarvis_admin import JarvisAdmin
+    from eta_engine.brain.jarvis_admin import JarvisAdmin, SubsystemId
     from eta_engine.brain.model_policy import TaskCategory
-    from eta_engine.brain.jarvis_admin import SubsystemId
 
     audit_path = tmp_path / "audit.jsonl"
     admin = JarvisAdmin(audit_path=audit_path, policy_version=42)
