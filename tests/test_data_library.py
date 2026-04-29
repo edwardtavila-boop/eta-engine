@@ -199,6 +199,71 @@ def test_load_bars_history_schema(fake_roots) -> None:  # type: ignore[no-untype
     assert bars[-1].close == pytest.approx(102.0)
 
 
+def test_load_bars_can_filter_non_positive_prices(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    _write_history_csv(
+        history / "MNQ1_5m.csv",
+        [
+            (1735689600, -1.0, 1.0, -2.0, -0.5, 10_000.0),
+            (1735689900, 0.0, 1.0, 0.0, 0.5, 10_000.0),
+            (1735690200, 100.0, 101.0, 99.5, 100.5, 10_000.0),
+        ],
+    )
+    lib = DataLibrary(roots=[history])
+    ds = lib.get(symbol="MNQ1", timeframe="5m")
+    assert ds is not None
+
+    raw = lib.load_bars(ds)
+    tradable = lib.load_bars(ds, require_positive_prices=True)
+
+    assert len(raw) == 3
+    assert len(tradable) == 1
+    assert tradable[0].close == pytest.approx(100.5)
+
+
+def test_load_bars_positive_filter_applies_before_head_limit(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    _write_history_csv(
+        history / "MNQ1_5m.csv",
+        [
+            (1735689600, -1.0, 1.0, -2.0, -0.5, 10_000.0),
+            (1735689900, 100.0, 101.0, 99.5, 100.5, 10_000.0),
+            (1735690200, 101.0, 102.0, 100.5, 101.5, 10_000.0),
+        ],
+    )
+    lib = DataLibrary(roots=[history])
+    ds = lib.get(symbol="MNQ1", timeframe="5m")
+    assert ds is not None
+
+    bars = lib.load_bars(ds, limit=1, require_positive_prices=True)
+
+    assert len(bars) == 1
+    assert bars[0].close == pytest.approx(100.5)
+
+
+def test_load_bars_positive_filter_applies_before_tail_limit(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    _write_history_csv(
+        history / "MNQ1_5m.csv",
+        [
+            (1735689600, 100.0, 101.0, 99.5, 100.5, 10_000.0),
+            (1735689900, 101.0, 102.0, 100.5, 101.5, 10_000.0),
+            (1735690200, 0.0, 102.0, 0.0, 101.5, 10_000.0),
+        ],
+    )
+    lib = DataLibrary(roots=[history])
+    ds = lib.get(symbol="MNQ1", timeframe="5m")
+    assert ds is not None
+
+    bars = lib.load_bars(ds, limit=1, limit_from="tail", require_positive_prices=True)
+
+    assert len(bars) == 1
+    assert bars[0].close == pytest.approx(101.5)
+
+
 def test_load_bars_respects_limit(fake_roots) -> None:  # type: ignore[no-untyped-def]
     lib = DataLibrary(roots=fake_roots)
     ds = lib.get(symbol="MNQ1", timeframe="1h")
