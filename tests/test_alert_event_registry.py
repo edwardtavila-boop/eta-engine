@@ -105,6 +105,8 @@ def test_registered_but_unused_alert_events_are_explicitly_reserved() -> None:
     assert report["unreserved_unused"] == set()
     assert report["reserved_unused"], "expected at least one intentional reserved route"
     assert report["reserved"] <= report["registered"]
+    assert report["reserved_without_reason"] == set()
+    assert all(report["reserved_notes"].values())
 
 
 def test_alert_event_audit_main_returns_nonzero_on_unregistered_event(

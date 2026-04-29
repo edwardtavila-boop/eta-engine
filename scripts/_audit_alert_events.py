@@ -31,11 +31,14 @@ def _called_events(root: pathlib.Path = ROOT) -> set[tuple[str, str]]:
     return events
 
 
-def _reserved_event_names(routing: dict[str, Any]) -> set[str]:
+def _reserved_event_notes(routing: dict[str, Any]) -> dict[str, str]:
     reserved = routing.get("reserved_events", {})
     if isinstance(reserved, dict):
-        return set(reserved.keys())
-    return set()
+        return {
+            str(key): str(value).strip()
+            for key, value in reserved.items()
+        }
+    return {}
 
 
 def audit(root: pathlib.Path = ROOT) -> dict[str, Any]:
@@ -46,9 +49,11 @@ def audit(root: pathlib.Path = ROOT) -> dict[str, Any]:
     called = {e for e, _ in events}
     missing = called - registered
     unused = registered - called
-    reserved = _reserved_event_names(routing)
+    reserved_notes = _reserved_event_notes(routing)
+    reserved = set(reserved_notes)
     reserved_unused = unused & reserved
     unreserved_unused = unused - reserved
+    reserved_without_reason = {event for event, reason in reserved_notes.items() if not reason}
 
     return {
         "called": called,
@@ -56,7 +61,9 @@ def audit(root: pathlib.Path = ROOT) -> dict[str, Any]:
         "missing": missing,
         "registered": registered,
         "reserved": reserved,
+        "reserved_notes": reserved_notes,
         "reserved_unused": reserved_unused,
+        "reserved_without_reason": reserved_without_reason,
         "unreserved_unused": unreserved_unused,
         "unused": unused,
     }
@@ -69,6 +76,7 @@ def main() -> int:
     missing = report["missing"]
     registered = report["registered"]
     reserved_unused = report["reserved_unused"]
+    reserved_without_reason = report["reserved_without_reason"]
     unreserved_unused = report["unreserved_unused"]
 
     print(f"EVENTS USED IN CODE: {len(called)}")
@@ -91,6 +99,10 @@ def main() -> int:
     for e in sorted(unreserved_unused):
         print(f"  - {e}")
     print()
+    print(f"RESERVED WITHOUT REASON: {len(reserved_without_reason)}")
+    for e in sorted(reserved_without_reason):
+        print(f"  - {e}")
+    print()
     if missing:
         print(
             f"FAIL -- {len(missing)} event(s) dispatched but not "
@@ -102,6 +114,12 @@ def main() -> int:
         print(
             f"FAIL -- {len(unreserved_unused)} registered event(s) are "
             "unused and not listed under routing.reserved_events.",
+        )
+        return 1
+    elif reserved_without_reason:
+        print(
+            f"FAIL -- {len(reserved_without_reason)} reserved event(s) need "
+            "a non-empty reservation reason.",
         )
         return 1
     else:
