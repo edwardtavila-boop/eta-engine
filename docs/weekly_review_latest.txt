@@ -1,7 +1,7 @@
 EVOLUTIONARY TRADING ALGO -- Weekly Firm Review
 ================================================================================
 Week of: 2026-W16    Generated: 2026-04-16T22:57:59.866415+00:00
-Spec:    APEX_PAPER_RESULTS_v2  (C:\Users\edwar\OneDrive\Desktop\Base\eta_engine\docs\firm_spec_paper_results_v2.json)
+Spec:    APEX_PAPER_RESULTS_v2  (C:\EvolutionaryTradingAlgo\eta_engine\docs\firm_spec_paper_results_v2.json)
 Tier:    B   Bots: crypto_seed, eth_perp, sol_perp, xrp_perp
 --------------------------------------------------------------------------------
 Metrics: trades=687  expectancy=+0.271R  dd=13.14%

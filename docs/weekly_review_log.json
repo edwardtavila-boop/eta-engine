@@ -3,7 +3,7 @@
     "generated_at_utc": "2026-04-16T22:56:33.056554+00:00",
     "week_of": "2026-W16",
     "spec_id": "APEX_PAPER_RESULTS_v2",
-    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "spec_path": "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
     "tier": "A",
     "bots_in_scope": [
       "mnq",
@@ -28,7 +28,7 @@
     "generated_at_utc": "2026-04-16T22:56:33.056554+00:00",
     "week_of": "2026-W16",
     "spec_id": "APEX_PAPER_RESULTS_v2",
-    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "spec_path": "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
     "tier": "B",
     "bots_in_scope": [
       "crypto_seed",
@@ -55,7 +55,7 @@
     "generated_at_utc": "2026-04-16T22:57:59.866415+00:00",
     "week_of": "2026-W16",
     "spec_id": "APEX_PAPER_RESULTS_v2",
-    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "spec_path": "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
     "tier": "A",
     "bots_in_scope": [
       "mnq",
@@ -80,7 +80,7 @@
     "generated_at_utc": "2026-04-16T22:57:59.866415+00:00",
     "week_of": "2026-W16",
     "spec_id": "APEX_PAPER_RESULTS_v2",
-    "spec_path": "C:\\Users\\edwar\\OneDrive\\Desktop\\Base\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
+    "spec_path": "C:\\EvolutionaryTradingAlgo\\eta_engine\\docs\\firm_spec_paper_results_v2.json",
     "tier": "B",
     "bots_in_scope": [
       "crypto_seed",

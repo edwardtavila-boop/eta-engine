@@ -123,6 +123,18 @@ def test_doc_cleanup_wave_drops_legacy_paths() -> None:
         assert r"LOCALAPPDATA\eta_engine" not in text
 
 
+def test_weekly_review_current_surfaces_drop_legacy_workspace_paths() -> None:
+    targets = (
+        "eta_engine/docs/weekly_review_latest.json",
+        "eta_engine/docs/weekly_review_latest.txt",
+        "eta_engine/docs/weekly_review_log.json",
+    )
+    for rel_path in targets:
+        text = _read(rel_path)
+        assert r"C:\Users\edwar\OneDrive" not in text
+        assert r"OneDrive\Desktop\Base" not in text
+
+
 def test_workspace_roots_helper_docstring_avoids_legacy_external_paths() -> None:
     text = _read("eta_engine/scripts/workspace_roots.py")
     assert r"C:\mnq_data" not in text

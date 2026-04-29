@@ -40,6 +40,10 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - Quantum remains budget/credential-gated. `/api/jarvis/health` tails
   `state/quantum/jobs.jsonl` and reports recent jobs, fallbacks, and estimated
   cost so classical fallback is visible instead of hidden.
+- The portfolio rebalancer now emits an auditable advisory plan that preserves
+  total baseline budget by default, dampens highly correlated winners, and only
+  mutates live bot sizing when `apply_rebalance_plan(..., dry_run=False)` is
+  called against `BaseBot.set_equity_ceiling`.
 
 ## Activation: Wave-12 Intelligence Layer
 
