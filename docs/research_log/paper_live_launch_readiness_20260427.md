@@ -24,8 +24,10 @@ It runs the safe non-Databento refresh path:
 10. `fetch_market_context_bars --symbol VIX --timeframe 5m`
 11. `fetch_market_context_bars --symbol VIX --timeframe 1m`
 12. `extend_nq_daily_yahoo`
-13. `announce_data_library`
-14. `paper_live_launch_check --json`
+13. Optional advisory: `fetch_fear_greed_alternative`
+14. Optional advisory: `fetch_onchain_history --symbol SOL`
+15. `announce_data_library`
+16. `paper_live_launch_check --json`
 
 On 2026-04-29 it refreshed:
 * `MNQ1_5m.csv`: 490,103 -> 493,046 rows, ending 2026-04-29.
@@ -40,17 +42,19 @@ On 2026-04-29 it refreshed:
 * `VIX_5m.csv`: 0 -> 9,108 rows, ending 2026-04-29.
 * `VIX_1m.csv`: 0 -> 5,399 rows, ending 2026-04-29.
 * `NQ1_D.csv`: 6,775 -> 6,787 rows, ending 2026-04-29.
+* `BTC_FEAR_GREED.csv`: 3,006 rows, ending 2026-04-29.
+* `SOLONCHAIN_D.csv`: 0 -> 366 rows, ending 2026-04-29.
 
 Result after republishing the inventory: all 19 paper-live bot definitions
 returned `READY`, with `warn: []` and `block: []`. The inventory snapshot
-now reports 57 datasets, 29 fresh, 2 warm, and 26 stale; bot coverage is
+now reports 58 datasets, 30 fresh, 2 warm, and 26 stale; bot coverage is
 18 runnable, 1 deactivated, and 0 blocked. The snapshot also exposes
 dataset freshness bands so "data exists" and "data is current" are no
 longer conflated.
 
 The inventory snapshot now distinguishes raw dataset freshness from the
 canonical dataset each symbol/timeframe resolves to. Raw freshness remains
-29 fresh / 2 warm / 26 stale, while canonical freshness is 29 fresh / 1
+30 fresh / 2 warm / 26 stale, while canonical freshness is 30 fresh / 1
 warm / 16 stale, with stale raw feeds explicitly marked as superseded
 by a better canonical dataset.
 
@@ -60,13 +64,28 @@ After republishing the snapshot, `bot_coverage.critical_freshness` reports
 critical-feed bots.
 
 Bot coverage also exposes optional-feed freshness as an advisory surface.
-After the context-feed refresh, `bot_coverage.optional_freshness` reports
-13 fresh bots, 3 missing-optional bots, 2 bots with no optional feeds,
-1 deactivated bot, and 0 stale / warm optional-feed bots. Missing optional
-feeds remain advisory only and do not affect paper-live launch readiness.
-The safe public-data optional improvement this batch was `DXY/1h`, which
-now resolves for `btc_hybrid`; the remaining optional gaps are sentiment
-and SOL on-chain provider feeds.
+After the context, sentiment-proxy, and SOL on-chain refreshes,
+`bot_coverage.optional_freshness` reports 16 fresh bots, 0 missing-optional
+bots, 2 bots with no optional feeds, 1 deactivated bot, and 0 stale / warm
+optional-feed bots. Missing optional feeds remain advisory only and do not
+affect paper-live launch readiness.
+The safe public-data optional improvements were `DXY/1h`, crypto
+Fear & Greed as the BTC/ETH sentiment proxy, and `SOLONCHAIN/D`; paid
+provider-specific sentiment remains a quality upgrade rather than a
+launch blocker.
+
+The optional refresh steps for Fear & Greed and SOL on-chain are advisory:
+their failures are visible in the `refresh_launch_data --json` step list but
+do not flip the overall refresh to failed, and `--skip-optional` keeps a
+critical-only launch refresh available.
+The JSON summary now separates `failed_required` from `failed_optional` so
+automation can block only on required launch feeds.
+
+Inventory requirement rows now include `resolution.mode` metadata:
+`direct` for native symbol/timeframe matches, `synthetic` for canonical support
+feeds such as `SOLONCHAIN/D`, `timeframe_fallback` for same-feed lower-cadence
+fallbacks, and `proxy` for honest cross-symbol proxies such as
+Fear & Greed standing in for symbol-specific BTC/ETH sentiment.
 
 The launch gate now also checks every critical `DataRequirement` behind
 each bot, not just the primary strategy dataset. Missing critical support

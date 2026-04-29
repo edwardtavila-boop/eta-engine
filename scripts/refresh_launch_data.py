@@ -12,6 +12,7 @@ gate paper-live launch freshness:
 * NQ1 daily via Yahoo Finance
 * ES1 5m via yfinance
 * DXY 5m/1h, VIX 5m, and VIX 1m via yfinance context indexes
+* Optional: Fear & Greed macro sentiment and SOL daily on-chain history
 
 Databento remains dormant here. The command only calls existing canonical ETA
 scripts and runs from ``C:\\EvolutionaryTradingAlgo`` so all writes stay under
@@ -33,9 +34,17 @@ WORKSPACE_ROOT = ROOT.parent
 
 
 @dataclass(frozen=True)
+class PlanStep:
+    name: str
+    command: list[str]
+    required: bool = True
+
+
+@dataclass(frozen=True)
 class StepResult:
     name: str
     command: list[str]
+    required: bool
     returncode: int
     stdout_tail: str
     stderr_tail: str
@@ -45,15 +54,20 @@ class StepResult:
         return self.returncode == 0
 
 
-def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> list[tuple[str, list[str]]]:
-    """Return the ordered refresh plan as ``(name, command)`` tuples."""
+def build_plan(
+    *,
+    skip_inventory: bool = False,
+    skip_verify: bool = False,
+    skip_optional: bool = False,
+) -> list[PlanStep]:
+    """Return the ordered refresh plan."""
     py = sys.executable
-    plan: list[tuple[str, list[str]]] = [
-        (
+    plan: list[PlanStep] = [
+        PlanStep(
             "mnq_5m",
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "MNQ", "--timeframe", "5m"],
         ),
-        (
+        PlanStep(
             "mnq_1h",
             [
                 py,
@@ -67,7 +81,7 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
                 "730d",
             ],
         ),
-        (
+        PlanStep(
             "mnq_4h",
             [
                 py,
@@ -81,11 +95,11 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
                 "730d",
             ],
         ),
-        (
+        PlanStep(
             "nq_5m",
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "NQ", "--timeframe", "5m"],
         ),
-        (
+        PlanStep(
             "nq_1h",
             [
                 py,
@@ -99,7 +113,7 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
                 "730d",
             ],
         ),
-        (
+        PlanStep(
             "nq_4h",
             [
                 py,
@@ -113,35 +127,50 @@ def build_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> li
                 "730d",
             ],
         ),
-        (
+        PlanStep(
             "es_5m",
             [py, "-m", "eta_engine.scripts.fetch_index_futures_bars", "--symbol", "ES", "--timeframe", "5m"],
         ),
-        (
+        PlanStep(
             "dxy_5m",
             [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "DXY", "--timeframe", "5m"],
         ),
-        (
+        PlanStep(
             "dxy_1h",
             [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "DXY", "--timeframe", "1h"],
         ),
-        (
+        PlanStep(
             "vix_5m",
             [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "VIX", "--timeframe", "5m"],
         ),
-        (
+        PlanStep(
             "vix_1m",
             [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "VIX", "--timeframe", "1m"],
         ),
-        (
+        PlanStep(
             "nq_daily",
             [py, "-m", "eta_engine.scripts.extend_nq_daily_yahoo"],
         ),
     ]
+    if not skip_optional:
+        plan.extend([
+            PlanStep(
+                "fear_greed_macro",
+                [py, "-m", "eta_engine.scripts.fetch_fear_greed_alternative"],
+                required=False,
+            ),
+            PlanStep(
+                "sol_onchain",
+                [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "SOL"],
+                required=False,
+            ),
+        ])
     if not skip_inventory:
-        plan.append(("announce_data_library", [py, "-m", "eta_engine.scripts.announce_data_library"]))
+        plan.append(PlanStep("announce_data_library", [py, "-m", "eta_engine.scripts.announce_data_library"]))
     if not skip_verify:
-        plan.append(("paper_live_launch_check", [py, "-m", "eta_engine.scripts.paper_live_launch_check", "--json"]))
+        plan.append(
+            PlanStep("paper_live_launch_check", [py, "-m", "eta_engine.scripts.paper_live_launch_check", "--json"])
+        )
     return plan
 
 
@@ -150,36 +179,50 @@ def _tail(text: str, *, max_lines: int = 20) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-def run_step(name: str, command: list[str]) -> StepResult:
+def run_step(step: PlanStep) -> StepResult:
     """Run one plan step from the canonical workspace root."""
     completed = subprocess.run(  # noqa: S603 - commands are fixed module invocations built above.
-        command,
+        step.command,
         cwd=WORKSPACE_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     return StepResult(
-        name=name,
-        command=command,
+        name=step.name,
+        command=step.command,
+        required=step.required,
         returncode=completed.returncode,
         stdout_tail=_tail(completed.stdout),
         stderr_tail=_tail(completed.stderr),
     )
 
 
-def run_plan(*, skip_inventory: bool = False, skip_verify: bool = False) -> dict[str, object]:
+def run_plan(
+    *,
+    skip_inventory: bool = False,
+    skip_verify: bool = False,
+    skip_optional: bool = False,
+) -> dict[str, object]:
     """Run the refresh plan and stop on the first failed step."""
     results: list[StepResult] = []
-    for name, command in build_plan(skip_inventory=skip_inventory, skip_verify=skip_verify):
-        result = run_step(name, command)
+    for step in build_plan(
+        skip_inventory=skip_inventory,
+        skip_verify=skip_verify,
+        skip_optional=skip_optional,
+    ):
+        result = run_step(step)
         results.append(result)
-        if not result.ok:
+        if not result.ok and result.required:
             break
+    failed_required = [result.name for result in results if not result.ok and result.required]
+    failed_optional = [result.name for result in results if not result.ok and not result.required]
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "workspace_root": str(WORKSPACE_ROOT),
-        "ok": all(result.ok for result in results),
+        "ok": not failed_required,
+        "failed_required": failed_required,
+        "failed_optional": failed_optional,
         "steps": [asdict(result) | {"ok": result.ok} for result in results],
     }
 
@@ -188,16 +231,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="refresh_launch_data")
     parser.add_argument("--skip-inventory", action="store_true", help="skip data inventory republish")
     parser.add_argument("--skip-verify", action="store_true", help="skip paper-live readiness verification")
+    parser.add_argument("--skip-optional", action="store_true", help="skip advisory optional feed refreshes")
     parser.add_argument("--json", action="store_true", help="emit machine-readable summary")
     args = parser.parse_args(argv)
 
-    summary = run_plan(skip_inventory=args.skip_inventory, skip_verify=args.skip_verify)
+    summary = run_plan(
+        skip_inventory=args.skip_inventory,
+        skip_verify=args.skip_verify,
+        skip_optional=args.skip_optional,
+    )
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))
     else:
         print(f"[refresh-launch-data] workspace={summary['workspace_root']}")
         for step in summary["steps"]:
-            status = "OK" if step["ok"] else "FAIL"
+            status = "OK" if step["ok"] else ("OPTIONAL FAIL" if not step["required"] else "FAIL")
             print(f"[{status}] {step['name']}: {' '.join(step['command'])}")
             if step["stdout_tail"]:
                 print(step["stdout_tail"])

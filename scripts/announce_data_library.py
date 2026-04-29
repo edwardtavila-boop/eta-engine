@@ -63,6 +63,60 @@ def _requirement_payload(req: DataRequirement) -> dict[str, Any]:
     }
 
 
+def _expected_dataset_symbol(req: DataRequirement) -> str:
+    if req.kind in {"bars", "correlation"}:
+        return req.symbol.upper()
+    if req.kind == "funding":
+        return f"{req.symbol.upper()}FUND"
+    if req.kind == "onchain":
+        return f"{req.symbol.upper()}ONCHAIN"
+    if req.kind == "sentiment":
+        return f"{req.symbol.upper()}SENT"
+    if req.kind == "macro":
+        return f"{req.symbol.upper()}MACRO"
+    return req.symbol.upper()
+
+
+def _resolution_payload(req: DataRequirement, dataset: DatasetMeta) -> dict[str, Any]:
+    expected_symbol = _expected_dataset_symbol(req)
+    requested_timeframe = req.timeframe
+    effective_timeframe = requested_timeframe or ("D" if req.kind in {"onchain", "sentiment", "macro"} else None)
+    dataset_symbol = dataset.symbol.upper()
+    timeframe_matches = effective_timeframe is None or dataset.timeframe == effective_timeframe
+
+    if dataset_symbol == expected_symbol:
+        mode = "timeframe_fallback" if not timeframe_matches else (
+            "synthetic" if expected_symbol != req.symbol.upper() else "direct"
+        )
+    else:
+        mode = "proxy"
+
+    payload: dict[str, Any] = {
+        "mode": mode,
+        "requested_symbol": req.symbol,
+        "requested_timeframe": requested_timeframe,
+        "expected_dataset_symbol": expected_symbol,
+        "dataset_symbol": dataset.symbol,
+        "dataset_timeframe": dataset.timeframe,
+    }
+    if req.kind == "sentiment" and dataset_symbol == "FEAR_GREEDMACRO":
+        payload["quality_note"] = "crypto-wide Fear & Greed proxy for symbol-specific sentiment"
+    return payload
+
+
+def _available_item(
+    req: DataRequirement,
+    dataset: DatasetMeta,
+    *,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    return {
+        "requirement": _requirement_payload(req),
+        "dataset": _dataset_payload(dataset, generated_at=generated_at),
+        "resolution": _resolution_payload(req, dataset),
+    }
+
+
 def _freshness_family(timeframe: str) -> str:
     return "intraday" if timeframe in _INTRADAY_TIMEFRAMES else "daily_or_higher"
 
@@ -140,10 +194,7 @@ def _critical_freshness_payload(
     for req, dataset in audit.available:
         if not req.critical:
             continue
-        item = {
-            "requirement": _requirement_payload(req),
-            "dataset": _dataset_payload(dataset, generated_at=generated_at),
-        }
+        item = _available_item(req, dataset, generated_at=generated_at)
         freshness = item["dataset"].get("freshness", {})
         status = freshness.get("status")
         if status in {"fresh", "warm", "stale"}:
@@ -197,10 +248,7 @@ def _optional_freshness_payload(
     for req, dataset in audit.available:
         if req.critical:
             continue
-        item = {
-            "requirement": _requirement_payload(req),
-            "dataset": _dataset_payload(dataset, generated_at=generated_at),
-        }
+        item = _available_item(req, dataset, generated_at=generated_at)
         freshness = item["dataset"].get("freshness", {})
         status = freshness.get("status")
         if status in {"fresh", "warm", "stale"}:
@@ -241,10 +289,7 @@ def _audit_payload(audit: BotAudit, *, generated_at: datetime | None = None) -> 
         "critical_freshness": _critical_freshness_payload(audit, generated_at=generated_at),
         "optional_freshness": _optional_freshness_payload(audit, generated_at=generated_at),
         "available": [
-            {
-                "requirement": _requirement_payload(req),
-                "dataset": _dataset_payload(dataset, generated_at=generated_at),
-            }
+            _available_item(req, dataset, generated_at=generated_at)
             for req, dataset in audit.available
         ],
         "missing_critical": [_requirement_payload(req) for req in audit.missing_critical],

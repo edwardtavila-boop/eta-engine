@@ -131,6 +131,28 @@ def test_audit_separates_critical_from_optional(tmp_path: Path) -> None:
     assert all(not r.critical for r in a.missing_optional)
 
 
+def test_audit_uses_fear_greed_as_crypto_sentiment_proxy(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    _write_history(
+        history / "FEAR_GREEDMACRO_D.csv",
+        [(1_775_000_000, 55.0, 55.0, 55.0, 55.0, 1.0)],
+    )
+
+    a = audit_bot("btc_hybrid", library=DataLibrary(roots=[history]))
+
+    assert a is not None
+    available = {
+        (req.kind, req.symbol, req.timeframe, dataset.symbol, dataset.timeframe)
+        for req, dataset in a.available
+    }
+    assert ("sentiment", "BTC", "1h", "FEAR_GREEDMACRO", "D") in available
+    assert not any(
+        req.kind == "sentiment" and req.symbol == "BTC"
+        for req in a.missing_optional
+    )
+
+
 def test_audit_all_returns_one_per_bot() -> None:
     out = audit_all()
     assert len(out) == len(REQUIREMENTS)

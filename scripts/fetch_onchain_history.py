@@ -29,6 +29,8 @@ Free APIs only. No paid keys.
 * **ETH**: Defillama Ethereum chain TVL, Coingecko market-data
   history (price + volume + market cap), blockchain.info ETH
   bridge.
+* **SOL**: Defillama Solana chain TVL plus Coingecko market-data
+  history (price + volume + market cap).
 
 What's *not* covered (paid-feed gap)
 ------------------------------------
@@ -43,7 +45,7 @@ audit honest about what's there vs aspirational.
 
 Usage::
 
-    # Pull BTC + ETH on-chain daily for the last 365 days
+    # Pull BTC + ETH + SOL on-chain daily for the last 365 days
     python -m eta_engine.scripts.fetch_onchain_history
 
     # Specific symbol / lookback
@@ -207,9 +209,56 @@ def _eth_daily_series(days: int) -> dict[date, dict[str, float]]:
 # ---------------------------------------------------------------------------
 
 
+def _sol_daily_series(days: int) -> dict[date, dict[str, float]]:
+    """Return {date: {column: value}} for SOL, last `days` days."""
+    series: dict[date, dict[str, float]] = {}
+
+    cg = _http_json(
+        f"https://api.coingecko.com/api/v3/coins/solana/market_chart"
+        f"?vs_currency=usd&days={min(days, 365)}&interval=daily",
+    )
+    if isinstance(cg, dict):
+        for col, key in (
+            ("price_usd", "prices"),
+            ("market_cap_usd", "market_caps"),
+            ("volume_usd", "total_volumes"),
+        ):
+            arr = cg.get(key)
+            if not isinstance(arr, list):
+                continue
+            for row in arr:
+                if not isinstance(row, list) or len(row) < 2:
+                    continue
+                ts_ms, val = row[0], row[1]
+                try:
+                    d = datetime.fromtimestamp(int(ts_ms) / 1000, tz=UTC).date()
+                except (TypeError, ValueError):
+                    continue
+                series.setdefault(d, {})[col] = float(val)
+        time.sleep(1.2)
+
+    tvl = _http_json("https://api.llama.fi/v2/historicalChainTvl/Solana")
+    if isinstance(tvl, list):
+        for row in tvl:
+            if not isinstance(row, dict):
+                continue
+            ts = row.get("date")
+            v = row.get("tvl")
+            if ts is None or v is None:
+                continue
+            try:
+                d = datetime.fromtimestamp(int(ts), tz=UTC).date()
+            except (TypeError, ValueError):
+                continue
+            series.setdefault(d, {})["chain_tvl_usd"] = float(v)
+
+    return series
+
+
 _COLUMNS_BY_SYMBOL: dict[str, list[str]] = {
     "BTC": ["price_usd", "market_cap_usd", "volume_usd", "difficulty_change_pct"],
     "ETH": ["price_usd", "market_cap_usd", "volume_usd", "chain_tvl_usd"],
+    "SOL": ["price_usd", "market_cap_usd", "volume_usd", "chain_tvl_usd"],
 }
 
 
@@ -250,11 +299,11 @@ def write_csv(path: Path, series: dict[date, dict[str, float]], cols: list[str])
 # ---------------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_onchain_history")
     p.add_argument(
-        "--symbol", default=None, choices=[None, "BTC", "ETH"],
-        help="single symbol; default = all (BTC + ETH)",
+        "--symbol", default=None, choices=[None, "BTC", "ETH", "SOL"],
+        help="single symbol; default = all (BTC + ETH + SOL)",
     )
     p.add_argument(
         "--days", type=int, default=365,
@@ -264,10 +313,11 @@ def main() -> int:
         "--root", type=Path, default=ONCHAIN_ROOT,
         help="output directory (default: canonical ETA crypto on-chain root)",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
-    targets = [args.symbol] if args.symbol else ["BTC", "ETH"]
-    cutoff = (datetime.now(UTC) - timedelta(days=args.days)).date()
+    targets = [args.symbol] if args.symbol else ["BTC", "ETH", "SOL"]
+    today = datetime.now(UTC).date()
+    cutoff = today - timedelta(days=args.days)
 
     rc = 0
     for sym in targets:
@@ -276,12 +326,14 @@ def main() -> int:
             series = _btc_daily_series(args.days)
         elif sym == "ETH":
             series = _eth_daily_series(args.days)
+        elif sym == "SOL":
+            series = _sol_daily_series(args.days)
         else:
             print(f"  unsupported symbol {sym}")
             rc = 1
             continue
         # Trim to lookback window.
-        series = {d: row for d, row in series.items() if d >= cutoff}
+        series = {d: row for d, row in series.items() if cutoff <= d <= today}
         if not series:
             print(
                 f"  zero rows for {sym} — APIs may be rate-limited; "

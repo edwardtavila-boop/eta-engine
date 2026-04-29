@@ -173,6 +173,56 @@ def test_inventory_snapshot_separates_raw_and_canonical_freshness(tmp_path: Path
     assert freshness["superseded_stale"][0]["superseded_by"]["freshness"]["status"] == "fresh"
 
 
+def test_inventory_payload_marks_proxy_and_synthetic_resolution(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    history.mkdir()
+    _write_history_csv_at(
+        history / "FEAR_GREEDMACRO_D.csv",
+        [datetime(2026, 4, 29, tzinfo=UTC)],
+    )
+    _write_history_csv_at(
+        history / "SOLONCHAIN_D.csv",
+        [datetime(2026, 4, 29, tzinfo=UTC)],
+    )
+    lib = DataLibrary(roots=[history])
+    fear_greed = lib.get(symbol="FEAR_GREEDMACRO", timeframe="D")
+    sol_onchain = lib.get(symbol="SOLONCHAIN", timeframe="D")
+    assert fear_greed is not None
+    assert sol_onchain is not None
+
+    audits = [
+        BotAudit(
+            bot_id="proxy_test",
+            available=[
+                (DataRequirement("sentiment", "BTC", "1h", critical=False), fear_greed),
+                (DataRequirement("onchain", "SOL", None, critical=False), sol_onchain),
+            ],
+        )
+    ]
+
+    payload = announce_data_library.build_inventory_snapshot(
+        lib,
+        audits,
+        generated_at=datetime(2026, 4, 29, 20, 0, tzinfo=UTC),
+    )
+
+    available = payload["bot_coverage"]["items"][0]["available"]
+    sentiment = available[0]["resolution"]
+    assert sentiment == {
+        "mode": "proxy",
+        "requested_symbol": "BTC",
+        "requested_timeframe": "1h",
+        "expected_dataset_symbol": "BTCSENT",
+        "dataset_symbol": "FEAR_GREEDMACRO",
+        "dataset_timeframe": "D",
+        "quality_note": "crypto-wide Fear & Greed proxy for symbol-specific sentiment",
+    }
+    onchain = available[1]["resolution"]
+    assert onchain["mode"] == "synthetic"
+    assert onchain["expected_dataset_symbol"] == "SOLONCHAIN"
+    assert onchain["dataset_symbol"] == "SOLONCHAIN"
+
+
 def test_write_inventory_snapshot_creates_parent_and_pretty_json(tmp_path: Path) -> None:
     target = tmp_path / "var" / "eta_engine" / "state" / "data_inventory_latest.json"
     payload = {

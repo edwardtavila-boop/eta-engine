@@ -77,7 +77,19 @@ def _resolve_library_lookup(
         return lib.get(symbol=f"{req.symbol}ONCHAIN", timeframe=tf)
     if req.kind == "sentiment":
         tf = req.timeframe or "D"
-        return lib.get(symbol=f"{req.symbol}SENT", timeframe=tf)
+        direct = lib.get(symbol=f"{req.symbol}SENT", timeframe=tf)
+        if direct is not None:
+            return direct
+        if tf != "D":
+            direct_daily = lib.get(symbol=f"{req.symbol}SENT", timeframe="D")
+            if direct_daily is not None:
+                return direct_daily
+        if req.symbol.upper() in {"BTC", "ETH", "SOL"}:
+            # Alternative.me Fear & Greed is a crypto-wide daily proxy. Keep
+            # specific paid/provider feeds preferred, but let optional BTC/ETH/SOL
+            # sentiment requirements resolve to this honest lower-resolution proxy.
+            return lib.get(symbol="FEAR_GREEDMACRO", timeframe="D")
+        return None
     if req.kind == "macro":
         tf = req.timeframe or "D"
         return lib.get(symbol=f"{req.symbol}MACRO", timeframe=tf)

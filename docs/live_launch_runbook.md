@@ -103,11 +103,19 @@ Expect `ok: true` and a full step list covering:
 - `MNQ`, `NQ`, and `ES` futures bars
 - `DXY` 5m and 1h context bars
 - `VIX` 5m and 1m context bars
+- advisory optional feed refreshes for Fear & Greed sentiment and SOL on-chain history
 - daily NQ extension
 - inventory republish + paper-live readiness verification
 
-If any step returns FAIL, stop here and fix the failing fetch or readiness gate
-before proceeding to broker smoke tests.
+If any required step returns FAIL, stop here and fix the failing fetch or
+readiness gate before proceeding to broker smoke tests. Optional advisory
+feed failures are reported in the JSON but do not make `ok` false; use
+`--skip-optional` for a critical-only launch refresh.
+
+For automation, read `failed_required` and `failed_optional` from the JSON
+summary. `failed_required` must be empty before broker smoke tests; non-empty
+`failed_optional` is advisory and should be reviewed but does not block the
+paper-live gate.
 
 ---
 
