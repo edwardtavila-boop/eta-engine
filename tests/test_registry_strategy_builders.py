@@ -211,8 +211,8 @@ def test_sol_registry_assignment_pins_latest_slice_crypto_orb_config() -> None:
     assert assignment.strategy_id == "sol_corb_v2"
     assert isinstance(strategy.cfg, CryptoORBConfig)
     assert strategy.cfg.range_minutes == 240
-    assert strategy.cfg.atr_stop_mult == 1.5
-    assert strategy.cfg.rr_target == 2.0
+    assert strategy.cfg.atr_stop_mult == 1.25
+    assert strategy.cfg.rr_target == 2.5
     assert assignment.extras["research_tune"]["strict_gate"] is False
 
 

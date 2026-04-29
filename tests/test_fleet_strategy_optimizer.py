@@ -118,6 +118,6 @@ def test_optimizer_includes_registered_sol_crypto_orb_anchor_with_trade_cap() ->
     assert registered.cfg == {
         "range_minutes": 240,
         "max_trades_per_day": 1,
-        "atr_stop_mult": 1.5,
-        "rr_target": 2.0,
+        "atr_stop_mult": 1.25,
+        "rr_target": 2.5,
     }

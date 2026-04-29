@@ -968,9 +968,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "beta to BTC is ~2.5 — risk sage flagged that 4 perps "
             "all firing daily breach the 4pct fleet circuit "
             "breaker. Latest-slice retune on 2026-04-29 moved SOL "
-            "from the v1 config's agg OOS Sharpe -4.76 to +1.32 "
-            "with range=240m, atr=1.5, rr=2.0. DSR pass remains "
-            "42.9pct and degradation remains above the gate, so "
+            "from the v1 config's agg OOS Sharpe -4.76 to +2.49 "
+            "with range=240m, atr=1.25, rr=2.5, max/day=1. DSR "
+            "pass improved to 52.4pct and degradation compressed to "
+            "19.1pct, but aggregate IS remains negative (-0.31), so "
             "this is a research/paper upgrade, not a live champion."
         ),
         extras={
@@ -979,8 +980,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "crypto_orb_config": {
                 "range_minutes": 240,
                 "max_trades_per_day": 1,
-                "atr_stop_mult": 1.5,
-                "rr_target": 2.0,
+                "atr_stop_mult": 1.25,
+                "rr_target": 2.5,
             },
             "fleet_corr_partner": "btc_hybrid",
             "research_candidate": True,
@@ -988,11 +989,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "retuned_on": "2026-04-29",
                 "scope": "latest_20k_bar_research_candidate",
                 "source_artifact": (
-                    "var/eta_engine/state/research_grid/"
-                    "sol_crypto_orb_sweep_20260429T160219Z.md"
+                    "docs/research_log/"
+                    "sol_crypto_orb_sweep_20260429T183528_203658Z.md"
                 ),
                 "previous_agg_oos_sharpe": -4.761,
-                "candidate_agg_oos_sharpe": 1.317,
+                "previous_registered_agg_oos_sharpe": 1.317,
+                "candidate_agg_is_sharpe": -0.306,
+                "candidate_agg_oos_sharpe": 2.489,
+                "candidate_dsr_pass_fraction": 0.524,
+                "candidate_degradation": 0.191,
+                "candidate_windows": 21,
+                "candidate_positive_oos_windows": 12,
                 "strict_gate": False,
             },
             # Devils-advocate 2026-04-27: half-size for first 30 days.

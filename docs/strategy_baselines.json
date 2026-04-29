@@ -203,14 +203,14 @@
     },
     {
       "strategy_id": "sol_corb_v2",
-      "n_trades": 116,
-      "win_rate": 0.3534,
-      "avg_r": 0.0603,
-      "r_stddev": 1.4403,
+      "n_trades": 117,
+      "win_rate": 0.2906,
+      "avg_r": 0.0171,
+      "r_stddev": 1.5891,
       "_promoted_at": "2026-04-29",
       "_promotion_status": "research_candidate",
-      "_walk_forward_summary": "SOL/1h latest 20k imported bars, 90d/30d windows, 11/21 positive OOS, agg OOS Sharpe +1.317, DSR median 0.027, 42.9% pass fraction, degradation 39.0%. Latest-slice retune: range=240m, atr_stop=1.5, rr=2.0, max 1 trade/day. Strict gate remains FAIL, but this replaces the v1 latest-slice result of agg OOS Sharpe -4.761.",
-      "_notes": "Research/paper baseline only, not final live promotion. Persisted so drift checks and launch readiness compare the retuned SOL assignment honestly. Full latest-20k combined backtest: 116 trades, 35.34% win rate, avg R +0.0603, max DD 10.7594%, total return +5.9853%."
+      "_walk_forward_summary": "SOL/1h canonical imported tape, 90d/30d windows, 21 windows. Deployed-risk retune: crypto_orb(range=240m, atr_stop=1.25, rr=2.5, max 1 trade/day). 12/21 positive OOS, agg IS Sharpe -0.306, agg OOS Sharpe +2.489, DSR median 0.990, 52.4% pass fraction, degradation 19.1%. Strict gate remains FAIL because aggregate IS is still negative, but this improves the prior registered cell (+1.317 OOS, 42.9% DSR pass) and replaces the v1 latest-slice result of agg OOS Sharpe -4.761.",
+      "_notes": "Research/paper baseline only, not final live promotion. Persisted so drift checks and launch readiness compare the retuned SOL assignment honestly. Full current combined backtest over 17275 SOL 1h bars: 117 trades, 29.06% win rate, avg R +0.0171, profit factor 1.0065, Sharpe 0.1700, max DD 15.3913%, total return +0.5383%."
     },
     {
       "strategy_id": "crypto_seed_dca",

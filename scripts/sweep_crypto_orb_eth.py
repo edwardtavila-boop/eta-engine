@@ -31,7 +31,7 @@ flagged as the dominant levers for IS/OOS slippage on ETH 1h:
   * rr_target      ∈ {1.5, 2.0, 2.5}    (default 2.5 — crypto trends harder)
 
 Other knobs (ema_bias_period, max_entry_local, max_trades_per_day)
-held at CryptoORBConfig defaults so the search stays focused.
+default to CryptoORBConfig unless explicitly overridden by CLI flags.
 
 Output
 ------
@@ -91,6 +91,11 @@ def _parse_float_list(raw: str) -> tuple[float, ...]:
     return values
 
 
+def _format_param(value: float) -> str:
+    """Keep exact grid params visible without noisy trailing zeros."""
+    return f"{value:.4f}".rstrip("0").rstrip(".")
+
+
 def run_one(  # noqa: PLR0913
     cell: SweepCell,
     *,
@@ -99,6 +104,7 @@ def run_one(  # noqa: PLR0913
     window_days: int,
     step_days: int,
     min_trades_per_window: int,
+    max_trades_per_day: int | None = None,
     max_bars: int | None = None,
     bar_slice: str = "tail",
 ) -> SweepResult:
@@ -144,11 +150,14 @@ def run_one(  # noqa: PLR0913
         strict_fold_dsr_gate=True,
         fold_dsr_min_pass_fraction=0.5,
     )
-    crypto_cfg = CryptoORBConfig(
-        range_minutes=cell.range_minutes,
-        atr_stop_mult=cell.atr_stop_mult,
-        rr_target=cell.rr_target,
-    )
+    crypto_kwargs = {
+        "range_minutes": cell.range_minutes,
+        "atr_stop_mult": cell.atr_stop_mult,
+        "rr_target": cell.rr_target,
+    }
+    if max_trades_per_day is not None:
+        crypto_kwargs["max_trades_per_day"] = max_trades_per_day
+    crypto_cfg = CryptoORBConfig(**crypto_kwargs)
     res = WalkForwardEngine().run(
         bars=bars,
         pipeline=FeaturePipeline.default(),
@@ -196,6 +205,12 @@ def main() -> int:
         help="comma-separated reward/risk targets",
     )
     p.add_argument(
+        "--max-trades-per-day",
+        type=int,
+        default=None,
+        help="override CryptoORBConfig.max_trades_per_day for deployed-risk validation",
+    )
+    p.add_argument(
         "--max-bars",
         type=int,
         default=None,
@@ -214,6 +229,8 @@ def main() -> int:
         help="docs = tracked research log; runtime = ignored state report",
     )
     args = p.parse_args()
+    if args.max_trades_per_day is not None and args.max_trades_per_day < 1:
+        p.error("--max-trades-per-day must be >= 1")
 
     grid = [
         SweepCell(rm, asm, rr)
@@ -225,7 +242,8 @@ def main() -> int:
     ]
     print(
         f"[sweep] {args.symbol}/{args.timeframe} crypto_orb — "
-        f"{len(grid)} cells, {args.window_days}d/{args.step_days}d windows\n",
+        f"{len(grid)} cells, {args.window_days}d/{args.step_days}d windows, "
+        f"max/day={args.max_trades_per_day if args.max_trades_per_day is not None else 'default'}\n",
     )
     results: list[SweepResult] = []
     for i, cell in enumerate(grid):
@@ -236,6 +254,7 @@ def main() -> int:
             window_days=args.window_days,
             step_days=args.step_days,
             min_trades_per_window=args.min_trades_per_window,
+            max_trades_per_day=args.max_trades_per_day,
             max_bars=args.max_bars,
             bar_slice=args.bar_slice,
         )
@@ -250,8 +269,8 @@ def main() -> int:
         print(
             f"  {i + 1:2d}/{len(grid)} "
             f"range={cell.range_minutes:>3}m "
-            f"atr={cell.atr_stop_mult:>3.1f} "
-            f"rr={cell.rr_target:>3.1f} -> "
+            f"atr={_format_param(cell.atr_stop_mult):>4} "
+            f"rr={_format_param(cell.rr_target):>4} -> "
             f"OOS={r.agg_oos_sharpe:+7.2f} "
             f"{deg_str} pass={r.fold_dsr_pass_fraction * 100:>4.1f}% {flag}",
         )
@@ -270,11 +289,12 @@ def main() -> int:
         f"_Generated: {datetime.now(UTC).isoformat()}_  "
         f"_Cells: {len(grid)}_  "
         f"_Windows: {args.window_days}d / step {args.step_days}d_  "
+        f"_Max trades/day: {args.max_trades_per_day if args.max_trades_per_day is not None else 'default'}_  "
         f"_Bars: {args.bar_slice}:{args.max_bars if args.max_bars is not None else 'all'}_",
         "",
         "Looking for: ``deg < 35%`` (degradation gate) AND OOS Sharpe > 0.",
-        "Default config (range=240, atr=2.5, rr=2.5) sits at OOS +3.977 "
-        "with deg 44.4% — blocked only by the deg gate.",
+        "CryptoORBConfig defaults are used unless a CLI override is supplied; "
+        "promotion still requires positive IS, positive OOS, and gate compliance.",
         "",
         "| Range | ATR× | RR | W | +OOS | IS Sh | OOS Sh | Deg% | DSR med | DSR pass% | Verdict |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -287,8 +307,8 @@ def main() -> int:
         else:
             verdict = "FAIL"
         lines.append(
-            f"| {r.cell.range_minutes}m | {r.cell.atr_stop_mult:.1f} | "
-            f"{r.cell.rr_target:.1f} | {r.n_windows} | {r.n_positive_oos} | "
+            f"| {r.cell.range_minutes}m | {_format_param(r.cell.atr_stop_mult)} | "
+            f"{_format_param(r.cell.rr_target)} | {r.n_windows} | {r.n_positive_oos} | "
             f"{r.agg_is_sharpe:+.3f} | {r.agg_oos_sharpe:+.3f} | "
             f"{r.avg_oos_degradation * 100:.1f} | "
             f"{r.fold_dsr_median:.3f} | "
