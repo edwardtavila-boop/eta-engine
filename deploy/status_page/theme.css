@@ -370,6 +370,14 @@ nav {
   text-transform: uppercase;
 }
 
+.card-health-inspector-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
 .card-health-inspector-head button {
   min-height: 34px;
   border: 1px solid rgba(148, 163, 184, 0.26);
@@ -377,6 +385,17 @@ nav {
   padding: 0 0.65rem;
   color: #d7ecff;
   background: rgba(15, 23, 42, 0.78);
+}
+
+.card-health-retry {
+  border-color: rgba(34, 211, 238, 0.44) !important;
+  color: #a5f3fc !important;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(16, 185, 129, 0.08)) !important;
+}
+
+.card-health-retry:hover,
+.card-health-retry:focus-visible {
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.22);
 }
 
 .card-health-inspector-body {

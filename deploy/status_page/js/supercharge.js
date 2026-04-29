@@ -495,7 +495,10 @@ function initCardHealthContract() {
     inspector.innerHTML = `
       <div class="card-health-inspector-head">
         <span>Card Health Inspector</span>
-        <button type="button" data-close-card-health="1">close</button>
+        <div class="card-health-inspector-actions">
+          <button type="button" class="card-health-retry" data-retry-card-health="1">Retry unhealthy</button>
+          <button type="button" data-close-card-health="1">close</button>
+        </div>
       </div>
       <div class="card-health-inspector-body" data-card-health-body></div>`;
     document.body.appendChild(inspector);
@@ -507,7 +510,36 @@ function initCardHealthContract() {
       if (!target) return;
       focusCardHealthPanel(target.getAttribute('data-focus-card'));
     });
+    inspector.querySelector('[data-retry-card-health="1"]')?.addEventListener('click', retryUnhealthyCards);
     return inspector;
+  };
+
+  const retryUnhealthyCards = () => {
+    const unhealthy = [
+      ...(Array.isArray(latestHealth.dead_cards) ? latestHealth.dead_cards : []),
+      ...(Array.isArray(latestHealth.stale_cards) ? latestHealth.stale_cards : []),
+    ];
+    const ids = [...new Set(unhealthy.map((card) => String(card.id || '')).filter(Boolean))];
+    if (!ids.length) {
+      poller._tick?.();
+      refresh();
+      setChip('cards: refreshing all', 'ok', 'No unhealthy cards; refreshing the dashboard tick anyway.');
+      return;
+    }
+    setChip(`cards: retrying ${ids.length}`, 'degraded', ids.join(', '));
+    pushSessionLog('card_retry', ids.join(','));
+    window.dispatchEvent(new CustomEvent('eta-card-retry', {
+      detail: { at: Date.now(), ids },
+    }));
+    ids.forEach((id) => {
+      const panel = poller.panels.find((candidate) => candidate.containerId === id);
+      panel?.refresh?.().catch(() => undefined);
+    });
+    if (ids.includes('cc-verdict-stream')) {
+      liveStream.connect();
+    }
+    setTimeout(classifyLiveCards, 900);
+    setTimeout(refresh, 1200);
   };
 
   const focusCardHealthPanel = (panelId) => {

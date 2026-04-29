@@ -234,7 +234,12 @@ class TestStatusPage:
         assert "card-health-focus" in supercharge
         assert "card-health-dead" in supercharge
         assert "card-health-stale" in supercharge
+        assert "retryUnhealthyCards" in supercharge
+        assert "data-retry-card-health" in supercharge
+        assert "eta-card-retry" in supercharge
+        assert "Retry unhealthy" in supercharge
         assert ".card-health-inspector" in css
+        assert ".card-health-retry" in css
         assert ".panel.card-health-focus" in css
         assert ".panel.card-health-dead" in css
         assert ".panel.card-health-stale" in css
