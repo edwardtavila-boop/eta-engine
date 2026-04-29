@@ -503,7 +503,7 @@ def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
     }[name]
 
 
-def run_cell(cell: ResearchCell) -> CellResult:
+def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
     """Run one walk-forward sweep and return the headline stats."""
     from eta_engine.backtest import (
         BacktestConfig,
@@ -524,7 +524,11 @@ def run_cell(cell: ResearchCell) -> CellResult:
             pass_gate=False, note=f"NO_DATA: {cell.symbol}/{cell.timeframe}",
         )
 
-    bars = default_library().load_bars(ds)
+    bars = default_library().load_bars(
+        ds,
+        limit=max_bars,
+        limit_from="tail" if max_bars is not None else "head",
+    )
     if not bars:
         return CellResult(
             cell=cell, n_windows=0, n_positive_oos=0,
@@ -688,7 +692,11 @@ def run_cell(cell: ResearchCell) -> CellResult:
         fold_dsr_median=res.fold_dsr_median,
         fold_dsr_pass_fraction=res.fold_dsr_pass_fraction,
         pass_gate=res.pass_gate,
-        note=f"{ds.row_count} bars / {ds.days_span():.0f}d",
+        note=(
+            f"{len(bars)}/{ds.row_count} latest bars / {ds.days_span():.0f}d capped"
+            if max_bars is not None and len(bars) < ds.row_count
+            else f"{ds.row_count} bars / {ds.days_span():.0f}d"
+        ),
     )
 
 
@@ -748,6 +756,12 @@ def resolve_report_dir(
     return workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR
 
 
+def build_report_path(log_dir: Path, generated_at: datetime) -> Path:
+    """Return a collision-resistant research-grid report path."""
+    stamp = generated_at.strftime("%Y%m%d_%H%M%S_%f")
+    return log_dir / f"research_grid_{stamp}.md"
+
+
 def render_report(
     *,
     matrix: Sequence[ResearchCell],
@@ -766,7 +780,28 @@ def render_report(
     )
 
 
-def _matrix_from_registry() -> list[ResearchCell]:
+def _parse_bot_filter(raw: str | None) -> set[str] | None:
+    """Parse comma-separated bot ids from CLI input."""
+    if raw is None:
+        return None
+    parsed = {part.strip() for part in raw.split(",") if part.strip()}
+    return parsed or None
+
+
+def _limit_matrix(
+    matrix: Sequence[ResearchCell],
+    *,
+    bots: set[str] | None = None,
+    max_cells: int | None = None,
+) -> list[ResearchCell]:
+    """Apply operator-requested limits without changing cell semantics."""
+    out = [cell for cell in matrix if bots is None or cell.label in bots]
+    if max_cells is not None and max_cells >= 0:
+        out = out[:max_cells]
+    return out
+
+
+def _matrix_from_registry(*, include_deactivated: bool = False) -> list[ResearchCell]:
     """Pull one ResearchCell per bot from strategies.per_bot_registry.
 
     This is the canonical entry point for the per-bot baseline sweep.
@@ -774,10 +809,12 @@ def _matrix_from_registry() -> list[ResearchCell]:
     one-off questions, but the registry-driven sweep is what the
     "is anything regressing across the bot fleet" smoke test reads.
     """
-    from eta_engine.strategies.per_bot_registry import all_assignments
+    from eta_engine.strategies.per_bot_registry import all_assignments, is_active
 
     cells: list[ResearchCell] = []
     for a in all_assignments():
+        if not include_deactivated and not is_active(a):
+            continue
         cells.append(
             ResearchCell(
                 label=a.bot_id,
@@ -819,11 +856,33 @@ def main() -> int:
         default=None,
         help="override report output directory",
     )
+    p.add_argument(
+        "--bots",
+        default=None,
+        help="comma-separated bot_ids to run after matrix construction",
+    )
+    p.add_argument(
+        "--max-cells",
+        type=int,
+        default=None,
+        help="run only the first N cells after filtering; useful for quick smoke batches",
+    )
+    p.add_argument(
+        "--max-bars-per-cell",
+        type=int,
+        default=None,
+        help="cap bars loaded per cell for fast smoke runs; omit for full-history research",
+    )
+    p.add_argument(
+        "--include-deactivated",
+        action="store_true",
+        help="include registry rows explicitly muted via extras['deactivated']",
+    )
     args = p.parse_args()
 
     base_block = frozenset({"trending_up", "trending_down"})
     if args.source == "registry":
-        matrix = _matrix_from_registry()
+        matrix = _matrix_from_registry(include_deactivated=args.include_deactivated)
     else:
         # Ad-hoc cells preserved for one-off research questions.
         matrix = [
@@ -833,12 +892,17 @@ def main() -> int:
             ResearchCell("4h_gated", "MNQ1", "4h", "mnq", 5.0, base_block, 180, 60, 10),
             ResearchCell("D_NQ1_gated", "NQ1", "D", "mnq", 5.0, base_block, 365, 180, 10),
         ]
+    matrix = _limit_matrix(
+        matrix,
+        bots=_parse_bot_filter(args.bots),
+        max_cells=args.max_cells,
+    )
     print(f"[research_grid] running {len(matrix)} cells\n")
     results: list[CellResult] = []
     for cell in matrix:
         print(f"  - {cell.label}: {cell.symbol}/{cell.timeframe} ...")
         try:
-            r = run_cell(cell)
+            r = run_cell(cell, max_bars=args.max_bars_per_cell)
             results.append(r)
             print(
                 f"      -> windows={r.n_windows} "
@@ -866,8 +930,7 @@ def main() -> int:
         override=args.report_dir,
     )
     workspace_roots.ensure_dir(log_dir)
-    stamp = generated_at.strftime("%Y%m%d_%H%M%S")
-    log_path = log_dir / f"research_grid_{stamp}.md"
+    log_path = build_report_path(log_dir, generated_at)
     log_path.write_text(
         render_report(
             matrix=matrix,

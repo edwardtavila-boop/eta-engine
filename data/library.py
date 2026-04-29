@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -309,14 +310,22 @@ class DataLibrary:
 
     # ── bars loader ──
 
-    def load_bars(self, dataset: DatasetMeta, *, limit: int | None = None) -> list:
+    def load_bars(
+        self,
+        dataset: DatasetMeta,
+        *,
+        limit: int | None = None,
+        limit_from: str = "head",
+    ) -> list:
         """Load ``BarData`` for the given dataset. Imports lazily to keep
         the library importable in environments where ``BarData`` (which
         depends on pydantic) hasn't been installed.
         """
         from eta_engine.core.data_pipeline import BarData
 
-        bars: list = []
+        if limit_from not in {"head", "tail"}:
+            raise ValueError("limit_from must be 'head' or 'tail'")
+        bars: list | deque = [] if limit_from == "head" else deque(maxlen=limit)
         with dataset.path.open("r", encoding="utf-8", newline="") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -355,9 +364,9 @@ class DataLibrary:
                     )
                 except (KeyError, ValueError):
                     continue
-                if limit and len(bars) >= limit:
+                if limit and limit_from == "head" and len(bars) >= limit:
                     break
-        return bars
+        return list(bars)
 
     # ── reporting ──
 

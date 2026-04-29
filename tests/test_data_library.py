@@ -204,6 +204,25 @@ def test_load_bars_respects_limit(fake_roots) -> None:  # type: ignore[no-untype
     ds = lib.get(symbol="MNQ1", timeframe="1h")
     assert ds is not None
     assert len(lib.load_bars(ds, limit=2)) == 2
+    assert lib.load_bars(ds, limit=2)[0].close == pytest.approx(100.5)
+
+
+def test_load_bars_supports_tail_limit(fake_roots) -> None:  # type: ignore[no-untyped-def]
+    lib = DataLibrary(roots=fake_roots)
+    ds = lib.get(symbol="MNQ1", timeframe="1h")
+    assert ds is not None
+    bars = lib.load_bars(ds, limit=2, limit_from="tail")
+    assert len(bars) == 2
+    assert bars[0].close == pytest.approx(101.5)
+    assert bars[-1].close == pytest.approx(102.0)
+
+
+def test_load_bars_rejects_unknown_limit_direction(fake_roots) -> None:  # type: ignore[no-untyped-def]
+    lib = DataLibrary(roots=fake_roots)
+    ds = lib.get(symbol="MNQ1", timeframe="1h")
+    assert ds is not None
+    with pytest.raises(ValueError, match="limit_from"):
+        lib.load_bars(ds, limit=2, limit_from="middle")
 
 
 # ---------------------------------------------------------------------------

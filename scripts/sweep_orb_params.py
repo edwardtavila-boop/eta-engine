@@ -42,6 +42,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 
 @dataclass(frozen=True)
 class SweepCell:
@@ -63,10 +65,20 @@ class SweepResult:
     pass_gate: bool
 
 
-def run_one(cell: SweepCell, *, symbol: str, timeframe: str,
-            window_days: int, step_days: int) -> SweepResult:
+def run_one(
+    cell: SweepCell,
+    *,
+    symbol: str,
+    timeframe: str,
+    window_days: int,
+    step_days: int,
+    max_bars: int | None = None,
+    bar_slice: str = "tail",
+) -> SweepResult:
     from eta_engine.backtest import (
-        BacktestConfig, WalkForwardConfig, WalkForwardEngine,
+        BacktestConfig,
+        WalkForwardConfig,
+        WalkForwardEngine,
     )
     from eta_engine.data.library import default_library
     from eta_engine.features.pipeline import FeaturePipeline
@@ -75,7 +87,11 @@ def run_one(cell: SweepCell, *, symbol: str, timeframe: str,
     ds = default_library().get(symbol=symbol, timeframe=timeframe)
     if ds is None:
         return SweepResult(cell, 0, 0, 0.0, 0.0, 0.0, 0.0, False)
-    bars = default_library().load_bars(ds)
+    bars = default_library().load_bars(
+        ds,
+        limit=max_bars,
+        limit_from=bar_slice if max_bars is not None else "head",
+    )
     cfg = BacktestConfig(
         start_date=bars[0].timestamp, end_date=bars[-1].timestamp,
         symbol=ds.symbol, initial_equity=10_000.0,
@@ -115,6 +131,24 @@ def main() -> int:
     p.add_argument("--timeframe", default="5m")
     p.add_argument("--window-days", type=int, default=60)
     p.add_argument("--step-days", type=int, default=30)
+    p.add_argument(
+        "--max-bars",
+        type=int,
+        default=None,
+        help="cap bars loaded per cell; useful for fast latest-slice tuning",
+    )
+    p.add_argument(
+        "--bar-slice",
+        choices=("head", "tail"),
+        default="tail",
+        help="which side of the dataset to use when --max-bars is set",
+    )
+    p.add_argument(
+        "--report-policy",
+        choices=("docs", "runtime"),
+        default="docs",
+        help="docs = tracked research log; runtime = ignored state report",
+    )
     args = p.parse_args()
 
     grid = [
@@ -132,6 +166,8 @@ def main() -> int:
         r = run_one(
             cell, symbol=args.symbol, timeframe=args.timeframe,
             window_days=args.window_days, step_days=args.step_days,
+            max_bars=args.max_bars,
+            bar_slice=args.bar_slice,
         )
         results.append(r)
         flag = "PASS" if r.pass_gate else ("near" if r.fold_dsr_pass_fraction >= 0.5 else "")
@@ -155,7 +191,8 @@ def main() -> int:
         f"# ORB Parameter Sweep — {args.symbol}/{args.timeframe}",
         "",
         f"_Generated: {datetime.now(UTC).isoformat()}_  "
-        f"_Cells: {len(grid)}_  _Windows: {args.window_days}d / step {args.step_days}d_",
+        f"_Cells: {len(grid)}_  _Windows: {args.window_days}d / step {args.step_days}d_  "
+        f"_Bars: {args.bar_slice}:{args.max_bars if args.max_bars is not None else 'all'}_",
         "",
         "| Range | RR | ATR× | EMA | Windows | +OOS | IS Sh | OOS Sh | DSR med | DSR pass% | Verdict |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -172,9 +209,13 @@ def main() -> int:
     md = "\n".join(lines) + "\n"
     print("\n" + md)
 
-    log_dir = ROOT / "docs" / "research_log"
+    log_dir = (
+        ROOT / "docs" / "research_log"
+        if args.report_policy == "docs"
+        else workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR
+    )
     log_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
     out_path = log_dir / f"orb_sweep_{args.symbol}_{args.timeframe}_{stamp}.md"
     out_path.write_text(md, encoding="utf-8")
     print(f"[saved to {out_path}]")

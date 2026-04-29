@@ -52,6 +52,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 
 @dataclass(frozen=True)
 class SweepCell:
@@ -81,6 +83,8 @@ def run_one(  # noqa: PLR0913
     window_days: int,
     step_days: int,
     min_trades_per_window: int,
+    max_bars: int | None = None,
+    bar_slice: str = "tail",
 ) -> SweepResult:
     from eta_engine.backtest import (
         BacktestConfig,
@@ -97,7 +101,11 @@ def run_one(  # noqa: PLR0913
     ds = default_library().get(symbol=symbol, timeframe=timeframe)
     if ds is None:
         return SweepResult(cell, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, False)
-    bars = default_library().load_bars(ds)
+    bars = default_library().load_bars(
+        ds,
+        limit=max_bars,
+        limit_from=bar_slice if max_bars is not None else "head",
+    )
     if not bars:
         return SweepResult(cell, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, False)
 
@@ -155,6 +163,24 @@ def main() -> int:
     p.add_argument("--window-days", type=int, default=90)
     p.add_argument("--step-days", type=int, default=30)
     p.add_argument("--min-trades-per-window", type=int, default=10)
+    p.add_argument(
+        "--max-bars",
+        type=int,
+        default=None,
+        help="cap bars loaded per cell; useful for fast latest-slice tuning",
+    )
+    p.add_argument(
+        "--bar-slice",
+        choices=("head", "tail"),
+        default="tail",
+        help="which side of the dataset to use when --max-bars is set",
+    )
+    p.add_argument(
+        "--report-policy",
+        choices=("docs", "runtime"),
+        default="docs",
+        help="docs = tracked research log; runtime = ignored state report",
+    )
     args = p.parse_args()
 
     grid = [
@@ -178,6 +204,8 @@ def main() -> int:
             window_days=args.window_days,
             step_days=args.step_days,
             min_trades_per_window=args.min_trades_per_window,
+            max_bars=args.max_bars,
+            bar_slice=args.bar_slice,
         )
         results.append(r)
         deg_str = (
@@ -205,11 +233,12 @@ def main() -> int:
     results.sort(key=_sort_key)
 
     lines = [
-        f"# ETH crypto_orb Parameter Sweep — {args.symbol}/{args.timeframe}",
+        f"# {args.symbol} crypto_orb Parameter Sweep — {args.symbol}/{args.timeframe}",
         "",
         f"_Generated: {datetime.now(UTC).isoformat()}_  "
         f"_Cells: {len(grid)}_  "
-        f"_Windows: {args.window_days}d / step {args.step_days}d_",
+        f"_Windows: {args.window_days}d / step {args.step_days}d_  "
+        f"_Bars: {args.bar_slice}:{args.max_bars if args.max_bars is not None else 'all'}_",
         "",
         "Looking for: ``deg < 35%`` (degradation gate) AND OOS Sharpe > 0.",
         "Default config (range=240, atr=2.5, rr=2.5) sits at OOS +3.977 "
@@ -236,10 +265,14 @@ def main() -> int:
     md = "\n".join(lines) + "\n"
     print("\n" + md)
 
-    log_dir = ROOT / "docs" / "research_log"
+    log_dir = (
+        ROOT / "docs" / "research_log"
+        if args.report_policy == "docs"
+        else workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR
+    )
     log_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    out_path = log_dir / f"eth_crypto_orb_sweep_{stamp}.md"
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S_%fZ")
+    out_path = log_dir / f"{args.symbol.lower()}_crypto_orb_sweep_{stamp}.md"
     out_path.write_text(md, encoding="utf-8")
     print(f"[saved to {out_path}]")
     return 0
