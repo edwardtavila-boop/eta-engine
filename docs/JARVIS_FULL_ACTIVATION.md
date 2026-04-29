@@ -124,6 +124,10 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   the promotion drift journal, including last verdict, KL, Sharpe delta, mean
   delta, sample counts, rolling verdict counts, and joined investigation
   reasons.
+- The JARVIS drift journal now defaults to the canonical workspace runtime
+  state path `var/eta_engine/state/jarvis_drift.jsonl` instead of a per-user
+  home `.jarvis` write path, while readback still falls back to an older
+  home-dir journal when the canonical file has not been created yet.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

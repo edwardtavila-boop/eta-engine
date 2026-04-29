@@ -70,7 +70,7 @@ from eta_engine.brain.avengers.circuit_breaker import BreakerState, BreakerTripp
 from eta_engine.brain.avengers.watchdog import HealthStatus
 from eta_engine.brain.jarvis_admin import SubsystemId
 from eta_engine.brain.model_policy import ModelTier
-from eta_engine.scripts import chaos_drill
+from eta_engine.scripts import chaos_drill, workspace_roots
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1218,6 +1218,27 @@ class TestDriftDetector:
     def test_journal_readback_missing_file(self, tmp_path: Path) -> None:
         assert read_drift_journal(tmp_path / "nope.jsonl") == []
 
+    def test_journal_readback_can_fall_back_to_legacy_home_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from eta_engine.brain.avengers import drift_detector
+
+        canonical = tmp_path / "state" / "jarvis_drift.jsonl"
+        legacy = tmp_path / ".jarvis" / "drift.jsonl"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            json.dumps({"strategy_id": "legacy", "verdict": "OK"}) + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(drift_detector, "DRIFT_JOURNAL", canonical)
+        monkeypatch.setattr(drift_detector, "LEGACY_DRIFT_JOURNAL", legacy)
+
+        records = drift_detector.read_drift_journal(n=10)
+
+        assert records == [{"strategy_id": "legacy", "verdict": "OK"}]
+
     def test_mean_delta_recorded_correctly(self, tmp_path: Path) -> None:
         det = self._det(tmp_path)
         bt = [0.002] * 100
@@ -1245,10 +1266,10 @@ class TestDriftDetector:
         assert report.bt_sample_size == 3
         assert report.live_sample_size == 5
 
-    def test_default_journal_path_is_dot_jarvis(self) -> None:
-        """The module-level default journal lands next to the other JARVIS logs."""
-        assert DRIFT_JOURNAL.name == "drift.jsonl"
-        assert DRIFT_JOURNAL.parent.name == ".jarvis"
+    def test_default_journal_path_is_canonical_workspace_state(self) -> None:
+        """The module-level default journal stays under the ETA workspace."""
+        assert DRIFT_JOURNAL == workspace_roots.ETA_JARVIS_DRIFT_JOURNAL_PATH
+        assert "EvolutionaryTradingAlgo" in str(DRIFT_JOURNAL)
 
     def test_report_is_frozen_model(self, tmp_path: Path) -> None:
         """DriftReport is immutable; downstream code can't mutate it."""

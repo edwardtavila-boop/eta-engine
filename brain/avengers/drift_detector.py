@@ -54,17 +54,19 @@ import math
 import statistics
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from eta_engine.brain.avengers.promotion import PromotionAction
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
-DRIFT_JOURNAL: Path = Path.home() / ".jarvis" / "drift.jsonl"
+DRIFT_JOURNAL: Path = workspace_roots.ETA_JARVIS_DRIFT_JOURNAL_PATH
+LEGACY_DRIFT_JOURNAL: Path = workspace_roots.ETA_LEGACY_JARVIS_DRIFT_JOURNAL_PATH
 
 TRADING_DAYS_PER_YEAR = 252
 
@@ -120,7 +122,7 @@ class DriftDetector:
         Histogram bin count for the KL-divergence estimator.
     journal_path
         Append-only audit log of every check. Defaults to
-        ``~/.jarvis/drift.jsonl``.
+        ``var/eta_engine/state/jarvis_drift.jsonl`` under the workspace.
     clock
         Injected for tests.
     """
@@ -389,6 +391,8 @@ def read_drift_journal(
 ) -> list[dict]:
     """Tail the drift journal. Returns last ``n`` records (best-effort)."""
     p = path or DRIFT_JOURNAL
+    if path is None and not p.exists() and LEGACY_DRIFT_JOURNAL.exists():
+        p = LEGACY_DRIFT_JOURNAL
     if not p.exists():
         return []
     try:
@@ -409,6 +413,7 @@ def read_drift_journal(
 
 __all__ = [
     "DRIFT_JOURNAL",
+    "LEGACY_DRIFT_JOURNAL",
     "DriftDetector",
     "DriftReport",
     "DriftVerdict",

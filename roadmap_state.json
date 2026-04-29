@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T23:05:37.1013765Z",
+  "last_updated": "2026-04-29T23:27:21.5900000Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5170,
+    "eta_engine_tests_passing": 5171,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
       "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
@@ -51,6 +51,21 @@
       "surface": "JARVIS NL audit count/list/rollup windows anchor to the latest audit record when callers do not inject a clock, keeping archived audit answers deterministic",
       "tests": [
         "tests/test_brain_jarvis_v3_nl_query.py::test_nl_query_intents_ignore_bad_lines_and_answer_by_request"
+      ]
+    },
+    "eta_engine_jarvis_drift_journal_canonical": {
+      "timestamp_utc": "2026-04-29T23:27:21.5900000Z",
+      "surface": "JARVIS drift detector writes default drift journals under var/eta_engine/state/jarvis_drift.jsonl while preserving legacy home-journal readback when no canonical journal exists",
+      "fields": [
+        "ETA_JARVIS_DRIFT_JOURNAL_PATH",
+        "DRIFT_JOURNAL",
+        "LEGACY_DRIFT_JOURNAL"
+      ],
+      "tests": [
+        "tests/test_jarvis_hardening.py::TestDriftDetector::test_default_journal_path_is_canonical_workspace_state",
+        "tests/test_jarvis_hardening.py::TestDriftDetector::test_journal_readback_can_fall_back_to_legacy_home_file",
+        "tests/test_workspace_path_cleanup.py::test_workspace_roots_point_inside_canonical_repo",
+        "tests/test_workspace_path_cleanup.py::test_runtime_helpers_drop_localappdata_eta_state_paths"
       ]
     },
     "eta_engine_verify_all": "17/17 PASS",
@@ -5187,7 +5202,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-29T23:05:37.1013765Z",
+  "last_updated_utc": "2026-04-29T23:27:21.5900000Z",
   "milestones": [
     {
       "version": "v0.1.31",
