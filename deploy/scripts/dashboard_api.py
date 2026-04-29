@@ -325,6 +325,88 @@ def _dashboard_card_health_payload() -> dict:
     }
 
 
+def _dashboard_diagnostics_payload() -> dict:
+    """Single source-of-truth rollup for Command Center self-diagnostics."""
+    server_ts = time.time()
+    generated_at = datetime.fromtimestamp(server_ts, UTC).isoformat()
+    cards = _dashboard_card_health_payload()
+
+    try:
+        roster = bot_fleet_roster(Response(), since_days=1)
+    except Exception as exc:  # noqa: BLE001 -- diagnostics should fail soft.
+        roster = {"bots": [], "confirmed_bots": 0, "summary": {}, "_error": str(exc)}
+
+    try:
+        equity = equity_curve(range="1d", normalize=True, since_days=1, response=Response())
+    except Exception as exc:  # noqa: BLE001 -- diagnostics should fail soft.
+        equity = {"series": [], "summary": {}, "source": "error", "_error": str(exc)}
+
+    roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
+    roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
+    equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
+    equity_summary = equity.get("summary") if isinstance(equity.get("summary"), dict) else {}
+    card_summary = cards.get("summary") if isinstance(cards.get("summary"), dict) else {}
+
+    return {
+        **_dashboard_contract(),
+        "source_of_truth": "dashboard_diagnostics",
+        "generated_at": generated_at,
+        "server_ts": server_ts,
+        "api_build": {
+            "name": "eta-command-center-v1",
+            "dashboard_version": DASHBOARD_VERSION,
+            "release_stage": DASHBOARD_RELEASE_STAGE,
+            "pid": os.getpid(),
+            "python": sys.version.split()[0],
+            "started_at": datetime.fromtimestamp(_START_TS, UTC).isoformat(),
+        },
+        "service": {
+            "status": "ok",
+            "uptime_s": round(max(0.0, server_ts - _START_TS), 3),
+            "pid": os.getpid(),
+        },
+        "paths": {
+            "repo_root": str(_REPO_ROOT),
+            "workspace_root": str(_WORKSPACE_ROOT),
+            "state_dir": str(_state_dir()),
+            "log_dir": str(_log_dir()),
+            "runtime_state_path": str(_runtime_state_path()),
+        },
+        "cards": {
+            "summary": card_summary,
+            "dead_cards": cards.get("dead_cards") if isinstance(cards.get("dead_cards"), list) else [],
+            "stale_cards": cards.get("stale_cards") if isinstance(cards.get("stale_cards"), list) else [],
+        },
+        "bot_fleet": {
+            "bot_total": int(roster_summary.get("bot_total") or len(roster_bots)),
+            "confirmed_bots": int(roster.get("confirmed_bots") or roster_summary.get("confirmed_bots") or 0),
+            "truth_status": str(roster.get("truth_status") or roster_summary.get("truth_status") or "unknown"),
+            "truth_summary_line": str(
+                roster.get("truth_summary_line")
+                or roster_summary.get("truth_summary_line")
+                or "",
+            ),
+            "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
+            "error": roster.get("_error"),
+        },
+        "equity": {
+            "source": str(equity.get("source") or "unknown"),
+            "session_truth_status": str(equity.get("session_truth_status") or "unknown"),
+            "source_age_s": equity.get("source_age_s"),
+            "point_count": len(equity_series),
+            "today_pnl": equity_summary.get("today_pnl"),
+            "error": equity.get("_error"),
+        },
+        "checks": {
+            "api_contract": True,
+            "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
+            "bot_fleet_contract": isinstance(roster.get("bots"), list),
+            "equity_contract": "series" in equity,
+            "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
+        },
+    }
+
+
 def _state_dir() -> Path:
     """Lazy state-dir resolver so tests can monkeypatch state paths."""
     return Path(os.environ.get("ETA_STATE_DIR", os.environ.get("APEX_STATE_DIR", str(_DEFAULT_STATE))))
@@ -843,6 +925,15 @@ def dashboard_card_health(response: Response) -> dict:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return _dashboard_card_health_payload()
+
+
+@app.get("/api/dashboard/diagnostics")
+def dashboard_diagnostics(response: Response) -> dict:
+    """V1 live-source diagnostic rollup for the Command Center."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _dashboard_diagnostics_payload()
 
 
 @app.get("/api/jarvis/operator_queue")

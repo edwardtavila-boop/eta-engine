@@ -140,6 +140,7 @@ class TestStatusPage:
             "top-operator-queue",
             "top-sse-status",
             "top-card-health",
+            "top-diagnostics",
             "view-jarvis",
             "view-fleet",
             "cc-operator-queue",
@@ -163,6 +164,7 @@ class TestStatusPage:
         assert "Pre-Beta V1" in html
         assert "Live data contract: bot fleet, equity, auth, freshness" in html
         assert "/api/dashboard/card-health" in html
+        assert "/api/dashboard/diagnostics" in html
         assert 'aria-label="Primary dashboard tabs"' in html
         assert 'class="skip-link"' in html
         assert 'class="modal-card' in html
@@ -243,6 +245,25 @@ class TestStatusPage:
         assert ".panel.card-health-focus" in css
         assert ".panel.card-health-dead" in css
         assert ".panel.card-health-stale" in css
+
+    def test_status_page_diagnostics_contract_is_wired(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+        css = (root / "theme.css").read_text(encoding="utf-8")
+        supercharge = (root / "js" / "supercharge.js").read_text(encoding="utf-8")
+
+        assert 'id="top-diagnostics"' in html
+        assert 'data-diagnostics-endpoint="/api/dashboard/diagnostics"' in html
+        assert "diagnostics-chip" in css
+        assert ".diagnostics-inspector" in css
+        assert "initCommandCenterDiagnostics" in supercharge
+        assert "/api/dashboard/diagnostics" in supercharge
+        assert "Command Center Diagnostics" in supercharge
+        assert "diagnostics: live" in supercharge
+        assert "api_build" in supercharge
+        assert "bot_fleet" in supercharge
+        assert "equity" in supercharge
+        assert "eta-command-center-diagnostics" in supercharge
 
     def test_card_health_registry_covers_every_rendered_panel(self):
         from eta_engine.deploy.scripts.dashboard_api import DASHBOARD_CARD_REGISTRY

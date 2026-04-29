@@ -725,6 +725,136 @@ function initCardHealthContract() {
   window.addEventListener('eta-panel-refresh', () => setTimeout(classifyLiveCards, 100));
 }
 
+function initCommandCenterDiagnostics() {
+  const chip = document.getElementById('top-diagnostics');
+  if (!chip) return;
+  const endpoint = chip.dataset.diagnosticsEndpoint || '/api/dashboard/diagnostics';
+  let latest = null;
+  let inspector = null;
+
+  const escapeText = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+  const setChip = (label, health, title = '') => {
+    chip.textContent = label;
+    chip.dataset.health = health;
+    chip.title = title;
+  };
+
+  const ensureInspector = () => {
+    if (inspector) return inspector;
+    inspector = document.createElement('aside');
+    inspector.id = 'diagnostics-inspector';
+    inspector.className = 'diagnostics-inspector hidden';
+    inspector.innerHTML = `
+      <div class="diagnostics-inspector-head">
+        <span>Command Center Diagnostics</span>
+        <div class="diagnostics-inspector-actions">
+          <button type="button" data-refresh-diagnostics="1">refresh</button>
+          <button type="button" data-close-diagnostics="1">close</button>
+        </div>
+      </div>
+      <div class="diagnostics-inspector-body" data-diagnostics-body></div>`;
+    document.body.appendChild(inspector);
+    inspector.querySelector('[data-close-diagnostics="1"]')?.addEventListener('click', () => {
+      inspector?.classList.add('hidden');
+    });
+    inspector.querySelector('[data-refresh-diagnostics="1"]')?.addEventListener('click', refresh);
+    return inspector;
+  };
+
+  const row = (label, value) => `
+    <div class="diagnostics-row">
+      <span>${escapeText(label)}</span>
+      <code>${escapeText(value)}</code>
+    </div>`;
+
+  const render = () => {
+    const el = ensureInspector();
+    const body = el.querySelector('[data-diagnostics-body]');
+    if (!body) return;
+    if (!latest) {
+      body.innerHTML = row('status', 'diagnostics loading');
+      return;
+    }
+    const apiBuild = latest.api_build || {};
+    const cards = latest.cards?.summary || {};
+    const botFleet = latest.bot_fleet || {};
+    const equity = latest.equity || {};
+    const service = latest.service || {};
+    const paths = latest.paths || {};
+    body.innerHTML = [
+      row('api_build', `${apiBuild.dashboard_version || '?'} ${apiBuild.release_stage || '?'} pid:${service.pid || apiBuild.pid || '?'}`),
+      row('service', `${service.status || 'unknown'} uptime:${Math.round(Number(service.uptime_s || 0))}s`),
+      row('cards', `${cards.total || 0} total / ${cards.dead || 0} dead / ${cards.stale || 0} stale`),
+      row('bot_fleet', `${botFleet.confirmed_bots || 0}/${botFleet.bot_total || 0} confirmed - ${botFleet.truth_status || 'unknown'}`),
+      row('equity', `${equity.source || 'unknown'} points:${equity.point_count || 0} age:${equity.source_age_s ?? 'n/a'}s`),
+      row('state_dir', paths.state_dir || 'unknown'),
+      row('generated', latest.generated_at || 'unknown'),
+    ].join('');
+  };
+
+  const publish = (payload) => {
+    latest = payload;
+    const checks = payload.checks || {};
+    const botFleet = payload.bot_fleet || {};
+    const equity = payload.equity || {};
+    const ok = checks.api_contract && checks.card_contract && checks.bot_fleet_contract && checks.equity_contract;
+    const botTotal = Number(botFleet.bot_total || 0);
+    const confirmed = Number(botFleet.confirmed_bots || 0);
+    const label = ok
+      ? `diagnostics: live ${confirmed}/${botTotal}`
+      : 'diagnostics: degraded';
+    setChip(label, ok ? 'ok' : 'degraded', `${botFleet.truth_status || 'unknown'} / ${equity.source || 'unknown'}`);
+    render();
+    window.dispatchEvent(new CustomEvent('eta-command-center-diagnostics', {
+      detail: {
+        at: Date.now(),
+        api_build: payload.api_build,
+        bot_fleet: botFleet,
+        equity,
+        checks,
+      },
+    }));
+  };
+
+  async function refresh() {
+    try {
+      const resp = await fetch(`${endpoint}?_t=${Date.now()}`, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!resp.ok) {
+        setChip(`diagnostics: http ${resp.status}`, 'dead', 'The running service is stale or diagnostics is unavailable.');
+        return;
+      }
+      publish(await resp.json());
+    } catch (err) {
+      setChip('diagnostics: down', 'dead', String(err?.message || err));
+    }
+  }
+
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '0');
+  chip.addEventListener('click', () => {
+    const el = ensureInspector();
+    render();
+    el.classList.toggle('hidden');
+  });
+  chip.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      chip.click();
+    }
+  });
+  refresh();
+  setInterval(refresh, 15_000);
+}
+
 function initConsistencyGuardrails() {
   let previousFillTs = 0;
   setInterval(async () => {
@@ -1084,6 +1214,7 @@ function boot() {
   initMinimalMode();
   initDataFreshnessTelemetry();
   initCardHealthContract();
+  initCommandCenterDiagnostics();
   initConsistencyGuardrails();
   initLatencyBudgetGuardrails();
   initTradeRefreshFanout();

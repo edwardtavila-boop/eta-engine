@@ -198,6 +198,34 @@ class TestDashboardAPI:
         assert cards["fl-equity-curve"]["endpoint"].startswith("/api/equity?")
         assert all(card["status"] not in {"dead", "stale"} for card in data["cards"])
 
+    def test_dashboard_diagnostics_rollup_explains_live_sources(self, app_client):
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["dashboard_version"] == "v1"
+        assert data["release_stage"] == "pre_beta"
+        assert data["source_of_truth"] == "dashboard_diagnostics"
+        assert data["service"]["status"] == "ok"
+        assert data["service"]["uptime_s"] >= 0
+        assert data["paths"]["state_dir"].endswith("state")
+        assert data["cards"]["summary"]["dead"] == 0
+        assert data["cards"]["summary"]["stale"] == 0
+        assert data["bot_fleet"]["bot_total"] == 0
+        assert data["bot_fleet"]["confirmed_bots"] == 0
+        assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live"}
+        assert data["equity"]["source"] in {
+            "canonical_state_empty",
+            "supervisor_heartbeat",
+            "fills_intraday",
+            "blotter_curve",
+            "aggregated_bot_curves",
+            "bot_curve",
+        }
+        assert data["checks"]["card_contract"] is True
+        assert data["checks"]["auth_contract"] is True
+        assert "generated_at" in data
+
     def test_kaizen_summary(self, app_client):
         r = app_client.get("/api/kaizen")
         assert r.status_code == 200
