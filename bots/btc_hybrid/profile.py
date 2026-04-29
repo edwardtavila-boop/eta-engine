@@ -23,7 +23,6 @@ from typing import Any
 
 from eta_engine.bots.btc_hybrid.bot import BtcHybridProfile
 
-
 DEFAULT_BTC_PROFILE_PATH: Path = (
     Path(__file__).resolve().parent.parent.parent
     / "configs"

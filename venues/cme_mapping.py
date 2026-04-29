@@ -54,7 +54,6 @@ Notional reference (illustrative, refresh from CME daily settle):
 
 from __future__ import annotations
 
-
 CRYPTO_PERP_TO_CME_MICRO: dict[str, str] = {
     "BTCUSDT": "MBT",
     "ETHUSDT": "MET",

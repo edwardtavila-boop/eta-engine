@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from eta_engine.chaos.drills import (
     DRILL_REGISTRY,
     DrillResult,

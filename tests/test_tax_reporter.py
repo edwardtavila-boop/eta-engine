@@ -128,7 +128,8 @@ class TestKoinlyExport:
         path = tmp_path / "k2.csv"
         stk = _ev("SOL", gain=0.0, qty=0.1, evt=EventType.STAKING_RECEIPT)
         exp.export_csv([stk], path)
-        rows = list(csv.DictReader(open(path, encoding="utf-8")))
+        with path.open(encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
         assert rows[0]["Label"] == "staking"
         assert rows[0]["Received Currency"] == "SOL"
 

@@ -27,7 +27,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger("refresh_correlation_matrix")
@@ -76,7 +76,7 @@ def _pearson(a: list[float], b: list[float]) -> float:
     b2 = b[:n]
     mean_a = sum(a2) / n
     mean_b = sum(b2) / n
-    num   = sum((x - mean_a) * (y - mean_b) for x, y in zip(a2, b2))
+    num = sum((x - mean_a) * (y - mean_b) for x, y in zip(a2, b2, strict=True))
     den_a = sum((x - mean_a) ** 2 for x in a2) ** 0.5
     den_b = sum((y - mean_b) ** 2 for y in b2) ** 0.5
     if den_a == 0 or den_b == 0:

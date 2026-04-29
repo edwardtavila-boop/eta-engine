@@ -169,7 +169,7 @@ class BotPaperResult:
 # ── Harness ──
 
 
-def _ctx_builder(bar, hist):  # noqa: ANN001
+def _ctx_builder(bar, hist) -> dict[str, Any]:  # noqa: ANN001
     """Rich synthetic context that drives meaningful confluence."""
     from eta_engine.core.data_pipeline import FundingRate
 

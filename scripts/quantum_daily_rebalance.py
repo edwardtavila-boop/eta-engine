@@ -172,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
         SignalScore,
     )
     from eta_engine.brain.jarvis_v3.quantum.cloud_adapter import (
-        CloudConfig, QuantumCloudAdapter,
+        CloudConfig,
+        QuantumCloudAdapter,
     )
     candidates = [
         SignalScore(

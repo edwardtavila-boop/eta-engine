@@ -70,7 +70,7 @@ line-length = 120
 select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN401"]
+"tests/*" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN401", "TC003"]
 # jarvis_dashboard embeds long HTML template strings (E501) and overrides
 # BaseHTTPRequestHandler.log_message whose signature uses *args: Any (ANN401).
 "scripts/jarvis_dashboard.py" = ["E501", "ANN401"]
@@ -81,6 +81,11 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 # signatures that must match a venue-supplied contract whose extras we don't
 # use.
 "scripts/run_eta_live.py" = ["ANN002", "ANN003", "ANN401"]
+# Historical roadmap bump / decision ledger helpers intentionally embed long
+# copied roadmap strings; wrapping them hurts auditability more than it helps.
+"scripts/_bump_roadmap_v0_1_14.py" = ["E501"]
+"scripts/_bump_roadmap_v0_1_15.py" = ["E501"]
+"scripts/_record_codebase_decision.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

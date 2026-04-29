@@ -39,7 +39,7 @@ class SweepSplit(BaseModel):
         description="% to emergency reserve",
     )
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, __context: object) -> None:
         total = self.cold_stake_pct + self.reinvest_pct + self.reserve_pct
         if abs(total - 100.0) > 0.01:
             raise ValueError(f"Split must sum to 100%, got {total:.2f}%")

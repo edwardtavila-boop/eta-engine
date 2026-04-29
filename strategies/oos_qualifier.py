@@ -62,11 +62,11 @@ from eta_engine.strategies.backtest_harness import HarnessConfig, run_harness
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from eta_engine.strategies.eta_policy import StrategyContext
     from eta_engine.strategies.backtest_harness import (
         BacktestReport,
         StrategyTrade,
     )
+    from eta_engine.strategies.eta_policy import StrategyContext
     from eta_engine.strategies.models import (
         Bar,
         StrategyId,

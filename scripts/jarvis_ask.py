@@ -28,7 +28,7 @@ if str(ROOT.parent) not in sys.path:
 logger = logging.getLogger("jarvis_ask")
 
 
-def _print_result(result, *, text: bool) -> None:
+def _print_result(result: object, *, text: bool) -> None:
     if text:
         print()
         print(f"  query: {getattr(result, 'query', '?')}")

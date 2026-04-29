@@ -57,7 +57,9 @@ def main(argv: list[str] | None = None) -> int:
     from eta_engine.brain.jarvis_v3 import policies  # noqa: F401
     from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
     from eta_engine.scripts.score_policy_candidate import (
-        candidate_metrics, champion_metrics, load_audit_records,
+        candidate_metrics,
+        champion_metrics,
+        load_audit_records,
     )
 
     cutoff = datetime.now(UTC) - timedelta(days=args.window_days)

@@ -31,8 +31,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from eta_engine.strategies.eta_policy import StrategyContext
 from eta_engine.strategies.backtest_harness import HarnessConfig
+from eta_engine.strategies.eta_policy import StrategyContext
 from eta_engine.strategies.models import (
     Bar,
     Side,

@@ -21,7 +21,6 @@ from collections.abc import Callable
 
 import pytest
 
-from eta_engine.strategies.eta_policy import StrategyContext
 from eta_engine.strategies.backtest_harness import (
     BacktestReport,
     ExitReason,
@@ -31,6 +30,7 @@ from eta_engine.strategies.backtest_harness import (
     default_ctx_builder,
     run_harness,
 )
+from eta_engine.strategies.eta_policy import StrategyContext
 from eta_engine.strategies.models import (
     Bar,
     Side,

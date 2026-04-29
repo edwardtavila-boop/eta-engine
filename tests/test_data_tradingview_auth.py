@@ -12,6 +12,7 @@ import os
 from pathlib import Path  # noqa: TC003 -- runtime via tmp_path
 
 import pytest
+
 from eta_engine.data.tradingview.auth import (
     AuthState,
     AuthStateError,

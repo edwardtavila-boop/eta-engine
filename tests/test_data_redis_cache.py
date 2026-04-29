@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 
 import pytest  # noqa: TC002 -- pytest fixtures + decorators are runtime
+
 from eta_engine.data.redis_cache import (
     InProcessLRUCache,
     RedisJsonlCache,

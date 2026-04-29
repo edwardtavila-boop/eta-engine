@@ -30,13 +30,16 @@ import os
 import sys
 from datetime import time
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from eta_engine.strategies.orb_strategy import ORBConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 
-def _orb_config_from_env():  # type: ignore[no-untyped-def]
+def _orb_config_from_env() -> ORBConfig:
     """Read ORB_* env vars. Defaults are MNQ/NQ-tuned."""
     from eta_engine.strategies.orb_strategy import ORBConfig
 

@@ -99,10 +99,7 @@ def test_stack_separation_filter_cuts_chop_fires() -> None:
         n = 0
         for i in range(50):
             leg = (i // 4) % 2
-            if leg == 0:
-                c = 100 + (i % 4) * 0.3
-            else:
-                c = 100 - (i % 4) * 0.3
+            c = 100 + (i % 4) * 0.3 if leg == 0 else 100 - (i % 4) * 0.3
             b = _bar(i, h=c + 0.2, low=c - 0.2, c=c)
             hist.append(b)
             out = strat.maybe_enter(b, hist, 10_000.0, cfg)

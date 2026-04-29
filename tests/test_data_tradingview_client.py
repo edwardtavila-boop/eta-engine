@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from eta_engine.data.tradingview.auth import AuthState
 from eta_engine.data.tradingview.client import (
     ChartTarget,

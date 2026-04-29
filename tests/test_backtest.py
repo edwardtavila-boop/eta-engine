@@ -64,7 +64,7 @@ class TestSyntheticBars:
     def test_produces_requested_count(self) -> None:
         assert len(BarReplay.synthetic_bars(n=50, seed=7)) == 50
 
-    def test_bars_are_barData(self) -> None:
+    def test_bars_are_bar_data(self) -> None:
         for b in BarReplay.synthetic_bars(n=10, seed=1):
             assert isinstance(b, BarData)
             assert b.high >= max(b.open, b.close) - 1e-9

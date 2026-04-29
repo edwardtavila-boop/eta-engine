@@ -133,9 +133,8 @@ class PiCycleStrategy:
             return None  # need a prior diff to detect crossover
 
         # Cooldown check
-        if self._last_fire_idx is not None:
-            if self._bars_seen - self._last_fire_idx < self.cfg.cooldown_bars:
-                return None
+        if self._last_fire_idx is not None and self._bars_seen - self._last_fire_idx < self.cfg.cooldown_bars:
+            return None
 
         side: str | None = None
         regime_tag = ""

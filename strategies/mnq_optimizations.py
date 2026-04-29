@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 
 def classify_regime_v2(
-    bars: "list[BarData]",
+    bars: list[BarData],
     *,
     short_window: int = 20,
     long_window: int = 60,
@@ -127,7 +127,7 @@ class SessionProfile:
     blackout_windows: tuple[tuple[time, time], ...]
 
     @classmethod
-    def mnq_default(cls) -> "SessionProfile":
+    def mnq_default(cls) -> SessionProfile:
         return cls(
             timezone_name="America/Chicago",
             blackout_windows=(
@@ -137,13 +137,13 @@ class SessionProfile:
         )
 
 
-def _zone(profile: SessionProfile) -> "ZoneInfo":
+def _zone(profile: SessionProfile) -> ZoneInfo:
     from zoneinfo import ZoneInfo
 
     return ZoneInfo(profile.timezone_name)
 
 
-def in_session(ts: "datetime", profile: SessionProfile | None = None) -> bool:
+def in_session(ts: datetime, profile: SessionProfile | None = None) -> bool:
     """True when the bar timestamp is OUTSIDE every blackout window.
 
     Operates entirely in the profile's local timezone. Uses
@@ -158,10 +158,7 @@ def in_session(ts: "datetime", profile: SessionProfile | None = None) -> bool:
         ts = ts.replace(tzinfo=UTC)
     local = ts.astimezone(_zone(profile)).timetz()
     local_t = time(local.hour, local.minute, local.second)
-    for start, end in profile.blackout_windows:
-        if start <= local_t < end:
-            return False
-    return True
+    return all(not start <= local_t < end for start, end in profile.blackout_windows)
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +167,8 @@ def in_session(ts: "datetime", profile: SessionProfile | None = None) -> bool:
 
 
 def correlated_with_es(
-    mnq_bars: "list[BarData]",
-    es_bars: "list[BarData] | None",
+    mnq_bars: list[BarData],
+    es_bars: list[BarData] | None,
     *,
     window: int = 30,
     threshold: float = 0.4,
@@ -199,7 +196,7 @@ def correlated_with_es(
     return _pearson(mnq_returns[-n:], es_returns[-n:]) >= threshold
 
 
-def _bar_returns(bars: "list[BarData]") -> list[float]:
+def _bar_returns(bars: list[BarData]) -> list[float]:
     return [
         (b2.close - b1.close) / b1.close
         for b1, b2 in zip(bars[:-1], bars[1:], strict=False)

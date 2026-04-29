@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, time
 
-import pytest
-
 from eta_engine.core.data_pipeline import BarData
 from eta_engine.strategies.mnq_optimizations import (
     SessionProfile,

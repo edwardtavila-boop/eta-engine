@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+
 from eta_engine.strategies.bandit_store_pg import (
     CONTEXT_DIM,
     BanditStorePgError,

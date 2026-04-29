@@ -102,7 +102,6 @@ def main(argv: list[str] | None = None) -> int:
     recent = _load_recent_verdict_stress(args.audit_dir, since=now - timedelta(hours=args.recent_hours))
     baseline = _load_recent_verdict_stress(args.audit_dir, since=now - timedelta(hours=args.baseline_hours))
     # Baseline is the wider window (includes recent); strip recent to compare clean
-    recent_set = set()
     # We can't easily de-dupe by value; use the longer window minus the count of recent for proxy
     baseline = baseline[:-len(recent)] if len(baseline) > len(recent) else baseline
 

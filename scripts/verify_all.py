@@ -13,12 +13,16 @@ import contextlib
 import importlib
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 
-def check(name: str, fn) -> tuple[str, bool, str]:
+def check(name: str, fn: Callable[[], None]) -> tuple[str, bool, str]:
     try:
         fn()
         return (name, True, "OK")
@@ -68,10 +72,8 @@ def test_sweep() -> None:
 
 
 def test_bots_import() -> None:
-    try:
+    with contextlib.suppress(ImportError):
         importlib.import_module("eta_engine.bots")
-    except ImportError:
-        pass  # bots scaffolding in flight
 
 
 def test_funnel_import() -> None:

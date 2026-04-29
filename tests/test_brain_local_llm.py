@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from eta_engine.brain.jarvis_v3.local_llm import (
     LocalLLMClientError,
     LocalLLMGateway,

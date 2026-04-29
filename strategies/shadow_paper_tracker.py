@@ -22,7 +22,6 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass
 
-
 DEFAULT_WINDOW_SIZE: int = 20
 DEFAULT_REINSTATE_WINDOWS: int = 3
 DEFAULT_WIN_RATE_FLOOR: float = 0.52
