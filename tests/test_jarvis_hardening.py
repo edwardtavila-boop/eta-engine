@@ -390,6 +390,37 @@ class TestDeadmanSwitch:
         ds._t = t  # stash for mutation
         return ds
 
+    def test_default_paths_are_canonical_workspace_state(self) -> None:
+        from eta_engine.brain.avengers import DEADMAN_JOURNAL, DEADMAN_SENTINEL
+
+        assert DEADMAN_SENTINEL == workspace_roots.ETA_DEADMAN_SENTINEL_PATH
+        assert DEADMAN_JOURNAL == workspace_roots.ETA_DEADMAN_JOURNAL_PATH
+        assert "EvolutionaryTradingAlgo" in str(DEADMAN_SENTINEL)
+
+    def test_default_last_activity_can_fall_back_to_legacy_sentinel(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        from eta_engine.brain.avengers import deadman
+
+        now = datetime(2026, 4, 30, 0, 8, tzinfo=UTC)
+        canonical = tmp_path / "state" / "operator.sentinel"
+        legacy = tmp_path / ".jarvis" / "operator.sentinel"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text((now - timedelta(hours=1)).isoformat(), encoding="utf-8")
+        legacy_ts = (now - timedelta(hours=1)).timestamp()
+        os.utime(legacy, (legacy_ts, legacy_ts))
+        monkeypatch.setattr(deadman, "DEADMAN_SENTINEL", canonical)
+        monkeypatch.setattr(deadman, "DEADMAN_JOURNAL", tmp_path / "state" / "operator_activity.jsonl")
+        monkeypatch.setattr(deadman, "LEGACY_DEADMAN_SENTINEL", legacy)
+
+        ds = DeadmanSwitch(clock=lambda: now)
+
+        assert ds.sentinel_path == canonical
+        assert ds.last_activity() is not None
+        assert ds.state() is DeadmanState.LIVE
+
     def test_record_activity_creates_sentinel_and_live(self, tmp_path: Path) -> None:
         ds = self._ds(tmp_path)
         ds.record_activity(source="test")

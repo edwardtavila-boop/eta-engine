@@ -35,6 +35,8 @@ ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "bot_strategy
 ETA_DRIFT_WATCHDOG_LOG_PATH = ETA_RUNTIME_STATE_DIR / "drift_watchdog.jsonl"
 ETA_JARVIS_DRIFT_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_drift.jsonl"
 ETA_SHARED_BREAKER_STATE_PATH = ETA_RUNTIME_STATE_DIR / "breaker.json"
+ETA_DEADMAN_SENTINEL_PATH = ETA_RUNTIME_STATE_DIR / "operator.sentinel"
+ETA_DEADMAN_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "operator_activity.jsonl"
 ETA_RUNTIME_ALERTS_LOG_PATH = ETA_RUNTIME_LOG_DIR / "alerts_log.jsonl"
 ETA_RUNTIME_LOG_PATH = ETA_RUNTIME_LOG_DIR / "runtime_log.jsonl"
 ETA_LEGACY_DOCS_DRIFT_WATCHDOG_LOG_PATH = ETA_ENGINE_ROOT / "docs" / "drift_watchdog.jsonl"
@@ -42,6 +44,8 @@ ETA_LEGACY_DOCS_ALERTS_LOG_PATH = ETA_ENGINE_ROOT / "docs" / "alerts_log.jsonl"
 ETA_LEGACY_DOCS_RUNTIME_LOG_PATH = ETA_ENGINE_ROOT / "docs" / "runtime_log.jsonl"
 ETA_LEGACY_JARVIS_DRIFT_JOURNAL_PATH = Path.home() / ".jarvis" / "drift.jsonl"
 ETA_LEGACY_SHARED_BREAKER_STATE_PATH = Path.home() / ".jarvis" / "breaker.json"
+ETA_LEGACY_DEADMAN_SENTINEL_PATH = Path.home() / ".jarvis" / "operator.sentinel"
+ETA_LEGACY_DEADMAN_JOURNAL_PATH = Path.home() / ".jarvis" / "operator_activity.jsonl"
 
 
 def ensure_dir(path: Path) -> Path:

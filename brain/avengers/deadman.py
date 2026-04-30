@@ -21,10 +21,12 @@ soft governor layered on top.
 
 Design
 ------
-Single sentinel file: ``~/.jarvis/operator.sentinel``. Its mtime is
-"last operator activity". Every CLI command in ``scripts/jarvis_cli.py``
-calls :py:meth:`DeadmanSwitch.record_activity` on startup; daemons do
-NOT touch it (they're not the operator).
+Single sentinel file: ``var/eta_engine/state/operator.sentinel``. Its
+mtime is "last operator activity". Every CLI command in
+``scripts/jarvis_cli.py`` calls :py:meth:`DeadmanSwitch.record_activity`
+on startup; daemons do NOT touch it (they're not the operator). If no
+canonical sentinel exists yet, an older ``~/.jarvis/operator.sentinel``
+is read so migration preserves the operator-presence state.
 
 Three thresholds:
 
@@ -48,17 +50,22 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from eta_engine.brain.avengers.base import TaskEnvelope
 
 
-DEADMAN_SENTINEL: Path = Path.home() / ".jarvis" / "operator.sentinel"
-DEADMAN_JOURNAL: Path = Path.home() / ".jarvis" / "operator_activity.jsonl"
+DEADMAN_SENTINEL: Path = workspace_roots.ETA_DEADMAN_SENTINEL_PATH
+DEADMAN_JOURNAL: Path = workspace_roots.ETA_DEADMAN_JOURNAL_PATH
+LEGACY_DEADMAN_SENTINEL: Path = workspace_roots.ETA_LEGACY_DEADMAN_SENTINEL_PATH
+LEGACY_DEADMAN_JOURNAL: Path = workspace_roots.ETA_LEGACY_DEADMAN_JOURNAL_PATH
 
 
 # Categories whose cost or blast radius we want to block when STALE.
@@ -135,7 +142,8 @@ class DeadmanSwitch:
     Parameters
     ----------
     sentinel_path
-        Path to the mtime-sentinel file. Defaults to ``~/.jarvis/operator.sentinel``.
+        Path to the mtime-sentinel file. Defaults to
+        ``var/eta_engine/state/operator.sentinel``.
     soft_stale_hours
         After this many hours without activity the state is DROWSY.
     hard_stale_hours
@@ -194,13 +202,22 @@ class DeadmanSwitch:
 
     def last_activity(self) -> datetime | None:
         """Return the mtime of the sentinel, or None if it doesn't exist."""
-        if not self.sentinel_path.exists():
+        sentinel_path = self._sentinel_read_path()
+        if sentinel_path is None:
             return None
         try:
-            mtime = self.sentinel_path.stat().st_mtime
+            mtime = sentinel_path.stat().st_mtime
         except OSError:
             return None
         return datetime.fromtimestamp(mtime, tz=UTC)
+
+    def _sentinel_read_path(self) -> Path | None:
+        """Prefer canonical sentinel, with legacy readback during migration."""
+        if self.sentinel_path.exists():
+            return self.sentinel_path
+        if self.sentinel_path == DEADMAN_SENTINEL and LEGACY_DEADMAN_SENTINEL.exists():
+            return LEGACY_DEADMAN_SENTINEL
+        return None
 
     def hours_since_activity(self) -> float:
         """Hours since last operator touch. ``inf`` if never touched."""
@@ -326,6 +343,8 @@ class DeadmanSwitch:
 __all__ = [
     "DEADMAN_JOURNAL",
     "DEADMAN_SENTINEL",
+    "LEGACY_DEADMAN_JOURNAL",
+    "LEGACY_DEADMAN_SENTINEL",
     "DeadmanDecision",
     "DeadmanState",
     "DeadmanStatus",

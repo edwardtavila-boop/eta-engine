@@ -103,6 +103,8 @@ from eta_engine.brain.avengers.daemon import (
 from eta_engine.brain.avengers.deadman import (
     DEADMAN_JOURNAL,
     DEADMAN_SENTINEL,
+    LEGACY_DEADMAN_JOURNAL,
+    LEGACY_DEADMAN_SENTINEL,
     DeadmanDecision,
     DeadmanState,
     DeadmanStatus,
@@ -196,6 +198,8 @@ __all__ = [
     "DRIFT_JOURNAL",
     "FLEET_PERSONAS",
     "LEGACY_BREAKER_PATH",
+    "LEGACY_DEADMAN_JOURNAL",
+    "LEGACY_DEADMAN_SENTINEL",
     "PERSONA_BUCKET",
     "PERSONA_TIER",
     "PROMOTION_JOURNAL",

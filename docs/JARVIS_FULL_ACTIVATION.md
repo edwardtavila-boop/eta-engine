@@ -131,6 +131,11 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - The shared JARVIS circuit-breaker state now defaults to
   `var/eta_engine/state/breaker.json` with legacy home `.jarvis/breaker.json`
   readback, so an existing safety trip is not lost during canonical migration.
+- The JARVIS deadman switch now writes operator presence to
+  `var/eta_engine/state/operator.sentinel` and
+  `var/eta_engine/state/operator_activity.jsonl`, while still reading a
+  legacy home `.jarvis/operator.sentinel` if canonical state has not been
+  created yet.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-29T23:46:51.6260000Z",
+  "last_updated": "2026-04-30T00:08:51.9170000Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5172,
+    "eta_engine_tests_passing": 5174,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
       "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
@@ -79,6 +79,22 @@
       "tests": [
         "tests/test_jarvis_hardening.py::TestSharedCircuitBreaker::test_default_path_is_canonical_workspace_state",
         "tests/test_jarvis_hardening.py::TestSharedCircuitBreaker::test_default_rehydrate_can_fall_back_to_legacy_home_file",
+        "tests/test_workspace_path_cleanup.py::test_workspace_roots_point_inside_canonical_repo",
+        "tests/test_workspace_path_cleanup.py::test_runtime_helpers_drop_localappdata_eta_state_paths"
+      ]
+    },
+    "eta_engine_deadman_canonical": {
+      "timestamp_utc": "2026-04-30T00:08:51.9170000Z",
+      "surface": "JARVIS deadman operator-presence writes to var/eta_engine/state/operator.sentinel and operator_activity.jsonl by default while preserving legacy home sentinel readback when no canonical sentinel exists",
+      "fields": [
+        "ETA_DEADMAN_SENTINEL_PATH",
+        "ETA_DEADMAN_JOURNAL_PATH",
+        "DEADMAN_SENTINEL",
+        "LEGACY_DEADMAN_SENTINEL"
+      ],
+      "tests": [
+        "tests/test_jarvis_hardening.py::TestDeadmanSwitch::test_default_paths_are_canonical_workspace_state",
+        "tests/test_jarvis_hardening.py::TestDeadmanSwitch::test_default_last_activity_can_fall_back_to_legacy_sentinel",
         "tests/test_workspace_path_cleanup.py::test_workspace_roots_point_inside_canonical_repo",
         "tests/test_workspace_path_cleanup.py::test_runtime_helpers_drop_localappdata_eta_state_paths"
       ]
@@ -5217,7 +5233,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-29T23:46:51.6260000Z",
+  "last_updated_utc": "2026-04-30T00:08:51.9170000Z",
   "milestones": [
     {
       "version": "v0.1.31",
