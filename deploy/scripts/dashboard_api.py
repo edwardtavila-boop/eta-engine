@@ -508,9 +508,9 @@ def _apply_bot_strategy_readiness(status: dict, readiness: dict) -> dict:
 
     if not status.get("launch_lane"):
         status["launch_lane"] = str(strategy_readiness.get("launch_lane") or "")
-    if "can_paper_trade" not in status:
+    if readiness or "can_paper_trade" not in status:
         status["can_paper_trade"] = bool(strategy_readiness.get("can_paper_trade"))
-    if "can_live_trade" not in status:
+    if readiness or "can_live_trade" not in status:
         status["can_live_trade"] = bool(strategy_readiness.get("can_live_trade"))
     if not status.get("readiness_next_action"):
         status["readiness_next_action"] = str(
@@ -1673,6 +1673,15 @@ def bot_fleet_roster(
     # Supervisor rows win on name collision (they carry live session data).
     sup_rows = _supervisor_roster_rows(now_ts, bot=bot)
     if sup_rows:
+        for sup_row in sup_rows:
+            _apply_bot_strategy_readiness(
+                sup_row,
+                _lookup_bot_strategy_readiness(
+                    readiness_rows,
+                    sup_row,
+                    str(sup_row.get("id") or sup_row.get("name") or ""),
+                ),
+            )
         sup_ids = {str(s.get("id") or "") for s in sup_rows}
         rows = [
             r for r in rows

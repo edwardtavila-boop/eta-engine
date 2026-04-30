@@ -1158,6 +1158,89 @@ class TestDashboardAPI:
             "source_freshness",
         }
 
+    def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Live supervisor rows inherit launch posture even when heartbeat omits readiness."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["APEX_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-04-28T12:00:00+00:00",
+                    "mode": "paper_sim",
+                    "bots": [
+                        {
+                            "bot_id": "nq_futures",
+                            "symbol": "NQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 5,
+                            "n_exits": 5,
+                            "realized_pnl": 3.5,
+                            "open_position": None,
+                            "last_jarvis_verdict": "DENIED",
+                            "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                        },
+                    ],
+                },
+            ),
+        )
+        readiness = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-04-29T21:45:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 1, "launch_lanes": {"live_preflight": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "nq_futures",
+                            "strategy_id": "nq_orb_v1",
+                            "strategy_kind": "orb",
+                            "symbol": "NQ1",
+                            "timeframe": "5m",
+                            "active": True,
+                            "promotion_status": "production",
+                            "baseline_status": "baseline_present",
+                            "data_status": "ready",
+                            "launch_lane": "live_preflight",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "missing_critical": [],
+                            "missing_optional": [],
+                            "next_action": "Run per-bot promotion preflight before live routing.",
+                        },
+                    ],
+                },
+            ),
+        )
+        monkeypatch.setenv("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", str(readiness))
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        data = r.json()
+        nq_rows = [b for b in data["bots"] if b["name"] == "nq_futures"]
+        assert len(nq_rows) == 1
+        nq = nq_rows[0]
+        assert nq["source"] == "jarvis_strategy_supervisor"
+        assert nq["status"] == "running"
+        assert nq["strategy_readiness"]["strategy_id"] == "nq_orb_v1"
+        assert nq["launch_lane"] == "live_preflight"
+        assert nq["can_paper_trade"] is True
+        assert nq["can_live_trade"] is False
+        assert nq["readiness_next_action"].startswith("Run per-bot promotion")
+
     def test_fleet_equity_uses_supervisor_when_curves_are_missing(self, app_client):
         """Fleet equity stays live from supervisor heartbeat when curve files are absent."""
         import json
