@@ -178,6 +178,7 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
         "eta_engine/scripts/runtime_log_smoke.py",
         "eta_engine/scripts/vps_failover_summary.py",
         "eta_engine/deploy/scripts/live_claude_smoke.py",
+        "eta_engine/deploy/scripts/avengers_daemon.py",
         "eta_engine/deploy/scripts/register_cloudflare_quick.ps1",
         "eta_engine/deploy/scripts/run_dashboard_8421.ps1",
         "eta_engine/deploy/uninstall_windows.ps1",
@@ -194,6 +195,14 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     )
     assert "ETA_DRIFT_WATCHDOG_LOG_PATH" in _read("eta_engine/scripts/drift_watchdog_smoke.py")
     assert "ETA_RUNTIME_LOG_PATH" in _read("eta_engine/scripts/runtime_log_smoke.py")
+    assert "workspace_roots.ETA_RUNTIME_STATE_DIR" in _read("eta_engine/deploy/scripts/avengers_daemon.py")
+    assert "workspace_roots.ETA_RUNTIME_LOG_DIR" in _read("eta_engine/deploy/scripts/avengers_daemon.py")
+    assert 'Path.home() / ".local" / "state" / "eta_engine"' not in _read(
+        "eta_engine/deploy/scripts/avengers_daemon.py"
+    )
+    assert 'Path.home() / ".local" / "log" / "eta_engine"' not in _read(
+        "eta_engine/deploy/scripts/avengers_daemon.py"
+    )
     assert "vps_failover_drill.collect_checks" in _read("eta_engine/scripts/vps_failover_summary.py")
     assert "workspace_roots.ETA_RESEARCH_GRID_RUNTIME_DIR" in _read(
         "eta_engine/scripts/run_research_grid.py"

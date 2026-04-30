@@ -156,6 +156,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   `var/eta_engine/state/avenger_daemons`, and the Prometheus export task
   targets `logs/eta_engine/metrics.prom`, keeping daemon runtime artifacts
   under the canonical workspace instead of home `.jarvis` paths.
+- The deploy Avenger fleet daemon now defaults its long-running state and log
+  directories to `var/eta_engine/state` and `logs/eta_engine`, eliminating the
+  last home `.local` write defaults from that deploy entrypoint.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

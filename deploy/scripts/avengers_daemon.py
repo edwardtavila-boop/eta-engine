@@ -35,12 +35,13 @@ from eta_engine.brain.jarvis_v3.claude_layer.distillation import Distiller
 from eta_engine.brain.jarvis_v3.claude_layer.usage_tracker import (
     UsageTracker,
 )
+from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger("avengers_daemon")
 
 
-DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "eta_engine"
-DEFAULT_LOG_DIR = Path.home() / ".local" / "log" / "eta_engine"
+DEFAULT_STATE_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR
+DEFAULT_LOG_DIR = workspace_roots.ETA_RUNTIME_LOG_DIR
 
 
 class AvengersDaemon:

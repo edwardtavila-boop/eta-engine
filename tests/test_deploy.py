@@ -162,6 +162,13 @@ class TestSmokeCheck:
 
 
 class TestAvengersDaemon:
+    def test_default_dirs_use_canonical_workspace_paths(self):
+        from eta_engine.deploy.scripts import avengers_daemon
+        from eta_engine.scripts import workspace_roots
+
+        assert avengers_daemon.DEFAULT_STATE_DIR == workspace_roots.ETA_RUNTIME_STATE_DIR
+        assert avengers_daemon.DEFAULT_LOG_DIR == workspace_roots.ETA_RUNTIME_LOG_DIR
+
     def test_heartbeat_shape(self, tmp_path):
         from eta_engine.deploy.scripts.avengers_daemon import AvengersDaemon
 
