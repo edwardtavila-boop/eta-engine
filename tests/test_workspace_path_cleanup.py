@@ -62,6 +62,10 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_CALIBRATION_JOURNAL_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "calibration.jsonl"
     )
+    assert workspace_roots.ETA_AVENGER_DAEMON_PID_DIR == (
+        ROOT / "var" / "eta_engine" / "state" / "avenger_daemons"
+    )
+    assert workspace_roots.ETA_AVENGER_METRICS_PATH == ROOT / "logs" / "eta_engine" / "metrics.prom"
     assert workspace_roots.ETA_LEGACY_SHARED_BREAKER_STATE_PATH.name == "breaker.json"
     assert workspace_roots.ETA_LEGACY_SHARED_BREAKER_STATE_PATH.parent.name == ".jarvis"
     assert workspace_roots.ETA_LEGACY_DEADMAN_SENTINEL_PATH.name == "operator.sentinel"
@@ -244,6 +248,10 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/watchdog.py")
     assert "workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH" in _read("eta_engine/brain/avengers/push.py")
     assert 'Path.home() / ".jarvis" / "alerts.jsonl"' not in _read("eta_engine/brain/avengers/push.py")
+    assert "workspace_roots.ETA_AVENGER_DAEMON_PID_DIR" in _read("eta_engine/brain/avengers/daemon.py")
+    assert "workspace_roots.ETA_AVENGER_METRICS_PATH" in _read("eta_engine/brain/avengers/daemon.py")
+    assert 'Path.home() / ".jarvis"' not in _read("eta_engine/brain/avengers/daemon.py")
+    assert "~/.jarvis/metrics.prom" not in _read("eta_engine/brain/avengers/daemon.py")
     assert '$env:ETA_STATE_DIR = $stateDir' in _read(
         "eta_engine/deploy/scripts/run_dashboard_8421.ps1"
     )

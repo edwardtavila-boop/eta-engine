@@ -152,6 +152,10 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
 - The Avengers alert fan-out now writes its default local audit channel to
   `logs/eta_engine/alerts_log.jsonl`, keeping PushBus/Watchdog alert records
   under the canonical workspace instead of a per-user home `.jarvis` path.
+- Avenger daemon PID files now live under
+  `var/eta_engine/state/avenger_daemons`, and the Prometheus export task
+  targets `logs/eta_engine/metrics.prom`, keeping daemon runtime artifacts
+  under the canonical workspace instead of home `.jarvis` paths.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

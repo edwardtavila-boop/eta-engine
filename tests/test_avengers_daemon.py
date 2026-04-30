@@ -38,6 +38,7 @@ from eta_engine.brain.avengers import (
 )
 from eta_engine.brain.avengers.daemon import _pid_path
 from eta_engine.brain.model_policy import ModelTier, tier_for
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,7 +55,7 @@ def tmp_journal(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def isolated_pid_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Force ~/.jarvis/ to point at a tmp dir so PID files don't leak."""
+    """Keep legacy home lookups isolated for tests that still patch HOME."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     return tmp_path / ".jarvis"
@@ -152,6 +153,12 @@ class TestEnvelopeForTask:
         env = envelope_for_task(BackgroundTask.LOG_COMPACT)
         assert "scheduled" in env.rationale
         assert "LOG_COMPACT" in env.rationale
+
+    def test_prometheus_export_goal_uses_canonical_metrics_path(self):
+        env = envelope_for_task(BackgroundTask.PROMETHEUS_EXPORT)
+
+        assert str(workspace_roots.ETA_AVENGER_METRICS_PATH) in env.goal
+        assert ".jarvis" not in env.goal
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +392,12 @@ class TestTick:
 
 
 class TestRunForever:
+    def test_pid_path_uses_canonical_workspace_state(self):
+        pid_path = _pid_path("BATMAN")
+
+        assert pid_path == workspace_roots.ETA_AVENGER_DAEMON_PID_DIR / "daemon_batman.pid"
+        assert ".jarvis" not in str(pid_path)
+
     def test_honors_max_ticks(
         self,
         tmp_journal: Path,
@@ -485,7 +498,7 @@ class TestRunDaemonCli:
         monkeypatch: pytest.MonkeyPatch,
     ):
         # Point the default journal to tmp for this test so we don't
-        # write into the real ~/.jarvis/avengers.jsonl.
+        # write into the real default avengers journal.
         journal = tmp_path / "avengers.jsonl"
         import eta_engine.brain.avengers.daemon as dm
 

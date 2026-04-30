@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-30T02:00:27.1036308Z",
+  "last_updated": "2026-04-30T02:08:45.6899761Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5187,
+    "eta_engine_tests_passing": 5190,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
       "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
@@ -180,6 +180,22 @@
       "tests": [
         "tests/test_jarvis_hardening.py::TestPushBus::test_default_alerts_journal_path_is_canonical_runtime_log",
         "tests/test_jarvis_hardening.py::TestPushBus::test_default_local_file_notifier_uses_canonical_alerts_journal",
+        "tests/test_workspace_path_cleanup.py::test_runtime_helpers_drop_localappdata_eta_state_paths"
+      ]
+    },
+    "eta_engine_daemon_runtime_paths_canonical": {
+      "timestamp_utc": "2026-04-30T02:08:45.6899761Z",
+      "surface": "Avenger daemon PID files write under var/eta_engine/state/avenger_daemons and the Prometheus export task targets logs/eta_engine/metrics.prom instead of per-user home .jarvis paths",
+      "fields": [
+        "ETA_AVENGER_DAEMON_PID_DIR",
+        "ETA_AVENGER_METRICS_PATH",
+        "_pid_path",
+        "BackgroundTask.PROMETHEUS_EXPORT"
+      ],
+      "tests": [
+        "tests/test_avengers_daemon.py::TestEnvelopeForTask::test_prometheus_export_goal_uses_canonical_metrics_path",
+        "tests/test_avengers_daemon.py::TestRunForever::test_pid_path_uses_canonical_workspace_state",
+        "tests/test_workspace_path_cleanup.py::test_workspace_roots_point_inside_canonical_repo",
         "tests/test_workspace_path_cleanup.py::test_runtime_helpers_drop_localappdata_eta_state_paths"
       ]
     },
@@ -5317,7 +5333,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-30T02:00:27.1036308Z",
+  "last_updated_utc": "2026-04-30T02:08:45.6899761Z",
   "milestones": [
     {
       "version": "v0.1.31",

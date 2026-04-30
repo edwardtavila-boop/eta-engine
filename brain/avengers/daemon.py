@@ -35,8 +35,8 @@ Design principles (same as the rest of brain.avengers)
 2. Deterministic cron matcher so tests don't need ``freezegun``.
 3. Crash-resilient ``run_forever`` -- any exception is logged, the loop
    sleeps, and the daemon keeps going.
-4. PID file at ``~/.jarvis/daemon_<persona>.pid`` so the operator can
-   ``tasklist`` or kill the process without hunting for it.
+4. PID file under ``var/eta_engine/state/avenger_daemons`` so the
+   operator can ``tasklist`` or kill the process without hunting for it.
 5. Every tick is auditable -- the heartbeat is a journal line too.
 
 Public API
@@ -56,7 +56,6 @@ import os
 import signal
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,9 +73,11 @@ from eta_engine.brain.avengers.dispatch import (
 from eta_engine.brain.avengers.fleet import Fleet
 from eta_engine.brain.jarvis_admin import SubsystemId
 from eta_engine.brain.model_policy import TaskCategory
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
@@ -249,7 +250,9 @@ _TASK_GOALS: dict[BackgroundTask, str] = {
     BackgroundTask.LOG_ROTATE: "archive and prune the avengers JSONL + cron logs",
     BackgroundTask.DISK_CLEANUP: "remove stale tempdirs, sandbox debris, and old artifact files",
     BackgroundTask.BACKUP: "snapshot state_dir and configs to a rolling daily backup",
-    BackgroundTask.PROMETHEUS_EXPORT: "flush the latest metrics to ~/.jarvis/metrics.prom for scraping",
+    BackgroundTask.PROMETHEUS_EXPORT: (
+        f"flush the latest metrics to {workspace_roots.ETA_AVENGER_METRICS_PATH} for scraping"
+    ),
 }
 
 
@@ -280,7 +283,7 @@ def envelope_for_task(
 
 
 def _pid_path(persona: str) -> Path:
-    return Path.home() / ".jarvis" / f"daemon_{persona.lower()}.pid"
+    return workspace_roots.ETA_AVENGER_DAEMON_PID_DIR / f"daemon_{persona.lower()}.pid"
 
 
 def _write_pid(persona: str) -> Path:
