@@ -92,6 +92,14 @@ DASHBOARD_CARD_REGISTRY = (
         "stale_after_s": 60,
     },
     {
+        "id": "cc-strategy-supercharge",
+        "title": "Strategy Supercharge Queue",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/strategy_supercharge_manifest",
+        "required": True,
+        "stale_after_s": 60,
+    },
+    {
         "id": "cc-v22-toggle",
         "title": "V22 Modulation",
         "source": "endpoint",
@@ -800,6 +808,72 @@ def _strategy_supercharge_scorecard_payload() -> dict:
     }
 
 
+def _strategy_supercharge_manifest_payload() -> dict:
+    """Return the executable A+C retest manifest without breaking the dashboard."""
+    try:
+        from eta_engine.scripts.strategy_supercharge_manifest import build_manifest
+
+        payload = build_manifest()
+    except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        return {
+            "source": "strategy_supercharge_manifest",
+            "status": "unreadable",
+            "error": str(exc),
+            "summary": {},
+            "rows": [],
+            "rows_by_bot": {},
+            "next_batch": [],
+            "b_later": [],
+            "hold": [],
+            "commands": [],
+        }
+    return payload if isinstance(payload, dict) else {
+        "source": "strategy_supercharge_manifest",
+        "status": "unreadable",
+        "error": "strategy supercharge manifest returned a non-object payload",
+        "summary": {},
+        "rows": [],
+        "rows_by_bot": {},
+        "next_batch": [],
+        "b_later": [],
+        "hold": [],
+        "commands": [],
+    }
+
+
+def _strategy_supercharge_results_payload() -> dict:
+    """Return latest A+C retest evidence without breaking the dashboard."""
+    try:
+        from eta_engine.scripts.strategy_supercharge_results import build_results
+
+        payload = build_results()
+    except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        return {
+            "source": "strategy_supercharge_results",
+            "status": "unreadable",
+            "error": str(exc),
+            "summary": {},
+            "rows": [],
+            "rows_by_bot": {},
+            "tested": [],
+            "passed": [],
+            "failed": [],
+            "pending": [],
+        }
+    return payload if isinstance(payload, dict) else {
+        "source": "strategy_supercharge_results",
+        "status": "unreadable",
+        "error": "strategy supercharge results returned a non-object payload",
+        "summary": {},
+        "rows": [],
+        "rows_by_bot": {},
+        "tested": [],
+        "passed": [],
+        "failed": [],
+        "pending": [],
+    }
+
+
 def _append_dashboard_event(event: str, payload: dict) -> None:
     """Best-effort append to local dashboard event log."""
     row = {"ts": time.time(), "event": event, **payload}
@@ -1139,6 +1213,8 @@ def dashboard_payload(response: Response) -> dict:
     payload = dict(read_json_safe(_state_dir() / "dashboard_payload.json"))
     payload["operator_queue"] = _operator_queue_payload()
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
+    payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
+    payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
     return payload
 
 
@@ -1186,6 +1262,20 @@ def jarvis_strategy_supercharge_scorecard(response: Response) -> dict:
     """Current conservative strategy-supercharge target scorecard."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return _strategy_supercharge_scorecard_payload()
+
+
+@app.get("/api/jarvis/strategy_supercharge_manifest")
+def jarvis_strategy_supercharge_manifest(response: Response) -> dict:
+    """Current executable A+C strategy-supercharge retest manifest."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _strategy_supercharge_manifest_payload()
+
+
+@app.get("/api/jarvis/strategy_supercharge_results")
+def jarvis_strategy_supercharge_results(response: Response) -> dict:
+    """Current A+C strategy-supercharge retest evidence."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _strategy_supercharge_results_payload()
 
 
 @app.get("/api/last-task")

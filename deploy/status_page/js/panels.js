@@ -16,6 +16,7 @@ function panelIcon(containerId) {
   const id = String(containerId || '');
   if (id.includes('verdict')) return 'V';
   if (id.includes('stress')) return 'S';
+  if (id.includes('supercharge')) return 'SC';
   if (id.includes('toggle')) return 'T';
   if (id.includes('explain')) return 'X';
   if (id.includes('health')) return 'H';

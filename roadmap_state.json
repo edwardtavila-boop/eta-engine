@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-30T03:18:16.3242926Z",
+  "last_updated": "2026-04-30T03:49:55.5832277Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5199,
+    "eta_engine_tests_passing": 5212,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
       "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
@@ -263,6 +263,56 @@
         "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_scorecard_endpoint",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_scorecard_endpoint_fails_soft"
       ]
+    },
+    "eta_engine_strategy_supercharge_manifest": {
+      "timestamp_utc": "2026-04-30T03:49:55.5832277Z",
+      "surface": "Strategy supercharge manifest converts the A+C then B scorecard into executable runtime-only retest commands, exposes next_batch through /api/jarvis/strategy_supercharge_manifest and /api/dashboard, renders the Command Center strategy-supercharge card, and emits timeframe-aware smoke commands that produce real walk-forward windows",
+      "fields": [
+        "strategy_supercharge_manifest_latest.json",
+        "cc-strategy-supercharge",
+        "next_batch",
+        "commands",
+        "smoke_command",
+        "max-bars-per-cell",
+        "b_later",
+        "hold",
+        "safe_to_mutate_live",
+        "writes_live_routing"
+      ],
+      "tests": [
+        "tests/test_strategy_supercharge_manifest.py",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_manifest_endpoint",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_manifest_endpoint_fails_soft",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_dashboard_card_health_contract_has_no_dead_or_stale_cards",
+        "tests/test_optimizations.py::TestStatusPage::test_card_health_registry_covers_every_rendered_panel",
+        "tests/test_optimizations.py::TestStatusPage::test_command_center_renders_strategy_supercharge_panel"
+      ]
+    },
+    "eta_engine_strategy_supercharge_results": {
+      "timestamp_utc": "2026-04-30T03:47:13.3392417Z",
+      "surface": "Strategy supercharge results collector parses current-batch runtime research-grid reports into strategy_supercharge_results_latest.json, exposes /api/jarvis/strategy_supercharge_results and /api/dashboard, and separates stale historical reports from current A+C evidence",
+      "fields": [
+        "strategy_supercharge_results_latest.json",
+        "tested",
+        "passed",
+        "failed",
+        "pending",
+        "stale_report_path",
+        "oos_sharpe",
+        "dsr_pass_fraction"
+      ],
+      "tests": [
+        "tests/test_strategy_supercharge_results.py",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_results_endpoint",
+        "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_results_endpoint_fails_soft"
+      ],
+      "current_batch": {
+        "tested": 4,
+        "passed": 0,
+        "failed": 4,
+        "pending": 7,
+        "next_pending_bot": "btc_hybrid_sage"
+      }
     },
     "eta_engine_verify_all": "17/17 PASS",
     "eta_engine_staking_wired": {
@@ -5398,7 +5448,7 @@
     "amplitude": "needs_auth",
     "coupler": "needs_auth"
   },
-  "last_updated_utc": "2026-04-30T03:18:16.3242926Z",
+  "last_updated_utc": "2026-04-30T03:49:55.5832277Z",
   "milestones": [
     {
       "version": "v0.1.31",

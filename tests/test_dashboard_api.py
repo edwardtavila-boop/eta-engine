@@ -345,6 +345,92 @@ class TestDashboardAPI:
         assert data["rows"] == []
         assert data["rows_by_bot"] == {}
 
+    def test_jarvis_strategy_supercharge_manifest_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import strategy_supercharge_manifest
+
+        monkeypatch.setattr(
+            strategy_supercharge_manifest,
+            "build_manifest",
+            lambda: {
+                "source": "strategy_supercharge_manifest",
+                "status": "ready",
+                "summary": {"next_bot": "btc_ensemble_2of3", "a_c_now": 11},
+                "rows": [{"bot_id": "btc_ensemble_2of3", "action_type": "research_grid_retest"}],
+                "rows_by_bot": {"btc_ensemble_2of3": {"bot_id": "btc_ensemble_2of3"}},
+                "next_batch": [{"bot_id": "btc_ensemble_2of3"}],
+                "b_later": [],
+                "hold": [],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/strategy_supercharge_manifest")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["summary"]["next_bot"] == "btc_ensemble_2of3"
+        assert data["next_batch"][0]["bot_id"] == "btc_ensemble_2of3"
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_strategy_supercharge_manifest_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import strategy_supercharge_manifest
+
+        def boom() -> dict[str, object]:
+            raise RuntimeError("manifest exploded")
+
+        monkeypatch.setattr(strategy_supercharge_manifest, "build_manifest", boom)
+
+        r = app_client.get("/api/jarvis/strategy_supercharge_manifest")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "unreadable"
+        assert data["error"] == "manifest exploded"
+        assert data["rows"] == []
+        assert data["rows_by_bot"] == {}
+        assert data["next_batch"] == []
+
+    def test_jarvis_strategy_supercharge_results_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import strategy_supercharge_results
+
+        monkeypatch.setattr(
+            strategy_supercharge_results,
+            "build_results",
+            lambda: {
+                "source": "strategy_supercharge_results",
+                "status": "ready",
+                "summary": {"tested": 3, "failed": 3, "pending": 8},
+                "rows": [{"bot_id": "btc_ensemble_2of3", "result_status": "fail"}],
+                "rows_by_bot": {"btc_ensemble_2of3": {"bot_id": "btc_ensemble_2of3"}},
+                "tested": [{"bot_id": "btc_ensemble_2of3"}],
+                "pending": [],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/strategy_supercharge_results")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["summary"]["tested"] == 3
+        assert data["rows"][0]["result_status"] == "fail"
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_strategy_supercharge_results_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import strategy_supercharge_results
+
+        def boom() -> dict[str, object]:
+            raise RuntimeError("results exploded")
+
+        monkeypatch.setattr(strategy_supercharge_results, "build_results", boom)
+
+        r = app_client.get("/api/jarvis/strategy_supercharge_results")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "unreadable"
+        assert data["error"] == "results exploded"
+        assert data["rows"] == []
+        assert data["rows_by_bot"] == {}
+
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):
         r = app_client.get("/api/dashboard/card-health")
         assert r.status_code == 200

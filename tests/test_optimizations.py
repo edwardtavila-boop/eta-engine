@@ -198,6 +198,19 @@ class TestStatusPage:
         assert "setAttribute('data-readiness', blockedData > 0 ? 'blocked' : 'ready')" in js
         assert "setAttribute('data-readiness', 'degraded')" in js
 
+    def test_command_center_renders_strategy_supercharge_panel(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+        js = (root / "js" / "command_center.js").read_text(encoding="utf-8")
+        panels = (root / "js" / "panels.js").read_text(encoding="utf-8")
+
+        assert 'data-panel-id="cc-strategy-supercharge"' in html
+        assert "StrategySuperchargeManifestPanel" in js
+        assert "/api/jarvis/strategy_supercharge_manifest" in js
+        assert "next_batch" in js
+        assert "A+C now" in js
+        assert "id.includes('supercharge')" in panels
+
     def test_status_page_mobile_fleet_and_equity_contracts(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         css = (root / "theme.css").read_text(encoding="utf-8")

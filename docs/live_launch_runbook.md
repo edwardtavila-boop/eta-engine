@@ -156,6 +156,10 @@ curl http://127.0.0.1:8000/api/jarvis/bot_strategy_readiness
 curl http://127.0.0.1:8000/api/jarvis/bot_strategy_readiness/nq_daily_drb
 python -m eta_engine.scripts.strategy_supercharge_scorecard
 curl http://127.0.0.1:8000/api/jarvis/strategy_supercharge_scorecard
+python -m eta_engine.scripts.strategy_supercharge_manifest
+curl http://127.0.0.1:8000/api/jarvis/strategy_supercharge_manifest
+python -m eta_engine.scripts.strategy_supercharge_results
+curl http://127.0.0.1:8000/api/jarvis/strategy_supercharge_results
 ```
 
 The JARVIS readiness payload includes `row_count`, the full machine-readable
@@ -177,6 +181,24 @@ and ranks `paper_soak`, `research`, data/shadow repair, and only then
 `live_preflight` bots. This is advisory launch evidence only: the scorecard
 does not promote a bot, change broker permissions, or make `can_live_trade`
 true.
+
+The strategy supercharge manifest converts that queue into executable,
+framework-native commands. It writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\strategy_supercharge_manifest_latest.json`
+and exposes `next_batch`, `commands`, `b_later`, and `hold` through
+`/api/jarvis/strategy_supercharge_manifest` and `/api/dashboard`. A+C rows emit
+runtime-only research-grid/data-repair commands plus timeframe-aware
+`smoke_command` variants sized to produce real walk-forward windows. B rows
+remain deferred until A+C is stable; every row keeps
+`safe_to_mutate_live=false` and `writes_live_routing=false`.
+
+The strategy supercharge results collector turns runtime research-grid markdown
+reports back into JSON. It writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\strategy_supercharge_results_latest.json`
+and exposes `tested`, `passed`, `failed`, `pending`, stale report references,
+and per-bot retest metrics through `/api/jarvis/strategy_supercharge_results`
+and `/api/dashboard`. It loads the canonical manifest snapshot first so older
+research reports cannot be mistaken for current-batch A+C evidence.
 
 Wakeup automation gets the same posture through the operator queue snapshot
 and heartbeat:

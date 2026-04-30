@@ -1,5 +1,5 @@
 // eta_engine/deploy/status_page/js/command_center.js
-// 10 JARVIS panels for the ETA live dashboard view.
+// JARVIS panels for the ETA live dashboard view.
 // Wave-7 dashboard, 2026-04-27.
 
 import { Panel, formatPct, formatR, formatTime, escapeHtml, selection } from '/js/panels.js';
@@ -280,6 +280,46 @@ class BotStrategyReadinessPanel extends Panel {
   }
 }
 
+// --- 5d. Strategy supercharge queue ---
+class StrategySuperchargeManifestPanel extends Panel {
+  constructor() { super('cc-strategy-supercharge', '/api/jarvis/strategy_supercharge_manifest', 'Strategy Supercharge Queue'); }
+  render(data) {
+    const summary = data.summary || {};
+    const nextBatch = Array.isArray(data.next_batch) ? data.next_batch : [];
+    const bLater = Array.isArray(data.b_later) ? data.b_later : [];
+    const hold = Array.isArray(data.hold) ? data.hold : [];
+    const commandCount = Number(summary.commands || (Array.isArray(data.commands) ? data.commands.length : 0));
+    const nextBot = summary.next_bot || nextBatch[0]?.bot_id || '';
+    if (data.error || data.status === 'unreadable') {
+      this.body.innerHTML = `<div class="text-amber-300 text-sm">Strategy manifest degraded: ${escapeHtml(data.error || 'manifest unreadable')}</div>`;
+      return;
+    }
+    const rows = nextBatch.slice(0, 4).map((item) => {
+      const command = Array.isArray(item.command) ? item.command.join(' ') : '';
+      const smoke = Array.isArray(item.smoke_command) ? item.smoke_command.join(' ') : '';
+      const phase = item.execution_phase || item.supercharge_phase || item.action_type || 'queued';
+      return `<li class="border-b border-zinc-800/70 pb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-mono text-cyan-300">${escapeHtml(item.bot_id || 'bot')}</span>
+          <span class="text-emerald-300">${escapeHtml(phase)}</span>
+        </div>
+        <div class="text-zinc-300">${escapeHtml(item.operator_note || item.next_gate || '')}</div>
+        <code class="block text-[11px] text-zinc-500 mt-1 break-all">${escapeHtml(command || 'command pending')}</code>
+        ${smoke ? `<code class="block text-[11px] text-zinc-600 mt-1 break-all">smoke: ${escapeHtml(smoke)}</code>` : ''}
+      </li>`;
+    }).join('');
+    this.body.innerHTML = `
+      <div class="grid grid-cols-4 gap-2 text-xs mb-3">
+        <div><div class="text-zinc-500">A+C now</div><div class="text-emerald-300 text-lg font-mono">${Number(summary.a_c_now || 0)}</div></div>
+        <div><div class="text-zinc-500">B later</div><div class="text-amber-300 text-lg font-mono">${bLater.length}</div></div>
+        <div><div class="text-zinc-500">hold</div><div class="text-zinc-300 text-lg font-mono">${hold.length}</div></div>
+        <div><div class="text-zinc-500">commands</div><div class="text-cyan-300 text-lg font-mono">${commandCount}</div></div>
+      </div>
+      <div class="text-xs text-zinc-500 mb-1">next bot: <span class="text-zinc-100 font-mono">${escapeHtml(nextBot || 'none')}</span></div>
+      <ul class="space-y-2 text-xs">${rows || '<li class="text-emerald-300">No A+C retest commands queued.</li>'}</ul>`;
+  }
+}
+
 // --- 6. Policy diff ---
 class PolicyDiffPanel extends Panel {
   constructor() { super('cc-policy-diff', '/api/jarvis/policy_diff', 'Bandit Policy Diff'); }
@@ -383,7 +423,7 @@ class KaizenLatestPanel extends Panel {
   }
 }
 
-// --- Initialize all 10 ---
+// --- Initialize JARVIS panels ---
 onAuthenticated(() => {
   const panels = [
     new VerdictStreamPanel(),
@@ -393,6 +433,7 @@ onAuthenticated(() => {
     new StressMoodPanel(),
     new OperatorQueuePanel(),
     new BotStrategyReadinessPanel(),
+    new StrategySuperchargeManifestPanel(),
     new PolicyDiffPanel(),
     new V22TogglePanel(),
     new EdgeLeaderboardPanel(),
