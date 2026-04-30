@@ -153,13 +153,20 @@ surfaces:
 ```bash
 python -m eta_engine.scripts.jarvis_status --json
 curl http://127.0.0.1:8000/api/jarvis/bot_strategy_readiness
+curl http://127.0.0.1:8000/api/jarvis/bot_strategy_readiness/nq_daily_drb
 ```
 
-The dashboard rollup also embeds `bot_strategy_readiness` in `/api/dashboard`,
-so UI clients can show launch lanes and next actions without re-running shell
-commands. The V1 Command Center renders the same feed in the JARVIS view and
-the top-bar `bots` chip, so readiness posture remains visible even when the
-panel itself is off-screen.
+The JARVIS readiness payload includes `row_count`, the full machine-readable
+`rows` roster, and a `rows_by_bot` index for direct per-bot lookup in addition
+to the compact, priority-sorted `top_actions` list. Framework clients can
+enumerate or address every bot without re-running shell commands or scraping
+the raw artifact. The per-bot endpoint returns `found`, `row`, `available_bots`,
+`launch_lane`, paper/live readiness booleans, and the next readiness action in
+one stable object. The dashboard rollup also embeds
+`bot_strategy_readiness` in `/api/dashboard`, so UI clients can show launch
+lanes and next actions. The V1 Command Center renders the same feed in the
+JARVIS view and the top-bar `bots` chip, so readiness posture remains visible
+even when the panel itself is off-screen.
 
 Wakeup automation gets the same posture through the operator queue snapshot
 and heartbeat:

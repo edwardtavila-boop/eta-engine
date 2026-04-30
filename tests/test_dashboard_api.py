@@ -218,6 +218,75 @@ class TestDashboardAPI:
         assert r.json()["top_actions"][0]["bot_id"] == "mnq_futures_sage"
         assert "no-store" in r.headers["Cache-Control"]
 
+    def test_jarvis_bot_strategy_readiness_bot_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_bot_strategy_readiness_summary",
+            lambda **_kwargs: {
+                "source": "bot_strategy_readiness",
+                "status": "ready",
+                "summary": {"total_bots": 2},
+                "row_count": 2,
+                "rows": [],
+                "rows_by_bot": {
+                    "nq_daily_drb": {
+                        "bot_id": "nq_daily_drb",
+                        "strategy_id": "nq_daily_drb_v1",
+                        "launch_lane": "live_preflight",
+                        "can_paper_trade": True,
+                        "can_live_trade": False,
+                        "next_action": "Run per-bot promotion preflight.",
+                    }
+                },
+                "top_actions": [],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/bot_strategy_readiness/nq_daily_drb")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is True
+        assert data["bot_id"] == "nq_daily_drb"
+        assert data["row"]["strategy_id"] == "nq_daily_drb_v1"
+        assert data["launch_lane"] == "live_preflight"
+        assert data["can_paper_trade"] is True
+        assert data["can_live_trade"] is False
+        assert data["readiness_next_action"].startswith("Run per-bot promotion")
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_bot_strategy_readiness_bot_endpoint_fails_soft_when_missing(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_bot_strategy_readiness_summary",
+            lambda **_kwargs: {
+                "source": "bot_strategy_readiness",
+                "status": "ready",
+                "summary": {"total_bots": 1},
+                "row_count": 1,
+                "rows": [],
+                "rows_by_bot": {"mnq_futures_sage": {"bot_id": "mnq_futures_sage"}},
+                "top_actions": [],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/bot_strategy_readiness/nq_daily_drb")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["found"] is False
+        assert data["bot_id"] == "nq_daily_drb"
+        assert data["row"] == {}
+        assert data["available_bots"] == ["mnq_futures_sage"]
+
     def test_jarvis_bot_strategy_readiness_endpoint_fails_soft(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
 
@@ -231,6 +300,9 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.json()["error"] == "snapshot probe exploded"
         assert r.json()["summary"] == {}
+        assert r.json()["row_count"] == 0
+        assert r.json()["rows"] == []
+        assert r.json()["rows_by_bot"] == {}
         assert r.json()["top_actions"] == []
 
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):

@@ -115,10 +115,19 @@ making bot strategy posture accessible without re-running a shell command in
 UI clients. JARVIS now exposes the same snapshot in
 `python -m eta_engine.scripts.jarvis_status --json`, and the dashboard API
 surfaces it at `/api/jarvis/bot_strategy_readiness` plus the
-`bot_strategy_readiness` field in `/api/dashboard`. The V1 Command Center
-also renders that feed through the JARVIS Bot Strategy Readiness panel and the
-top-bar `bots` chip. Operator wakeup artifacts now carry the same compact
-posture in `operator_queue_snapshot` / `operator_queue_heartbeat` via
+`bot_strategy_readiness` field in `/api/dashboard`. The JARVIS readiness
+payload now carries `row_count`, the full machine-readable `rows` roster, and
+a `rows_by_bot` index alongside the compact `top_actions` list, so framework
+clients can enumerate or directly address every bot without re-running the
+shell command or scraping the raw artifact. The dashboard API also exposes
+`/api/jarvis/bot_strategy_readiness/{bot_id}` for direct lookup; it returns a
+stable object with `found`, `row`, `available_bots`, `launch_lane`,
+paper/live readiness booleans, and the next readiness action instead of making
+clients scan the full roster.
+The V1 Command Center also renders that feed through the JARVIS Bot Strategy
+Readiness panel and the top-bar `bots` chip. Operator wakeup artifacts now
+carry the same compact posture in `operator_queue_snapshot` /
+`operator_queue_heartbeat` via
 `bot_strategy_readiness_status`, `bot_strategy_blocked_data`, and
 `bot_strategy_paper_ready`. Daily premarket and `jarvis_live_health.json` now
 carry the same posture too, giving scheduled JARVIS context the launch-lane

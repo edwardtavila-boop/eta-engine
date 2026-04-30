@@ -321,6 +321,106 @@ class TestStatusCli:
         assert payload["top_actions"][0]["bot_id"] == "btc_compression"
         assert payload["top_actions"][0]["next_action"].startswith("Fetch missing critical data")
 
+    def test_bot_strategy_readiness_summary_exposes_full_rows_beyond_action_limit(self, tmp_path: Path) -> None:
+        from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
+
+        target = tmp_path / "bot_strategy_readiness_latest.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-04-29T20:00:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {
+                        "total_bots": 3,
+                        "blocked_data": 1,
+                        "can_live_any": False,
+                        "can_paper_trade": 2,
+                        "launch_lanes": {"blocked_data": 1, "live_preflight": 1, "paper_soak": 1},
+                    },
+                    "rows": [
+                        {
+                            "bot_id": "btc_compression",
+                            "strategy_id": "btc_compression_v1",
+                            "launch_lane": "blocked_data",
+                            "next_action": "Fetch missing critical data: bars:BTC/1h",
+                            "can_paper_trade": False,
+                            "can_live_trade": False,
+                        },
+                        {
+                            "bot_id": "nq_daily_drb",
+                            "strategy_id": "nq_daily_drb_v1",
+                            "launch_lane": "live_preflight",
+                            "next_action": "Run per-bot promotion preflight",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                        },
+                        {
+                            "bot_id": "eth_compression",
+                            "strategy_id": "eth_compression_v1",
+                            "launch_lane": "paper_soak",
+                            "next_action": "Run paper-soak and broker drift checks",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = build_bot_strategy_readiness_summary(path=target, limit=1)
+
+        assert payload["row_count"] == 3
+        assert len(payload["top_actions"]) == 1
+        assert [row["bot_id"] for row in payload["rows"]] == [
+            "btc_compression",
+            "nq_daily_drb",
+            "eth_compression",
+        ]
+        assert payload["rows"][1]["strategy_id"] == "nq_daily_drb_v1"
+
+    def test_bot_strategy_readiness_summary_indexes_rows_by_bot_for_framework_clients(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
+
+        target = tmp_path / "bot_strategy_readiness_latest.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-04-29T20:00:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 2, "launch_lanes": {"live_preflight": 1, "paper_soak": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "nq_daily_drb",
+                            "strategy_id": "nq_daily_drb_v1",
+                            "launch_lane": "live_preflight",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                        },
+                        {
+                            "bot_id": "eth_compression",
+                            "strategy_id": "eth_compression_v1",
+                            "launch_lane": "paper_soak",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = build_bot_strategy_readiness_summary(path=target)
+
+        assert sorted(payload["rows_by_bot"]) == ["eth_compression", "nq_daily_drb"]
+        assert payload["rows_by_bot"]["nq_daily_drb"]["strategy_id"] == "nq_daily_drb_v1"
+        assert payload["rows_by_bot"]["eth_compression"]["launch_lane"] == "paper_soak"
+
     def test_bot_strategy_readiness_summary_fails_soft_when_missing(self, tmp_path: Path) -> None:
         from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
 
@@ -328,6 +428,9 @@ class TestStatusCli:
 
         assert payload["status"] == "missing"
         assert payload["summary"] == {}
+        assert payload["row_count"] == 0
+        assert payload["rows"] == []
+        assert payload["rows_by_bot"] == {}
         assert payload["top_actions"] == []
 
     def test_json_subcommand_surfaces_bot_strategy_readiness(self, monkeypatch, capsys) -> None:

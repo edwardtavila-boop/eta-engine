@@ -718,6 +718,9 @@ def _bot_strategy_readiness_payload() -> dict:
             "error": str(exc),
             "status": "unreadable",
             "summary": {},
+            "row_count": 0,
+            "rows": [],
+            "rows_by_bot": {},
             "top_actions": [],
         }
     return payload if isinstance(payload, dict) else {
@@ -725,7 +728,44 @@ def _bot_strategy_readiness_payload() -> dict:
         "error": "bot strategy readiness summary returned a non-object payload",
         "status": "unreadable",
         "summary": {},
+        "row_count": 0,
+        "rows": [],
+        "rows_by_bot": {},
         "top_actions": [],
+    }
+
+
+def _bot_strategy_readiness_bot_payload(bot_id: str) -> dict:
+    """Return one bot's readiness row without forcing clients to scan the full roster."""
+    payload = _bot_strategy_readiness_payload()
+    rows_by_bot = payload.get("rows_by_bot") if isinstance(payload.get("rows_by_bot"), dict) else {}
+    if not rows_by_bot:
+        rows = payload.get("rows")
+        if isinstance(rows, list):
+            rows_by_bot = {
+                key: row
+                for row in rows
+                if isinstance(row, dict)
+                if (key := str(row.get("bot_id") or row.get("id") or row.get("name") or "").strip())
+            }
+    row = rows_by_bot.get(bot_id)
+    if not isinstance(row, dict):
+        row = {}
+    return {
+        "source": payload.get("source") or "bot_strategy_readiness",
+        "status": payload.get("status") or "unknown",
+        "path": payload.get("path"),
+        "schema_version": payload.get("schema_version"),
+        "generated_at": payload.get("generated_at"),
+        "summary": payload.get("summary") if isinstance(payload.get("summary"), dict) else {},
+        "bot_id": bot_id,
+        "found": bool(row),
+        "row": row,
+        "available_bots": sorted(str(key) for key in rows_by_bot),
+        "launch_lane": str(row.get("launch_lane") or ""),
+        "can_paper_trade": bool(row.get("can_paper_trade")),
+        "can_live_trade": bool(row.get("can_live_trade")),
+        "readiness_next_action": str(row.get("next_action") or row.get("next_promotion_step") or ""),
     }
 
 
@@ -1101,6 +1141,13 @@ def jarvis_bot_strategy_readiness(response: Response) -> dict:
     """Current bot strategy/data readiness snapshot for dashboard rendering."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return _bot_strategy_readiness_payload()
+
+
+@app.get("/api/jarvis/bot_strategy_readiness/{bot_id}")
+def jarvis_bot_strategy_readiness_bot(bot_id: str, response: Response) -> dict:
+    """Current strategy/data readiness for a single bot id."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _bot_strategy_readiness_bot_payload(bot_id)
 
 
 @app.get("/api/last-task")

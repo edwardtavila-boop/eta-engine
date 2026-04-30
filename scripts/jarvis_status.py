@@ -132,6 +132,9 @@ def _empty_bot_strategy_readiness_payload(
         "path": str(path),
         "status": status,
         "summary": {},
+        "row_count": 0,
+        "rows": [],
+        "rows_by_bot": {},
         "top_actions": [],
     }
     if error:
@@ -179,10 +182,15 @@ def build_bot_strategy_readiness_summary(
     summary = raw_payload.get("summary")
     rows = raw_payload.get("rows")
     summary_payload = summary if isinstance(summary, dict) else {}
-    row_payloads = rows if isinstance(rows, list) else []
+    row_payloads = [dict(item) for item in rows if isinstance(item, dict)] if isinstance(rows, list) else []
+    rows_by_bot = {
+        bot_id: row
+        for row in row_payloads
+        if (bot_id := str(row.get("bot_id") or row.get("id") or row.get("name") or "").strip())
+    }
     top_actions: list[dict[str, object]] = []
     for row in sorted(
-        (item for item in row_payloads if isinstance(item, dict) and item.get("next_action")),
+        (item for item in row_payloads if item.get("next_action")),
         key=_bot_strategy_action_priority,
     ):
         if len(top_actions) >= max(0, limit):
@@ -207,6 +215,9 @@ def build_bot_strategy_readiness_summary(
         "schema_version": raw_payload.get("schema_version"),
         "generated_at": raw_payload.get("generated_at"),
         "summary": summary_payload,
+        "row_count": len(row_payloads),
+        "rows": row_payloads,
+        "rows_by_bot": rows_by_bot,
         "top_actions": top_actions,
     }
 
