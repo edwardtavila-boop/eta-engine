@@ -19,6 +19,97 @@ _TABLE_HEADER = (
     "| Config | Sym/TF | Scorer | Thr | Gate | W | +OOS | IS Sh | OOS Sh | "
     "Deg% | DSR med | DSR pass% | Verdict | Note |"
 )
+_RETUNE_OUT_DIR = workspace_roots.ETA_RUNTIME_STATE_DIR / "strategy_supercharge_retunes"
+_STYLE_PLAYBOOKS: dict[str, dict[str, object]] = {
+    "compression_breakout": {
+        "candidate_families": ["compression_breakout"],
+        "primary_knobs": [
+            "bb_width_max_percentile",
+            "breakout_lookback",
+            "min_volume_z",
+            "atr_stop_mult",
+            "rr_target",
+        ],
+        "focus": "Retune compression sensitivity, breakout confirmation, and stop width before promotion.",
+    },
+    "crypto_macro_confluence": {
+        "candidate_families": ["crypto_macro_confluence", "crypto_regime_trend"],
+        "primary_knobs": [
+            "vol_band_lookback",
+            "min_macro_score",
+            "require_eth_alignment",
+            "extreme_funding_threshold",
+        ],
+        "focus": "Retune macro filters against the base regime edge so filters help instead of over-vetoing.",
+    },
+    "crypto_orb": {
+        "candidate_families": ["crypto_orb", "crypto_trend"],
+        "primary_knobs": ["range_minutes", "atr_stop_mult", "rr_target"],
+        "focus": "Retune the UTC opening range, ATR stop width, and reward target for this crypto tape.",
+    },
+    "crypto_regime_trend": {
+        "candidate_families": ["crypto_regime_trend", "crypto_orb"],
+        "primary_knobs": [
+            "regime_ema",
+            "pullback_ema",
+            "pullback_tolerance_pct",
+            "atr_stop_mult",
+            "rr_target",
+        ],
+        "focus": "Retune regime/pullback EMAs and stop-target geometry for persistent crypto trends.",
+    },
+    "drb": {
+        "candidate_families": ["drb"],
+        "primary_knobs": ["lookback_days", "atr_stop_mult", "rr_target", "min_range_pts"],
+        "focus": "Retune daily range lookback and ATR stop/target width on the NQ daily tape.",
+    },
+    "ensemble_voting": {
+        "candidate_families": ["ensemble_voting", "crypto_orb", "crypto_regime_trend"],
+        "primary_knobs": [
+            "voters",
+            "min_agreement_count",
+            "use_confidence_weighting",
+            "max_gap_to_atr",
+        ],
+        "focus": "Retune voter mix and agreement threshold before trusting the ensemble composite.",
+    },
+    "orb": {
+        "candidate_families": ["orb", "orb_sage_gated"],
+        "primary_knobs": ["range_minutes", "atr_stop_mult", "rr_target", "ema_bias_period"],
+        "focus": "Retune RTH opening range, ATR stop width, and trend bias for index-futures tape.",
+    },
+    "orb_sage_gated": {
+        "candidate_families": ["orb_sage_gated", "orb"],
+        "primary_knobs": [
+            "range_minutes",
+            "atr_stop_mult",
+            "rr_target",
+            "min_conviction",
+            "min_alignment",
+        ],
+        "focus": "Retune ORB geometry and the sage overlay threshold as an ablation pair.",
+    },
+    "sage_consensus": {
+        "candidate_families": ["sage_consensus", "crypto_macro_confluence"],
+        "primary_knobs": [
+            "min_conviction",
+            "min_consensus",
+            "min_alignment",
+            "sage_lookback_bars",
+        ],
+        "focus": "Retune sage agreement thresholds and lookback so consensus is selective but not silent.",
+    },
+    "sage_daily_gated": {
+        "candidate_families": ["sage_daily_gated", "crypto_macro_confluence"],
+        "primary_knobs": [
+            "min_daily_conviction",
+            "strict_mode",
+            "vol_band_lookback",
+            "min_macro_score",
+        ],
+        "focus": "Retune daily sage conviction and macro filter strictness around the intraday executor.",
+    },
+}
 
 
 def _float_cell(value: str) -> float:
@@ -182,6 +273,112 @@ def _with_scope_fields(row: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _style_playbook(row: dict[str, object]) -> dict[str, object]:
+    strategy_kind = _strategy_kind_for(row)
+    playbook = _STYLE_PLAYBOOKS.get(strategy_kind)
+    if playbook is not None:
+        return dict(playbook)
+    return {
+        "candidate_families": [strategy_kind],
+        "primary_knobs": ["window_days", "step_days", "min_trades_per_window"],
+        "focus": "Retune this strategy family with conservative walk-forward settings before promotion.",
+    }
+
+
+def _optimizer_command(bot_id: str) -> list[str]:
+    return [
+        "python",
+        "-m",
+        "eta_engine.scripts.fleet_strategy_optimizer",
+        "--only-bot",
+        bot_id,
+        "--out-dir",
+        str(_RETUNE_OUT_DIR),
+    ]
+
+
+def _retune_issue_code(row: dict[str, object]) -> str:
+    status = str(row.get("result_status") or "")
+    if status == "pass":
+        return "pass_ready_for_soak_review"
+    if status == "pending":
+        return "pending_retest"
+    windows = int(row.get("windows") or 0)
+    if windows <= 0:
+        return "insufficient_walk_forward_windows"
+    oos_sharpe = float(row.get("oos_sharpe") or 0.0)
+    dsr_pass_fraction = float(row.get("dsr_pass_fraction") or 0.0)
+    positive_oos = int(row.get("positive_oos_windows") or 0)
+    if oos_sharpe > 0.0 and dsr_pass_fraction >= 0.5:
+        return "strict_gate_near_miss"
+    if oos_sharpe > 0.0:
+        return "positive_oos_unstable"
+    if positive_oos > 0:
+        return "mixed_oos_decay"
+    return "negative_oos_edge"
+
+
+def _retune_priority_score(row: dict[str, object], issue_code: str) -> float:
+    oos_sharpe = float(row.get("oos_sharpe") or 0.0)
+    dsr_pass_fraction = float(row.get("dsr_pass_fraction") or 0.0)
+    windows = int(row.get("windows") or 0)
+    positive_oos = int(row.get("positive_oos_windows") or 0)
+    base_by_issue = {
+        "strict_gate_near_miss": 1000.0,
+        "positive_oos_unstable": 900.0,
+        "insufficient_walk_forward_windows": 800.0,
+        "mixed_oos_decay": 650.0,
+        "negative_oos_edge": 500.0,
+        "pending_retest": 300.0,
+        "pass_ready_for_soak_review": 100.0,
+    }
+    base = base_by_issue.get(issue_code, 250.0)
+    return round(
+        base
+        + (dsr_pass_fraction * 100.0)
+        + (min(max(oos_sharpe, 0.0), 10.0) * 10.0)
+        + (positive_oos * 2.0)
+        + min(windows, 20),
+        3,
+    )
+
+
+def _next_step(issue_code: str) -> str:
+    if issue_code == "pass_ready_for_soak_review":
+        return "Hold live routing; review paper-soak and promotion gates before any registry or broker change."
+    if issue_code == "pending_retest":
+        return "Run the manifest smoke command first so retuning is based on current-batch evidence."
+    if issue_code == "insufficient_walk_forward_windows":
+        return "Repair data coverage or widen the smoke window before ranking strategy quality."
+    if issue_code == "strict_gate_near_miss":
+        return "Run the fleet optimizer for this bot and compare challenger configs against the registered anchor."
+    if issue_code == "positive_oos_unstable":
+        return "Retune around the current family, prioritizing stability across walk-forward folds over raw OOS."
+    if issue_code == "mixed_oos_decay":
+        return "Test tighter filters and alternate stop-target geometry because some windows work but decay dominates."
+    return "Treat the registered strategy as weak for this slice; test alternate candidate families before promotion."
+
+
+def _retune_plan(row: dict[str, object]) -> dict[str, object]:
+    bot_id = str(row.get("bot_id") or "")
+    issue_code = _retune_issue_code(row)
+    playbook = _style_playbook(row)
+    command: list[str] = []
+    if issue_code not in {"pass_ready_for_soak_review", "pending_retest"} and bot_id:
+        command = _optimizer_command(bot_id)
+    return {
+        "issue_code": issue_code,
+        "priority_score": _retune_priority_score(row, issue_code),
+        "primary_focus": playbook["focus"],
+        "next_step": _next_step(issue_code),
+        "candidate_families": playbook["candidate_families"],
+        "primary_knobs": playbook["primary_knobs"],
+        "optimizer_command": command,
+        "safe_to_mutate_live": False,
+        "writes_live_routing": False,
+    }
+
+
 def _counts(rows: list[dict[str, object]]) -> dict[str, int]:
     return {
         "total_targets": len(rows),
@@ -234,6 +431,48 @@ def _scope_payload(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _retune_queue(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    queue: list[dict[str, object]] = []
+    for row in rows:
+        plan = row.get("retune_plan")
+        if not isinstance(plan, dict):
+            continue
+        if plan.get("issue_code") == "pass_ready_for_soak_review":
+            continue
+        queue.append(
+            {
+                "bot_id": str(row.get("bot_id") or ""),
+                "symbol": _symbol_for(row),
+                "timeframe": _timeframe_for(row),
+                "strategy_kind": _strategy_kind_for(row),
+                "result_status": str(row.get("result_status") or ""),
+                "issue_code": str(plan.get("issue_code") or ""),
+                "priority_score": float(plan.get("priority_score") or 0.0),
+                "primary_focus": str(plan.get("primary_focus") or ""),
+                "next_step": str(plan.get("next_step") or ""),
+                "optimizer_command": (
+                    plan.get("optimizer_command")
+                    if isinstance(plan.get("optimizer_command"), list)
+                    else []
+                ),
+                "primary_knobs": (
+                    plan.get("primary_knobs")
+                    if isinstance(plan.get("primary_knobs"), list)
+                    else []
+                ),
+                "safe_to_mutate_live": False,
+                "writes_live_routing": False,
+            },
+        )
+    return sorted(
+        queue,
+        key=lambda item: (
+            -float(item.get("priority_score") or 0.0),
+            str(item.get("bot_id") or ""),
+        ),
+    )
+
+
 def build_results(
     *,
     manifest: dict[str, object] | None = None,
@@ -281,7 +520,8 @@ def build_results(
                 "safe_to_mutate_live": False,
                 "writes_live_routing": False,
             }
-        rows.append(_with_scope_fields(row))
+        scoped_row = _with_scope_fields(row)
+        rows.append({**scoped_row, "retune_plan": _retune_plan(scoped_row)})
     passed = [row for row in rows if row.get("result_status") == "pass"]
     failed = [row for row in rows if row.get("result_status") == "fail"]
     pending = [row for row in rows if row.get("result_status") == "pending"]
@@ -314,6 +554,7 @@ def build_results(
             "by_symbol": _group_payload(rows, "symbol"),
             "by_strategy_kind": _group_payload(rows, "strategy_kind"),
         },
+        "retune_queue": _retune_queue(rows),
         "tested": passed + failed,
         "passed": passed,
         "failed": failed,

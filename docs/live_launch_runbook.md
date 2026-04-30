@@ -203,12 +203,14 @@ The strategy supercharge results collector turns runtime research-grid markdown
 reports back into JSON. It writes
 `C:\EvolutionaryTradingAlgo\var\eta_engine\state\strategy_supercharge_results_latest.json`
 and exposes `tested`, `passed`, `failed`, `pending`, stale report references,
-and per-bot retest metrics through `/api/jarvis/strategy_supercharge_results`
-and `/api/dashboard`. It loads the canonical manifest snapshot first so older
-research reports cannot be mistaken for current-batch A+C evidence.
-The results payload also exposes `scope` and `groups.by_symbol` /
+per-bot retest metrics, per-row `retune_plan`, and ranked `retune_queue`
+entries through `/api/jarvis/strategy_supercharge_results` and
+`/api/dashboard`. It loads the canonical manifest snapshot first so older
+research reports cannot be mistaken for current-batch A+C evidence. The
+results payload also exposes `scope` and `groups.by_symbol` /
 `groups.by_strategy_kind` so framework clients can see which tickers and
-strategy styles have been retested.
+strategy styles have been retested and which bot/style should be optimized
+next.
 
 Wakeup automation gets the same posture through the operator queue snapshot
 and heartbeat:

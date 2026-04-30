@@ -67,52 +67,65 @@ runtime-only research-grid markdown reports newer than that manifest. Older
 reports are kept as `stale_report_path` references but do not count as current
 evidence.
 
-The results payload also exposes `scope`, `groups.by_symbol`, and
-`groups.by_strategy_kind`. The current A+C result groups are:
+The results payload also exposes `scope`, `groups.by_symbol`,
+`groups.by_strategy_kind`, per-row `retune_plan`, and a ranked
+`retune_queue`. The current A+C result groups are:
 
-| Symbol | Targets | Best near-miss |
-| --- | ---: | --- |
-| `BTC` | 5 | `btc_compression` |
-| `ETH` | 3 | `eth_compression` |
-| `MNQ1` | 2 | none |
-| `SOL` | 1 | `sol_perp` |
+| Symbol | Targets | Passed | Failed | Best near-miss |
+| --- | ---: | ---: | ---: | --- |
+| `BTC` | 5 | 0 | 5 | `btc_hybrid_sage` |
+| `ETH` | 3 | 1 | 2 | `eth_sage_daily` |
+| `MNQ1` | 2 | 0 | 2 | none |
+| `SOL` | 1 | 0 | 1 | `sol_perp` |
 
 Current result summary after the full A+C smoke sweep:
 
 | Metric | Count |
 | --- | ---: |
 | Tested | 11 |
-| Passed | 0 |
-| Failed | 11 |
+| Passed | 1 |
+| Failed | 10 |
 | Pending | 0 |
 
 Current retest rows:
 
 | Bot | Windows | OOS Sharpe | DSR pass | Verdict |
 | --- | ---: | ---: | ---: | --- |
-| `btc_ensemble_2of3` | 2 | +0.535 | 50.0% | FAIL |
-| `btc_sage_daily_etf` | 2 | +0.392 | 50.0% | FAIL |
-| `eth_compression` | 2 | +0.750 | 50.0% | FAIL |
-| `eth_perp` | 2 | -2.291 | 0.0% | FAIL |
-| `btc_hybrid_sage` | 2 | -12.638 | 0.0% | FAIL |
-| `btc_regime_trend_etf` | 2 | -1.388 | 0.0% | FAIL |
+| `btc_ensemble_2of3` | 21 | -0.221 | 23.8% | FAIL |
+| `btc_sage_daily_etf` | 21 | +1.708 | 42.9% | FAIL |
+| `eth_compression` | 21 | +0.053 | 28.6% | FAIL |
+| `eth_perp` | 21 | +1.929 | 52.4% | PASS |
+| `btc_hybrid_sage` | 21 | +8.662 | 47.6% | FAIL |
+| `btc_regime_trend_etf` | 21 | +0.724 | 42.9% | FAIL |
 | `mnq_sage_consensus` | 3 | +0.000 | 0.0% | FAIL |
-| `btc_compression` | 2 | +0.748 | 50.0% | FAIL |
-| `eth_sage_daily` | 2 | +0.000 | 0.0% | FAIL |
+| `btc_compression` | 21 | +0.704 | 38.1% | FAIL |
+| `eth_sage_daily` | 21 | +4.888 | 57.1% | FAIL |
 | `mnq_futures` | 3 | -1.355 | 0.0% | FAIL |
-| `sol_perp` | 2 | +2.405 | 50.0% | FAIL |
+| `sol_perp` | 21 | +2.489 | 52.4% | FAIL |
 
 Interpretation: the smoke path is now executable and produces meaningful
-walk-forward evidence, but no current A+C smoke slice has cleared the strict
-gate yet. These bots stay in retest/soak work, not live-preflight promotion.
+walk-forward evidence. `eth_perp` cleared the strict smoke gate and should
+move to paper-soak/promotion review, while the other current A+C bots stay in
+retest/soak work, not live-preflight promotion.
 
-The strongest near-miss from the results collector is `sol_perp`, followed by
-`eth_compression`, `btc_compression`, `btc_ensemble_2of3`, and
-`btc_sage_daily_etf`.
+The strongest near-miss from the results collector is `eth_sage_daily`,
+followed by `sol_perp`, `btc_hybrid_sage`, `btc_sage_daily_etf`, and
+`btc_regime_trend_etf`.
+
+Current ranked retune queue:
+
+| Rank | Bot | Issue | Primary knobs |
+| ---: | --- | --- | --- |
+| 1 | `eth_sage_daily` | `strict_gate_near_miss` | `min_daily_conviction`, `strict_mode`, `vol_band_lookback`, `min_macro_score` |
+| 2 | `sol_perp` | `strict_gate_near_miss` | `range_minutes`, `atr_stop_mult`, `rr_target` |
+| 3 | `btc_hybrid_sage` | `positive_oos_unstable` | `range_minutes`, `atr_stop_mult`, `rr_target`, `min_conviction`, `min_alignment` |
+| 4 | `btc_sage_daily_etf` | `positive_oos_unstable` | `min_daily_conviction`, `strict_mode`, `vol_band_lookback`, `min_macro_score` |
+| 5 | `btc_regime_trend_etf` | `positive_oos_unstable` | `vol_band_lookback`, `min_macro_score`, `require_eth_alignment`, `extreme_funding_threshold` |
 
 ## First scoped retune
 
-Because `sol_perp` was the strongest near-miss, we ran:
+Before the refreshed full-window smoke, `sol_perp` was the strongest near-miss,
+so we ran:
 
 ```powershell
 python -m eta_engine.scripts.fleet_strategy_optimizer --only-bot sol_perp --out-dir C:\EvolutionaryTradingAlgo\var\eta_engine\state\strategy_supercharge_retunes
@@ -128,6 +141,10 @@ Runtime report:
 
 `C:\EvolutionaryTradingAlgo\var\eta_engine\state\strategy_supercharge_retunes\fleet_optimization_20260430T035838Z.md`
 
+After the refreshed full-window smoke, `eth_sage_daily` is now the first
+retune-queue item and `sol_perp` remains second. Both are still advisory
+retune candidates only; no registry or live-routing mutation is implied.
+
 ## Why this matters
 
 The scorecard tells us which bots deserve attention. The manifest tells JARVIS,
@@ -140,10 +157,10 @@ stable.
 
 - `scripts/strategy_supercharge_manifest.py`
 - `scripts/strategy_supercharge_results.py`
-- `scripts/workspace_roots.py`
 - `deploy/scripts/dashboard_api.py`
 - `tests/test_strategy_supercharge_manifest.py`
 - `tests/test_strategy_supercharge_results.py`
 - `tests/test_dashboard_api.py`
 - `docs/live_launch_runbook.md`
 - `docs/research_log/strategy_supercharge_manifest_20260430.md`
+- `roadmap_state.json`

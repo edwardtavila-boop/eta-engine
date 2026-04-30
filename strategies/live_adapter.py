@@ -158,6 +158,7 @@ def build_live_adapter(  # noqa: PLR0913 -- factory with many optional knobs
     clock: Callable[[], datetime] | None = None,
     kill_switch_active: bool = False,
     session_allows_entries: bool = True,
+    bot_id: str | None = None,
 ) -> RouterAdapter:
     """Construct a fully-wired live :class:`RouterAdapter`.
 
@@ -242,4 +243,5 @@ def build_live_adapter(  # noqa: PLR0913 -- factory with many optional knobs
         decision_sink=decision_sink,
         allowlist_scheduler=scheduler,
         scheduler_kwargs=scheduler_kwargs,
+        bot_id=bot_id,
     )

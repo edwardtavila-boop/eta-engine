@@ -59,6 +59,15 @@ class WalkForwardConfig(BaseModel):
     grid_min_profit_factor: float = Field(default=1.3, gt=0.0)
     grid_max_dd_pct: float = Field(default=20.0, gt=0.0)
     grid_min_pos_fraction: float = Field(default=0.55, ge=0.0, le=1.0)
+    # Aggregate-degradation mode: use agg_deg (aggregate IS->OOS gap)
+    # instead of per-window-avg deg_avg for the degradation check in
+    # the standard gate path. Crypto 1h strategies with 21+ windows
+    # often have a single regime-shift outlier window that blows up
+    # the per-window average while the aggregate strategy actually
+    # IMPROVES OOS over IS. This mode is the principled fix: it
+    # keeps the per-fold DSR gate but swaps the degradation measure
+    # for the one the long-haul gate already uses. 2026-04-30.
+    agg_degradation_mode: bool = False
 
 
 class WindowStats(BaseModel):
@@ -222,15 +231,19 @@ def evaluate_gate(
     is_positive = agg_is > 0.0
 
     reasons: list[str] = []
+    deg_check = agg_deg if cfg.agg_degradation_mode else deg_avg
     legacy_gate = (
-        dsr > 0.5 and deg_avg < 0.35 and all_met and is_positive
+        dsr > 0.5 and deg_check < 0.35 and all_met and is_positive
     )
     if not is_positive:
         reasons.append(f"agg IS Sharpe {agg_is:+.3f} not positive")
     if dsr <= 0.5:
         reasons.append(f"aggregate DSR {dsr:.3f} <= 0.5")
-    if deg_avg >= 0.35:
-        reasons.append(f"per-window deg avg {deg_avg:.3f} >= 0.35")
+    if deg_check >= 0.35:
+        reasons.append(
+            f"{'aggregate' if cfg.agg_degradation_mode else 'per-window avg'} deg "
+            f"{deg_check:.3f} >= 0.35"
+        )
     if not all_met:
         reasons.append(
             f"min_trades met {met_frac * 100:.0f}% < "

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-30T04:03:25.7222724Z",
+  "last_updated": "2026-04-30T04:16:14.8044932Z",
   "overall_progress_pct": 100,
   "current_phase": "P9_ROLLOUT",
   "mnq_engine_bridge": "docs/MNQ_ENGINE_BRIDGE.md",
@@ -9,7 +9,7 @@
     "mnq_test_suite_passing": 749,
     "mnq_test_suite_failing": 0,
     "eta_engine_python_files": 389,
-    "eta_engine_tests_passing": 5215,
+    "eta_engine_tests_passing": 5216,
     "eta_engine_tests_failing": 0,
     "eta_engine_bot_readiness_fleet_ui": {
       "timestamp_utc": "2026-04-29T23:05:37.1013765Z",
@@ -292,13 +292,19 @@
       ]
     },
     "eta_engine_strategy_supercharge_results": {
-      "timestamp_utc": "2026-04-30T04:03:25.7222724Z",
-      "surface": "Cross-asset strategy supercharge results collector parses current-batch runtime research-grid reports into strategy_supercharge_results_latest.json, exposes /api/jarvis/strategy_supercharge_results and /api/dashboard, separates stale historical reports from current A+C evidence, ranks near-misses, and groups results by ticker and strategy style",
+      "timestamp_utc": "2026-04-30T04:16:14.8044932Z",
+      "surface": "Cross-asset strategy supercharge results collector parses current-batch runtime research-grid reports into strategy_supercharge_results_latest.json, exposes /api/jarvis/strategy_supercharge_results and /api/dashboard, separates stale historical reports from current A+C evidence, ranks near-misses, groups results by ticker and strategy style, and emits per-bot retune prescriptions plus a ranked optimizer queue",
       "fields": [
         "strategy_supercharge_results_latest.json",
         "scope",
         "groups.by_symbol",
         "groups.by_strategy_kind",
+        "retune_plan",
+        "retune_queue",
+        "issue_code",
+        "priority_score",
+        "optimizer_command",
+        "primary_knobs",
         "tested",
         "passed",
         "failed",
@@ -313,14 +319,15 @@
         "tests/test_strategy_supercharge_results.py",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_results_endpoint",
         "tests/test_dashboard_api.py::TestDashboardAPI::test_jarvis_strategy_supercharge_results_endpoint_fails_soft",
-        "tests/test_strategy_supercharge_results.py::test_results_group_scope_by_symbol_and_strategy_style"
+        "tests/test_strategy_supercharge_results.py::test_results_group_scope_by_symbol_and_strategy_style",
+        "tests/test_strategy_supercharge_results.py::test_results_emit_ranked_retune_plan_for_cross_asset_failures"
       ],
       "current_batch": {
         "tested": 11,
-        "passed": 0,
-        "failed": 11,
+        "passed": 1,
+        "failed": 10,
         "pending": 0,
-        "best_near_miss_bot": "sol_perp",
+        "best_near_miss_bot": "eth_sage_daily",
         "next_pending_bot": "",
         "symbols": [
           "BTC",
@@ -337,6 +344,13 @@
           "orb_sage_gated",
           "sage_consensus",
           "sage_daily_gated"
+        ],
+        "retune_queue_top": [
+          "eth_sage_daily",
+          "sol_perp",
+          "btc_hybrid_sage",
+          "btc_sage_daily_etf",
+          "btc_regime_trend_etf"
         ]
       },
       "scoped_retunes": {

@@ -431,6 +431,7 @@ class TestDashboardAPI:
         assert data["rows"] == []
         assert data["rows_by_bot"] == {}
         assert data["near_misses"] == []
+        assert data["retune_queue"] == []
 
     def test_dashboard_card_health_contract_has_no_dead_or_stale_cards(self, app_client):
         r = app_client.get("/api/dashboard/card-health")

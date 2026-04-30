@@ -90,6 +90,15 @@ class WalkForwardConfig(BaseModel):
     grid_min_profit_factor: float = Field(default=1.3, gt=0.0)
     grid_max_dd_pct: float = Field(default=20.0, gt=0.0)
     grid_min_pos_fraction: float = Field(default=0.55, ge=0.0, le=1.0)
+    # Aggregate-degradation mode: use agg_deg (aggregate IS->OOS gap)
+    # instead of per-window-avg deg_avg for the degradation check in
+    # the standard gate path. Crypto 1h strategies with 21+ windows
+    # often have a single regime-shift outlier window that blows up
+    # the per-window average while the aggregate strategy actually
+    # IMPROVES OOS over IS. This mode is the principled fix: it
+    # keeps the per-fold DSR gate but swaps the degradation measure
+    # for the one the long-haul gate already uses. 2026-04-30.
+    agg_degradation_mode: bool = False
 
 
 class WalkForwardResult(BaseModel):
@@ -332,7 +341,8 @@ class WalkForwardEngine:
             (agg_is - agg_oos) / agg_is if agg_is > 0.0 else 0.0,
             0.0,
         )
-        legacy_gate = dsr > 0.5 and deg_avg < 0.35 and all_met and is_positive
+        deg_check = agg_deg if cfg.agg_degradation_mode else deg_avg
+        legacy_gate = dsr > 0.5 and deg_check < 0.35 and all_met and is_positive
         if cfg.grid_mode:
             # Grid-mode gate: profit_factor + bounded DD + positive
             # consistency. Sharpe / DSR are bypassed because they

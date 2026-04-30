@@ -260,6 +260,56 @@ def test_results_group_scope_by_symbol_and_strategy_style(tmp_path) -> None:  # 
     assert results["groups"]["by_strategy_kind"]["orb"]["symbols"] == ["MNQ1"]
 
 
+def test_results_emit_ranked_retune_plan_for_cross_asset_failures(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from eta_engine.scripts.strategy_supercharge_results import build_results
+
+    _report(
+        tmp_path,
+        "research_grid_20260430_034500_sol.md",
+        "sol_perp",
+        windows=2,
+        oos_sharpe=2.405,
+        dsr_pass=50.0,
+        verdict="FAIL",
+    )
+    _report(
+        tmp_path,
+        "research_grid_20260430_034500_mnq.md",
+        "mnq_futures",
+        windows=3,
+        oos_sharpe=-1.355,
+        dsr_pass=0.0,
+        verdict="FAIL",
+    )
+
+    results = build_results(
+        manifest=_manifest(
+            ["sol_perp", "mnq_futures"],
+            metadata={
+                "sol_perp": {"symbol": "SOL", "timeframe": "1h", "strategy_kind": "crypto_orb"},
+                "mnq_futures": {"symbol": "MNQ1", "timeframe": "5m", "strategy_kind": "orb"},
+            },
+        ),
+        report_dir=tmp_path,
+        generated_at="2026-04-30T04:05:00+00:00",
+    )
+
+    sol_plan = results["rows_by_bot"]["sol_perp"]["retune_plan"]
+    mnq_plan = results["rows_by_bot"]["mnq_futures"]["retune_plan"]
+
+    assert sol_plan["issue_code"] == "strict_gate_near_miss"
+    assert sol_plan["optimizer_command"][2] == "eta_engine.scripts.fleet_strategy_optimizer"
+    assert "--only-bot" in sol_plan["optimizer_command"]
+    assert "sol_perp" in sol_plan["optimizer_command"]
+    assert any("strategy_supercharge_retunes" in part for part in sol_plan["optimizer_command"])
+    assert sol_plan["primary_knobs"] == ["range_minutes", "atr_stop_mult", "rr_target"]
+    assert sol_plan["priority_score"] > mnq_plan["priority_score"]
+    assert results["retune_queue"][0]["bot_id"] == "sol_perp"
+    assert results["retune_queue"][0]["symbol"] == "SOL"
+    assert results["retune_queue"][0]["strategy_kind"] == "crypto_orb"
+    assert results["retune_queue"][0]["issue_code"] == "strict_gate_near_miss"
+
+
 def test_results_write_snapshot_round_trips(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from eta_engine.scripts.strategy_supercharge_results import build_results, write_results
 
