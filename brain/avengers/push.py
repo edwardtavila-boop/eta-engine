@@ -13,7 +13,8 @@ entry point that fans out to any configured channel.
 Design
 ------
 * ``Notifier`` Protocol -- any object with ``send(level, title, body)``.
-* ``LocalFileNotifier`` -- default, appends to ``~/.jarvis/alerts.jsonl``.
+* ``LocalFileNotifier`` -- default, appends to
+  ``logs/eta_engine/alerts_log.jsonl`` in the canonical workspace.
   Zero-config, always works, acts as audit log regardless of other channels.
 * ``PushoverNotifier`` / ``TelegramNotifier`` -- optional, env-var-gated
   (PUSHOVER_TOKEN + PUSHOVER_USER, TELEGRAM_TOKEN + TELEGRAM_CHAT).
@@ -31,21 +32,22 @@ import logging
 import os
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
 
 
-# Default local log sits beside the avengers journal so the operator
-# can ``tail -F`` both at once.
-ALERTS_JOURNAL: Path = Path.home() / ".jarvis" / "alerts.jsonl"
+# Default local log stays under the canonical ETA workspace log root.
+ALERTS_JOURNAL: Path = workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
 
 
 class AlertLevel(StrEnum):

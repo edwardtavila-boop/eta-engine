@@ -149,6 +149,9 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   `var/eta_engine/state/calibration.jsonl`, while default rehydrate can seed
   persona/category weights from a legacy home `.jarvis/calibration.jsonl`
   until the canonical journal exists.
+- The Avengers alert fan-out now writes its default local audit channel to
+  `logs/eta_engine/alerts_log.jsonl`, keeping PushBus/Watchdog alert records
+  under the canonical workspace instead of a per-user home `.jarvis` path.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.

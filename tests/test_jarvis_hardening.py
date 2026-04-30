@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from eta_engine.brain.avengers import (
+    ALERTS_JOURNAL,
     CALIBRATION_JOURNAL,
     DRIFT_JOURNAL,
     RED_TEAM_GATED_TRANSITIONS,
@@ -118,6 +119,17 @@ def _result(
 
 
 class TestPushBus:
+    def test_default_alerts_journal_path_is_canonical_runtime_log(self) -> None:
+        from eta_engine.scripts import workspace_roots
+
+        assert ALERTS_JOURNAL == workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH
+        assert ".jarvis" not in str(ALERTS_JOURNAL)
+
+    def test_default_local_file_notifier_uses_canonical_alerts_journal(self) -> None:
+        notif = LocalFileNotifier()
+
+        assert notif.path == ALERTS_JOURNAL
+
     def test_local_file_notifier_writes_line(self, tmp_path: Path) -> None:
         journal = tmp_path / "alerts.jsonl"
         notif = LocalFileNotifier(path=journal)

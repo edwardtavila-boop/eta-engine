@@ -242,6 +242,8 @@ def test_runtime_helpers_drop_localappdata_eta_state_paths() -> None:
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/precedent_cache.py")
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/cost_forecast.py")
     assert "avengers_journal_read_path" in _read("eta_engine/brain/avengers/watchdog.py")
+    assert "workspace_roots.ETA_RUNTIME_ALERTS_LOG_PATH" in _read("eta_engine/brain/avengers/push.py")
+    assert 'Path.home() / ".jarvis" / "alerts.jsonl"' not in _read("eta_engine/brain/avengers/push.py")
     assert '$env:ETA_STATE_DIR = $stateDir' in _read(
         "eta_engine/deploy/scripts/run_dashboard_8421.ps1"
     )
