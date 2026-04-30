@@ -50,7 +50,9 @@ Public API
   * ``Executor``        -- Protocol for injectable LLM runners
   * ``DryRunExecutor``  -- deterministic default (no network)
   * ``Persona``         -- abstract base; subclasses = Batman/Alfred/Robin
-  * ``AVENGERS_JOURNAL``-- default JSONL path (``~/.jarvis/avengers.jsonl``)
+  * ``AVENGERS_JOURNAL``-- default JSONL path
+                            (``var/eta_engine/state/avengers.jsonl``)
+  * ``avengers_journal_read_path`` -- canonical path with legacy readback
   * ``append_journal``  -- small helper used by every Persona
 """
 
@@ -61,7 +63,6 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime  # noqa: TC003 -- pydantic needs runtime
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,8 +82,11 @@ from eta_engine.brain.model_policy import (
     select_model,
     tier_for,
 )
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from eta_engine.brain.jarvis_admin import ActionResponse, JarvisAdmin
 
 
@@ -264,7 +268,22 @@ class DryRunExecutor:
 # ---------------------------------------------------------------------------
 
 
-AVENGERS_JOURNAL: Path = Path.home() / ".jarvis" / "avengers.jsonl"
+AVENGERS_JOURNAL: Path = workspace_roots.ETA_AVENGERS_JOURNAL_PATH
+LEGACY_AVENGERS_JOURNAL: Path = workspace_roots.ETA_LEGACY_AVENGERS_JOURNAL_PATH
+
+
+def avengers_journal_read_path(path: Path | None = None) -> Path:
+    """Return the read path for default analytics over the Avengers journal.
+
+    New writes stay under the canonical ETA workspace. Default readers can
+    still inspect pre-migration history in ``~/.jarvis/avengers.jsonl`` until
+    the canonical journal exists.
+    """
+    if path is not None:
+        return path
+    if AVENGERS_JOURNAL.exists() or not LEGACY_AVENGERS_JOURNAL.exists():
+        return AVENGERS_JOURNAL
+    return LEGACY_AVENGERS_JOURNAL
 
 
 def append_journal(
@@ -572,6 +591,7 @@ __all__ = [
     "COST_RATIO",
     "DryRunExecutor",
     "Executor",
+    "LEGACY_AVENGERS_JOURNAL",
     "PERSONA_BUCKET",
     "PERSONA_TIER",
     "Persona",
@@ -581,6 +601,7 @@ __all__ = [
     "TaskEnvelope",
     "TaskResult",
     "append_journal",
+    "avengers_journal_read_path",
     "bucket_for",
     "describe_persona",
     "make_envelope",

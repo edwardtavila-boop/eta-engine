@@ -49,6 +49,7 @@ from eta_engine.brain.jarvis_admin import (
     Verdict,
 )
 from eta_engine.brain.model_policy import ModelTier, tier_for
+from eta_engine.scripts import workspace_roots
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -573,9 +574,9 @@ class TestHelpers:
         assert PERSONA_BUCKET[PersonaId.ROBIN] == TaskBucket.GRUNT
         assert PERSONA_BUCKET[PersonaId.JARVIS] is None
 
-    def test_avengers_journal_path_under_home(self) -> None:
-        assert AVENGERS_JOURNAL.name == "avengers.jsonl"
-        assert AVENGERS_JOURNAL.parent.name == ".jarvis"
+    def test_avengers_journal_path_is_canonical_workspace_state(self) -> None:
+        assert AVENGERS_JOURNAL == workspace_roots.ETA_AVENGERS_JOURNAL_PATH
+        assert "EvolutionaryTradingAlgo" in str(AVENGERS_JOURNAL)
 
 
 # ---------------------------------------------------------------------------

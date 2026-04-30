@@ -110,7 +110,8 @@ class Fleet:
         One executor shared by every persona. In production this is the
         Anthropic API wrapper; in tests it is ``DryRunExecutor``.
     journal_path
-        JSONL audit log. Defaults to ``~/.jarvis/avengers.jsonl``.
+        JSONL audit log. Defaults to
+        ``var/eta_engine/state/avengers.jsonl`` in the canonical workspace.
     """
 
     def __init__(

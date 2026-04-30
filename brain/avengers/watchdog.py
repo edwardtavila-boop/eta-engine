@@ -43,7 +43,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from eta_engine.brain.avengers.base import AVENGERS_JOURNAL
+from eta_engine.brain.avengers.base import avengers_journal_read_path
 from eta_engine.brain.avengers.push import AlertLevel, PushBus, default_bus
 
 # All four personas in the fleet. Kept as strings (not PersonaId) so the
@@ -141,7 +141,8 @@ class Watchdog:
     Parameters
     ----------
     journal_path
-        JSONL file to tail. Defaults to the Avengers journal.
+        JSONL file to tail. Defaults to the canonical Avengers journal,
+        with legacy home-journal readback when canonical history is absent.
     push_bus
         Where to send alerts. Defaults to the module-level ``default_bus``.
     stuck_minutes
@@ -170,7 +171,7 @@ class Watchdog:
         if not (0 < stuck_minutes < offline_minutes <= lookback_minutes):
             msg = "watchdog thresholds must satisfy 0 < stuck < offline <= lookback"
             raise ValueError(msg)
-        self.journal_path = journal_path or AVENGERS_JOURNAL
+        self.journal_path = avengers_journal_read_path(journal_path)
         self.push_bus = push_bus or default_bus()
         self.stuck_minutes = stuck_minutes
         self.offline_minutes = offline_minutes

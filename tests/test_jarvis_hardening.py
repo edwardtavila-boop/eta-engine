@@ -208,6 +208,24 @@ class TestPrecedentCache:
         verdict = cache.should_skip(_env(goal="tighten orb filter"))
         assert verdict is None
 
+    def test_default_cache_can_fall_back_to_legacy_avengers_journal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import eta_engine.brain.avengers.base as base
+
+        canonical = tmp_path / "state" / "avengers.jsonl"
+        legacy = tmp_path / ".jarvis" / "avengers.jsonl"
+        self._seed_journal(legacy, count=3, success=True, goal="tighten orb")
+        monkeypatch.setattr(base, "AVENGERS_JOURNAL", canonical)
+        monkeypatch.setattr(base, "LEGACY_AVENGERS_JOURNAL", legacy, raising=False)
+
+        cache = PrecedentCache(min_precedents=3, min_similarity=0.3)
+
+        assert cache.journal_path == legacy
+        verdict = cache.should_skip(_env(goal="tighten orb filter"))
+        assert verdict is not None
+        assert len(verdict.precedents) >= 3
+
 
 # ---------------------------------------------------------------------------
 # calibration_loop.py
@@ -643,6 +661,42 @@ class TestCostForecast:
         assert report.severity == "RED"
         assert report.projected_monthly > 200.0
 
+    def test_default_forecast_can_fall_back_to_legacy_avengers_journal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import eta_engine.brain.avengers.base as base
+
+        now = datetime.now(UTC)
+        canonical = tmp_path / "state" / "avengers.jsonl"
+        legacy = tmp_path / ".jarvis" / "avengers.jsonl"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            json.dumps(
+                {
+                    "ts": now.isoformat(),
+                    "envelope": {
+                        "category": TaskCategory.DEBUG.value,
+                        "caller": SubsystemId.OPERATOR.value,
+                    },
+                    "result": {
+                        "success": True,
+                        "persona_id": PersonaId.ALFRED.value,
+                        "cost_multiplier": 1.0,
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(base, "AVENGERS_JOURNAL", canonical)
+        monkeypatch.setattr(base, "LEGACY_AVENGERS_JOURNAL", legacy, raising=False)
+
+        cf = CostForecast(clock=lambda: now, sonnet_usd_per_call=1.0)
+
+        assert cf.journal_path == legacy
+        report = cf.snapshot()
+        assert report.last_day.dispatches == 1
+
 
 # ---------------------------------------------------------------------------
 # watchdog.py
@@ -696,6 +750,44 @@ class TestWatchdog:
         report = wd.sweep()
         for h in report.daemons:
             assert h.status is HealthStatus.HEALTHY
+
+    def test_default_watchdog_can_fall_back_to_legacy_avengers_journal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import eta_engine.brain.avengers.base as base
+
+        canonical = tmp_path / "state" / "avengers.jsonl"
+        legacy = tmp_path / ".jarvis" / "avengers.jsonl"
+        now = datetime.now(UTC)
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            "\n".join(
+                json.dumps(
+                    {
+                        "ts": now.isoformat(),
+                        "kind": "heartbeat",
+                        "persona": persona,
+                    }
+                )
+                for persona in ("JARVIS", "BATMAN", "ALFRED", "ROBIN")
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(base, "AVENGERS_JOURNAL", canonical)
+        monkeypatch.setattr(base, "LEGACY_AVENGERS_JOURNAL", legacy, raising=False)
+
+        wd = Watchdog(
+            push_bus=self._bus(tmp_path),
+            stuck_minutes=5.0,
+            offline_minutes=15.0,
+            lookback_minutes=60.0,
+            clock=lambda: now,
+        )
+
+        assert wd.journal_path == legacy
+        report = wd.sweep()
+        assert {h.status for h in report.daemons} == {HealthStatus.HEALTHY}
 
     def test_self_persona_skipped(self, tmp_path: Path) -> None:
         wd = Watchdog(

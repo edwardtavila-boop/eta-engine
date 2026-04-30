@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from eta_engine.brain.avengers.base import AVENGERS_JOURNAL
+from eta_engine.brain.avengers.base import avengers_journal_read_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -86,7 +86,8 @@ class PrecedentCache:
     Parameters
     ----------
     journal_path
-        JSONL file to tail. Defaults to the Avengers journal.
+        JSONL file to tail. Defaults to the canonical Avengers journal,
+        with legacy home-journal readback when canonical history is absent.
     lookback_days
         Only considers entries newer than this.
     min_similarity
@@ -106,7 +107,7 @@ class PrecedentCache:
         min_similarity: float = 0.55,
         min_precedents: int = 3,
     ) -> None:
-        self.journal_path = journal_path or AVENGERS_JOURNAL
+        self.journal_path = avengers_journal_read_path(journal_path)
         self.lookback_days = lookback_days
         self.min_similarity = min_similarity
         self.min_precedents = min_precedents

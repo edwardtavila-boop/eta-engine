@@ -334,8 +334,9 @@ class AvengerDaemon:
         Injected ``(seconds) -> None``. Tests pass a no-op; production
         uses ``time.sleep``.
     journal_path
-        JSONL audit log. Defaults to ``~/.jarvis/avengers.jsonl`` so the
-        daemon heartbeats interleave with normal Fleet dispatches.
+        JSONL audit log. Defaults to
+        ``var/eta_engine/state/avengers.jsonl`` so daemon heartbeats
+        interleave with normal Fleet dispatches in canonical workspace state.
     """
 
     def __init__(

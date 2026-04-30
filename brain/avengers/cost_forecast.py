@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from eta_engine.brain.avengers.base import AVENGERS_JOURNAL
+from eta_engine.brain.avengers.base import avengers_journal_read_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -82,7 +82,8 @@ class CostForecast:
     Parameters
     ----------
     journal_path
-        JSONL file to tail. Defaults to the Avengers journal.
+        JSONL file to tail. Defaults to the canonical Avengers journal,
+        with legacy home-journal readback when canonical history is absent.
     monthly_cap_usd
         Operator-set monthly spend cap. Used to classify severity.
     sonnet_usd_per_call
@@ -101,7 +102,7 @@ class CostForecast:
         sonnet_usd_per_call: float = 0.06,
         clock: callable | None = None,
     ) -> None:
-        self.journal_path = journal_path or AVENGERS_JOURNAL
+        self.journal_path = avengers_journal_read_path(journal_path)
         self.monthly_cap_usd = monthly_cap_usd
         self.sonnet_usd_per_call = sonnet_usd_per_call
         self._clock = clock or (lambda: datetime.now(UTC))

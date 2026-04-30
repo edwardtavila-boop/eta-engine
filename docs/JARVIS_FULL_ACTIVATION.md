@@ -140,6 +140,11 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   to `var/eta_engine/state/promotion.json` and
   `var/eta_engine/state/promotion.jsonl`, while still loading legacy home
   `.jarvis/promotion.json` state if the canonical file has not been created.
+- The Avengers dispatch journal now writes to
+  `var/eta_engine/state/avengers.jsonl`, while default analytics readers
+  (`PrecedentCache`, `CostForecast`, and `Watchdog`) still fall back to a
+  legacy home `.jarvis/avengers.jsonl` when canonical history has not been
+  created.
 - JARVIS NL audit rollups now anchor relative windows to the latest audit-log
   timestamp when no explicit clock is supplied, so archived logs answer
   consistently instead of drifting with wall-clock time.
