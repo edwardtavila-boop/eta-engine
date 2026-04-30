@@ -296,6 +296,8 @@
         "tested",
         "passed",
         "failed",
+        "near_misses",
+        "best_near_miss_bot",
         "pending",
         "stale_report_path",
         "oos_sharpe",

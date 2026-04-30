@@ -168,6 +168,48 @@ def test_results_can_load_canonical_manifest_snapshot(tmp_path) -> None:  # type
     assert results["rows_by_bot"]["eth_perp"]["result_status"] == "pass"
 
 
+def test_results_rank_near_misses_for_next_retune(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from eta_engine.scripts.strategy_supercharge_results import build_results
+
+    _report(
+        tmp_path,
+        "research_grid_20260430_034500_sol.md",
+        "sol_perp",
+        windows=2,
+        oos_sharpe=2.405,
+        dsr_pass=50.0,
+        verdict="FAIL",
+    )
+    _report(
+        tmp_path,
+        "research_grid_20260430_034500_eth.md",
+        "eth_compression",
+        windows=2,
+        oos_sharpe=0.750,
+        dsr_pass=50.0,
+        verdict="FAIL",
+    )
+    _report(
+        tmp_path,
+        "research_grid_20260430_034500_btc.md",
+        "btc_hybrid_sage",
+        windows=2,
+        oos_sharpe=-12.638,
+        dsr_pass=0.0,
+        verdict="FAIL",
+    )
+
+    results = build_results(
+        manifest=_manifest(["eth_compression", "btc_hybrid_sage", "sol_perp"]),
+        report_dir=tmp_path,
+        generated_at="2026-04-30T04:05:00+00:00",
+    )
+
+    assert results["summary"]["best_near_miss_bot"] == "sol_perp"
+    assert [row["bot_id"] for row in results["near_misses"][:2]] == ["sol_perp", "eth_compression"]
+    assert all(row["result_status"] == "fail" for row in results["near_misses"])
+
+
 def test_results_write_snapshot_round_trips(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from eta_engine.scripts.strategy_supercharge_results import build_results, write_results
 

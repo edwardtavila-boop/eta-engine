@@ -130,6 +130,25 @@ def _load_manifest_snapshot(path: Path) -> dict[str, object] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _near_miss_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    candidates = [
+        row
+        for row in rows
+        if row.get("result_status") == "fail"
+        and int(row.get("windows") or 0) > 0
+        and float(row.get("oos_sharpe") or 0.0) > 0.0
+    ]
+    return sorted(
+        candidates,
+        key=lambda row: (
+            -float(row.get("dsr_pass_fraction") or 0.0),
+            -float(row.get("oos_sharpe") or 0.0),
+            -int(row.get("windows") or 0),
+            str(row.get("bot_id") or ""),
+        ),
+    )
+
+
 def build_results(
     *,
     manifest: dict[str, object] | None = None,
@@ -181,6 +200,7 @@ def build_results(
     passed = [row for row in rows if row.get("result_status") == "pass"]
     failed = [row for row in rows if row.get("result_status") == "fail"]
     pending = [row for row in rows if row.get("result_status") == "pending"]
+    near_misses = _near_miss_rows(rows)
     rows_by_bot = {
         str(row["bot_id"]): row
         for row in rows
@@ -200,12 +220,14 @@ def build_results(
             "pending": len(pending),
             "next_pending_bot": str(pending[0].get("bot_id") or "") if pending else "",
             "first_failed_bot": str(failed[0].get("bot_id") or "") if failed else "",
+            "best_near_miss_bot": str(near_misses[0].get("bot_id") or "") if near_misses else "",
         },
         "rows": rows,
         "rows_by_bot": rows_by_bot,
         "tested": passed + failed,
         "passed": passed,
         "failed": failed,
+        "near_misses": near_misses,
         "pending": pending,
     }
 

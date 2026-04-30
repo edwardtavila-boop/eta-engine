@@ -858,6 +858,7 @@ def _strategy_supercharge_results_payload() -> dict:
             "tested": [],
             "passed": [],
             "failed": [],
+            "near_misses": [],
             "pending": [],
         }
     return payload if isinstance(payload, dict) else {
@@ -870,6 +871,7 @@ def _strategy_supercharge_results_payload() -> dict:
         "tested": [],
         "passed": [],
         "failed": [],
+        "near_misses": [],
         "pending": [],
     }
 
