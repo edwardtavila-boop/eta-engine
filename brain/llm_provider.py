@@ -397,7 +397,7 @@ def _call_deepseek(
 
     resp = client.chat.completions.create(
         model=model, messages=messages, max_tokens=max_tokens,
-        temperature=temperature, **extra_kw,
+        temperature=temperature, extra_body=extra_kw if extra_kw else None,
     )
 
     choice = resp.choices[0]
