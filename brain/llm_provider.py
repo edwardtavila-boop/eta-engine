@@ -32,9 +32,30 @@ import os
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Lazy-load .env so API keys are available even without manual dotenv setup.
+_ENV_LOADED = False
+
+
+def _ensure_dotenv() -> None:
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    try:
+        from dotenv import load_dotenv
+        for candidate in (
+            Path.cwd() / ".env",
+            Path(__file__).resolve().parents[3] / ".env",
+        ):
+            if candidate.is_file():
+                load_dotenv(dotenv_path=str(candidate), override=False)
+        _ENV_LOADED = True
+    except ImportError:
+        pass
 
 # ---------------------------------------------------------------------------
 # Tier → model mapping (single source of truth)
@@ -108,6 +129,7 @@ def _default_provider() -> Provider:
       2. ETA_LLM_PROVIDER=anthropic → Anthropic/Claude (legacy)
       3. Auto-detect: DEEPSEEK_API_KEY present → DeepSeek, else Anthropic
     """
+    _ensure_dotenv()
     explicit = os.environ.get("ETA_LLM_PROVIDER", "").strip().lower()
     if explicit in ("deepseek", "ds", "deepseek-v3", "deepseek-v4"):
         return Provider.DEEPSEEK
@@ -191,6 +213,7 @@ def chat_completion(
 # ---------------------------------------------------------------------------
 
 def _get_api_key(provider: Provider) -> str:
+    _ensure_dotenv()
     env_map = {
         Provider.DEEPSEEK:  "DEEPSEEK_API_KEY",
         Provider.ANTHROPIC: "ANTHROPIC_API_KEY",
