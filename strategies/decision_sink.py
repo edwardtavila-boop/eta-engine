@@ -168,6 +168,11 @@ class RouterDecisionSink:
     include_candidates: bool = False
     default_outcome: Outcome = Outcome.NOTED
     also_log_flat: bool = False
+    #: Optional :class:`FleetRiskGate` — when wired, ``emit()`` checks
+    #: the fleet daily-loss budget BEFORE writing the event. If the fleet
+    #: is tripped, the event is written with ``outcome=BLOCKED`` and the
+    #: caller sees the gate breach via the returned event's outcome.
+    fleet_gate: object | None = None
 
     def emit(
         self,
@@ -175,6 +180,7 @@ class RouterDecisionSink:
         *,
         outcome: Outcome | None = None,
         links: Sequence[str] | None = None,
+        bot_id: str | None = None,
     ) -> JournalEvent | None:
         """Write one decision to the journal and return the written event.
 
@@ -182,14 +188,27 @@ class RouterDecisionSink:
         or flat-gated). Exceptions are caught so an observability
         failure NEVER crashes the live bot loop; the sink logs to
         stderr and returns None.
+
+        When :attr:`fleet_gate` is wired, the fleet daily-loss budget
+        is checked BEFORE writing. A tripped gate writes with
+        ``outcome=BLOCKED`` and does not raise — the caller decides
+        whether to halt trading.
         """
         if not self.enabled or self.journal is None:
             return None
         if not self.also_log_flat and not decision.winner.is_actionable:
             return None
+        effective_outcome = outcome if outcome is not None else self.default_outcome
+        if self.fleet_gate is not None:
+            try:
+                self.fleet_gate.record_pnl(bot_id or "unknown", 0.0)
+                if self.fleet_gate.is_tripped():
+                    effective_outcome = Outcome.BLOCKED
+            except Exception:
+                pass
         event = router_decision_to_event(
             decision,
-            outcome=outcome if outcome is not None else self.default_outcome,
+            outcome=effective_outcome,
             links=links,
             include_candidates=self.include_candidates,
         )

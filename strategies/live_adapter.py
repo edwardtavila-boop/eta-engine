@@ -159,6 +159,7 @@ def build_live_adapter(  # noqa: PLR0913 -- factory with many optional knobs
     kill_switch_active: bool = False,
     session_allows_entries: bool = True,
     bot_id: str | None = None,
+    fleet_gate: object | None = None,
 ) -> RouterAdapter:
     """Construct a fully-wired live :class:`RouterAdapter`.
 
@@ -233,6 +234,9 @@ def build_live_adapter(  # noqa: PLR0913 -- factory with many optional knobs
     if clock is not None:
         scheduler_init["clock"] = clock
     scheduler = AllowlistScheduler(**scheduler_init)  # type: ignore[arg-type]
+
+    if decision_sink is not None and fleet_gate is not None:
+        decision_sink.fleet_gate = fleet_gate
 
     return RouterAdapter(
         asset=asset,
