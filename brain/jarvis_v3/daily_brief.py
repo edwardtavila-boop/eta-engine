@@ -61,6 +61,12 @@ class DailyBrief:
     sage_schools_degraded: int = 0
     sage_top_schools: list[str] = field(default_factory=list)
     sage_disagreement_summary: str = ""
+    # Wave-18: Shadow pipeline status
+    shadow_fills: int = 0
+    shadow_win_rate: float = 0.0
+    shadow_sharpe: float = 0.0
+    shadow_pipeline_enabled: bool = False
+    shadow_promotions: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -126,6 +132,22 @@ class DailyBrief:
             lines.append("## Notes")
             for n in self.notes:
                 lines.append(f"- {n}")
+            lines.append("")
+
+        if self.shadow_pipeline_enabled or self.shadow_fills > 0:
+            lines.append("## Shadow Pipeline")
+            lines.append(f"- Enabled: {self.shadow_pipeline_enabled}")
+            lines.append(f"- Fills: {self.shadow_fills}")
+            lines.append(f"- Win rate: {self.shadow_win_rate:.1%}")
+            lines.append(f"- Sharpe: {self.shadow_sharpe:.2f}")
+            if self.shadow_promotions:
+                for p in self.shadow_promotions:
+                    lines.append(
+                        f"- {p.get('strategy_id', '?')} [{p.get('regime', '?')}]: "
+                        f"{p.get('action', '?')} "
+                        f"(sharpe={p.get('sharpe', 0):.2f}, "
+                        f"wr={p.get('win_rate', 0):.0%})"
+                    )
             lines.append("")
 
         if self.sage_composite_bias:
@@ -340,6 +362,23 @@ def generate_daily_brief(
             f"win-rate {win_rate:.0%}"
         )
 
+    # --- Shadow pipeline ---
+    shadow_fills = 0
+    shadow_win_rate = 0.0
+    shadow_sharpe = 0.0
+    shadow_enabled = False
+    shadow_promotions: list[dict] = []
+    try:
+        from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+        pipe = ShadowPipeline.default()
+        pipe.load_fills()
+        shadow_fills = pipe.total_fills
+        shadow_win_rate = pipe.win_rate
+        shadow_sharpe = pipe.sharpe
+        shadow_enabled = pipe.enabled
+    except Exception as exc:
+        logger.debug("daily_brief: shadow pipeline failed (%s)", exc)
+
     # --- Notes ---
     notes: list[str] = []
     if n_verdicts == 0:
@@ -348,6 +387,11 @@ def generate_daily_brief(
         notes.append("Verdicts logged but no trades closed")
     if n_new_postmortems := len(new_pms):
         notes.append(f"{n_new_postmortems} new postmortem(s) generated today")
+    if shadow_fills > 0:
+        notes.append(
+            f"Shadow pipeline: {shadow_fills} fills, "
+            f"wr={shadow_win_rate:.0%}, sharpe={shadow_sharpe:.2f}"
+        )
 
     brief = DailyBrief(
         date_iso=today,
@@ -373,6 +417,11 @@ def generate_daily_brief(
         sage_schools_degraded=sage_degraded,
         sage_top_schools=sage_top,
         sage_disagreement_summary=sage_disagree,
+        shadow_fills=shadow_fills,
+        shadow_win_rate=round(shadow_win_rate, 4),
+        shadow_sharpe=round(shadow_sharpe, 4),
+        shadow_pipeline_enabled=shadow_enabled,
+        shadow_promotions=shadow_promotions,
         notes=notes,
     )
 

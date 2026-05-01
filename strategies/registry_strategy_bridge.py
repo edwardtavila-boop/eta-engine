@@ -132,19 +132,22 @@ def _build_callable_for_assignment(
         )
 
         preset_name = extras.get("compression_preset", "default")
-        cfg = CompressionBreakoutConfig()
         if preset_name == "eth":
             cfg = CompressionBreakoutConfig(
-                close_location_min=0.65,
-                volume_z_min=0.4,
-                bb_width_pct_max=0.30,
+                bb_period=20, bb_width_pct_max=0.60,
+                close_location_min=0.40, volume_z_min=0.2,
+                breakout_lookback=12, cooldown_bars=12,
+                rr_target=2.5, atr_stop_mult=1.8,
             )
         elif preset_name == "btc":
             cfg = CompressionBreakoutConfig(
-                close_location_min=0.80,
-                volume_z_min=1.0,
-                bb_width_pct_max=0.30,
+                bb_period=20, bb_width_pct_max=0.50,
+                close_location_min=0.50, volume_z_min=0.3,
+                breakout_lookback=24, cooldown_bars=24,
+                rr_target=2.5, atr_stop_mult=2.0,
             )
+        else:
+            cfg = CompressionBreakoutConfig()
         return _wrap_strategy(CompressionBreakoutStrategy(cfg))
 
     if kind == "crypto_trend":
@@ -168,16 +171,33 @@ def _build_callable_for_assignment(
     if kind == "ensemble_voting":
         from eta_engine.strategies.ensemble_voting_strategy import (
             EnsembleVotingConfig,
+            EnsembleVotingStrategy,
         )
+
+        # Build actual voter sub-strategies from the registry voter names.
+        # Each voter is a strategy_kind that the bridge knows how to build.
+        voter_names = extras.get("voters", [])
+        sub_strategies: list = []
+        voter_kind_map = {
+            "regime_trend": "crypto_regime_trend",
+            "regime_trend_etf": "crypto_macro_confluence",
+            "sage_daily_gated": "sage_daily_gated",
+        }
+        for name in voter_names:
+            kind = voter_kind_map.get(name, name)
+            try:
+                from eta_engine.scripts.run_research_grid import _build_strategy_factory
+                factory = _build_strategy_factory(kind, extras)
+                sub_strategies.append((name, factory()))
+            except (ValueError, ImportError):
+                pass
+        if not sub_strategies:
+            return _passthrough
 
         cfg = EnsembleVotingConfig(
             min_agreement_count=int(extras.get("min_agreement_count", 2)),
         )
-        try:
-            from eta_engine.strategies.ensemble_voting_strategy import EnsembleVotingStrategy
-            return _wrap_strategy(EnsembleVotingStrategy([("_", _passthrough)], cfg))
-        except ValueError:
-            return None
+        return _wrap_strategy(EnsembleVotingStrategy(sub_strategies, cfg))
 
     if kind == "sage_consensus":
         from eta_engine.strategies.sage_consensus_strategy import (
@@ -242,30 +262,42 @@ def _build_callable_for_assignment(
         return _wrap_strategy(MtfScalpStrategy(cfg))
 
     if kind == "confluence_scorecard":
-        sub_kind = extras.get("sub_strategy_kind", "orb")
-        sub = _build_callable_for_assignment(
-            type("_Fake", (), {"strategy_kind": sub_kind, "extras": extras.get("sub_strategy_extras", {})})(),
-        )
-        if sub is None:
-            return None
         from eta_engine.strategies.confluence_scorecard import (
             ConfluenceScorecardConfig,
             ConfluenceScorecardStrategy,
         )
 
-        sc_cfg = extras.get("scorecard_config", {})
-        if isinstance(sc_cfg, dict):
-            cfg = ConfluenceScorecardConfig(
-                min_score=int(sc_cfg.get("min_score", 3)),
-                a_plus_score=int(sc_cfg.get("a_plus_score", 4)),
-                a_plus_size_mult=float(sc_cfg.get("a_plus_size_mult", 1.5)),
-                fast_ema=int(sc_cfg.get("fast_ema", 9)),
-                mid_ema=int(sc_cfg.get("mid_ema", 21)),
-                slow_ema=int(sc_cfg.get("slow_ema", 50)),
+        sc_cfg_raw = extras.get("scorecard_config", {})
+        if isinstance(sc_cfg_raw, dict):
+            sc_cfg = ConfluenceScorecardConfig(
+                min_score=int(sc_cfg_raw.get("min_score", 3)),
+                a_plus_score=int(sc_cfg_raw.get("a_plus_score", 4)),
+                a_plus_size_mult=float(sc_cfg_raw.get("a_plus_size_mult", 1.5)),
+                fast_ema=int(sc_cfg_raw.get("fast_ema", 9)),
+                mid_ema=int(sc_cfg_raw.get("mid_ema", 21)),
+                slow_ema=int(sc_cfg_raw.get("slow_ema", 50)),
             )
         else:
-            cfg = ConfluenceScorecardConfig()
-        return _wrap_strategy(ConfluenceScorecardStrategy(None, cfg))
+            sc_cfg = ConfluenceScorecardConfig()
+
+        sub_kind = extras.get("sub_strategy_kind", "")
+        if sub_kind:
+            fake = type("_Fake", (), {"strategy_kind": sub_kind, "extras": extras.get("sub_strategy_extras", {})})()
+            sub_callable = _build_callable_for_assignment(fake)
+            if sub_callable is None:
+                return None
+            # The sub_callable is a wrapper — we need the raw strategy object.
+            # For composition, build the sub-strategy directly.
+            try:
+                from eta_engine.scripts.run_research_grid import _build_strategy_factory
+                sub_factory = _build_strategy_factory(sub_kind, extras.get("sub_strategy_extras", {}))
+                sub_strategy = sub_factory()
+            except (ValueError, ImportError):
+                sub_strategy = None
+            if sub_strategy is not None and hasattr(sub_strategy, "maybe_enter"):
+                return _wrap_strategy(ConfluenceScorecardStrategy(sub_strategy, sc_cfg))
+
+        return _wrap_strategy(ConfluenceScorecardStrategy(None, sc_cfg))
 
     return None
 

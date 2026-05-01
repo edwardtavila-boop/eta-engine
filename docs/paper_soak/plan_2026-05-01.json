@@ -1,0 +1,38 @@
+{
+  "bot_id": "mnq_futures",
+  "strategy_id": "mnq_orb_v2",
+  "symbol": "MNQ1",
+  "timeframe": "5m",
+  "start_date": "2026-05-01",
+  "end_date": "2026-05-14",
+  "rth_session_dates": [
+    "2026-05-01",
+    "2026-05-04",
+    "2026-05-05",
+    "2026-05-06",
+    "2026-05-07",
+    "2026-05-08",
+    "2026-05-11",
+    "2026-05-12",
+    "2026-05-13",
+    "2026-05-14"
+  ],
+  "n_sessions": 10,
+  "venue": "ibkr_paper",
+  "account_id_redacted": "DUQ***9869",
+  "expected_trades_lower": 5,
+  "expected_trades_upper": 10,
+  "pinned_baseline": {
+    "strategy_id": "mnq_orb_v2",
+    "n_trades": 50,
+    "win_rate": 0.2,
+    "avg_r": -0.2593,
+    "r_stddev": 1.5495,
+    "_promoted_at": "2026-04-29",
+    "_promotion_status": "shadow_benchmark",
+    "_full_history_smoke": "2026-04-29 positive-price-filtered full-history smoke: 487,725/490,103 tradable MNQ1 5m bars, 83 windows, 28/83 positive OOS, agg IS Sharpe -0.707, agg OOS Sharpe -2.958, degradation 51.8%, DSR median 0.000, DSR pass 13.2%, strict gate FAIL. A targeted full-history retune checked five serious ORB alternatives; best checked OOS remained negative (-2.368, DSR pass 25.3%). This supersedes any interpretation of v2 as promotion-grade; keep it as a plain-ORB shadow benchmark only while mnq_orb_sage_v1 remains the stronger READY MNQ lane.",
+    "_walk_forward_summary": "MNQ1/5m latest 20k imported bars, 60d/30d windows, 1/2 positive OOS, agg OOS Sharpe +1.788, DSR median 0.651, 50% pass fraction. Latest-slice retune: range=5m, rr=3.0, atr_stop=1.5, ema=50. Strict gate remains FAIL because pass fraction is exactly 50% and the second OOS fold only fired one trade.",
+    "_notes": "Shadow/diagnostic baseline only, not a live or paper promotion candidate. Persisted so drift checks and launch readiness keep the known-bad plain ORB lane visible without blocking OP-16. Full latest-20k combined backtest: 50 trades, 20.0% win rate, avg R -0.2593, max DD 18.306%, total return -12.6815%; the improvement is OOS-slice relative to the prior latest-slice smoke, not a complete production promotion."
+  },
+  "emitted_at_utc": "2026-05-01T04:06:12.849162+00:00"
+}

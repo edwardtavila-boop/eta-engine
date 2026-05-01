@@ -231,6 +231,9 @@ def build_alerter_from_env() -> MultiAlerter | None:
     disc = os.environ.get("DISCORD_WEBHOOK_URL")
     if disc:
         alerters.append(DiscordAlerter(webhook_url=disc))
+    firm_disc = os.environ.get("FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS")
+    if firm_disc:
+        alerters.append(DiscordAlerter(webhook_url=firm_disc, username="EVOLUTIONARY TRADING ALGO Supervisor"))
     slack = os.environ.get("SLACK_WEBHOOK_URL")
     if slack:
         alerters.append(SlackAlerter(webhook_url=slack))
@@ -342,6 +345,20 @@ async def _async_main(
     alerter = build_alerter_from_env()
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
+
+    # Wire ShadowPipeline daemon (Wave-18)
+    shadow_pipe: object = None
+    try:
+        from eta_engine.brain.jarvis_v3.shadow_pipeline import ShadowPipeline
+        shadow_pipe = ShadowPipeline.default()
+        shadow_pipe.load_fills()
+        if shadow_pipe.enabled:
+            logger.info("shadow_pipeline: ENABLED (%d prior fills)", shadow_pipe.total_fills)
+        else:
+            logger.info("shadow_pipeline: present but DISABLED (set SHADOW_OBSERVER_ENABLED=1)")
+    except Exception as exc:
+        logger.debug("shadow_pipeline: init failed (%s)", exc)
+
     logger.info(
         "jarvis_live starting: inputs=%s interval=%.1fs alerter=%s max_ticks=%s",
         inputs_path,

@@ -158,7 +158,7 @@ class JarvisFull:
             admin=admin, memory=mem,
             cfg=IntelligenceConfig(enable_intelligence=enable_intelligence),
         )
-        return cls(
+        inst = cls(
             intelligence=intel,
             memory=mem,
             operator_coach=OperatorCoach.default(),
@@ -167,34 +167,17 @@ class JarvisFull:
             quantum_agent=quantum_agent,
             kaizen_engine=kaizen_engine,
         )
-
-    # Wave-18: Override retro logger + LLM narrative + verdict dispatch
-    _override_retro: object = None
-    _verdict_dispatcher: object = None
-
-    @classmethod
-    def bootstrap(
-        cls,
-        *,
-        admin: JarvisAdmin,
-        memory: HierarchicalMemory | None = None,
-        enable_intelligence: bool = True,
-        quantum_agent: object | None = None,
-        kaizen_engine: object | None = None,
-    ) -> JarvisFull:
-        inst = super().bootstrap(
-            admin=admin,
-            memory=memory,
-            enable_intelligence=enable_intelligence,
-            quantum_agent=quantum_agent,
-            kaizen_engine=kaizen_engine,
-        )
-        from eta_engine.brain.jarvis_v3.override_retrospective import (
-            OverrideRetroLogger,
-        )
-        inst._override_retro = OverrideRetroLogger.default()
-        inst._verdict_dispatcher = None
+        try:
+            from eta_engine.brain.jarvis_v3.override_retrospective import (
+                OverrideRetroLogger,
+            )
+            inst._override_retro = OverrideRetroLogger.default()
+        except Exception:
+            pass
         return inst
+
+    # Wave-18: Override retro logger + verdict dispatch flag
+    _override_retro: object = None
 
     def consult(
         self,
@@ -408,7 +391,8 @@ class JarvisFull:
             except Exception:
                 pass
 
-        return FullJarvisVerdict(
+        # 8. Build final verdict
+        verdict = FullJarvisVerdict(
             consolidated=consolidated,
             narrative_terse=narrative_terse,
             narrative_standard=narrative_standard,
@@ -433,6 +417,18 @@ class JarvisFull:
             quantum_contribution=quantum_contrib,
             quantum_modulation_mult=round(quantum_mod, 3),
         )
+
+        # 9. Dispatch verdict to operator channels (fire-and-forget)
+        if getattr(self, "_override_retro", None) is not None:
+            try:
+                from eta_engine.brain.jarvis_v3.verdict_dispatcher import (
+                    dispatch_verdict,
+                )
+                dispatch_verdict(verdict)
+            except Exception as exc:
+                logger.debug("verdict dispatch failed (non-fatal): %s", exc)
+
+        return verdict
 
     # ── Sage integration ─────────────────────────────────
 

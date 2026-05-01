@@ -1164,6 +1164,79 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
         },
     ),
+    # MNQ futures — OPTIMIZED stack: sage-gated ORB wrapped with confluence scorecard.
+    # Entry requires ≥2 of 4 factors (trend, VWAP, volume, ATR regime) to align.
+    StrategyAssignment(
+        bot_id="mnq_futures_optimized",
+        strategy_id="mnq_optimized_v1",
+        symbol="MNQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "OPTIMIZED 2026-04-30: wraps sage-gated ORB with confluence scorecard "
+            "(trend alignment EMA 9/21/50 + VWAP + volume z-score + ATR regime). "
+            "Requires min 2/4 factors for entry. A+ trades (3+/4) get 1.5x size. "
+            "The scorecard acts as a false-breakout filter — same function as sage "
+            "but using price-derived factors instead of multi-school consensus."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "orb_sage_gated",
+            "sub_strategy_extras": {
+                "sage_min_conviction": 0.65,
+                "sage_lookback_bars": 200,
+                "orb_range_minutes": 15,
+            },
+            "scorecard_config": {
+                "min_score": 3, "a_plus_score": 4, "a_plus_size_mult": 1.5,
+                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+            },
+            "per_ticker_optimal": "MNQ",
+            "research_candidate": True,
+        },
+    ),
+    # BTC optimized — crypto_orb wrapped with confluence scorecard.
+    # Entry requires ≥2 of 3 factors (trend EMA 21/50/100 + funding skew + ETF flow).
+    StrategyAssignment(
+        bot_id="btc_optimized",
+        strategy_id="btc_optimized_v1",
+        symbol="BTC",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "OPTIMIZED 2026-04-30: wraps crypto_orb with confluence scorecard "
+            "(trend EMA 21/50/100 + funding skew + ETF flow alignment). "
+            "Minimum 2/3 factors required. The scorecard gates entries in choppy "
+            "regimes where crypto_orb fires false breakouts — the dominant failure mode."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "crypto_orb",
+            "sub_strategy_extras": {
+                "range_minutes": 120,
+                "atr_stop_mult": 3.0,
+                "rr_target": 2.5,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "BTC",
+            "research_candidate": True,
+        },
+    ),
 )
 
 

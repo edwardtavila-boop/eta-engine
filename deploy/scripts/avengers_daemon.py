@@ -25,9 +25,9 @@ from pathlib import Path
 
 from eta_engine.brain.avengers import (
     AvengersDispatch,
-    DryRunExecutor,
     Fleet,
 )
+from eta_engine.brain.llm_provider import DeepSeekExecutor
 from eta_engine.brain.jarvis_v3.claude_layer.cost_governor import (
     CostGovernor,
 )
@@ -59,9 +59,10 @@ class AvengersDaemon:
             usage=self.usage,
             distiller=self.distiller,
         )
-        # Fleet with dry-run executor by default -- production wires in
-        # the real Anthropic client at deploy time.
-        self.fleet = Fleet(executor=DryRunExecutor())
+        # Fleet with DeepSeek-native executor by default.
+        # Falls back to Anthropic automatically if DEEPSEEK_API_KEY is missing
+        # and ANTHROPIC_API_KEY is present.
+        self.fleet = Fleet(executor=DeepSeekExecutor())
         self.dispatch = AvengersDispatch(
             governor=self.governor,
             fleet=self.fleet,
