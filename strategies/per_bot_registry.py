@@ -325,6 +325,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "is fine for 5m bars."
         ),
         extras={
+            "promotion_status": "production_candidate",
             "sage_min_conviction": 0.65,
             "sage_min_alignment": 0.55,
             "sage_lookback_bars": 200,
@@ -971,11 +972,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "crypto_native": True,
             "level_lookback": 20,
             "reclaim_window": 3,
-            "min_wick_pct": 0.70,
-            "min_volume_z": 1.2,
+            "min_wick_pct": 0.60,
+            "min_volume_z": 1.0,
             "rr_target": 2.0,
-            "atr_stop_mult": 1.8,
+            "atr_stop_mult": 1.5,
             "max_trades_per_day": 2,
+            "promotion_status": "research_candidate",
             "research_candidate": True,
         },
     ),

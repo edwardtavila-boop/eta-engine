@@ -74,12 +74,12 @@ COST_RATIO: dict[ModelTier, float] = {
 }
 
 # DeepSeek provider cost ratios (vs same SONNET baseline = 1.0x)
-# Source: eta_engine.brain.llm_provider.COST_RATIO_PROVIDER
-# DeepSeek-V3 is ~11× cheaper than Claude Sonnet for input tokens.
+# Source: eta_engine.brain.llm_provider.COST_RATIO
+# DeepSeek V4 Flash is ~21× cheaper than Claude Sonnet for input tokens.
 DEEPSEEK_COST_RATIO: dict[ModelTier, float] = {
-    ModelTier.OPUS: 0.18,    # DeepSeek-R1 = $0.55/1M vs Sonnet $3.00/1M
-    ModelTier.SONNET: 0.09,  # DeepSeek-V3 = $0.27/1M
-    ModelTier.HAIKU: 0.09,   # DeepSeek-V3 = $0.27/1M (cost floor)
+    ModelTier.OPUS: 0.145,   # V4 Pro = $0.435/1M vs Sonnet $3.00/1M
+    ModelTier.SONNET: 0.047, # V4 Flash = $0.14/1M
+    ModelTier.HAIKU: 0.047,  # V4 Flash = $0.14/1M (cost floor)
 }
 
 

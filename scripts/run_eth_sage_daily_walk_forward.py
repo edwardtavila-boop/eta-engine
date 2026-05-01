@@ -82,7 +82,8 @@ def _build_daily_verdicts(
     print(
         f"[sage-daily] consulting sage on {len(daily_bars)} {symbol} "
         f"daily bars ({daily_bars[0].timestamp.date()} -> "
-        f"{daily_bars[-1].timestamp.date()})"
+        f"{daily_bars[-1].timestamp.date()})",
+        file=sys.stderr,
     )
 
     verdicts: dict = {}
@@ -103,7 +104,7 @@ def _build_daily_verdicts(
                 apply_edge_weights=False,
             )
         except Exception as e:  # noqa: BLE001
-            print(f"  WARN: sage failed at i={i}: {e!r}")
+            print(f"  WARN: sage failed at i={i}: {e!r}", file=sys.stderr)
             continue
         # Composite -1..+1 (long >0, short <0). Build a Verdict.
         bias = r.composite_bias.value  # 'long'/'short'/'neutral'
@@ -113,7 +114,7 @@ def _build_daily_verdicts(
             conviction=r.conviction,
             composite=composite,
         )
-    print(f"[sage-daily] computed {len(verdicts)} daily verdicts")
+    print(f"[sage-daily] computed {len(verdicts)} daily verdicts", file=sys.stderr)
 
     daily_dates_sorted = sorted(verdicts.keys())
 

@@ -132,22 +132,6 @@ _COST_1M: dict[str, tuple[float, float]] = {
 }
 
 
-_COST_1M: dict[str, tuple[float, float]] = {
-    "deepseek-reasoner":                          (0.55, 2.19),
-    "deepseek-chat":                              (0.27, 1.10),
-    "claude-opus-4-7-20250601":                   (15.00, 75.00),
-    "claude-sonnet-4-5-20250929":                 (3.00, 15.00),
-    "claude-haiku-4-5-20251001":                  (0.80, 4.00),
-    "anthropic/claude-opus-4-7-20250601":         (15.00, 75.00),
-    "anthropic/claude-sonnet-4-5-20250929":       (3.00, 15.00),
-    "deepseek/deepseek-chat":                     (0.27, 1.10),
-    "deepseek/deepseek-reasoner":                 (0.55, 2.19),
-    "openrouter/anthropic/claude-opus-4-7":       (15.00, 75.00),
-    "openrouter/anthropic/claude-sonnet-4-5":     (3.00, 15.00),
-    "openrouter/deepseek/deepseek-chat":          (0.27, 1.10),
-    "openrouter/deepseek/deepseek-r1":            (0.55, 2.19),
-}
-
 _SONNET_BASELINE = 3.00
 
 COST_RATIO: dict[tuple[ModelTier, Provider], float] = {}
@@ -265,10 +249,10 @@ def chat_completion(
     """Single-entry chat completion with Langfuse observability.
 
     Tier routing:
-      OPUS     → DeepSeek-R1 (deepseek-reasoner) — reasoning model
-      SONNET   → DeepSeek-V3 (deepseek-chat)     — general purpose
-      HAIKU    → DeepSeek-V3 (deepseek-chat)     — cost floor
-      REASONER → DeepSeek-R1 (deepseek-reasoner) — chain-of-thought
+      OPUS     → DeepSeek V4 Pro     (thinking)  — architectural / adversarial
+      SONNET   → DeepSeek V4 Flash   (thinking)  — routine reasoning
+      HAIKU    → DeepSeek V4 Flash   (non-think) — grunt / cost floor
+      REASONER → DeepSeek V4 Flash   (thinking)  — chain-of-thought
 
     Falls back to Anthropic automatically if DeepSeek is unavailable.
     Returns empty ``LLMResponse(text="")`` if no API key is configured.
