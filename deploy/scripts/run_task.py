@@ -260,7 +260,7 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     except ImportError:
         pass
 
-    from eta_engine.brain.llm_provider import chat_completion, ModelTier
+    from eta_engine.brain.llm_provider import ModelTier, chat_completion
 
     if not os.environ.get("DEEPSEEK_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
         return {"skipped": True, "reason": "no API key"}
@@ -573,7 +573,7 @@ def _task_self_test(state_dir: Path) -> dict:
     ant_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if ds_key or ant_key:
         try:
-            from eta_engine.brain.llm_provider import chat_completion, ModelTier
+            from eta_engine.brain.llm_provider import ModelTier, chat_completion
 
             resp = chat_completion(
                 tier=ModelTier.HAIKU,

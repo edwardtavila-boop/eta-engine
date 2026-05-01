@@ -166,8 +166,8 @@ def close_trade(
     # 6. Per-school edge tracker -- attribute realized R to each school
     #    that was consulted during the trade's entry signal.
     try:
-        from eta_engine.brain.jarvis_v3.sage.last_report_cache import pop_last_any
         from eta_engine.brain.jarvis_v3.sage.edge_tracker import default_tracker
+        from eta_engine.brain.jarvis_v3.sage.last_report_cache import pop_last_any
         tracker = default_tracker()
         report = pop_last_any()
         if report is not None:

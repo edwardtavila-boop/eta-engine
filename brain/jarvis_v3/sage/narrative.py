@@ -98,7 +98,8 @@ def _llm_narrative(report: SageReport, *, symbol: str = "") -> str:
     Claude for cost reduction. Falls back to Anthropic if DeepSeek
     is not configured.
     """
-    from eta_engine.brain.llm_provider import chat_completion, ModelTier as Tier
+    from eta_engine.brain.llm_provider import ModelTier as Tier
+    from eta_engine.brain.llm_provider import chat_completion
 
     school_lines = "\n".join(
         f"  - {name}: bias={v.bias.value}, conviction={v.conviction:.2f}, rationale={v.rationale}"

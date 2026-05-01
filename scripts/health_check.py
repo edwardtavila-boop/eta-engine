@@ -19,11 +19,9 @@ Exit codes: 0 = healthy, 1 = warning, 2 = critical
 from __future__ import annotations
 
 import json
-import os
 import sys
-import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 

@@ -3,22 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
-import time
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from eta_engine.brain.avengers.promotion import (
-        PromotionGate,
-        StageMetrics,
-    )
-    from eta_engine.strategies.shadow_paper_tracker import (
-        ShadowPaperTracker,
-    )
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +94,6 @@ class ShadowPipeline:
     def wire_default_gate(self) -> None:
         try:
             from eta_engine.brain.avengers.promotion import (
-                PROMOTION_JOURNAL,
-                PROMOTION_STATE,
                 PromotionGate,
                 PromotionStage,
                 StageThresholds,

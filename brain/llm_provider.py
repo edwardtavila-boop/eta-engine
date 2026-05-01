@@ -35,12 +35,12 @@ Pricing (per 1M tokens, USD)
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ _TIER_MODEL: dict[tuple[ModelTier, Provider], str] = {
 }
 
 
-_COST_1M: dict[str, Tuple[float, float]] = {
+_COST_1M: dict[str, tuple[float, float]] = {
     "deepseek-reasoner":          (0.55, 2.19),
     "deepseek-chat":              (0.27, 1.10),
     "claude-opus-4-7-20250601":   (15.00, 75.00),
@@ -163,7 +163,7 @@ def chat_completion(
     user_message: str,
     max_tokens: int = 400,
     temperature: float = 0.7,
-    provider: Optional[Provider] = None,
+    provider: Provider | None = None,
 ) -> LLMResponse:
     """Single-entry chat completion. DeepSeek-native, Anthropic as fallback.
 
@@ -231,7 +231,7 @@ def _call_deepseek(
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=60.0)
 
-    messages: List[Dict[str, str]] = []
+    messages: list[dict[str, str]] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_message})
@@ -271,7 +271,7 @@ def _call_anthropic(
     from anthropic import Anthropic
 
     client = Anthropic(timeout=30.0)
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "model": model, "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": user_message}],
     }
@@ -335,13 +335,13 @@ def provider_name() -> str:
     return _default_provider().value
 
 
-def model_for_tier(tier: ModelTier, provider: Optional[Provider] = None) -> str:
+def model_for_tier(tier: ModelTier, provider: Provider | None = None) -> str:
     if provider is None:
         provider = _default_provider()
     return _TIER_MODEL.get((tier, provider), "unknown")
 
 
-def native_provider_info() -> Dict[str, Any]:
+def native_provider_info() -> dict[str, Any]:
     """Return a dict suitable for logging / status dashboards."""
     prov = _default_provider()
     return {

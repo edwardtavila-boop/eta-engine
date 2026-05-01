@@ -508,7 +508,7 @@ class QuantumOptimizerAgent:
     def fast_optimize(
         self,
         *,
-        problem: "ProblemKind",
+        problem: ProblemKind,
         symbols: list[str] | None = None,
         expected_returns: list[float] | None = None,
         covariance: list[list[float]] | None = None,

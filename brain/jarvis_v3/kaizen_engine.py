@@ -29,14 +29,19 @@ from __future__ import annotations
 import json
 import logging
 import math
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from common.jarvis.controller import JarvisController, MasterLockResult, _sharpe_ratio, _win_rate, _max_drawdown, _paired_t_test
-from common.jarvis.edge_optimizer import ImprovementProposal
+from common.jarvis.controller import (
+    JarvisController,
+    MasterLockResult,
+    _max_drawdown,
+    _sharpe_ratio,
+    _win_rate,
+)
 from common.jarvis.instrument import InstrumentConfig
 
 logger = logging.getLogger(__name__)
@@ -142,8 +147,8 @@ class KaizenEngine:
         *,
         instruments: list[InstrumentConfig],
         state_dir: Path | str | None = None,
-        ledger: "KaizenLedger | None" = None,
-        guard: "KaizenGuard | None" = None,
+        ledger: KaizenLedger | None = None,
+        guard: KaizenGuard | None = None,
     ) -> None:
         self._instruments = {c.symbol: c for c in instruments}
         self._state_dir = Path(state_dir) if state_dir else Path("state/kaizen")
@@ -387,8 +392,8 @@ class KaizenEngine:
         # Run quantum
         try:
             from eta_engine.brain.jarvis_v3.quantum.quantum_agent import (
-                QuantumOptimizerAgent,
                 ProblemKind,
+                QuantumOptimizerAgent,
             )
             agent = QuantumOptimizerAgent(cost_budget_daily_usd=self.QUANTUM_DAILY_BUDGET_USD)
             returns = self._compute_expected_returns(trades)

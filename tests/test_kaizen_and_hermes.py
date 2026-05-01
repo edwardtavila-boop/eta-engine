@@ -1,6 +1,5 @@
 """Tests for Kaizen Engine, Kaizen Guard, Hermes Bridge, and Supercharged QUBO."""
 
-import json
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -11,7 +10,6 @@ _COMMON_SRC = Path(__file__).resolve().parents[2] / "firm" / "eta_engine" / "src
 if _COMMON_SRC.exists() and str(_COMMON_SRC) not in sys.path:
     sys.path.insert(0, str(_COMMON_SRC))
 
-import pytest
 
 # ─── Helpers ─────────────────────────────────────────────────
 
@@ -137,6 +135,7 @@ class TestKaizenGuard:
 class TestKaizenEngine:
     def test_cycle_with_no_trades_returns_empty_report(self):
         from common.jarvis.instrument import InstrumentConfig
+
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,6 +148,7 @@ class TestKaizenEngine:
 
     def test_cycle_processes_instrument_trades(self):
         from common.jarvis.instrument import InstrumentConfig
+
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,6 +165,7 @@ class TestKaizenEngine:
 
     def test_register_strategy(self):
         from common.jarvis.instrument import InstrumentConfig
+
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +177,7 @@ class TestKaizenEngine:
 
     def test_should_retire_unprofitable_strategy(self):
         from common.jarvis.instrument import InstrumentConfig
+
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,7 +197,6 @@ class TestKaizenEngine:
 class TestHermesBridge:
     def test_notification_formatting(self):
         from hermes_jarvis_telegram.hermes_bridge import (
-            HermesBridge,
             JarvisNotification,
             MessagePriority,
         )

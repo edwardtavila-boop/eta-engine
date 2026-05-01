@@ -24,7 +24,6 @@ import logging
 import sys
 import time
 from collections import defaultdict
-from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 

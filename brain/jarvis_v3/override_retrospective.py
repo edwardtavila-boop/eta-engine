@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from eta_engine.brain.jarvis_admin import ActionRequest, ActionResponse
-    from eta_engine.brain.jarvis_v3.intelligence import ConsolidatedVerdict
     from eta_engine.brain.jarvis_v3.operator_coach import OperatorCoach
 
 logger = logging.getLogger(__name__)

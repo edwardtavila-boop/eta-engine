@@ -27,7 +27,6 @@ from eta_engine.brain.avengers import (
     AvengersDispatch,
     Fleet,
 )
-from eta_engine.brain.llm_provider import DeepSeekExecutor
 from eta_engine.brain.jarvis_v3.claude_layer.cost_governor import (
     CostGovernor,
 )
@@ -35,6 +34,7 @@ from eta_engine.brain.jarvis_v3.claude_layer.distillation import Distiller
 from eta_engine.brain.jarvis_v3.claude_layer.usage_tracker import (
     UsageTracker,
 )
+from eta_engine.brain.llm_provider import DeepSeekExecutor
 from eta_engine.scripts import workspace_roots
 
 logger = logging.getLogger("avengers_daemon")

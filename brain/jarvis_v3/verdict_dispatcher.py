@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from eta_engine.brain.jarvis_v3.jarvis_full import FullJarvisVerdict
-    from eta_engine.obs.alerts import AlertLevel, MultiAlerter
 
 logger = logging.getLogger(__name__)
 

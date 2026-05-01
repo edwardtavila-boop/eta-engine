@@ -96,24 +96,65 @@ if TYPE_CHECKING:
 class PersonaId(StrEnum):
     """Every persona that can sit behind the fleet coordinator.
 
-    JARVIS is listed for symmetry but never actually runs an LLM -- it is
-    the deterministic admin. Including it in the enum lets the JSONL
-    journal attribute setup / shutdown events to the right actor.
+    JARVIS is the deterministic admin (never runs an LLM). The three
+    DeepSeek personas handle development:
+
+      * DEEPSEEK_REASONER  -- architectural / adversarial / tactical
+      * DEEPSEEK_STEWARD   -- knowledge steward / default reasoner
+      * DEEPSEEK_EXECUTOR  -- mechanical grunt work
+
+    Legacy enum values (BATMAN/ALFRED/ROBIN) are aliased to DeepSeek
+    equivalents for backward compatibility with deployed VPS task
+    schedules and JSONL audit trails.
     """
 
     JARVIS = "persona.jarvis"
     BATMAN = "persona.batman"
     ALFRED = "persona.alfred"
     ROBIN = "persona.robin"
+    DEEPSEEK_REASONER = "persona.deepseek_reasoner"
+    DEEPSEEK_STEWARD = "persona.deepseek_steward"
+    DEEPSEEK_EXECUTOR = "persona.deepseek_executor"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable name for UI surfaces."""
+        names = {
+            self.JARVIS: "JARVIS",
+            self.BATMAN: "DeepSeek-Reasoner",
+            self.ALFRED: "DeepSeek-Steward",
+            self.ROBIN: "DeepSeek-Executor",
+            self.DEEPSEEK_REASONER: "DeepSeek-Reasoner",
+            self.DEEPSEEK_STEWARD: "DeepSeek-Steward",
+            self.DEEPSEEK_EXECUTOR: "DeepSeek-Executor",
+        }
+        return names.get(self, self.value)
+
+    @property
+    def role(self) -> str:
+        """One-line role description."""
+        roles = {
+            self.JARVIS: "admin + policy authority",
+            self.BATMAN: "architectural reasoning + adversarial review",
+            self.ALFRED: "knowledge steward + routine ops",
+            self.ROBIN: "mechanical execution + throughput",
+            self.DEEPSEEK_REASONER: "architectural reasoning + adversarial review",
+            self.DEEPSEEK_STEWARD: "knowledge steward + routine ops",
+            self.DEEPSEEK_EXECUTOR: "mechanical execution + throughput",
+        }
+        return roles.get(self, self.value)
 
 
 # Persona -> locked tier. Changing these is an architectural decision --
 # keep it in sync with ``brain.model_policy._CATEGORY_TO_TIER`` buckets.
 PERSONA_TIER: dict[PersonaId, ModelTier | None] = {
-    PersonaId.JARVIS: None,  # deterministic, no LLM
-    PersonaId.BATMAN: ModelTier.OPUS,  # architectural
-    PersonaId.ALFRED: ModelTier.SONNET,  # routine
-    PersonaId.ROBIN: ModelTier.HAIKU,  # grunt
+    PersonaId.JARVIS: None,
+    PersonaId.BATMAN: ModelTier.OPUS,
+    PersonaId.ALFRED: ModelTier.SONNET,
+    PersonaId.ROBIN: ModelTier.HAIKU,
+    PersonaId.DEEPSEEK_REASONER: ModelTier.OPUS,
+    PersonaId.DEEPSEEK_STEWARD: ModelTier.SONNET,
+    PersonaId.DEEPSEEK_EXECUTOR: ModelTier.HAIKU,
 }
 
 
@@ -123,6 +164,9 @@ PERSONA_BUCKET: dict[PersonaId, TaskBucket | None] = {
     PersonaId.BATMAN: TaskBucket.ARCHITECTURAL,
     PersonaId.ALFRED: TaskBucket.ROUTINE,
     PersonaId.ROBIN: TaskBucket.GRUNT,
+    PersonaId.DEEPSEEK_REASONER: TaskBucket.ARCHITECTURAL,
+    PersonaId.DEEPSEEK_STEWARD: TaskBucket.ROUTINE,
+    PersonaId.DEEPSEEK_EXECUTOR: TaskBucket.GRUNT,
 }
 
 

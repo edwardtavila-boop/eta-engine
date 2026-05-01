@@ -30,9 +30,9 @@ from eta_engine.core.consistency_guard import (
     ConsistencyCorruptError,
     ConsistencyGuard,
     ConsistencyStatus,
+    default_apex_50k_guard,
     eta_trading_day_iso,
     eta_trading_day_iso_cme,
-    default_apex_50k_guard,
     utc_today_iso,
 )
 

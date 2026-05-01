@@ -23,7 +23,6 @@ from pydantic import BaseModel, Field
 
 from eta_walkforward.deflated_sharpe import compute_dsr
 
-
 # ---------------------------------------------------------------------------
 # Config / per-window input / aggregate result
 # ---------------------------------------------------------------------------
