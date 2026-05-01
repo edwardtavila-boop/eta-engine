@@ -1,0 +1,3327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="description" content="Evolutionary Trading Algo public command center with a shared design system, live fleet visibility, and a read-only boundary while operator controls stay private." />
+  <meta name="robots" content="index,follow,max-image-preview:large" />
+  <meta name="theme-color" content="#05070b" />
+  <meta name="application-name" content="Evolutionary Trading Algo" />
+  <meta name="apple-mobile-web-app-title" content="Evolutionary Trading Algo" />
+  <link rel="canonical" href="https://evolutionarytradingalgo.com/" />
+  <link rel="icon" href="/command-center-assets/logo-mark.svg" type="image/svg+xml" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Evolutionary Trading Algo" />
+  <meta property="og:title" content="Evolutionary Trading Algo | Live command center" />
+  <meta property="og:description" content="Evolutionary Trading Algo public command center with a shared design system, live fleet visibility, and a read-only boundary while operator controls stay private." />
+  <meta property="og:url" content="https://evolutionarytradingalgo.com/" />
+  <meta property="og:image" content="/command-center-assets/logo-mark.svg" />
+  <meta property="og:image:type" content="image/svg+xml" />
+  <meta property="og:image:alt" content="Evolutionary Trading Algo logo mark" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Evolutionary Trading Algo | Live command center" />
+  <meta name="twitter:description" content="Evolutionary Trading Algo public command center with a shared design system, live fleet visibility, and a read-only boundary while operator controls stay private." />
+  <meta name="twitter:image" content="/command-center-assets/logo-mark.svg" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Evolutionary Trading Algo",
+      "url": "https://evolutionarytradingalgo.com/",
+      "description": "Evolutionary Trading Algo public command center with a shared design system, live fleet visibility, and a read-only boundary while operator controls stay private."
+    }
+  </script>
+  <title>Evolutionary Trading Algo | Live command center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020406;
+      --bg-2: #060b14;
+      --surface: rgba(8, 12, 20, 0.74);
+      --surface-strong: rgba(5, 7, 12, 0.94);
+      --border: rgba(148, 163, 184, 0.14);
+      --border-strong: rgba(197, 160, 89, 0.22);
+      --text: #f4f7ff;
+      --muted: rgba(208, 220, 240, 0.76);
+      --cyan: #f5d36b;
+      --cyan-strong: #c5a059;
+      --lime: #4ade80;
+      --amber: #fbbf24;
+      --champagne: #c5a059;
+      --rose: #fb7185;
+      --display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+      --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; }
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 96px;
+      color-scheme: dark;
+    }
+    ::selection {
+      background: rgba(197, 160, 89, 0.3);
+      color: #fff;
+    }
+    :focus-visible {
+      outline: 2px solid rgba(197, 160, 89, 0.85);
+      outline-offset: 3px;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 120% 90% at 50% -20%, rgba(197, 160, 89, 0.14), transparent 52%),
+        radial-gradient(circle at 18% 18%, rgba(245, 211, 107, 0.1), transparent 24%),
+        radial-gradient(circle at 88% 12%, rgba(251, 191, 36, 0.08), transparent 22%),
+        radial-gradient(circle at 50% 110%, rgba(234, 88, 12, 0.08), transparent 32%),
+        linear-gradient(180deg, #020409 0%, #05080f 40%, #03050a 100%);
+      font-family: var(--sans);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "ss01" on, "cv02" on;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(circle at 50% 0%, black 18%, transparent 72%);
+      opacity: 0.5;
+      z-index: 0;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.055), transparent 20%),
+        linear-gradient(180deg, transparent 0%, rgba(3, 5, 10, 0.18) 56%, rgba(2, 4, 9, 0.9) 100%);
+      z-index: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+    }
+
+    .shell {
+      width: min(1320px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(22px) saturate(1.3);
+      background: linear-gradient(180deg, rgba(5, 8, 14, 0.94), rgba(3, 5, 10, 0.82));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 40px rgba(0, 0, 0, 0.34);
+    }
+
+    .topbar::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.34) 45%, rgba(251, 191, 36, 0.18) 55%, transparent);
+      pointer-events: none;
+    }
+
+    .topbar-inner {
+      width: min(1320px, calc(100% - 40px));
+      margin: 0 auto;
+      min-height: 84px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      border: 1px solid rgba(125, 211, 252, 0.42);
+      object-fit: cover;
+      background: radial-gradient(circle at 30% 25%, rgba(56, 189, 248, 0.15), #020617 65%);
+      box-shadow:
+        0 0 0 1px rgba(249, 115, 22, 0.12),
+        0 2px 0 rgba(255, 255, 255, 0.06) inset,
+        0 16px 44px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(56, 189, 248, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .brand-copy {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .brand-copy strong {
+      font-family: var(--sans);
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #f8fafc;
+      white-space: nowrap;
+    }
+
+    .brand-copy span {
+      color: rgba(148, 163, 184, 0.94);
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .topbar-status {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background: rgba(255, 255, 255, 0.025);
+      color: #dce7f5;
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .status-pill strong {
+      color: #fff;
+      font-family: var(--sans);
+      letter-spacing: 0.08em;
+    }
+
+    .hero {
+      min-height: calc(100svh - 84px);
+      display: grid;
+      align-items: center;
+      padding: clamp(34px, 5vw, 68px) 0 clamp(30px, 4vw, 54px);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.98fr);
+      gap: 28px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.88);
+      margin-bottom: 16px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-family: var(--display);
+      letter-spacing: -0.03em;
+      margin: 0;
+    }
+
+    .hero-copy h1 {
+      font-size: clamp(3rem, 5vw, 5.8rem);
+      line-height: 0.92;
+      max-width: 10ch;
+      text-wrap: balance;
+    }
+
+    .hero-copy h1 .accent {
+      color: var(--cyan);
+      text-shadow: 0 0 18px rgba(34, 211, 238, 0.2);
+    }
+
+    .hero-copy p {
+      max-width: 62ch;
+      margin: 22px 0 0;
+      color: var(--muted);
+      font-size: clamp(1rem, 1.7vw, 1.12rem);
+      line-height: 1.72;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      transition: transform 180ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease), color 180ms var(--ease), box-shadow 180ms var(--ease);
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      color: #111318;
+      background: linear-gradient(135deg, #f5d36b 0%, #c5a059 100%);
+      border-color: rgba(197, 160, 89, 0.6);
+      box-shadow: 0 10px 30px rgba(197, 160, 89, 0.18);
+    }
+
+    .btn-secondary {
+      color: #f8fafc;
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(148, 163, 184, 0.18);
+    }
+
+    .hero-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(226, 232, 240, 0.92);
+      font-size: 0.72rem;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .chip strong {
+      color: #fff;
+      font-family: var(--sans);
+      letter-spacing: 0.08em;
+    }
+
+    .monitor {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(125, 211, 252, 0.18);
+      background:
+        radial-gradient(circle at 18% 16%, rgba(34, 211, 238, 0.14), transparent 24%),
+        radial-gradient(circle at 84% 18%, rgba(197, 160, 89, 0.11), transparent 22%),
+        linear-gradient(155deg, rgba(10, 14, 22, 0.7), rgba(2, 6, 23, 0.95));
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 84px rgba(0, 0, 0, 0.48);
+      padding: 24px;
+    }
+
+    .monitor::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.05) inset,
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 0 120px rgba(56, 189, 248, 0.06);
+      pointer-events: none;
+    }
+
+    .monitor::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.45), rgba(251, 191, 36, 0.28), transparent);
+      animation: drift 12s ease-in-out infinite alternate;
+      opacity: 0.7;
+    }
+
+    .monitor-orb {
+      position: absolute;
+      top: -32px;
+      right: -40px;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0.05) 40%, transparent 68%);
+      filter: blur(4px);
+      pointer-events: none;
+    }
+
+    .monitor-head {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+      z-index: 1;
+    }
+
+    .monitor-kicker {
+      font-size: 0.7rem;
+      font-family: var(--mono);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.88);
+    }
+
+    .monitor-title {
+      margin-top: 8px;
+      font-family: var(--display);
+      font-size: clamp(1.9rem, 3vw, 3rem);
+      line-height: 1;
+      letter-spacing: -0.04em;
+      text-wrap: balance;
+    }
+
+    .monitor-copy {
+      margin-top: 8px;
+      max-width: 42ch;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(74, 222, 128, 0.28);
+      background: rgba(34, 197, 94, 0.08);
+      color: #bbf7d0;
+      font-size: 0.7rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .live-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #4ade80;
+      box-shadow: 0 0 16px rgba(74, 222, 128, 0.6);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+
+    .monitor-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .monitor-card {
+      padding: 14px 15px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(0, 0, 0, 0.18);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+    }
+
+    .monitor-card.botops {
+      grid-column: 1 / -1;
+      border-color: rgba(74, 222, 128, 0.18);
+      background: linear-gradient(180deg, rgba(4, 16, 12, 0.48), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.strategy {
+      border-color: rgba(34, 211, 238, 0.18);
+      background: linear-gradient(180deg, rgba(4, 14, 20, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.roadmap {
+      border-color: rgba(251, 191, 36, 0.18);
+      background: linear-gradient(180deg, rgba(22, 16, 2, 0.48), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.robin {
+      grid-column: 1 / -1;
+      border-color: rgba(34, 211, 238, 0.16);
+      background: linear-gradient(180deg, rgba(4, 14, 20, 0.42), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.jarvis-nest {
+      grid-column: 1 / -1;
+      border-color: rgba(96, 165, 250, 0.18);
+      background: linear-gradient(180deg, rgba(8, 15, 23, 0.48), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.host {
+      grid-column: 1 / -1;
+      border-color: rgba(96, 165, 250, 0.2);
+      background: linear-gradient(180deg, rgba(10, 16, 28, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.vps-status {
+      grid-column: 1 / -1;
+      border-color: rgba(148, 163, 184, 0.18);
+      background: linear-gradient(180deg, rgba(6, 12, 18, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.vps-health {
+      grid-column: 1 / -1;
+      border-color: rgba(248, 113, 113, 0.18);
+      background: linear-gradient(180deg, rgba(32, 8, 8, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.vps-headroom {
+      grid-column: 1 / -1;
+      border-color: rgba(74, 222, 128, 0.18);
+      background: linear-gradient(180deg, rgba(4, 16, 12, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.cloudflare {
+      grid-column: 1 / -1;
+      border-color: rgba(56, 189, 248, 0.18);
+      background: linear-gradient(180deg, rgba(3, 18, 28, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.scheduler {
+      grid-column: 1 / -1;
+      border-color: rgba(250, 204, 21, 0.18);
+      background: linear-gradient(180deg, rgba(24, 18, 2, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.market-session {
+      grid-column: 1 / -1;
+      border-color: rgba(34, 197, 94, 0.18);
+      background: linear-gradient(180deg, rgba(4, 16, 12, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.paper-pulse {
+      grid-column: 1 / -1;
+      border-color: rgba(167, 139, 250, 0.18);
+      background: linear-gradient(180deg, rgba(16, 10, 28, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.broker-paper-ops {
+      grid-column: 1 / -1;
+      border-color: rgba(74, 222, 128, 0.18);
+      background: linear-gradient(180deg, rgba(4, 16, 12, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.broker-venue-health {
+      grid-column: 1 / -1;
+      border-color: rgba(96, 165, 250, 0.18);
+      background: linear-gradient(180deg, rgba(6, 14, 28, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.assist-timeline {
+      grid-column: 1 / -1;
+      border-color: rgba(244, 114, 182, 0.18);
+      background: linear-gradient(180deg, rgba(28, 8, 17, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.remote-ops {
+      grid-column: 1 / -1;
+      border-color: rgba(249, 115, 22, 0.18);
+      background: linear-gradient(180deg, rgba(27, 14, 5, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.stage-prep {
+      grid-column: 1 / -1;
+      border-color: rgba(245, 158, 11, 0.18);
+      background: linear-gradient(180deg, rgba(27, 18, 3, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.assistance {
+      grid-column: 1 / -1;
+      border-color: rgba(236, 72, 153, 0.18);
+      background: linear-gradient(180deg, rgba(29, 10, 22, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.current-stage {
+      grid-column: 1 / -1;
+      border-color: rgba(56, 189, 248, 0.18);
+      background: linear-gradient(180deg, rgba(5, 18, 28, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.stage-owner {
+      grid-column: 1 / -1;
+      border-color: rgba(248, 113, 113, 0.18);
+      background: linear-gradient(180deg, rgba(28, 11, 11, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.stage-support {
+      grid-column: 1 / -1;
+      border-color: rgba(250, 204, 21, 0.18);
+      background: linear-gradient(180deg, rgba(24, 18, 2, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.next-step {
+      grid-column: 1 / -1;
+      border-color: rgba(52, 211, 153, 0.18);
+      background: linear-gradient(180deg, rgba(3, 21, 15, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+.monitor-card.paper-baseline {
+  grid-column: 1 / -1;
+  border-color: rgba(129, 140, 248, 0.18);
+  background: linear-gradient(180deg, rgba(12, 14, 32, 0.5), rgba(0, 0, 0, 0.2));
+}
+
+.monitor-card.baseline-rollup {
+  grid-column: 1 / -1;
+  border-color: rgba(74, 222, 128, 0.18);
+  background: linear-gradient(180deg, rgba(5, 20, 14, 0.5), rgba(0, 0, 0, 0.2));
+}
+
+.monitor-card.route-mix {
+  grid-column: 1 / -1;
+  border-color: rgba(45, 212, 191, 0.18);
+  background: linear-gradient(180deg, rgba(4, 22, 21, 0.5), rgba(0, 0, 0, 0.2));
+}
+
+.monitor-card.heat-budget {
+  grid-column: 1 / -1;
+  border-color: rgba(251, 146, 60, 0.2);
+  background: linear-gradient(180deg, rgba(30, 15, 4, 0.5), rgba(0, 0, 0, 0.2));
+}
+
+.monitor-card.tolerance-harness {
+  grid-column: 1 / -1;
+  border-color: rgba(192, 132, 252, 0.2);
+  background: linear-gradient(180deg, rgba(18, 11, 31, 0.5), rgba(0, 0, 0, 0.2));
+}
+
+.monitor-card.roadmap-detail {
+  grid-column: 1 / -1;
+  border-color: rgba(45, 212, 191, 0.18);
+  background: linear-gradient(180deg, rgba(4, 22, 21, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.roadmap-completion {
+      grid-column: 1 / -1;
+      border-color: rgba(45, 212, 191, 0.18);
+      background: linear-gradient(180deg, rgba(4, 22, 21, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.service-roster {
+      grid-column: 1 / -1;
+      border-color: rgba(74, 222, 128, 0.18);
+      background: linear-gradient(180deg, rgba(4, 16, 12, 0.48), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card.toolchain {
+      grid-column: 1 / -1;
+      border-color: rgba(251, 191, 36, 0.18);
+      background: linear-gradient(180deg, rgba(24, 18, 2, 0.5), rgba(0, 0, 0, 0.2));
+    }
+
+    .monitor-card span {
+      display: block;
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.82);
+    }
+
+    .monitor-card strong {
+      display: block;
+      margin-top: 8px;
+      font-family: var(--display);
+      font-size: 1.1rem;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .monitor-card small {
+      display: block;
+      margin-top: 6px;
+      color: rgba(203, 213, 225, 0.84);
+      line-height: 1.5;
+    }
+
+    .monitor-foot {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .monitor-line {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(226, 232, 240, 0.92);
+      line-height: 1.55;
+    }
+
+    .section {
+      padding: 18px 0 60px;
+      scroll-margin-top: 100px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .section-head h2 {
+      font-size: clamp(1.7rem, 2.3vw, 2.8rem);
+      line-height: 1.02;
+    }
+
+    .section-head p {
+      max-width: 72ch;
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .panel {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(148, 163, 184, 0.13);
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 0 90px rgba(56, 189, 248, 0.04);
+    }
+
+    .surface-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel-label {
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.88);
+    }
+
+    .panel-title {
+      margin-top: 10px;
+      font-family: var(--display);
+      font-size: clamp(1.4rem, 2vw, 2rem);
+      line-height: 1.04;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-copy {
+      margin-top: 10px;
+      color: var(--muted);
+      line-height: 1.68;
+      max-width: 68ch;
+    }
+
+    .roster-shell {
+      margin-top: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .roster-head,
+    .roster-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(120px, 0.56fr) minmax(120px, 0.56fr) minmax(140px, 0.7fr) minmax(100px, 0.4fr);
+      gap: 12px;
+      padding: 16px 18px;
+      align-items: start;
+    }
+
+    .roster-head {
+      background: rgba(255, 255, 255, 0.025);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.84);
+    }
+
+    .roster-row {
+      border-top: 1px solid rgba(148, 163, 184, 0.08);
+      transition: transform 180ms var(--ease), background 180ms var(--ease), border-color 180ms var(--ease);
+    }
+
+    .roster-row:first-child {
+      border-top: 0;
+    }
+
+    .roster-row:hover {
+      background: rgba(255, 255, 255, 0.03);
+      transform: translateY(-1px);
+    }
+
+    .roster-row.leader {
+      background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), rgba(255, 255, 255, 0.03));
+      border-color: rgba(34, 211, 238, 0.16);
+    }
+
+    .roster-index {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.88);
+      margin-bottom: 8px;
+    }
+
+    .roster-main strong {
+      display: block;
+      font-size: 1.02rem;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+    }
+
+    .roster-main span {
+      display: block;
+      margin-top: 8px;
+      color: rgba(203, 213, 225, 0.84);
+      line-height: 1.55;
+    }
+
+    .roster-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.025);
+      color: rgba(226, 232, 240, 0.88);
+      font-size: 0.67rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .pill-lead {
+      border-color: rgba(34, 211, 238, 0.22);
+      color: #a5f3fc;
+      background: rgba(34, 211, 238, 0.08);
+    }
+
+    .roster-field {
+      min-width: 0;
+    }
+
+    .roster-field span {
+      display: block;
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.84);
+      margin-bottom: 8px;
+    }
+
+    .roster-field strong {
+      display: block;
+      color: #f8fafc;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .roster-field.align-right {
+      text-align: right;
+    }
+
+    .tone-running { color: var(--lime); }
+    .tone-paused { color: var(--amber); }
+    .tone-unknown { color: rgba(226, 232, 240, 0.74); }
+    .tone-live { color: #f5d36b; }
+
+    .proof-stack {
+      margin-top: 16px;
+      display: grid;
+      gap: 2px;
+    }
+
+    .proof-row {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+      gap: 18px;
+      padding: 14px 0;
+      border-top: 1px solid rgba(148, 163, 184, 0.08);
+    }
+
+    .proof-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .proof-row strong {
+      display: block;
+      font-family: var(--display);
+      font-size: 1.02rem;
+      line-height: 1.3;
+      letter-spacing: -0.02em;
+    }
+
+    .proof-row span {
+      display: block;
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.84);
+      margin-bottom: 8px;
+    }
+
+    .proof-row p {
+      margin: 0;
+      color: rgba(203, 213, 225, 0.84);
+      line-height: 1.62;
+    }
+
+    .access-note {
+      margin-top: 18px;
+      padding: 18px 18px 16px;
+      border-radius: 22px;
+      border: 1px solid rgba(251, 191, 36, 0.16);
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(255, 255, 255, 0.025));
+    }
+
+    .access-note strong {
+      display: block;
+      font-family: var(--display);
+      font-size: 1.1rem;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .access-note p {
+      margin: 10px 0 0;
+      color: rgba(226, 232, 240, 0.88);
+      line-height: 1.62;
+    }
+
+    .access-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .access-cell {
+      padding: 14px 15px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .access-cell span {
+      display: block;
+      font-size: 0.68rem;
+      font-family: var(--mono);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.84);
+    }
+
+    .access-cell strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 1rem;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+
+    .surface-note {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(226, 232, 240, 0.86);
+      line-height: 1.6;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 0 40px;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+      color: rgba(203, 213, 225, 0.78);
+      line-height: 1.6;
+    }
+
+    .footer a {
+      color: #e2e8f0;
+      border-bottom: 1px solid rgba(125, 211, 252, 0.24);
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 700ms var(--ease), transform 700ms var(--ease);
+    }
+
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hidden-contract {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @keyframes drift {
+      0% { transform: translateX(-10%); }
+      100% { transform: translateX(10%); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; transform: scale(0.96); }
+      50% { opacity: 1; transform: scale(1.08); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+      .reveal {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @media (max-width: 1080px) {
+      .hero-grid,
+      .surface-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .topbar-status {
+        justify-content: flex-start;
+      }
+
+      .monitor-grid,
+      .access-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .roster-head {
+        display: none;
+      }
+
+      .roster-row {
+        grid-template-columns: 1fr;
+      }
+
+      .roster-field.align-right {
+        text-align: left;
+      }
+
+      .proof-row {
+        grid-template-columns: 1fr;
+      }
+
+      .footer {
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .shell,
+      .topbar-inner {
+        width: min(100% - 24px, 1320px);
+      }
+
+      .hero-copy h1 {
+        font-size: clamp(2.4rem, 14vw, 3.4rem);
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#live" aria-label="Evolutionary Trading Algo live command center">
+          <img class="brand-mark" src="/command-center-assets/logo-mark.svg" alt="" width="44" height="44" decoding="async" />
+          <div class="brand-copy">
+            <strong>Evolutionary Trading Algo</strong>
+            <span>Live fleet desk | read-only public surface</span>
+          </div>
+        </a>
+        <div class="topbar-status" aria-label="Current surface status">
+          <span class="status-pill" id="surfaceChip">surface <strong>syncing</strong></span>
+          <span class="status-pill" id="authChip">auth <strong>checking</strong></span>
+          <span class="status-pill" id="hostChip">host <strong>pending</strong></span>
+          <span class="status-pill" id="devChip">dev <strong>off</strong></span>
+          <span class="status-pill" id="freshnessChip">freshness <strong>pending</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero" id="live">
+        <div class="hero-grid">
+          <div class="hero-copy reveal">
+            <div class="eyebrow">Public command center</div>
+            <h1>Live fleet, same visual system.</h1>
+            <p>
+              The public desk now speaks the same command-center language as the private operator shell.
+              It stays read-only while the fleet, leader, freshness, and access boundary remain visible in one scan.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#fleet">View fleet</a>
+              <a class="btn btn-secondary" href="/operator">Open operator shell</a>
+            </div>
+            <div class="hero-chips" id="heroChips" aria-label="Live summary"></div>
+          </div>
+
+          <aside class="monitor reveal" aria-label="Live command monitor">
+            <div class="monitor-orb"></div>
+            <div class="monitor-head">
+              <div>
+                <div class="monitor-kicker">Read-only desk</div>
+                <div class="monitor-title" id="leaderName">Syncing live leader...</div>
+                <p class="monitor-copy" id="leaderReason">Waiting for the newest snapshot.</p>
+              </div>
+              <div class="live-badge" id="liveModeChip">syncing</div>
+            </div>
+
+            <div class="monitor-grid">
+              <div class="monitor-card">
+                <span>Runtime</span>
+                <strong id="runtimeMode">-</strong>
+                <small id="runtimeDetail">Waiting for runtime detail.</small>
+              </div>
+              <div class="monitor-card">
+                <span>Freshness</span>
+                <strong id="monitorFreshness">-</strong>
+                <small id="refreshStamp">Waiting for the next live snapshot.</small>
+              </div>
+              <div class="monitor-card">
+                <span>Rails</span>
+                <strong id="monitorRails">-</strong>
+                <small id="monitorStage">Roadmap stage pending.</small>
+              </div>
+              <div class="monitor-card">
+                <span>Services</span>
+                <strong id="monitorServices">-</strong>
+                <small id="monitorAssist">Operator assist state pending.</small>
+              </div>
+              <div class="monitor-card service-roster">
+                <span>Service roster</span>
+                <strong id="monitorServiceRosterValue">-</strong>
+                <small id="monitorServiceRosterDetail">Service roster summary pending.</small>
+              </div>
+              <div class="monitor-card toolchain">
+                <span>Toolchain</span>
+                <strong id="monitorToolchainValue">-</strong>
+                <small id="monitorToolchainDetail">Toolchain summary pending.</small>
+              </div>
+              <div class="monitor-card host">
+                <span>Host health</span>
+                <strong id="monitorHostValue">-</strong>
+                <small id="monitorHostDetail">Host health snapshot pending.</small>
+              </div>
+              <div class="monitor-card vps-status">
+                <span>VPS status</span>
+                <strong id="monitorVpsStatusValue">-</strong>
+                <small id="monitorVpsStatusDetail">VPS status summary pending.</small>
+              </div>
+              <div class="monitor-card vps-health">
+                <span>VPS health</span>
+                <strong id="monitorVpsHealthValue">-</strong>
+                <small id="monitorVpsHealthDetail">VPS health snapshot pending.</small>
+              </div>
+              <div class="monitor-card vps-headroom">
+                <span>VPS headroom</span>
+                <strong id="monitorVpsHeadroomValue">-</strong>
+                <small id="monitorVpsHeadroomDetail">VPS headroom summary pending.</small>
+              </div>
+              <div class="monitor-card cloudflare">
+                <span>Cloudflare</span>
+                <strong id="monitorCloudflareValue">-</strong>
+                <small id="monitorCloudflareDetail">Cloudflare network surfaces pending.</small>
+              </div>
+              <div class="monitor-card scheduler">
+                <span>Scheduler pulse</span>
+                <strong id="monitorSchedulerValue">-</strong>
+                <small id="monitorSchedulerDetail">Scheduler pulse summary pending.</small>
+              </div>
+              <div class="monitor-card market-session">
+                <span>Market session</span>
+                <strong id="monitorMarketSessionValue">-</strong>
+                <small id="monitorMarketSessionDetail">Market session summary pending.</small>
+              </div>
+              <div class="monitor-card paper-pulse">
+                <span>Paper pulse</span>
+                <strong id="monitorPaperPulseValue">-</strong>
+                <small id="monitorPaperPulseDetail">Paper pulse summary pending.</small>
+              </div>
+              <div class="monitor-card assist-timeline">
+                <span>Assist timeline</span>
+                <strong id="monitorAssistTimelineValue">-</strong>
+                <small id="monitorAssistTimelineDetail">Assist timeline summary pending.</small>
+              </div>
+              <div class="monitor-card remote-ops">
+                <span>Remote ops</span>
+                <strong id="monitorRemoteOpsValue">-</strong>
+                <small id="monitorRemoteOpsDetail">Remote ops summary pending.</small>
+              </div>
+              <div class="monitor-card stage-prep">
+                <span>Stage prep</span>
+                <strong id="monitorStagePrepValue">-</strong>
+                <small id="monitorStagePrepDetail">Stage prep summary pending.</small>
+              </div>
+              <div class="monitor-card assistance">
+                <span>Assistance</span>
+                <strong id="monitorAssistanceValue">-</strong>
+                <small id="monitorAssistanceDetail">Assistance summary pending.</small>
+              </div>
+              <div class="monitor-card current-stage">
+                <span>Current stage</span>
+                <strong id="monitorCurrentStageValue">-</strong>
+                <small id="monitorCurrentStageDetail">Current stage summary pending.</small>
+              </div>
+              <div class="monitor-card stage-owner">
+                <span>Stage owner</span>
+                <strong id="monitorStageOwnerValue">-</strong>
+                <small id="monitorStageOwnerDetail">Stage owner summary pending.</small>
+              </div>
+              <div class="monitor-card stage-support">
+                <span>Stage support</span>
+                <strong id="monitorStageSupportValue">-</strong>
+                <small id="monitorStageSupportDetail">Stage support summary pending.</small>
+              </div>
+              <div class="monitor-card next-step">
+                <span>Next operator step</span>
+                <strong id="monitorNextOperatorStepValue">-</strong>
+                <small id="monitorNextOperatorStepDetail">Next operator step summary pending.</small>
+              </div>
+              <div class="monitor-card jarvis-nest">
+                <span>Jarvis nest</span>
+                <strong id="monitorJarvisNestValue">-</strong>
+                <small id="monitorJarvisNestDetail">Jarvis nest summary pending.</small>
+              </div>
+              <div class="monitor-card botops">
+                <span>Bot ops</span>
+                <strong id="monitorBotOpsValue">-</strong>
+                <small id="monitorBotOpsDetail">Bot operations summary pending.</small>
+              </div>
+              <div class="monitor-card paper">
+                <span>Paper readiness</span>
+                <strong id="monitorPaperValue">-</strong>
+                <small id="monitorPaperDetail">Paper readiness summary pending.</small>
+              </div>
+              <div class="monitor-card broker-paper-ops">
+                <span>Broker paper ops</span>
+                <strong id="monitorBrokerPaperOpsValue">-</strong>
+                <small id="monitorBrokerPaperOpsDetail">Broker paper ops summary pending.</small>
+              </div>
+              <div class="monitor-card broker-venue-health">
+                <span>Broker venue health</span>
+                <strong id="monitorBrokerVenueHealthValue">-</strong>
+                <small id="monitorBrokerVenueHealthDetail">Broker venue health summary pending.</small>
+              </div>
+              <div class="monitor-card paper-baseline">
+                <span>Paper baseline</span>
+                <strong id="monitorPaperBaselineValue">-</strong>
+                <small id="monitorPaperBaselineDetail">Paper baseline summary pending.</small>
+              </div>
+              <div class="monitor-card baseline-rollup">
+                <span>Baseline evidence</span>
+                <strong id="monitorBaselineRollupValue">-</strong>
+                <small id="monitorBaselineRollupDetail">Baseline evidence freshness pending.</small>
+              </div>
+              <div class="monitor-card route-mix">
+                <span>Route mix</span>
+                <strong id="monitorRouteMixValue">-</strong>
+                <small id="monitorRouteMixDetail">Route mix summary pending.</small>
+              </div>
+              <div class="monitor-card heat-budget">
+                <span>Heat budget</span>
+                <strong id="monitorHeatBudgetValue">-</strong>
+                <small id="monitorHeatBudgetDetail">Heat budget summary pending.</small>
+              </div>
+              <div class="monitor-card tolerance-harness">
+                <span>Tolerance harness</span>
+                <strong id="monitorToleranceHarnessValue">-</strong>
+                <small id="monitorToleranceHarnessDetail">Tolerance harness summary pending.</small>
+              </div>
+              <div class="monitor-card promotion-gate">
+                <span>Promotion gate</span>
+                <strong id="monitorPromotionGateValue">-</strong>
+                <small id="monitorPromotionGateDetail">Promotion gate summary pending.</small>
+              </div>
+              <div class="monitor-card roadmap-detail">
+                <span>Roadmap detail</span>
+                <strong id="monitorRoadmapDetailValue">-</strong>
+                <small id="monitorRoadmapDetailText">Roadmap detail summary pending.</small>
+              </div>
+              <div class="monitor-card strategy">
+                <span>Strategy lab</span>
+                <strong id="monitorStrategyValue">-</strong>
+                <small id="monitorStrategyDetail">Strategy lab summary pending.</small>
+              </div>
+              <div class="monitor-card roadmap">
+                <span>Roadmap progress</span>
+                <strong id="monitorRoadmapValue">-</strong>
+                <small id="monitorRoadmapDetail">Roadmap progress summary pending.</small>
+              </div>
+              <div class="monitor-card roadmap-completion">
+                <span>Roadmap completion</span>
+                <strong id="monitorRoadmapCompletionValue">-</strong>
+                <small id="monitorRoadmapCompletionDetail">Roadmap completion summary pending.</small>
+              </div>
+              <div class="monitor-card robin">
+                <span>Robin handoff</span>
+                <strong id="monitorRobinValue">-</strong>
+                <small id="monitorRobinDetail">Robin handoff summary pending.</small>
+              </div>
+            </div>
+
+            <div class="monitor-foot">
+              <div class="monitor-line" id="leaderSummary">Live signal summary will appear here.</div>
+              <div class="monitor-line" id="rosterSummary">Running bot roster will appear here.</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section reveal" id="fleet">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Fleet roster</div>
+            <h2>Confirmed roster</h2>
+            <p>
+              Primary accounts stay on top. Extra accounts expand automatically without changing the layout, so the public face
+              stays stable while the fleet grows.
+            </p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-label">Live roster</div>
+          <div class="panel-title">One surface for the fleet state that matters.</div>
+          <div class="panel-copy">
+            The roster below keeps the live bot names, status, mode, signal, and score visible without the old marketing-board layout.
+            It is intentionally read-only and updates from the public snapshot.
+          </div>
+
+          <div class="roster-shell" aria-label="Live roster">
+            <div class="roster-head">
+              <div>Account</div>
+              <div>Status</div>
+              <div>Mode</div>
+              <div>Updated</div>
+              <div class="align-right">Score</div>
+            </div>
+            <div id="primaryRoster"></div>
+            <div class="roster-head" id="additionalDivider">Additional accounts</div>
+            <div id="secondaryRoster"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal" id="proof">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Proof and boundary</div>
+            <h2>What stays public, what stays private.</h2>
+            <p>
+              The new face stays honest about freshness, rails, stage, services, and access. The operator shell stays behind trust.
+            </p>
+          </div>
+        </div>
+
+        <div class="surface-grid">
+          <div class="panel">
+            <div class="panel-label">Proof</div>
+            <div class="panel-title">Signals the page should never hide.</div>
+            <div class="panel-copy">
+              These rows are the clearest version of the live snapshot. If the data is missing, the page should say so instead of pretending.
+            </div>
+            <div class="proof-stack" id="proofRows"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-label">Access posture</div>
+            <div class="panel-title">Read-only by default.</div>
+            <div class="panel-copy">
+              Public visitors get the live desk only. Operator actions, auth, and write paths remain behind the private shell.
+            </div>
+
+            <div class="access-note">
+              <strong id="accessState">Read-only public desk</strong>
+              <p id="accessNote">Waiting for the latest snapshot.</p>
+              <div class="access-grid" aria-label="Access facts">
+                <div class="access-cell">
+                  <span>Runtime</span>
+                  <strong id="accessRuntime">-</strong>
+                </div>
+                <div class="access-cell">
+                  <span>Leader</span>
+                  <strong id="accessLeader">-</strong>
+                </div>
+                <div class="access-cell">
+                  <span>Stage</span>
+                  <strong id="accessStage">-</strong>
+                </div>
+                <div class="access-cell">
+                  <span>Freshness</span>
+                  <strong id="accessFreshness">-</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="surface-note" id="surfaceNote">
+              The public page is intentionally read-only while the operator shell stays behind auth.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div>
+          <div>Evolutionary Trading Algo live command center.</div>
+          <div>Read-only public surface. Operator controls stay private.</div>
+        </div>
+        <div>
+          <div><a href="https://evolutionarytradingalgo.com/" rel="noopener noreferrer" target="_blank">evolutionarytradingalgo.com</a></div>
+          <div><a href="https://evolutionarytradingalgo.llc/" rel="noopener noreferrer" target="_blank">evolutionarytradingalgo.llc</a></div>
+          <div>Not investment advice. Trading involves risk.</div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <div id="command-center-auth-contract" class="hidden-contract" aria-hidden="true">
+    /api/auth/session /api/auth/login /api/auth/step-up /api/operator/phases /api/operator/robin-tasks /api/bot/live-eligibility Secure Sign In Step-Up Verification Trusted Device
+  </div>
+
+  <script>
+    (() => {
+      const API_PUBLIC = "/api/public/dashboard";
+      const API_MASTER = "/api/master/status";
+      const API_BOT_FLEET = "/api/bot-fleet";
+      const REFRESH_MS = 15000;
+
+      const state = {
+        publicData: null,
+        masterData: null,
+      };
+
+      const escapeHtml = (value) => String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+      const setText = (id, value) => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        const next = String(value ?? "");
+        if (node.textContent === next) return;
+        node.textContent = next;
+      };
+
+      const setHtml = (id, value) => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.innerHTML = value;
+      };
+
+      const isRunning = (status) => {
+        const value = String(status || "").trim().toLowerCase();
+        return value === "running" || value === "connected" || value === "active" || value === "live";
+      };
+
+      const fmtTime = (value) => {
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) return "-";
+        return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      };
+
+      const fmtAge = (value) => {
+        const time = Date.parse(value || "");
+        if (!Number.isFinite(time)) return "pending";
+        const age = Math.max(0, Math.round((Date.now() - time) / 1000));
+        if (age < 60) return `fresh ${age}s`;
+        if (age < 3600) return `fresh ${Math.round(age / 60)}m`;
+        return `fresh ${Math.round(age / 3600)}h`;
+      };
+
+      const listNames = (rows, limit = 4) => {
+        const names = Array.isArray(rows)
+          ? rows.map((row) => String(row?.name || row?.id || "").trim()).filter(Boolean)
+          : [];
+        if (names.length === 0) return "none";
+        const shown = names.slice(0, limit).join(", ");
+        return names.length > limit ? `${shown} +${names.length - limit} more` : shown;
+      };
+
+      const normalizeMode = (row) => {
+        const raw = String(row?.mode || row?.runtime_mode || row?.type || "").trim().toLowerCase();
+        if (raw === "paper_live") return "paper live";
+        if (raw === "paper_sim") return "paper sim";
+        if (raw === "live") return "live";
+        if (raw === "paper") return "paper";
+        return raw || "unknown";
+      };
+
+      const statusTone = (status) => {
+        const value = String(status || "").trim().toLowerCase();
+        if (value === "running" || value === "connected" || value === "active" || value === "live") return "tone-running";
+        if (value === "paused" || value === "starting" || value === "queued" || value === "planned") return "tone-paused";
+        return "tone-unknown";
+      };
+
+      const normalizeAccounts = (payload) => {
+        const accounts = Array.isArray(payload?.accounts) ? payload.accounts.filter(Boolean) : [];
+        const primary = Array.isArray(payload?.primary_accounts) ? payload.primary_accounts.filter(Boolean) : [];
+        const additional = Array.isArray(payload?.additional_accounts) ? payload.additional_accounts.filter(Boolean) : [];
+        const roster = accounts.length ? accounts : [...primary, ...additional];
+        const primaryRows = primary.length ? primary.slice(0, 4) : roster.slice(0, 4);
+        const additionalRows = additional.length ? additional : roster.slice(primaryRows.length);
+        return { roster, primaryRows, additionalRows };
+      };
+
+      const buildRosterRow = (row, index, leader = false) => {
+        const name = escapeHtml(row?.name || row?.id || `bot-${index + 1}`);
+        const summary = escapeHtml(row?.summary || row?.detail || row?.note || "No summary available.");
+        const status = escapeHtml(row?.status || "unknown");
+        const mode = escapeHtml(normalizeMode(row));
+        const updated = row?.updated_at ? escapeHtml(fmtTime(row.updated_at)) : "-";
+        const owner = escapeHtml(row?.owner || row?.team || "shared lane");
+        const signal = escapeHtml(row?.metric || row?.source || row?.signal || "-");
+        const scoreSource = row?.priority_score ?? row?.score ?? row?.confidence ?? row?.risk_score ?? row?.rank ?? row?.market_score;
+        const score = scoreSource == null || scoreSource === "" ? "-" : escapeHtml(scoreSource);
+        return `
+          <article class="roster-row ${leader ? "leader" : ""}">
+            <div class="roster-main">
+              <div class="roster-index">${String(index + 1).padStart(2, "0")}</div>
+              <strong>${name}</strong>
+              <span>${summary}</span>
+              <div class="roster-tags">
+                ${leader ? '<span class="pill pill-lead">Lead bot</span>' : ""}
+                <span class="pill">Owner ${owner}</span>
+                <span class="pill">Signal ${signal}</span>
+              </div>
+            </div>
+            <div class="roster-field">
+              <span>Status</span>
+              <strong class="${statusTone(status)}">${status}</strong>
+            </div>
+            <div class="roster-field">
+              <span>Mode</span>
+              <strong>${mode}</strong>
+            </div>
+            <div class="roster-field">
+              <span>Updated</span>
+              <strong>${updated}</strong>
+            </div>
+            <div class="roster-field align-right">
+              <span>Score</span>
+              <strong>${score}</strong>
+            </div>
+          </article>
+        `;
+      };
+
+      const buildSummary = (payload, masterData = {}) => {
+        const runtime = payload?.runtime || {};
+        const summary = payload?.summary || {};
+        const surface = payload?.surface && typeof payload.surface === "object" ? payload.surface : {};
+        const botOps = masterData?.bot_ops && typeof masterData.bot_ops === "object"
+          ? masterData.bot_ops
+          : payload?.bot_ops && typeof payload.bot_ops === "object"
+            ? payload.bot_ops
+            : {};
+        const { roster, primaryRows, additionalRows } = normalizeAccounts(payload || {});
+        const runningRows = roster.filter((row) => isRunning(row?.status));
+        const confirmedRows = roster.filter((row) => Boolean(row?.confirmed));
+        const pendingRows = roster.filter((row) => !isRunning(row?.status) && !Boolean(row?.confirmed));
+        const botOpsStatus = String(botOps.health_state || botOps.status || "unknown");
+        const botOpsTone = botOpsStatus === "stale"
+          ? "blocked"
+          : Boolean(botOps.attention_required)
+            ? "warn"
+            : Number(botOps.total ?? 0) > 0
+              ? "healthy"
+              : "unknown";
+        const botOpsRunning = Number(botOps.running ?? 0);
+        const botOpsTotal = Number(botOps.total ?? 0);
+        const botOpsConfirmed = Number(botOps.confirmed ?? 0);
+        const botOpsWaiting = Number(botOps.waiting ?? 0);
+        const botOpsOpen = Number(botOps.open_positions ?? 0);
+        const botOpsWinRate = Number(botOps.win_rate ?? 0);
+        const botOpsSummaryLine = String(botOps.operator_line || "Bot operations summary pending.");
+        const botOpsHealthLine = String(botOps.health_line || "Health line pending.");
+        const botOpsFreshnessLine = String(botOps.freshness_line || "Freshness pending.");
+        const botOpsAttentionLine = String(botOps.attention_line || "Attention pending.");
+        const botOpsNextCheckLine = String(botOps.next_check_line || "Command Center refreshes bot ops every 15 seconds while the dashboard is open.");
+        const vpsStatus = masterData?.vps_status && typeof masterData.vps_status === "object"
+          ? masterData.vps_status
+          : payload?.vps_status && typeof payload.vps_status === "object"
+            ? payload.vps_status
+            : {};
+        const vpsSummary = vpsStatus?.summary && typeof vpsStatus.summary === "object"
+          ? vpsStatus.summary
+          : {};
+        const hostHealthLine = String(vpsSummary.host_health_line || "Host health snapshot unavailable.");
+        const hostPulseLine = String(vpsSummary.host_pulse_line || "Host pulse unavailable.");
+        const hostReadinessLine = String(vpsSummary.readiness_line || "Readiness pending.");
+        const hostServiceRosterLine = String(vpsSummary.service_roster_line || "Required services online pending.");
+        const hostServiceGapLine = String(vpsSummary.service_gap_line || "Service gaps pending.");
+        const hostNextOperatorStep = String(vpsSummary.next_operator_step || "Review services, scheduler state, and dashboard sync. Keep the VPS visible, healthy, and actionable.");
+        const hostValue = hostHealthLine;
+        const hostDetailValue = `${hostPulseLine} · ${hostNextOperatorStep}`;
+        const vpsStatusLine = String(vpsSummary.status_line || "VPS status pending.");
+        const vpsStatusValue = vpsStatusLine;
+        const vpsStatusDetailValue = hostReadinessLine;
+        const vpsHealthLine = String(vpsSummary.vps_health_line || "VPS health snapshot pending.");
+        const vpsHealthDetailLine = String(vpsSummary.vps_health_detail || "VPS health detail pending.");
+        const vpsHealthStatus = String(vpsSummary.vps_health_status || "unknown");
+        const vpsHealthWarningCount = Number(vpsSummary.vps_health_warning_count ?? 0);
+        const vpsHealthActionCount = Number(vpsSummary.vps_health_action_count ?? 0);
+        const vpsHealthValue = vpsHealthLine;
+        const vpsHealthDetailValue = vpsHealthDetailLine;
+        const vpsHeadroomFreePhysicalMb = Number(vpsSummary.vps_health_free_physical_mb);
+        const vpsHeadroomFreePagefileMb = Number(vpsSummary.vps_health_free_pagefile_mb);
+        const vpsHeadroomServiceRunningCount = Number(vpsSummary.vps_health_service_running_count);
+        const vpsHeadroomServiceTotalCount = Number(vpsSummary.vps_health_service_total_count);
+        const vpsHeadroomListeningPortCount = Number(vpsSummary.vps_health_listening_port_count);
+        const vpsHeadroomValue = Number.isFinite(vpsHeadroomFreePhysicalMb)
+          ? `${vpsHeadroomFreePhysicalMb.toLocaleString()} MB physical`
+          : "pending";
+        const vpsHeadroomDetailValue = [
+          Number.isFinite(vpsHeadroomFreePagefileMb)
+            ? `${vpsHeadroomFreePagefileMb.toLocaleString()} MB pagefile`
+            : "pagefile pending",
+          Number.isFinite(vpsHeadroomServiceRunningCount) && Number.isFinite(vpsHeadroomServiceTotalCount)
+            ? `${vpsHeadroomServiceRunningCount}/${vpsHeadroomServiceTotalCount} services`
+            : "services pending",
+          Number.isFinite(vpsHeadroomListeningPortCount)
+            ? `${vpsHeadroomListeningPortCount} listening ports`
+            : "ports pending",
+        ].join(" | ");
+        const serviceRosterLine = String(vpsSummary.service_roster_line || "Required services online pending.");
+        const serviceGapLine = String(vpsSummary.service_gap_line || "Service gaps pending.");
+        const serviceRosterValue = serviceRosterLine;
+        const serviceRosterDetailValue = serviceGapLine;
+        const toolchainLine = String(vpsSummary.toolchain_line || "Toolchain pending.");
+        const toolchainManifestLine = String(vpsSummary.toolchain_manifest_line || "Jarvis toolchain manifest missing.");
+        const toolchainManifestDetail = String(vpsSummary.toolchain_manifest_detail || "Run install_jarvis_toolchain.ps1 on the VPS to stage shared wrappers and write the manifest.");
+        const toolchainManifestPath = String(vpsSummary.toolchain_manifest_path || "Toolchain manifest path pending.");
+        const toolchainValue = toolchainManifestLine;
+        const toolchainDetailValue = toolchainManifestDetail;
+        const brokerPaperReadiness = masterData?.broker_paper_readiness && typeof masterData.broker_paper_readiness === "object"
+          ? masterData.broker_paper_readiness
+          : payload?.broker_paper_readiness && typeof payload.broker_paper_readiness === "object"
+            ? payload.broker_paper_readiness
+            : {};
+        const brokerPaperOps = masterData?.broker_paper_ops && typeof masterData.broker_paper_ops === "object"
+          ? masterData.broker_paper_ops
+          : payload?.broker_paper_ops && typeof payload.broker_paper_ops === "object"
+            ? payload.broker_paper_ops
+            : {};
+        const strategyLab = masterData?.jarvis?.strategy_lab && typeof masterData.jarvis.strategy_lab === "object"
+          ? masterData.jarvis.strategy_lab
+          : masterData?.strategy_lab && typeof masterData.strategy_lab === "object"
+            ? masterData.strategy_lab
+            : payload?.jarvis?.strategy_lab && typeof payload.jarvis.strategy_lab === "object"
+              ? payload.jarvis.strategy_lab
+              : payload?.strategy_lab && typeof payload.strategy_lab === "object"
+                ? payload.strategy_lab
+                : {};
+        const jarvisNest = masterData?.jarvis && typeof masterData.jarvis === "object"
+          ? masterData.jarvis
+          : payload?.jarvis && typeof payload.jarvis === "object"
+            ? payload.jarvis
+            : {};
+        const cloudflareLine = String(vpsSummary.cloudflare_line || "Cloudflare network surfaces unavailable.");
+        const cloudflareDetailLine = String(vpsSummary.cloudflare_detail_line || "Cloudflare Tunnel and Access pending.");
+        const privateAccessLine = String(vpsSummary.private_access_line || "Private access plane pending.");
+        const privateAccessDetail = String(vpsSummary.private_access_detail || "Private access plane detail pending.");
+        const publicEdgeLine = String(vpsSummary.public_edge_line || "Public edge pending.");
+        const publicEdgeDetail = String(vpsSummary.public_edge_detail || "Public edge detail pending.");
+        const cloudflareReady = Boolean(vpsSummary.private_access_ready) && Boolean(vpsSummary.public_edge_ready);
+        const cloudflarePartial = Boolean(vpsSummary.private_access_ready) || Boolean(vpsSummary.public_edge_ready);
+        const cloudflareValue = cloudflareReady ? "ready" : cloudflarePartial ? "partial" : "pending";
+        const schedulerPulseLine = String(vpsSummary.scheduler_pulse_line || "Scheduler pulse pending.");
+        const schedulerTickLine = String(vpsSummary.scheduler_tick_line || "Last scheduler tick unknown");
+        const schedulerReadinessLine = String(vpsSummary.readiness_line || "Readiness pending.");
+        const schedulerTaskGapLine = String(vpsSummary.task_gap_line || "Task gaps pending.");
+        const schedulerServiceGapLine = String(vpsSummary.service_gap_line || "Service gaps pending.");
+        const schedulerNextOperatorStep = String(vpsSummary.next_operator_step || "Review services, scheduler state, and dashboard sync. Keep the VPS visible, healthy, and actionable.");
+        const schedulerValue = schedulerPulseLine;
+        const schedulerDetailValue = `${schedulerTickLine} · ${schedulerNextOperatorStep}`;
+        const cloudflareDetailValue = `${privateAccessLine} Â· ${publicEdgeLine}`;
+        const marketSessionLine = String(vpsSummary.market_session_line || "Market session pending.");
+        const heartbeatLine = String(vpsSummary.heartbeat_line || "Heartbeat pending.");
+        const marketSessionValue = marketSessionLine;
+        const marketSessionDetailValue = heartbeatLine;
+        const paperPulseLine = String(vpsSummary.queue_line || "Queue summary pending.");
+        const paperPulseDetailLine = String(vpsSummary.assist_bookmark_line || "Assist bookmark summary pending.");
+        const paperPulseValue = paperPulseLine;
+        const paperPulseDetailValue = paperPulseDetailLine;
+        const assistTimelineCount = Number(vpsSummary.assist_bookmark_count ?? 0);
+        const assistTimelineValue = assistTimelineCount > 0
+          ? `${assistTimelineCount} bookmark${assistTimelineCount === 1 ? "" : "s"}`
+          : "pending";
+        const assistTimelineDetailValue = String(
+          vpsSummary.assist_bookmark_line || "Assist timeline summary pending.",
+        );
+        const remoteOps = masterData?.remote_ops && typeof masterData.remote_ops === "object"
+          ? masterData.remote_ops
+          : payload?.remote_ops && typeof payload.remote_ops === "object"
+            ? payload.remote_ops
+            : {};
+        const remoteOpsSummary = remoteOps?.summary && typeof remoteOps.summary === "object"
+          ? remoteOps.summary
+          : {};
+        const remoteOpsQueueLine = String(remoteOpsSummary.queue_line || "Remote ops queue pending.");
+        const remoteOpsArtifactLine = String(remoteOpsSummary.artifact_line || "Remote ops artifact summary pending.");
+        const remoteOpsDetailLine = String(remoteOpsSummary.detail_line || "Remote ops queue summary pending.");
+        const remoteOpsNextStepLine = String(remoteOpsSummary.next_step || "Create a remote ops job from /api/remote-ops/jobs.");
+        const remoteOpsCatalogLine = String(remoteOpsSummary.catalog_line || "Remote ops catalog pending.");
+        const remoteOpsJobsTotal = Number(remoteOpsSummary.jobs_total ?? 0);
+        const remoteOpsArtifactsReady = Number(remoteOpsSummary.artifacts_ready ?? 0);
+        const remoteOpsValue = remoteOpsQueueLine;
+        const remoteOpsDetailValue = `${remoteOpsArtifactLine} | ${remoteOpsDetailLine}`;
+        const stagePrepTasks = Number(vpsSummary.stage_prep_tasks ?? 0);
+        const stagePrepLine = String(vpsSummary.stage_prep_line || "Stage prep bundle pending.");
+        const stagePrepDetailLine = String(vpsSummary.stage_prep_detail || "Stage prep detail pending.");
+        const stagePrepStageIds = Array.isArray(vpsSummary.stage_prep_stage_ids) ? vpsSummary.stage_prep_stage_ids : [];
+        const stagePrepOwners = Array.isArray(vpsSummary.stage_prep_owners) ? vpsSummary.stage_prep_owners : [];
+        const stagePrepValue = stagePrepTasks > 0 ? `${stagePrepTasks} task${stagePrepTasks === 1 ? "" : "s"}` : "pending";
+        const stagePrepDetailValue = stagePrepDetailLine;
+        const assistanceHeadline = String(vpsSummary.assistance_headline || "Assistance pending.");
+        const assistanceNeeded = Boolean(vpsSummary.assistance_needed);
+        const assistanceLevel = String(vpsSummary.assistance_level || assistLevel || "idle");
+        const assistanceTargets = String(vpsSummary.assistance_targets || "none");
+        const roadmapAssistanceLine = String(vpsSummary.roadmap_assistance_line || assistLine || "Assistance summary pending.");
+        const assistanceValue = assistanceNeeded ? assistanceLevel : "idle";
+        const assistanceDetailValue = assistanceHeadline;
+        const nextOperatorStepLine = String(vpsSummary.next_operator_step || "Next operator step pending.");
+        const nextOperatorStepValue = nextOperatorStepLine;
+        const nextOperatorStepDetailValue = hostReadinessLine;
+        const paperReadinessStatus = String(brokerPaperReadiness.status || brokerPaperOps.state || "pending");
+        const paperReadinessValue = paperReadinessStatus === "ready" || paperReadinessStatus === "direct_and_import_ready"
+          ? "ready"
+          : paperReadinessStatus === "import_ready"
+            ? "import ready"
+            : paperReadinessStatus === "blocked" || paperReadinessStatus === "import_blocked"
+              ? "blocked"
+              : paperReadinessStatus;
+        const paperReadinessSummaryLine = String(brokerPaperReadiness.line || brokerPaperOps.operator_line || "Broker paper readiness pending.");
+        const paperReadinessDetailLine = String(brokerPaperReadiness.detail || brokerPaperOps.next_operator_step || "Waiting for broker paper evidence.");
+        const paperReadinessReadyCount = Number(brokerPaperReadiness.direct_ready_count ?? brokerPaperOps.direct_ready_count ?? 0);
+        const paperReadinessPendingCount = Number(brokerPaperReadiness.direct_pending_setup_count ?? brokerPaperOps.pending_direct_setup_count ?? 0);
+        const paperReadinessTotalCount = paperReadinessReadyCount + paperReadinessPendingCount;
+        const paperReadinessUpdatedAt = brokerPaperReadiness.updated_at || brokerPaperOps.ingest_generated_at || "";
+        const paperReadinessUpdatedLine = paperReadinessUpdatedAt ? fmtTime(paperReadinessUpdatedAt) : "pending";
+        const brokerPaperOpsStatus = String(
+          brokerPaperOps.launch_gate_status || brokerPaperReadiness.launch_gate_status || brokerPaperReadiness.status || paperReadinessStatus || "pending",
+        );
+        const brokerPaperOpsValue = brokerPaperOpsStatus === "ready" ? "ready" : brokerPaperOpsStatus;
+        const brokerPaperOpsSummaryLine = String(
+          brokerPaperOps.launch_gate_line || brokerPaperOps.operator_line || brokerPaperReadiness.line || "Broker paper ops pending.",
+        );
+        const brokerPaperOpsDetailLine = String(
+          brokerPaperOps.launch_gate_detail || brokerPaperReadiness.detail || "Waiting for broker paper evidence.",
+        );
+        const brokerPaperOpsReadyCount = Number(
+          brokerPaperOps.direct_ready_count ?? brokerPaperReadiness.direct_ready_count ?? paperReadinessReadyCount ?? 0,
+        );
+        const brokerPaperOpsPendingCount = Number(
+          brokerPaperOps.pending_direct_setup_count ?? brokerPaperReadiness.direct_pending_setup_count ?? paperReadinessPendingCount ?? 0,
+        );
+        const brokerPaperOpsTotalCount = brokerPaperOpsReadyCount + brokerPaperOpsPendingCount;
+        const brokerPaperOpsUpdatedAt = brokerPaperOps.ingest_generated_at || brokerPaperReadiness.updated_at || "";
+        const brokerPaperOpsUpdatedLine = brokerPaperOpsUpdatedAt ? fmtTime(brokerPaperOpsUpdatedAt) : "pending";
+        const brokerPaperOpsDetailValue = [
+          brokerPaperOpsSummaryLine,
+          `${brokerPaperOpsReadyCount}/${brokerPaperOpsTotalCount || brokerPaperOpsReadyCount} ready`,
+          `updated ${brokerPaperOpsUpdatedLine}`,
+          brokerPaperOpsDetailLine,
+        ].join(" | ");
+        const brokerVenueHealth = masterData?.broker_venue_health && typeof masterData.broker_venue_health === "object"
+          ? masterData.broker_venue_health
+          : payload?.broker_venue_health && typeof payload.broker_venue_health === "object"
+            ? payload.broker_venue_health
+            : masterData?.jarvis?.broker_venue_health && typeof masterData.jarvis.broker_venue_health === "object"
+              ? masterData.jarvis.broker_venue_health
+              : payload?.jarvis?.broker_venue_health && typeof payload.jarvis.broker_venue_health === "object"
+                ? payload.jarvis.broker_venue_health
+                : {};
+        const brokerVenueHealthStatus = String(
+          brokerVenueHealth.status
+          || brokerPaperReadiness.status
+          || brokerPaperOps.launch_gate_status
+          || "pending",
+        );
+        const brokerVenueHealthValue = brokerVenueHealthStatus === "ready"
+          ? "ready"
+          : brokerVenueHealthStatus === "import_ready"
+            ? "import ready"
+            : brokerVenueHealthStatus === "blocked" || brokerVenueHealthStatus === "import_blocked"
+              ? "blocked"
+              : brokerVenueHealthStatus;
+        const brokerVenueHealthSummaryLine = String(
+          brokerVenueHealth.line
+          || brokerPaperReadiness.line
+          || brokerPaperOps.launch_gate_line
+          || "Broker venue health pending.",
+        );
+        const brokerVenueHealthDetailLine = String(
+          brokerVenueHealth.detail
+          || brokerPaperReadiness.detail
+          || brokerPaperOps.next_operator_step
+          || "Waiting for broker venue evidence.",
+        );
+        const brokerVenueHealthProvider = String(
+          brokerVenueHealth.paper_live_provider
+          || brokerPaperReadiness.provider
+          || brokerPaperOps.paper_live_provider
+          || "internal_sim",
+        );
+        const brokerVenueHealthRouteKind = String(
+          brokerVenueHealth.paper_live_route_kind
+          || brokerPaperReadiness.paper_live_route_kind
+          || brokerPaperOps.paper_live_route_kind
+          || "internal_sim",
+        );
+        const brokerVenueHealthReadyCount = Number(
+          brokerVenueHealth.direct_ready_count ?? brokerPaperReadiness.direct_ready_count ?? brokerPaperOps.direct_ready_count ?? 0,
+        );
+        const brokerVenueHealthPendingCount = Number(
+          brokerVenueHealth.direct_pending_setup_count ?? brokerPaperReadiness.direct_pending_setup_count ?? brokerPaperOps.pending_direct_setup_count ?? 0,
+        );
+        const brokerVenueHealthTotalCount = brokerVenueHealthReadyCount + brokerVenueHealthPendingCount;
+        const brokerVenueHealthUpdatedAt = brokerVenueHealth.updated_at || brokerPaperReadiness.updated_at || brokerPaperOps.ingest_generated_at || "";
+        const brokerVenueHealthUpdatedLine = brokerVenueHealthUpdatedAt ? fmtTime(brokerVenueHealthUpdatedAt) : "pending";
+        const brokerVenueHealthDetailValue = [
+          brokerVenueHealthSummaryLine,
+          `${brokerVenueHealthReadyCount}/${brokerVenueHealthTotalCount || brokerVenueHealthReadyCount} ready`,
+          `updated ${brokerVenueHealthUpdatedLine}`,
+          brokerVenueHealthDetailLine,
+        ].join(" | ");
+        const strategyLabState = String(strategyLab.state || "");
+        const strategyLabTone = String(strategyLab.tone || "");
+        const strategyLabValue = strategyLabState === "paper_locked" || strategyLabTone === "healthy"
+          ? "paper locked"
+          : strategyLabState === "shadow_only" || strategyLabTone === "warn"
+            ? "shadow only"
+            : strategyLabState === "research_missing"
+              ? "research missing"
+              : strategyLabState || strategyLabTone || "pending";
+        const strategyLabSummaryLine = String(strategyLab.summary_line || "Strategy lab summary pending.");
+        const strategyLabStatusLine = String(strategyLab.status_line || "Paper shadow research bundle missing.");
+        const strategyLabChampionLine = String(strategyLab.champion_line || "Champion pending.");
+        const strategyLabGateLine = String(strategyLab.gate_line || "Gates unavailable.");
+        const strategyLabRiskLine = String(strategyLab.risk_line || "Risk unavailable.");
+        const strategyLabNextStepLine = String(strategyLab.next_operator_step || "Attach the research-intelligence bundle before any promotion review.");
+        const strategyLabDetailLine = `${strategyLabSummaryLine} | ${strategyLabStatusLine} | ${strategyLabRiskLine}`;
+        const jarvisNestLine = String(jarvisNest.jarvis_nest_line || "Jarvis nest summary pending.");
+        const jarvisNestDetailLine = String(jarvisNest.jarvis_nest_detail || "Jarvis nest detail pending.");
+        const jarvisNestStatusLine = String(jarvisNest.jarvis_nest_status || "status pending");
+        const jarvisNestReadyCount = Number(jarvisNest.jarvis_nest_ready_count ?? 0);
+        const jarvisNestTotalCount = Number(jarvisNest.jarvis_nest_total_count ?? 0);
+        const jarvisNestToolchainReadyCount = Number(jarvisNest.jarvis_nest_toolchain_ready_count ?? 0);
+        const jarvisNestToolchainTotalCount = Number(jarvisNest.jarvis_nest_toolchain_total_count ?? 0);
+        const jarvisNestServiceRunningCount = Number(jarvisNest.jarvis_nest_service_running_count ?? 0);
+        const jarvisNestServiceTotalCount = Number(jarvisNest.jarvis_nest_service_total_count ?? 0);
+        const jarvisNestUpdatedLabel = String(jarvisNest.jarvis_nest_updated_label || "pending");
+        const jarvisNestNextOperatorStep = String(jarvisNest.jarvis_nest_next_operator_step || "Run install_jarvis_nest.ps1 to refresh the armory, barracks, and relay in one pass.");
+        const jarvisNestValue = jarvisNestTotalCount > 0
+          ? `${jarvisNestReadyCount}/${jarvisNestTotalCount} ready`
+          : jarvisNestStatusLine || "pending";
+        const jarvisNestDetailValue = `${jarvisNestLine} | ${jarvisNestDetailLine}`;
+        const paperBaseline = masterData?.paper_baseline && typeof masterData.paper_baseline === "object"
+          ? masterData.paper_baseline
+          : payload?.paper_baseline && typeof payload.paper_baseline === "object"
+            ? payload.paper_baseline
+            : {};
+        const roadmapProgress = masterData?.roadmap_progress && typeof masterData.roadmap_progress === "object"
+          ? masterData.roadmap_progress
+          : payload?.roadmap_progress && typeof payload.roadmap_progress === "object"
+            ? payload.roadmap_progress
+            : {};
+        const heatState = payload?.heat_state && typeof payload.heat_state === "object"
+          ? payload.heat_state
+          : {};
+        const toleranceState = payload?.tolerance_state && typeof payload.tolerance_state === "object"
+          ? payload.tolerance_state
+          : {};
+        const robinHandoff = masterData?.robin_handoff && typeof masterData.robin_handoff === "object"
+          ? masterData.robin_handoff
+          : payload?.robin_handoff && typeof payload.robin_handoff === "object"
+            ? payload.robin_handoff
+            : {};
+        const paperBaselineActiveLane = String(paperBaseline.active_lane || "offline_or_unknown");
+        const paperBaselineLaneLabel = paperBaselineActiveLane === "broker_paper_runtime_pending_import"
+          ? "broker paper pending import"
+          : paperBaselineActiveLane === "internal_paper_sim"
+            ? "internal paper sim"
+            : paperBaselineActiveLane === "offline_or_unknown"
+              ? "offline or unknown"
+              : paperBaselineActiveLane.replace(/_/g, " ");
+        const paperBaselineRealMoneyLabel = paperBaseline.real_money_allowed ? "real money allowed" : "real money blocked";
+        const paperBaselineGateCount = Array.isArray(paperBaseline.promotion_gates) ? paperBaseline.promotion_gates.length : 0;
+        const paperBaselineNextStepLine = Array.isArray(paperBaseline.next_steps)
+          ? String(paperBaseline.next_steps.find((step) => String(step || "").trim()) || "Paper baseline pending.")
+          : "Paper baseline pending.";
+        const paperBaselineSummaryLine = `${paperBaselineRealMoneyLabel} · ${paperBaselineGateCount} promotion gates`;
+        const paperBaselineValue = paperBaselineLaneLabel;
+        const paperBaselineDetailValue = `${paperBaselineSummaryLine} | ${paperBaselineNextStepLine}`;
+        const paperBaselineRollup = masterData?.vps_status?.paper_baseline_rollup_health
+          && typeof masterData.vps_status.paper_baseline_rollup_health === "object"
+          ? masterData.vps_status.paper_baseline_rollup_health
+          : payload?.paper_baseline_rollup && typeof payload.paper_baseline_rollup === "object"
+            ? payload.paper_baseline_rollup
+            : {};
+        const boolLabel = (value) => value === true || value === 1 || String(value || "").trim().toLowerCase() === "true";
+        const paperBaselineRollupStatus = String(
+          vpsSummary.paper_baseline_rollup_status
+          || summary.paper_baseline_rollup_status
+          || paperBaselineRollup.status
+          || "missing",
+        );
+        const paperBaselineRollupHealthy = boolLabel(
+          vpsSummary.paper_baseline_rollup_healthy
+          ?? summary.paper_baseline_rollup_healthy
+          ?? paperBaselineRollup.healthy,
+        );
+        const paperBaselineRollupStale = boolLabel(
+          vpsSummary.paper_baseline_rollup_stale
+          ?? summary.paper_baseline_rollup_stale
+          ?? paperBaselineRollup.stale,
+        );
+        const paperBaselineRollupAgeSeconds = Number(
+          vpsSummary.paper_baseline_rollup_age_seconds
+          ?? summary.paper_baseline_rollup_age_seconds
+          ?? paperBaselineRollup.age_seconds,
+        );
+        const paperBaselineRollupAgeLine = Number.isFinite(paperBaselineRollupAgeSeconds)
+          ? paperBaselineRollupAgeSeconds < 60
+            ? `${Math.round(paperBaselineRollupAgeSeconds)}s old`
+            : paperBaselineRollupAgeSeconds < 3600
+              ? `${Math.round(paperBaselineRollupAgeSeconds / 60)}m old`
+              : `${Math.round(paperBaselineRollupAgeSeconds / 3600)}h old`
+          : paperBaselineRollup.updated_at
+            ? fmtAge(paperBaselineRollup.updated_at)
+            : "freshness pending";
+        const paperBaselineRollupLine = String(
+          vpsSummary.paper_baseline_rollup_line
+          || summary.paper_baseline_rollup_line
+          || paperBaselineRollup.line
+          || "Baseline evidence freshness pending.",
+        );
+        const paperBaselineRollupDetail = String(
+          vpsSummary.paper_baseline_rollup_detail
+          || summary.paper_baseline_rollup_detail
+          || paperBaselineRollup.detail
+          || "Baseline evidence collection has not reported yet.",
+        );
+        const paperBaselineRollupReportLabel = String(
+          paperBaselineRollup.latest_report_label || "latest report pending",
+        );
+        const paperBaselineRollupValue = paperBaselineRollupStale
+          ? "stale"
+          : paperBaselineRollupHealthy
+            ? "healthy"
+            : paperBaselineRollupStatus;
+        const paperBaselineRollupDetailValue = [
+          paperBaselineRollupLine,
+          paperBaselineRollupAgeLine,
+          paperBaselineRollupReportLabel,
+          paperBaselineRollupDetail,
+        ].filter(Boolean).join(" | ");
+        const runtimeRouteMix = masterData?.runtime_route_mix && typeof masterData.runtime_route_mix === "object"
+          ? masterData.runtime_route_mix
+          : masterData?.runtime?.route_mix && typeof masterData.runtime.route_mix === "object"
+            ? masterData.runtime.route_mix
+            : payload?.runtime_route_mix && typeof payload.runtime_route_mix === "object"
+              ? payload.runtime_route_mix
+              : runtime?.route_mix && typeof runtime.route_mix === "object"
+                ? runtime.route_mix
+                : {};
+        const routeMixStatus = String(
+          vpsSummary.runtime_route_mix_status
+          || summary.runtime_route_mix_status
+          || runtimeRouteMix.status
+          || "missing",
+        );
+        const routeMixRouteName = String(
+          vpsSummary.runtime_route_mix_dominant_route_name
+          || summary.runtime_route_mix_dominant_route_name
+          || runtimeRouteMix.dominant_route_name
+          || "n/a",
+        );
+        const routeMixRoutePct = Number(
+          vpsSummary.runtime_route_mix_dominant_route_pct
+          ?? summary.runtime_route_mix_dominant_route_pct
+          ?? runtimeRouteMix.dominant_route_pct,
+        );
+        const routeMixFamilyName = String(
+          vpsSummary.runtime_route_mix_dominant_family_name
+          || summary.runtime_route_mix_dominant_family_name
+          || runtimeRouteMix.dominant_family_name
+          || "n/a",
+        );
+        const routeMixFamilyPct = Number(
+          vpsSummary.runtime_route_mix_dominant_family_pct
+          ?? summary.runtime_route_mix_dominant_family_pct
+          ?? runtimeRouteMix.dominant_family_pct,
+        );
+        const routeMixLine = String(
+          vpsSummary.runtime_route_mix_line
+          || summary.runtime_route_mix_line
+          || runtimeRouteMix.line
+          || "Route mix unavailable.",
+        );
+        const routeMixDetail = String(
+          vpsSummary.runtime_route_mix_detail
+          || summary.runtime_route_mix_detail
+          || runtimeRouteMix.detail
+          || "Runtime snapshot has no route-mix dominance yet.",
+        );
+        const routeMixAction = String(
+          vpsSummary.runtime_route_mix_action
+          || summary.runtime_route_mix_action
+          || runtimeRouteMix.action
+          || "monitor",
+        );
+        const routeMixPromotionAllowed = Boolean(
+          vpsSummary.runtime_route_mix_promotion_allowed
+          ?? summary.runtime_route_mix_promotion_allowed
+          ?? runtimeRouteMix.promotion_allowed
+          ?? false,
+        );
+        const routeMixOperatorLine = String(
+          vpsSummary.runtime_route_mix_operator_line
+          || summary.runtime_route_mix_operator_line
+          || runtimeRouteMix.operator_line
+          || payload?.runtime_route_mix_next_operator_step
+          || "Route mix operator guidance pending.",
+        );
+        const routeMixEvidenceSource = String(
+          vpsSummary.runtime_route_mix_evidence_source
+          || summary.runtime_route_mix_evidence_source
+          || runtimeRouteMix.evidence_source
+          || "n/a",
+        );
+        const routeMixEvidenceStatus = String(
+          vpsSummary.runtime_route_mix_evidence_status
+          || summary.runtime_route_mix_evidence_status
+          || runtimeRouteMix.evidence_status
+          || "n/a",
+        );
+        const routeMixEvidenceFreshness = String(
+          vpsSummary.runtime_route_mix_evidence_freshness
+          || summary.runtime_route_mix_evidence_freshness
+          || runtimeRouteMix.evidence_freshness
+          || "unknown",
+        );
+        const routeMixEvidenceAgeLabel = String(
+          vpsSummary.runtime_route_mix_evidence_age_label
+          || summary.runtime_route_mix_evidence_age_label
+          || runtimeRouteMix.evidence_age_label
+          || "age unknown",
+        );
+        const routeMixEvidenceLine = String(
+          vpsSummary.runtime_route_mix_evidence_line
+          || summary.runtime_route_mix_evidence_line
+          || runtimeRouteMix.evidence_line
+          || "",
+        );
+        const routeMixTargetWeightsRaw = Array.isArray(vpsSummary.runtime_route_mix_rebalance_target_route_weights)
+          ? vpsSummary.runtime_route_mix_rebalance_target_route_weights
+          : Array.isArray(summary.runtime_route_mix_rebalance_target_route_weights)
+            ? summary.runtime_route_mix_rebalance_target_route_weights
+            : Array.isArray(runtimeRouteMix.rebalance_target_route_weights)
+              ? runtimeRouteMix.rebalance_target_route_weights
+              : [];
+        const routeMixTargetWeights = routeMixTargetWeightsRaw
+          .filter((row) => row && typeof row === "object")
+          .slice(0, 5)
+          .map((row) => {
+            const routeName = String(row.route_name || "route");
+            const targetPct = Number(row.target_pct ?? 0);
+            return Number.isFinite(targetPct) && targetPct > 0
+              ? `${routeName} ${targetPct.toFixed(1)}%`
+              : routeName;
+          });
+        const routeMixTargetLine = routeMixTargetWeights.length
+          ? `paper targets ${routeMixTargetWeights.join(", ")}`
+          : "";
+        const routeMixRebalanceMode = String(
+          vpsSummary.runtime_route_mix_rebalance_execution_mode
+          || summary.runtime_route_mix_rebalance_execution_mode
+          || runtimeRouteMix.rebalance_execution_mode
+          || "paper_evidence_only",
+        );
+        const routeMixGuardrail = String(
+          vpsSummary.runtime_route_mix_rebalance_operator_guardrail
+          || summary.runtime_route_mix_rebalance_operator_guardrail
+          || runtimeRouteMix.rebalance_operator_guardrail
+          || "Paper evidence only; live promotion stays locked.",
+        );
+        const routeMixRouteLine = Number.isFinite(routeMixRoutePct)
+          ? `${routeMixRouteName} ${routeMixRoutePct.toFixed(1)}%`
+          : `${routeMixRouteName} pending`;
+        const routeMixFamilyLine = Number.isFinite(routeMixFamilyPct)
+          ? `${routeMixFamilyName} ${routeMixFamilyPct.toFixed(1)}%`
+          : `${routeMixFamilyName} pending`;
+        const routeMixValue = routeMixStatus === "ready"
+          ? "balanced"
+          : routeMixStatus === "warn"
+            ? "watch"
+            : routeMixStatus === "blocked"
+              ? "rebalance"
+              : routeMixStatus;
+        const routeMixDetailValue = [
+          routeMixLine,
+          `route ${routeMixRouteLine}`,
+          `family ${routeMixFamilyLine}`,
+          routeMixOperatorLine,
+          routeMixTargetLine,
+          `rebalance ${routeMixRebalanceMode}`,
+          `action ${routeMixAction}`,
+          `promotion ${routeMixPromotionAllowed ? "allowed" : "held"}`,
+          routeMixEvidenceLine || `evidence ${routeMixEvidenceSource} ${routeMixEvidenceStatus}`,
+          `freshness ${routeMixEvidenceFreshness} (${routeMixEvidenceAgeLabel})`,
+          routeMixGuardrail,
+          routeMixDetail,
+        ].filter(Boolean).join(" | ");
+        const heatBudgetStatus = String(vpsSummary.heat_budget_status || "pending");
+        const heatBudgetRegime = String(vpsSummary.heat_budget_regime || heatState.regime || "unknown");
+        const heatBudgetValue = heatBudgetStatus === "missing"
+          ? "pending"
+          : heatBudgetStatus === "ready"
+            ? heatBudgetRegime
+            : heatBudgetStatus;
+        const heatBudgetDetailValue = String(vpsSummary.heat_budget_line || "Heat budget summary pending.");
+        const heatBudgetNoteValue = String(vpsSummary.heat_budget_detail || "Heat budget snapshot is current.");
+        const toleranceStateSeverity = String(toleranceState.last_severity || "").toUpperCase();
+        const toleranceHarnessStatus = String(
+          vpsSummary.tolerance_harness_status
+          || (toleranceStateSeverity === "WARNING"
+            ? "attention"
+            : toleranceStateSeverity === "CRITICAL" || toleranceStateSeverity === "HALT"
+              ? "blocked"
+              : toleranceStateSeverity
+                ? "ready"
+                : "")
+          || "pending",
+        );
+        const toleranceHarnessSeverity = String(
+          vpsSummary.tolerance_harness_last_severity || toleranceStateSeverity || "PENDING",
+        );
+        const toleranceHarnessValue = toleranceHarnessStatus === "ready"
+          ? toleranceHarnessSeverity.toLowerCase()
+          : toleranceHarnessStatus === "missing"
+            ? "pending"
+            : toleranceHarnessStatus;
+        const toleranceHarnessDetailValue = String(vpsSummary.tolerance_harness_line || "Tolerance harness summary pending.");
+        const toleranceHarnessNoteValue = String(vpsSummary.tolerance_harness_detail || "Tolerance harness snapshot is current.");
+        const promotionGate = masterData?.promotion_gate && typeof masterData.promotion_gate === "object"
+          ? masterData.promotion_gate
+          : payload?.promotion_gate && typeof payload.promotion_gate === "object"
+            ? payload.promotion_gate
+            : {};
+        const promotionGateStatus = String(
+          vpsSummary.promotion_gate_status
+          || promotionGate.status
+          || "missing",
+        );
+        const promotionGateValue = promotionGateStatus === "ready"
+          ? "ready"
+          : promotionGateStatus === "attention"
+            ? "attention"
+            : promotionGateStatus === "blocked"
+              ? "blocked"
+              : promotionGateStatus === "missing"
+                ? "pending"
+                : promotionGateStatus;
+        const promotionGateLine = String(
+          vpsSummary.promotion_gate_line
+          || promotionGate.line
+          || "Promotion gate summary pending.",
+        );
+        const promotionGateDetailLine = String(
+          vpsSummary.promotion_gate_detail
+          || promotionGate.detail
+          || "Promotion gate detail pending.",
+        );
+        const promotionGateThresholdsLine = String(
+          vpsSummary.promotion_gate_thresholds_line
+          || promotionGate.thresholds_line
+          || "Tolerance thresholds pending.",
+        );
+        const promotionGateNextStepLine = String(
+          vpsSummary.promotion_gate_next_operator_step
+          || promotionGate.next_operator_step
+          || "Review the promotion matrix, heat budget, and tolerance harness.",
+        );
+        const promotionGateAgeSeconds = Number(
+          vpsSummary.promotion_gate_age_seconds
+          ?? summary.promotion_gate_age_seconds
+          ?? promotionGate.age_seconds,
+        );
+        const promotionGateAgeLabel = String(
+          vpsSummary.promotion_gate_age_label
+          || summary.promotion_gate_age_label
+          || promotionGate.age_label
+          || "pending",
+        );
+        const promotionGateGeneratedAt = String(
+          vpsSummary.promotion_gate_generated_at
+          || summary.promotion_gate_generated_at
+          || promotionGate.generated_at
+          || "",
+        );
+        const promotionGateStale = Boolean(
+          vpsSummary.promotion_gate_stale
+          ?? summary.promotion_gate_stale
+          ?? promotionGate.stale
+          ?? false,
+        );
+        const promotionGateFreshnessLine = promotionGateStale
+          ? `stale promotion evidence (${promotionGateAgeLabel})`
+          : Number.isFinite(promotionGateAgeSeconds)
+            ? `promotion evidence ${promotionGateAgeLabel} old`
+            : promotionGateGeneratedAt
+              ? `promotion evidence ${fmtAge(promotionGateGeneratedAt)}`
+              : "promotion evidence freshness pending";
+        const promotionGateDetailValue = [
+          promotionGateLine,
+          promotionGateFreshnessLine,
+          promotionGateDetailLine,
+          promotionGateThresholdsLine,
+          promotionGateNextStepLine,
+        ].join(" | ");
+        const roadmapProgressSummaryLine = String(roadmapProgress.summary_line || "Roadmap progress summary pending.");
+        const roadmapProgressOpenLine = String(roadmapProgress.open_line || "Roadmap open items pending.");
+        const roadmapProgressDigestLine = String(roadmapProgress.digest_line || "");
+        const roadmapProgressLatestTitle = String(roadmapProgress.latest_entry?.title || roadmapProgress.latest_entry?.date || "latest progress pending");
+        const roadmapProgressEntryCount = Number(roadmapProgress.entry_count ?? 0);
+        const roadmapProgressValue = roadmapProgressEntryCount > 0
+          ? `${roadmapProgressEntryCount} entries`
+          : "pending";
+        const roadmapProgressDetailLine = roadmapProgressDigestLine
+          ? `${roadmapProgressSummaryLine} | ${roadmapProgressDigestLine}`
+          : `${roadmapProgressSummaryLine} | ${roadmapProgressOpenLine}`;
+        const roadmapLineValue = String(vpsSummary.roadmap_line || "Roadmap line pending.");
+        const roadmapDetailValue = String(vpsSummary.roadmap_detail || "Roadmap detail pending.");
+        const roadmapProgressLabel = String(
+          vpsSummary.roadmap_progress_label
+          || payload?.roadmap_progress_label
+          || "Roadmap progress label pending.",
+        );
+        const roadmapCompletionPctRaw = vpsSummary.roadmap_completion_pct ?? payload?.roadmap_completion_pct;
+        const roadmapCompletionPct = Number(roadmapCompletionPctRaw);
+        const roadmapCompletionValue = Number.isFinite(roadmapCompletionPct)
+          ? `${roadmapCompletionPct.toFixed(1)}%`
+          : "pending";
+        const roadmapCompletionDetailValue = `${roadmapProgressLabel} | ${roadmapProgressOpenLine}`;
+        const currentStageLabel = String(
+          vpsSummary.roadmap_current_stage
+          || payload?.roadmap_current_stage
+          || payload?.roadmap_current_stage_label
+          || "Current stage pending.",
+        );
+        const currentStageStatus = String(vpsSummary.roadmap_current_stage_status || "status pending.");
+        const currentStageDetail = String(vpsSummary.roadmap_current_stage_detail || "Current stage detail pending.");
+        const currentStageValue = currentStageLabel;
+        const currentStageDetailValue = `${currentStageStatus} | ${currentStageDetail}`;
+        const currentStageOwner = String(vpsSummary.roadmap_current_stage_owner || payload?.roadmap_current_stage_owner || "Owner pending.");
+        const currentStageSupport = String(vpsSummary.roadmap_current_stage_support || payload?.roadmap_current_stage_support || "Support pending.");
+        const currentStageOwnerValue = currentStageOwner;
+        const currentStageOwnerDetailValue = `${currentStageSupport} | ${currentStageStatus}`;
+        const stageSupportValue = currentStageSupport;
+        const stageSupportDetailValue = `${currentStageLabel} | ${currentStageStatus}`;
+        const robinHandoffSummary = robinHandoff?.summary && typeof robinHandoff.summary === "object"
+          ? robinHandoff.summary
+          : {};
+        const robinHandoffDrift = robinHandoff?.drift && typeof robinHandoff.drift === "object"
+          ? robinHandoff.drift
+          : {};
+        const robinHandoffPaths = robinHandoff?.paths && typeof robinHandoff.paths === "object"
+          ? robinHandoff.paths
+          : {};
+        const robinHandoffBoard = robinHandoff?.board && typeof robinHandoff.board === "object"
+          ? robinHandoff.board
+          : {};
+        const robinHandoffInbox = robinHandoff?.inbox && typeof robinHandoff.inbox === "object"
+          ? robinHandoff.inbox
+          : {};
+        const robinHandoffRoadmap = robinHandoff?.roadmap_progress && typeof robinHandoff.roadmap_progress === "object"
+          ? robinHandoff.roadmap_progress
+          : {};
+        const robinHandoffHealth = String(robinHandoffSummary.health || "missing");
+        const robinHandoffValue = robinHandoffHealth || "pending";
+        const robinHandoffSummaryLine = String(robinHandoffSummary.summary_line || "Robin handoff packet unavailable.");
+        const robinHandoffDetailLine = String(robinHandoffSummary.detail_line || "Board, inbox, and roadmap stay on one packet.");
+        const robinHandoffRoadmapLine = String(robinHandoffSummary.latest_roadmap_line || robinHandoffRoadmap.summary_line || "Roadmap link pending.");
+        const robinHandoffBoardTasks = Number(robinHandoffSummary.board_tasks ?? robinHandoffBoard.task_count ?? 0);
+        const robinHandoffBoardOpenTasks = Number(robinHandoffSummary.board_open_tasks ?? robinHandoffBoard.open_task_count ?? 0);
+        const robinHandoffInboxEntries = Number(robinHandoffSummary.inbox_entries ?? robinHandoffInbox.entry_count ?? 0);
+        const robinHandoffInboxOpenRequests = Number(robinHandoffSummary.inbox_open_requests ?? robinHandoffInbox.open_entry_count ?? 0);
+        const robinHandoffMissingTasks = Array.isArray(robinHandoffDrift.missing_task_ids) ? robinHandoffDrift.missing_task_ids : [];
+        const robinHandoffStaleRequests = Array.isArray(robinHandoffDrift.stale_request_ids) ? robinHandoffDrift.stale_request_ids : [];
+        const robinHandoffPacketPath = String(robinHandoffPaths.packet_json || "Packet path pending.");
+        const robinHandoffMarkdownPath = String(robinHandoffPaths.packet_markdown || "Markdown path pending.");
+        const robinHandoffBoardPath = String(robinHandoffPaths.board || "Board path pending.");
+        const robinHandoffInboxPath = String(robinHandoffPaths.inbox || "Inbox path pending.");
+        const robinHandoffAuditPath = String(robinHandoffPaths.audit || "Audit path pending.");
+        const robinHandoffUpdatedAt = robinHandoff?.generated_at ? fmtTime(robinHandoff.generated_at) : "pending";
+        const robinHandoffDetailValue = `${robinHandoffSummaryLine} · board ${robinHandoffBoardTasks}/${robinHandoffBoardOpenTasks} open · inbox ${robinHandoffInboxEntries}/${robinHandoffInboxOpenRequests} open`;
+        return {
+          runtimeMode: runtime.mode || "unknown",
+          runtimeDetail: runtime.detail || "runtime snapshot unavailable",
+          runtimeHealth: runtime.health || "unknown",
+          generatedAt: payload?.generated_at || "",
+          futureReadyNote: payload?.future_ready_note || "",
+          leaderName: payload?.leader_name || payload?.summary?.leader_name || payload?.jarvis?.leader_bot_name || primaryRows[0]?.name || "Leader pending",
+          leaderReason: payload?.leader_reason || payload?.summary?.leader_reason || payload?.jarvis?.leader_bot_reason || primaryRows[0]?.summary || "Waiting for the newest snapshot.",
+          totalAccounts: Number(summary.total_accounts ?? roster.length),
+          activeAccounts: Number(summary.active_accounts ?? runningRows.length),
+          projectedCount: Number(summary.total_accounts ?? roster.length),
+          runningCount: runningRows.length,
+          confirmedCount: confirmedRows.length,
+          pendingCount: pendingRows.length,
+          primaryCount: Number(summary.tracked_primary_accounts ?? primaryRows.length ?? 0),
+          additionalCount: Number(summary.additional_accounts ?? additionalRows.length ?? Math.max(0, roster.length - primaryRows.length)),
+          projectedLine: summary.fleet_roster_line || `Projected roster (${roster.length}): ${listNames(roster)}`,
+          runningLine: summary.fleet_running_line || `Running now (${runningRows.length}): ${listNames(runningRows)}`,
+          confirmedLine: summary.fleet_confirmed_line || `Confirmed now (${confirmedRows.length}): ${listNames(confirmedRows)}`,
+          pendingLine: summary.fleet_pending_line || `Pending now (${pendingRows.length}): ${listNames(pendingRows)}`,
+          modeCounts: summary.mode_counts || {},
+          railCount: Number(payload?.rail_count ?? payload?.summary?.rail_count ?? payload?.rails?.length ?? 0),
+          railHealth: payload?.rail_health || runtime.health || "warm",
+          stage: currentStageLabel || payload?.roadmap_next_stage || "S1 VPS repo sync",
+          servicesOnline: Number(payload?.summary?.services_online ?? 0),
+          servicesTotal: Number(payload?.summary?.services_total ?? 0),
+          assistLevel: payload?.summary?.assistance_level || "idle",
+          assistLine: payload?.summary?.assistance_line || "Operator assist state pending.",
+          cloudflareLine: payload?.summary?.cloudflare_line || "Read-only public desk",
+          botOpsStatus,
+          botOpsTone,
+          botOpsRunning,
+          botOpsTotal,
+          botOpsConfirmed,
+          botOpsWaiting,
+          botOpsOpen,
+          botOpsWinRate,
+          botOpsSummaryLine,
+          botOpsHealthLine,
+          botOpsFreshnessLine,
+          botOpsAttentionLine,
+          botOpsNextCheckLine,
+          hostHealthLine,
+          hostPulseLine,
+          hostReadinessLine,
+          hostServiceRosterLine,
+          hostServiceGapLine,
+          hostNextOperatorStep,
+          hostValue,
+          hostDetailValue,
+          vpsStatusLine,
+          vpsStatusValue,
+          vpsStatusDetailValue,
+          vpsHealthLine,
+          vpsHealthDetailLine,
+          vpsHealthStatus,
+          vpsHealthWarningCount,
+          vpsHealthActionCount,
+          vpsHealthValue,
+          vpsHealthDetailValue,
+          vpsHeadroomFreePhysicalMb,
+          vpsHeadroomFreePagefileMb,
+          vpsHeadroomServiceRunningCount,
+          vpsHeadroomServiceTotalCount,
+          vpsHeadroomListeningPortCount,
+          vpsHeadroomValue,
+          vpsHeadroomDetailValue,
+          serviceRosterLine,
+          serviceGapLine,
+          serviceRosterValue,
+          serviceRosterDetailValue,
+          toolchainLine,
+          toolchainManifestLine,
+          toolchainManifestDetail,
+          toolchainManifestPath,
+          toolchainValue,
+          toolchainDetailValue,
+          cloudflareLine,
+          cloudflareDetailLine,
+          privateAccessLine,
+          privateAccessDetail,
+          publicEdgeLine,
+          publicEdgeDetail,
+          cloudflareValue,
+          cloudflareDetailValue,
+          schedulerPulseLine,
+          schedulerTickLine,
+          schedulerReadinessLine,
+          schedulerTaskGapLine,
+          schedulerServiceGapLine,
+          schedulerNextOperatorStep,
+          schedulerValue,
+          schedulerDetailValue,
+          marketSessionLine,
+          heartbeatLine,
+          marketSessionValue,
+          marketSessionDetailValue,
+          paperPulseLine,
+          paperPulseDetailLine,
+          paperPulseValue,
+          paperPulseDetailValue,
+          assistTimelineCount,
+          assistTimelineValue,
+          assistTimelineDetailValue,
+          remoteOpsQueueLine,
+          remoteOpsArtifactLine,
+          remoteOpsDetailLine,
+          remoteOpsNextStepLine,
+          remoteOpsCatalogLine,
+          remoteOpsValue,
+          remoteOpsDetailValue,
+          remoteOpsJobsTotal,
+          remoteOpsArtifactsReady,
+          stagePrepTasks,
+          stagePrepLine,
+          stagePrepDetailLine,
+          stagePrepStageIds,
+          stagePrepOwners,
+          stagePrepValue,
+          stagePrepDetailValue,
+          assistanceHeadline,
+          assistanceNeeded,
+          assistanceLevel,
+          assistanceTargets,
+          roadmapAssistanceLine,
+          assistanceValue,
+          assistanceDetailValue,
+          currentStageLabel,
+          currentStageStatus,
+          currentStageDetail,
+          currentStageValue,
+          currentStageDetailValue,
+          currentStageOwner,
+          currentStageSupport,
+          currentStageOwnerValue,
+          currentStageOwnerDetailValue,
+          stageSupportValue,
+          stageSupportDetailValue,
+          nextOperatorStepLine,
+          nextOperatorStepValue,
+          nextOperatorStepDetailValue,
+          strategyLabValue,
+          strategyLabSummaryLine,
+          strategyLabStatusLine,
+          strategyLabChampionLine,
+          strategyLabGateLine,
+          strategyLabRiskLine,
+          strategyLabNextStepLine,
+          strategyLabDetailLine,
+          paperBaselineActiveLane,
+          paperBaselineLaneLabel,
+          paperBaselineSummaryLine,
+          paperBaselineNextStepLine,
+          paperBaselineValue,
+          paperBaselineDetailValue,
+          paperBaselineRollupStatus,
+          paperBaselineRollupHealthy,
+          paperBaselineRollupStale,
+          paperBaselineRollupValue,
+          paperBaselineRollupLine,
+          paperBaselineRollupDetail,
+          paperBaselineRollupAgeLine,
+          paperBaselineRollupReportLabel,
+          paperBaselineRollupDetailValue,
+          routeMixStatus,
+          routeMixValue,
+          routeMixLine,
+          routeMixDetail,
+          routeMixRouteName,
+          routeMixRoutePct,
+          routeMixFamilyName,
+          routeMixFamilyPct,
+          routeMixAction,
+          routeMixPromotionAllowed,
+          routeMixOperatorLine,
+          routeMixEvidenceFreshness,
+          routeMixEvidenceAgeLabel,
+          routeMixTargetWeights,
+          routeMixTargetLine,
+          routeMixRebalanceMode,
+          routeMixGuardrail,
+          routeMixDetailValue,
+          heatBudgetStatus,
+          heatBudgetRegime,
+          heatBudgetValue,
+          heatBudgetDetailValue,
+          heatBudgetNoteValue,
+          heatBudgetPath: String(vpsSummary.heat_budget_path || "Heat budget path pending."),
+          heatBudgetCurrentHeat: Number(vpsSummary.heat_budget_current_heat ?? heatState.current_heat ?? 0),
+          heatBudgetBudget: Number(vpsSummary.heat_budget_budget ?? heatState.budget ?? 0),
+          heatBudgetUtilizationPct: Number(vpsSummary.heat_budget_utilization_pct ?? heatState.utilization_pct ?? 0),
+          heatBudgetPositions: Number(vpsSummary.heat_budget_positions ?? heatState.positions ?? 0),
+          heatBudgetMaxConcurrent: Number(vpsSummary.heat_budget_max_concurrent ?? heatState.max_concurrent ?? 0),
+          heatBudgetSizingFraction: Number(vpsSummary.heat_budget_sizing_fraction ?? heatState.sizing_fraction ?? 0),
+          heatBudgetLastReason: String(vpsSummary.heat_budget_last_reason || heatState.last_decision?.reason || ""),
+          toleranceHarnessStatus,
+          toleranceHarnessSeverity,
+          toleranceHarnessValue,
+          toleranceHarnessDetailValue,
+          toleranceHarnessNoteValue,
+          toleranceHarnessPath: String(vpsSummary.tolerance_harness_path || "Tolerance harness path pending."),
+          toleranceHarnessConsecutiveCritical: Number(
+            vpsSummary.tolerance_harness_consecutive_critical ?? toleranceState.consecutive_critical ?? 0,
+          ),
+          toleranceHarnessTotalEvaluations: Number(
+            vpsSummary.tolerance_harness_total_evaluations ?? toleranceState.total_evaluations ?? 0,
+          ),
+          toleranceHarnessTotalHalts: Number(
+            vpsSummary.tolerance_harness_total_halts ?? toleranceState.total_halts ?? 0,
+          ),
+          toleranceHarnessLastEvaluation: String(
+            vpsSummary.tolerance_harness_last_evaluation || toleranceState.last_evaluation || "",
+          ),
+          toleranceHarnessAlertCount: Number(vpsSummary.tolerance_harness_alert_count ?? 0),
+          toleranceHarnessShouldHalt: Boolean(vpsSummary.tolerance_harness_should_halt ?? false),
+          promotionGateStatus,
+          promotionGateValue,
+          promotionGateLine,
+          promotionGateDetailLine,
+          promotionGateThresholdsLine,
+          promotionGateNextStepLine,
+          promotionGateFreshnessLine,
+          promotionGateAgeSeconds,
+          promotionGateAgeLabel,
+          promotionGateGeneratedAt,
+          promotionGateStale,
+          promotionGateDetailValue,
+          promotionGatePath: String(vpsSummary.promotion_gate_path || "Promotion gate path pending."),
+          promotionGateBlocked: Boolean(vpsSummary.promotion_gate_blocked ?? false),
+          promotionGateMatrixStatus: String(vpsSummary.promotion_gate_matrix_status || promotionGate.matrix?.status || "missing"),
+          promotionGateMatrixErrorCount: Number(vpsSummary.promotion_gate_matrix_error_count ?? promotionGate.matrix?.error_count ?? 0),
+          promotionGateHeatStatus: String(vpsSummary.promotion_gate_heat_status || promotionGate.heat_budget?.status || "missing"),
+          promotionGateToleranceStatus: String(vpsSummary.promotion_gate_tolerance_status || promotionGate.tolerance_harness?.status || "missing"),
+          promotionGateBaselineStatus: String(vpsSummary.promotion_gate_baseline_status || promotionGate.paper_baseline_rollup_health?.status || "missing"),
+          promotionGateNextOperatorStep: String(
+            vpsSummary.promotion_gate_next_operator_step
+            || promotionGate.next_operator_step
+            || "Review the promotion matrix, heat budget, and tolerance harness.",
+          ),
+          roadmapProgressValue,
+          roadmapProgressSummaryLine,
+          roadmapProgressOpenLine,
+          roadmapProgressDigestLine,
+          roadmapProgressLatestTitle,
+          roadmapProgressEntryCount,
+          roadmapProgressDetailLine,
+          roadmapLineValue,
+          roadmapDetailValue,
+          roadmapProgressLabel,
+          roadmapCompletionPct,
+          roadmapCompletionValue,
+          roadmapCompletionDetailValue,
+          robinHandoffValue,
+          robinHandoffSummaryLine,
+          robinHandoffDetailLine,
+          robinHandoffRoadmapLine,
+          robinHandoffBoardTasks,
+          robinHandoffBoardOpenTasks,
+          robinHandoffInboxEntries,
+          robinHandoffInboxOpenRequests,
+          robinHandoffMissingTasks,
+          robinHandoffStaleRequests,
+          robinHandoffPacketPath,
+          robinHandoffMarkdownPath,
+          robinHandoffBoardPath,
+          robinHandoffInboxPath,
+          robinHandoffAuditPath,
+          robinHandoffUpdatedAt,
+          robinHandoffDetailValue,
+          paperReadinessStatus,
+          paperReadinessValue,
+          paperReadinessSummaryLine,
+          paperReadinessDetailLine,
+          paperReadinessReadyCount,
+          paperReadinessPendingCount,
+          paperReadinessTotalCount,
+          paperReadinessUpdatedAt,
+          paperReadinessUpdatedLine,
+          brokerPaperOpsValue,
+          brokerPaperOpsSummaryLine,
+          brokerPaperOpsDetailLine,
+          brokerPaperOpsReadyCount,
+          brokerPaperOpsPendingCount,
+          brokerPaperOpsTotalCount,
+          brokerPaperOpsUpdatedAt,
+          brokerPaperOpsUpdatedLine,
+          brokerPaperOpsDetailValue,
+          brokerVenueHealthValue,
+          brokerVenueHealthSummaryLine,
+          brokerVenueHealthDetailLine,
+          brokerVenueHealthProvider,
+          brokerVenueHealthRouteKind,
+          brokerVenueHealthReadyCount,
+          brokerVenueHealthPendingCount,
+          brokerVenueHealthTotalCount,
+          brokerVenueHealthUpdatedAt,
+          brokerVenueHealthUpdatedLine,
+          brokerVenueHealthDetailValue,
+          surfaceKind: surface.kind || "consumer",
+          surfaceAuth: surface.auth || "checking",
+          surfaceHost: surface.host || "pending",
+          surfaceDev: surface.dev || "off",
+          surfaceRoute: surface.route || "",
+          primaryRows,
+          additionalRows,
+        };
+      };
+
+      const renderProofRows = (summary, masterData) => {
+        const rows = [
+          {
+            label: "Leader",
+            value: summary.leaderName,
+            note: `${summary.leaderReason} | ${summary.runtimeMode} / ${summary.railHealth}`,
+          },
+          {
+            label: "Freshness",
+            value: summary.generatedAt ? fmtAge(summary.generatedAt) : "pending",
+            note: summary.generatedAt ? `Last refresh ${fmtTime(summary.generatedAt)}` : "Waiting for the latest snapshot.",
+          },
+          {
+            label: "Rails",
+            value: `${summary.railCount} live`,
+            note: "Truth, memory, policy, audit, execution, deployment, operator, learning.",
+          },
+          {
+            label: "Stage",
+            value: summary.stage,
+            note: masterData?.roadmap_next_stage ? `Next: ${masterData.roadmap_next_stage}` : "Roadmap rail stays visible but compact.",
+          },
+          {
+            label: "Services",
+            value: `${summary.servicesOnline}/${summary.servicesTotal}`,
+            note: summary.cloudflareLine || "Core services stay visible when the snapshot is present.",
+          },
+          {
+            label: "Assist",
+            value: summary.assistLevel,
+            note: summary.assistLine || "Operator assist state stays explicit.",
+          },
+          {
+            label: "Host pulse",
+            value: summary.hostValue,
+            note: `${summary.hostDetailValue} | ${summary.hostReadinessLine}`,
+          },
+          {
+            label: "VPS status",
+            value: summary.vpsStatusValue,
+            note: `${summary.vpsStatusDetailValue} | ${summary.hostServiceGapLine}`,
+          },
+          {
+            label: "VPS health",
+            value: summary.vpsHealthValue,
+            note: `${summary.vpsHealthDetailValue} | ${summary.vpsHealthStatus} | ${summary.vpsHealthWarningCount} warning(s) | ${summary.vpsHealthActionCount} action(s)`,
+          },
+          {
+            label: "VPS headroom",
+            value: summary.vpsHeadroomValue,
+            note: `${summary.vpsHeadroomDetailValue} | ${summary.vpsHealthStatus}`,
+          },
+          {
+            label: "Cloudflare",
+            value: summary.cloudflareValue,
+            note: `${summary.cloudflareDetailValue} | ${summary.cloudflareDetailLine}`,
+          },
+          {
+            label: "Service roster",
+            value: summary.serviceRosterValue,
+            note: `${summary.serviceRosterLine} | ${summary.serviceGapLine}`,
+          },
+          {
+            label: "Toolchain",
+            value: summary.toolchainValue,
+            note: `${summary.toolchainLine} | ${summary.toolchainManifestPath}`,
+          },
+          {
+            label: "Scheduler pulse",
+            value: summary.schedulerValue,
+            note: `${summary.schedulerReadinessLine} | ${summary.schedulerTaskGapLine}`,
+          },
+          {
+            label: "Market session",
+            value: summary.marketSessionValue,
+            note: `${summary.marketSessionDetailValue} | ${summary.schedulerServiceGapLine}`,
+          },
+          {
+            label: "Paper pulse",
+            value: summary.paperPulseValue,
+            note: `${summary.paperPulseDetailValue} | ${summary.paperPulseLine}`,
+          },
+          {
+            label: "Assist timeline",
+            value: summary.assistTimelineValue,
+            note: `${summary.assistTimelineDetailValue} | ${summary.assistLine}`,
+          },
+          {
+            label: "Remote ops",
+            value: summary.remoteOpsValue,
+            note: `${summary.remoteOpsDetailValue} | ${summary.remoteOpsCatalogLine}`,
+          },
+          {
+            label: "Stage prep",
+            value: summary.stagePrepValue,
+            note: `${summary.stagePrepDetailValue} | ${summary.stagePrepLine} | ${summary.stagePrepStageIds.join(", ") || "stage ids pending"} | ${summary.stagePrepOwners.join(", ") || "owners pending"}`,
+          },
+          {
+            label: "Assistance",
+            value: summary.assistanceValue,
+            note: `${summary.assistanceDetailValue} | ${summary.assistanceTargets} | ${summary.roadmapAssistanceLine}`,
+          },
+          {
+            label: "Current stage",
+            value: summary.currentStageValue,
+            note: `${summary.currentStageDetailValue} | ${summary.roadmapProgressLabel}`,
+          },
+          {
+            label: "Stage owner",
+            value: summary.currentStageOwnerValue,
+            note: `${summary.currentStageOwnerDetailValue} | ${summary.currentStageValue}`,
+          },
+          {
+            label: "Stage support",
+            value: summary.stageSupportValue,
+            note: `${summary.stageSupportDetailValue} | ${summary.currentStageOwnerValue}`,
+          },
+          {
+            label: "Next operator step",
+            value: summary.nextOperatorStepValue,
+            note: `${summary.nextOperatorStepDetailValue} | ${summary.roadmapProgressOpenLine}`,
+          },
+          {
+            label: "Bot ops",
+            value: summary.botOpsTotal > 0 ? `${summary.botOpsRunning}/${summary.botOpsTotal}` : "pending",
+            note: `${summary.botOpsSummaryLine} | ${summary.botOpsFreshnessLine}`,
+          },
+          {
+            label: "Strategy lab",
+            value: summary.strategyLabValue,
+            note: `${summary.strategyLabChampionLine} | ${summary.strategyLabGateLine} | ${summary.strategyLabNextStepLine}`,
+          },
+          {
+            label: "Broker paper ops",
+            value: summary.brokerPaperOpsValue,
+            note: `${summary.brokerPaperOpsSummaryLine} | ${summary.brokerPaperOpsReadyCount}/${summary.brokerPaperOpsTotalCount || summary.brokerPaperOpsReadyCount} ready | ${summary.brokerPaperOpsDetailLine}`,
+          },
+          {
+            label: "Broker venue health",
+            value: summary.brokerVenueHealthValue,
+            note: `${summary.brokerVenueHealthSummaryLine} | ${summary.brokerVenueHealthProvider} ${summary.brokerVenueHealthRouteKind} | ${summary.brokerVenueHealthReadyCount}/${summary.brokerVenueHealthTotalCount || summary.brokerVenueHealthReadyCount} ready | ${summary.brokerVenueHealthDetailLine}`,
+          },
+          {
+            label: "Paper baseline",
+            value: summary.paperBaselineValue,
+            note: `${summary.paperBaselineDetailValue} | ${summary.paperBaselineLaneLabel}`,
+          },
+          {
+            label: "Baseline evidence",
+            value: summary.paperBaselineRollupValue,
+            note: summary.paperBaselineRollupDetailValue,
+          },
+          {
+            label: "Route mix",
+            value: summary.routeMixValue,
+            note: summary.routeMixDetailValue,
+          },
+          {
+            label: "Heat budget",
+            value: summary.heatBudgetValue,
+            note: `${summary.heatBudgetDetailValue} | ${summary.heatBudgetNoteValue} | ${summary.heatBudgetPath}`,
+          },
+          {
+            label: "Tolerance harness",
+            value: summary.toleranceHarnessValue,
+            note: `${summary.toleranceHarnessDetailValue} | ${summary.toleranceHarnessNoteValue} | ${summary.toleranceHarnessPath}`,
+          },
+          {
+            label: "Promotion gate",
+            value: summary.promotionGateValue,
+            note: `${summary.promotionGateDetailValue} | ${summary.promotionGateNextOperatorStep} | ${summary.promotionGatePath}`,
+          },
+          {
+            label: "Roadmap progress",
+            value: summary.roadmapProgressValue,
+            note: `${summary.roadmapProgressLatestTitle} | ${summary.roadmapProgressDetailLine}`,
+          },
+          {
+            label: "Roadmap detail",
+            value: summary.roadmapDetailValue,
+            note: `${summary.roadmapLineValue} | ${summary.roadmapProgressLabel}`,
+          },
+          {
+            label: "Roadmap completion",
+            value: summary.roadmapCompletionValue,
+            note: `${summary.roadmapCompletionDetailValue} | ${summary.roadmapProgressSummaryLine}`,
+          },
+          {
+            label: "Jarvis nest",
+            value: summary.jarvisNestValue,
+            note: `${summary.jarvisNestDetailValue} | ${summary.jarvisNestNextOperatorStep}`,
+          },
+          {
+            label: "Robin handoff",
+            value: summary.robinHandoffValue,
+            note: `${summary.robinHandoffDetailValue} | ${summary.robinHandoffRoadmapLine}`,
+          },
+        ];
+
+        return rows.map((row) => `
+          <div class="proof-row">
+            <div>
+              <span>${escapeHtml(row.label)}</span>
+              <strong>${escapeHtml(row.value)}</strong>
+            </div>
+            <p>${escapeHtml(row.note)}</p>
+          </div>
+        `).join("");
+      };
+
+      const applySnapshot = (publicData, masterData) => {
+        state.publicData = publicData;
+        state.masterData = masterData;
+
+        const summary = buildSummary(publicData || {}, masterData || {});
+        const masterRuntime = masterData?.runtime || {};
+        const runtimeDetail = masterRuntime.detail || summary.runtimeDetail;
+        const runtimeMode = summary.runtimeMode;
+        const freshness = summary.generatedAt ? fmtAge(summary.generatedAt) : "pending";
+        const leaderBadge = String(masterRuntime.detail || summary.runtimeDetail || "public desk").replace(/_/g, " ");
+
+        setText("surfaceChip", `surface | ${summary.surfaceKind}`);
+        setText("authChip", `auth | ${summary.surfaceAuth}`);
+        setText("hostChip", `host | ${summary.surfaceHost}`);
+        setText("devChip", `dev | ${summary.surfaceDev}`);
+        setText("freshnessChip", `freshness | ${freshness}`);
+        setText("leaderName", summary.leaderName);
+        setText("leaderReason", summary.leaderReason);
+        setText("liveModeChip", leaderBadge);
+        setText("runtimeMode", runtimeMode);
+        setText("runtimeDetail", runtimeDetail);
+        setText("monitorFreshness", freshness);
+        setText("refreshStamp", summary.generatedAt ? `Synced ${fmtTime(summary.generatedAt)}` : "Waiting for the next live snapshot.");
+        setText("monitorRails", `${summary.railCount} live`);
+        setText("monitorStage", summary.stage);
+        setText("monitorServices", `${summary.servicesOnline}/${summary.servicesTotal}`);
+        setText("monitorAssist", summary.assistLevel);
+        setText("monitorServiceRosterValue", summary.serviceRosterValue || "pending");
+        setText("monitorServiceRosterDetail", summary.serviceRosterDetailValue || "Service roster summary pending.");
+        setText("monitorToolchainValue", summary.toolchainValue || "pending");
+        setText("monitorToolchainDetail", summary.toolchainDetailValue || "Toolchain summary pending.");
+        setText("monitorHostValue", summary.hostValue || "pending");
+        setText(
+          "monitorHostDetail",
+          `${summary.hostDetailValue} · ${summary.hostServiceRosterLine}`,
+        );
+        setText("monitorVpsStatusValue", summary.vpsStatusValue || "pending");
+        setText(
+          "monitorVpsStatusDetail",
+          `${summary.vpsStatusDetailValue} · ${summary.hostServiceGapLine}`,
+        );
+        setText("monitorVpsHealthValue", summary.vpsHealthValue || "pending");
+        setText(
+          "monitorVpsHealthDetail",
+          `${summary.vpsHealthDetailValue} · ${summary.vpsHealthStatus} · ${summary.vpsHealthWarningCount} warning(s)`,
+        );
+        setText("monitorVpsHeadroomValue", summary.vpsHeadroomValue || "pending");
+        setText(
+          "monitorVpsHeadroomDetail",
+          summary.vpsHeadroomDetailValue || "VPS headroom summary pending.",
+        );
+        setText("monitorCloudflareValue", summary.cloudflareValue || "pending");
+        setText(
+          "monitorCloudflareDetail",
+          `${summary.cloudflareDetailValue} · ${summary.privateAccessDetail}`,
+        );
+        setText("monitorSchedulerValue", summary.schedulerValue || "pending");
+        setText(
+          "monitorSchedulerDetail",
+          `${summary.schedulerDetailValue} · ${summary.schedulerServiceGapLine}`,
+        );
+        setText("monitorMarketSessionValue", summary.marketSessionValue || "pending");
+        setText(
+          "monitorMarketSessionDetail",
+          `${summary.marketSessionDetailValue} Â· ${summary.schedulerReadinessLine}`,
+        );
+        setText("monitorPaperPulseValue", summary.paperPulseValue || "pending");
+        setText(
+          "monitorPaperPulseDetail",
+          `${summary.paperPulseDetailValue} | ${summary.paperPulseLine}`,
+        );
+        setText("monitorAssistTimelineValue", summary.assistTimelineValue || "pending");
+        setText(
+          "monitorAssistTimelineDetail",
+          `${summary.assistTimelineDetailValue} | ${summary.assistLine}`,
+        );
+        setText("monitorRemoteOpsValue", summary.remoteOpsValue || "pending");
+        setText(
+          "monitorRemoteOpsDetail",
+          `${summary.remoteOpsDetailValue} · ${summary.remoteOpsNextStepLine}`,
+        );
+        setText("monitorStagePrepValue", summary.stagePrepValue || "pending");
+        setText(
+          "monitorStagePrepDetail",
+          `${summary.stagePrepDetailValue} · ${summary.stagePrepLine}`,
+        );
+        setText("monitorAssistanceValue", summary.assistanceValue || "pending");
+        setText(
+          "monitorAssistanceDetail",
+          `${summary.assistanceDetailValue} · ${summary.assistanceTargets}`,
+        );
+        setText("monitorCurrentStageValue", summary.currentStageValue || "pending");
+        setText(
+          "monitorCurrentStageDetail",
+          `${summary.currentStageDetailValue} · ${summary.roadmapProgressLabel}`,
+        );
+        setText("monitorStageOwnerValue", summary.currentStageOwnerValue || "pending");
+        setText(
+          "monitorStageOwnerDetail",
+          `${summary.currentStageOwnerDetailValue} · ${summary.currentStageValue}`,
+        );
+        setText("monitorStageSupportValue", summary.stageSupportValue || "pending");
+        setText(
+          "monitorStageSupportDetail",
+          `${summary.stageSupportDetailValue} Â· ${summary.currentStageOwnerValue}`,
+        );
+        setText("monitorNextOperatorStepValue", summary.nextOperatorStepValue || "pending");
+        setText(
+          "monitorNextOperatorStepDetail",
+          `${summary.nextOperatorStepDetailValue} · ${summary.roadmapProgressOpenLine}`,
+        );
+        setText(
+          "monitorBotOpsValue",
+          summary.botOpsTotal > 0 ? `${summary.botOpsRunning}/${summary.botOpsTotal} live` : "pending",
+        );
+        setText(
+          "monitorBotOpsDetail",
+          `${summary.botOpsStatus} · ${summary.botOpsTone} · ${summary.botOpsConfirmed} confirmed · ${summary.botOpsWaiting} waiting · open ${summary.botOpsOpen}`,
+        );
+        setText("monitorStrategyValue", summary.strategyLabValue || "pending");
+        setText(
+          "monitorStrategyDetail",
+          `${summary.strategyLabDetailLine} · ${summary.strategyLabNextStepLine}`,
+        );
+        setText("monitorRoadmapValue", summary.roadmapProgressValue || "pending");
+        setText(
+          "monitorRoadmapDetail",
+          `${summary.roadmapProgressSummaryLine} · ${summary.roadmapProgressOpenLine}`,
+        );
+        setText("monitorRoadmapDetailValue", summary.roadmapDetailValue || "pending");
+        setText(
+          "monitorRoadmapDetailText",
+          `${summary.roadmapLineValue} Â· ${summary.roadmapProgressLabel}`,
+        );
+        setText("monitorRoadmapCompletionValue", summary.roadmapCompletionValue || "pending");
+        setText(
+          "monitorRoadmapCompletionDetail",
+          summary.roadmapCompletionDetailValue || "Roadmap completion summary pending.",
+        );
+        setText("monitorJarvisNestValue", summary.jarvisNestValue || "pending");
+        setText(
+          "monitorJarvisNestDetail",
+          `${summary.jarvisNestDetailValue} · updated ${summary.jarvisNestUpdatedLabel}`,
+        );
+        setText("monitorRobinValue", summary.robinHandoffValue || "pending");
+        setText(
+          "monitorRobinDetail",
+          `${summary.robinHandoffDetailValue} · updated ${summary.robinHandoffUpdatedAt}`,
+        );
+        setText("monitorPaperValue", summary.paperReadinessValue || "pending");
+        setText(
+          "monitorPaperDetail",
+          `${summary.paperReadinessStatus} · ${summary.paperReadinessReadyCount}/${summary.paperReadinessTotalCount || summary.paperReadinessReadyCount} ready · updated ${summary.paperReadinessUpdatedLine} · ${summary.paperReadinessDetailLine}`,
+        );
+        setText("monitorBrokerPaperOpsValue", summary.brokerPaperOpsValue || "pending");
+        setText(
+          "monitorBrokerPaperOpsDetail",
+          summary.brokerPaperOpsDetailValue || "Broker paper ops summary pending.",
+        );
+        setText("monitorBrokerVenueHealthValue", summary.brokerVenueHealthValue || "pending");
+        setText(
+          "monitorBrokerVenueHealthDetail",
+          summary.brokerVenueHealthDetailValue || "Broker venue health summary pending.",
+        );
+        setText("monitorPaperBaselineValue", summary.paperBaselineValue || "pending");
+        setText(
+          "monitorPaperBaselineDetail",
+          `${summary.paperBaselineDetailValue} · ${summary.paperBaselineLaneLabel}`,
+        );
+        setText("monitorBaselineRollupValue", summary.paperBaselineRollupValue || "pending");
+        setText(
+          "monitorBaselineRollupDetail",
+          summary.paperBaselineRollupDetailValue || "Baseline evidence freshness pending.",
+        );
+        setText("monitorRouteMixValue", summary.routeMixValue || "pending");
+        setText("monitorRouteMixDetail", summary.routeMixDetailValue || "Route mix summary pending.");
+        setText("monitorHeatBudgetValue", summary.heatBudgetValue || "pending");
+        setText(
+          "monitorHeatBudgetDetail",
+          `${summary.heatBudgetDetailValue} · ${summary.heatBudgetNoteValue}`,
+        );
+        setText("monitorToleranceHarnessValue", summary.toleranceHarnessValue || "pending");
+        setText(
+          "monitorToleranceHarnessDetail",
+          `${summary.toleranceHarnessDetailValue} · ${summary.toleranceHarnessNoteValue}`,
+        );
+        setText("monitorPromotionGateValue", summary.promotionGateValue || "pending");
+        setText(
+          "monitorPromotionGateDetail",
+          `${summary.promotionGateDetailValue} · ${summary.promotionGateNextOperatorStep}`,
+        );
+        setText("leaderSummary", `${summary.leaderName} | ${summary.leaderReason}`);
+        setText("rosterSummary", summary.runningLine || summary.projectedLine);
+        setText("accessState", "Read-only public desk");
+        setText("accessNote", summary.futureReadyNote || (summary.surfaceKind === "operator"
+          ? "Operator surface stays private. Public visitors only see the live desk."
+          : "Public visitors get the live desk only. Operator actions stay behind the private shell."));
+        setText("accessRuntime", `${summary.runtimeMode} / ${summary.runtimeHealth}`);
+        setText("accessLeader", summary.leaderName);
+        setText("accessStage", summary.stage);
+        setText("accessFreshness", freshness);
+        setText("surfaceNote", summary.surfaceRoute
+          ? `surface=${summary.surfaceKind} auth=${summary.surfaceAuth} host=${summary.surfaceHost} dev=${summary.surfaceDev}`
+          : summary.futureReadyNote || "The public page is intentionally read-only while the operator shell stays behind auth.");
+
+        setHtml("heroChips", [
+          `<span class="chip"><strong>${escapeHtml(summary.totalAccounts)}</strong> bots</span>`,
+          `<span class="chip"><strong>${escapeHtml(summary.runningCount)}</strong> running</span>`,
+          `<span class="chip"><strong>${escapeHtml(summary.confirmedCount)}</strong> confirmed</span>`,
+          `<span class="chip"><strong>${escapeHtml(summary.pendingCount)}</strong> pending</span>`,
+          `<span class="chip"><strong>${escapeHtml(summary.railCount)}</strong> rails</span>`,
+          `<span class="chip"><strong>${escapeHtml(freshness)}</strong> freshness</span>`,
+          `<span class="chip"><strong>${escapeHtml(summary.cloudflareLine)}</strong> boundary</span>`,
+        ].join(""));
+
+        setHtml("primaryRoster", summary.primaryRows.length
+          ? summary.primaryRows.map((row, index) => buildRosterRow(row, index, index === 0)).join("")
+          : `<article class="roster-row"><div class="roster-main"><div class="roster-index">--</div><strong>No accounts reported.</strong><span>The public dashboard is waiting for its first live fleet snapshot.</span></div><div class="roster-field"><span>Status</span><strong class="tone-unknown">unknown</strong></div><div class="roster-field"><span>Mode</span><strong>-</strong></div><div class="roster-field"><span>Updated</span><strong>-</strong></div><div class="roster-field align-right"><span>Score</span><strong>-</strong></div></article>`);
+
+        setHtml("secondaryRoster", summary.additionalRows.length
+          ? summary.additionalRows.map((row, index) => buildRosterRow(row, index + summary.primaryRows.length, false)).join("")
+          : `<article class="roster-row"><div class="roster-main"><div class="roster-index">--</div><strong>No additional accounts yet.</strong><span>Extra paper or live accounts will appear here automatically when the runtime expands.</span></div><div class="roster-field"><span>Status</span><strong class="tone-unknown">-</strong></div><div class="roster-field"><span>Mode</span><strong>-</strong></div><div class="roster-field"><span>Updated</span><strong>-</strong></div><div class="roster-field align-right"><span>Score</span><strong>-</strong></div></article>`);
+
+        const additionalDivider = document.getElementById("additionalDivider");
+        if (additionalDivider) {
+          additionalDivider.style.display = summary.additionalRows.length ? "grid" : "none";
+        }
+
+        setHtml("proofRows", renderProofRows(summary, masterData || {}));
+
+        setText("monitorServices", `${summary.servicesOnline}/${summary.servicesTotal}`);
+      };
+
+      const renderOffline = (message) => {
+        setText("surfaceChip", "surface | offline");
+        setText("authChip", "auth | pending");
+        setText("hostChip", "host | pending");
+        setText("devChip", "dev | off");
+        setText("freshnessChip", "freshness | pending");
+        setText("liveModeChip", "offline");
+        setText("leaderName", "Snapshot unavailable");
+        setText("leaderReason", message || "The public snapshot could not be loaded.");
+        setText("runtimeMode", "unknown");
+        setText("runtimeDetail", message || "Snapshot unavailable");
+        setText("monitorFreshness", "pending");
+        setText("refreshStamp", message || "Waiting for the next live snapshot.");
+        setText("monitorRails", "-");
+        setText("monitorStage", "-");
+        setText("monitorServices", "-");
+        setText("monitorAssist", "-");
+        setText("monitorServiceRosterValue", "pending");
+        setText("monitorServiceRosterDetail", "Service roster summary pending.");
+        setText("monitorToolchainValue", "pending");
+        setText("monitorToolchainDetail", "Toolchain summary pending.");
+        setText("monitorHostValue", "pending");
+        setText("monitorHostDetail", "Host health snapshot pending.");
+        setText("monitorVpsStatusValue", "pending");
+        setText("monitorVpsStatusDetail", "VPS status summary pending.");
+        setText("monitorVpsHealthValue", "pending");
+        setText("monitorVpsHealthDetail", "VPS health snapshot pending.");
+        setText("monitorVpsHeadroomValue", "pending");
+        setText("monitorVpsHeadroomDetail", "VPS headroom summary pending.");
+        setText("monitorCloudflareValue", "pending");
+        setText("monitorCloudflareDetail", "Cloudflare network surfaces pending.");
+        setText("monitorSchedulerValue", "pending");
+        setText("monitorSchedulerDetail", "Scheduler pulse summary pending.");
+        setText("monitorMarketSessionValue", "pending");
+        setText("monitorMarketSessionDetail", "Market session summary pending.");
+        setText("monitorPaperPulseValue", "pending");
+        setText("monitorPaperPulseDetail", "Paper pulse summary pending.");
+        setText("monitorAssistTimelineValue", "pending");
+        setText("monitorAssistTimelineDetail", "Assist timeline summary pending.");
+        setText("monitorRemoteOpsValue", "pending");
+        setText("monitorRemoteOpsDetail", "Remote ops summary pending.");
+        setText("monitorStagePrepValue", "pending");
+        setText("monitorStagePrepDetail", "Stage prep summary pending.");
+        setText("monitorAssistanceValue", "pending");
+        setText("monitorAssistanceDetail", "Assistance summary pending.");
+        setText("monitorCurrentStageValue", "pending");
+        setText("monitorCurrentStageDetail", "Current stage summary pending.");
+        setText("monitorStageOwnerValue", "pending");
+        setText("monitorStageOwnerDetail", "Stage owner summary pending.");
+        setText("monitorStageSupportValue", "pending");
+        setText("monitorStageSupportDetail", "Stage support summary pending.");
+        setText("monitorNextOperatorStepValue", "pending");
+        setText("monitorNextOperatorStepDetail", "Next operator step summary pending.");
+        setText("monitorBotOpsValue", "pending");
+        setText("monitorBotOpsDetail", "Bot operations summary pending.");
+        setText("monitorStrategyValue", "pending");
+        setText("monitorStrategyDetail", "Strategy lab summary pending.");
+        setText("monitorRoadmapValue", "pending");
+        setText("monitorRoadmapDetail", "Roadmap progress summary pending.");
+        setText("monitorRoadmapDetailValue", "pending");
+        setText("monitorRoadmapDetailText", "Roadmap detail summary pending.");
+        setText("monitorRoadmapCompletionValue", "pending");
+        setText("monitorRoadmapCompletionDetail", "Roadmap completion summary pending.");
+        setText("monitorJarvisNestValue", "pending");
+        setText("monitorJarvisNestDetail", "Jarvis nest summary pending.");
+        setText("monitorRobinValue", "pending");
+        setText("monitorRobinDetail", "Robin handoff summary pending.");
+        setText("monitorPaperValue", "pending");
+        setText("monitorPaperDetail", "Paper readiness summary pending.");
+        setText("monitorBrokerPaperOpsValue", "pending");
+        setText("monitorBrokerPaperOpsDetail", "Broker paper ops summary pending.");
+        setText("monitorBrokerVenueHealthValue", "pending");
+        setText("monitorBrokerVenueHealthDetail", "Broker venue health summary pending.");
+        setText("monitorPaperBaselineValue", "pending");
+        setText("monitorPaperBaselineDetail", "Paper baseline summary pending.");
+        setText("monitorBaselineRollupValue", "pending");
+        setText("monitorBaselineRollupDetail", "Baseline evidence freshness pending.");
+        setText("monitorRouteMixValue", "pending");
+        setText("monitorRouteMixDetail", "Route mix summary pending.");
+        setText("monitorHeatBudgetValue", "pending");
+        setText("monitorHeatBudgetDetail", "Heat budget summary pending.");
+        setText("monitorToleranceHarnessValue", "pending");
+        setText("monitorToleranceHarnessDetail", "Tolerance harness summary pending.");
+        setText("monitorPromotionGateValue", "pending");
+        setText("monitorPromotionGateDetail", "Promotion gate summary pending.");
+        setText("leaderSummary", message || "The public snapshot could not be loaded.");
+        setText("rosterSummary", "The public roster will appear once the API responds.");
+        setText("accessState", "Read-only public desk");
+        setText("accessNote", message || "Public visitors get the live desk only. Operator actions stay behind the private shell.");
+        setText("accessRuntime", "offline");
+        setText("accessLeader", "pending");
+        setText("accessStage", "pending");
+        setText("accessFreshness", "pending");
+        setText("surfaceNote", message || "The public page is intentionally read-only while the operator shell stays behind auth.");
+        setHtml("heroChips", [
+          '<span class="chip"><strong>offline</strong> status</span>',
+          '<span class="chip"><strong>pending</strong> roster</span>',
+          '<span class="chip"><strong>pending</strong> freshness</span>',
+        ].join(""));
+        setHtml("primaryRoster", `<article class="roster-row"><div class="roster-main"><div class="roster-index">--</div><strong>Snapshot unavailable.</strong><span>${escapeHtml(message || "The public dashboard is waiting for the API.")}</span></div><div class="roster-field"><span>Status</span><strong class="tone-unknown">offline</strong></div><div class="roster-field"><span>Mode</span><strong>-</strong></div><div class="roster-field"><span>Updated</span><strong>-</strong></div><div class="roster-field align-right"><span>Score</span><strong>-</strong></div></article>`);
+        setHtml("secondaryRoster", "");
+        setHtml("proofRows", `<div class="proof-row"><div><span>Leader</span><strong>Snapshot unavailable</strong></div><p>${escapeHtml(message || "The public snapshot could not be loaded.")}</p></div>`);
+        const additionalDivider = document.getElementById("additionalDivider");
+        if (additionalDivider) {
+          additionalDivider.style.display = "none";
+        }
+      };
+
+      const requestJson = async (url) => {
+        const response = await fetch(url, { credentials: "same-origin" });
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (error) {
+          data = null;
+        }
+        return { response, data };
+      };
+
+      const refresh = async () => {
+        try {
+          const [publicResult, masterResult] = await Promise.allSettled([
+            requestJson(API_PUBLIC),
+            requestJson(API_MASTER),
+          ]);
+
+          if (publicResult.status !== "fulfilled" || !publicResult.value.response?.ok) {
+            const reason = publicResult.status === "fulfilled"
+              ? `public dashboard ${publicResult.value.response?.status ?? "unavailable"}`
+              : publicResult.reason?.message || "public dashboard unavailable";
+            renderOffline(reason);
+            return;
+          }
+
+          const publicData = publicResult.value.data && typeof publicResult.value.data === "object" ? publicResult.value.data : {};
+          const masterData = masterResult.status === "fulfilled" && masterResult.value.response?.ok && masterResult.value.data && typeof masterResult.value.data === "object"
+            ? masterResult.value.data
+            : {};
+          // Fallback: if master/status 404ed, try bot-fleet
+          if (!masterData || Object.keys(masterData).length === 0) {
+            const fleetResult = await requestJson(API_BOT_FLEET).catch(() => null);
+            if (fleetResult && fleetResult.response?.ok && fleetResult.data) {
+              Object.assign(masterData, { bot_ops: fleetResult.data, fleet_data: true });
+            }
+          }
+
+          applySnapshot(publicData, masterData);
+          setText("refreshStamp", publicData?.generated_at ? `Synced ${fmtTime(publicData.generated_at)}` : "Synced live");
+        } catch (error) {
+          renderOffline(error?.message || "The public snapshot could not be loaded.");
+        }
+      };
+
+      const revealNodes = () => {
+        const nodes = document.querySelectorAll(".reveal");
+        if (!("IntersectionObserver" in window)) {
+          nodes.forEach((node) => node.classList.add("is-visible"));
+          return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.16 });
+
+        nodes.forEach((node) => observer.observe(node));
+      };
+
+      revealNodes();
+      refresh();
+      setInterval(refresh, REFRESH_MS);
+    })();
+  </script>
+</body>
+</html>
