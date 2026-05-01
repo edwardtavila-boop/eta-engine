@@ -118,8 +118,8 @@ class JarvisFull:
         operator_coach: OperatorCoach | None = None,
         skill_registry: SkillRegistry | None = None,
         thesis_tracker: ThesisTracker | None = None,
-        quantum_agent: "QuantumOptimizerAgent | None" = None,
-        kaizen_engine: "KaizenEngine | None" = None,
+        quantum_agent: object | None = None,
+        kaizen_engine: object | None = None,
     ) -> None:
         self.intelligence = intelligence
         self.memory = memory
@@ -136,8 +136,8 @@ class JarvisFull:
         admin: JarvisAdmin,
         memory: HierarchicalMemory | None = None,
         enable_intelligence: bool = True,
-        quantum_agent: "QuantumOptimizerAgent | None" = None,
-        kaizen_engine: "KaizenEngine | None" = None,
+        quantum_agent: object | None = None,
+        kaizen_engine: object | None = None,
     ) -> JarvisFull:
         """Wire up the standard production stack with optional quantum and kaizen."""
         from eta_engine.brain.jarvis_v3.intelligence import (
@@ -424,7 +424,7 @@ class JarvisFull:
         *,
         trades_by_instrument: dict | None = None,
         oos_trades: dict | None = None,
-    ) -> "KaizenCycleReport | None":
+    ) -> object | None:
         """Run one autonomous kaizen cycle if engine is wired."""
         if self.kaizen_engine is None:
             return None

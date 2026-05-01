@@ -126,7 +126,20 @@ def _build_callable_for_assignment(
             CompressionBreakoutStrategy,
         )
 
+        preset_name = extras.get("compression_preset", "default")
         cfg = CompressionBreakoutConfig()
+        if preset_name == "eth":
+            cfg = CompressionBreakoutConfig(
+                close_location_min=0.65,
+                volume_z_min=0.4,
+                bb_width_pct_max=0.30,
+            )
+        elif preset_name == "btc":
+            cfg = CompressionBreakoutConfig(
+                close_location_min=0.80,
+                volume_z_min=1.0,
+                bb_width_pct_max=0.30,
+            )
         return _wrap_strategy(CompressionBreakoutStrategy(cfg))
 
     if kind == "crypto_trend":
@@ -150,13 +163,16 @@ def _build_callable_for_assignment(
     if kind == "ensemble_voting":
         from eta_engine.strategies.ensemble_voting_strategy import (
             EnsembleVotingConfig,
-            EnsembleVotingStrategy,
         )
 
         cfg = EnsembleVotingConfig(
             min_agreement_count=int(extras.get("min_agreement_count", 2)),
         )
-        return _wrap_strategy(EnsembleVotingStrategy([], cfg))
+        try:
+            from eta_engine.strategies.ensemble_voting_strategy import EnsembleVotingStrategy
+            return _wrap_strategy(EnsembleVotingStrategy([("_", _passthrough)], cfg))
+        except ValueError:
+            return None
 
     if kind == "sage_consensus":
         from eta_engine.strategies.sage_consensus_strategy import (

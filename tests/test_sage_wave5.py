@@ -197,55 +197,56 @@ def test_strongest_clash_modifier_defer_wins() -> None:
 
 
 def test_disagreement_reverse_match() -> None:
-    from eta_engine.brain.jarvis_v3.sage.base import Bias, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
-    report = _make_report({
-        "dow_theory": (Bias.LONG, 0.70),
-        "trend_following": (Bias.SHORT, 0.65),
-        "support_resistance": (Bias.NEUTRAL, 0.10),
-    })
-    # Pattern: downtrend_vs_rangebound (dow=SHORT, sr=LONG) — but dow is LONG here
-    # So reverse_match should catch: dow=LONG, sr=SHORT? No — check structure_vs_momentum
-    # Actually test that the reverse of "structure_vs_momentum" fires
-    clashes = detect_clashes(report)
-    # "structure_vs_momentum" expects dow=SHORT, trend=LONG
-    # But we have dow=LONG, trend=SHORT — this should match via reverse
-    assert len(clashes) >= 1
-    assert any(
-        c.name == "structure_vs_momentum" for c in clashes
+    # Pattern: trend_intact_choch_warning expects trend=LONG, smc=SHORT
+    # Reverse: trend=SHORT, smc=LONG should match
+    verdicts = {
+        "trend_following": SchoolVerdict(school="trend_following", bias=Bias.SHORT, conviction=0.6),
+        "smc_ict": SchoolVerdict(school="smc_ict", bias=Bias.LONG, conviction=0.7),
+    }
+    report = SageReport(
+        per_school=verdicts, composite_bias=Bias.NEUTRAL, conviction=0.5,
+        schools_consulted=2, schools_aligned_with_entry=0,
+        schools_disagreeing_with_entry=2, schools_neutral=0,
     )
+    matches = detect_clashes(report)
+    assert any(m.name == "trend_intact_choch_warning" for m in matches)
 
 
 def test_disagreement_risk_management_violation() -> None:
-    from eta_engine.brain.jarvis_v3.sage.base import Bias, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
-    report = _make_report({
-        "risk_management": (Bias.NEUTRAL, 0.0),
-        "trend_following": (Bias.LONG, 0.80),
-        "smc_ict": (Bias.LONG, 0.75),
-    })
-    # risk returns NEUTRAL+conv=0 only when the trade violates risk rules
-    # The risk_management special case should fire
-    clashes = detect_clashes(report)
-    assert len(clashes) >= 1
-    assert any(
-        c.school_a == "risk_management" for c in clashes
+    verdicts = {
+        "risk_management": SchoolVerdict(school="risk_management", bias=Bias.NEUTRAL, conviction=0.0),
+        "dow_theory": SchoolVerdict(school="dow_theory", bias=Bias.LONG, conviction=0.8),
+    }
+    report = SageReport(
+        per_school=verdicts, composite_bias=Bias.LONG, conviction=0.4,
+        schools_consulted=2, schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0, schools_neutral=1,
     )
+    matches = detect_clashes(report)
+    assert any(m.name == "risk_violated_anything_long" for m in matches)
 
 
 def test_disagreement_vol_regime_neutral_pattern() -> None:
-    from eta_engine.brain.jarvis_v3.sage.base import Bias, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage import SageReport, SchoolVerdict
+    from eta_engine.brain.jarvis_v3.sage.base import Bias
     from eta_engine.brain.jarvis_v3.sage.disagreement import detect_clashes
-    report = _make_report({
-        "volatility_regime": (Bias.NEUTRAL, 0.60),
-        "trend_following": (Bias.LONG, 0.75),
-        "elliott_wave": (Bias.LONG, 0.55),
-    })
-    # vol_regime_quiet_breakout expects vol=NONE, trend=LONG, elliott=LONG
-    # But vol_regime is NEUTRAL — should still match the forward check
-    clashes = detect_clashes(report)
-    # This pattern has vol_regime as NEUTRAL + trend=LONG + elliott=LONG
-    assert any(c.name == "vol_regime_quiet_breakout" for c in clashes) or len(clashes) >= 0
+    verdicts = {
+        "volatility_regime": SchoolVerdict(school="volatility_regime", bias=Bias.NEUTRAL, conviction=0.5),
+        "trend_following": SchoolVerdict(school="trend_following", bias=Bias.LONG, conviction=0.7),
+    }
+    report = SageReport(
+        per_school=verdicts, composite_bias=Bias.NEUTRAL, conviction=0.5,
+        schools_consulted=2, schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0, schools_neutral=1,
+    )
+    matches = detect_clashes(report)
+    assert any(m.name == "vol_regime_quiet_breakout" for m in matches) or len(matches) >= 1
 
 
 def test_disagreement_strongest_clash_modifier_empty() -> None:

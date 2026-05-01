@@ -323,12 +323,10 @@ def _btc_gate() -> Gate:
 # ---------------------------------------------------------------------------
 # 4. Glide step (shared helper with final_revision).
 # ---------------------------------------------------------------------------
-
-from eta_engine.core.sweep_helpers import glide_step as _glide_step  # shared with _jarvis_final_revision
-
-# ---------------------------------------------------------------------------
 # 5. Run one bot's sweep -> glide -> tweak pipeline.
 # ---------------------------------------------------------------------------
+
+from eta_engine.core.sweep_helpers import glide_step as _glide_step  # noqa: E402
 
 
 def _run_one_bot(

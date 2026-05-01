@@ -280,7 +280,7 @@ def _stage_basement_sweep() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-from eta_engine.core.sweep_helpers import glide_step as _glide_step  # shared with _jarvis_dual_fine_tune
+from eta_engine.core.sweep_helpers import glide_step as _glide_step  # noqa: E402
 
 
 def _stage_master_tweaks(sweep_summary: dict[str, Any], cells: list[Any]) -> dict[str, Any]:

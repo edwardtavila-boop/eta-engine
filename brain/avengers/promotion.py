@@ -621,6 +621,31 @@ class PromotionGate:
                 )
             # Approved -- fall through to PROMOTE.
 
+        # --- fleet risk / correlation gate ------------------------------
+        # Fleet-level safety checks before any live or live-adjacent promotion.
+        if up is PromotionStage.LIVE_1LOT or up is PromotionStage.LIVE_FULL:
+            fleet_ok, fleet_msg = self._check_fleet_risk()
+            if not fleet_ok:
+                return PromotionDecision(
+                    strategy_id=strategy_id,
+                    from_stage=stage,
+                    to_stage=stage,
+                    action=PromotionAction.HOLD,
+                    reasons=[f"fleet risk gate blocked ({stage.value}->{up.value}): {fleet_msg}"],
+                    metrics=metrics,
+                )
+        if stage is PromotionStage.SHADOW and up is PromotionStage.PAPER:
+            corr_ok, corr_msg = self._check_fleet_correlation(strategy_id)
+            if not corr_ok:
+                return PromotionDecision(
+                    strategy_id=strategy_id,
+                    from_stage=stage,
+                    to_stage=stage,
+                    action=PromotionAction.HOLD,
+                    reasons=[f"fleet correlation gate blocked ({stage.value}->{up.value}): {corr_msg}"],
+                    metrics=metrics,
+                )
+
         return tentative
 
     def apply(self, decision: PromotionDecision) -> PromotionSpec:
