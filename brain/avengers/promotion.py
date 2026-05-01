@@ -368,19 +368,20 @@ class PromotionGate:
         demote_dd_pct: float = 10.0,
         demote_sharpe: float = -0.5,
         red_team_gate: RedTeamGate | None = default_red_team_gate,
+        fleet_risk_limit_usd: float | None = None,
+        fleet_risk_pnl_callback: callable | None = None,
+        fleet_correlation_callback: callable | None = None,
         clock: callable | None = None,
     ) -> None:
-        # ``red_team_gate`` defaults to ``default_red_team_gate`` so that
-        # any ``PromotionGate()`` built without arguments gets a real
-        # red-team veto by default. Pass ``red_team_gate=None`` to disable
-        # (old behaviour), or pass your own callable (LLM-backed, etc.)
-        # to override.
         self.state_path = state_path or PROMOTION_STATE
         self.journal_path = journal_path or PROMOTION_JOURNAL
         self.thresholds = thresholds or _DEFAULT_THRESHOLDS
         self.demote_dd_pct = demote_dd_pct
         self.demote_sharpe = demote_sharpe
         self.red_team_gate = red_team_gate
+        self._fleet_risk_limit_usd = fleet_risk_limit_usd
+        self._fleet_risk_pnl_callback = fleet_risk_pnl_callback
+        self._fleet_correlation_callback = fleet_correlation_callback
         self._clock = clock or (lambda: datetime.now(UTC))
         self._specs: dict[str, PromotionSpec] = {}
         # Last red-team verdict keyed by strategy_id -- persisted through
@@ -473,6 +474,25 @@ class PromotionGate:
         self._specs[strategy_id] = spec
         self._persist_state()
         return spec
+
+    def _check_fleet_risk(self) -> tuple[bool, str]:
+        """Check if the fleet daily loss cap is breached. Returns (ok, detail)."""
+        limit_usd = self._fleet_risk_limit_usd
+        if limit_usd is None or limit_usd <= 0:
+            return True, "no fleet risk limit configured"
+        pnl = self._fleet_risk_pnl_callback() if self._fleet_risk_pnl_callback else 0.0
+        if pnl > -abs(limit_usd):
+            return True, f"fleet PnL ${pnl:.0f} within ${limit_usd:.0f} limit"
+        return False, f"fleet PnL ${pnl:.0f} breached ${limit_usd:.0f} daily loss cap"
+
+    def _check_fleet_correlation(self, strategy_id: str) -> tuple[bool, str]:
+        """Check if adding this bot would push fleet correlation too high."""
+        if self._fleet_correlation_callback is None:
+            return True, "no fleet correlation monitor configured"
+        corr = self._fleet_correlation_callback(strategy_id)
+        if corr is None or corr < 0.70:
+            return True, f"fleet corr={corr:.2f}" if corr is not None else True, "no correlation data"
+        return False, f"fleet correlation {corr:.2f} >= 0.70 with active live bots"
 
     def evaluate(self, strategy_id: str) -> PromotionDecision:
         """Decide what to do with a strategy. Does NOT mutate state."""
