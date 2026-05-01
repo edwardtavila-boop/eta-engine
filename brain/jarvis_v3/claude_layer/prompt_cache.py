@@ -36,11 +36,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from eta_engine.brain.model_policy import ModelTier
 
-# Model pricing per 1M tokens (input, output) — DEEPSEEK NATIVE.
+# Model pricing per 1M tokens (input, output) — DEEPSEEK V4 NATIVE.
 MODEL_PRICES: dict[ModelTier, tuple[float, float]] = {
-    ModelTier.HAIKU: (0.27, 1.10),   # DeepSeek-V3
-    ModelTier.SONNET: (0.27, 1.10),  # DeepSeek-V3
-    ModelTier.OPUS: (0.55, 2.19),    # DeepSeek-R1
+    ModelTier.HAIKU: (0.14, 0.28),    # DeepSeek V4 Flash (non-thinking)
+    ModelTier.SONNET: (0.14, 0.28),   # DeepSeek V4 Flash (thinking)
+    ModelTier.OPUS: (0.435, 0.87),    # DeepSeek V4 Pro
 }
 
 # Legacy Claude pricing — kept for cost comparison and Anthropic fallback.

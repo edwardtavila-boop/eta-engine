@@ -1,44 +1,37 @@
 """
-LLM provider abstraction — DeepSeek native default with multi-provider routing.
+LLM provider abstraction — DeepSeek V4 native default.
 Anthropic/Claude is retained as a fallback.
-LiteLLM provides unified API routing with automatic failover across 100+ models.
-OpenRouter auto-routes to cheapest provider in real-time.
+LiteLLM + OpenRouter for multi-provider routing.
 Langfuse traces every call for observability.
 
 Architecture
 ============
-Every LLM call flows through ``chat_completion(tier=...)``.
-The provider is selected ONCE at startup via ``_default_provider()``:
-
-  ETA_LLM_PROVIDER=deepseek   → DeepSeek (native, default)
+  ETA_LLM_PROVIDER=deepseek   → DeepSeek V4 (native, default)
   ETA_LLM_PROVIDER=anthropic  → Anthropic (legacy fallback)
-  ETA_LLM_PROVIDER=litellm    → LiteLLM (unified API, automatic failover)
-  ETA_LLM_PROVIDER=openrouter → OpenRouter (real-time cheapest routing)
+  ETA_LLM_PROVIDER=litellm    → LiteLLM (unified failover)
+  ETA_LLM_PROVIDER=openrouter → OpenRouter (real-time cheapest)
   (auto)                      → DeepSeek if DEEPSEEK_API_KEY set, else Anthropic
 
-Langfuse traces every completion call with input/output tokens, latency,
-cost, and model — auto-disabled when LANGFUSE_PUBLIC_KEY not set.
+Tier → Model mapping (DeepSeek V4)
+==================================
+  OPUS     → deepseek-v4-pro    (thinking)  — architectural / adversarial
+  SONNET   → deepseek-v4-flash  (thinking)  — routine reasoning
+  HAIKU    → deepseek-v4-flash  (non-think) — grunt work / cost floor
+  REASONER → deepseek-v4-flash  (thinking)  — chain-of-thought
 
-Tier → Model mapping
-====================
-  OPUS     → DeepSeek-R1 (deepseek-reasoner)    $0.55/1M
-  SONNET   → DeepSeek-V3 (deepseek-chat)        $0.27/1M
-  HAIKU    → DeepSeek-V3 (deepseek-chat)        $0.27/1M
-  REASONER → DeepSeek-R1 (deepseek-reasoner)    $0.55/1M
-
-Via OpenRouter (auto cheapest):
-  OPUS     → openrouter/anthropic/claude-opus-4-7
-  SONNET   → openrouter/anthropic/claude-sonnet-4-5
-  HAIKU    → openrouter/deepseek/deepseek-chat
-  REASONER → openrouter/deepseek/deepseek-r1
+Agent assignments
+=================
+  BATMAN → V4 Pro     — adversarial review, Red Team scoring
+  ALFRED → V4 Flash   — documentation, code review
+  ROBIN  → V4 Flash   — log parsing, formatting (non-thinking)
 
 Pricing (per 1M tokens, USD)
 =============================
-  DeepSeek-V3    $0.27  in / $1.10  out  (≈ 0.09× Claude Sonnet)
-  DeepSeek-R1    $0.55  in / $2.19  out  (≈ 0.18×)
-  Claude Haiku   $0.80  in / $4.00  out  (≈ 0.27×)
-  Claude Sonnet  $3.00  in / $15.00 out  (baseline 1.00×)
-  Claude Opus    $15.00 in / $75.00 out  (≈ 5.00×)
+  DeepSeek V4 Flash  $0.14  in / $0.28  out  (~19× cheaper than Claude Sonnet)
+  DeepSeek V4 Pro    $0.435 in / $0.87  out  (75% discount until 2026-05-31)
+  Claude Haiku       $0.80  in / $4.00  out
+  Claude Sonnet      $3.00  in / $15.00 out  (baseline 1.00×)
+  Claude Opus        $15.00 in / $75.00 out
 """
 
 from __future__ import annotations
@@ -96,22 +89,46 @@ class ModelTier(StrEnum):
 # ---------------------------------------------------------------------------
 
 _TIER_MODEL: dict[tuple[ModelTier, Provider], str] = {
-    (ModelTier.OPUS,     Provider.DEEPSEEK):   "deepseek-reasoner",
-    (ModelTier.SONNET,   Provider.DEEPSEEK):   "deepseek-chat",
-    (ModelTier.HAIKU,    Provider.DEEPSEEK):   "deepseek-chat",
-    (ModelTier.REASONER, Provider.DEEPSEEK):   "deepseek-reasoner",
+    # DeepSeek V4 native
+    (ModelTier.OPUS,     Provider.DEEPSEEK):   "deepseek-v4-pro",
+    (ModelTier.SONNET,   Provider.DEEPSEEK):   "deepseek-v4-flash",
+    (ModelTier.HAIKU,    Provider.DEEPSEEK):   "deepseek-v4-flash",
+    (ModelTier.REASONER, Provider.DEEPSEEK):   "deepseek-v4-flash",
+    # Anthropic fallback
     (ModelTier.OPUS,     Provider.ANTHROPIC):  "claude-opus-4-7-20250601",
     (ModelTier.SONNET,   Provider.ANTHROPIC):  "claude-sonnet-4-5-20250929",
     (ModelTier.HAIKU,    Provider.ANTHROPIC):  "claude-haiku-4-5-20251001",
     (ModelTier.REASONER, Provider.ANTHROPIC):  "claude-sonnet-4-5-20250929",
-    (ModelTier.OPUS,     Provider.LITELLM):    "anthropic/claude-opus-4-7-20250601",
-    (ModelTier.SONNET,   Provider.LITELLM):    "anthropic/claude-sonnet-4-5-20250929",
-    (ModelTier.HAIKU,    Provider.LITELLM):    "deepseek/deepseek-chat",
-    (ModelTier.REASONER, Provider.LITELLM):    "deepseek/deepseek-reasoner",
-    (ModelTier.OPUS,     Provider.OPENROUTER): "openrouter/anthropic/claude-opus-4-7",
-    (ModelTier.SONNET,   Provider.OPENROUTER): "openrouter/anthropic/claude-sonnet-4-5",
-    (ModelTier.HAIKU,    Provider.OPENROUTER): "openrouter/deepseek/deepseek-chat",
-    (ModelTier.REASONER, Provider.OPENROUTER): "openrouter/deepseek/deepseek-r1",
+    # LiteLLM unified
+    (ModelTier.OPUS,     Provider.LITELLM):    "deepseek/deepseek-v4-pro",
+    (ModelTier.SONNET,   Provider.LITELLM):    "deepseek/deepseek-v4-flash",
+    (ModelTier.HAIKU,    Provider.LITELLM):    "deepseek/deepseek-v4-flash",
+    (ModelTier.REASONER, Provider.LITELLM):    "deepseek/deepseek-v4-flash",
+    # OpenRouter cheapest-auto
+    (ModelTier.OPUS,     Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-pro",
+    (ModelTier.SONNET,   Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
+    (ModelTier.HAIKU,    Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
+    (ModelTier.REASONER, Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
+}
+
+_COST_1M: dict[str, tuple[float, float]] = {
+    # DeepSeek V4
+    "deepseek-v4-pro":                            (0.435, 0.87),
+    "deepseek-v4-flash":                          (0.14, 0.28),
+    # Claude (legacy)
+    "claude-opus-4-7-20250601":                   (15.00, 75.00),
+    "claude-sonnet-4-5-20250929":                 (3.00, 15.00),
+    "claude-haiku-4-5-20251001":                  (0.80, 4.00),
+    # LiteLLM prefixed
+    "deepseek/deepseek-v4-pro":                   (0.435, 0.87),
+    "deepseek/deepseek-v4-flash":                 (0.14, 0.28),
+    "anthropic/claude-opus-4-7-20250601":         (15.00, 75.00),
+    "anthropic/claude-sonnet-4-5-20250929":       (3.00, 15.00),
+    # OpenRouter prefixed
+    "openrouter/deepseek/deepseek-v4-pro":        (0.435, 0.87),
+    "openrouter/deepseek/deepseek-v4-flash":      (0.14, 0.28),
+    "openrouter/anthropic/claude-opus-4-7":       (15.00, 75.00),
+    "openrouter/anthropic/claude-sonnet-4-5":     (3.00, 15.00),
 }
 
 
@@ -287,7 +304,7 @@ def chat_completion(
         if provider == Provider.DEEPSEEK:
             resp = _call_deepseek(model=model, system_prompt=system_prompt,
                                   user_message=user_message, max_tokens=max_tokens,
-                                  temperature=temperature)
+                                  temperature=temperature, tier=tier)
         elif provider == Provider.LITELLM:
             resp = _call_litellm(model=model, system_prompt=system_prompt,
                                   user_message=user_message, max_tokens=max_tokens,
@@ -349,9 +366,14 @@ def _cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 def _call_deepseek(
     *, model: str, system_prompt: str, user_message: str,
-    max_tokens: int, temperature: float,
+    max_tokens: int, temperature: float, tier: ModelTier | None = None,
 ) -> LLMResponse:
-    """Call DeepSeek via OpenAI-compatible API."""
+    """Call DeepSeek via OpenAI-compatible API with thinking mode control.
+
+    - V4 Pro: thinking ON by default, temperature=1.0, min 1024 tokens
+    - V4 Flash SONNET/REASONER: thinking ON by default
+    - V4 Flash HAIKU: thinking DISABLED for fastest/cheapest output
+    """
     from openai import OpenAI
 
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -362,12 +384,20 @@ def _call_deepseek(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_message})
 
-    if model == "deepseek-reasoner":
+    extra_kw: dict[str, Any] = {}
+
+    if model == "deepseek-v4-pro":
         temperature = 1.0
         max_tokens = max(max_tokens, 1024)
 
+    if model == "deepseek-v4-flash":
+        if tier is not None and tier == ModelTier.HAIKU:
+            extra_kw["thinking"] = {"type": "disabled"}
+            temperature = max(temperature, 0.0)
+
     resp = client.chat.completions.create(
-        model=model, messages=messages, max_tokens=max_tokens, temperature=temperature,
+        model=model, messages=messages, max_tokens=max_tokens,
+        temperature=temperature, **extra_kw,
     )
 
     choice = resp.choices[0]

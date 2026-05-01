@@ -106,6 +106,11 @@ class IbkrFeed:
             async with self._session.get("iserver/auth/status") as resp:
                 body = await resp.json()
                 if body.get("authenticated"):
+                    # Initialize account context (required for market data snapshots)
+                    try:
+                        await self._session.get("iserver/accounts")
+                    except Exception:
+                        pass
                     self._connected = True
                     logger.info(
                         "IBKR feed connected: authenticated=%s connected=%s",

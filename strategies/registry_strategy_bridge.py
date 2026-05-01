@@ -81,6 +81,28 @@ def _build_callable_for_assignment(
         from eta_engine.scripts.run_research_grid import _build_strategy_factory
 
         factory = _build_strategy_factory(kind, extras)
+
+        # Attach daily sage verdicts for sage_daily_gated strategies.
+        # The research_grid factory builds the strategy but doesn't
+        # attach the verdict provider — that's done separately via
+        # _with_daily_sage_provider. Wire it here so bridge dispatch
+        # has REAL sage gating, not passthrough.
+        if kind == "sage_daily_gated":
+            symbol = str(assignment.symbol) if assignment else "BTC"
+            try:
+                from eta_engine.scripts.run_research_grid import (
+                    _with_daily_sage_provider,
+                )
+
+                inst_class = extras.get("instrument_class", "crypto")
+                factory = _with_daily_sage_provider(
+                    factory,
+                    symbol=symbol,
+                    instrument_class=inst_class,
+                )
+            except (ValueError, ImportError):
+                pass
+
         strategy = factory()
         return _wrap_strategy(strategy)
     except (ValueError, ImportError):

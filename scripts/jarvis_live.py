@@ -262,6 +262,23 @@ async def _tasty_refresh_tick(i: int) -> None:
         logger.debug("tastytrade refresh skipped tick=%d: %s", i, exc)
 
 
+async def _ibkr_reauth_tick(i: int) -> None:
+    """Re-auth IBKR gateway every 30 ticks (~30 min at 60s interval)."""
+    if i % 30 != 0 or i == 0:
+        return
+    try:
+        import subprocess, sys, os
+        script = str(Path(__file__).resolve().parent / "ibkr_reauth.py")
+        result = subprocess.run(
+            [sys.executable, script],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ},
+        )
+        logger.info("ibkr reauth tick=%d: rc=%d", i, result.returncode)
+    except Exception as exc:
+        logger.debug("ibkr reauth skipped tick=%d: %s", i, exc)
+
+
 async def run_live(
     *,
     supervisor: JarvisSupervisor,
@@ -304,6 +321,10 @@ async def run_live(
                 await _tasty_refresh_tick(i)
             except Exception:
                 logger.debug("tasty refresh error (non-fatal)")
+            try:
+                await _ibkr_reauth_tick(i)
+            except Exception:
+                logger.debug("ibkr reauth error (non-fatal)")
             i += 1
             if max_ticks is not None and i >= max_ticks:
                 break
