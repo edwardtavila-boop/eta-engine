@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from dataclasses import dataclass, field
 
 from eta_engine.brain.jarvis_v3.quantum.qubo_solver import (
@@ -351,6 +352,8 @@ def parallel_tempering_solve(
     """
     rng = random.Random(seed) if seed is not None else random.Random()
     n = problem.n_vars
+    n_iterations = min(n_iterations, MAX_ITERATIONS)
+    start_time = time.monotonic()
 
     if temperatures is None:
         temps = [10.0 * (2.0 ** i) for i in range(n_replicas)]

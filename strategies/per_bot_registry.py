@@ -531,6 +531,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "long_haul_mode": True,
                 "long_haul_min_pos_fraction": 0.45,
             },
+            "crypto_regime_trend_config": {
                 "regime_ema": 100,
                 "pullback_ema": 21,
                 "pullback_tolerance_pct": 3.0,
