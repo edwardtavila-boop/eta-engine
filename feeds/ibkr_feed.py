@@ -69,7 +69,7 @@ class IbkrFeed:
         timeframe: str = "5m",
         poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.rstrip("/") + "/"
         self.conid = conid
         self.symbol = symbol
         self.timeframe = timeframe
@@ -103,7 +103,7 @@ class IbkrFeed:
                 connector=aiohttp.TCPConnector(ssl=ssl_ctx),
                 timeout=aiohttp.ClientTimeout(total=10),
             )
-            async with self._session.get("/iserver/auth/status") as resp:
+            async with self._session.get("iserver/auth/status") as resp:
                 body = await resp.json()
                 if body.get("authenticated"):
                     self._connected = True
@@ -171,7 +171,7 @@ class IbkrFeed:
             return None
         try:
             async with self._session.get(
-                "/iserver/marketdata/snapshot",
+                "iserver/marketdata/snapshot",
                 params={"conids": str(self.conid), "fields": _MARKET_DATA_FIELDS},
             ) as resp:
                 if resp.status != 200:

@@ -805,6 +805,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "scripts/compare_coinbase_vs_ibkr still required."
         ),
         extras={
+            "walk_forward_overrides": {
+                "long_haul_mode": True,
+                "long_haul_min_pos_fraction": 0.45,
+            },
             "alt_strategy_kind": "confluence", "alt_threshold": 6.0,
             "crypto_orb_config": {
                 "range_minutes": 120,
@@ -812,7 +816,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "rr_target": 1.5,
             },
             "daily_loss_limit_pct": 4.0,
-            # Half-size first 30 days post-promotion (re-promotion 2026-04-27).
             "warmup_policy": {
                 "promoted_on": "2026-04-27",
                 "warmup_days": 30,
