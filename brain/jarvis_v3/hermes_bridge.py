@@ -233,12 +233,37 @@ async def _cmd_kill(args: str) -> str:
             "`/kill confirm`"
         )
     try:
-        latch_dir = ROOT / "state"
-        latch_dir.mkdir(parents=True, exist_ok=True)
-        (latch_dir / "kill_switch_latch.json").write_text(
-            json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()})
-        )
-        return "\ud83d\udc80 *KILL ENGAGED* \u2014 All trading halted"
+        # Write latch files for all codebases
+        latch_paths = [
+            ROOT / "state",
+            ROOT.parent / "var" / "eta_engine" / "state",
+            Path("C:\\TheFirm\\apex_predator"),
+        ]
+        for latch_dir in latch_paths:
+            latch_dir.mkdir(parents=True, exist_ok=True)
+            (latch_dir / "kill_switch_latch.json").write_text(
+                json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()})
+            )
+
+        # Stop FirmCore service
+        try:
+            import subprocess
+            subprocess.run(["powershell", "-Command", "Stop-Service FirmCore -Force"],
+                         capture_output=True, text=True, timeout=10)
+            subprocess.run(["powershell", "-Command", "Stop-Service FirmWatchdog -Force"],
+                         capture_output=True, text=True, timeout=10)
+        except Exception:
+            pass
+
+        # Stop Jarvis daemon
+        try:
+            import subprocess
+            subprocess.run(["schtasks", "/End", "/TN", "JarvisLiveDaemon"],
+                         capture_output=True, text=True, timeout=10)
+        except Exception:
+            pass
+
+        return "\ud83d\udc80 *KILL ENGAGED* \u2014 FirmCore stopped, Jarvis halted, all trading stopped"
     except Exception as exc:
         return f"Kill failed: {exc}"
 

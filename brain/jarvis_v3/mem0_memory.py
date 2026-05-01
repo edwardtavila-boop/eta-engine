@@ -56,7 +56,7 @@ class Mem0Memory:
                             "distance_strategy": "cosine",
                         },
                     },
-                    "llm": {"provider": "deepseek", "config": {"model": "deepseek-chat"}},
+                    "llm": {"provider": "deepseek", "config": {"model": "deepseek-v4-flash"}},
                     "embedder": {"provider": "openai", "config": {"model": "text-embedding-3-small"}},
                 }
                 self._mem = mem0.Memory.from_config(config)
@@ -71,7 +71,7 @@ class Mem0Memory:
                         "provider": "qdrant",
                         "config": {"collection_name": "jarvis_episodes", "host": "localhost", "port": 6333},
                     },
-                    "llm": {"provider": "deepseek", "config": {"model": "deepseek-chat"}},
+                    "llm": {"provider": "deepseek", "config": {"model": "deepseek-v4-flash"}},
                     "embedder": {"provider": "openai", "config": {"model": "text-embedding-3-small"}},
                 }
                 self._mem = mem0.Memory.from_config(config)
