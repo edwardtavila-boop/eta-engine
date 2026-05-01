@@ -170,6 +170,7 @@ class MnqBot(BaseBot):
         strategy_adapter: RouterAdapter | None = None,
         auto_wire_ai_strategies: bool = False,
         ai_strategy_config: dict[str, Any] | None = None,
+        bot_id: str | None = None,
         retrospective_manager: RetrospectiveManager | None = None,
         auto_wire_retrospective: bool = False,
         retrospective_config: dict[str, Any] | None = None,
@@ -188,6 +189,8 @@ class MnqBot(BaseBot):
         self._strategy_adapter = strategy_adapter
         self._auto_wire_ai_strategies = auto_wire_ai_strategies
         self._ai_strategy_config: dict[str, Any] = dict(ai_strategy_config) if ai_strategy_config else {}
+        if bot_id is not None:
+            self._ai_strategy_config["bot_id"] = bot_id
         self._retrospective_manager = retrospective_manager
         self._auto_wire_retrospective = auto_wire_retrospective
         self._retrospective_config: dict[str, Any] = dict(retrospective_config) if retrospective_config else {}
