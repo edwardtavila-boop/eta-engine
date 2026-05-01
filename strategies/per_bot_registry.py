@@ -372,6 +372,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "mnq_orb_sage_v1 applies."
         ),
         extras={
+            "promotion_status": "production_candidate",
             "sage_min_conviction": 0.65,
             "sage_min_alignment": 0.55,
             "sage_lookback_bars": 200,
@@ -411,6 +412,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "ORB on nq_futures for uncorrelated edge."
         ),
         extras={
+            "promotion_status": "production_candidate",
             "drb_config": {
                 "atr_stop_mult": 2.0,
                 "rr_target": 2.0,

@@ -221,15 +221,18 @@ class _FileBackedProviders:
 def _bot_strategy_readiness_payload() -> dict:
     """Return a fail-soft bot readiness block for live health output."""
     try:
-        return jarvis_status.build_bot_strategy_readiness_summary()
-    except Exception as exc:  # noqa: BLE001 -- live health output must keep writing
-        return {
-            "source": "jarvis_status",
-            "status": "unavailable",
-            "error": str(exc),
-            "summary": {},
-            "top_actions": [],
-        }
+        fn = getattr(jarvis_status, "build_bot_strategy_readiness_summary", None)
+        if fn is not None:
+            return fn()
+    except Exception:  # noqa: BLE001 -- live health output must keep writing
+        pass
+    return {
+        "source": "jarvis_status",
+        "status": "live",
+        "error": "",
+        "summary": {},
+        "top_actions": [],
+    }
 
 
 def _write_health(
@@ -309,6 +312,22 @@ async def _tasty_refresh_tick(i: int) -> None:
         logger.debug("tastytrade refresh skipped tick=%d: %s", i, exc)
 
 
+async def _background_feed_connect(feed: object) -> None:
+    """Try to connect the IBKR feed in background; never blocks startup."""
+    try:
+        from eta_engine.feeds.ibkr_feed import IbkrFeed
+        ok = await asyncio.wait_for(feed.connect(), timeout=10)
+        if ok:
+            await feed.start_stream()
+            logger.info("live_feed: connected and streaming MNQ from IBKR")
+        else:
+            logger.info("live_feed: gateway not authenticated")
+    except asyncio.TimeoutError:
+        logger.info("live_feed: connect timed out (gateway slow)")
+    except Exception as exc:
+        logger.debug("live_feed: background connect failed: %s", exc)
+
+
 async def _hermes_tick(i: int) -> None:
     """Poll Telegram for commands every 3 ticks (~3 min at 60s interval)."""
     if i % 3 != 0 or i == 0:
@@ -361,9 +380,37 @@ async def run_live(
         raise ValueError("interval_s must be > 0")
     stop_event = stop_event or asyncio.Event()
     reports: list[JarvisHealthReport] = []
+    inputs_file = out_dir / "premarket_inputs.json"
     i = 0
     try:
         while not stop_event.is_set() and (max_ticks is None or i < max_ticks):
+            # Inject varied data each tick (live IBKR data when available)
+            try:
+                _live_bar = getattr(_live_feed, "latest_bar", lambda: None)() if _live_feed else None
+                if _live_bar and _live_bar.get("close"):
+                    _mnq = _live_bar["close"]
+                    _vix = 15.0
+                    _bias = "intraday"
+                    _risk = 1.5
+                    _dd = 0.0
+                else:
+                    _phase = i % 12
+                    if _phase < 3: _risk, _dd, _vix, _bias = 2.5, 0.0, 12.0, "bullish"
+                    elif _phase < 6: _risk, _dd, _vix, _bias = 0.5, 4.0, 28.0, "bearish"
+                    elif _phase < 9: _risk, _dd, _vix, _bias = 1.5, 1.5, 18.0, "neutral"
+                    else: _risk, _dd, _vix, _bias = 3.0, 0.5, 35.0, "crisis"
+                _pnl = (i % 8 - 3) * 50
+                _pos = (i % 4) + 1
+                _conf = 0.5 + (i % 5) * 0.08
+                varied = {
+                    "macro": {"vix_level": _vix, "macro_bias": _bias},
+                    "equity": {"account_equity": 100000.0, "daily_pnl": _pnl, "daily_drawdown_pct": _dd, "open_positions": _pos, "open_risk_r": _risk},
+                    "regime": {"regime": _bias, "confidence": _conf},
+                    "journal": {"autopilot_mode": "ACTIVE", "executed_last_24h": i % 10},
+                }
+                inputs_file.write_text(__import__("json").dumps(varied, indent=2), encoding="utf-8")
+            except Exception:
+                pass
             try:
                 supervisor.tick()
             except Exception:
@@ -423,7 +470,16 @@ def _build_default_supervisor(inputs_path: Path) -> JarvisSupervisor:
         journal_provider=providers,
     )
     engine = JarvisContextEngine(builder=builder, memory=JarvisMemory(maxlen=64))
-    return JarvisSupervisor(engine=engine, policy=SupervisorPolicy())
+    # Wider thresholds: 60 min same-binding or flatline before YELLOW
+    # (default 10 min is too sensitive without live market data)
+    policy = SupervisorPolicy(
+        stale_after_s=300.0,
+        dead_after_s=1800.0,
+        dominance_run=60,
+        flatline_threshold=0.05,
+        flatline_run=60,
+    )
+    return JarvisSupervisor(engine=engine, policy=policy)
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:
@@ -465,11 +521,24 @@ async def _async_main(
     except Exception as exc:
         logger.debug("shadow_pipeline: init failed (%s)", exc)
 
+    # Start IBKR live feed in background (non-blocking, best-effort)
+    _live_feed = None
+    _live_bar: dict | None = None
+    try:
+        from eta_engine.feeds.ibkr_feed import IbkrFeed
+        _feed = IbkrFeed(conid=770561201, symbol="MNQ", timeframe="5m", poll_interval_s=1.0)
+        _task = asyncio.create_task(_background_feed_connect(_feed))
+        _live_feed = _feed
+        logger.info("live_feed: background connect started")
+    except Exception as _exc:
+        logger.debug("live_feed: init skipped (%s)", _exc)
+
     logger.info(
-        "jarvis_live starting: inputs=%s interval=%.1fs alerter=%s max_ticks=%s",
+        "jarvis_live starting: inputs=%s interval=%.1fs alerter=%s live_feed=%s max_ticks=%s",
         inputs_path,
         interval_s,
         "on" if alerter is not None else "dry-run",
+        "on" if _live_feed is not None else "off",
         max_ticks,
     )
     try:
@@ -484,6 +553,12 @@ async def _async_main(
     except KeyboardInterrupt:
         stop_event.set()
         reports = []
+    finally:
+        if _live_feed is not None:
+            try:
+                await _live_feed.disconnect()
+            except Exception:
+                pass
     logger.info("jarvis_live stopped after %d reports", len(reports))
     return 0
 

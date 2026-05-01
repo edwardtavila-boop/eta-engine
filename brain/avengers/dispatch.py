@@ -363,6 +363,7 @@ class BackgroundTask(StrEnum):
     SAGE_ONCHAIN_WARM = "SAGE_ONCHAIN_WARM"  # ROBIN  -- every 5 min crypto on-chain cache warm
     SAGE_BACKTEST = "SAGE_BACKTEST"  # ALFRED -- daily sage replay and edge learning
     SAGE_EDGE_LEARN = "SAGE_EDGE_LEARN"  # ALFRED -- feed closed trades into EdgeTracker
+    FIRM_SCORECARD = "FIRM_SCORECARD"  # ROBIN  -- compute firm benchmark scorecard
 
 
 # Which persona owns which task. Used by the cron wrapper in scripts/.
@@ -391,6 +392,7 @@ TASK_OWNERS: dict[BackgroundTask, str] = {
     BackgroundTask.SAGE_ONCHAIN_WARM: "ROBIN",
     BackgroundTask.SAGE_BACKTEST: "ALFRED",
     BackgroundTask.SAGE_EDGE_LEARN: "ALFRED",
+    BackgroundTask.FIRM_SCORECARD: "ROBIN",
 }
 
 
@@ -420,4 +422,5 @@ TASK_CADENCE: dict[BackgroundTask, str] = {
     BackgroundTask.SAGE_ONCHAIN_WARM: "*/5 * * * *",  # every 5 min -- crypto on-chain cache warm
     BackgroundTask.SAGE_BACKTEST: "0 2 * * *",  # daily 02:00 -- replay closed trades through sage
     BackgroundTask.SAGE_EDGE_LEARN: "30 */2 * * *",  # every 2 hours -- feed EdgeTracker from closed fills
+    BackgroundTask.FIRM_SCORECARD: "*/15 * * * *",  # every 15 min -- compute firm scorecard
 }

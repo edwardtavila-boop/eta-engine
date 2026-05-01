@@ -1116,6 +1116,7 @@ def auth_step_up(
 # ---------------------------------------------------------------------------
 
 _STATUS_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "index.html"
+_SCORECARD_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "scorecard.html"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1132,6 +1133,14 @@ def root() -> HTMLResponse:
 def status_page() -> HTMLResponse:
     """Alias for /."""
     return root()
+
+
+@app.get("/scorecard", response_class=HTMLResponse)
+def scorecard_page() -> HTMLResponse:
+    """Serve the firm benchmark scorecard page."""
+    if _SCORECARD_PAGE.exists():
+        return HTMLResponse(_SCORECARD_PAGE.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Scorecard</h1><p>Scorecard page not bundled.</p>")
 
 
 @app.get("/favicon.ico", response_model=None)
@@ -2864,6 +2873,24 @@ def kaizen_summary() -> dict:
         "tickets_shipped": sum(1 for t in data.get("tickets", []) if t.get("status") == "SHIPPED"),
         "latest_tickets": data.get("tickets", [])[-5:],
     }
+
+
+@app.get("/api/firm-scorecard")
+def firm_scorecard() -> dict:
+    """Firm benchmark scorecard -- composite + 9 category scores."""
+    path = _state_dir() / "firm_scorecard_latest.json"
+    if not path.exists():
+        path2 = _state_dir().parent / "var" / "eta_engine" / "state" / "firm_scorecard_latest.json"
+        if path2.exists():
+            return json.loads(path2.read_text(encoding="utf-8"))
+        return {
+            "status": "not_ready",
+            "composite_score": 0.0,
+            "grade": "N/A",
+            "categories": {},
+            "summary": {"message": "Scorecard not yet computed. Run FIRM_SCORECARD background task."},
+        }
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @app.get("/api/state/{filename}")

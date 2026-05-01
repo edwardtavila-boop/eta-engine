@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="description" content="Evolutionary Trading Algo — Firm Scorecard" />
+  <meta name="theme-color" content="#05070b" />
+  <title>Evolutionary Trading Algo // Scorecard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020406;
+      --bg-2: #060b14;
+      --surface: rgba(8, 12, 20, 0.74);
+      --surface-strong: rgba(5, 7, 12, 0.94);
+      --border: rgba(148, 163, 184, 0.14);
+      --border-strong: rgba(197, 160, 89, 0.22);
+      --text: #f4f7ff;
+      --muted: rgba(208, 220, 240, 0.76);
+      --gold: #f5d36b;
+      --gold-strong: #c5a059;
+      --lime: #4ade80;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --cyan: #22d3ee;
+      --fuchsia: #f472b6;
+      --display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+      --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 10px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; color-scheme: dark; }
+    ::selection { background: rgba(197, 160, 89, 0.3); color: #fff; }
+    :focus-visible { outline: 2px solid rgba(197, 160, 89, 0.85); outline-offset: 3px; }
+    body {
+      margin: 0; padding: 0;
+      color: var(--text);
+      background: radial-gradient(ellipse 120% 90% at 50% -20%, rgba(197, 160, 89, 0.14), transparent 52%),
+                  radial-gradient(circle at 18% 18%, rgba(245, 211, 107, 0.1), transparent 24%),
+                  radial-gradient(circle at 88% 12%, rgba(251, 191, 36, 0.08), transparent 22%),
+                  radial-gradient(circle at 50% 110%, rgba(234, 88, 12, 0.08), transparent 32%),
+                  linear-gradient(180deg, #020409 0%, #05080f 40%, #03050a 100%);
+      font-family: var(--sans);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    .header { text-align: center; margin-bottom: 48px; }
+    .header h1 {
+      font-family: var(--display); font-size: 28px; font-weight: 700;
+      letter-spacing: 0.02em; margin: 0 0 6px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-strong) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header .subtitle { font-size: 14px; color: var(--muted); }
+    .header .grade-display {
+      display: inline-block; margin-top: 16px;
+      font-family: var(--display); font-size: 72px; font-weight: 800;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-strong) 60%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header .grade-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .header .composite-num { font-size: 18px; color: var(--muted); margin-top: 4px; }
+
+    .score-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 32px; }
+    .score-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 20px;
+      backdrop-filter: blur(12px); transition: border-color 0.2s var(--ease);
+    }
+    .score-card:hover { border-color: var(--border-strong); }
+    .score-card .meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .score-card .name { font-family: var(--display); font-size: 15px; font-weight: 600; color: var(--text); }
+    .score-card .badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 50%;
+      font-family: var(--display); font-size: 16px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .badge-s { background: rgba(74, 222, 128, 0.18); color: var(--lime); }
+    .badge-a { background: rgba(34, 211, 238, 0.18); color: var(--cyan); }
+    .badge-b { background: rgba(251, 191, 36, 0.18); color: var(--amber); }
+    .badge-c { background: rgba(244, 114, 182, 0.18); color: var(--fuchsia); }
+    .badge-d { background: rgba(251, 113, 133, 0.18); color: var(--rose); }
+    .badge-e { background: rgba(251, 113, 133, 0.30); color: var(--rose); }
+    .badge-f { background: rgba(239, 68, 68, 0.25); color: #ef4444; }
+
+    .score-card .weight { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .score-card .bar {
+      width: 100%; height: 6px; background: rgba(148, 163, 184, 0.10);
+      border-radius: 3px; overflow: hidden; margin-bottom: 12px;
+    }
+    .score-card .bar-fill {
+      height: 100%; border-radius: 3px; transition: width 0.6s var(--ease);
+    }
+    .bar-s { background: linear-gradient(90deg, var(--lime), #22c55e); }
+    .bar-a { background: linear-gradient(90deg, var(--cyan), #06b6d4); }
+    .bar-b { background: linear-gradient(90deg, var(--amber), #f59e0b); }
+    .bar-c { background: linear-gradient(90deg, var(--fuchsia), #e879f9); }
+    .bar-d { background: linear-gradient(90deg, var(--rose), #f43f5e); }
+    .bar-e { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    .bar-f { background: linear-gradient(90deg, #b91c1c, #991b1b); }
+
+    .score-card .details { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .score-card .details dt { float: left; clear: left; width: 140px; font-weight: 500; color: rgba(208, 220, 240, 0.85); }
+    .score-card .details dd { margin-left: 150px; color: var(--muted); }
+
+    .footer { text-align: center; margin-top: 48px; font-size: 12px; color: rgba(148, 163, 184, 0.45); }
+
+    @media (max-width: 700px) {
+      .score-grid { grid-template-columns: 1fr; }
+      .score-card .details dt { float: none; width: auto; }
+      .score-card .details dd { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Firm Scorecard</h1>
+      <div class="grade-display" id="grade">—</div>
+      <div class="composite-num" id="composite">composite: —</div>
+      <div class="subtitle" id="timestamp">loading…</div>
+    </div>
+    <div class="score-grid" id="grid"></div>
+    <div class="footer">Evolutionary Trading Algo LLC // Scorecard v1</div>
+  </div>
+
+  <script>
+    const WEIGHT_LABELS = {
+      sharpe_calmar: "Sharpe / Calmar",
+      autonomy_ratio: "Autonomy Ratio",
+      kaizen_improvement: "Kaizen Improvement",
+      regime_adaptation: "Regime Adaptation",
+      fault_tolerance: "Fault Tolerance",
+      quantum_edge: "Quantum Edge",
+      test_coverage: "Testing Coverage",
+      ops_maturity: "Ops Maturity",
+      regulatory_posture: "Regulatory Posture",
+    };
+    const DETAIL_LABELS = {
+      sharpe_ratio: "Sharpe Ratio",
+      max_drawdown_pct: "Max Drawdown",
+      calmar_ratio: "Calmar Ratio",
+      equity_samples: "Equity Samples",
+      total_decisions: "Total Decisions",
+      auto_approved: "Auto-Approved",
+      manual_override: "Manual Override",
+      autonomy_ratio: "Autonomy Ratio",
+      tickets_total: "Kaizen Tickets",
+      tickets_shipped: "Shipped",
+      tickets_open: "Open",
+      shipping_rate: "Ship Rate",
+      heartbeat_health: "Heartbeat",
+      stress_composite: "Stress",
+      kill_switch_triggers: "Kill Switch",
+      venue_failovers: "Failovers",
+      quantum_modules: "Quantum Modules",
+      total_invocations: "Invocations",
+      cost_advantage_ratio: "Cost Ratio",
+      test_files_found: "Test Files",
+      source_files: "Source Files",
+      estimated_coverage_pct: "Cov %",
+      deployment_markers_found: "Deploy Markers",
+      deployment_markers_total: "Total Markers",
+      strategy_readiness: "Readiness",
+      nightly_audit_exists: "Nightly Audit",
+      audit_log_entries: "Audit Entries",
+      decision_journal_entries: "Journal Entries",
+      compliance_documents: "Compliance Docs",
+    };
+
+    function gradeClass(score) {
+      if (score >= 9) return "s";
+      if (score >= 8) return "a";
+      if (score >= 7) return "b";
+      if (score >= 6) return "c";
+      if (score >= 5) return "d";
+      if (score >= 4) return "e";
+      return "f";
+    }
+
+    function gradeLetter(score) {
+      if (score >= 9) return "S";
+      if (score >= 8) return "A";
+      if (score >= 7) return "B";
+      if (score >= 6) return "C";
+      if (score >= 5) return "D";
+      if (score >= 4) return "E";
+      return "F";
+    }
+
+    function renderDetailValue(key, val) {
+      if (typeof val === "boolean") return val ? "yes" : "no";
+      if (typeof val === "number") return Number.isInteger(val) ? val.toLocaleString() : val.toFixed(4);
+      return String(val);
+    }
+
+    function formatCategoryKey(k) {
+      return WEIGHT_LABELS[k] || k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/firm-scorecard");
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+
+        document.getElementById("grade").textContent = data.grade || "—";
+        document.getElementById("composite").textContent = "composite: " + (data.composite_score ?? "—");
+
+        const ts = data.generated_at ? new Date(data.generated_at).toLocaleString() : "unknown";
+        document.getElementById("timestamp").textContent = "generated " + ts;
+
+        const grid = document.getElementById("grid");
+        grid.innerHTML = "";
+
+        const cats = data.categories || {};
+        for (const [key, cat] of Object.entries(cats)) {
+          const s = cat.score ?? 0;
+          const gCls = gradeClass(s);
+          const pct = (s / 10) * 100;
+          const card = document.createElement("div");
+          card.className = "score-card";
+
+          let detailsHtml = "";
+          if (cat.details) {
+            const entries = Object.entries(cat.details).filter(([k]) => k !== "score_10");
+            if (entries.length > 0) {
+              detailsHtml = '<dl class="details">';
+              for (const [dk, dv] of entries) {
+                const label = DETAIL_LABELS[dk] || dk.replace(/_/g, " ");
+                detailsHtml += `<dt>${label}</dt><dd>${renderDetailValue(dk, dv)}</dd>`;
+              }
+              detailsHtml += "</dl>";
+            }
+          }
+
+          card.innerHTML = `
+            <div class="meta">
+              <div class="name">${formatCategoryKey(key)}</div>
+              <div class="badge badge-${gCls}">${s.toFixed(1)}</div>
+            </div>
+            <div class="weight">weight: ${((cat.weight || 0) * 100).toFixed(0)}%</div>
+            <div class="bar"><div class="bar-fill bar-${gCls}" style="width:${pct}%"></div></div>
+            ${detailsHtml}
+          `;
+          grid.appendChild(card);
+        }
+      } catch (e) {
+        document.getElementById("grade").textContent = "ERR";
+        document.getElementById("composite").textContent = "composite: —";
+        document.getElementById("timestamp").textContent = "Failed to load scorecard";
+      }
+    }
+
+    load();
+    setInterval(load, 60000);
+  </script>
+</body>
+</html>

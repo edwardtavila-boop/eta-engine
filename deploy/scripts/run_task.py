@@ -910,6 +910,22 @@ def _task_audit_summarize(state_dir: Path) -> dict:
     return {"summary": r.summary}
 
 
+def _task_firm_scorecard(state_dir: Path) -> dict:
+    """ROBIN: compute and persist the firm benchmark scorecard."""
+    from eta_engine.obs.firm_scorecard import build_scorecard, write_scorecard
+
+    scorecard = build_scorecard(state_dir=state_dir)
+    written = write_scorecard(scorecard)
+    summary = scorecard.get("summary", {})
+    return {
+        "composite_score": scorecard.get("composite_score"),
+        "grade": scorecard.get("grade"),
+        "top_strength": summary.get("top_strength"),
+        "top_weakness": summary.get("top_weakness"),
+        "written": str(written),
+    }
+
+
 HANDLERS: dict[BackgroundTask, callable] = {
     BackgroundTask.KAIZEN_RETRO: lambda s, _l: _task_kaizen_retro(s),
     BackgroundTask.DISTILL_TRAIN: lambda s, _l: _task_distill_train(s),
@@ -931,6 +947,7 @@ HANDLERS: dict[BackgroundTask, callable] = {
     BackgroundTask.DISK_CLEANUP: lambda s, _l: _task_disk_cleanup(s),
     BackgroundTask.BACKUP: lambda s, _l: _task_backup(s),
     BackgroundTask.PROMETHEUS_EXPORT: lambda s, _l: _task_prometheus_export(s),
+    BackgroundTask.FIRM_SCORECARD: lambda s, _l: _task_firm_scorecard(s),
 }
 
 
