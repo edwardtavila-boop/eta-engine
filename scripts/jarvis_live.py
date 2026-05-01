@@ -262,6 +262,21 @@ async def _tasty_refresh_tick(i: int) -> None:
         logger.debug("tastytrade refresh skipped tick=%d: %s", i, exc)
 
 
+async def _hermes_tick(i: int) -> None:
+    """Poll Telegram for commands every 3 ticks (~3 min at 60s interval)."""
+    if i % 3 != 0 or i == 0:
+        return
+    try:
+        from eta_engine.brain.jarvis_v3.hermes_bridge import tick_poll, send_alert
+        responses = await tick_poll()
+        if responses:
+            logger.info("hermes: %d command(s) processed", len(responses))
+        if i % 60 == 0 and os.environ.get("TELEGRAM_BOT_TOKEN"):
+            await send_alert("Jarvis Heartbeat", "All systems nominal", "INFO")
+    except Exception as exc:
+        logger.debug("hermes tick error (non-fatal): %s", exc)
+
+
 async def _ibkr_reauth_tick(i: int) -> None:
     """Re-auth IBKR gateway every 30 ticks (~30 min at 60s interval)."""
     if i % 30 != 0 or i == 0:
@@ -325,6 +340,10 @@ async def run_live(
                 await _ibkr_reauth_tick(i)
             except Exception:
                 logger.debug("ibkr reauth error (non-fatal)")
+            try:
+                await _hermes_tick(i)
+            except Exception:
+                logger.debug("hermes tick error (non-fatal)")
             i += 1
             if max_ticks is not None and i >= max_ticks:
                 break
