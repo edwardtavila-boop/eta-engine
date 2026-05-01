@@ -1,7 +1,7 @@
 """
 JARVIS v3 // claude_layer.prompt_cache
 ======================================
-Layer 2 -- prompt caching + Claude client wrapper.
+Layer 2 -- prompt caching + LLM client wrapper.
 
 Anthropic's prompt cache has a 5-minute TTL and gives ~90% input-token
 discount on reads (25% write overhead). This module:
@@ -9,19 +9,19 @@ discount on reads (25% write overhead). This module:
   1. Splits any prompt into CACHEABLE_PREFIX + VARIABLE_SUFFIX.
   2. Stamps the cache control marker on the prefix.
   3. Maintains a local cache-miss/-hit counter for observability.
-  4. Wraps the Anthropic SDK call in a ``ClaudeClient`` protocol so
+  4. Wraps the LLM SDK call in a ``ClaudeClient`` protocol so
      tests can inject a fake client.
 
 The prefix should be the STABLE part: doctrine text, persona role
 instructions, output schema. The suffix is the PER-CALL context
 (current stress, regime, precedent summary).
 
-Cost model (Anthropic, as of 2026):
-  * Haiku  4.5: $0.80 / $4  per M tokens (input / output)
-  * Sonnet 4.6: $3.00 / $15
-  * Opus   4.7: $15.00 / $75
-  * Cache read  : 10% of input
-  * Cache write : 125% of input
+Cost model (DeepSeek native, as of 2026-05):
+  * DeepSeek-V3 (chat):   $0.27 / $1.10  per M tokens (input / output)
+  * DeepSeek-R1 (reasoner): $0.55 / $2.19
+  * Claude Haiku  4.5:    $0.80 / $4.00  (legacy, for fallback)
+  * Claude Sonnet 4.6:    $3.00 / $15.00
+  * Claude Opus   4.7:    $15.00 / $75.00
 
 Pure stdlib + pydantic. Network calls are injected via protocol.
 """
@@ -36,16 +36,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from eta_engine.brain.model_policy import ModelTier
 
-# Model pricing per 1M tokens (input, output).
+# Model pricing per 1M tokens (input, output) — DEEPSEEK NATIVE.
 MODEL_PRICES: dict[ModelTier, tuple[float, float]] = {
+    ModelTier.HAIKU: (0.27, 1.10),   # DeepSeek-V3
+    ModelTier.SONNET: (0.27, 1.10),  # DeepSeek-V3
+    ModelTier.OPUS: (0.55, 2.19),    # DeepSeek-R1
+}
+
+# Legacy Claude pricing — kept for cost comparison and Anthropic fallback.
+CLAUDE_MODEL_PRICES: dict[ModelTier, tuple[float, float]] = {
     ModelTier.HAIKU: (0.80, 4.00),
     ModelTier.SONNET: (3.00, 15.00),
     ModelTier.OPUS: (15.00, 75.00),
 }
 
-CACHE_READ_MULT = 0.10  # cached input at 10% of full price
-CACHE_WRITE_MULT = 1.25  # cache write at 125% of full price
-CACHE_TTL_S = 5 * 60  # Anthropic 5-minute TTL
+CACHE_READ_MULT = 0.10
+CACHE_WRITE_MULT = 1.25
+CACHE_TTL_S = 5 * 60
 
 
 class CachedPrompt(BaseModel):

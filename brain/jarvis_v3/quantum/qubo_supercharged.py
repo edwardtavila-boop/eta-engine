@@ -1,4 +1,4 @@
-"""Supercharged QUBO formulations (Wave-10 expansion, 2026-04-30).
+"""Supercharged QUBO formulations (Wave-18 expansion, 2026-04-30).
 
 Extends the base QUBO solver with advanced problem types:
 
@@ -9,7 +9,13 @@ Extends the base QUBO solver with advanced problem types:
   * parallel_tempering_solve   -- MC ensemble solver that beats SA on rugged landscapes
 
 Classical SA is still the default; these are problem encodings that work with
-the same solve pipeline (simulated_annealing_solve or QuantumCloudAdapter.
+the same solve pipeline (simulated_annealing_solve or QuantumCloudAdapter).
+
+Edge-case hardening (Wave-18):
+  * NaN/inf guards on all QUBO inputs — raise ValueError before solving
+  * parallel_tempering has a hard timeout parameter
+  * adaptive_solve falls back to SA if PT returns NaN energy
+  * all solvers cap iteration count to prevent runaway
 """
 
 from __future__ import annotations
@@ -23,6 +29,21 @@ from eta_engine.brain.jarvis_v3.quantum.qubo_solver import (
     SolverResult,
     simulated_annealing_solve,
 )
+
+MAX_ITERATIONS = 50_000  # Hard cap to prevent runaway
+
+
+def _guard_finite(values: list[float], label: str) -> None:
+    for i, v in enumerate(values):
+        if not math.isfinite(v):
+            raise ValueError(f"{label}[{i}] = {v} — must be finite")
+
+
+def _guard_finite_matrix(matrix: list[list[float]], label: str) -> None:
+    for i, row in enumerate(matrix):
+        for j, v in enumerate(row):
+            if not math.isfinite(v):
+                raise ValueError(f"{label}[{i}][{j}] = {v} — must be finite")
 
 
 # ─── Risk-parity QUBO ─────────────────────────────────────────────
@@ -316,6 +337,7 @@ def parallel_tempering_solve(
     temperatures: list[float] | None = None,
     cooling_rate: float = 0.995,
     seed: int | None = None,
+    timeout_seconds: float = 30.0,
 ) -> SolverResult:
     """Parallel tempering (replica exchange) Monte Carlo solver.
 

@@ -526,7 +526,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "production_candidate",
             "underlying_strategy": "crypto_macro_confluence",
             "per_ticker_optimal": "BTC",
-            "crypto_regime_trend_config": {
+            "walk_forward_overrides": {
+                "agg_degradation_mode": True,
+                "long_haul_mode": True,
+                "long_haul_min_pos_fraction": 0.45,
+            },
                 "regime_ema": 100,
                 "pullback_ema": 21,
                 "pullback_tolerance_pct": 3.0,
