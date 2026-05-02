@@ -58,38 +58,19 @@ if (-not (Test-Path $secretsDir)) {
 }
 
 if (-not (Test-Path $tokenFile)) {
-    Write-Host "[SECRETS] telegram_bot_token.txt missing — Hermes will run store-and-forward" -ForegroundColor Yellow
+    Write-Host "[SECRETS] telegram_bot_token.txt missing" -ForegroundColor Yellow
     if (-not $WhatIf) {
-        "# Place your Telegram bot token here (from @BotFather)" | Out-File $tokenFile -Encoding UTF8
+        Set-Content -Path $tokenFile -Value "# Place your Telegram bot token here" -Encoding UTF8
     }
 }
 if (-not (Test-Path $chatFile)) {
     Write-Host "[SECRETS] telegram_chat_id.txt missing" -ForegroundColor Yellow
     if (-not $WhatIf) {
-        "# Place your Telegram chat ID here (numeric)" | Out-File $chatFile -Encoding UTF8
+        Set-Content -Path $chatFile -Value "# Place your Telegram chat ID here" -Encoding UTF8
     }
 }
 if (-not (Test-Path $quantumCreds)) {
-    $credsTemplate = @"
-{
-  "_comment": "Place D-Wave and/or IBM Quantum credentials here",
-  "dwave": {
-    "token": "",
-    "solver": "Advantage_system4.1",
-    "region": "na-west-1"
-  },
-  "ibm": {
-    "token": "",
-    "instance": "ibm-q/open/main",
-    "backend": "ibm_kyiv"
-  },
-  "budget": {
-    "max_cost_per_job_usd": 0.50,
-    "max_cost_per_day_usd": 5.00,
-    "enable_cloud": false
-  }
-}
-"@
+    $credsTemplate = '{"_comment":"Place D-Wave/IBM Quantum credentials here","dwave":{"token":"","solver":"Advantage_system4.1","region":"na-west-1"},"ibm":{"token":"","instance":"ibm-q/open/main","backend":"ibm_kyiv"},"budget":{"max_cost_per_job_usd":0.50,"max_cost_per_day_usd":5.00,"enable_cloud":false}}'
     Write-Host "[SECRETS] quantum_creds.json created (fill API keys before enabling cloud)" -ForegroundColor Yellow
     if (-not $WhatIf) {
         $credsTemplate | Out-File $quantumCreds -Encoding UTF8
