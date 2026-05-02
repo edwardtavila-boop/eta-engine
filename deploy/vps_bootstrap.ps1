@@ -17,6 +17,7 @@ param(
     [switch]$SkipQuantum,
     [switch]$SkipHealthCheck,
     [switch]$SkipDeepSeekTick,
+    [switch]$SkipIbkrGateway,
     [switch]$SkipAllServices,
     [switch]$WhatIf
 )
@@ -176,6 +177,24 @@ if (-not $SkipDeepSeekTick) {
         }
     } else {
         Write-Host "  Register-DeepSeekScheduledTasks.ps1 not found — skipping" -ForegroundColor Yellow
+    }
+}
+
+# ── IBKR Gateway Watchdog ──────────────────────────────
+
+if (-not $SkipIbkrGateway) {
+    Write-Host ""; Write-Host "=== IBKR Gateway Watchdog ===" -ForegroundColor Green
+    $ibkrWatchdogScript = "$FirmDir\eta_engine\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
+
+    if (Test-Path $ibkrWatchdogScript) {
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $ibkrWatchdogScript `
+                -ApexRoot "$InstallRoot\firm_command_center" `
+                -RunNow
+            Write-Host "  Registered: ApexIbkrGatewayWatchdog (every 5m, auto-start on boot)" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  register_ibkr_gateway_watchdog_task.ps1 not found at $ibkrWatchdogScript — skipping" -ForegroundColor Yellow
     }
 }
 

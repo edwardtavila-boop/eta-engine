@@ -1815,9 +1815,9 @@
         const stagePrepDetailValue = stagePrepDetailLine;
         const assistanceHeadline = String(vpsSummary.assistance_headline || "Assistance pending.");
         const assistanceNeeded = Boolean(vpsSummary.assistance_needed);
-        const assistanceLevel = String(vpsSummary.assistance_level || assistLevel || "idle");
+        const assistanceLevel = String(vpsSummary.assistance_level || "idle");
         const assistanceTargets = String(vpsSummary.assistance_targets || "none");
-        const roadmapAssistanceLine = String(vpsSummary.roadmap_assistance_line || assistLine || "Assistance summary pending.");
+        const roadmapAssistanceLine = String(vpsSummary.roadmap_assistance_line || "Assistance summary pending.");
         const assistanceValue = assistanceNeeded ? assistanceLevel : "idle";
         const assistanceDetailValue = assistanceHeadline;
         const nextOperatorStepLine = String(vpsSummary.next_operator_step || "Next operator step pending.");
@@ -1901,13 +1901,13 @@
           brokerVenueHealth.paper_live_provider
           || brokerPaperReadiness.provider
           || brokerPaperOps.paper_live_provider
-          || "internal_sim",
+          || "ibkr",
         );
         const brokerVenueHealthRouteKind = String(
           brokerVenueHealth.paper_live_route_kind
           || brokerPaperReadiness.paper_live_route_kind
           || brokerPaperOps.paper_live_route_kind
-          || "internal_sim",
+          || "ibkr",
         );
         const brokerVenueHealthReadyCount = Number(
           brokerVenueHealth.direct_ready_count ?? brokerPaperReadiness.direct_ready_count ?? brokerPaperOps.direct_ready_count ?? 0,
