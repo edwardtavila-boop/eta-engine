@@ -157,21 +157,18 @@ Write-Log "Step 6/8 -- registering 12 scheduled tasks"
 
 # Task definitions: (TaskName, TriggerFactory, BackgroundTaskName)
 $scheduledTasks = @(
-    # ROBIN
-    @{ Name = "Apex-Robin-DashboardAssemble";  Task = "DASHBOARD_ASSEMBLE"; Trigger = "MINUTELY" },
-    @{ Name = "Apex-Robin-LogCompact";         Task = "LOG_COMPACT";        Trigger = "HOURLY" },
-    @{ Name = "Apex-Robin-PromptWarmup";       Task = "PROMPT_WARMUP";      Trigger = "DAILY-1325" },
-    @{ Name = "Apex-Robin-AuditSummarize";     Task = "AUDIT_SUMMARIZE";    Trigger = "DAILY-0600" },
-    # ALFRED
-    @{ Name = "Apex-Alfred-ShadowTick";        Task = "SHADOW_TICK";        Trigger = "EVERY-5MIN" },
-    @{ Name = "Apex-Alfred-DriftSummary";      Task = "DRIFT_SUMMARY";      Trigger = "EVERY-15MIN" },
-    @{ Name = "Apex-Alfred-KaizenRetro";       Task = "KAIZEN_RETRO";       Trigger = "DAILY-2300" },
-    @{ Name = "Apex-Alfred-DistillTrain";      Task = "DISTILL_TRAIN";      Trigger = "WEEKLY-SUN-0200" },
-    # BATMAN
-    @{ Name = "Apex-Batman-TwinVerdict";       Task = "TWIN_VERDICT";       Trigger = "DAILY-2200" },
-    @{ Name = "Apex-Batman-StrategyMine";      Task = "STRATEGY_MINE";      Trigger = "WEEKLY-MON-0300" },
-    @{ Name = "Apex-Batman-CausalReview";      Task = "CAUSAL_REVIEW";      Trigger = "MONTHLY-0400" },
-    @{ Name = "Apex-Batman-DoctrineReview";    Task = "DOCTRINE_REVIEW";    Trigger = "QUARTERLY-0500" }
+    @{ Name = "ETA-Executor-DashboardAssemble";  Task = "DASHBOARD_ASSEMBLE"; Trigger = "MINUTELY" },
+    @{ Name = "ETA-Executor-LogCompact";         Task = "LOG_COMPACT";        Trigger = "HOURLY" },
+    @{ Name = "ETA-Executor-PromptWarmup";       Task = "PROMPT_WARMUP";      Trigger = "DAILY-1325" },
+    @{ Name = "ETA-Executor-AuditSummarize";     Task = "AUDIT_SUMMARIZE";    Trigger = "DAILY-0600" },
+    @{ Name = "ETA-Steward-ShadowTick";          Task = "SHADOW_TICK";        Trigger = "EVERY-5MIN" },
+    @{ Name = "ETA-Steward-DriftSummary";        Task = "DRIFT_SUMMARY";      Trigger = "EVERY-15MIN" },
+    @{ Name = "ETA-Steward-KaizenRetro";         Task = "KAIZEN_RETRO";       Trigger = "DAILY-2300" },
+    @{ Name = "ETA-Steward-DistillTrain";        Task = "DISTILL_TRAIN";      Trigger = "WEEKLY-SUN-0200" },
+    @{ Name = "ETA-Reasoner-TwinVerdict";        Task = "TWIN_VERDICT";       Trigger = "DAILY-2200" },
+    @{ Name = "ETA-Reasoner-StrategyMine";       Task = "STRATEGY_MINE";      Trigger = "WEEKLY-MON-0300" },
+    @{ Name = "ETA-Reasoner-CausalReview";       Task = "CAUSAL_REVIEW";      Trigger = "MONTHLY-0400" },
+    @{ Name = "ETA-Reasoner-DoctrineReview";     Task = "DOCTRINE_REVIEW";    Trigger = "QUARTERLY-0500" }
 )
 
 function New-ApexTrigger {
@@ -229,9 +226,9 @@ foreach ($t in $scheduledTasks) {
 Write-Log "Step 7/8 -- boot-time tasks (jarvis-live, avengers-fleet, dashboard)"
 
 $bootTasks = @(
-    @{ Name = "Apex-Jarvis-Live";       Script = "eta_engine.scripts.jarvis_live"; Args = "--inputs docs\premarket_inputs.json --out-dir `"$stateDir`" --interval 60" },
-    @{ Name = "Apex-Avengers-Fleet";    Script = "deploy.scripts.avengers_daemon";    Args = "--state-dir `"$stateDir`" --log-dir `"$logDir`"" },
-    @{ Name = "Apex-Dashboard";         Script = "uvicorn";                            Args = "eta_engine.main:app --host 127.0.0.1 --port 8000" }
+    @{ Name = "ETA-Jarvis-Live";       Script = "eta_engine.scripts.jarvis_live"; Args = "--inputs docs\premarket_inputs.json --out-dir `"$stateDir`" --interval 60" },
+    @{ Name = "ETA-Avengers-Fleet";    Script = "deploy.scripts.avengers_daemon";    Args = "--state-dir `"$stateDir`" --log-dir `"$logDir`"" },
+    @{ Name = "ETA-Dashboard";         Script = "uvicorn";                            Args = "eta_engine.main:app --host 127.0.0.1 --port 8000" }
 )
 
 foreach ($t in $bootTasks) {
