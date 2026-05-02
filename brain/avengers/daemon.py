@@ -227,6 +227,12 @@ _TASK_TO_CATEGORY: dict[BackgroundTask, TaskCategory] = {
     BackgroundTask.BACKUP: TaskCategory.DATA_PIPELINE,
     # ROBIN -- metrics export is trivial formatting of a fixed template
     BackgroundTask.PROMETHEUS_EXPORT: TaskCategory.FORMATTING,
+    # SAGE (not yet implemented — stub handlers)
+    BackgroundTask.SAGE_HEALTH_CHECK: TaskCategory.FORMATTING,
+    BackgroundTask.SAGE_ONCHAIN_WARM: TaskCategory.LOG_PARSING,
+    BackgroundTask.SAGE_BACKTEST: TaskCategory.DEBUG,
+    BackgroundTask.SAGE_EDGE_LEARN: TaskCategory.DATA_PIPELINE,
+    BackgroundTask.FIRM_SCORECARD: TaskCategory.FORMATTING,
 }
 
 
@@ -253,6 +259,11 @@ _TASK_GOALS: dict[BackgroundTask, str] = {
     BackgroundTask.PROMETHEUS_EXPORT: (
         f"flush the latest metrics to {workspace_roots.ETA_AVENGER_METRICS_PATH} for scraping"
     ),
+    BackgroundTask.SAGE_HEALTH_CHECK: "health-check the Sage 22-school consensus engine",
+    BackgroundTask.SAGE_ONCHAIN_WARM: "warm on-chain data providers for Sage daily signals",
+    BackgroundTask.SAGE_BACKTEST: "run Sage-gated backtest sweep on recent paper trades",
+    BackgroundTask.SAGE_EDGE_LEARN: "learn edge parameters from Sage consensus disagreements",
+    BackgroundTask.FIRM_SCORECARD: "compute the daily firm-wide scorecard from all bot PnL journals",
 }
 
 

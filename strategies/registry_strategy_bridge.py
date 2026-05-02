@@ -37,6 +37,12 @@ so paper_trade_sim over thousands of bars doesn't reconstruct on every tick."""
 
 def _clear_strategy_cache() -> None:
     _STRATEGY_CACHE.clear()
+    try:
+        from eta_engine.scripts.run_research_grid import _CROSS_ASSET_REF_CACHE, _FUNDING_RATE_PROVIDER_CACHE
+        _CROSS_ASSET_REF_CACHE.clear()
+        _FUNDING_RATE_PROVIDER_CACHE.clear()
+    except ImportError:
+        pass
 
 
 # Public API for invalidation
@@ -77,6 +83,7 @@ def _build_callable_for_assignment(
     # Use the canonical strategy factory from run_research_grid — it
     # already handles every strategy_kind with the correct config
     # construction. Avoid duplicating per-kind logic here.
+    strategy = None
     try:
         from eta_engine.scripts.run_research_grid import _build_strategy_factory
 
@@ -84,8 +91,7 @@ def _build_callable_for_assignment(
 
         # Attach daily sage verdicts for sage_daily_gated strategies.
         # The research_grid factory builds the strategy but doesn't
-        # attach the verdict provider — that's done separately via
-        # _with_daily_sage_provider. Wire it here so bridge dispatch
+        # attach the verdict provider — wire it here so bridge dispatch
         # has REAL sage gating, not passthrough.
         if kind == "sage_daily_gated":
             symbol = str(assignment.symbol) if assignment else "BTC"
@@ -104,24 +110,131 @@ def _build_callable_for_assignment(
                 pass
 
         strategy = factory()
-        return _wrap_strategy(strategy)
     except (ValueError, ImportError):
         pass
 
     # Fallback: some kinds need providers (sage daily verdicts,
-    # ensemble voter wiring, macro ETF data). Build them per-kind
-    # with best-effort defaults. These will degrade gracefully when
-    # providers are absent.
+    # ensemble voter wiring, macro ETF data). Build them per-kind.
+    if strategy is None:
+        strategy = _build_strategy_fallback(kind, extras)
+
+    if strategy is None:
+        return None
+
+    # Wrap with EdgeAmplifier if the bot has edge config in extras.
+    # WRAPPING DISABLED during paper-soak integration test — the layers
+    # are too aggressive combined and produce 0 trades. Will be re-enabled
+    # incrementally: alpha_sniper first, then exhaustion, then absorption, etc.
+    edge_raw = extras.get("edge_config")
+    if edge_raw is not None and extras.get("edge_enabled") is True:
+        try:
+            from eta_engine.strategies.edge_layers import EdgeAmplifier, EdgeAmplifierConfig
+
+            if isinstance(edge_raw, dict):
+                ec = EdgeAmplifierConfig(
+                    enable_session_gate=bool(edge_raw.get("enable_session_gate", True)),
+                    timezone_name=str(edge_raw.get("timezone_name", "America/New_York")),
+                    is_crypto=bool(edge_raw.get("is_crypto", False)),
+                    strategy_mode=str(edge_raw.get("strategy_mode", "both")),
+                    enable_exhaustion_gate=bool(edge_raw.get("enable_exhaustion_gate", True)),
+                    exhaustion_max_trend=int(edge_raw.get("exhaustion_max_trend", 5)),
+                    exhaustion_veto=int(edge_raw.get("exhaustion_veto", 6)),
+                    exhaustion_counter=int(edge_raw.get("exhaustion_counter", 7)),
+                    enable_absorption_gate=bool(edge_raw.get("enable_absorption_gate", True)),
+                    absorption_vol_z_min=float(edge_raw.get("absorption_vol_z_min", 1.2)),
+                    absorption_range_z_max=float(edge_raw.get("absorption_range_z_max", 0.5)),
+                    enable_drift_boost=bool(edge_raw.get("enable_drift_boost", True)),
+                    drift_vol_z_min=float(edge_raw.get("drift_vol_z_min", 2.0)),
+                    drift_clv_min=float(edge_raw.get("drift_clv_min", 0.75)),
+                    drift_recency_bars=int(edge_raw.get("drift_recency_bars", 2)),
+                    enable_structural_stops=bool(edge_raw.get("enable_structural_stops", True)),
+                    structural_lookback=int(edge_raw.get("structural_lookback", 10)),
+                    structural_buffer_mult=float(edge_raw.get("structural_buffer_mult", 0.25)),
+                    enable_vol_sizing=bool(edge_raw.get("enable_vol_sizing", True)),
+                    vol_regime_lookback=int(edge_raw.get("vol_regime_lookback", 100)),
+                    vol_atr_period=int(edge_raw.get("vol_atr_period", 14)),
+                )
+            elif isinstance(edge_raw, str) and edge_raw == "mnq_futures":
+                from eta_engine.strategies.edge_layers import mnq_futures_preset
+                ec = mnq_futures_preset()
+            elif isinstance(edge_raw, str) and edge_raw == "btc_crypto":
+                from eta_engine.strategies.edge_layers import btc_crypto_preset
+                ec = btc_crypto_preset()
+            elif isinstance(edge_raw, str) and edge_raw == "eth_crypto":
+                from eta_engine.strategies.edge_layers import eth_crypto_preset
+                ec = eth_crypto_preset()
+            elif isinstance(edge_raw, str) and edge_raw == "sol_crypto":
+                from eta_engine.strategies.edge_layers import sol_crypto_preset
+                ec = sol_crypto_preset()
+            else:
+                ec = EdgeAmplifierConfig()
+
+            strategy = EdgeAmplifier(strategy, ec)
+        except Exception:
+            pass
+
+    # Wrap with AlphaSniper if cross-symbol/tape-reading config is present.
+    # DISABLED during integration — re-enable with extras["alpha_enabled"] = True.
+    alpha_raw = extras.get("alpha_sniper")
+    if alpha_raw is not None and extras.get("alpha_enabled") is True:
+        try:
+            from eta_engine.strategies.alpha_sniper import AlphaSniper, AlphaSniperConfig
+
+            if isinstance(alpha_raw, dict):
+                ac = AlphaSniperConfig(
+                    enable_tape_reading=bool(alpha_raw.get("enable_tape_reading", True)),
+                    enable_intermarket=bool(alpha_raw.get("enable_intermarket", True)),
+                    enable_spread_check=bool(alpha_raw.get("enable_spread_check", False)),
+                    max_spread_pct=float(alpha_raw.get("max_spread_pct", 0.20)),
+                    enable_divergence_check=bool(alpha_raw.get("enable_divergence_check", True)),
+                    divergence_atr_mult=float(alpha_raw.get("divergence_atr_mult", 0.5)),
+                    divergence_lookback=int(alpha_raw.get("divergence_lookback", 5)),
+                    min_peer_confirmation=float(alpha_raw.get("min_peer_confirmation", 0.5)),
+                )
+            else:
+                ac = AlphaSniperConfig()
+
+            sniper = AlphaSniper(strategy, ac)
+            strategy = sniper
+        except Exception:
+            pass
+
+    return _wrap_strategy(strategy)
+
+
+def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
+    """Per-kind strategy construction when _build_strategy_factory isn't available.
+    Returns the RAW strategy object (not wrapped with _wrap_strategy)."""
     if kind == "sage_daily_gated":
+        from eta_engine.strategies.crypto_macro_confluence_strategy import (
+            CryptoMacroConfluenceConfig,
+        )
+        from eta_engine.strategies.crypto_regime_trend_strategy import (
+            CryptoRegimeTrendConfig,
+        )
         from eta_engine.strategies.sage_daily_gated_strategy import (
             SageDailyGatedConfig,
             SageDailyGatedStrategy,
         )
 
+        # Read the base strategy config from extras — same keys as crypto_regime_trend
+        trend_raw = extras.get("crypto_regime_trend_config", {})
+        base_trend = CryptoRegimeTrendConfig(
+            regime_ema=trend_raw.get("regime_ema", 100),
+            pullback_ema=trend_raw.get("pullback_ema", 21),
+            pullback_tolerance_pct=trend_raw.get("pullback_tolerance_pct", 3.0),
+            atr_stop_mult=trend_raw.get("atr_stop_mult", 2.0),
+            rr_target=trend_raw.get("rr_target", 2.5),
+            risk_per_trade_pct=trend_raw.get("risk_per_trade_pct", 0.01),
+            min_bars_between_trades=trend_raw.get("min_bars_between_trades", 12),
+            max_trades_per_day=trend_raw.get("max_trades_per_day", 3),
+            warmup_bars=trend_raw.get("warmup_bars", 220),
+        )
+        macro_cfg = CryptoMacroConfluenceConfig(base=base_trend)
         min_conv = float(extras.get("min_daily_conviction", 0.30))
         strict = bool(extras.get("strict_mode", False))
-        cfg = SageDailyGatedConfig(min_daily_conviction=min_conv, strict_mode=strict)
-        return _wrap_strategy(SageDailyGatedStrategy(cfg))
+        cfg = SageDailyGatedConfig(base=macro_cfg, min_daily_conviction=min_conv, strict_mode=strict)
+        return SageDailyGatedStrategy(cfg)
 
     if kind == "crypto_regime_trend":
         from eta_engine.strategies.crypto_regime_trend_strategy import (
@@ -137,19 +250,31 @@ def _build_callable_for_assignment(
             atr_stop_mult=cfg_raw.get("atr_stop_mult", 2.0),
             rr_target=cfg_raw.get("rr_target", 3.0),
         )
-        return _wrap_strategy(CryptoRegimeTrendStrategy(cfg))
+        return CryptoRegimeTrendStrategy(cfg)
 
     if kind == "crypto_macro_confluence":
         from eta_engine.strategies.crypto_macro_confluence_strategy import (
             CryptoMacroConfluenceConfig,
             CryptoMacroConfluenceStrategy,
         )
-
-        cfg_raw = extras.get("macro_confluence_config", {})
-        cfg = CryptoMacroConfluenceConfig(
-            require_etf_flow_alignment=cfg_raw.get("require_etf_flow_alignment", False),
+        from eta_engine.strategies.crypto_regime_trend_strategy import (
+            CryptoRegimeTrendConfig,
         )
-        return _wrap_strategy(CryptoMacroConfluenceStrategy(cfg))
+
+        trend_raw = extras.get("crypto_regime_trend_config", {})
+        base_cfg = CryptoRegimeTrendConfig(
+            regime_ema=trend_raw.get("regime_ema", 100),
+            pullback_ema=trend_raw.get("pullback_ema", 21),
+            pullback_tolerance_pct=trend_raw.get("pullback_tolerance_pct", 3.0),
+            atr_stop_mult=trend_raw.get("atr_stop_mult", 2.0),
+            rr_target=trend_raw.get("rr_target", 3.0),
+            risk_per_trade_pct=trend_raw.get("risk_per_trade_pct", 0.01),
+            min_bars_between_trades=trend_raw.get("min_bars_between_trades", 12),
+            max_trades_per_day=trend_raw.get("max_trades_per_day", 3),
+            warmup_bars=trend_raw.get("warmup_bars", 220),
+        )
+        cfg = CryptoMacroConfluenceConfig(base=base_cfg)
+        return CryptoMacroConfluenceStrategy(cfg)
 
     if kind == "compression_breakout":
         from eta_engine.strategies.compression_breakout_strategy import (
@@ -160,39 +285,35 @@ def _build_callable_for_assignment(
         preset_name = extras.get("compression_preset", "default")
         if preset_name == "eth":
             cfg = CompressionBreakoutConfig(
-                bb_period=20, bb_width_pct_max=0.60,
-                close_location_min=0.40, volume_z_min=0.2,
-                breakout_lookback=12, cooldown_bars=12,
+                bb_period=20, bb_width_max_percentile=0.60,
+                min_close_location=0.40, min_volume_z=0.2,
+                breakout_lookback=12, min_bars_between_trades=12,
                 rr_target=2.5, atr_stop_mult=1.8,
             )
         elif preset_name == "btc":
             cfg = CompressionBreakoutConfig(
-                bb_period=20, bb_width_pct_max=0.50,
-                close_location_min=0.50, volume_z_min=0.3,
-                breakout_lookback=24, cooldown_bars=24,
+                bb_period=20, bb_width_max_percentile=0.50,
+                min_close_location=0.50, min_volume_z=0.3,
+                breakout_lookback=24, min_bars_between_trades=24,
                 rr_target=2.5, atr_stop_mult=2.0,
             )
         else:
             cfg = CompressionBreakoutConfig()
-        return _wrap_strategy(CompressionBreakoutStrategy(cfg))
+        return CompressionBreakoutStrategy(cfg)
 
     if kind == "crypto_trend":
         from eta_engine.strategies.crypto_trend_strategy import (
             CryptoTrendConfig,
             CryptoTrendStrategy,
         )
-
-        cfg = CryptoTrendConfig()
-        return _wrap_strategy(CryptoTrendStrategy(cfg))
+        return CryptoTrendStrategy(CryptoTrendConfig())
 
     if kind == "crypto_meanrev":
         from eta_engine.strategies.crypto_meanrev_strategy import (
             CryptoMeanRevConfig,
             CryptoMeanRevStrategy,
         )
-
-        cfg = CryptoMeanRevConfig()
-        return _wrap_strategy(CryptoMeanRevStrategy(cfg))
+        return CryptoMeanRevStrategy(CryptoMeanRevConfig())
 
     if kind == "ensemble_voting":
         from eta_engine.strategies.ensemble_voting_strategy import (
@@ -200,8 +321,6 @@ def _build_callable_for_assignment(
             EnsembleVotingStrategy,
         )
 
-        # Build actual voter sub-strategies from the registry voter names.
-        # Each voter is a strategy_kind that the bridge knows how to build.
         voter_names = extras.get("voters", [])
         sub_strategies: list = []
         voter_kind_map = {
@@ -210,20 +329,20 @@ def _build_callable_for_assignment(
             "sage_daily_gated": "sage_daily_gated",
         }
         for name in voter_names:
-            kind = voter_kind_map.get(name, name)
+            v_kind = voter_kind_map.get(name, name)
             try:
                 from eta_engine.scripts.run_research_grid import _build_strategy_factory
-                factory = _build_strategy_factory(kind, extras)
+                factory = _build_strategy_factory(v_kind, extras)
                 sub_strategies.append((name, factory()))
             except (ValueError, ImportError):
                 pass
         if not sub_strategies:
-            return _passthrough
+            return None
 
         cfg = EnsembleVotingConfig(
             min_agreement_count=int(extras.get("min_agreement_count", 2)),
         )
-        return _wrap_strategy(EnsembleVotingStrategy(sub_strategies, cfg))
+        return EnsembleVotingStrategy(sub_strategies, cfg)
 
     if kind == "sage_consensus":
         from eta_engine.strategies.sage_consensus_strategy import (
@@ -234,7 +353,7 @@ def _build_callable_for_assignment(
         cfg = SageConsensusConfig(
             min_conviction=float(extras.get("sage_min_conviction", 0.75)),
         )
-        return _wrap_strategy(SageConsensusStrategy(cfg))
+        return SageConsensusStrategy(cfg)
 
     if kind == "htf_routed":
         from eta_engine.strategies.htf_routed_strategy import (
@@ -248,10 +367,10 @@ def _build_callable_for_assignment(
             tf_params = stacked.get("trend_follow", {}).get("params", {})
             mr_params = stacked.get("mean_revert", {}).get("params", {})
             if isinstance(tf_params, dict) and tf_params:
-                cfg.trend_follow_config = tf_params  # type: ignore[assignment]
+                cfg.trend_follow_config = tf_params
             if isinstance(mr_params, dict) and mr_params:
-                cfg.mean_revert_config = mr_params  # type: ignore[assignment]
-        return _wrap_strategy(HtfRoutedStrategy(cfg))
+                cfg.mean_revert_config = mr_params
+        return HtfRoutedStrategy(cfg)
 
     if kind == "sweep_reclaim":
         from eta_engine.strategies.sweep_reclaim_strategy import (
@@ -268,16 +387,14 @@ def _build_callable_for_assignment(
             atr_stop_mult=float(extras.get("atr_stop_mult", 1.5)),
             max_trades_per_day=int(extras.get("max_trades_per_day", 3)),
         )
-        return _wrap_strategy(SweepReclaimStrategy(cfg))
+        return SweepReclaimStrategy(cfg)
 
     if kind == "regime_gated":
         from eta_engine.strategies.regime_gated_strategy import (
             RegimeGatedConfig,
             RegimeGatedStrategy,
         )
-
-        cfg = RegimeGatedConfig()
-        return _wrap_strategy(RegimeGatedStrategy(cfg))
+        return RegimeGatedStrategy(RegimeGatedConfig())
 
     if kind == "mtf_scalp":
         from eta_engine.strategies.mtf_scalp_strategy import (
@@ -285,8 +402,26 @@ def _build_callable_for_assignment(
             MtfScalpStrategy,
         )
 
-        cfg = MtfScalpConfig()
-        return _wrap_strategy(MtfScalpStrategy(cfg))
+        mtf_raw = extras.get("mtf_scalp_config", {})
+        cfg = MtfScalpConfig(
+            htf_bars_per_aggregate=int(mtf_raw.get("htf_bars_per_aggregate", 15)),
+            htf_ema_period=int(mtf_raw.get("htf_ema_period", 200)),
+            htf_atr_period=int(mtf_raw.get("htf_atr_period", 14)),
+            htf_atr_pct_min=float(mtf_raw.get("htf_atr_pct_min", 0.05)),
+            htf_atr_pct_max=float(mtf_raw.get("htf_atr_pct_max", 0.50)),
+            ltf_recent_high_lookback=int(mtf_raw.get("ltf_recent_high_lookback", 5)),
+            ltf_fast_ema_period=int(mtf_raw.get("ltf_fast_ema_period", 9)),
+            ltf_atr_period=int(mtf_raw.get("ltf_atr_period", 14)),
+            ltf_atr_stop_mult=float(mtf_raw.get("ltf_atr_stop_mult", 1.5)),
+            ltf_rr_target=float(mtf_raw.get("ltf_rr_target", 2.0)),
+            risk_per_trade_pct=float(mtf_raw.get("risk_per_trade_pct", 0.005)),
+            min_bars_between_trades=int(mtf_raw.get("min_bars_between_trades", 30)),
+            max_trades_per_day=int(mtf_raw.get("max_trades_per_day", 6)),
+            warmup_bars=int(mtf_raw.get("warmup_bars", 3000)),
+            allow_long=bool(mtf_raw.get("allow_long", True)),
+            allow_short=bool(mtf_raw.get("allow_short", True)),
+        )
+        return MtfScalpStrategy(cfg)
 
     if kind == "confluence_scorecard":
         from eta_engine.strategies.confluence_scorecard import (
@@ -309,22 +444,38 @@ def _build_callable_for_assignment(
 
         sub_kind = extras.get("sub_strategy_kind", "")
         if sub_kind:
-            fake = type("_Fake", (), {"strategy_kind": sub_kind, "extras": extras.get("sub_strategy_extras", {})})()
-            sub_callable = _build_callable_for_assignment(fake)
-            if sub_callable is None:
-                return None
-            # The sub_callable is a wrapper — we need the raw strategy object.
-            # For composition, build the sub-strategy directly.
             try:
-                from eta_engine.scripts.run_research_grid import _build_strategy_factory
-                sub_factory = _build_strategy_factory(sub_kind, extras.get("sub_strategy_extras", {}))
+                from eta_engine.scripts.run_research_grid import (
+                    _build_strategy_factory,
+                    _with_cross_asset_ref_provider,
+                    _with_funding_rate_provider,
+                )
+                sub_extras = dict(extras.get("sub_strategy_extras", {}))
+                sub_factory = _build_strategy_factory(sub_kind, sub_extras)
+
+                if sub_kind == "cross_asset_divergence":
+                    ref_asset = str(sub_extras.get("reference_asset", extras.get("per_ticker_optimal", ""))).upper()
+                    bot_symbol = str(extras.get("per_ticker_optimal", "MNQ")).upper()
+                    if ref_asset == "ES1" or "MNQ" in bot_symbol or "NQ" in bot_symbol:
+                        sub_factory = _with_cross_asset_ref_provider(
+                            sub_factory, bot_symbol=bot_symbol,
+                            ref_symbol="ES1", ref_timeframe="5m",
+                        )
+                    elif ref_asset == "ETH" or "BTC" in bot_symbol:
+                        sub_factory = _with_cross_asset_ref_provider(
+                            sub_factory, bot_symbol=bot_symbol,
+                            ref_symbol="ETH", ref_timeframe="1h",
+                        )
+                elif sub_kind == "funding_rate":
+                    sub_factory = _with_funding_rate_provider(sub_factory)
+
                 sub_strategy = sub_factory()
             except (ValueError, ImportError):
                 sub_strategy = None
             if sub_strategy is not None and hasattr(sub_strategy, "maybe_enter"):
-                return _wrap_strategy(ConfluenceScorecardStrategy(sub_strategy, sc_cfg))
+                return ConfluenceScorecardStrategy(sub_strategy, sc_cfg)
 
-        return _wrap_strategy(ConfluenceScorecardStrategy(None, sc_cfg))
+        return ConfluenceScorecardStrategy(None, sc_cfg)
 
     return None
 

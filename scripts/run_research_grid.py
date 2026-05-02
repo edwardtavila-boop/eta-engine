@@ -368,6 +368,148 @@ def _with_daily_sage_provider(
     return _factory
 
 
+_CROSS_ASSET_REF_CACHE: dict[str, object] = {}
+
+
+def _build_cross_asset_ref_provider(
+    bot_symbol: str, ref_symbol: str, ref_timeframe: str,
+) -> object:
+    """Build a reference-price callable for cross-asset divergence strategies.
+
+    Returns a callable with signature ``(BarData) -> float`` that returns
+    the reference asset's close price at-or-before the bar's timestamp.
+    """
+    from eta_engine.data.library import default_library
+
+    cache_key = f"{ref_symbol}_{ref_timeframe}"
+    if cache_key in _CROSS_ASSET_REF_CACHE:
+        return _CROSS_ASSET_REF_CACHE[cache_key]
+
+    lib = default_library()
+    ds = lib.get(symbol=ref_symbol, timeframe=ref_timeframe)
+    if ds is None:
+        def _no_ref(bar: object) -> float:
+            return 0.0
+        _CROSS_ASSET_REF_CACHE[cache_key] = _no_ref
+        return _no_ref
+
+    bars = lib.load_bars(ds, require_positive_prices=True)
+    if not bars:
+        def _no_ref(bar: object) -> float:
+            return 0.0
+        _CROSS_ASSET_REF_CACHE[cache_key] = _no_ref
+        return _no_ref
+
+    ts_to_close: dict[int, float] = {}
+    for b in bars:
+        ts_to_close[int(b.timestamp.timestamp())] = b.close
+
+    sorted_timestamps = sorted(ts_to_close.keys())
+
+    def _ref_provider(bar: object) -> float:
+        bar_ts = int(bar.timestamp.timestamp())  # type: ignore[union-attr]
+        best_close = 0.0
+        for ts in sorted_timestamps:
+            if ts <= bar_ts:
+                best_close = ts_to_close[ts]
+            else:
+                break
+        return best_close
+
+    _CROSS_ASSET_REF_CACHE[cache_key] = _ref_provider
+    return _ref_provider
+
+
+def _with_cross_asset_ref_provider(
+    factory: object,
+    *,
+    bot_symbol: str,
+    ref_symbol: str,
+    ref_timeframe: str,
+) -> object:
+    """Wrap a strategy factory to attach a cross-asset reference provider."""
+    provider = _build_cross_asset_ref_provider(bot_symbol, ref_symbol, ref_timeframe)
+
+    def _factory() -> object:
+        strategy = factory()
+        attach = getattr(strategy, "attach_reference_provider", None)
+        if callable(attach):
+            attach(provider)
+        return strategy
+
+    return _factory
+
+
+_FUNDING_RATE_PROVIDER_CACHE: dict[str, object] = {}
+
+
+def _build_funding_rate_provider() -> object:
+    """Build a funding-rate callable from BTCFUND_8h CSV data."""
+    from pathlib import Path
+
+    cache_key = "btcfund_default"
+    if cache_key in _FUNDING_RATE_PROVIDER_CACHE:
+        return _FUNDING_RATE_PROVIDER_CACHE[cache_key]
+
+    funding_paths = [
+        Path(r"C:\EvolutionaryTradingAlgo\data\crypto\history\BTCFUND_8h.csv"),
+        Path(r"C:\EvolutionaryTradingAlgo\mnq_data\BTCFUND_8h.csv"),
+        Path(r"C:\EvolutionaryTradingAlgo\data\crypto\history\btc_funding_8h.csv"),
+    ]
+
+    funding_rows: list[tuple[int, float]] = []
+    for fp in funding_paths:
+        if fp.exists():
+            import csv
+            with open(str(fp), newline="") as fh:
+                for row in csv.DictReader(fh):
+                    try:
+                        t_val = row.get("time") or row.get("timestamp") or row.get("timestamp_utc") or ""
+                        t = int(float(t_val))
+                        r_val = row.get("funding_rate") or row.get("close") or row.get("funding") or "0"
+                        r = float(r_val)
+                        funding_rows.append((t, r))
+                    except (ValueError, KeyError):
+                        continue
+            if funding_rows:
+                break
+
+    if not funding_rows:
+        def _no_funding(bar: object) -> float:
+            return 0.0
+        _FUNDING_RATE_PROVIDER_CACHE[cache_key] = _no_funding
+        return _no_funding
+
+    funding_rows.sort(key=lambda x: x[0])
+
+    def _provider(bar: object) -> float:
+        bar_ts = int(bar.timestamp.timestamp())  # type: ignore[union-attr]
+        best_rate = 0.0
+        for ts, rate in funding_rows:
+            if ts <= bar_ts:
+                best_rate = rate
+            else:
+                break
+        return best_rate
+
+        _FUNDING_RATE_PROVIDER_CACHE[cache_key] = _provider
+    return _provider
+
+
+def _with_funding_rate_provider(factory: object) -> object:
+    """Wrap a strategy factory to attach a funding-rate provider."""
+    provider = _build_funding_rate_provider()
+
+    def _factory() -> object:
+        strategy = factory()
+        attach = getattr(strategy, "attach_funding_provider", None)
+        if callable(attach):
+            attach(provider)
+        return strategy
+
+    return _factory
+
+
 def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
     kind: str, extras: dict[str, object] | None = None,
 ):
@@ -508,6 +650,138 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
                **_safe_kwargs(SweepReclaimConfig, overrides)},
         )
         return lambda: SweepReclaimStrategy(cfg)
+    if kind == "rsi_mean_reversion":
+        from eta_engine.strategies.rsi_mean_reversion_strategy import (
+            RSIMeanReversionConfig,
+            RSIMeanReversionStrategy,
+            btc_rsi_mr_preset,
+            eth_rsi_mr_preset,
+            mnq_rsi_mr_preset,
+            nq_rsi_mr_preset,
+        )
+        preset_factories = {
+            "mnq": mnq_rsi_mr_preset, "nq": nq_rsi_mr_preset,
+            "btc": btc_rsi_mr_preset, "eth": eth_rsi_mr_preset,
+        }
+        preset_name = (extras.get("rsi_mr_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
+        base_cfg = preset_factories.get(preset_name, mnq_rsi_mr_preset)()
+        overrides = _merge_strategy_overrides(extras, "rsi_mr", RSIMeanReversionConfig, include_direct_fields=True)
+        overrides.pop("rsi_mr_preset", None)
+        overrides.pop("preset", None)
+        cfg = RSIMeanReversionConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: RSIMeanReversionStrategy(cfg)
+    if kind == "vwap_reversion":
+        from eta_engine.strategies.vwap_reversion_strategy import (
+            VWAPReversionConfig,
+            VWAPReversionStrategy,
+            btc_vwap_mr_preset,
+            eth_vwap_mr_preset,
+            mnq_vwap_mr_preset,
+            nq_vwap_mr_preset,
+        )
+        preset_factories = {
+            "mnq": mnq_vwap_mr_preset, "nq": nq_vwap_mr_preset,
+            "btc": btc_vwap_mr_preset, "eth": eth_vwap_mr_preset,
+        }
+        preset_name = (extras.get("vwap_mr_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
+        base_cfg = preset_factories.get(preset_name, mnq_vwap_mr_preset)()
+        overrides = _merge_strategy_overrides(extras, "vwap_mr", VWAPReversionConfig, include_direct_fields=True)
+        overrides.pop("vwap_mr_preset", None)
+        overrides.pop("preset", None)
+        cfg = VWAPReversionConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: VWAPReversionStrategy(cfg)
+    if kind == "volume_profile":
+        from eta_engine.strategies.volume_profile_strategy import (
+            VolumeProfileStrategy,
+            VolumeProfileStrategyConfig,
+            btc_volume_profile_preset,
+            eth_volume_profile_preset,
+            mnq_volume_profile_preset,
+            nq_volume_profile_preset,
+        )
+        preset_factories = {
+            "mnq": mnq_volume_profile_preset, "nq": nq_volume_profile_preset,
+            "btc": btc_volume_profile_preset, "eth": eth_volume_profile_preset,
+        }
+        preset_name = (extras.get("vol_prof_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
+        base_cfg = preset_factories.get(preset_name, mnq_volume_profile_preset)()
+        overrides = _merge_strategy_overrides(
+            extras, "vol_prof", VolumeProfileStrategyConfig, include_direct_fields=True,
+        )
+        overrides.pop("vol_prof_preset", None)
+        overrides.pop("preset", None)
+        cfg = VolumeProfileStrategyConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: VolumeProfileStrategy(cfg)
+    if kind == "gap_fill":
+        from eta_engine.strategies.gap_fill_strategy import (
+            GapFillConfig,
+            GapFillStrategy,
+            btc_gap_fill_preset,
+            eth_gap_fill_preset,
+            mnq_gap_fill_preset,
+            nq_gap_fill_preset,
+        )
+        preset_factories = {
+            "mnq": mnq_gap_fill_preset, "nq": nq_gap_fill_preset,
+            "btc": btc_gap_fill_preset, "eth": eth_gap_fill_preset,
+        }
+        preset_name = (extras.get("gap_fill_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
+        base_cfg = preset_factories.get(preset_name, mnq_gap_fill_preset)()
+        overrides = _merge_strategy_overrides(extras, "gap_fill", GapFillConfig, include_direct_fields=True)
+        overrides.pop("gap_fill_preset", None)
+        overrides.pop("preset", None)
+        cfg = GapFillConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: GapFillStrategy(cfg)
+    if kind == "cross_asset_divergence":
+        from eta_engine.strategies.cross_asset_divergence_strategy import (
+            CrossAssetDivergenceConfig,
+            CrossAssetDivergenceStrategy,
+            btc_vs_eth_divergence_preset,
+            mnq_vs_es_divergence_preset,
+            nq_vs_es_divergence_preset,
+        )
+        preset_factories = {
+            "mnq": mnq_vs_es_divergence_preset, "nq": nq_vs_es_divergence_preset,
+            "btc": btc_vs_eth_divergence_preset, "eth": btc_vs_eth_divergence_preset,
+        }
+        preset_name = (extras.get("xasset_preset") or extras.get("per_ticker_optimal") or "mnq").lower()
+        base_cfg = preset_factories.get(preset_name, mnq_vs_es_divergence_preset)()
+        overrides = _merge_strategy_overrides(extras, "xasset", CrossAssetDivergenceConfig, include_direct_fields=True)
+        overrides.pop("xasset_preset", None)
+        overrides.pop("preset", None)
+        cfg = CrossAssetDivergenceConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: CrossAssetDivergenceStrategy(cfg)
+    if kind == "funding_rate":
+        from eta_engine.strategies.funding_rate_strategy import (
+            FundingRateStrategy,
+            FundingRateStrategyConfig,
+            btc_funding_rate_preset,
+            eth_funding_rate_preset,
+        )
+        preset_factories = {
+            "btc": btc_funding_rate_preset, "eth": eth_funding_rate_preset,
+        }
+        preset_name = (extras.get("fund_rate_preset") or extras.get("per_ticker_optimal") or "btc").lower()
+        base_cfg = preset_factories.get(preset_name, btc_funding_rate_preset)()
+        overrides = _merge_strategy_overrides(
+            extras, "fund_rate", FundingRateStrategyConfig, include_direct_fields=True,
+        )
+        overrides.pop("fund_rate_preset", None)
+        overrides.pop("preset", None)
+        cfg = FundingRateStrategyConfig(
+            **{**base_cfg.__dict__, **overrides},
+        )
+        return lambda: FundingRateStrategy(cfg)
     msg = f"unknown crypto strategy_kind: {kind!r}"
     raise ValueError(msg)
 
@@ -709,6 +983,9 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
         "crypto_orb", "crypto_trend", "crypto_meanrev", "crypto_scalp",
         "crypto_regime_trend", "crypto_macro_confluence", "sage_consensus",
         "sage_daily_gated", "grid",
+        "compression_breakout", "sweep_reclaim",
+        "rsi_mean_reversion", "vwap_reversion", "volume_profile",
+        "gap_fill", "cross_asset_divergence", "funding_rate",
     ):
         # Crypto-specific strategy variants. All share the same
         # maybe_enter(bar, hist, equity, config) -> _Open|None contract
@@ -729,6 +1006,62 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
             base_backtest_config=base_cfg,
             ctx_builder=lambda b, h: {},
             strategy_factory=factory,
+        )
+    elif cell.strategy_kind == "confluence_scorecard":
+        sub_kind = str(cell.extras.get("sub_strategy_kind") or "")
+        sc_raw = cell.extras.get("scorecard_config") or {}
+        sub_extras = cell.extras.get("sub_strategy_extras") or {}
+        if not isinstance(sc_raw, dict):
+            sc_raw = {}
+        if not isinstance(sub_extras, dict):
+            sub_extras = {}
+
+        from eta_engine.strategies.confluence_scorecard import (
+            ConfluenceScorecardConfig,
+            ConfluenceScorecardStrategy,
+        )
+
+        sc_cfg = ConfluenceScorecardConfig(
+            min_score=int(sc_raw.get("min_score", 2)),
+            a_plus_score=int(sc_raw.get("a_plus_score", 3)),
+            a_plus_size_mult=float(sc_raw.get("a_plus_size_mult", 1.3)),
+            fast_ema=int(sc_raw.get("fast_ema", 21)),
+            mid_ema=int(sc_raw.get("mid_ema", 50)),
+            slow_ema=int(sc_raw.get("slow_ema", 100)),
+        )
+
+        def _confluence_factory() -> object:
+            if sub_kind:
+                try:
+                    sub_factory = _build_strategy_factory(sub_kind, sub_extras)
+                    if sub_kind == "cross_asset_divergence":
+                        ref_asset = str(sub_extras.get("reference_asset", ""))
+                        bot_symbol = str(cell.extras.get("per_ticker_optimal", ""))
+                        if ref_asset == "ES1" or "MNQ" in bot_symbol or "NQ" in bot_symbol:
+                            sub_factory = _with_cross_asset_ref_provider(
+                                sub_factory, bot_symbol=bot_symbol,
+                                ref_symbol="ES1", ref_timeframe="5m",
+                            )
+                        elif ref_asset == "ETH" or "BTC" in bot_symbol:
+                            sub_factory = _with_cross_asset_ref_provider(
+                                sub_factory, bot_symbol=bot_symbol,
+                                ref_symbol="ETH", ref_timeframe="1h",
+                            )
+                    elif sub_kind == "funding_rate":
+                        sub_factory = _with_funding_rate_provider(sub_factory)
+                    sub = sub_factory()
+                    return ConfluenceScorecardStrategy(sub, sc_cfg)
+                except (ValueError, ImportError):
+                    pass
+            return ConfluenceScorecardStrategy(None, sc_cfg)
+
+        res = WalkForwardEngine().run(
+            bars=bars,
+            pipeline=FeaturePipeline.default(),
+            config=wf,
+            base_backtest_config=base_cfg,
+            ctx_builder=lambda b, h: {},
+            strategy_factory=_confluence_factory,
         )
     else:
         res = WalkForwardEngine().run(

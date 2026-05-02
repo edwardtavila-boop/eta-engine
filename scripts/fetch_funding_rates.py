@@ -89,6 +89,14 @@ def fetch_funding(symbol: str, months: int = 12) -> list[tuple[int, float]]:
     return sorted(rows)
 
 
+def write_csv(path: Path, header: tuple[str, ...], rows: list[tuple]) -> None:
+    """Write a list of tuples to a CSV file with the given header."""
+    with open(str(path), "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="fetch_funding_rates")
     p.add_argument("--symbol", type=str, required=True)

@@ -277,7 +277,6 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     except ImportError:
         pass
 
-    client = anthropic.Anthropic()
     results: dict[str, dict] = {}
     total_cost_est = 0.0
     total_tokens = 0
@@ -948,7 +947,21 @@ HANDLERS: dict[BackgroundTask, callable] = {
     BackgroundTask.BACKUP: lambda s, _l: _task_backup(s),
     BackgroundTask.PROMETHEUS_EXPORT: lambda s, _l: _task_prometheus_export(s),
     BackgroundTask.FIRM_SCORECARD: lambda s, _l: _task_firm_scorecard(s),
+    BackgroundTask.SAGE_HEALTH_CHECK: lambda s, _l: _task_sage_stub(s, "sage_health_check"),
+    BackgroundTask.SAGE_ONCHAIN_WARM: lambda s, _l: _task_sage_stub(s, "sage_onchain_warm"),
+    BackgroundTask.SAGE_BACKTEST: lambda s, _l: _task_sage_stub(s, "sage_backtest"),
+    BackgroundTask.SAGE_EDGE_LEARN: lambda s, _l: _task_sage_stub(s, "sage_edge_learn"),
 }
+
+
+def _task_sage_stub(state_dir: Path, task_name: str) -> dict:
+    """Stub handler for Sage tasks not yet implemented."""
+    return {
+        "task": task_name,
+        "status": "not_implemented",
+        "detail": "Sage subsystem not yet wired",
+        "state_dir": str(state_dir),
+    }
 
 
 # ---------------------------------------------------------------------------

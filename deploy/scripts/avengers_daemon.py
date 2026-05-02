@@ -61,7 +61,7 @@ class AvengersDaemon:
         )
         # Fleet with DeepSeek-native executor by default.
         # Falls back to Anthropic automatically if DEEPSEEK_API_KEY is missing.
-        self.fleet = Fleet(executor=DeepSeekExecutor())
+        self.        fleet = Fleet(executor=DeepSeekExecutor(), deepseek_personas=True)
         self.dispatch = AvengersDispatch(
             governor=self.governor,
             fleet=self.fleet,

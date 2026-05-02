@@ -92,6 +92,11 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 "scripts/_bump_roadmap_v0_1_14.py" = ["E501"]
 "scripts/_bump_roadmap_v0_1_15.py" = ["E501"]
 "scripts/_record_codebase_decision.py" = ["E501"]
+# per_bot_registry embeds long rationale strings in StrategyAssignment entries;
+# wrapping them would hurt auditability.
+"strategies/per_bot_registry.py" = ["E501"]
+# paper_trade_sim has a long risk-sizing expression that can't be cleanly split.
+"scripts/paper_trade_sim.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

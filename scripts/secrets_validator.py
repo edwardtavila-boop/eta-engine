@@ -12,11 +12,10 @@ Exit codes: 0 = all present, 1 = missing optional, 2 = missing required
 
 from __future__ import annotations
 
-import json
 import sys
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from dataclasses import dataclass, field
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,8 +39,9 @@ class SecretCheck:
 REQUIRED_SECRETS: list[tuple[str, str, bool]] = [
     ("secrets/telegram_bot_token.txt", "Telegram bot token from @BotFather", True),
     ("secrets/telegram_chat_id.txt", "Telegram chat ID for operator notifications", True),
+    ("secrets/ibkr_account_id.txt", "IBKR account ID for 24/7 trading", True),
+    ("secrets/ibkr_credentials.json", "IBKR credentials JSON with reconnect config", True),
     ("secrets/quantum_creds.json", "D-Wave/IBM Quantum API credentials", False),
-    ("secrets/ibkr_credentials.json", "IBKR paper/live trading credentials", False),
     ("secrets/tastytrade_credentials.json", "Tastytrade credentials (secondary broker)", False),
 ]
 

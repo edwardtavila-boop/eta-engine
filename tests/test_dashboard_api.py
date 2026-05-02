@@ -525,7 +525,7 @@ class TestDashboardAPI:
     def test_tasks_list(self, app_client):
         r = app_client.get("/api/tasks")
         assert r.status_code == 200
-        assert len(r.json()["tasks"]) == 20
+        assert len(r.json()["tasks"]) == 25
 
     def test_fire_unknown_task(self, app_client):
         r = app_client.post("/api/tasks/nonsense/fire")

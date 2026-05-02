@@ -25,10 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    import contextlib
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 
 
@@ -97,7 +96,8 @@ def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = N
     if ds is None:
         raise ValueError(f"No data for {assignment.symbol}/{assignment.timeframe}")
 
-    bars = lib.load_bars(ds, limit=min(bar_limit or 999999, max_bars), require_positive_prices=True)
+    bars = lib.load_bars(ds, limit=min(bar_limit or 999999, max_bars),
+                         limit_from="tail", require_positive_prices=True)
     if len(bars) < 50:
         raise ValueError(f"Not enough bars: {len(bars)}")
 

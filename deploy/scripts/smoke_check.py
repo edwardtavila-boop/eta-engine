@@ -26,7 +26,7 @@ from pathlib import Path
 from eta_engine.scripts import workspace_roots
 
 REQUIRED_ENV_VARS = (
-    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
     "JARVIS_HOURLY_USD_BUDGET",
     "JARVIS_DAILY_USD_BUDGET",
 )
@@ -59,7 +59,7 @@ def check_env(env_path: Path) -> tuple[bool, str]:
             missing.append(var)
     if missing:
         return False, f"missing required vars in .env: {', '.join(missing)}"
-    return True, ".env has required JARVIS vars; IBKR/Tastytrade active, Tradovate dormant"
+    return True, ".env has required DeepSeek + JARVIS vars; IBKR/Tastytrade active"
 
 
 def check_dirs() -> tuple[bool, str]:
@@ -152,6 +152,8 @@ def check_task_handlers() -> tuple[bool, str]:
 
 
 def check_systemd() -> tuple[bool, str]:
+    if sys.platform == "win32":
+        return True, "N/A — Windows uses Task Scheduler, not systemd"
     unit_dir = Path.home() / ".config" / "systemd" / "user"
     expected = {"jarvis-live.service", "avengers-fleet.service"}
     found = {p.name for p in unit_dir.glob("*.service")} if unit_dir.exists() else set()
@@ -162,6 +164,8 @@ def check_systemd() -> tuple[bool, str]:
 
 
 def check_crontab() -> tuple[bool, str]:
+    if sys.platform == "win32":
+        return True, "N/A — Windows uses Task Scheduler, not crontab"
     try:
         out = subprocess.run(
             ["crontab", "-l"],
