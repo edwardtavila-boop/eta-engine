@@ -48,6 +48,7 @@ Write-Host ""
 # ── Verify secrets ────────────────────────────────────────
 
 $secretsDir = "$InstallRoot\secrets"
+$fccSecretsDir = "$InstallRoot\firm_command_center\secrets"
 $tokenFile = "$secretsDir\telegram_bot_token.txt"
 $chatFile = "$secretsDir\telegram_chat_id.txt"
 $quantumCreds = "$secretsDir\quantum_creds.json"
@@ -95,7 +96,17 @@ if (-not (Test-Path $quantumCreds)) {
     }
 }
 
-# ── Register Hermes Telegram service ──────────────────────
+# Sync secrets to firm_command_center (Hermes service reads from here)
+if (-not (Test-Path $fccSecretsDir)) {
+    New-Item -ItemType Directory -Force -Path $fccSecretsDir | Out-Null
+}
+if ((Test-Path $tokenFile) -and -not (Test-Path "$fccSecretsDir\telegram_bot_token.txt")) {
+    Copy-Item $tokenFile "$fccSecretsDir\" -Force
+}
+if ((Test-Path $chatFile) -and -not (Test-Path "$fccSecretsDir\telegram_chat_id.txt")) {
+    Copy-Item $chatFile "$fccSecretsDir\" -Force
+}
+Write-Host "[SECRETS] Synced to $fccSecretsDir for Hermes service" -ForegroundColor Gray
 
 if (-not $SkipHermes) {
     Write-Host ""; Write-Host "=== Hermes Telegram Bridge ===" -ForegroundColor Green
@@ -184,7 +195,7 @@ if (-not $SkipDeepSeekTick) {
 
 if (-not $SkipIbkrGateway) {
     Write-Host ""; Write-Host "=== IBKR Gateway Watchdog ===" -ForegroundColor Green
-    $ibkrWatchdogScript = "$FirmDir\eta_engine\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
+    $ibkrWatchdogScript = "$FirmDir\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
 
     if (Test-Path $ibkrWatchdogScript) {
         if (-not $WhatIf) {

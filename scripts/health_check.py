@@ -29,6 +29,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR
+_STATE_DIR = ETA_RUNTIME_STATE_DIR
+
 
 @dataclass
 class HealthComponent:
@@ -77,8 +80,8 @@ def _check_disk_space() -> HealthComponent:
 
 
 def _check_kaizen_state() -> HealthComponent:
-    state_path = ROOT / "state" / "kaizen" / "kaizen_engine_state.json"
-    guard_path = ROOT / "state" / "kaizen" / "guard_state.json"
+    state_path = _STATE_DIR / "kaizen" / "kaizen_engine_state.json"
+    guard_path = _STATE_DIR / "kaizen" / "guard_state.json"
 
     if not state_path.exists():
         return HealthComponent("kaizen_engine", True, "booting", "no state file yet — engine may not have run", 0.5)
@@ -105,7 +108,7 @@ def _check_kaizen_state() -> HealthComponent:
 
 
 def _check_quantum_freshness() -> HealthComponent:
-    quantum_dir = ROOT / "state" / "quantum"
+    quantum_dir = _STATE_DIR / "quantum"
     if not quantum_dir.exists():
         return HealthComponent("quantum_rebalance", True, "booting", "no quantum state dir", 0.5)
 
@@ -133,7 +136,7 @@ def _check_quantum_freshness() -> HealthComponent:
 
 
 def _check_hermes_connectivity() -> HealthComponent:
-    saf_path = ROOT / "state" / "hermes" / "store_and_forward.jsonl"
+    saf_path = _STATE_DIR / "hermes" / "store_and_forward.jsonl"
     if saf_path.exists():
         try:
             count = sum(1 for _ in saf_path.read_text(encoding="utf-8").splitlines() if _.strip())
@@ -209,7 +212,7 @@ def run_health_check(*, output_dir: Path | None = None) -> VpsHealthReport:
 
 
 def main() -> int:
-    report = run_health_check(output_dir=ROOT / "state" / "health")
+    report = run_health_check(output_dir=_STATE_DIR / "health")
     print(json.dumps(report.to_dict(), indent=2))
     if report.action_items:
         print("\nACTION ITEMS:", file=sys.stderr)
