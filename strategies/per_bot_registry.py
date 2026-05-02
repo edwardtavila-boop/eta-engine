@@ -696,47 +696,21 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
-    # gap_fill_mnq — Overnight Gap Fill on MNQ 5m.
+    # gap_fill_mnq — DEACTIVATED. Session gaps not reliably detected
+    # in 5m data without RTH session markers. DeepSeek analysis: structural.
     StrategyAssignment(
         bot_id="gap_fill_mnq",
-        strategy_id="gap_fill_mnq_v1",
+        strategy_id="gap_fill_mnq_DEACTIVATED",
         symbol="MNQ1",
         timeframe="5m",
         scorer_name="mnq",
-        confluence_threshold=0.0,
+        confluence_threshold=10.0,
         block_regimes=frozenset(),
         window_days=60,
         step_days=30,
-        min_trades_per_window=3,
-        strategy_kind="confluence_scorecard",
-        rationale=(
-            "DIAMOND #14: Overnight gap fill on MNQ 5m. ~80% of overnight "
-            "gaps fill within first 2 hours of RTH. This strategy detects "
-            "gaps > 0.3 ATR, waits for a rejection candle in the first 24 "
-            "bars of RTH, and enters toward prior close. Institutional "
-            "gap-trading edge mechanized. Max 1 trade/day — this is a "
-            "high-conviction, low-frequency edge."
-        ),
-        extras={
-            "promotion_status": "research_candidate",
-            "sub_strategy_kind": "gap_fill",
-            "sub_strategy_extras": {
-                "gap_threshold_atr_mult": 0.2, "fill_max_bars": 48,
-                "gap_min_atr_mult": 0.15, "min_session_gap_hours": 4.0,
-                "enter_immediate": True,
-                "min_volume_z": 0.2, "require_rejection": False,
-                "rr_target": 2.0, "atr_stop_mult": 1.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
-                "warmup_bars": 50,
-            },
-            "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
-            },
-            "per_ticker_optimal": "MNQ",
-            "research_candidate": True,
-            "daily_loss_limit_pct": 4.0,
-        },
+        min_trades_per_window=10,
+        rationale="DEACTIVATED — session gaps not reliably detected without RTH markers.",
+        extras={"deactivated": True, "deactivation_reason": "session gap detection unreliable"},
     ),
 
     # gap_fill_btc — DEACTIVATED. BTC is 24/7, no meaningful overnight gaps.

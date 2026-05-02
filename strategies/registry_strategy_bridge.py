@@ -285,10 +285,10 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         preset_name = extras.get("compression_preset", "default")
         if preset_name == "eth":
             cfg = CompressionBreakoutConfig(
-                bb_period=20, bb_width_max_percentile=0.60,
+                bb_period=30, bb_width_max_percentile=0.60,
                 min_close_location=0.40, min_volume_z=0.2,
                 breakout_lookback=12, min_bars_between_trades=12,
-                rr_target=2.5, atr_stop_mult=1.8,
+                rr_target=2.0, atr_stop_mult=1.5,
             )
         elif preset_name == "btc":
             cfg = CompressionBreakoutConfig(

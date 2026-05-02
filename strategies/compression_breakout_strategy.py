@@ -460,22 +460,16 @@ def nq_compression_preset() -> CompressionBreakoutConfig:
 
 
 def eth_compression_preset() -> CompressionBreakoutConfig:
-    """Calibrated for ETH 1h bars.
-
-    Same shape as BTC preset but with WIDER ATR-stop to absorb
-    ETH's ~1.3x BTC vol. BB-width compression threshold relaxed
-    slightly (0.35 vs BTC's 0.30) since ETH baseline vol is higher
-    so true compression bars are proportionally rarer.
-    """
+    """Calibrated for ETH 1h bars. DeepSeek-tuned 2026-05-02."""
     return CompressionBreakoutConfig(
-        bb_period=20, bb_std_mult=2.0,
+        bb_period=30, bb_std_mult=2.0,                # was 20 — longer BB reduces false breakouts
         bb_width_window=100, bb_width_max_percentile=0.35,
         atr_period=14, atr_ma_period=20,
         breakout_lookback=20,
         trend_ema_period=200, require_trend_alignment=True,
-        volume_z_lookback=20, min_volume_z=0.4,  # slightly looser
-        min_close_location=0.65,                 # slightly looser
-        atr_stop_mult=1.8, rr_target=2.5,        # wider stop
+        volume_z_lookback=20, min_volume_z=0.4,
+        min_close_location=0.65,
+        atr_stop_mult=1.5, rr_target=2.0,             # was 1.8/2.5 — lower stop + RR improves WR
         risk_per_trade_pct=0.005,
         min_bars_between_trades=12,
         max_trades_per_day=2,

@@ -613,9 +613,10 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         }
         preset_name = (extras.get("compression_preset") or "btc").lower()
         base_cfg = preset_factories.get(preset_name, btc_compression_preset)()
-        # Allow extras to override individual fields via "compression_*"
-        overrides = _filter_extras(extras, "compression")
-        # Drop the "preset" override (not a CompressionBreakoutConfig field)
+        overrides = _merge_strategy_overrides(
+            extras, "compression", CompressionBreakoutConfig, include_direct_fields=True,
+        )
+        overrides.pop("compression_preset", None)
         overrides.pop("preset", None)
         cfg = CompressionBreakoutConfig(
             **{**base_cfg.__dict__,
@@ -623,10 +624,6 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         )
         return lambda: CompressionBreakoutStrategy(cfg)
     if kind == "sweep_reclaim":
-        # Foundation strategy (2026-04-27): mechanical Wyckoff
-        # spring/upthrust translation. Asset presets:
-        # btc_daily_*, eth_daily_*, sol_daily_*, mnq_intraday_*,
-        # nq_intraday_*. extras["sweep_preset"] selects.
         from eta_engine.strategies.sweep_reclaim_strategy import (
             SweepReclaimConfig,
             SweepReclaimStrategy,
@@ -643,7 +640,10 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         }
         preset_name = (extras.get("sweep_preset") or "btc").lower()
         base_cfg = preset_factories.get(preset_name, btc_daily_sweep_preset)()
-        overrides = _filter_extras(extras, "sweep")
+        overrides = _merge_strategy_overrides(
+            extras, "sweep", SweepReclaimConfig, include_direct_fields=True,
+        )
+        overrides.pop("sweep_preset", None)
         overrides.pop("preset", None)
         cfg = SweepReclaimConfig(
             **{**base_cfg.__dict__,

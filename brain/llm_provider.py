@@ -242,7 +242,7 @@ def chat_completion(
     tier: ModelTier = ModelTier.HAIKU,
     system_prompt: str = "",
     user_message: str,
-    max_tokens: int = 400,
+    max_tokens: int = 4096,
     temperature: float = 0.7,
     provider: Provider | None = None,
 ) -> LLMResponse:

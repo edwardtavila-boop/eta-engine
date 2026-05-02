@@ -328,13 +328,7 @@ class SweepReclaimStrategy:
 
 
 def mnq_intraday_sweep_preset() -> SweepReclaimConfig:
-    """Calibrated for MNQ 5m bars during RTH.
-
-    Lookback 30 bars (~2.5h) captures the morning extremes
-    cleanly; wick threshold 40% rejects shallow probes; volume
-    z-score 0.5 filters confirmation; ATR-stop 1.0 keeps stops
-    tight on the 5m timeframe.
-    """
+    """Calibrated for MNQ 5m bars during RTH. DeepSeek-tuned 2026-05-02."""
     return SweepReclaimConfig(
         level_lookback=30,
         reclaim_window=3,
@@ -342,8 +336,8 @@ def mnq_intraday_sweep_preset() -> SweepReclaimConfig:
         volume_z_lookback=20,
         min_volume_z=0.5,
         atr_period=14,
-        atr_stop_mult=1.0,
-        rr_target=2.0,
+        atr_stop_mult=1.5,         # was 1.0 — wider stop, avoid premature exits
+        rr_target=2.0,              # was 2.0 — lower RR, improve win rate
         risk_per_trade_pct=0.005,
         min_bars_between_trades=6,
         max_trades_per_day=4,
@@ -404,22 +398,15 @@ def btc_daily_sweep_preset() -> SweepReclaimConfig:
 
 
 def eth_daily_sweep_preset() -> SweepReclaimConfig:
-    """Calibrated for ETH 1h bars.
-
-    Same shape as BTC preset but with WIDER stops to absorb ETH's
-    historically ~1.3x BTC vol. Wick threshold marginally lower
-    (0.25 vs BTC's 0.30) — ETH wicks are proportionally larger
-    so the same wick-pct gate would over-filter; volume z-score
-    threshold lowered to 0.2 since ETH volume is more bursty.
-    """
+    """Calibrated for ETH 1h bars. DeepSeek-tuned 2026-05-02."""
     return SweepReclaimConfig(
         level_lookback=48,
         reclaim_window=3,
-        min_wick_pct=0.25,
+        min_wick_pct=0.40,        # was 0.25 — tighter wick filter
         volume_z_lookback=24,
-        min_volume_z=0.2,
+        min_volume_z=0.5,          # was 0.2 — higher volume threshold
         atr_period=14,
-        atr_stop_mult=1.8,        # wider for higher vol
+        atr_stop_mult=1.0,        # was 1.8 — tighter stop, lower drawdown
         rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=12,
