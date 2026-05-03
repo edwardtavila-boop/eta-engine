@@ -33,7 +33,7 @@ auth:
   defaults:
     base_url: "https://localhost:5000/v1/api"
 
-# Contracts traded (decision #3 — MNQ only at first, NQ added later)
+# Contracts traded (decision #3 — MNQ first, NQ later, MBT/MET for micro crypto)
 contracts:
   mnq:
     conid: 0                 # populated by IBKR contract-search at startup
@@ -49,6 +49,20 @@ contracts:
     tick_value_usd: 5.00
     exchange: "CME"
     active: false            # flipped after MNQ 30 trades green
+  mbt:
+    conid: 0                 # populated by IBKR contract-search at startup
+    symbol: "MBT"
+    tick_size: 0.05
+    tick_value_usd: 1.00     # Micro Bitcoin, 0.1 BTC, $1.00/pt
+    exchange: "CME"
+    active: true
+  met:
+    conid: 0
+    symbol: "MET"
+    tick_size: 0.05
+    tick_value_usd: 0.10     # Micro Ether, 0.1 ETH, $0.10/pt
+    exchange: "CME"
+    active: true
 
 # Per-bot sizing (decision #3 + #4)
 sizing:

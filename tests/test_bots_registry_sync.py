@@ -78,6 +78,9 @@ VARIANT_BOT_IDS: set[str] = {
     "funding_rate_btc",
     "mnq_sweep_reclaim", "eth_sweep_reclaim", "sol_sweep_scalp",
     "mnq_futures_optimized", "btc_optimized", "btc_crypto_scalp",
+    # MBT/MET — CME micro crypto futures, variants of BTC/ETH bots
+    "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
+    "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
 }
 
 

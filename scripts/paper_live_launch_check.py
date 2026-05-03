@@ -228,6 +228,8 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
         "eth_sage_daily": "eth_perp",
         "eth_compression": "eth_perp",
         "btc_compression": "btc_hybrid",
+        "mbt_sweep_reclaim": "btc_hybrid",
+        "met_sweep_reclaim": "eth_perp",
     }
     underlying = variant_map.get(bot_id)
     return bool(underlying and (bots_dir / underlying).exists())

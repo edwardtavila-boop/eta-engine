@@ -1080,6 +1080,89 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={"deactivated": True, "deactivation_reason": "no news feed"},
     ),
 
+    # ═══════════════════════════════════════════════════════════════════
+    # MBT/MET — CME micro crypto futures (US-person compliant)
+    # ═══════════════════════════════════════════════════════════════════
+    # Uses the same proven sweep_reclaim+scorecard architecture as BTC
+    # but on CME micro futures with RTH session constraints. MBT tracks
+    # BTCUSDT through M2 translation, MET tracks ETHUSDT.
+
+    StrategyAssignment(
+        bot_id="mbt_sweep_reclaim",
+        strategy_id="mbt_sweep_reclaim_v1",
+        symbol="MBT",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=10,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "NEW: CME Micro Bitcoin futures (0.1 BTC) using proven "
+            "sweep_reclaim+scorecard architecture from BTC. "
+            "US-person compliant, RTH-only CME session gating."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 3.0, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MBT",
+            "daily_loss_limit_pct": 4.0,
+            "fleet_corr_partner": "btc_hybrid",
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="met_sweep_reclaim",
+        strategy_id="met_sweep_reclaim_v1",
+        symbol="MET",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=10,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "NEW: CME Micro Ether futures (0.1 ETH) using proven "
+            "sweep_reclaim+scorecard architecture from ETH. "
+            "US-person compliant, RTH-only CME session gating."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 3.0, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MET",
+            "daily_loss_limit_pct": 4.0,
+            "fleet_corr_partner": "eth_perp",
+        },
+    ),
+
 )
 
 

@@ -314,67 +314,70 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     # internally from price). PROMOTED 2026-04-27 as the cleanest
     # gate-passer of the foundation supercharge sweep.
     BotRequirements(
-        bot_id="eth_compression",
-        requirements=(
-            DataRequirement("bars", "ETH", "1h", critical=True),
-        ),
-        sources_hint=(
-            "Coinbase/Binance ETH bars (no exotic feeds — pure price-action)",
-        ),
-    ),
-    # btc_compression — research candidate (tight-knob sweep winner).
-    BotRequirements(
-        bot_id="btc_compression",
+        bot_id="crypto_seed",
         requirements=(
             DataRequirement("bars", "BTC", "1h", critical=True),
+            DataRequirement("bars", "BTC", "4h", critical=True,
+                note="grid-level sizing decision interval"),
+            DataRequirement("bars", "BTC", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "ETH", "1h", critical=False,
+                note="ETH-BTC correlation for dual regime"),
         ),
         sources_hint=(
-            "Coinbase/Binance BTC 1h bars (no exotic feeds)",
-        ),
-    ),
-    BotRequirements(
-        bot_id="xrp_perp",
-        requirements=(
-            DataRequirement("bars", "XRP", "1h", critical=True),
-            DataRequirement("bars", "XRP", "D", critical=True),
-            DataRequirement("funding", "XRP", "8h", critical=True),
-            DataRequirement("sentiment", "XRP", "D", critical=True,
-                note="XRP is news-driven; daily SEC-filing mention count is "
-                "the natural cadence (intraday sentiment requires a paid "
-                "news feed). Wired 2026-04-27 via fetch_xrp_news_history."),
-            DataRequirement("correlation", "BTC", "1h", critical=True),
-        ),
-        sources_hint=(
-            "Bybit XRP perps",
-            "lunarcrush MCP (sentiment)",
-            "news MCP (regulatory)",
+            "scripts/fetch_btc_bars.py (Coinbase spot bars)",
+            "CryptoSeed — grid+DCA overlay bot (BTCUSDT on Binance/Tastytrade)",
         ),
     ),
     BotRequirements(
         bot_id="sol_perp",
         requirements=(
-            DataRequirement("bars", "SOL", "5m", critical=True),
             DataRequirement("bars", "SOL", "1h", critical=True),
-            DataRequirement("bars", "SOL", "D", critical=True),
-            DataRequirement("funding", "SOL", "8h", critical=False,
-                note="SOL perp funding skew; optional for paper"),
-            DataRequirement("onchain", "SOL", None, critical=False,
-                note="Solana on-chain; smaller signal than BTC/ETH"),
-            DataRequirement("correlation", "BTC", "1h", critical=True,
-                note="SOL is a high-beta BTC proxy"),
+            DataRequirement("bars", "SOL", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="SOL-BTC correlation for regime"),
         ),
-        sources_hint=("Bybit SOL perps", "blockscout MCP"),
+        sources_hint=(
+            "Coinbase/Binance SOL bars",
+            "SolPerp — SOL perpetual (SOLUSDT on Binance/Tastytrade)",
+        ),
     ),
     BotRequirements(
-        bot_id="crypto_seed",
+        bot_id="xrp_perp",
+        requirements=(),
+        sources_hint=("DEACTIVATED — no news/regulatory feed for XRP.",),
+    ),
+
+    # ── MBT/MET — CME micro crypto futures ─────────────────────────
+    # MBT (Micro Bitcoin) / MET (Micro Ether) track BTCUSDT/ETHUSDT
+    # through the M2 translation layer. Data needs mirror the proven
+    # sweep_reclaim BTC/ETH strategies but on CME session hours.
+    BotRequirements(
+        bot_id="mbt_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "BTC", "D", critical=True),
-            DataRequirement("bars", "ETH", "D", critical=True),
-            DataRequirement("bars", "SOL", "D", critical=False),
-            DataRequirement("macro", "FEAR_GREED", "D", critical=False,
-                note="DCA timing aware of extreme-fear / extreme-greed"),
+            DataRequirement("bars", "MBT", "5m", critical=True),
+            DataRequirement("bars", "MBT", "1h", critical=True),
+            DataRequirement("bars", "MBT", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "ETH", "1h", critical=False,
+                note="ETH-BTC correlation as regime confirmation"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
         ),
-        sources_hint=("any reliable daily-bar source",),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
+    ),
+    BotRequirements(
+        bot_id="met_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "MET", "5m", critical=True),
+            DataRequirement("bars", "MET", "1h", critical=True),
+            DataRequirement("bars", "MET", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="BTC-ETH correlation as regime confirmation"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+        ),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
 )
 

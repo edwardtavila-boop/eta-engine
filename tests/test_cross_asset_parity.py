@@ -68,15 +68,20 @@ def test_sweep_reclaim_has_preset_for_every_supported_asset() -> None:
 
 
 def test_sweep_reclaim_crypto_presets_differ_by_vol_class() -> None:
-    """BTC < ETH < SOL on ATR-stop multiplier (vol increases)."""
+    """SOL > BTC > ETH on ATR-stop (DeepSeek-tuned 2026-05-02).
+
+    ETH gets a tighter stop (1.0) than BTC (1.5) because ETH sweeps
+    are shallower and faster — wider stops degrade edge on ETH. SOL
+    is materially more volatile (~2x BTC) and keeps the widest stop.
+    """
     btc = btc_daily_sweep_preset()
     eth = eth_daily_sweep_preset()
     sol = sol_daily_sweep_preset()
-    assert btc.atr_stop_mult < eth.atr_stop_mult < sol.atr_stop_mult
-    # ETH/SOL have looser wick thresholds (their wicks are
-    # proportionally larger so the same threshold over-filters)
-    assert eth.min_wick_pct < btc.min_wick_pct
-    assert sol.min_wick_pct < eth.min_wick_pct
+    assert eth.atr_stop_mult < btc.atr_stop_mult < sol.atr_stop_mult
+    # Wick thresholds: SOL loosest (big fake wicks), ETH tightest
+    # (DeepSeek-tuned 0.40 to reduce false reclaims on noisy ETH)
+    assert sol.min_wick_pct < btc.min_wick_pct
+    assert btc.min_wick_pct < eth.min_wick_pct
 
 
 def test_sweep_reclaim_futures_vs_crypto_separation() -> None:
@@ -121,13 +126,17 @@ def test_compression_has_preset_for_every_supported_asset() -> None:
 
 
 def test_compression_crypto_vol_ladder() -> None:
-    """ATR-stop multiplier ladders BTC < ETH < SOL (vol order)."""
+    """ATR-stop: SOL > BTC > ETH (DeepSeek-tuned 2026-05-02).
+
+    ETH gets tighter ATR stop (1.0) and RR (1.5) than BTC because
+    its compression breakouts are faster/more shallow — wider stops
+    degrade edge. SOL is materially more volatile and keeps widest stop.
+    """
     btc = btc_compression_preset()
     eth = eth_compression_preset()
     sol = sol_compression_preset()
-    assert btc.atr_stop_mult < eth.atr_stop_mult < sol.atr_stop_mult
-    # SOL widens RR target to compensate for wider stops
-    assert sol.rr_target > btc.rr_target
+    assert eth.atr_stop_mult < btc.atr_stop_mult < sol.atr_stop_mult
+    assert eth.rr_target < btc.rr_target < sol.rr_target
 
 
 def test_compression_futures_vs_crypto_separation() -> None:
