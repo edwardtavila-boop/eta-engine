@@ -3600,3 +3600,21 @@ def dashboard_telemetry() -> dict:
             },
         )
     return {"uptime_s": round(time.time() - _START_TS, 2), "routes": rows}
+
+
+# ── Legacy Command Center compatibility ──
+@app.get("/api/public/dashboard")
+async def public_dashboard():
+    """Bridge for old Command Center React app."""
+    from fastapi.responses import JSONResponse
+    try:
+        import httpx
+        async with httpx.AsyncClient() as c:
+            r = await c.get("http://127.0.0.1:8000/api/bot-fleet", timeout=5)
+            return JSONResponse(r.json())
+    except Exception:
+        return JSONResponse({"status": "offline", "bots": []})
+
+@app.get("/api/master/status")
+async def master_status():
+    return {"status": "live", "mode": "autonomous", "uptime": "connected"}
