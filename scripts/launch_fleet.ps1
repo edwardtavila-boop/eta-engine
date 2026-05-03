@@ -17,14 +17,9 @@ if (Test-Path "$gwDir\run.bat") {
 
 # 2. Verify gateway
 Write-Host "`n[2/5] Checking IBKR Gateway..." -ForegroundColor Yellow
-try {
-    $r = Invoke-RestMethod "https://127.0.0.1:5000/v1/api/portfolio/accounts" -SkipCertificateCheck -TimeoutSec 10
-    Write-Host "  Gateway ONLINE — $($r.Count) account(s)" -ForegroundColor Green
-} catch {
-    Write-Host "  Gateway not ready yet — continuing anyway..." -ForegroundColor Yellow
-}
-
-# 3. Start all ETA trading tasks
+$gwCheck = Invoke-RestMethod "https://127.0.0.1:5000/v1/api/portfolio/accounts" -SkipCertificateCheck -TimeoutSec 10 -ErrorAction SilentlyContinue
+if ($gwCheck) { Write-Host "  Gateway ONLINE — accounts found" -ForegroundColor Green }
+else { Write-Host "  Gateway not ready — continuing..." -ForegroundColor Yellow }
 Write-Host "`n[3/5] Starting trading tasks..." -ForegroundColor Yellow
 $tasks = schtasks /query /fo CSV /v 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "ETA-*Directional*" -or $_.TaskName -like "ETA-*Grid*" -or $_.TaskName -like "ETA-Eco-*" -or $_.TaskName -like "ETA-Avengers*" -or $_.TaskName -like "ETA-Jarvis*" -or $_.TaskName -like "ETA-Hermes*" -or $_.TaskName -like "ETA-Health*" -or $_.TaskName -like "ETA-Fleet*" -or $_.TaskName -like "ETA-Log*" -or $_.TaskName -like "ETA-Prometheus*" -or $_.TaskName -like "ETA-Quantum*" }
 foreach ($t in $tasks) {
