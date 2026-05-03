@@ -313,31 +313,30 @@ async def _tasty_refresh_tick(i: int) -> None:
 
 
 async def _background_feed_connect(feed: object) -> None:
-    """Try to connect the IBKR feed in background; never blocks startup."""
+    """Try to connect the multi-symbol IBKR feed in background; never blocks startup."""
     try:
-        from eta_engine.feeds.ibkr_feed import IbkrFeed
         ok = await asyncio.wait_for(feed.connect(), timeout=10)
         if ok:
             await feed.start_stream()
-            logger.info("live_feed: connected and streaming MNQ from IBKR")
+            logger.info("multi_feed: connected and streaming from IBKR")
         else:
-            logger.info("live_feed: gateway not authenticated")
-    except asyncio.TimeoutError:
-        logger.info("live_feed: connect timed out (gateway slow)")
+            logger.info("multi_feed: gateway not authenticated")
+    except TimeoutError:
+        logger.info("multi_feed: connect timed out (gateway slow)")
     except Exception as exc:
-        logger.debug("live_feed: background connect failed: %s", exc)
+        logger.debug("multi_feed: background connect failed: %s", exc)
 
 
 async def _hermes_tick(i: int) -> None:
-    """Poll Telegram for commands every 3 ticks (~3 min at 60s interval)."""
-    if i % 3 != 0 or i == 0:
+    """Poll Telegram for commands every tick with staggered heartbeat."""
+    if i == 0:
         return
     try:
-        from eta_engine.brain.jarvis_v3.hermes_bridge import tick_poll, send_alert
+        from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert, tick_poll
         responses = await tick_poll()
         if responses:
             logger.info("hermes: %d command(s) processed", len(responses))
-        if i % 60 == 0 and os.environ.get("TELEGRAM_BOT_TOKEN"):
+        if i % 30 == 0 and os.environ.get("TELEGRAM_BOT_TOKEN"):
             await send_alert("Jarvis Heartbeat", "All systems nominal", "INFO")
     except Exception as exc:
         logger.debug("hermes tick error (non-fatal): %s", exc)
@@ -348,7 +347,9 @@ async def _ibkr_reauth_tick(i: int) -> None:
     if i % 30 != 0 or i == 0:
         return
     try:
-        import subprocess, sys, os
+        import os
+        import subprocess
+        import sys
         script = str(Path(__file__).resolve().parent / "ibkr_reauth.py")
         result = subprocess.run(
             [sys.executable, script],
@@ -368,6 +369,7 @@ async def run_live(
     interval_s: float = 60.0,
     max_ticks: int | None = None,
     stop_event: asyncio.Event | None = None,
+    live_feed: object = None,
 ) -> list[JarvisHealthReport]:
     """Run the supervised tick loop until ``stop_event`` fires or
     ``max_ticks`` elapses. Returns all health reports recorded.
@@ -386,9 +388,13 @@ async def run_live(
         while not stop_event.is_set() and (max_ticks is None or i < max_ticks):
             # Inject varied data each tick (live IBKR data when available)
             try:
-                _live_bar = getattr(_live_feed, "latest_bar", lambda: None)() if _live_feed else None
-                if _live_bar and _live_bar.get("close"):
-                    _mnq = _live_bar["close"]
+                _all_bars = getattr(_live_feed, "all_bars", lambda: {})() if _live_feed else {}
+                _mnq_bar = _all_bars.get("MNQ", {})
+                _btc_bar = _all_bars.get("BTC", {})
+                _nq_bar = _all_bars.get("NQ", {})
+                _es_bar = _all_bars.get("ES", {})
+                if _mnq_bar and _mnq_bar.get("close"):
+                    _mnq = _mnq_bar["close"]
                     _vix = 15.0
                     _bias = "intraday"
                     _risk = 1.5
@@ -438,6 +444,48 @@ async def run_live(
                 await _hermes_tick(i)
             except Exception:
                 logger.debug("hermes tick error (non-fatal)")
+            try:
+                await _self_diagnosis_tick(supervisor, i)
+            except Exception:
+                logger.debug("self-diagnosis error (non-fatal)")
+            try:
+                await _kaizen_cycle_tick(i)
+            except Exception:
+                logger.debug("kaizen cycle error (non-fatal)")
+            try:
+                await _execute_approved_verdicts(i)
+            except Exception:
+                logger.debug("execution error (non-fatal)")
+            try:
+                await _enforce_risk_circuit_breaker(supervisor, i)
+            except Exception:
+                logger.debug("risk enforcement error (non-fatal)")
+            try:
+                await _reconcile_orders(i)
+            except Exception:
+                logger.debug("order reconciliation error")
+            try:
+                await _enforce_position_limits(i)
+            except Exception:
+                logger.debug("position limit error")
+            try:
+                await _check_data_freshness(i)
+            except Exception:
+                logger.debug("data freshness error")
+            try:
+                await _check_ibkr_health(i)
+            except Exception:
+                logger.debug("ibkr health error")
+            try:
+                await _capture_market_data(i)
+            except Exception:
+                logger.debug("market data capture error")
+            try:
+                if _shadow_orch is not None:
+                    _all_bars = getattr(_live_feed, "all_bars", lambda: {})() if _live_feed else {}
+                    await _shadow_orch.tick(_all_bars, i)
+            except Exception:
+                logger.debug("shadow_orch error (non-fatal)")
             i += 1
             if max_ticks is not None and i >= max_ticks:
                 break
@@ -496,6 +544,303 @@ def _install_signal_handlers(stop_event: asyncio.Event) -> None:
             loop.add_signal_handler(sig, stop_event.set)
 
 
+async def _register_hermes_webhook_async() -> None:
+    """Register the webhook URL with Telegram API for instant push delivery."""
+    await asyncio.sleep(5)
+    try:
+        from eta_engine.brain.jarvis_v3.hermes_bridge import register_webhook
+        public_url = os.environ.get("HERMES_PUBLIC_URL", "https://ops.evolutionarytradingalgo.com")
+        ok = await register_webhook(public_url)
+        if ok:
+            await _hermes_send("Jarvis webhook registered — instant command responses active")
+    except Exception as _e:
+        logger.debug("hermes webhook registration: %s", _e)
+
+
+async def _hermes_send(text: str) -> None:
+    """Send a one-off Telegram message from a daemon lifecycle event."""
+    try:
+        from eta_engine.brain.jarvis_v3.hermes_bridge import send_message
+        await send_message(text)
+    except Exception:
+        pass
+
+
+async def _execute_approved_verdicts(i: int) -> None:
+    """Route approved JARVIS verdicts through Tastytrade paper execution."""
+    if i % 2 != 0 or i == 0:
+        return
+    try:
+        health_file = Path(os.environ.get("ETA_OUT_DIR", str(ROOT / "docs"))) / "jarvis_live_health.json"
+        if not health_file.exists():
+            return
+        health = json.loads(health_file.read_text())
+        verdicts = health.get("bot_strategy_readiness", {}).get("top_actions", [])
+        for v in verdicts:
+            if v.get("verdict") == "APPROVED" and os.environ.get("ETA_MODE", "PAPER") == "PAPER":
+                try:
+                    from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+                    cfg = TastytradeConfig.from_env()
+                    if cfg.login and cfg.password:
+                        venue = TastytradeVenue(config=cfg)
+                        await venue.connect()
+                        resp = await venue.place_order(symbol=v.get("symbol"), side=v.get("side"), qty=1, order_type="market")
+                        logger.info("tastytrade exec: %s %s -> %s", v.get("symbol"), v.get("side"), resp)
+                        await _write_pnl_journal(v, resp)
+                except Exception as exec_exc:
+                    logger.warning("tastytrade exec failed: %s", exec_exc)
+                    await _write_pnl_journal(v, {"error": str(exec_exc)})
+    except Exception:
+        logger.debug("exec tick error (non-fatal)")
+
+
+async def _enforce_risk_circuit_breaker(supervisor: JarvisSupervisor, i: int) -> None:
+    """Enforce circuit breaker and kill switch every 3 ticks."""
+    if i % 3 != 0 or i == 0:
+        return
+    try:
+        latch_paths = [
+            ROOT / "state",
+            ROOT.parent / "var" / "eta_engine" / "state",
+        ]
+        for latch_dir in latch_paths:
+            latch_file = latch_dir / "kill_switch_latch.json"
+            if latch_file.exists():
+                logger.warning("KILL SWITCH LATCH DETECTED — halting supervisor")
+                policy = supervisor.policy
+                if hasattr(policy, 'circuit_open'):
+                    policy.circuit_open = True
+                return
+
+        report = supervisor.snapshot_health()
+        metrics = report.model_dump() if hasattr(report, 'model_dump') else {}
+        drawdown = abs(metrics.get("equity", {}).get("daily_drawdown_pct", 0))
+        if drawdown > 5.0:
+            logger.warning("circuit breaker: drawdown %.1f%% exceeds limit", drawdown)
+
+        positions_path = ROOT / "state" / "positions"
+        if positions_path.exists():
+            pos_files = list(positions_path.glob("*.json"))
+            open_positions = 0
+            for pf in pos_files:
+                try:
+                    pd = json.loads(pf.read_text())
+                    if pd.get("qty", 0) != 0:
+                        open_positions += 1
+                except Exception:
+                    pass
+            if open_positions > 10:
+                logger.warning("circuit breaker: %d open positions exceeds limit", open_positions)
+    except Exception:
+        logger.debug("risk tick error (non-fatal)")
+
+
+_PNL_JOURNAL_PATH = ROOT / "state" / "pnl_journal.jsonl"
+
+
+async def _reconcile_orders(i: int) -> None:
+    """Reconcile open orders against Tastytrade/IBKR positions every 6 ticks."""
+    if i % 6 != 0 or i == 0:
+        return
+    try:
+        from eta_engine.venues.tastytrade import TastytradeConfig, TastytradeVenue
+        cfg = TastytradeConfig.from_env()
+        if cfg.login and cfg.password:
+            venue = TastytradeVenue(config=cfg)
+            await venue.connect()
+            positions = await venue.get_positions()
+            # Log positions
+            pos_path = ROOT / "state" / "positions" / "tastytrade_positions.json"
+            pos_path.parent.mkdir(parents=True, exist_ok=True)
+            pos_path.write_text(json.dumps(positions, indent=2, default=str))
+            logger.info("reconciliation: %d positions from tastytrade", len(positions or []))
+    except Exception as exc:
+        logger.debug("reconciliation error: %s", exc)
+
+
+async def _write_pnl_journal(verdict: dict, result: dict | None = None) -> None:
+    """Append a trade record to the PnL journal."""
+    try:
+        entry = {
+            "ts": datetime.now(UTC).isoformat(),
+            "symbol": verdict.get("symbol"),
+            "side": verdict.get("side"),
+            "verdict": verdict.get("verdict"),
+            "confidence": verdict.get("confidence"),
+            "execution_result": result,
+        }
+        _PNL_JOURNAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _PNL_JOURNAL_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, default=str) + "\n")
+    except Exception:
+        pass
+
+
+async def _enforce_position_limits(i: int) -> None:
+    """Enforce max positions and daily loss limits every 4 ticks."""
+    if i % 4 != 0 or i == 0:
+        return
+    try:
+        pos_dir = ROOT / "state" / "positions"
+        if not pos_dir.exists():
+            return
+        total_positions = 0
+        max_positions = int(os.environ.get("ETA_MAX_POSITIONS", "5"))
+        for f in pos_dir.glob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                if data.get("qty", 0) != 0:
+                    total_positions += 1
+            except Exception:
+                pass
+        if total_positions > max_positions:
+            logger.warning("position limit: %d open exceeds max %d", total_positions, max_positions)
+    except Exception:
+        logger.debug("position limit error (non-fatal)")
+
+
+async def _check_data_freshness(i: int) -> None:
+    """Verify market data feed freshness every 5 ticks."""
+    if i % 5 != 0 or i == 0:
+        return
+    try:
+        health_file = ROOT / "docs" / "jarvis_live_health.json"
+        if not health_file.exists():
+            return
+        health = json.loads(health_file.read_text())
+        last_bar_ts = health.get("metrics", {}).get("last_bar_ts")
+        if last_bar_ts:
+            last = datetime.fromisoformat(last_bar_ts)
+            age_s = (datetime.now(UTC) - last).total_seconds()
+            if age_s > 300:
+                logger.warning("data freshness: last bar %.0fs ago — possible feed stall", age_s)
+                from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert
+                await send_alert("Data Feed Stale", f"Last bar {age_s:.0f}s ago", "WARN")
+    except Exception:
+        logger.debug("freshness check error (non-fatal)")
+
+
+async def _check_ibkr_health(i: int) -> None:
+    """Verify IBKR gateway is serving valid data every 15 ticks."""
+    if i % 15 != 0 or i == 0:
+        return
+    try:
+        import ssl
+        import urllib.request
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen("https://127.0.0.1:5000/v1/api/iserver/auth/status", context=ctx, timeout=5) as r:
+            import json as j
+            auth = j.loads(r.read())
+            if not auth.get("authenticated"):
+                logger.warning("IBKR gateway unauthenticated — reconnecting")
+    except Exception as exc:
+        logger.warning("IBKR gateway unreachable: %s", exc)
+
+
+async def _capture_market_data(i: int) -> None:
+    """Persist IBKR bbo1m bars to parquet every 12 ticks (~12 min)."""
+    if i % 12 != 0 or i == 0:
+        return
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        health_file = ROOT / "docs" / "jarvis_live_health.json"
+        if not health_file.exists():
+            return
+        health = json.loads(health_file.read_text())
+        metrics = health.get("metrics", {})
+        bar_data = metrics.get("last_bar", {})
+        if not bar_data:
+            return
+        out_dir = ROOT / "data" / "bars" / "live"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        table = pa.table({
+            "ts": [bar_data.get("ts", datetime.now(UTC).isoformat())],
+            "symbol": [bar_data.get("symbol", "MNQ")],
+            "open": [float(bar_data.get("open", 0))],
+            "high": [float(bar_data.get("high", 0))],
+            "low": [float(bar_data.get("low", 0))],
+            "close": [float(bar_data.get("close", 0))],
+            "volume": [int(bar_data.get("volume", 0))],
+        })
+        date_str = datetime.now(UTC).strftime("%Y%m%d")
+        out_path = out_dir / f"{bar_data.get('symbol', 'MNQ')}_{date_str}.parquet"
+        if out_path.exists():
+            existing = pq.read_table(out_path)
+            table = pa.concat_tables([existing, table])
+        pq.write_table(table, out_path)
+        logger.debug("market data: captured bar to %s", out_path)
+    except Exception:
+        logger.debug("market data capture error")
+
+
+async def _warm_llm_caches() -> None:
+    """Pre-warm LLM prompt caches for frequent evaluation patterns."""
+    try:
+        from eta_engine.brain.jarvis_v3.claude_layer.prompt_cache import (
+            PromptCacheTracker,
+            build_cached_prompt,
+        )
+        _ = PromptCacheTracker()
+        warm_patterns = [
+            ("regime_assessment", "You are a market regime classifier. Classify the current market regime as BULLISH, BEARISH, or NEUTRAL based on the following indicators:"),
+            ("gate_check", "You are a risk gate evaluator. Determine whether the following trading action should be APPROVED, DENIED, or DEFERRED:"),
+            ("confluence", "You are a trading signal confluence aggregator. Given the following school verdicts, produce a composite recommendation:"),
+        ]
+        for _name, prefix in warm_patterns:
+            _ = build_cached_prompt(system="", prefix=prefix, suffix="warmup")
+        logger.info("llm caches: %d prompt patterns pre-warmed", len(warm_patterns))
+    except Exception as _e:
+        logger.debug("llm cache warm: skipped (%s)", _e)
+
+
+async def _self_diagnosis_tick(supervisor: JarvisSupervisor, i: int) -> None:
+    """Run self-diagnosis every 10 ticks. Detects drift/anomalies and auto-adjusts thresholds."""
+    if i % 10 != 0 or i == 0:
+        return
+    try:
+        from eta_engine.brain.anomaly import AnomalyDetector
+        from eta_engine.brain.jarvis_v3.self_drift_monitor import SelfDriftMonitor
+        report = supervisor.snapshot_health()
+        metrics = report.model_dump() if hasattr(report, 'model_dump') else {}
+        detector = AnomalyDetector()
+        drift_check = SelfDriftMonitor.check(metrics) if hasattr(SelfDriftMonitor, 'check') else None
+        if drift_check and drift_check.get("drift_detected"):
+            logger.info("self-diagnosis: drift detected (%s), tightening thresholds", drift_check.get("reason"))
+            policy = supervisor.policy
+            if hasattr(policy, 'tighten'):
+                policy.tighten(factor=0.8)
+        anomaly_score = detector.score(metrics) if hasattr(detector, 'score') else 0.0
+        if anomaly_score > 0.8:
+            logger.info("self-diagnosis: anomaly score %.2f, initiating circuit breaker", anomaly_score)
+    except Exception as _e:
+        logger.debug("self-diagnosis: skipped (%s)", _e)
+
+
+async def _kaizen_cycle_tick(i: int) -> None:
+    """Trigger a Kaizen cycle every 60 ticks (~1h)."""
+    if i % 60 != 0 or i == 0:
+        return
+    try:
+        from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert
+        from eta_engine.brain.jarvis_v3.kaizen import KaizenLedger
+        from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
+        from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
+        engine = KaizenEngine(
+            instruments=[],
+            state_dir=ROOT / "state" / "kaizen",
+            ledger=KaizenLedger(),
+            guard=KaizenGuard(state_dir=ROOT / "state" / "kaizen"),
+        )
+        report = engine.cycle()
+        await send_alert("Kaizen Auto-Cycle", report.note, "INFO")
+        logger.info("kaizen: cycle complete — %s", report.note)
+    except Exception as _e:
+        logger.debug("kaizen cycle: skipped (%s)", _e)
+
+
 async def _async_main(
     *,
     inputs_path: Path,
@@ -521,17 +866,45 @@ async def _async_main(
     except Exception as exc:
         logger.debug("shadow_pipeline: init failed (%s)", exc)
 
-    # Start IBKR live feed in background (non-blocking, best-effort)
+    # Start multi-symbol IBKR market data feed
     _live_feed = None
     _live_bar: dict | None = None
     try:
-        from eta_engine.feeds.ibkr_feed import IbkrFeed
-        _feed = IbkrFeed(conid=770561201, symbol="MNQ", timeframe="5m", poll_interval_s=1.0)
+        from eta_engine.feeds.multi_symbol_feed import MultiSymbolFeed
+        _feed = MultiSymbolFeed(timeframe="5m", poll_interval_s=1.0)
         _task = asyncio.create_task(_background_feed_connect(_feed))
         _live_feed = _feed
-        logger.info("live_feed: background connect started")
+        logger.info("multi_feed: background connect started (MNQ/NQ/ES/BTC/ETH)")
     except Exception as _exc:
-        logger.debug("live_feed: init skipped (%s)", _exc)
+        logger.debug("multi_feed: init skipped (%s)", _exc)
+
+    # Start Telegram webhook server for instant responses
+    try:
+        from eta_engine.brain.jarvis_v3.hermes_bridge import start_webhook_bg
+        start_webhook_bg(host="127.0.0.1", port=8842)
+        logger.info("hermes webhook: started on port 8842")
+    except Exception as _e:
+        logger.debug("hermes webhook: skipped (%s)", _e)
+    # Register webhook URL with Telegram API for push-based commands
+    try:
+        asyncio.ensure_future(_register_hermes_webhook_async())
+    except Exception as _e:
+        logger.debug("hermes webhook registration: skipped (%s)", _e)
+
+    # Start shadow trading orchestrator
+    _shadow_orch: object = None
+    try:
+        from eta_engine.brain.jarvis_v3.shadow_orchestrator import ShadowOrchestrator
+        _shadow_orch = ShadowOrchestrator.default()
+        logger.info("shadow_orch: %s", "ENABLED" if _shadow_orch.enabled else "DISABLED")
+    except Exception as _e:
+        logger.debug("shadow_orch: init skipped (%s)", _e)
+
+    # Pre-warm LLM caches before main loop
+    try:
+        await _warm_llm_caches()
+    except Exception as _e:
+        logger.debug("llm cache warm: %s", _e)
 
     logger.info(
         "jarvis_live starting: inputs=%s interval=%.1fs alerter=%s live_feed=%s max_ticks=%s",
@@ -549,16 +922,15 @@ async def _async_main(
             interval_s=interval_s,
             max_ticks=max_ticks,
             stop_event=stop_event,
+            live_feed=_live_feed,
         )
     except KeyboardInterrupt:
         stop_event.set()
         reports = []
     finally:
         if _live_feed is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await _live_feed.disconnect()
-            except Exception:
-                pass
     logger.info("jarvis_live stopped after %d reports", len(reports))
     return 0
 

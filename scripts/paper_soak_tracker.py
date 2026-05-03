@@ -20,6 +20,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -30,10 +31,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
 if hasattr(sys.stdout, "reconfigure"):
-    try:
+    with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, OSError):
-        pass
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
@@ -62,7 +61,9 @@ def _save_ledger(ledger: dict) -> None:
     LEDGER_PATH.write_text(json.dumps(ledger, indent=2, default=str), encoding="utf-8")
 
 
-def run_session(days: int = 30) -> int:
+def run_session(days: int = 30, parallel: int = 0) -> int:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from eta_engine.strategies.per_bot_registry import all_assignments, is_active
 
     ledger = _load_ledger()
@@ -77,14 +78,33 @@ def run_session(days: int = 30) -> int:
             continue
         eligible.append(a)
 
-    for a in eligible:
-        cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
-        print(f"  [{a.bot_id}] running {days}d on {a.symbol}/{a.timeframe}...", end=" ", flush=True)
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if proc.returncode == 0 and proc.stdout.strip():
-                data = json.loads(proc.stdout)
-                bot_sessions = ledger["bot_sessions"].get(a.bot_id, [])
+    if parallel <= 0:
+        # Sequential mode (original)
+        for a in eligible:
+            _run_one_bot(a, days, now, ledger)
+        _save_ledger(ledger)
+        return 0
+
+    # Parallel mode — run up to `parallel` bots simultaneously
+    workers = max(1, min(parallel, len(eligible)))
+    print(f"Running {len(eligible)} bots with {workers} workers in parallel...")
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {}
+        for a in eligible:
+            f = ex.submit(_run_one_bot_subprocess, a, days)
+            futures[f] = a
+
+        for f in as_completed(futures):
+            a = futures[f]
+            try:
+                bot_id, data, error = f.result()
+            except Exception as e:
+                print(f"  [{a.bot_id}] EXCEPTION: {e}")
+                continue
+
+            if data is not None:
+                bot_sessions = ledger["bot_sessions"].get(bot_id, [])
                 bot_sessions.append({
                     "date": now.isoformat(), "days": days,
                     "bars": data["bars"], "signals": data["signals"],
@@ -96,20 +116,66 @@ def run_session(days: int = 30) -> int:
                 })
                 if len(bot_sessions) > 30:
                     bot_sessions = bot_sessions[-30:]
-                ledger["bot_sessions"][a.bot_id] = bot_sessions
+                ledger["bot_sessions"][bot_id] = bot_sessions
                 total_trades = sum(s["trades"] for s in bot_sessions)
                 total_pnl = sum(s["pnl"] for s in bot_sessions)
-                print(f"{data['trades']} trades, PnL=${data['total_pnl']:+.2f} "
+                print(f"  [{bot_id}] {data['trades']} trades, PnL=${data['total_pnl']:+.2f} "
                       f"(cumulative: {total_trades}T, ${total_pnl:+.2f})")
+            elif error:
+                print(f"  [{bot_id}] ERROR: {error[:80]}")
             else:
-                print(f"ERROR: {proc.stderr[:80] if proc.stderr else 'no output'}")
-        except subprocess.TimeoutExpired:
-            print("TIMEOUT")
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"PARSE ERROR: {e}")
+                print(f"  [{bot_id}] ERROR: no output")
 
     _save_ledger(ledger)
     return 0
+
+
+def _run_one_bot(a, days: int, now, ledger: dict) -> None:
+    """Run one bot sequentially and update ledger in-place."""
+    cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
+    print(f"  [{a.bot_id}] running {days}d on {a.symbol}/{a.timeframe}...", end=" ", flush=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if proc.returncode == 0 and proc.stdout.strip():
+            data = json.loads(proc.stdout)
+            bot_sessions = ledger["bot_sessions"].get(a.bot_id, [])
+            bot_sessions.append({
+                "date": now.isoformat(), "days": days,
+                "bars": data["bars"], "signals": data["signals"],
+                "trades": data["trades"],
+                "winners": data["winners"], "losers": data["losers"],
+                "win_rate": data["win_rate"], "pnl": data["total_pnl"],
+                "avg_pnl_per_trade": data["avg_pnl_per_trade"],
+                "max_dd": data["max_dd"],
+            })
+            if len(bot_sessions) > 30:
+                bot_sessions = bot_sessions[-30:]
+            ledger["bot_sessions"][a.bot_id] = bot_sessions
+            total_trades = sum(s["trades"] for s in bot_sessions)
+            total_pnl = sum(s["pnl"] for s in bot_sessions)
+            print(f"{data['trades']} trades, PnL=${data['total_pnl']:+.2f} "
+                  f"(cumulative: {total_trades}T, ${total_pnl:+.2f})")
+        else:
+            print(f"ERROR: {proc.stderr[:80] if proc.stderr else 'no output'}")
+    except subprocess.TimeoutExpired:
+        print("TIMEOUT")
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"PARSE ERROR: {e}")
+
+
+def _run_one_bot_subprocess(a, days: int) -> tuple[str, dict | None, str | None]:
+    """Run one bot in a subprocess (for parallel mode). Returns (bot_id, data_dict, error_str)."""
+    import subprocess as sp
+    cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
+    try:
+        proc = sp.run(cmd, capture_output=True, text=True, timeout=600)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return a.bot_id, json.loads(proc.stdout), None
+        return a.bot_id, None, proc.stderr[:80] if proc.stderr else "no output"
+    except sp.TimeoutExpired:
+        return a.bot_id, None, "TIMEOUT"
+    except (json.JSONDecodeError, KeyError) as e:
+        return a.bot_id, None, str(e)
 
 
 def show_status() -> int:
@@ -141,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--days", type=int, default=30, help="days per paper session")
     p.add_argument("--status", action="store_true", help="show current soak status")
     p.add_argument("--reset", type=str, default=None, help="bot_id to reset soak clock")
+    p.add_argument("--parallel", type=int, default=0, help="run N bots in parallel (0=sequential)")
     args = p.parse_args(argv)
 
     if args.reset:
@@ -156,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.status:
         return show_status()
 
-    return run_session(days=args.days)
+    return run_session(days=args.days, parallel=args.parallel)
 
 
 if __name__ == "__main__":

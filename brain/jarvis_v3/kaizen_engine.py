@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from common.jarvis.controller import (
     JarvisController,
@@ -42,7 +42,9 @@ from common.jarvis.controller import (
     _sharpe_ratio,
     _win_rate,
 )
-from common.jarvis.instrument import InstrumentConfig
+
+if TYPE_CHECKING:
+    from common.jarvis.instrument import InstrumentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -332,34 +334,21 @@ class KaizenEngine:
 
     def _notify_hermes(self, report: KaizenCycleReport) -> None:
         try:
-            from hermes_jarvis_telegram.hermes_bridge import get_bridge
-            bridge = get_bridge()
-            bridge.notify_kaizen_cycle(
-                cycle_id=report.cycle_id,
-                proposals_approved=report.proposals_approved,
-                proposals_rejected=report.proposals_rejected,
-                strategies_promoted=report.strategies_promoted,
-                strategies_retired=report.strategies_retired,
-                quantum_count=report.quantum_invocations,
-                quantum_cost=report.quantum_cost_usd,
-                duration_ms=report.cycle_duration_ms,
+            from eta_engine.brain.jarvis_v3.hermes_bridge import send_alert
+            summary = (
+                f"Kaizen cycle {report.cycle_id}: "
+                f"{report.proposals_approved} approved, {report.proposals_rejected} rejected, "
+                f"{len(report.strategies_promoted)} promoted, {len(report.strategies_retired)} retired"
             )
-            for strategy in report.strategies_promoted:
-                parts = strategy.split("/", 1)
-                bridge.notify_strategy_lifecycle(
-                    strategy_name=parts[1] if len(parts) > 1 else strategy,
-                    instrument=parts[0] if parts else "",
-                    from_status="paper", to_status="live",
-                    reason="Kaizen auto-promotion — statistical gates passed",
-                )
-            for strategy in report.strategies_retired:
-                parts = strategy.split("/", 1)
-                bridge.notify_strategy_lifecycle(
-                    strategy_name=parts[1] if len(parts) > 1 else strategy,
-                    instrument=parts[0] if parts else "",
-                    from_status="live", to_status="retired",
-                    reason="Kaizen auto-retirement — persistent underperformance",
-                )
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(send_alert("Kaizen Cycle", summary, "INFO"))
+                else:
+                    asyncio.run(send_alert("Kaizen Cycle", summary, "INFO"))
+            except RuntimeError:
+                asyncio.run(send_alert("Kaizen Cycle", summary, "INFO"))
         except Exception:
             pass
 
@@ -515,11 +504,10 @@ class KaizenEngine:
 
         # Promote paper strategies that have enough evidence
         for name, entry in list(strategies.items()):
-            if entry.status == StrategyLifecycle.PAPER:
-                if self._ready_to_promote(entry, trades, cfg):
-                    entry.status = StrategyLifecycle.LIVE
-                    entry.last_promoted_at = now.isoformat()
-                    promoted.append(f"{symbol}/{name}")
+            if entry.status == StrategyLifecycle.PAPER and self._ready_to_promote(entry, trades, cfg):
+                entry.status = StrategyLifecycle.LIVE
+                entry.last_promoted_at = now.isoformat()
+                promoted.append(f"{symbol}/{name}")
 
         # Retire underperforming live strategies
         for name, entry in list(strategies.items()):

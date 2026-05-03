@@ -135,7 +135,6 @@ class TestKaizenGuard:
 class TestKaizenEngine:
     def test_cycle_with_no_trades_returns_empty_report(self):
         from common.jarvis.instrument import InstrumentConfig
-
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,7 +147,6 @@ class TestKaizenEngine:
 
     def test_cycle_processes_instrument_trades(self):
         from common.jarvis.instrument import InstrumentConfig
-
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,7 +163,6 @@ class TestKaizenEngine:
 
     def test_register_strategy(self):
         from common.jarvis.instrument import InstrumentConfig
-
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -177,7 +174,6 @@ class TestKaizenEngine:
 
     def test_should_retire_unprofitable_strategy(self):
         from common.jarvis.instrument import InstrumentConfig
-
         from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -196,7 +192,7 @@ class TestKaizenEngine:
 
 class TestHermesBridge:
     def test_notification_formatting(self):
-        from hermes_jarvis_telegram.hermes_bridge import (
+        from eta_engine.brain.jarvis_v3.hermes_bridge import (
             JarvisNotification,
             MessagePriority,
         )
@@ -211,19 +207,19 @@ class TestHermesBridge:
         assert "This is a test" in html
 
     def test_bridge_initializes_without_telegram(self):
-        from hermes_jarvis_telegram.hermes_bridge import HermesBridge
+        from eta_engine.brain.jarvis_v3.hermes_bridge import (
+            poll_commands,
+            send_message,
+        )
 
-        bridge = HermesBridge(bot_token="", chat_id="")
-        assert bridge._enable_telegram is False
-        status = bridge.status()
-        assert status["telegram_enabled"] is False
+        assert callable(send_message)
+        assert callable(poll_commands)
 
     def test_bridge_queues_notification(self):
-        from hermes_jarvis_telegram.hermes_bridge import HermesBridge
 
         push_count = [0]
 
-        def fake_push(title, body):
+        async def fake_send(title, body):
             push_count[0] += 1
             return True
 
@@ -237,7 +233,7 @@ class TestHermesBridge:
         assert bridge._sent_count >= 1 or push_count[0] >= 1
 
     def test_store_and_forward(self):
-        from hermes_jarvis_telegram.hermes_bridge import (
+        from eta_engine.brain.jarvis_v3.hermes_bridge import (
             HermesBridge,
             JarvisNotification,
             MessagePriority,

@@ -21,6 +21,11 @@ CRYPTO_ONCHAIN_ROOT = CRYPTO_DATA_ROOT / "onchain"
 CRYPTO_SENTIMENT_ROOT = CRYPTO_DATA_ROOT / "sentiment"
 CRYPTO_MACRO_ROOT = CRYPTO_DATA_ROOT / "macro"
 
+BACKTEST_CACHE_ROOT = WORKSPACE_ROOT / "mnq_backtest" / ".cache" / "parquet"
+BACKTEST_RUNS_ROOT = WORKSPACE_ROOT / "mnq_backtest" / "runs"
+BACKTEST_DATA_ROOT = WORKSPACE_ROOT / "mnq_backtest" / "data"
+DATABENTO_DATA_ROOT = WORKSPACE_ROOT / "data" / "bars" / "databento"
+
 ROOT_LOGS_DIR = WORKSPACE_ROOT / "logs"
 ROOT_VAR_DIR = WORKSPACE_ROOT / "var"
 ETA_RUNTIME_STATE_DIR = ROOT_VAR_DIR / "eta_engine" / "state"

@@ -105,6 +105,13 @@ def _compute_sharpe_calmar(state_dir: Path, runtime_state_dir: Path) -> dict:
     else:
         details["data_source"] = "declared_capability"
 
+    wf_results_path = workspace_roots.BACKTEST_RUNS_ROOT / "walk_forward_summary.json"
+    if wf_results_path.exists():
+        wf = _read_json(wf_results_path)
+        details["wf_aggregate_oos_sharpe"] = wf.get("agg_oos_sharpe")
+        details["wf_dsr_pass_pct"] = wf.get("dsr_pass_pct")
+        details["wf_bars"] = wf.get("total_bars")
+
     base = 0.0
     if strategies >= 20:
         base = 7.0
@@ -118,6 +125,8 @@ def _compute_sharpe_calmar(state_dir: Path, runtime_state_dir: Path) -> dict:
         base += 0.5
     if walk_forward_files > 0:
         base += 0.5
+    if wf_results_path.exists() and wf.get("agg_oos_sharpe", 0) > 0.5:
+        base += 1.0
     if len(pnl_values) >= 20:
         if sharpe > 1.5:
             base += 2.0

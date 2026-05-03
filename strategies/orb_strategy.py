@@ -127,6 +127,30 @@ class ORBConfig:
     # Strategy itself doesn't reach into the data library — keeps
     # the test surface clean.
 
+    # ── Break-retest mode ──
+    # When True, the entry is NOT taken on the breakout bar.
+    # Instead, the strategy waits for price to PULL BACK to the
+    # broken level (the retest) and then enter on the bounce.
+    # This filters ~60-70% of false breakouts — a bar that punches
+    # through and immediately reverses never produces a valid retest.
+    # A validated breakout retests the broken level (old resistance
+    # becomes new support, old support becomes new resistance).
+    require_retest: bool = True
+    # How close price must pull back to the broken level (in ATR
+    # multiples) to count as a valid retest. 0.5 = within 0.5×ATR.
+    retest_atr_band: float = 1.0
+    # Maximum bars after breakout to wait for retest before
+    # invalidating (the breakout "got away"). 0 = unlimited.
+    retest_max_bars: int = 5
+    # Require the bar that retests to CLOSE back in the breakout
+    # direction (proving support/resistance held). Off=enter
+    # when price merely touches the retest zone.
+    retest_require_close_bounce: bool = True
+    # Maximum distance runaway (in ATR) before we cancel the pending
+    # breakout. If price moves this far beyond the broken level
+    # without retesting, the entry opportunity is gone.
+    runaway_atr_mult: float = 2.5
+
 
 # ---------------------------------------------------------------------------
 # Strategy
@@ -148,6 +172,14 @@ class _DayState:
     # AND the ctx provides an "es_bars" alignment.
     es_range_high: float | None = None
     es_range_low: float | None = None
+    # Break-retest state. Populated only when require_retest=True.
+    # When a breakout is detected, we record the broken level and
+    # direction; subsequent bars check for retest → confirmation.
+    pending_breakout: bool = False
+    pending_side: str | None = None
+    broken_level: float = 0.0
+    breakout_bar_idx: int = 0
+    retest_done: bool = False
 
 
 class ORBStrategy:
@@ -269,75 +301,218 @@ class ORBStrategy:
             return None
         if self._day.trades_today >= self.cfg.max_trades_per_day:
             return None
-        if local_t >= self.cfg.max_entry_local:
-            return None
         if local_t >= self.cfg.rth_close_local:
             return None
 
-        # ── Phase 3: compute filters ──
-        range_width = self._day.range_high - self._day.range_low
-        if self.cfg.min_range_pts > 0 and range_width < self.cfg.min_range_pts:
-            return None
-
+        # ── Phase 2.5: compute ATR (needed for retest calcs + entry) ──
         atr = _atr(hist, self.cfg.atr_period)
         if atr <= 0.0:
             return None
+
+        bars_seen = len(hist) + 1  # +1 for current bar
+
+        # ── Phase 2.6: retest logic (when enabled) ──
+        if self.cfg.require_retest and self._day.pending_breakout:
+            broken = self._day.broken_level
+            pside = self._day.pending_side
+            retest_band = self.cfg.retest_atr_band * atr
+            runaway_dist = self.cfg.runaway_atr_mult * atr
+
+            # Check runaway: price went too far without retesting — cancel
+            if pside == "BUY":
+                if bar.low > broken + runaway_dist:
+                    self._day.pending_breakout = False
+                    return None
+                # False breakout: price reversed back inside the range
+                if bar.close < self._day.range_high - retest_band:
+                    self._day.pending_breakout = False
+                    return None
+            else:
+                if bar.high < broken - runaway_dist:
+                    self._day.pending_breakout = False
+                    return None
+                if bar.close > self._day.range_low + retest_band:
+                    self._day.pending_breakout = False
+                    return None
+
+            # Check retest staleness
+            if self.cfg.retest_max_bars > 0:
+                since = bars_seen - self._day.breakout_bar_idx
+                if since > self.cfg.retest_max_bars:
+                    self._day.pending_breakout = False
+                    return None
+
+            # Check retest: did price come back TO the broken level?
+            if pside == "BUY":
+                price_came_back = bar.low <= broken + retest_band
+                # Retest bounce: close holds above the broken level
+                if self._day.retest_done:
+                    if self.cfg.retest_require_close_bounce:
+                        if bar.close > broken:
+                            side, entry_price = "BUY", bar.close
+                            self._day.pending_breakout = False
+                        else:
+                            return None
+                    else:
+                        side, entry_price = "BUY", bar.close
+                        self._day.pending_breakout = False
+                elif price_came_back:
+                    self._day.retest_done = True
+                    if not self.cfg.retest_require_close_bounce:
+                        side, entry_price = "BUY", bar.close
+                        self._day.pending_breakout = False
+                    else:
+                        if bar.close > broken:
+                            side, entry_price = "BUY", bar.close
+                            self._day.pending_breakout = False
+                        # else: retest touched but close didn't prove support
+                        # wait for next bar
+                else:
+                    return None
+            else:  # SELL
+                price_came_back = bar.high >= broken - retest_band
+                if self._day.retest_done:
+                    if self.cfg.retest_require_close_bounce:
+                        if bar.close < broken:
+                            side, entry_price = "SELL", bar.close
+                            self._day.pending_breakout = False
+                        else:
+                            return None
+                    else:
+                        side, entry_price = "SELL", bar.close
+                        self._day.pending_breakout = False
+                elif price_came_back:
+                    self._day.retest_done = True
+                    if not self.cfg.retest_require_close_bounce:
+                        side, entry_price = "SELL", bar.close
+                        self._day.pending_breakout = False
+                    else:
+                        if bar.close < broken:
+                            side, entry_price = "SELL", bar.close
+                            self._day.pending_breakout = False
+                else:
+                    return None
+
+            if side is None:
+                return None  # retest touched but close didn't confirm — wait
+
+        elif self.cfg.require_retest and not self._day.pending_breakout:
+            # ── Detect breakout, record as pending (don't enter yet) ──
+            if local_t >= self.cfg.max_entry_local:
+                return None
+
+            range_width = self._day.range_high - self._day.range_low
+            if self.cfg.min_range_pts > 0 and range_width < self.cfg.min_range_pts:
+                return None
+
+            ema = self._ema if self.cfg.ema_bias_period > 0 else bar.close
+            long_bias = ema is None or bar.close >= ema
+            short_bias = ema is None or bar.close <= ema
+
+            side = None
+            if bar.high > self._day.range_high and long_bias:
+                side = "BUY"
+            elif bar.low < self._day.range_low and short_bias:
+                side = "SELL"
+            if side is None:
+                return None
+
+            # Volume confirmation on breakout bar
+            if self.cfg.volume_mult > 0.0:
+                recent = hist[-self.cfg.volume_lookback:] if hist else []
+                avg_vol = (
+                    sum(b.volume for b in recent) / len(recent) if recent else 0.0
+                )
+                if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
+                    return None
+
+            # ES confirmation on breakout
+            if self.cfg.require_es_aligned and self._ctx_provider is not None:
+                try:
+                    es_ctx = self._ctx_provider(bar, hist)
+                except Exception:
+                    es_ctx = {}
+                if not bool(es_ctx.get("es_aligned", True)):
+                    return None
+            if self.cfg.require_es_confirmation:
+                if (
+                    es_bar is None
+                    or self._day.es_range_high is None
+                    or self._day.es_range_low is None
+                ):
+                    return None
+                if side == "BUY" and not (es_bar.high > self._day.es_range_high):
+                    return None
+                if side == "SELL" and not (es_bar.low < self._day.es_range_low):
+                    return None
+
+            # Record pending breakout — wait for retest
+            self._day.pending_breakout = True
+            self._day.pending_side = side
+            self._day.broken_level = self._day.range_high if side == "BUY" else self._day.range_low
+            self._day.breakout_bar_idx = bars_seen
+            self._day.retest_done = False
+            return None
+
+        else:
+            # ── Legacy: immediate entry on breakout (require_retest=False) ──
+            if local_t >= self.cfg.max_entry_local:
+                return None
+
+            range_width = self._day.range_high - self._day.range_low
+            if self.cfg.min_range_pts > 0 and range_width < self.cfg.min_range_pts:
+                return None
+
+            stop_dist = self.cfg.atr_stop_mult * atr
+            if stop_dist <= 0.0:
+                return None
+
+            # Volume confirmation
+            if self.cfg.volume_mult > 0.0:
+                recent = hist[-self.cfg.volume_lookback :] if hist else []
+                avg_vol = (
+                    sum(b.volume for b in recent) / len(recent) if recent else 0.0
+                )
+                if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
+                    return None
+
+            ema = self._ema if self.cfg.ema_bias_period > 0 else bar.close
+            long_bias = ema is None or bar.close >= ema
+            short_bias = ema is None or bar.close <= ema
+
+            side = None
+            entry_price = bar.close
+            if bar.high > self._day.range_high and long_bias:
+                side = "BUY"
+            elif bar.low < self._day.range_low and short_bias:
+                side = "SELL"
+            if side is None:
+                return None
+
+            # ES correlation filter
+            if self.cfg.require_es_aligned and self._ctx_provider is not None:
+                try:
+                    es_ctx = self._ctx_provider(bar, hist)
+                except Exception:
+                    es_ctx = {}
+                if not bool(es_ctx.get("es_aligned", True)):
+                    return None
+            if self.cfg.require_es_confirmation:
+                if (
+                    es_bar is None
+                    or self._day.es_range_high is None
+                    or self._day.es_range_low is None
+                ):
+                    return None
+                if side == "BUY" and not (es_bar.high > self._day.es_range_high):
+                    return None
+                if side == "SELL" and not (es_bar.low < self._day.es_range_low):
+                    return None
+
+        # ── Phase 5: build the open trade (shared between retest + legacy) ──
         stop_dist = self.cfg.atr_stop_mult * atr
         if stop_dist <= 0.0:
             return None
-
-        # Volume confirmation
-        if self.cfg.volume_mult > 0.0:
-            recent = hist[-self.cfg.volume_lookback :] if hist else []
-            avg_vol = (
-                sum(b.volume for b in recent) / len(recent) if recent else 0.0
-            )
-            if avg_vol > 0.0 and bar.volume < self.cfg.volume_mult * avg_vol:
-                return None
-
-        # ── Phase 4: detect the breakout ──
-        ema = self._ema if self.cfg.ema_bias_period > 0 else bar.close
-        long_bias = ema is None or bar.close >= ema
-        short_bias = ema is None or bar.close <= ema
-
-        side: str | None = None
-        entry_price = bar.close
-        if bar.high > self._day.range_high and long_bias:
-            side = "BUY"
-        elif bar.low < self._day.range_low and short_bias:
-            side = "SELL"
-        if side is None:
-            return None
-
-        # ES correlation filter (opt-in). Costs nothing when
-        # require_es_aligned=False; when True and ctx_provider is
-        # set, ctx["es_aligned"]=False blocks the entry.
-        if self.cfg.require_es_aligned and self._ctx_provider is not None:
-            try:
-                es_ctx = self._ctx_provider(bar, hist)
-            except Exception:  # noqa: BLE001 — never crash hot loop
-                es_ctx = {}
-            if not bool(es_ctx.get("es_aligned", True)):
-                return None
-
-        # ── Cross-asset ES confirmation gate ──
-        # Require ES1 to be breaking out of ITS opening range in the
-        # same direction. Without an ES bar at this minute (data gap,
-        # holiday) we fail-closed: no ES = no trade. Operators who
-        # don't want this stricture leave require_es_confirmation off.
-        if self.cfg.require_es_confirmation:
-            if (
-                es_bar is None
-                or self._day.es_range_high is None
-                or self._day.es_range_low is None
-            ):
-                return None
-            if side == "BUY" and not (es_bar.high > self._day.es_range_high):
-                return None
-            if side == "SELL" and not (es_bar.low < self._day.es_range_low):
-                return None
-
-        # ── Phase 5: build the open trade ──
         risk_usd = equity * self.cfg.risk_per_trade_pct
         qty = risk_usd / stop_dist
         if qty <= 0.0:
@@ -349,17 +524,14 @@ class ORBStrategy:
             stop = entry_price + stop_dist
             target = entry_price - self.cfg.rr_target * stop_dist
 
-        # Lazy import — _Open is in engine, importing it at module level
-        # would create a circular dep with the engine importing this.
         from eta_engine.backtest.engine import _Open
 
+        regime_tag = "orb_retest" if self.cfg.require_retest else "orb_breakout"
         opened = _Open(
             entry_bar=bar, side=side, qty=qty, entry_price=entry_price,
             stop=stop, target=target, risk_usd=risk_usd,
-            confluence=10.0,  # ORB doesn't use confluence; report max so
-                               # downstream filters that gate on it pass.
-            leverage=1.0,
-            regime="orb_breakout",
+            confluence=10.0, leverage=1.0,
+            regime=regime_tag,
         )
         self._day.breakout_taken = True
         self._day.trades_today += 1

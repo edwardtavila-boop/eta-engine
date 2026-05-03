@@ -18,13 +18,8 @@ import logging
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
-from eta_engine.brain.jarvis_v3.sage.base import (
-    MarketContext,
-    SageReport,
-    SchoolBase,
-    SchoolVerdict,
-)
 from eta_engine.brain.jarvis_v3.sage.confluence import aggregate
 from eta_engine.brain.jarvis_v3.sage.regime import detect_regime
 from eta_engine.brain.jarvis_v3.sage.schools.cross_asset_correlation import CrossAssetCorrelationSchool
@@ -50,6 +45,14 @@ from eta_engine.brain.jarvis_v3.sage.schools.volatility_regime import Volatility
 from eta_engine.brain.jarvis_v3.sage.schools.vpa import VPASchool
 from eta_engine.brain.jarvis_v3.sage.schools.weis_wyckoff import WeisWyckoffSchool
 from eta_engine.brain.jarvis_v3.sage.schools.wyckoff import WyckoffSchool
+
+if TYPE_CHECKING:
+    from eta_engine.brain.jarvis_v3.sage.base import (
+        MarketContext,
+        SageReport,
+        SchoolBase,
+        SchoolVerdict,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +186,22 @@ def consult_sage(
         if not school.applies_to(ctx):
             continue
         schools_to_run.append((name, school))
+
+    # School quality gate: suppress schools with sustained poor performance
+    # (hit_rate < 0.35 with > 20 observations). Uses edge tracker data.
+    quality_filtered = []
+    try:
+        from eta_engine.brain.jarvis_v3.sage.edge_tracker import get_tracker
+        tracker = get_tracker()
+        for name, school in schools_to_run:
+            edge = tracker.get(name)
+            if edge is not None and edge.n_obs > 20 and edge.hit_rate < 0.35:
+                logger.debug("school %s supressed: hit_rate=%.2f n=%d", name, edge.hit_rate, edge.n_obs)
+                continue
+            quality_filtered.append((name, school))
+    except Exception:
+        quality_filtered = schools_to_run
+    schools_to_run = quality_filtered
 
     # Pre-compute shared features so every school reuses the same work.
     # EMAs, pivots, volume profiles are computed once and cached.

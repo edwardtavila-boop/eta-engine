@@ -101,3 +101,6 @@ docs/strategy_baselines.json
 
 # Stage-2 decommission: legacy command_center (VPS-only, untracked)
 command_center/
+
+secrets/
+common/

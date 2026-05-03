@@ -48,19 +48,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from eta_engine.brain.avengers.alfred import Alfred
 from eta_engine.brain.avengers.base import (
     AVENGERS_JOURNAL,
-    COST_RATIO,
     DryRunExecutor,
     Executor,
     Persona,
     PersonaId,
     TaskEnvelope,
     TaskResult,
-    describe_persona,
-    tier_for,
 )
 from eta_engine.brain.avengers.batman import Batman
+from eta_engine.brain.avengers.deepseek_executor import DeepSeekExecutor
+from eta_engine.brain.avengers.deepseek_reasoner import DeepSeekReasoner
+from eta_engine.brain.avengers.deepseek_steward import DeepSeekSteward
 from eta_engine.brain.avengers.robin import Robin
-from eta_engine.brain.model_policy import ModelTier
+from eta_engine.brain.model_policy import COST_RATIO, ModelTier, tier_for
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -76,6 +76,12 @@ _TIER_TO_PERSONA: dict[ModelTier, PersonaId] = {
     ModelTier.OPUS: PersonaId.BATMAN,
     ModelTier.SONNET: PersonaId.ALFRED,
     ModelTier.HAIKU: PersonaId.ROBIN,
+}
+
+_TIER_TO_DEEPSEEK: dict[ModelTier, PersonaId] = {
+    ModelTier.OPUS: PersonaId.DEEPSEEK_REASONER,
+    ModelTier.SONNET: PersonaId.DEEPSEEK_STEWARD,
+    ModelTier.HAIKU: PersonaId.DEEPSEEK_EXECUTOR,
 }
 
 
@@ -120,30 +126,40 @@ class Fleet:
         admin: JarvisAdmin | None = None,
         executor: Executor | None = None,
         journal_path: Path | None = None,
+        deepseek_personas: bool = False,
     ) -> None:
         exe = executor or DryRunExecutor()
         path = journal_path or AVENGERS_JOURNAL
         self._admin = admin
         self._journal_path = path
-        # Instantiate one of each persona. They are stateless so a single
-        # instance per Fleet is enough.
-        self._personas: dict[PersonaId, Persona] = {
-            PersonaId.BATMAN: Batman(
-                executor=exe,
-                admin=admin,
-                journal_path=path,
-            ),
-            PersonaId.ALFRED: Alfred(
-                executor=exe,
-                admin=admin,
-                journal_path=path,
-            ),
-            PersonaId.ROBIN: Robin(
-                executor=exe,
-                admin=admin,
-                journal_path=path,
-            ),
-        }
+        self._use_deepseek = deepseek_personas
+        # Wave-18: DeepSeek personas (Reasoner/Steward/Executor) replace
+        # the legacy Batman/Alfred/Robin when deepseek_personas=True.
+        if deepseek_personas:
+            self._personas: dict[PersonaId, Persona] = {
+                PersonaId.DEEPSEEK_REASONER: DeepSeekReasoner(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+                PersonaId.DEEPSEEK_STEWARD: DeepSeekSteward(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+                PersonaId.DEEPSEEK_EXECUTOR: DeepSeekExecutor(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+            }
+        else:
+            # Legacy Batman/Alfred/Robin (default for backward compat)
+            self._personas: dict[PersonaId, Persona] = {
+                PersonaId.BATMAN: Batman(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+                PersonaId.ALFRED: Alfred(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+                PersonaId.ROBIN: Robin(
+                    executor=exe, admin=admin, journal_path=path,
+                ),
+            }
         # Metrics counters. Plain Counter/defaultdict so arithmetic is easy;
         # we serialize through ``metrics()``.
         self._calls: Counter[PersonaId] = Counter()
@@ -154,14 +170,13 @@ class Fleet:
     # --- routing -----------------------------------------------------------
 
     def _pick_persona(self, envelope: TaskEnvelope) -> PersonaId:
-        """Translate envelope -> persona id. Fall back to Alfred (Sonnet)."""
+        """Translate envelope -> persona id. Fall back to Steward/Alfred (Sonnet)."""
+        mapping = _TIER_TO_DEEPSEEK if self._use_deepseek else _TIER_TO_PERSONA
+        default = PersonaId.DEEPSEEK_STEWARD if self._use_deepseek else PersonaId.ALFRED
         if envelope.requested_tier is not None:
-            return _TIER_TO_PERSONA.get(
-                envelope.requested_tier,
-                PersonaId.ALFRED,
-            )
+            return mapping.get(envelope.requested_tier, default)
         policy_tier = tier_for(envelope.category)
-        return _TIER_TO_PERSONA.get(policy_tier, PersonaId.ALFRED)
+        return mapping.get(policy_tier, default)
 
     def persona_for(self, envelope: TaskEnvelope) -> Persona:
         """Expose routing decision for callers / tests."""
@@ -244,15 +259,10 @@ class Fleet:
 
     def describe(self) -> list[str]:
         """Human-readable summary of the personas -- for the console."""
-        return [
-            describe_persona(pid)
-            for pid in (
-                PersonaId.JARVIS,
-                PersonaId.BATMAN,
-                PersonaId.ALFRED,
-                PersonaId.ROBIN,
-            )
-        ]
+        lines = ["persona.jarvis: Jarvis (Policy Engine)"]
+        for pid, p in self._personas.items():
+            lines.append(f"{pid.value}: {p.__class__.__name__}")
+        return lines
 
     # --- internal ----------------------------------------------------------
 
