@@ -63,21 +63,18 @@ CONTRACT_MONTH = "202606"
 
 
 def _make_contract(symbol: str) -> Any | None:
-    """Build an ib_insync Contract for the given symbol.
-    
-    Returns None if the symbol is unrecognized (crypto may need Tastytrade).
-    """
-    from ib_insync import Contract, Future, Stock
+    """Build an ib_insync Contract for the given symbol."""
+    from ib_insync import Future, Stock, Contract
     
     sym = symbol.upper().strip()
     
-    # Futures
+    # Futures — must explicitly set exchange BEFORE creating Future object
     if sym in FUTURES_MAP:
         root, exchange, mult = FUTURES_MAP[sym]
-        contract = Future(root, exchange)
+        contract = Future(symbol=root, exchange=exchange, currency="USD")
         contract.lastTradeDateOrContractMonth = CONTRACT_MONTH
         contract.multiplier = mult
-        contract.currency = "USD"
+        contract.includeExpired = False
         return contract
     
     # Crypto (Paxos spot at IBKR)
@@ -92,7 +89,9 @@ def _make_contract(symbol: str) -> Any | None:
     
     # Try as stock
     if sym in ("SPY", "QQQ", "AAPL", "TSLA", "NVDA"):
-        return Stock(sym, "SMART", "USD")
+        contract = Stock(sym, "SMART", "USD")
+        contract.exchange = "SMART"
+        return contract
     
     return None
 
