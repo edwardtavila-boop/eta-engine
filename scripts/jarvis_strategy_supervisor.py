@@ -397,10 +397,44 @@ class ExecutionRouter:
         *,
         cfg: SupervisorConfig,
         bf_dir: Path,
+        bots_ref: Any | None = None,  # noqa: ANN401 — callable returning list[BotInstance]
     ) -> None:
         self.cfg = cfg
         self.bf_dir = bf_dir
         self.bf_dir.mkdir(parents=True, exist_ok=True)
+        # bots_ref is a callable returning the supervisor's current bot
+        # list. Used to compute fleet-aggregate open notional for the
+        # capital cap. Decoupled so unit tests can pass a fixed list
+        # without instantiating the full supervisor.
+        self._bots_ref = bots_ref or (lambda: [])
+
+    def _fleet_open_notional_for_symbol(self, symbol: str) -> float:
+        """Sum of |qty| * entry_price across bots whose symbol shares
+        the same asset class (crypto / futures / other). Used by
+        cap_qty_to_budget to enforce ETA_LIVE_*_FLEET_BUDGET_USD."""
+        from eta_engine.scripts.bracket_sizing import _is_crypto, _is_futures
+        same_class: Any
+        if _is_crypto(symbol):
+            same_class = _is_crypto
+        elif _is_futures(symbol):
+            same_class = _is_futures
+        else:
+            same_class = lambda s: not (_is_crypto(s) or _is_futures(s))  # noqa: E731
+
+        total = 0.0
+        for b in self._bots_ref():
+            try:
+                if not same_class(b.symbol):
+                    continue
+                pos = getattr(b, "open_position", None)
+                if not pos:
+                    continue
+                qty = abs(float(pos.get("qty", 0) or 0))
+                px = float(pos.get("entry_price", 0) or 0)
+                total += qty * px
+            except (AttributeError, TypeError, ValueError):
+                continue
+        return total
 
     def submit_entry(
         self,
@@ -452,15 +486,17 @@ class ExecutionRouter:
         # fleet; futures $500/bot, $5000 fleet — paper-friendly).
         try:
             from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+            fleet_notional = self._fleet_open_notional_for_symbol(bot.symbol)
             capped, _cap_reason = cap_qty_to_budget(
                 symbol=bot.symbol,
                 entry_price=ref_price,
                 requested_qty=qty,
+                fleet_open_notional_usd=fleet_notional,
             )
             if _cap_reason != "ok":
                 logger.info(
-                    "CAP %s %s req=%.6f → capped=%.6f (%s)",
-                    bot.bot_id, bot.symbol, qty, capped, _cap_reason,
+                    "CAP %s %s req=%.6f → capped=%.6f (%s, fleet_notional=%.2f)",
+                    bot.bot_id, bot.symbol, qty, capped, _cap_reason, fleet_notional,
                 )
             qty = capped
         except Exception as exc:  # noqa: BLE001 — cap is best-effort
@@ -652,6 +688,7 @@ class JarvisStrategySupervisor:
         self._router = ExecutionRouter(
             cfg=self.cfg,
             bf_dir=ROOT / "docs" / "btc_live" / "broker_fleet",
+            bots_ref=lambda: self.bots,
         )
 
     # ── Bot loading ──────────────────────────────────────────
@@ -718,6 +755,97 @@ class JarvisStrategySupervisor:
             logger.exception("JarvisFull bootstrap failed: %s", exc)
             return False
 
+    # ── Broker reconciliation (run once on startup) ──────────
+
+    def reconcile_with_broker(self) -> dict[str, Any]:
+        """Compare broker open positions to bot.open_position state and
+        log divergence. Run once at startup so a supervisor restart
+        with broker-side positions still open is surfaced before more
+        signals fire and over-leverage the account.
+
+        Does NOT auto-patch bot state — auto-attribution is unreliable
+        when multiple bots share a symbol (5 BTC bots / 1 broker BTC
+        net position). Operator reads the divergence + decides.
+        """
+        findings: dict[str, Any] = {
+            "checked_at": datetime.now(UTC).isoformat(),
+            "mode": self.cfg.mode,
+            "broker_only": [],
+            "supervisor_only": [],
+            "divergent": [],
+            "matched": 0,
+        }
+        if self.cfg.mode != "paper_live":
+            findings["skipped_reason"] = f"mode={self.cfg.mode} (only paper_live reconciles)"
+            return findings
+
+        try:
+            venue = _get_live_ibkr_venue()
+            broker_positions = _run_on_live_ibkr_loop(
+                venue.get_positions(), timeout=10.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("reconcile_with_broker: broker query failed: %s", exc)
+            findings["error"] = str(exc)
+            return findings
+
+        # Sum broker positions by symbol root
+        broker_by_root: dict[str, float] = {}
+        for p in broker_positions or []:
+            sym_raw = str(p.get("symbol", "")).upper()
+            root = sym_raw.rstrip("0123456789").replace("USD", "")
+            broker_by_root[root] = broker_by_root.get(root, 0.0) + float(p.get("position", 0))
+
+        # Sum supervisor positions by symbol root, signed
+        supervisor_by_root: dict[str, float] = {}
+        for bot in self.bots:
+            pos = getattr(bot, "open_position", None)
+            if not pos:
+                continue
+            sym_raw = bot.symbol.upper()
+            root = sym_raw.rstrip("0123456789").replace("USD", "")
+            qty = abs(float(pos.get("qty", 0) or 0))
+            side = str(pos.get("side", "BUY")).upper()
+            signed = qty if side == "BUY" else -qty
+            supervisor_by_root[root] = supervisor_by_root.get(root, 0.0) + signed
+
+        # Diff
+        for root in set(broker_by_root) | set(supervisor_by_root):
+            b_qty = broker_by_root.get(root, 0.0)
+            s_qty = supervisor_by_root.get(root, 0.0)
+            if abs(b_qty - s_qty) < 1e-6:
+                findings["matched"] += 1
+                continue
+            if abs(s_qty) < 1e-6:
+                findings["broker_only"].append({"symbol": root, "broker_qty": b_qty})
+            elif abs(b_qty) < 1e-6:
+                findings["supervisor_only"].append({"symbol": root, "supervisor_qty": s_qty})
+            else:
+                findings["divergent"].append({
+                    "symbol": root,
+                    "broker_qty": b_qty,
+                    "supervisor_qty": s_qty,
+                    "delta": b_qty - s_qty,
+                })
+
+        if findings["broker_only"] or findings["supervisor_only"] or findings["divergent"]:
+            logger.warning(
+                "RECONCILE divergence: broker_only=%s supervisor_only=%s divergent=%s",
+                findings["broker_only"], findings["supervisor_only"], findings["divergent"],
+            )
+        else:
+            logger.info(
+                "RECONCILE: supervisor + broker agree on %d symbols",
+                findings["matched"],
+            )
+
+        # Persist findings so the dashboard / red-team can see them
+        with contextlib.suppress(OSError):
+            (self.cfg.state_dir / "reconcile_last.json").write_text(
+                json.dumps(findings, indent=2, default=str), encoding="utf-8",
+            )
+        return findings
+
     # ── Main loop ───────────────────────────────────────────
 
     def run_forever(self) -> int:
@@ -732,6 +860,14 @@ class JarvisStrategySupervisor:
         if not self.bootstrap_jarvis():
             logger.error("JarvisFull bootstrap failed; exiting")
             return 2
+
+        # Reconcile broker positions with supervisor state. A restart
+        # while broker positions are still open used to silently grow
+        # the fleet (supervisor thinks it has nothing open, fires fresh
+        # entries on top of broker exposure). Reconcile surfaces this
+        # before more orders fly.
+        with contextlib.suppress(Exception):
+            self.reconcile_with_broker()
 
         logger.info(
             "supervisor running: %d bots, mode=%s, feed=%s, tick=%.0fs, "

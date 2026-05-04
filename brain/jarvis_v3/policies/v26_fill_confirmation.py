@@ -140,16 +140,36 @@ def _load_broker_router_fills_cached() -> list[dict]:
 
 
 def _broker_router_rejects_for_bot(bot_id: str) -> int:
-    """Count broker_router rejected/failed fills for this bot in the recent window."""
+    """Count broker_router rejected/failed fills for this bot in the recent window.
+
+    'Recent' is bounded by ETA_V26_REJECT_WINDOW_S (default 600s = 10 min).
+    Older entries are ignored so v26 doesn't spuriously flag bots whose
+    rejections come from a previous deployment / a now-fixed bug. Without
+    a freshness window v26 would keep firing forever on a single legacy
+    bad entry in broker_router_fills.jsonl.
+    """
     if not bot_id:
         return 0
     fills = _load_broker_router_fills_cached()
+    window_s = float(os.getenv("ETA_V26_REJECT_WINDOW_S", "600"))
+    cutoff = datetime.now(UTC).timestamp() - window_s
     rejected = 0
     for f in fills:
-        if f.get("bot_id") == bot_id:
-            status = str(f.get("status") or "").lower()
-            if "reject" in status or "fail" in status or status == "error":
-                rejected += 1
+        if f.get("bot_id") != bot_id:
+            continue
+        status = str(f.get("status") or "").lower()
+        if not ("reject" in status or "fail" in status or status == "error"):
+            continue
+        # Parse timestamp; ignore rows older than the freshness window
+        ts_str = f.get("ts") or f.get("timestamp") or ""
+        try:
+            ts_dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+            if ts_dt.astimezone(UTC).timestamp() < cutoff:
+                continue
+        except (ValueError, TypeError):
+            # Unparseable timestamp = treat as ancient and skip
+            continue
+        rejected += 1
     return rejected
 
 
