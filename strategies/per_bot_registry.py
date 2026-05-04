@@ -107,7 +107,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "ETH's 2-5%% per-bar volatility."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "research_candidate",
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "min_daily_conviction": 0.30,
             "strict_mode": False,
@@ -146,7 +146,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "provides directional filtering that crypto_orb alone lacks."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "research_candidate",
             "walk_forward_overrides": {"agg_degradation_mode": True, "long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "underlying_strategy": "crypto_orb",
             "crypto_orb_config": {
@@ -190,7 +190,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Replaces broken crypto_orb scorecard that lost -$32k."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "btc",
@@ -265,7 +265,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "to proven BTC sweep_reclaim+scorecard architecture."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "level_lookback": 48, "reclaim_window": 3,
@@ -302,7 +302,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Sharpe was real but factory ignores registry config in paper mode."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
             "sub_strategy_kind": "sweep_reclaim",
@@ -742,7 +742,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "mechanic (gravitational vs momentum)."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
                 "profile_lookback": 500, "bucket_size": 50.0,
@@ -1259,7 +1259,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "US-person compliant, RTH-only CME session gating."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
