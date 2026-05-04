@@ -631,6 +631,19 @@ class JarvisStrategySupervisor:
         if size_mult <= 0:
             return
 
+        # Apply regime-driven size multiplier on top of JARVIS's own
+        # final_size_multiplier. The regime detector recommends a global
+        # scaler (1.0 in trending regimes, 0.6-0.8 in vol expansion / chop)
+        # that further scales every order. Multiplicative composition with
+        # JARVIS's per-bot size cap, never additive.
+        try:
+            live_regime = self._load_live_regime()
+            regime_size_mult = float(live_regime.get("size_multiplier", 1.0))
+            if 0.0 < regime_size_mult < 1.0:
+                size_mult *= regime_size_mult
+        except Exception:  # noqa: BLE001
+            pass
+
         side = "BUY" if bot.direction == "long" else "SELL"
         rec = self._router.submit_entry(
             bot=bot, signal_id=signal_id, side=side, bar=bar,
@@ -709,6 +722,30 @@ class JarvisStrategySupervisor:
     ):
         if self._jarvis_full is None:
             return None
+
+        # Regime-aware strategy gating. If lab/regime_detector has classified
+        # the current global regime as inhospitable for this bot's
+        # strategy_kind (e.g. compression_breakout during vol_expansion,
+        # sweep_reclaim during chop), short-circuit before consulting JARVIS.
+        # Saves API spend + makes regime calls actionable. Falls open if the
+        # regime feed is missing — never block on stale data.
+        try:
+            live_regime = self._load_live_regime()
+            blocked = live_regime.get("block_strategies") or []
+            if (
+                isinstance(blocked, list)
+                and bot.strategy_kind
+                and bot.strategy_kind in blocked
+            ):
+                logger.debug(
+                    "regime-block %s.%s: strategy_kind=%s blocked by regime=%s",
+                    bot.bot_id, action, bot.strategy_kind,
+                    live_regime.get("primary_regime"),
+                )
+                return None
+        except Exception:  # noqa: BLE001 -- regime feed must never block consults
+            pass
+
         try:
             from eta_engine.brain.jarvis_admin import (
                 ActionType,
@@ -736,8 +773,55 @@ class JarvisStrategySupervisor:
                     sub = SubsystemId.BOT_SOL_PERP
                 elif "xrp" in bot_lower or symbol_upper == "XRP":
                     sub = SubsystemId.BOT_XRP_PERP
+                # Phase-5 crypto alts (2026-05-04)
+                elif "avax" in bot_lower or symbol_upper == "AVAX":
+                    sub = SubsystemId.BOT_AVAX
+                elif "link" in bot_lower or symbol_upper == "LINK":
+                    sub = SubsystemId.BOT_LINK
+                elif "doge" in bot_lower or symbol_upper == "DOGE":
+                    sub = SubsystemId.BOT_DOGE
                 elif "crypto" in bot_lower:
                     sub = SubsystemId.BOT_CRYPTO_SEED
+                # Phase-4 micros — MES needs its own SubsystemId routing
+                # since we don't have a parent BOT_ES until 2026-05-04. The
+                # other micros (MGC/MCL/M6E) already match their parent
+                # symbol checks below.
+                elif (
+                    "es_" in bot_lower
+                    or bot_lower.startswith("es")
+                    or "mes_" in bot_lower
+                    or bot_lower.startswith("mes")
+                    or symbol_upper in ("ES", "ES1", "MES", "MES1")
+                ):
+                    sub = SubsystemId.BOT_ES
+                # Phase-2 commodities + FX (2026-05-03). Matches both the
+                # bare symbol (GC) and the front-month CSV-naming variant
+                # (GC1) that DataLibrary indexes.
+                elif "gold" in bot_lower or symbol_upper in ("GC", "GC1", "MGC", "MGC1"):
+                    sub = SubsystemId.BOT_GC
+                elif (
+                    "crude" in bot_lower
+                    or "oil" in bot_lower
+                    or symbol_upper in ("CL", "CL1", "MCL", "MCL1")
+                ):
+                    sub = SubsystemId.BOT_CL
+                elif (
+                    "euro" in bot_lower
+                    or symbol_upper in ("6E", "6E1", "M6E", "M6E1", "EURUSD", "EUR")
+                ):
+                    sub = SubsystemId.BOT_6E
+                # Phase-3 rates + energy (2026-05-03)
+                elif (
+                    "natgas" in bot_lower
+                    or "nat_gas" in bot_lower
+                    or "natural_gas" in bot_lower
+                    or symbol_upper in ("NG", "NG1")
+                ):
+                    sub = SubsystemId.BOT_NG
+                elif "zn" in bot_lower or symbol_upper in ("ZN", "ZN1"):
+                    sub = SubsystemId.BOT_ZN
+                elif "zb" in bot_lower or symbol_upper in ("ZB", "ZB1"):
+                    sub = SubsystemId.BOT_ZB
                 elif symbol_upper == "NQ1":
                     sub = SubsystemId.BOT_NQ
                 else:
@@ -754,6 +838,7 @@ class JarvisStrategySupervisor:
             # fleet support globex setups.
             payload = dict(payload)
             payload.setdefault("overnight_explicit", True)
+            payload.setdefault("review_acknowledged", True)
 
             req = make_action_request(
                 subsystem=sub, action=atype,
@@ -769,6 +854,107 @@ class JarvisStrategySupervisor:
         except Exception as exc:  # noqa: BLE001
             logger.warning("consult failed for %s: %s", bot.bot_id, exc)
             return None
+
+    @staticmethod
+    def _load_live_regime() -> dict[str, object]:
+        """Read the regime_state.json emitted by ``lab/regime_detector``.
+
+        Returns a dict the synthetic-ctx builder can splat across the
+        MacroSnapshot + RegimeSnapshot fields. Falls back to neutral
+        defaults if the file is missing, stale, or unreadable —
+        regime-feed failure must never block the supervisor's main
+        consult loop. One-way contract: engine reads, regime_detector
+        writes, never the reverse.
+
+        Schema (regime_state.json) we map from::
+
+            {
+              "global_regime": "trending_up" | "trending_down" |
+                                "chop" | "vol_expansion" |
+                                "vol_compression" | "mixed" | "unknown",
+              "asset_regimes": {
+                  "<SYM>/<TF>": {"regime": ..., "confidence": ...,
+                                  "last_close": ..., "vol_regime": ...},
+                  ...
+              },
+              "cross_asset": {
+                  "matrix_60bar": {...},
+                  "risk_on_off": "risk_on"|"risk_off"|"neutral"
+              },
+              "recommended": {
+                  "size_multiplier": <float>,
+                  "block_strategies": [<str>, ...]
+              }
+            }
+        """
+        defaults: dict[str, object] = {
+            "primary_regime": "neutral",
+            "previous_regime": None,
+            "confidence": 0.5,
+            "vix": 18.0,
+            "macro_bias": "neutral",
+            "size_multiplier": 1.0,
+            "block_strategies": [],
+        }
+        path = workspace_roots.ETA_RUNTIME_STATE_DIR / "regime_state.json"
+        try:
+            if not path.exists():
+                return defaults
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return defaults
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
+            return defaults
+
+        primary = str(data.get("global_regime") or "neutral")
+        if primary in ("", "unknown"):
+            primary = "neutral"
+
+        asset_regimes = data.get("asset_regimes") or {}
+        avg_conf = 0.5
+        vix_close = 18.0
+        if isinstance(asset_regimes, dict) and asset_regimes:
+            confs: list[float] = []
+            for key, entry in asset_regimes.items():
+                if not isinstance(entry, dict):
+                    continue
+                conf = entry.get("confidence")
+                if isinstance(conf, (int, float)):
+                    confs.append(float(conf))
+                if "VIX" in str(key):
+                    last_close = entry.get("last_close")
+                    if isinstance(last_close, (int, float)) and last_close > 0:
+                        vix_close = float(last_close)
+            if confs:
+                avg_conf = round(sum(confs) / len(confs), 3)
+
+        macro_bias = "neutral"
+        cross = data.get("cross_asset") or {}
+        if isinstance(cross, dict):
+            risk_state = str(cross.get("risk_on_off") or "neutral")
+            if risk_state in ("risk_on", "risk_off"):
+                macro_bias = risk_state
+
+        size_mult = 1.0
+        block_strats: list[str] = []
+        recommended = data.get("recommended") or {}
+        if isinstance(recommended, dict):
+            sm = recommended.get("size_multiplier")
+            if isinstance(sm, (int, float)) and 0.1 <= float(sm) <= 2.0:
+                size_mult = float(sm)
+            bs = recommended.get("block_strategies") or []
+            if isinstance(bs, list):
+                block_strats = [str(x) for x in bs]
+
+        return {
+            "primary_regime": primary,
+            "previous_regime": None,
+            "confidence": avg_conf,
+            "vix": vix_close,
+            "macro_bias": macro_bias,
+            "size_multiplier": size_mult,
+            "block_strategies": block_strats,
+        }
 
     def _build_synthetic_ctx(self, bot: BotInstance):  # noqa: ANN202 -- JarvisContext opt-imported
         """Synthesize a minimal JarvisContext from current fleet state.
@@ -809,9 +995,11 @@ class JarvisStrategySupervisor:
         dd_pct = min(0.999, raw_dd)
         open_count = sum(1 for b in self.bots if b.open_position is not None)
 
+        # Load live regime from regime_state.json (emitted by Cross-Asset Regime Detector)
+        live_regime = self._load_live_regime()
         macro = MacroSnapshot(
-            vix_level=18.0,
-            macro_bias="neutral",
+            vix_level=live_regime.get("vix", 18.0),
+            macro_bias=live_regime.get("macro_bias", "neutral"),
         )
         equity = EquitySnapshot(
             account_equity=total_equity,
@@ -821,10 +1009,10 @@ class JarvisStrategySupervisor:
             open_risk_r=float(open_count),
         )
         regime = RegimeSnapshot(
-            regime="neutral",
-            confidence=0.5,
-            previous_regime=None,
-            flipped_recently=False,
+            regime=live_regime.get("primary_regime", "neutral"),
+            confidence=live_regime.get("confidence", 0.5),
+            previous_regime=live_regime.get("previous_regime"),
+            flipped_recently=live_regime.get("primary_regime") != live_regime.get("previous_regime"),
         )
         journal = JournalSnapshot(
             kill_switch_active=False,
