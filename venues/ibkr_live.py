@@ -329,15 +329,71 @@ class LiveIbkrVenue(VenueBase):
 
         try:
             if is_entry and is_crypto:
-                # PAXOS: plain market entry, no bracket. Stop/target
-                # management deferred to the supervisor's exit logic.
+                # PAXOS doesn't accept ib_insync.bracketOrder, so we build
+                # the bracket ourselves: market entry → wait for fill →
+                # standing stop + target with OCO simulated by fillEvent
+                # callbacks (when one fires, the other is cancelled).
                 ib_order = MarketOrder(action, qty)
+                ib_order.tif = "GTC"
                 trade = self._ib.placeOrder(contract, ib_order)
                 self._orders[order_id] = trade
                 logger.info(
-                    "LiveIbkrVenue CRYPTO ENTRY: %s %s %.6f MKT (no bracket) → orderId=%s",
+                    "LiveIbkrVenue CRYPTO ENTRY: %s %s %.6f MKT → orderId=%s",
                     action, request.symbol, float(qty), trade.order.orderId,
                 )
+
+                if stop_price is not None and target_price is not None:
+                    # Wait for entry fill before placing protective siblings.
+                    # PAXOS market orders typically fill in under a second;
+                    # 10s ceiling protects against a stuck-pending entry
+                    # leaving the position naked while we sleep forever.
+                    for _ in range(100):
+                        await asyncio.sleep(0.1)
+                        if trade.orderStatus.status == "Filled":
+                            break
+
+                    if trade.orderStatus.status == "Filled":
+                        from ib_insync import StopOrder
+                        opposite = "SELL" if action == "BUY" else "BUY"
+                        stop_order = StopOrder(opposite, qty, float(stop_price))
+                        stop_order.tif = "GTC"
+                        target_order = LimitOrder(opposite, qty, float(target_price))
+                        target_order.tif = "GTC"
+
+                        stop_trade = self._ib.placeOrder(contract, stop_order)
+                        target_trade = self._ib.placeOrder(contract, target_order)
+
+                        # OCO emulation: when either fills, cancel the
+                        # sibling. Wrapped in suppress so a race (sibling
+                        # already terminal) doesn't propagate.
+                        # noqa-ANN401: ib_insync Trade is dynamically typed
+                        def _make_canceler(other_trade):  # noqa: ANN001, ANN202
+                            def _cb(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+                                with contextlib.suppress(Exception):
+                                    if other_trade.orderStatus.status not in (
+                                        "Filled", "Cancelled", "ApiCancelled",
+                                    ):
+                                        self._ib.cancelOrder(other_trade.order)
+                            return _cb
+
+                        stop_trade.filledEvent += _make_canceler(target_trade)
+                        target_trade.filledEvent += _make_canceler(stop_trade)
+
+                        self._orders[order_id + ":stop"] = stop_trade
+                        self._orders[order_id + ":target"] = target_trade
+                        logger.info(
+                            "LiveIbkrVenue CRYPTO BRACKET: filled @ %.4f, "
+                            "stop=%.4f (id=%s) target=%.4f (id=%s) — OCO via callback",
+                            float(trade.orderStatus.avgFillPrice or 0.0),
+                            float(stop_price), stop_trade.order.orderId,
+                            float(target_price), target_trade.order.orderId,
+                        )
+                    else:
+                        logger.warning(
+                            "LiveIbkrVenue CRYPTO entry not filled in 10s "
+                            "(status=%s) — naked position, no stop/target placed",
+                            trade.orderStatus.status,
+                        )
             elif is_entry:
                 # ib_insync.bracketOrder returns [parent, takeProfit,
                 # stopLoss] with transmit chained (parent.transmit=False,
