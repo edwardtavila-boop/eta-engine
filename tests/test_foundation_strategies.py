@@ -136,11 +136,20 @@ def test_sweep_reclaim_wick_quality_gates() -> None:
 
 
 def test_sweep_reclaim_presets_differ() -> None:
-    """MNQ + BTC presets should differ on volatility-sensitive knobs."""
+    """MNQ + BTC presets should differ on volatility-sensitive knobs.
+
+    Both presets converged on ``atr_stop_mult=1.5`` (a defensible domain
+    choice — 1.5×ATR translates to vastly different $ risk on each asset),
+    so we assert differentiation on the OTHER volatility knobs that
+    remain deliberately divergent: ``level_lookback``, ``min_wick_pct``
+    (sweep-quality threshold), and ``min_bars_between_trades`` (cooldown).
+    If a future refactor makes ALL three of these match, that's the
+    signal the presets have lost their distinct character.
+    """
     mnq = mnq_intraday_sweep_preset()
     btc = btc_daily_sweep_preset()
     assert mnq.level_lookback != btc.level_lookback
-    assert mnq.atr_stop_mult != btc.atr_stop_mult
+    assert mnq.min_wick_pct != btc.min_wick_pct
     assert mnq.min_bars_between_trades != btc.min_bars_between_trades
 
 

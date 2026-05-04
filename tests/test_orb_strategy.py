@@ -45,11 +45,20 @@ def _config_for_test() -> BacktestConfig:
 
 
 def _fixture_strategy(**overrides) -> ORBStrategy:  # type: ignore[no-untyped-def]
-    """ORB with EMA bias disabled by default so tests don't need a long warmup."""
+    """ORB with EMA bias disabled by default so tests don't need a long warmup.
+
+    NOTE: ``require_retest=False`` is set explicitly so existing tests
+    exercise the immediate-breakout entry path. The strategy default
+    flipped to ``require_retest=True`` (a quality improvement that
+    reduces false breakouts) but the breakout-mechanic tests below
+    predate that change. Tests that specifically exercise the retest
+    flow override ``require_retest=True`` themselves.
+    """
     base = {
         "ema_bias_period": 0,
         "volume_mult": 0.0,
         "atr_period": 5,  # short so 5-bar warmup is enough
+        "require_retest": False,
     }
     base.update(overrides)
     return ORBStrategy(ORBConfig(**base))

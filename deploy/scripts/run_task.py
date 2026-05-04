@@ -263,28 +263,23 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     """
     import os
 
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
-
-    from eta_engine.brain.llm_provider import ModelTier, chat_completion
-
-    if not os.environ.get("DEEPSEEK_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
+    # Check skip condition FIRST, before any dotenv side-effects.
+    # This task INTENTIONALLY targets the Anthropic prompt cache (see the
+    # function docstring). DeepSeek doesn't share that cache, so the
+    # presence of DEEPSEEK_API_KEY is irrelevant — skip if Anthropic is
+    # unconfigured.
+    #
+    # Do NOT load .env above this check: the cron driver that invokes
+    # this task is responsible for env setup. Loading dotenv here would
+    # silently re-populate ANTHROPIC_API_KEY from the file even after a
+    # test monkeypatched it away, defeating the test's intent.
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"skipped": True, "reason": "no API key"}
 
+    from eta_engine.brain.llm_provider import ModelTier, chat_completion
     from eta_engine.brain.jarvis_v3.claude_layer.prompts import (
         PERSONA_PREFIXES,
     )
-
-    # Use dotenv to load .env if present (harmless if already loaded)
-    try:
-        from dotenv import load_dotenv
-
-        load_dotenv()
-    except ImportError:
-        pass
 
     results: dict[str, dict] = {}
     total_cost_est = 0.0

@@ -57,8 +57,11 @@ class TestBrokerPolicyConstants:
 class TestSmartRouterDefaults:
     def test_default_constructor_routes_futures_to_ibkr(self) -> None:
         router = SmartRouter()
-        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
-        assert isinstance(router.choose_venue("NQM6", 1), IbkrClientPortalVenue)
+        # ``.name`` check is class-agnostic — router selects LiveIbkrVenue
+        # when ib_insync is available, IbkrClientPortalVenue otherwise.
+        # Both report name="ibkr" so the IBKR-family routing assertion holds.
+        assert router.choose_venue("MNQM5", 1).name == "ibkr"
+        assert router.choose_venue("NQM6", 1).name == "ibkr"
 
     def test_default_preferred_futures_venue_attr_is_ibkr(self) -> None:
         router = SmartRouter()
@@ -77,7 +80,7 @@ class TestDormantBrokerSubstitution:
         router = SmartRouter(preferred_futures_venue="tradovate")
         # Substituted transparently
         assert router._preferred_futures_venue == DEFAULT_FUTURES_VENUE
-        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
+        assert router.choose_venue("MNQM5", 1).name == "ibkr"
         # Warning emitted
         messages = [r.getMessage() for r in caplog.records]
         assert any("tradovate" in m and "DORMANT" in m for m in messages), (
@@ -106,7 +109,7 @@ class TestDormantBrokerSubstitution:
         router = SmartRouter(preferred_futures_venue="ibkr")
         router._preferred_futures_venue = "tradovate"  # noqa: SLF001
 
-        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
+        assert router.choose_venue("MNQM5", 1).name == "ibkr"
         assert router._preferred_futures_venue == DEFAULT_FUTURES_VENUE
         messages = [r.getMessage() for r in caplog.records]
         assert any("tradovate" in m and "DORMANT" in m for m in messages)

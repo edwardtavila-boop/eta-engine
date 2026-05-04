@@ -271,6 +271,10 @@ def _gated_orb(
         orb=ORBConfig(
             ema_bias_period=0, volume_mult=0.0, atr_period=5,
             range_minutes=15,
+            # See test_orb_strategy._fixture_strategy: ORB default flipped
+            # to require_retest=True; these gated tests exercise the
+            # immediate-breakout path so opt out explicitly.
+            require_retest=False,
         ),
         sage=SageConsensusConfig(**sage_base),
         overlay_enabled=overlay_enabled,

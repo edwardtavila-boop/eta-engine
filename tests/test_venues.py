@@ -165,13 +165,18 @@ class TestSmartRouter:
     def test_futures_routes_to_ibkr_by_default(self) -> None:
         # Broker dormancy mandate 2026-04-24: IBKR is the active default
         # futures venue. Tradovate is DORMANT. See venues/router.py.
+        # Check ``.name`` (broker family) instead of isinstance — the
+        # router selects ``LiveIbkrVenue`` when ib_insync is available
+        # and falls back to ``IbkrClientPortalVenue`` otherwise; both
+        # report name="ibkr" and either is a valid satisfaction of "the
+        # router routes futures to the IBKR family by default".
         router = SmartRouter()
-        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
-        assert isinstance(router.choose_venue("NQM6", 1), IbkrClientPortalVenue)
+        assert router.choose_venue("MNQM5", 1).name == "ibkr"
+        assert router.choose_venue("NQM6", 1).name == "ibkr"
 
     def test_futures_routes_to_ibkr_when_pinned(self) -> None:
         router = SmartRouter(preferred_futures_venue="ibkr")
-        assert isinstance(router.choose_venue("MNQM5", 1), IbkrClientPortalVenue)
+        assert router.choose_venue("MNQM5", 1).name == "ibkr"
 
     def test_futures_routes_to_tastytrade_when_pinned(self) -> None:
         router = SmartRouter(preferred_futures_venue="tastytrade")

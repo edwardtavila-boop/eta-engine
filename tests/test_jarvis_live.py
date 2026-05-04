@@ -302,15 +302,23 @@ def test_write_health_creates_missing_out_dir(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
+# All 5 alert-transport env vars the function inspects. Tests must
+# clear ALL of them when asserting the no-config case, or else a stray
+# value in the operator's shell (e.g. FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS)
+# silently produces a MultiAlerter and breaks the assertion.
+_ALL_ALERTER_ENV = (
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "DISCORD_WEBHOOK_URL",
+    "FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS",
+    "SLACK_WEBHOOK_URL",
+)
+
+
 def test_build_alerter_from_env_no_env_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for v in (
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "DISCORD_WEBHOOK_URL",
-        "SLACK_WEBHOOK_URL",
-    ):
+    for v in _ALL_ALERTER_ENV:
         monkeypatch.delenv(v, raising=False)
     assert jarvis_live.build_alerter_from_env() is None
 
@@ -318,7 +326,7 @@ def test_build_alerter_from_env_no_env_returns_none(
 def test_build_alerter_from_env_telegram_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for v in ("DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL"):
+    for v in ("DISCORD_WEBHOOK_URL", "FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS", "SLACK_WEBHOOK_URL"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "abc")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
@@ -330,6 +338,8 @@ def test_build_alerter_from_env_telegram_only(
 def test_build_alerter_from_env_all_three(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Clear FIRM_DISCORD so the alerter count is exactly the three we set.
+    monkeypatch.delenv("FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS", raising=False)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "abc")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example/d")
@@ -346,6 +356,7 @@ def test_build_alerter_from_env_partial_telegram_dropped(
     for v in (
         "TELEGRAM_CHAT_ID",
         "DISCORD_WEBHOOK_URL",
+        "FIRM_DISCORD_WEBHOOK_FIRM_SIGNALS",
         "SLACK_WEBHOOK_URL",
     ):
         monkeypatch.delenv(v, raising=False)

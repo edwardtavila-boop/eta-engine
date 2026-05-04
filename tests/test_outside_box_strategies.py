@@ -212,7 +212,12 @@ def test_ensemble_fires_on_two_agreeing() -> None:
             ("b", _StubStrategy(_open("BUY", 102.0, 1.0, 100.0))),
             ("c", _StubStrategy(None)),
         ],
-        config=EnsembleVotingConfig(min_agreement_count=2),
+        # Default composition_mode flipped to "elect_one" (winner-takes-
+        # bracket; avoids geometrically-incoherent averaged stops). This
+        # test verifies the average-of-entries semantic, so set the
+        # legacy "average" mode explicitly. A separate test should
+        # cover elect_one.
+        config=EnsembleVotingConfig(min_agreement_count=2, composition_mode="average"),
     )
     out = s.maybe_enter(_bar(0, h=100, low=99, c=99.5), [], 10_000.0, _config())
     assert out is not None

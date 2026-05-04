@@ -1194,7 +1194,7 @@ def prometheus_metrics() -> PlainTextResponse:
     prom_file = STATE_DIR / "prometheus" / "avengers.prom"
     if not prom_file.exists():
         return PlainTextResponse(
-            "# no metrics file yet -- PROMETHEUS_EXPORT task has not run\napex_up 0\n",
+            "# no metrics file yet -- PROMETHEUS_EXPORT task has not run\neta_up 0\n",
             media_type="text/plain; version=0.0.4",
         )
     return PlainTextResponse(
