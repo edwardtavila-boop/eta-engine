@@ -564,6 +564,25 @@ class ExecutionRouter:
                 _stop, _target, _bracket_src = compute_bracket(
                     side=rec.side, entry_price=_ref, bars=bot.sage_bars,
                 )
+                # Pre-trade sanity: stop and target must straddle entry on
+                # the correct sides. ATR can degenerate (zero-volatility
+                # window, malformed bars) and produce stop=target=entry,
+                # which would ship a no-op bracket to the broker. Refuse
+                # to submit in that case.
+                _is_buy = rec.side.upper() == "BUY"
+                _bad = (
+                    _ref <= 0
+                    or _stop <= 0 or _target <= 0
+                    or (_is_buy and not (_stop < _ref < _target))
+                    or (not _is_buy and not (_target < _ref < _stop))
+                )
+                if _bad:
+                    logger.warning(
+                        "%s skipped: insane bracket geometry "
+                        "(side=%s ref=%.4f stop=%.4f target=%.4f src=%s)",
+                        bot.bot_id, rec.side, _ref, _stop, _target, _bracket_src,
+                    )
+                    return rec
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
                     bot.bot_id, _ref, _stop, _target, _bracket_src,
@@ -596,6 +615,19 @@ class ExecutionRouter:
                     _result.raw.get("ibkr_order_id", "?"),
                     _reason,
                 )
+                # Mark the open position as "broker-bracketed" so
+                # _maybe_exit defers to the broker's stop/target instead
+                # of double-exiting via supervisor-side logic. The flag
+                # is read in _maybe_exit; if True, only an emergency
+                # stop (drawdown beyond 2x the bracket stop) overrides.
+                if (
+                    _result.status.value == "OPEN"
+                    and bot.open_position is not None
+                ):
+                    bot.open_position["broker_bracket"] = True
+                    bot.open_position["bracket_stop"] = round(_stop, 4)
+                    bot.open_position["bracket_target"] = round(_target, 4)
+                    bot.open_position["bracket_src"] = _bracket_src
             except Exception as _exc:
                 logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)
 
@@ -1004,7 +1036,15 @@ class JarvisStrategySupervisor:
             )
 
     def _maybe_exit(self, bot: BotInstance, bar: dict[str, Any]) -> None:
-        # Simple exit: random 1-in-15 close OR drawdown > 1.5% from entry
+        # Simple exit: random 1-in-15 close OR drawdown > 1.5% from entry.
+        # In paper_live with a broker-side bracket attached (the venue
+        # placed parent + stop + target), the broker is authoritative
+        # on the close. Supervisor-side exits would double-fire:
+        # supervisor submits SELL, then broker stop/target hits and
+        # submits another SELL → either rejected or a flipped position.
+        # Defer to the broker, with an EMERGENCY override at 2x the
+        # bracket stop distance in case a network/clientId blip
+        # detaches the broker bracket and we still need protection.
         pos = bot.open_position
         if pos is None:
             return
@@ -1013,6 +1053,34 @@ class JarvisStrategySupervisor:
         sign = 1.0 if pos["side"] == "BUY" else -1.0
         ret_pct = sign * (cur_price - entry_price) / entry_price
 
+        broker_bracket = bool(pos.get("broker_bracket"))
+        if broker_bracket:
+            # Emergency override: only fire if loss > 2x the bracket stop
+            # distance. This is the "broker bracket detached" backstop —
+            # if everything's working, the broker closes us first.
+            bracket_stop = pos.get("bracket_stop")
+            try:
+                stop_dist_pct = (
+                    abs((float(bracket_stop) - entry_price) / entry_price)
+                    if bracket_stop is not None
+                    else 0.03  # 3% default emergency threshold
+                )
+            except (TypeError, ValueError):
+                stop_dist_pct = 0.03
+            emergency_loss_pct = max(2.0 * stop_dist_pct, 0.04)
+            if ret_pct < -emergency_loss_pct:
+                logger.warning(
+                    "EMERGENCY EXIT %s: loss=%.3f exceeds 2x bracket stop "
+                    "(%.3f) — broker bracket may be detached",
+                    bot.bot_id, ret_pct, stop_dist_pct,
+                )
+                rec = self._router.submit_exit(bot=bot, bar=bar)
+                if rec:
+                    self._propagate_close(bot, rec)
+            return
+
+        # No broker bracket (paper_sim or paper-test crypto): supervisor-
+        # side logic is the only exit. Use the existing simple gates.
         should_exit = False
         if ret_pct < -0.015:
             should_exit = True  # stop loss

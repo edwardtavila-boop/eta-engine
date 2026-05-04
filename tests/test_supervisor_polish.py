@@ -237,3 +237,103 @@ def test_v26_unparseable_timestamp_is_treated_as_stale() -> None:
         v26, "_load_broker_router_fills_cached", return_value=fake_fills,
     ):
         assert v26._broker_router_rejects_for_bot("vwap_mr_mnq") == 0
+
+
+# ─── _maybe_exit defers to broker bracket ───────────────────────
+
+
+def test_maybe_exit_defers_when_broker_bracket_active(tmp_path) -> None:
+    """In paper_live with a broker-side bracket attached, _maybe_exit
+    must NOT fire for normal P&L moves — broker is authoritative.
+    Otherwise we'd double-close (supervisor SELL + broker stop fill)."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="btc1", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    bot.open_position = {
+        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
+        "entry_ts": "x", "signal_id": "x",
+        "broker_bracket": True,         # ← bracket is at the broker
+        "bracket_stop": 98.0,           # 2% below entry
+        "bracket_target": 103.0,
+    }
+    sup.bots = [bot]
+
+    # Move price to -2% (would normally trigger supervisor stop) but
+    # broker bracket is active → no supervisor exit, just defer.
+    sup._router.submit_exit = MagicMock()  # type: ignore[method-assign]
+    sup._maybe_exit(bot, {"close": 98.0})
+    sup._router.submit_exit.assert_not_called()
+
+
+def test_maybe_exit_emergency_override_when_2x_stop_breached(tmp_path) -> None:
+    """If price moves beyond 2x the bracket stop distance, the broker
+    bracket is presumed detached and the supervisor closes manually."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="btc1", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    bot.open_position = {
+        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
+        "entry_ts": "x", "signal_id": "x",
+        "broker_bracket": True,
+        "bracket_stop": 98.0,           # 2% — emergency threshold = 4%
+        "bracket_target": 103.0,
+    }
+    sup.bots = [bot]
+
+    fake_rec = MagicMock(side="SELL", qty=0.01, fill_price=94.0, realized_r=-2.0)
+    sup._router.submit_exit = MagicMock(return_value=fake_rec)  # type: ignore[method-assign]
+    sup._propagate_close = MagicMock()  # type: ignore[method-assign]
+    # Price at $94 = -6% from entry, exceeds 2x stop (4%) → emergency
+    sup._maybe_exit(bot, {"close": 94.0})
+    sup._router.submit_exit.assert_called_once()
+    sup._propagate_close.assert_called_once()
+
+
+def test_maybe_exit_runs_normally_without_broker_bracket(tmp_path) -> None:
+    """Paper-test crypto (no broker bracket) keeps the original logic."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="btc1", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    bot.open_position = {
+        "side": "BUY", "qty": 0.01, "entry_price": 100.0,
+        "entry_ts": "x", "signal_id": "x",
+        # broker_bracket absent → supervisor-side exits active
+    }
+    sup.bots = [bot]
+
+    fake_rec = MagicMock(side="SELL", qty=0.01, fill_price=98.0, realized_r=-1.5)
+    sup._router.submit_exit = MagicMock(return_value=fake_rec)  # type: ignore[method-assign]
+    sup._propagate_close = MagicMock()  # type: ignore[method-assign]
+    # -2% breaches the supervisor's -1.5% stop → exit fires
+    sup._maybe_exit(bot, {"close": 98.0})
+    sup._router.submit_exit.assert_called_once()
