@@ -56,5 +56,12 @@ def emit_event(
         EVENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with EVENT_LOG_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
+        # Fire-and-forget Hermes alert for routed events. Never blocks
+        # emit_event — the dispatcher launches a background thread.
+        try:
+            from eta_engine.scripts.hermes_dispatcher import dispatch as _hermes_dispatch
+            _hermes_dispatch(rec)
+        except Exception as _hermes_exc:  # noqa: BLE001
+            logger.debug("hermes dispatch failed (non-fatal): %s", _hermes_exc)
     except Exception as exc:  # noqa: BLE001 -- never crash JARVIS for telemetry
         logger.debug("v3 event emit failed (%s): %s", event, exc)
