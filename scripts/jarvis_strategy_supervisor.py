@@ -494,6 +494,12 @@ class ExecutionRouter:
                     stop_price=round(_stop, 4),
                     target_price=round(_target, 4),
                     bot_id=bot.bot_id,
+                    # signal_id is unique per call (uuid4 hex slice), so
+                    # using it as client_order_id stops two identical
+                    # MNQ1 BUY 1.0 entries from the same tick from
+                    # silently dedup-OPENing — each call carries its
+                    # own idempotency key now.
+                    client_order_id=rec.signal_id,
                 )
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
                 _reason = (

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from typing import Any
 
 from eta_engine.venues.base import (
@@ -281,6 +282,25 @@ class LiveIbkrVenue(VenueBase):
         # crypto and submit a plain market entry; the supervisor's exit
         # logic must own stop/target management for crypto positions.
         is_crypto = getattr(contract, "secType", "") == "CRYPTO"
+
+        # Account-level crypto trading must be explicitly opted-in.
+        # The paper account DUQ319869 returns Cryptocurrency=0 in the
+        # account summary — orders submit but are silently rejected at
+        # IBKR before producing fills. Honor an env opt-in so a future
+        # account upgrade flips this on without code changes.
+        if is_crypto and os.getenv("ETA_IBKR_CRYPTO", "").lower() not in {"1", "true", "yes", "on"}:
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={
+                    "venue": self.name,
+                    "reason": (
+                        "crypto disabled — account lacks crypto permissions; "
+                        "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                    ),
+                    "symbol": request.symbol,
+                },
+            )
         # Futures contracts trade in whole-lot quanta; crypto on PAXOS
         # accepts fractional qty down to 1e-3 BTC, 1e-2 ETH, etc. so we
         # must NOT floor crypto qty to int.
@@ -330,6 +350,13 @@ class LiveIbkrVenue(VenueBase):
                     takeProfitPrice=float(target_price),
                     stopLossPrice=float(stop_price),
                 )
+                # Override DAY default to GTC on every leg so the IBKR
+                # account preset doesn't trip Warning 10349 ("Order TIF
+                # was set to DAY based on order preset"); GTC carries
+                # bracket children across session boundaries until they
+                # fill or get cancelled by the OCO group.
+                for ib_order in bracket:
+                    ib_order.tif = "GTC"
                 trades = []
                 for ib_order in bracket:
                     trades.append(self._ib.placeOrder(contract, ib_order))
