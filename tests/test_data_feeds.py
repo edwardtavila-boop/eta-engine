@@ -198,36 +198,121 @@ def test_ibkr_feed_unknown_symbol_returns_empty_bar() -> None:
 # ─── CompositeDataFeed ───────────────────────────────────────────
 
 
-def test_composite_routes_crypto_to_coinbase_and_futures_to_ibkr() -> None:
+def _real_bar(symbol: str, close: float = 100.0) -> dict:
+    """Helper — emit a bar that passes _is_real_bar (non-flat OHLC + volume)."""
+    return {
+        "open": close - 0.1, "high": close + 0.5, "low": close - 0.5,
+        "close": close, "volume": 10.0, "ts": "2026-05-04T19:30:00Z",
+        "symbol": symbol,
+    }
+
+
+def test_composite_routes_crypto_to_coinbase_and_futures_to_yfinance() -> None:
+    """Default routing: crypto → coinbase, futures → yfinance (paper-
+    friendly real-time-ish), other → yfinance fallback."""
     from eta_engine.scripts.data_feeds import CompositeDataFeed
     feed = CompositeDataFeed()
 
     fake_coinbase = MagicMock()
-    fake_coinbase.get_bar.return_value = {
-        "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1,
-        "ts": "x", "symbol": "BTC",
-    }
-    fake_ibkr = MagicMock()
-    fake_ibkr.get_bar.return_value = {
-        "open": 2, "high": 2, "low": 2, "close": 2, "volume": 2,
-        "ts": "x", "symbol": "MNQ1",
-    }
+    fake_coinbase.get_bar.return_value = _real_bar("BTC", 80000.0)
     fake_yf = MagicMock()
-    fake_yf.get_bar.return_value = {
-        "open": 3, "high": 3, "low": 3, "close": 3, "volume": 3,
-        "ts": "x", "symbol": "AAPL",
-    }
-    feed._coinbase = fake_coinbase
-    feed._ibkr = fake_ibkr
-    feed._yf = fake_yf
+    fake_yf.get_bar.return_value = _real_bar("MNQ1", 27500.0)
+    feed._feeds["coinbase"] = fake_coinbase
+    feed._feeds["yfinance"] = fake_yf
 
     feed.get_bar("BTC")
     feed.get_bar("MNQ1")
     feed.get_bar("AAPL")
 
     fake_coinbase.get_bar.assert_called_once_with("BTC")
-    fake_ibkr.get_bar.assert_called_once_with("MNQ1")
-    fake_yf.get_bar.assert_called_once_with("AAPL")
+    # YFinance handles futures AND fallback for stocks
+    assert fake_yf.get_bar.call_count == 2
+
+
+def test_composite_falls_back_when_primary_returns_empty() -> None:
+    """If the primary feed returns _empty_bar, the composite must try
+    the fallback chain instead of letting the supervisor see noise."""
+    from eta_engine.scripts.data_feeds import CompositeDataFeed, _empty_bar
+    feed = CompositeDataFeed()
+
+    fake_coinbase = MagicMock()
+    fake_coinbase.get_bar.return_value = _empty_bar("BTC")  # primary fails
+    fake_yf = MagicMock()
+    fake_yf.get_bar.return_value = _real_bar("BTC", 80000.0)
+    feed._feeds["coinbase"] = fake_coinbase
+    feed._feeds["yfinance"] = fake_yf
+
+    bar = feed.get_bar("BTC")
+    assert bar["close"] == 80000.0
+    # Both feeds were tried; coinbase first, yfinance after
+    fake_coinbase.get_bar.assert_called_once_with("BTC")
+    fake_yf.get_bar.assert_called_once_with("BTC")
+
+
+def test_composite_health_snapshot_tracks_per_feed_outcomes() -> None:
+    """The composite records ok/empty counts per (feed, symbol-root) so
+    the operator can see which feeds are actually serving data."""
+    from eta_engine.scripts.data_feeds import CompositeDataFeed, _empty_bar
+    feed = CompositeDataFeed()
+
+    fake_coinbase = MagicMock()
+    fake_coinbase.get_bar.side_effect = [
+        _real_bar("BTC", 80000.0),
+        _empty_bar("ETH"),
+    ]
+    fake_yf = MagicMock()
+    fake_yf.get_bar.return_value = _real_bar("ETH", 2400.0)
+    feed._feeds["coinbase"] = fake_coinbase
+    feed._feeds["yfinance"] = fake_yf
+
+    feed.get_bar("BTC")
+    feed.get_bar("ETH")
+
+    snap = feed.health_snapshot()
+    assert snap["coinbase::BTC"] == {"ok": 1, "empty": 0}
+    assert snap["coinbase::ETH"] == {"ok": 0, "empty": 1}
+    assert snap["yfinance::ETH"] == {"ok": 1, "empty": 0}
+
+
+def test_composite_respects_env_overrides() -> None:
+    """ETA_FUTURES_FEED=ibkr forces TWS even though the new default is yfinance."""
+    import os
+    os.environ["ETA_FUTURES_FEED"] = "ibkr"
+    try:
+        from eta_engine.scripts.data_feeds import CompositeDataFeed
+        feed = CompositeDataFeed()
+        assert feed._futures_feed == "ibkr"
+    finally:
+        os.environ.pop("ETA_FUTURES_FEED", None)
+
+
+def test_composite_propagates_feed_exceptions_to_fallback() -> None:
+    """A feed raising mid-call must not break the composite's tick;
+    fallback should still serve."""
+    from eta_engine.scripts.data_feeds import CompositeDataFeed
+    feed = CompositeDataFeed()
+
+    fake_coinbase = MagicMock()
+    fake_coinbase.get_bar.side_effect = RuntimeError("network down")
+    fake_yf = MagicMock()
+    fake_yf.get_bar.return_value = _real_bar("BTC", 80000.0)
+    feed._feeds["coinbase"] = fake_coinbase
+    feed._feeds["yfinance"] = fake_yf
+
+    bar = feed.get_bar("BTC")
+    assert bar["close"] == 80000.0
+    # Stats record the exception as "empty" for the offending feed
+    snap = feed.health_snapshot()
+    assert snap["coinbase::BTC"]["empty"] >= 1
+
+
+def test_is_real_bar_distinguishes_data_from_fallback() -> None:
+    from eta_engine.scripts.data_feeds import _empty_bar, _is_real_bar
+    assert not _is_real_bar(_empty_bar("BTC"))
+    assert _is_real_bar({"open": 1.0, "high": 1.5, "low": 0.9, "close": 1.2, "volume": 10})
+    assert _is_real_bar({"open": 1, "high": 1, "low": 1, "close": 1, "volume": 10})  # vol > 0
+    # Flat OHLC + zero volume = empty
+    assert not _is_real_bar({"open": 5, "high": 5, "low": 5, "close": 5, "volume": 0})
 
 
 # ─── Factory ─────────────────────────────────────────────────────

@@ -405,50 +405,131 @@ class IbkrDataFeed:
         return bar
 
 
-# ─── Composite router ────────────────────────────────────────────
+# ─── Composite router with fallback chains ──────────────────────
+
+
+def _is_real_bar(bar: dict[str, Any]) -> bool:
+    """A bar is 'real' iff at least one of OHLC differs from the
+    fallback flat-line. _empty_bar emits open=high=low=close=last_close
+    + volume=0; any feed that actually sourced data has either
+    non-zero volume or non-flat OHLC."""
+    if bar.get("volume", 0) > 0:
+        return True
+    o, h, low, c = bar.get("open"), bar.get("high"), bar.get("low"), bar.get("close")
+    return not (o == h == low == c)
 
 
 class CompositeDataFeed:
-    """Per-symbol-type routing.
+    """Per-symbol-type routing with fallback chains and health stats.
 
-    Crypto symbols → CoinbaseDataFeed (fast, free).
-    Futures symbols → IbkrDataFeed (TWS reqHistoricalData).
-    Anything else → YFinanceDataFeed (universal fallback).
+    Default routing (overridable via env):
 
-    Each underlying feed is constructed lazily so a futures-only deploy
-    doesn't pay the Coinbase HTTP setup cost (and vice versa).
+      Crypto symbols  → CoinbaseDataFeed    → YFinanceDataFeed (fallback)
+      Futures symbols → YFinanceDataFeed    → IbkrDataFeed (fallback)
+      Anything else   → YFinanceDataFeed
+
+    Why yfinance is now the default for futures: IBKR paper accounts
+    without a market-data subscription fall back to delayed quotes
+    (~15 min). Yahoo's futures feed (MNQ=F, NQ=F, etc) is real-time-ish
+    (~1-5s lag) and free, so paper fine-tuning gets honest data without
+    requiring an IBKR subscription. Operators with a live IBKR market-
+    data subscription should set ``ETA_FUTURES_FEED=ibkr`` to use the
+    real-time TWS path instead.
+
+    Env overrides:
+      ETA_CRYPTO_FEED   = coinbase | yfinance | ibkr  (default: coinbase)
+      ETA_FUTURES_FEED  = yfinance | ibkr | coinbase  (default: yfinance)
+      ETA_FALLBACK_FEED = yfinance | ibkr | coinbase | none  (default: yfinance)
+
+    Each get_bar call records success/empty per (feed, symbol) so the
+    supervisor heartbeat can surface drift. Read via .health_snapshot().
     """
 
     def __init__(self) -> None:
-        self._coinbase: CoinbaseDataFeed | None = None
-        self._ibkr: IbkrDataFeed | None = None
-        self._yf: YFinanceDataFeed | None = None
-        self._lock = threading.Lock()
+        self._feeds: dict[str, Any] = {}
+        self._feed_lock = threading.Lock()
+        self._stats_lock = threading.Lock()
+        self._stats: dict[str, dict[str, int]] = {}
 
-    def _get_coinbase(self) -> CoinbaseDataFeed:
-        with self._lock:
-            if self._coinbase is None:
-                self._coinbase = CoinbaseDataFeed()
-            return self._coinbase
+        import os
+        self._crypto_feed = os.getenv("ETA_CRYPTO_FEED", "coinbase").strip().lower()
+        self._futures_feed = os.getenv("ETA_FUTURES_FEED", "yfinance").strip().lower()
+        self._fallback_feed = os.getenv("ETA_FALLBACK_FEED", "yfinance").strip().lower()
 
-    def _get_ibkr(self) -> IbkrDataFeed:
-        with self._lock:
-            if self._ibkr is None:
-                self._ibkr = IbkrDataFeed()
-            return self._ibkr
+    def _build(self, name: str) -> Any:  # noqa: ANN401 — multiple feed classes share the protocol
+        if name == "coinbase":
+            return CoinbaseDataFeed()
+        if name == "yfinance":
+            return YFinanceDataFeed()
+        if name == "ibkr":
+            return IbkrDataFeed()
+        return None
 
-    def _get_yf(self) -> YFinanceDataFeed:
-        with self._lock:
-            if self._yf is None:
-                self._yf = YFinanceDataFeed()
-            return self._yf
+    def _get_feed(self, name: str) -> Any:  # noqa: ANN401
+        if name in {"none", "", "off"}:
+            return None
+        with self._feed_lock:
+            if name not in self._feeds:
+                self._feeds[name] = self._build(name)
+            return self._feeds[name]
+
+    def _record(self, feed_name: str, symbol: str, ok: bool) -> None:
+        with self._stats_lock:
+            key = f"{feed_name}::{_root(symbol)}"
+            slot = self._stats.setdefault(key, {"ok": 0, "empty": 0})
+            slot["ok" if ok else "empty"] += 1
+
+    def health_snapshot(self) -> dict[str, dict[str, int]]:
+        with self._stats_lock:
+            return {k: dict(v) for k, v in self._stats.items()}
+
+    def _try_feed(self, feed_name: str, symbol: str) -> dict[str, Any] | None:
+        feed = self._get_feed(feed_name)
+        if feed is None:
+            return None
+        try:
+            bar = feed.get_bar(symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "CompositeDataFeed: %s raised on %s: %s",
+                feed_name, symbol, exc,
+            )
+            self._record(feed_name, symbol, ok=False)
+            return None
+        if _is_real_bar(bar):
+            self._record(feed_name, symbol, ok=True)
+            return bar
+        self._record(feed_name, symbol, ok=False)
+        return None
 
     def get_bar(self, symbol: str) -> dict[str, Any]:
+        # Pick the chain based on symbol type; primary first, fallback
+        # second if primary returned an _empty_bar.
         if _is_crypto(symbol):
-            return self._get_coinbase().get_bar(symbol)
-        if _is_futures(symbol):
-            return self._get_ibkr().get_bar(symbol)
-        return self._get_yf().get_bar(symbol)
+            primary, fallback = self._crypto_feed, self._fallback_feed
+        elif _is_futures(symbol):
+            primary, fallback = self._futures_feed, "ibkr" if self._futures_feed != "ibkr" else self._fallback_feed
+        else:
+            primary, fallback = self._fallback_feed, "none"
+
+        bar = self._try_feed(primary, symbol)
+        if bar is not None:
+            return bar
+        if fallback and fallback != primary:
+            bar = self._try_feed(fallback, symbol)
+            if bar is not None:
+                logger.info(
+                    "CompositeDataFeed: %s served %s after %s missed",
+                    fallback, symbol, primary,
+                )
+                return bar
+        # Both primary and fallback returned empty bars — final fallback
+        # is YFinance if neither was already YFinance, else just empty.
+        if "yfinance" not in {primary, fallback}:
+            bar = self._try_feed("yfinance", symbol)
+            if bar is not None:
+                return bar
+        return _empty_bar(symbol)
 
 
 # ─── Factory ─────────────────────────────────────────────────────
