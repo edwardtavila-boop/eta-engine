@@ -470,6 +470,22 @@ class ExecutionRouter:
         if self.cfg.mode == "paper_live":
             # Write pending order file (for backward compat / audit)
             self._write_pending_order(bot, rec)
+            # Crypto paper-test path: when ETA_IBKR_CRYPTO is not enabled
+            # (paper account lacks crypto trading permissions), skip the
+            # broker round-trip but keep the simulated FillRecord +
+            # bot.open_position recorded above so paper P&L still tracks.
+            # This lets crypto bots fine-tune on simulated fills until
+            # the IBKR account is upgraded; flipping ETA_IBKR_CRYPTO=1
+            # then auto-routes to PAXOS without code changes.
+            _symbol_root = rec.symbol.upper().rstrip("0123456789").replace("USD", "")
+            _is_crypto = _symbol_root in {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
+            _crypto_live = os.getenv("ETA_IBKR_CRYPTO", "").lower() in {"1", "true", "yes", "on"}
+            if _is_crypto and not _crypto_live:
+                logger.info(
+                    "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
+                    rec.symbol, rec.side, rec.qty, rec.fill_price,
+                )
+                return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
                 from eta_engine.venues.base import OrderRequest, OrderType, Side
