@@ -215,7 +215,16 @@ class VWAPReversionStrategy:
         if side == "BUY":
             stop = entry - stop_dist
             if len(hist) >= 1:
-                stop = max(stop, hist[-1].low - atr * 0.1)
+                # FIX: was max() — picked the HIGHER of the two, which when
+                # hist[-1].low > entry produced a LONG stop ABOVE entry
+                # (same class of bug as volume_profile).  Use min() to pick
+                # the LOWER (safer, further-from-entry) candidate, AND
+                # filter to candidates that are actually below entry.
+                structural = hist[-1].low - atr * 0.1
+                if structural < entry:
+                    stop = min(stop, structural)
+            if stop >= entry:
+                return None  # invalid bracket — abort rather than ship a fake-LONG
             stop_dist_actual = entry - stop
             target = self._current_vwap
             if target <= entry:
@@ -223,7 +232,11 @@ class VWAPReversionStrategy:
         else:
             stop = entry + stop_dist
             if len(hist) >= 1:
-                stop = min(stop, hist[-1].high + atr * 0.1)
+                structural = hist[-1].high + atr * 0.1
+                if structural > entry:
+                    stop = max(stop, structural)
+            if stop <= entry:
+                return None  # invalid bracket — abort
             stop_dist_actual = stop - entry
             target = self._current_vwap
             if target >= entry:

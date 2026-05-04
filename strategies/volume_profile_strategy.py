@@ -178,6 +178,22 @@ class VolumeProfileStrategy:
             return 0.0
         return (bar.volume - mean) / std
 
+    def _append_bar_to_profile(self, bucket: float, volume: float) -> None:
+        """Append the current bar to the rolling volume-profile window.
+
+        Must be called AFTER the entry decision for this bar — appending
+        before would let the strategy see its own bar's contribution to
+        the POC/VAH/VAL computation, a one-bar look-ahead that inflated
+        paper-soak win rates.
+        """
+        if self.cfg.freeze_profile_after_warmup and self._bars_seen >= self.cfg.warmup_bars:
+            return
+        self._bar_entries.append((bucket, volume))
+        if len(self._bar_entries) > self._bar_entries.maxlen // 2:
+            self._price_vol = {}
+            for bp, bv in self._bar_entries:
+                self._price_vol[bp] = self._price_vol.get(bp, 0.0) + bv
+
     def maybe_enter(
         self, bar: BarData, hist: list[BarData],
         equity: float, config: BacktestConfig,
@@ -193,23 +209,25 @@ class VolumeProfileStrategy:
         typical = (bar.high + bar.low + bar.close) / 3.0
         bucket = self._bucket_price(typical)
 
-        if not self.cfg.freeze_profile_after_warmup or self._bars_seen < self.cfg.warmup_bars:
-            self._bar_entries.append((bucket, bar.volume))
-            if len(self._bar_entries) > self._bar_entries.maxlen // 2:
-                self._price_vol = {}
-                for bp, bv in self._bar_entries:
-                    self._price_vol[bp] = self._price_vol.get(bp, 0.0) + bv
+        # try/finally guarantees the bar is recorded AFTER the entry
+        # decision — fixes the look-ahead.
+        try:
+            if self._bars_seen < self.cfg.warmup_bars:
+                return None
+            if self._trades_today >= self.cfg.max_trades_per_day:
+                return None
+            if (
+                self._last_entry_idx is not None
+                and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
+            ):
+                return None
+            return self._evaluate_entry(bar, hist, equity)
+        finally:
+            self._append_bar_to_profile(bucket, bar.volume)
 
-        if self._bars_seen < self.cfg.warmup_bars:
-            return None
-        if self._trades_today >= self.cfg.max_trades_per_day:
-            return None
-        if (
-            self._last_entry_idx is not None
-            and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
-        ):
-            return None
-
+    def _evaluate_entry(
+        self, bar: BarData, hist: list[BarData], equity: float,
+    ) -> _Open | None:
         profile = self._compute_profile()
         if not profile or profile["total_volume"] <= 0:
             self._n_no_profile += 1
@@ -270,14 +288,33 @@ class VolumeProfileStrategy:
         if side == "BUY":
             structural_stop = val - atr * 0.5
             atr_stop = entry - stop_dist
-            stop = max(structural_stop, atr_stop)
+            # Pick the stop NEAREST to entry that is still BELOW entry.
+            # The legacy max() was wrong: when val > entry (which is
+            # routine — value-area magnetism setups enter below VAL with
+            # POC further above), structural_stop ends up ABOVE entry
+            # and max() picks it, creating an instantly-stoppable LONG
+            # whose "stop" is actually a target.  Filter to valid stops
+            # first, then take the closest.
+            candidate_stops = [s for s in (structural_stop, atr_stop) if s < entry]
+            if not candidate_stops:
+                # Both candidates were on the wrong side — abort the trade
+                return None
+            stop = max(candidate_stops)  # max of valid (below-entry) = closest to entry
             stop_dist_actual = entry - stop
+            if stop_dist_actual <= 0:
+                return None
             target = poc if poc > entry else entry + self.cfg.rr_target * stop_dist_actual
         else:
             structural_stop = vah + atr * 0.5
             atr_stop = entry + stop_dist
-            stop = min(structural_stop, atr_stop)
+            # Symmetric for SHORT: stop must be ABOVE entry.
+            candidate_stops = [s for s in (structural_stop, atr_stop) if s > entry]
+            if not candidate_stops:
+                return None
+            stop = min(candidate_stops)  # min of valid (above-entry) = closest to entry
             stop_dist_actual = stop - entry
+            if stop_dist_actual <= 0:
+                return None
             target = poc if poc < entry else entry - self.cfg.rr_target * stop_dist_actual
 
         from eta_engine.backtest.engine import _Open

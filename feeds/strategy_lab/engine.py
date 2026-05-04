@@ -53,10 +53,13 @@ log = logging.getLogger("strategy_lab")
 # ─── Canonical roots ──────────────────────────────────────────────
 
 _WS = Path(os.environ.get("ETA_WORKSPACE", r"C:\EvolutionaryTradingAlgo"))
-MNQ_HISTORY_ROOT    = _WS / "mnq_data" / "history"
-CRYPTO_HISTORY_ROOT = _WS / "data" / "crypto" / "ibkr" / "history"
-REGIME_STATE_PATH   = _WS / "var" / "eta_engine" / "state" / "regime_state.json"
-LAB_REPORTS_ROOT    = _WS / "reports" / "lab_reports"
+MNQ_HISTORY_ROOT       = _WS / "mnq_data" / "history"
+# Coinbase recurring-refresh mirror (1m/5m/1h/D up to 12mo via merge fetcher)
+CRYPTO_HISTORY_ROOT    = _WS / "data" / "crypto" / "ibkr" / "history"
+# yfinance long-history mirror (BTC/ETH 731-day daily — 2026-05-04)
+CRYPTO_HISTORY_ROOT_YF = _WS / "data" / "crypto" / "history"
+REGIME_STATE_PATH      = _WS / "var" / "eta_engine" / "state" / "regime_state.json"
+LAB_REPORTS_ROOT       = _WS / "reports" / "lab_reports"
 
 CRYPTO_SYMBOLS = {"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE", "ADA", "DOT"}
 
@@ -64,6 +67,12 @@ CRYPTO_SYMBOLS = {"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE", "ADA", "DO
 def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
     sym = symbol.upper()
     if sym in CRYPTO_SYMBOLS:
+        # For daily bars, prefer the yfinance long-history mirror if it has
+        # the file (731-day coverage). Falls back to the Coinbase mirror.
+        if timeframe in ("D", "1d"):
+            yf = CRYPTO_HISTORY_ROOT_YF / f"{sym}_D.csv"
+            if yf.exists():
+                return yf
         return CRYPTO_HISTORY_ROOT / f"{sym}_{timeframe}.csv"
     if sym in ("DXY", "VIX"):
         return MNQ_HISTORY_ROOT / f"{sym}_{timeframe}.csv"
@@ -155,6 +164,27 @@ def _ema(arr: np.ndarray, period: int) -> np.ndarray:
     out[0] = arr[0]
     for i in range(1, len(arr)):
         out[i] = alpha * arr[i] + (1 - alpha) * out[i - 1]
+    return out
+
+
+def _rsi(close: np.ndarray, period: int = 14) -> np.ndarray:
+    """Wilder's RSI. Returns same-length array with leading values undefined (~50)."""
+    n = len(close)
+    out = np.full(n, 50.0)
+    if n <= period:
+        return out
+    delta = np.diff(close)
+    gains = np.where(delta > 0, delta, 0.0)
+    losses = np.where(delta < 0, -delta, 0.0)
+    # Seed with simple averages over first `period` deltas
+    avg_gain = gains[:period].mean()
+    avg_loss = losses[:period].mean()
+    for i in range(period, n - 1):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        rs = avg_gain / avg_loss if avg_loss > 0 else 0.0
+        rsi_val = 100.0 - 100.0 / (1.0 + rs) if avg_loss > 0 else 100.0
+        out[i + 1] = rsi_val
     return out
 
 
@@ -275,6 +305,50 @@ def signals_confluence_scorecard(bars: dict[str, np.ndarray], spec: dict[str, An
         side = "long" if trend_up else "short"
         out.append((i, side, stop_atr, target_atr))
     return out
+
+
+def scorecard_score_at(bars: dict[str, np.ndarray], spec: dict[str, Any],
+                        i: int, side: str) -> int:
+    """Return the confluence_scorecard score (0-5) at bar `i` for `side` direction.
+
+    Used by fleet_sweep's composite-filter dispatch: bots with
+    strategy_kind="confluence_scorecard" + sub_strategy_kind=<X> use
+    sub-strategy signals filtered by this score >= min_score. This is the
+    architecture the registry's "DIAMOND" tier was actually designed around
+    (sweep_reclaim entries × scorecard quality filter), but the lab was
+    treating dispatch as an either/or instead of a composition.
+    """
+    close = bars["close"]
+    volume = bars["volume"]
+    if i < 6:
+        return 0
+    fast = _ema(close, int(spec.get("ema_fast", 9)))
+    mid  = _ema(close, int(spec.get("ema_mid", 21)))
+    slow = _ema(close, int(spec.get("ema_slow", 50)))
+    vol_lookback = 20
+    if i < max(int(spec.get("ema_mid", 21)) + 1, vol_lookback + 1):
+        return 0
+    trend_up = fast[i] > mid[i]
+    trend_dn = fast[i] < mid[i]
+    side_up = side.lower() in ("long", "buy")
+    if side_up and not trend_up:
+        return 0
+    if not side_up and not trend_dn:
+        return 0
+    vol_window = volume[max(0, i - vol_lookback) : i]
+    if vol_window.std() <= 0:
+        return 0
+    vol_z = (volume[i] - vol_window.mean()) / max(vol_window.std(), 1e-9)
+    score = 1
+    if (trend_up and mid[i] > slow[i]) or (trend_dn and mid[i] < slow[i]):
+        score += 1
+    if vol_z > 0.3:
+        score += 1
+    if (trend_up and close[i] > close[i - 1]) or (trend_dn and close[i] < close[i - 1]):
+        score += 1
+    if abs(close[i] - close[i - 5]) > close[i - 5] * 0.001:
+        score += 1
+    return score
 
 
 def signals_vwap_mr(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
@@ -435,6 +509,581 @@ def signals_confluence(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> lis
     return signals_confluence_scorecard(bars, relaxed)
 
 
+def signals_rsi_mean_reversion(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Counter-trend RSI mean-reversion at BB extremes.
+
+    Long when RSI < oversold AND close at/below lower BB band.
+    Short when RSI > overbought AND close at/above upper BB band.
+    Optional candle-rejection confirmation (close back inside the band the next bar).
+    Tighter stops than trend-following (default 1.0 ATR).
+    """
+    close = bars["close"]
+    high = bars["high"]
+    low = bars["low"]
+    period = int(spec.get("rsi_period", 14))
+    oversold = float(spec.get("oversold_threshold", 25.0))
+    overbought = float(spec.get("overbought_threshold", 75.0))
+    bb_window = int(spec.get("bb_window", 20))
+    bb_std_mult = float(spec.get("bb_std_mult", 2.0))
+    require_rejection = bool(spec.get("require_rejection", True))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 1.5))
+
+    rsi = _rsi(close, period)
+    out: list[tuple[int, str, float, float]] = []
+    start = max(period + 2, bb_window + 2)
+    for i in range(start, len(close) - 1):
+        window = close[i - bb_window : i]
+        mu = window.mean()
+        sigma = window.std()
+        if sigma <= 0:
+            continue
+        upper = mu + bb_std_mult * sigma
+        lower = mu - bb_std_mult * sigma
+        if rsi[i] < oversold and close[i] <= lower:
+            if require_rejection and close[i] >= low[i] + 0.25 * (high[i] - low[i]):
+                # Bar closed in upper 75% of its range → rejection of low
+                out.append((i, "long", stop_atr, target_atr))
+            elif not require_rejection:
+                out.append((i, "long", stop_atr, target_atr))
+        elif rsi[i] > overbought and close[i] >= upper:
+            if require_rejection and close[i] <= high[i] - 0.25 * (high[i] - low[i]):
+                out.append((i, "short", stop_atr, target_atr))
+            elif not require_rejection:
+                out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_volume_profile(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Return-to-HVN: when price retraces toward the rolling-window high-volume node.
+
+    Builds a price histogram weighted by volume over the lookback window,
+    finds the high-volume node (HVN) bin, and triggers when price approaches
+    that level from above (long) or below (short) with momentum signal.
+    """
+    close = bars["close"]
+    high = bars["high"]
+    low = bars["low"]
+    volume = bars["volume"]
+    lookback = int(spec.get("vp_lookback", 100))
+    n_bins = int(spec.get("vp_bins", 30))
+    proximity_pct = float(spec.get("vp_proximity_pct", 0.003))  # 0.3% within HVN
+    stop_atr = float(spec.get("stop_atr", 1.25))
+    target_atr = float(spec.get("target_atr", 2.0))
+
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(lookback + 2, len(close) - 1):
+        window_lo = float(low[i - lookback : i].min())
+        window_hi = float(high[i - lookback : i].max())
+        if window_hi <= window_lo:
+            continue
+        bin_edges = np.linspace(window_lo, window_hi, n_bins + 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        # Bin volume by close-price bucket — coarse but cheap
+        idx = np.clip(np.searchsorted(bin_edges, close[i - lookback : i]) - 1,
+                      0, n_bins - 1)
+        vol_by_bin = np.zeros(n_bins)
+        for j, w in zip(idx, volume[i - lookback : i], strict=False):
+            vol_by_bin[j] += w
+        if vol_by_bin.sum() <= 0:
+            continue
+        hvn_bin = int(np.argmax(vol_by_bin))
+        hvn_price = float(bin_centers[hvn_bin])
+        proximity = abs(close[i] - hvn_price) / max(hvn_price, 1e-9)
+        if proximity > proximity_pct:
+            continue
+        # Direction: did price approach from above or below
+        prior_close = close[i - 3]
+        if prior_close > hvn_price and close[i] <= hvn_price * (1 + proximity_pct):
+            # Approached from above → expect bounce up
+            out.append((i, "long", stop_atr, target_atr))
+        elif prior_close < hvn_price and close[i] >= hvn_price * (1 - proximity_pct):
+            # Approached from below → expect rejection down
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_cross_asset_divergence(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Mean-reversion on cross-asset divergence.
+
+    When the primary symbol's z-scored return diverges from a rolling correlation
+    partner (e.g. MNQ vs ES), the spread tends to compress. Long the laggard,
+    short the leader. The lab pulls partner bars from the same _resolve_bar_path
+    pipeline.
+
+    Spec:
+      partner_symbol  (default ES)  — the correlation reference
+      partner_timeframe (default same as primary)
+      lookback        (default 50)  — z-score window
+      z_threshold     (default 1.5) — abs divergence to trigger
+    """
+    close = bars["close"]
+    lookback = int(spec.get("lookback", 50))
+    z_threshold = float(spec.get("z_threshold", 1.5))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 2.0))
+    partner_symbol = str(spec.get("partner_symbol", "ES"))
+    # Registry uses front-month-suffixed names like "ES1" but the bar resolver
+    # handles the "1" suffix internally — strip if present so we don't double up.
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "5m"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < lookback + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    # Align partner to primary by nearest-time index. Cheap O(n+m) walk.
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(lookback + 2, len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < lookback + 1:
+            continue
+        # Compute log-return windows
+        primary_ret = np.log(close[i - lookback + 1 : i + 1] / close[i - lookback : i])
+        partner_ret = np.log(p_close[pj - lookback + 1 : pj + 1] / p_close[pj - lookback : pj])
+        if len(primary_ret) < lookback or len(partner_ret) < lookback:
+            continue
+        if primary_ret.std() <= 0 or partner_ret.std() <= 0:
+            continue
+        # Z-score the LATEST return relative to its window
+        z_primary = (primary_ret[-1] - primary_ret.mean()) / primary_ret.std()
+        z_partner = (partner_ret[-1] - partner_ret.mean()) / partner_ret.std()
+        divergence = z_primary - z_partner
+        if divergence < -z_threshold:
+            # Primary lagging — long primary, expect catch-up
+            out.append((i, "long", stop_atr, target_atr))
+        elif divergence > z_threshold:
+            # Primary leading — short primary, expect mean revert
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_dxy_gold_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Gold-via-DXY-inverse for GC/MGC.
+
+    Asset-class rationale: gold is priced in USD, so a falling DXY makes gold
+    cheaper for non-USD buyers — the inverse correlation is the cleanest macro
+    signal in metals. Trade gold against DXY momentum: short DXY break → long
+    gold, long DXY break → short gold. Confirm with gold's own short-term
+    trend so we don't fade strength against macro.
+
+    Spec:
+      partner_symbol           default "DXY"
+      partner_timeframe        default same as primary
+      dxy_break_lookback       default 20  — bar window for DXY high/low break
+      gold_trend_window        default 50  — gold EMA trend confirmation
+    """
+    close = bars["close"]
+    lookback = int(spec.get("dxy_break_lookback", 20))
+    trend_window = int(spec.get("gold_trend_window", 50))
+    stop_atr = float(spec.get("stop_atr", 1.5))
+    target_atr = float(spec.get("target_atr", 3.0))
+    partner_symbol = str(spec.get("partner_symbol", "DXY"))
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "1h"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < lookback + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_high = partner_bars["high"]
+    p_low = partner_bars["low"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    gold_ema = _ema(close, trend_window)
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(max(lookback + 2, trend_window + 2), len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < lookback + 1:
+            continue
+        # DXY breakout direction over `lookback` bars
+        dxy_lookback_high = float(p_high[pj - lookback : pj].max())
+        dxy_lookback_low = float(p_low[pj - lookback : pj].min())
+        dxy_breaks_up = p_close[pj] > dxy_lookback_high
+        dxy_breaks_dn = p_close[pj] < dxy_lookback_low
+        if not (dxy_breaks_up or dxy_breaks_dn):
+            continue
+        # Gold trend confirmation must agree with the inverse trade
+        gold_trend_up = close[i] > gold_ema[i]
+        gold_trend_dn = close[i] < gold_ema[i]
+        if dxy_breaks_dn and gold_trend_up:
+            # DXY weakening + gold already rising → long gold
+            out.append((i, "long", stop_atr, target_atr))
+        elif dxy_breaks_up and gold_trend_dn:
+            # DXY strengthening + gold already declining → short gold
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_treasury_safe_haven(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Treasury futures (ZN/ZB) flight-to-safety on VIX spikes.
+
+    Asset-class rationale: when VIX spikes (rapid risk-off), capital flows
+    into US treasuries → ZN/ZB rally. The signal: VIX rises sharply over
+    a short window AND treasury price is below recent mean (entry from
+    a discounted position). Reverses on VIX collapse + treasury overheated.
+
+    Spec:
+      partner_symbol           default "VIX"
+      vix_spike_lookback       default 5  — bar window for VIX % change
+      vix_spike_pct            default 0.10 (10% rise) — long entry
+      vix_collapse_pct         default -0.10 (10% drop) — short entry
+      treasury_mean_window     default 50
+    """
+    close = bars["close"]
+    spike_lb = int(spec.get("vix_spike_lookback", 5))
+    spike_pct = float(spec.get("vix_spike_pct", 0.10))
+    collapse_pct = float(spec.get("vix_collapse_pct", -0.10))
+    mean_window = int(spec.get("treasury_mean_window", 50))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 2.0))
+    partner_symbol = str(spec.get("partner_symbol", "VIX"))
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "1h"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < spike_lb + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    treasury_ema = _ema(close, mean_window)
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(max(spike_lb + 2, mean_window + 2), len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < spike_lb:
+            continue
+        vix_change = (p_close[pj] - p_close[pj - spike_lb]) / max(p_close[pj - spike_lb], 1e-9)
+        # VIX spike → flight-to-safety → long treasury (if below mean = discount)
+        if vix_change > spike_pct and close[i] < treasury_ema[i]:
+            out.append((i, "long", stop_atr, target_atr))
+        # VIX collapse → risk-on → short treasury (if above mean = overheated)
+        elif vix_change < collapse_pct and close[i] > treasury_ema[i]:
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_es_vix_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Equity-index futures (ES/NQ/MNQ) inverse-VIX with trend confirmation.
+
+    Asset-class rationale: VIX is the "fear gauge" — equities and VIX move
+    inversely. When VIX collapses (risk-on flush), equities rally. When VIX
+    spikes (risk-off), equities sell off. Use as a directional bias filter
+    for index futures: only long when VIX has cooled, only short when VIX
+    has spiked. Cleaner than orb_sage_gated because the bias source is
+    macro, not local price action.
+
+    Spec:
+      partner_symbol           default "VIX"
+      vix_lookback             default 20
+      vix_extreme_pct          default 0.15  — abs % move from window mean
+      trend_window             default 30
+    """
+    close = bars["close"]
+    vix_lookback = int(spec.get("vix_lookback", 20))
+    vix_extreme_pct = float(spec.get("vix_extreme_pct", 0.15))
+    trend_window = int(spec.get("trend_window", 30))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 2.0))
+    partner_symbol = str(spec.get("partner_symbol", "VIX"))
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "1h"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < vix_lookback + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    primary_ema = _ema(close, trend_window)
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(max(vix_lookback + 2, trend_window + 2), len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < vix_lookback:
+            continue
+        vix_window_mean = float(p_close[pj - vix_lookback : pj].mean())
+        vix_dev = (p_close[pj] - vix_window_mean) / max(vix_window_mean, 1e-9)
+        eq_trend_up = close[i] > primary_ema[i]
+        eq_trend_dn = close[i] < primary_ema[i]
+        if vix_dev < -vix_extreme_pct and eq_trend_up:
+            # VIX collapsed below window mean + equity trending up → long
+            out.append((i, "long", stop_atr, target_atr))
+        elif vix_dev > vix_extreme_pct and eq_trend_dn:
+            # VIX spiked above window mean + equity trending down → short
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_commodity_ratio_mr(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Cross-commodity ratio mean-reversion (CL/GC, GC/SI, etc.).
+
+    Asset-class rationale: cross-commodity ratios mean-revert because the
+    underlying physical-economy linkage is mostly stable. Oil-to-gold ratio
+    in particular oscillates around a real economic relationship (gold =
+    safety, oil = activity). When the ratio z-score deviates beyond a
+    threshold, the spread typically tightens within ~50 bars.
+
+    Trade the primary asset with the partner as ratio reference:
+      ratio_z > z_threshold  → primary overpriced vs partner → short primary
+      ratio_z < -z_threshold → primary underpriced vs partner → long primary
+
+    Spec:
+      partner_symbol           default "GC"
+      partner_timeframe        default same as primary
+      ratio_window             default 100  — ratio z-score lookback
+      z_threshold              default 1.5
+    """
+    close = bars["close"]
+    ratio_window = int(spec.get("ratio_window", 100))
+    z_threshold = float(spec.get("z_threshold", 1.5))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 2.0))
+    partner_symbol = str(spec.get("partner_symbol", "GC"))
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "1h"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < ratio_window + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(ratio_window + 2, len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < ratio_window:
+            continue
+        # Build aligned ratio series over the lookback window
+        ratios = []
+        for k in range(ratio_window):
+            ji = t_to_p_idx.get(i - ratio_window + 1 + k, -1)
+            if 0 <= ji < len(p_close) and p_close[ji] > 0:
+                ratios.append(close[i - ratio_window + 1 + k] / p_close[ji])
+        if len(ratios) < ratio_window // 2:
+            continue
+        ratios_arr = np.array(ratios)
+        if ratios_arr.std() <= 0:
+            continue
+        current_ratio = close[i] / max(p_close[pj], 1e-9)
+        z = (current_ratio - ratios_arr.mean()) / ratios_arr.std()
+        if z > z_threshold:
+            # Primary overpriced relative to partner — short primary
+            out.append((i, "short", stop_atr, target_atr))
+        elif z < -z_threshold:
+            # Primary underpriced — long primary
+            out.append((i, "long", stop_atr, target_atr))
+    return out
+
+
+def signals_overnight_gap_fade(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Fade large overnight gaps in index futures (NQ/ES/MNQ).
+
+    Asset-class rationale: index futures trade ETH (overnight) on lower
+    liquidity; large overnight gaps from RTH close to next-day RTH open
+    often mean-revert into the cash session as institutional flow
+    materializes. Heuristic: identify "large gap" bars where the open
+    is far from the prior close, then fade in the opposite direction.
+
+    Without explicit session timestamps in CSV, approximate session boundary
+    as a >2x ATR price-jump between consecutive bars (a structural gap).
+
+    Spec:
+      gap_atr_mult            default 2.0  — gap size in ATR units to trigger
+      atr_window              default 20
+      reversal_lookback       default 5    — confirm reversal in N bars
+    """
+    close = bars["close"]
+    high = bars["high"]
+    low = bars["low"]
+    gap_atr_mult = float(spec.get("gap_atr_mult", 2.0))
+    atr_window = int(spec.get("atr_window", 20))
+    reversal_lookback = int(spec.get("reversal_lookback", 5))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 1.5))
+    atr_arr = _atr(high, low, close, atr_window)
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(max(atr_window + reversal_lookback + 1, 30), len(close) - 1):
+        if atr_arr[i] <= 0:
+            continue
+        gap = close[i] - close[i - 1]
+        gap_size = abs(gap) / atr_arr[i]
+        if gap_size < gap_atr_mult:
+            continue
+        # Gap up → fade short. Gap down → fade long.
+        if gap > 0:
+            out.append((i, "short", stop_atr, target_atr))
+        else:
+            out.append((i, "long", stop_atr, target_atr))
+    return out
+
+
+def signals_index_lead_lag(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Index-futures lead/lag for MNQ/NQ.
+
+    Asset-class rationale: ES leads NQ leads MNQ in the equity-index complex
+    (ES has the most liquidity / direct S&P fund flows; NQ + MNQ follow via
+    correlation arb). When the leader makes a clear directional move and
+    the follower is lagging — i.e. correlation hasn't caught up yet — the
+    follower mean-reverts toward the leader within ~20 bars.
+
+    Diff vs cross_asset_divergence: directional rather than absolute z, with
+    a primary-trend gate so we only enter in the direction of the leader.
+
+    Spec:
+      partner_symbol            default "ES"
+      lead_lookback             default 20
+      lead_break_pct            default 0.003 (0.3% leader move to trigger)
+      follower_lag_pct          default 0.002 (0.2% un-followed gap)
+    """
+    close = bars["close"]
+    lead_lookback = int(spec.get("lead_lookback", 20))
+    lead_break_pct = float(spec.get("lead_break_pct", 0.003))
+    follower_lag_pct = float(spec.get("follower_lag_pct", 0.002))
+    stop_atr = float(spec.get("stop_atr", 0.75))
+    target_atr = float(spec.get("target_atr", 1.5))
+    partner_symbol = str(spec.get("partner_symbol", "ES"))
+    if partner_symbol.endswith("1") and partner_symbol[:-1].isalpha():
+        partner_symbol = partner_symbol[:-1]
+    partner_tf = str(spec.get("partner_timeframe") or spec.get("timeframe", "5m"))
+
+    partner_path = _resolve_bar_path(partner_symbol, partner_tf)
+    if partner_path is None or not partner_path.exists():
+        return []
+    partner_bars = _load_ohlcv(partner_path)
+    if partner_bars is None or len(partner_bars["close"]) < lead_lookback + 5:
+        return []
+    p_close = partner_bars["close"]
+    p_time = partner_bars["time"]
+    primary_time = bars["time"]
+    t_to_p_idx: dict[int, int] = {}
+    j = 0
+    for i, t in enumerate(primary_time):
+        while j + 1 < len(p_time) and p_time[j + 1] <= t:
+            j += 1
+        t_to_p_idx[i] = j
+
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(lead_lookback + 2, len(close) - 1):
+        pj = t_to_p_idx.get(i, -1)
+        if pj < lead_lookback + 1:
+            continue
+        lead_pct = (p_close[pj] - p_close[pj - lead_lookback]) / max(p_close[pj - lead_lookback], 1e-9)
+        follower_pct = (close[i] - close[i - lead_lookback]) / max(close[i - lead_lookback], 1e-9)
+        if lead_pct > lead_break_pct and (lead_pct - follower_pct) > follower_lag_pct:
+            # Leader broke up, follower hasn't caught up — long follower
+            out.append((i, "long", stop_atr, target_atr))
+        elif lead_pct < -lead_break_pct and (follower_pct - lead_pct) > follower_lag_pct:
+            # Leader broke down, follower still high — short follower
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
+def signals_commodity_session_breakout(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+    """Volatility-compressed session breakout for commodities (GC/CL/NG).
+
+    Asset-class rationale: commodities trend longer than equities once a
+    catalyst hits (inventory shock, OPEC headline, weather event). They also
+    range tightly between catalysts. Combine: only enter on a directional
+    breakout from a low-volatility window (the "spring is loaded" signal),
+    with wider stops than equity strategies and asymmetric R-targets to
+    capture the trend leg.
+
+    Differences vs compression_breakout:
+      * 2-bar momentum confirmation (filter out single-bar spikes that revert)
+      * ATR-vs-ATR-window quartile filter (more selective than 0.40 default)
+      * Asymmetric R: stop 1.0 ATR / target 2.5 ATR (commodities follow through)
+
+    Spec:
+      atr_pct_threshold      default 0.30 (lowest 30% of ATR window)
+      momentum_bars          default 2 (consecutive higher closes for long)
+      stop_atr               default 1.0
+      target_atr             default 2.5
+    """
+    close = bars["close"]
+    high = bars["high"]
+    low = bars["low"]
+    bb_period = int(spec.get("bb_period", 20))
+    atr_pct_threshold = float(spec.get("atr_pct_threshold", 0.30))
+    momentum_bars = int(spec.get("momentum_bars", 2))
+    stop_atr = float(spec.get("stop_atr", 1.0))
+    target_atr = float(spec.get("target_atr", 2.5))
+    atr_arr = _atr(high, low, close, bb_period)
+    out: list[tuple[int, str, float, float]] = []
+    for i in range(max(bb_period + momentum_bars + 1, 60), len(close)):
+        atr_window = atr_arr[max(0, i - 50) : i]
+        atr_window = atr_window[atr_window > 0]
+        if len(atr_window) < 5:
+            continue
+        atr_pct = (atr_arr[i] - atr_window.min()) / max(atr_window.max() - atr_window.min(), 1e-9)
+        if atr_pct > atr_pct_threshold:
+            continue
+        # Multi-bar momentum confirmation
+        higher_closes = all(close[i - k] > close[i - k - 1] for k in range(momentum_bars))
+        lower_closes  = all(close[i - k] < close[i - k - 1] for k in range(momentum_bars))
+        if higher_closes:
+            out.append((i, "long", stop_atr, target_atr))
+        elif lower_closes:
+            out.append((i, "short", stop_atr, target_atr))
+    return out
+
+
 SIGNAL_GENERATORS: dict[str, Callable] = {
     "ema_cross":            signals_ema_cross,
     "sweep_reclaim":        signals_sweep_reclaim,
@@ -447,6 +1096,20 @@ SIGNAL_GENERATORS: dict[str, Callable] = {
     "ensemble_voting":      signals_ensemble_voting,
     "mtf_scalp":            signals_mtf_scalp,
     "confluence":           signals_confluence,
+    # v2.3 additions to break MNQ confluence-cluster degeneracy (2026-05-04)
+    "rsi_mean_reversion":   signals_rsi_mean_reversion,
+    "volume_profile":       signals_volume_profile,
+    "cross_asset_divergence": signals_cross_asset_divergence,
+    # v2.6 asset-class-tailored generators (2026-05-04)
+    "dxy_gold_inverse":          signals_dxy_gold_inverse,
+    "index_lead_lag":            signals_index_lead_lag,
+    "commodity_session_breakout": signals_commodity_session_breakout,
+    # v2.7 macro-driver generators (2026-05-04 round 10)
+    "treasury_safe_haven":       signals_treasury_safe_haven,
+    "es_vix_inverse":            signals_es_vix_inverse,
+    # v2.8 cross-commodity + session-anchored generators (2026-05-04 round 11)
+    "commodity_ratio_mr":        signals_commodity_ratio_mr,
+    "overnight_gap_fade":        signals_overnight_gap_fade,
 }
 
 
@@ -518,9 +1181,25 @@ class WalkForwardEngine:
         active_regime = _load_current_regime()
         atr_arr = _atr(bars["high"], bars["low"], bars["close"], 14)
 
+        # Composite-filter mode: when fleet_sweep marked the spec with
+        # __composite_sub_kind__, generate signals from the sub-strategy
+        # but FILTER through the confluence_scorecard score predicate.
+        # This matches the registry's diamond-tier composition intent.
+        composite_sub = spec.get("__composite_sub_kind__")
+        composite_min = int(spec.get("__composite_min_score__", 2))
+        gen_kind = composite_sub if composite_sub in SIGNAL_GENERATORS else kind
+
         for train_range, test_range in windows:
             test_bars = {k: v[test_range.start : test_range.stop] for k, v in bars.items()}
-            sigs = SIGNAL_GENERATORS[kind](test_bars, spec)
+            raw_sigs = SIGNAL_GENERATORS[gen_kind](test_bars, spec)
+            if composite_sub:
+                # Filter each sub-strategy signal by scorecard score >= min
+                sigs = [
+                    s for s in raw_sigs
+                    if scorecard_score_at(test_bars, spec, s[0], s[1]) >= composite_min
+                ]
+            else:
+                sigs = raw_sigs
             for entry_local_idx, side, stop_mult, target_mult in sigs:
                 global_idx = test_range.start + entry_local_idx
                 if global_idx + 5 >= len(bars["close"]):
@@ -706,13 +1385,33 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
         _SPEC_KEYS = ("stop_atr", "target_atr", "ema_fast", "ema_mid", "ema_slow",
                       "lookback", "min_wick_pct", "min_score", "sigma_mult",
                       "bb_period", "bb_compression_pct", "range_bars",
-                      "trend_window")
+                      "trend_window",
+                      # cross_asset / counter-trend / vp params
+                      "z_threshold", "partner_symbol", "partner_timeframe",
+                      "rsi_period", "oversold_threshold", "overbought_threshold",
+                      "bb_window", "bb_std_mult", "require_rejection",
+                      "vp_lookback", "vp_bins", "vp_proximity_pct",
+                      # round-10/11 macro-driver params
+                      "dxy_break_lookback", "gold_trend_window",
+                      "vix_spike_lookback", "vix_spike_pct", "vix_collapse_pct",
+                      "treasury_mean_window",
+                      "vix_lookback", "vix_extreme_pct",
+                      "ratio_window",
+                      "gap_atr_mult", "atr_window", "reversal_lookback",
+                      "lead_lookback", "lead_break_pct", "follower_lag_pct",
+                      "atr_pct_threshold", "momentum_bars")
         _ALIASES = {
             "fast_ema": "ema_fast", "mid_ema": "ema_mid", "slow_ema": "ema_slow",
             "ema_bias_period": "ema_slow",
             "atr_stop_mult": "stop_atr",
             "rr_target": "target_atr",  # interpreted as R-multiple target
+            # cross_asset_divergence registry names → generator names
+            "z_lookback": "lookback",
+            "entry_z_threshold": "z_threshold",
+            "min_z_threshold": "z_threshold",
+            "reference_asset": "partner_symbol",
         }
+        _SPEC_KEYS_EXTRA = ("partner_symbol", "z_threshold", "lookback")
         if isinstance(a.extras, Mapping):
             def _ingest(src: Mapping[str, Any]) -> None:
                 for k, v in src.items():
@@ -731,6 +1430,61 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
                 inner_cfg = sub.get("sweep_config") or sub.get("config")
                 if isinstance(inner_cfg, Mapping):
                     _ingest(inner_cfg)
+            # Sub-strategy dispatch: many bots register
+            # strategy_kind="confluence_scorecard" with a more specific
+            # sub_strategy_kind (e.g. "vwap_mean_reversion",
+            # "rsi_mean_reversion"). If the sub maps to a registered signal
+            # generator, override strategy_kind so each bot exercises its
+            # actual logic rather than the generic scorecard. Aliases match
+            # the registry's naming conventions.
+            _SUB_KIND_ALIASES = {
+                "vwap_mean_reversion":    "vwap_mr",
+                "vwap_reversion":         "vwap_mr",
+                "vwap_mr":                "vwap_mr",
+                "sweep_reclaim":          "sweep_reclaim",
+                "compression_breakout":   "compression_breakout",
+                "ema_cross":              "ema_cross",
+                "orb_sage_gated":         "orb_sage_gated",
+                "sage_daily_gated":       "sage_daily_gated",
+                "ensemble_voting":        "ensemble_voting",
+                "mtf_scalp":              "mtf_scalp",
+                # v2.3 (2026-05-04) — break MNQ cluster degeneracy
+                "rsi_mean_reversion":     "rsi_mean_reversion",
+                "rsi_mr":                 "rsi_mean_reversion",
+                "volume_profile":         "volume_profile",
+                "vp":                     "volume_profile",
+                "cross_asset_divergence": "cross_asset_divergence",
+                "cross_asset":            "cross_asset_divergence",
+                "divergence":             "cross_asset_divergence",
+            }
+            sub_kind = str(a.extras.get("sub_strategy_kind") or "").strip()
+            mapped = _SUB_KIND_ALIASES.get(sub_kind)
+            # Counter-trend strategies must NOT be filtered by the
+            # scorecard's trend gate — the trend gate by definition
+            # disagrees with their entry direction (RSI<25 long while
+            # trend is down, etc.). For these, dispatch directly to
+            # the sub-strategy without composite filter.
+            _COUNTER_TREND_KINDS = {"rsi_mean_reversion", "vwap_mr"}
+            if mapped and mapped in SIGNAL_GENERATORS:
+                # COMPOSITE FILTER (2026-05-04): if registry has BOTH
+                # strategy_kind="confluence_scorecard" and a registered
+                # sub_strategy_kind, run sub-strategy signals filtered
+                # by scorecard score >= min_score. Matches the registry's
+                # DIAMOND architecture (e.g. btc_optimized = sweep_reclaim
+                # entries × scorecard quality filter). Skipped for
+                # counter-trend strategies (they get pure dispatch).
+                if a.strategy_kind == "confluence_scorecard" and mapped not in _COUNTER_TREND_KINDS:
+                    spec["__composite_sub_kind__"] = mapped
+                    spec["__composite_min_score__"] = int(
+                        a.extras.get("scorecard_config", {}).get("min_score", 2)
+                        if isinstance(a.extras.get("scorecard_config"), Mapping)
+                        else a.extras.get("min_score", 2)
+                    )
+                    # Keep strategy_kind as confluence_scorecard so engine.run
+                    # can read the composite hint and filter accordingly.
+                else:
+                    # Pure dispatch (no scorecard composition).
+                    spec["strategy_kind"] = mapped
         r = engine.run(spec)
         save_lab_report(r, out_dir)
         results.append(r)

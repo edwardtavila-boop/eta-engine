@@ -202,10 +202,15 @@ class FundingRateStrategy:
             return None
 
         if self.cfg.require_pullback and self._ema is not None:
-            if side == "BUY" and bar.close > self._ema:
+            # FIX: filter was INVERTED. The pullback gate's purpose is to
+            # require price has reclaimed the trend EMA before entering
+            # in the funding-implied direction. Old code blocked BUYs
+            # when price was ABOVE the EMA (the exact entries we WANT)
+            # and let through BUYs below the EMA (against trend).
+            if side == "BUY" and bar.close < self._ema:
                 self._n_trend_veto += 1
                 return None
-            if side == "SELL" and bar.close < self._ema:
+            if side == "SELL" and bar.close > self._ema:
                 self._n_trend_veto += 1
                 return None
 

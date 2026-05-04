@@ -43,6 +43,46 @@ class _Open:
     # populate one — preserves backward compatibility with old strategies.
     regime: str | None = None
 
+    def __post_init__(self) -> None:
+        # Hard invariant — catches the entire wrong-side-stop bug class
+        # (volume_profile, vwap_reversion, future strategies) at the
+        # moment of construction.  If a strategy ever returns an _Open
+        # with stop on the wrong side of entry, this raises *before* the
+        # backtest engine or live order router gets to ship a fake-LONG
+        # bracket to a broker.  Do not relax these without an explicit
+        # design rationale — they are the LAST line of defense against
+        # the most expensive class of bug.
+        s = self.side.upper()
+        if s in {"BUY", "LONG"}:
+            if self.stop >= self.entry_price:
+                raise ValueError(
+                    f"LONG stop ({self.stop}) must be BELOW entry "
+                    f"({self.entry_price}). This is the volume_profile / "
+                    f"vwap_reversion bug class — fix the strategy."
+                )
+            if self.target <= self.entry_price:
+                raise ValueError(
+                    f"LONG target ({self.target}) must be ABOVE entry "
+                    f"({self.entry_price})."
+                )
+        elif s in {"SELL", "SHORT"}:
+            if self.stop <= self.entry_price:
+                raise ValueError(
+                    f"SHORT stop ({self.stop}) must be ABOVE entry "
+                    f"({self.entry_price})."
+                )
+            if self.target >= self.entry_price:
+                raise ValueError(
+                    f"SHORT target ({self.target}) must be BELOW entry "
+                    f"({self.entry_price})."
+                )
+        else:
+            raise ValueError(f"side must be BUY/LONG or SELL/SHORT, got {self.side!r}")
+        if self.qty <= 0:
+            raise ValueError(f"qty must be > 0, got {self.qty}")
+        if self.entry_price <= 0:
+            raise ValueError(f"entry_price must be > 0, got {self.entry_price}")
+
 
 def _atr(hist: list[BarData], period: int = 14) -> float:
     if not hist:

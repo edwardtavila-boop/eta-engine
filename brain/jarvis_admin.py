@@ -630,15 +630,82 @@ class JarvisAdmin:
             ctx = self._engine.tick()
 
         # Wave-6 pre-live plumbing: optionally route through v22 sage.
-        # Lazy import + lazy flag check so we never pay the cost when
-        # the flag is off.
+        # 2026-05-04 wave-7: v23 fleet-aware supercharge wraps v22/v17 when
+        # JARVIS_V3_FLEET_AWARE flag is set. v23 itself wraps v22 internally
+        # so the precedence is v23 > v22 > v17. Lazy imports + lazy flag
+        # checks so disabled flags cost nothing.
+        # 2026-05-04 wave-8: JARVIS_V3_ADVANCED activates the full
+        # v23→v27 stack (correlation throttle, class loss limit, fill
+        # confirmation, sharpe drift). Precedence:
+        #   JARVIS_V3_ADVANCED > JARVIS_V3_FLEET_AWARE > V22_SAGE > v17
+        def _env_flag(name: str) -> bool:
+            return (
+                __import__("os").environ.get(name, "")
+                .strip().lower() in {"1", "true", "yes", "on"}
+            )
+
         try:
             from eta_engine.brain.feature_flags import is_enabled as _ff_enabled
             sage_live = _ff_enabled("V22_SAGE_MODULATION")
+            fleet_aware_live = _ff_enabled("JARVIS_V3_FLEET_AWARE") or _env_flag("JARVIS_V3_FLEET_AWARE")
+            advanced_live = _ff_enabled("JARVIS_V3_ADVANCED") or _env_flag("JARVIS_V3_ADVANCED")
         except Exception:  # noqa: BLE001 -- feature_flags import must never crash JARVIS
             sage_live = False
+            fleet_aware_live = _env_flag("JARVIS_V3_FLEET_AWARE")
+            advanced_live = _env_flag("JARVIS_V3_ADVANCED")
 
-        if sage_live:
+        if advanced_live:
+            try:
+                from eta_engine.brain.jarvis_v3.policies.v27_sharpe_drift import (
+                    evaluate_advanced_stack,
+                )
+                resp = evaluate_advanced_stack(req, ctx)
+            except Exception as exc:  # noqa: BLE001 -- fall back through stack
+                logger.warning(
+                    "v27_advanced_stack raised %s -- falling back to v23/v22/v17: %s",
+                    type(exc).__name__,
+                    exc,
+                )
+                resp = None
+            if resp is None:
+                # Cascade fallback: try v23, then v22, then v17.
+                try:
+                    from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import evaluate_v23
+                    resp = evaluate_v23(req, ctx)
+                except Exception:  # noqa: BLE001
+                    if sage_live:
+                        try:
+                            from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import evaluate_v22
+                            resp = evaluate_v22(req, ctx)
+                        except Exception:  # noqa: BLE001
+                            resp = evaluate_request(req, ctx)
+                    else:
+                        resp = evaluate_request(req, ctx)
+        elif fleet_aware_live:
+            try:
+                from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
+                    evaluate_v23,
+                )
+                resp = evaluate_v23(req, ctx)
+            except Exception as exc:  # noqa: BLE001 -- fall back to v22/v17
+                logger.warning(
+                    "v23_fleet_aware raised %s -- falling back to v22/v17: %s",
+                    type(exc).__name__,
+                    exc,
+                )
+                resp = None
+            if resp is None:
+                if sage_live:
+                    try:
+                        from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
+                            evaluate_v22,
+                        )
+                        resp = evaluate_v22(req, ctx)
+                    except Exception:  # noqa: BLE001
+                        resp = evaluate_request(req, ctx)
+                else:
+                    resp = evaluate_request(req, ctx)
+        elif sage_live:
             try:
                 from eta_engine.brain.jarvis_v3.policies.v22_sage_confluence import (
                     evaluate_v22,

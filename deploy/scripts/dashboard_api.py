@@ -1395,8 +1395,133 @@ def jarvis_router_health() -> dict:
         "flags": {
             "ONLINE_LEARNING": flags.get("ONLINE_LEARNING", False),
             "V22_SAGE_MODULATION": flags.get("V22_SAGE_MODULATION", False),
+            "JARVIS_V3_FLEET_AWARE": flags.get("JARVIS_V3_FLEET_AWARE", False),
+            "JARVIS_V3_ADVANCED": flags.get("JARVIS_V3_ADVANCED", False),
             "BANDIT_LIVE_ROUTING": flags.get("BANDIT_LIVE_ROUTING", False),
         },
+    }
+
+
+@app.get("/api/jarvis/sharpe_drift")
+def jarvis_sharpe_drift() -> dict:
+    """Live-vs-lab sharpe drift table (v27 input surface).
+
+    For each active bot, compares the registry's ``lab_audit_*`` exp_R
+    stamp against live-realized PnL/n_exits from the supervisor heartbeat.
+    Surfaces any bot where live performance has drifted from lab claim
+    BEFORE the v27 layer has to size-cap automatically.
+
+    Returns:
+      {
+        "rows": [{ bot_id, lab_exp_r, live_per_exit, ratio, n_exits,
+                   instrument_class, drift_state }],
+        "drifted_count": int,
+        "ts": iso8601,
+      }
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    rows = []
+    drifted = 0
+    healthy = 0
+    insufficient = 0
+    untested = 0
+
+    # Read supervisor heartbeat for live state
+    sup_hb_path = _state_dir() / "jarvis_intel" / "supervisor" / "heartbeat.json"
+    bots_state: list[dict] = []
+    if sup_hb_path.exists():
+        try:
+            sup_hb = json.loads(sup_hb_path.read_text(encoding="utf-8"))
+            if isinstance(sup_hb, dict):
+                bots_state = sup_hb.get("bots") or []
+        except (OSError, json.JSONDecodeError):
+            bots_state = []
+
+    # Cross-ref against registry for lab_audit
+    try:
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
+        from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
+            _INSTRUMENT_CLASS_TO_BROAD,
+        )
+    except Exception:  # noqa: BLE001
+        return {"rows": [], "drifted_count": 0, "ts": _dt.now(_tz.utc).isoformat(),
+                "error": "registry import failed"}
+
+    for a in ASSIGNMENTS:
+        if not is_active(a):
+            continue
+        # Find lab_audit stamp
+        lab_exp = None
+        lab_sharpe = None
+        for k, v in (a.extras or {}).items():
+            if isinstance(v, dict) and (k.startswith("lab_audit_") or k.startswith("lab_promotion_")):
+                lab_exp = v.get("exp_R") if v.get("exp_R") is not None else lab_exp
+                lab_sharpe = v.get("sharpe") if v.get("sharpe") is not None else lab_sharpe
+        # Find live state
+        live = next(
+            (bs for bs in bots_state if isinstance(bs, dict) and bs.get("bot_id") == a.bot_id),
+            None,
+        )
+        n_exits = int(live.get("n_exits") or 0) if live else 0
+        realized_pnl = float(live.get("realized_pnl") or 0.0) if live else 0.0
+        live_per_exit = (realized_pnl / n_exits) if n_exits > 0 else 0.0
+        # Determine drift state
+        if lab_exp is None:
+            state = "untested"
+            untested += 1
+            ratio = None
+        elif n_exits < 10:
+            state = "insufficient_sample"
+            insufficient += 1
+            ratio = None
+        else:
+            try:
+                ratio = live_per_exit / max(float(lab_exp), 1e-9) if float(lab_exp) > 0 else None
+            except (TypeError, ValueError, ZeroDivisionError):
+                ratio = None
+            if ratio is None:
+                state = "untested"
+                untested += 1
+            elif ratio < 0.30:
+                state = "drifted"
+                drifted += 1
+            elif ratio < 0.70:
+                state = "soft_drift"
+                healthy += 1
+            else:
+                state = "healthy"
+                healthy += 1
+
+        cls = _INSTRUMENT_CLASS_TO_BROAD.get(
+            str((a.extras or {}).get("instrument_class", "")).strip().lower(), ""
+        )
+        rows.append({
+            "bot_id": a.bot_id,
+            "symbol": a.symbol,
+            "instrument_class": cls,
+            "promotion_status": (a.extras or {}).get("promotion_status", ""),
+            "lab_exp_r": lab_exp,
+            "lab_sharpe": lab_sharpe,
+            "live_per_exit": round(live_per_exit, 4),
+            "n_exits": n_exits,
+            "realized_pnl": round(realized_pnl, 2),
+            "ratio": round(ratio, 3) if ratio is not None else None,
+            "drift_state": state,
+        })
+
+    rows.sort(key=lambda r: (r["drift_state"] != "drifted", -(r.get("n_exits") or 0)))
+    return {
+        "rows": rows,
+        "summary": {
+            "drifted": drifted,
+            "soft_drift": sum(1 for r in rows if r["drift_state"] == "soft_drift"),
+            "healthy": sum(1 for r in rows if r["drift_state"] == "healthy"),
+            "insufficient_sample": insufficient,
+            "untested": untested,
+        },
+        "drifted_count": drifted,
+        "ts": _dt.now(_tz.utc).isoformat(),
     }
 
 

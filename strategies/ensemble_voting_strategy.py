@@ -191,6 +191,18 @@ class EnsembleVotingStrategy:
             avg_qty *= mult
             avg_risk *= mult
 
+        # GUARD: averaged geometry must still be valid.  Sub-strategies'
+        # individually-correct stops can average to wrong-side configurations
+        # when sub-strategies disagree wildly on entry price.  _Open's
+        # __post_init__ would also catch this, but we abstain cleanly here
+        # rather than raise.
+        if chosen_side == "BUY":
+            if avg_stop >= avg_entry or avg_target <= avg_entry:
+                return None
+        else:
+            if avg_stop <= avg_entry or avg_target >= avg_entry:
+                return None
+
         agreement_names = "+".join(name for name, _ in proposals if name in {
             n_ for n_, p in self._subs_for_proposals(chosen_proposals)
         })

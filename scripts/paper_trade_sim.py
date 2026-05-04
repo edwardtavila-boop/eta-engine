@@ -1,16 +1,20 @@
-"""Layer 21: Paper-trade simulation loop — runs the full pipeline
-(bridge → dispatch → signal → paper fill) for a single bot.
+"""Layer 21: Paper-trade simulation loop with REALISTIC fills.
 
-Loads real bars, feeds them to the RouterAdapter with bot_id set,
-tracks paper positions and PnL, writes to decision journal.
+Loads real bars, feeds them to the registry strategy bridge, simulates
+fills with adverse slippage on entries / stops, charges commissions,
+resolves same-bar straddles probabilistically, and tags trades to
+RTH / overnight session buckets so the post-hoc analysis can spot
+where the live-vs-paper gap will widen.
 
-This is the end-to-end proof that the entire edge→corner pipeline works.
+The legacy zero-friction path remains available via ``--mode legacy``
+for A/B comparison only — it is NOT a defensible production estimate.
 
 Usage
 -----
     python -m eta_engine.scripts.paper_trade_sim --bot mnq_futures_sage --days 30
     python -m eta_engine.scripts.paper_trade_sim --bot nq_daily_drb --days 365
-    python -m eta_engine.scripts.paper_trade_sim --bot nq_futures_sage --days 30
+    python -m eta_engine.scripts.paper_trade_sim --bot nq_futures_sage --days 30 --mode pessimistic
+    python -m eta_engine.scripts.paper_trade_sim --bot vwap_mr_mnq --days 90 --walk-forward
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -29,6 +34,20 @@ if hasattr(sys.stdout, "reconfigure"):
     with contextlib.suppress(AttributeError, OSError):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+
+from eta_engine.feeds.instrument_specs import (  # noqa: E402
+    get_spec,
+    is_rth_session,
+)
+from eta_engine.feeds.realistic_fill_sim import (  # noqa: E402
+    BarOHLCV,
+    Mode,
+    RealisticFillSim,
+)
+from eta_engine.feeds.signal_validator import (  # noqa: E402
+    ValidationFailure,
+    validate_signal,
+)
 
 
 @dataclass
@@ -40,6 +59,8 @@ class PaperPosition:
     target: float
     entry_bar_ts: str
     qty: float = 1.0
+    entry_slippage_ticks: float = 0.0
+    entry_session_rth: bool = True
 
 
 @dataclass
@@ -48,11 +69,17 @@ class PaperTrade:
     side: str
     entry_price: float
     exit_price: float
+    qty: float
     pnl_points: float
-    pnl_usd: float  # mnq $0.50/point per contract, NQ $20/point
+    gross_pnl_usd: float        # before commission, after slippage
+    commission_usd: float       # round-trip
+    net_pnl_usd: float          # gross - commission
     exit_reason: str
     entry_ts: str
     exit_ts: str
+    session_rth: bool           # True if entry+exit both during RTH
+    entry_slippage_ticks: float
+    exit_slippage_ticks: float
 
 
 @dataclass
@@ -60,30 +87,72 @@ class SimResult:
     bot_id: str
     symbol: str
     timeframe: str
+    mode: str
     bars_processed: int
     signals_generated: int
+    signals_rejected: int       # hard-validation failures (stop on wrong side, RR absurd, etc.)
     trades_taken: int
     winners: int
     losers: int
     win_rate_pct: float
-    total_pnl_usd: float
+    gross_pnl_usd: float        # before commissions, after slippage
+    total_commission_usd: float
+    total_pnl_usd: float        # net of commissions
     avg_pnl_per_trade: float
     max_dd_usd: float
+    rth_trades: int
+    overnight_trades: int
+    rth_pnl_usd: float
+    overnight_pnl_usd: float
+    straddle_resolutions: int   # how many bars triggered straddle resolver
+    rejection_codes: dict[str, int] = field(default_factory=dict)
     trades: list[PaperTrade] = field(default_factory=list)
     equity_curve: list[float] = field(default_factory=list)
 
 
-_MULTIPLIERS: dict[str, float] = {
-    "MNQ": 0.50, "MNQ1": 0.50,
+# Legacy multiplier table — kept for back-compat with external callers
+# that pass an explicit point_value override.  PRIMARY path now uses
+# instrument_specs.get_spec() which has VERIFIED CME contract multipliers.
+# The old MNQ value (0.50) is wrong by 4x; do NOT trust this dict for
+# new code.
+_LEGACY_MULTIPLIERS: dict[str, float] = {
+    "MNQ": 2.00, "MNQ1": 2.00,
     "NQ": 20.0, "NQ1": 20.0,
-    "ES": 12.50, "ES1": 12.50,
-    "BTC": 1.0, "ETH": 1.0, "SOL": 1.0, "XRP": 1.0,
-    "MBT": 5.0, "MET": 0.50,
+    "ES": 50.0, "ES1": 50.0,
+    "BTC": 5.0, "ETH": 50.0,
+    "MBT": 0.10, "MET": 0.10,
+    "SOL": 1.0, "XRP": 1.0,
 }
 
 
-def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = None,
-                   point_value: float | None = None) -> SimResult:
+def _bar_to_ohlcv(b, ts_iso: str) -> BarOHLCV:
+    return BarOHLCV(
+        open=float(b.open), high=float(b.high), low=float(b.low),
+        close=float(b.close), volume=float(b.volume), ts_iso=ts_iso,
+    )
+
+
+def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inline
+    bot_id: str,
+    max_bars: int = 10000,
+    bar_limit: int | None = None,
+    point_value: float | None = None,
+    mode: Mode = "realistic",
+    seed: int = 0,
+    is_fraction: float | None = None,
+    eval_oos: bool = False,
+) -> SimResult:
+    """Replay historical bars with realistic fills.
+
+    Parameters
+    ----------
+    mode: ``realistic`` (default), ``pessimistic``, or ``legacy``
+    seed: RNG seed for the straddle/thin-bar resolvers
+    is_fraction: if set, only the first ``is_fraction`` of bars are used
+        as the "trading" window; remainder is ignored.  Combined with
+        ``eval_oos=True``, swaps to the OOS window so a caller can score
+        IS and OOS independently.
+    """
     from eta_engine.data.library import default_library
     from eta_engine.strategies.eta_policy import StrategyContext
     from eta_engine.strategies.models import Bar as EBar
@@ -98,13 +167,18 @@ def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = N
     if ds is None:
         raise ValueError(f"No data for {assignment.symbol}/{assignment.timeframe}")
 
-    bars = lib.load_bars(ds, limit=min(bar_limit or 999999, max_bars),
-                         limit_from="tail", require_positive_prices=True)
+    bars = lib.load_bars(
+        ds, limit=min(bar_limit or 999999, max_bars),
+        limit_from="tail", require_positive_prices=True,
+    )
     if len(bars) < 50:
         raise ValueError(f"Not enough bars: {len(bars)}")
 
-    pv = point_value or _MULTIPLIERS.get(assignment.symbol, 0.50)
-    equity = 10000.0
+    spec = get_spec(assignment.symbol)
+    # Allow caller override but prefer the spec table
+    pv = point_value if point_value is not None else spec.point_value
+
+    fill_sim = RealisticFillSim(mode=mode, seed=seed)
 
     from eta_engine.strategies.registry_strategy_bridge import (
         build_registry_dispatch,
@@ -117,133 +191,163 @@ def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = N
     if bridge is None:
         raise ValueError(f"Bridge returned None for {bot_id}")
 
-    elig, reg = bridge
+    _, reg = bridge
     fn = list(reg.values())[0]
     ctx = StrategyContext(kill_switch_active=False, session_allows_entries=True)
 
     eta_bars = [
         EBar(
             ts=int(b.timestamp.timestamp() * 1000),
-            open=float(b.open),
-            high=float(b.high),
-            low=float(b.low),
-            close=float(b.close),
-            volume=float(b.volume),
+            open=float(b.open), high=float(b.high), low=float(b.low),
+            close=float(b.close), volume=float(b.volume),
         )
         for b in bars
     ]
 
+    # IS / OOS split: caller gets contiguous halves (or any fraction).
+    # The strategy still warms up on whatever bars are inside the chosen
+    # window, so an IS run and an OOS run on the same data produce
+    # legitimate disjoint test windows.
+    if is_fraction is not None and 0.1 <= is_fraction <= 0.9:
+        split_idx = int(len(eta_bars) * is_fraction)
+        if eval_oos:
+            eta_bars = eta_bars[split_idx:]
+            bars = bars[split_idx:]
+        else:
+            eta_bars = eta_bars[:split_idx]
+            bars = bars[:split_idx]
+
     position: PaperPosition | None = None
+    pending_entry_side: str | None = None
+    pending_entry_signal = None  # holds the signal object until next bar's open
     trades: list[PaperTrade] = []
+
     starting_equity = 10000.0
     equity = starting_equity
     equity_curve: list[float] = [starting_equity]
     signals = 0
+    signals_rejected = 0
+    rejection_codes: dict[str, int] = {}
     peak_equity = starting_equity
     max_dd = 0.0
+    straddle_count = 0
 
-    for i in range(max(2, len(eta_bars) // 20), len(eta_bars)):
-        bar = eta_bars[i]
-        price = bar.close
+    # Loop offset: skip the first 5% of loaded bars so the strategy has
+    # buffer to warm up.  Strategies have their own warmup_bars too;
+    # this is just a floor.
+    loop_start = max(2, len(eta_bars) // 20)
+
+    for i in range(loop_start, len(eta_bars)):
+        bar_eta = eta_bars[i]
         bar_ts = bars[i].timestamp
+        bar_ts_iso = bar_ts.isoformat()
+        bar_ohlcv = _bar_to_ohlcv(bar_eta, bar_ts_iso)
 
-        if position is not None:
-            qty = position.qty
-            if position.side == "LONG":
-                if bar.low <= position.stop:
-                    pnl_points = (position.stop - position.entry_price) * qty
-                    pnl_usd = pnl_points * pv
-                    trades.append(PaperTrade(
-                        bot_id=bot_id, side="LONG",
-                        entry_price=position.entry_price, exit_price=position.stop,
-                        pnl_points=pnl_points, pnl_usd=pnl_usd,
-                        exit_reason="stop_loss",
-                        entry_ts=position.entry_bar_ts,
-                        exit_ts=bar_ts.isoformat(),
-                    ))
-                    equity += pnl_usd
-                    position = None
-                elif bar.high >= position.target:
-                    pnl_points = (position.target - position.entry_price) * qty
-                    pnl_usd = pnl_points * pv
-                    trades.append(PaperTrade(
-                        bot_id=bot_id, side="LONG",
-                        entry_price=position.entry_price, exit_price=position.target,
-                        pnl_points=pnl_points, pnl_usd=pnl_usd,
-                        exit_reason="take_profit",
-                        entry_ts=position.entry_bar_ts,
-                        exit_ts=bar_ts.isoformat(),
-                    ))
-                    equity += pnl_usd
-                    position = None
+        # Track volume window for thin-bar slippage detection
+        fill_sim.feed_bar_volume(bar_eta.volume)
+
+        # --- 1. Realize a pending market-on-next-open entry ---------
+        if pending_entry_signal is not None and position is None:
+            sig = pending_entry_signal
+            entry_fill = fill_sim.simulate_entry(
+                side=sig.side.value, entry_bar=bar_ohlcv, spec=spec,
+            )
+            # Recompute qty from the FILLED entry price so risk-per-trade
+            # honors the actual stop distance, not the signal's idealized one.
+            stop_dist = abs(entry_fill.fill_price - sig.stop)
+            if stop_dist <= 0:
+                pending_entry_signal = None
+                pending_entry_side = None
             else:
-                if bar.high >= position.stop:
-                    pnl_points = (position.entry_price - position.stop) * qty
-                    pnl_usd = pnl_points * pv
-                    trades.append(PaperTrade(
-                        bot_id=bot_id, side="SHORT",
-                        entry_price=position.entry_price, exit_price=position.stop,
-                        pnl_points=pnl_points, pnl_usd=pnl_usd,
-                        exit_reason="stop_loss",
-                        entry_ts=position.entry_bar_ts,
-                        exit_ts=bar_ts.isoformat(),
-                    ))
-                    equity += pnl_usd
-                    position = None
-                elif bar.low <= position.target:
-                    pnl_points = (position.entry_price - position.target) * qty
-                    pnl_usd = pnl_points * pv
-                    trades.append(PaperTrade(
-                        bot_id=bot_id, side="SHORT",
-                        entry_price=position.entry_price, exit_price=position.target,
-                        pnl_points=pnl_points, pnl_usd=pnl_usd,
-                        exit_reason="take_profit",
-                        entry_ts=position.entry_bar_ts,
-                        exit_ts=bar_ts.isoformat(),
-                    ))
-                    equity += pnl_usd
-                    position = None
+                base_risk_pct = 0.01
+                risk_usd = peak_equity * base_risk_pct * max(0.25, min(sig.risk_mult, 1.5))
+                qty = risk_usd / (stop_dist * pv)
+                qty = max(qty, 0.01)
 
-        if position is None:
+                # HARD VALIDATION — reject malformed signals before they
+                # become positions.  Catches stop-on-wrong-side, RR
+                # absurdity, stop-too-far, and notional-cap breaches.
+                vr = validate_signal(
+                    side=sig.side.value, entry=entry_fill.fill_price,
+                    stop=sig.stop, target=sig.target, qty=qty,
+                    equity=peak_equity, point_value=pv, spec_symbol=spec.symbol,
+                )
+                if not vr.ok:
+                    signals_rejected += 1
+                    for f in vr.failures:
+                        rejection_codes[f.code] = rejection_codes.get(f.code, 0) + 1
+                    pending_entry_signal = None
+                    pending_entry_side = None
+                else:
+                    position = PaperPosition(
+                        bot_id=bot_id,
+                        side=sig.side.value,
+                        entry_price=entry_fill.fill_price,
+                        stop=sig.stop,
+                        target=sig.target,
+                        entry_bar_ts=bar_ts_iso,
+                        qty=round(qty, 4),
+                        entry_slippage_ticks=entry_fill.slippage_ticks,
+                        entry_session_rth=is_rth_session(bar_ts_iso, spec.symbol),
+                    )
+                    pending_entry_signal = None
+                    pending_entry_side = None
+                    # Continue: position can NOT also exit on its own entry bar
+                    continue
+
+        # --- 2. Manage existing position: try to exit on this bar ---
+        if position is not None:
+            exit_fill = fill_sim.simulate_exit(
+                side=position.side,
+                position_entry=position.entry_price,
+                stop_price=position.stop,
+                target_price=position.target,
+                bar=bar_ohlcv,
+                spec=spec,
+            )
+            if exit_fill.exit_reason != "no_exit":
+                if "straddle" in exit_fill.exit_reason:
+                    straddle_count += 1
+                # Compute PnL with proper qty propagation
+                qty = position.qty
+                if position.side == "LONG":
+                    pnl_points = (exit_fill.fill_price - position.entry_price) * qty
+                else:
+                    pnl_points = (position.entry_price - exit_fill.fill_price) * qty
+                gross_pnl_usd = pnl_points * pv
+                commission = fill_sim.commission_for_trade(spec, qty, exit_fill.fill_price)
+                net_pnl_usd = gross_pnl_usd - commission
+
+                exit_session_rth = is_rth_session(bar_ts_iso, spec.symbol)
+                trade = PaperTrade(
+                    bot_id=bot_id, side=position.side,
+                    entry_price=position.entry_price,
+                    exit_price=exit_fill.fill_price,
+                    qty=qty,
+                    pnl_points=pnl_points,
+                    gross_pnl_usd=gross_pnl_usd,
+                    commission_usd=commission,
+                    net_pnl_usd=net_pnl_usd,
+                    exit_reason=exit_fill.exit_reason,
+                    entry_ts=position.entry_bar_ts,
+                    exit_ts=bar_ts_iso,
+                    session_rth=position.entry_session_rth and exit_session_rth,
+                    entry_slippage_ticks=position.entry_slippage_ticks,
+                    exit_slippage_ticks=exit_fill.slippage_ticks,
+                )
+                trades.append(trade)
+                equity += net_pnl_usd
+                position = None
+
+        # --- 3. Generate a NEW signal if flat -----------------------
+        if position is None and pending_entry_signal is None:
             signal = fn(eta_bars[:i + 1], ctx)
             if signal.is_actionable and signal.stop > 0 and signal.target > 0:
                 signals += 1
-                # Risk-optimized sizing: scale based on DD, win streak, confluence
-                from eta_engine.strategies.risk_optimizer import compute_optimal_size
+                pending_entry_signal = signal
+                pending_entry_side = signal.side.value
 
-                risk_pct = 0.01
-                trades_today = sum(1 for t in trades if t.entry_ts[:10] == bar_ts.strftime("%Y-%m-%d"))
-                wins_in_row = 0
-                losses_in_row = 0
-                for t in reversed(trades):
-                    if t.pnl_usd > 0:
-                        wins_in_row += 1
-                        break
-                    else:
-                        losses_in_row += 1
-                dd_pct = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
-                score = int(signal.confidence / 2.0) + 2
-                size_mult = compute_optimal_size(
-                    bot_id=bot_id, equity=peak_equity,
-                    base_risk_pct=risk_pct, current_dd_pct=dd_pct,
-                    confluence_score=score, pyramid_count=0,
-                    max_trades_today=trades_today,
-                    trades_allowed_per_day=2,
-                    wins_in_a_row=wins_in_row, losses_in_a_row=losses_in_row,
-                )
-                qty = size_mult / (abs(signal.entry - signal.stop) * pv) if signal.entry and signal.stop and signal.entry != signal.stop else 1.0
-                qty = max(qty, 0.01)
-
-                position = PaperPosition(
-                    bot_id=bot_id,
-                    side=signal.side.value,
-                    entry_price=signal.entry or price,
-                    stop=signal.stop,
-                    target=signal.target,
-                    entry_bar_ts=bar_ts.isoformat(),
-                    qty=round(qty, 4),
-                )
-
+        # --- 4. Update equity curve / drawdown ---------------------
         equity_curve.append(equity)
         if equity > peak_equity:
             peak_equity = equity
@@ -251,40 +355,66 @@ def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = N
         if dd > max_dd:
             max_dd = dd
 
-    winners = sum(1 for t in trades if t.pnl_usd > 0)
-    losers = sum(1 for t in trades if t.pnl_usd <= 0)
-    total_pnl = sum(t.pnl_usd for t in trades)
-    avg_pnl = total_pnl / len(trades) if trades else 0.0
+    winners = sum(1 for t in trades if t.net_pnl_usd > 0)
+    losers = sum(1 for t in trades if t.net_pnl_usd <= 0)
+    gross_pnl = sum(t.gross_pnl_usd for t in trades)
+    total_comm = sum(t.commission_usd for t in trades)
+    net_pnl = sum(t.net_pnl_usd for t in trades)
+    avg_pnl = net_pnl / len(trades) if trades else 0.0
     wr = (winners / len(trades)) * 100 if trades else 0.0
+    rth_trades = sum(1 for t in trades if t.session_rth)
+    overnight_trades = len(trades) - rth_trades
+    rth_pnl = sum(t.net_pnl_usd for t in trades if t.session_rth)
+    overnight_pnl = sum(t.net_pnl_usd for t in trades if not t.session_rth)
 
     return SimResult(
         bot_id=bot_id,
         symbol=assignment.symbol,
         timeframe=assignment.timeframe,
+        mode=mode,
         bars_processed=len(eta_bars),
         signals_generated=signals,
+        signals_rejected=signals_rejected,
         trades_taken=len(trades),
         winners=winners,
         losers=losers,
         win_rate_pct=round(wr, 1),
-        total_pnl_usd=round(total_pnl, 2),
+        gross_pnl_usd=round(gross_pnl, 2),
+        total_commission_usd=round(total_comm, 2),
+        total_pnl_usd=round(net_pnl, 2),
         avg_pnl_per_trade=round(avg_pnl, 2),
         max_dd_usd=round(max_dd, 2),
+        rth_trades=rth_trades,
+        overnight_trades=overnight_trades,
+        rth_pnl_usd=round(rth_pnl, 2),
+        overnight_pnl_usd=round(overnight_pnl, 2),
+        straddle_resolutions=straddle_count,
+        rejection_codes=rejection_codes,
         trades=trades,
         equity_curve=[round(e, 2) for e in equity_curve],
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     p = argparse.ArgumentParser(prog="paper_trade_sim", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--bot", type=str, required=True, help="bot_id to simulate")
     p.add_argument("--days", type=int, default=30, help="approximate days of data to simulate")
+    p.add_argument("--mode", type=str, default="realistic",
+                   choices=["realistic", "pessimistic", "legacy"],
+                   help="fill realism mode (default: realistic)")
+    p.add_argument("--seed", type=int, default=0, help="RNG seed for straddle/thin-bar resolvers")
+    p.add_argument("--walk-forward", action="store_true",
+                   help="run two simulations: IS (first 70%% of bars) + OOS (last 30%%) "
+                        "and report both")
+    p.add_argument("--is-fraction", type=float, default=0.7,
+                   help="train fraction for --walk-forward (default 0.7)")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
-    assignment = __import__("eta_engine.strategies.per_bot_registry",
-                            fromlist=["get_for_bot"]).get_for_bot(args.bot)
+    assignment = __import__(
+        "eta_engine.strategies.per_bot_registry", fromlist=["get_for_bot"],
+    ).get_for_bot(args.bot)
     if assignment is None:
         print(f"Unknown bot: {args.bot}")
         return 1
@@ -292,40 +422,95 @@ def main(argv: list[str] | None = None) -> int:
     daily_bars = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "D": 1, "W": 0.14}
     bars_per_day = daily_bars.get(assignment.timeframe, 288)
     bar_limit = int(args.days * bars_per_day)
-    point_value = _MULTIPLIERS.get(assignment.symbol, 0.50)
+
+    spec = get_spec(assignment.symbol)
+    pv = spec.point_value
+
+    def _run(eval_oos: bool, is_fraction: float | None) -> SimResult:
+        return run_simulation(
+            args.bot, max_bars=100000, bar_limit=bar_limit,
+            point_value=pv, mode=args.mode, seed=args.seed,
+            is_fraction=is_fraction, eval_oos=eval_oos,
+        )
 
     try:
-        result = run_simulation(args.bot, max_bars=100000, bar_limit=bar_limit,
-                                point_value=point_value)
+        if args.walk_forward:
+            is_result = _run(eval_oos=False, is_fraction=args.is_fraction)
+            oos_result = _run(eval_oos=True, is_fraction=args.is_fraction)
+        else:
+            is_result = _run(eval_oos=False, is_fraction=None)
+            oos_result = None
     except ValueError as e:
         print(f"Error: {e}")
         return 1
 
     if args.json:
-        print(json.dumps({
-            "bot_id": result.bot_id, "symbol": result.symbol, "timeframe": result.timeframe,
-            "bars": result.bars_processed, "signals": result.signals_generated,
-            "trades": result.trades_taken, "winners": result.winners, "losers": result.losers,
-            "win_rate": result.win_rate_pct, "total_pnl": result.total_pnl_usd,
-            "avg_pnl_per_trade": result.avg_pnl_per_trade, "max_dd": result.max_dd_usd,
-            "equity_curve": result.equity_curve,
-        }, indent=2))
-    else:
-        print(f"PAPER TRADE SIMULATION — {result.bot_id} ({result.symbol} {result.timeframe})")
-        print(f"  Bars processed:     {result.bars_processed}")
-        print(f"  Signals generated:  {result.signals_generated}")
-        print(f"  Trades executed:    {result.trades_taken}")
-        print(f"  Winners:            {result.winners}")
-        print(f"  Losers:             {result.losers}")
-        print(f"  Win rate:           {result.win_rate_pct:.1f}%")
-        print(f"  Total PnL:          ${result.total_pnl_usd:+.2f}")
-        print(f"  Avg PnL/trade:      ${result.avg_pnl_per_trade:+.2f}")
-        print(f"  Max drawdown:       ${result.max_dd_usd:.2f}")
-        if result.trades:
-            print("\n  Last 5 trades:")
-            for t in result.trades[-5:]:
-                print(f"    {t.exit_ts[:10]} {t.side:<6} entry={t.entry_price:.1f} exit={t.exit_price:.1f} "
-                      f"pnl=${t.pnl_usd:+.2f} ({t.exit_reason})")
+        def _result_to_dict(r: SimResult) -> dict:
+            return {
+                "bot_id": r.bot_id, "symbol": r.symbol, "timeframe": r.timeframe,
+                "mode": r.mode, "bars": r.bars_processed,
+                "signals": r.signals_generated,
+                "signals_rejected": r.signals_rejected,
+                "rejection_codes": r.rejection_codes,
+                "trades": r.trades_taken,
+                "winners": r.winners, "losers": r.losers, "win_rate": r.win_rate_pct,
+                "gross_pnl": r.gross_pnl_usd,
+                "total_commission": r.total_commission_usd,
+                "total_pnl": r.total_pnl_usd,
+                "avg_pnl_per_trade": r.avg_pnl_per_trade,
+                "max_dd": r.max_dd_usd,
+                "rth_trades": r.rth_trades, "overnight_trades": r.overnight_trades,
+                "rth_pnl": r.rth_pnl_usd, "overnight_pnl": r.overnight_pnl_usd,
+                "straddle_resolutions": r.straddle_resolutions,
+                "equity_curve": r.equity_curve,
+            }
+        out = {"in_sample": _result_to_dict(is_result)}
+        if oos_result is not None:
+            out["out_of_sample"] = _result_to_dict(oos_result)
+        print(json.dumps(out, indent=2))
+        return 0
+
+    def _print(r: SimResult, label: str) -> None:
+        print(f"\nPAPER TRADE SIM [{label}] — {r.bot_id} ({r.symbol} {r.timeframe})  mode={r.mode}")
+        print(f"  Bars processed:      {r.bars_processed}")
+        print(f"  Signals generated:   {r.signals_generated}")
+        if r.signals_rejected > 0:
+            codes = ", ".join(f"{k}={v}" for k, v in sorted(r.rejection_codes.items()))
+            print(f"  Signals REJECTED:    {r.signals_rejected}  ({codes})")
+            print("  >>> WARNING: rejected signals indicate STRATEGY BUGS — fix before going live")
+        print(f"  Trades executed:     {r.trades_taken}  (RTH={r.rth_trades}, overnight={r.overnight_trades})")
+        print(f"  Winners / Losers:    {r.winners} / {r.losers}")
+        print(f"  Win rate:            {r.win_rate_pct:.1f}%")
+        print(f"  Gross PnL (post-slip): ${r.gross_pnl_usd:+.2f}")
+        print(f"  Commissions:         -${r.total_commission_usd:.2f}")
+        print(f"  NET PnL:             ${r.total_pnl_usd:+.2f}")
+        print(f"  Avg net per trade:   ${r.avg_pnl_per_trade:+.2f}")
+        print(f"  Max drawdown:        ${r.max_dd_usd:.2f}")
+        print(f"  RTH PnL:             ${r.rth_pnl_usd:+.2f}")
+        print(f"  Overnight PnL:       ${r.overnight_pnl_usd:+.2f}")
+        print(f"  Straddle resolutions:{r.straddle_resolutions} of {r.trades_taken} trades")
+        if r.trades:
+            print("  Last 5 trades:")
+            for t in r.trades[-5:]:
+                tag = "RTH" if t.session_rth else "ON"
+                print(f"    {t.exit_ts[:16]} {t.side:<5} {tag} qty={t.qty:6.2f} "
+                      f"entry={t.entry_price:.2f} exit={t.exit_price:.2f} "
+                      f"net=${t.net_pnl_usd:+8.2f}  ({t.exit_reason}, "
+                      f"slip e={t.entry_slippage_ticks:.1f}t/x={t.exit_slippage_ticks:.1f}t)")
+
+    _print(is_result, "IN-SAMPLE" if oos_result is not None else "FULL WINDOW")
+    if oos_result is not None:
+        _print(oos_result, "OUT-OF-SAMPLE")
+        # Compare summary
+        print("\n--- IS vs OOS comparison ---")
+        print(f"  Win-rate gap (OOS - IS):     {oos_result.win_rate_pct - is_result.win_rate_pct:+.1f} pp")
+        is_avg = is_result.avg_pnl_per_trade
+        oos_avg = oos_result.avg_pnl_per_trade
+        if is_avg != 0:
+            avg_decay = (oos_avg - is_avg) / abs(is_avg) * 100
+            print(f"  Avg-PnL decay:               {avg_decay:+.1f}%")
+        if oos_result.trades_taken < 10:
+            print("  WARNING: OOS sample < 10 trades — not statistically meaningful.")
     return 0
 
 

@@ -230,7 +230,10 @@ class GapFillStrategy:
             return None
 
         entry = bar.close
-        prior_close = self._yesterday_close or entry
+        # Float-truthy fix: yesterday's close of 0.0 (synthetic test bar)
+        # would silently fall back to entry, producing a zero-distance
+        # target.  Use explicit None check.
+        prior_close = self._yesterday_close if self._yesterday_close is not None else entry
         if side == "BUY":
             stop = min(entry - stop_dist, bar.low - atr * 0.1)
             stop_dist_actual = entry - stop
