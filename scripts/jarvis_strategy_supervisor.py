@@ -157,6 +157,18 @@ def _load_bot_strategy_readiness_snapshot(
     }, readiness_by_bot
 
 
+# Load .env so os.getenv() sees paper_live / STARTING_CASH etc
+_env_path = Path(__file__).resolve().parents[1] / ".env"
+if _env_path.exists():
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _val = _line.partition("=")
+                os.environ.setdefault(_key.strip(), _val.strip())
+
+
+
 @dataclass
 class SupervisorConfig:
     """Operator-tunable supervisor knobs (read from env)."""
@@ -388,14 +400,16 @@ class ExecutionRouter:
                     order_type=OrderType.MARKET,
                 )
                 import asyncio as _asyncio
-                _result = _asyncio.get_event_loop().run_until_complete(_venue.place_order(_req))
+                _loop = _asyncio.new_event_loop()
+                _result = _loop.run_until_complete(_venue.place_order(_req))
+                _loop.close()
                 logger.info(
                     "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s)",
                     rec.symbol, rec.side, rec.qty,
                     _result.status.value, _result.raw.get("ibkr_order_id", "?"),
                 )
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)
 
         return rec
 
