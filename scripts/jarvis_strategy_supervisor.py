@@ -428,15 +428,21 @@ class ExecutionRouter:
         risk_unit = bot.cash * 0.10
         base_qty = risk_unit / max(ref_price, 1e-9)
         qty = base_qty * size_mult
-        # Minimum lot sizes
+        # Minimum lot sizes — futures trade in whole-lot increments,
+        # crypto allows fractional. Strip the contract-month suffix
+        # (NQ1, MNQ1, ES1) before matching against the futures set so
+        # NQ1 doesn't fall through to the crypto floor (was producing
+        # int(0.04)=0 → naked qty=0 orders at TWS).
         symbol_upper = bot.symbol.upper().lstrip("/")
+        _symbol_root = symbol_upper.rstrip("0123456789")
         _futures_set = {
             "MNQ", "NQ", "ES", "MES", "MBT", "MET", "NG", "CL", "GC",
             "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
         }
-        min_qty = 1 if symbol_upper in _futures_set or "MNQ" in symbol_upper else 0.001
+        is_futures = _symbol_root in _futures_set
+        min_qty = 1 if is_futures else 0.001
         qty = max(qty, min_qty)
-        qty = round(qty, 6)
+        qty = round(qty, 6) if not is_futures else float(int(qty))
 
         rec = FillRecord(
             bot_id=bot.bot_id,

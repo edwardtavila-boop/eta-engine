@@ -271,21 +271,31 @@ class LiveIbkrVenue(VenueBase):
         from ib_insync import LimitOrder, MarketOrder
 
         action = "BUY" if str(getattr(request, "side", "BUY")).upper() == "BUY" else "SELL"
-        qty = int(abs(float(getattr(request, "qty", 1) or 1)))
         reduce_only = bool(getattr(request, "reduce_only", False))
         stop_price = getattr(request, "stop_price", None)
         target_price = getattr(request, "target_price", None)
         order_type = getattr(request, "order_type", OrderType.MARKET)
+        # PAXOS crypto rejects bracketOrder (Error 10052 'Invalid time in
+        # force' on the LimitOrder parent, Error 321 'size value cannot
+        # be zero' on the children). Skip the bracket apparatus for
+        # crypto and submit a plain market entry; the supervisor's exit
+        # logic must own stop/target management for crypto positions.
+        is_crypto = getattr(contract, "secType", "") == "CRYPTO"
+        # Futures contracts trade in whole-lot quanta; crypto on PAXOS
+        # accepts fractional qty down to 1e-3 BTC, 1e-2 ETH, etc. so we
+        # must NOT floor crypto qty to int.
+        _raw_qty = abs(float(getattr(request, "qty", 1) or 1))
+        qty: float | int = _raw_qty if is_crypto else int(_raw_qty)
 
-        # ── BRACKET REQUIREMENT ───────────────────────────────────
-        # An entry MUST attach a bracket (parent MKT + STP child + LMT
-        # child).  Naked entries are physically refused at this layer:
-        # a process crash mid-position would otherwise leave an
+        # ── BRACKET REQUIREMENT (futures only) ────────────────────
+        # Futures entries MUST attach a bracket (parent MKT + STP child
+        # + LMT child).  Naked entries are physically refused at this
+        # layer: a process crash mid-position would otherwise leave an
         # unprotected position at the broker.  reduce_only exits keep
         # the simple single-leg path (closing a position should never
         # be gated by a bracket requirement).
         is_entry = not reduce_only
-        if is_entry and (stop_price is None or target_price is None):
+        if is_entry and not is_crypto and (stop_price is None or target_price is None):
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
@@ -298,7 +308,17 @@ class LiveIbkrVenue(VenueBase):
             )
 
         try:
-            if is_entry:
+            if is_entry and is_crypto:
+                # PAXOS: plain market entry, no bracket. Stop/target
+                # management deferred to the supervisor's exit logic.
+                ib_order = MarketOrder(action, qty)
+                trade = self._ib.placeOrder(contract, ib_order)
+                self._orders[order_id] = trade
+                logger.info(
+                    "LiveIbkrVenue CRYPTO ENTRY: %s %s %.6f MKT (no bracket) → orderId=%s",
+                    action, request.symbol, float(qty), trade.order.orderId,
+                )
+            elif is_entry:
                 # ib_insync.bracketOrder returns [parent, takeProfit,
                 # stopLoss] with transmit chained (parent.transmit=False,
                 # tp.transmit=False, sl.transmit=True) so the broker sees
