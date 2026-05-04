@@ -35,28 +35,12 @@ from eta_engine.brain.multi_model import (
     route_and_execute_async,
 )
 
-try:
-    from eta_engine.brain.multi_model_telemetry import (
-        log_call,
-        new_chain_id,
-        read_recent,
-        summarize,
-        telemetry_enabled,
-    )
-except ImportError:
-    # Module API mismatch (see pytestmark below) — define no-op shims so
-    # collection succeeds. The skip marker prevents these from running.
-    log_call = read_recent = summarize = telemetry_enabled = None
-    from eta_engine.brain.multi_model_telemetry import new_chain_id
-
-# 2026-05-04: this test file was authored against a not-yet-built
-# telemetry API (log_call(record=dict), summarize(), telemetry_enabled(),
-# ETA_FM_TELEMETRY_LOG env var). The current multi_model_telemetry
-# module exposes log_call(**kwargs) + read_telemetry only. Skip until
-# the richer API is implemented or the tests are rewritten against the
-# real surface — keeps pre-commit pytest green on unrelated work.
-pytestmark = pytest.mark.skip(
-    reason="multi_model_telemetry API mismatch — tests target unbuilt API",
+from eta_engine.brain.multi_model_telemetry import (
+    log_call,
+    new_chain_id,
+    read_recent,
+    summarize,
+    telemetry_enabled,
 )
 
 # ---------------------------------------------------------------------------
@@ -332,7 +316,11 @@ class TestTelemetry:
         records = read_recent(limit=10)
         assert len(records) == 1
         assert records[0]["category"] == "boilerplate"
-        assert records[0]["actual_provider"] == "deepseek"
+        # The typed CallRecord schema names the field 'provider' (the
+        # actual provider that ran). The orchestrator's record dict uses
+        # 'actual_provider' as the input key — log_call() maps it to
+        # 'provider' on write. We verify the OUTPUT field name here.
+        assert records[0]["provider"] == "deepseek"
         assert "ts" in records[0]
 
     def test_disable_flag_skips_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -382,15 +370,17 @@ class TestTelemetry:
         assert records[0]["category"] == "a"
         assert records[1]["category"] == "b"
 
-    def test_chain_id_is_unique_and_sortable(self) -> None:
+    def test_chain_id_is_unique_and_well_formed(self) -> None:
+        """Chain IDs must be unique and follow the ``CHN-<8 hex>`` format
+        the typed CallRecord schema produces."""
         ids = {new_chain_id() for _ in range(50)}
         assert len(ids) == 50  # all unique
-        # IDs are time-prefixed so sorting them gives chronological order
-        # within a single millisecond bucket; just confirm the prefix is
-        # numeric-millis (13 digits).
         sample = next(iter(ids))
-        prefix, _, _ = sample.partition("-")
-        assert prefix.isdigit() and len(prefix) == 13
+        prefix, _, suffix = sample.partition("-")
+        assert prefix == "CHN", f"expected CHN- prefix, got {sample!r}"
+        # Suffix is 8 hex chars from uuid4().hex[:8]
+        assert len(suffix) == 8
+        int(suffix, 16)  # raises ValueError if not hex
 
 
 # ---------------------------------------------------------------------------

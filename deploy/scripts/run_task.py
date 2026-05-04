@@ -826,6 +826,42 @@ def _task_prometheus_export(state_dir: Path) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
+    # Force-Multiplier orchestrator telemetry (Wave-19). Surfaces total
+    # FM call volume, cost, fallback rate, and per-provider breakdown so
+    # the operator can spot drift on the LLM routing layer (e.g. a sudden
+    # spike in fallbacks = preferred provider degraded; cost climbing
+    # without volume = wrong tier being selected).
+    try:
+        from eta_engine.brain.multi_model_telemetry import summarize  # noqa: PLC0415
+        fm = summarize(limit=10_000)  # whole log; cheap, log is small
+        lines.extend(
+            [
+                "# HELP eta_fm_calls_total Total Force-Multiplier routed calls",
+                "# TYPE eta_fm_calls_total counter",
+                f"eta_fm_calls_total {fm['calls']}",
+                "# HELP eta_fm_cost_usd_total Total Force-Multiplier spend (DeepSeek API path)",
+                "# TYPE eta_fm_cost_usd_total counter",
+                f"eta_fm_cost_usd_total {fm['total_cost_usd']:.6f}",
+                "# HELP eta_fm_fallback_rate Fraction of calls that fell back from preferred provider [0,1]",
+                "# TYPE eta_fm_fallback_rate gauge",
+                f"eta_fm_fallback_rate {fm.get('fallback_rate', 0.0)}",
+            ]
+        )
+        for prov, slot in fm.get("by_provider", {}).items():
+            # Sanitize provider name for Prometheus label-value safety
+            # (alphanumerics + underscore only).
+            safe_prov = "".join(c if c.isalnum() else "_" for c in prov)
+            lines.extend(
+                [
+                    f'eta_fm_calls_by_provider{{provider="{safe_prov}"}} {slot["calls"]}',
+                    f'eta_fm_cost_usd_by_provider{{provider="{safe_prov}"}} {slot["cost_usd"]:.6f}',
+                    f'eta_fm_fallbacks_received{{provider="{safe_prov}"}} {slot.get("fallbacks_received", 0)}',
+                ]
+            )
+    except Exception as exc:  # noqa: BLE001
+        # Telemetry is opt-in (ETA_FM_TELEMETRY=0); never fatal.
+        lines.append(f"# fm telemetry unavailable: {exc}"[:200])
+
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"written": str(out_path), "metrics": sum(1 for line in lines if not line.startswith("#"))}
 
