@@ -33,11 +33,16 @@ def llm_narrative(
     if force_template:
         return verdict_to_narrative(verdict, verbosity=verbosity)
 
+    # Routed via the Force-Multiplier orchestrator: DOC_WRITING category
+    # maps to DEEPSEEK (Worker Bee) — narrative prose is exactly the
+    # high-volume cheap-token work DeepSeek V4 Flash is designed for.
+    # Using route_and_execute (not direct chat_completion) gives this
+    # call site automatic telemetry + cost ceiling + consistent fallback.
     try:
-        from eta_engine.brain.llm_provider import ModelTier, chat_completion
+        from eta_engine.brain.model_policy import TaskCategory
+        from eta_engine.brain.multi_model import route_and_execute
 
         context = _build_llm_context(verdict)
-        system = LLM_NARRATIVE_SYSTEM_PROMPT
 
         if verbosity == "terse":
             prompt = (
@@ -57,12 +62,15 @@ def llm_narrative(
             )
             max_tok = 300
 
-        resp = chat_completion(
-            tier=ModelTier.HAIKU,
-            system_prompt=system,
+        resp = route_and_execute(
+            category=TaskCategory.DOC_WRITING,
+            system_prompt=LLM_NARRATIVE_SYSTEM_PROMPT,
             user_message=prompt,
             max_tokens=max_tok,
             temperature=0.5,
+            # Per-call ceiling: caps a runaway verbose narrative at $0.005
+            # (worst case 600 tok × $0.28/1M out). Ample for normal use.
+            max_cost_usd=0.005,
         )
 
         if resp.text:

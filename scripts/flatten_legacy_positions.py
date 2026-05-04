@@ -21,7 +21,7 @@ a no-op (broker has no positions, supervisor confirms zero state).
 from __future__ import annotations
 
 import argparse
-import asyncio
+import contextlib
 import logging
 import sys
 from pathlib import Path
@@ -57,47 +57,74 @@ def _load_supervisor_open_position_symbols() -> set[str]:
     return syms
 
 
-async def _query_broker_positions() -> list[dict[str, Any]]:
-    """Pull live broker positions via the supervisor's loop dispatcher.
+def _query_broker_positions_sync() -> list[dict[str, Any]]:
+    """Direct ib_insync call — fresh IB on its own clientId so we don't
+    collide with the supervisor's venue loop.
     Returns a list of dicts with keys symbol/secType/position/avgCost."""
-    from eta_engine.scripts.jarvis_strategy_supervisor import (
-        _get_live_ibkr_venue,
-    )
-    venue = _get_live_ibkr_venue()
-    return await venue.get_positions()
+    from ib_insync import IB
+    ib = IB()
+    try:
+        ib.connect("127.0.0.1", 4002, clientId=77, timeout=10)
+        out = []
+        for p in ib.positions():
+            out.append({
+                "symbol": p.contract.symbol,
+                "secType": p.contract.secType,
+                "position": float(p.position),
+                "avgCost": float(p.avgCost) if p.avgCost else 0.0,
+                "_contract": p.contract,
+            })
+        return out
+    finally:
+        with contextlib.suppress(Exception):
+            ib.disconnect()
 
 
-async def _flatten_one(
-    symbol: str, qty: float, *, dry_run: bool,
+def _flatten_one_sync(
+    contract: Any, qty: float, *, dry_run: bool,  # noqa: ANN401 — ib_insync Contract
 ) -> tuple[bool, str]:
-    """Submit a reduce-only market order to close ``qty`` of ``symbol``.
+    """Submit a reduce-only market order via fresh ib_insync.IB.
 
-    Sign of qty: positive = long position to close (SELL), negative =
-    short position to close (BUY). Returns (ok, reason)."""
-    from eta_engine.venues.base import OrderRequest, OrderType, Side
-    side = Side.SELL if qty > 0 else Side.BUY
+    Sign of qty: positive long → SELL to close; negative short → BUY.
+    """
+    from ib_insync import IB, MarketOrder
+    action = "SELL" if qty > 0 else "BUY"
     abs_qty = abs(qty)
+    sym = contract.symbol
     if dry_run:
-        return True, f"dry-run {side.value} {abs_qty} {symbol}"
+        return True, f"dry-run {action} {abs_qty} {sym}"
 
-    from eta_engine.scripts.jarvis_strategy_supervisor import (
-        _get_live_ibkr_venue,
-    )
-    venue = _get_live_ibkr_venue()
-    req = OrderRequest(
-        symbol=symbol,
-        side=side,
-        qty=abs_qty,
-        order_type=OrderType.MARKET,
-        reduce_only=True,
-        client_order_id=f"flatten_{symbol}_{int(abs_qty * 1e6)}",
-    )
-    result = await venue.place_order(req)
-    return (
-        result.status.value == "OPEN",
-        f"{side.value} {abs_qty} {symbol} → {result.status.value} "
-        f"({result.raw.get('reason') or result.raw.get('ibkr_order_id') or 'n/a'})",
-    )
+    ib = IB()
+    try:
+        ib.connect("127.0.0.1", 4002, clientId=77, timeout=10)
+        # ib.positions() returns Contracts with empty exchange — TWS
+        # rejects placeOrder ('Missing order exchange'). Patch with the
+        # canonical futures exchange before submit.
+        if not getattr(contract, "exchange", "") and getattr(contract, "secType", "") == "FUT":
+            from eta_engine.venues.ibkr_live import FUTURES_MAP
+            mapping = FUTURES_MAP.get(contract.symbol)
+            if mapping:
+                contract.exchange = mapping[1]
+        order = MarketOrder(action, abs_qty)
+        order.tif = "GTC"
+        trade = ib.placeOrder(contract, order)
+        # Wait briefly for the broker to acknowledge
+        for _ in range(30):  # up to ~3s
+            ib.sleep(0.1)
+            if trade.orderStatus.status in ("Submitted", "PreSubmitted", "Filled"):
+                break
+        status = trade.orderStatus.status
+        return (
+            status in ("Submitted", "PreSubmitted", "Filled"),
+            f"{action} {abs_qty} {sym} → {status} (orderId={trade.order.orderId})",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{action} {abs_qty} {sym} → exception: {exc}"
+    finally:
+        with contextlib.suppress(Exception):
+            ib.disconnect()
+
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,12 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("supervisor claims open positions on: %s", sorted(sup_claimed))
 
     try:
-        broker_positions = asyncio.run(_query_broker_positions())
+        broker_positions = _query_broker_positions_sync()
     except Exception as exc:  # noqa: BLE001
         logger.error("broker query failed: %s", exc)
         return 1
 
-    targets: list[tuple[str, float]] = []
+    targets: list[tuple[Any, float]] = []
     for p in broker_positions or []:
         sym_raw = str(p.get("symbol", "")).upper()
         root = sym_raw.rstrip("0123456789").replace("USD", "")
@@ -134,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if args.symbol and root != args.symbol.upper():
             continue
-        targets.append((sym_raw, qty))
+        targets.append((p["_contract"], qty))
 
     if not targets:
         logger.info("no legacy positions to flatten")
@@ -142,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info(
         "would flatten %d position(s): %s%s",
-        len(targets), targets,
+        len(targets),
+        [(c.symbol, q) for c, q in targets],
         " (DRY RUN — pass --confirm to execute)" if not args.confirm else "",
     )
 
@@ -150,14 +178,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     failures = 0
-    for sym, qty in targets:
+    for contract, qty in targets:
         try:
-            ok, reason = asyncio.run(_flatten_one(sym, qty, dry_run=False))
+            ok, reason = _flatten_one_sync(contract, qty, dry_run=False)
         except Exception as exc:  # noqa: BLE001
-            logger.error("flatten %s qty=%s failed: %s", sym, qty, exc)
+            logger.error("flatten %s qty=%s failed: %s", contract.symbol, qty, exc)
             failures += 1
             continue
-        logger.info("flatten %s: %s", sym, reason)
+        logger.info("flatten %s: %s", contract.symbol, reason)
         if not ok:
             failures += 1
 

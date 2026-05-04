@@ -33,6 +33,7 @@ from eta_engine.brain.cli_provider import (
 from eta_engine.brain.llm_provider import (
     LLMResponse,
     ModelTier,
+    Provider,
     chat_completion,
     native_provider_info,
 )
@@ -42,8 +43,37 @@ from eta_engine.brain.model_policy import (
     force_provider_for,
     select_model,
 )
+from eta_engine.brain.multi_model_telemetry import log_call, new_chain_id
 
 logger = logging.getLogger(__name__)
+
+
+def _telemetry_record(
+    *,
+    kind: str,
+    category: TaskCategory,
+    preferred: ForceProvider,
+    response: MultiModelResponse,
+    stage: str | None = None,
+    chain_id: str | None = None,
+) -> dict[str, Any]:
+    """Build the JSON record written to ``state/force_multiplier_calls.jsonl``."""
+    return {
+        "kind": kind,
+        "category": category.value,
+        "preferred_provider": preferred.value,
+        "actual_provider": response.provider.value,
+        "tier": response.tier.value if response.tier else None,
+        "model": response.model,
+        "input_tokens": response.input_tokens,
+        "output_tokens": response.output_tokens,
+        "cost_usd": round(response.cost_usd, 6),
+        "elapsed_ms": round(response.elapsed_ms, 1),
+        "fallback_used": response.fallback_used,
+        "fallback_reason": response.fallback_reason or "",
+        "stage": stage,
+        "chain_id": chain_id,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +109,9 @@ def route_and_execute(
     temperature: float = 0.7,
     workspace: str | None = None,
     force_provider: ForceProvider | None = None,
+    chain_id: str | None = None,
+    chain_stage: str | None = None,
+    max_cost_usd: float | None = None,
 ) -> MultiModelResponse:
     """Route a task to the best provider and execute.
 
@@ -89,6 +122,15 @@ def route_and_execute(
 
     Returns ``MultiModelResponse`` with ``fallback_used=True`` if the
     preferred provider was unavailable and DeepSeek handled the task.
+
+    Telemetry: every call writes one record to
+    ``state/force_multiplier_calls.jsonl`` (set ``ETA_FM_TELEMETRY=0`` to disable).
+    ``chain_id`` and ``chain_stage`` link calls made by ``force_multiplier_chain``
+    so a multi-stage run can be reconstructed from the log.
+
+    Budget: pass ``max_cost_usd`` to refuse a call whose worst-case spend
+    (max_tokens × per-token rate at the resolved tier) would exceed the cap.
+    Raises :class:`CallBudgetExceededError` BEFORE making the LLM call.
     """
     selection = select_model(category)
     preferred = force_provider or force_provider_for(category)
@@ -98,6 +140,38 @@ def route_and_execute(
         category.value, preferred.value, selection.tier.value,
     )
 
+    if max_cost_usd is not None:
+        _enforce_call_budget(
+            preferred=preferred, tier=selection.tier,
+            max_tokens=max_tokens, max_cost_usd=max_cost_usd,
+        )
+
+    response = _route_and_execute_inner(
+        category=category, selection=selection, preferred=preferred,
+        system_prompt=system_prompt, user_message=user_message,
+        max_tokens=max_tokens, temperature=temperature, workspace=workspace,
+    )
+
+    log_call(record=_telemetry_record(
+        kind="chain_stage" if chain_stage else "route",
+        category=category, preferred=preferred, response=response,
+        stage=chain_stage, chain_id=chain_id,
+    ))
+    return response
+
+
+def _route_and_execute_inner(
+    *,
+    category: TaskCategory,
+    selection: Any,  # noqa: ANN401  (ModelSelection — avoids TYPE_CHECKING import dance)
+    preferred: ForceProvider,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int,
+    temperature: float,
+    workspace: str | None,
+) -> MultiModelResponse:
+    """Pure routing logic without telemetry. Splits so logging is single-shot."""
     # --- CLAUDE path ---
     if preferred == ForceProvider.CLAUDE:
         if not check_claude_available():
@@ -153,6 +227,51 @@ def route_and_execute(
     )
 
 
+async def route_and_execute_async(
+    *,
+    category: TaskCategory,
+    system_prompt: str = "",
+    user_message: str,
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+    workspace: str | None = None,
+    force_provider: ForceProvider | None = None,
+    chain_id: str | None = None,
+    chain_stage: str | None = None,
+    max_cost_usd: float | None = None,
+) -> MultiModelResponse:
+    """Awaitable variant of :func:`route_and_execute` for async hot paths.
+
+    The synchronous version calls ``subprocess.run`` (Claude/Codex CLI) and
+    blocking HTTP (DeepSeek API). Calling that from inside an asyncio event
+    loop stalls the loop for up to ``ETA_CLI_TIMEOUT_SEC`` (default 300s) —
+    fatal for trading sessions, supervisors, or anything else that must keep
+    pumping events.
+
+    This wrapper offloads the work to ``asyncio.to_thread`` so the loop stays
+    responsive. All keyword args mirror :func:`route_and_execute` exactly.
+
+    Use from JARVIS, the live supervisor, or any ``async def`` caller. Sync
+    callers should keep using :func:`route_and_execute` — there's no benefit
+    to wrapping then unwrapping.
+    """
+    import asyncio  # noqa: PLC0415  (deferred so sync callers don't import it)
+
+    return await asyncio.to_thread(
+        route_and_execute,
+        category=category,
+        system_prompt=system_prompt,
+        user_message=user_message,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        workspace=workspace,
+        force_provider=force_provider,
+        chain_id=chain_id,
+        chain_stage=chain_stage,
+        max_cost_usd=max_cost_usd,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Provider execution helpers
 # ---------------------------------------------------------------------------
@@ -204,6 +323,47 @@ def _wrap_cli(
         category=category,
         tier=tier,
     )
+
+
+def _enforce_call_budget(
+    *,
+    preferred: ForceProvider,
+    tier: ModelTier,
+    max_tokens: int,
+    max_cost_usd: float,
+) -> None:
+    """Refuse the call BEFORE issuing it if worst-case spend exceeds the cap.
+
+    Worst case = max_tokens billed at the resolved tier's output rate. We use
+    the OUTPUT rate (the more expensive side) for a conservative estimate.
+    Claude/Codex CLI calls are subscription-billed (cost_usd=0 in the response)
+    so the budget only constrains the DeepSeek API path; we still enforce on
+    every call so callers don't have to know which provider will run.
+    """
+    from eta_engine.brain.llm_provider import _COST_1M, _TIER_MODEL  # noqa: PLC0415
+
+    # Map ForceProvider -> Provider for the cost lookup.
+    if preferred == ForceProvider.DEEPSEEK:
+        api_provider = Provider.DEEPSEEK
+    elif preferred == ForceProvider.CLAUDE:
+        api_provider = Provider.ANTHROPIC
+    elif preferred == ForceProvider.CODEX:
+        api_provider = Provider.OPENAI
+    else:
+        return  # unknown provider — skip the check
+
+    model = _TIER_MODEL.get((tier, api_provider))
+    if model is None:
+        return  # no pricing info — skip silently
+    _, output_rate = _COST_1M.get(model, (0.0, 0.0))
+    if output_rate <= 0:
+        return  # subscription-billed (claude/codex CLI) — no API cost
+    worst_case = (max_tokens / 1_000_000.0) * output_rate
+    if worst_case > max_cost_usd:
+        raise CallBudgetExceededError(
+            f"Refused: worst-case ${worst_case:.4f} (max_tokens={max_tokens} × "
+            f"{output_rate}/1M for {model}) > cap ${max_cost_usd:.4f}",
+        )
 
 
 def _claude_fallback_reason(failure: str) -> str:
@@ -469,6 +629,15 @@ VERIFY_SYSTEM = (
 )
 
 
+class CallBudgetExceededError(RuntimeError):
+    """Raised by ``route_and_execute`` when ``max_cost_usd`` would be exceeded.
+
+    Computed BEFORE the LLM call: if max_tokens × per-token rate exceeds
+    the cap, the call is refused. Use a try/except in callers that want
+    to degrade gracefully (e.g. retry with fewer tokens).
+    """
+
+
 class ChainBudgetExceededError(RuntimeError):
     """Raised when ``force_multiplier_chain`` would exceed its cost ceiling."""
 
@@ -550,6 +719,7 @@ def force_multiplier_chain(
     result = ChainResult(task=task)
     plan_text = ""
     impl_text = ""
+    chain_id = new_chain_id()
 
     def _truncate(s: str, limit: int) -> str:
         if len(s) <= limit:
@@ -600,6 +770,8 @@ def force_multiplier_chain(
             user_message=task,
             max_tokens=max_tokens,
             workspace=workspace,
+            chain_id=chain_id,
+            chain_stage="plan",
         )
         result.plan = plan
         plan_text = plan.text
@@ -622,6 +794,8 @@ def force_multiplier_chain(
             user_message=impl_msg,
             max_tokens=max_tokens,
             workspace=workspace,
+            chain_id=chain_id,
+            chain_stage="implement",
         )
         result.implement = implement
         impl_text = implement.text
@@ -650,6 +824,8 @@ def force_multiplier_chain(
             user_message=verify_msg,
             max_tokens=max_tokens,
             workspace=workspace,
+            chain_id=chain_id,
+            chain_stage="verify",
         )
         result.verify = verify
         result.total_elapsed_ms += verify.elapsed_ms

@@ -7,6 +7,10 @@ The live integration test lives in ``live_force_multiplier.py``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from eta_engine.brain.cli_provider import CLIResponse
 from eta_engine.brain.model_policy import (
     ForceProvider,
@@ -21,11 +25,21 @@ from eta_engine.brain.multi_model import (
     IMPLEMENT_SYSTEM,
     PLAN_SYSTEM,
     VERIFY_SYSTEM,
+    CallBudgetExceededError,
     ChainResult,
     _classify_cli_failure,
+    _enforce_call_budget,
     _is_cli_auth_error,
     _is_cli_quota_error,
     force_multiplier_chain,
+    route_and_execute_async,
+)
+from eta_engine.brain.multi_model_telemetry import (
+    log_call,
+    new_chain_id,
+    read_recent,
+    summarize,
+    telemetry_enabled,
 )
 
 # ---------------------------------------------------------------------------
@@ -275,3 +289,165 @@ class TestArchitecturalFallbackLogging:
     def test_grunt_fallback_logs_at_warning_only(self, caplog) -> None:
         assert bucket_for(TaskCategory.BOILERPLATE) == TaskBucket.GRUNT
         assert bucket_for(TaskCategory.FORMATTING) == TaskBucket.GRUNT
+
+
+# ---------------------------------------------------------------------------
+# Telemetry module
+# ---------------------------------------------------------------------------
+
+class TestTelemetry:
+    """The telemetry module is the foundation for observability — these tests
+    pin down (1) records survive a round-trip through JSONL, (2) summary
+    aggregation is correct, (3) the disable flag works, (4) malformed lines
+    don't break reading."""
+
+    def test_log_and_read_round_trip(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = tmp_path / "fm.jsonl"
+        monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
+        log_call(record={
+            "kind": "route",
+            "category": "boilerplate",
+            "actual_provider": "deepseek",
+            "cost_usd": 0.001,
+            "elapsed_ms": 100,
+            "fallback_used": False,
+        })
+        records = read_recent(limit=10)
+        assert len(records) == 1
+        assert records[0]["category"] == "boilerplate"
+        assert records[0]["actual_provider"] == "deepseek"
+        assert "ts" in records[0]
+
+    def test_disable_flag_skips_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = tmp_path / "fm.jsonl"
+        monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
+        monkeypatch.setenv("ETA_FM_TELEMETRY", "0")
+        assert telemetry_enabled() is False
+        log_call(record={"kind": "route", "category": "x", "actual_provider": "deepseek"})
+        assert not log.exists(), "disabled telemetry should not create the log file"
+
+    def test_summary_aggregates_per_provider(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        log = tmp_path / "fm.jsonl"
+        monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
+        for prov, cost, fallback in [
+            ("claude", 0.0, False),
+            ("claude", 0.0, False),
+            ("deepseek", 0.001, True),
+            ("deepseek", 0.002, False),
+        ]:
+            log_call(record={
+                "kind": "route", "category": "x",
+                "actual_provider": prov, "cost_usd": cost,
+                "fallback_used": fallback,
+            })
+        s = summarize(limit=10)
+        assert s["calls"] == 4
+        assert s["fallback_count"] == 1
+        assert s["fallback_rate"] == 0.25
+        assert s["by_provider"]["claude"]["calls"] == 2
+        assert s["by_provider"]["deepseek"]["cost_usd"] == 0.003
+
+    def test_malformed_lines_do_not_break_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        log = tmp_path / "fm.jsonl"
+        log.write_text(
+            '{"kind":"route","category":"a","actual_provider":"deepseek"}\n'
+            'not valid json\n'
+            '{"kind":"route","category":"b","actual_provider":"claude"}\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_FM_TELEMETRY_LOG", str(log))
+        records = read_recent(limit=10)
+        assert len(records) == 2  # malformed line skipped, others survive
+        assert records[0]["category"] == "a"
+        assert records[1]["category"] == "b"
+
+    def test_chain_id_is_unique_and_sortable(self) -> None:
+        ids = {new_chain_id() for _ in range(50)}
+        assert len(ids) == 50  # all unique
+        # IDs are time-prefixed so sorting them gives chronological order
+        # within a single millisecond bucket; just confirm the prefix is
+        # numeric-millis (13 digits).
+        sample = next(iter(ids))
+        prefix, _, _ = sample.partition("-")
+        assert prefix.isdigit() and len(prefix) == 13
+
+
+# ---------------------------------------------------------------------------
+# Per-call cost ceiling
+# ---------------------------------------------------------------------------
+
+class TestCallBudgetCeiling:
+    """``route_and_execute(max_cost_usd=...)`` raises BEFORE making the call
+    if worst-case spend would exceed the cap. This is a defense-in-depth
+    measure — callers don't have to know which provider will run."""
+
+    def test_deepseek_huge_max_tokens_raises(self) -> None:
+        # DeepSeek V4 Pro output rate is $0.87/1M; 10M tokens = $8.70 worst case
+        with pytest.raises(CallBudgetExceededError, match="Refused"):
+            _enforce_call_budget(
+                preferred=ForceProvider.DEEPSEEK,
+                tier=ModelTier.OPUS,  # -> deepseek-v4-pro
+                max_tokens=10_000_000,
+                max_cost_usd=0.10,
+            )
+
+    def test_modest_call_passes(self) -> None:
+        # 1024 tokens * $0.28/1M = $0.000287 — well under any sane cap
+        _enforce_call_budget(
+            preferred=ForceProvider.DEEPSEEK,
+            tier=ModelTier.SONNET,
+            max_tokens=1024,
+            max_cost_usd=0.01,
+        )  # no exception
+
+    def test_subscription_provider_uses_api_pricing_as_safety_floor(self) -> None:
+        """Even though Claude/Codex CLI calls are subscription-billed, the
+        budget check uses the equivalent API pricing as a safety floor —
+        so a 100M-token call gets refused on principle, even if it
+        wouldn't actually charge. This protects callers that fall back
+        from CLI to the API path."""
+        # CLAUDE OPUS API output rate: $75/1M. 100M tokens = $7,500. Refused.
+        with pytest.raises(CallBudgetExceededError, match="Refused"):
+            _enforce_call_budget(
+                preferred=ForceProvider.CLAUDE,
+                tier=ModelTier.OPUS,
+                max_tokens=100_000_000,
+                max_cost_usd=0.10,
+            )
+        # Modest CLAUDE call passes the check easily.
+        _enforce_call_budget(
+            preferred=ForceProvider.CLAUDE,
+            tier=ModelTier.HAIKU,
+            max_tokens=200,
+            max_cost_usd=0.01,
+        )  # no exception — 200 × $4/1M = $0.0008
+
+
+# ---------------------------------------------------------------------------
+# Async wrapper
+# ---------------------------------------------------------------------------
+
+class TestRouteAndExecuteAsync:
+    """``route_and_execute_async`` must offload to a thread so the event
+    loop stays responsive. We can't easily mock the synchronous call, so
+    these tests confirm the wrapper is awaitable and forwards args."""
+
+    def test_is_coroutine(self) -> None:
+        # inspect.iscoroutinefunction confirms the function returns a
+        # coroutine when called — i.e. it's a real async def.
+        # (asyncio.iscoroutinefunction is deprecated in 3.16+.)
+        import inspect
+        assert inspect.iscoroutinefunction(route_and_execute_async)
+
+    def test_wrapper_signature_includes_chain_id(self) -> None:
+        import inspect
+        sig = inspect.signature(route_and_execute_async)
+        # All chain/budget parameters must be exposed so async callers
+        # have the same control surface as sync callers.
+        for required in ("category", "user_message", "chain_id",
+                         "chain_stage", "max_cost_usd", "force_provider"):
+            assert required in sig.parameters, f"async wrapper missing arg: {required}"

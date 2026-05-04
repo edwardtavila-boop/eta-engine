@@ -25,6 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from datetime import UTC  # noqa: E402  (datetime import follows sys.path setup)
+
 from eta_engine.brain.cli_provider import (  # noqa: E402  (needs sys.path setup above)
     call_claude,
     call_codex,
@@ -120,11 +122,59 @@ def probe_codex(*, live: bool) -> tuple[bool, str]:
     return False, f"failure={failure or 'empty'} text={resp.text[:120]!r}"
 
 
+def _probe_results(*, live: bool) -> list[tuple[str, bool, str]]:
+    probes = [
+        ("DEEPSEEK (Worker Bee)", probe_deepseek),
+        ("CLAUDE   (Lead Architect)", probe_claude),
+        ("CODEX    (Systems Expert)", probe_codex),
+    ]
+    return [(name, *fn(live=live)) for name, fn in probes]
+
+
+def _emit_json(*, results: list[tuple[str, bool, str]], live: bool, write_to: Path | None) -> None:
+    """Emit a machine-readable status snapshot (for cron / dashboards)."""
+    import json
+    from datetime import datetime
+
+    pass_count = sum(1 for _, ok, _ in results if ok)
+    payload = {
+        "ts": datetime.now(tz=UTC).isoformat(),
+        "live": live,
+        "pass_count": pass_count,
+        "total_count": len(results),
+        "all_ready": pass_count == len(results),
+        "providers": [
+            {
+                "name": name.split()[0].lower(),
+                "label": name,
+                "ok": ok,
+                "message": msg,
+            }
+            for name, ok, msg in results
+        ],
+    }
+    serialized = json.dumps(payload, indent=2)
+    if write_to is not None:
+        write_to.parent.mkdir(parents=True, exist_ok=True)
+        write_to.write_text(serialized, encoding="utf-8")
+    else:
+        print(serialized)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Force Multiplier health probe")
     parser.add_argument("--live", action="store_true",
                         help="Also run live calls (costs ~$0.000005 + sub quota)")
     parser.add_argument("--verbose", action="store_true", help="Show DEBUG logs")
+    parser.add_argument("--json", action="store_true",
+                        help="Emit JSON to stdout (machine-readable)")
+    parser.add_argument(
+        "--json-out",
+        help=("Write JSON snapshot to this path. Useful with Task Scheduler — "
+              "default eta_engine/state/fm_health.json so dashboards can poll it."),
+    )
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress human-readable output (use with --json-out for cron)")
     args = parser.parse_args()
 
     if args.verbose:
@@ -132,23 +182,29 @@ def main() -> int:
     else:
         logging.basicConfig(level=logging.WARNING)
 
+    results = _probe_results(live=args.live)
+    pass_count = sum(1 for _, ok, _ in results if ok)
+
+    # JSON snapshot to disk (cron-friendly): write before any printing so a
+    # crash mid-print still leaves a usable artifact.
+    if args.json_out:
+        _emit_json(results=results, live=args.live, write_to=Path(args.json_out))
+
+    if args.json:
+        _emit_json(results=results, live=args.live, write_to=None)
+        return 0 if pass_count == len(results) else 1
+
+    if args.quiet:
+        return 0 if pass_count == len(results) else 1
+
     _hr("Force Multiplier Health Probe")
     print(f"workspace: {ROOT}")
     print(f"live calls: {'ENABLED' if args.live else 'DISABLED (use --live to enable)'}")
 
     _hr("Provider status")
-    probes = [
-        ("DEEPSEEK (Worker Bee)", probe_deepseek),
-        ("CLAUDE   (Lead Architect)", probe_claude),
-        ("CODEX    (Systems Expert)", probe_codex),
-    ]
-
-    results: list[tuple[str, bool, str]] = []
-    for name, fn in probes:
-        ok, msg = fn(live=args.live)
+    for name, ok, msg in results:
         mark = "OK " if ok else "FAIL"
         print(f"  [{mark}]  {name:30s}  {msg}")
-        results.append((name, ok, msg))
 
     _hr("Routing table (24 task categories)")
     rt = force_multiplier_status()["routing_table"]
@@ -160,7 +216,6 @@ def main() -> int:
         print(f"  {prov:9s} ({len(cats):2d} tasks): {', '.join(cats[:4])}{' ...' if len(cats) > 4 else ''}")
 
     _hr("Summary")
-    pass_count = sum(1 for _, ok, _ in results if ok)
     print(f"  {pass_count}/3 providers ready")
     if pass_count < 3:
         print("\n  Next steps:")
