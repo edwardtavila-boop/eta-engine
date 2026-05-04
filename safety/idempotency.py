@@ -22,8 +22,11 @@ Design notes
 
 from __future__ import annotations
 
+import json as _json
+import os as _os
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 from typing import Any
 
 
@@ -63,6 +66,84 @@ class IdempotencyRecord:
 
 _LOCK: threading.Lock = threading.Lock()
 _STORE: dict[str, IdempotencyRecord] = {}
+
+
+# ─── Optional disk persistence ──────────────────────────────────
+#
+# Set ETA_IDEMPOTENCY_STORE to a path and every check_or_register /
+# record_result writes a JSONL line so the dedup log survives
+# supervisor restarts. Without it, a process bounce mid-trade can
+# cause a second submission of the same intent (live broker would
+# error on the duplicate clientOrderId, but the supervisor's view
+# of "pending" gets lost). Enabled by default in deployed configs;
+# disabled in tests to keep them hermetic.
+
+
+def _persist_path() -> _Path | None:
+    raw = _os.getenv("ETA_IDEMPOTENCY_STORE", "").strip()
+    return _Path(raw) if raw else None
+
+
+def _persist_record(rec: IdempotencyRecord) -> None:
+    """Append a single record to the JSONL store. Best-effort: a disk
+    failure must not break order routing."""
+    path = _persist_path()
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = _json.dumps({
+            "client_order_id": rec.client_order_id,
+            "venue": rec.venue,
+            "symbol": rec.symbol,
+            "status": rec.status,
+            "broker_order_id": rec.broker_order_id,
+            "note": rec.note,
+            "response_payload": rec.response_payload,
+            "intent_payload": rec.intent_payload,
+        }) + "\n"
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except OSError:  # noqa: BLE001 — disk full, permission, etc.
+        pass  # silently degrade — the in-memory store still protects us
+
+
+def _load_store_from_disk() -> None:
+    """Replay the JSONL store on first import after process restart so
+    the in-memory cache reflects whatever the previous process committed.
+    Each client_order_id is set to its LAST line (most recent status)."""
+    path = _persist_path()
+    if path is None or not path.exists():
+        return
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                cid = obj.get("client_order_id")
+                if not cid:
+                    continue
+                _STORE[cid] = IdempotencyRecord(
+                    client_order_id=cid,
+                    venue=obj.get("venue", ""),
+                    symbol=obj.get("symbol", ""),
+                    is_new=False,
+                    status=obj.get("status", "unknown"),
+                    broker_order_id=obj.get("broker_order_id"),
+                    note=obj.get("note", ""),
+                    response_payload=obj.get("response_payload"),
+                    intent_payload=obj.get("intent_payload") or {},
+                )
+    except OSError:
+        pass
+
+
+_load_store_from_disk()
 
 
 def check_or_register(
@@ -110,6 +191,7 @@ def check_or_register(
             intent_payload=dict(intent_payload),
         )
         _STORE[client_order_id] = fresh
+        _persist_record(fresh)
         return fresh
 
 
@@ -149,6 +231,7 @@ def record_result(
             intent_payload=existing.intent_payload,
         )
         _STORE[client_order_id] = updated
+        _persist_record(updated)
         return updated
 
 
