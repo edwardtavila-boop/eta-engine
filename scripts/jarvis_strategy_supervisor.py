@@ -334,9 +334,21 @@ class ExecutionRouter:
         ref_price = float(bar.get("close", 0.0))
         slippage_bps = 1.5 if side == "BUY" else -1.5
         fill_price = ref_price * (1.0 + slippage_bps / 10_000.0)
-        # Size: starting_cash * size_mult / 100  (very conservative; 1% per signal)
-        base_qty = (bot.cash * 0.01) / max(ref_price, 1e-9)
-        qty = round(base_qty * size_mult, 6)
+        # Size: use 10% of bot cash as risk unit (was 1%), with size_mult gating.
+        # Floor at 1 contract for futures (CME/CBOT/NYMEX), allow fractional
+        # for crypto spot (BTC/ETH/SOL).
+        risk_unit = bot.cash * 0.10
+        base_qty = risk_unit / max(ref_price, 1e-9)
+        qty = base_qty * size_mult
+        # Minimum lot sizes
+        symbol_upper = bot.symbol.upper().lstrip("/")
+        _futures_set = {
+            "MNQ", "NQ", "ES", "MES", "MBT", "MET", "NG", "CL", "GC",
+            "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
+        }
+        min_qty = 1 if symbol_upper in _futures_set or "MNQ" in symbol_upper else 0.001
+        qty = max(qty, min_qty)
+        qty = round(qty, 6)
 
         rec = FillRecord(
             bot_id=bot.bot_id,
