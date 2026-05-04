@@ -542,6 +542,30 @@ class ExecutionRouter:
             "entry_ts": rec.fill_ts,
             "signal_id": signal_id,
         }
+        # Compute bracket levels at entry — ALWAYS, even for paper-only crypto
+        # bots that never round-trip through the broker. Without this, paper
+        # _maybe_exit falls through to a 1-in-15 random close that exits at
+        # trivial price moves (~$10 on BTC vs the bot's 2.0×ATR planned stop
+        # of ~$1000). Storing the planned bracket here lets _maybe_exit gate
+        # exits on the actual planned levels regardless of broker presence,
+        # so paper R-magnitudes finally match lab.
+        try:
+            from eta_engine.scripts.bracket_sizing import (
+                compute_bracket as _cb,
+            )
+            from eta_engine.scripts.bracket_sizing import (
+                lookup_bot_bracket_params as _lbp,
+            )
+            _sm, _tm = _lbp(bot.bot_id)
+            _ps, _pt, _psrc = _cb(
+                side=side, entry_price=rec.fill_price, bars=bot.sage_bars,
+                stop_mult_override=_sm, target_mult_override=_tm,
+            )
+            bot.open_position["bracket_stop"] = round(_ps, 4)
+            bot.open_position["bracket_target"] = round(_pt, 4)
+            bot.open_position["bracket_src"] = f"paper:{_psrc}"
+        except Exception as _exc:  # noqa: BLE001 — best effort
+            logger.debug("paper-bracket compute failed for %s: %s", bot.bot_id, _exc)
         bot.n_entries += 1
         bot.last_signal_at = rec.fill_ts
 
@@ -673,8 +697,17 @@ class ExecutionRouter:
         sign = 1.0 if pos["side"] == "BUY" else -1.0
         pnl_per_unit = (fill_price - pos["entry_price"]) * sign
         pnl = pnl_per_unit * pos["qty"]
-        # Realized R: divide by entry's risk -- use 1% of cash as the risk unit
-        risk_unit = bot.cash * 0.01
+        # Realized R: prefer planned bracket-stop distance × qty as the
+        # denominator. That is what the lab uses, so live R becomes
+        # apples-to-apples comparable to lab expectancy_r. Falls back to
+        # 1% of cash for legacy positions without a stored bracket.
+        plan_stop = pos.get("bracket_stop")
+        risk_unit = 0.0
+        if plan_stop is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * pos["qty"]
+        if risk_unit <= 0:
+            risk_unit = bot.cash * 0.01
         realized_r = pnl / max(risk_unit, 1e-9) if risk_unit > 0 else 0.0
 
         rec = FillRecord(
@@ -1188,17 +1221,51 @@ class JarvisStrategySupervisor:
             return
 
         # No broker bracket (paper_sim or paper-test crypto): supervisor-
-        # side logic is the only exit. Use the existing simple gates.
+        # side logic is the only exit. Prefer the planned bracket levels
+        # set at entry (atr_stop_mult / rr_target from per_bot_registry) —
+        # those are what the lab uses, so live R-magnitudes track lab. The
+        # legacy 1-in-15 random close is dropped: it was the dominant exit
+        # mechanism in paper mode and was scratching out trades at trivial
+        # price moves long before the planned bracket could fire.
         should_exit = False
-        if ret_pct < -0.015:
-            should_exit = True  # stop loss
-        elif ret_pct > 0.025:
-            should_exit = True  # take profit
-        elif random.Random(int(time.time()) + 7).random() < (1.0 / 15):
-            should_exit = True  # random close
+        exit_reason = ""
+        plan_stop = pos.get("bracket_stop")
+        plan_target = pos.get("bracket_target")
+        is_buy = pos["side"] == "BUY"
+        if plan_stop is not None and plan_target is not None:
+            try:
+                _ps = float(plan_stop)
+                _pt = float(plan_target)
+                if is_buy:
+                    if cur_price <= _ps:
+                        should_exit = True
+                        exit_reason = "paper_stop"
+                    elif cur_price >= _pt:
+                        should_exit = True
+                        exit_reason = "paper_target"
+                else:
+                    if cur_price >= _ps:
+                        should_exit = True
+                        exit_reason = "paper_stop"
+                    elif cur_price <= _pt:
+                        should_exit = True
+                        exit_reason = "paper_target"
+            except (TypeError, ValueError):
+                plan_stop = None  # fall through to fallback
+        if not should_exit and (plan_stop is None or plan_target is None):
+            # Fallback for older positions without stored bracket: keep the
+            # legacy fixed-pct gates so existing open trades still close,
+            # but skip the random gate that was ruining alpha.
+            if ret_pct < -0.015:
+                should_exit = True
+                exit_reason = "fallback_stop_pct"
+            elif ret_pct > 0.025:
+                should_exit = True
+                exit_reason = "fallback_target_pct"
 
         if not should_exit:
             return
+        pos["exit_reason"] = exit_reason
 
         rec = self._router.submit_exit(bot=bot, bar=bar)
         if rec:

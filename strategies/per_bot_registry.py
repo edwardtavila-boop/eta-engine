@@ -15,15 +15,16 @@ What moves price:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from eta_engine.scripts import workspace_roots
 
 if TYPE_CHECKING:
     from eta_engine.obs.drift_monitor import BaselineSnapshot
 
-_ETF_FLOWS_PATH = str(
-    (Path(__file__).resolve().parents[1] / ".." / "mnq_data" / "history" / "BTC_ETF_FLOWS.csv").resolve()
-) if __file__ else ""
+# Use the canonical workspace_roots helper (M1/M4 path-cleanup mandate)
+# instead of relative Path math. See test_workspace_path_cleanup.
+_ETF_FLOWS_PATH = str(workspace_roots.MNQ_HISTORY_ROOT / "BTC_ETF_FLOWS.csv")
 
 
 @dataclass(frozen=True)
@@ -513,7 +514,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "overbought_threshold": 75.0,
                 "bb_window": 20, "bb_std_mult": 2.0,
                 "min_volume_z": 0.3, "require_rejection": True,
-                "rr_target": 1.5, "atr_stop_mult": 1.5,
+                # PRESSURE TEST 2026-05-04: lab heatmap shows sharpe=1.81
+                # at stop_atr=1.0x vs 0.78 at 1.5x — tighter stop more
+                # than doubles risk-adjusted return. Counter-trend bots
+                # need fast invalidation; 1.0x lets the bot eat losses
+                # quickly and re-arm rather than ride a 1.5x drawdown.
+                "rr_target": 1.5, "atr_stop_mult": 1.0,
                 "max_trades_per_day": 3, "min_bars_between_trades": 12,
                 "warmup_bars": 50,
             },
@@ -707,7 +713,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_qty_equity_pct": 0.005,
                 "require_rejection": True, "min_rejection_wick_pct": 0.25,
                 "min_volume_z": 0.3,
-                "rr_target": 1.5, "atr_stop_mult": 1.0,
+                # PRESSURE TEST 2026-05-04: lab heatmap shows sharpe=0.73
+                # at stop_atr=2.5x vs 0.32 at current 1.0x — wider stop
+                # MORE than doubles sharpe. Volume-profile bot trades
+                # value-area extremes which often poke past with noise
+                # before reverting; tight 1.0x stop was getting hit on
+                # noise. 2.5x lets the auction-revert thesis breathe.
+                "rr_target": 1.5, "atr_stop_mult": 2.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 24,
                 "warmup_bars": 1000,
             },
@@ -1320,6 +1332,72 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "deactivated": True,
             "deactivated_on": "2026-05-04",
             "deactivated_reason": "lab_sweep_2026_05_04: met_sweep_reclaim failed gates (sharpe=-0.47, exp_R=-0.038)",
+        },
+    ),
+
+    # ═══════════════════════════════════════════════════════════════════
+    # ANCHOR-SWEEP TIER (2026-05-04)
+    # Named-anchor variant of sweep_reclaim for US index futures.
+    # The base sweep_reclaim uses a 20-bar lookback (~100 min on 5m)
+    # to identify liquidity pools — wrong abstraction for MNQ/NQ where
+    # institutions stop-hunt at FIXED, named levels (PDH/PDL/PMH/PML/
+    # ONH/ONL). This variant anchors detection to those levels.
+    # ═══════════════════════════════════════════════════════════════════
+
+    StrategyAssignment(
+        bot_id="mnq_anchor_sweep",
+        strategy_id="mnq_anchor_sweep_v1",
+        symbol="MNQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="anchor_sweep",
+        rationale=(
+            "Named-anchor variant of sweep_reclaim for MNQ 5m. Tracks "
+            "PDH/PDL (RTH 09:30-16:00 ET), PMH/PML (premarket 04:00-"
+            "09:30 ET), ONH/ONL (overnight 18:00-04:00 ET) and fires "
+            "on a wick-pierce + close-reclaim of any active anchor. "
+            "Direction: sweep-of-high → SHORT, sweep-of-low → LONG. "
+            "Wick-aware structural stops; opposite anchor as natural "
+            "target with 2R fallback."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "anchor_preset": "mnq",
+            "per_ticker_optimal": "MNQ",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="nq_anchor_sweep",
+        strategy_id="nq_anchor_sweep_v1",
+        symbol="NQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="anchor_sweep",
+        rationale=(
+            "Named-anchor variant of sweep_reclaim for NQ 5m. Same "
+            "Nasdaq-100 underlying as MNQ; identical mechanic. NQ is "
+            "$20/point vs MNQ $2/point but qty sizing absorbs that via "
+            "risk_per_trade_pct * equity / stop_distance."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "anchor_preset": "nq",
+            "per_ticker_optimal": "NQ",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
         },
     ),
 

@@ -479,3 +479,91 @@ def test_feed_health_alert_resets_when_recovers(tmp_path) -> None:
     ):
         sup._emit_feed_health_alerts(snapshot)
     assert "yfinance::MNQ" not in sup._feed_health_alerted
+
+
+# ─── Paper-mode bracket-based exit (R-magnitude unsquash) ────────
+
+
+def test_maybe_exit_uses_planned_bracket_in_paper_mode(tmp_path) -> None:
+    """When a paper position has a stored bracket_stop / bracket_target,
+    _maybe_exit must trigger ONLY when price crosses one of those levels
+    — never via the legacy 1-in-15 random close. Without this, paper
+    R-magnitudes were ~100x smaller than lab because trades scratched
+    out at trivial price moves before the planned bracket could fire.
+    """
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._router = ExecutionRouter(
+        cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [],
+    )
+
+    bot = BotInstance(
+        bot_id="t1", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    # Planned: long entry at 60000, stop 59000 (-1.67%), target 63000 (+5%)
+    bot.open_position = {
+        "side": "BUY", "qty": 0.001, "entry_price": 60000.0,
+        "entry_ts": "x", "signal_id": "s1",
+        "bracket_stop": 59000.0, "bracket_target": 63000.0,
+    }
+
+    # Bar 1: price drifts to 60010 (+0.017%) — below both stop and target.
+    # Legacy logic could have random-closed; new logic must hold.
+    sup._maybe_exit(bot, {"close": 60010.0})
+    assert bot.open_position is not None, (
+        "must NOT exit on trivial price drift when bracket levels exist"
+    )
+
+    # Bar 2: price hits bracket_target 63000 → must exit cleanly.
+    sup._maybe_exit(bot, {"close": 63000.0})
+    assert bot.open_position is None, (
+        "must exit when price reaches planned bracket_target"
+    )
+
+
+def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
+    """When bracket_stop is stored on the position, submit_exit must
+    measure realized_r against the planned stop distance × qty (the
+    same denominator the lab uses), not against bot.cash * 0.01. That
+    makes live R apples-to-apples comparable to lab expectancy_r.
+    """
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [])
+
+    bot = BotInstance(
+        bot_id="t2", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    # Long 0.01 BTC: entry 60000, stop 59000 → planned risk = 1000 * 0.01 = $10.
+    # Exit at 60100 → pnl = +$1.00. realized_r = 1.0 / 10.0 = 0.10.
+    # If the old denominator (cash*0.01 = $50) had been used, R would be 0.02.
+    bot.open_position = {
+        "side": "BUY", "qty": 0.01, "entry_price": 60000.0,
+        "entry_ts": "x", "signal_id": "s2",
+        "bracket_stop": 59000.0, "bracket_target": 63000.0,
+    }
+
+    rec = router.submit_exit(bot=bot, bar={"close": 60100.0})
+    assert rec is not None
+    # 1.5 bps slippage on the SELL side reduces fill from 60100 → ~60091,
+    # so realized_r is ~0.0909, not exactly 0.10. Just verify it lands in
+    # the bracket-denominator range, not the legacy cash-denominator range.
+    assert 0.05 < (rec.realized_r or 0.0) < 0.20, (
+        f"realized_r={rec.realized_r} not in bracket-denominator range "
+        "(legacy denominator would have produced ~0.02)"
+    )
