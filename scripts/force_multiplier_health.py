@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -26,16 +25,15 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eta_engine.brain.cli_provider import (
+from eta_engine.brain.cli_provider import (  # noqa: E402  (needs sys.path setup above)
     call_claude,
     call_codex,
     check_claude_available,
     check_codex_available,
     cli_provider_status,
 )
-from eta_engine.brain.llm_provider import chat_completion, ModelTier, native_provider_info
-from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
-from eta_engine.brain.multi_model import _classify_cli_failure, force_multiplier_status
+from eta_engine.brain.llm_provider import ModelTier, chat_completion, native_provider_info  # noqa: E402
+from eta_engine.brain.multi_model import _classify_cli_failure, force_multiplier_status  # noqa: E402
 
 
 def _hr(label: str = "") -> None:

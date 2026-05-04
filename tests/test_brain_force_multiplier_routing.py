@@ -7,10 +7,6 @@ The live integration test lives in ``live_force_multiplier.py``.
 
 from __future__ import annotations
 
-import logging
-
-import pytest
-
 from eta_engine.brain.cli_provider import CLIResponse
 from eta_engine.brain.model_policy import (
     ForceProvider,
@@ -22,17 +18,15 @@ from eta_engine.brain.model_policy import (
     select_model,
 )
 from eta_engine.brain.multi_model import (
+    IMPLEMENT_SYSTEM,
+    PLAN_SYSTEM,
+    VERIFY_SYSTEM,
+    ChainResult,
     _classify_cli_failure,
     _is_cli_auth_error,
     _is_cli_quota_error,
     force_multiplier_chain,
-    ChainBudgetExceeded,
-    ChainResult,
-    PLAN_SYSTEM,
-    IMPLEMENT_SYSTEM,
-    VERIFY_SYSTEM,
 )
-
 
 # ---------------------------------------------------------------------------
 # Routing policy coverage
@@ -271,7 +265,6 @@ class TestArchitecturalFallbackLogging:
 
     def test_architectural_fallback_logs_at_error(self, caplog) -> None:
         """When ARCHITECTURAL category falls back, log level must be ERROR."""
-        from eta_engine.brain.multi_model import _fallback_deepseek
 
         # We can't run the actual fallback (it would call DeepSeek API), so
         # we just verify bucket classification feeds into log-level selection.

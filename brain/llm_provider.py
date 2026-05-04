@@ -38,8 +38,10 @@ Pricing (per 1M tokens, USD)
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -47,8 +49,6 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-import threading
 
 _ENV_LOADED = False
 _ENV_LOAD_LOCK = threading.Lock()
@@ -213,7 +213,7 @@ def _langfuse_available() -> bool:
     return _LANGFUSE_ENABLED
 
 
-def _langfuse_trace(name: str, metadata: dict[str, Any]) -> Any:
+def _langfuse_trace(name: str, metadata: dict[str, Any]) -> Any:  # noqa: ANN401  (3rd-party return type)
     """Create a Langfuse trace that auto-closes. Returns None if unavailable."""
     try:
         from langfuse import Langfuse
@@ -223,13 +223,13 @@ def _langfuse_trace(name: str, metadata: dict[str, Any]) -> Any:
         return None
 
 
-def _langfuse_generation(trace: Any, name: str, model: str, input_data: str,
+def _langfuse_generation(trace: Any, name: str, model: str, input_data: str,  # noqa: ANN401  (3rd-party arg)
                           output_data: str, usage: dict[str, int],
                           metadata: dict[str, Any] | None = None) -> None:
     """Log a generation span to Langfuse. Silent no-op when unavailable."""
     if trace is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         trace.generation(
             name=name,
             model=model,
@@ -238,8 +238,6 @@ def _langfuse_generation(trace: Any, name: str, model: str, input_data: str,
             usage={"input": usage.get("input_tokens", 0), "output": usage.get("output_tokens", 0)},
             metadata=metadata or {},
         )
-    except Exception:  # noqa: BLE001
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -345,14 +343,12 @@ def chat_completion(
                                    temperature=temperature)
     except Exception:
         if lf_trace is not None:
-            try:
+            with contextlib.suppress(Exception):
                 lf_trace.generation(
                     name="completion_error", model=model,
                     input={"messages": user_message[:200]},
                     output={"error": "provider failed"},
                 )
-            except Exception:  # noqa: BLE001
-                pass
         raise
 
     elapsed_ms = (time.time() - started_at) * 1000
@@ -417,10 +413,9 @@ def _call_deepseek(
         temperature = 1.0
         max_tokens = max(max_tokens, 1024)
 
-    if model == "deepseek-v4-flash":
-        if tier is not None and tier == ModelTier.HAIKU:
-            extra_kw["thinking"] = {"type": "disabled"}
-            temperature = max(temperature, 0.0)
+    if model == "deepseek-v4-flash" and tier is not None and tier == ModelTier.HAIKU:
+        extra_kw["thinking"] = {"type": "disabled"}
+        temperature = max(temperature, 0.0)
 
     resp = client.chat.completions.create(
         model=model, messages=messages, max_tokens=max_tokens,
@@ -540,7 +535,8 @@ class DeepSeekExecutor:
     """Implements the Avengers ``Executor`` Protocol using the provider layer."""
 
     def __call__(
-        self, *, tier, system_prompt: str = "", user_prompt: str = "", envelope: Any = None,
+        self, *, tier: ModelTier | str, system_prompt: str = "", user_prompt: str = "",
+        envelope: Any = None,  # noqa: ANN401  (avengers-protocol allows arbitrary envelope)
     ) -> str:
         tier_value = tier.value if hasattr(tier, "value") else str(tier)
         ds_tier = ModelTier(tier_value)

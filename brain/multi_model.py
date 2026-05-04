@@ -20,27 +20,24 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Any
 
-from eta_engine.brain.llm_provider import (
-    LLMResponse,
-    ModelTier,
-    Provider,
-    chat_completion,
-    native_provider_info,
-)
 from eta_engine.brain.cli_provider import (
     CLIResponse,
     call_claude,
     call_codex,
-    cli_provider_status,
     check_claude_available,
     check_codex_available,
+    cli_provider_status,
+)
+from eta_engine.brain.llm_provider import (
+    LLMResponse,
+    ModelTier,
+    chat_completion,
+    native_provider_info,
 )
 from eta_engine.brain.model_policy import (
     ForceProvider,
-    ModelSelection,
     TaskCategory,
     force_provider_for,
     select_model,
@@ -272,7 +269,7 @@ def _fallback_deepseek(
     # Architectural / risk-policy work is the LAST place we want a silent
     # quality regression. If those tasks fall back to DeepSeek, escalate
     # the log level so it shows up in dashboards and on-call alerts.
-    from eta_engine.brain.model_policy import bucket_for, TaskBucket  # noqa: PLC0415
+    from eta_engine.brain.model_policy import TaskBucket, bucket_for  # noqa: PLC0415
     is_architectural = bucket_for(category) == TaskBucket.ARCHITECTURAL
     log_fn = logger.error if is_architectural else logger.warning
     log_fn(
@@ -472,11 +469,11 @@ VERIFY_SYSTEM = (
 )
 
 
-class ChainBudgetExceeded(RuntimeError):
+class ChainBudgetExceededError(RuntimeError):
     """Raised when ``force_multiplier_chain`` would exceed its cost ceiling."""
 
 
-class ChainAborted(RuntimeError):
+class ChainAbortedError(RuntimeError):
     """Raised when a chain stage produced empty output and downstream stages
     would receive blank context."""
 
@@ -560,7 +557,7 @@ def force_multiplier_chain(
         return s[:limit] + f"\n[...truncated {len(s) - limit} chars to fit context]"
 
     def _check_budget(stage: str) -> bool:
-        """Raise ``ChainBudgetExceeded`` if running stage would blow the cap.
+        """Raise ``ChainBudgetExceededError`` if running stage would blow the cap.
 
         Cost is tracked AFTER each stage completes (we don't know the next
         stage's cost in advance). So this only catches "we already overspent
@@ -572,7 +569,7 @@ def force_multiplier_chain(
                 stage, result.total_cost_usd, max_total_cost_usd,
             )
             result.aborted_at = stage
-            raise ChainBudgetExceeded(
+            raise ChainBudgetExceededError(
                 f"Chain cost ${result.total_cost_usd:.4f} > cap ${max_total_cost_usd:.2f} "
                 f"before running {stage}"
             )
