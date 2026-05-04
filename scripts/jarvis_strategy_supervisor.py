@@ -607,7 +607,16 @@ class JarvisStrategySupervisor:
         self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
         self._stopped = False
         self.bots: list[BotInstance] = []
-        self.feed = MockDataFeed()
+        # Real-data feed dispatch: ETA_SUPERVISOR_FEED selects between
+        # mock | yfinance | coinbase | ibkr | composite. Mock is the
+        # default; composite is the recommended live setup (crypto via
+        # Coinbase, futures via TWS, fallback yfinance).
+        from eta_engine.scripts.data_feeds import make_data_feed
+        self.feed = make_data_feed(self.cfg.data_feed)
+        logger.info(
+            "supervisor data feed: %s (%s)",
+            self.cfg.data_feed, type(self.feed).__name__,
+        )
         self._jarvis_full = None
         self._memory = None
         self._router = ExecutionRouter(
