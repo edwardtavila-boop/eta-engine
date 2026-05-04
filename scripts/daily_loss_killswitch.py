@@ -73,10 +73,20 @@ def _today_realized_pnl_usd() -> float:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                ts = rec.get("close_ts") or rec.get("ts") or rec.get("fill_ts") or ""
+                # close_trade writes top-level fields plus extra={}.
+                # Newer records put realized_pnl in extra; older ones
+                # in top-level. Read both for backwards compatibility.
+                extra = rec.get("extra") or {}
+                ts = (
+                    rec.get("close_ts")
+                    or (extra.get("close_ts") if isinstance(extra, dict) else None)
+                    or rec.get("ts") or rec.get("fill_ts") or ""
+                )
                 if not _is_today(ts):
                     continue
                 pnl = rec.get("realized_pnl")
+                if pnl is None and isinstance(extra, dict):
+                    pnl = extra.get("realized_pnl")
                 if pnl is None:
                     continue
                 try:

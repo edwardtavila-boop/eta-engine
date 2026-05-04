@@ -93,11 +93,21 @@ def _bot_metrics(bot: dict[str, Any], closes: list[dict[str, Any]]) -> dict[str,
         for c in bot_closes
         if c.get("realized_r") is not None
     ]
-    pnls = [
-        float(c.get("realized_pnl", 0) or 0)
-        for c in bot_closes
-        if c.get("realized_pnl") is not None
-    ]
+    # Trade closes are written by feedback_loop.close_trade. Older
+    # records carry only realized_r; newer ones include realized_pnl
+    # in extra={}. Read both shapes so this works pre/post upgrade.
+    pnls: list[float] = []
+    for c in bot_closes:
+        v = c.get("realized_pnl")
+        if v is None:
+            extra = c.get("extra") or {}
+            v = extra.get("realized_pnl") if isinstance(extra, dict) else None
+        if v is None:
+            continue
+        try:
+            pnls.append(float(v))
+        except (TypeError, ValueError):
+            continue
     wins = [r for r in rs if r > 0]
     win_rate = (len(wins) / len(rs)) if rs else 0.0
     avg_r = (sum(rs) / len(rs)) if rs else 0.0

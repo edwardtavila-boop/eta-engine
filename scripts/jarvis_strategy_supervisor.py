@@ -93,6 +93,18 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 logger = logging.getLogger("jarvis_strategy_supervisor")
 
 
+# Log hygiene: ib_insync at INFO emits one line per execDetails /
+# commissionReport / position event for every order — floods the
+# supervisor log with replay state on every reconnect (~hundreds
+# of lines per restart). The errors and warnings still surface;
+# we only mute the noisy INFOs. Override via env if needed:
+#   ETA_IBKR_LOG_LEVEL=INFO  → restore verbose
+_ib_log_level = os.getenv("ETA_IBKR_LOG_LEVEL", "WARNING").upper()
+for _ib_logger in ("ib_insync", "ib_insync.client", "ib_insync.wrapper",
+                   "ib_insync.ib", "eventkit"):
+    logging.getLogger(_ib_logger).setLevel(_ib_log_level)
+
+
 # ─── Configuration ────────────────────────────────────────────────
 
 
@@ -308,6 +320,7 @@ class FillRecord:
     fill_ts: str
     paper: bool
     realized_r: float | None = None
+    realized_pnl: float | None = None  # USD pnl on close; None for entries
     note: str = ""
 
 
@@ -674,6 +687,7 @@ class ExecutionRouter:
             fill_ts=datetime.now(UTC).isoformat(),
             paper=True,
             realized_r=round(realized_r, 4),
+            realized_pnl=round(pnl, 4),
             note=f"close pnl={pnl:+.2f}",
         )
 
@@ -1542,6 +1556,10 @@ class JarvisStrategySupervisor:
     def _propagate_close(self, bot: BotInstance, rec: FillRecord) -> None:
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
+            # Pass the per-trade pnl through extra so it lands in the
+            # JSONL audit log; the scoreboard + killswitch read this
+            # field. Without it, downstream tooling sees realized_r
+            # (risk-normalized) but no $$ figure.
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
@@ -1551,6 +1569,14 @@ class JarvisStrategySupervisor:
                 bot_id=bot.bot_id,
                 memory=self._memory,
                 narrative=f"close after {bot.n_exits} exits, pnl={bot.realized_pnl:+.2f}",
+                extra={
+                    "realized_pnl": rec.realized_pnl,
+                    "fill_price": rec.fill_price,
+                    "qty": rec.qty,
+                    "symbol": rec.symbol,
+                    "side": rec.side,
+                    "close_ts": rec.fill_ts,
+                },
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("feedback propagate failed for %s: %s", bot.bot_id, exc)
