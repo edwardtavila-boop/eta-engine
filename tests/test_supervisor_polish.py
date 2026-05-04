@@ -567,3 +567,50 @@ def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
         f"realized_r={rec.realized_r} not in bracket-denominator range "
         "(legacy denominator would have produced ~0.02)"
     )
+
+
+# ─── open_risk_r counting fix (JARVIS REDUCE-tier brake) ─────────
+
+
+def test_synthetic_ctx_open_risk_r_uses_planned_stop_distance(tmp_path) -> None:
+    """The legacy synthetic context set open_risk_r = float(open_count),
+    so once the fleet had 4+ bots open the JARVIS REDUCE tier (cap=3R)
+    fired on every entry and slammed every verdict to a 0.5x size cap
+    even though real R-at-risk was a fraction of 1R.
+
+    With the fix, open_risk_r is computed from each open position's
+    planned bracket-stop distance × qty / (1% of bot.cash). 5 bots each
+    risking ~$1.67 / $50 ≈ 0.033R should sum to ~0.17R total, not 5.0R.
+    """
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    # 5 paper crypto bots, each long with a stored bracket
+    sup.bots = []
+    for i in range(5):
+        b = BotInstance(
+            bot_id=f"b{i}", symbol="BTC", strategy_kind="x",
+            direction="long", cash=5000.0,
+        )
+        b.open_position = {
+            "side": "BUY", "qty": 0.00167, "entry_price": 60000.0,
+            "entry_ts": "x", "signal_id": f"s{i}",
+            "bracket_stop": 59000.0, "bracket_target": 63000.0,
+        }
+        sup.bots.append(b)
+
+    ctx = sup._build_synthetic_ctx(sup.bots[0])
+    assert ctx is not None, "synthetic context must build"
+    # Real R-at-risk: 5 bots × ($1000 stop × 0.00167 qty / $50 R-unit)
+    # = 5 × 0.0334 ≈ 0.167R total. Must be well under the 3R cap.
+    assert ctx.equity.open_risk_r < 1.0, (
+        f"open_risk_r={ctx.equity.open_risk_r} too high; legacy bug "
+        "would have set it to 5.0 (the open_count)"
+    )

@@ -295,7 +295,9 @@ class JarvisIntelligence:
         base: ActionResponse,
         override_level: str,
     ) -> ConsolidatedVerdict:
-        size_mult = self._verdict_to_size(base.verdict)
+        size_mult = self._verdict_to_size(
+            base.verdict, getattr(base, "size_cap_mult", None),
+        )
         v = ConsolidatedVerdict(
             ts=datetime.now(UTC).isoformat(),
             request_id=str(getattr(req, "request_id", "")),
@@ -494,11 +496,26 @@ class JarvisIntelligence:
 
     # ── Synthesis ────────────────────────────────────────────
 
-    def _verdict_to_size(self, verdict_value: str) -> float:
+    def _verdict_to_size(
+        self, verdict_value: str, size_cap_mult: float | None = None,
+    ) -> float:
+        """Map a base verdict to a size multiplier.
+
+        Honors the ``size_cap_mult`` from ``evaluate_request`` when present
+        — REVIEW tier sets 0.75, REDUCE tier sets 0.50, TRADE tier may
+        leave it None (full size). Without this, the consolidator was
+        hard-coding every CONDITIONAL to 0.5x even when the underlying
+        gate had specifically set 0.75x for a less-restrictive tier.
+        """
         vu = str(verdict_value).upper()
         if vu == "APPROVED":
             return 1.0
         if vu == "CONDITIONAL":
+            if size_cap_mult is not None:
+                try:
+                    return max(0.0, min(1.0, float(size_cap_mult)))
+                except (TypeError, ValueError):
+                    pass
             return 0.5
         return 0.0
 
@@ -518,7 +535,9 @@ class JarvisIntelligence:
         layer_errors: list[str],
     ) -> ConsolidatedVerdict:
         base_verdict = str(base_response.verdict)
-        size_mult = self._verdict_to_size(base_verdict)
+        size_mult = self._verdict_to_size(
+            base_verdict, getattr(base_response, "size_cap_mult", None),
+        )
         final_verdict = base_verdict
 
         # SOFT_PAUSE downgrades any APPROVED to DEFERRED on NEW positions

@@ -1591,18 +1591,53 @@ class JarvisStrategySupervisor:
             vix_level=live_regime.get("vix", 18.0),
             macro_bias=live_regime.get("macro_bias", "neutral"),
         )
+        # Real R-at-risk = sum of (planned_stop_loss_$ / 1R_unit) across all
+        # open positions. The legacy `float(open_count)` was COUNTING open
+        # positions and feeding that into JarvisAdmin's open_risk_r cap of
+        # 3R — so once the fleet had ≥4 bots open simultaneously, every
+        # bot's verdict came back CONDITIONAL with a 0.5x size_cap (REDUCE
+        # tier) regardless of actual risk. With bracket-based exits in
+        # place each bot's real R-at-risk is ~0.03R (planned $1.67 stop on
+        # crypto-paper / $50 1R unit), so 24 open positions sum to <1R —
+        # safely under the cap, and the bots can size at 1.0x as planned.
+        open_risk_r_total = 0.0
+        for _b in self.bots:
+            if _b.open_position is None:
+                continue
+            _bs = _b.open_position.get("bracket_stop")
+            _qty = _b.open_position.get("qty")
+            _entry = _b.open_position.get("entry_price")
+            if _bs is None or not _qty or not _entry:
+                # No bracket stored (legacy entry) — assume 1R per position
+                # so we still respect the cap conservatively.
+                open_risk_r_total += 1.0
+                continue
+            try:
+                _risk_dollars = abs(float(_bs) - float(_entry)) * float(_qty)
+                _r_unit = max(float(_b.cash) * 0.01, 1e-9)
+                open_risk_r_total += _risk_dollars / _r_unit
+            except (TypeError, ValueError):
+                open_risk_r_total += 1.0
         equity = EquitySnapshot(
             account_equity=total_equity,
             daily_pnl=sum(b.realized_pnl for b in self.bots),
             daily_drawdown_pct=dd_pct,
             open_positions=open_count,
-            open_risk_r=float(open_count),
+            open_risk_r=round(open_risk_r_total, 4),
         )
+        # flipped_recently must be True only when there was an ACTUAL flip
+        # (previous and current both known and different). The legacy
+        # "primary != previous" check fires when previous_regime is None
+        # (cold-start) — so every entry on supervisor restart triggered
+        # the JARVIS REVIEW tier and capped size at 0.75x. Use both-known.
+        _prev = live_regime.get("previous_regime")
+        _prim = live_regime.get("primary_regime", "neutral")
+        _flipped = bool(_prev) and bool(_prim) and _prev != _prim
         regime = RegimeSnapshot(
-            regime=live_regime.get("primary_regime", "neutral"),
+            regime=_prim,
             confidence=live_regime.get("confidence", 0.5),
-            previous_regime=live_regime.get("previous_regime"),
-            flipped_recently=live_regime.get("primary_regime") != live_regime.get("previous_regime"),
+            previous_regime=_prev,
+            flipped_recently=_flipped,
         )
         journal = JournalSnapshot(
             kill_switch_active=False,
