@@ -186,7 +186,7 @@ class IbkrClientPortalVenue(VenueBase):
         # configured contract limit (Apex eval-friendly default = 1).
         from eta_engine.safety.position_cap import assert_within_caps
 
-        signed_qty = float(getattr(request, "quantity", 0) or 0)
+        signed_qty = float(getattr(request, "qty", 0) or 0)
         side_str = str(getattr(request, "side", "buy")).lower()
         signed_qty = -abs(signed_qty) if side_str in ("sell", "short") else abs(signed_qty)
         assert_within_caps(side="mnq", venue="ibkr", symbol=request.symbol, requested_delta=signed_qty)
@@ -219,7 +219,7 @@ class IbkrClientPortalVenue(VenueBase):
             intent = {
                 "symbol": request.symbol,
                 "side": getattr(request, "side", "?"),
-                "quantity": float(getattr(request, "quantity", 0) or 0),
+                "quantity": float(getattr(request, "qty", 0) or 0),
                 "conid": conid,
             }
             idem = check_or_register(

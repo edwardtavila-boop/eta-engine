@@ -186,7 +186,7 @@ class LiveIbkrVenue(VenueBase):
         assert_fleet_within_budget(bot_id=getattr(request, "bot_id", None))
 
         from eta_engine.safety.position_cap import assert_within_caps
-        signed_qty = float(getattr(request, "quantity", 0) or 0)
+        signed_qty = float(getattr(request, "qty", 0) or 0)
         side_str = str(getattr(request, "side", "buy")).lower()
         signed_qty = -abs(signed_qty) if side_str in ("sell", "short") else abs(signed_qty)
         assert_within_caps(side="mnq", venue="ibkr", symbol=request.symbol, requested_delta=signed_qty)
@@ -212,7 +212,7 @@ class LiveIbkrVenue(VenueBase):
             intent = {
                 "symbol": request.symbol,
                 "side": str(getattr(request, "side", "?")),
-                "quantity": float(getattr(request, "quantity", 0) or 0),
+                "quantity": float(getattr(request, "qty", 0) or 0),
                 "venue": "ibkr_live",
             }
             idem = check_or_register(
@@ -251,7 +251,7 @@ class LiveIbkrVenue(VenueBase):
         from ib_insync import LimitOrder, MarketOrder
 
         action = "BUY" if str(getattr(request, "side", "BUY")).upper() == "BUY" else "SELL"
-        qty = int(abs(float(getattr(request, "quantity", 1) or 1)))
+        qty = int(abs(float(getattr(request, "qty", 1) or 1)))
 
         order_type = getattr(request, "order_type", OrderType.MARKET)
         if order_type == OrderType.LIMIT and getattr(request, "price", None):
