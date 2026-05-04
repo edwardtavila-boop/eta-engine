@@ -42,10 +42,18 @@ from typing import Literal
 
 from eta_engine.venues.base import OrderRequest, OrderResult, OrderStatus, VenueBase
 from eta_engine.venues.bybit import BybitVenue
-from eta_engine.venues.ibkr import IbkrClientPortalVenue
+from eta_engine.venues.ibkr import IbkrClientPortalVenue as MockIbkrVenue
 from eta_engine.venues.okx import OkxVenue
 from eta_engine.venues.tastytrade import TastytradeVenue
 from eta_engine.venues.tradovate import TradovateVenue
+
+# Live IBKR venue via TWS API — falls back to mock if ib_insync unavailable
+try:
+    from eta_engine.venues.ibkr_live import LiveIbkrVenue as IbkrClientPortalVenue
+    IBKR_LIVE = True
+except ImportError:
+    IbkrClientPortalVenue = MockIbkrVenue
+    IBKR_LIVE = False
 
 logger = logging.getLogger(__name__)
 
