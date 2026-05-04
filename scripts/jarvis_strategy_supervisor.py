@@ -365,6 +365,22 @@ def _run_on_live_ibkr_loop[T](
     return fut.result(timeout=timeout)
 
 
+# Singleton LiveIbkrVenue. The class declares _ib/_connected/_lock at class
+# scope, but place_order writes them via ``self._ib = ...`` which creates
+# instance attributes — class-level state never gets cached. Sharing one
+# venue instance across the whole supervisor lifetime makes the per-call
+# cache work and stops every order from triggering a fresh TWS connect.
+_LIVE_IBKR_VENUE: Any | None = None
+
+
+def _get_live_ibkr_venue() -> Any:  # noqa: ANN401 — LiveIbkrVenue not import-time available
+    global _LIVE_IBKR_VENUE
+    if _LIVE_IBKR_VENUE is None:
+        from eta_engine.venues.ibkr_live import LiveIbkrVenue
+        _LIVE_IBKR_VENUE = LiveIbkrVenue()
+    return _LIVE_IBKR_VENUE
+
+
 class ExecutionRouter:
     """Routes approved entries to broker (or simulates them).
 
@@ -451,19 +467,40 @@ class ExecutionRouter:
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
                 from eta_engine.venues.base import OrderRequest, OrderType, Side
-                from eta_engine.venues.ibkr_live import LiveIbkrVenue
-                _venue = LiveIbkrVenue()
+                _venue = _get_live_ibkr_venue()
+                # Bracket: 1.5% stop / 2.0% target relative to fill price.
+                # The venue requires every entry to ship with stop+target so
+                # a process crash mid-position cannot leave a naked broker
+                # position. These are floor brackets — strategies that emit
+                # their own bracket should override here in a future pass.
+                _ref = float(rec.fill_price) if rec.fill_price else float(bar.get("close", 0.0)) or 1.0
+                if rec.side.upper() == "BUY":
+                    _stop = _ref * 0.985
+                    _target = _ref * 1.020
+                else:
+                    _stop = _ref * 1.015
+                    _target = _ref * 0.980
                 _req = OrderRequest(
                     symbol=rec.symbol,
                     side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
                     qty=abs(float(rec.qty)) or 1,
                     order_type=OrderType.MARKET,
+                    stop_price=round(_stop, 4),
+                    target_price=round(_target, 4),
+                    bot_id=bot.bot_id,
                 )
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
+                _reason = (
+                    _result.raw.get("reason")
+                    or ("deduped: " + str(_result.raw.get("note", "")) if _result.raw.get("deduped") else "")
+                    or "n/a"
+                )
                 logger.info(
-                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s)",
+                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
                     rec.symbol, rec.side, rec.qty,
-                    _result.status.value, _result.raw.get("ibkr_order_id", "?"),
+                    _result.status.value,
+                    _result.raw.get("ibkr_order_id", "?"),
+                    _reason,
                 )
             except Exception as _exc:
                 logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)

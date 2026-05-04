@@ -144,23 +144,43 @@ class LiveIbkrVenue(VenueBase):
                 await asyncio.sleep(0.5)
                 self._ib = None
 
-            try:
-                from ib_insync import IB
-                self._ib = IB()
-                await self._ib.connectAsync(
-                    "127.0.0.1", 4002,
-                    clientId=self._client_id, timeout=5,
-                )
-                self._connected = True
-                logger.info(
-                    "LiveIbkrVenue connected to TWS on port 4002 (clientId=%d)",
-                    self._client_id,
-                )
-                return True
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("LiveIbkrVenue could not connect to TWS: %s", exc)
-                self._connected = False
-                return False
+            from ib_insync import IB
+            # Retry up to 3 times to handle cross-process clientId stickiness:
+            # when the supervisor is bounced, TWS can hold the previous PID's
+            # clientId for several seconds before releasing it, so the first
+            # connect then hits Error 326 ("client id is already in use").
+            # Backing off and retrying lets TWS finish the cleanup.
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    self._ib = IB()
+                    await self._ib.connectAsync(
+                        "127.0.0.1", 4002,
+                        clientId=self._client_id, timeout=5,
+                    )
+                    self._connected = True
+                    logger.info(
+                        "LiveIbkrVenue connected to TWS on port 4002 "
+                        "(clientId=%d, attempt=%d)",
+                        self._client_id, attempt + 1,
+                    )
+                    return True
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    with contextlib.suppress(Exception):
+                        if self._ib is not None:
+                            self._ib.disconnect()
+                    self._ib = None
+                    if attempt < 2:
+                        # Exponential backoff: 1.0s, 2.5s
+                        await asyncio.sleep(1.0 + 1.5 * attempt)
+
+            logger.warning(
+                "LiveIbkrVenue could not connect to TWS after 3 attempts: %s",
+                last_exc,
+            )
+            self._connected = False
+            return False
 
     async def connect(self) -> VenueConnectionReport:
         ok = await self._ensure_connected()
@@ -252,18 +272,66 @@ class LiveIbkrVenue(VenueBase):
 
         action = "BUY" if str(getattr(request, "side", "BUY")).upper() == "BUY" else "SELL"
         qty = int(abs(float(getattr(request, "qty", 1) or 1)))
-
+        reduce_only = bool(getattr(request, "reduce_only", False))
+        stop_price = getattr(request, "stop_price", None)
+        target_price = getattr(request, "target_price", None)
         order_type = getattr(request, "order_type", OrderType.MARKET)
-        if order_type == OrderType.LIMIT and getattr(request, "price", None):
-            ib_order = LimitOrder(action, qty, float(request.price))
-        elif order_type == OrderType.LIMIT:
-            ib_order = MarketOrder(action, qty)  # fallback
-        else:
-            ib_order = MarketOrder(action, qty)
+
+        # ── BRACKET REQUIREMENT ───────────────────────────────────
+        # An entry MUST attach a bracket (parent MKT + STP child + LMT
+        # child).  Naked entries are physically refused at this layer:
+        # a process crash mid-position would otherwise leave an
+        # unprotected position at the broker.  reduce_only exits keep
+        # the simple single-leg path (closing a position should never
+        # be gated by a bracket requirement).
+        is_entry = not reduce_only
+        if is_entry and (stop_price is None or target_price is None):
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={
+                    "venue": self.name,
+                    "reason": "entry order missing bracket (stop_price + target_price required)",
+                    "stop_price": stop_price,
+                    "target_price": target_price,
+                },
+            )
 
         try:
-            trade = self._ib.placeOrder(contract, ib_order)
-            self._orders[order_id] = trade
+            if is_entry:
+                # ib_insync.bracketOrder returns [parent, takeProfit,
+                # stopLoss] with transmit chained (parent.transmit=False,
+                # tp.transmit=False, sl.transmit=True) so the broker sees
+                # the OCO group atomically.
+                bracket = self._ib.bracketOrder(
+                    action,
+                    qty,
+                    limitPrice=float(target_price),
+                    takeProfitPrice=float(target_price),
+                    stopLossPrice=float(stop_price),
+                )
+                trades = []
+                for ib_order in bracket:
+                    trades.append(self._ib.placeOrder(contract, ib_order))
+                trade = trades[0]
+                self._orders[order_id] = trade
+                logger.info(
+                    "LiveIbkrVenue BRACKET: %s %s %d MKT entry sl=%.4f tp=%.4f → parentId=%s",
+                    action, request.symbol, qty, float(stop_price), float(target_price),
+                    trade.order.orderId,
+                )
+            else:
+                # Reduce-only exit — single MKT/LMT, no bracket
+                if order_type == OrderType.LIMIT and getattr(request, "price", None):
+                    ib_order = LimitOrder(action, qty, float(request.price))
+                else:
+                    ib_order = MarketOrder(action, qty)
+                trade = self._ib.placeOrder(contract, ib_order)
+                self._orders[order_id] = trade
+                logger.info(
+                    "LiveIbkrVenue EXIT: %s %s %d @ %s → orderId=%s",
+                    action, request.symbol, qty, order_type.value, trade.order.orderId,
+                )
 
             # ── RECORD RESULT ─────────────────────────────────────
             with contextlib.suppress(Exception):
@@ -278,13 +346,12 @@ class LiveIbkrVenue(VenueBase):
                         "symbol": request.symbol,
                         "action": action,
                         "qty": qty,
+                        "is_bracket": is_entry,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
                     },
                 )
 
-            logger.info(
-                "LiveIbkrVenue ORDER: %s %s %d @ %s → orderId=%s",
-                action, request.symbol, qty, order_type.value, trade.order.orderId,
-            )
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.OPEN,
@@ -295,6 +362,9 @@ class LiveIbkrVenue(VenueBase):
                     "symbol": request.symbol,
                     "action": action,
                     "qty": qty,
+                    "is_bracket": is_entry,
+                    "stop_price": stop_price,
+                    "target_price": target_price,
                 },
             )
         except Exception as exc:
