@@ -444,6 +444,35 @@ class ExecutionRouter:
         qty = max(qty, min_qty)
         qty = round(qty, 6) if not is_futures else float(int(qty))
 
+        # ── CAPITAL BUDGET CAP ────────────────────────────────────
+        # Hard-clamp the requested qty to the per-bot/fleet USD cap so
+        # live cutover with $500-2000 starting capital cannot accidentally
+        # ship $5K+ orders. cap_qty_to_budget reads ETA_LIVE_*_BUDGET_*
+        # env vars; defaults are conservative (crypto $100/bot, $1500
+        # fleet; futures $500/bot, $5000 fleet — paper-friendly).
+        try:
+            from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+            capped, _cap_reason = cap_qty_to_budget(
+                symbol=bot.symbol,
+                entry_price=ref_price,
+                requested_qty=qty,
+            )
+            if _cap_reason != "ok":
+                logger.info(
+                    "CAP %s %s req=%.6f → capped=%.6f (%s)",
+                    bot.bot_id, bot.symbol, qty, capped, _cap_reason,
+                )
+            qty = capped
+        except Exception as exc:  # noqa: BLE001 — cap is best-effort
+            logger.warning("budget cap failed for %s: %s", bot.bot_id, exc)
+
+        if qty <= 0:
+            logger.info(
+                "%s entry skipped: budget cap produced qty=0 (%s @ %.4f)",
+                bot.bot_id, bot.symbol, ref_price,
+            )
+            return None
+
         rec = FillRecord(
             bot_id=bot.bot_id,
             signal_id=signal_id,
@@ -488,20 +517,21 @@ class ExecutionRouter:
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
+                from eta_engine.scripts.bracket_sizing import compute_bracket
                 from eta_engine.venues.base import OrderRequest, OrderType, Side
                 _venue = _get_live_ibkr_venue()
-                # Bracket: 1.5% stop / 2.0% target relative to fill price.
-                # The venue requires every entry to ship with stop+target so
-                # a process crash mid-position cannot leave a naked broker
-                # position. These are floor brackets — strategies that emit
-                # their own bracket should override here in a future pass.
+                # ATR-based bracket if ≥15 bars in the bot's sage window,
+                # else fixed-percent fallback. ATR adapts stop width to
+                # actual symbol volatility (BTC needs ~5x more room than
+                # MNQ for the same number of "ticks of breathing room").
                 _ref = float(rec.fill_price) if rec.fill_price else float(bar.get("close", 0.0)) or 1.0
-                if rec.side.upper() == "BUY":
-                    _stop = _ref * 0.985
-                    _target = _ref * 1.020
-                else:
-                    _stop = _ref * 1.015
-                    _target = _ref * 0.980
+                _stop, _target, _bracket_src = compute_bracket(
+                    side=rec.side, entry_price=_ref, bars=bot.sage_bars,
+                )
+                logger.debug(
+                    "bracket %s %s %s→%s (%s)",
+                    bot.bot_id, _ref, _stop, _target, _bracket_src,
+                )
                 _req = OrderRequest(
                     symbol=rec.symbol,
                     side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
@@ -1247,11 +1277,18 @@ class JarvisStrategySupervisor:
                     },
                 )
                 bot_states.append(state)
+            # Surface per-feed (ok/empty) counters so the dashboard /
+            # Hermes can see drift before it bites strategy P&L.
+            feed_health: dict = {}
+            with contextlib.suppress(Exception):
+                if hasattr(self.feed, "health_snapshot"):
+                    feed_health = self.feed.health_snapshot()
             payload = {
                 "ts": datetime.now(UTC).isoformat(),
                 "tick_count": tick_count,
                 "mode": self.cfg.mode,
                 "feed": self.cfg.data_feed,
+                "feed_health": feed_health,
                 "live_money_enabled": self.cfg.live_money_enabled,
                 "n_bots": len(self.bots),
                 "bot_strategy_readiness": readiness,
