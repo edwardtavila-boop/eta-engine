@@ -420,6 +420,34 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
 
+    # Named-anchor variant of sweep_reclaim. Tracks PDH/PDL/PMH/PML/ONH/ONL
+    # as fixed liquidity pools (vs the dynamic-band mnq_sweep_reclaim).
+    # Same underlying instrument + timeframe, so data needs are identical.
+    BotRequirements(
+        bot_id="mnq_anchor_sweep",
+        requirements=(
+            DataRequirement("bars", "MNQ1", "5m", critical=True),
+            DataRequirement("bars", "MNQ1", "1h", critical=True),
+            DataRequirement("correlation", "ES1", "5m", critical=False,
+                note="ES correlation is a primary MNQ regime driver"),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py",),
+    ),
+
+    # NQ variant of mnq_anchor_sweep. Same Nasdaq-100 underlying ($20/pt
+    # vs $2/pt — qty sizing absorbs the difference) so the data shape is
+    # identical, just NQ1 as the symbol.
+    BotRequirements(
+        bot_id="nq_anchor_sweep",
+        requirements=(
+            DataRequirement("bars", "NQ1", "5m", critical=True),
+            DataRequirement("bars", "NQ1", "1h", critical=True),
+            DataRequirement("correlation", "ES1", "5m", critical=False,
+                note="ES correlation is a primary NQ regime driver"),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py",),
+    ),
+
     # RSI mean-reversion variants
     BotRequirements(
         bot_id="rsi_mr_mnq",

@@ -26,7 +26,7 @@ _CACHE_LOCK = threading.Lock()
 
 def _any_llm_key() -> bool:
     try:
-        from eta_engine.brain.llm_provider import _get_api_key, Provider
+        from eta_engine.brain.llm_provider import Provider, _get_api_key
         return bool(_get_api_key(Provider.DEEPSEEK) or _get_api_key(Provider.ANTHROPIC))
     except Exception:
         return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"))
@@ -100,14 +100,14 @@ def explain_sage(
 
 
 def _llm_narrative(report: SageReport, *, symbol: str = "") -> str:
-    """Call LLM (DeepSeek or Claude) for a synthesized narrative.
+    """Synthesize a sage-report narrative via the Force-Multiplier orchestrator.
 
-    Uses the provider abstraction layer so DeepSeek V3/V4 can replace
-    Claude for cost reduction. Falls back to Anthropic if DeepSeek
-    is not configured.
+    Routed through DOC_WRITING -> DEEPSEEK (Worker Bee). Picks up automatic
+    telemetry, per-call budget enforcement, and graceful fallback for free.
+    Migrated from direct chat_completion() (Wave-19, 2026-05-04).
     """
-    from eta_engine.brain.llm_provider import ModelTier as Tier
-    from eta_engine.brain.llm_provider import chat_completion
+    from eta_engine.brain.model_policy import TaskCategory
+    from eta_engine.brain.multi_model import route_and_execute
 
     school_lines = "\n".join(
         f"  - {name}: bias={v.bias.value}, conviction={v.conviction:.2f}, rationale={v.rationale}"
@@ -126,10 +126,11 @@ def _llm_narrative(report: SageReport, *, symbol: str = "") -> str:
         f"Per-school verdicts:\n{school_lines}\n\n"
         f"Output ONLY the paragraph, no preamble."
     )
-    resp = chat_completion(
-        tier=Tier.HAIKU,
+    resp = route_and_execute(
+        category=TaskCategory.DOC_WRITING,
         user_message=prompt,
         max_tokens=350,
-        fallback_to_anthropic=True,
+        # 350 tokens × $0.28/1M out = $0.000098 worst case; $0.005 cap is ample.
+        max_cost_usd=0.005,
     )
     return resp.text or _template_narrative(report, symbol=symbol)

@@ -1027,6 +1027,38 @@ class JarvisStrategySupervisor:
         if random.random() > (1.0 / 5):
             return
 
+        # Daily loss kill switch — refuses new entries when today's
+        # realized PnL has crossed the configured floor. Existing
+        # positions continue to manage themselves via brackets;
+        # only NEW entries are blocked. Resets automatically at
+        # midnight (operator timezone via ETA_KILLSWITCH_TIMEZONE).
+        try:
+            from eta_engine.scripts.daily_loss_killswitch import (
+                is_killswitch_tripped,
+            )
+            tripped, reason = is_killswitch_tripped()
+            if tripped:
+                if not getattr(self, "_killswitch_warned_today", False):
+                    logger.warning(
+                        "DAILY KILL SWITCH TRIPPED — entries halted: %s", reason,
+                    )
+                    self._killswitch_warned_today = True
+                    # Emit a v3 event so Hermes pings the operator's phone.
+                    with contextlib.suppress(Exception):
+                        from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                            emit_event,
+                        )
+                        emit_event(
+                            layer="ops",
+                            event="daily_kill_switch_tripped",
+                            bot_id=bot.bot_id,
+                            details={"reason": reason},
+                            severity="CRITICAL",
+                        )
+                return
+        except Exception as exc:  # noqa: BLE001 — gate is best-effort
+            logger.debug("killswitch check failed: %s", exc)
+
         signal_id = f"{bot.bot_id}_{uuid.uuid4().hex[:8]}"
         entry_price = float(bar["close"])
         side = "long" if bot.direction == "long" else "short"

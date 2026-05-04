@@ -353,10 +353,39 @@ class LiveIbkrVenue(VenueBase):
                             break
 
                     if trade.orderStatus.status == "Filled":
-                        from ib_insync import StopOrder
                         opposite = "SELL" if action == "BUY" else "BUY"
-                        stop_order = StopOrder(opposite, qty, float(stop_price))
-                        stop_order.tif = "GTC"
+                        # Trailing stop opt-in: ETA_CRYPTO_TRAILING_PCT > 0
+                        # uses an IB trailing-stop order instead of a fixed
+                        # stop. The trail amount is a percentage of the
+                        # entry fill price, so as price moves favorably
+                        # the broker ratchets the stop with it. Unlike the
+                        # fixed StopOrder, this locks in profit. Default
+                        # 0 (off) — operators opt in when they're ready.
+                        trail_pct_raw = os.getenv("ETA_CRYPTO_TRAILING_PCT", "0")
+                        try:
+                            trail_pct = float(trail_pct_raw or 0)
+                        except ValueError:
+                            trail_pct = 0.0
+                        from ib_insync import Order, StopOrder
+                        if trail_pct > 0:
+                            entry_fill = float(
+                                trade.orderStatus.avgFillPrice or stop_price
+                            )
+                            trail_amount = round(entry_fill * (trail_pct / 100.0), 4)
+                            stop_order = Order(
+                                action=opposite,
+                                totalQuantity=qty,
+                                orderType="TRAIL",
+                                trailingPercent=trail_pct,
+                                # auxPrice = trailing $ amount (alternative
+                                # to trailingPercent; we set both to be
+                                # explicit and TWS picks one).
+                                auxPrice=trail_amount,
+                                tif="GTC",
+                            )
+                        else:
+                            stop_order = StopOrder(opposite, qty, float(stop_price))
+                            stop_order.tif = "GTC"
                         target_order = LimitOrder(opposite, qty, float(target_price))
                         target_order.tif = "GTC"
 
