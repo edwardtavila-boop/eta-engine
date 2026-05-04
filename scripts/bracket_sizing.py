@@ -98,16 +98,30 @@ def compute_bracket(
     side: str,
     entry_price: float,
     bars: Iterable[dict[str, Any]] | None = None,
+    stop_mult_override: float | None = None,
+    target_mult_override: float | None = None,
 ) -> tuple[float, float, str]:
     """Return ``(stop_price, target_price, source)`` for a new entry.
 
     Uses ATR(period) when there are enough bars; otherwise falls back
     to fixed-percent stops. ``source`` is "atr" or "fixed_pct" so the
     caller can log which path was taken.
+
+    Per-bot overrides (``stop_mult_override``, ``target_mult_override``)
+    take precedence over the global env defaults — the supervisor reads
+    each bot's ``atr_stop_mult`` / ``rr_target`` from per_bot_registry
+    so the live bracket geometry matches the lab's, keeping v27
+    sharpe-drift comparing strategy quality, not bracket variance.
     """
     period = int(os.getenv("ETA_BRACKET_ATR_PERIOD", "14"))
-    stop_mult = float(os.getenv("ETA_BRACKET_ATR_STOP_MULT", "2.0"))
-    target_mult = float(os.getenv("ETA_BRACKET_ATR_TARGET_MULT", "3.0"))
+    stop_mult = (
+        float(stop_mult_override) if stop_mult_override is not None
+        else float(os.getenv("ETA_BRACKET_ATR_STOP_MULT", "2.0"))
+    )
+    target_mult = (
+        float(target_mult_override) if target_mult_override is not None
+        else float(os.getenv("ETA_BRACKET_ATR_TARGET_MULT", "3.0"))
+    )
     fallback_stop_pct = float(os.getenv("ETA_BRACKET_FALLBACK_STOP_PCT", "0.015"))
     fallback_target_pct = float(os.getenv("ETA_BRACKET_FALLBACK_TARGET_PCT", "0.020"))
 
@@ -151,6 +165,63 @@ def _fleet_budget_usd(symbol: str) -> float:
     if _is_futures(symbol):
         return float(os.getenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "5000.0"))
     return float(os.getenv("ETA_LIVE_OTHER_FLEET_BUDGET_USD", "1500.0"))
+
+
+def lookup_bot_bracket_params(bot_id: str) -> tuple[float | None, float | None]:
+    """Read ``atr_stop_mult`` / ``rr_target`` from the bot's
+    per_bot_registry assignment (nested ``*_config`` dicts in extras).
+
+    Returns ``(stop_mult, target_mult)`` — either may be None when the
+    registry entry lacks per-bot tuning. The supervisor passes these
+    into compute_bracket so live and lab geometry match per-bot.
+
+    Lookup order (first match wins):
+      1. extras["bracket_params"] = {"stop_mult": .., "target_mult": ..}
+      2. Any extras key ending in "_config" containing ``atr_stop_mult``
+         and/or ``rr_target``.
+      3. Top-level ``atr_stop_mult`` / ``rr_target`` in extras.
+    """
+    try:
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+    except ImportError:
+        return None, None
+
+    for a in ASSIGNMENTS:
+        if a.bot_id != bot_id:
+            continue
+        extras = getattr(a, "extras", {}) or {}
+
+        bp = extras.get("bracket_params")
+        if isinstance(bp, dict):
+            sm = bp.get("stop_mult")
+            tm = bp.get("target_mult")
+            if sm is not None or tm is not None:
+                return _safe_float(sm), _safe_float(tm)
+
+        for k, v in extras.items():
+            if not (isinstance(k, str) and k.endswith("_config") and isinstance(v, dict)):
+                continue
+            sm = v.get("atr_stop_mult")
+            tm = v.get("rr_target") or v.get("target_atr") or v.get("atr_target_mult")
+            if sm is not None or tm is not None:
+                return _safe_float(sm), _safe_float(tm)
+
+        sm = extras.get("atr_stop_mult")
+        tm = extras.get("rr_target") or extras.get("target_atr")
+        if sm is not None or tm is not None:
+            return _safe_float(sm), _safe_float(tm)
+
+        break  # found bot_id but no params → don't keep scanning
+    return None, None
+
+
+def _safe_float(v: object) -> float | None:
+    if v is None:
+        return None
+    try:
+        return float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def cap_qty_to_budget(

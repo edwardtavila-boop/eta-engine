@@ -3,11 +3,13 @@ LLM provider abstraction — DeepSeek V4 native default.
 Anthropic/Claude is retained as a fallback.
 LiteLLM + OpenRouter for multi-provider routing.
 Langfuse traces every call for observability.
+OPENAI added for Force-Multiplier (primarily CLI-based via Codex).
 
 Architecture
 ============
   ETA_LLM_PROVIDER=deepseek   → DeepSeek V4 (native, default)
   ETA_LLM_PROVIDER=anthropic  → Anthropic (legacy fallback)
+  ETA_LLM_PROVIDER=openai     → OpenAI (API-based, separate from Codex CLI)
   ETA_LLM_PROVIDER=litellm    → LiteLLM (unified failover)
   ETA_LLM_PROVIDER=openrouter → OpenRouter (real-time cheapest)
   (auto)                      → DeepSeek if DEEPSEEK_API_KEY set, else Anthropic
@@ -46,24 +48,53 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+import threading
+
 _ENV_LOADED = False
+_ENV_LOAD_LOCK = threading.Lock()
 
 
 def _ensure_dotenv() -> None:
+    """Load .env files into the process environment.
+
+    Order (first wins, never overrides parent process env):
+      1. Real env vars set by the parent (systemd, CI, ``export``)
+      2. ``Path.cwd() / .env`` (workspace root when run from there)
+      3. ``parents[2] / .env`` (workspace root, regardless of cwd)
+      4. ``parents[1] / .env`` (``eta_engine/.env`` — submodule-local)
+
+    ``override=False`` is intentional: in production the parent process
+    (systemd, container env, CI secret manager) is the canonical source of
+    truth for credentials. .env files are only a developer convenience and
+    must NEVER stomp env vars set by the operator.
+
+    Idempotent + thread-safe via ``_ENV_LOAD_LOCK`` to prevent two threads
+    from racing through the loader on first call.
+    """
     global _ENV_LOADED
     if _ENV_LOADED:
         return
-    try:
-        from dotenv import load_dotenv
-        for candidate in (
-            Path.cwd() / ".env",
-            Path(__file__).resolve().parents[3] / ".env",
-        ):
-            if candidate.is_file():
-                load_dotenv(dotenv_path=str(candidate), override=False)
-        _ENV_LOADED = True
-    except ImportError:
-        pass
+    with _ENV_LOAD_LOCK:
+        if _ENV_LOADED:  # double-check after acquiring lock
+            return
+        try:
+            from dotenv import load_dotenv
+            here = Path(__file__).resolve()
+            seen: set[str] = set()
+            for candidate in (
+                Path.cwd() / ".env",
+                here.parents[2] / ".env",   # workspace root
+                here.parents[1] / ".env",   # eta_engine/.env (submodule-local)
+            ):
+                key = str(candidate.resolve()) if candidate.exists() else ""
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                if candidate.is_file():
+                    load_dotenv(dotenv_path=str(candidate), override=False)
+            _ENV_LOADED = True
+        except ImportError:
+            _ENV_LOADED = True  # avoid retry storm if python-dotenv missing
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +104,7 @@ def _ensure_dotenv() -> None:
 class Provider(StrEnum):
     DEEPSEEK = "deepseek"
     ANTHROPIC = "anthropic"
+    OPENAI = "openai"
     LITELLM = "litellm"
     OPENROUTER = "openrouter"
 
@@ -109,6 +141,11 @@ _TIER_MODEL: dict[tuple[ModelTier, Provider], str] = {
     (ModelTier.SONNET,   Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
     (ModelTier.HAIKU,    Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
     (ModelTier.REASONER, Provider.OPENROUTER): "openrouter/deepseek/deepseek-v4-flash",
+    # OpenAI (API-based, separate from Codex CLI)
+    (ModelTier.OPUS,     Provider.OPENAI):      "gpt-5",
+    (ModelTier.SONNET,   Provider.OPENAI):      "gpt-4o",
+    (ModelTier.HAIKU,    Provider.OPENAI):      "gpt-4o-mini",
+    (ModelTier.REASONER, Provider.OPENAI):      "o3",
 }
 
 _COST_1M: dict[str, tuple[float, float]] = {
@@ -129,6 +166,11 @@ _COST_1M: dict[str, tuple[float, float]] = {
     "openrouter/deepseek/deepseek-v4-flash":      (0.14, 0.28),
     "openrouter/anthropic/claude-opus-4-7":       (15.00, 75.00),
     "openrouter/anthropic/claude-sonnet-4-5":     (3.00, 15.00),
+    # OpenAI
+    "gpt-5":                                       (1.25, 10.00),
+    "gpt-4o":                                      (2.50, 10.00),
+    "gpt-4o-mini":                                 (0.15, 0.60),
+    "o3":                                          (1.10, 4.40),
 }
 
 
@@ -337,6 +379,7 @@ def _get_api_key(provider: Provider) -> str:
     env_map = {
         Provider.DEEPSEEK: "DEEPSEEK_API_KEY",
         Provider.ANTHROPIC: "ANTHROPIC_API_KEY",
+        Provider.OPENAI: "OPENAI_API_KEY",
         Provider.LITELLM: "LITELLM_MASTER_KEY",
         Provider.OPENROUTER: "OPENROUTER_API_KEY",
     }
@@ -538,6 +581,7 @@ def native_provider_info() -> dict[str, Any]:
                         for t in tiers},
         "deepseek_key_configured": bool(_get_api_key(Provider.DEEPSEEK)),
         "anthropic_key_configured": bool(_get_api_key(Provider.ANTHROPIC)),
+        "openai_key_configured": bool(_get_api_key(Provider.OPENAI)),
         "litellm_key_configured": bool(_get_api_key(Provider.LITELLM)),
         "openrouter_key_configured": bool(_get_api_key(Provider.OPENROUTER)),
         "langfuse_enabled": _langfuse_available(),

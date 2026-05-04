@@ -337,3 +337,145 @@ def test_maybe_exit_runs_normally_without_broker_bracket(tmp_path) -> None:
     # -2% breaches the supervisor's -1.5% stop → exit fires
     sup._maybe_exit(bot, {"close": 98.0})
     sup._router.submit_exit.assert_called_once()
+
+
+# ─── Per-bot bracket overrides ──────────────────────────────────
+
+
+def test_compute_bracket_honors_per_bot_overrides() -> None:
+    """When the supervisor passes per-bot atr_stop_mult / rr_target, they
+    override the global env defaults — keeping live and lab geometry
+    aligned per-bot for v27 sharpe-drift to be meaningful."""
+    from eta_engine.scripts.bracket_sizing import compute_bracket
+    bars = [{"high": 105, "low": 95, "close": 100}] * 16  # ATR = 10
+    stop, target, _ = compute_bracket(
+        side="BUY", entry_price=100.0, bars=bars,
+        stop_mult_override=2.5, target_mult_override=3.5,
+    )
+    # 100 - 2.5*10 = 75; 100 + 3.5*10 = 135
+    assert abs(stop - 75.0) < 1e-6
+    assert abs(target - 135.0) < 1e-6
+
+
+def test_lookup_bot_bracket_params_finds_nested_config() -> None:
+    """The helper must locate atr_stop_mult / rr_target in any
+    extras['*_config'] dict (eth_sage_daily uses crypto_orb_config)."""
+    from unittest.mock import MagicMock
+
+    from eta_engine.scripts import bracket_sizing as bs
+    fake_assignment = MagicMock(
+        bot_id="eth_sage_daily",
+        extras={
+            "instrument_class": "crypto",
+            "crypto_orb_config": {
+                "range_minutes": 120,
+                "atr_stop_mult": 2.5,
+                "rr_target": 3.0,
+            },
+        },
+    )
+    with patch.object(bs, "ASSIGNMENTS", [fake_assignment], create=True), \
+         patch(
+            "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+            [fake_assignment],
+         ):
+        sm, tm = bs.lookup_bot_bracket_params("eth_sage_daily")
+    assert sm == 2.5
+    assert tm == 3.0
+
+
+def test_lookup_bot_bracket_params_returns_none_for_unknown_bot() -> None:
+    from eta_engine.scripts.bracket_sizing import lookup_bot_bracket_params
+    sm, tm = lookup_bot_bracket_params("not_a_real_bot_id")
+    assert sm is None
+    assert tm is None
+
+
+# ─── Feed-health alerts ─────────────────────────────────────────
+
+
+def test_emit_feed_health_alerts_above_threshold(tmp_path) -> None:
+    """When a feed's empty-rate crosses the threshold, a v3 event
+    fires. Subsequent ticks at the same level don't re-alert (dedup)."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._feed_health_alerted = set()
+
+    # 3 ok + 7 empty = 70% empty rate, well above 30% threshold
+    snapshot = {"yfinance::MNQ": {"ok": 3, "empty": 7}}
+    fake_emit = MagicMock()
+    with patch(
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+    ):
+        sup._emit_feed_health_alerts(snapshot)
+        sup._emit_feed_health_alerts(snapshot)  # second call should dedup
+
+    assert fake_emit.call_count == 1
+    kwargs = fake_emit.call_args.kwargs
+    assert kwargs["event"] == "feed_degraded"
+    assert kwargs["details"]["feed"] == "yfinance"
+    assert kwargs["details"]["empty_rate"] == 0.7
+
+
+def test_emit_feed_health_alerts_below_threshold_no_event(tmp_path) -> None:
+    """Healthy feed (low empty rate) emits nothing."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._feed_health_alerted = set()
+    snapshot = {"coinbase::BTC": {"ok": 50, "empty": 1}}  # 2% empty
+    fake_emit = MagicMock()
+    with patch(
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+    ):
+        sup._emit_feed_health_alerts(snapshot)
+    fake_emit.assert_not_called()
+
+
+def test_emit_feed_health_alerts_skips_low_sample_count(tmp_path) -> None:
+    """Below min_samples (default 10), ratio is unreliable — defer."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._feed_health_alerted = set()
+    # 0 ok + 3 empty = 100% empty BUT only 3 samples
+    snapshot = {"yfinance::ZN": {"ok": 0, "empty": 3}}
+    fake_emit = MagicMock()
+    with patch(
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event", fake_emit,
+    ):
+        sup._emit_feed_health_alerts(snapshot)
+    fake_emit.assert_not_called()
+
+
+def test_feed_health_alert_resets_when_recovers(tmp_path) -> None:
+    """A degraded feed that recovers below threshold must clear from
+    the dedup set so a future degradation re-alerts."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._feed_health_alerted = {"yfinance::MNQ"}
+    snapshot = {"yfinance::MNQ": {"ok": 95, "empty": 5}}  # recovered to 5%
+    with patch(
+        "eta_engine.brain.jarvis_v3.policies._v3_events.emit_event",
+        MagicMock(),
+    ):
+        sup._emit_feed_health_alerts(snapshot)
+    assert "yfinance::MNQ" not in sup._feed_health_alerted

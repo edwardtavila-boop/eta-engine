@@ -553,16 +553,25 @@ class ExecutionRouter:
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
-                from eta_engine.scripts.bracket_sizing import compute_bracket
+                from eta_engine.scripts.bracket_sizing import (
+                    compute_bracket,
+                    lookup_bot_bracket_params,
+                )
                 from eta_engine.venues.base import OrderRequest, OrderType, Side
                 _venue = _get_live_ibkr_venue()
                 # ATR-based bracket if ≥15 bars in the bot's sage window,
                 # else fixed-percent fallback. ATR adapts stop width to
                 # actual symbol volatility (BTC needs ~5x more room than
                 # MNQ for the same number of "ticks of breathing room").
+                # Per-bot atr_stop_mult / rr_target from per_bot_registry
+                # take precedence over the global env defaults so live
+                # and lab geometry match.
+                _stop_mult, _target_mult = lookup_bot_bracket_params(bot.bot_id)
                 _ref = float(rec.fill_price) if rec.fill_price else float(bar.get("close", 0.0)) or 1.0
                 _stop, _target, _bracket_src = compute_bracket(
                     side=rec.side, entry_price=_ref, bars=bot.sage_bars,
+                    stop_mult_override=_stop_mult,
+                    target_mult_override=_target_mult,
                 )
                 # Pre-trade sanity: stop and target must straddle entry on
                 # the correct sides. ATR can degenerate (zero-volatility
@@ -786,6 +795,59 @@ class JarvisStrategySupervisor:
         except Exception as exc:  # noqa: BLE001
             logger.exception("JarvisFull bootstrap failed: %s", exc)
             return False
+
+    # ── Feed-health alerting ────────────────────────────────
+
+    _feed_health_alerted: set[str] = set()  # class-level dedup so we
+    # don't spam the events log every tick once a feed is degraded.
+
+    def _emit_feed_health_alerts(self, snapshot: dict[str, dict[str, int]]) -> None:
+        """Emit a v3 event when any (feed, symbol) has empty-rate over
+        the alert threshold. Once alerted, a feed/symbol pair is muted
+        until either (a) a non-empty observation comes in and resets
+        the rate, or (b) the supervisor restarts."""
+        if not snapshot:
+            return
+        threshold = float(os.getenv("ETA_FEED_ALERT_EMPTY_RATE", "0.30"))
+        min_samples = int(os.getenv("ETA_FEED_ALERT_MIN_SAMPLES", "10"))
+        try:
+            from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+        except ImportError:
+            return
+
+        cleared = set()
+        for key, counts in snapshot.items():
+            ok = int(counts.get("ok", 0))
+            empty = int(counts.get("empty", 0))
+            total = ok + empty
+            if total < min_samples:
+                continue
+            empty_rate = empty / total
+            if empty_rate >= threshold:
+                if key in self._feed_health_alerted:
+                    continue
+                self._feed_health_alerted.add(key)
+                feed_name, _, sym = key.partition("::")
+                with contextlib.suppress(Exception):
+                    emit_event(
+                        layer="feed_health",
+                        event="feed_degraded",
+                        bot_id="",
+                        cls=sym,
+                        details={
+                            "feed": feed_name,
+                            "symbol": sym,
+                            "ok": ok, "empty": empty,
+                            "empty_rate": round(empty_rate, 4),
+                            "threshold": threshold,
+                        },
+                        severity="WARN",
+                    )
+            elif key in self._feed_health_alerted:
+                # Feed recovered — clear the dedup so the next degradation
+                # re-alerts.
+                cleared.add(key)
+        self._feed_health_alerted -= cleared
 
     # ── Broker reconciliation (run once on startup) ──────────
 
@@ -1487,6 +1549,11 @@ class JarvisStrategySupervisor:
             with contextlib.suppress(Exception):
                 if hasattr(self.feed, "health_snapshot"):
                     feed_health = self.feed.health_snapshot()
+            # Emit a v3 event for any feed whose empty-rate has crossed
+            # the alert threshold (default 30% over min 10 samples).
+            # Hermes / dashboard / red-team can subscribe to the
+            # jarvis_v3_events.jsonl stream for live alerting.
+            self._emit_feed_health_alerts(feed_health)
             payload = {
                 "ts": datetime.now(UTC).isoformat(),
                 "tick_count": tick_count,

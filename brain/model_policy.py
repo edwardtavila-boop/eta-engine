@@ -10,6 +10,12 @@ work. Reserve Opus 4.7 for gnarly architectural decisions (the Firm's Red Team
 scoring logic, gauntlet gate design). Haiku 4.5 for grunt work -- log parsing,
 simple file edits, commit message drafts. That single swap cuts burn rate ~5x."
 
+Wave-19 (2026-05-04): Force-Multiplier provider routing. Each TaskCategory maps
+to the best provider for that work type:
+  * CLAUDE  (Lead Architect) — planning, architecture, code review, red team
+  * DEEPSEEK (Worker Bee)    — high-volume generation, boilerplate, grunt work
+  * CODEX   (Systems Expert) — debugging, test execution, security audits
+
 Before this module every agent frontmatter defaulted to ``model: opus`` -- the
 Max plan was quietly burning 5x quota on tasks that a mid-tier model would do
 perfectly. The fix is a *single source of truth* that JARVIS consults whenever
@@ -29,8 +35,10 @@ Public API
 ----------
   * ``ModelTier``        -- enum of the three Claude model tiers
   * ``TaskCategory``     -- enum of every task kind the fleet performs
+  * ``ForceProvider``    -- enum of Force Multiplier providers (CLAUDE/DEEPSEEK/CODEX)
   * ``ModelSelection``   -- pydantic: tier + reason + cost multiplier
   * ``select_model``     -- pure policy (category -> ModelSelection)
+  * ``force_provider_for`` -- pure policy (category -> ForceProvider)
   * ``bucket_for``       -- group a TaskCategory into ARCHITECTURAL /
                             ROUTINE / GRUNT (handy for reporting)
 
@@ -61,6 +69,20 @@ class ModelTier(StrEnum):
     OPUS = "opus"
     SONNET = "sonnet"
     HAIKU = "haiku"
+
+
+class ForceProvider(StrEnum):
+    """Provider selection for the Force-Multiplier workflow (Wave-19).
+
+    Each provider has a distinct role based on 2026 strengths:
+      * CLAUDE   — Lead Architect: planning, architecture, nuanced review
+      * DEEPSEEK — Worker Bee: high-volume generation, boilerplate, grunt work
+      * CODEX    — Systems Expert: debugging, test execution, security audits
+    """
+
+    CLAUDE = "claude"
+    DEEPSEEK = "deepseek"
+    CODEX = "codex"
 
 
 # Cost ratios vs. SONNET = 1.0x. Used by reporting / burn-rate dashboards.
@@ -94,6 +116,7 @@ class TaskBucket(StrEnum):
     ARCHITECTURAL = "architectural"  # -> OPUS
     ROUTINE = "routine"  # -> SONNET (default)
     GRUNT = "grunt"  # -> HAIKU
+    SYSTEM = "system"  # -> CODEX (computer-use / execution / security)
 
 
 class TaskCategory(StrEnum):
@@ -134,6 +157,12 @@ class TaskCategory(StrEnum):
     TRIVIAL_LOOKUP = "trivial_lookup"  # find a file / symbol
     BOILERPLATE = "boilerplate"  # __init__.py re-exports
 
+    # --- SYSTEM -> CODEX (Wave-19 Force Multiplier) -------------------------
+    # Computer-use / execution tasks where Codex is strongest.
+    SECURITY_AUDIT = "security_audit"  # vulnerability scan, dependency audit
+    TEST_EXECUTION = "test_execution"  # run pytest, verify fixes, CI/CD
+    COMPUTER_USE_TASK = "computer_use_task"  # file automation, local ops
+
 
 # Single source of truth. Adding a TaskCategory without adding it here will
 # trip test_every_category_has_a_tier.
@@ -162,6 +191,10 @@ _CATEGORY_TO_TIER: dict[TaskCategory, ModelTier] = {
     TaskCategory.LINT_FIX: ModelTier.HAIKU,
     TaskCategory.TRIVIAL_LOOKUP: ModelTier.HAIKU,
     TaskCategory.BOILERPLATE: ModelTier.HAIKU,
+    # System -> SONNET (Codex handles execution via CLI, tier kept SONNET for policy compat)
+    TaskCategory.SECURITY_AUDIT: ModelTier.SONNET,
+    TaskCategory.TEST_EXECUTION: ModelTier.SONNET,
+    TaskCategory.COMPUTER_USE_TASK: ModelTier.SONNET,
 }
 
 
@@ -169,6 +202,42 @@ _TIER_TO_BUCKET: dict[ModelTier, TaskBucket] = {
     ModelTier.OPUS: TaskBucket.ARCHITECTURAL,
     ModelTier.SONNET: TaskBucket.ROUTINE,
     ModelTier.HAIKU: TaskBucket.GRUNT,
+}
+
+# ---------------------------------------------------------------------------
+# Force-Multiplier provider routing (Wave-19)
+# ---------------------------------------------------------------------------
+
+_CATEGORY_TO_PROVIDER: dict[TaskCategory, ForceProvider] = {
+    # CLAUDE (Lead Architect) — planning, architecture, nuanced review
+    TaskCategory.ARCHITECTURE_DECISION: ForceProvider.CLAUDE,
+    TaskCategory.RISK_POLICY_DESIGN: ForceProvider.CLAUDE,
+    TaskCategory.GAUNTLET_GATE_DESIGN: ForceProvider.CLAUDE,
+    TaskCategory.STATE_MACHINE_DESIGN: ForceProvider.CLAUDE,
+    TaskCategory.RED_TEAM_SCORING: ForceProvider.CLAUDE,
+    TaskCategory.ADVERSARIAL_REVIEW: ForceProvider.CLAUDE,
+    TaskCategory.CODE_REVIEW: ForceProvider.CLAUDE,
+
+    # CODEX (Systems Expert) — debugging, test execution, security, computer use
+    TaskCategory.DEBUG: ForceProvider.CODEX,
+    TaskCategory.TEST_EXECUTION: ForceProvider.CODEX,
+    TaskCategory.SECURITY_AUDIT: ForceProvider.CODEX,
+    TaskCategory.COMPUTER_USE_TASK: ForceProvider.CODEX,
+
+    # DEEPSEEK (Worker Bee) — everything else: high volume, cheap, boilerplate
+    TaskCategory.STRATEGY_EDIT: ForceProvider.DEEPSEEK,
+    TaskCategory.TEST_RUN: ForceProvider.DEEPSEEK,
+    TaskCategory.REFACTOR: ForceProvider.DEEPSEEK,
+    TaskCategory.SKELETON_SCAFFOLD: ForceProvider.DEEPSEEK,
+    TaskCategory.DOC_WRITING: ForceProvider.DEEPSEEK,
+    TaskCategory.DATA_PIPELINE: ForceProvider.DEEPSEEK,
+    TaskCategory.LOG_PARSING: ForceProvider.DEEPSEEK,
+    TaskCategory.SIMPLE_EDIT: ForceProvider.DEEPSEEK,
+    TaskCategory.COMMIT_MESSAGE: ForceProvider.DEEPSEEK,
+    TaskCategory.FORMATTING: ForceProvider.DEEPSEEK,
+    TaskCategory.LINT_FIX: ForceProvider.DEEPSEEK,
+    TaskCategory.TRIVIAL_LOOKUP: ForceProvider.DEEPSEEK,
+    TaskCategory.BOILERPLATE: ForceProvider.DEEPSEEK,
 }
 
 
@@ -228,6 +297,19 @@ def tier_for(category: TaskCategory) -> ModelTier:
     return _CATEGORY_TO_TIER[category]
 
 
+def force_provider_for(category: TaskCategory) -> ForceProvider:
+    """Pure policy: given a task category, return the Force-Multiplier provider.
+
+    Maps each task to the provider best suited for that work type:
+      * CLAUDE   — architectural decisions, adversarial review, code review
+      * DEEPSEEK — high-volume generation, boilerplate, grunt work
+      * CODEX    — debugging, test execution, security audits, computer use
+
+    Falls back to DEEPSEEK for unknown categories (cheapest, safest default).
+    """
+    return _CATEGORY_TO_PROVIDER.get(category, ForceProvider.DEEPSEEK)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -237,6 +319,7 @@ _BUCKET_BLURB: dict[TaskBucket, str] = {
     TaskBucket.ARCHITECTURAL: ("architectural work -- deeper reasoning justifies the Opus burn"),
     TaskBucket.ROUTINE: ("routine development -- Sonnet is the operator-mandated default"),
     TaskBucket.GRUNT: ("mechanical / grunt work -- Haiku at ~1/5 cost of Sonnet is plenty"),
+    TaskBucket.SYSTEM: ("computer-use / execution -- Codex via subscription CLI"),
 }
 
 
