@@ -3617,4 +3617,46 @@ async def public_dashboard():
 
 @app.get("/api/master/status")
 async def master_status():
-    return {"status": "live", "mode": "autonomous", "uptime": "connected"}
+    """Proxy to Command Center master status for real runtime detail."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("http://127.0.0.1:8421/api/master/status")
+            return JSONResponse(r.json())
+    except Exception:
+        return {"status": "live", "mode": "autonomous", "uptime": "connected", "cc_proxy": "unavailable"}
+
+@app.get("/api/runtime-status")
+async def runtime_status():
+    """Proxy to Command Center for bridge runtime detail (paper_live/paper_sim)."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("http://127.0.0.1:8421/api/master/status")
+            data = r.json()
+            paper = data.get("paper", {})
+            runtime = data.get("runtime", {})
+            return JSONResponse({
+                "paper": paper,
+                "runtime": runtime,
+                "mode": paper.get("mode", "unknown"),
+            })
+    except Exception:
+        return {"mode": "unknown", "detail": "cc_unavailable"}
+
+@app.get("/api/bridge-status")
+async def bridge_status():
+    """Proxy to Command Center for bridge daily PnL and status."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("http://127.0.0.1:8421/api/master/status")
+            data = r.json()
+            daily = data.get("daily", {})
+            paper = data.get("paper", {})
+            return JSONResponse({
+                "daily": daily,
+                "paper": paper,
+            })
+    except Exception:
+        return {"daily": {}, "detail": "cc_unavailable"}

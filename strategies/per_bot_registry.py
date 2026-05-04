@@ -1017,6 +1017,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "min_volume_z": 0.3, "rr_target": 3.0, "atr_stop_mult": 2.5,
             "max_trades_per_day": 2, "min_bars_between_trades": 12, "warmup_bars": 72,
             "risk_per_trade_pct": 0.005,
+            "deactivated": True,
+            "deactivated_on": "2026-05-04",
+            "deactivated_reason": "lab_sweep_2026_05_04: sol_perp failed gates (sharpe=-0.96, exp_R=-0.077, wr=0.346)",
         },
     ),
 
@@ -1108,6 +1111,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "min_volume_z": 0.5, "rr_target": 3.0, "atr_stop_mult": 2.5,
             "max_trades_per_day": 2, "min_bars_between_trades": 12, "warmup_bars": 72,
             "risk_per_trade_pct": 0.005,
+            "deactivated": True,
+            "deactivated_on": "2026-05-04",
+            "deactivated_reason": "lab_sweep_2026_05_04: sol_sweep_scalp failed gates (sharpe=-0.91, exp_R=-0.072, wr=0.348)",
         },
     ),
 
@@ -1270,6 +1276,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MBT",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "btc_hybrid",
+            "deactivated": True,
+            "deactivated_on": "2026-05-04",
+            "deactivated_reason": "lab_sweep_2026_05_04: mbt_sweep_reclaim failed gates (sharpe=-0.71, exp_R=-0.057)",
         },
     ),
 
@@ -1308,6 +1317,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MET",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "eth_perp",
+            "deactivated": True,
+            "deactivated_on": "2026-05-04",
+            "deactivated_reason": "lab_sweep_2026_05_04: met_sweep_reclaim failed gates (sharpe=-0.47, exp_R=-0.038)",
         },
     ),
 

@@ -362,9 +362,28 @@ class ExecutionRouter:
         bot.last_signal_at = rec.fill_ts
 
         if self.cfg.mode == "paper_live":
-            # Log intent to broker_fleet's pending-orders file
-            # (the broker worker will pick this up on its next tick)
+            # Write pending order file (for backward compat / audit)
             self._write_pending_order(bot, rec)
+            # Also submit directly through LiveIbkrVenue (TWS API port 4002)
+            try:
+                from eta_engine.venues.ibkr_live import LiveIbkrVenue
+                from eta_engine.venues.base import OrderRequest, Side, OrderType
+                _venue = LiveIbkrVenue()
+                _req = OrderRequest(
+                    symbol=rec.symbol,
+                    side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
+                    qty=abs(float(rec.qty)) or 1,
+                    order_type=OrderType.MARKET,
+                )
+                import asyncio as _asyncio
+                _result = _asyncio.get_event_loop().run_until_complete(_venue.place_order(_req))
+                logger.info(
+                    "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s)",
+                    rec.symbol, rec.side, rec.qty,
+                    _result.status.value, _result.raw.get("ibkr_order_id", "?"),
+                )
+            except Exception:
+                pass
 
         return rec
 

@@ -87,7 +87,11 @@ DEFAULT_ROOTS: tuple[Path, ...] = (
 # History shape: SYMBOL_<TF>.csv where TF is one of 1s/1m/5m/15m/1h/4h/D/W
 # Examples: MNQ1_5m.csv, NQ1_4h.csv, MNQ1_D.csv, FEAR_GREEDMACRO_D.csv
 _HISTORY_RE = re.compile(
-    r"^(?P<symbol>[A-Z][A-Z0-9_]*)_(?P<tf>\d+(?:s|m|h)|D|W)\.csv$"
+    # Leading char allows digit so CME FX futures with numeric tickers
+    # (6E, 6B, 6J, 6C) match. The lookahead requires at least one
+    # alphabetic character somewhere so purely numeric filenames don't
+    # slip through.
+    r"^(?=.*[A-Z])(?P<symbol>[A-Z0-9][A-Z0-9_]*)_(?P<tf>\d+(?:s|m|h)|D|W)\.csv$"
 )
 
 _ETF_FLOW_RE = re.compile(

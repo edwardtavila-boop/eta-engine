@@ -104,6 +104,23 @@ class SubsystemId(StrEnum):
     # legacy / seed-capital misc crypto bot
     BOT_CRYPTO_SEED = "bot.crypto_seed"
 
+    # L5 / Commodities + FX (Phase-2 expansion, 2026-05-03)
+    # Globex-traded futures with near-24h sessions; eligible for the
+    # overnight whitelist alongside the equity-index futures.
+    BOT_ES = "bot.es"          # E-mini S&P futures (CME) — covers MES routing
+    BOT_GC = "bot.gc"          # Gold futures (CME)
+    BOT_CL = "bot.cl"          # WTI Crude oil (NYMEX)
+    BOT_6E = "bot.6e"          # Euro FX futures (CME)
+    # L6 / Rates + Energy (Phase-3 expansion, 2026-05-03)
+    BOT_ZN = "bot.zn"          # 10-Year T-Note futures (CBOT)
+    BOT_ZB = "bot.zb"          # 30-Year T-Bond futures (CBOT)
+    BOT_NG = "bot.ng"          # Natural Gas futures (NYMEX)
+
+    # L7 / Crypto extension — alts on Coinbase (Phase-5 expansion, 2026-05-04)
+    BOT_AVAX = "bot.avax"      # Avalanche
+    BOT_LINK = "bot.link"      # Chainlink
+    BOT_DOGE = "bot.doge"      # Dogecoin
+
     # mnq_bot v3 framework
     FRAMEWORK_AUTOPILOT = "framework.autopilot"
     FRAMEWORK_FIRM_ENGINE = "framework.firm_engine"
@@ -137,6 +154,9 @@ CRYPTO_24_7_BOTS: frozenset[SubsystemId] = frozenset(
         SubsystemId.BOT_BTC_PERP,
         SubsystemId.BOT_ETH_PERP,
         SubsystemId.BOT_SOL_PERP,
+        SubsystemId.BOT_AVAX,
+        SubsystemId.BOT_LINK,
+        SubsystemId.BOT_DOGE,
         SubsystemId.BOT_XRP_PERP,
         SubsystemId.BOT_YIELD_VAULT,
     }
@@ -500,6 +520,12 @@ def evaluate_request(
         CRYPTO_24_7_BOTS
         | {SubsystemId.OPERATOR}
         | {SubsystemId.BOT_MNQ, SubsystemId.BOT_NQ}
+        # Phase-2 commodities + FX (2026-05-03): all three trade ~24h
+        # via Globex, so they get the overnight whitelist on the same
+        # confluence-pre-gated basis as equity-index futures.
+        | {SubsystemId.BOT_ES, SubsystemId.BOT_GC, SubsystemId.BOT_CL, SubsystemId.BOT_6E}
+        # Phase-3 rates + energy (2026-05-03)
+        | {SubsystemId.BOT_ZN, SubsystemId.BOT_ZB, SubsystemId.BOT_NG}
     )
     if (
         session == SessionPhase.OVERNIGHT

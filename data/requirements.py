@@ -608,6 +608,254 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("Coinbase ETH bars (scripts/fetch_crypto_bars_coinbase.py)",),
     ),
+
+    # ── Phase-2 commodities + FX (2026-05-03) ──────────────────────
+    # Multi-asset expansion beyond equity-index futures + crypto. Same
+    # IBKR Gateway, same yfinance backfill, same DataLibrary discovery,
+    # same supervisor + JARVIS dispatch. Each bot mirrors a proven
+    # pattern from an existing market.
+
+    # gold_sweep_reclaim — gold mirror of eth_sweep_reclaim champion.
+    # Gold has clean liquidity sweeps at London/NY transitions.
+    # Symbol "GC1" matches the front-month CSV naming convention
+    # (mirrors MNQ1 / NQ1 / ES1 used by index-futures bots).
+    BotRequirements(
+        bot_id="gold_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "GC1", "5m", critical=True),
+            DataRequirement("bars", "GC1", "1h", critical=True),
+            DataRequirement("bars", "GC1", "D", critical=True,
+                note="regime + macro lens (DXY-driven)"),
+            DataRequirement("correlation", "DXY", "1h", critical=True,
+                note="DXY-gold inverse correlation is the primary macro driver"),
+            DataRequirement("correlation", "VIX", "1h", critical=False,
+                note="risk-off bid for gold during VIX spikes"),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol GC",
+            "IBKR CME futures (Globex 23h session)",
+        ),
+    ),
+
+    # crude_compression — CL is news-driven and explosive; volatility
+    # contraction reliably precedes directional fires.
+    BotRequirements(
+        bot_id="crude_compression",
+        requirements=(
+            DataRequirement("bars", "CL1", "5m", critical=True),
+            DataRequirement("bars", "CL1", "1h", critical=True),
+            DataRequirement("bars", "CL1", "D", critical=True,
+                note="daily ATR regime"),
+            DataRequirement("correlation", "DXY", "1h", critical=False,
+                note="dollar/oil inverse"),
+            DataRequirement("correlation", "ES1", "5m", critical=False,
+                note="risk-on/off backdrop"),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol CL",
+            "IBKR NYMEX (Globex 23h session)",
+        ),
+    ),
+
+    # euro_vwap_mr — 6E is the quietest of the new commodities; clean
+    # session VWAP returns. RTH-windowed 5m mean-reversion.
+    BotRequirements(
+        bot_id="euro_vwap_mr",
+        requirements=(
+            DataRequirement("bars", "6E1", "5m", critical=True),
+            DataRequirement("bars", "6E1", "1h", critical=True),
+            DataRequirement("correlation", "DXY", "5m", critical=True,
+                note="6E is essentially inverse-DXY by construction"),
+            DataRequirement("correlation", "ES1", "5m", critical=False,
+                note="risk regime"),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol 6E",
+            "IBKR CME FX (near 24h session)",
+        ),
+    ),
+
+    # ── Phase-3 rates + energy (2026-05-03) ──────────────────────
+    # zn_confluence — 10-yr T-note. Range-bound around econ data,
+    # FOMC. confluence_scorecard catches the cleanest setups.
+    BotRequirements(
+        bot_id="zn_confluence",
+        requirements=(
+            DataRequirement("bars", "ZN1", "5m", critical=True),
+            DataRequirement("bars", "ZN1", "1h", critical=True),
+            DataRequirement("bars", "ZN1", "D", critical=True,
+                note="rates regime"),
+            DataRequirement("correlation", "ES1", "5m", critical=False,
+                note="risk-on/off cross-check"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol ZN",
+            "IBKR CBOT (near-24h via Globex)",
+        ),
+    ),
+
+    # natgas_compression — NG is most volatile commodity, news/weather
+    # driven. Volatility contraction precedes most fires.
+    BotRequirements(
+        bot_id="natgas_compression",
+        requirements=(
+            DataRequirement("bars", "NG1", "5m", critical=True),
+            DataRequirement("bars", "NG1", "1h", critical=True),
+            DataRequirement("bars", "NG1", "D", critical=True,
+                note="seasonal regime"),
+            DataRequirement("correlation", "CL1", "1h", critical=False,
+                note="energy complex co-movement"),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol NG",
+            "IBKR NYMEX (near-24h via Globex)",
+        ),
+    ),
+
+    # ── Phase-4 Micros (2026-05-04) ────────────────────────────
+    # Micros share price stream with their parent contract; bar
+    # requirements reuse parent symbols so the audit doesn't demand
+    # separate MES1/MGC1/MCL1/M6E1 CSVs that would just duplicate data.
+    # The micro distinction is sizing (contract_multiplier in extras),
+    # not data.
+
+    # mes_confluence — Micro E-mini S&P
+    BotRequirements(
+        bot_id="mes_confluence",
+        requirements=(
+            DataRequirement("bars", "ES1", "5m", critical=True),
+            DataRequirement("bars", "ES1", "1h", critical=True),
+            DataRequirement("correlation", "DXY", "5m", critical=False),
+            DataRequirement("correlation", "VIX", "5m", critical=False),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol ES (parent stream)",
+            "IBKR CME (Globex 23h)",
+        ),
+    ),
+
+    # mgc_sweep — Micro Gold
+    BotRequirements(
+        bot_id="mgc_sweep",
+        requirements=(
+            DataRequirement("bars", "GC1", "5m", critical=True),
+            DataRequirement("bars", "GC1", "1h", critical=True),
+            DataRequirement("bars", "GC1", "D", critical=True,
+                note="regime + macro lens (DXY-driven)"),
+            DataRequirement("correlation", "DXY", "1h", critical=True),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol GC (parent stream)",
+            "IBKR COMEX (Globex 23h)",
+        ),
+    ),
+
+    # mcl_compression — Micro WTI Crude
+    BotRequirements(
+        bot_id="mcl_compression",
+        requirements=(
+            DataRequirement("bars", "CL1", "5m", critical=True),
+            DataRequirement("bars", "CL1", "1h", critical=True),
+            DataRequirement("bars", "CL1", "D", critical=True,
+                note="daily ATR regime"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol CL (parent stream)",
+            "IBKR NYMEX (Globex 23h)",
+        ),
+    ),
+
+    # m6e_vwap_mr — Micro Euro FX
+    BotRequirements(
+        bot_id="m6e_vwap_mr",
+        requirements=(
+            DataRequirement("bars", "6E1", "5m", critical=True),
+            DataRequirement("bars", "6E1", "1h", critical=True),
+            DataRequirement("correlation", "DXY", "5m", critical=True),
+        ),
+        sources_hint=(
+            "scripts/fetch_index_futures_bars.py --symbol 6E (parent stream)",
+            "IBKR CME FX (near 24h)",
+        ),
+    ),
+
+    # ── Phase-3.5 diversification (2026-05-04) ────────────────
+    # Second strategy on existing Phase-3 symbols — same bars, different
+    # signal generators, low marginal data cost.
+
+    BotRequirements(
+        bot_id="zn_compression",
+        requirements=(
+            DataRequirement("bars", "ZN1", "5m", critical=True),
+            DataRequirement("bars", "ZN1", "1h", critical=True),
+            DataRequirement("correlation", "ES1", "5m", critical=False),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py --symbol ZN",),
+    ),
+
+    BotRequirements(
+        bot_id="natgas_sweep",
+        requirements=(
+            DataRequirement("bars", "NG1", "5m", critical=True),
+            DataRequirement("bars", "NG1", "1h", critical=True),
+            DataRequirement("bars", "NG1", "D", critical=True,
+                note="daily extremes anchor sweep targets"),
+            DataRequirement("correlation", "CL1", "1h", critical=False),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py --symbol NG",),
+    ),
+
+    # ── Phase-5 crypto alt expansion (2026-05-04) ──────────────────
+    # Coinbase spot — same architecture as BTC/ETH/SOL bots.
+    BotRequirements(
+        bot_id="avax_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "AVAX", "5m", critical=True),
+            DataRequirement("bars", "AVAX", "1h", critical=True),
+            DataRequirement("bars", "AVAX", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="crypto-cohort regime confirmation"),
+        ),
+        sources_hint=(
+            "scripts/fetch_crypto_bars_coinbase.py --symbol AVAX",
+            "Coinbase spot (24/7)",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="link_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "LINK", "5m", critical=True),
+            DataRequirement("bars", "LINK", "1h", critical=True),
+            DataRequirement("bars", "LINK", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "ETH", "1h", critical=False,
+                note="LINK tightly coupled to ETH/DeFi regime"),
+        ),
+        sources_hint=(
+            "scripts/fetch_crypto_bars_coinbase.py --symbol LINK",
+            "Coinbase spot (24/7)",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="doge_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "DOGE", "5m", critical=True),
+            DataRequirement("bars", "DOGE", "1h", critical=True),
+            DataRequirement("bars", "DOGE", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="DOGE moves with BTC narrative; loose"),
+        ),
+        sources_hint=(
+            "scripts/fetch_crypto_bars_coinbase.py --symbol DOGE",
+            "Coinbase spot (24/7)",
+        ),
+    ),
 )
 
 

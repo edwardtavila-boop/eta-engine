@@ -68,10 +68,26 @@ from eta_engine.scripts.workspace_roots import MNQ_HISTORY_ROOT  # noqa: E402
 
 # Symbol → yfinance ticker mapping. Continuous-front-month for futures.
 _YF_SYMBOL: dict[str, str] = {
+    # Equity index futures
     "MNQ": "MNQ=F",
     "NQ": "NQ=F",
     "ES": "ES=F",
     "MES": "MES=F",
+    # Phase-2 commodities + FX expansion (2026-05-03)
+    "GC": "GC=F",      # Gold (100 oz)
+    "MGC": "MGC=F",    # Micro Gold
+    "CL": "CL=F",      # WTI Crude (1000 bbl)
+    "MCL": "MCL=F",    # Micro Crude
+    "6E": "6E=F",      # Euro FX
+    "M6E": "M6E=F",    # Micro Euro FX
+    # Phase-3 rates + energy (2026-05-03)
+    "ZN": "ZN=F",      # 10-Year T-Note
+    "ZB": "ZB=F",      # 30-Year T-Bond
+    "NG": "NG=F",      # Henry Hub Natural Gas
+    # CME crypto micro futures (2026-05-04 — needed by mbt_sweep_reclaim
+    # and met_sweep_reclaim bots). yfinance ticker uses parent name.
+    "MBT": "BTC=F",    # Micro Bitcoin (CME)
+    "MET": "ETH=F",    # Micro Ether (CME)
 }
 
 # yfinance period limits per timeframe (1m: 7-30d max; 5m: 60d; 1h: 730d)
@@ -223,7 +239,11 @@ def main() -> int:
     args = p.parse_args()
 
     period = args.period or _YF_PERIOD_BY_TF[args.timeframe]
-    out_path = args.out or (MNQ_HISTORY_ROOT / f"{args.symbol}1_{args.timeframe}.csv")
+    # Match DataLibrary's _HISTORY_RE convention: daily/weekly files use
+    # 'D' / 'W' in the filename, matching the uppercase tokens the regex
+    # accepts. Without this, GC1_1d.csv gets skipped by the library scan.
+    tf_for_filename = {"1d": "D", "1w": "W"}.get(args.timeframe.lower(), args.timeframe)
+    out_path = args.out or (MNQ_HISTORY_ROOT / f"{args.symbol}1_{tf_for_filename}.csv")
 
     print(f"[index-futures] {args.symbol} {args.timeframe}  source={args.source}")
     print(f"[index-futures] period={period}  out={out_path}")

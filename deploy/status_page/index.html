@@ -151,10 +151,10 @@ function render(d) {
   const trades = bots.reduce((s,b) => s + (b.total_trades || 0), 0);
   document.getElementById('totalTrades').textContent = trades || '—';
 
-  // Verdicts
+  // Verdicts — APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
   const verdicts = bots.map(b => b.last_jarvis_verdict || '');
-  const approved = verdicts.filter(v => v && v !== 'DENIED').length;
-  const denied = verdicts.filter(v => v === 'DENIED').length;
+  const approved = verdicts.filter(v => v === 'APPROVED' || v === 'CONDITIONAL').length;
+  const denied = verdicts.filter(v => v === 'DENIED' || v === 'KILL' || v === 'REDUCE').length;
   document.getElementById('approvedCount').textContent = approved;
   document.getElementById('approvedCount').className = 'stat ' + (approved > 0 ? 'green' : 'dim');
 
@@ -186,7 +186,10 @@ function render(d) {
   let html = '';
   for (const b of bots) {
     const pnlClass = (b.todays_pnl || 0) > 0 ? 'badge-win' : (b.todays_pnl || 0) < 0 ? 'badge-loss' : 'badge-idle';
-    const verdictClass = (b.last_jarvis_verdict || '') === 'APPROVED' ? 'badge-approve' : (b.last_jarvis_verdict || '') === 'DENIED' ? 'badge-deny' : 'badge-idle';
+    const v = b.last_jarvis_verdict || '';
+    const verdictClass = (v === 'APPROVED' || v === 'CONDITIONAL') ? 'badge-approve'
+      : (v === 'DENIED' || v === 'KILL' || v === 'REDUCE') ? 'badge-deny'
+      : 'badge-idle';
     html += '<tr>' +
       '<td><strong>' + (b.id || b.name || '?') + '</strong></td>' +
       '<td>' + (b.symbol || '—') + '</td>' +
