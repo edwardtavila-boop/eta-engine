@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from eta_engine.venues.base import (
     ConnectionStatus,
@@ -21,9 +21,6 @@ from eta_engine.venues.base import (
     VenueBase,
     VenueConnectionReport,
 )
-
-if TYPE_CHECKING:
-    from ib_insync import IB, Contract, Order as IbOrder, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +59,12 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
 CONTRACT_MONTH = "202606"
 
 
-def _make_contract(symbol: str) -> Any | None:
+def _make_contract(symbol: str) -> Any | None:  # noqa: ANN401 — ib_insync Contract is dynamically typed
     """Build an ib_insync Contract for the given symbol."""
-    from ib_insync import Future, Stock, Contract
-    
+    from ib_insync import Contract, Future, Stock
+
     sym = symbol.upper().strip()
-    
+
     # Futures — must explicitly set exchange BEFORE creating Future object
     if sym in FUTURES_MAP:
         root, exchange, mult = FUTURES_MAP[sym]
@@ -76,7 +73,7 @@ def _make_contract(symbol: str) -> Any | None:
         contract.multiplier = mult
         contract.includeExpired = False
         return contract
-    
+
     # Crypto (Paxos spot at IBKR)
     if sym in CRYPTO_MAP:
         root, exchange, mult = CRYPTO_MAP[sym]
@@ -86,13 +83,13 @@ def _make_contract(symbol: str) -> Any | None:
         contract.exchange = exchange
         contract.currency = "USD"
         return contract
-    
+
     # Try as stock
     if sym in ("SPY", "QQQ", "AAPL", "TSLA", "NVDA"):
         contract = Stock(sym, "SMART", "USD")
         contract.exchange = "SMART"
         return contract
-    
+
     return None
 
 
@@ -106,7 +103,7 @@ class LiveIbkrVenue(VenueBase):
     _orders: dict[str, Any] = {}
     _lock: asyncio.Lock | None = None
 
-    def __init__(self, config: Any | None = None) -> None:
+    def __init__(self, config: Any | None = None) -> None:  # noqa: ANN401 — passthrough config
         super().__init__("DUQ319869", "")
         self.config = config  # kept for API compatibility, not used by TWS
 
@@ -123,21 +120,44 @@ class LiveIbkrVenue(VenueBase):
 
     async def _ensure_connected(self) -> bool:
         """Connect to TWS API if not already connected. Returns True if ready."""
-        if self._connected and self._ib is not None and self._ib.isConnected():
-            return True
-        
+        # Fast path: existing connection still alive
+        if self._ib is not None:
+            try:
+                if self._ib.isConnected():
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+
         async with self._get_lock():
-            if self._connected and self._ib is not None and self._ib.isConnected():
-                return True
-            
+            if self._ib is not None:
+                try:
+                    if self._ib.isConnected():
+                        return True
+                except Exception:  # noqa: BLE001
+                    pass
+
+                # Old instance is dead — release the clientId at TWS before
+                # asking for a new one, otherwise the next connectAsync hits
+                # 'Error 326: clientId already in use' and times out.
+                with contextlib.suppress(Exception):
+                    self._ib.disconnect()
+                await asyncio.sleep(0.5)
+                self._ib = None
+
             try:
                 from ib_insync import IB
                 self._ib = IB()
-                await self._ib.connectAsync("127.0.0.1", 4002, clientId=self._client_id, timeout=5)
+                await self._ib.connectAsync(
+                    "127.0.0.1", 4002,
+                    clientId=self._client_id, timeout=5,
+                )
                 self._connected = True
-                logger.info("LiveIbkrVenue connected to TWS on port 4002 (clientId=%d)", self._client_id)
+                logger.info(
+                    "LiveIbkrVenue connected to TWS on port 4002 (clientId=%d)",
+                    self._client_id,
+                )
                 return True
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("LiveIbkrVenue could not connect to TWS: %s", exc)
                 self._connected = False
                 return False
@@ -205,7 +225,12 @@ class LiveIbkrVenue(VenueBase):
                 return OrderResult(
                     order_id=idem.broker_order_id or order_id,
                     status=OrderStatus.OPEN if idem.status == "submitted" else OrderStatus.REJECTED,
-                    raw={"venue": self.name, "deduped": True, "note": idem.note, "cached_response": idem.response_payload or {}},
+                    raw={
+                        "venue": self.name,
+                        "deduped": True,
+                        "note": idem.note,
+                        "cached_response": idem.response_payload or {},
+                    },
                 )
         except IdempotencyError as exc:
             return OrderResult(
@@ -223,7 +248,7 @@ class LiveIbkrVenue(VenueBase):
             )
 
         # ── BUILD ORDER ───────────────────────────────────────────
-        from ib_insync import LimitOrder, MarketOrder, StopOrder
+        from ib_insync import LimitOrder, MarketOrder
 
         action = "BUY" if str(getattr(request, "side", "BUY")).upper() == "BUY" else "SELL"
         qty = int(abs(float(getattr(request, "quantity", 1) or 1)))
@@ -239,7 +264,7 @@ class LiveIbkrVenue(VenueBase):
         try:
             trade = self._ib.placeOrder(contract, ib_order)
             self._orders[order_id] = trade
-            
+
             # ── RECORD RESULT ─────────────────────────────────────
             with contextlib.suppress(Exception):
                 record_result(
@@ -255,7 +280,7 @@ class LiveIbkrVenue(VenueBase):
                         "qty": qty,
                     },
                 )
-            
+
             logger.info(
                 "LiveIbkrVenue ORDER: %s %s %d @ %s → orderId=%s",
                 action, request.symbol, qty, order_type.value, trade.order.orderId,

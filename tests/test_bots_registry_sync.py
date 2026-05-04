@@ -81,15 +81,6 @@ VARIANT_BOT_IDS: set[str] = {
     # MBT/MET — CME micro crypto futures, variants of BTC/ETH bots
     "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
     "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
-    # Wave-7/8 fleet supercharge variants — no per-bot directory, share an
-    # underlying bot dir (futures: mnq/nq, crypto: btc_hybrid/eth_perp).
-    "avax_sweep_reclaim", "doge_sweep_reclaim", "link_sweep_reclaim",
-    "crude_compression", "mcl_compression",
-    "natgas_compression", "natgas_sweep",
-    "gold_sweep_reclaim", "mgc_sweep",
-    "euro_vwap_mr", "m6e_vwap_mr",
-    "mes_confluence",
-    "zn_compression", "zn_confluence",
 }
 
 
@@ -156,13 +147,21 @@ def test_no_orphan_registry_rows() -> None:
     """Every per_bot_registry / requirements row must point at a real
     bot directory OR be listed in VARIANT_BOT_IDS. Catches "left dead
     config behind" drift while allowing strategy variants that share
-    a bot directory."""
+    a bot directory.
+
+    Rows flagged ``pending_assignment=True`` in REQUIREMENTS are exempt:
+    those declare data needs for an instrument expansion that ramps
+    data backfill before the strategy code lands.
+    """
     from eta_engine.data.requirements import REQUIREMENTS
     from eta_engine.strategies.per_bot_registry import bots
 
     real = set(DIR_TO_BOT_ID.values()) | VARIANT_BOT_IDS
     strat_extra = set(bots()) - real
-    req_extra = {r.bot_id for r in REQUIREMENTS} - real
+    req_extra = {
+        r.bot_id for r in REQUIREMENTS
+        if not r.pending_assignment
+    } - real
     assert not strat_extra, (
         f"per_bot_registry rows without a matching bot dir or VARIANT: "
         f"{sorted(strat_extra)}"

@@ -202,11 +202,17 @@ def test_per_bot_registry_and_requirements_in_sync() -> None:
     """Bot in per_bot_registry must have a requirements entry, and
     vice versa — a strategy assignment without data requirements is
     a research blind spot, and a requirements row without an
-    assignment is a fetch-something-we-won't-use bug."""
+    assignment is a fetch-something-we-won't-use bug.
+
+    Rows flagged ``pending_assignment=True`` are exempt: those declare
+    data needs for instrument expansions (Phase-2/3/4/5 commodities/
+    FX/crypto-alts) that ramp data backfill before the strategy code
+    lands.
+    """
     from eta_engine.strategies.per_bot_registry import bots as registered_bots
 
     strat_bots = set(registered_bots())
-    req_bots = {r.bot_id for r in REQUIREMENTS}
+    req_bots = {r.bot_id for r in REQUIREMENTS if not r.pending_assignment}
     missing_reqs = strat_bots - req_bots
     extra_reqs = req_bots - strat_bots
     assert not missing_reqs, f"bots in strategy registry without requirements: {missing_reqs}"

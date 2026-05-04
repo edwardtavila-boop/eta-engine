@@ -54,11 +54,18 @@ class DataRequirement:
 
 @dataclass(frozen=True)
 class BotRequirements:
-    """All requirements for a single bot."""
+    """All requirements for a single bot.
+
+    ``pending_assignment=True`` marks a row whose data needs are declared
+    in advance of a strategy assignment — used by Phase-2/3/4/5 instrument
+    expansions where data backfill ramps before the strategy code lands.
+    Audit invariants (per_bot_registry vs REQUIREMENTS) skip these rows.
+    """
 
     bot_id: str
     requirements: tuple[DataRequirement, ...]
     sources_hint: tuple[str, ...] = field(default_factory=tuple)
+    pending_assignment: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -635,6 +642,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol GC",
             "IBKR CME futures (Globex 23h session)",
         ),
+        pending_assignment=True,
     ),
 
     # crude_compression — CL is news-driven and explosive; volatility
@@ -655,6 +663,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol CL",
             "IBKR NYMEX (Globex 23h session)",
         ),
+        pending_assignment=True,
     ),
 
     # euro_vwap_mr — 6E is the quietest of the new commodities; clean
@@ -673,6 +682,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol 6E",
             "IBKR CME FX (near 24h session)",
         ),
+        pending_assignment=True,
     ),
 
     # ── Phase-3 rates + energy (2026-05-03) ──────────────────────
@@ -693,6 +703,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol ZN",
             "IBKR CBOT (near-24h via Globex)",
         ),
+        pending_assignment=True,
     ),
 
     # natgas_compression — NG is most volatile commodity, news/weather
@@ -711,6 +722,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol NG",
             "IBKR NYMEX (near-24h via Globex)",
         ),
+        pending_assignment=True,
     ),
 
     # ── Phase-4 Micros (2026-05-04) ────────────────────────────
@@ -733,6 +745,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol ES (parent stream)",
             "IBKR CME (Globex 23h)",
         ),
+        pending_assignment=True,
     ),
 
     # mgc_sweep — Micro Gold
@@ -749,6 +762,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol GC (parent stream)",
             "IBKR COMEX (Globex 23h)",
         ),
+        pending_assignment=True,
     ),
 
     # mcl_compression — Micro WTI Crude
@@ -765,6 +779,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol CL (parent stream)",
             "IBKR NYMEX (Globex 23h)",
         ),
+        pending_assignment=True,
     ),
 
     # m6e_vwap_mr — Micro Euro FX
@@ -779,6 +794,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_index_futures_bars.py --symbol 6E (parent stream)",
             "IBKR CME FX (near 24h)",
         ),
+        pending_assignment=True,
     ),
 
     # ── Phase-3.5 diversification (2026-05-04) ────────────────
@@ -793,6 +809,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             DataRequirement("correlation", "ES1", "5m", critical=False),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py --symbol ZN",),
+        pending_assignment=True,
     ),
 
     BotRequirements(
@@ -805,6 +822,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             DataRequirement("correlation", "CL1", "1h", critical=False),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py --symbol NG",),
+        pending_assignment=True,
     ),
 
     # ── Phase-5 crypto alt expansion (2026-05-04) ──────────────────
@@ -823,6 +841,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_crypto_bars_coinbase.py --symbol AVAX",
             "Coinbase spot (24/7)",
         ),
+        pending_assignment=True,
     ),
 
     BotRequirements(
@@ -839,6 +858,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_crypto_bars_coinbase.py --symbol LINK",
             "Coinbase spot (24/7)",
         ),
+        pending_assignment=True,
     ),
 
     BotRequirements(
@@ -855,6 +875,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "scripts/fetch_crypto_bars_coinbase.py --symbol DOGE",
             "Coinbase spot (24/7)",
         ),
+        pending_assignment=True,
     ),
 )
 
