@@ -27,6 +27,16 @@ try:
 except (RuntimeError, DeprecationWarning):
     asyncio.set_event_loop(asyncio.new_event_loop())
 
+# eventkit captures ``main_event_loop`` at FIRST import. If any test (e.g.
+# one using pytest-asyncio with asyncio_mode=auto) runs before a test
+# that imports eventkit, it may close its loop on teardown — and then
+# the eventkit import crashes. Force-import eventkit here so its
+# module-level capture happens NOW, while we know a loop exists, before
+# pytest-asyncio's per-test loop machinery starts.
+# eventkit is optional in environments without ib_insync.
+with contextlib.suppress(ImportError):
+    import eventkit  # noqa: F401  (force module-level loop capture)
+
 from eta_engine.funnel.equity_monitor import BotEquity, PortfolioState  # noqa: E402
 
 # Orphan test quarantine: these test files target modules that were
