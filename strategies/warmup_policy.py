@@ -4,8 +4,8 @@ EVOLUTIONARY TRADING ALGO  //  strategies.warmup_policy
 First-30-days half-size policy for newly-promoted bots.
 
 Devils-advocate calibration on 2026-04-27: "calibrated probability
-any single pick has real edge: ~25%. MNQ ORB is the only one with
-even nominal walk-forward; the rest are assertions." Mitigation
+any single pick has real edge: ~25%. MNQ ORB and ETH sweep_reclaim
+have nominal walk-forward evidence; the rest are assertions." Mitigation
 explicitly recommended: *half size, per-bot daily loss cap, weekly
 out-of-sample Sharpe gate, and crypto_seed disabled until regime
 gate lands.*

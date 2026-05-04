@@ -15,10 +15,15 @@ What moves price:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from eta_engine.obs.drift_monitor import BaselineSnapshot
+
+_ETF_FLOWS_PATH = str(
+    (Path(__file__).resolve().parents[1] / ".." / "mnq_data" / "history" / "BTC_ETF_FLOWS.csv").resolve()
+) if __file__ else ""
 
 
 @dataclass(frozen=True)
@@ -274,6 +279,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
+            "etf_csv_path": _ETF_FLOWS_PATH,
         },
     ),
 
@@ -312,6 +318,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
+            "etf_csv_path": _ETF_FLOWS_PATH,
         },
     ),
 
@@ -344,9 +351,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "production_candidate",
-            "sage_min_conviction": 0.35,
-            "sage_min_alignment": 0.35,
+            "sage_min_conviction": 0.55,
+            "sage_min_alignment": 0.50,
             "sage_lookback_bars": 200,
+            "enabled_schools": frozenset({
+                "dow_theory", "wyckoff", "trend_following", "vpa", "market_profile",
+                "smc_ict", "order_flow", "support_resistance",
+                "volatility_regime", "risk_management",
+            }),
             "orb_range_minutes": 15,
             "orb_config": {
                 "range_minutes": 15,
@@ -362,7 +374,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "volume_mult": 1.5,
             },
             "per_ticker_optimal": "MNQ",
-            "sage_schools_hint": ["Dow", "Wyckoff", "Elliott", "SMC/ICT", "order flow", "trend", "volume_profile", "market_profile", "seasonality"],
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
         },
@@ -389,9 +400,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         ),
         extras={
             "promotion_status": "production_candidate",
-            "sage_min_conviction": 0.50,
-            "sage_min_alignment": 0.45,
+            "sage_min_conviction": 0.55,
+            "sage_min_alignment": 0.50,
             "sage_lookback_bars": 200,
+            "enabled_schools": frozenset({
+                "dow_theory", "wyckoff", "trend_following", "vpa", "market_profile",
+                "smc_ict", "order_flow", "support_resistance",
+                "volatility_regime", "risk_management",
+            }),
             "orb_range_minutes": 15,
             "orb_config": {
                 "range_minutes": 15,
@@ -405,6 +421,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "ema_bias_period": 200,
                 "max_trades_per_day": 1,
             },
+            "per_ticker_optimal": "NQ",
+            "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "daily_loss_limit_pct": 4.0,
         },
     ),
 
@@ -552,10 +571,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         strategy_kind="confluence_scorecard",
         rationale=(
             "DIAMOND #10: VWAP reversion on MNQ 5m. Fades deviations > 2σ "
-            "from session VWAP, targeting VWAP. Afternoon session bias "
-            "(13:30-15:30 ET). ORB thrives on trend days; this thrives on "
-            "range days. Natural portfolio hedge — when one wins the other "
-            "loses, smoothing equity curve."
+            "from session VWAP, targeting VWAP. 64.4% WR paper sim (45 trades, "
+            "+$1,641 on 30 days). Thrives on range/choppy days where ORB "
+            "bleeds. Run alongside ORB sage for regime diversification."
         ),
         extras={
             "promotion_status": "production_candidate",
@@ -576,6 +594,45 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.33},
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+        },
+    ),
+
+    # vwap_mr_nq — VWAP Reversion on NQ 5m.
+    StrategyAssignment(
+        bot_id="vwap_mr_nq",
+        strategy_id="vwap_mr_nq_v1",
+        symbol="NQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "DIAMOND #10b: VWAP reversion on NQ 5m. 58% WR paper sim "
+            "(50 trades, +$894 on 30 days). Same mechanic as MNQ — NQ "
+            "deviations > 2σ mean-revert to session VWAP. Complements "
+            "nq_futures_sage (ORB trend) as portfolio hedge."
+        ),
+        extras={
+            "promotion_status": "production_candidate",
+            "sub_strategy_kind": "vwap_reversion",
+            "sub_strategy_extras": {
+                "vwap_std_band": 2.0, "min_dev_std_mult": 1.8,
+                "min_volume_z": 0.3,
+                "rr_target": 2.0, "atr_stop_mult": 1.0,
+                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "warmup_bars": 50,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+            },
+            "per_ticker_optimal": "NQ",
+            "daily_loss_limit_pct": 4.0,
+            "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
         },
     ),
 
@@ -604,13 +661,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sub_strategy_kind": "vwap_reversion",
             "sub_strategy_extras": {
                 "vwap_std_band": 2.0, "min_dev_std_mult": 1.5,
-                "min_volume_z": 0.2,
+                "min_volume_z": 0.0,
                 "rr_target": 2.0, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "min_score": 1, "a_plus_score": 2, "a_plus_size_mult": 1.5,
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
@@ -735,7 +792,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
-        rationale="DEACTIVATED — BTC is 24/7, no overnight gaps.",
+        rationale="DEACTIVATED — BTC is 24/7 with continuous trading; no meaningful overnight gaps exist in crypto markets unlike traditional equities and futures.",
         extras={"deactivated": True, "deactivation_reason": "24/7 crypto, no overnight gap edge"},
     ),
 
@@ -802,14 +859,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="confluence_scorecard",
         rationale=(
-            "DIAMOND #17: Cross-asset BTC/ETH ratio divergence on BTC 1h. "
-            "Tracks BTC/ETH ratio z-score. The ratio mean-reverts faster "
-            "than single-instrument price because both assets share crypto "
-            "beta. The alpha is in the spread. Requires ETH reference "
-            "data provider."
+            "DEACTIVATED 2026-05-03: BTC/ETH ratio divergence at 20% WR on "
+            "10 trades over 30-day paper sim. The ratio doesn't mean-revert "
+            "cleanly enough on 1h bars. Re-activate with higher-TF filter."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "shadow_benchmark",
+            "deactivated": True,
+            "deactivation_reason": "20% WR on paper sim — BTC/ETH ratio not mean-reverting on 1h",
             "sub_strategy_kind": "cross_asset_divergence",
             "sub_strategy_extras": {
                 "z_lookback": 168, "entry_z_threshold": 1.5,
@@ -886,89 +943,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # MICRO FUTURES — leveraged MBT/MET (1/10th BTC/ETH on CME)
     # ═══════════════════════════════════════════════════════════════════
 
-    # MBT sweep_reclaim — micro Bitcoin futures. Same diamond formula as
-    # btc_optimized (sweep_reclaim + confluence scorecard) but on CME MBT
-    # with RTH session awareness. 1/10th BTC = 1/10th risk, safe leverage.
-    StrategyAssignment(
-        bot_id="mbt_sweep_reclaim",
-        strategy_id="mbt_sweep_diamond_v1",
-        symbol="BTC",
-        timeframe="1h",
-        scorer_name="btc",
-        confluence_threshold=0.0,
-        block_regimes=frozenset(),
-        window_days=90,
-        step_days=30,
-        min_trades_per_window=5,
-        strategy_kind="confluence_scorecard",
-        rationale=(
-            "DIAMOND MICRO: btc_optimized formula on MBT (1/10th BTC futures). "
-            "Sweep_reclaim + confluence scorecard. Same 50% WR architecture "
-            "proven on BTC, now on micro futures for safe leveraged exposure. "
-            "RR=3.0, atr_stop=2.0, scorecard min 2/5 factors. "
-            "MBT trades RTH only (CME hours), providing cleaner breaks than "
-            "24/7 crypto spot."
-        ),
-        extras={
-            "promotion_status": "research_candidate",
-            "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
-                "sweep_preset": "btc",
-                "sweep_config": {
-                    "rr_target": 3.0,
-                    "atr_stop_mult": 2.0,
-                    "max_trades_per_day": 2,
-                    "min_bars_between_trades": 12,
-                },
-            },
-            "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
-            },
-            "per_ticker_optimal": "BTC",
-            "research_candidate": True,
-            "daily_loss_limit_pct": 4.0,
-            "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-        },
-    ),
-
-    # MET sweep_reclaim — micro Ether futures. Same diamond formula as
-    # eth_sweep_reclaim (sweep_reclaim on ETH 1h) but on CME MET with
-    # RTH session awareness. 1/10th ETH = 1/10th risk, safe leverage.
-    StrategyAssignment(
-        bot_id="met_sweep_reclaim",
-        strategy_id="met_sweep_diamond_v1",
-        symbol="ETH",
-        timeframe="1h",
-        scorer_name="btc",
-        confluence_threshold=0.0,
-        block_regimes=frozenset(),
-        window_days=90,
-        step_days=30,
-        min_trades_per_window=5,
-        strategy_kind="sweep_reclaim",
-        rationale=(
-            "DIAMOND MICRO: eth_sweep_reclaim formula on MET (1/10th ETH futures). "
-            "Pure sweep_reclaim — ETH's oscillation pattern produces clean "
-            "liquidity sweeps at prior extremes followed by reclaims. "
-            "Same 60% WR architecture proven on ETH spot, now on micro futures "
-            "for safe 2-3x leveraged exposure. MET trades RTH on CME."
-        ),
-        extras={
-            "promotion_status": "research_candidate",
-            "per_ticker_optimal": "ETH",
-            "sweep_preset": "eth",
-            "level_lookback": 20,
-            "min_wick_pct": 0.60,
-            "min_volume_z": 1.0,
-            "rr_target": 2.0,
-            "atr_stop_mult": 1.5,
-            "max_trades_per_day": 2,
-            "research_candidate": True,
-            "daily_loss_limit_pct": 4.0,
-            "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-        },
-    ),
+    # MBT/MET micro futures — de-duplicated. See correct entries at end of
+    # file with symbol="MBT"/"MET". These stubs were duplicates.
 
     # ═══════════════════════════════════════════════════════════════════
     # SHADOW BENCHMARK — diagnostic only, not for live exposure
@@ -1010,12 +986,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=30,
         min_trades_per_window=3,
         strategy_kind="ensemble_voting",
-        rationale="SHADOW: ensemble voting. 25% WR paper soak.",
+        rationale="SHADOW: ensemble voting on BTC 1h — 25% WR paper soak, losing. Keep as diagnostic benchmark while sweep_reclaim+scorecard carries BTC exposure.",
         extras={
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "25% WR paper soak, losing. Keep as diagnostic while sweep_reclaim+scorecard carries BTC exposure.",
             "min_agreement_count": 3,
             "voters": ["regime_trend", "regime_trend_etf", "sage_daily_gated"],
+            "etf_csv_path": _ETF_FLOWS_PATH,
         },
     ),
 
@@ -1031,7 +1008,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=30,
         min_trades_per_window=10,
         strategy_kind="sweep_reclaim",
-        rationale="SHADOW: SOL sweep_reclaim. 20% WR paper soak.",
+        rationale="SHADOW: SOL sweep_reclaim on 1h — 20% WR paper soak, no verifiable standalone edge yet.",
         extras={
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "SOL 1h produces 20% WR regardless of strategy. SOL has no standalone edge on 1h — it's a pure BTC beta proxy.",
@@ -1099,7 +1076,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=30,
         min_trades_per_window=3,
         strategy_kind="mtf_scalp",
-        rationale="SHADOW: MTF scalp on BTC 5m. 0% WR paper soak.",
+        rationale="SHADOW: MTF scalp on BTC 5m — 0% WR paper soak; wrong timeframe for BTC, 1h is the correct cadence.",
         extras={
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "0% WR on BTC 5m. Wrong timeframe for BTC — 1h is the right cadence.",
@@ -1121,7 +1098,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=30,
         min_trades_per_window=3,
         strategy_kind="sweep_reclaim",
-        rationale="SHADOW: SOL sweep_reclaim. 20% WR paper soak.",
+        rationale="SHADOW: SOL sweep_reclaim on 1h — 20% WR, no standalone edge; SOL trades as pure BTC beta proxy and lacks independent alpha.",
         extras={
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "SOL 1h sweep_reclaim at 20% WR. Same as sol_perp — SOL has no standalone edge.",
@@ -1156,7 +1133,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="xrp_perp",
         strategy_id="xrp_DEACTIVATED",
-        symbol="MNQ1",
+        symbol="XRP",
         timeframe="1h",
         scorer_name="btc",
         confluence_threshold=10.0,
@@ -1164,7 +1141,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         window_days=90,
         step_days=30,
         min_trades_per_window=10,
-        rationale="DEACTIVATED — no news/regulatory feed for XRP.",
+        rationale="DEACTIVATED — no news or regulatory event feed available for XRP; cannot validate fundamental edge drivers.",
         extras={"deactivated": True, "deactivation_reason": "no news feed"},
     ),
 
@@ -1366,9 +1343,9 @@ def bots() -> list[str]:
 
 
 def summary_markdown() -> str:
-    rows = ["| Bot | Kind | Symbol | TF | Status |"]
-    rows.append("|-----|------|--------|-----|--------|")
+    rows = ["| Bot | Strategy | Kind | Symbol | TF | Status |"]
+    rows.append("|-----|----------|------|--------|-----|--------|")
     for a in ASSIGNMENTS:
         status = a.extras.get("promotion_status", "")
-        rows.append(f"| {a.bot_id} | {a.strategy_kind} | {a.symbol} | {a.timeframe} | {status} |")
+        rows.append(f"| {a.bot_id} | {a.strategy_id} | {a.strategy_kind} | {a.symbol} | {a.timeframe} | {status} |")
     return "\n".join(rows)

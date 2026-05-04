@@ -10,10 +10,10 @@ The bot's per-bar dispatch checks ``StrategyContext.session_allows_entries``.
 That flag has historically been set to ``True`` everywhere because we had
 no central place to compute it against:
 
-  * the RTH window (MNQ only earns edge during US regular hours on our
-    real-MNQ sweep -- see docs/cross_regime/REAL_MNQ_TRANSFER_20260424.md)
+  * the RTH window (futures-only edge concentrates during US regular hours
+    — see docs/cross_regime/REAL_MNQ_TRANSFER_20260424.md)
   * the news blackout (``core.events_calendar``)
-  * the EoD flatten cutoff (~3:59 ET) -- Apex eval risk requires no
+  * the EoD flatten cutoff (~3:59 ET) — Apex eval risk requires no
     overnight carry; leaving a position open through the close is a
     preventable DD event.
 
@@ -67,10 +67,11 @@ REASON_EOD_NOT_DUE = "no_eod_action"
 class SessionGateConfig:
     """Tunable policy for the live session gate.
 
-    Defaults target MNQ on IBKR (the active default futures venue while
-    Tradovate is DORMANT per operator mandate 2026-04-24), RTH-only
-    trading, Apex-eval-aware EoD flatten. Other venues/symbols can
-    instantiate with overrides.
+    Defaults target MNQ futures on IBKR (the active default futures venue
+    while Tradovate is DORMANT per operator mandate 2026-04-24), RTH-only
+    trading, Apex-eval-aware EoD flatten. Multi-asset: crypto assets
+    (BTC, ETH) use 24/7 session; crypto futures (MBT, MET) follow CME
+    RTH. Instantiate with per-asset overrides via the per_bot_registry.
     """
 
     # Timezone used to interpret all *_local times. Must be a valid IANA
@@ -78,15 +79,15 @@ class SessionGateConfig:
     timezone_name: str = "America/Chicago"
 
     # RTH window in the configured timezone. Entries are blocked outside
-    # this window. For MNQ RTH = 08:30-15:00 CT.
+    # this window. For CME equity-index futures RTH = 08:30-15:00 CT.
     rth_start_local: time = time(8, 30)
     rth_end_local: time = time(15, 0)
 
     # EoD cutoff. At or after this local time, the gate:
     #   * blocks new entries (entries_allowed -> False)
     #   * signals flatten (should_flatten_eod -> True)
-    # Default 15:59 CT = 1 minute before the RTH close. A 1-minute
-    # buffer is enough for one round-turn on MNQ.
+    # Default 15:59 CT = 1 minute before the RTH close. Sufficient
+    # for a round-turn on micro and mini futures.
     eod_cutoff_local: time = time(15, 59)
 
     # News blackout windows. Applied to any HIGH-impact event in the
@@ -192,7 +193,7 @@ def _to_utc(now: datetime) -> datetime:
 def _within_window(check: time, start: time, end: time) -> bool:
     """Half-open [start, end) with midnight-wrap support.
 
-    MNQ RTH does not wrap, but this keeps the helper reusable for
+    CME RTH does not wrap, but this keeps the helper reusable for
     symbols whose session crosses midnight local (e.g. crypto).
     """
     if start <= end:

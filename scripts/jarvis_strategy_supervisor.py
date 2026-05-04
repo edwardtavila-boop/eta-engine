@@ -241,14 +241,15 @@ class MockDataFeed:
     """Synthetic bar feed -- random walk per symbol with sane defaults."""
 
     SYMBOL_DEFAULTS = {
-        "MNQ": (21450.0, 0.002, 0.0001),
+        "MNQ":  (21450.0, 0.002, 0.0001),
         "MNQ1": (21450.0, 0.002, 0.0001),
-        "NQ":  (21450.0, 0.002, 0.0001),
-        "NQ1": (21450.0, 0.002, 0.0001),
-        "BTC": (95000.0, 0.005, 0.0002),
-        "ETH": (3500.0,  0.006, 0.0001),
-        "SOL": (180.0,   0.010, 0.0002),
-        "XRP": (1.20,    0.012, 0.0001),
+        "NQ":   (21500.0, 0.004, 0.0002),
+        "NQ1":  (21500.0, 0.004, 0.0002),
+        "BTC":  (95000.0, 0.005, 0.0002),
+        "ETH":  (3500.0,  0.006, 0.0001),
+        "SOL":  (180.0,   0.010, 0.0002),
+        "MBT":  (95000.0, 0.005, 0.0001),
+        "MET":  (3500.0,  0.006, 0.0001),
     }
 
     def __init__(self, *, seed: int = 42) -> None:
@@ -675,7 +676,7 @@ class JarvisStrategySupervisor:
 
     # ── JARVIS consultation ─────────────────────────────────
 
-    def _consult_sage_for_bot(self, bot: BotInstance, bar: dict, side: str, entry_price: float):
+    def _consult_sage_for_bot(self, bot: BotInstance, bar: dict, side: str, entry_price: float) -> object | None:
         """Consult Sage schools with the bot's accumulated bar buffer.
 
         Returns a SageReport or None if Sage isn't available or the
@@ -711,7 +712,6 @@ class JarvisStrategySupervisor:
         try:
             from eta_engine.brain.jarvis_admin import (
                 ActionType,
-                CRYPTO_24_7_BOTS,
                 SubsystemId,
                 make_action_request,
             )

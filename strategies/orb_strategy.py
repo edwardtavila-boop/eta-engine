@@ -119,8 +119,8 @@ class ORBConfig:
     # ── Cross-asset ES filter (opt-in) ──
     # When True, the strategy ALSO requires ES1 to be breaking out
     # of its own opening range in the same direction. Cross-asset
-    # confirmation cuts MNQ-only false breakouts driven by sector
-    # rotation rather than broad index momentum.
+    # confirmation cuts false breakouts driven by sector rotation
+    # rather than broad index momentum.
     require_es_confirmation: bool = False
     # Internal: ES bars are loaded lazily by the runner script and
     # injected via a single ctx_builder that returns {"es_bars": ...}.

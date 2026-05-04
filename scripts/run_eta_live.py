@@ -26,7 +26,7 @@ For each configured bot whose eta_go_state flag is True:
          - FLATTEN_BOT            → route exit orders for that bot
          - FLATTEN_TIER_B         → flatten every Tier-B bot
          - FLATTEN_ALL            → flatten everything, kill switch armed
-         - FLATTEN_TIER_A_PREEMPTIVE → flatten MNQ + NQ only
+         - FLATTEN_TIER_A_PREEMPTIVE → flatten tier-A futures bots (preemptive risk off)
     5. Dispatch events via AlertDispatcher per alerts.yaml routing.
     6. Heartbeat tick.
     7. Append a structured entry to logs/eta_engine/runtime_log.jsonl.
@@ -1481,7 +1481,7 @@ async def _amain(argv: list[str] | None = None) -> int:
     # configs/kill_switch.yaml in v0.1.67+.
     broker_reconciler = BrokerEquityReconciler(
         broker_equity_source=broker_poller.current,
-        tolerance_below_usd=20.0,  # tight: $20 ~ 1 MNQ tick of cushion
+        tolerance_below_usd=20.0,  # tight: enough cushion for micro futures tick noise
         tolerance_below_pct=0.0005,  # tight: 0.05% of $50K = $25
         tolerance_above_usd=200.0,  # loose: 4x below, anti-spam
         tolerance_above_pct=0.005,  # loose: 0.5% of $50K = $250

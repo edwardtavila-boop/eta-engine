@@ -76,7 +76,9 @@ class SimResult:
 _MULTIPLIERS: dict[str, float] = {
     "MNQ": 0.50, "MNQ1": 0.50,
     "NQ": 20.0, "NQ1": 20.0,
-    "BTC": 1.0, "ETH": 1.0, "SOL": 1.0,
+    "ES": 12.50, "ES1": 12.50,
+    "BTC": 1.0, "ETH": 1.0, "SOL": 1.0, "XRP": 1.0,
+    "MBT": 5.0, "MET": 0.50,
 }
 
 
@@ -230,7 +232,7 @@ def run_simulation(bot_id: str, max_bars: int = 10000, bar_limit: int | None = N
                     wins_in_a_row=wins_in_row, losses_in_a_row=losses_in_row,
                 )
                 qty = size_mult / (abs(signal.entry - signal.stop) * pv) if signal.entry and signal.stop and signal.entry != signal.stop else 1.0
-                qty = max(qty, 1.0)
+                qty = max(qty, 0.01)
 
                 position = PaperPosition(
                     bot_id=bot_id,

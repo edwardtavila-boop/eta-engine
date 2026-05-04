@@ -83,6 +83,11 @@ def test_thresholds_in_valid_range() -> None:
         # percentile + ATR-MA / wick + reclaim) and don't read the
         # confluence threshold.
         "compression_breakout", "sweep_reclaim",
+        # Confluence scorecard uses internal scorecard_config
+        # (min_score, factor EMAs, A+ multiplier) and ignores
+        # the basic confluence threshold entirely.
+        "confluence_scorecard",
+        "mtf_scalp",
     }
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:

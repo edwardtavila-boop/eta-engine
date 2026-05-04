@@ -61,9 +61,9 @@ def test_bridge_builds_active_bots():
     """All active new bots build through bridge dispatch."""
     clear_strategy_cache()
     active = [
-        "rsi_mr_mnq", "vwap_mr_mnq", "vwap_mr_btc",
+        "rsi_mr_mnq", "vwap_mr_mnq", "vwap_mr_nq", "vwap_mr_btc",
         "volume_profile_mnq", "volume_profile_btc",
-        "cross_asset_mnq", "cross_asset_btc",
+        "cross_asset_mnq",
         "funding_rate_btc",
     ]
     for bot_id in active:

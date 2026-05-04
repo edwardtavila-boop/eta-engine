@@ -1011,6 +1011,8 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
         sub_kind = str(cell.extras.get("sub_strategy_kind") or "")
         sc_raw = cell.extras.get("scorecard_config") or {}
         sub_extras = cell.extras.get("sub_strategy_extras") or {}
+        if "per_ticker_optimal" in cell.extras:
+            sub_extras.setdefault("per_ticker_optimal", cell.extras["per_ticker_optimal"])
         if not isinstance(sc_raw, dict):
             sc_raw = {}
         if not isinstance(sub_extras, dict):

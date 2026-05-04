@@ -11,13 +11,22 @@
 
   "funnel": {
     "pieces": 4,
-    "engine": ["mnq", "nq"],
+    "engine": ["mnq", "nq", "btc", "eth"],
     "turbo": ["crypto_seed", "eth_perp", "sol_perp", "xrp_perp"],
+    "diamond": ["eth_sweep_reclaim", "btc_optimized", "btc_hybrid", "vwap_mr_mnq", "vwap_mr_nq", "vwap_mr_btc", "cross_asset_mnq", "funding_rate_btc", "mnq_futures_sage", "nq_futures_sage", "mnq_sweep_reclaim", "rsi_mr_mnq", "volume_profile_mnq", "volume_profile_btc", "mbt_sweep_reclaim", "met_sweep_reclaim"],
+    "micro_futures": ["mbt_sweep_reclaim", "met_sweep_reclaim"],
+    "shadow": ["btc_hybrid_sage", "btc_ensemble_2of3", "sol_perp", "eth_compression", "mnq_futures_optimized", "btc_crypto_scalp", "sol_sweep_scalp", "cross_asset_btc"],
+    "deactivated": ["crypto_seed", "xrp_perp", "mnq_futures", "nq_futures", "gap_fill_mnq", "gap_fill_btc", "rsi_mr_btc"],
     "multiplier": "staking",
     "sweep_policy": {
       "mnq_baseline_usd": 5500,
       "mnq_starting_capital_usd": 5000,
       "nq_baseline_usd": 12000,
+      "nq_starting_capital_usd": 10000,
+      "btc_baseline_usd": 35000,
+      "btc_starting_capital_usd": 25000,
+      "eth_baseline_usd": 17000,
+      "eth_starting_capital_usd": 10000,
       "crypto_seed_baseline_usd": 2000,
       "eth_perp_baseline_usd": 3000,
       "sol_perp_baseline_usd": 3000,

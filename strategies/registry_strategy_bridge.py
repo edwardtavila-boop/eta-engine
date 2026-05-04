@@ -451,6 +451,8 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
                     _with_funding_rate_provider,
                 )
                 sub_extras = dict(extras.get("sub_strategy_extras", {}))
+                if "per_ticker_optimal" in extras and "per_ticker_optimal" not in sub_extras:
+                    sub_extras["per_ticker_optimal"] = extras["per_ticker_optimal"]
                 sub_factory = _build_strategy_factory(sub_kind, sub_extras)
 
                 if sub_kind == "cross_asset_divergence":

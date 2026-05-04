@@ -67,6 +67,11 @@ class VWAPReversionConfig:
     allow_long: bool = True
     allow_short: bool = True
 
+    # Session window for entry filtering (local time of bar timestamps).
+    # Defaults to US RTH (08:00-16:00 ET). Override for crypto sessions.
+    session_start: time = time(8, 0)
+    session_end: time = time(16, 0)
+
 
 class VWAPReversionStrategy:
 
@@ -130,7 +135,7 @@ class VWAPReversionStrategy:
 
     def _is_allowed_session(self, bar: BarData) -> bool:
         t = bar.timestamp.time()
-        return time(8, 0) <= t <= time(16, 0)
+        return self.cfg.session_start <= t <= self.cfg.session_end
 
     def maybe_enter(
         self, bar: BarData, hist: list[BarData],
@@ -267,6 +272,7 @@ def btc_vwap_mr_preset() -> VWAPReversionConfig:
         atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
+        session_start=time(7, 0), session_end=time(17, 0),
     )
 
 
@@ -277,4 +283,5 @@ def eth_vwap_mr_preset() -> VWAPReversionConfig:
         atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
+        session_start=time(7, 0), session_end=time(17, 0),
     )

@@ -141,7 +141,7 @@ if (-not $SkipQuantum) {
     if (Test-Path $quantumScript) {
         $taskName = "ETA-Quantum-Daily-Rebalance"
         $action = New-ScheduledTaskAction -Execute $pythonExe `
-            -Argument "`"$quantumScript`" --instruments MNQ,BTC,ETH,SOL --out-dir `"$EtaEngineDir\state\quantum`""
+            -Argument "`"$quantumScript`" --instruments MNQ,BTC,ETH,SOL --out-dir `"$InstallRoot\var\eta_engine\state\quantum`""
         $trigger = New-ScheduledTaskTrigger -Daily -At "21:00"
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
@@ -181,7 +181,7 @@ if (-not $SkipIbkrGateway) {
     if (Test-Path $ibkrWatchdogScript) {
         if (-not $WhatIf) {
             & $pwshPath -ExecutionPolicy Bypass -File $ibkrWatchdogScript `
-                -ETARoot "$InstallRoot\firm_command_center" `
+                -ApexRoot "$InstallRoot\firm_command_center" `
                 -RunNow
             Write-Host "  Registered: ETAIbkrGatewayWatchdog (every 5m, auto-start on boot)" -ForegroundColor Green
         }

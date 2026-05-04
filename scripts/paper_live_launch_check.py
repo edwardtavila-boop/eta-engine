@@ -59,6 +59,8 @@ _RESOLVABLE_KINDS: frozenset[str] = frozenset({
     "sage_consensus", "orb_sage_gated", "crypto_regime_trend",
     "crypto_macro_confluence", "sage_daily_gated", "ensemble_voting",
     "compression_breakout", "sweep_reclaim",
+    "confluence_scorecard", "cross_asset_divergence", "funding_rate",
+    "rsi_mean_reversion", "vwap_reversion", "volume_profile", "mtf_scalp",
 })
 _SHADOW_ONLY_STATUSES: frozenset[str] = frozenset({
     "shadow_benchmark",

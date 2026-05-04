@@ -71,7 +71,7 @@ VARIANT_BOT_IDS: set[str] = {
     "btc_compression",  # compression-breakout variant; bot dir = bots/btc_hybrid/
     # Wave-18 new strategy variants (confluence scorecard, no per-bot dir)
     "rsi_mr_mnq", "rsi_mr_btc",
-    "vwap_mr_mnq", "vwap_mr_btc",
+    "vwap_mr_mnq", "vwap_mr_btc", "vwap_mr_nq", "vwap_mr_eth",
     "volume_profile_mnq", "volume_profile_btc",
     "gap_fill_mnq", "gap_fill_btc",
     "cross_asset_mnq", "cross_asset_btc",

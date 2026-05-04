@@ -12,7 +12,7 @@ neither answers the question that actually matters for optimization:
 
    "What data does this bot need that we don't have yet?"
 
-For futures bots (MNQ, NQ) that's mostly self-contained — bar data
+For futures bots (MNQ, NQ, MBT, MET) that's mostly self-contained — bar data
 + ES1 correlation + DXY + VIX is enough. For crypto bots (BTC, ETH,
 XRP, SOL) the answer is much bigger: native bars per exchange,
 funding rates per symbol per exchange, on-chain metrics (whale
@@ -447,6 +447,15 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             DataRequirement("bars", "BTC", "1h", critical=True),
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
+    ),
+
+    BotRequirements(
+        bot_id="vwap_mr_nq",
+        requirements=(
+            DataRequirement("bars", "NQ1", "5m", critical=True),
+            DataRequirement("bars", "NQ1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
 
     # Volume-profile (POC/value-area) — needs daily for context

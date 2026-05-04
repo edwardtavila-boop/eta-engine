@@ -116,11 +116,11 @@ class ApexEvalSnapshot(BaseModel):
 # KillSwitch at least one chance to fire FLATTEN_TIER_A_PREEMPTIVE before
 # Apex's real floor is crossed.
 #
-# Defaults come from empirical MNQ tick behavior:
-#   * Typical 1s MNQ move: 1-2 points = $2-4 on 1x, $10-20 on 5x sizing
+# Defaults come from empirical futures tick behavior:
+#   * Typical 1s micro-index move: 1-2 points = $2-4 on 1x, $10-20 on 5x
 #   * Pathological (news spike): up to ~50 points/sec = $100 on 1x, $500 on 5x
 # We bake in ``DEFAULT_MAX_USD_MOVE_PER_SEC = 300`` as a Tier-A conservative
-# worst-case assuming max Apex sizing.
+# worst-case assuming max sizing on micro futures.
 
 
 DEFAULT_MAX_USD_MOVE_PER_SEC: float = 300.0
@@ -155,8 +155,8 @@ def validate_apex_tick_cadence(
         Apex-preemptive cushion in USD. From ``kill_switch.yaml``:
         ``tier_a.eta_eval_preemptive.cushion_usd``.
     max_usd_move_per_sec:
-        Conservative worst-case one-second equity move. Default tuned for
-        MNQ at max Apex sizing (see module comment).
+        Conservative worst-case one-second equity move. Default tuned
+        for micro futures at eval sizing (see module comment).
     safety_factor:
         How many worst-case ticks must fit inside the cushion before it
         is considered "safe". Default 2.0 means we require the cushion to
