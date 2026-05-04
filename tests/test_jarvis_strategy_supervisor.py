@@ -351,3 +351,72 @@ def test_supervisor_builds_synthetic_ctx(tmp_path: Path) -> None:
     resp = admin.request_approval(req, ctx=ctx)
     assert resp is not None
     assert resp.verdict is not None
+
+
+# ─── LiveIbkrVenue dedicated-loop-thread dispatcher ───────────────
+
+
+def _reset_live_ibkr(mod) -> None:
+    """Stop the dedicated thread + null the globals so each test starts clean."""
+    if mod._LIVE_IBKR_LOOP is not None and not mod._LIVE_IBKR_LOOP.is_closed():
+        mod._LIVE_IBKR_LOOP.call_soon_threadsafe(mod._LIVE_IBKR_LOOP.stop)
+    if mod._LIVE_IBKR_THREAD is not None and mod._LIVE_IBKR_THREAD.is_alive():
+        mod._LIVE_IBKR_THREAD.join(timeout=2.0)
+    mod._LIVE_IBKR_LOOP = None
+    mod._LIVE_IBKR_THREAD = None
+
+
+def test_live_ibkr_loop_helper_returns_same_loop_across_calls() -> None:
+    """Regression: each call MUST return the same persistent loop.
+
+    Earlier the supervisor created a fresh event loop per direct order
+    and immediately closed it. ib_insync/eventkit caches loop bindings
+    on its _OverlappedFuture objects, so any fresh-loop-per-call pattern
+    raised "Future attached to a different loop" on Windows.
+    """
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    _reset_live_ibkr(mod)
+    try:
+        loop_a = mod._get_or_create_live_ibkr_loop()
+        loop_b = mod._get_or_create_live_ibkr_loop()
+        assert loop_a is loop_b
+        assert not loop_a.is_closed()
+        assert mod._LIVE_IBKR_THREAD is not None
+        assert mod._LIVE_IBKR_THREAD.is_alive()
+    finally:
+        _reset_live_ibkr(mod)
+
+
+def test_run_on_live_ibkr_loop_executes_coroutine() -> None:
+    """The dispatcher schedules a coroutine onto the persistent loop and returns the result."""
+    import asyncio
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    _reset_live_ibkr(mod)
+    try:
+        async def _echo(x):
+            await asyncio.sleep(0)
+            return x * 2
+        result = mod._run_on_live_ibkr_loop(_echo(21), timeout=5.0)
+        assert result == 42
+    finally:
+        _reset_live_ibkr(mod)
+
+
+def test_run_on_live_ibkr_loop_runs_in_dedicated_thread() -> None:
+    """All scheduled coroutines must execute on the dedicated thread, not the caller's."""
+    import threading
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    _reset_live_ibkr(mod)
+    try:
+        caller_tid = threading.get_ident()
+
+        async def _capture_thread():
+            return threading.get_ident()
+
+        runner_tid = mod._run_on_live_ibkr_loop(_capture_thread(), timeout=5.0)
+        assert runner_tid != caller_tid
+        assert runner_tid == mod._LIVE_IBKR_THREAD.ident
+    finally:
+        _reset_live_ibkr(mod)

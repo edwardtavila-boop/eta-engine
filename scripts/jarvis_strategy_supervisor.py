@@ -62,19 +62,25 @@ Usage:
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
 import random
 import signal as os_signal
 import sys
+import threading
 import time
 import uuid
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -305,6 +311,60 @@ class FillRecord:
     note: str = ""
 
 
+# Dedicated background thread + asyncio loop for LiveIbkrVenue. Required
+# because ib_insync/eventkit caches an event loop at import time and binds
+# its socket _OverlappedFuture objects to that loop; awaiting them from
+# any other loop raises "Future attached to a different loop". Running a
+# single, never-closed loop in a daemon thread, and dispatching every
+# place_order coroutine via asyncio.run_coroutine_threadsafe, gives every
+# IBKR call the same loop and the same thread context, eliminating the
+# class of "different loop" failures observed in the wave-7/8 deployment.
+_LIVE_IBKR_LOOP: asyncio.AbstractEventLoop | None = None
+_LIVE_IBKR_THREAD: threading.Thread | None = None
+_LIVE_IBKR_LOCK = threading.Lock()
+
+
+def _get_or_create_live_ibkr_loop() -> asyncio.AbstractEventLoop:
+    global _LIVE_IBKR_LOOP, _LIVE_IBKR_THREAD
+    with _LIVE_IBKR_LOCK:
+        if (
+            _LIVE_IBKR_LOOP is not None
+            and not _LIVE_IBKR_LOOP.is_closed()
+            and _LIVE_IBKR_THREAD is not None
+            and _LIVE_IBKR_THREAD.is_alive()
+        ):
+            return _LIVE_IBKR_LOOP
+        new_loop = asyncio.new_event_loop()
+        ready = threading.Event()
+
+        def _runner() -> None:
+            asyncio.set_event_loop(new_loop)
+            ready.set()
+            try:
+                new_loop.run_forever()
+            finally:
+                with contextlib.suppress(Exception):
+                    new_loop.close()
+
+        thread = threading.Thread(
+            target=_runner, name="live-ibkr-loop", daemon=True,
+        )
+        thread.start()
+        ready.wait(timeout=5)
+        _LIVE_IBKR_LOOP = new_loop
+        _LIVE_IBKR_THREAD = thread
+        return new_loop
+
+
+def _run_on_live_ibkr_loop[T](
+    coro: Coroutine[Any, Any, T], timeout: float = 30.0,
+) -> T:
+    """Run a coroutine on the dedicated live-IBKR loop, return its result."""
+    loop = _get_or_create_live_ibkr_loop()
+    fut = asyncio.run_coroutine_threadsafe(coro, loop)
+    return fut.result(timeout=timeout)
+
+
 class ExecutionRouter:
     """Routes approved entries to broker (or simulates them).
 
@@ -390,8 +450,8 @@ class ExecutionRouter:
             self._write_pending_order(bot, rec)
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
+                from eta_engine.venues.base import OrderRequest, OrderType, Side
                 from eta_engine.venues.ibkr_live import LiveIbkrVenue
-                from eta_engine.venues.base import OrderRequest, Side, OrderType
                 _venue = LiveIbkrVenue()
                 _req = OrderRequest(
                     symbol=rec.symbol,
@@ -399,10 +459,7 @@ class ExecutionRouter:
                     qty=abs(float(rec.qty)) or 1,
                     order_type=OrderType.MARKET,
                 )
-                import asyncio as _asyncio
-                _loop = _asyncio.new_event_loop()
-                _result = _loop.run_until_complete(_venue.place_order(_req))
-                _loop.close()
+                _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
                 logger.info(
                     "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s)",
                     rec.symbol, rec.side, rec.qty,
@@ -654,6 +711,11 @@ class JarvisStrategySupervisor:
             "symbol": bot.symbol,
             "confidence": 0.55,
             "entry_price": entry_price,
+            # 2026-05-04 wave-7/8: include bot_id so the JARVIS v23-v27
+            # advanced layers can look up the bot's registry assignment
+            # (instrument_class, block_regimes, lab_audit stamps). Without
+            # this, every advanced layer falls through to v17 silently.
+            "bot_id": bot.bot_id,
         }
 
         if sage_report is not None:
