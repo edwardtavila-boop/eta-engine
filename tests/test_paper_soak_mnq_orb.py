@@ -94,29 +94,16 @@ def test_redact_account_short_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="mnq_futures deprecated in registry (DIAMOND CUT 2026-05-02); "
-           "the ORB promotion now lives on mnq_futures_sage. The sibling "
-           "test ``test_registry_check_passes_for_mnq_futures_sage`` "
-           "covers the live path. Re-enable only if mnq_futures is "
-           "reactivated as a non-sage ORB bot.",
-)
-def test_registry_check_passes_for_mnq_futures() -> None:
-    """Live registry must keep mnq_futures wired to ORB or this fails.
+def test_registry_check_passes_for_active_mnq_orb_bot() -> None:
+    """Live registry must keep an MNQ ORB-family bot wired in or this fails.
 
-    This guards against a future PR silently dropping the ORB
-    promotion. If the test fails, decide deliberately: either fix the
-    registry, or update this test with a justification in the commit.
+    Guards against a future PR silently dropping the MNQ ORB promotion.
+    Originally this asserted on ``mnq_futures``, but DIAMOND CUT 2026-05-02
+    deprecated that bot in favor of ``mnq_futures_sage``. The active MNQ
+    ORB bot is now the sage-overlay variant. If THIS test fails, decide
+    deliberately: either fix the registry, or update the test with a
+    justification in the commit.
     """
-    ok, msg, extras = _registry_check()
-    assert ok, msg
-    assert extras["bot_id"] == "mnq_futures"
-    assert extras["strategy_id"] == "mnq_orb_v2"
-    assert "baseline" in extras
-
-
-def test_registry_check_passes_for_mnq_futures_sage() -> None:
-    """Sage-overlay sibling must also be soak-preppable."""
     ok, msg, extras = _registry_check("mnq_futures_sage")
     assert ok, msg
     assert extras["bot_id"] == "mnq_futures_sage"
@@ -188,16 +175,16 @@ def test_ibkr_preflight_fails_closed_without_account_id(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="mnq_futures deprecated; build_plan now exits 1 on the "
-           "registry check before ever evaluating the zero-sessions "
-           "branch. Re-enable when mnq_futures is reactivated or the "
-           "test is rewritten against mnq_futures_sage.",
-)
 def test_build_plan_zero_sessions_exits_3() -> None:
-    """A start date that lands in an all-weekend window → exit 3."""
+    """A start date that lands in an all-weekend window → exit 3.
+
+    Pinned to ``mnq_futures_sage`` (active sage-overlay bot) since the
+    original ``mnq_futures`` is deprecated — passing the deprecated bot
+    short-circuits at the registry-check step (exit 1) before ever
+    reaching the zero-sessions check this test exercises.
+    """
     with pytest.raises(SystemExit) as ei:
-        build_plan(date(2026, 5, 9), days=2)  # Sat + Sun
+        build_plan(date(2026, 5, 9), days=2, bot_id="mnq_futures_sage")  # Sat + Sun
     assert ei.value.code == 3
 
 

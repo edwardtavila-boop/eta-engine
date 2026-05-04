@@ -293,24 +293,26 @@ def test_stale_critical_support_feed_warns_with_evidence(monkeypatch) -> None:
     assert result["evidence"]["critical_data_requirements"] == support_evidence
 
 
-@pytest.mark.skip(
-    reason="nq_futures deactivated in registry (DIAMOND CUT 2026-05-02); "
-           "_check_critical_data_requirements correctly short-circuits "
-           "to empty findings for deactivated bots. Re-enable when the "
-           "test is rewritten against an active bot whose requirements "
-           "match the 4-missing-feed pattern this test exercises.",
-)
 def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path: Path) -> None:
+    """When only the primary dataset is seeded, the helper must report
+    every OTHER critical requirement as missing.
+
+    Originally exercised against ``nq_futures`` (4 missing feeds), but
+    that bot was deactivated in DIAMOND CUT 2026-05-02. Now pinned to
+    ``mnq_futures_sage`` (active sage-overlay variant) whose critical
+    requirements are MNQ1/5m + MNQ1/1h + ES1/5m. With MNQ1/5m as the
+    primary launch dataset, the helper should report 2 missing feeds.
+    """
     history = tmp_path / "history"
     history.mkdir()
-    with (history / "NQ1_5m.csv").open("w", encoding="utf-8", newline="") as fh:
+    with (history / "MNQ1_5m.csv").open("w", encoding="utf-8", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow(["time", "open", "high", "low", "close", "volume"])
         writer.writerow([1_735_689_600, 100.0, 101.0, 99.0, 100.5, 10_000.0])
 
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
-        "nq_futures",
-        primary_symbol="NQ1",
+        "mnq_futures_sage",
+        primary_symbol="MNQ1",
         primary_timeframe="5m",
         library=DataLibrary(roots=[history]),
     )
@@ -318,27 +320,29 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
     assert findings["warnings"] == []
     assert findings["evidence"] == []
     assert findings["issues"] == [
-        "missing critical feed: bars:NQ1/1h",
-        "missing critical feed: bars:NQ1/4h",
-        "missing critical feed: bars:NQ1/D",
+        "missing critical feed: bars:MNQ1/1h",
         "missing critical feed: correlation:ES1/5m",
     ]
 
 
-@pytest.mark.skip(
-    reason="btc_hybrid funding/onchain feeds were downgraded from "
-           "critical=True to critical=False in data/requirements.py "
-           "(see notes: 'optional for paper'). The helper now correctly "
-           "excludes non-critical feeds from evidence, so the synthetic "
-           "resolution metadata for BTCFUND/8h and BTCONCHAIN/D is no "
-           "longer surfaced. Re-enable if those feeds are re-promoted "
-           "to critical OR rewrite to assert the BTC/D direct-mode "
-           "evidence only.",
-)
 def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Path) -> None:
+    """Evidence entries for non-primary CRITICAL feeds must include
+    resolution metadata so the operator can see exactly how the helper
+    resolved each dataset.
+
+    Originally also asserted on synthetic-mode resolution for funding
+    + onchain feeds, but those were downgraded from critical=True to
+    critical=False in data/requirements.py (notes: 'optional for paper'),
+    so the helper correctly excludes them from evidence. The synthetic
+    code path still exists (``_resolution_payload`` in announce_data_
+    library); if a future feed is promoted to critical AND uses
+    synthetic resolution, add an assertion for it here.
+    """
     history = tmp_path / "history"
     history.mkdir()
-    for filename in ("BTC_1h.csv", "BTC_D.csv", "BTCFUND_8h.csv", "BTCONCHAIN_D.csv"):
+    # Seed every CRITICAL btc_hybrid feed so they all show up in evidence:
+    # bars BTC 5m, 1h, D. (1m + funding + onchain are non-critical.)
+    for filename in ("BTC_5m.csv", "BTC_1h.csv", "BTC_D.csv"):
         with (history / filename).open("w", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh)
             writer.writerow(["time", "open", "high", "low", "close", "volume"])
@@ -347,7 +351,7 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
         "btc_hybrid",
         primary_symbol="BTC",
-        primary_timeframe="1h",
+        primary_timeframe="1h",   # primary excluded from evidence
         library=DataLibrary(roots=[history]),
     )
 
@@ -355,6 +359,9 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
         item["dataset_key"]: item["resolution"]
         for item in findings["evidence"]
     }
+    # Non-primary critical feeds get evidence + direct-mode resolution
+    # (each CSV matches its symbol/timeframe directly).
     assert evidence_by_key["BTC/D/history"]["mode"] == "direct"
-    assert evidence_by_key["BTCFUND/8h/history"]["mode"] == "synthetic"
-    assert evidence_by_key["BTCONCHAIN/D/history"]["mode"] == "synthetic"
+    assert evidence_by_key["BTC/5m/history"]["mode"] == "direct"
+    # Primary (BTC/1h) is filtered out of evidence by design.
+    assert "BTC/1h/history" not in evidence_by_key
