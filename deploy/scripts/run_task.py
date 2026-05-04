@@ -251,6 +251,15 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     (cache-write on first call, cache-read on subsequent). After this
     task runs, any real debate call within the next ~5 minutes gets a
     10% cache-read discount on the prefix.
+
+    NOTE (Wave-19, 2026-05-04): This task INTENTIONALLY uses direct
+    chat_completion() instead of the Force-Multiplier orchestrator.
+    The whole point of this task is to populate the Anthropic prompt
+    cache — routing through route_and_execute() with HAIKU tier would
+    send the warm-up calls to DEEPSEEK (per the policy mapping), which
+    has a different cache. If/when the operator moves entirely to
+    subscription Claude CLI, this task is obsolete and should be deleted
+    (CLI calls don't share the API prompt cache).
     """
     import os
 
@@ -567,25 +576,34 @@ def _task_self_test(state_dir: Path) -> dict:
     else:
         report["checks"]["heartbeat_fresh"] = {"ok": False, "error": "no heartbeat file"}
 
-    # 4. Live LLM ping via provider (budget-sensitive: once per day)
+    # 4. Live LLM ping via Force-Multiplier orchestrator (budget-sensitive,
+    # ~$0.000001 once per day). Routed through TRIVIAL_LOOKUP so it hits
+    # DeepSeek HAIKU (cheapest tier with thinking disabled). If DeepSeek
+    # is down, FM's fallback path engages automatically — but for a
+    # health-check we want to know IF the fallback fired, hence asserting
+    # fallback_used=False as part of the check.
     ds_key = os.environ.get("DEEPSEEK_API_KEY", "")
     ant_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if ds_key or ant_key:
         try:
-            from eta_engine.brain.llm_provider import ModelTier, chat_completion
+            from eta_engine.brain.model_policy import TaskCategory
+            from eta_engine.brain.multi_model import route_and_execute
 
-            resp = chat_completion(
-                tier=ModelTier.HAIKU,
-                user_message="ping",
-                max_tokens=5,
+            resp = route_and_execute(
+                category=TaskCategory.TRIVIAL_LOOKUP,
+                user_message="Reply with one word: ping",
+                max_tokens=64,
+                max_cost_usd=0.001,  # daily ping should never cost more than 1/10 cent
             )
             report["checks"]["llm_live"] = {
-                "ok": True,
+                "ok": bool(resp.text.strip()) and not resp.fallback_used,
                 "tokens": resp.output_tokens,
                 "provider": resp.provider.value,
+                "fallback_used": resp.fallback_used,
+                "fallback_reason": resp.fallback_reason or None,
             }
         except Exception as exc:  # noqa: BLE001
-            report["checks"]["claude_live"] = {"ok": False, "error": str(exc)[:150]}
+            report["checks"]["llm_live"] = {"ok": False, "error": str(exc)[:150]}
 
     # Overall verdict
     all_ok = all(c.get("ok") for c in report["checks"].values())

@@ -225,12 +225,128 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ```
 eta_engine/
 ├── brain/
-│   ├── llm_provider.py      ← API path (DeepSeek + OpenAI/Anthropic native)
-│   ├── cli_provider.py      ← CLI path (Claude + Codex via subscription)
-│   ├── model_policy.py      ← TaskCategory → ForceProvider routing
-│   └── multi_model.py       ← orchestrator: route_and_execute, force_multiplier_chain
+│   ├── llm_provider.py             ← API path (DeepSeek + OpenAI/Anthropic native)
+│   ├── cli_provider.py             ← CLI path (Claude + Codex via subscription)
+│   ├── model_policy.py             ← TaskCategory → ForceProvider routing
+│   ├── multi_model.py              ← orchestrator: route_and_execute, chain
+│   └── multi_model_telemetry.py    ← JSONL audit log + summary aggregation
 ├── scripts/
-│   └── force_multiplier_health.py   ← health probe with --live mode
+│   ├── force_multiplier_health.py  ← health probe with --live, --json, --json-out
+│   ├── fm.py                       ← CLI: ask | chain | status | log
+│   ├── fm_cost_report.py           ← per-day spend rollup + breakdowns
+│   └── install_fm_health_task.ps1  ← Task Scheduler installer (every 4h)
+├── state/
+│   ├── force_multiplier_calls.jsonl  ← telemetry log (auto-created on first call)
+│   └── fm_health.json              ← scheduled probe snapshot (when task installed)
 └── docs/
-    └── FORCE_MULTIPLIER.md  ← this file
+    └── FORCE_MULTIPLIER.md         ← this file
 ```
+
+## Migrating a `chat_completion` call to `route_and_execute`
+
+The codebase still has direct `chat_completion()` calls predating the
+Force-Multiplier integration. Each one is a chance to pick up automatic
+telemetry, per-call budget enforcement, fallback semantics, and the
+correct provider for the task type — for free, with no behavior change
+on the happy path.
+
+### When to migrate
+
+**Always migrate** unless one of the exceptions below applies. The
+pattern is: route by task purpose, not by which model you happen to
+have configured. Examples already migrated:
+
+- [`brain/jarvis_v3/llm_narrative.py`](../brain/jarvis_v3/llm_narrative.py) — verdict-to-prose narrative
+- [`brain/jarvis_v3/sage/narrative.py`](../brain/jarvis_v3/sage/narrative.py) — sage report explanation
+- [`deploy/scripts/run_task.py::_task_self_test`](../deploy/scripts/run_task.py) — daily LLM health ping
+
+### When NOT to migrate (rare)
+
+Skip the migration and leave a `# NOTE` comment when:
+
+1. **The call deliberately targets a specific provider's caching/feature**
+   that the orchestrator would route around. Example:
+   `_task_prompt_warmup` in `run_task.py` populates the *Anthropic*
+   prompt cache — routing through `route_and_execute` with HAIKU tier
+   would send to DeepSeek, defeating the purpose.
+
+2. **The call is in a tight inner loop** (e.g. per-tick) where the
+   subprocess overhead of CLI providers would matter. Use
+   `force_provider=ForceProvider.DEEPSEEK` if you want the orchestrator's
+   safety nets but a guaranteed API path.
+
+3. **You explicitly need the raw `LLMResponse` shape** (e.g. inspecting
+   `reasoning_content` for thinking-model output). The orchestrator
+   wraps responses in `MultiModelResponse` which doesn't expose that.
+
+### The mechanical recipe
+
+**Before** (direct API call):
+```python
+from eta_engine.brain.llm_provider import ModelTier, chat_completion
+
+resp = chat_completion(
+    tier=ModelTier.HAIKU,
+    system_prompt=SYS,
+    user_message=prompt,
+    max_tokens=300,
+    temperature=0.5,
+)
+```
+
+**After** (Force-Multiplier orchestrator):
+```python
+from eta_engine.brain.model_policy import TaskCategory
+from eta_engine.brain.multi_model import route_and_execute
+
+resp = route_and_execute(
+    category=TaskCategory.DOC_WRITING,   # pick the category that matches
+    system_prompt=SYS,
+    user_message=prompt,
+    max_tokens=300,
+    temperature=0.5,
+    max_cost_usd=0.005,                  # hard ceiling — refuses runaway calls
+)
+```
+
+### Picking the right `TaskCategory`
+
+The category determines (a) which provider the call routes to and
+(b) which tier (model size) is used. Pick from:
+
+| Work type | Category | Routes to | Tier |
+|---|---|---|---|
+| Architecture / design / risk policy | `ARCHITECTURE_DECISION`, `RISK_POLICY_DESIGN`, `STATE_MACHINE_DESIGN` | CLAUDE | OPUS |
+| Red-team / adversarial review | `RED_TEAM_SCORING`, `ADVERSARIAL_REVIEW` | CLAUDE | OPUS |
+| Code review (pre-merge) | `CODE_REVIEW` | CLAUDE | SONNET |
+| Strategy / refactor / scaffold | `STRATEGY_EDIT`, `REFACTOR`, `SKELETON_SCAFFOLD` | DEEPSEEK | SONNET |
+| Narrative / docs / data pipeline | `DOC_WRITING`, `DATA_PIPELINE` | DEEPSEEK | SONNET |
+| Boilerplate / formatting / commits | `BOILERPLATE`, `FORMATTING`, `COMMIT_MESSAGE` | DEEPSEEK | HAIKU |
+| Log parsing / trivial lookups | `LOG_PARSING`, `TRIVIAL_LOOKUP`, `SIMPLE_EDIT` | DEEPSEEK | HAIKU |
+| Debugging (run-and-fix) | `DEBUG`, `TEST_EXECUTION` | CODEX | SONNET |
+| Security / computer-use | `SECURITY_AUDIT`, `COMPUTER_USE_TASK` | CODEX | SONNET |
+
+Don't agonize — pick the closest match. The wrong category at most
+sends the call to a sub-optimal provider; the response semantics are
+identical and the fallback chain catches everything.
+
+### Setting `max_cost_usd`
+
+Compute the worst case: `max_tokens × output_rate / 1_000_000`. For
+DeepSeek V4 Flash output ($0.28/1M), 1000 tokens = $0.00028. Pick a
+ceiling 10–50× the worst case as a guardrail against runaway loops.
+For the migrated `llm_narrative` example: 600 tokens worst case
+(verbose mode) × $0.28/1M = $0.000168, capped at $0.005 (≈30× margin).
+
+### Verifying the migration
+
+After migrating, confirm the call shows up in the telemetry log:
+
+```bash
+# Trigger your code path (run a test, fire a task, etc.) then:
+python -m eta_engine.scripts.fm log -n 5
+```
+
+You should see a row with the matching `category`, the expected
+`provider`, and `fallback_used=N`. If `fallback_used=Y`, the
+preferred provider was unavailable — check `fm status` to see why.

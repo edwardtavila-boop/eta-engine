@@ -6,9 +6,28 @@ Shared fixtures for the full test suite.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import time as _time
+
 import pytest
 
-from eta_engine.funnel.equity_monitor import BotEquity, PortfolioState
+# Python 3.14 + eventkit/ib_insync compat shim.
+# eventkit/util.py imports ``main_event_loop = asyncio.get_event_loop()`` at
+# MODULE LOAD time. In 3.14 ``get_event_loop()`` raises if there's no current
+# loop (the policy is being deprecated). Any test that transitively imports
+# ib_insync (which imports eventkit) crashes at collection time with:
+#   RuntimeError: There is no current event loop in thread 'MainThread'.
+# Pre-creating a loop here is sufficient — eventkit's module-level call
+# then succeeds, and the loop is available for any test that needs one.
+# This is a no-op on older Python versions where get_event_loop() is happy
+# to lazily create one.
+try:
+    asyncio.get_event_loop()
+except (RuntimeError, DeprecationWarning):
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+from eta_engine.funnel.equity_monitor import BotEquity, PortfolioState  # noqa: E402
 
 # Orphan test quarantine: these test files target modules that were
 # specified but never written. Collection is skipped so pytest stays
@@ -190,3 +209,37 @@ def sample_portfolio_state() -> PortfolioState:
         total_excess=7_500.0,
         total_pnl_today=275.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Windows SQLite file-locking teardown helper
+# ---------------------------------------------------------------------------
+# On Windows, SQLite WAL files can linger after a connection is closed,
+# causing PermissionError (WinError 32) during tmp_path cleanup.
+# This hook adds retry-with-backoff to handle the race.
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Retry cleanup of locked temp files on Windows."""
+    import os
+    import sys
+    if sys.platform != "win32":
+        return
+
+    temp_root = os.environ.get("TEMP") or os.environ.get("TMP")
+    if not temp_root:
+        return
+
+    patterns = [".db", ".db-wal", ".db-shm", ".sqlite"]
+    for _ in range(3):
+        try:
+            for root, _dirs, files in os.walk(temp_root, topdown=False):
+                for f in files:
+                    if any(f.endswith(p) for p in patterns):
+                        fp = os.path.join(root, f)
+                        with contextlib.suppress(OSError):
+                            os.remove(fp)
+            break
+        except OSError:
+            _time.sleep(0.5)

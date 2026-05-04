@@ -28,6 +28,7 @@ Stdlib + pydantic only.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 import math
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -208,3 +209,61 @@ def predict_batch(
 ) -> list[CalibratedVerdict]:
     sg = sigmoid or PlattSigmoid()
     return [calibrate_verdict(f, sg) for f in features]
+
+
+# ---------------------------------------------------------------------------
+# CalibratorRecorder — append-only label log for refit
+# ---------------------------------------------------------------------------
+#
+# feedback_loop.close_trade calls CalibratorRecorder.default().record_label(
+#   signal_id=, realized_r=, regime=, action=)
+# on every closed trade. Without this class the import raised
+# ImportError on every close (visible in trade_closes.jsonl as
+# layer_errors[calibrator: cannot import name 'CalibratorRecorder']).
+#
+# Records become the training set for fit_from_audit() — the offline
+# fit re-reads this JSONL to refresh the Platt sigmoid parameters.
+
+
+_DEFAULT_LABEL_LOG = (
+    Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\calibrator_labels.jsonl")
+)
+
+
+class CalibratorRecorder:
+    """Append-only JSONL log of (signal_id, realized_r, regime, action)
+    tuples that the offline calibrator fitter reads to refresh the
+    Platt sigmoid. One instance per file path."""
+
+    def __init__(self, path: Path | str = _DEFAULT_LABEL_LOG) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def default(cls) -> CalibratorRecorder:
+        return cls()
+
+    def record_label(
+        self,
+        *,
+        signal_id: str,
+        realized_r: float,
+        regime: str = "",
+        action: str = "",
+        outcome_key: str = "won",
+    ) -> None:
+        """Append one labeled outcome. ``won`` = 1 iff realized_r > 0."""
+        rec = {
+            "ts": datetime.now(UTC).isoformat(),
+            "signal_id": signal_id,
+            "realized_r": float(realized_r),
+            "regime": regime,
+            "action": action,
+            outcome_key: int(realized_r > 0),
+        }
+        try:
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, default=str) + "\n")
+        except OSError:
+            # best-effort: never break trade-close on telemetry failure
+            return

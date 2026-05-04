@@ -138,6 +138,49 @@ class DecisionJournal:
         # Local JSONL stays authoritative regardless of mirror state.
         self._supabase_mirror = supabase_mirror
 
+    @classmethod
+    def default(cls) -> DecisionJournal:
+        """Return the canonical project-wide journal.
+
+        feedback_loop.close_trade calls this; without the classmethod
+        the call raised AttributeError on every trade close (visible
+        in trade_closes.jsonl as layer_errors[decision_journal: type
+        object 'DecisionJournal' has no attribute 'default']).
+        """
+        return default_journal()
+
+    def append_post_trade(
+        self,
+        *,
+        signal_id: str,
+        realized_r: float,
+        metadata: dict | None = None,
+    ) -> JournalEvent:
+        """Convenience wrapper for post-trade reconciliation.
+
+        Constructs a JournalEvent with the canonical schema (actor,
+        intent, outcome, links). The feedback_loop calls this on
+        every close — without the wrapper it would have to know
+        the full JournalEvent constructor.
+        """
+        meta = dict(metadata or {})
+        # Outcome maps from realized_r sign: positive = EXECUTED win,
+        # negative = NOTED loss (the trade did execute, but we record
+        # the loss outcome category for downstream analysis).
+        outcome = Outcome.EXECUTED if realized_r >= 0 else Outcome.NOTED
+        evt = JournalEvent(
+            actor=Actor.TRADE_ENGINE,
+            intent=f"close_trade_{meta.get('action_taken', 'unknown')}",
+            rationale=(
+                f"realized_r={realized_r:+.4f} bot={meta.get('bot_id', '?')} "
+                f"regime={meta.get('regime', '?')}"
+            ),
+            outcome=outcome,
+            links=[f"signal:{signal_id}"],
+            metadata={**meta, "realized_r": realized_r},
+        )
+        return self.append(evt)
+
     # -- write ---------------------------------------------------------------
 
     def append(self, event: JournalEvent) -> JournalEvent:
