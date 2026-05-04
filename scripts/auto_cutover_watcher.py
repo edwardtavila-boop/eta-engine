@@ -38,6 +38,28 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+# Load eta_engine/.env so the watcher honors ETA_AUTO_CRYPTO_CUTOVER /
+# ETA_IBKR_MARKETDATA_TYPE / ... when invoked from Task Scheduler
+# (which doesn't inherit .env). The supervisor itself loads .env from
+# its own startup; the watcher needs the same.
+def _bootstrap_env() -> None:
+    env_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env")
+    if not env_path.exists():
+        return
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            os.environ.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+
+
+_bootstrap_env()
+
+
 def _query_crypto_permission() -> tuple[bool, dict[str, object]]:
     """Connect to TWS via dedicated clientId and read Cryptocurrency@USD.
     Returns (perms_active, summary_dict). perms_active=True iff > 0."""
