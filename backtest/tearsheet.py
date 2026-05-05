@@ -16,11 +16,17 @@ class TearsheetBuilder:
     """Render a BacktestResult as a markdown report."""
 
     @classmethod
-    def from_result(cls, result: BacktestResult) -> str:
+    def from_result(
+        cls,
+        result: BacktestResult,
+        *,
+        regime_state: dict[str, object] | None = None,
+    ) -> str:
         parts: list[str] = []
         parts.append(cls._headline(result))
         parts.append(cls._trade_distribution(result.trades))
         parts.append(cls._regime_breakdown(result.trades))
+        parts.append(cls._oos_regime_performance(result.trades, regime_state))
         parts.append(cls._exit_breakdown(result.trades))
         parts.append(cls._confluence_distribution(result.trades))
         parts.append(cls._drawdown_chart(result.trades, result.max_dd_pct))
@@ -104,6 +110,76 @@ class TearsheetBuilder:
             wr = (wins / n * 100.0) if n else 0.0
             lines.append(f"| {regime} | {n} | {wr:.1f}% | {avg_r:+.3f} | {sum_r:+.3f} |")
         return "\n".join(lines)
+
+    @classmethod
+    def _oos_regime_performance(
+        cls,
+        trades: list[Trade],
+        regime_state: dict[str, object] | None = None,
+    ) -> str:
+        if not trades:
+            return "## OOS Regime Performance\n\n_No OOS trades._"
+
+        groups: dict[str, list[Trade]] = {}
+        used_state_fallback = False
+        used_trade_labels = False
+        for t in trades:
+            if t.regime:
+                key = t.regime
+                used_trade_labels = True
+            else:
+                fallback = cls._regime_from_state_contract(t.symbol, regime_state)
+                key = fallback or "(unlabeled)"
+                used_state_fallback = used_state_fallback or fallback is not None
+            groups.setdefault(key, []).append(t)
+
+        if used_trade_labels:
+            source = "trade.regime labels"
+        elif used_state_fallback:
+            source = "`regime_state.json` contract fallback"
+        else:
+            source = "unlabeled trades"
+
+        lines = [
+            "## OOS Regime Performance",
+            "",
+            f"Regime source: {source}",
+            "",
+            "| Regime | OOS Trades | Win Rate | Avg R | Sum R |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for regime, group in sorted(groups.items()):
+            n = len(group)
+            wins = sum(1 for t in group if t.pnl_r > 0.0)
+            sum_r = sum(t.pnl_r for t in group)
+            avg_r = sum_r / n if n else 0.0
+            wr = (wins / n * 100.0) if n else 0.0
+            lines.append(f"| {regime} | {n} | {wr:.1f}% | {avg_r:+.3f} | {sum_r:+.3f} |")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _regime_from_state_contract(
+        symbol: str,
+        regime_state: dict[str, object] | None,
+    ) -> str | None:
+        if not regime_state:
+            return None
+        asset_regimes = regime_state.get("asset_regimes")
+        if isinstance(asset_regimes, dict):
+            sym = symbol.upper()
+            for raw_key, raw_entry in asset_regimes.items():
+                key = str(raw_key).upper()
+                if key != sym and not key.startswith(f"{sym}/"):
+                    continue
+                if not isinstance(raw_entry, dict):
+                    continue
+                regime = raw_entry.get("regime")
+                if isinstance(regime, str) and regime:
+                    return regime
+        global_regime = regime_state.get("global_regime")
+        if isinstance(global_regime, str) and global_regime:
+            return global_regime
+        return None
 
     @staticmethod
     def _exit_breakdown(trades: list[Trade]) -> str:
