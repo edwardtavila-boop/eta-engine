@@ -460,16 +460,22 @@ def nq_compression_preset() -> CompressionBreakoutConfig:
 
 
 def eth_compression_preset() -> CompressionBreakoutConfig:
-    """Calibrated for ETH 1h bars. DeepSeek-tuned 2026-05-02."""
+    """Calibrated for ETH 1h bars.
+
+    Reverted from 'DeepSeek-tuned' params (bb_period=30, rr=1.5) —
+    those were post-hoc overfit on the same window the strategy was
+    scored on. If those params are right, they need to survive
+    walk-forward OOS first.
+    """
     return CompressionBreakoutConfig(
-        bb_period=30, bb_std_mult=2.0,                # was 20 — longer BB reduces false breakouts
+        bb_period=20, bb_std_mult=2.0,
         bb_width_window=100, bb_width_max_percentile=0.35,
         atr_period=14, atr_ma_period=20,
         breakout_lookback=20,
         trend_ema_period=200, require_trend_alignment=True,
         volume_z_lookback=20, min_volume_z=0.4,
         min_close_location=0.65,
-        atr_stop_mult=1.0, rr_target=1.5,             # was 1.5/2.0 — lower stop+RR improves WR
+        atr_stop_mult=1.0, rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=12,
         max_trades_per_day=2,

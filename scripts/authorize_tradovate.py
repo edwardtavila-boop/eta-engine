@@ -30,6 +30,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import os
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -54,6 +56,39 @@ from eta_engine.venues.tradovate import (  # noqa: E402
     TRADOVATE_LIVE,
     TradovateVenue,
 )
+
+_LOG = logging.getLogger(__name__)
+
+
+def _truthy(raw: str | None) -> bool:
+    return str(raw or "").strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+# Replicated from ``eta_engine.venues.connection._secret``. Importing that
+# helper would pull in the full venues.connection module (BybitVenue,
+# IbkrClientPortalVenue, OkxVenue, TastytradeVenue, TradovateVenue, router
+# constants...) just to get a 12-line gate, which inflates this script's
+# import surface and creates a scripts -> venues.connection dependency that
+# the rest of scripts/ does not have. Keep behavior identical: fail-closed
+# when ETA_LIVE_MODE=1 and the secret is empty; warn-and-fall-through
+# otherwise so dev/test runs still get the empty-string fallback with a
+# paper trail in the logs.
+def _secret(key: str) -> str:
+    """Resolve a broker secret with fail-closed live-mode enforcement."""
+    value = SECRETS.get(key, required=False) or ""
+    if not value:
+        live_mode = _truthy(os.environ.get("ETA_LIVE_MODE"))
+        if live_mode:
+            raise RuntimeError(
+                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; "
+                "refusing to silently fall through to mock"
+            )
+        _LOG.warning(
+            "broker secret missing for %s; falling through to mock adapter "
+            "(set ETA_LIVE_MODE=1 to fail closed)",
+            key,
+        )
+    return value
 
 ROOT = _ROOT
 STATUS_PATH = ROOT / "docs" / "tradovate_auth_status.json"
@@ -98,6 +133,13 @@ def _last4(s: str | None) -> str:
 
 
 async def _run(demo: bool) -> tuple[int, AuthReport]:
+    # Workspace hard rule #2: Tradovate is dormant unless explicitly reactivated.
+    if not _truthy(os.environ.get("ETA_TRADOVATE_ENABLED")):
+        raise RuntimeError(
+            "Tradovate is dormant per workspace policy; "
+            "set ETA_TRADOVATE_ENABLED=1 to activate"
+        )
+
     report = _build_report()
     report.demo = demo
     report.endpoint = TRADOVATE_DEMO if demo else TRADOVATE_LIVE
@@ -120,11 +162,11 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
         return 2, report
 
     # Real auth path — creds are present.
-    username = SECRETS.get(TRADOVATE_USERNAME) or ""
-    password = SECRETS.get(TRADOVATE_PASSWORD) or ""
-    app_id = SECRETS.get(TRADOVATE_APP_ID) or "EtaEngine"
-    cid = SECRETS.get(TRADOVATE_CID) or ""
-    app_secret = SECRETS.get(TRADOVATE_APP_SECRET) or ""
+    username = _secret(TRADOVATE_USERNAME)
+    password = _secret(TRADOVATE_PASSWORD)
+    app_id = _secret(TRADOVATE_APP_ID) or "EtaEngine"
+    cid = _secret(TRADOVATE_CID)
+    app_secret = _secret(TRADOVATE_APP_SECRET)
     venue = TradovateVenue(
         api_key=username,
         api_secret=password,

@@ -62,6 +62,12 @@ from eta_engine.brain.avengers.deepseek_steward import DeepSeekSteward
 from eta_engine.brain.avengers.robin import Robin
 from eta_engine.brain.model_policy import COST_RATIO, ModelTier, tier_for
 
+try:
+    from eta_engine.brain.multi_model_executor import MultiModelExecutor
+    _HAS_MULTIMODEL = True
+except ImportError:
+    _HAS_MULTIMODEL = False
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
@@ -127,8 +133,15 @@ class Fleet:
         executor: Executor | None = None,
         journal_path: Path | None = None,
         deepseek_personas: bool = False,
+        multimodel: bool = False,
     ) -> None:
-        exe = executor or DryRunExecutor()
+        # When multimodel=True, automatically enable DeepSeek personas and
+        # inject MultiModelExecutor (routes each task to best provider).
+        if multimodel and _HAS_MULTIMODEL:
+            deepseek_personas = True
+            exe = MultiModelExecutor()
+        else:
+            exe = executor or DryRunExecutor()
         path = journal_path or AVENGERS_JOURNAL
         self._admin = admin
         self._journal_path = path

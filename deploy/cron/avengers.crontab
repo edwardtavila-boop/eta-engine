@@ -57,6 +57,12 @@ ETA_ROOT=__INSTALL_DIR__
 
 # --------- SAGE support --------------------------------------------------------
 # Every 5 min -- warm on-chain data cache (BTC/ETH) so crypto bots never wait
-*/5 * * * * cd $ETA_ROOT && ./.venv/bin/python -m eta_engine.scripts.sage_onchain_warm >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+*/5 * * * * cd $ETA_ROOT && ./.venv/bin/python -m eta_engine.scripts.sage_onchain_warm >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers # SAGE_ONCHAIN_WARM
 # Daily 23:15 -- sage school health check + alert dispatch
-15 23 * * * cd $ETA_ROOT && ./.venv/bin/python -m eta_engine.scripts.sage_health_check --json-out state/sage/last_health_report.json >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+15 23 * * * cd $ETA_ROOT && ./.venv/bin/python -m eta_engine.scripts.sage_health_check --json-out state/sage/last_health_report.json >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers # SAGE_HEALTH_CHECK
+# Daily 02:00 -- sage backtest replay closed trades through sage school
+0 2 * * * cd $ETA_ROOT && ./.venv/bin/python -m deploy.scripts.run_task SAGE_BACKTEST >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Every 2 hours -- feed closed fills into EdgeTracker for continuous edge learning
+30 */2 * * * cd $ETA_ROOT && ./.venv/bin/python -m deploy.scripts.run_task SAGE_EDGE_LEARN >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers
+# Every 15 min -- compute firm benchmark scorecard
+*/15 * * * * cd $ETA_ROOT && ./.venv/bin/python -m deploy.scripts.run_task FIRM_SCORECARD >> $HOME/.local/log/eta_engine/cron.log 2>&1 # eta-engine:avengers

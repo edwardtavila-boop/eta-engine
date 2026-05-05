@@ -59,8 +59,12 @@ class RSIMeanReversionConfig:
     bb_std_mult: float = 2.0
 
     adx_period: int = 14
-    adx_max: float = 30.0
-    enable_adx_filter: bool = False
+    adx_max: float = 25.0
+    # Default ON.  Mean-reversion in trending regimes is the textbook way
+    # to bleed; the ADX filter (already implemented at line ~244) protects
+    # the strategy from firing into trend days.  Flipping the default is
+    # the single highest-leverage one-line change in the MR stack.
+    enable_adx_filter: bool = True
 
     volume_z_lookback: int = 20
     min_volume_z: float = 0.3
@@ -78,7 +82,11 @@ class RSIMeanReversionConfig:
     allow_long: bool = True
     allow_short: bool = True
 
-    session_filter: str = "afternoon"
+    # Session filter — defaults to "off" so 24/7 ticker trading and
+    # Globex futures both work without restriction.  Operators may
+    # opt in to "afternoon" (08:00-16:00 ET — currently UTC-naive,
+    # see same caveat as VWAP MR).  Other modes can be added.
+    session_filter: str = "off"
 
 
 class RSIMeanReversionStrategy:

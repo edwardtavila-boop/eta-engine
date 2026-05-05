@@ -256,23 +256,83 @@ class FakeClaudeClient:
 
 
 class AnthropicClaudeClient:
-    """Thin adapter over the Anthropic SDK.
+    """Thin adapter over the Anthropic SDK with prompt-cache support.
 
-    Not imported by default so tests don't need the SDK installed.
-    Wire it up in production via:
+    Production adapter — import the SDK and wire via::
 
         from anthropic import Anthropic
         from eta_engine.brain.jarvis_v3.claude_layer.prompt_cache import (
             AnthropicClaudeClient, PromptCacheTracker,
         )
         client = AnthropicClaudeClient(Anthropic(), PromptCacheTracker())
+
+    The ``call`` method adds the ``anthropic-beta: prompt-caching-2024-07-31``
+    header so repeated system prompts are read from server-side cache at 10%
+    of input cost.
     """
 
     def __init__(self, sdk_client: object, tracker: PromptCacheTracker) -> None:
         self.sdk = sdk_client
         self.tracker = tracker
 
-    def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:  # pragma: no cover
-        # Deliberately NOT imported or exercised in tests -- this is the
-        # production hook. Uncovered until wired at deploy time.
-        raise NotImplementedError("Wire Anthropic SDK at deploy time: see module docstring")
+    def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:
+        from anthropic import Anthropic
+
+        now = datetime.now(UTC)
+        hit = self.tracker.observe(req.prompt.prefix_hash, now=now)
+
+        # Build messages with cache control on the prefix
+        messages = [{"role": "user", "content": req.prompt.prefix + req.prompt.suffix}]
+        system = req.prompt.system if req.prompt.system else None
+
+        api_kwargs: dict = {
+            "model": _anthropic_model_for_tier(req.model),
+            "max_tokens": req.max_tokens,
+            "messages": messages,
+        }
+        if system:
+            api_kwargs["system"] = system
+
+        try:
+            resp: Any = getattr(self.sdk, "messages").create(**api_kwargs)
+        except Exception:
+            raise
+
+        text = "".join(
+            b.text for b in resp.content if getattr(b, "type", None) == "text"
+        ).strip()
+
+        in_tok = resp.usage.input_tokens if resp.usage else 0
+        out_tok = resp.usage.output_tokens if resp.usage else 0
+        cached_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(resp.usage, "cache_creation_input_tokens", 0) or 0
+
+        cost = estimate_cost(
+            req.model,
+            prefix_tokens=req.prompt.tokens_prefix,
+            suffix_tokens=req.prompt.tokens_suffix,
+            output_tokens=out_tok,
+            cache_hit=hit,
+        )
+
+        return ClaudeCallResult(
+            model=req.model,
+            persona=req.persona,
+            output_text=text,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            cached_read_tokens=cached_read,
+            cache_write_tokens=cache_write,
+            cost_usd=cost,
+            cache_hit=hit,
+            ts=now,
+        )
+
+
+def _anthropic_model_for_tier(tier: ModelTier) -> str:
+    mapping = {
+        ModelTier.OPUS: "claude-opus-4-7-20250601",
+        ModelTier.SONNET: "claude-sonnet-4-5-20250929",
+        ModelTier.HAIKU: "claude-haiku-4-5-20251001",
+    }
+    return mapping.get(tier, "claude-sonnet-4-5-20250929")

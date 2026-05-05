@@ -81,7 +81,7 @@ class MtfScalpConfig:
 
     # HTF (15m) layer
     htf_bars_per_aggregate: int = 15  # 1m → 15m
-    htf_ema_period: int = 200         # in HTF bars
+    htf_ema_period: int = 100         # in HTF bars (EMA-100 captures ~95% of EMA-200 smoothing in half the time)
     htf_atr_period: int = 14          # in HTF bars
     # ATR percent of close: skip when too quiet (chop) or too loud (panic)
     htf_atr_pct_min: float = 0.05     # 0.05% of close
@@ -98,11 +98,13 @@ class MtfScalpConfig:
     # Hygiene
     min_bars_between_trades: int = 30   # 30 1m bars = 30 min cooldown
     max_trades_per_day: int = 6
-    warmup_bars: int = 3000             # = htf_ema_period * htf_bars_per_aggregate
+    warmup_bars: int = 1500             # = htf_ema_period (100) * htf_bars_per_aggregate (15)
 
-    # Session window (RTH only by default)
-    rth_open_local: time = time(9, 30)
-    rth_close_local: time = time(15, 55)
+    # Session window — defaults to PERMISSIVE (full day) so 24/7 ticker
+    # trading and Globex futures both work.  Operators may opt in to
+    # RTH-only by setting rth_open_local=time(9,30), rth_close_local=time(15,55).
+    rth_open_local: time = time(0, 0)
+    rth_close_local: time = time(23, 59)
     timezone_name: str = "America/New_York"
 
     # Allow shorts? Default: both directions
@@ -130,11 +132,14 @@ class MtfScalpStrategy:
         )
         # LTF state
         self._ltf_ema: float | None = None
+        # +1 because _ltf_recent_break does [:-1] to strip the current bar;
+        # without the +1 we'd compare against only N-1 prior bars instead
+        # of the configured N. The deque caps growth so memory is unaffected.
         self._ltf_recent_highs: deque[float] = deque(
-            maxlen=self.cfg.ltf_recent_high_lookback,
+            maxlen=self.cfg.ltf_recent_high_lookback + 1,
         )
         self._ltf_recent_lows: deque[float] = deque(
-            maxlen=self.cfg.ltf_recent_high_lookback,
+            maxlen=self.cfg.ltf_recent_high_lookback + 1,
         )
         self._bars_seen: int = 0
         self._last_entry_idx: int | None = None

@@ -59,6 +59,7 @@ class StrategyId(StrEnum):
     REGISTRY_SWEEP_RECLAIM = "registry_sweep_reclaim"
     REGISTRY_REGIME_GATED = "registry_regime_gated"
     REGISTRY_MTF_SCALP = "registry_mtf_scalp"
+    REGISTRY_ANCHOR_SWEEP = "registry_anchor_sweep"
 
 
 # ---------------------------------------------------------------------------

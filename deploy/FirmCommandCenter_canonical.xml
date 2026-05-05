@@ -1,0 +1,12 @@
+<service>
+  <id>FirmCommandCenter</id>
+  <name>FirmCommandCenter</name>
+  <description>ETA Command Center</description>
+  <executable>C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe</executable>
+  <arguments>-m uvicorn command_center.server.app:app --host 127.0.0.1 --port 8421</arguments>
+  <workingdirectory>C:\EvolutionaryTradingAlgo\firm\eta_engine</workingdirectory>
+  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo\firm\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src;C:\EvolutionaryTradingAlgo"/>
+  <logpath>C:\EvolutionaryTradingAlgo\var\logs</logpath>
+  <log mode="roll"/>
+  <onfailure action="restart" delay="10 sec"/>
+</service>

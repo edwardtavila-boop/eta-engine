@@ -55,6 +55,7 @@ points only.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -110,6 +111,7 @@ class FundingDivergenceStrategy:
         self._n_funding_extreme_seen: int = 0
         self._n_entries_fired: int = 0
         self._n_directional_vetoes: int = 0
+        self._n_provider_nan: int = 0
 
     # -- provider plumbing --------------------------------------------------
 
@@ -132,6 +134,7 @@ class FundingDivergenceStrategy:
             "funding_extreme_seen": self._n_funding_extreme_seen,
             "entries_fired": self._n_entries_fired,
             "directional_vetoes": self._n_directional_vetoes,
+            "provider_nan": self._n_provider_nan,
         }
 
     # -- main entry point ---------------------------------------------------
@@ -168,6 +171,11 @@ class FundingDivergenceStrategy:
         try:
             funding = float(self._funding_provider(bar))
         except (TypeError, ValueError):
+            return None
+        # Provider returns NaN when the underlying CSV reading is older
+        # than max_age_hours — abstain to avoid trading on stale data.
+        if math.isnan(funding):
+            self._n_provider_nan += 1
             return None
 
         # Direction by funding sign + extremeness

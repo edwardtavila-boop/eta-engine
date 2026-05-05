@@ -93,7 +93,12 @@ class ORBConfig:
     flatten_at_local: time = time(15, 55)  # exit any open trade by 15:55 ET
 
     # Entry filters
-    min_range_pts: float = 0.0  # 0 = disabled; >0 = min OR width in points
+    # 5 MNQ points = ~$10 = a reasonable "non-chop" threshold. Skips dead-tape
+    # days where the opening range is microscopic and follow-through is
+    # impossible. NOTE: This default is MNQ-scaled — presets for other
+    # instruments (ES, CL, GC, 6E, BTC, etc.) MUST override with their own
+    # tick-size-appropriate value. 0 = disabled.
+    min_range_pts: float = 5.0
     ema_bias_period: int = 200  # 0 = disabled; otherwise require price-EMA alignment
     volume_mult: float = 1.0  # breakout-bar vol >= mult × recent avg
     volume_lookback: int = 20  # bars for the volume average

@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import abc
+import json
+import logging
+import os
 from collections import deque
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+#: Canonical workspace state root (workspace hard rule: everything writes
+#: under ``C:\EvolutionaryTradingAlgo``). The bot-position files live at
+#: ``<state_root>/bots/<bot_name>/positions.json`` so the position
+#: reconciler can glob them in one pass.
+DEFAULT_BOT_STATE_ROOT: Path = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
 
 #: Default rolling sage-bar buffer length. Sage's MarketContext needs
 #: at least 30 bars; we keep 200 by default so the multi-timeframe
@@ -543,12 +553,144 @@ class BaseBot(abc.ABC):
     @abc.abstractmethod
     def evaluate_exit(self, position: Position) -> bool: ...
 
+    # --- Position persistence (Tier-1 #2, 2026-05-04) ---------------
+    # ``state.open_positions`` lives only in memory until the bot writes
+    # it to disk here. The position reconciler (``obs/position_reconciler``)
+    # globs ``<state_root>/bots/*/positions.json`` to detect bot-vs-broker
+    # drift; if no bot has written, reconciliation cannot run. Hook into
+    # the universal fill path (``update_state``) and the graceful-shutdown
+    # path so every state mutation is followed by a snapshot.
+
+    def _positions_path(self, state_root: Path | None = None) -> Path:
+        """Return the canonical ``positions.json`` path for this bot."""
+        root = Path(state_root) if state_root is not None else DEFAULT_BOT_STATE_ROOT
+        return root / "bots" / self.config.name / "positions.json"
+
+    def persist_positions(self, state_root: Path | None = None) -> Path:
+        """Write ``self.state.open_positions`` to disk atomically.
+
+        Called from :meth:`update_state` after every fill and from
+        graceful shutdown hooks. The on-disk shape is::
+
+            {
+              "bot_name": str,
+              "ts": ISO8601 UTC,
+              "positions": [{
+                  "symbol": str,
+                  "qty": float,        # signed: + long, - short
+                  "avg_price": float,  # entry_price from Position
+                  "side": str,         # "long" or "short"
+                  "size": float,       # absolute size from Position
+                  "opened_at": ISO8601 UTC,
+                  "unrealized_pnl": float,
+              }, ...]
+            }
+
+        Returns the path written. Atomic via temp-file + ``os.replace``;
+        a crash mid-write leaves the previous file intact.
+
+        Test-mode disable: set ``ETA_BOT_PERSIST_DISABLED=1`` in the
+        environment to short-circuit this method silently. The pytest
+        suite auto-sets this via a session-scoped fixture so that
+        ``record_fill``/``update_state`` calls in tests do not write
+        ``positions.json`` into the real workspace state dir.
+        """
+        if os.environ.get("ETA_BOT_PERSIST_DISABLED") == "1":
+            # Silent no-op: the disable flag is checked first so callers
+            # in tests never touch the filesystem. Returns the canonical
+            # path for callers that store/log it, but writes nothing.
+            return self._positions_path(state_root)
+        path = self._positions_path(state_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        positions_payload: list[dict[str, Any]] = []
+        for pos in self.state.open_positions:
+            side = (pos.side or "").lower()
+            signed_qty = pos.size if side in {"long", "buy"} else -pos.size
+            positions_payload.append({
+                "symbol": pos.symbol,
+                "qty": float(signed_qty),
+                "avg_price": float(pos.entry_price),
+                "side": pos.side,
+                "size": float(pos.size),
+                "opened_at": pos.opened_at.isoformat(),
+                "unrealized_pnl": float(pos.unrealized_pnl),
+            })
+        payload = {
+            "bot_name": self.config.name,
+            "ts": datetime.now(UTC).isoformat(),
+            "positions": positions_payload,
+        }
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            os.replace(tmp_path, path)
+        except OSError:
+            # Best-effort cleanup of the temp file so we don't litter
+            # the state dir if the rename failed (e.g. cross-device).
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:  # noqa: PERF203
+                pass
+            raise
+        logging.getLogger(__name__).info(
+            "persisted %d open position(s) for bot=%s -> %s",
+            len(positions_payload), self.config.name, path,
+        )
+        return path
+
+    def load_positions(self, state_root: Path | None = None) -> list[Position]:
+        """Load this bot's persisted positions back into ``Position`` objects.
+
+        Returns an empty list when the file is missing -- distinguishing
+        "no file" from "no positions" is the reconciler's job, not the
+        bot's. Corrupt JSON raises; the bot is allowed to crash on first
+        boot if its own state file is broken (operators want loud signal).
+        """
+        path = self._positions_path(state_root)
+        if not path.exists():
+            return []
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        out: list[Position] = []
+        for entry in raw.get("positions", []) or []:
+            try:
+                opened_at_raw = entry.get("opened_at")
+                opened_at = (
+                    datetime.fromisoformat(opened_at_raw)
+                    if opened_at_raw
+                    else datetime.now(UTC)
+                )
+                out.append(Position(
+                    symbol=str(entry["symbol"]),
+                    side=str(entry.get("side") or ("long" if float(entry.get("qty", 0.0)) >= 0 else "short")),
+                    entry_price=float(entry.get("avg_price", 0.0)),
+                    size=float(entry.get("size", abs(float(entry.get("qty", 0.0))))),
+                    unrealized_pnl=float(entry.get("unrealized_pnl", 0.0)),
+                    opened_at=opened_at,
+                ))
+            except (KeyError, TypeError, ValueError) as exc:
+                logging.getLogger(__name__).warning(
+                    "skipping malformed position entry for bot=%s: %s",
+                    self.config.name, exc,
+                )
+        return out
+
     def update_state(self, fill: Fill) -> None:
         self.state.equity += fill.realized_pnl - fill.fee
         self.state.todays_pnl += fill.realized_pnl - fill.fee
         self.state.trades_today += 1
         if self.state.equity > self.state.peak_equity:
             self.state.peak_equity = self.state.equity
+        # Tier-1 #2 (2026-05-04): persist open positions after every
+        # fill so the position reconciler has a fresh on-disk view. Best-
+        # effort: any persistence failure is logged but never crashes
+        # the trading loop.
+        try:
+            self.persist_positions()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                "persist_positions failed (non-fatal): %s", exc,
+            )
 
     def check_risk(self) -> bool:
         """Return True if trading is permitted, False to halt."""

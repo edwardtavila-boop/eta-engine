@@ -44,6 +44,7 @@ funding_divergence_strategy — BTCFUND_8h CSV reader).
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -86,6 +87,9 @@ class FundingRateStrategy:
         self.cfg = config or FundingRateStrategyConfig()
         self._funding_provider: Callable[[BarData], float] | None = None
         self._funding_signs: deque[int] = deque(maxlen=self.cfg.persistence_lookback + 5)
+        # Track last funding VALUE so we only push to _funding_signs on a
+        # cycle change (every ~8h on Binance perps), not on every bar.
+        self._last_funding_value: float | None = None
         self._ema: float | None = None
         self._volume_window: deque[float] = deque(maxlen=self.cfg.volume_z_lookback)
         self._bars_seen: int = 0
@@ -97,6 +101,7 @@ class FundingRateStrategy:
         self._n_vol_reject: int = 0
         self._n_trend_veto: int = 0
         self._n_fired: int = 0
+        self._n_provider_nan: int = 0
 
     @property
     def stats(self) -> dict[str, int]:
@@ -107,6 +112,7 @@ class FundingRateStrategy:
             "vol_rejects": self._n_vol_reject,
             "trend_vetoes": self._n_trend_veto,
             "entries_fired": self._n_fired,
+            "provider_nan": self._n_provider_nan,
         }
 
     def attach_funding_provider(
@@ -171,9 +177,30 @@ class FundingRateStrategy:
         if self._funding_provider is not None:
             try:
                 funding = float(self._funding_provider(bar))
-                self._funding_signs.append(1 if funding > 0 else (-1 if funding < 0 else 0))
             except (TypeError, ValueError):
-                pass
+                funding = math.nan
+            # Provider returns NaN when CSV reading is stale — skip the
+            # update so we don't poison _last_funding_value (NaN
+            # comparisons silently return False forever after).
+            if math.isnan(funding):
+                self._n_provider_nan += 1
+            else:
+                # FIX: only push to _funding_signs when the funding VALUE
+                # changes (every ~8h cycle), not on every bar.  The legacy
+                # code appended on every 5m / 1h bar — so "6 of last 6
+                # cycles persistent" was actually "6 of last 6 bars sampled
+                # the same stale 8h funding value", which was trivially
+                # always satisfied and rendered persistence_threshold a
+                # no-op.  This fix makes persistence_lookback=6 mean what
+                # it claims (6 funding cycles, ~48h on Binance perps).
+                if (
+                    self._last_funding_value is None
+                    or abs(funding - self._last_funding_value) > 1e-12
+                ):
+                    self._funding_signs.append(
+                        1 if funding > 0 else (-1 if funding < 0 else 0),
+                    )
+                    self._last_funding_value = funding
 
         if self._bars_seen < self.cfg.warmup_bars:
             return None

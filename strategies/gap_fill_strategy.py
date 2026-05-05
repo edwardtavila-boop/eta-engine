@@ -51,7 +51,14 @@ if TYPE_CHECKING:
 class GapFillConfig:
     gap_threshold_atr_mult: float = 0.5
     fill_max_bars: int = 24
+    # Gap-size BAND, not just floor.
+    # Empirical literature: small gaps (<0.3 ATR) are noise, mid-band
+    # (0.3-1.0 ATR) fade ~65-70% same-session, large gaps (>1.0 ATR) are
+    # news-driven and TREND, not fade.  The legacy strategy had a floor
+    # only — every news-day gap above 1 ATR became a fade entry against
+    # the trend.  Adding the upper bound kills the worst-loss subset.
     gap_min_atr_mult: float = 0.3
+    gap_max_atr_mult: float = 1.0
 
     volume_z_lookback: int = 20
     min_volume_z: float = 0.3

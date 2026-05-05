@@ -81,6 +81,19 @@ class HtfRegimeClassifierConfig:
     # ("neutral", "volatile", "skip") to fail-closed.
     warmup_bars: int = 220
 
+    # ── Asymmetric hysteresis (anti-thrash) ──
+    # Symmetric thresholds cause mode flicker on every bar near the
+    # cutoff. When ALREADY in trend mode, apply a TIGHTER exit
+    # threshold so the regime sticks: easier to STAY in trend than
+    # to ENTER it.
+    #
+    # Defaults: slope must drop below 0.66 * slope_threshold_pct AND
+    # ATR must rise above 1.5 * range_atr_pct_max before we leave
+    # trend mode. Set to None to fall back to symmetric (legacy)
+    # behaviour and use the entry thresholds.
+    slope_threshold_exit: float | None = None
+    atr_pct_max_exit: float | None = None
+
 
 @dataclass
 class HtfRegimeClassification:
@@ -121,6 +134,22 @@ class HtfRegimeClassifier:
         self._bars_seen: int = 0
         self._fast_alpha = 2.0 / (self.cfg.fast_ema + 1)
         self._slow_alpha = 2.0 / (self.cfg.slow_ema + 1)
+        # Track current mode for asymmetric hysteresis. We use the
+        # trending-vs-not boolean (not the full mode string) since
+        # only trend entry/exit needs the hysteresis treatment.
+        self._currently_trending: bool = False
+        # Resolved exit thresholds (None → tighter defaults derived
+        # from entry thresholds when currently in trend).
+        self._slope_exit = (
+            self.cfg.slope_threshold_exit
+            if self.cfg.slope_threshold_exit is not None
+            else 0.66 * self.cfg.slope_threshold_pct
+        )
+        self._atr_exit = (
+            self.cfg.atr_pct_max_exit
+            if self.cfg.atr_pct_max_exit is not None
+            else 1.5 * self.cfg.range_atr_pct_max
+        )
 
     def update(self, bar: BarData) -> None:
         """Advance state by one bar. Always call this before classify()."""
@@ -184,23 +213,39 @@ class HtfRegimeClassifier:
             atr_pct = atr / max(bar.close, 1e-9) * 100.0
 
         # ── Bias ──
+        # Asymmetric hysteresis: when CURRENTLY in trend mode, use
+        # the looser exit thresholds (i.e. easier to STAY in trend
+        # than to ENTER it). Prevents mode-thrash near the threshold.
+        slope_thresh = (
+            self._slope_exit
+            if self._currently_trending
+            else self.cfg.slope_threshold_pct
+        )
         if (
             distance_pct > 0
-            and slope_pct > self.cfg.slope_threshold_pct
+            and slope_pct > slope_thresh
         ):
             bias = "long"
         elif (
             distance_pct < 0
-            and slope_pct < -self.cfg.slope_threshold_pct
+            and slope_pct < -slope_thresh
         ):
             bias = "short"
         else:
             bias = "neutral"
 
         # ── Regime ──
+        # Same hysteresis principle: when in trend mode, allow more
+        # ATR before flipping to volatile (i.e. require atr_pct to
+        # exceed atr_pct_max_exit, not just range_atr_pct_max).
+        atr_thresh = (
+            self._atr_exit
+            if self._currently_trending
+            else self.cfg.range_atr_pct_max
+        )
         if abs(distance_pct) > self.cfg.trend_distance_pct:
             regime = "trending"
-        elif atr_pct < self.cfg.range_atr_pct_max:
+        elif atr_pct < atr_thresh:
             regime = "ranging"
         else:
             regime = "volatile"
@@ -212,6 +257,10 @@ class HtfRegimeClassifier:
             mode = "trend_follow"
         else:  # ranging
             mode = "mean_revert"
+
+        # Update hysteresis state — track whether we're currently in
+        # a trending regime so the next bar uses the right thresholds.
+        self._currently_trending = (regime == "trending")
 
         return HtfRegimeClassification(
             bias=bias, regime=regime, mode=mode,

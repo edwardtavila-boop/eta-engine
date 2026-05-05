@@ -37,6 +37,7 @@ filter is a no-op. This keeps the strategy data-pipeline-agnostic.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -120,6 +121,15 @@ class MacroConfluenceConfig:
     # identically to ``min_lth_score > 0``.
     require_onchain_alignment: bool = False
 
+    # ── Fail-closed safety (live-trading default) ──
+    # When a filter is ENABLED but its provider is missing or raises,
+    # should the filter PASS (fail-open, masks broken pipelines and
+    # produces "winning" backtests on data that wasn't there) or FAIL
+    # (fail-closed, vetoes the trade until the provider is fixed).
+    # Default ON for live safety. Set to False to restore legacy
+    # fail-open behaviour for back-compat with old tests.
+    fail_closed: bool = True
+
 
 @dataclass(frozen=True)
 class CryptoMacroConfluenceConfig:
@@ -167,6 +177,7 @@ class CryptoMacroConfluenceStrategy:
         self.cfg = config or CryptoMacroConfluenceConfig()
         self._base = CryptoRegimeTrendStrategy(self.cfg.base)
         self._htf_ema: float | None = None
+        self._prev_htf_ema: float | None = None
         self._atr_history: list[float] = []
         # Filter providers — attach via setters before running
         self._eth_provider: Callable[[BarData], float] | None = None
@@ -178,6 +189,18 @@ class CryptoMacroConfluenceStrategy:
         # Track per-bar state so filters can read what the wrapper
         # already computed
         self._last_bar_atr: float | None = None
+        # Audit counter: how many times an enabled filter encountered
+        # a missing provider. When fail_closed=True these are
+        # converted to vetoes; the counter surfaces the gap so the
+        # operator can see broken pipelines instead of silently
+        # passing through "missing data == filter passed".
+        self._n_provider_missing: int = 0
+        # Audit counter: how many times an enabled filter encountered
+        # a NaN reading from the provider (stale-data sentinel from
+        # macro_confluence_providers). Treated as fail-closed: the
+        # filter vetoes the trade rather than letting NaN comparisons
+        # silently bypass the gate.
+        self._n_provider_nan: int = 0
 
     # -- provider attachment --------------------------------------------------
 
@@ -220,11 +243,15 @@ class CryptoMacroConfluenceStrategy:
         equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
+        # snapshot prior bar's EMA — see same-bar self-reference fix
+        prev_htf_ema = self._htf_ema
         # Update HTF EMA before delegating (filter A needs it)
         if self.cfg.filters.htf_ema_period > 0:
             self._htf_ema = _ema_step(
                 self._htf_ema, bar.close, self.cfg.filters.htf_ema_period,
             )
+        # Stash the prior-bar EMA for the HTF filter to read
+        self._prev_htf_ema = prev_htf_ema
 
         # Track ATR history for the volatility-regime filter
         if self.cfg.filters.vol_band_lookback > 0:
@@ -279,15 +306,18 @@ class CryptoMacroConfluenceStrategy:
 
     def _filter_htf_alignment(self, opened: _Open) -> bool:
         """Variant A. Long requires close > htf_ema AND base regime ≥;
-        short requires close < htf_ema AND base regime ≤."""
+        short requires close < htf_ema AND base regime ≤.
+
+        Uses the prior-bar EMA snapshot to avoid same-bar self-reference.
+        """
         if self.cfg.filters.htf_ema_period <= 0:
             return True
-        if self._htf_ema is None:
+        if self._prev_htf_ema is None:
             return True  # warmup — fail-open
         close = opened.entry_price
         if opened.side == "BUY":
-            return close > self._htf_ema
-        return close < self._htf_ema
+            return close > self._prev_htf_ema
+        return close < self._prev_htf_ema
 
     def _filter_time_of_day(self, bar: BarData) -> bool:
         """Variant B. Only fire when bar's UTC hour is in allow set."""
@@ -333,11 +363,20 @@ class CryptoMacroConfluenceStrategy:
         if self.cfg.filters.extreme_funding_threshold <= 0.0:
             return True
         if self._funding_provider is None:
-            return True  # filter requested but no data — fail-open
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
         try:
             funding = self._funding_provider(bar)
         except Exception:  # noqa: BLE001
-            return True
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
+        # NaN signals a stale provider reading — fail-closed (veto).
+        # Without this guard, NaN comparisons silently return False
+        # and the function would return True (PASS), bypassing the
+        # extreme-funding safety filter.
+        if math.isnan(funding):
+            self._n_provider_nan += 1
+            return not self.cfg.filters.fail_closed
         # If funding is extremely positive (longs paying shorts), longs
         # are crowded → block new longs. Mirror for shorts.
         threshold = self.cfg.filters.extreme_funding_threshold
@@ -350,11 +389,17 @@ class CryptoMacroConfluenceStrategy:
         if self.cfg.filters.min_macro_score <= 0.0:
             return True
         if self._macro_provider is None:
-            return True  # fail-open
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
         try:
             score = self._macro_provider(bar)
         except Exception:  # noqa: BLE001
-            return True
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
+        # NaN = stale provider reading; fail-closed.
+        if math.isnan(score):
+            self._n_provider_nan += 1
+            return not self.cfg.filters.fail_closed
         if opened.side == "BUY":
             return score >= self.cfg.filters.min_macro_score
         return score <= -self.cfg.filters.min_macro_score
@@ -364,11 +409,17 @@ class CryptoMacroConfluenceStrategy:
         if not self.cfg.filters.require_etf_flow_alignment:
             return True
         if self._etf_provider is None:
-            return True  # fail-open until fetcher exists
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
         try:
             flow = self._etf_provider(bar)
         except Exception:  # noqa: BLE001
-            return True
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
+        # NaN = stale provider reading; fail-closed.
+        if math.isnan(flow):
+            self._n_provider_nan += 1
+            return not self.cfg.filters.fail_closed
         return (opened.side == "BUY" and flow > 0) or (opened.side == "SELL" and flow < 0)
 
     def _filter_onchain(self, bar: BarData, opened: _Open) -> bool:
@@ -385,11 +436,17 @@ class CryptoMacroConfluenceStrategy:
         if threshold <= 0.0 and not legacy:
             return True
         if self._onchain_provider is None:
-            return True  # fail-open
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
         try:
             score = self._onchain_provider(bar)
         except Exception:  # noqa: BLE001
-            return True
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
+        # NaN = stale provider reading; fail-closed.
+        if math.isnan(score):
+            self._n_provider_nan += 1
+            return not self.cfg.filters.fail_closed
         if legacy and threshold <= 0.0:
             return (
                 (opened.side == "BUY" and score > 0)
@@ -410,11 +467,17 @@ class CryptoMacroConfluenceStrategy:
         if threshold <= 0.0:
             return True
         if self._sentiment_provider is None:
-            return True  # fail-open
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
         try:
             score = self._sentiment_provider(bar)
         except Exception:  # noqa: BLE001
-            return True
+            self._n_provider_missing += 1
+            return not self.cfg.filters.fail_closed
+        # NaN = stale provider reading; fail-closed.
+        if math.isnan(score):
+            self._n_provider_nan += 1
+            return not self.cfg.filters.fail_closed
         if opened.side == "BUY":
             return score >= threshold
         return score <= -threshold

@@ -650,6 +650,28 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
                **_safe_kwargs(SweepReclaimConfig, overrides)},
         )
         return lambda: SweepReclaimStrategy(cfg)
+    if kind == "anchor_sweep":
+        from eta_engine.strategies.anchor_sweep_strategy import (
+            AnchorSweepConfig,
+            AnchorSweepStrategy,
+            mnq_anchor_sweep_preset,
+            nq_anchor_sweep_preset,
+        )
+        anchor_preset_factories = {
+            "mnq": mnq_anchor_sweep_preset, "nq": nq_anchor_sweep_preset,
+        }
+        preset_name = (extras.get("anchor_preset") or "mnq").lower()
+        base_cfg = anchor_preset_factories.get(preset_name, mnq_anchor_sweep_preset)()
+        overrides = _merge_strategy_overrides(
+            extras, "anchor", AnchorSweepConfig, include_direct_fields=True,
+        )
+        overrides.pop("anchor_preset", None)
+        overrides.pop("preset", None)
+        cfg = AnchorSweepConfig(
+            **{**base_cfg.__dict__,
+               **_safe_kwargs(AnchorSweepConfig, overrides)},
+        )
+        return lambda: AnchorSweepStrategy(cfg)
     if kind == "rsi_mean_reversion":
         from eta_engine.strategies.rsi_mean_reversion_strategy import (
             RSIMeanReversionConfig,

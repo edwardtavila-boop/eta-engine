@@ -68,20 +68,48 @@ _LOCK: threading.Lock = threading.Lock()
 _STORE: dict[str, IdempotencyRecord] = {}
 
 
-# ─── Optional disk persistence ──────────────────────────────────
+# ─── Disk persistence ───────────────────────────────────────────
 #
-# Set ETA_IDEMPOTENCY_STORE to a path and every check_or_register /
-# record_result writes a JSONL line so the dedup log survives
-# supervisor restarts. Without it, a process bounce mid-trade can
-# cause a second submission of the same intent (live broker would
-# error on the duplicate clientOrderId, but the supervisor's view
-# of "pending" gets lost). Enabled by default in deployed configs;
-# disabled in tests to keep them hermetic.
+# Default-on: every check_or_register / record_result writes a JSONL
+# line so the dedup log survives supervisor restarts. Without this,
+# a process bounce mid-trade can cause a second submission of the
+# same intent (live broker would error on the duplicate
+# clientOrderId, but the supervisor's view of "pending" gets lost).
+#
+# Env var ETA_IDEMPOTENCY_STORE controls the path:
+#   * unset / empty   → default workspace path under
+#                       C:\EvolutionaryTradingAlgo\var\eta_engine\state\
+#   * "disabled"      → genuinely opt out (use in tests that need a
+#                       clean slate)
+#   * any other value → that path
+#
+# Per workspace hard rule (CLAUDE.md): all state stays under the
+# canonical workspace root — no writes to OneDrive, %LOCALAPPDATA%,
+# or legacy paths.
+
+# default-on persistence; set ETA_IDEMPOTENCY_STORE=disabled to opt out
+_DEFAULT_PERSIST_PATH: _Path = _Path(
+    "C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl"
+)
 
 
 def _persist_path() -> _Path | None:
     raw = _os.getenv("ETA_IDEMPOTENCY_STORE", "").strip()
-    return _Path(raw) if raw else None
+    if raw.lower() == "disabled":
+        return None
+    if not raw:
+        # Default path under workspace root. Only ensure the parent
+        # exists when the parent is itself inside the workspace root —
+        # the hard rule forbids auto-creating dirs elsewhere.
+        try:
+            _os.makedirs(_DEFAULT_PERSIST_PATH.parent, exist_ok=True)
+        except OSError:
+            # If the workspace root isn't writable on this machine
+            # (CI, sandbox, etc.) silently degrade to in-memory-only
+            # rather than crashing the import.
+            return None
+        return _DEFAULT_PERSIST_PATH
+    return _Path(raw)
 
 
 def _persist_record(rec: IdempotencyRecord) -> None:

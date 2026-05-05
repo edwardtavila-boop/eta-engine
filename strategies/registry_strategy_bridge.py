@@ -67,6 +67,7 @@ _KIND_TO_SID: dict[str, StrategyId] = {
     "sweep_reclaim": StrategyId.REGISTRY_SWEEP_RECLAIM,
     "regime_gated": StrategyId.REGISTRY_REGIME_GATED,
     "mtf_scalp": StrategyId.REGISTRY_MTF_SCALP,
+    "anchor_sweep": StrategyId.REGISTRY_ANCHOR_SWEEP,
 }
 
 

@@ -155,12 +155,135 @@ class MnqLiveSupervisor:
         self.state.router_name = (
             type(self.bot._router).__name__ if getattr(self.bot, "_router", None) is not None else "log_only"
         )
+        # ── BROKER RECONCILIATION (mandatory before first bar) ──────
+        # Never trust local state alone after a restart.  Pull true
+        # positions from the broker BEFORE on_bar can fire.  If reconcile
+        # fails (broker unreachable / no router) we fail-CLOSED: pause
+        # the bot so it cannot fire fresh entries blind.  Exits and
+        # EoD-flatten still work because they bypass entry gating.
+        try:
+            await self.reconcile_with_broker(initial=True)
+        except Exception as exc:  # noqa: BLE001 — never crash boot
+            logger.error(
+                "mnq supervisor initial reconcile FAILED — pausing bot to prevent blind entries: %s",
+                exc,
+            )
+            self.bot.state.is_paused = True
+            self.state.paused = True
+            self.state.last_event = f"reconcile_failed:{type(exc).__name__}"
         self._persist_state()
 
     async def stop(self) -> None:
         await self.bot.stop()
         self.state.last_event = "supervisor_stopped"
         self._persist_state()
+
+    async def reconcile_with_broker(self, *, initial: bool = False) -> dict[str, Any]:
+        """Pull broker truth and seed/cross-check ``bot.state.open_positions``.
+
+        Called once at boot (``initial=True``) and periodically via
+        :meth:`run_periodic_reconcile`.  Divergence between broker qty
+        and local qty is the primary symptom of a missed fill report,
+        a stale reconnect, or a stuck order.
+
+        On boot, broker positions SEED local state (broker is truth).
+        On subsequent reconciles, divergence is logged and (if a
+        circuit breaker is wired) escalated.
+
+        Returns a dict describing what was reconciled.
+        """
+        router = getattr(self.bot, "_router", None)
+        venue = getattr(router, "_venue", None) if router is not None else None
+        if venue is None or not hasattr(venue, "get_positions"):
+            self.state.last_event = "reconcile_skipped_no_venue"
+            return {"reconciled": False, "reason": "no_venue"}
+
+        broker_positions = await venue.get_positions()
+        broker_qty_by_symbol: dict[str, float] = {}
+        for p in broker_positions or []:
+            sym = str(p.get("symbol", "")).upper()
+            qty = float(p.get("position", 0) or 0)
+            if sym:
+                broker_qty_by_symbol[sym] = broker_qty_by_symbol.get(sym, 0.0) + qty
+
+        if initial:
+            from eta_engine.bots.base_bot import Position
+            self.bot.state.open_positions = [
+                Position(
+                    symbol=sym,
+                    side="long" if qty > 0 else "short",
+                    entry_price=0.0,  # unknown until next fill report
+                    size=abs(qty),
+                )
+                for sym, qty in broker_qty_by_symbol.items()
+                if abs(qty) > 0
+            ]
+            logger.warning(
+                "mnq supervisor SEEDED open_positions from broker: %d positions (%s)",
+                len(self.bot.state.open_positions), broker_qty_by_symbol,
+            )
+
+        local_qty_by_symbol: dict[str, float] = {}
+        for pos in self.bot.state.open_positions:
+            signed = pos.size if pos.side.lower() in ("long", "buy") else -pos.size
+            local_qty_by_symbol[pos.symbol.upper()] = (
+                local_qty_by_symbol.get(pos.symbol.upper(), 0.0) + signed
+            )
+
+        divergence: dict[str, dict[str, float]] = {}
+        all_syms = set(broker_qty_by_symbol) | set(local_qty_by_symbol)
+        for sym in all_syms:
+            b = broker_qty_by_symbol.get(sym, 0.0)
+            local = local_qty_by_symbol.get(sym, 0.0)
+            if abs(b - local) > 1e-6:
+                divergence[sym] = {"broker": b, "local": local}
+
+        if divergence and not initial:
+            logger.error(
+                "mnq supervisor RECONCILE DIVERGENCE — broker disagrees with local: %s",
+                divergence,
+            )
+            cb = (
+                getattr(self.bot, "_circuit_breaker", None)
+                or getattr(self.bot, "circuit_breaker", None)
+            )
+            if cb is not None and hasattr(cb, "on_position_reconcile"):
+                try:
+                    cb.on_position_reconcile(
+                        broker_qty=broker_qty_by_symbol, broker_pnl=None,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("circuit_breaker.on_position_reconcile raised: %s", exc)
+            self.state.last_event = f"reconcile_divergence:{len(divergence)}_symbol(s)"
+        else:
+            self.state.last_event = (
+                "reconcile_initial_ok" if initial else "reconcile_ok"
+            )
+
+        return {
+            "reconciled": True,
+            "broker": broker_qty_by_symbol,
+            "local": local_qty_by_symbol,
+            "divergence": divergence,
+        }
+
+    async def run_periodic_reconcile(self, interval_s: float = 60.0) -> None:
+        """Background loop — call once from the supervisor runner.
+
+        Cancellable via standard asyncio task cancellation.  Failures
+        are logged and swallowed so a transient broker-API hiccup never
+        kills an active session.
+        """
+        import asyncio
+        while True:
+            try:
+                await asyncio.sleep(interval_s)
+                await self.reconcile_with_broker(initial=False)
+                self._persist_state()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("periodic reconcile iteration failed: %s", exc)
 
     async def run_one_bar(self) -> dict[str, Any]:
         """Consume a single bar from the source and return a heartbeat dict.

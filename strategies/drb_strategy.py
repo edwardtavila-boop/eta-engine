@@ -112,6 +112,14 @@ class DRBStrategy:
         prior = hist[:-1] if hist and hist[-1] is bar else hist
         if len(prior) < self.cfg.lookback_days:
             return None
+
+        # ── EMA warmup gate ──
+        # The EMA bias filter is only meaningful once it has converged.
+        # On a 30-day daily backtest the EMA-200 never converges, so any
+        # entry would fire against an uninitialized EMA = noise. Require
+        # at least ema_bias_period prior bars before allowing entries.
+        if self.cfg.ema_bias_period > 0 and len(prior) < self.cfg.ema_bias_period:
+            return None
         ref_bars = prior[-self.cfg.lookback_days:]
         ref_high = max(b.high for b in ref_bars)
         ref_low = min(b.low for b in ref_bars)

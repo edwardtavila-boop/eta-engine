@@ -154,6 +154,24 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001, ANN001
             item.add_marker(skip_marker)
 
 # ---------------------------------------------------------------------------
+# Bot position-persistence side-effect guard
+# ---------------------------------------------------------------------------
+# Tier-1 #2 (2026-05-04): ``BaseBot.update_state`` (and explicit calls in
+# tests like ``record_fill``) trigger ``persist_positions`` after every
+# fill. Without this fixture, the real workspace state dir
+# (``var/eta_engine/state/bots/<test-bot-name>/positions.json``) gets
+# polluted with junk from test bots. ``persist_positions`` honors the
+# ``ETA_BOT_PERSIST_DISABLED=1`` env var as a silent no-op short-circuit;
+# we set it for the entire test session so EVERY test is shielded from
+# the side effect, not just the ones that explicitly opt in.
+@pytest.fixture(scope="session", autouse=True)
+def _disable_bot_position_persistence() -> None:
+    """Silence ``BaseBot.persist_positions`` for the whole test session."""
+    import os
+    os.environ["ETA_BOT_PERSIST_DISABLED"] = "1"
+
+
+# ---------------------------------------------------------------------------
 # Market data fixtures
 # ---------------------------------------------------------------------------
 

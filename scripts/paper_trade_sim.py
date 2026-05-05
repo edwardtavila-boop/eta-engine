@@ -35,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
+from eta_engine.feeds.funding_ledger import FundingLedger  # noqa: E402
 from eta_engine.feeds.instrument_specs import (  # noqa: E402
     get_spec,
     is_rth_session,
@@ -73,13 +74,17 @@ class PaperTrade:
     pnl_points: float
     gross_pnl_usd: float        # before commission, after slippage
     commission_usd: float       # round-trip
-    net_pnl_usd: float          # gross - commission
+    net_pnl_usd: float          # gross - commission - funding
     exit_reason: str
     entry_ts: str
     exit_ts: str
     session_rth: bool           # True if entry+exit both during RTH
     entry_slippage_ticks: float
     exit_slippage_ticks: float
+    funding_cost_usd: float = 0.0   # Crypto perp funding cost (positive = paid).
+                                    # Always 0.0 unless funding_cost_enabled=True
+                                    # AND the symbol is a perpetual swap. See
+                                    # eta_engine.feeds.funding_ledger.
 
 
 @dataclass
@@ -97,7 +102,7 @@ class SimResult:
     win_rate_pct: float
     gross_pnl_usd: float        # before commissions, after slippage
     total_commission_usd: float
-    total_pnl_usd: float        # net of commissions
+    total_pnl_usd: float        # net of commissions AND funding (when enabled)
     avg_pnl_per_trade: float
     max_dd_usd: float
     rth_trades: int
@@ -108,6 +113,8 @@ class SimResult:
     rejection_codes: dict[str, int] = field(default_factory=dict)
     trades: list[PaperTrade] = field(default_factory=list)
     equity_curve: list[float] = field(default_factory=list)
+    total_funding_cost_usd: float = 0.0  # Sum of per-trade funding costs.
+                                         # Always 0.0 unless funding_cost_enabled.
 
 
 # Legacy multiplier table — kept for back-compat with external callers
@@ -141,6 +148,9 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     seed: int = 0,
     is_fraction: float | None = None,
     eval_oos: bool = False,
+    skip_days: int = 0,
+    funding_cost_enabled: bool = False,
+    funding_provider=None,
 ) -> SimResult:
     """Replay historical bars with realistic fills.
 
@@ -152,6 +162,15 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
         as the "trading" window; remainder is ignored.  Combined with
         ``eval_oos=True``, swaps to the OOS window so a caller can score
         IS and OOS independently.
+    funding_cost_enabled: when True AND the bot's symbol is a perpetual
+        swap, deduct 8h funding settlements from each trade's net PnL
+        via ``eta_engine.feeds.funding_ledger.FundingLedger``. DEFAULT
+        OFF for back-compat with all pre-funding-ledger paper-soak runs.
+    funding_provider: required when ``funding_cost_enabled`` and the
+        symbol is perp. Anything that exposes ``rate_at(datetime) ->
+        float`` or is a callable ``(datetime) -> float``. When None
+        and funding is enabled, every settlement returns 0.0 (no-op
+        ledger; useful as a smoke baseline).
     """
     from eta_engine.data.library import default_library
     from eta_engine.strategies.eta_policy import StrategyContext
@@ -174,11 +193,37 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     if len(bars) < 50:
         raise ValueError(f"Not enough bars: {len(bars)}")
 
+    # Skip N most recent bars to advance the window backward in time
+    if skip_days > 0 and bar_limit is not None:
+        daily_bars_map = {"1m": 1440, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "D": 1, "W": 0.14}
+        skip_bpd = daily_bars_map.get(assignment.timeframe, 288)
+        skip_extra = int(skip_days * skip_bpd)
+        needed = min(bar_limit + skip_extra, 200000)
+        all_bars = lib.load_bars(ds, limit=needed, limit_from="tail",
+                                 require_positive_prices=True)
+        if len(all_bars) > skip_extra:
+            bars = all_bars[:len(all_bars) - skip_extra]
+
     spec = get_spec(assignment.symbol)
     # Allow caller override but prefer the spec table
     pv = point_value if point_value is not None else spec.point_value
 
     fill_sim = RealisticFillSim(mode=mode, seed=seed)
+
+    # Funding ledger is opt-in. We instantiate it only when both the
+    # config flag is on AND the symbol is a perpetual swap, so non-perp
+    # bots pay no per-trade overhead and the default behavior is
+    # bit-for-bit identical to pre-funding-ledger runs.
+    funding_active = bool(
+        funding_cost_enabled and getattr(spec, "is_perpetual", False),
+    )
+    funding_ledger = FundingLedger() if funding_active else None
+    if funding_active and funding_provider is None:
+        # Caller asked for funding but supplied no rate source -> default
+        # to a zero-rate stub. This keeps the code path live (so the
+        # PaperTrade.funding_cost_usd field is populated) without
+        # silently fabricating non-zero costs from no data.
+        funding_provider = lambda _ts: 0.0  # noqa: E731
 
     from eta_engine.strategies.registry_strategy_bridge import (
         build_registry_dispatch,
@@ -316,7 +361,31 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                     pnl_points = (position.entry_price - exit_fill.fill_price) * qty
                 gross_pnl_usd = pnl_points * pv
                 commission = fill_sim.commission_for_trade(spec, qty, exit_fill.fill_price)
-                net_pnl_usd = gross_pnl_usd - commission
+
+                # Funding cost: opt-in, perp-only. funding_ledger guards
+                # all the edge cases (non-perp, zero qty, malformed
+                # window) so this branch stays small.
+                funding_cost_usd = 0.0
+                if funding_ledger is not None:
+                    try:
+                        from datetime import datetime as _dt
+                        entry_dt = _dt.fromisoformat(position.entry_bar_ts)
+                        exit_dt = _dt.fromisoformat(bar_ts_iso)
+                        funding_cost_usd = funding_ledger.compute_funding_cost(
+                            symbol=spec.symbol,
+                            side=position.side,
+                            qty=qty,
+                            entry_price=position.entry_price,
+                            entry_ts=entry_dt,
+                            exit_ts=exit_dt,
+                            funding_provider=funding_provider,
+                        )
+                    except (ValueError, TypeError):
+                        # Defensive: malformed timestamp shouldn't blow
+                        # up the trade — log via the trade's $0 cost.
+                        funding_cost_usd = 0.0
+
+                net_pnl_usd = gross_pnl_usd - commission - funding_cost_usd
 
                 exit_session_rth = is_rth_session(bar_ts_iso, spec.symbol)
                 trade = PaperTrade(
@@ -334,6 +403,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                     session_rth=position.entry_session_rth and exit_session_rth,
                     entry_slippage_ticks=position.entry_slippage_ticks,
                     exit_slippage_ticks=exit_fill.slippage_ticks,
+                    funding_cost_usd=funding_cost_usd,
                 )
                 trades.append(trade)
                 equity += net_pnl_usd
@@ -359,6 +429,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     losers = sum(1 for t in trades if t.net_pnl_usd <= 0)
     gross_pnl = sum(t.gross_pnl_usd for t in trades)
     total_comm = sum(t.commission_usd for t in trades)
+    total_funding = sum(t.funding_cost_usd for t in trades)
     net_pnl = sum(t.net_pnl_usd for t in trades)
     avg_pnl = net_pnl / len(trades) if trades else 0.0
     wr = (winners / len(trades)) * 100 if trades else 0.0
@@ -392,6 +463,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
         rejection_codes=rejection_codes,
         trades=trades,
         equity_curve=[round(e, 2) for e in equity_curve],
+        total_funding_cost_usd=round(total_funding, 2),
     )
 
 
@@ -407,6 +479,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     p.add_argument("--walk-forward", action="store_true",
                    help="run two simulations: IS (first 70%% of bars) + OOS (last 30%%) "
                         "and report both")
+    p.add_argument("--skip-days", type=int, default=0,
+                   help="skip the most recent N days of data before loading "
+                        "(advances the simulation window backward in time)")
     p.add_argument("--is-fraction", type=float, default=0.7,
                    help="train fraction for --walk-forward (default 0.7)")
     p.add_argument("--json", action="store_true")
@@ -431,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
             args.bot, max_bars=100000, bar_limit=bar_limit,
             point_value=pv, mode=args.mode, seed=args.seed,
             is_fraction=is_fraction, eval_oos=eval_oos,
+            skip_days=args.skip_days,
         )
 
     try:
@@ -456,6 +532,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
                 "winners": r.winners, "losers": r.losers, "win_rate": r.win_rate_pct,
                 "gross_pnl": r.gross_pnl_usd,
                 "total_commission": r.total_commission_usd,
+                "total_funding_cost": r.total_funding_cost_usd,
                 "total_pnl": r.total_pnl_usd,
                 "avg_pnl_per_trade": r.avg_pnl_per_trade,
                 "max_dd": r.max_dd_usd,
@@ -483,6 +560,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
         print(f"  Win rate:            {r.win_rate_pct:.1f}%")
         print(f"  Gross PnL (post-slip): ${r.gross_pnl_usd:+.2f}")
         print(f"  Commissions:         -${r.total_commission_usd:.2f}")
+        if r.total_funding_cost_usd != 0.0:
+            print(f"  Funding (perp 8h):   {-r.total_funding_cost_usd:+.2f}  "
+                  f"(positive number = paid by trader, deducted from net)")
         print(f"  NET PnL:             ${r.total_pnl_usd:+.2f}")
         print(f"  Avg net per trade:   ${r.avg_pnl_per_trade:+.2f}")
         print(f"  Max drawdown:        ${r.max_dd_usd:.2f}")
@@ -493,10 +573,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
             print("  Last 5 trades:")
             for t in r.trades[-5:]:
                 tag = "RTH" if t.session_rth else "ON"
+                fund_str = (
+                    f" funding=${t.funding_cost_usd:+.2f}"
+                    if t.funding_cost_usd != 0.0
+                    else ""
+                )
                 print(f"    {t.exit_ts[:16]} {t.side:<5} {tag} qty={t.qty:6.2f} "
                       f"entry={t.entry_price:.2f} exit={t.exit_price:.2f} "
                       f"net=${t.net_pnl_usd:+8.2f}  ({t.exit_reason}, "
-                      f"slip e={t.entry_slippage_ticks:.1f}t/x={t.exit_slippage_ticks:.1f}t)")
+                      f"slip e={t.entry_slippage_ticks:.1f}t/x={t.exit_slippage_ticks:.1f}t"
+                      f"{fund_str})")
 
     _print(is_result, "IN-SAMPLE" if oos_result is not None else "FULL WINDOW")
     if oos_result is not None:

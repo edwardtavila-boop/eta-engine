@@ -294,16 +294,22 @@ class SweepReclaimStrategy:
             return None
 
         entry = bar.close
+        # FIX: replace magic number 1.0 (was 1 USD on BTC = 0 ticks, vs
+        # 4 ticks on MNQ) with a wick-aware ATR-floored buffer that
+        # scales properly across instruments and is proportional to the
+        # actual sweep depth (the structurally meaningful quantity).
         if side == "BUY":
-            # Stop goes BELOW the sweep wick low (use bar.low as proxy for wick)
-            # If structural stop is wider than ATR, use it; otherwise ATR
-            structure_stop = bar.low - 1.0  # 1 unit below sweep wick
+            wick_depth = max(entry - bar.low, 0.0)
+            wick_buffer = max(0.5 * wick_depth, 0.25 * atr)
+            structure_stop = bar.low - wick_buffer
             atr_stop = entry - stop_dist
             stop = min(structure_stop, atr_stop)
             stop_dist_actual = entry - stop
             target = entry + self.cfg.rr_target * stop_dist_actual
         else:
-            structure_stop = bar.high + 1.0
+            wick_depth = max(bar.high - entry, 0.0)
+            wick_buffer = max(0.5 * wick_depth, 0.25 * atr)
+            structure_stop = bar.high + wick_buffer
             atr_stop = entry + stop_dist
             stop = max(structure_stop, atr_stop)
             stop_dist_actual = stop - entry

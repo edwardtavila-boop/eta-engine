@@ -49,11 +49,16 @@ if TYPE_CHECKING:
 class VWAPReversionConfig:
     vwap_std_band: float = 2.0
     std_window: int = 100
-    vwap_dev_lookback: int = 50
-    min_dev_std_mult: float = 1.8
 
     volume_z_lookback: int = 20
     min_volume_z: float = 0.2
+
+    # ADX trend filter — mean-reversion in trending regimes is the textbook
+    # way to bleed.  Default ON (matches rsi_mean_reversion_strategy.py)
+    # and is the highest-leverage one-line guard for this strategy.
+    enable_adx_filter: bool = True
+    adx_period: int = 14
+    adx_max: float = 25.0
 
     atr_period: int = 14
     atr_stop_mult: float = 1.0
@@ -67,10 +72,17 @@ class VWAPReversionConfig:
     allow_long: bool = True
     allow_short: bool = True
 
-    # Session window for entry filtering (local time of bar timestamps).
-    # Defaults to US RTH (08:00-16:00 ET). Override for crypto sessions.
-    session_start: time = time(8, 0)
-    session_end: time = time(16, 0)
+    # Session window for entry filtering.  Defaults are PERMISSIVE
+    # (00:00-23:59) so the strategy works on 24/7 tickers and on
+    # futures running through Globex.  Operators who want to restrict
+    # to a specific window (e.g., RTH-only or afternoon-only) must
+    # explicitly set both ``session_start`` and ``session_end``.
+    # ``session_tz`` controls the timezone the bars are converted to
+    # before comparing.  When the window covers the full day the
+    # timezone is irrelevant.
+    session_start: time = time(0, 0)
+    session_end: time = time(23, 59)
+    session_tz: str = "UTC"
 
 
 class VWAPReversionStrategy:
@@ -84,6 +96,12 @@ class VWAPReversionStrategy:
         self._current_vwap: float = 0.0
         self._current_vwap_std: float = 0.0
         self._volume_window: deque[float] = deque(maxlen=self.cfg.volume_z_lookback)
+        # ADX rolling history — sized for Wilder's ADX warmup (period * 2 + 1)
+        # plus a small buffer.  Used only when enable_adx_filter is True.
+        adx_buf = self.cfg.adx_period * 2 + 5
+        self._highs: deque[float] = deque(maxlen=adx_buf)
+        self._lows: deque[float] = deque(maxlen=adx_buf)
+        self._closes: deque[float] = deque(maxlen=adx_buf)
         self._bars_seen: int = 0
         self._last_entry_idx: int | None = None
         self._trades_today: int = 0
@@ -91,6 +109,7 @@ class VWAPReversionStrategy:
         self._n_long_sig: int = 0
         self._n_short_sig: int = 0
         self._n_vol_reject: int = 0
+        self._n_adx_reject: int = 0
         self._n_fired: int = 0
 
     @property
@@ -100,6 +119,7 @@ class VWAPReversionStrategy:
             "long_signals": self._n_long_sig,
             "short_signals": self._n_short_sig,
             "vol_rejects": self._n_vol_reject,
+            "adx_rejects": self._n_adx_reject,
             "entries_fired": self._n_fired,
         }
 
@@ -134,7 +154,20 @@ class VWAPReversionStrategy:
         return (bar.volume - mean) / std
 
     def _is_allowed_session(self, bar: BarData) -> bool:
-        t = bar.timestamp.time()
+        # bar.timestamp is UTC.  Convert to the configured session
+        # timezone before comparing — without this, a "13:30-15:30 ET"
+        # window is silently evaluated as 13:30-15:30 UTC = 08:30-10:30
+        # ET (morning), the opposite of the docstring promise.
+        ts = bar.timestamp
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(self.cfg.session_tz)
+            local_ts = ts.astimezone(tz) if ts.tzinfo is not None else ts
+            t = local_ts.time()
+        except (ImportError, ValueError, KeyError):
+            # Fallback: bare-UTC compare.  Caller can override session_tz
+            # to "UTC" to opt into this path explicitly.
+            t = ts.time()
         return self.cfg.session_start <= t <= self.cfg.session_end
 
     def maybe_enter(
@@ -152,6 +185,9 @@ class VWAPReversionStrategy:
 
         self._bars_seen += 1
         self._volume_window.append(bar.volume)
+        self._highs.append(bar.high)
+        self._lows.append(bar.low)
+        self._closes.append(bar.close)
 
         self._update_vwap(bar)
 
@@ -163,6 +199,12 @@ class VWAPReversionStrategy:
             self._last_entry_idx is not None
             and (self._bars_seen - self._last_entry_idx) < self.cfg.min_bars_between_trades
         ):
+            return None
+        # Session window gate — entries only during the configured
+        # afternoon mean-reversion window (13:30-15:30 ET on US futures
+        # by default, with timezone conversion applied in
+        # _is_allowed_session so UTC bars are compared in ET).
+        if not self._is_allowed_session(bar):
             return None
         if self._vwap_v < 100.0 or self._current_vwap_std <= 0.0:
             return None
@@ -191,6 +233,19 @@ class VWAPReversionStrategy:
 
         if side is None:
             return None
+
+        if (
+            self.cfg.enable_adx_filter
+            and len(self._highs) >= self.cfg.adx_period * 2 + 1
+        ):
+            from eta_engine.strategies.technical_edges import compute_adx
+            adx_result = compute_adx(
+                list(self._highs), list(self._lows), list(self._closes),
+                self.cfg.adx_period,
+            )
+            if adx_result is not None and adx_result.adx > self.cfg.adx_max:
+                self._n_adx_reject += 1
+                return None
 
         vz = self._volume_z_score(bar)
         if vz < self.cfg.min_volume_z:
@@ -260,7 +315,7 @@ class VWAPReversionStrategy:
 
 def mnq_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
-        vwap_std_band=2.0, min_dev_std_mult=1.8,
+        vwap_std_band=2.0,
         volume_z_lookback=20, min_volume_z=0.3,
         atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
@@ -270,7 +325,7 @@ def mnq_vwap_mr_preset() -> VWAPReversionConfig:
 
 def nq_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
-        vwap_std_band=2.0, min_dev_std_mult=1.8,
+        vwap_std_band=2.0,
         volume_z_lookback=20, min_volume_z=0.3,
         atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
@@ -280,21 +335,23 @@ def nq_vwap_mr_preset() -> VWAPReversionConfig:
 
 def btc_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
-        vwap_std_band=2.0, min_dev_std_mult=1.5,
+        vwap_std_band=2.0,
         volume_z_lookback=24, min_volume_z=0.2,
         atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
-        session_start=time(7, 0), session_end=time(17, 0),
+        # 24/7 — crypto markets have no session.  Operator may opt in
+        # to a window (e.g., London/NY overlap) but the default is
+        # PERMISSIVE so the strategy fires across all hours.
     )
 
 
 def eth_vwap_mr_preset() -> VWAPReversionConfig:
     return VWAPReversionConfig(
-        vwap_std_band=2.5, min_dev_std_mult=1.5,
+        vwap_std_band=2.5,
         volume_z_lookback=24, min_volume_z=0.2,
         atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
-        session_start=time(7, 0), session_end=time(17, 0),
+        # 24/7 — see btc_vwap_mr_preset comment.
     )

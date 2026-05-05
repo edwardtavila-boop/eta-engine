@@ -180,7 +180,8 @@ def run_session(days: int = 30, parallel: int = 0) -> int:
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {}
         for a in eligible:
-            f = ex.submit(_run_one_bot_subprocess, a, days)
+            session_count = len(ledger["bot_sessions"].get(a.bot_id, []))
+            f = ex.submit(_run_one_bot_subprocess, a, days, session_count)
             futures[f] = a
 
         for f in as_completed(futures):
@@ -214,9 +215,16 @@ def run_session(days: int = 30, parallel: int = 0) -> int:
 
 
 def _run_one_bot(a, days: int, now_iso: str, ledger: dict) -> None:
-    """Run one bot sequentially and update ledger in-place."""
+    """Run one bot sequentially and update ledger in-place.
+    Passes --skip-days equal to the bot's current session count
+    so each session loads a different 30-day window."""
     cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
-    print(f"  [{a.bot_id}] running {days}d on {a.symbol}/{a.timeframe}...", end=" ", flush=True)
+    # Advance the data window by N * 30 days, where N = current session count
+    session_count = len(ledger["bot_sessions"].get(a.bot_id, []))
+    skip = session_count * days
+    if skip > 0:
+        cmd.extend(["--skip-days", str(skip)])
+    print(f"  [{a.bot_id}] running {days}d (offset={skip}d)...", end=" ", flush=True)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if proc.returncode != 0 or not proc.stdout.strip():
@@ -241,14 +249,13 @@ def _run_one_bot(a, days: int, now_iso: str, ledger: dict) -> None:
         print(f"PARSE ERROR: {e}")
 
 
-def _run_one_bot_subprocess(a, days: int) -> tuple[str, dict | None, str | None]:
-    """Run one bot in a subprocess (for parallel mode).
-
-    Returns (bot_id, payload, error_str) where payload is the raw JSON
-    parsed from sim stdout (callers extract in_sample envelope).
-    """
+def _run_one_bot_subprocess(a, days: int, session_count: int = 0) -> tuple[str, dict | None, str | None]:
+    """Run one bot in a subprocess (for parallel mode). Returns (bot_id, data_dict, error_str)."""
     import subprocess as sp
     cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
+    skip = session_count * days
+    if skip > 0:
+        cmd.extend(["--skip-days", str(skip)])
     try:
         proc = sp.run(cmd, capture_output=True, text=True, timeout=600)
         if proc.returncode == 0 and proc.stdout.strip():

@@ -60,6 +60,7 @@ objects with sensible (regime, bias, mode) for backwards-compat.
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -135,6 +136,11 @@ class FeatureRegimeClassifier:
         self._regime_counts: dict[str, int] = {
             "bull_aligned": 0, "bear_aligned": 0, "neutral": 0,
         }
+        # Counter for NaN provider readings (stale-data sentinel from
+        # macro_confluence_providers). When a feature's provider
+        # returns NaN we treat that feature as inactive (fs/es/fgs=0)
+        # and leave it out of the score.
+        self._n_provider_nan: int = 0
 
     # -- provider attachment -----------------------------------------------
 
@@ -181,6 +187,12 @@ class FeatureRegimeClassifier:
                 funding = float(self._funding_provider(bar))
             except (TypeError, ValueError):
                 funding = 0.0
+            # Stale-data sentinel from FundingRateProvider — treat
+            # the feature as inactive so a NaN doesn't poison the
+            # composite score or leak into components downstream.
+            if math.isnan(funding):
+                self._n_provider_nan += 1
+                funding = 0.0
             if funding > self.cfg.funding_extreme:
                 fs = -1.0
             elif funding < -self.cfg.funding_extreme:
@@ -198,6 +210,11 @@ class FeatureRegimeClassifier:
             try:
                 today_flow = float(self._etf_flow_provider(bar))
             except (TypeError, ValueError):
+                today_flow = 0.0
+            # Stale-data sentinel from EtfFlowProvider — treat as no
+            # data so NaN doesn't poison the rolling sum forever.
+            if math.isnan(today_flow):
+                self._n_provider_nan += 1
                 today_flow = 0.0
             d = bar.timestamp.date()
             # Append the daily flow only when the date changes
@@ -226,6 +243,10 @@ class FeatureRegimeClassifier:
             try:
                 fg = float(self._fear_greed_provider(bar))
             except (TypeError, ValueError):
+                fg = 0.0
+            # Stale-data sentinel — treat as neutral.
+            if math.isnan(fg):
+                self._n_provider_nan += 1
                 fg = 0.0
             if fg >= self.cfg.fear_greed_extreme:
                 fgs = +1.0

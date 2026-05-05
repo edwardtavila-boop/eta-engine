@@ -85,11 +85,21 @@ class EnsembleVotingConfig:
     # the winner.
     use_regime_router: bool = True
 
-    # Confidence-weighted aggregation (outside-the-box upgrade):
-    # instead of plain arithmetic averaging, combine proposals using a
-    # conviction weight derived from confluence, implied R multiple and
-    # risk commitment.
-    use_confidence_weighting: bool = True
+    # Confidence-weighted aggregation (legacy mode):
+    # combine proposals via a conviction weight derived from confluence,
+    # implied R multiple and risk commitment.  Default OFF in favor of
+    # elect_one composition (see below).
+    use_confidence_weighting: bool = False
+
+    # Composition mode.  ``elect_one`` (default) picks ONE proposal as
+    # the bracket source — the highest-confluence agreeing sub sets
+    # entry/stop/target verbatim, agreement count is the gate only.
+    # This avoids the geometric incoherence of averaging brackets that
+    # no individual sub designed (sub A enters at 100/stops at 95, sub B
+    # enters at 105/stops at 100 → average bracket is "100 entry / 97.5
+    # stop" which is too tight for A AND too loose for B).
+    # ``average`` falls back to the legacy averaging path.
+    composition_mode: str = "elect_one"
 
     # Adversarial safety rail: abstain in toxic market micro-conditions.
     enable_fail_safe: bool = True
@@ -162,10 +172,22 @@ class EnsembleVotingStrategy:
             return None
 
         # Aggregate chosen-side proposals.
-        # Default legacy behaviour is arithmetic averaging. With
-        # confidence-weighting enabled we bias toward stronger proposals.
         n = len(chosen_proposals)
-        if self.cfg.use_confidence_weighting:
+        if self.cfg.composition_mode == "elect_one":
+            # Winner-takes-bracket: the highest-confluence agreeing
+            # proposal sets entry/stop/target verbatim. Agreement count
+            # is the gate only.  Avoids averaging brackets to a geometry
+            # no individual sub designed.
+            winner = max(
+                chosen_proposals, key=lambda p: self._proposal_weight(p),
+            )
+            avg_entry = winner.entry_price
+            avg_stop = winner.stop
+            avg_target = winner.target
+            avg_qty = winner.qty
+            avg_risk = winner.risk_usd
+            agg_conf = float(getattr(winner, "confluence", 5.0))
+        elif self.cfg.use_confidence_weighting:
             weights = [self._proposal_weight(p) for p in chosen_proposals]
             wsum = sum(weights) or float(n)
             avg_entry = sum(p.entry_price * w for p, w in zip(chosen_proposals, weights, strict=False)) / wsum

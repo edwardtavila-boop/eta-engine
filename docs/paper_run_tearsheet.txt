@@ -1,26 +1,31 @@
-EVOLUTIONARY TRADING ALGO -- Paper Run Tearsheet
+EVOLUTIONARY TRADING ALGO -- Paper Run Tearsheet  (default, gbm)
 ================================================================================================
-Weeks: 4    Seed: 11    Generated: 2026-04-16T22:34:33.115596+00:00
+Weeks: 1    Seed: 11    Generated: 2026-05-04T20:03:27.052726+00:00
 ------------------------------------------------------------------------------------------------
 BOT          SYM          TRD   WIN%   EXP_R     PF    DD%     RET%     EQ_END  KILL   GATE
 ------------------------------------------------------------------------------------------------
-mnq          MNQ          168  58.9%   0.473   2.22  6.83%  118.26%   10912.90     -   PASS
-nq           NQ           140  64.3%   0.607   2.87  3.94%   95.81%   23496.88     -   PASS
-crypto_seed  BTCUSDT      161  46.0%   0.149   1.27  4.93%   12.39%    2247.88     -   FAIL
-eth_perp     ETHUSDT      168  46.4%   0.161   1.27 11.03%   29.28%    3878.29     -   FAIL
-sol_perp     SOLUSDT      168  45.8%   0.146   1.22 13.93%   26.09%    3782.81     -   FAIL
-xrp_perp     XRPUSDT      168  47.0%   0.176   1.28 15.55%   32.54%    2650.73     -   FAIL
+mnq          MNQ           42  54.8%   0.369   1.80  3.94%   16.36%    5817.82     -   FAIL
+nq           NQ            35  57.1%   0.429   1.99  2.40%   12.53%   13504.10     -   FAIL
+crypto_seed  BTCUSDT       41  41.5%   0.021   1.03  3.94%    0.36%    2007.14     -   FAIL
+eth_perp     ETHUSDT       42  45.2%   0.131   1.22  4.01%    5.31%    3159.26     -   FAIL
+sol_perp     SOLUSDT       42  59.5%   0.488   2.18  1.99%   22.31%    3669.20     -   FAIL
+xrp_perp     XRPUSDT       42  54.8%   0.369   1.77  4.90%   16.36%    2327.12     -   FAIL
 ------------------------------------------------------------------------------------------------
-Aggregate: bots=6 pass=2/6 trades=973 equity=$27,000 -> $46,969
-Blended: expectancy=0.277R  winrate=51.1%  max_dd=15.55%
-Promotion verdict: MODIFY  (Bots failing gate: crypto_seed, eth_perp, sol_perp, xrp_perp)
+Aggregate: bots=6 pass=0/6 trades=244 equity=$27,000 -> $30,485
+Blended: expectancy=0.299R  winrate=52.0%  max_dd=4.90%
+Promotion verdict: MODIFY  (Bots failing gate: mnq, nq, crypto_seed, eth_perp, sol_perp, xrp_perp)
 ================================================================================================
+[mnq] fails:
+   - weeks=1 < min_weeks=4
+[nq] fails:
+   - weeks=1 < min_weeks=4
 [crypto_seed] fails:
-   - expectancy_r=0.149 < required=0.3
+   - weeks=1 < min_weeks=4
+   - expectancy_r=0.021 < required=0.3
 [eth_perp] fails:
-   - expectancy_r=0.161 < required=0.3
+   - weeks=1 < min_weeks=4
+   - expectancy_r=0.131 < required=0.3
 [sol_perp] fails:
-   - expectancy_r=0.146 < required=0.3
+   - weeks=1 < min_weeks=4
 [xrp_perp] fails:
-   - expectancy_r=0.176 < required=0.3
-   - max_dd_pct=15.55 > max=15.0
+   - weeks=1 < min_weeks=4

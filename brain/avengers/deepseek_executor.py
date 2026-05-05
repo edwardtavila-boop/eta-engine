@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class DeepSeekExecutor(Persona):
-    _persona_id: ClassVar[PersonaId] = PersonaId.DEEPSEEK_EXECUTOR
+    PERSONA_ID: ClassVar[PersonaId] = PersonaId.DEEPSEEK_EXECUTOR
 
     @classmethod
     def _system_prompt(cls, envelope: TaskEnvelope) -> str:

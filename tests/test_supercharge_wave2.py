@@ -240,13 +240,24 @@ def test_position_reconciler_async_fetch_handles_empty_venues() -> None:
     assert isinstance(out, dict)
 
 
-def test_position_reconciler_diff_with_real_async_fetch_no_drift() -> None:
-    """When both bot + broker are empty, no drift -> no diff."""
+def test_position_reconciler_diff_with_real_async_fetch_no_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When both bot + broker are empty, no drift -> no diff.
+
+    fetch_bot_positions() now fails-loud (raises NotImplementedError)
+    when no state loader is wired, because returning {} silently
+    masquerades as 'reconciled with zero drift' — the exact gap the
+    watcher exists to catch. The operator escape hatch
+    ETA_RECONCILE_DISABLED=1 returns {} explicitly, which is what we
+    want for this hermetic 'both empty' diff test.
+    """
+    monkeypatch.setenv("ETA_RECONCILE_DISABLED", "1")
     from eta_engine.obs.position_reconciler import (
         diff_positions,
         fetch_bot_positions,
         fetch_broker_positions,
     )
-    bot_pos = fetch_bot_positions()       # stub returns {}
+    bot_pos = fetch_bot_positions()       # explicit-disable returns {}
     broker_pos = fetch_broker_positions()  # stub returns {}
     assert diff_positions(bot_pos, broker_pos) == []

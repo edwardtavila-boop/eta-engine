@@ -8,21 +8,19 @@ broker's "you are 0 contracts", every subsequent risk + size decision
 is wrong.
 
 This module exposes a watcher that:
-  1. polls each registered broker for current positions
-  2. compares against the bot's internal state file
-  3. fires a Resend ``position_drift`` alert when the diff exceeds tolerance
-
-SCAFFOLD: the broker-handshake half is venue-specific (IBKR Client
-Portal API has its own auth flow, Tastytrade uses sessionToken, etc.).
-We commit the framework + the reconciliation diff logic + tests; the
-per-broker pollers are TODO-marked.
+  1. loads each bot's persisted positions from disk
+  2. polls each registered broker for current positions
+  3. compares the two and fires a Resend ``position_drift`` alert when
+     the diff exceeds tolerance
 
 Run as a 30-second scheduled task once the per-broker pollers land.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +29,16 @@ from typing import Any
 logger = logging.getLogger("position_reconciler")
 
 ROOT = Path(__file__).resolve().parents[1]
+
+#: Canonical workspace state root. Bots persist their open positions to
+#: ``<state_root>/bots/<bot_name>/positions.json`` from
+#: ``BaseBot.persist_positions``; this module aggregates them.
+DEFAULT_STATE_ROOT: Path = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+
+#: Glob pattern that picks up every per-bot positions file under the
+#: state root. ``*`` matches ``self.config.name`` (no recursion -- the
+#: per-bot directory is always exactly one level deep).
+BOT_POSITIONS_GLOB: str = "bots/*/positions.json"
 
 
 @dataclass
@@ -71,14 +79,88 @@ def diff_positions(
     return diffs
 
 
-def fetch_bot_positions() -> dict[str, dict[str, float]]:
-    """TODO: load each bot's internal state and aggregate positions.
+def fetch_bot_positions(
+    state_root: Path | None = None,
+) -> dict[str, dict[str, float]]:
+    """Aggregate every bot's persisted positions into ``{symbol: {bot_name: qty}}``.
 
-    Each bot writes its state to ``var/<bot_name>/state.json`` per the
-    BaseBot.persist() pattern. Until that aggregator lands, this returns
-    an empty mapping (which means: no diff vs broker -> no false alarms).
+    This is the bot half of reconciliation. The broker half lives in
+    :func:`fetch_broker_positions`. The diff between the two is what
+    :func:`diff_positions` operates on.
+
+    **Contract (2026-05-04):** ``BaseBot.persist_positions`` writes
+    ``<state_root>/bots/<bot.config.name>/positions.json`` after every
+    fill (see ``eta_engine/bots/base_bot.py``). This function globs
+    those files and aggregates per-bot signed quantities by symbol.
+
+    Behavior:
+
+    * One file per bot, valid JSON: contributes to the aggregate.
+    * One file per bot, corrupt JSON: log WARNING, skip that bot,
+      continue. A single bad file does not poison reconciliation.
+    * No files at all under ``<state_root>/bots/``: fail-loud with
+      :class:`RuntimeError`. An empty bots directory is suspicious --
+      a wiped state dir would silently look "all reconciled" and mask
+      the exact crash-recovery gap this watcher exists to catch.
+
+    Operator escape hatches:
+
+    * ``ETA_RECONCILE_DISABLED=1`` -- return ``{}`` with a WARNING.
+    * ``ETA_RECONCILE_ALLOW_EMPTY_STATE=1`` -- legitimate first-boot
+      case where no bot has written yet; return ``{}`` silently.
     """
-    return {}
+    if os.environ.get("ETA_RECONCILE_DISABLED") == "1":
+        logger.warning(
+            "position reconciliation DISABLED via ETA_RECONCILE_DISABLED=1; "
+            "bot-vs-broker drift will NOT be detected. "
+            "Operator must verify positions manually."
+        )
+        return {}
+
+    root = Path(state_root) if state_root is not None else DEFAULT_STATE_ROOT
+    files = sorted(root.glob(BOT_POSITIONS_GLOB))
+
+    if not files:
+        if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
+            logger.info(
+                "no bot positions files under %s; "
+                "ETA_RECONCILE_ALLOW_EMPTY_STATE=1 honored (first-boot case)",
+                root / "bots",
+            )
+            return {}
+        raise RuntimeError(
+            f"no per-bot positions files found under {root / 'bots'!s} "
+            f"(glob '{BOT_POSITIONS_GLOB}'); a wiped state dir silently "
+            "looks 'all reconciled'. Set ETA_RECONCILE_ALLOW_EMPTY_STATE=1 "
+            "for first-boot, or ETA_RECONCILE_DISABLED=1 to skip entirely."
+        )
+
+    out: dict[str, dict[str, float]] = {}
+    for path in files:
+        # Bot name is the parent-directory name -- mirrors the layout
+        # written by ``BaseBot._positions_path``.
+        bot_name = path.parent.name
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "skipping corrupt bot-positions file for bot=%s (%s): %s",
+                bot_name, path, exc,
+            )
+            continue
+        # Prefer the embedded bot_name when present (defensive against
+        # someone renaming the directory); fall back to dir name.
+        recorded_name = str(payload.get("bot_name") or bot_name)
+        for entry in payload.get("positions", []) or []:
+            try:
+                symbol = str(entry["symbol"]).upper()
+                qty = float(entry.get("qty", 0.0))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not symbol:
+                continue
+            out.setdefault(symbol, {})[recorded_name] = qty
+    return out
 
 
 async def _fetch_broker_positions_async() -> dict[str, dict[str, float]]:

@@ -55,13 +55,68 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
     "SOLUSD": ("SOL", "PAXOS", "1"),
 }
 
-# Current contract month (June 2026 → 202606)
-# TODO: auto-roll detection
-CONTRACT_MONTH = "202606"
+# Per-process cache of resolved front-month YYYYMM strings keyed by
+# (root, exchange). Populated lazily on first contract build via an IB
+# qualifyContracts() call against ContFuture, then reused for the rest
+# of the session — auto-rolls happen at process restart, not mid-run.
+_FRONT_MONTH_CACHE: dict[tuple[str, str], str] = {}
 
 
-def _make_contract(symbol: str) -> Any | None:  # noqa: ANN401 — ib_insync Contract is dynamically typed
-    """Build an ib_insync Contract for the given symbol."""
+def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") -> str:  # noqa: ANN401 — ib_insync IB instance
+    """Resolve the active front-month YYYYMM for a futures root via IB.
+
+    Uses ``ib_insync.ContFuture`` qualified through ``ib.qualifyContracts``;
+    IB returns the active front-month contract automatically. The result
+    is cached per (root, exchange) so subsequent calls are free.
+
+    Fails closed: if IB cannot resolve the contract, raises a
+    RuntimeError. Hardcoded fallback was the production-breaking
+    footgun this function exists to eliminate.
+    """
+    cache_key = (root, exchange)
+    cached = _FRONT_MONTH_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    from ib_insync import ContFuture
+
+    cont = ContFuture(symbol=root, exchange=exchange, currency="USD")
+    try:
+        qualified = ib.qualifyContracts(cont)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Failed to resolve front-month {root} via IB qualifyContracts: {exc!r}",
+        ) from exc
+
+    if not qualified:
+        raise RuntimeError(
+            f"IB returned no qualified contract for ContFuture({root}, {exchange})",
+        )
+
+    last_trade = getattr(qualified[0], "lastTradeDateOrContractMonth", "") or ""
+    yyyymm = last_trade[:6]
+    if len(yyyymm) != 6 or not yyyymm.isdigit():
+        raise RuntimeError(
+            f"IB returned invalid lastTradeDateOrContractMonth={last_trade!r} "
+            f"for {root}/{exchange} — cannot derive YYYYMM",
+        )
+
+    _FRONT_MONTH_CACHE[cache_key] = yyyymm
+    logger.info(
+        "Resolved front-month %s/%s = %s (cached for session)",
+        root, exchange, yyyymm,
+    )
+    return yyyymm
+
+
+def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # noqa: ANN401 — ib_insync types are dynamic
+    """Build an ib_insync Contract for the given symbol.
+
+    For futures, an active IB connection (``ib``) is required so the
+    front-month contract month can be resolved at first use. Passing
+    ``ib=None`` for a futures symbol raises a RuntimeError — fail closed
+    rather than silently targeting a stale month.
+    """
     from ib_insync import Contract, Future, Stock
 
     sym = symbol.upper().strip()
@@ -69,8 +124,14 @@ def _make_contract(symbol: str) -> Any | None:  # noqa: ANN401 — ib_insync Con
     # Futures — must explicitly set exchange BEFORE creating Future object
     if sym in FUTURES_MAP:
         root, exchange, mult = FUTURES_MAP[sym]
+        if ib is None:
+            raise RuntimeError(
+                f"_make_contract({sym}) requires an IB connection to resolve "
+                f"the front-month contract; got ib=None",
+            )
+        contract_month = _resolve_front_month_mnq(ib, root=root, exchange=exchange)
         contract = Future(symbol=root, exchange=exchange, currency="USD")
-        contract.lastTradeDateOrContractMonth = CONTRACT_MONTH
+        contract.lastTradeDateOrContractMonth = contract_month
         contract.multiplier = mult
         contract.includeExpired = False
         return contract
@@ -212,9 +273,16 @@ class LiveIbkrVenue(VenueBase):
         signed_qty = -abs(signed_qty) if side_str in ("sell", "short") else abs(signed_qty)
         assert_within_caps(side="mnq", venue="ibkr", symbol=request.symbol, requested_delta=signed_qty)
 
-        # ── CONTRACT RESOLUTION ────────────────────────────────────
-        contract = _make_contract(request.symbol)
-        if contract is None:
+        # ── SYMBOL VALIDATION (cheap, no IB connection needed) ────
+        # Reject unknown symbols early so we don't burn an idempotency
+        # slot or open a TWS connection just to find out the symbol map
+        # has no entry for this ticker. The full contract is built below
+        # after _ensure_connected() so the front-month resolver has an
+        # active IB instance to query.
+        _sym_norm = request.symbol.upper().strip()
+        if _sym_norm not in FUTURES_MAP and _sym_norm not in CRYPTO_MAP and _sym_norm not in (
+            "SPY", "QQQ", "AAPL", "TSLA", "NVDA",
+        ):
             return OrderResult(
                 order_id=self.idempotency_key(request),
                 status=OrderStatus.REJECTED,
@@ -266,6 +334,26 @@ class LiveIbkrVenue(VenueBase):
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
                 raw={"venue": self.name, "reason": "TWS API connection on port 4002 failed"},
+            )
+
+        # ── CONTRACT RESOLUTION (needs live IB for front-month) ───
+        # Built here, AFTER _ensure_connected, so _resolve_front_month_mnq
+        # can query IB. Result is cached per (root, exchange) so this hits
+        # IB only on the first order per process.
+        try:
+            contract = _make_contract(request.symbol, self._ib)
+        except Exception as exc:  # noqa: BLE001 — surface the resolver failure as a reject
+            logger.error("LiveIbkrVenue contract resolution failed: %s", exc)
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={"venue": self.name, "reason": f"contract resolution failed: {exc!r}"},
+            )
+        if contract is None:
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={"venue": self.name, "reason": f"unknown IBKR contract for {request.symbol}"},
             )
 
         # ── BUILD ORDER ───────────────────────────────────────────

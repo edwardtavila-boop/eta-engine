@@ -1,0 +1,12 @@
+<service>
+  <id>FmStatusServer</id>
+  <name>FmStatusServer</name>
+  <description>ETA Force Multiplier Status Server</description>
+  <executable>C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe</executable>
+  <arguments>C:\EvolutionaryTradingAlgo\eta_engine\deploy\fm_status_server.py</arguments>
+  <workingdirectory>C:\EvolutionaryTradingAlgo</workingdirectory>
+  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\firm\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src"/>
+  <logpath>C:\EvolutionaryTradingAlgo\var\logs</logpath>
+  <log mode="roll"/>
+  <onfailure action="restart" delay="10 sec"/>
+</service>

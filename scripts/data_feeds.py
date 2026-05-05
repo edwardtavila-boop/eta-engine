@@ -388,13 +388,15 @@ class IbkrDataFeed:
     def _make_contract(self, symbol: str) -> Any | None:  # noqa: ANN401 — ib_insync Contract
         """Resolve a symbol to an ib_insync Contract.
 
-        Reuses the venue's FUTURES_MAP / CONTRACT_MONTH so MNQ1 / NQ1
-        / etc. work the same way the order path does.
+        Reuses the venue's FUTURES_MAP and the IB-driven front-month
+        resolver from ``ibkr_live`` so MNQ1 / NQ1 / etc. work the same
+        way the order path does. Requires ``self._ib`` to be connected
+        (caller invokes ``_ensure_connected()`` first).
         """
         try:
             from eta_engine.venues.ibkr_live import (
-                CONTRACT_MONTH,
                 FUTURES_MAP,
+                _resolve_front_month_mnq,
             )
             from ib_insync import Future
         except ImportError:
@@ -404,8 +406,16 @@ class IbkrDataFeed:
         # Pull the underlying root for futures-month suffixed names
         if sym in FUTURES_MAP:
             root, exchange, mult = FUTURES_MAP[sym]
+            try:
+                contract_month = _resolve_front_month_mnq(self._ib, root=root, exchange=exchange)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "IbkrDataFeed: front-month resolution failed for %s/%s: %s",
+                    root, exchange, exc,
+                )
+                return None
             contract = Future(symbol=root, exchange=exchange, currency="USD")
-            contract.lastTradeDateOrContractMonth = CONTRACT_MONTH
+            contract.lastTradeDateOrContractMonth = contract_month
             contract.multiplier = mult
             contract.includeExpired = False
             return contract

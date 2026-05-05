@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts import _docstring_audit
+from eta_engine.scripts import _docstring_audit
 
 
 def test_docstring_audit_classifies_regressions_and_improvements() -> None:

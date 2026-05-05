@@ -65,5 +65,23 @@ def crypto_orb_strategy(config: CryptoORBConfig | None = None) -> ORBStrategy:
     Returns an ORBStrategy instance (not a subclass) so the engine
     plumbing is identical. CryptoORBConfig is frozen + dataclass-
     inherited, so all the knobs are still per-bot overrideable.
+
+    Crypto markets are 24x7 and have no "session open" — the placeholder
+    defaults (00:00 UTC, 60-minute range) are a CONVENIENT scaffold but
+    NOT a real edge. Trading them as-is would chase random midnight
+    level-breaks. Operator MUST set explicit non-default values for
+    ``rth_open_local`` and ``range_minutes`` anchored to a specific event
+    (UTC daily open is OK if you mean it; an FOMC/CPI window is better).
     """
-    return ORBStrategy(config or CryptoORBConfig())
+    cfg = config or CryptoORBConfig()
+    _default = CryptoORBConfig()
+    if (
+        cfg.rth_open_local == _default.rth_open_local
+        and cfg.range_minutes == _default.range_minutes
+    ):
+        raise ValueError(
+            "CryptoORBStrategy requires explicit rth_open_local + "
+            "range_minutes — crypto has no session open, you must "
+            "anchor to a specific event",
+        )
+    return ORBStrategy(cfg)

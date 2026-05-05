@@ -612,12 +612,72 @@ class MnqBot(BaseBot):
             )
             return None
 
+        # ── HARD SIGNAL VALIDATION (entry signals only) ─────────────
+        # Stops a malformed signal (inverted stop, absurd RR, degenerate
+        # qty from a tiny stop_dist) from ever reaching the broker.  An
+        # exit MUST proceed unconditionally (a refused close = orphaned
+        # position), so we validate only on LONG/SHORT entries.
+        if _is_entry:
+            from eta_engine.feeds.instrument_specs import get_spec
+            from eta_engine.feeds.signal_validator import validate_signal
+
+            spec = get_spec(self._tradovate_symbol)
+            point_value = float(getattr(spec, "point_value", 2.0))
+            entry_px = float(signal.meta.get("entry", signal.price))
+            stop_dist = float(signal.meta.get("stop_distance", 0.0) or 0.0)
+            if signal.type is SignalType.LONG:
+                default_stop = entry_px - stop_dist if stop_dist > 0 else entry_px * 0.995
+                default_tgt = entry_px + 2.0 * stop_dist if stop_dist > 0 else entry_px * 1.01
+            else:
+                default_stop = entry_px + stop_dist if stop_dist > 0 else entry_px * 1.005
+                default_tgt = entry_px - 2.0 * stop_dist if stop_dist > 0 else entry_px * 0.99
+            stop_px = float(signal.meta.get("stop", default_stop))
+            target_px = float(signal.meta.get("target", default_tgt))
+
+            vr = validate_signal(
+                side=signal.type.value,
+                entry=entry_px,
+                stop=stop_px,
+                target=target_px,
+                qty=qty,
+                equity=self.state.equity,
+                point_value=point_value,
+                spec_symbol=self._tradovate_symbol,
+            )
+            if not vr.ok:
+                codes = [f.code for f in vr.failures]
+                logger.warning(
+                    "MNQ signal rejected by validator: codes=%s signal=%s qty=%.4f "
+                    "entry=%.4f stop=%.4f target=%.4f",
+                    codes, signal.type.value, qty, entry_px, stop_px, target_px,
+                )
+                self._record_event(
+                    intent="mnq_order_validator_blocked",
+                    rationale=f"signal_validator: {','.join(codes)}",
+                    outcome=Outcome.BLOCKED,
+                    signal=signal.type.value,
+                    qty=qty,
+                    entry=entry_px,
+                    stop=stop_px,
+                    target=target_px,
+                    failures=[{"code": f.code, "msg": f.message} for f in vr.failures],
+                )
+                return None
+            # Stash validated bracket levels on the signal so the venue
+            # can attach a real bracket (Bug 3 patch).
+            signal.meta["validated_stop"] = stop_px
+            signal.meta["validated_target"] = target_px
+
         side, reduce_only = self._signal_to_order_side(signal.type)
+        bracket_stop = signal.meta.get("validated_stop") if _is_entry else None
+        bracket_target = signal.meta.get("validated_target") if _is_entry else None
         req = OrderRequest(
             symbol=self._tradovate_symbol,
             side=side,
             qty=qty,
             reduce_only=reduce_only,
+            stop_price=float(bracket_stop) if bracket_stop is not None else None,
+            target_price=float(bracket_target) if bracket_target is not None else None,
         )
         try:
             result = await self._router.place_with_failover(req)

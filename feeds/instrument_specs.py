@@ -28,6 +28,15 @@ class InstrumentSpec:
     overnight_slip_mult: float = 2.0  # Multiplier on slippage outside RTH session
     fast_bar_slip_mult: float = 1.5   # When body/range > 0.8
     thin_volume_slip_mult: float = 1.3  # When bar_vol < median_20
+    is_perpetual: bool = False        # True for crypto perp swaps that pay funding
+                                      # every 8h. CME BTC/ETH futures do NOT pay
+                                      # funding — but until the engine routes
+                                      # perp orders separately from CME futures
+                                      # the funding_ledger module treats BTC/ETH
+                                      # entries as perps when explicitly invoked.
+                                      # TODO: split perp symbols (e.g. "BTC-PERP",
+                                      # "ETH-PERP") from CME futures so this
+                                      # flag can be set per-venue.
 
     @property
     def tick_value_usd(self) -> float:
@@ -76,16 +85,21 @@ _SPECS: dict[str, InstrumentSpec] = {
     # CBOT Rates
     "ZN":   InstrumentSpec("ZN",   tick_size=0.015625, point_value=1000.0, commission_rt=4.00,
                            half_spread_ticks=1.0, base_slip_ticks=1.0),
-    # CME Crypto Futures
+    # CME Crypto Futures.  is_perpetual=True is used by funding_ledger
+    # when the engine explicitly invokes perp-funding accounting; CME
+    # BTC/ETH futures are NOT perps and do NOT pay funding — see TODO
+    # on InstrumentSpec.is_perpetual for the planned per-venue split.
     "BTC":  InstrumentSpec("BTC",  tick_size=5.0,  point_value=5.0,   commission_rt=11.00,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
-                           overnight_slip_mult=1.2),  # 24x5 — less day/night gap
+                           overnight_slip_mult=1.2,  # 24x5 — less day/night gap
+                           is_perpetual=True),
     "MBT":  InstrumentSpec("MBT",  tick_size=5.0,  point_value=0.10,  commission_rt=2.50,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2),
     "ETH":  InstrumentSpec("ETH",  tick_size=0.50, point_value=50.0,  commission_rt=11.00,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
-                           overnight_slip_mult=1.2),
+                           overnight_slip_mult=1.2,
+                           is_perpetual=True),
     "MET":  InstrumentSpec("MET",  tick_size=0.50, point_value=0.10,  commission_rt=2.50,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2),

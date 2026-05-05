@@ -43,9 +43,9 @@ from pathlib import Path
 
 import yaml
 
-from scripts import _audit_alert_events
+from eta_engine.scripts import _audit_alert_events
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[1]
 
 # Match ``dispatcher.send("event_name", ...)`` -- works for both bare
 # ``dispatcher`` (as in ``apply_verdict``) and ``self.dispatcher``

@@ -92,13 +92,16 @@ class CryptoRegimeTrendStrategy:
             self._trades_today = 0
         self._bars_seen += 1
 
+        # snapshot prior bar's EMA — see same-bar self-reference fix
+        prev_regime_ema = self._regime_ema
+        prev_pullback_ema = self._pullback_ema
         # Update EMAs every bar (even during warmup)
         self._regime_ema = _ema_step(self._regime_ema, bar.close, self.cfg.regime_ema)
         self._pullback_ema = _ema_step(self._pullback_ema, bar.close, self.cfg.pullback_ema)
 
         if self._bars_seen < self.cfg.warmup_bars:
             return None
-        if self._regime_ema is None or self._pullback_ema is None:
+        if prev_regime_ema is None or prev_pullback_ema is None:
             return None
         if len(hist) < self.cfg.atr_period + 1:
             return None
@@ -112,26 +115,26 @@ class CryptoRegimeTrendStrategy:
         ):
             return None
 
-        bull_regime = bar.close > self._regime_ema
-        bear_regime = bar.close < self._regime_ema
+        bull_regime = bar.close > prev_regime_ema
+        bear_regime = bar.close < prev_regime_ema
         if not (bull_regime or bear_regime):
             return None
 
         tol = self.cfg.pullback_tolerance_pct / 100.0
         side: str | None = None
         if bull_regime:
-            band_lo = self._pullback_ema * (1.0 - tol)
-            band_hi = self._pullback_ema * (1.0 + tol)
+            band_lo = prev_pullback_ema * (1.0 - tol)
+            band_hi = prev_pullback_ema * (1.0 + tol)
             touched = bar.low <= band_hi
-            bounced = bar.close > self._pullback_ema
+            bounced = bar.close > prev_pullback_ema
             within_tolerance = bar.low >= band_lo
             if touched and bounced and within_tolerance:
                 side = "BUY"
         elif bear_regime:
-            band_lo = self._pullback_ema * (1.0 - tol)
-            band_hi = self._pullback_ema * (1.0 + tol)
+            band_lo = prev_pullback_ema * (1.0 - tol)
+            band_hi = prev_pullback_ema * (1.0 + tol)
             touched = bar.high >= band_lo
-            bounced = bar.close < self._pullback_ema
+            bounced = bar.close < prev_pullback_ema
             within_tolerance = bar.high <= band_hi
             if touched and bounced and within_tolerance:
                 side = "SELL"

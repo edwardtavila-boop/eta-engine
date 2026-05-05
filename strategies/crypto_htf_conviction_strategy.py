@@ -69,8 +69,11 @@ class HtfConvictionSizingConfig:
     conviction_gain: float = 1.0
 
     # Hard caps so position can't grow / shrink absurdly.
+    # Capped at 1.3x — was 2.0, which on a funded account with daily DD
+    # limits doubles tail-amplification risk on a "high conviction" bar
+    # that may itself be high-correlation noise from the sage schools.
     min_size_multiplier: float = 0.5
-    max_size_multiplier: float = 2.0
+    max_size_multiplier: float = 1.3
 
 
 @dataclass(frozen=True)

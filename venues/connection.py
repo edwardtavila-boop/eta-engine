@@ -14,11 +14,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+_LOG = logging.getLogger(__name__)
 
 from eta_engine.core.secrets import (
     BYBIT_API_KEY,
@@ -123,7 +126,30 @@ def canonical_broker_connections_hash_payload(payload: dict[str, Any]) -> dict[s
 
 
 def _secret(key: str) -> str:
-    return SECRETS.get(key, required=False) or ""
+    """Resolve a broker secret with fail-closed live-mode enforcement.
+
+    When ``ETA_LIVE_MODE=1`` is set, missing/empty secrets raise
+    ``RuntimeError`` so misconfigured creds cannot silently fall through
+    to a mock adapter (which would have us routing paper orders while
+    the operator believes the system is live). Without ``ETA_LIVE_MODE``
+    set, dev/test runs still get the empty-string fallback — but every
+    such fallback emits a WARNING so the paper-mode downgrade leaves a
+    paper trail in the logs.
+    """
+    value = SECRETS.get(key, required=False) or ""
+    if not value:
+        live_mode = _truthy(os.environ.get("ETA_LIVE_MODE"))
+        if live_mode:
+            raise RuntimeError(
+                f"ETA_LIVE_MODE=1 but broker secret missing for {key}; "
+                "refusing to silently fall through to mock"
+            )
+        _LOG.warning(
+            "broker secret missing for %s; falling through to mock adapter "
+            "(set ETA_LIVE_MODE=1 to fail closed)",
+            key,
+        )
+    return value
 
 
 def _build_bybit(*, testnet: bool) -> BybitVenue:

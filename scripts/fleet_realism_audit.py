@@ -148,7 +148,7 @@ def _run_one_bot_audit(
 def run_audit(
     bots: list[str] | None = None, days: int = 30,
     walk_forward: bool = True, is_fraction: float = 0.7,
-    workers: int = 4,
+    workers: int = 4, sequential: bool = False,
 ) -> list[BotAuditResult]:
     from eta_engine.strategies.per_bot_registry import all_assignments, is_active
 
@@ -157,12 +157,60 @@ def run_audit(
     else:
         bot_ids = [a.bot_id for a in all_assignments() if is_active(a)]
 
-    print(f"Auditing {len(bot_ids)} bots with {workers} workers...")
+    print(f"Auditing {len(bot_ids)} bots {'sequentially' if sequential else f'with {workers} workers'}...")
     print(f"  Modes: legacy / realistic / pessimistic")
     if walk_forward:
         print(f"  Walk-forward: IS={is_fraction*100:.0f}%, OOS={(1-is_fraction)*100:.0f}%")
 
     results: list[BotAuditResult] = []
+
+    def _consume(bot_id: str, d: dict) -> None:
+        r = BotAuditResult(
+            bot_id=d.get("bot_id", bot_id),
+            symbol=d.get("symbol", "?"),
+            timeframe=d.get("timeframe", "?"),
+            legacy_pnl=d.get("legacy_pnl", 0.0),
+            realistic_pnl=d.get("realistic_pnl", 0.0),
+            pessimistic_pnl=d.get("pessimistic_pnl", 0.0),
+            legacy_trades=d.get("legacy_trades", 0),
+            realistic_trades=d.get("realistic_trades", 0),
+            realistic_wr=d.get("realistic_wr", 0.0),
+            realistic_signals_rejected=d.get("realistic_signals_rejected", 0),
+            rejection_codes=d.get("rejection_codes", {}),
+            is_pnl=d.get("is_pnl"),
+            oos_pnl=d.get("oos_pnl"),
+            is_trades=d.get("is_trades"),
+            oos_trades=d.get("oos_trades"),
+            is_wr=d.get("is_wr"),
+            oos_wr=d.get("oos_wr"),
+            realism_gap_pct=d.get("realism_gap_pct", 0.0),
+            error=d.get("error"),
+        )
+        results.append(r)
+        tag = r.status
+        if r.error:
+            print(f"  [{r.bot_id}] {tag}: {r.error}", flush=True)
+        else:
+            rejected = f" REJ={r.realistic_signals_rejected}" if r.realistic_signals_rejected else ""
+            print(
+                f"  [{r.bot_id}] {tag} legacy=${r.legacy_pnl:+.0f} "
+                f"realistic=${r.realistic_pnl:+.0f} pessimistic=${r.pessimistic_pnl:+.0f} "
+                f"trades={r.realistic_trades} wr={r.realistic_wr:.0f}%{rejected}",
+                flush=True,
+            )
+
+    if sequential:
+        # Sequential mode — required on Windows when bots trigger heavy
+        # init (sage daily verdicts, EMA cache rebuilds) that don't survive
+        # ProcessPoolExecutor spawn cleanly.  Slower but reliable.
+        for b in bot_ids:
+            try:
+                d = _run_one_bot_audit(b, days, walk_forward, is_fraction)
+            except Exception as e:  # noqa: BLE001
+                d = {"bot_id": b, "error": f"{type(e).__name__}: {e}"}
+            _consume(b, d)
+        return results
+
     with ProcessPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(_run_one_bot_audit, b, days, walk_forward, is_fraction): b
                    for b in bot_ids}
@@ -175,41 +223,9 @@ def run_audit(
                     bot_id=bot_id, symbol="?", timeframe="?",
                     error=f"executor: {type(e).__name__}: {e}",
                 ))
-                print(f"  [{bot_id}] EXCEPTION {e}")
+                print(f"  [{bot_id}] EXCEPTION {e}", flush=True)
                 continue
-
-            r = BotAuditResult(
-                bot_id=d.get("bot_id", bot_id),
-                symbol=d.get("symbol", "?"),
-                timeframe=d.get("timeframe", "?"),
-                legacy_pnl=d.get("legacy_pnl", 0.0),
-                realistic_pnl=d.get("realistic_pnl", 0.0),
-                pessimistic_pnl=d.get("pessimistic_pnl", 0.0),
-                legacy_trades=d.get("legacy_trades", 0),
-                realistic_trades=d.get("realistic_trades", 0),
-                realistic_wr=d.get("realistic_wr", 0.0),
-                realistic_signals_rejected=d.get("realistic_signals_rejected", 0),
-                rejection_codes=d.get("rejection_codes", {}),
-                is_pnl=d.get("is_pnl"),
-                oos_pnl=d.get("oos_pnl"),
-                is_trades=d.get("is_trades"),
-                oos_trades=d.get("oos_trades"),
-                is_wr=d.get("is_wr"),
-                oos_wr=d.get("oos_wr"),
-                realism_gap_pct=d.get("realism_gap_pct", 0.0),
-                error=d.get("error"),
-            )
-            results.append(r)
-            tag = r.status
-            if r.error:
-                print(f"  [{r.bot_id}] {tag}: {r.error}")
-            else:
-                rejected = f" REJ={r.realistic_signals_rejected}" if r.realistic_signals_rejected else ""
-                print(
-                    f"  [{r.bot_id}] {tag} legacy=${r.legacy_pnl:+.0f} "
-                    f"realistic=${r.realistic_pnl:+.0f} pessimistic=${r.pessimistic_pnl:+.0f} "
-                    f"trades={r.realistic_trades} wr={r.realistic_wr:.0f}%{rejected}"
-                )
+            _consume(bot_id, d)
     return results
 
 
@@ -313,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-walk-forward", action="store_true", help="skip IS/OOS split")
     p.add_argument("--is-fraction", type=float, default=0.7, help="IS fraction for walk-forward")
     p.add_argument("--workers", type=int, default=4, help="parallel processes")
+    p.add_argument("--sequential", action="store_true",
+                   help="run one bot at a time (slower but reliable on Windows)")
     p.add_argument("--strict", action="store_true",
                    help="exit non-zero on any invalid signal or OOS decay > 50%%")
     args = p.parse_args(argv)
@@ -321,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         bots=args.bots, days=args.days,
         walk_forward=not args.no_walk_forward,
         is_fraction=args.is_fraction, workers=args.workers,
+        sequential=args.sequential,
     )
     return write_audit_report(results, strict=args.strict)
 

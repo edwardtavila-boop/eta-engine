@@ -25,6 +25,8 @@ here once their fetchers exist.
 from __future__ import annotations
 
 import csv
+import logging
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +34,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from eta_engine.core.data_pipeline import BarData
+
+_LOG = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +131,13 @@ class FundingRateProvider:
     returns 0.0 (neutral) so the filter is a no-op.
     """
 
-    def __init__(self, csv_path: Path | str) -> None:
+    def __init__(
+        self,
+        csv_path: Path | str,
+        max_age_hours: float = 24.0,
+    ) -> None:
+        self.max_age_hours = max_age_hours
+        self._stale_logged = False
         self._rows: list[tuple[datetime, float]] = []
         p = Path(csv_path)
         if not p.exists():
@@ -147,16 +157,35 @@ class FundingRateProvider:
         self._rows.sort(key=lambda x: x[0])
 
     def __call__(self, bar: BarData) -> float:
-        """Most recent funding rate at-or-before bar.timestamp; 0 if none."""
+        """Most recent funding rate at-or-before bar.timestamp.
+
+        Returns ``NaN`` when the most recent reading is older than
+        ``max_age_hours`` (data has gone stale — caller must defend).
+        Returns 0.0 only when the file is empty / no rows precede bar.
+        """
         if not self._rows:
             return 0.0
         # Binary search would be faster; linear scan is fine for ~300 rows
         result = 0.0
+        t_match: datetime | None = None
         for ts, rate in self._rows:
             if ts <= bar.timestamp:
                 result = rate
+                t_match = ts
             else:
                 break
+        if t_match is None:
+            return 0.0
+        age_hours = (bar.timestamp - t_match).total_seconds() / 3600.0
+        if age_hours > self.max_age_hours:
+            if not self._stale_logged:
+                _LOG.warning(
+                    "FundingRateProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
+                    bar.timestamp.isoformat(), t_match.isoformat(),
+                    age_hours, self.max_age_hours,
+                )
+                self._stale_logged = True
+            return math.nan
         return result
 
 
@@ -195,8 +224,11 @@ class MacroTailwindProvider:
         dxy_csv: Path | str,
         spy_csv: Path | str,
         slope_period: int = 5,
+        max_age_hours: float = 168.0,
     ) -> None:
         self._slope_period = slope_period
+        self.max_age_hours = max_age_hours
+        self._stale_logged = False
         dxy_rows = _read_yahoo_csv(Path(dxy_csv))
         spy_rows = _read_yahoo_csv(Path(spy_csv))
         # Index DXY/SPY by date for O(1) lookup
@@ -224,10 +256,15 @@ class MacroTailwindProvider:
         self._macro.sort(key=lambda m: m.date)
 
     def __call__(self, bar: BarData) -> float:
-        """Most recent macro score at-or-before bar.timestamp."""
+        """Most recent macro score at-or-before bar.timestamp.
+
+        Returns ``NaN`` when the most recent macro bar is older than
+        ``max_age_hours`` relative to ``bar.timestamp``.
+        """
         if not self._macro:
             return 0.0
         result = 0.0
+        last_date: datetime | None = None
         for m in self._macro:
             if m.date.date() <= bar.timestamp.date():
                 # Score: weight SPY positively, DXY negatively
@@ -237,8 +274,21 @@ class MacroTailwindProvider:
                 spy_norm = max(-1.0, min(1.0, m.spy_slope_5d / 0.02))
                 score = -dxy_norm * 0.5 + spy_norm * 0.5
                 result = max(-1.0, min(1.0, score))
+                last_date = m.date
             else:
                 break
+        if last_date is None:
+            return 0.0
+        age_hours = (bar.timestamp - last_date).total_seconds() / 3600.0
+        if age_hours > self.max_age_hours:
+            if not self._stale_logged:
+                _LOG.warning(
+                    "MacroTailwindProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
+                    bar.timestamp.isoformat(), last_date.isoformat(),
+                    age_hours, self.max_age_hours,
+                )
+                self._stale_logged = True
+            return math.nan
         return result
 
 
@@ -307,7 +357,13 @@ class EtfFlowProvider:
       * Short requires flow < 0 (institutional selling)
     """
 
-    def __init__(self, csv_path: Path | str) -> None:
+    def __init__(
+        self,
+        csv_path: Path | str,
+        max_age_hours: float = 96.0,
+    ) -> None:
+        self.max_age_hours = max_age_hours
+        self._stale_logged = False
         self._rows = _read_two_col_csv(Path(csv_path), "net_flow_usd_m")
 
     def __call__(self, bar: BarData) -> float:
@@ -315,11 +371,25 @@ class EtfFlowProvider:
             return 0.0
         result = 0.0
         target = bar.timestamp.date()
+        t_match: datetime | None = None
         for ts, val in self._rows:
             if ts.date() <= target:
                 result = val
+                t_match = ts
             else:
                 break
+        if t_match is None:
+            return 0.0
+        age_hours = (bar.timestamp - t_match).total_seconds() / 3600.0
+        if age_hours > self.max_age_hours:
+            if not self._stale_logged:
+                _LOG.warning(
+                    "EtfFlowProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
+                    bar.timestamp.isoformat(), t_match.isoformat(),
+                    age_hours, self.max_age_hours,
+                )
+                self._stale_logged = True
+            return math.nan
         return result
 
 
@@ -365,7 +435,13 @@ class LthProxyProvider:
     current day's value.
     """
 
-    def __init__(self, csv_path: Path | str) -> None:
+    def __init__(
+        self,
+        csv_path: Path | str,
+        max_age_hours: float = 168.0,
+    ) -> None:
+        self.max_age_hours = max_age_hours
+        self._stale_logged = False
         self._rows = _read_two_col_csv(Path(csv_path), "lth_proxy")
 
     def __call__(self, bar: BarData) -> float:
@@ -373,9 +449,23 @@ class LthProxyProvider:
             return 0.0
         target = bar.timestamp.date()
         result = 0.0
+        t_match: datetime | None = None
         for ts, val in self._rows:
             if ts.date() <= target:
                 result = val
+                t_match = ts
             else:
                 break
+        if t_match is None:
+            return 0.0
+        age_hours = (bar.timestamp - t_match).total_seconds() / 3600.0
+        if age_hours > self.max_age_hours:
+            if not self._stale_logged:
+                _LOG.warning(
+                    "LthProxyProvider stale: bar=%s last=%s age=%.1fh > %.1fh; returning NaN",
+                    bar.timestamp.isoformat(), t_match.isoformat(),
+                    age_hours, self.max_age_hours,
+                )
+                self._stale_logged = True
+            return math.nan
         return max(-1.0, min(1.0, result))

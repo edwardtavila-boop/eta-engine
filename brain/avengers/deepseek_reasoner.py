@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class DeepSeekReasoner(Persona):
-    _persona_id: ClassVar[PersonaId] = PersonaId.DEEPSEEK_REASONER
+    PERSONA_ID: ClassVar[PersonaId] = PersonaId.DEEPSEEK_REASONER
 
     @classmethod
     def _system_prompt(cls, envelope: TaskEnvelope) -> str:
@@ -29,7 +29,8 @@ class DeepSeekReasoner(Persona):
 
     @classmethod
     def _user_prompt(cls, envelope: TaskEnvelope) -> str:
-        parts = [f"Task: {envelope.category.value}", f"Context: {envelope.context[:2000]}"]
-        if envelope.attachments:
-            parts.append(f"Attachments: {'; '.join(envelope.attachments[:5])}")
+        ctx_str = str(envelope.context) if envelope.context else ""
+        parts = [f"Task: {envelope.category.value}", f"Goal: {envelope.goal}"]
+        if ctx_str:
+            parts.append(f"Context: {ctx_str[:2000]}")
         return "\n\n".join(parts)

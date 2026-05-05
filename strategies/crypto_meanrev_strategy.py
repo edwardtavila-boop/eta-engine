@@ -68,6 +68,13 @@ class CryptoMeanRevConfig:
     # ── Hygiene ──
     max_trades_per_day: int = 2
     min_bars_between_trades: int = 6
+    # ── Regime gate ──
+    # Mean-reversion in trending regimes is the textbook way to bleed.
+    # Default ON, tight ADX ceiling — disable mean-rev entries when the
+    # market is trending.  Same protection added to RSI MR.
+    enable_adx_filter: bool = True
+    adx_period: int = 14
+    adx_max: float = 25.0
 
 
 # ---------------------------------------------------------------------------

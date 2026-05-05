@@ -145,9 +145,10 @@ class CryptoEmaStackStrategy:
 
     # -- helpers --------------------------------------------------------------
 
-    def _stack_aligned(self, side: str) -> bool:
+    def _stack_aligned(self, side: str, emas: list[float | None] | None = None) -> bool:
         """True iff every EMA pair in the stack is ordered correctly."""
-        emas = self._emas
+        if emas is None:
+            emas = self._emas
         if any(e is None for e in emas):
             return False
         if side == "BUY":
@@ -156,13 +157,14 @@ class CryptoEmaStackStrategy:
         # Bear: fast < slow at every adjacent pair
         return all(emas[i] < emas[i + 1] for i in range(len(emas) - 1))
 
-    def _stack_spread_atr_ratio(self, atr: float) -> float:
+    def _stack_spread_atr_ratio(self, atr: float, emas: list[float | None] | None = None) -> float:
         """Spread between fastest and slowest EMA divided by ATR.
 
         Used by the stack-separation filter and the adaptive RR.
         Returns 0.0 if any EMA is None or ATR is zero.
         """
-        emas = self._emas
+        if emas is None:
+            emas = self._emas
         if any(e is None for e in emas) or atr <= 0.0:
             return 0.0
         spread = abs(emas[0] - emas[-1])
@@ -183,6 +185,8 @@ class CryptoEmaStackStrategy:
             self._trades_today = 0
         self._bars_seen += 1
 
+        # snapshot prior bar's EMA — see same-bar self-reference fix
+        prev_emas: list[float | None] = list(self._emas)
         # Update EMAs every bar
         for i, period in enumerate(self.cfg.stack_periods):
             self._emas[i] = _ema_step(self._emas[i], bar.close, period)
@@ -191,7 +195,7 @@ class CryptoEmaStackStrategy:
         # Warmup
         if self._bars_seen < self.cfg.warmup_bars:
             return None
-        if any(e is None for e in self._emas):
+        if any(e is None for e in prev_emas):
             return None
         if len(hist) < self.cfg.atr_period + 1:
             return None
@@ -206,11 +210,11 @@ class CryptoEmaStackStrategy:
         ):
             return None
 
-        # Determine direction from stack alignment
+        # Determine direction from stack alignment (use prior-bar snapshot)
         side: str | None = None
-        if self._stack_aligned("BUY"):
+        if self._stack_aligned("BUY", prev_emas):
             side = "BUY"
-        elif self._stack_aligned("SELL"):
+        elif self._stack_aligned("SELL", prev_emas):
             side = "SELL"
         if side is None:
             return None
@@ -225,13 +229,13 @@ class CryptoEmaStackStrategy:
 
         # C. Stack separation filter
         if self.cfg.min_stack_spread_atr > 0.0:
-            spread_ratio = self._stack_spread_atr_ratio(atr)
+            spread_ratio = self._stack_spread_atr_ratio(atr, prev_emas)
             if spread_ratio < self.cfg.min_stack_spread_atr:
                 return None
 
-        # B. Pullback entry — bar's wick taps the entry EMA, close
-        # is back on the regime side.
-        entry_ema = self._emas[self.cfg.entry_ema_idx]
+        # B. Pullback entry — bar's wick taps the entry EMA (prior-bar
+        # snapshot), close is back on the regime side.
+        entry_ema = prev_emas[self.cfg.entry_ema_idx]
         tol = self.cfg.entry_tolerance_pct / 100.0
         band_lo = entry_ema * (1.0 - tol)
         band_hi = entry_ema * (1.0 + tol)
@@ -257,7 +261,7 @@ class CryptoEmaStackStrategy:
         # E. Adaptive RR — bump RR when stack is compressed
         rr = self.cfg.rr_target
         if self.cfg.adaptive_rr_enabled:
-            spread_ratio = self._stack_spread_atr_ratio(atr)
+            spread_ratio = self._stack_spread_atr_ratio(atr, prev_emas)
             if spread_ratio < self.cfg.tightness_threshold_atr:
                 rr *= self.cfg.tightness_rr_lift
 

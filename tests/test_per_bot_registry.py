@@ -88,6 +88,10 @@ def test_thresholds_in_valid_range() -> None:
         # the basic confluence threshold entirely.
         "confluence_scorecard",
         "mtf_scalp",
+        # Anchor-sweep (2026-05-04): named-anchor variant of sweep_reclaim
+        # for MNQ/NQ. Self-contained — wick-pierce + close-reclaim of
+        # PDH/PDL/PMH/PML/ONH/ONL is the entire trigger.
+        "anchor_sweep",
     }
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:

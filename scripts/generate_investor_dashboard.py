@@ -47,13 +47,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def gather_payload() -> dict[str, Any]:
     """Pull non-sensitive state from various sources."""
+    import os
+    mode = os.environ.get("ETA_MODE", "PAPER").upper()
+    mode_display = "LIVE" if mode == "LIVE" else "PAPER SIM"
+
     payload: dict[str, Any] = {
         "generated_at": datetime.now(UTC).isoformat(),
         "fleet": {
             "size": 7,
             "names": ["MnqBot", "NqBot", "CryptoSeedBot", "EthPerpBot",
                       "SolPerpBot", "XrpPerpBot", "BtcHybridBot"],
-            "mode": "PAPER SIM",  # TODO: read from /api/firm/status
+            "mode": mode_display,
         },
         "kaizen_recent": [],
         "todays_verdicts": {},

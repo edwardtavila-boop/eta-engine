@@ -53,6 +53,14 @@ class OrderRequest(BaseModel):
     price: float | None = None
     reduce_only: bool = False
     client_order_id: str | None = None
+    # Bracket attachment.  When BOTH populated the venue MUST place a
+    # parent + STP child + LMT child as a single OCO group.  Naked
+    # entries (stop_price=None) on a non-reduce-only request are rejected
+    # by the venue layer — see ibkr_live.place_order.  Exits use
+    # reduce_only=True and bypass the bracket requirement.
+    stop_price: float | None = None
+    target_price: float | None = None
+    bot_id: str | None = None
 
 
 class OrderResult(BaseModel):
