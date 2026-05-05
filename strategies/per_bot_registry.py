@@ -152,7 +152,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "underlying_strategy": "crypto_orb",
             "crypto_orb_config": {
                 "range_minutes": 120,
-                "atr_stop_mult": 3.0,
+                # FLEET PRESSURE TEST 2026-05-04: lab heatmap shows
+                # sharpe=0.99 at stop_atr=2.5x vs 0.00 at current 3.0x —
+                # 16.7% tighter stop, ~+1.0 sharpe lift in heatmap.
+                # Current 3.0x is over-wide for ETH 1h's actual range.
+                "atr_stop_mult": 2.5,
                 "rr_target": 2.5,
                 "ema_bias_period": 100,
                 "max_trades_per_day": 2,

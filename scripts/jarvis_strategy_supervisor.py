@@ -693,19 +693,27 @@ class ExecutionRouter:
         slippage_bps = 1.5 if side_close == "BUY" else -1.5
         fill_price = ref_price * (1.0 + slippage_bps / 10_000.0)
 
-        # Realized P&L (paper)
+        # Realized P&L (paper) — multiply by instrument point_value so
+        # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
+        # accurate dollar PnL. Crypto spot returns point_value=1.0 from
+        # the default-spec branch, so it falls through unchanged.
+        try:
+            from eta_engine.feeds.instrument_specs import get_spec
+            _pv = float(get_spec(bot.symbol).point_value or 1.0)
+        except Exception:  # noqa: BLE001
+            _pv = 1.0
         sign = 1.0 if pos["side"] == "BUY" else -1.0
         pnl_per_unit = (fill_price - pos["entry_price"]) * sign
-        pnl = pnl_per_unit * pos["qty"]
-        # Realized R: prefer planned bracket-stop distance × qty as the
-        # denominator. That is what the lab uses, so live R becomes
+        pnl = pnl_per_unit * pos["qty"] * _pv
+        # Realized R: prefer planned bracket-stop distance × qty × pv as
+        # the denominator. That is what the lab uses, so live R becomes
         # apples-to-apples comparable to lab expectancy_r. Falls back to
         # 1% of cash for legacy positions without a stored bracket.
         plan_stop = pos.get("bracket_stop")
         risk_unit = 0.0
         if plan_stop is not None:
             with contextlib.suppress(TypeError, ValueError):
-                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * pos["qty"]
+                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * pos["qty"] * _pv
         if risk_unit <= 0:
             risk_unit = bot.cash * 0.01
         realized_r = pnl / max(risk_unit, 1e-9) if risk_unit > 0 else 0.0
@@ -1600,6 +1608,14 @@ class JarvisStrategySupervisor:
         # place each bot's real R-at-risk is ~0.03R (planned $1.67 stop on
         # crypto-paper / $50 1R unit), so 24 open positions sum to <1R —
         # safely under the cap, and the bots can size at 1.0x as planned.
+        # Multiply per-bot risk by the instrument's point_value so futures
+        # contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) contribute
+        # the right number of dollars to the aggregate R-at-risk.
+        # Crypto spot defaults to point_value=1.0 and stays unchanged.
+        try:
+            from eta_engine.feeds.instrument_specs import get_spec as _get_spec
+        except Exception:  # noqa: BLE001
+            _get_spec = None
         open_risk_r_total = 0.0
         for _b in self.bots:
             if _b.open_position is None:
@@ -1613,7 +1629,11 @@ class JarvisStrategySupervisor:
                 open_risk_r_total += 1.0
                 continue
             try:
-                _risk_dollars = abs(float(_bs) - float(_entry)) * float(_qty)
+                _pv = (
+                    float(_get_spec(_b.symbol).point_value or 1.0)
+                    if _get_spec else 1.0
+                )
+                _risk_dollars = abs(float(_bs) - float(_entry)) * float(_qty) * _pv
                 _r_unit = max(float(_b.cash) * 0.01, 1e-9)
                 open_risk_r_total += _risk_dollars / _r_unit
             except (TypeError, ValueError):

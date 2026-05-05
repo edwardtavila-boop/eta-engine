@@ -418,6 +418,61 @@ def _print_text(snap: dict) -> None:
     print("=" * 78)
 
 
+def _print_fleet_summary(results: list[dict[str, Any]]) -> None:
+    """Cross-fleet ranked summary of upgrade candidates.
+
+    Used by --all to surface the highest-impact tunables across every
+    registered bot in one screen. Only candidates with a *numeric*
+    expected_sharpe_delta are ranked (heatmap-evidenced); the
+    "untested — try X" hints are listed below as low-confidence picks.
+    """
+    print("=" * 102)
+    print(f" FLEET PRESSURE TEST — {len(results)} bots")
+    print("=" * 102)
+
+    ranked: list[tuple[float, str, dict[str, Any]]] = []
+    untested: list[tuple[str, dict[str, Any]]] = []
+    no_upgrade: list[str] = []
+
+    for r in results:
+        bid = r.get("bot_id", "?")
+        ups = r.get("upgrades") or []
+        if not ups:
+            no_upgrade.append(bid)
+            continue
+        for u in ups:
+            d = u.get("expected_sharpe_delta")
+            if isinstance(d, (int, float)):
+                ranked.append((float(d), bid, u))
+            else:
+                untested.append((bid, u))
+
+    ranked.sort(reverse=True)
+    print(f"\n* HIGH-CONFIDENCE UPGRADES (heatmap-evidenced) — {len(ranked)}")
+    print("-" * 102)
+    for delta, bid, u in ranked:
+        print(
+            f"  +{delta:>5.2f}sh  {bid:<26} {u.get('param', '?'):<30} "
+            f"{str(u.get('current', '?')):>6} -> {str(u.get('suggested', '?')):<6}"
+        )
+        print(f"               rationale: {u.get('rationale', '')}")
+
+    print(f"\n* LOW-CONFIDENCE HINTS (untested) — {len(untested)}")
+    print("-" * 102)
+    for bid, u in untested[:20]:
+        print(
+            f"  ?         {bid:<26} {u.get('param', '?'):<30} "
+            f"{str(u.get('current', '?')):>6} -> {str(u.get('suggested', '?')):<6}"
+        )
+    if len(untested) > 20:
+        print(f"  ... and {len(untested) - 20} more")
+
+    print(f"\n* AT LOCAL OPTIMUM (no upgrade surfaced) — {len(no_upgrade)}")
+    print("-" * 102)
+    print("  " + ", ".join(no_upgrade))
+    print("=" * 102)
+
+
 def main(argv: list[str] | None = None) -> int:
     # Windows cp1252 console can't encode every char in registry rationales
     # (e.g. σ, ✓, →). Reconfigure stdout to swap unencodable chars rather
@@ -428,21 +483,30 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bot", default=None, help="Single bot_id")
     p.add_argument("--diamonds", action="store_true",
-                   help="Run on the 6 DIAMOND tier bots")
+                   help="Run on the 12 DIAMOND tier + post-fix top earners")
+    p.add_argument("--all", action="store_true",
+                   help="Run on every bot in per_bot_registry.ASSIGNMENTS")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--summary", action="store_true",
+                   help="Print fleet-ranked summary instead of per-bot pages")
     args = p.parse_args(argv)
 
-    if args.diamonds:
+    if args.all:
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+        targets = tuple(a.bot_id for a in ASSIGNMENTS)
+    elif args.diamonds:
         targets = _DIAMOND_BOT_IDS
     elif args.bot:
         targets = (args.bot,)
     else:
-        p.error("must specify --bot <id> or --diamonds")
+        p.error("must specify --bot <id>, --diamonds, or --all")
         return 1
 
     results = [analyze(b) for b in targets]
     if args.json:
         print(json.dumps(results, indent=2, default=str))
+    elif args.summary or args.all:
+        _print_fleet_summary(results)
     else:
         for r in results:
             _print_text(r)
