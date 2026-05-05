@@ -1789,8 +1789,39 @@ def get_for_bot(bot_id: str) -> StrategyAssignment | None:
     return None
 
 
+_KAIZEN_OVERRIDES_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "kaizen_overrides.json"
+
+
+def _load_kaizen_overrides() -> dict[str, dict]:
+    """Read the kaizen-loop deactivation sidecar.
+
+    Empty / missing / malformed file → no overrides (safe default).
+    Re-read every call: file is tiny (~1KB) and auto-RETIRE only
+    appends when the 2-run gate confirms — fewer than ~10 entries
+    in normal operation. is_active() is called once per bot at
+    supervisor startup, not in a hot loop.
+    """
+    try:
+        if not _KAIZEN_OVERRIDES_PATH.exists():
+            return {}
+        import json as _json
+        data = _json.loads(_KAIZEN_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    deact = data.get("deactivated") if isinstance(data, dict) else None
+    return deact if isinstance(deact, dict) else {}
+
+
 def is_active(assignment: StrategyAssignment) -> bool:
-    return not bool(assignment.extras.get("deactivated", False))
+    if bool(assignment.extras.get("deactivated", False)):
+        return False
+    # Kaizen-loop sidecar override: a bot listed under
+    # var/eta_engine/state/kaizen_overrides.json -> deactivated -> {bot_id: ...}
+    # has been auto-deactivated by the daily kaizen pass after the
+    # 2-run confirmation gate. Operator can re-enable by removing
+    # the entry (or running `python -m eta_engine.scripts.kaizen_reactivate
+    # <bot_id>`).
+    return assignment.bot_id not in _load_kaizen_overrides()
 
 
 def is_bot_active(bot_id: str) -> bool:

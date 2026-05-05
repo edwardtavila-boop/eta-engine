@@ -19,9 +19,13 @@ Outputs:
 
 Auto-actions taken with --apply:
     * Bots with MIXED-or-worse + n>=30 + negative expectancy_R for two
-      consecutive runs → auto-deactivate (writes a deactivation record
-      under var/eta_engine/state/kaizen_actions.jsonl). Operator can
-      reverse by editing per_bot_registry.
+      consecutive runs → auto-deactivate. Two side-effects:
+        1. Append APPLIED record to var/eta_engine/state/kaizen_actions.jsonl
+        2. Write entry under var/eta_engine/state/kaizen_overrides.json
+           (per_bot_registry.is_active() honors this file on next
+           supervisor restart — bot will not load).
+      Operator can re-enable a bot via:
+        python -m eta_engine.scripts.kaizen_reactivate <bot_id>
 
 Without --apply, runs in REPORT-ONLY mode — pure observation.
 
@@ -56,6 +60,14 @@ _LATEST_PATH = Path(
 )
 _ACTION_LOG = Path(
     r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_actions.jsonl",
+)
+# Sidecar that ``per_bot_registry.is_active()`` reads — bot_ids listed
+# here are dropped from the supervisor's load_bots() filter on next
+# supervisor restart. The 2-run confirmation gate (in run_loop) is the
+# only writer; operator can re-enable a bot via
+# ``python -m eta_engine.scripts.kaizen_reactivate <bot_id>``.
+_OVERRIDES_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_overrides.json",
 )
 
 
@@ -231,6 +243,52 @@ def _append_action_log(rec: dict[str, Any]) -> None:
         logger.warning("kaizen action log write failed: %s", exc)
 
 
+def _load_overrides() -> dict[str, Any]:
+    """Read the current sidecar override file (or return scaffold)."""
+    if not _OVERRIDES_PATH.exists():
+        return {"deactivated": {}}
+    try:
+        data = json.loads(_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"deactivated": {}}
+    if not isinstance(data, dict):
+        return {"deactivated": {}}
+    if not isinstance(data.get("deactivated"), dict):
+        data["deactivated"] = {}
+    return data
+
+
+def _apply_kaizen_deactivation(bot_id: str, action_record: dict[str, Any]) -> None:
+    """Write a kaizen-deactivation entry to the sidecar override file.
+
+    ``per_bot_registry.is_active()`` honors this file at supervisor
+    startup; the kaizen-deactivated bot will not load on the next
+    supervisor restart. Idempotent — re-applying for the same bot_id
+    just updates the timestamp.
+    """
+    try:
+        _OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = _load_overrides()
+        data["deactivated"][bot_id] = {
+            "applied_at": datetime.now(UTC).isoformat(),
+            "reason": action_record.get("reason", ""),
+            "tier": action_record.get("tier"),
+            "mc_verdict": action_record.get("mc_verdict"),
+            "expectancy_r": action_record.get("expectancy_r"),
+            "n": action_record.get("n"),
+        }
+        _OVERRIDES_PATH.write_text(
+            json.dumps(data, indent=2, default=str), encoding="utf-8",
+        )
+        logger.info(
+            "kaizen-deactivated %s (tier=%s mc=%s expR=%s n=%s)",
+            bot_id, action_record.get("tier"), action_record.get("mc_verdict"),
+            action_record.get("expectancy_r"), action_record.get("n"),
+        )
+    except OSError as exc:
+        logger.warning("kaizen override write failed for %s: %s", bot_id, exc)
+
+
 def run_loop(
     *,
     since_iso: str | None = None,
@@ -264,6 +322,9 @@ def run_loop(
             # Second consecutive RETIRE — apply.
             a["status"] = "APPLIED"
             a["applied_at"] = datetime.now(UTC).isoformat()
+            # Write the sidecar override so per_bot_registry.is_active()
+            # drops the bot on the next supervisor restart.
+            _apply_kaizen_deactivation(a["bot_id"], a)
             applied_count += 1
 
     # Write action records (HELD or APPLIED) for next-run cross-check.
