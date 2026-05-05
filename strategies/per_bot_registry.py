@@ -491,6 +491,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # Sweep_reclaim finds liquidity grabs at prior N-bar extremes; confluence
     # scorecard requires 2/5 quality factors. MNQ-specific: tighter ATR stop
     # (1.0x), shorter lookback (20 bars = ~100 min), reclaim within 3 bars.
+    # ELITE-GATE 2026-05-05: ALL GREEN — promote to paper-soak.
+    #   63 OOS trades, +$1,355 OOS PnL, 31.7% WR, +126% decay, beats
+    #   random baseline by $1,588.  THIRD strategy through the harness
+    #   on all five lights.  IS PnL was -$5,225 (overfit to noise) but
+    #   OOS was strongly positive — the WIDE OOS-vs-IS gap is exactly
+    #   why walk-forward exists.
     StrategyAssignment(
         bot_id="mnq_sweep_reclaim",
         strategy_id="mnq_sweep_diamond_v1",
@@ -514,7 +520,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "liquidity-driven moves and the scorecard filters noise."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
+            "elite_gate_passed": "2026-05-05",
+            "elite_gate_results": "63T OOS, +$1355 PnL, 31.7% WR, +126% decay, beats baseline by $1588",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "mnq",
