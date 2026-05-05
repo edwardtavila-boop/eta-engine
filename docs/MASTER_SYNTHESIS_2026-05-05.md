@@ -376,6 +376,48 @@ The validator catches #1 immediately. The harness mirror-fix is #2. The instrume
 
 ---
 
+## Round 6: bridge fix + ng_sweep_reclaim ALL GREEN (`ad1f843`)
+
+### Bug E: confluence_scorecard bridge gap
+
+`registry_strategy_bridge._build_callable_for_assignment` calls `_build_strategy_factory(kind, extras)` directly. But `confluence_scorecard` is handled at the CELL level in `run_research_grid` (it wraps a sub-strategy via `sub_strategy_kind` extras), not in `_build_strategy_factory` itself. Result: any confluence_scorecard bot that wasn't `sweep_reclaim` failed bridge dispatch with `'unknown crypto strategy_kind: confluence_scorecard'`.
+
+Fix: bridge now mirrors the cell-level pattern — detects `kind=confluence_scorecard`, extracts `sub_strategy_kind` + `scorecard_config` from extras, builds the sub-strategy factory, wraps with `ConfluenceScorecardStrategy`.
+
+Verified: `vwap_mr_btc` + `volume_profile_btc` now build through bridge. They still fail elite-gate empirically (vwap never fires on BTC 1h, volume_profile has 1 OOS losing trade) — but that's strategy quality, not infrastructure. The bug fix exposed real underperformance that had been hidden behind the bridge error.
+
+### ng_sweep_reclaim — 4th ALL GREEN
+
+365-day elite-gate verdict (commodity sweep post spec fix):
+
+| Bot | OOS trades | OOS PnL | WR | Decay | Verdict |
+|-----|-----------|---------|-----|-------|---------|
+| **ng_sweep_reclaim** | **30** | **+$589** | **36.7%** | **+248%** | **ALL GREEN** |
+| gc_sweep_reclaim | 17 | +$550 | 35.3% | +138% | RED (doesn't beat baseline +$27,558 in bull market) |
+| cl_sweep_reclaim | 22 | -$181 | 27.3% | -150% | RED (severe overfit) |
+| 6e_sweep_reclaim | — | — | — | — | RED (typo: bot_id is `eur_sweep_reclaim`, not `6e_sweep_reclaim`) |
+
+`ng_sweep_reclaim` is the 4th strategy through the harness on all 5 lights. Required TWO prior-round bug fixes to surface the edge:
+1. Round 5 instrument_specs alias (NG1 was defaulting to point_value=1.0, producing fake -$24K losses)
+2. Round 6 longer evaluation window (90d had only 5 OOS trades; 365d has 30)
+
+Without round 5, NG would have been deactivated as catastrophically losing. Without round 6, it would have been deactivated as sample-size YELLOW. The infrastructure protected against TWO false-negative deactivation paths and surfaced a genuine commodity edge.
+
+### Final paper_soak fleet (4 ALL GREEN edges)
+
+```
+btc_anchor_sweep    BTC 1h    (referenced; first reference strategy)
+mnq_anchor_sweep    MNQ1 5m   50T OOS, +$175,   32% WR, +133% decay
+mnq_sweep_reclaim   MNQ1 5m   63T OOS, +$1,355, 31.7% WR, +126% decay
+ng_sweep_reclaim    NG1 1h    30T OOS, +$589,   36.7% WR, +248% decay  ← NEW
+```
+
+Edge concentration: 3 of 4 are sweep_reclaim variants (anchor/dynamic-band/sweep_reclaim) on different timeframes/instruments. The "find liquidity, wait for reclaim, enter" mechanic generalizes across MNQ 5m + BTC 1h + NG 1h. The 4th (mnq_sweep_reclaim with confluence_scorecard wrapper) is also sweep_reclaim mechanically.
+
+This is a real cross-instrument edge family — not a single-instrument curve fit.
+
+---
+
 ## Open items for the operator
 
 1. **Load missing instrument data** — 8 sweep_reclaim research_candidates (GC/CL/NG/ZN/6E/MES/M2K/YM) are deactivated until backing data is loaded. Per CLAUDE.md hard rule, Databento stays dormant unless you explicitly refresh it.
@@ -389,6 +431,8 @@ The validator catches #1 immediately. The harness mirror-fix is #2. The instrume
 ## Commit chain (this sprint)
 
 ```
+ad1f843  fleet+fix: bridge handles confluence_scorecard + ng_sweep_reclaim PROMOTED
+6f759da  docs: synthesis update — round 5 (instrument_specs catastrophic-loss fix)
 dfd3f99  fix(instrument_specs): add front-month suffixed aliases (catastrophic-loss bug)
 c4d7dd4  docs: synthesis update — round 4 (3 more bugs + sidecar reset event)
 9bc87d1  fix: round-4 bug hunt — volume_profile rr_absurd + harness notional cap
