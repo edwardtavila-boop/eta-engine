@@ -303,7 +303,18 @@ class VolumeProfileStrategy:
             stop_dist_actual = entry - stop
             if stop_dist_actual <= 0:
                 return None
-            target = poc if poc > entry else entry + self.cfg.rr_target * stop_dist_actual
+            # Bug fix 2026-05-05: POC can be very far above entry on a
+            # value-area-edge entry → reward/risk > 50 trips validator's
+            # rr_absurd ceiling.  Cap natural POC target at MAX_RR
+            # (= 2x cfg.rr_target).  Was firing 6 rejections in
+            # volume_profile_mnq elite-gate (50% bug rate).
+            max_rr = 2.0 * self.cfg.rr_target
+            max_reward = max_rr * stop_dist_actual
+            target = (
+                min(poc, entry + max_reward)
+                if poc > entry
+                else entry + self.cfg.rr_target * stop_dist_actual
+            )
         else:
             structural_stop = vah + atr * 0.5
             atr_stop = entry + stop_dist
@@ -315,7 +326,13 @@ class VolumeProfileStrategy:
             stop_dist_actual = stop - entry
             if stop_dist_actual <= 0:
                 return None
-            target = poc if poc < entry else entry - self.cfg.rr_target * stop_dist_actual
+            max_rr = 2.0 * self.cfg.rr_target
+            max_reward = max_rr * stop_dist_actual
+            target = (
+                max(poc, entry - max_reward)
+                if poc < entry
+                else entry - self.cfg.rr_target * stop_dist_actual
+            )
 
         from eta_engine.backtest.engine import _Open
 

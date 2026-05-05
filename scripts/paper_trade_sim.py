@@ -304,6 +304,23 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                 risk_usd = peak_equity * base_risk_pct * max(0.25, min(sig.risk_mult, 1.5))
                 qty = risk_usd / (stop_dist * pv)
                 qty = max(qty, 0.01)
+                # Bug fix 2026-05-05: also cap qty by max-notional so the
+                # harness mirrors the live notional ceiling enforced by
+                # signal_validator.  Without this cap, low-vol bars (small
+                # stop_dist) produce qty so large that notional > 50x
+                # equity and the trade gets validator-rejected — the
+                # rejection was the harness's own sizing, not the
+                # strategy's bug.
+                from eta_engine.feeds.signal_validator import (
+                    MAX_QTY_NOTIONAL_PCT_OF_EQUITY,
+                )
+                if entry_fill.fill_price > 0 and pv > 0:
+                    max_qty_by_notional = (
+                        0.95 * MAX_QTY_NOTIONAL_PCT_OF_EQUITY * peak_equity
+                        / (entry_fill.fill_price * pv)
+                    )
+                    qty = min(qty, max_qty_by_notional)
+                qty = max(qty, 0.01)
 
                 # HARD VALIDATION — reject malformed signals before they
                 # become positions.  Catches stop-on-wrong-side, RR

@@ -269,6 +269,17 @@ class RSIMeanReversionStrategy:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
         qty = risk_usd / stop_dist
+        # Bug fix 2026-05-05: when ATR is unusually small (low-vol bar),
+        # qty = risk/stop_dist can blow past the 50x equity notional cap
+        # the validator enforces.  Cap qty by notional to keep us inside
+        # the cap with a 5% margin.  Was firing 1 notional_exceeds_cap
+        # rejection in rsi_mr_mnq elite-gate.
+        # point_value isn't in scope here; use a conservative default
+        # (MNQ-shaped futures).  Adjust if extending to other instruments.
+        point_value_default = 2.0
+        if entry := bar.close:
+            max_qty_by_notional = (47.5 * equity) / (entry * point_value_default)
+            qty = min(qty, max_qty_by_notional)
         if qty <= 0.0:
             return None
 
