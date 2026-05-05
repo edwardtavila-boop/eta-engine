@@ -273,6 +273,49 @@ Active fleet trajectory across the FULL session: 21 → 7 → 9 (3 bot recovery 
 
 ---
 
+## Round 4: deeper bug hunt + sidecar reset
+
+### Three more validator-flagged bugs found and fixed (`9bc87d1`)
+
+**Bug A — volume_profile_strategy.py `rr_absurd`:**
+- Root cause: when entry is near a value-area edge but POC is at the opposite extreme, target distance can be 50x stop distance → validator's RR ceiling rejects
+- Fix: cap natural POC target at `2.0 * cfg.rr_target * stop_dist`
+- Was firing 6 rejections in volume_profile_mnq (50% bug rate)
+- After fix: 0 rejections, all 31 OOS trades pass — but strategy now reveals as genuinely losing ($-2,133 OOS, 9.7% WR). The validator was effectively masking the failure mode.
+
+**Bug B — rsi_mean_reversion `notional_exceeds_cap` + harness mirror:**
+- Root cause: when ATR is unusually small (low-vol bar), `qty = risk_usd / stop_dist` blows past the 50x equity notional cap
+- Fix landed in TWO places:
+  1. Strategy `rsi_mean_reversion_strategy.py:267-282` — caps qty by max-notional with 5% margin (live path)
+  2. Harness `paper_trade_sim.py:303-322` — same cap on the harness's own qty calculation (which OVERRIDES the strategy's qty)
+- Discovery: paper_trade_sim re-computes qty from scratch, bypassing strategy-level fixes. This means EVERY strategy bug fix that touches qty must mirror in the harness.
+
+**Bug C — `confluence_scorecard` bridge gap (BLOCKED):**
+- vwap_mr_btc + volume_profile_btc fail with `'unknown crypto strategy_kind: confluence_scorecard'`. The crypto strategy factory recognizes `confluence_scorecard` only with `sub_strategy_kind=sweep_reclaim`, not `vwap_reversion` or `volume_profile`.
+- These bots cannot run through the harness regardless of fixes. Needs bridge dispatch update before they can be evaluated.
+
+### Sidecar reset event
+
+Mid-round-4, the kaizen sidecar `var/eta_engine/state/kaizen_overrides.json` was reset to empty `{"deactivated": {}}` — intentional change per system note. All 18+ sidecar deactivations from rounds 1-4 cleared.
+
+Active fleet jumped from 9 → 28. The bug fixes remain in source code; the deactivations were the only thing wiped.
+
+### Notable: symbol-naming change
+
+The reset also surfaced a symbol-naming update in the registry: futures bots that were `GC, CL, NG, ZN, 6E, MES, M2K, YM` are now `GC1, CL1, NG1, ZN1, 6E1, MES, M2K1, YM1` (data-library naming convention with the "1" front-month suffix). The previously NO-DATA bots may now have data backing under the renamed symbols — re-running the harness on them is the path to verify.
+
+### Bug fix recovery summary across all 4 rounds
+
+| Bug | Where | Bots recovered |
+|-----|-------|---------------|
+| `rr_too_small` (target too close to VWAP) | vwap_reversion_strategy.py | vwap_mr_mnq, vwap_mr_nq (RED → YELLOW) |
+| `rr_absurd` (target too far from entry) | volume_profile_strategy.py | volume_profile_mnq (revealed as genuinely losing — no recovery) |
+| `notional_exceeds_cap` (qty unbounded on low-vol) | rsi_mean_reversion + paper_trade_sim | rsi_mr_mnq (still losing, but bug exposed) |
+
+The validator caught real bugs in 3 distinct strategy families. Two of three exposed underlying strategies that genuinely lacked edge once the bug was fixed (the validator was masking the failure mode); one bug fix actually recovered profitable strategies.
+
+---
+
 ## Open items for the operator
 
 1. **Load missing instrument data** — 8 sweep_reclaim research_candidates (GC/CL/NG/ZN/6E/MES/M2K/YM) are deactivated until backing data is loaded. Per CLAUDE.md hard rule, Databento stays dormant unless you explicitly refresh it.
@@ -286,6 +329,7 @@ Active fleet trajectory across the FULL session: 21 → 7 → 9 (3 bot recovery 
 ## Commit chain (this sprint)
 
 ```
+9bc87d1  fix: round-4 bug hunt — volume_profile rr_absurd + harness notional cap
 a09b384  fix(vwap_reversion): rr_too_small bug — VWAP target too close to entry
 30e38e0  fleet: round-2 elite-gate sweep — 9 more bots tested, 6 deactivated
 b240443  docs: master synthesis — full elite-gate verification pass complete
