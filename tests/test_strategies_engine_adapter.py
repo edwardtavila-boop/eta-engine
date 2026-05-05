@@ -439,11 +439,14 @@ class TestRegistryKillSwitchChokepoint:
         )
 
     def test_active_bot_runs_normally(self) -> None:
-        # mnq_futures_sage is the active sage-overlay successor to
-        # mnq_futures (DIAMOND CUT 2026-05-02). Use it as the
-        # representative active MNQ bot — the original mnq_futures is
-        # now deactivated in the registry.
-        adapter = RouterAdapter(asset="MNQ", bot_id="mnq_futures_sage")
+        # Pin history:
+        # - mnq_futures (deactivated DIAMOND CUT 2026-05-02)
+        # - mnq_futures_sage (sidecar deactivated 2026-05-05 after
+        #   elite-gate found severe overfit, decay -79%)
+        # - mnq_anchor_sweep (gate-cleared all 5 lights 2026-05-05,
+        #   promoted to paper_soak — currently the canonical active
+        #   MNQ bot for adapter dispatch tests).
+        adapter = RouterAdapter(asset="MNQ", bot_id="mnq_anchor_sweep")
         adapter.push_bar(_bar_dict(0))
         # The dispatch path runs; last_decision is populated.
         assert adapter.last_decision is not None

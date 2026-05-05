@@ -67,12 +67,16 @@ def test_bridge_builds_active_bots():
                              caught 1 notional_exceeds_cap)
       volume_profile_mnq RED — 6 OOS trades losing $655 (validator
                                 caught SIX rr_absurd signals)
+      vwap_mr_mnq      RED — 10 OOS trades, +$780 BUT 2 signals
+                              rejected (rr_too_small) — bug in strategy
+      vwap_mr_nq       RED — 12 OOS trades, +$708 BUT 2 signals
+                              rejected (rr_too_small) — same bug
+      cross_asset_mnq  RED — 34 OOS trades, +$243 BUT decay -66%
+                              (severe overfit)
     Sidecar deactivation at var/eta_engine/state/kaizen_overrides.json
     — they reappear here when reactivated."""
     clear_strategy_cache()
     active = [
-        "vwap_mr_mnq", "vwap_mr_nq",
-        "cross_asset_mnq",
         "funding_rate_btc",
     ]
     for bot_id in active:

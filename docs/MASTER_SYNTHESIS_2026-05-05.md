@@ -164,6 +164,51 @@ The most striking finding: `mnq_sweep_reclaim` had IS PnL of **-$5,225** (overfi
 
 ---
 
+## Round 2: full sweep including untested production_candidates + shadow_benchmarks
+
+After the initial pass, ran the harness on the remaining 9 active bots that had NEVER been gate-validated. Verdicts:
+
+| Bot | Symbol | OOS trades | OOS PnL | Decay | Verdict |
+|-----|--------|-----------|---------|-------|---------|
+| mnq_futures_sage (production_candidate) | MNQ1 5m | 9 | +$422 | **-79%** | RED — severe overfit |
+| nq_futures_sage (production_candidate) | NQ1 5m | 10 | +$169 | **-84%** | RED — severe overfit |
+| vwap_mr_mnq (production_candidate) | MNQ1 5m | 10 | +$780 | +304% | RED — 2 rr_too_small bugs |
+| vwap_mr_nq (production_candidate) | NQ1 5m | 12 | +$708 | -1% | RED — 2 rr_too_small bugs (same family) |
+| cross_asset_mnq (production_candidate) | MNQ1 5m | 34 | +$243 | **-66%** | RED — severe overfit |
+| btc_hybrid_sage (shadow_benchmark) | BTC 1h | — | — | — | **BUG** — bridge build error |
+| btc_ensemble_2of3 (shadow_benchmark) | BTC 1h | 0 | $0 | — | RED — never fires |
+| btc_crypto_scalp (shadow_benchmark) | BTC 5m | 30 | -$962 | **-167%** | RED — severe overfit |
+| mnq_futures_optimized (shadow_benchmark) | MNQ1 5m | 4 | +$496 | +259% | YELLOW — sample only, kept active |
+
+**Key discoveries:**
+- 3 production_candidates had **severe IS-OOS overfit** (decay -66% to -84%) despite being live-eligible
+- The vwap_mr family (BOTH btc and mnq AND nq variants) generates ~16% invalid signals (rr_too_small) — strategy-level bug
+- `btc_hybrid_sage` literally couldn't be built — broken since the registry-strategy bridge changed
+- `btc_ensemble_2of3` never generates signals on the 90d window
+
+### Final fleet (post-full-pass)
+
+```
+7 active bots (down from 21 at session start)
+
+paper_soak (gate-cleared, ready for live):
+  mnq_anchor_sweep   MNQ1 5m  ALL GREEN — 50T OOS, +$175, 32% WR
+  mnq_sweep_reclaim  MNQ1 5m  ALL GREEN — 63T OOS, +$1,355, 31.7% WR
+
+YELLOW (sample size only — kept active):
+  btc_optimized           BTC 1h    4T OOS, +$397, 50% WR
+  funding_rate_btc        BTC 1h   11T OOS, +$376, 45.5% WR
+  eth_sweep_reclaim       ETH 1h    4T OOS, +$496, 75% WR (research)
+  mnq_futures_optimized   MNQ1 5m   4T OOS, +$496, 75% WR (shadow)
+
+Diagnostic only:
+  crypto_seed             BTC D     non_edge_strategy
+```
+
+**Active fleet trajectory: 21 → 7 (67% reduction) over the verification session.**
+
+---
+
 ## Open items for the operator
 
 1. **Load missing instrument data** — 8 sweep_reclaim research_candidates (GC/CL/NG/ZN/6E/MES/M2K/YM) are deactivated until backing data is loaded. Per CLAUDE.md hard rule, Databento stays dormant unless you explicitly refresh it.

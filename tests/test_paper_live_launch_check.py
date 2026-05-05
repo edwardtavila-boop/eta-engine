@@ -297,11 +297,15 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
     """When only the primary dataset is seeded, the helper must report
     every OTHER critical requirement as missing.
 
-    Originally exercised against ``nq_futures`` (4 missing feeds), but
-    that bot was deactivated in DIAMOND CUT 2026-05-02. Now pinned to
-    ``mnq_futures_sage`` (active sage-overlay variant) whose critical
-    requirements are MNQ1/5m + MNQ1/1h + ES1/5m. With MNQ1/5m as the
-    primary launch dataset, the helper should report 2 missing feeds.
+    Pin history:
+    - Originally ``nq_futures`` (4 missing feeds) — deactivated DIAMOND CUT 2026-05-02
+    - Then ``mnq_futures_sage`` (3 critical reqs) — sidecar deactivated
+      2026-05-05 after elite-gate found severe overfit (decay -79%)
+    - Now ``mnq_anchor_sweep`` (2 critical reqs: MNQ1/5m + MNQ1/1h) —
+      gate-cleared all 5 lights, promoted to paper_soak.  With MNQ1/5m
+      as the primary launch dataset, the helper should report 1 missing
+      critical feed (MNQ1/1h).  ES1/5m correlation is critical=False
+      for this bot so it doesn't surface as an issue.
     """
     history = tmp_path / "history"
     history.mkdir()
@@ -311,7 +315,7 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
         writer.writerow([1_735_689_600, 100.0, 101.0, 99.0, 100.5, 10_000.0])
 
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
-        "mnq_futures_sage",
+        "mnq_anchor_sweep",
         primary_symbol="MNQ1",
         primary_timeframe="5m",
         library=DataLibrary(roots=[history]),
@@ -321,7 +325,6 @@ def test_critical_requirement_helper_reports_missing_non_primary_feeds(tmp_path:
     assert findings["evidence"] == []
     assert findings["issues"] == [
         "missing critical feed: bars:MNQ1/1h",
-        "missing critical feed: correlation:ES1/5m",
     ]
 
 
