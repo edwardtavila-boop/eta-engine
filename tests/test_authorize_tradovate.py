@@ -84,6 +84,26 @@ def _patch_status_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return status
 
 
+# CLAUDE.md hard rule: Tradovate is dormant unless ETA_TRADOVATE_ENABLED=1.
+# Tests in this module exercise the auth flow itself, not the dormancy gate
+# — set the activation flag for every test via autouse fixture so the gate
+# doesn't short-circuit. Defined here at module level (TYPE_CHECKING already
+# imported pytest above for the type hint, and pytest is used as
+# pytest.MonkeyPatch in the test functions, so the runtime import below
+# uses the existing module reference.)
+from collections.abc import Iterator  # noqa: E402  -- intentionally late
+
+import pytest as _pytest_for_fixture  # noqa: E402  -- intentionally late
+
+
+@_pytest_for_fixture.fixture(autouse=True)
+def _enable_tradovate_for_tests(
+    monkeypatch: _pytest_for_fixture.MonkeyPatch,
+) -> Iterator[None]:
+    monkeypatch.setenv("ETA_TRADOVATE_ENABLED", "1")
+    yield
+
+
 # --------------------------------------------------------------------------- #
 # STUBBED path -- creds missing
 # --------------------------------------------------------------------------- #
