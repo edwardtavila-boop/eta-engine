@@ -17,6 +17,8 @@ def test_ibgateway_starter_uses_canonical_logs_and_hidden_start() -> None:
     assert "-login=" in text
     assert '$_.Name -ieq "ibgateway.exe"' in text
     assert 'CommandLine -like "*ibgateway*"' not in text
+    assert "$existingGateway = Get-GatewayProcesses | Select-Object -First 1" in text
+    assert "existing gateway process running; no start needed" in text
 
 
 def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:

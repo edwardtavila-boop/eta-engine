@@ -39,6 +39,12 @@ if ($listener -and -not $ForceRestart) {
     return
 }
 
+$existingGateway = Get-GatewayProcesses | Select-Object -First 1
+if ($existingGateway -and -not $ForceRestart) {
+    Write-LogLine "existing gateway process running; no start needed pid=$($existingGateway.ProcessId)"
+    return
+}
+
 if ($ForceRestart) {
     foreach ($proc in Get-GatewayProcesses) {
         Write-LogLine "stopping existing gateway process pid=$($proc.ProcessId)"
