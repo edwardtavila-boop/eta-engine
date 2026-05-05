@@ -28,6 +28,60 @@ logger = logging.getLogger(__name__)
 _IBKR_REJECTED_STATUSES = {"ApiCancelled", "Cancelled", "Inactive"}
 _IBKR_CONFIRMED_STATUSES = {"Filled", "PreSubmitted", "Submitted"}
 
+# ─── Crypto guard startup-log latch ──────────────────────────────
+#
+# The local crypto pre-check (see place_order) emits one of two startup
+# notices the FIRST time it runs in a process:
+#
+#   * INFO when ETA_IBKR_CRYPTO=1 — local guard disabled, IBKR-side
+#     permissions decide the order's fate.
+#   * WARN when ETA_IBKR_CRYPTO is unset/0 AND a crypto symbol is
+#     observed for the first time — actionable hint, fired once so
+#     subsequent crypto orders don't spam the log.
+#
+# Per-order rejection still emits a structured rejection result so the
+# router/sidecar still see "what happened" — only the *log line* is
+# deduplicated. The latch is process-local; a supervisor restart resets
+# it intentionally so each new process logs its current crypto posture
+# at least once.
+_CRYPTO_GUARD_LOG_EMITTED: bool = False
+
+
+def _crypto_env_enabled() -> bool:
+    """True iff ETA_IBKR_CRYPTO is set to a truthy value (case-insensitive)."""
+    return os.getenv("ETA_IBKR_CRYPTO", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _emit_crypto_guard_startup_log() -> None:
+    """Fire the once-per-process startup log for the crypto guard.
+
+    Called from the per-order path the first time a crypto order is
+    seen. Subsequent crypto orders in the same process are no-ops.
+    Tests can reset the latch via ``_reset_crypto_guard_log_latch``.
+    """
+    global _CRYPTO_GUARD_LOG_EMITTED
+    if _CRYPTO_GUARD_LOG_EMITTED:
+        return
+    _CRYPTO_GUARD_LOG_EMITTED = True
+    if _crypto_env_enabled():
+        logger.info(
+            "ETA_IBKR_CRYPTO=1 — local crypto guard disabled; "
+            "relying on IBKR-side permissions"
+        )
+    else:
+        logger.warning(
+            "crypto guard active — local pre-check will reject crypto orders. "
+            "Enable IBKR-side crypto permissions then `setx ETA_IBKR_CRYPTO 1 /M` "
+            "and restart the broker_router task."
+        )
+
+
+def _reset_crypto_guard_log_latch() -> None:
+    """Test hook: clear the once-per-process latch so the next call to
+    :func:`_emit_crypto_guard_startup_log` re-emits."""
+    global _CRYPTO_GUARD_LOG_EMITTED
+    _CRYPTO_GUARD_LOG_EMITTED = False
+
 # ─── SYMBOL → CONTRACT MAP ───────────────────────────────────────
 # Futures: (symbol_root, exchange, multiplier)
 FUTURES_MAP: dict[str, tuple[str, str, str]] = {
@@ -535,25 +589,48 @@ class LiveIbkrVenue(VenueBase):
         # account summary — orders submit but are silently rejected at
         # IBKR before producing fills. Honor an env opt-in so a future
         # account upgrade flips this on without code changes.
-        if is_crypto and os.getenv("ETA_IBKR_CRYPTO", "").lower() not in {"1", "true", "yes", "on"}:
-            reason = (
-                "crypto disabled - account lacks crypto permissions; "
-                "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
-            )
-            _record_idempotency_status("rejected", reason, symbol=request.symbol)
-            return OrderResult(
-                order_id=order_id,
-                status=OrderStatus.REJECTED,
-                raw={
-                    "venue": self.name,
-                    "reason": reason,
-                    "legacy_reason": (
-                        "crypto disabled — account lacks crypto permissions; "
-                        "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
-                    ),
-                    "symbol": request.symbol,
-                },
-            )
+        #
+        # The first crypto order seen in this process emits a startup
+        # log line (INFO when bypassed, WARN when guard active) so the
+        # operator's posture is loud-once, not loud-every-order.
+        if is_crypto:
+            _emit_crypto_guard_startup_log()
+            if not _crypto_env_enabled():
+                reason = (
+                    "crypto disabled - account lacks crypto permissions; "
+                    "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                )
+                # Permanent-class rejection: do NOT cache. If we recorded
+                # this through the idempotency store, the row would sit
+                # in the JSONL forever (well, until short-TTL eviction)
+                # and the broker_router would burn its retry budget on a
+                # rejection that can only be cleared by an out-of-band
+                # operator action (enable crypto at IBKR, set env var).
+                # Evict the pending row so a fresh client_order_id can
+                # be tried immediately once the env var flips.
+                from eta_engine.safety.idempotency import evict as _idem_evict
+                with contextlib.suppress(Exception):
+                    _idem_evict(order_id)
+                logger.info(
+                    "LiveIbkrVenue crypto pre-reject signal=%s symbol=%s "
+                    "(set ETA_IBKR_CRYPTO=1 to bypass once IBKR perms enabled)",
+                    order_id, request.symbol,
+                )
+                return OrderResult(
+                    order_id=order_id,
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": reason,
+                        "reason_code": "crypto_disabled",
+                        "no_cache": True,
+                        "legacy_reason": (
+                            "crypto disabled — account lacks crypto permissions; "
+                            "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                        ),
+                        "symbol": request.symbol,
+                    },
+                )
         # Futures contracts trade in whole-lot quanta; crypto on PAXOS
         # accepts fractional qty down to 1e-3 BTC, 1e-2 ETH, etc. so we
         # must NOT floor crypto qty to int.

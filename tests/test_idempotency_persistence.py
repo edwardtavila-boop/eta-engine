@@ -66,6 +66,68 @@ def test_record_result_appends_status_update(tmp_store: Path) -> None:
     assert last["broker_order_id"] == "98765"
 
 
+def test_retryable_failed_reopens_order_intent(tmp_store: Path) -> None:
+    from eta_engine.safety import idempotency
+    first = idempotency.check_or_register(
+        client_order_id="retry-1",
+        venue="ibkr",
+        symbol="MNQ",
+        intent_payload={"side": "BUY", "qty": 1.0},
+    )
+    assert first.is_new
+    idempotency.record_result(
+        client_order_id="retry-1",
+        status="retryable_failed",
+        response_payload={"reason": "TWS API connection on port 4002 failed"},
+    )
+
+    retry = idempotency.check_or_register(
+        client_order_id="retry-1",
+        venue="ibkr",
+        symbol="MNQ",
+        intent_payload={"side": "BUY", "qty": 1.0},
+    )
+    assert retry.is_new
+    assert retry.status == "pending"
+    assert retry.note == "retry_after_retryable_failure"
+
+    lines = tmp_store.read_text().strip().splitlines()
+    assert json.loads(lines[-1])["status"] == "pending"
+
+
+def test_rejected_row_expires_on_short_ttl(
+    tmp_store: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eta_engine.safety import idempotency
+
+    monkeypatch.setenv("ETA_IDEMPOTENCY_REJECTED_TTL_S", "10")
+    monkeypatch.setattr(idempotency._time, "time", lambda: 1000.0)
+    idempotency.check_or_register(
+        client_order_id="reject-ttl-1",
+        venue="ibkr",
+        symbol="MNQ",
+        intent_payload={"side": "BUY", "qty": 1.0},
+    )
+    idempotency.record_result(
+        client_order_id="reject-ttl-1",
+        status="rejected",
+        response_payload={"reason": "temporary broker reject"},
+    )
+
+    monkeypatch.setattr(idempotency._time, "time", lambda: 1011.0)
+    retry = idempotency.check_or_register(
+        client_order_id="reject-ttl-1",
+        venue="ibkr",
+        symbol="MNQ",
+        intent_payload={"side": "BUY", "qty": 1.0},
+    )
+
+    assert retry.is_new
+    assert retry.status == "pending"
+    assert json.loads(tmp_store.read_text().strip().splitlines()[-1])["status"] == "pending"
+
+
 def test_store_reloads_on_module_import(tmp_store: Path) -> None:
     """Simulate process restart: write JSONL, clear in-memory store,
     re-import → records reappear."""
