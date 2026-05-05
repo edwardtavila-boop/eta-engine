@@ -1094,6 +1094,20 @@ class JarvisStrategySupervisor:
         bot.last_bar_ts = bar["ts"]
         bot.sage_bars.append(bar)
 
+        # Empty-bar guard. data_feeds._empty_bar returns close=100.0,
+        # volume=0 when every feed in the composite chain fails. If a
+        # bot enters at the dummy $100 close on tick N and the real
+        # close shows up at tick N+1, the position records a fictional
+        # $48,998 PnL on YM (real $48k entry vs dummy $100). Refuse to
+        # take action on flagged-empty bars; let the next tick try
+        # again. _is_real_bar checks volume + OHLC flatline.
+        try:
+            from eta_engine.scripts.data_feeds import _is_real_bar
+            if not _is_real_bar(bar):
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
         # 2. If no open position, evaluate entry
         if bot.open_position is None:
             self._maybe_enter(bot, bar)
@@ -1848,6 +1862,56 @@ class JarvisStrategySupervisor:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("feedback propagate failed for %s: %s", bot.bot_id, exc)
+
+        # Direct edge-tracker observation. The feedback_loop's edge_tracker
+        # block depends on last_report_cache.pop_last_any() which returned
+        # None for 83/83 closes — the cache-based bridge couldn't survive
+        # the variance in entry-vs-close timing across the fleet. This
+        # path consults Sage directly on the bot's CURRENT bar buffer at
+        # close time and observes each school's bias against the realized
+        # R. Decoupled from the cache, runs every close, no conditional
+        # gates beyond the basic 15-bar warmup that consult_sage requires.
+        try:
+            bars = list(bot.sage_bars)
+            if len(bars) < 15:
+                return
+            from eta_engine.brain.jarvis_v3.sage import (
+                MarketContext,
+                consult_sage,
+            )
+            from eta_engine.brain.jarvis_v3.sage.edge_tracker import (
+                default_tracker,
+            )
+            entry_side = (
+                bot.open_position.get("side", "BUY").upper()
+                if bot.open_position else (rec.side or "BUY").upper()
+            )
+            # The exit fill side is OPPOSITE the entry side; feedback loop
+            # wants the ENTRY side (the trade's direction). Use the
+            # original entry side from open_position when available, else
+            # invert the close FillRecord side.
+            entry_dir = "long" if entry_side == "BUY" else "short"
+            ctx = MarketContext(
+                bars=bars, side=entry_dir,
+                entry_price=float(bot.open_position.get("entry_price", 0))
+                if bot.open_position else float(rec.fill_price or 0),
+                symbol=bot.symbol,
+                instrument_class=_classify_symbol(bot.symbol),
+            )
+            report = consult_sage(ctx, parallel=False, use_cache=False)
+            tracker = default_tracker()
+            for school_name, verdict in report.per_school.items():
+                tracker.observe(
+                    school=school_name,
+                    school_bias=verdict.bias.value,
+                    entry_side=entry_dir,
+                    realized_r=rec.realized_r or 0.0,
+                )
+        except Exception as exc:  # noqa: BLE001 — observability only
+            logger.debug(
+                "direct edge_tracker.observe failed for %s: %s",
+                bot.bot_id, exc,
+            )
 
     # ── Heartbeat ───────────────────────────────────────────
 
