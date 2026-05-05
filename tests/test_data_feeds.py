@@ -6,6 +6,11 @@ errors so the supervisor's tick loop never crashes mid-fleet.
 """
 from __future__ import annotations
 
+import builtins
+import sys
+import threading
+import time
+import types
 from unittest.mock import MagicMock, patch
 
 
@@ -189,6 +194,85 @@ def test_ibkr_feed_returns_empty_when_disconnected() -> None:
     bar = feed.get_bar("MNQ1")
     _assert_bar_shape(bar, "MNQ1")
     assert bar["volume"] == 0.0
+
+
+def test_ibkr_feed_constructor_does_not_import_ib_insync() -> None:
+    """The IBKR feed must stay import-light until a real connection is requested."""
+    from eta_engine.scripts.data_feeds import IbkrDataFeed, make_data_feed
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "ib_insync":
+            raise AssertionError("IbkrDataFeed imported ib_insync before _ensure_connected")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=guarded_import):
+        feed = IbkrDataFeed()
+        factory_feed = make_data_feed("ibkr")
+
+    assert feed._ib is None
+    assert factory_feed._ib is None
+
+
+def test_ibkr_feed_lazy_connect_is_mid_session_thread_safe(monkeypatch) -> None:
+    """Concurrent mid-session consumers should share one lazy IB connection.
+
+    This exercises the path the live supervisor uses when several futures bots
+    ask for a bar on the same tick. It uses a fake ``ib_insync`` module, never a
+    live IBKR/TWS account.
+    """
+    from eta_engine.scripts.data_feeds import IbkrDataFeed
+
+    fake_module = types.ModuleType("ib_insync")
+    lock = threading.Lock()
+    connects: list[tuple[str, int, int, int]] = []
+    market_data_types: list[int] = []
+
+    class FakeIB:
+        def __init__(self) -> None:
+            self.connected = False
+
+        def isConnected(self) -> bool:  # noqa: N802 - mirrors ib_insync.IB
+            return self.connected
+
+        def connect(self, host: str, port: int, *, clientId: int, timeout: int) -> None:  # noqa: N803
+            with lock:
+                connects.append((host, port, clientId, timeout))
+            time.sleep(0.02)
+            self.connected = True
+
+        def reqMarketDataType(self, market_data_type: int) -> None:  # noqa: N802 - mirrors ib_insync.IB
+            with lock:
+                market_data_types.append(market_data_type)
+
+    fake_module.IB = FakeIB
+    monkeypatch.setitem(sys.modules, "ib_insync", fake_module)
+    monkeypatch.setenv("ETA_IBKR_MARKETDATA_TYPE", "4")
+
+    feed = IbkrDataFeed(client_id=188)
+    barrier = threading.Barrier(8)
+    results: list[bool] = []
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            barrier.wait(timeout=2.0)
+            results.append(feed._ensure_connected())
+        except BaseException as exc:  # pragma: no cover - re-raised by assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2.0)
+
+    assert not any(thread.is_alive() for thread in threads), "lazy connect deadlocked under concurrent access"
+    assert errors == []
+    assert results == [True] * 8
+    assert connects == [("127.0.0.1", 4002, 188, 8)]
+    assert market_data_types == [4]
 
 
 def test_ibkr_feed_unknown_symbol_returns_empty_bar() -> None:
