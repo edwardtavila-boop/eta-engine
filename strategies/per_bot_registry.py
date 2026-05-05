@@ -287,6 +287,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     #   rr_target 3.0 → 2.0 (tighter target = higher WR, lower R)
     #   atr_stop_mult 2.0 → 1.5 (tighter stop)
     #   scorecard min_score 2 → 3 (stricter confluence gate)
+    # ELITE-GATE 2026-05-05: RED — 0 OOS trades over 90d (overly
+    # restrictive).  Deactivated; needs parameter retune (looser
+    # thresholds) before next harness run.
     StrategyAssignment(
         bot_id="btc_regime_trend_etf",
         strategy_id="btc_regime_trend_etf_v2_tight",
@@ -306,7 +309,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "parameter space instead of triplicating one edge."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "deactivated",
+            "deactivated": True,
+            "deactivation_reason": "elite-gate 2026-05-05: 0 OOS trades over 90d — params too restrictive (min_score=3 + min_wick=0.50 + rr=2.0 stops gate firing). Re-tune with looser thresholds before next harness run.",
             "fleet_corr_partner": "btc_hybrid",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
@@ -334,6 +339,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     #   rr_target 3.0 → 4.0 (wider target = lower WR, higher R)
     #   max_trades_per_day 2 → 1 (more selective)
     #   scorecard slow_ema 100 → 200 (longer-term trend filter)
+    # ELITE-GATE 2026-05-05: RED — 1 OOS trade losing $101 over 90d
+    # (sample too small + losing).  Deactivated; needs param retune.
     StrategyAssignment(
         bot_id="btc_sage_daily_etf",
         strategy_id="btc_sage_daily_etf_v2_wide",
@@ -353,7 +360,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "complements the tight variant + the baseline."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "deactivated",
+            "deactivated": True,
+            "deactivation_reason": "elite-gate 2026-05-05: 1 OOS trade losing $101 over 90d — max_trades_per_day=1 + warmup_bars=200 + lookback=96 starves signal generation. Re-tune with relaxed selectivity before next harness run.",
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
             "sub_strategy_kind": "sweep_reclaim",
