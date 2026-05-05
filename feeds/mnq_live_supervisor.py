@@ -149,6 +149,34 @@ class MnqLiveSupervisor:
         self._state_file = self.out_dir / "mnq_live_state.json"
 
     async def start(self) -> None:
+        # ── DUPLICATE-CONFIG REGISTRY GUARD (fail-closed) ──────────
+        # Refuse to start if the active fleet contains two bots with
+        # identical tradeable config.  Two duplicates would route the
+        # same trades to the broker — doubling risk on one edge with
+        # zero diversification.  The 2026-05-05 audit found three BTC
+        # bots in this state; this guard catches the next one before
+        # any capital flows.
+        try:
+            from eta_engine.strategies.per_bot_registry import (
+                validate_registry_no_duplicates,
+            )
+            validate_registry_no_duplicates(raise_on_duplicate=True)
+        except RuntimeError as exc:
+            logger.error(
+                "mnq supervisor REFUSING TO START — registry has duplicate-config bots: %s",
+                exc,
+            )
+            self.state.last_event = f"registry_dedupe_failed:{type(exc).__name__}"
+            self._persist_state()
+            raise
+        except ImportError:
+            # Older registry without validator — skip the guard rather
+            # than block startup.  Log so the operator knows.
+            logger.warning(
+                "mnq supervisor: validate_registry_no_duplicates not available; "
+                "skipping duplicate-config guard",
+            )
+
         await self.bot.start()
         self.state.started_at_utc = self.clock().isoformat()
         self.state.paused = self.bot.state.is_paused

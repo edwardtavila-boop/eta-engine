@@ -277,16 +277,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
-    # btc_regime_trend_etf — migrated to proven BTC architecture.
-    # DEACTIVATED 2026-05-05 — bit-for-bit identical config to btc_hybrid;
-    # 90d/180d audits returned identical trades + identical PnL. Three
-    # bots wrapping the same proven config = 3x risk on one edge with
-    # no diversification benefit.  Preserved (not deleted) so the slot
-    # is available for re-differentiation if the operator decides to
-    # explore a genuinely different parameter set.
+    # btc_regime_trend_etf — TIGHTER variant of the BTC sweep_reclaim
+    # base.  Reactivated 2026-05-05 with deliberately differentiated
+    # parameters (vs btc_hybrid's wider profile) so the three BTC slots
+    # actually explore parameter space instead of triplicating one edge.
+    # CHANGES from btc_hybrid baseline:
+    #   level_lookback 48 → 24 (shorter — fresher liquidity pools)
+    #   min_wick_pct 0.30 → 0.50 (stricter — only deeper sweeps)
+    #   rr_target 3.0 → 2.0 (tighter target = higher WR, lower R)
+    #   atr_stop_mult 2.0 → 1.5 (tighter stop)
+    #   scorecard min_score 2 → 3 (stricter confluence gate)
     StrategyAssignment(
         bot_id="btc_regime_trend_etf",
-        strategy_id="btc_regime_trend_etf_v1",
+        strategy_id="btc_regime_trend_etf_v2_tight",
         symbol="BTC",
         timeframe="1h",
         scorer_name="btc",
@@ -297,23 +300,24 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="confluence_scorecard",
         rationale=(
-            "DIAMOND CUT: Migrated from sage_daily_gated (33% WR, -$6.9k) "
-            "to proven BTC sweep_reclaim+scorecard architecture."
+            "DIAMOND CUT v2: Tighter variant of btc_hybrid (shorter "
+            "lookback + stricter wick + tighter RR + stricter scorecard). "
+            "Differentiated from the baseline so the 3 BTC slots explore "
+            "parameter space instead of triplicating one edge."
         ),
         extras={
-            "promotion_status": "deactivated",
-            "deactivated": True,
-            "deactivation_reason": "duplicate of btc_hybrid (bit-for-bit identical sub_strategy_extras + scorecard_config); 90d/180d audits confirmed identical results. Re-differentiate parameters before reactivating.",
+            "promotion_status": "research_candidate",
+            "fleet_corr_partner": "btc_hybrid",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 2.0,
+                "level_lookback": 24, "reclaim_window": 3,
+                "min_wick_pct": 0.50, "min_volume_z": 0.3,
+                "rr_target": 2.0, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
             "scorecard_config": {
-                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "min_score": 3, "a_plus_score": 4, "a_plus_size_mult": 1.3,
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "BTC",
@@ -321,14 +325,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
-    # btc_sage_daily_etf — migrated to proven BTC architecture.
-    # DEACTIVATED 2026-05-05 — bit-for-bit identical config to btc_hybrid
-    # (same reason as btc_regime_trend_etf above).  fleet_corr_partner
-    # annotation predates the empirical-duplicate finding from the 90d
-    # audit; left in place for historical context.
+    # btc_sage_daily_etf — WIDER variant of the BTC sweep_reclaim base.
+    # Reactivated 2026-05-05 with deliberately differentiated parameters
+    # (vs btc_hybrid's baseline AND vs the tight variant above).
+    # CHANGES from btc_hybrid baseline:
+    #   level_lookback 48 → 96 (longer — major liquidity pools only)
+    #   reclaim_window 3 → 5 (more patient — slower reversion ok)
+    #   rr_target 3.0 → 4.0 (wider target = lower WR, higher R)
+    #   max_trades_per_day 2 → 1 (more selective)
+    #   scorecard slow_ema 100 → 200 (longer-term trend filter)
     StrategyAssignment(
         bot_id="btc_sage_daily_etf",
-        strategy_id="btc_sage_daily_etf_v1",
+        strategy_id="btc_sage_daily_etf_v2_wide",
         symbol="BTC",
         timeframe="1h",
         scorer_name="btc",
@@ -339,27 +347,26 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=3,
         strategy_kind="confluence_scorecard",
         rationale=(
-            "DIAMOND CUT: Migrated from sage_daily_gated (15.4% WR, -$26k) "
-            "to proven BTC sweep_reclaim+scorecard. Original OOS +6.00 "
-            "Sharpe was real but factory ignores registry config in paper mode."
+            "DIAMOND CUT v2: Wider variant of btc_hybrid (longer "
+            "lookback + slower reclaim + wider RR + more selective + "
+            "longer trend filter).  Targets the bigger swings and "
+            "complements the tight variant + the baseline."
         ),
         extras={
-            "promotion_status": "deactivated",
-            "deactivated": True,
-            "deactivation_reason": "duplicate of btc_hybrid (bit-for-bit identical sub_strategy_extras + scorecard_config); 90d/180d audits confirmed identical results. Re-differentiate parameters before reactivating.",
+            "promotion_status": "research_candidate",
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "level_lookback": 48, "reclaim_window": 3,
+                "level_lookback": 96, "reclaim_window": 5,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 3.0, "atr_stop_mult": 2.0,
-                "max_trades_per_day": 2, "min_bars_between_trades": 12,
-                "warmup_bars": 72,
+                "rr_target": 4.0, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 1, "min_bars_between_trades": 24,
+                "warmup_bars": 200,
             },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
-                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 200,
             },
             "per_ticker_optimal": "BTC",
             "etf_csv_path": _ETF_FLOWS_PATH,
