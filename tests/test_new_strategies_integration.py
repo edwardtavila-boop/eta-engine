@@ -58,11 +58,17 @@ def test_factory_builds_all_kinds():
 
 
 def test_bridge_builds_active_bots():
-    """All active new bots build through bridge dispatch."""
+    """All active new bots build through bridge dispatch.
+
+    Note: vwap_mr_btc + volume_profile_btc were removed from this list
+    on 2026-05-05 after the elite-gate harness verdict (RED — 0 OOS
+    trades and 1 OOS trade losing $104 respectively).  Sidecar
+    deactivation at var/eta_engine/state/kaizen_overrides.json — they
+    will reappear here when reactivated."""
     clear_strategy_cache()
     active = [
-        "rsi_mr_mnq", "vwap_mr_mnq", "vwap_mr_nq", "vwap_mr_btc",
-        "volume_profile_mnq", "volume_profile_btc",
+        "rsi_mr_mnq", "vwap_mr_mnq", "vwap_mr_nq",
+        "volume_profile_mnq",
         "cross_asset_mnq",
         "funding_rate_btc",
     ]

@@ -1413,6 +1413,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # ONH/ONL). This variant anchors detection to those levels.
     # ═══════════════════════════════════════════════════════════════════
 
+    # ELITE-GATE 2026-05-05: ALL GREEN — promote to paper-soak.
+    #   50 OOS trades, +$175 OOS PnL, 32% WR, +133% decay, beats
+    #   random baseline by $408.  First MNQ strategy through the
+    #   harness on all five lights.
     StrategyAssignment(
         bot_id="mnq_anchor_sweep",
         strategy_id="mnq_anchor_sweep_v1",
@@ -1435,14 +1439,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "target with 2R fallback."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "anchor_preset": "mnq",
             "per_ticker_optimal": "MNQ",
-            "research_candidate": True,
+            "elite_gate_passed": "2026-05-05",
+            "elite_gate_results": "50T OOS, +$175 PnL, 32% WR, +133% decay, beats baseline",
             "daily_loss_limit_pct": 4.0,
         },
     ),
 
+    # ELITE-GATE 2026-05-05: RED — DO NOT promote.
+    #   49 OOS trades, $-267 OOS PnL, 26.5% WR (low), beats baseline
+    #   by only $153.  1 signal rejected (rr_too_small=1).
+    #   Mechanic identical to MNQ but NQ price action sweeps differ;
+    #   needs symbol-specific tuning before re-evaluation.
     StrategyAssignment(
         bot_id="nq_anchor_sweep",
         strategy_id="nq_anchor_sweep_v1",
@@ -1462,10 +1472,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "risk_per_trade_pct * equity / stop_distance."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "deactivated",
+            "deactivated": True,
+            "deactivation_reason": "elite-gate 2026-05-05: 49 OOS trades, $-267 OOS PnL, 26.5% WR — same mechanic as MNQ but underperforms; needs NQ-specific anchor preset (probably tighter wick threshold given NQ's higher tick value).",
             "anchor_preset": "nq",
             "per_ticker_optimal": "NQ",
-            "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },
     ),
