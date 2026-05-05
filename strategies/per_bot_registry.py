@@ -82,7 +82,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "crypto_native": True,
             "sweep_preset": "eth",
             "research_candidate": True,
-        },
+                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5}, 
+            "daily_loss_limit_pct": 4.0, 
+},
     ),
 
     # eth_perp — SAVED. 40% WR, +$8.8k on 120 trades.
@@ -178,7 +180,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_strict_mode": False,
             "sage_lookback_daily_bars": 200,
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-        },
+                    "daily_loss_limit_pct": 4.0, 
+},
     ),
 
     # ═══════════════════════════════════════════════════════════════════
@@ -223,7 +226,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
-        },
+                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5}, 
+            "daily_loss_limit_pct": 4.0, 
+},
     ),
 
     # btc_hybrid — migrated to proven BTC architecture (was sage_daily_gated 0% WR).
