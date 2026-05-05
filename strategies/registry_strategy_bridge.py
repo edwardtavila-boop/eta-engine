@@ -162,28 +162,39 @@ def _build_callable_for_assignment(
             from eta_engine.strategies.edge_layers import EdgeAmplifier, EdgeAmplifierConfig
 
             if isinstance(edge_raw, dict):
+                defaults = EdgeAmplifierConfig()
                 ec = EdgeAmplifierConfig(
-                    enable_session_gate=bool(edge_raw.get("enable_session_gate", True)),
-                    timezone_name=str(edge_raw.get("timezone_name", "America/New_York")),
-                    is_crypto=bool(edge_raw.get("is_crypto", False)),
-                    strategy_mode=str(edge_raw.get("strategy_mode", "both")),
-                    enable_exhaustion_gate=bool(edge_raw.get("enable_exhaustion_gate", True)),
-                    exhaustion_max_trend=int(edge_raw.get("exhaustion_max_trend", 5)),
-                    exhaustion_veto=int(edge_raw.get("exhaustion_veto", 6)),
-                    exhaustion_counter=int(edge_raw.get("exhaustion_counter", 7)),
-                    enable_absorption_gate=bool(edge_raw.get("enable_absorption_gate", True)),
-                    absorption_vol_z_min=float(edge_raw.get("absorption_vol_z_min", 1.2)),
-                    absorption_range_z_max=float(edge_raw.get("absorption_range_z_max", 0.5)),
-                    enable_drift_boost=bool(edge_raw.get("enable_drift_boost", True)),
-                    drift_vol_z_min=float(edge_raw.get("drift_vol_z_min", 2.0)),
-                    drift_clv_min=float(edge_raw.get("drift_clv_min", 0.75)),
-                    drift_recency_bars=int(edge_raw.get("drift_recency_bars", 2)),
-                    enable_structural_stops=bool(edge_raw.get("enable_structural_stops", True)),
-                    structural_lookback=int(edge_raw.get("structural_lookback", 10)),
-                    structural_buffer_mult=float(edge_raw.get("structural_buffer_mult", 0.25)),
-                    enable_vol_sizing=bool(edge_raw.get("enable_vol_sizing", True)),
-                    vol_regime_lookback=int(edge_raw.get("vol_regime_lookback", 100)),
-                    vol_atr_period=int(edge_raw.get("vol_atr_period", 14)),
+                    enable_session_gate=bool(edge_raw.get("enable_session_gate", defaults.enable_session_gate)),
+                    timezone_name=str(edge_raw.get("timezone_name", defaults.timezone_name)),
+                    is_crypto=bool(edge_raw.get("is_crypto", defaults.is_crypto)),
+                    strategy_mode=str(edge_raw.get("strategy_mode", defaults.strategy_mode)),
+                    enable_exhaustion_gate=bool(
+                        edge_raw.get("enable_exhaustion_gate", defaults.enable_exhaustion_gate),
+                    ),
+                    exhaustion_max_trend=int(edge_raw.get("exhaustion_max_trend", defaults.exhaustion_max_trend)),
+                    exhaustion_veto=int(edge_raw.get("exhaustion_veto", defaults.exhaustion_veto)),
+                    exhaustion_counter=int(edge_raw.get("exhaustion_counter", defaults.exhaustion_counter)),
+                    enable_absorption_gate=bool(
+                        edge_raw.get("enable_absorption_gate", defaults.enable_absorption_gate),
+                    ),
+                    absorption_vol_z_min=float(edge_raw.get("absorption_vol_z_min", defaults.absorption_vol_z_min)),
+                    absorption_range_z_max=float(
+                        edge_raw.get("absorption_range_z_max", defaults.absorption_range_z_max),
+                    ),
+                    enable_drift_boost=bool(edge_raw.get("enable_drift_boost", defaults.enable_drift_boost)),
+                    drift_vol_z_min=float(edge_raw.get("drift_vol_z_min", defaults.drift_vol_z_min)),
+                    drift_clv_min=float(edge_raw.get("drift_clv_min", defaults.drift_clv_min)),
+                    drift_recency_bars=int(edge_raw.get("drift_recency_bars", defaults.drift_recency_bars)),
+                    enable_structural_stops=bool(
+                        edge_raw.get("enable_structural_stops", defaults.enable_structural_stops),
+                    ),
+                    structural_lookback=int(edge_raw.get("structural_lookback", defaults.structural_lookback)),
+                    structural_buffer_mult=float(
+                        edge_raw.get("structural_buffer_mult", defaults.structural_buffer_mult),
+                    ),
+                    enable_vol_sizing=bool(edge_raw.get("enable_vol_sizing", defaults.enable_vol_sizing)),
+                    vol_regime_lookback=int(edge_raw.get("vol_regime_lookback", defaults.vol_regime_lookback)),
+                    vol_atr_period=int(edge_raw.get("vol_atr_period", defaults.vol_atr_period)),
                 )
             elif isinstance(edge_raw, str) and edge_raw == "mnq_futures":
                 from eta_engine.strategies.edge_layers import mnq_futures_preset

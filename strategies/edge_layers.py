@@ -422,18 +422,18 @@ class EdgeAmplifierConfig:
     is_crypto: bool = False  # set True for crypto assets (UTC session windows)
 
     # Layer 2: Exhaustion
-    enable_exhaustion_gate: bool = True
-    exhaustion_max_trend: int = 7   # shrink at 7 consecutive bars (was 5)
-    exhaustion_veto: int = 10       # veto at 10 (was 6) — paper-mode lenient
-    exhaustion_counter: int = 12    # counter-trend at 12 (was 7)
+    enable_exhaustion_gate: bool = False  # paper-soak: opt in after per-bot fill-rate proof
+    exhaustion_max_trend: int = 12
+    exhaustion_veto: int = 20
+    exhaustion_counter: int = 25
 
     # Layer 3: Effort vs Result (absorption)
-    enable_absorption_gate: bool = True
+    enable_absorption_gate: bool = False  # paper-soak: avoid hidden liquidity vetoes by default
     absorption_vol_z_min: float = 1.2
     absorption_range_z_max: float = 0.5
 
     # Layer 4: Post-event drift
-    enable_drift_boost: bool = True
+    enable_drift_boost: bool = False  # paper-soak: keep initial sizing deterministic
     drift_vol_z_min: float = 2.0
     drift_clv_min: float = 0.75
     drift_recency_bars: int = 2
@@ -449,13 +449,13 @@ class EdgeAmplifierConfig:
     vol_atr_period: int = 14
 
     # Layer 7: Hidden RSI divergence confirmation
-    enable_rsi_divergence: bool = True
+    enable_rsi_divergence: bool = False  # paper-soak: compute-heavy, test separately
     rsi_period: int = 14
     rsi_divergence_lookback: int = 20
     rsi_peak_tolerance: int = 5
 
     # Layer 8: Rejection candle verification
-    enable_rejection_candle: bool = True
+    enable_rejection_candle: bool = False  # paper-soak: confirmation boost only after proof
 
     # Layer 9: Squeeze quality gate
     enable_squeeze_gate: bool = False  # off by default — compute-heavy
@@ -669,14 +669,14 @@ def mnq_futures_preset() -> EdgeAmplifierConfig:
         timezone_name="America/New_York",
         is_crypto=False,
         strategy_mode="both",
-        enable_exhaustion_gate=True,
+        enable_exhaustion_gate=False,
         exhaustion_max_trend=6,
         exhaustion_veto=8,
         exhaustion_counter=10,
-        enable_absorption_gate=True,
+        enable_absorption_gate=False,
         absorption_vol_z_min=1.0,
         absorption_range_z_max=0.5,
-        enable_drift_boost=True,
+        enable_drift_boost=False,
         drift_vol_z_min=2.0,
         drift_clv_min=0.75,
         drift_recency_bars=2,
@@ -698,14 +698,14 @@ def btc_crypto_preset() -> EdgeAmplifierConfig:
         timezone_name="UTC",
         is_crypto=True,
         strategy_mode="both",
-        enable_exhaustion_gate=True,
+        enable_exhaustion_gate=False,
         exhaustion_max_trend=7,
         exhaustion_veto=10,
         exhaustion_counter=12,
-        enable_absorption_gate=True,
+        enable_absorption_gate=False,
         absorption_vol_z_min=1.2,
         absorption_range_z_max=0.5,
-        enable_drift_boost=True,
+        enable_drift_boost=False,
         drift_vol_z_min=2.0,
         drift_clv_min=0.75,
         drift_recency_bars=2,
@@ -726,14 +726,14 @@ def eth_crypto_preset() -> EdgeAmplifierConfig:
         timezone_name="UTC",
         is_crypto=True,
         strategy_mode="both",
-        enable_exhaustion_gate=True,
+        enable_exhaustion_gate=False,
         exhaustion_max_trend=7,
         exhaustion_veto=10,
         exhaustion_counter=12,
-        enable_absorption_gate=True,
+        enable_absorption_gate=False,
         absorption_vol_z_min=1.0,  # ETH vol is bursty — slightly easier gate
         absorption_range_z_max=0.6,
-        enable_drift_boost=True,
+        enable_drift_boost=False,
         drift_vol_z_min=2.0,
         drift_clv_min=0.70,
         drift_recency_bars=2,
@@ -755,14 +755,14 @@ def sol_crypto_preset() -> EdgeAmplifierConfig:
         timezone_name="UTC",
         is_crypto=True,
         strategy_mode="both",
-        enable_exhaustion_gate=True,
+        enable_exhaustion_gate=False,
         exhaustion_max_trend=6,
         exhaustion_veto=9,
         exhaustion_counter=11,
-        enable_absorption_gate=True,
+        enable_absorption_gate=False,
         absorption_vol_z_min=1.5,  # SOL has more noise — higher threshold
         absorption_range_z_max=0.7,
-        enable_drift_boost=True,
+        enable_drift_boost=False,
         drift_vol_z_min=2.5,  # SOL needs more extreme vol for post-event drift
         drift_clv_min=0.80,
         drift_recency_bars=1,
