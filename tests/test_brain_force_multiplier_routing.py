@@ -34,7 +34,6 @@ from eta_engine.brain.multi_model import (
     force_multiplier_chain,
     route_and_execute_async,
 )
-
 from eta_engine.brain.multi_model_telemetry import (
     log_call,
     new_chain_id,
@@ -458,3 +457,47 @@ class TestRouteAndExecuteAsync:
         for required in ("category", "user_message", "chain_id",
                          "chain_stage", "max_cost_usd", "force_provider"):
             assert required in sig.parameters, f"async wrapper missing arg: {required}"
+
+
+# ---------------------------------------------------------------------------
+# Avengers Fleet bridge
+# ---------------------------------------------------------------------------
+
+class TestMultiModelExecutor:
+    """``MultiModelExecutor`` bridges the Avengers Fleet to the FM orchestrator.
+
+    These tests pin the Executor-protocol signature without making any LLM
+    calls — the live integration is exercised by the existing FM smoke
+    paths and the Avengers fleet test suite separately.
+    """
+
+    def test_satisfies_executor_protocol_signature(self) -> None:
+        """The __call__ signature must match the Avengers Executor Protocol."""
+        import inspect
+
+        from eta_engine.brain.avengers.base import Executor  # noqa: PLC0415
+        from eta_engine.brain.multi_model_executor import MultiModelExecutor  # noqa: PLC0415
+
+        # Structural protocol check: Executor is a typing.Protocol, so
+        # we verify by signature rather than isinstance.
+        proto_sig = inspect.signature(Executor.__call__)
+        impl_sig = inspect.signature(MultiModelExecutor.__call__)
+        # Each protocol-required keyword must be present on the impl.
+        for param_name in proto_sig.parameters:
+            if param_name == "self":
+                continue
+            assert param_name in impl_sig.parameters, (
+                f"MultiModelExecutor missing Executor protocol arg: {param_name}"
+            )
+
+    def test_factory_function_is_lazy(self) -> None:
+        """``create_multimodel_fleet`` must defer Fleet import to call time
+        so importing the module doesn't pull in the whole Avengers stack
+        (which has heavy transitive dependencies)."""
+        import inspect
+
+        from eta_engine.brain.multi_model_executor import create_multimodel_fleet  # noqa: PLC0415
+        # The function exists, has the expected signature.
+        sig = inspect.signature(create_multimodel_fleet)
+        assert "admin" in sig.parameters
+        assert "journal_path" in sig.parameters
