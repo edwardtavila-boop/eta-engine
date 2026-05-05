@@ -21,6 +21,7 @@ Status JSON format:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import csv
 import json
@@ -41,6 +42,7 @@ _STATUS_PATH = Path(
 )
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 _DEFAULT_WATCHDOG_CLIENT_IDS = (55, 99, 101, 102)
+_LAST_ACCOUNT_SNAPSHOT: dict | None = None
 
 
 def _bootstrap_env() -> None:
@@ -80,6 +82,158 @@ def _watchdog_client_ids() -> tuple[int, ...]:
     return tuple(ids) or _DEFAULT_WATCHDOG_CLIENT_IDS
 
 
+def _ensure_asyncio_event_loop() -> None:
+    """ib_insync still expects a default loop on Python versions that no longer create one."""
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def _mask_account(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if len(raw) <= 4:
+        return "***"
+    return f"{raw[:3]}...{raw[-4:]}"
+
+
+def _float_or_none(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso_or_text(value: object) -> str:
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        with contextlib.suppress(Exception):
+            return str(isoformat())
+    return str(value or "")
+
+
+def _contract_snapshot(contract: object) -> dict:
+    return {
+        "symbol": str(getattr(contract, "symbol", "") or ""),
+        "sec_type": str(getattr(contract, "secType", "") or ""),
+        "exchange": str(getattr(contract, "exchange", "") or ""),
+        "currency": str(getattr(contract, "currency", "") or ""),
+        "local_symbol": str(getattr(contract, "localSymbol", "") or ""),
+        "con_id": getattr(contract, "conId", None),
+    }
+
+
+def _position_snapshot(position: object) -> dict:
+    return {
+        "account": _mask_account(getattr(position, "account", "")),
+        "contract": _contract_snapshot(getattr(position, "contract", None)),
+        "position": _float_or_none(getattr(position, "position", None)),
+        "avg_cost": _float_or_none(getattr(position, "avgCost", None)),
+    }
+
+
+def _portfolio_snapshot(item: object) -> dict:
+    return {
+        "account": _mask_account(getattr(item, "account", "")),
+        "contract": _contract_snapshot(getattr(item, "contract", None)),
+        "position": _float_or_none(getattr(item, "position", None)),
+        "market_price": _float_or_none(getattr(item, "marketPrice", None)),
+        "market_value": _float_or_none(getattr(item, "marketValue", None)),
+        "average_cost": _float_or_none(getattr(item, "averageCost", None)),
+        "unrealized_pnl": _float_or_none(getattr(item, "unrealizedPNL", None)),
+        "realized_pnl": _float_or_none(getattr(item, "realizedPNL", None)),
+    }
+
+
+def _execution_snapshot(fill: object) -> dict:
+    contract = getattr(fill, "contract", None)
+    execution = getattr(fill, "execution", None)
+    commission = getattr(fill, "commissionReport", None)
+    order_ref = str(getattr(execution, "orderRef", "") or "")
+    row = {
+        "ts": _iso_or_text(getattr(execution, "time", "")),
+        "account": _mask_account(getattr(execution, "acctNumber", "")),
+        "symbol": str(getattr(contract, "symbol", "") or ""),
+        "local_symbol": str(getattr(contract, "localSymbol", "") or ""),
+        "sec_type": str(getattr(contract, "secType", "") or ""),
+        "exchange": str(getattr(contract, "exchange", "") or ""),
+        "side": str(getattr(execution, "side", "") or ""),
+        "qty": _float_or_none(getattr(execution, "shares", None)),
+        "price": _float_or_none(getattr(execution, "price", None)),
+        "order_id": getattr(execution, "orderId", None),
+        "perm_id": getattr(execution, "permId", None),
+        "exec_id": str(getattr(execution, "execId", "") or ""),
+        "order_ref": order_ref,
+        "bot": order_ref,
+        "source": "ibkr_execution",
+    }
+    if commission is not None:
+        row["commission"] = _float_or_none(getattr(commission, "commission", None))
+        row["commission_currency"] = str(getattr(commission, "currency", "") or "")
+        row["realized_pnl"] = _float_or_none(getattr(commission, "realizedPNL", None))
+    return row
+
+
+def _snapshot_from_ib(ib: object, *, execution_limit: int = 50) -> dict:
+    """Capture sanitized account truth from an already-connected IB object."""
+    positions = [_position_snapshot(item) for item in list(ib.positions() or [])]
+    portfolio = [_portfolio_snapshot(item) for item in list(ib.portfolio() or [])]
+    fills = []
+    try:
+        fills = list(ib.reqExecutions() or [])
+    except Exception:  # noqa: BLE001 - snapshot enrichments must not fail health.
+        with contextlib.suppress(Exception):
+            fills = list(ib.fills() or [])
+    executions = [_execution_snapshot(item) for item in fills]
+    executions.sort(key=lambda row: str(row.get("ts") or ""))
+    if execution_limit > 0:
+        executions = executions[-execution_limit:]
+    accounts = sorted(
+        {
+            str(row.get("account"))
+            for row in [*positions, *portfolio, *executions]
+            if row.get("account")
+        }
+    )
+    open_positions = [
+        row for row in positions
+        if abs(float(row.get("position") or 0.0)) > 0
+    ]
+    last_execution = executions[-1] if executions else {}
+    realized_values = [
+        float(row["realized_pnl"])
+        for row in executions
+        if row.get("realized_pnl") is not None
+    ]
+    return {
+        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "accounts": accounts,
+        "summary": {
+            "accounts": accounts,
+            "positions_count": len(positions),
+            "open_positions_count": len(open_positions),
+            "portfolio_count": len(portfolio),
+            "executions_count": len(executions),
+            "last_execution_ts": last_execution.get("ts"),
+            "last_execution_symbol": last_execution.get("symbol"),
+            "last_execution_side": last_execution.get("side"),
+            "last_execution_qty": last_execution.get("qty"),
+            "last_execution_price": last_execution.get("price"),
+            "realized_pnl": round(sum(realized_values), 2) if realized_values else None,
+        },
+        "positions": positions,
+        "portfolio": portfolio,
+        "executions": executions,
+    }
+
+
 def _check_ib_handshake(
     host: str,
     port: int,
@@ -89,20 +243,36 @@ def _check_ib_handshake(
 ) -> tuple[bool, str]:
     """Confirm we can complete an IB API handshake (not just TCP).
     Returns (ok, detail)."""
+    global _LAST_ACCOUNT_SNAPSHOT
+    _LAST_ACCOUNT_SNAPSHOT = None
     details: list[str] = []
     client_ids = _watchdog_client_ids()
     for attempt in range(1, max(1, attempts) + 1):
         client_id = client_ids[(attempt - 1) % len(client_ids)]
         try:
+            _ensure_asyncio_event_loop()
             from ib_insync import IB
             ib = IB()
             try:
                 ib.connect(host, port, clientId=client_id, timeout=timeout)
                 server_version = ib.client.serverVersion() if ib.isConnected() else 0
                 if ib.isConnected():
+                    with contextlib.suppress(Exception):
+                        _LAST_ACCOUNT_SNAPSHOT = _snapshot_from_ib(ib)
+                    summary = (
+                        _LAST_ACCOUNT_SNAPSHOT.get("summary")
+                        if isinstance(_LAST_ACCOUNT_SNAPSHOT, dict)
+                        else {}
+                    )
+                    activity_detail = ""
+                    if isinstance(summary, dict):
+                        activity_detail = (
+                            f"; positions={summary.get('open_positions_count', 0)} open"
+                            f"; executions={summary.get('executions_count', 0)}"
+                        )
                     return True, (
                         f"serverVersion={server_version}; clientId={client_id}; "
-                        f"attempt={attempt}"
+                        f"attempt={attempt}{activity_detail}"
                     )
                 details.append(f"attempt {attempt} clientId={client_id}: not connected")
             finally:
@@ -206,6 +376,7 @@ def _save_status(status: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _LAST_ACCOUNT_SNAPSHOT
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--alert-after", type=int, default=2,
@@ -244,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
 
     now_iso = datetime.now(UTC).isoformat()
 
+    _LAST_ACCOUNT_SNAPSHOT = None
     handshake_ok, handshake_detail = _check_ib_handshake(
         args.host,
         args.port,
@@ -283,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
     gateway_process = None if healthy else _gateway_process_snapshot(Path(args.gateway_dir))
     if gateway_process is not None:
         status["details"]["gateway_process"] = gateway_process
+    if healthy and _LAST_ACCOUNT_SNAPSHOT is not None:
+        status["details"]["account_snapshot"] = _LAST_ACCOUNT_SNAPSHOT
     _save_status(status)
 
     # Alert when we cross the threshold (only on the EDGE — N-th failure

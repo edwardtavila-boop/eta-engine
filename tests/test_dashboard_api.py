@@ -1538,16 +1538,150 @@ class TestDashboardAPI:
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
         broker_router = r.json()["broker_router"]
-        assert broker_router["status"] == "blocked"
+        assert broker_router["status"] == "processing"
         assert broker_router["pending_count"] == 1
         assert broker_router["processing_count"] == 1
         assert broker_router["failed_count"] == 1
+        assert broker_router["active_blocker_count"] == 2
+        assert "historical_failed_orders" in broker_router["degraded_reasons"]
         assert broker_router["fill_results_count"] == 1
         assert broker_router["result_status_counts"]["REJECTED"] == 1
         assert broker_router["latest_result"]["bot_id"] == "mnq_futures_sage"
         assert broker_router["latest_result"]["status"] == "REJECTED"
         assert broker_router["latest_failure"]["attempts"] == 3
         assert broker_router["latest_failure"]["last_reject_reason"] == "venue=ibkr rejected order_id=sig-reject"
+
+    def test_bot_fleet_treats_historical_router_rejects_as_degraded(self, app_client):
+        """Old rejected router artifacts should not masquerade as an active block."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        result_dir = router / "fill_results"
+        failed_dir = router / "failed"
+        quarantine_dir = router / "quarantine"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+
+        (failed_dir / "stale.pending_order.json").write_text(
+            json.dumps({"signal_id": "stale"}),
+            encoding="utf-8",
+        )
+        (quarantine_dir / "quarantined.pending_order.json").write_text(
+            json.dumps({"signal_id": "quarantined"}),
+            encoding="utf-8",
+        )
+        (result_dir / "stale_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "stale",
+                    "bot_id": "mnq_futures_sage",
+                    "venue": "ibkr",
+                    "ts": "2026-05-05T12:58:52+00:00",
+                    "result": {"status": "REJECTED", "filled_qty": 0},
+                },
+            ),
+            encoding="utf-8",
+        )
+        (router / "broker_router_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-05T12:59:00+00:00",
+                    "last_poll_ts": "2026-05-05T12:59:00+00:00",
+                    "counts": {"submitted": 4, "rejected": 3, "failed": 1, "filled": 0},
+                    "recent_events": [{"kind": "max_retries", "detail": "stale reject"}],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        broker_router = r.json()["broker_router"]
+        assert broker_router["status"] == "degraded"
+        assert broker_router["active_blocker_count"] == 0
+        assert broker_router["failed_count"] == 1
+        assert broker_router["quarantine_count"] == 1
+        assert broker_router["result_status_counts"]["REJECTED"] == 1
+        assert broker_router["degraded_reasons"] == [
+            "historical_failed_orders",
+            "historical_rejected_results",
+            "quarantined_orders",
+        ]
+
+    def test_live_fills_include_ibkr_execution_snapshot_and_filter_pending_router_rows(self, app_client):
+        """Live fill stats use real IBKR executions, not PendingSubmit router audit rows."""
+        import json
+        import os
+        from datetime import UTC, datetime
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        now = datetime.now(UTC).isoformat()
+        (state / "broker_router_fills.jsonl").write_text(
+            json.dumps(
+                {
+                    "ts": now,
+                    "bot_id": "mnq_futures_sage",
+                    "symbol": "MNQ",
+                    "status": "PendingSubmit",
+                    "qty": 1,
+                    "price": 100.0,
+                },
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": now,
+                    "healthy": True,
+                    "consecutive_failures": 0,
+                    "last_healthy_at": now,
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": True,
+                        "handshake_ok": True,
+                        "handshake_detail": "serverVersion=176; clientId=55; attempt=1",
+                        "account_snapshot": {
+                            "summary": {
+                                "accounts": ["DUQ...9869"],
+                                "executions_count": 1,
+                                "last_execution_ts": now,
+                            },
+                            "executions": [
+                                {
+                                    "ts": now,
+                                    "account": "DUQ...9869",
+                                    "symbol": "CL",
+                                    "side": "BOT",
+                                    "qty": 1,
+                                    "price": 104.32,
+                                    "exec_id": "58268.1777959080.11",
+                                    "source": "ibkr_execution",
+                                },
+                            ],
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        live = app_client.get("/api/bot-fleet").json()["live"]
+        assert live["fills_24h"] == 1
+        assert live["fills_1h"] == 1
+        assert live["source_counts_24h"] == {"ibkr_execution": 1}
+
+        fills = app_client.get("/api/live/fills?limit=5").json()["fills"]
+        assert len(fills) == 1
+        assert fills[0]["source"] == "ibkr_execution"
+        assert fills[0]["symbol"] == "CL"
 
     def test_fleet_equity_uses_supervisor_when_curves_are_missing(self, app_client):
         """Fleet equity stays live from supervisor heartbeat when curve files are absent."""

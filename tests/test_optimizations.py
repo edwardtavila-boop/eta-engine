@@ -187,8 +187,15 @@ class TestStatusPage:
 
         # Live data fetch contract: dashboard pulls from /api/bot-fleet
         assert "/api/bot-fleet" in html
+        assert "const API = '/api/bot-fleet';" in html
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
         assert "cache: 'no-store'" in html
+        assert "FETCH_TIMEOUT_MS" in html
+        assert "AUX_FETCH_TIMEOUT_MS" in html
+        assert "AbortController" in html
+        assert "Promise.any" in html
+        assert "loadInFlight" in html
+        assert "Last data retained - reconnecting" in html
 
         # Trade/activity visibility contract: supervisor signal updates are
         # displayed separately from actual fill-backed trades.

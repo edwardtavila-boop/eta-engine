@@ -130,9 +130,13 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 
 <script>
 let autoRefresh = true, refreshTimer;
-const API = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
-const API_ALT = '/api/bot-fleet';
+const API = '/api/bot-fleet';
+const API_ALT = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
 const STRATEGY_RESULTS_API = '/api/jarvis/strategy_supercharge_results';
+const FETCH_TIMEOUT_MS = 12000;
+const AUX_FETCH_TIMEOUT_MS = 2500;
+let hasRendered = false;
+let loadInFlight = false;
 
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, ch => ({
@@ -140,27 +144,50 @@ function esc(v) {
   }[ch]));
 }
 
-async function fetchJson(urls) {
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, {cache: 'no-store'});
-      if (resp && resp.ok) return {payload: await resp.json(), source: url};
-    } catch(e) {}
+async function fetchJsonOnce(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {cache: 'no-store', signal: controller.signal});
+    if (resp && resp.ok) return {payload: await resp.json(), source: url};
+  } finally {
+    clearTimeout(timeout);
   }
-  return null;
+  throw new Error('fetch failed: ' + url);
+}
+
+async function fetchJson(urls, timeoutMs = FETCH_TIMEOUT_MS) {
+  try {
+    return await Promise.any(urls.map(url => fetchJsonOnce(url, timeoutMs)));
+  } catch(e) {
+    return null;
+  }
 }
 
 async function fetchData() {
-  const data = await fetchJson([API, API_ALT]);
-  const strategyResults = await fetchJson([STRATEGY_RESULTS_API]);
-  if (!data) { showOffline(); return; }
-  render(data.payload, strategyResults ? strategyResults.payload : {}, data.source);
+  if (loadInFlight) return;
+  loadInFlight = true;
+  try {
+    const [data, strategyResults] = await Promise.all([
+      fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
+      fetchJson([STRATEGY_RESULTS_API], AUX_FETCH_TIMEOUT_MS)
+    ]);
+    if (!data) { showOffline(!hasRendered); return; }
+    render(data.payload, strategyResults ? strategyResults.payload : {}, data.source);
+    hasRendered = true;
+  } finally {
+    loadInFlight = false;
+  }
 }
 
-function showOffline() {
+function showOffline(clearDashboard = true) {
   document.getElementById('statusDot').className = 'status-dot stale';
-  document.getElementById('statusText').textContent = 'API Offline';
-  document.getElementById('apiSourceText').textContent = 'Source: unavailable';
+  document.getElementById('statusText').textContent = clearDashboard ? 'API Offline' : 'Last data retained - reconnecting';
+  document.getElementById('apiSourceText').textContent = clearDashboard ? 'Source: unavailable' : 'Source: retrying; last good data retained';
+  if (!clearDashboard) {
+    updateClock();
+    return;
+  }
   ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';

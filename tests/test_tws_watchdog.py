@@ -129,3 +129,94 @@ def test_watchdog_client_ids_can_be_overridden(monkeypatch) -> None:
     monkeypatch.setenv("ETA_TWS_WATCHDOG_CLIENT_IDS", "55, bad, 102")
 
     assert tws_watchdog._watchdog_client_ids() == (55, 102)
+
+
+def test_ensure_asyncio_event_loop_creates_loop_when_missing(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    loop = object()
+    captured = {}
+
+    def missing_loop():
+        raise RuntimeError("There is no current event loop in thread 'MainThread'.")
+
+    monkeypatch.setattr(tws_watchdog.asyncio, "get_event_loop", missing_loop)
+    monkeypatch.setattr(tws_watchdog.asyncio, "new_event_loop", lambda: loop)
+    monkeypatch.setattr(tws_watchdog.asyncio, "set_event_loop", lambda value: captured.setdefault("loop", value))
+
+    tws_watchdog._ensure_asyncio_event_loop()
+
+    assert captured["loop"] is loop
+
+
+def test_account_snapshot_masks_account_and_captures_executions() -> None:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import tws_watchdog
+
+    contract = SimpleNamespace(
+        symbol="MNQ",
+        secType="FUT",
+        exchange="CME",
+        currency="USD",
+        localSymbol="MNQM6",
+        conId=770561201,
+    )
+    execution = SimpleNamespace(
+        acctNumber="DUQ319869",
+        side="BOT",
+        shares=1,
+        price=104.32,
+        time=datetime(2026, 5, 5, 17, 49, tzinfo=UTC),
+        orderId=123,
+        permId=456,
+        execId="58268.1777959080.11",
+        orderRef="mnq_futures_sage",
+    )
+    commission = SimpleNamespace(commission=2.5, currency="USD", realizedPNL=18.0)
+
+    class FakeIB:
+        def positions(self):
+            return [
+                SimpleNamespace(
+                    account="DUQ319869",
+                    contract=contract,
+                    position=6,
+                    avgCost=123.45,
+                ),
+            ]
+
+        def portfolio(self):
+            return [
+                SimpleNamespace(
+                    account="DUQ319869",
+                    contract=contract,
+                    position=6,
+                    marketPrice=123.75,
+                    marketValue=742.5,
+                    averageCost=123.45,
+                    unrealizedPNL=1.8,
+                    realizedPNL=18.0,
+                ),
+            ]
+
+        def reqExecutions(self):  # noqa: N802 - mirrors ib_insync API.
+            return [
+                SimpleNamespace(
+                    contract=contract,
+                    execution=execution,
+                    commissionReport=commission,
+                ),
+            ]
+
+    snapshot = tws_watchdog._snapshot_from_ib(FakeIB())
+
+    assert snapshot["accounts"] == ["DUQ...9869"]
+    assert snapshot["summary"]["open_positions_count"] == 1
+    assert snapshot["summary"]["executions_count"] == 1
+    assert snapshot["summary"]["last_execution_symbol"] == "MNQ"
+    assert snapshot["summary"]["realized_pnl"] == 18.0
+    assert snapshot["positions"][0]["account"] == "DUQ...9869"
+    assert snapshot["executions"][0]["account"] == "DUQ...9869"
+    assert snapshot["executions"][0]["bot"] == "mnq_futures_sage"
