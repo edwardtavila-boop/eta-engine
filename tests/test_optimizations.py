@@ -173,6 +173,7 @@ class TestStatusPage:
             'id="riskBar"',
             'id="jarvisMode"',
             'id="gatewayStatus"',
+            'id="gatewayStatusSub"',
             'id="brokerRouterStatus"',
             'id="brokerRouterSub"',
         ):
@@ -197,6 +198,7 @@ class TestStatusPage:
         assert "last_signal_ts" in html
         assert "signalUpdates" in html
         assert "broker_gateway" in html
+        assert "gateway_crash" in html
         assert "broker_router" in html
 
         # Status indicator + clock (live freshness cues)

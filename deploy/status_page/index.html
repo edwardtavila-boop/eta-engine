@@ -90,7 +90,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
-  <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div></div>
+  <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
@@ -167,6 +167,8 @@ function showOffline() {
   });
   const routerSub = document.getElementById('brokerRouterSub');
   if (routerSub) routerSub.textContent = '';
+  const gatewaySub = document.getElementById('gatewayStatusSub');
+  if (gatewaySub) gatewaySub.textContent = '';
 }
 
 function sourceLabel(source) {
@@ -266,6 +268,9 @@ function render(d, strategyResults, dataSource) {
   const gatewayHealthy = ibkrGateway.status === 'connected';
   document.getElementById('gatewayStatus').textContent = gatewayKnown ? (gatewayHealthy ? 'Connected' : 'Down') : 'Unknown';
   document.getElementById('gatewayStatus').className = 'stat ' + (gatewayHealthy ? 'green' : gatewayKnown ? 'red' : 'yellow');
+  const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
+  document.getElementById('gatewayStatusSub').textContent =
+    gatewayCrash.summary || ibkrGateway.detail || '';
 
   const brokerRouter = d.broker_router || {};
   const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();

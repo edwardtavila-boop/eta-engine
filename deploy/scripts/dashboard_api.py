@@ -633,7 +633,11 @@ def _broker_gateway_snapshot() -> dict:
         if not isinstance(data, dict):
             continue
         details = data.get("details") if isinstance(data.get("details"), dict) else {}
+        crash = details.get("gateway_crash") if isinstance(details.get("gateway_crash"), dict) else None
         healthy = data.get("healthy") is True
+        detail = str(details.get("handshake_detail") or "")
+        if crash and crash.get("summary"):
+            detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
         return {
             "ibkr": {
                 "status": "connected" if healthy else "down",
@@ -645,7 +649,8 @@ def _broker_gateway_snapshot() -> dict:
                 "port": int(details.get("port") or 4002),
                 "socket_ok": details.get("socket_ok") is True,
                 "handshake_ok": details.get("handshake_ok") is True,
-                "detail": str(details.get("handshake_detail") or ""),
+                "detail": detail,
+                "crash": crash,
                 "source_path": key,
             },
         }
@@ -661,6 +666,7 @@ def _broker_gateway_snapshot() -> dict:
             "socket_ok": None,
             "handshake_ok": None,
             "detail": "missing tws_watchdog.json",
+            "crash": None,
             "source_path": None,
         },
     }

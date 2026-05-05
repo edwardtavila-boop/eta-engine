@@ -25,6 +25,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 _STATUS_PATH = Path(
     r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json"
 )
+_DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 
 
 def _bootstrap_env() -> None:
@@ -80,6 +82,45 @@ def _check_ib_handshake(host: str, port: int) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _latest_gateway_crash(crash_log_dir: Path) -> dict | None:
+    """Summarize the newest IB Gateway JVM crash log, if one exists."""
+    try:
+        candidates = [
+            path for path in crash_log_dir.glob("hs_err_pid*.log")
+            if path.is_file()
+        ]
+    except OSError:
+        return None
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    try:
+        text = "\n".join(latest.read_text(encoding="utf-8", errors="replace").splitlines()[:80])
+    except OSError:
+        return None
+
+    insufficient_memory = "insufficient memory" in text.lower()
+    native_allocation = next(
+        (line.strip("# ").strip() for line in text.splitlines() if "Native memory allocation" in line),
+        "",
+    )
+    xmx_match = re.search(r"-Xmx(\d+[mMgG])", text)
+    if insufficient_memory or native_allocation:
+        reason_code = "jvm_native_memory_oom"
+        summary = "IB Gateway JVM native-memory OOM"
+    else:
+        reason_code = "jvm_crash"
+        summary = "IB Gateway JVM crash"
+    return {
+        "reason_code": reason_code,
+        "summary": summary,
+        "path": str(latest),
+        "mtime": datetime.fromtimestamp(latest.stat().st_mtime, UTC).isoformat(),
+        "native_allocation": native_allocation,
+        "xmx": xmx_match.group(1).lower() if xmx_match else None,
+    }
+
+
 def _load_status() -> dict:
     if not _STATUS_PATH.exists():
         return {}
@@ -103,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=4002)
+    p.add_argument(
+        "--crash-log-dir",
+        default=os.environ.get("ETA_TWS_CRASH_LOG_DIR", str(_DEFAULT_CRASH_LOG_DIR)),
+        help="Directory containing IB Gateway hs_err_pid*.log crash artifacts.",
+    )
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -142,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
             "handshake_detail": handshake_detail,
         },
     }
+    gateway_crash = None if healthy else _latest_gateway_crash(Path(args.crash_log_dir))
+    if gateway_crash is not None:
+        status["details"]["gateway_crash"] = gateway_crash
     _save_status(status)
 
     # Alert when we cross the threshold (only on the EDGE — N-th failure
@@ -159,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
                     "host": args.host,
                     "port": args.port,
                     "handshake_detail": handshake_detail,
+                    "gateway_crash": gateway_crash,
                     "last_healthy_at": last_healthy_at,
                 },
                 severity="CRITICAL",
