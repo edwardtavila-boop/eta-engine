@@ -1615,6 +1615,131 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # ═══════════════════════════════════════════════════════════════════
+    # EQUITY-INDEX MICROS TIER (2026-05-04)
+    # MES (S&P), M2K (Russell), YM (Dow), MYM (micro Dow). The full-size
+    # NQ + ES + RTY + YM bots aren't in the active registry; the micros
+    # let small accounts trade the same setups with 5-10x less notional
+    # exposure per contract, and the futures floor in bracket_sizing
+    # ensures the per-bot cap doesn't round qty to 0.
+    # ═══════════════════════════════════════════════════════════════════
+    StrategyAssignment(
+        bot_id="mes_sweep_reclaim",
+        strategy_id="mes_sweep_reclaim_v1",
+        symbol="MES",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=120,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "EQUITY-INDEX MICRO: S&P 500 (MES) sweep_reclaim+scorecard "
+            "on 5m. point_value=$5/pt vs ES $50/pt — 10x less notional "
+            "per contract. Same RTH-session opening-range / sweep "
+            "structure as MNQ; expect dow_theory + market_profile + "
+            "trend_following to dominate Sage's read."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MES",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="m2k_sweep_reclaim",
+        strategy_id="m2k_sweep_reclaim_v1",
+        symbol="M2K",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=120,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "EQUITY-INDEX MICRO: Russell 2000 (M2K) sweep_reclaim+"
+            "scorecard on 5m. Small caps lead at risk-on inflection "
+            "points — historically beats S&P at cycle turns. Same "
+            "structure as MES; cross_asset_correlation school can "
+            "tell when M2K is leading or lagging the broader index."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "M2K",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="ym_sweep_reclaim",
+        strategy_id="ym_sweep_reclaim_v1",
+        symbol="YM",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=120,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "EQUITY-INDEX: Dow Jones (YM) sweep_reclaim+scorecard on "
+            "5m. point_value=$5/pt; 30-stock blue-chip index moves "
+            "differently from cap-weighted S&P. Useful diversifier in "
+            "the equity-index basket; cross_asset_correlation tracks "
+            "YM vs ES vs NQ vs M2K disagreement."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "YM",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
 )
 
 

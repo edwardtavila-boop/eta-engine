@@ -985,6 +985,52 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "IBKR CME FX",
         ),
     ),
+
+    # ── Equity-index micros tier (2026-05-04) ──────────────────
+    # MES, M2K, YM — small-notional siblings of ES, RTY, full-size
+    # YM. All RTH-priority via composite feed (yfinance during regular
+    # session, IBKR fallback for extended hours).
+    BotRequirements(
+        bot_id="mes_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "MES", "5m", critical=True),
+            DataRequirement("bars", "MES", "1h", critical=False),
+            DataRequirement("correlation", "MNQ1", "5m", critical=False,
+                note="MES vs MNQ disagreement = sector rotation signal"),
+        ),
+        sources_hint=(
+            "yfinance MES=F via composite feed",
+            "IBKR CME (RTH primary, ETH fallback)",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="m2k_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "M2K", "5m", critical=True),
+            DataRequirement("bars", "M2K", "1h", critical=False),
+            DataRequirement("correlation", "MES", "5m", critical=False,
+                note="small caps vs S&P leadership signal"),
+        ),
+        sources_hint=(
+            "yfinance M2K=F via composite feed",
+            "IBKR CME",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="ym_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "YM", "5m", critical=True),
+            DataRequirement("bars", "YM", "1h", critical=False),
+            DataRequirement("correlation", "MES", "5m", critical=False,
+                note="blue-chip vs S&P broader index signal"),
+        ),
+        sources_hint=(
+            "yfinance YM=F via composite feed",
+            "IBKR CBOT",
+        ),
+    ),
 )
 
 
