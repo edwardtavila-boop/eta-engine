@@ -115,6 +115,8 @@ class AdversarialStrategyReviewer:
     ) -> dict | None:
         if not _ANTHROPIC_API_KEY:
             return None
+        if not os.environ.get("ETA_USE_CLAUDE_API"):
+            return None  # kill-switch: must be explicitly enabled
         try:
             return self._call_claude(strategy_id, yaml_text, results)
         except Exception as exc:  # noqa: BLE001 — network/parse errors degrade to heuristic-only

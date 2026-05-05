@@ -213,6 +213,8 @@ class FilesCache:
                 )
                 return None
             client = anthropic.Anthropic(api_key=self._api_key)
+            if not os.environ.get("ETA_USE_CLAUDE_API"):
+                return None  # kill-switch: must be explicitly enabled
 
         try:
             # Anthropic SDK uploads via beta.files.upload(file=(name, bytes))
