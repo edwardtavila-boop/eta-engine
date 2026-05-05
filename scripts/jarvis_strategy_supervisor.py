@@ -394,6 +394,28 @@ def _get_live_ibkr_venue() -> Any:  # noqa: ANN401 — LiveIbkrVenue not import-
     return _LIVE_IBKR_VENUE
 
 
+# Symbol → instrument-class lookup. Used by sage cross-asset peer wiring
+# and the bracket-sizing path. Mirrors data_feeds._is_crypto / bracket_sizing's
+# _futures_set so all three modules agree on what's crypto vs futures.
+_CRYPTO_ROOTS = frozenset({
+    "BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET", "XRP",
+})
+_FUTURES_ROOTS = frozenset({
+    "MNQ", "NQ", "ES", "MES", "GC", "MGC", "CL", "MCL",
+    "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K",
+})
+
+
+def _classify_symbol(symbol: str) -> str:
+    """Return one of {'crypto', 'futures', 'other'} for a bot symbol."""
+    s = symbol.upper().lstrip("/").rstrip("0123456789")
+    if s in _CRYPTO_ROOTS:
+        return "crypto"
+    if s in _FUTURES_ROOTS:
+        return "futures"
+    return "other"
+
+
 class ExecutionRouter:
     """Routes approved entries to broker (or simulates them).
 
@@ -1341,29 +1363,63 @@ class JarvisStrategySupervisor:
     def _consult_sage_for_bot(self, bot: BotInstance, bar: dict, side: str, entry_price: float) -> object | None:
         """Consult Sage schools with the bot's accumulated bar buffer.
 
-        Returns a SageReport or None if Sage isn't available or the
-        buffer has fewer than 30 bars.
+        Returns a SageReport or None when the buffer is too short or
+        Sage fails. Also caches the report so feedback_loop can attribute
+        realized R back to each school via edge_tracker.observe().
 
-        Also caches the report in ``last_report_cache`` so the post-trade
-        feedback_loop can attribute realized R back to each school via
-        edge_tracker.observe(). Without this set_last call, every school
-        sat at hit_rate=0.5 / n_obs=0 forever — Sage was being consulted
-        but its predictions were never scored against outcomes, so the
-        learned weight_modifier and conviction calibration never engaged.
-        Previously only v22_sage_confluence policy fired set_last; with
-        the v27 advanced cascade in front of v22, the call never
-        happened in production.
+        Cross-asset peer_returns are populated from the SAME-CLASS sister
+        bots' bar buffers so cross_asset_correlation school stops returning
+        neutral. Crypto bots get peer returns from each other; futures
+        bots get peer returns from their fellow MNQ/NQ/ES siblings.
         """
         bars = list(bot.sage_bars)
-        if len(bars) < 30:
+        # Lowered from 30 to 15 bars — matches the ATR warmup so sage
+        # engages on the same tick the first proper bracket gets computed,
+        # halving the cold-start window where every entry uses fallback
+        # geometry without sage modulation.
+        if len(bars) < 15:
             return None
         try:
             from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+
+            # Build peer_returns dict from SAME-CLASS bots' recent bars so
+            # cross_asset_correlation school can compute meaningful
+            # alignment instead of returning neutral with rationale
+            # "no peer_returns on ctx — school skipped".
+            peer_returns: dict[str, list[float]] = {}
+            try:
+                _self_class = _classify_symbol(bot.symbol)
+                for _peer in self.bots:
+                    if _peer.bot_id == bot.bot_id:
+                        continue
+                    if _classify_symbol(_peer.symbol) != _self_class:
+                        continue
+                    if not _peer.sage_bars or len(_peer.sage_bars) < 5:
+                        continue
+                    _closes = [
+                        float(b.get("close", 0))
+                        for b in list(_peer.sage_bars)[-30:]
+                        if b.get("close") is not None
+                    ]
+                    if len(_closes) < 5:
+                        continue
+                    _rets = [
+                        (_closes[i] - _closes[i - 1]) / _closes[i - 1]
+                        for i in range(1, len(_closes))
+                        if _closes[i - 1] > 0
+                    ]
+                    if _rets:
+                        peer_returns[_peer.symbol] = _rets
+            except Exception:  # noqa: BLE001
+                peer_returns = {}
+
             ctx = MarketContext(
                 bars=bars,
                 side=side,
                 entry_price=entry_price,
                 symbol=bot.symbol,
+                instrument_class=_classify_symbol(bot.symbol),
+                peer_returns=peer_returns or None,
             )
             report = consult_sage(ctx)
             with contextlib.suppress(Exception):
