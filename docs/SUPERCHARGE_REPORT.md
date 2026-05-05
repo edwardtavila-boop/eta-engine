@@ -286,7 +286,7 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 - `btc_hybrid_sage` is `kind=orb_sage_gated, symbol=BTC, active=True` but the bridge factory **returns None** — the `orb_sage_gated` factory has no BTC code path. Either deactivate or add the BTC branch.
 - `gap_fill_mnq` and `gap_fill_btc` are intentionally deactivated by the operator (registry shows `strategy_id="*_DEACTIVATED"`).
 
-### Six 90-day-verified candidates (positive realistic AND pessimistic):
+### EIGHT 90-day-verified candidates (positive realistic AND pessimistic):
 
 | Bot | 90d Real | 90d Pess | 90d WR | Trades | Notes |
 |---|---|---|---|---|---|
@@ -296,6 +296,8 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 | `btc_hybrid` (= ETF + sage_daily_etf) | +$1,238 | +$1,116 | 27.4% | 135 | Three duplicate bot_ids — pick one |
 | `nq_futures_sage` | +$1,252 | +$1,218 | 32.6% | 43 | Same pattern as mnq_futures_sage |
 | `mnq_anchor_sweep` | +$1,042 | +$680 | 25.5% | 145 | **ALL 5 LIGHTS GREEN** — only one to fully clear elite gate |
+| `btc_optimized` | +$1,001 | +$984 | 42.9% | 14 | NEW from overnight audit. Tiny realism gap ($17). 1h timeframe, very selective. |
+| `mnq_futures_optimized` | +$177 | +$166 | 38.5% | 13 | MARGINAL — 13 trades over 90d is too few for confidence; OOS WF surprised at 75% WR but only 4 trades. |
 
 **Two strategies are now fully verified for go-live consideration:**
 
@@ -333,7 +335,27 @@ This is the only strategy that should be considered for paper-soak → live cuto
 5. Daily reconciliation must run + alert on any divergence
 6. Re-evaluate after 30 live trades, NOT before
 
-## Bottom line (final, post-audit + walk-forward)
+## Phase-2 expansion bots (no data yet)
+
+The following bots are registered and active but have no historical data loaded — they were configured for the Phase 2 expansion plan but the data pipeline hasn't ingested them yet:
+
+- `gc_sweep_reclaim`, `cl_sweep_reclaim`, `ng_sweep_reclaim`, `zn_sweep_reclaim`, `eur_sweep_reclaim` — commodities + bonds + FX 1h
+- `mes_sweep_reclaim`, `m2k_sweep_reclaim`, `ym_sweep_reclaim` — equity micros 5m
+- `crypto_seed` — Bridge None (registry kind not routable)
+
+Once the data is loaded these can be audited the same way.
+
+## Operator-intentional shadow bots (intentional non-firing)
+
+These bots intentionally produce zero or near-zero signals — they're marked `promotion_status='shadow_benchmark'` in the registry with diagnostic-only intent:
+
+- `btc_ensemble_2of3` — 0 trades on 90d (3-of-3 voting too restrictive by design)
+- `btc_hybrid_sage` — Bridge returns None (orb_sage_gated factory has no BTC branch)
+- `gap_fill_mnq` / `gap_fill_btc` — explicitly tagged `*_DEACTIVATED` in registry
+
+Per the registry rationale notes, these are kept as diagnostics, not promoted to live.
+
+## Bottom line (final, post-comprehensive overnight audit)
 
 The fleet went from "12 winners + $516k claimed" to a verified picture:
 
