@@ -304,6 +304,10 @@ class CryptoSeedBot(BaseBot):
 
     async def stop(self) -> None:
         logger.info("Crypto Seed bot stopping | equity=$%.2f", self.state.equity)
+        try:
+            self.persist_positions()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Crypto Seed stop position persistence failed: %s", exc)
         self._record_event(
             intent="crypto_seed_stop",
             rationale="lifecycle.stop",

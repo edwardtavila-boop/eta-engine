@@ -1736,6 +1736,10 @@ class BtcHybridBot(BaseBot):
             self.state.equity,
             self._mode.value,
         )
+        try:
+            self.persist_positions()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BTC-Hybrid stop position persistence failed: %s", exc)
         self._grid_levels.clear()
         self._grid_level_side.clear()
         self._grid_level_status.clear()

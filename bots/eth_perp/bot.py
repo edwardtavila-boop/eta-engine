@@ -357,6 +357,10 @@ class EthPerpBot(BaseBot):
 
     async def stop(self) -> None:
         logger.info("%s stopping | equity=$%.2f", self.config.name, self.state.equity)
+        try:
+            self.persist_positions()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s stop position persistence failed: %s", self.config.name, exc)
         self._record_event(
             intent=f"{self.config.symbol.lower()}_stop",
             rationale="lifecycle.stop",

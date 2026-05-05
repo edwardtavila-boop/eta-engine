@@ -459,6 +459,10 @@ class MnqBot(BaseBot):
 
     async def stop(self) -> None:
         logger.info("MNQ bot stopping | equity=$%.2f pnl=$%.2f", self.state.equity, self.state.todays_pnl)
+        try:
+            self.persist_positions()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MNQ stop position persistence failed: %s", exc)
         self._record_event(
             intent="mnq_stop",
             rationale="lifecycle.stop",
