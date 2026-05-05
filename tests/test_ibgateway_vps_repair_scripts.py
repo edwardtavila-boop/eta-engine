@@ -15,7 +15,9 @@ def test_ibgateway_starter_uses_canonical_logs_and_hidden_start() -> None:
     assert "-WindowStyle Hidden" in text
     assert "ibgateway.exe" in text
     assert "-login=" in text
-    assert '$_.Name -ieq "ibgateway.exe"' in text
+    assert 'Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue' in text
+    assert "function Get-ProcessIdValue" in text
+    assert "Stop-Process -Id $procId -Force" in text
     assert 'CommandLine -like "*ibgateway*"' not in text
     assert "$existingGateway = Get-GatewayProcesses | Select-Object -First 1" in text
     assert "existing gateway process running; no start needed" in text

@@ -29,6 +29,7 @@ import os
 import re
 import socket
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,6 +40,7 @@ _STATUS_PATH = Path(
     r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json"
 )
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
+_DEFAULT_WATCHDOG_CLIENT_IDS = (55, 99, 101, 102)
 
 
 def _bootstrap_env() -> None:
@@ -67,21 +69,50 @@ def _check_socket(host: str, port: int, timeout: float = 3.0) -> bool:
         return False
 
 
-def _check_ib_handshake(host: str, port: int) -> tuple[bool, str]:
+def _watchdog_client_ids() -> tuple[int, ...]:
+    raw = os.environ.get("ETA_TWS_WATCHDOG_CLIENT_IDS", "")
+    if not raw:
+        return _DEFAULT_WATCHDOG_CLIENT_IDS
+    ids: list[int] = []
+    for chunk in raw.split(","):
+        with contextlib.suppress(ValueError):
+            ids.append(int(chunk.strip()))
+    return tuple(ids) or _DEFAULT_WATCHDOG_CLIENT_IDS
+
+
+def _check_ib_handshake(
+    host: str,
+    port: int,
+    *,
+    attempts: int = 2,
+    timeout: float = 12.0,
+) -> tuple[bool, str]:
     """Confirm we can complete an IB API handshake (not just TCP).
     Returns (ok, detail)."""
-    try:
-        from ib_insync import IB
-        ib = IB()
+    details: list[str] = []
+    client_ids = _watchdog_client_ids()
+    for attempt in range(1, max(1, attempts) + 1):
+        client_id = client_ids[(attempt - 1) % len(client_ids)]
         try:
-            ib.connect(host, port, clientId=55, timeout=8)
-            server_version = ib.client.serverVersion() if ib.isConnected() else 0
-            return ib.isConnected(), f"serverVersion={server_version}"
-        finally:
-            with contextlib.suppress(Exception):
-                ib.disconnect()
-    except Exception as exc:  # noqa: BLE001
-        return False, str(exc)
+            from ib_insync import IB
+            ib = IB()
+            try:
+                ib.connect(host, port, clientId=client_id, timeout=timeout)
+                server_version = ib.client.serverVersion() if ib.isConnected() else 0
+                if ib.isConnected():
+                    return True, (
+                        f"serverVersion={server_version}; clientId={client_id}; "
+                        f"attempt={attempt}"
+                    )
+                details.append(f"attempt {attempt} clientId={client_id}: not connected")
+            finally:
+                with contextlib.suppress(Exception):
+                    ib.disconnect()
+        except Exception as exc:  # noqa: BLE001
+            details.append(f"attempt {attempt} clientId={client_id}: {type(exc).__name__}({exc})")
+        if attempt < attempts:
+            time.sleep(2)
+    return False, "; ".join(details)
 
 
 def _latest_gateway_crash(crash_log_dir: Path) -> dict | None:
@@ -183,6 +214,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=4002)
     p.add_argument(
+        "--handshake-attempts",
+        type=int,
+        default=2,
+        help="IB API handshake attempts before classifying the gateway as unhealthy.",
+    )
+    p.add_argument(
+        "--handshake-timeout",
+        type=float,
+        default=12.0,
+        help="Seconds to wait for each IB API handshake attempt.",
+    )
+    p.add_argument(
         "--crash-log-dir",
         default=os.environ.get("ETA_TWS_CRASH_LOG_DIR", str(_DEFAULT_CRASH_LOG_DIR)),
         help="Directory containing IB Gateway hs_err_pid*.log crash artifacts.",
@@ -201,10 +244,13 @@ def main(argv: list[str] | None = None) -> int:
 
     now_iso = datetime.now(UTC).isoformat()
 
-    socket_ok = _check_socket(args.host, args.port)
-    handshake_ok, handshake_detail = (False, "skipped (socket down)")
-    if socket_ok:
-        handshake_ok, handshake_detail = _check_ib_handshake(args.host, args.port)
+    handshake_ok, handshake_detail = _check_ib_handshake(
+        args.host,
+        args.port,
+        attempts=args.handshake_attempts,
+        timeout=args.handshake_timeout,
+    )
+    socket_ok = True if handshake_ok else _check_socket(args.host, args.port)
 
     healthy = socket_ok and handshake_ok
     if healthy:

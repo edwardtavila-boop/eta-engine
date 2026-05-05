@@ -60,3 +60,72 @@ def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
     assert crash["xmx"] == "768m"
     assert data["details"]["gateway_process"]["running"] is True
     assert data["details"]["gateway_process"]["pid"] == 8072
+
+
+def test_successful_handshake_does_not_open_raw_socket_probe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    status_path = tmp_path / "tws_watchdog.json"
+    monkeypatch.setattr(tws_watchdog, "_STATUS_PATH", status_path)
+    monkeypatch.setattr(
+        tws_watchdog,
+        "_check_ib_handshake",
+        lambda *_args, **_kwargs: (True, "serverVersion=176; clientId=55; attempt=1"),
+    )
+
+    def fail_raw_socket_probe(*_args, **_kwargs):
+        raise AssertionError("raw TCP probe should not run after a successful IB handshake")
+
+    monkeypatch.setattr(tws_watchdog, "_check_socket", fail_raw_socket_probe)
+
+    rc = tws_watchdog.main(["--host", "127.0.0.1", "--port", "4002"])
+
+    assert rc == 0
+    data = json.loads(status_path.read_text(encoding="utf-8"))
+    assert data["healthy"] is True
+    assert data["details"]["socket_ok"] is True
+    assert data["details"]["handshake_ok"] is True
+
+
+def test_failed_handshake_uses_raw_socket_probe_for_classification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    status_path = tmp_path / "tws_watchdog.json"
+    monkeypatch.setattr(tws_watchdog, "_STATUS_PATH", status_path)
+    monkeypatch.setattr(
+        tws_watchdog,
+        "_check_ib_handshake",
+        lambda *_args, **_kwargs: (False, "TimeoutError()"),
+    )
+    monkeypatch.setattr(tws_watchdog, "_check_socket", lambda *_args, **_kwargs: True)
+
+    rc = tws_watchdog.main(["--host", "127.0.0.1", "--port", "4002", "--alert-after", "99"])
+
+    assert rc == 1
+    data = json.loads(status_path.read_text(encoding="utf-8"))
+    assert data["healthy"] is False
+    assert data["details"]["socket_ok"] is True
+    assert data["details"]["handshake_ok"] is False
+    assert data["details"]["handshake_detail"] == "TimeoutError()"
+
+
+def test_watchdog_client_ids_use_reserved_low_id_pool(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.delenv("ETA_TWS_WATCHDOG_CLIENT_IDS", raising=False)
+
+    assert tws_watchdog._watchdog_client_ids() == (55, 99, 101, 102)
+
+
+def test_watchdog_client_ids_can_be_overridden(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.setenv("ETA_TWS_WATCHDOG_CLIENT_IDS", "55, bad, 102")
+
+    assert tws_watchdog._watchdog_client_ids() == (55, 102)

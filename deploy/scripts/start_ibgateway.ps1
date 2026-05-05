@@ -16,12 +16,15 @@ function Write-LogLine {
 }
 
 function Get-GatewayProcesses {
-    $expectedExe = Join-Path $GatewayDir "ibgateway.exe"
-    Get-CimInstance Win32_Process |
-        Where-Object {
-            ($_.Name -ieq "ibgateway.exe") -or
-            ($_.ExecutablePath -and ($_.ExecutablePath -ieq $expectedExe))
-        }
+    Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
+}
+
+function Get-ProcessIdValue {
+    param($Process)
+    if ($null -ne $Process.Id) {
+        return $Process.Id
+    }
+    return $Process.ProcessId
 }
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -41,14 +44,15 @@ if ($listener -and -not $ForceRestart) {
 
 $existingGateway = Get-GatewayProcesses | Select-Object -First 1
 if ($existingGateway -and -not $ForceRestart) {
-    Write-LogLine "existing gateway process running; no start needed pid=$($existingGateway.ProcessId)"
+    Write-LogLine "existing gateway process running; no start needed pid=$(Get-ProcessIdValue $existingGateway)"
     return
 }
 
 if ($ForceRestart) {
     foreach ($proc in Get-GatewayProcesses) {
-        Write-LogLine "stopping existing gateway process pid=$($proc.ProcessId)"
-        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        $procId = Get-ProcessIdValue $proc
+        Write-LogLine "stopping existing gateway process pid=$procId"
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds 5
 }
