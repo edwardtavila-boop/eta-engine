@@ -113,18 +113,50 @@ The guard at the bottom is the **fail-closed barrier**: any duplicate-config bot
 
 ---
 
+## Elite-gate verification pass (post-synthesis)
+
+After landing the registry hardening, ran the harness on 12 active research_candidates. Verdict matrix:
+
+| Bot | Symbol | OOS trades | OOS PnL | Decay | Verdict |
+|-----|--------|-----------|---------|-------|---------|
+| btc_regime_trend_etf (TIGHT) | BTC 1h | 0 | $0 | -100% | RED — too restrictive |
+| btc_sage_daily_etf (WIDE) | BTC 1h | 1 | -$101 | -777% | RED — sample + losing |
+| eth_sweep_reclaim | ETH 1h | 4 | +$496 | -44% | RED — sample too small |
+| eth_sage_daily | ETH 1h | 1 | -$104 | -172% | RED — sample + losing |
+| gc_sweep_reclaim | GC 1h | — | — | — | NO DATA |
+| cl_sweep_reclaim | CL 1h | — | — | — | NO DATA |
+| ng_sweep_reclaim | NG 1h | — | — | — | NO DATA |
+| zn_sweep_reclaim | ZN 1h | — | — | — | NO DATA |
+| eur_sweep_reclaim | 6E 1h | — | — | — | NO DATA |
+| mes_sweep_reclaim | MES 5m | — | — | — | NO DATA |
+| m2k_sweep_reclaim | M2K 5m | — | — | — | NO DATA |
+| ym_sweep_reclaim | YM 5m | — | — | — | NO DATA |
+
+**Actions taken** (commit `cfae8fe` + sidecar):
+- 2 BTC variants: source registry flipped to `promotion_status=deactivated` with `deactivation_reason` capturing the gate verdict + retune direction
+- 8 no-data bots: deactivated via `var/eta_engine/state/kaizen_overrides.json` (runtime sidecar — not committed; reactivate by removing the entry)
+
+Active fleet count: dropped from 21 → 11 after gate failures + no-data deactivations.
+
+Pre-live pipeline behaved as designed: differentiation hypothesis proposed → harness scored → gate said no → deactivation followed.
+
+---
+
 ## Open items for the operator
 
-1. **BTC fleet over-allocation (advisory)** — 10 active BTC bots; fleet correlation analysis would tell whether they're genuinely diversified or just correlated edges in disguise. Not a bug, a sizing question.
-2. **OpenCode CLI race conditions** — second AI agent (PID 48240, started 5/4 8am) repeatedly captured my staged files into its own commit messages (e.g. commit `6343731` got the dedupe-guard message but contained TWS watchdog content). Resolved by re-committing the real content as `79ef0c1`. Coordination protocol is the long-term fix.
-3. **Push to remote** — local commits `79ef0c1` and `bec9647` have not been pushed; do so before VPS picks up the next pull.
-4. **Two new BTC variants need elite-gate runs** — `btc_regime_trend_etf_v2_tight` and `btc_sage_daily_etf_v2_wide` are flagged `research_candidate`; run the harness against them before promoting.
+1. **Load missing instrument data** — 8 sweep_reclaim research_candidates (GC/CL/NG/ZN/6E/MES/M2K/YM) are deactivated until backing data is loaded. Per CLAUDE.md hard rule, Databento stays dormant unless you explicitly refresh it.
+2. **eth_sweep_reclaim is borderline** — 75% WR, +$496 OOS, but only 4 trades (gate requires ≥30). Either run a longer evaluation window or relax the sample-size threshold for the ETH symbol.
+3. **Fleet correlation needs paper-soak data** — `fleet_corr_check` returned "insufficient sample (0 < 10 paired trades)" for all partner pairs. Will populate as paper-soak generates trades.
+4. **Push to remote** — local commits `79ef0c1`, `bec9647`, `cfae8fe`, `e61881e` not yet pushed; VPS will need them.
+5. **OpenCode CLI race conditions** — second AI agent (PID 48240, started 5/4 8am) repeatedly captured my staged files into its own commit messages. Resolved per-instance, but a coordination protocol is the long-term fix.
 
 ---
 
 ## Commit chain (this sprint)
 
 ```
+cfae8fe  fleet: deactivate 2 BTC variants — failed elite-gate 2026-05-05
+e61881e  docs: master synthesis — pre-live hardening sprint 2026-05-05
 bec9647  live-path: extend dedupe guard to JarvisStrategySupervisor.load_bots
 79ef0c1  live-path: dedupe guard + BTC differentiation (real)
 6343731  live-path: wire registry-dedupe guard at startup + differentiate BTC variants
