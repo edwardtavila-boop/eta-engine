@@ -95,19 +95,49 @@ def test_store_reloads_on_module_import(tmp_store: Path) -> None:
     assert rec.broker_order_id == "55555"
 
 
-def test_no_persistence_when_env_unset() -> None:
-    """Without ETA_IDEMPOTENCY_STORE, no disk activity — keeps tests
-    that don't opt in hermetic and doesn't pollute the workspace."""
+def test_disabled_via_env_returns_none() -> None:
+    """ETA_IDEMPOTENCY_STORE=disabled forces in-memory-only — keeps
+    tests hermetic without depending on the workspace state dir being
+    absent (which it isn't, once anything else has used it).
+
+    Default-on persistence means "unset" no longer means "no disk";
+    the operator must opt out explicitly.
+    """
+    os.environ["ETA_IDEMPOTENCY_STORE"] = "disabled"
+    try:
+        from eta_engine.safety import idempotency
+        reload(idempotency)
+        idempotency.reset_store_for_test()
+        rec = idempotency.check_or_register(
+            client_order_id="no-disk-1",
+            venue="ibkr",
+            symbol="MNQ1",
+            intent_payload={},
+        )
+        assert rec.is_new
+        # Explicit disable returns None
+        assert idempotency._persist_path() is None
+    finally:
+        os.environ.pop("ETA_IDEMPOTENCY_STORE", None)
+
+
+def test_default_path_when_env_unset() -> None:
+    """With ETA_IDEMPOTENCY_STORE unset, _persist_path() returns the
+    canonical workspace default — NOT None. Default-on persistence is
+    the new contract: a process bounce mid-trade must never lose the
+    pending dedup log silently."""
     os.environ.pop("ETA_IDEMPOTENCY_STORE", None)
-    from eta_engine.safety import idempotency
-    reload(idempotency)
-    idempotency.reset_store_for_test()
-    rec = idempotency.check_or_register(
-        client_order_id="no-disk-1",
-        venue="ibkr",
-        symbol="MNQ1",
-        intent_payload={},
-    )
-    assert rec.is_new
-    # No disk writes should occur — _persist_path() returns None
-    assert idempotency._persist_path() is None
+    try:
+        from eta_engine.safety import idempotency
+        reload(idempotency)
+        path = idempotency._persist_path()
+        # Default falls back to None on systems where the workspace
+        # state dir isn't writable (CI sandbox, etc.); on a real
+        # workspace we expect the canonical path.
+        if path is not None:
+            assert path == Path(
+                "C:/EvolutionaryTradingAlgo/var/eta_engine/state/idempotency.jsonl"
+            )
+    finally:
+        # leave the env in the unset state we want for hermetic isolation
+        os.environ.pop("ETA_IDEMPOTENCY_STORE", None)

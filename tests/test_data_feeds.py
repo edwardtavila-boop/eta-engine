@@ -158,9 +158,16 @@ def test_coinbase_feed_survives_http_failure() -> None:
 def test_ibkr_feed_uses_historical_data_for_futures() -> None:
     from eta_engine.scripts.data_feeds import IbkrDataFeed
     feed = IbkrDataFeed()
-    # Mock the underlying IB and the connection
+    # Mock the underlying IB and the connection. _make_contract calls
+    # _resolve_front_month_mnq which itself calls qualifyContracts then
+    # reads lastTradeDateOrContractMonth — provide an explicit string
+    # so the YYYYMM regex parser succeeds (the bare MagicMock proxies
+    # any attribute access to another mock object that fails parsing).
     fake_ib = MagicMock()
     fake_ib.isConnected.return_value = True
+    qualified_contract = MagicMock()
+    qualified_contract.lastTradeDateOrContractMonth = "20260620"
+    fake_ib.qualifyContracts.return_value = [qualified_contract]
     fake_bar = MagicMock(open=21500.0, high=21520.0, low=21480.0, close=21510.0, volume=1500)
     fake_ib.reqHistoricalData.return_value = [fake_bar]
     feed._ib = fake_ib

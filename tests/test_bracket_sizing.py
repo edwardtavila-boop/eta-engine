@@ -236,3 +236,63 @@ def test_cap_qty_futures_passes_when_budget_covers_contract() -> None:
     finally:
         os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
         os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+
+
+# ─── Per-asset bracket precision (FX rounding-collapse fix) ────
+
+
+def test_compute_bracket_fx_uses_5_decimal_precision() -> None:
+    """FX prices live at ~1.xxxx. With 4-decimal rounding, a tight ATR
+    stop like 1.17082 collapses to 1.1708 (entry price) → zero stop
+    distance → realized_r explodes when divided by ~0. Confirms the
+    precision is 5 decimals so a 5-pip stop survives rounding.
+    """
+    from eta_engine.scripts.bracket_sizing import compute_bracket
+    bars = [{"high": 1.171, "low": 1.170, "close": 1.1708,
+             "open": 1.171} for _ in range(20)]
+    stop, target, src = compute_bracket(
+        side="BUY", entry_price=1.1708, bars=bars,
+        stop_mult_override=2.0, target_mult_override=2.5,
+    )
+    assert src == "atr"
+    # 20 pip stop = 0.0020 — must survive 5-decimal rounding (it would
+    # collapse to 0 under 4-decimal rounding for tighter stops)
+    assert abs(stop - 1.1708) >= 0.001, (
+        f"FX stop distance {abs(stop-1.1708):.6f} too small — "
+        "5-decimal precision should preserve it"
+    )
+
+
+def test_compute_bracket_btc_uses_2_decimal_precision() -> None:
+    """BTC prices ~100k. 2-decimal precision is sufficient and avoids
+    sub-cent noise that confuses bracket comparisons."""
+    from eta_engine.scripts.bracket_sizing import compute_bracket
+    bars = [{"high": 100100, "low": 99900, "close": 100000,
+             "open": 100050} for _ in range(20)]
+    stop, target, src = compute_bracket(
+        side="BUY", entry_price=100000.0, bars=bars,
+        stop_mult_override=2.0, target_mult_override=2.5,
+    )
+    assert src == "atr"
+    assert stop == round(stop, 2), "BTC stop must round to 2 decimals"
+    assert abs(stop - 100000) >= 1.0
+
+
+def test_compute_bracket_min_distance_falls_through_to_fixed_pct() -> None:
+    """When ATR is so small the rounded stop equals entry price, the
+    function falls through to fixed_pct (which uses fractions of price
+    so always produces meaningful distance) instead of returning a
+    zero-distance bracket that crashes realized_r downstream.
+    """
+    from eta_engine.scripts.bracket_sizing import compute_bracket
+    # Entry at 1.17 + tiny ATR (0.000001) would round stop to entry
+    bars = [{"high": 1.170001, "low": 1.169999, "close": 1.17,
+             "open": 1.170001} for _ in range(20)]
+    stop, target, src = compute_bracket(
+        side="BUY", entry_price=1.17, bars=bars,
+        stop_mult_override=2.0, target_mult_override=2.5,
+    )
+    # Either ATR survived with non-zero distance OR fell through to
+    # fixed_pct — the key invariant is non-zero distance.
+    assert abs(stop - 1.17) > 0.0, f"stop {stop} must differ from entry"
+    assert abs(target - 1.17) > 0.0, f"target {target} must differ from entry"

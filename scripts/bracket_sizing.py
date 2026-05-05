@@ -129,6 +129,13 @@ def compute_bracket(
     bar_list = list(bars) if bars is not None else []
     atr = compute_atr(bar_list, period=period) if bar_list else None
 
+    # Per-asset precision: FX prices live at 1.xxxx so 4-decimal rounding
+    # collapses tight ATR stops to entry price (e.g. round(1.17082, 4) =
+    # 1.1708 = entry → zero-distance stop → realized_r explodes when
+    # divided by ~0). Use 5 decimals for FX, 2 for high-priced futures
+    # like ZN/ZB (110.xx prices), 4 for everything else (default).
+    decimals = _round_decimals_for(entry_price)
+
     if atr is not None and atr > 0:
         if side_u == "BUY":
             stop = entry_price - stop_mult * atr
@@ -136,7 +143,17 @@ def compute_bracket(
         else:
             stop = entry_price + stop_mult * atr
             target = entry_price - target_mult * atr
-        return round(stop, 4), round(target, 4), "atr"
+        # Minimum stop distance guard: refuse a no-distance bracket
+        # (rounding artifact). Caller (supervisor) treats stop==entry
+        # as a refusal and skips the entry.
+        _stop_r = round(stop, decimals)
+        _target_r = round(target, decimals)
+        if abs(_stop_r - entry_price) < 1e-9 or abs(_target_r - entry_price) < 1e-9:
+            # Fall through to fixed_pct (which uses fractions of price,
+            # always producing a meaningful distance).
+            pass
+        else:
+            return _stop_r, _target_r, "atr"
 
     # Fallback: fixed percent
     if side_u == "BUY":
@@ -145,7 +162,25 @@ def compute_bracket(
     else:
         stop = entry_price * (1.0 + fallback_stop_pct)
         target = entry_price * (1.0 - fallback_target_pct)
-    return round(stop, 4), round(target, 4), "fixed_pct"
+    return round(stop, decimals), round(target, decimals), "fixed_pct"
+
+
+def _round_decimals_for(price: float) -> int:
+    """Pick rounding precision based on the price's order of magnitude.
+
+    FX (price ~1) → 5 decimals (1 pip resolution)
+    BTC/ETH (10-100k) → 2 decimals
+    Equity-index futures (1k-50k) → 2 decimals
+    Tiny prices (HG copper 5.x, NG natgas 3.x) → 4 decimals
+    Default → 4 decimals
+    """
+    if price <= 0:
+        return 4
+    if price < 5:
+        return 5  # FX, NG sometimes
+    if price < 100:
+        return 4  # HG, ZN sometimes
+    return 2      # crypto, equity-index, gold, etc.
 
 
 # ─── Per-class capital budgets ──────────────────────────────────
