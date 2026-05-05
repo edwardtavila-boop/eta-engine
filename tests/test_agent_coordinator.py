@@ -185,6 +185,40 @@ def test_claim_releases_lock_on_success(state_root: Path) -> None:
     assert not (state_root / "locks/T-2026-05-05-310.lock").exists()
 
 
+def test_claim_refuses_task_preferred_for_another_agent(state_root: Path) -> None:
+    _write_pending_task(
+        state_root,
+        "T-2026-05-05-320",
+        preferred_agent="claude",
+    )
+    c = ac.AgentCoordinator("codex", state_root=state_root)
+
+    with pytest.raises(ac.PreferredAgentError, match="preferred_agent=claude"):
+        c.claim("T-2026-05-05-320")
+
+    assert (state_root / "tasks/pending/T-2026-05-05-320.yaml").exists()
+    assert not (
+        state_root / "tasks/in_progress/codex/T-2026-05-05-320.yaml"
+    ).exists()
+    assert not (state_root / "locks/T-2026-05-05-320.lock").exists()
+
+
+def test_claim_can_force_cross_agent_preference(state_root: Path) -> None:
+    _write_pending_task(
+        state_root,
+        "T-2026-05-05-330",
+        preferred_agent="claude",
+    )
+    c = ac.AgentCoordinator("codex", state_root=state_root)
+
+    task = c.claim("T-2026-05-05-330", force_preferred=True)
+
+    assert task["agent"] == "codex"
+    assert (
+        state_root / "tasks/in_progress/codex/T-2026-05-05-330.yaml"
+    ).exists()
+
+
 # --------------------------------------------------------------------------
 # Append note
 # --------------------------------------------------------------------------
@@ -428,6 +462,38 @@ def test_cli_claim_missing_returns_error_code(
     assert rc == 2
     err = capsys.readouterr().err
     assert "ERR" in err
+
+
+def test_cli_claim_respects_preferred_agent_by_default(
+    state_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
+    _write_pending_task(state_root, "T-CLI-PREF", preferred_agent="claude")
+
+    rc = ac.main(["claim", "--agent", "codex", "--task", "T-CLI-PREF"])
+
+    assert rc == 2
+    assert "preferred_agent=claude" in capsys.readouterr().err
+    assert (state_root / "tasks/pending/T-CLI-PREF.yaml").exists()
+
+
+def test_cli_claim_force_preferred_allows_operator_override(
+    state_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ac, "DEFAULT_STATE_ROOT", state_root)
+    _write_pending_task(state_root, "T-CLI-FORCE", preferred_agent="claude")
+
+    rc = ac.main([
+        "claim",
+        "--agent",
+        "codex",
+        "--task",
+        "T-CLI-FORCE",
+        "--force-preferred",
+    ])
+
+    assert rc == 0
+    assert (state_root / "tasks/in_progress/codex/T-CLI-FORCE.yaml").exists()
 
 
 def test_cli_block(

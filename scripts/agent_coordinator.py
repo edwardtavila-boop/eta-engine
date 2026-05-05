@@ -84,6 +84,10 @@ class ClaimError(CoordinatorError):
     """Raised when a claim races and the caller loses."""
 
 
+class PreferredAgentError(ClaimError):
+    """Raised when an agent tries to claim another agent's preferred task."""
+
+
 class TaskNotFoundError(CoordinatorError):
     """Raised when an operation references a task that doesn't exist."""
 
@@ -247,7 +251,12 @@ class AgentCoordinator:
 
     # ----- claim / complete / block --------------------------------------
 
-    def claim(self, task_id: str) -> dict[str, Any]:
+    def claim(
+        self,
+        task_id: str,
+        *,
+        force_preferred: bool = False,
+    ) -> dict[str, Any]:
         """Atomic-move ``pending/<id>.yaml`` -> ``in_progress/<agent>/<id>.yaml``.
 
         Race protection: we create a sentinel lock file with O_EXCL first.
@@ -258,6 +267,9 @@ class AgentCoordinator:
         between the lock creation and the replace, the lock acts as a
         soft-block until ``reclaim_stale`` runs (which removes orphaned
         locks alongside reclaiming tasks from dead agents).
+
+        Task ``preferred_agent`` is enforced at claim time by default. Use
+        ``force_preferred=True`` only for explicit operator-directed handoffs.
         """
         src = self.paths.pending / f"{task_id}.yaml"
         if not src.exists():
@@ -291,6 +303,12 @@ class AgentCoordinator:
                     f"task {task_id} disappeared during claim"
                 )
             task = _read_yaml(src)
+            pref = str(task.get("preferred_agent", "any")).lower()
+            if not force_preferred and pref not in ("any", self.agent_id):
+                raise PreferredAgentError(
+                    f"task {task_id} has preferred_agent={pref}; "
+                    f"{self.agent_id} must not claim without --force-preferred"
+                )
             task["status"] = TaskStatus.IN_PROGRESS.value
             task["agent"] = self.agent_id
             task["claimed_at"] = _utc_now_iso()
@@ -555,6 +573,11 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("claim", help="claim a pending task")
     sp.add_argument("--agent", required=True)
     sp.add_argument("--task", required=True)
+    sp.add_argument(
+        "--force-preferred",
+        action="store_true",
+        help="allow claiming a task whose preferred_agent is another agent",
+    )
 
     sp = sub.add_parser("note", help="append a note to a task")
     sp.add_argument("--agent", required=True)
@@ -601,7 +624,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "claim":
         c = AgentCoordinator(args.agent)
         try:
-            task = c.claim(args.task)
+            task = c.claim(args.task, force_preferred=args.force_preferred)
         except (ClaimError, TaskNotFoundError) as e:
             print(f"ERR: {e}", file=sys.stderr)
             return 2
