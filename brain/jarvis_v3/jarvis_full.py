@@ -393,6 +393,34 @@ class JarvisFull:
         # multiplier.
         if sage_modulation == "tightened_by_dissent":
             final_size *= 0.5
+        # Curated school-disagreement patterns (Wave-5 #5). Catalog like
+        # "dow_long + wyckoff_short = structural uptrend topping → defer"
+        # was wired into v22_sage_confluence policy only — and that policy
+        # only fires as the last fallback in the cascade (after v27 + v23).
+        # In production the clash detector never reached the verdict path
+        # at all. Now we apply the strongest matched pattern's modifier
+        # directly to final_size: defer → 0, tighten → cap_mult, loosen →
+        # cap_mult (capped at 1.0 so a "loosen" never breaks risk caps).
+        clash_modifier = "no_change"
+        clash_cap_mult = 1.0
+        if sage_report is not None:
+            try:
+                from eta_engine.brain.jarvis_v3.sage.disagreement import (
+                    detect_clashes,
+                    strongest_clash_modifier,
+                )
+                _matches = detect_clashes(sage_report)
+                if _matches:
+                    clash_modifier, clash_cap_mult = strongest_clash_modifier(_matches)
+                    if clash_modifier == "defer":
+                        final_size = 0.0
+                    elif clash_modifier == "tighten_cap":
+                        final_size *= max(0.0, min(1.0, clash_cap_mult))
+                    elif clash_modifier == "loosen_cap":
+                        # Loosen still respects the upstream cap; never amplify.
+                        final_size *= max(0.0, min(1.0, clash_cap_mult))
+            except Exception as exc:  # noqa: BLE001
+                layer_errors.append(f"clash_detect: {exc}")
         final_size = max(0.0, min(2.0, final_size))
 
         # 7. Narratives (Wave-18: LLM-augmented with template fallback)

@@ -186,6 +186,36 @@ def consult_for_bot(
             "error": f"consult_sage raised: {exc}",
         }
 
+    # Surface curated disagreement patterns (e.g. dow_long+wyckoff_short
+    # = structural uptrend topping → defer). The catalog lives in
+    # sage/disagreement.py and is wired into jarvis_full as of this
+    # session — exposing it here lets the operator see which clashes are
+    # firing live without diffing the verdict log.
+    clashes_data: list[dict[str, Any]] = []
+    clash_modifier = "no_change"
+    clash_cap_mult = 1.0
+    try:
+        from eta_engine.brain.jarvis_v3.sage.disagreement import (
+            detect_clashes,
+            strongest_clash_modifier,
+        )
+        matches = detect_clashes(report)
+        for c in matches:
+            clashes_data.append({
+                "name": c.name,
+                "school_a": c.school_a,
+                "bias_a": c.bias_a.value,
+                "school_b": c.school_b,
+                "bias_b": c.bias_b.value,
+                "interpretation": c.interpretation,
+                "verdict_modifier": c.verdict_modifier,
+                "cap_mult": c.cap_mult,
+            })
+        if matches:
+            clash_modifier, clash_cap_mult = strongest_clash_modifier(matches)
+    except Exception:  # noqa: BLE001
+        pass
+
     # Pull edge-tracker stats for every school the report mentions.
     try:
         tracker = default_tracker()
@@ -224,6 +254,9 @@ def consult_for_bot(
         "schools_disagreeing": report.schools_disagreeing_with_entry,
         "schools_neutral": report.schools_neutral,
         "schools": schools,
+        "clashes": clashes_data,
+        "clash_modifier": clash_modifier,
+        "clash_cap_mult": clash_cap_mult,
     }
 
 
@@ -272,6 +305,16 @@ def _print_text(r: dict[str, Any]) -> None:
         for s in high_dissent:
             print(f"    [{s['school']}] {s['bias']} (conv={s['conviction']:.2f})  "
                   f"{(s['rationale'] or '')[:70]}")
+    # Curated clash patterns (defer/tighten/loosen verdicts)
+    clashes = r.get("clashes") or []
+    if clashes:
+        print("-" * 102)
+        print(f"  CLASH PATTERNS ({len(clashes)}) — modifier="
+              f"{r.get('clash_modifier')} cap_mult={r.get('clash_cap_mult')}:")
+        for c in clashes:
+            print(f"    [{c['name']}] {c['school_a']}={c['bias_a']} vs "
+                  f"{c['school_b']}={c['bias_b']} → {c['verdict_modifier']}")
+            print(f"      {(c['interpretation'] or '')[:90]}")
     print("=" * 102)
 
 

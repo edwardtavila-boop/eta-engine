@@ -151,7 +151,13 @@ def detect_clashes(report: SageReport) -> list[ClashPattern]:
         match_forward = (v_a.bias == pat.bias_a and v_b.bias == pat.bias_b)
         match_reverse = (v_a.bias == pat.bias_b and v_b.bias == pat.bias_a)
 
-        # Risk-management special-case: NEUTRAL + conviction=0 = violation
+        # Risk-management special-case: NEUTRAL + conviction=0 = violation.
+        # When conviction is the default 0.5 ("risk parameters not provided
+        # — assuming compliant"), the school is NOT signalling a violation;
+        # it's saying "I don't have data". Skip the pattern entirely in
+        # that case rather than falling through to the bias-only standard
+        # match below (which would falsely fire defer on every BTC entry
+        # since risk_management=neutral and dow_theory=long).
         if pat.school_a == "risk_management" and pat.bias_a == Bias.NEUTRAL:
             risk_v = verdicts.get("risk_management")
             if (
@@ -161,7 +167,9 @@ def detect_clashes(report: SageReport) -> list[ClashPattern]:
                 and v_b.bias == pat.bias_b
             ):
                 matches.append(pat)
-                continue
+            # Always continue — never let risk_management special-case
+            # patterns fall through to the bias-only standard match.
+            continue
 
         if match_forward or match_reverse:
             matches.append(pat)
