@@ -264,4 +264,23 @@ def cap_qty_to_budget(
         capped_qty = max(capped_qty, 0.0)
 
     reason = "per_bot_capped" if per_bot_cap_usd <= fleet_remaining else "fleet_capped"
+
+    # Paper-mode minimum-quantity floor for futures contracts.
+    # Default per-bot futures budget ($500) divided by MNQ notional
+    # ($20000/contract before point_value) rounds to 0 contracts —
+    # so EVERY futures entry approved by JARVIS got killed at the cap
+    # before any FillRecord could be written. Symptom in production:
+    # 82 APPROVED verdicts for bot.mnq, zero n_entries on all 8 MNQ
+    # bots. In paper mode the cap is a sanity guard, not a real fund
+    # constraint, so floor capped_qty to 1.0 when the operator clearly
+    # asked for at least 1 contract. The env var ETA_PAPER_FUTURES_FLOOR
+    # (default 1) lets live deployments disable this by setting it to 0.
+    if (
+        not _is_crypto(symbol)
+        and abs(requested_qty) >= 1.0
+        and capped_qty < 1.0
+        and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+    ):
+        return 1.0, "paper_futures_floor"
+
     return capped_qty, reason

@@ -138,14 +138,38 @@ def test_cap_qty_zero_when_fleet_exhausted() -> None:
     assert qty == 0.0
 
 
-def test_cap_qty_handles_futures_with_int_lots() -> None:
-    """Futures cap rounds DOWN to whole contracts so we don't ship 0.6 lots."""
+def test_cap_qty_paper_futures_floors_to_one_contract() -> None:
+    """Paper-mode futures floor: when the budget cap rounds qty to 0 but
+    the operator asked for ≥1 contract, return 1.0 (not 0.0). Without
+    this floor every futures entry approved by JARVIS would die at the
+    cap because $500/MNQ_$40k_notional = 0.0125 → int → 0. Symptom in
+    production: 82 APPROVED verdicts for bot.mnq, zero n_entries.
+    """
     from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
-    # Bump fleet so per-bot cap is the binding constraint (default fleet
-    # is $5k which would otherwise bind first). $20k budget vs MNQ1
-    # $27.5k notional → 0.72 contracts → int floor → 0.
+    # $20k per-bot budget vs MNQ1 $27.5k notional → 0.72 contracts →
+    # int floor → 0 → paper_futures_floor lifts to 1.
     os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "20000"
     os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "100000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "1"
+    try:
+        qty, reason = cap_qty_to_budget(
+            symbol="MNQ1", entry_price=27500.0, requested_qty=1.0,
+        )
+        assert reason == "paper_futures_floor"
+        assert qty == 1.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
+
+
+def test_cap_qty_paper_futures_floor_disabled_returns_zero() -> None:
+    """Live deployments set ETA_PAPER_FUTURES_FLOOR=0 to restore the
+    strict cap behavior. Confirm the floor opt-out works."""
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "20000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "100000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "0"
     try:
         qty, reason = cap_qty_to_budget(
             symbol="MNQ1", entry_price=27500.0, requested_qty=1.0,
@@ -155,6 +179,7 @@ def test_cap_qty_handles_futures_with_int_lots() -> None:
     finally:
         os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
         os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
 
 
 def test_cap_qty_futures_passes_when_budget_covers_contract() -> None:
