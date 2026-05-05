@@ -30,14 +30,17 @@ from eta_engine.scripts import run_eta_live as mod
 
 # --------------------------------------------------------------------------- #
 # Isolation: every ApexRuntime constructed in this module auto-builds a
-# disk-backed KillSwitchLatch under ROOT/"state". If we let that default
-# through, one test's FLATTEN_ALL would leave a TRIPPED latch on the repo
-# disk that blocks every subsequent run. Redirect ROOT to a tmp path for
-# the duration of each test.
+# disk-backed KillSwitchLatch under
+# ``WORKSPACE_ROOT/var/eta_engine/state``. If we let that default
+# through, one test's FLATTEN_ALL would leave a TRIPPED latch on the
+# real workspace disk that blocks every subsequent run. Redirect both
+# ROOT and WORKSPACE_ROOT to a tmp path for the duration of each test
+# so the canonical path resolves under the sandbox.
 # --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
 def _isolate_runtime_state(monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
     monkeypatch.setattr(mod, "ROOT", tmp_path)
+    monkeypatch.setattr(mod, "WORKSPACE_ROOT", tmp_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -846,8 +849,9 @@ class TestLatchIntegration:
 
     @pytest.mark.asyncio
     async def test_runtime_auto_constructs_latch_when_absent(self, tmp_path):
-        """Default path: no kill_switch_latch kwarg -> auto-construct under ROOT/state.
-        With the autouse fixture ROOT = tmp_path, so the latch lives there.
+        """Default path: no kill_switch_latch kwarg -> auto-construct under
+        ``WORKSPACE_ROOT/var/eta_engine/state``. With the autouse fixture
+        ``WORKSPACE_ROOT = tmp_path``, so the latch lives there.
         """
         cfg = _cfg_factory(
             tmp_path,
@@ -855,8 +859,8 @@ class TestLatchIntegration:
             max_bars=1,
         )
         runtime = mod.ApexRuntime(cfg, bindings=_fake_bindings())
-        # The default path is ROOT/"state"/"kill_switch_latch.json"
-        expected = tmp_path / "state" / "kill_switch_latch.json"
+        # Canonical default: WORKSPACE_ROOT/var/eta_engine/state/kill_switch_latch.json
+        expected = tmp_path / "var" / "eta_engine" / "state" / "kill_switch_latch.json"
         assert runtime.kill_switch_latch.path == expected
         rc = await runtime.run()
         assert rc == 0

@@ -1,4 +1,6 @@
-import urllib.request, ssl, json
+import json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 
@@ -39,9 +41,23 @@ try:
 except Exception as e:
     print("Orders ERROR:", e)
 
-# Verdicts
+# Verdicts: canonical workspace path with legacy in-repo read fallback.
+# Per CLAUDE.md hard rule #1, runtime state lives under
+# <workspace>/var/eta_engine/state/. The legacy in-repo path remains
+# readable during the migration window.
 from pathlib import Path
-vp = Path("C:/EvolutionaryTradingAlgo/eta_engine/state/jarvis_intel/verdicts.jsonl")
+
+from eta_engine.scripts import workspace_roots
+
+
+def _resolve_verdicts_path() -> Path:
+    canonical = workspace_roots.ETA_JARVIS_VERDICTS_PATH
+    if canonical.exists():
+        return canonical
+    return workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH
+
+
+vp = _resolve_verdicts_path()
 if vp.exists():
     with open(vp, "rb") as f:
         lines = f.readlines()[-200:]

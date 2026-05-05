@@ -293,12 +293,20 @@ DASHBOARD_CARD_REGISTRY = (
     },
 )
 
-# State/log dirs: repo-relative so every deployment reads the right directory.
-# ETA_STATE_DIR / ETA_LOG_DIR are canonical; APEX_* remains as a legacy test/runtime fallback.
+# State/log dirs: canonical workspace paths per CLAUDE.md hard rule #1
+# ("everything writes under C:\EvolutionaryTradingAlgo"). Legacy in-repo
+# locations remain as read fallbacks (handled in ``_state_dir`` /
+# ``_log_dir``) so the API can still surface state files persisted
+# before the migration; new writes always land at the canonical paths.  # HISTORICAL-PATH-OK
 _REPO_ROOT     = Path(__file__).resolve().parents[2]   # .../eta_engine/
 _WORKSPACE_ROOT = _REPO_ROOT.parent                     # .../EvolutionaryTradingAlgo/
-_DEFAULT_STATE = _REPO_ROOT / "state"
-_DEFAULT_LOG   = _REPO_ROOT / "logs"
+_DEFAULT_STATE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+_DEFAULT_LOG   = _WORKSPACE_ROOT / "logs" / "eta_engine"
+# Legacy in-repo locations kept ONLY for read fallback during the
+# migration window. Never used as a write target. Once a fresh canonical
+# session has rolled over, a follow-up PR can delete the fallbacks.
+_LEGACY_STATE  = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
+_LEGACY_LOG    = _REPO_ROOT / "logs"
 _DEFAULT_RUNTIME_STATE = _WORKSPACE_ROOT / "firm_command_center" / "var" / "data" / "runtime_state.json"
 _DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT = (
     _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
@@ -477,13 +485,38 @@ def _dashboard_diagnostics_payload() -> dict:
 
 
 def _state_dir() -> Path:
-    """Lazy state-dir resolver so tests can monkeypatch state paths."""
-    return Path(os.environ.get("ETA_STATE_DIR", os.environ.get("ETA_STATE_DIR", str(_DEFAULT_STATE))))
+    """Lazy state-dir resolver so tests can monkeypatch state paths.
+
+    Resolution order (per CLAUDE.md hard rule #1):
+      1. ``$ETA_STATE_DIR`` if set (test / explicit operator override)
+      2. Canonical ``<workspace>/var/eta_engine/state`` if present OR
+         the legacy in-repo path is missing
+      3. Legacy in-repo path only as a one-shot read fallback when
+         canonical does not yet exist on disk  # HISTORICAL-PATH-OK
+
+    Writes always target the canonical path; the fallback exists so
+    state files persisted before the migration remain readable.
+    """
+    override = os.environ.get("ETA_STATE_DIR", "").strip()
+    if override:
+        return Path(override)
+    if _DEFAULT_STATE.exists() or not _LEGACY_STATE.exists():
+        return _DEFAULT_STATE
+    return _LEGACY_STATE
 
 
 def _log_dir() -> Path:
-    """Lazy log-dir resolver so tests can monkeypatch log paths."""
-    return Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_DEFAULT_LOG))))
+    """Lazy log-dir resolver so tests can monkeypatch log paths.
+
+    Same canonical-first / legacy-fallback resolution as
+    :func:`_state_dir`.
+    """
+    override = os.environ.get("ETA_LOG_DIR", "").strip()
+    if override:
+        return Path(override)
+    if _DEFAULT_LOG.exists() or not _LEGACY_LOG.exists():
+        return _DEFAULT_LOG
+    return _LEGACY_LOG
 
 
 def _runtime_state_path() -> Path:
@@ -607,6 +640,7 @@ def _read_runtime_state() -> dict:
         return {"_warning": "missing_runtime_state", "_path": str(path)}
     return data if isinstance(data, dict) else {"_warning": "invalid_runtime_state", "_path": str(path)}
 
+
 def _ibgateway_reauth_snapshot() -> dict | None:
     """Return the Gateway recovery-controller state when present."""
     env_path = os.environ.get("ETA_IBGATEWAY_REAUTH_PATH")
@@ -644,16 +678,18 @@ def _ibgateway_reauth_snapshot() -> dict | None:
     return None
 
 
-def _broker_gateway_snapshot() -> dict:
-    """Return broker execution gateway health, separate from bot heartbeat liveness."""
+def _tws_watchdog_candidates() -> list[Path]:
     env_path = os.environ.get("ETA_TWS_WATCHDOG_PATH")
-    candidates = [
+    return [
         Path(env_path) if env_path else None,
         _state_dir() / "tws_watchdog.json",
         _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "tws_watchdog.json",
     ]
+
+
+def _load_tws_watchdog_payload() -> tuple[dict, str] | tuple[None, None]:
     seen: set[str] = set()
-    for candidate in candidates:
+    for candidate in _tws_watchdog_candidates():
         if candidate is None:
             continue
         key = str(candidate)
@@ -666,11 +702,28 @@ def _broker_gateway_snapshot() -> dict:
             data = json.loads(candidate.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
             continue
-        if not isinstance(data, dict):
-            continue
+        if isinstance(data, dict):
+            return data, key
+    return None, None
+
+
+def _broker_gateway_snapshot() -> dict:
+    """Return broker execution gateway health, separate from bot heartbeat liveness."""
+    data, key = _load_tws_watchdog_payload()
+    if data is not None and key is not None:
         details = data.get("details") if isinstance(data.get("details"), dict) else {}
         crash = details.get("gateway_crash") if isinstance(details.get("gateway_crash"), dict) else None
         process = details.get("gateway_process") if isinstance(details.get("gateway_process"), dict) else None
+        account_snapshot = (
+            details.get("account_snapshot")
+            if isinstance(details.get("account_snapshot"), dict)
+            else {}
+        )
+        account_summary = (
+            account_snapshot.get("summary")
+            if isinstance(account_snapshot.get("summary"), dict)
+            else None
+        )
         healthy = data.get("healthy") is True
         detail = str(details.get("handshake_detail") or "")
         if process and process.get("running") and not healthy:
@@ -698,6 +751,7 @@ def _broker_gateway_snapshot() -> dict:
                 "crash": crash,
                 "process": process,
                 "recovery": recovery,
+                "account_summary": account_summary,
                 "source_path": key,
             },
         }
@@ -808,7 +862,7 @@ def _broker_router_snapshot() -> dict:
     pending_dir_raw = (
         heartbeat.get("pending_dir")
         or os.environ.get("ETA_BROKER_ROUTER_PENDING_DIR")
-        or str(_REPO_ROOT / "docs" / "btc_live" / "broker_fleet")
+        or str(state_root / "pending")
     )
     pending_dir = Path(str(pending_dir_raw))
     processing_dir = state_root / "processing"
@@ -829,13 +883,25 @@ def _broker_router_snapshot() -> dict:
     pending_count = _count_matching_files(pending_dir, "*.pending_order.json")
     processing_count = _count_matching_files(processing_dir, "*.pending_order.json")
     failed_count = _count_matching_files(failed_dir, "*.pending_order.json")
+    blocked_count = _count_matching_files(blocked_dir, "*.pending_order.json")
+    quarantine_count = _count_matching_files(quarantine_dir, "*.pending_order.json")
     rejected_count = int(result_status_counts.get("REJECTED", 0))
     terminal_count = sum(result_status_counts.values())
+    active_blocker_count = pending_count + processing_count + blocked_count
+    degraded_reasons: list[str] = []
+    if failed_count:
+        degraded_reasons.append("historical_failed_orders")
+    if rejected_count:
+        degraded_reasons.append("historical_rejected_results")
+    if quarantine_count:
+        degraded_reasons.append("quarantined_orders")
 
-    if failed_count or rejected_count:
-        status = "blocked"
-    elif pending_count or processing_count:
+    if pending_count or processing_count:
         status = "processing"
+    elif blocked_count:
+        status = "blocked"
+    elif degraded_reasons:
+        status = "degraded"
     elif heartbeat:
         status = "ok" if terminal_count else "idle"
     elif state_root.exists():
@@ -863,8 +929,10 @@ def _broker_router_snapshot() -> dict:
         "pending_count": pending_count,
         "processing_count": processing_count,
         "failed_count": failed_count,
-        "blocked_count": _count_matching_files(blocked_dir, "*.pending_order.json"),
-        "quarantine_count": _count_matching_files(quarantine_dir, "*.pending_order.json"),
+        "blocked_count": blocked_count,
+        "quarantine_count": quarantine_count,
+        "active_blocker_count": active_blocker_count,
+        "degraded_reasons": degraded_reasons,
         "fill_results_count": terminal_count,
         "result_status_counts": dict(sorted(result_status_counts.items())),
         "counts": counts,
@@ -2461,28 +2529,12 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
             continue
         dedup_keys.add(key)
         merged_fills.append(row)
-    fills_path = _state_dir() / "blotter" / "fills.jsonl"
-    if fills_path.exists():
-        try:
-            for raw in reversed(fills_path.read_text(encoding="utf-8").splitlines()):
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if str(row.get("bot") or "") != bot_id:
-                    continue
-                key = (row.get("ts"), row.get("side"), row.get("price"), row.get("qty"))
-                if key in dedup_keys:
-                    continue
-                dedup_keys.add(key)
-                merged_fills.append(row)
-                if len(merged_fills) >= 80:
-                    break
-        except OSError:
-            pass
+    for row in _recent_live_fill_rows(bot=bot_id, limit=80):
+        key = (row.get("ts"), row.get("side"), row.get("price"), row.get("qty"))
+        if key in dedup_keys:
+            continue
+        dedup_keys.add(key)
+        merged_fills.append(row)
     merged_fills.sort(
         key=lambda x: str(x.get("ts") or ""),
         reverse=True,
@@ -2510,26 +2562,7 @@ def live_fills(limit: int = 30, response: Response = None) -> dict:
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     limit = max(1, min(limit, 100))
-    fills_path = _state_dir() / "blotter" / "fills.jsonl"
-    if not fills_path.exists():
-        return {"fills": [], "server_ts": time.time()}
-    rows: list[dict] = []
-    try:
-        for raw in reversed(fills_path.read_text(encoding="utf-8").splitlines()):
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(row, dict):
-                continue
-            rows.append(row)
-            if len(rows) >= limit:
-                break
-    except OSError:
-        return {"fills": [], "server_ts": time.time()}
+    rows = _recent_live_fill_rows(limit=limit)
     return {"fills": rows, "server_ts": time.time()}
 
 
@@ -3029,42 +3062,204 @@ def _parse_fill_dt(value: object) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def _fills_activity_snapshot(bot: str | None = None) -> dict:
-    """Lightweight live telemetry so UI can distinguish idle vs stale."""
-    fills_path = _state_dir() / "blotter" / "fills.jsonl"
-    if not fills_path.exists():
-        return {"last_fill_ts": None, "fills_1h": 0, "fills_24h": 0}
-    now = datetime.now(UTC)
-    h1 = now - timedelta(hours=1)
-    h24 = now - timedelta(hours=24)
-    last_fill_ts: str | None = None
-    fills_1h = 0
-    fills_24h = 0
+_LIVE_FILL_STATUSES = {"FILLED", "PARTIAL", "PARTIALLY_FILLED", "EXECUTED"}
+_NON_FILL_STATUSES = {
+    "CANCELLED",
+    "CANCELED",
+    "INACTIVE",
+    "PENDING",
+    "PENDINGSUBMIT",
+    "PRESUBMITTED",
+    "REJECTED",
+    "SUBMITTED",
+}
+
+
+def _first_present(row: dict, keys: tuple[str, ...]) -> object:
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _float_value(value: object) -> float | None:
     try:
-        for raw in fills_path.read_text(encoding="utf-8").splitlines():
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _live_fill_paths() -> list[tuple[Path, str]]:
+    """Known live execution ledgers; router rows are filtered to true fills."""
+    state = _state_dir()
+    candidates = [
+        (state / "blotter" / "fills.jsonl", "blotter"),
+        (state / "broker_router_fills.jsonl", "broker_router"),
+        (state / "router" / "broker_router_fills.jsonl", "broker_router"),
+    ]
+    out: list[tuple[Path, str]] = []
+    seen: set[str] = set()
+    for path, source in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((path, source))
+    return out
+
+
+def _normalize_live_fill_row(row: dict, *, source: str, source_path: str | None = None) -> dict | None:
+    if not isinstance(row, dict):
+        return None
+    status = str(
+        _first_present(row, ("status", "order_status", "orderStatus", "event", "result_status"))
+        or ""
+    ).replace("_", "").replace(" ", "").upper()
+    qty = _float_value(_first_present(row, ("qty", "quantity", "shares", "filled_qty", "filledQty")))
+    is_positive_fill = qty is not None and abs(qty) > 0
+    is_fill_status = status in _LIVE_FILL_STATUSES
+    is_denied_status = status in _NON_FILL_STATUSES
+    if is_denied_status and not is_fill_status:
+        return None
+    if source != "blotter" and source != "ibkr_execution" and not (is_fill_status or is_positive_fill):
+        return None
+
+    ts_raw = _first_present(row, ("ts", "time", "filled_at", "execution_time", "submitted_at"))
+    ts_dt = _parse_fill_dt(ts_raw)
+    if ts_dt is None:
+        return None
+
+    normalized = dict(row)
+    normalized["ts"] = str(ts_raw)
+    normalized.setdefault("source", source)
+    if source_path:
+        normalized.setdefault("source_path", source_path)
+    bot = _first_present(normalized, ("bot", "bot_id", "strategy_id", "order_ref"))
+    if bot is not None:
+        normalized["bot"] = str(bot)
+    symbol = _first_present(normalized, ("symbol", "local_symbol", "contract_symbol"))
+    if symbol is not None:
+        normalized["symbol"] = str(symbol)
+    if qty is not None:
+        normalized["qty"] = qty
+    price = _float_value(_first_present(normalized, ("price", "avg_price", "avgFillPrice", "average_price")))
+    if price is not None:
+        normalized["price"] = price
+    return normalized
+
+
+def _ibkr_execution_rows() -> list[dict]:
+    payload, source_path = _load_tws_watchdog_payload()
+    if not isinstance(payload, dict):
+        return []
+    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+    snapshot = details.get("account_snapshot") if isinstance(details.get("account_snapshot"), dict) else {}
+    executions = snapshot.get("executions") if isinstance(snapshot.get("executions"), list) else []
+    rows: list[dict] = []
+    for row in executions:
+        normalized = _normalize_live_fill_row(
+            row,
+            source="ibkr_execution",
+            source_path=source_path,
+        )
+        if normalized is not None:
+            rows.append(normalized)
+    return rows
+
+
+def _recent_live_fill_rows(*, bot: str | None = None, limit: int | None = None) -> list[dict]:
+    rows: list[dict] = []
+    seen: set[tuple] = set()
+    for path, source in _live_fill_paths():
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
             line = raw.strip()
             if not line:
                 continue
             try:
-                row = json.loads(line)
+                payload = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if bot and str(row.get("bot") or "") != bot:
+            normalized = _normalize_live_fill_row(payload, source=source, source_path=str(path))
+            if normalized is None:
                 continue
-            ts_raw = row.get("ts")
-            ts_dt = _parse_fill_dt(ts_raw)
-            if ts_dt is None:
+            row_bot = str(normalized.get("bot") or "")
+            if bot and row_bot != bot:
                 continue
-            ts_txt = str(ts_raw or "")
-            if last_fill_ts is None or ts_txt > last_fill_ts:
-                last_fill_ts = ts_txt
-            if ts_dt >= h24:
-                fills_24h += 1
-            if ts_dt >= h1:
-                fills_1h += 1
-    except OSError:
-        pass
-    return {"last_fill_ts": last_fill_ts, "fills_1h": fills_1h, "fills_24h": fills_24h}
+            key = (
+                normalized.get("ts"),
+                normalized.get("source"),
+                normalized.get("exec_id") or normalized.get("execution_id"),
+                normalized.get("order_id"),
+                normalized.get("bot"),
+                normalized.get("side"),
+                normalized.get("qty"),
+                normalized.get("price"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(normalized)
+    for normalized in _ibkr_execution_rows():
+        row_bot = str(normalized.get("bot") or "")
+        if bot and row_bot != bot:
+            continue
+        key = (
+            normalized.get("ts"),
+            normalized.get("source"),
+            normalized.get("exec_id") or normalized.get("execution_id"),
+            normalized.get("order_id"),
+            normalized.get("bot"),
+            normalized.get("side"),
+            normalized.get("qty"),
+            normalized.get("price"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(normalized)
+    rows.sort(
+        key=lambda row: _parse_fill_dt(row.get("ts")) or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    return rows[:limit] if limit is not None else rows
+
+
+def _fills_activity_snapshot(bot: str | None = None) -> dict:
+    """Lightweight live telemetry so UI can distinguish idle vs stale."""
+    now = datetime.now(UTC)
+    h1 = now - timedelta(hours=1)
+    h24 = now - timedelta(hours=24)
+    last_fill_ts: str | None = None
+    last_fill_dt: datetime | None = None
+    fills_1h = 0
+    fills_24h = 0
+    source_counts: dict[str, int] = defaultdict(int)
+    for row in _recent_live_fill_rows(bot=bot):
+        ts_raw = row.get("ts")
+        ts_dt = _parse_fill_dt(ts_raw)
+        if ts_dt is None:
+            continue
+        if last_fill_dt is None or ts_dt > last_fill_dt:
+            last_fill_dt = ts_dt
+            last_fill_ts = str(ts_raw or "")
+        if ts_dt >= h24:
+            fills_24h += 1
+            source_counts[str(row.get("source") or "unknown")] += 1
+        if ts_dt >= h1:
+            fills_1h += 1
+    return {
+        "last_fill_ts": last_fill_ts,
+        "fills_1h": fills_1h,
+        "fills_24h": fills_24h,
+        "source_counts_24h": dict(sorted(source_counts.items())),
+    }
 
 
 @app.get("/api/preflight")
@@ -3270,7 +3465,6 @@ def jarvis_policy_diff(window_days: int = 30) -> dict:
     """
     try:
         from datetime import UTC, datetime, timedelta
-        from pathlib import Path
 
         from eta_engine.brain.jarvis_v3 import policies  # noqa: F401  (auto-register)
         from eta_engine.brain.jarvis_v3.candidate_policy import list_candidates
@@ -3280,13 +3474,15 @@ def jarvis_policy_diff(window_days: int = 30) -> dict:
             load_audit_records,
         )
 
-        audit_dir = (
-            Path(STATE_DIR) / "jarvis_audit"
-            if "STATE_DIR" in globals()
-            else Path.home() / "AppData/Local/eta_engine/state/jarvis_audit"
-        )
+        # Canonical: <workspace>/var/eta_engine/state/jarvis_audit
+        # Read fallback: legacy in-repo path ONLY (no LOCALAPPDATA — that  # HISTORICAL-PATH-OK
+        # path violated the workspace write-root rule and never lands
+        # writes after this migration).
+        audit_dir = _state_dir() / "jarvis_audit"
         if not audit_dir.exists():
-            audit_dir = Path(__file__).resolve().parents[2] / "state" / "jarvis_audit"
+            legacy_audit = _LEGACY_STATE / "jarvis_audit"
+            if legacy_audit.exists():
+                audit_dir = legacy_audit
         cutoff = datetime.now(UTC) - timedelta(days=window_days)
         records = load_audit_records(list(audit_dir.glob("*.jsonl")), since=cutoff)
         champion = champion_metrics(records)

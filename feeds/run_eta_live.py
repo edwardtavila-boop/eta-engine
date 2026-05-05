@@ -111,6 +111,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger("eta_engine.runtime")
 
 ROOT = Path(__file__).resolve().parents[1]
+#: Workspace root (= the canonical ETA workspace, ``parents[2]``).
+#: Per CLAUDE.md hard rule #1, runtime state files (kill-switch latch,
+#: trailing-DD tracker, etc.) write under ``WORKSPACE_ROOT/var/eta_engine/state/``.
+#: Tests redirect this to ``tmp_path`` via the same monkeypatch pattern
+#: as ``ROOT`` so default-state assertions remain hermetic.
+WORKSPACE_ROOT = ROOT.parent
 
 
 # ---------------------------------------------------------------------------- #
@@ -584,8 +590,13 @@ class ApexRuntime:
         # Disk-backed latch: survives process crash so FLATTEN_ALL /
         # FLATTEN_TIER_A_PREEMPTIVE / FLATTEN_TIER_B trips refuse re-boot
         # until an operator runs clear_kill_switch.
+        # Canonical state path lives at
+        # ``WORKSPACE_ROOT/var/eta_engine/state/kill_switch_latch.json``
+        # per CLAUDE.md hard rule #1. Tests monkeypatch ``WORKSPACE_ROOT``
+        # to ``tmp_path`` so the default still resolves under the test
+        # sandbox without writing into the real workspace tree.
         self.kill_switch_latch = kill_switch_latch or KillSwitchLatch(
-            ROOT / "state" / "kill_switch_latch.json",
+            WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "kill_switch_latch.json",
         )
         # Optional tick-granular trailing-DD tracker. When present, the
         # runtime feeds tier-A aggregate equity into it each loop and
@@ -1497,15 +1508,28 @@ async def _amain(argv: list[str] | None = None) -> int:
     # trailing_dd_tracker (so live mode was hard-broken); the
     # consistency guard was silently no-op without the kwarg.
     #
-    # State files are scoped to ``cfg.state_path.parent / "state"``
-    # rather than ``ROOT / "state"`` so smoke tests (which pass
-    # ``--state-path tmp_path/s.json``) get isolated state and do not
-    # pollute the operator's real ``state/`` directory between runs.
-    # In production with the default ``--state-path roadmap_state.json``,
-    # this resolves to ``ROOT / "state"`` -- same path as before.
+    # State files default to the canonical workspace path
+    # (``WORKSPACE_ROOT/var/eta_engine/state``) per CLAUDE.md hard rule
+    # #1. Smoke tests pass ``--state-path tmp_path/s.json`` so the
+    # ``cfg.state_path.parent / "state"`` branch keeps them isolated;
+    # production with ``--state-path roadmap_state.json`` (under
+    # ``ROOT``) now lands runtime state under the canonical workspace
+    # path instead of the legacy in-repo location.  # HISTORICAL-PATH-OK
+    from eta_engine.core import (  # noqa: PLC0415  -- local for circular-import safety
+        kill_switch_latch as _kill_switch_latch_mod,
+    )
+    from eta_engine.core import (
+        trailing_dd_tracker as _trailing_dd_tracker_mod,
+    )
     from eta_engine.core.trailing_dd_tracker import TrailingDDTracker
 
-    state_dir = cfg.state_path.parent / "state"
+    if cfg.state_path.parent != ROOT:
+        # Test / smoke runs that pass an explicit ``--state-path`` get an
+        # isolated sibling ``state/`` dir so the run cannot write into
+        # the real workspace tree.
+        state_dir = cfg.state_path.parent / "state"
+    else:
+        state_dir = WORKSPACE_ROOT / "var" / "eta_engine" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     consistency_guard = ConsistencyGuard.load_or_init(
         state_dir / "consistency_guard.json",
@@ -1515,18 +1539,47 @@ async def _amain(argv: list[str] | None = None) -> int:
     # ($500 cushion before the $2,500 floor). For dry-run / paper the
     # values are nominal -- the tracker still observes the cushion
     # regardless of whether the equity numbers feed real PnL.
-    trailing_dd_tracker = TrailingDDTracker.load_or_init(
-        state_dir / "trailing_dd_tracker.json",
-        starting_balance_usd=50_000.0,
-        trailing_dd_cap_usd=2_500.0,
-    )
-    # Scope the KillSwitchLatch to the same isolated state dir so the
-    # tracker's verdicts persist alongside the rest of the per-run
-    # state. Without this override the latch defaults to
-    # ``ROOT / "state" / "kill_switch_latch.json"`` and a smoke test
-    # that trips it (e.g. by ticking with empty go_state) leaks the
-    # tripped latch into the operator's working tree.
-    kill_switch_latch = KillSwitchLatch(state_dir / "kill_switch_latch.json")
+    trailing_dd_path = state_dir / "trailing_dd_tracker.json"
+    legacy_trailing_dd = _trailing_dd_tracker_mod.default_legacy_path()
+    if not trailing_dd_path.exists() and legacy_trailing_dd.exists():
+        logger.warning(
+            "trailing_dd_tracker: canonical %s missing; loading legacy "
+            "in-repo state at %s. Next write lands canonical.",
+            trailing_dd_path,
+            legacy_trailing_dd,
+        )
+        trailing_dd_tracker = TrailingDDTracker.load_or_init(
+            legacy_trailing_dd,
+            starting_balance_usd=50_000.0,
+            trailing_dd_cap_usd=2_500.0,
+        )
+    else:
+        trailing_dd_tracker = TrailingDDTracker.load_or_init(
+            trailing_dd_path,
+            starting_balance_usd=50_000.0,
+            trailing_dd_cap_usd=2_500.0,
+        )
+    # Scope the KillSwitchLatch alongside the rest of the per-run
+    # state. The legacy in-repo location is only consulted as a one-shot
+    # read fallback so a tripped latch persisted before the migration
+    # still blocks boot until an operator clears it.  # HISTORICAL-PATH-OK
+    kill_switch_latch_path = state_dir / "kill_switch_latch.json"
+    legacy_latch = _kill_switch_latch_mod.default_legacy_path()
+    if not kill_switch_latch_path.exists() and legacy_latch.exists():
+        logger.warning(
+            "kill_switch_latch: canonical %s missing; reading legacy "
+            "in-repo latch at %s on this boot. Future trips persist "
+            "to the canonical path.",
+            kill_switch_latch_path,
+            legacy_latch,
+        )
+        # Read-only check to surface a tripped legacy latch immediately
+        # without blocking the canonical write path.
+        legacy_view = KillSwitchLatch(legacy_latch)
+        ok, msg = legacy_view.boot_allowed()
+        if not ok:
+            logger.critical("legacy latch refused boot: %s", msg)
+    kill_switch_latch = KillSwitchLatch(kill_switch_latch_path)
 
     runtime = ApexRuntime(
         cfg,

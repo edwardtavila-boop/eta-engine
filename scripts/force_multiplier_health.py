@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,52 @@ from eta_engine.brain.cli_provider import (  # noqa: E402  (needs sys.path setup
 )
 from eta_engine.brain.llm_provider import ModelTier, chat_completion, native_provider_info  # noqa: E402
 from eta_engine.brain.multi_model import _classify_cli_failure, force_multiplier_status  # noqa: E402
+from eta_engine.scripts import workspace_roots  # noqa: E402  (needs sys.path setup above)
+
+#: Env-var override for the JSON snapshot path. Tests / smoke runs set
+#: this to redirect the artifact to a tmp directory; production leaves
+#: it unset so the canonical workspace path resolves.
+_PATH_ENV_VAR: str = "ETA_FM_HEALTH_SNAPSHOT_PATH"
+
+
+def default_path() -> Path:
+    """Canonical workspace path for the FM-health JSON snapshot.
+
+    Resolution order:
+      * ``$ETA_FM_HEALTH_SNAPSHOT_PATH`` if set (used by tests / cron)
+      * ``workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH`` (canonical, under
+        ``<workspace>/var/eta_engine/state/fm_health.json``)
+    """
+    override = os.environ.get(_PATH_ENV_VAR, "").strip()
+    if override:
+        return Path(override)
+    return workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH
+
+
+def default_legacy_path() -> Path:
+    """Legacy in-repo path for the FM-health JSON snapshot.
+
+    Used as a one-shot read fallback during the migration window so a
+    dashboard that hasn't been updated yet can still discover a stale
+    snapshot at the legacy path. NEVER used as a write target.
+    """
+    return workspace_roots.ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH
+
+
+def resolve_existing_path() -> Path:
+    """Return the path to read the snapshot from, preferring canonical.
+
+    Falls back to the legacy in-repo path only when the canonical file
+    does not exist *and* the legacy file does. The write path is always
+    :func:`default_path`.
+    """
+    canonical = default_path()
+    if canonical.exists():
+        return canonical
+    legacy = default_legacy_path()
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def _hr(label: str = "") -> None:
@@ -170,8 +217,12 @@ def main() -> int:
                         help="Emit JSON to stdout (machine-readable)")
     parser.add_argument(
         "--json-out",
+        nargs="?",
+        const="",  # bare flag -> use canonical default_path()
         help=("Write JSON snapshot to this path. Useful with Task Scheduler — "
-              "default eta_engine/state/fm_health.json so dashboards can poll it."),
+              "bare --json-out writes to var/eta_engine/state/fm_health.json "
+              "(or $ETA_FM_HEALTH_SNAPSHOT_PATH override) so dashboards can "
+              "poll it."),
     )
     parser.add_argument("--quiet", action="store_true",
                         help="Suppress human-readable output (use with --json-out for cron)")
@@ -186,9 +237,13 @@ def main() -> int:
     pass_count = sum(1 for _, ok, _ in results if ok)
 
     # JSON snapshot to disk (cron-friendly): write before any printing so a
-    # crash mid-print still leaves a usable artifact.
-    if args.json_out:
-        _emit_json(results=results, live=args.live, write_to=Path(args.json_out))
+    # crash mid-print still leaves a usable artifact. ``--json-out`` with no
+    # value (or empty string) routes to the canonical workspace path under
+    # ``var/eta_engine/state/`` so callers don't have to hard-code legacy
+    # in-repo locations.
+    if args.json_out is not None:
+        write_to = Path(args.json_out) if args.json_out else default_path()
+        _emit_json(results=results, live=args.live, write_to=write_to)
 
     if args.json:
         _emit_json(results=results, live=args.live, write_to=None)

@@ -1,11 +1,20 @@
 """JARVIS prompt evaluation — extracts production prompts and runs promptfoo.
 
 Usage:
-    python -m eta_engine.eval.run_eval [--output state/eval/results.json]
+    python -m eta_engine.eval.run_eval [--output var/eta_engine/state/eval/results.json]
+
+State path
+----------
+Eval results land at ``<workspace>/var/eta_engine/state/eval/promptfoo_results.json``
+per CLAUDE.md hard rule #1. The legacy in-repo path
+``<eta_engine>/state/eval/promptfoo_results.json`` is consulted as a
+read-only fallback for back-compat — once a fresh canonical run rolls,
+that fallback can be removed in a follow-up.
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +23,13 @@ ROOT = Path(__file__).resolve().parents[1]
 EVAL_DIR = ROOT / "eval"
 PROMPTS_DIR = EVAL_DIR / "prompts"
 CONFIG_PATH = EVAL_DIR / "promptfoo_config.yaml"
-OUTPUT_DEFAULT = ROOT / "state" / "eval" / "promptfoo_results.json"
+
+# Canonical write target lives under the workspace var/ tree; the legacy
+# in-repo location is only used as a read fallback.
+from eta_engine.scripts import workspace_roots  # noqa: E402  -- module-level constant resolution
+
+OUTPUT_DEFAULT = workspace_roots.ETA_EVAL_PROMPTFOO_RESULTS_PATH
+LEGACY_OUTPUT_DEFAULT = workspace_roots.ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH
 
 TEST_CASES = [
     {
@@ -141,9 +156,25 @@ def run_promptfoo(config_path: Path, output_path: Path) -> dict:
     return synthetic
 
 
+def _resolve_output(args: list[str]) -> Path:
+    """Resolve the output path.
+
+    Resolution order:
+      * Explicit positional argument from CLI
+      * ``$ETA_EVAL_PROMPTFOO_RESULTS_PATH`` env override
+      * Canonical workspace default
+    """
+    if args:
+        return Path(args[0])
+    override = os.environ.get("ETA_EVAL_PROMPTFOO_RESULTS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return OUTPUT_DEFAULT
+
+
 def main(argv: list[str] | None = None) -> int:
     args = argv or sys.argv[1:]
-    output = Path(args[0]) if args else OUTPUT_DEFAULT
+    output = _resolve_output(args)
 
     prompts = _extract_prompts()
     write_prompts(prompts)

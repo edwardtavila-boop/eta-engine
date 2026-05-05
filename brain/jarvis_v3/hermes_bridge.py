@@ -19,7 +19,15 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HEALTH_FILE = ROOT / "docs" / "jarvis_live_health.json"
-DEFAULT_STATE_FILE = ROOT / "state" / "jarvis_intel" / "hermes_state.json"
+# Canonical workspace-state path per CLAUDE.md hard rule #1. The legacy
+# in-repo location (under ``eta_engine/brain/state/jarvis_intel/``) is
+# defunct after the latch consolidation in ``_cmd_kill`` — this constant
+# now points at the single canonical hermes state file under
+# ``<workspace>/var/eta_engine/state/jarvis_intel/``.
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_STATE_FILE = (
+    _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "hermes_state.json"
+)
 
 _LAST_UPDATE_ID = 0
 
@@ -238,17 +246,18 @@ async def _cmd_kill(args: str) -> str:
             "`/kill confirm`"
         )
     try:
-        # Write latch files for all codebases
-        latch_paths = [
-            ROOT / "state",
-            ROOT.parent / "var" / "eta_engine" / "state",
-            ROOT.parent / "firm_command_center" / "var" / "data" / "runtime_state",
-        ]
-        for latch_dir in latch_paths:
-            latch_dir.mkdir(parents=True, exist_ok=True)
-            (latch_dir / "kill_switch_latch.json").write_text(
-                json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()})
-            )
+        # Single canonical write target per CLAUDE.md hard rule #1.
+        # The previous fan-out across three latch directories
+        # (in-repo state, doubly-nested eta_engine/var, and the firm
+        # command-center runtime_state) was a layered fallback from an
+        # earlier migration \u2014 we collapse it now so the runtime has one
+        # source of truth for the kill latch.
+        from eta_engine.scripts import workspace_roots  # noqa: PLC0415
+        canonical_latch = workspace_roots.ETA_HERMES_KILL_LATCH_PATH
+        canonical_latch.parent.mkdir(parents=True, exist_ok=True)
+        canonical_latch.write_text(
+            json.dumps({"killed_by": "telegram", "ts": datetime.now(UTC).isoformat()})
+        )
 
         # Stop FirmCore service
         try:
