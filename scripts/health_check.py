@@ -1,14 +1,12 @@
-"""VPS Health Check — self-diagnostic script for the autonomous operation.
+"""VPS Health Check - self-diagnostic script for autonomous operation.
 
 Checks:
-  1. All required services running (FirmCore, FirmWatchdog, FirmCommandCenter, Hermes)
-  2. Kaizen engine state healthy (no stale cycles, guard not tripped)
-  3. Quantum rebalance freshness (last run within 24h)
-  4. Hermes bridge connectivity (Telegram reachable)
-  5. Disk space (> 5% free)
-  6. Memory pressure (< 90%)
-  7. Git repos clean (no uncommitted state drift)
-  8. Scheduler ticks running (last tick within expected interval)
+  1. Disk space.
+  2. Kaizen engine state.
+  3. Quantum rebalance freshness.
+  4. Hermes bridge queue health.
+  5. Jarvis strategy supervisor heartbeat freshness.
+  6. Git repo drift.
 
 Run daily via: schtasks /Create /TN "ETA-VPS-HealthCheck" /TR ".../health_check.py" /SC DAILY /ST 08:00
 Or invoke directly from any automation: python eta_engine/scripts/health_check.py
@@ -29,7 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
-from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR
+from eta_engine.scripts.supervisor_heartbeat_check import build_supervisor_heartbeat_report  # noqa: E402
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR  # noqa: E402
+
 _STATE_DIR = ETA_RUNTIME_STATE_DIR
 
 
@@ -68,6 +68,7 @@ class VpsHealthReport:
 def _check_disk_space() -> HealthComponent:
     try:
         import shutil
+
         usage = shutil.disk_usage(str(ROOT))
         free_pct = usage.free / usage.total * 100
         if free_pct < 5:
@@ -84,7 +85,7 @@ def _check_kaizen_state() -> HealthComponent:
     guard_path = _STATE_DIR / "kaizen" / "guard_state.json"
 
     if not state_path.exists():
-        return HealthComponent("kaizen_engine", True, "booting", "no state file yet — engine may not have run", 0.5)
+        return HealthComponent("kaizen_engine", True, "booting", "no state file yet - engine may not have run", 0.5)
 
     try:
         state = json.loads(state_path.read_text())
@@ -94,13 +95,15 @@ def _check_kaizen_state() -> HealthComponent:
     except (OSError, json.JSONDecodeError):
         return HealthComponent("kaizen_engine", False, "critical", "state file corrupted", 0.0)
 
-    # Check guard
     if guard_path.exists():
         try:
             guard = json.loads(guard_path.read_text())
             if guard.get("circuit_tripped"):
-                return HealthComponent("kaizen_engine", False, "blocked",
-                    f"circuit breaker tripped: {guard.get('circuit_reason', 'unknown')} until {guard.get('circuit_until', '?')}", 0.3)
+                detail = (
+                    f"circuit breaker tripped: {guard.get('circuit_reason', 'unknown')} "
+                    f"until {guard.get('circuit_until', '?')}"
+                )
+                return HealthComponent("kaizen_engine", False, "blocked", detail, 0.3)
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -114,7 +117,13 @@ def _check_quantum_freshness() -> HealthComponent:
 
     current = quantum_dir / "current_allocation.json"
     if not current.exists():
-        return HealthComponent("quantum_rebalance", True, "booting", "no current allocation — rebalance may not have run", 0.5)
+        return HealthComponent(
+            "quantum_rebalance",
+            True,
+            "booting",
+            "no current allocation - rebalance may not have run",
+            0.5,
+        )
 
     try:
         data = json.loads(current.read_text())
@@ -125,9 +134,21 @@ def _check_quantum_freshness() -> HealthComponent:
                 ts = ts.replace(tzinfo=UTC)
             age_hours = (datetime.now(UTC) - ts).total_seconds() / 3600
             if age_hours > 48:
-                return HealthComponent("quantum_rebalance", False, "stale", f"last rebalance {age_hours:.0f}h ago", 0.3)
+                return HealthComponent(
+                    "quantum_rebalance",
+                    False,
+                    "stale",
+                    f"last rebalance {age_hours:.0f}h ago",
+                    0.3,
+                )
             if age_hours > 24:
-                return HealthComponent("quantum_rebalance", True, "warning", f"last rebalance {age_hours:.0f}h ago", 0.6)
+                return HealthComponent(
+                    "quantum_rebalance",
+                    True,
+                    "warning",
+                    f"last rebalance {age_hours:.0f}h ago",
+                    0.6,
+                )
             return HealthComponent("quantum_rebalance", True, "healthy", f"last rebalance {age_hours:.1f}h ago", 1.0)
     except (OSError, json.JSONDecodeError, ValueError):
         return HealthComponent("quantum_rebalance", False, "warning", "unable to parse allocation file", 0.4)
@@ -139,26 +160,51 @@ def _check_hermes_connectivity() -> HealthComponent:
     saf_path = _STATE_DIR / "hermes" / "store_and_forward.jsonl"
     if saf_path.exists():
         try:
-            count = sum(1 for _ in saf_path.read_text(encoding="utf-8").splitlines() if _.strip())
+            count = sum(1 for line in saf_path.read_text(encoding="utf-8").splitlines() if line.strip())
             if count > 20:
-                return HealthComponent("hermes_bridge", False, "warning",
-                    f"{count} unsent messages queued — Telegram may be unreachable", 0.4)
+                detail = f"{count} unsent messages queued - Telegram may be unreachable"
+                return HealthComponent("hermes_bridge", False, "warning", detail, 0.4)
             if count > 0:
-                return HealthComponent("hermes_bridge", True, "warning",
-                    f"{count} pending messages", 0.6)
+                return HealthComponent("hermes_bridge", True, "warning", f"{count} pending messages", 0.6)
         except OSError:
             pass
     return HealthComponent("hermes_bridge", True, "healthy", "store-and-forward queue clear", 1.0)
 
 
+def _check_supervisor_heartbeat() -> HealthComponent:
+    try:
+        report = build_supervisor_heartbeat_report(state_root=_STATE_DIR)
+    except Exception:
+        return HealthComponent("supervisor_heartbeat", False, "critical", "heartbeat diagnostic failed", 0.0)
+
+    age = report.get("canonical_age_seconds")
+    age_text = "unknown" if age is None else f"{float(age):.1f}s"
+    diagnosis = str(report.get("diagnosis", "unknown"))
+    detail = f"{diagnosis}; canonical age {age_text}"
+    if report.get("healthy"):
+        return HealthComponent("supervisor_heartbeat", True, "healthy", detail, 1.0)
+    status = str(report.get("status", "critical"))
+    score = 0.4 if status == "wrong_write_path" else 0.1 if status in {"missing", "invalid"} else 0.2
+    return HealthComponent("supervisor_heartbeat", False, status, detail, score)
+
+
 def _check_repo_health() -> HealthComponent:
     import subprocess
+
     try:
-        result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=str(ROOT), timeout=10)
-        dirty = [l for l in result.stdout.splitlines() if l.strip()]
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+            timeout=10,
+        )
+        dirty = [line for line in result.stdout.splitlines() if line.strip()]
         if len(dirty) > 20:
-            return HealthComponent("repo_health", True, "warning", f"{len(dirty)} uncommitted files — possible drift", 0.5)
-        return HealthComponent("repo_health", True, "healthy", f"{len(dirty)} uncommitted files" if dirty else "clean", 1.0 if not dirty else 0.8)
+            detail = f"{len(dirty)} uncommitted files - possible drift"
+            return HealthComponent("repo_health", True, "warning", detail, 0.5)
+        detail = f"{len(dirty)} uncommitted files" if dirty else "clean"
+        return HealthComponent("repo_health", True, "healthy", detail, 1.0 if not dirty else 0.8)
     except Exception:
         return HealthComponent("repo_health", True, "unknown", "git check unavailable", 0.5)
 
@@ -169,6 +215,7 @@ def run_health_check(*, output_dir: Path | None = None) -> VpsHealthReport:
         _check_kaizen_state(),
         _check_quantum_freshness(),
         _check_hermes_connectivity(),
+        _check_supervisor_heartbeat(),
         _check_repo_health(),
     ]
 
@@ -188,10 +235,7 @@ def run_health_check(*, output_dir: Path | None = None) -> VpsHealthReport:
         status = "healthy"
         exit_code = 0
 
-    action_items = []
-    for c in components:
-        if not c.healthy:
-            action_items.append(f"[{c.name}] {c.status}: {c.detail}")
+    action_items = [f"[{c.name}] {c.status}: {c.detail}" for c in components if not c.healthy]
 
     report = VpsHealthReport(
         components=components,
@@ -219,10 +263,10 @@ def main() -> int:
         for item in report.action_items:
             print(f"  - {item}", file=sys.stderr)
 
-    # Notify Hermes if unhealthy
     if report.exit_code > 0:
         try:
             from hermes_jarvis_telegram.hermes_bridge import get_bridge
+
             bridge = get_bridge()
             bridge.notify_system_health(
                 health_score=report.overall_score,

@@ -1,7 +1,7 @@
 """Bridge: read JARVIS strategy supervisor heartbeat, produce dashboard rows.
 
 The wave-12 ``jarvis_strategy_supervisor.py`` writes its 16-bot roster to
-``state/jarvis_intel/supervisor/heartbeat.json`` every tick. The legacy
+``var/eta_engine/state/jarvis_intel/supervisor/heartbeat.json`` every tick. The legacy
 ``command_center.server.app:_bot_fleet_view`` builds its bot_accounts
 list from a different payload (the master_dashboard service) that
 doesn't see the supervisor at all -- so the fleet dashboard ended up
@@ -27,14 +27,18 @@ heartbeat must never break the dashboard endpoint.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 # ROOT = the repo root (parents[1] of scripts/)
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HEARTBEAT_PATH = (
-    ROOT / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
-)
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
+DEFAULT_HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
 
 
 def jarvis_supervisor_bot_accounts(
@@ -47,7 +51,7 @@ def jarvis_supervisor_bot_accounts(
     ----------
     heartbeat_path:
         Path to the supervisor heartbeat JSON. Defaults to the canonical
-        location ``<repo>/state/jarvis_intel/supervisor/heartbeat.json``.
+        location ``<workspace>/var/eta_engine/state/jarvis_intel/supervisor/heartbeat.json``.
         Override in tests.
 
     Returns

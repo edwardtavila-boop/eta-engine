@@ -41,6 +41,18 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
     )
+    assert workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR == (
+        ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "supervisor"
+    )
+    assert workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
+    )
+    assert workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "supervisor" / "reconcile_last.json"
+    )
+    assert workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
+    )
     assert workspace_roots.ETA_DRIFT_WATCHDOG_LOG_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "drift_watchdog.jsonl"
     )

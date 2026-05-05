@@ -205,7 +205,7 @@ class SupervisorConfig:
     )
     # Heartbeat output path
     state_dir: Path = field(
-        default_factory=lambda: ROOT / "state" / "jarvis_intel" / "supervisor",
+        default_factory=lambda: workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR,
     )
     # Live-money gate (extra safety; even paper_live still requires this False)
     live_money_enabled: bool = field(

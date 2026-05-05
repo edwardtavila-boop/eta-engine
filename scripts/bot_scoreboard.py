@@ -17,18 +17,20 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
 
-_HEARTBEAT_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
-_TRADE_CLOSES_PATH = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"
-)
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
+_HEARTBEAT_PATH = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+_TRADE_CLOSES_PATH = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}

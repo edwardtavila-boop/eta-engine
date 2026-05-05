@@ -32,6 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 
 def _load_supervisor_open_position_symbols() -> set[str]:
     """Read the supervisor heartbeat to learn which symbols the
@@ -39,7 +41,7 @@ def _load_supervisor_open_position_symbols() -> set[str]:
     symbol roots (MNQ, NQ, BTC, etc.)."""
     import json
 
-    hb_path = ROOT / "state" / "jarvis_intel" / "supervisor" / "heartbeat.json"
+    hb_path = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
     if not hb_path.exists():
         return set()
     try:

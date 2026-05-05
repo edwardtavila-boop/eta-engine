@@ -19,25 +19,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-_HEARTBEAT = Path(
-    r"C:\EvolutionaryTradingAlgo\eta_engine\state\jarvis_intel\supervisor\heartbeat.json"
-)
-_RECONCILE = Path(
-    r"C:\EvolutionaryTradingAlgo\eta_engine\state\jarvis_intel\supervisor\reconcile_last.json"
-)
-_TWS_STATUS = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json"
-)
-_CUTOVER_STATUS = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\cutover_status.json"
-)
-_V3_EVENTS = Path(
-    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_v3_events.jsonl"
-)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
+_HEARTBEAT = workspace_roots.ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH
+_RECONCILE = workspace_roots.ETA_JARVIS_SUPERVISOR_RECONCILE_PATH
+_TWS_STATUS = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
+_CUTOVER_STATUS = workspace_roots.ETA_RUNTIME_STATE_DIR / "cutover_status.json"
+_V3_EVENTS = workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_v3_events.jsonl"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
