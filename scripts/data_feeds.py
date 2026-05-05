@@ -63,10 +63,26 @@ def _empty_bar(symbol: str, last_close: float = 100.0) -> dict[str, Any]:
 # ─── Symbol mapping helpers ──────────────────────────────────────
 
 
-_CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
+_CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP", "MBT", "MET"}
 _FUTURES_ROOTS = {
-    "MNQ", "NQ", "ES", "MES", "NG", "CL", "GC", "ZN", "ZB",
-    "6E", "M6E", "MGC", "MCL", "RTY", "M2K", "MBT", "MET",
+    # Equity-index
+    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "YM", "MYM",
+    # Energies
+    "CL", "MCL", "NG", "RB", "HO", "BZ",
+    # Metals
+    "GC", "MGC", "SI", "SIL", "HG", "PA", "PL",
+    # Rates
+    "ZN", "ZB", "ZF", "ZT",
+    # FX (full-size + micros)
+    "6E", "M6E", "6A", "M6A", "6B", "M6B", "6J", "M6J", "6C", "6N", "6S",
+    # Grains
+    "ZC", "ZS", "ZW", "ZL", "ZM",
+    # Softs
+    "KC", "SB", "CC", "CT",
+    # Livestock
+    "LE", "HE",
+    # CME crypto futures (also passable as crypto via spot mapping)
+    "MBT", "MET",
 }
 
 
@@ -118,24 +134,68 @@ class YFinanceDataFeed:
     """
 
     YF_MAP: dict[str, str] = {
+        # Crypto spot (Yahoo only has dollar pairs)
         "BTC": "BTC-USD",
         "ETH": "ETH-USD",
         "SOL": "SOL-USD",
         "AVAX": "AVAX-USD",
         "LINK": "LINK-USD",
         "DOGE": "DOGE-USD",
+        "XRP": "XRP-USD",
+        # Equity-index futures (full-size + micros)
         "MNQ": "MNQ=F",
-        "NQ": "NQ=F",
-        "ES": "ES=F",
+        "NQ":  "NQ=F",
+        "ES":  "ES=F",
         "MES": "MES=F",
-        "NG": "NG=F",
-        "CL": "CL=F",
-        "GC": "GC=F",
-        "ZN": "ZN=F",
         "RTY": "RTY=F",
-        "6E": "6E=F",
-        "MBT": "BTC-USD",  # micro BTC — track BTC-USD spot
-        "MET": "ETH-USD",  # micro ETH — track ETH-USD spot
+        "M2K": "M2K=F",
+        "YM":  "YM=F",
+        "MYM": "MYM=F",
+        # Energies (full-size + micros)
+        "CL":  "CL=F",   # WTI crude
+        "MCL": "MCL=F",
+        "NG":  "NG=F",   # natural gas
+        "RB":  "RB=F",   # gasoline
+        "HO":  "HO=F",   # heating oil
+        "BZ":  "BZ=F",   # Brent
+        # Metals (full-size + micros)
+        "GC":  "GC=F",   # gold
+        "MGC": "MGC=F",
+        "SI":  "SI=F",   # silver
+        "SIL": "SIL=F",  # micro silver
+        "HG":  "HG=F",   # copper
+        "PA":  "PA=F",   # palladium
+        "PL":  "PL=F",   # platinum
+        # Rates (full-size; micros if user adds them)
+        "ZN":  "ZN=F",   # 10y note
+        "ZB":  "ZB=F",   # 30y bond
+        "ZF":  "ZF=F",   # 5y note
+        "ZT":  "ZT=F",   # 2y note
+        # FX futures (full-size + micros)
+        "6E":  "6E=F",   "M6E": "M6E=F",  # EUR/USD
+        "6A":  "6A=F",   "M6A": "M6A=F",  # AUD/USD
+        "6B":  "6B=F",   "M6B": "M6B=F",  # GBP/USD
+        "6J":  "6J=F",   "M6J": "M6J=F",  # JPY/USD
+        "6C":  "6C=F",                    # CAD/USD
+        "6N":  "6N=F",                    # NZD/USD
+        "6S":  "6S=F",                    # CHF/USD
+        # Grains
+        "ZC":  "ZC=F",   # corn
+        "ZS":  "ZS=F",   # soybeans
+        "ZW":  "ZW=F",   # wheat
+        "ZL":  "ZL=F",   # soy oil
+        "ZM":  "ZM=F",   # soy meal
+        # Softs
+        "KC":  "KC=F",   # coffee
+        "SB":  "SB=F",   # sugar
+        "CC":  "CC=F",   # cocoa
+        "CT":  "CT=F",   # cotton
+        # Livestock
+        "LE":  "LE=F",   # live cattle
+        "HE":  "HE=F",   # lean hogs
+        # CME crypto futures track underlying spot for our purposes
+        "MBT": "BTC-USD",
+        "MET": "ETH-USD",
     }
 
     def __init__(self, *, ttl_seconds: float = 30.0) -> None:

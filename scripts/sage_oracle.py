@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Bar data lookup. Falls back gracefully when a symbol's data is missing.
 _BAR_PATHS = {
+    # Crypto spot (Coinbase / IBKR history)
     ("BTC", "1h"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_1h.csv"),
     ("BTC", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_5m.csv"),
     ("BTC", "1m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\BTC_1m.csv"),
@@ -43,6 +44,7 @@ _BAR_PATHS = {
     ("ETH", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\ETH_5m.csv"),
     ("ETH", "1d"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\ETH_D.csv"),
     ("SOL", "1h"): Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history\SOL_1h.csv"),
+    # Equity-index futures
     ("MNQ", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\MNQ_5m.csv"),
     ("MNQ1", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\MNQ_5m.csv"),
     ("NQ", "5m"): Path(r"C:\EvolutionaryTradingAlgo\data\NQ_5m.csv"),
@@ -50,9 +52,20 @@ _BAR_PATHS = {
 }
 
 
+def _resolve_root() -> Path:
+    """Project data root."""
+    return Path(r"C:\EvolutionaryTradingAlgo\data")
+
+
 def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
     """Find a bar file for (symbol, timeframe). Tries exact match, then
-    common alternates (BTC1h ↔ BTC/1h, MNQ1 ↔ MNQ)."""
+    common alternates (BTC1h ↔ BTC/1h, MNQ1 ↔ MNQ).
+
+    For commodities (GC, CL, NG, ZN, ZB, 6E, etc.) the explicit
+    _BAR_PATHS dict doesn't have entries, so we fall through to the
+    glob search across both /data and /data/crypto/ibkr/history. Any
+    file matching SYMBOL_TF.csv (case-insensitive symbol root) wins.
+    """
     for sym_key in (symbol.upper(), symbol.upper().rstrip("0123456789")):
         for tf_key in (timeframe, timeframe.replace("h", "h"), timeframe):
             p = _BAR_PATHS.get((sym_key, tf_key))
@@ -62,9 +75,18 @@ def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
     _roots = (
         Path(r"C:\EvolutionaryTradingAlgo\data"),
         Path(r"C:\EvolutionaryTradingAlgo\data\crypto\ibkr\history"),
+        Path(r"C:\EvolutionaryTradingAlgo\data\futures"),
+        Path(r"C:\EvolutionaryTradingAlgo\data\futures\ibkr\history"),
     )
+    sym_root = symbol.upper().rstrip("0123456789")
     for root in _roots:
-        candidates = list(root.glob(f"{symbol.upper().rstrip('0123456789')}_{timeframe}.csv"))
+        if not root.exists():
+            continue
+        candidates = list(root.glob(f"{sym_root}_{timeframe}.csv"))
+        if candidates:
+            return candidates[0]
+        # Also try MNQ1, NQ1 etc. variants as filename
+        candidates = list(root.glob(f"{symbol.upper()}_{timeframe}.csv"))
         if candidates:
             return candidates[0]
     return None
@@ -108,11 +130,34 @@ def _load_bars(symbol: str, timeframe: str, limit: int = 300) -> list[dict[str, 
     return bars
 
 
+_CRYPTO_ROOTS_LOCAL = frozenset({
+    "BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP", "MBT", "MET",
+})
+_FUTURES_ROOTS_LOCAL = frozenset({
+    # Equity-index
+    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "YM", "MYM",
+    # Energies
+    "CL", "MCL", "NG", "RB", "HO", "BZ",
+    # Metals
+    "GC", "MGC", "SI", "SIL", "HG", "PA", "PL",
+    # Rates
+    "ZN", "ZB", "ZF", "ZT",
+    # FX (full + micros)
+    "6E", "M6E", "6A", "M6A", "6B", "M6B", "6J", "M6J", "6C", "6N", "6S",
+    # Grains
+    "ZC", "ZS", "ZW", "ZL", "ZM",
+    # Softs
+    "KC", "SB", "CC", "CT",
+    # Livestock
+    "LE", "HE",
+})
+
+
 def _instrument_class(symbol: str) -> str:
     s = symbol.upper().rstrip("0123456789")
-    if s in {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "XRP"}:
+    if s in _CRYPTO_ROOTS_LOCAL:
         return "crypto"
-    if s in {"MNQ", "NQ", "ES", "MES", "GC", "MGC", "CL", "MCL", "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K"}:
+    if s in _FUTURES_ROOTS_LOCAL:
         return "futures"
     return "other"
 
