@@ -444,8 +444,8 @@ python -m pytest \
 # Chaos drills
 python -m eta_engine.scripts.chaos_drills
 
-# Kill-switch latch state
-type eta_engine\state\kill_switch_latch.json
+# Kill-switch latch state (canonical workspace path)
+type var\eta_engine\state\kill_switch_latch.json
 
 # Clear a tripped latch (requires operator name)
 python -m eta_engine.scripts.clear_kill_switch --confirm --operator <name>

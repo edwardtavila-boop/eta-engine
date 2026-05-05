@@ -44,6 +44,12 @@ ETA_STRATEGY_SUPERCHARGE_MANIFEST_PATH = ETA_RUNTIME_STATE_DIR / "strategy_super
 ETA_STRATEGY_SUPERCHARGE_RESULTS_PATH = ETA_RUNTIME_STATE_DIR / "strategy_supercharge_results_latest.json"
 ETA_JARVIS_SUPERVISOR_STATE_DIR = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "supervisor"
 ETA_JARVIS_SUPERVISOR_HEARTBEAT_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "heartbeat.json"
+# Independent keep-alive stamp: a daemon thread inside the supervisor
+# refreshes this file every KEEPALIVE_PERIOD_S seconds, even when the
+# main tick loop is blocked. Combined with the main heartbeat, the
+# diagnostic CLI can distinguish "process stuck" from "process dead".
+ETA_JARVIS_SUPERVISOR_KEEPALIVE_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "heartbeat_keepalive.json"
+ETA_JARVIS_SUPERVISOR_HEARTBEAT_ERRORS_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "heartbeat_write_errors.jsonl"
 ETA_JARVIS_SUPERVISOR_RECONCILE_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "reconcile_last.json"
 ETA_JARVIS_TRADE_CLOSES_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl"
 ETA_DRIFT_WATCHDOG_LOG_PATH = ETA_RUNTIME_STATE_DIR / "drift_watchdog.jsonl"
@@ -56,6 +62,41 @@ ETA_PROMOTION_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "promotion.jsonl"
 ETA_AVENGERS_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "avengers.jsonl"
 ETA_CALIBRATION_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "calibration.jsonl"
 ETA_AVENGER_DAEMON_PID_DIR = ETA_RUNTIME_STATE_DIR / "avenger_daemons"
+# B-class migrators: catastrophic-verdict latch + tick-granular trailing
+# DD tracker. Legacy in-repo paths are kept only as read fallbacks during
+# the migration window so that a runtime starting up after the cutover
+# finds prior persisted state. New writes always land at the canonical
+# workspace path below per CLAUDE.md hard rule #1.  # HISTORICAL-PATH-OK
+ETA_KILL_SWITCH_LATCH_PATH = ETA_RUNTIME_STATE_DIR / "kill_switch_latch.json"
+ETA_TRAILING_DD_TRACKER_PATH = ETA_RUNTIME_STATE_DIR / "trailing_dd_tracker.json"
+ETA_LEGACY_KILL_SWITCH_LATCH_PATH = ETA_ENGINE_ROOT / "state" / "kill_switch_latch.json"
+ETA_LEGACY_TRAILING_DD_TRACKER_PATH = ETA_ENGINE_ROOT / "state" / "trailing_dd_tracker.json"
+# Force-Multiplier health probe snapshot. Cron / Task Scheduler writes a
+# JSON snapshot every 4h that dashboards poll; the canonical write target
+# is under var/, with the in-repo state/ kept as a one-shot read fallback
+# during the migration window.
+ETA_FM_HEALTH_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "fm_health.json"
+ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH = ETA_ENGINE_ROOT / "state" / "fm_health.json"
+# JARVIS verdict log read by the read-only inspection scripts and several
+# v2* policies. The canonical write path is under var/; the legacy
+# in-repo path is kept as a read fallback so existing logs remain
+# inspectable until the next session rolls a fresh log.
+ETA_JARVIS_VERDICTS_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "verdicts.jsonl"
+ETA_LEGACY_JARVIS_VERDICTS_PATH = (
+    ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+)
+# Eval results: promptfoo writes a single JSON aggregate per run.
+ETA_EVAL_PROMPTFOO_RESULTS_PATH = (
+    ETA_RUNTIME_STATE_DIR / "eval" / "promptfoo_results.json"
+)
+ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH = (
+    ETA_ENGINE_ROOT / "state" / "eval" / "promptfoo_results.json"
+)
+# Hermes-bridge `/kill confirm` latch: the consolidated single canonical
+# write target. The bridge previously fanned out to three paths; the
+# canonical/legacy split below replaces the multi-target latch.
+ETA_HERMES_KILL_LATCH_PATH = ETA_RUNTIME_STATE_DIR / "kill_switch_latch.json"
+ETA_LEGACY_HERMES_KILL_LATCH_PATH = ETA_ENGINE_ROOT / "state" / "kill_switch_latch.json"
 ETA_RUNTIME_ALERTS_LOG_PATH = ETA_RUNTIME_LOG_DIR / "alerts_log.jsonl"
 ETA_RUNTIME_LOG_PATH = ETA_RUNTIME_LOG_DIR / "runtime_log.jsonl"
 ETA_AVENGER_METRICS_PATH = ETA_RUNTIME_LOG_DIR / "metrics.prom"

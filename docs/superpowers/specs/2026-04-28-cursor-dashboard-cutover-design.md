@@ -23,7 +23,7 @@ stop polluting `git status`.
 
 ### 1a. Fix state-dir default
 
-**Problem:** The current default resolves to `%LOCALAPPDATA%\eta_engine\state`.
+**Problem:** The current default resolves to `%LOCALAPPDATA%\eta_engine\state`. <!-- HISTORICAL-PATH-OK -->
 All supervisor/bot state is written to `<repo>/state/`. This mismatch means every
 `_state_dir()` call reads an empty directory on the VPS.
 
@@ -31,7 +31,7 @@ All supervisor/bot state is written to `<repo>/state/`. This mismatch means ever
 
 ```python
 _REPO_ROOT    = Path(__file__).resolve().parents[2]   # eta_engine/
-_DEFAULT_STATE = _REPO_ROOT / "state"
+_DEFAULT_STATE = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
 _DEFAULT_LOG   = _REPO_ROOT / "logs"
 ```
 

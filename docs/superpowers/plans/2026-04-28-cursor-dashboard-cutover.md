@@ -56,7 +56,7 @@ cd C:\EvolutionaryTradingAlgo\eta_engine
 python -m pytest tests/test_dashboard_api.py::TestDashboardAPI::test_default_state_dir_is_repo_relative -v
 ```
 
-Expected: **FAILED** — `AssertionError: state dir leaked into AppData: …/AppData/Local/eta_engine/state`
+Expected: **FAILED** — `AssertionError: state dir leaked into AppData: ...AppData/Local/eta_engine/state` <!-- HISTORICAL-PATH-OK -->
 
 - [ ] **Step 3 — Fix the state-dir default**
 
@@ -65,8 +65,8 @@ In `deploy/scripts/dashboard_api.py`, replace lines 49–58:
 ```python
 # State/log dirs: Windows defaults; overridable via env
 if os.name == "nt":
-    _DEFAULT_STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"
-    _DEFAULT_LOG = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "logs"
+    _DEFAULT_STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "state"  # HISTORICAL-PATH-OK
+    _DEFAULT_LOG = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "eta_engine" / "logs"  # HISTORICAL-PATH-OK
 else:
     _DEFAULT_STATE = Path.home() / ".local" / "state" / "eta_engine"
     _DEFAULT_LOG = Path.home() / ".local" / "log" / "eta_engine"
@@ -81,7 +81,7 @@ with:
 # State/log dirs: repo-relative so every deployment reads the right directory.
 # ETA_STATE_DIR / ETA_LOG_DIR env vars still override (used by tests).
 _REPO_ROOT     = Path(__file__).resolve().parents[2]   # .../eta_engine/
-_DEFAULT_STATE = _REPO_ROOT / "state"
+_DEFAULT_STATE = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
 _DEFAULT_LOG   = _REPO_ROOT / "logs"
 
 STATE_DIR = Path(os.environ.get("ETA_STATE_DIR", str(_DEFAULT_STATE)))

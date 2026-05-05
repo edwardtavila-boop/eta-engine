@@ -83,6 +83,47 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_AVENGER_DAEMON_PID_DIR == (
         ROOT / "var" / "eta_engine" / "state" / "avenger_daemons"
     )
+    # B-class state writers migrated 2026-05-04 (LEGACY_PATH_AUDIT.md
+    # category B). Each writer's canonical target is the workspace var/
+    # tree; the legacy in-repo path is captured here so the read-fallback
+    # window is auditable in test fixtures rather than scattered across
+    # callers.
+    assert workspace_roots.ETA_KILL_SWITCH_LATCH_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "kill_switch_latch.json"
+    )
+    assert workspace_roots.ETA_TRAILING_DD_TRACKER_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "trailing_dd_tracker.json"
+    )
+    assert workspace_roots.ETA_LEGACY_KILL_SWITCH_LATCH_PATH == (
+        ROOT / "eta_engine" / "state" / "kill_switch_latch.json"
+    )
+    assert workspace_roots.ETA_LEGACY_TRAILING_DD_TRACKER_PATH == (
+        ROOT / "eta_engine" / "state" / "trailing_dd_tracker.json"
+    )
+    assert workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "fm_health.json"
+    )
+    assert workspace_roots.ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH == (
+        ROOT / "eta_engine" / "state" / "fm_health.json"
+    )
+    assert workspace_roots.ETA_JARVIS_VERDICTS_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "verdicts.jsonl"
+    )
+    assert workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH == (
+        ROOT / "eta_engine" / "state" / "jarvis_intel" / "verdicts.jsonl"
+    )
+    assert workspace_roots.ETA_EVAL_PROMPTFOO_RESULTS_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "eval" / "promptfoo_results.json"
+    )
+    assert workspace_roots.ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH == (
+        ROOT / "eta_engine" / "state" / "eval" / "promptfoo_results.json"
+    )
+    assert workspace_roots.ETA_HERMES_KILL_LATCH_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "kill_switch_latch.json"
+    )
+    assert workspace_roots.ETA_LEGACY_HERMES_KILL_LATCH_PATH == (
+        ROOT / "eta_engine" / "state" / "kill_switch_latch.json"
+    )
     assert workspace_roots.ETA_AVENGER_METRICS_PATH == ROOT / "logs" / "eta_engine" / "metrics.prom"
     assert workspace_roots.ETA_LEGACY_SHARED_BREAKER_STATE_PATH.name == "breaker.json"
     assert workspace_roots.ETA_LEGACY_SHARED_BREAKER_STATE_PATH.parent.name == ".jarvis"
@@ -407,3 +448,103 @@ def test_regime_gated_default_entry_path_passes_regime_provider() -> None:
     text = _read("eta_engine/scripts/run_btc_regime_gated_walk_forward.py")
     assert "provider,\n        args.etf_path" not in text
     assert "provider, regime_provider, args.etf_path" in text
+
+
+def test_b_class_state_writers_use_canonical_var_state_path() -> None:
+    """B-class state-file writers (LEGACY_PATH_AUDIT.md) write canonical.
+
+    After the 2026-05-04 migration, the B1–B5 writers must default to
+    ``var/eta_engine/state`` and only consult the legacy in-repo
+    ``eta_engine/state`` path as a read fallback. The string checks
+    below pin both halves of that contract.
+    """
+    # B1: dashboard_api.py default state dir is now canonical, with the
+    # legacy in-repo path kept only as a labelled fallback.
+    dashboard_api = _read("eta_engine/deploy/scripts/dashboard_api.py")
+    assert "_DEFAULT_STATE = _WORKSPACE_ROOT / \"var\" / \"eta_engine\" / \"state\"" in dashboard_api
+    assert "_LEGACY_STATE  = _REPO_ROOT / \"state\"" in dashboard_api
+    assert "_DEFAULT_LOG   = _WORKSPACE_ROOT / \"logs\" / \"eta_engine\"" in dashboard_api
+    # The AppData-Local fallback was a separate hard-rule violation;
+    # ensure the policy_diff endpoint no longer falls back to it.
+    assert "AppData/Local/eta_engine" not in dashboard_api
+
+    # B2: run_eval.py uses workspace_roots constants for the canonical
+    # promptfoo output path with a legacy alias for the read fallback.
+    run_eval = _read("eta_engine/eval/run_eval.py")
+    assert "workspace_roots.ETA_EVAL_PROMPTFOO_RESULTS_PATH" in run_eval
+    assert "workspace_roots.ETA_LEGACY_EVAL_PROMPTFOO_RESULTS_PATH" in run_eval
+
+    # B3: hermes_bridge `/kill confirm` writes to a single canonical
+    # latch path (collapsed from the previous three-target fan-out).
+    hermes = _read("eta_engine/brain/jarvis_v3/hermes_bridge.py")
+    assert "workspace_roots.ETA_HERMES_KILL_LATCH_PATH" in hermes
+    # The triple fan-out is gone — the `latch_paths = [...]` literal
+    # that listed three destinations should no longer appear.
+    assert "latch_paths = [" not in hermes
+
+    # B4: read-only verdict inspection scripts use the canonical path
+    # with legacy fallback.
+    cond_check = _read("eta_engine/deploy/scripts/cond_check.py")
+    quick_check = _read("eta_engine/deploy/scripts/quick_check.py")
+    recent_verdicts = _read("eta_engine/deploy/scripts/recent_verdicts.py")
+    for text in (cond_check, quick_check, recent_verdicts):
+        assert "workspace_roots.ETA_JARVIS_VERDICTS_PATH" in text
+        assert "workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH" in text
+        # The hard-coded legacy literal must be gone in all three.
+        assert "C:/EvolutionaryTradingAlgo/eta_engine/state/jarvis_intel" not in text
+
+
+def test_b_class_kill_switch_latch_default_resolves_to_canonical_workspace() -> None:
+    """run_eta_live default latch path lands under workspace var/."""
+    scripts_text = _read("eta_engine/scripts/run_eta_live.py")
+    feeds_text = _read("eta_engine/feeds/run_eta_live.py")
+    for text in (scripts_text, feeds_text):
+        # New canonical default: WORKSPACE_ROOT/var/eta_engine/state/kill_switch_latch.json
+        assert (
+            "WORKSPACE_ROOT / \"var\" / \"eta_engine\" / \"state\" / "
+            "\"kill_switch_latch.json\""
+        ) in text
+        # The legacy default path (ROOT / "state" / "kill_switch_latch.json")
+        # must no longer appear as a write target.
+        assert "ROOT / \"state\" / \"kill_switch_latch.json\"" not in text
+        # The runtime should consult the legacy path only via the
+        # read-fallback helper, not as a direct constant.
+        assert "default_legacy_path()" in text
+
+
+def test_b_class_helper_modules_expose_canonical_default_resolvers() -> None:
+    """KillSwitchLatch and TrailingDDTracker expose canonical helpers."""
+    latch_text = _read("eta_engine/core/kill_switch_latch.py")
+    tracker_text = _read("eta_engine/core/trailing_dd_tracker.py")
+    for text in (latch_text, tracker_text):
+        assert "def default_path()" in text
+        assert "def default_legacy_path()" in text
+        assert "def resolve_existing_path()" in text
+    assert "ETA_KILL_SWITCH_LATCH_PATH" in latch_text
+    assert "ETA_TRAILING_DD_TRACKER_PATH" in tracker_text
+
+
+def test_b_class_fm_health_writer_uses_canonical_workspace_path() -> None:
+    """force_multiplier_health.py + install_fm_health_task.ps1 write canonical.
+
+    The probe script (producer when --json-out is set) and the Task
+    Scheduler installer (caller) both default to the canonical
+    ``var/eta_engine/state/fm_health.json`` path. The producer also
+    exposes the standard helper trio used by the other B-class
+    state writers.
+    """
+    probe_text = _read("eta_engine/scripts/force_multiplier_health.py")
+    installer_text = _read("eta_engine/scripts/install_fm_health_task.ps1")
+
+    # Producer exposes the helper trio + uses the workspace_roots constant.
+    assert "def default_path()" in probe_text
+    assert "def default_legacy_path()" in probe_text
+    assert "def resolve_existing_path()" in probe_text
+    assert "workspace_roots.ETA_FM_HEALTH_SNAPSHOT_PATH" in probe_text
+    assert '_PATH_ENV_VAR: str = "ETA_FM_HEALTH_SNAPSHOT_PATH"' in probe_text
+
+    # Help text and installer point at the canonical var/ path.
+    assert "var/eta_engine/state/fm_health.json" in probe_text
+    assert "var\\eta_engine\\state\\fm_health.json" in installer_text
+    # The legacy in-repo path is gone from the installer's write target.
+    assert "'eta_engine\\state\\fm_health.json'" not in installer_text

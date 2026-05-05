@@ -1,8 +1,9 @@
 # Force-Multiplier Health Probe — Windows Task Scheduler installer
 #
 # Schedules the FM health probe to run every 4 hours and write a JSON
-# snapshot to eta_engine/state/fm_health.json. Dashboards / on-call tools
-# poll that file instead of running the probe synchronously.
+# snapshot to var/eta_engine/state/fm_health.json (canonical workspace
+# path). Dashboards / on-call tools poll that file instead of running
+# the probe synchronously.
 #
 # Run from an elevated PowerShell if you want it scoped to all users; a
 # normal shell registers it for the current user, which is what we want
@@ -41,7 +42,7 @@ if (-not (Test-Path $probePath)) {
     throw "Force-Multiplier health probe not found at $probePath. Set -Workspace if your repo is elsewhere."
 }
 
-$snapshotPath = Join-Path $Workspace 'eta_engine\state\fm_health.json'
+$snapshotPath = Join-Path $Workspace 'var\eta_engine\state\fm_health.json'
 
 # Build the command. Use --quiet so the task doesn't write console output;
 # the JSON snapshot is the only artifact we care about.

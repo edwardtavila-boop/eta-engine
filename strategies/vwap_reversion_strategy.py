@@ -282,7 +282,13 @@ class VWAPReversionStrategy:
                 return None  # invalid bracket — abort rather than ship a fake-LONG
             stop_dist_actual = entry - stop
             target = self._current_vwap
-            if target <= entry:
+            # Bug fix 2026-05-05: VWAP can be on the right side of entry
+            # but too close (RR < 0.1 trips the validator).  Fall back to
+            # the configured rr_target whenever the natural VWAP target
+            # would produce RR < 0.5x of cfg.rr_target.  Was firing in
+            # vwap_mr_mnq + vwap_mr_nq elite-gate runs (2 rejected each).
+            min_reward = 0.5 * self.cfg.rr_target * stop_dist_actual
+            if target <= entry or (target - entry) < min_reward:
                 target = entry + self.cfg.rr_target * stop_dist_actual
         else:
             stop = entry + stop_dist
@@ -294,7 +300,8 @@ class VWAPReversionStrategy:
                 return None  # invalid bracket — abort
             stop_dist_actual = stop - entry
             target = self._current_vwap
-            if target >= entry:
+            min_reward = 0.5 * self.cfg.rr_target * stop_dist_actual
+            if target >= entry or (entry - target) < min_reward:
                 target = entry - self.cfg.rr_target * stop_dist_actual
 
         from eta_engine.backtest.engine import _Open

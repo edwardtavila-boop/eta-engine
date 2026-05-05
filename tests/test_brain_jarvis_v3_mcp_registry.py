@@ -90,11 +90,28 @@ def test_can_use_reports_unregistered_tools_and_filters_by_server() -> None:
 
 
 def test_load_missing_registry_returns_safe_default_catalog() -> None:
+    # Canonical workspace path: under var/eta_engine/state/ per CLAUDE.md
+    # hard rule #1. The path must not exist for this test (load() returns
+    # the safe default catalog when the file is missing).
     registry = MCPRegistry.load(
-        Path("C:/EvolutionaryTradingAlgo/eta_engine/state/definitely_missing_mcp_registry_for_test.json")
+        Path(
+            "C:/EvolutionaryTradingAlgo/var/eta_engine/state/"
+            "definitely_missing_mcp_registry_for_test.json"
+        )
     )
 
     assert registry.get("tradingview", "quote_get") is not None
     allowed, reason = registry.can_use("tradingview", "quote_get", "bot.mnq")
     assert allowed is True
     assert "approved" in reason
+
+    # Legacy in-repo path also returns the safe default when missing —
+    # verifies that the read-fallback location continues to behave
+    # correctly during the migration window.
+    legacy_registry = MCPRegistry.load(
+        Path(
+            "C:/EvolutionaryTradingAlgo/eta_engine/state/"  # HISTORICAL-PATH-OK
+            "definitely_missing_mcp_registry_for_test.json"  # HISTORICAL-PATH-OK
+        )
+    )
+    assert legacy_registry.get("tradingview", "quote_get") is not None
