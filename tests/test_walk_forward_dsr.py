@@ -14,6 +14,10 @@ What this buys us over the existing single aggregate DSR:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 from eta_engine.backtest import (
     BacktestConfig,
@@ -149,6 +153,39 @@ class TestComputePerFoldDsr:
             n_folds=5,
         )
         assert 0.0 <= dsr <= 1.0
+
+    def test_sweep_count_multiplies_fold_trials(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """WF DSR must penalize param sweeps: trials = sweep_n * folds."""
+        captured: list[int] = []
+
+        def fake_compute_dsr(
+            *,
+            sharpe: float,
+            n_trades: int,
+            skew: float,
+            kurtosis: float,
+            n_trials: int = 1,
+        ) -> float:
+            captured.append(n_trials)
+            return 0.42
+
+        monkeypatch.setattr(
+            "eta_engine.backtest.walk_forward.compute_dsr",
+            fake_compute_dsr,
+        )
+
+        assert compute_per_fold_dsr(
+            sharpe=1.2,
+            n_trades=80,
+            skew=0.0,
+            kurtosis=3.0,
+            n_folds=3,
+            sweep_n=4,
+        ) == 0.42
+        assert captured == [12]
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +326,51 @@ class TestEngineWiresPerFoldDsr:
         assert res.per_fold_dsr == []
         assert res.fold_dsr_median == 0.0
         assert res.fold_dsr_pass_fraction == 0.0
+
+    def test_aggregate_dsr_trials_include_sweep_count(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: list[int] = []
+
+        def fake_compute_dsr(
+            *,
+            sharpe: float,
+            n_trades: int,
+            skew: float,
+            kurtosis: float,
+            n_trials: int = 1,
+        ) -> float:
+            captured.append(n_trials)
+            return 0.9
+
+        monkeypatch.setattr(
+            "eta_engine.backtest.walk_forward.compute_dsr",
+            fake_compute_dsr,
+        )
+        wins = [
+            {
+                "is_sharpe": 1.5,
+                "oos_sharpe": 1.2,
+                "oos_trades": 40,
+                "oos_skew": 0.0,
+                "oos_kurt": 3.0,
+                "degradation_pct": 0.1,
+                "min_trades_met": True,
+            }
+            for _ in range(3)
+        ]
+        cfg = WalkForwardConfig(
+            window_days=5,
+            step_days=2,
+            min_trades_per_window=1,
+            sweep_n=4,
+        )
+
+        res = WalkForwardEngine()._aggregate(wins, cfg)
+
+        assert res.dsr_n_trials == 12
+        assert captured == [12, 12, 12, 12]
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,10 @@ gate semantics, and drift monitor at the contract level."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from eta_walkforward import (
     BaselineSnapshot,
@@ -95,6 +97,38 @@ def test_strict_gate_passes_clean_signal() -> None:
     assert result.pass_gate is True
     assert result.aggregate_is_sharpe > 0
     assert result.aggregate_oos_sharpe > 0
+
+
+def test_dsr_trials_include_sweep_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[int] = []
+
+    def fake_compute_dsr(
+        *,
+        sharpe: float,
+        n_trades: int,
+        skew: float,
+        kurtosis: float,
+        n_trials: int = 1,
+    ) -> float:
+        captured.append(n_trials)
+        return 0.9
+
+    monkeypatch.setattr(
+        "eta_walkforward.walk_forward.compute_dsr",
+        fake_compute_dsr,
+    )
+    cfg = WalkForwardConfig(
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=3,
+        sweep_n=5,
+    )
+    windows = [_good_window(i) for i in range(2)]
+
+    result = evaluate_gate(cfg, windows)
+
+    assert result.dsr_n_trials == 10
+    assert captured == [10, 10, 10]
 
 
 def test_strict_gate_rejects_is_negative() -> None:

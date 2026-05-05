@@ -12,7 +12,7 @@ Per-fold DSR (added 2026-04-24)
 -------------------------------
 The aggregate DSR can be lifted by a handful of outlier folds. This module
 also computes a DSR *per fold*, using that fold's own OOS trade-return
-distribution moments and ``n_folds`` as the trial count. We expose:
+distribution moments and ``sweep_n * n_folds`` as the trial count. We expose:
 
   * ``windows[i]['oos_dsr']`` / ``oos_skew`` / ``oos_kurt``
   * ``WalkForwardResult.per_fold_dsr``
@@ -60,6 +60,9 @@ class WalkForwardConfig(BaseModel):
     # pathological few-trade windows at the fold level, so requiring
     # 100pct here was duplicate strictness.
     min_trades_met_fraction: float = Field(default=0.8, ge=0.0, le=1.0)
+    # Multiple-testing penalty: every parameter-sweep cell times every
+    # walk-forward fold is one selection trial for DSR.
+    sweep_n: int = Field(default=1, ge=1)
     # Per-fold DSR gating (additive, default off for back-compat) ----------
     strict_fold_dsr_gate: bool = False
     fold_dsr_min_pass_fraction: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -107,6 +110,7 @@ class WalkForwardResult(BaseModel):
     aggregate_oos_sharpe: float = 0.0
     oos_degradation_avg: float = 0.0
     deflated_sharpe: float = 0.0
+    dsr_n_trials: int = 0
     pass_gate: bool = False
     # Per-fold DSR layer --------------------------------------------------
     per_fold_dsr: list[float] = Field(default_factory=list)
@@ -125,19 +129,21 @@ def compute_per_fold_dsr(
     skew: float,
     kurtosis: float,
     n_folds: int,
+    sweep_n: int = 1,
 ) -> float:
     """DSR for a single walk-forward fold.
 
-    Equivalent to :func:`compute_dsr` with ``n_trials=n_folds``. The fold
-    count is what accounts for selection bias: every fold is a separate
-    trial, so the expected-max threshold rises with the number of folds.
+    Equivalent to :func:`compute_dsr` with ``n_trials=sweep_n * n_folds``.
+    Every tested parameter cell across every fold is a separate trial, so the
+    expected-max threshold rises with both sweep breadth and WF window count.
     """
+    n_trials = max(n_folds, 1) * max(sweep_n, 1)
     return compute_dsr(
         sharpe=sharpe,
         n_trades=max(n_trades, 2),
         skew=skew,
         kurtosis=kurtosis,
-        n_trials=max(n_folds, 1),
+        n_trials=n_trials,
     )
 
 
@@ -286,17 +292,18 @@ class WalkForwardEngine:
 
         # Legacy aggregate DSR: mean OOS Sharpe + cross-window moments
         skew, kurt = _moments(oos_sharpes)
+        n_folds = len(wins)
+        dsr_n_trials = max(n_folds * cfg.sweep_n, 1)
         dsr = compute_dsr(
             sharpe=agg_oos,
             n_trades=max(sum(w["oos_trades"] for w in wins), 2),
             skew=skew,
             kurtosis=kurt,
-            n_trials=len(wins),
+            n_trials=dsr_n_trials,
         )
 
         # Per-fold DSR layer. Fill in each window's oos_dsr using that
-        # fold's trade-return moments and the total fold count.
-        n_folds = len(wins)
+        # fold's trade-return moments and the full sweep-adjusted trial count.
         per_fold_dsr: list[float] = []
         for w in wins:
             fold_dsr = compute_per_fold_dsr(
@@ -305,6 +312,7 @@ class WalkForwardEngine:
                 skew=w["oos_skew"],
                 kurtosis=w["oos_kurt"],
                 n_folds=n_folds,
+                sweep_n=cfg.sweep_n,
             )
             w["oos_dsr"] = round(fold_dsr, 4)
             per_fold_dsr.append(fold_dsr)
@@ -405,6 +413,7 @@ class WalkForwardEngine:
             aggregate_oos_sharpe=round(agg_oos, 4),
             oos_degradation_avg=round(deg_avg, 4),
             deflated_sharpe=round(dsr, 4),
+            dsr_n_trials=dsr_n_trials,
             pass_gate=gate,
             per_fold_dsr=[round(d, 4) for d in per_fold_dsr],
             fold_dsr_median=round(fold_median, 4),

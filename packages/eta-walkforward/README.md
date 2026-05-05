@@ -109,6 +109,7 @@ wf_cfg = WalkForwardConfig(
     window_days=60, step_days=30,
     anchored=True, oos_fraction=0.3,
     min_trades_per_window=3,
+    sweep_n=24,  # number of parameter cells tested before this WF selection
     strict_fold_dsr_gate=True,
     fold_dsr_min_pass_fraction=0.5,
 )
@@ -185,7 +186,7 @@ For `pass_gate = True`:
    degradation is clamped to [0, 1] so a single small-IS window
    can't blow up the average.
 4. **Aggregate Deflated Sharpe Ratio > 0.5** — adjusts for skew,
-   kurtosis, and the number of parameter trials.
+   kurtosis, and `sweep_n * walk_forward_windows` parameter trials.
 5. **`min_trades_met_fraction` ≥ 80%** of windows hit their trade
    count. Selective strategies (2-8 trades per OOS window) aren't
    structurally locked out by this.

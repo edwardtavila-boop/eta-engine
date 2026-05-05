@@ -43,6 +43,9 @@ class WalkForwardConfig(BaseModel):
     # selective strategies that fire only a handful of trades per OOS
     # window).
     min_trades_met_fraction: float = Field(default=0.8, ge=0.0, le=1.0)
+    # Multiple-testing penalty: every parameter-sweep cell times every
+    # walk-forward fold is one selection trial for DSR.
+    sweep_n: int = Field(default=1, ge=1)
     # Per-fold DSR gating (additive, default off for back-compat).
     strict_fold_dsr_gate: bool = False
     fold_dsr_min_pass_fraction: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -102,6 +105,7 @@ class WalkForwardResult(BaseModel):
     aggregate_oos_degradation: float = 0.0
     oos_degradation_avg: float = 0.0
     deflated_sharpe: float = 0.0
+    dsr_n_trials: int = 0
     pass_gate: bool = False
     per_fold_dsr: list[float] = Field(default_factory=list)
     fold_dsr_median: float = 0.0
@@ -193,12 +197,13 @@ def evaluate_gate(
     # Cross-window DSR moments
     skew, kurt = _moments(oos_sharpes)
     n_trades_total = max(sum(w.oos_trades for w in windows), 2)
+    dsr_n_trials = max(n_folds * cfg.sweep_n, 1)
     dsr = compute_dsr(
         sharpe=agg_oos,
         n_trades=n_trades_total,
         skew=skew,
         kurtosis=kurt,
-        n_trials=n_folds,
+        n_trials=dsr_n_trials,
     )
 
     # Per-fold DSR (used by strict_fold_dsr_gate)
@@ -209,7 +214,7 @@ def evaluate_gate(
             n_trades=max(w.oos_trades, 2),
             skew=w.oos_skew,
             kurtosis=w.oos_kurt,
-            n_trials=n_folds,
+            n_trials=dsr_n_trials,
         )
         per_fold_dsr.append(fold_dsr)
     fold_median = _median(per_fold_dsr)
@@ -327,6 +332,7 @@ def evaluate_gate(
         aggregate_oos_degradation=round(agg_deg, 4),
         oos_degradation_avg=round(deg_avg, 4),
         deflated_sharpe=round(dsr, 4),
+        dsr_n_trials=dsr_n_trials,
         pass_gate=gate,
         per_fold_dsr=[round(d, 4) for d in per_fold_dsr],
         fold_dsr_median=round(fold_median, 4),
