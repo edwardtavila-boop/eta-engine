@@ -853,10 +853,30 @@ class JarvisStrategySupervisor:
             from eta_engine.strategies.per_bot_registry import (
                 ASSIGNMENTS,
                 is_active,
+                validate_registry_no_duplicates,
             )
         except ImportError as exc:
             logger.error("per_bot_registry import failed (%s)", exc)
             return 0
+
+        # Refuse to load if the active fleet contains two bots with
+        # identical tradeable config — would route the same trades to
+        # the broker twice on the same edge.  Pair with the same guard
+        # in MnqLiveSupervisor.start().
+        try:
+            validate_registry_no_duplicates(raise_on_duplicate=True)
+        except RuntimeError as exc:
+            logger.error(
+                "supervisor REFUSING TO LOAD BOTS — duplicate-config "
+                "registry entries: %s", exc,
+            )
+            raise
+        except TypeError:
+            # Older registry without raise_on_duplicate kwarg — skip.
+            logger.warning(
+                "validate_registry_no_duplicates lacks raise_on_duplicate; "
+                "skipping duplicate-config guard",
+            )
 
         # Filter to operator-pinned subset (if any)
         pinned = {
