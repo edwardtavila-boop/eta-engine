@@ -154,12 +154,10 @@ def _build_callable_for_assignment(
     if strategy is None:
         return None
 
-    # Wrap with EdgeAmplifier if the bot has edge config in extras.
-    # WRAPPING DISABLED during paper-soak integration test — the layers
-    # are too aggressive combined and produce 0 trades. Will be re-enabled
-    # incrementally: alpha_sniper first, then exhaustion, then absorption, etc.
+    # Wrap with EdgeAmplifier when an assignment carries an explicit edge
+    # config. Bots without edge_config stay on their raw strategy.
     edge_raw = extras.get("edge_config")
-    if edge_raw is not None and extras.get("edge_enabled") is True:
+    if edge_raw is not None:
         try:
             from eta_engine.strategies.edge_layers import EdgeAmplifier, EdgeAmplifierConfig
 

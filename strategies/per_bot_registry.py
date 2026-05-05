@@ -77,6 +77,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Tight filters (wick_pct=0.60, vol_z=1.0) keep quality high."
         ),
         extras={
+            "edge_enabled": True,
+            "edge_config": "eth_crypto",
             "promotion_status": "research_candidate",
             "per_ticker_optimal": "ETH",
             "crypto_native": True,
@@ -211,6 +213,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Replaces broken crypto_orb scorecard that lost -$32k."
         ),
         extras={
+            "edge_enabled": True,
+            "edge_config": "btc_crypto",
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
@@ -464,6 +468,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "push this into profit. Original: +8.29 OOS Sharpe."
         ),
         extras={
+            "edge_enabled": True,
+            "edge_config": "mnq_futures",
             "promotion_status": "production_candidate",
             "sage_min_conviction": 0.55,
             "sage_min_alignment": 0.50,
@@ -1657,7 +1663,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "stop_dist × 1000."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "shadow_benchmark",
+            "shadow_reason": (
+                "YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. "
+                "Keep as diagnostic only."
+            ),
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "level_lookback": 48, "reclaim_window": 3,
@@ -1726,7 +1736,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="mes_sweep_reclaim",
         strategy_id="mes_sweep_reclaim_v1",
         symbol="MES1",
-        timeframe="5m",
+        timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1765,7 +1775,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="m2k_sweep_reclaim",
         strategy_id="m2k_sweep_reclaim_v1",
         symbol="M2K1",
-        timeframe="5m",
+        timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1804,7 +1814,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="ym_sweep_reclaim",
         strategy_id="ym_sweep_reclaim_v1",
         symbol="YM1",
-        timeframe="5m",
+        timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1820,7 +1830,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "YM vs ES vs NQ vs M2K disagreement."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "shadow_benchmark",
+            "shadow_reason": (
+                "YM/zn sweep_reclaim losing heavily at -$3.6k/20 windows. "
+                "Keep as diagnostic only."
+            ),
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "level_lookback": 48, "reclaim_window": 3,
