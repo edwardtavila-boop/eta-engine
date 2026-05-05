@@ -88,6 +88,9 @@ _YF_SYMBOL: dict[str, str] = {
     # and met_sweep_reclaim bots). yfinance ticker uses parent name.
     "MBT": "BTC=F",    # Micro Bitcoin (CME)
     "MET": "ETH=F",    # Micro Ether (CME)
+    # Index futures (extended)
+    "YM": "YM=F",      # Mini Dow ($5)
+    "M2K": "M2K=F",    # Micro Russell 2000
 }
 
 # yfinance period limits per timeframe (1m: 7-30d max; 5m: 60d; 1h: 730d)

@@ -1511,7 +1511,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="gc_sweep_reclaim",
         strategy_id="gc_sweep_reclaim_v1",
-        symbol="GC",
+        symbol="GC1",
         timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1551,7 +1551,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="cl_sweep_reclaim",
         strategy_id="cl_sweep_reclaim_v1",
-        symbol="CL",
+        symbol="CL1",
         timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1591,7 +1591,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="ng_sweep_reclaim",
         strategy_id="ng_sweep_reclaim_v1",
-        symbol="NG",
+        symbol="NG1",
         timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1630,7 +1630,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="zn_sweep_reclaim",
         strategy_id="zn_sweep_reclaim_v1",
-        symbol="ZN",
+        symbol="ZN1",
         timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1669,7 +1669,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="eur_sweep_reclaim",
         strategy_id="eur_sweep_reclaim_v1",
-        symbol="6E",
+        symbol="6E1",
         timeframe="1h",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1715,7 +1715,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mes_sweep_reclaim",
         strategy_id="mes_sweep_reclaim_v1",
-        symbol="MES",
+        symbol="MES1",
         timeframe="5m",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1754,7 +1754,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="m2k_sweep_reclaim",
         strategy_id="m2k_sweep_reclaim_v1",
-        symbol="M2K",
+        symbol="M2K1",
         timeframe="5m",
         scorer_name="mnq",
         confluence_threshold=0.0,
@@ -1793,7 +1793,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="ym_sweep_reclaim",
         strategy_id="ym_sweep_reclaim_v1",
-        symbol="YM",
+        symbol="YM1",
         timeframe="5m",
         scorer_name="mnq",
         confluence_threshold=0.0,
