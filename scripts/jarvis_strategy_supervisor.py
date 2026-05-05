@@ -565,7 +565,25 @@ class ExecutionRouter:
             bot.open_position["bracket_target"] = round(_pt, 4)
             bot.open_position["bracket_src"] = f"paper:{_psrc}"
         except Exception as _exc:  # noqa: BLE001 — best effort
-            logger.debug("paper-bracket compute failed for %s: %s", bot.bot_id, _exc)
+            # FIRST failure per bot logs at warning level so a systemic
+            # compute_bracket break doesn't disappear into debug. Subsequent
+            # failures from the same bot drop to debug to avoid log spam.
+            # Without this hardening (per risk-review), if compute_bracket
+            # ever broke, every paper bot would silently fall through to
+            # the legacy fallback gates and the operator would have no
+            # signal that brackets weren't actually being stored.
+            if not hasattr(self, "_paper_bracket_warned"):
+                self._paper_bracket_warned: set[str] = set()
+            if bot.bot_id not in self._paper_bracket_warned:
+                logger.warning(
+                    "paper-bracket compute failed for %s (first occurrence): %s",
+                    bot.bot_id, _exc,
+                )
+                self._paper_bracket_warned.add(bot.bot_id)
+            else:
+                logger.debug(
+                    "paper-bracket compute failed for %s: %s", bot.bot_id, _exc,
+                )
         bot.n_entries += 1
         bot.last_signal_at = rec.fill_ts
 
