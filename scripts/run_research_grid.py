@@ -83,6 +83,8 @@ class CellResult:
     fold_dsr_median: float
     fold_dsr_pass_fraction: float
     pass_gate: bool
+    wf_mode: str = "unknown"
+    dsr_n_trials: int = 0
     note: str = ""
 
 
@@ -1109,18 +1111,20 @@ def run_cell(cell: ResearchCell, *, max_bars: int | None = None) -> CellResult:
         fold_dsr_median=res.fold_dsr_median,
         fold_dsr_pass_fraction=res.fold_dsr_pass_fraction,
         pass_gate=res.pass_gate,
+        wf_mode="anchored" if wf.anchored else "rolling",
+        dsr_n_trials=res.dsr_n_trials,
         note=_bars_note(ds, bars, max_bars),
     )
 
 
 def render_table(results: Sequence[CellResult]) -> str:
     header = (
-        "| Config | Sym/TF | Scorer | Thr | Gate | W | +OOS | IS Sh | "
+        "| Config | Sym/TF | Scorer | Thr | Gate | WF | DSR N | W | +OOS | IS Sh | "
         "OOS Sh | Deg% | DSR med | DSR pass% | Verdict | Note |"
     )
     lines = [
         header,
-        "|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "|---|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
     ]
     for r in results:
         gate_str = (
@@ -1130,7 +1134,8 @@ def render_table(results: Sequence[CellResult]) -> str:
         verdict = "PASS" if r.pass_gate else "FAIL"
         lines.append(
             f"| {r.cell.label} | {r.cell.symbol}/{r.cell.timeframe} | {r.cell.scorer_name} | "
-            f"{r.cell.threshold:.1f} | {gate_str} | {r.n_windows} | {r.n_positive_oos} | "
+            f"{r.cell.threshold:.1f} | {gate_str} | {r.wf_mode} | {r.dsr_n_trials} | "
+            f"{r.n_windows} | {r.n_positive_oos} | "
             f"{r.agg_is_sharpe:.3f} | {r.agg_oos_sharpe:.3f} | "
             f"{r.avg_oos_degradation * 100:.1f} | {r.fold_dsr_median:.3f} | "
             f"{r.fold_dsr_pass_fraction * 100:.1f} | {verdict} | {r.note} |"

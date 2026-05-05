@@ -19,7 +19,14 @@ def _cell() -> run_research_grid.ResearchCell:
     )
 
 
-def _result(*, pass_gate: bool = False, n_windows: int = 0, note: str = "NO_DATA: BTC/1h"):
+def _result(
+    *,
+    pass_gate: bool = False,
+    n_windows: int = 0,
+    note: str = "NO_DATA: BTC/1h",
+    wf_mode: str = "anchored",
+    dsr_n_trials: int = 12,
+):
     return run_research_grid.CellResult(
         cell=_cell(),
         n_windows=n_windows,
@@ -31,6 +38,8 @@ def _result(*, pass_gate: bool = False, n_windows: int = 0, note: str = "NO_DATA
         fold_dsr_median=0.0,
         fold_dsr_pass_fraction=0.0,
         pass_gate=pass_gate,
+        wf_mode=wf_mode,
+        dsr_n_trials=dsr_n_trials,
         note=note,
     )
 
@@ -76,6 +85,15 @@ def test_research_grid_report_records_artifact_class() -> None:
 
     assert "Artifact class: `no_data`" in report
     assert "| test | BTC/1h |" in report
+
+
+def test_research_grid_table_surfaces_wf_mode_and_dsr_trials() -> None:
+    table = run_research_grid.render_table([
+        _result(wf_mode="anchored", dsr_n_trials=24),
+    ])
+
+    assert "| WF | DSR N |" in table
+    assert "| anchored | 24 |" in table
 
 
 def test_research_grid_report_path_uses_microseconds(tmp_path) -> None:
