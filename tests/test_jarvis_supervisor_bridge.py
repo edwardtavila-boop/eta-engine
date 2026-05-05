@@ -118,6 +118,61 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert btc["open_position"]["side"] == "BUY"
 
 
+def test_supervisor_bridge_prefers_per_bot_mode_over_top_level(tmp_path: Path) -> None:
+    """Per-bot ``mode`` field on heartbeat must win over top-level ``mode``.
+
+    Regression for the 52-bot paper_sim badge bug
+    (PAPER_LIVE_ROUTING_GAP.md): supervisor now writes per-bot ``mode``
+    inheriting from cfg.mode. The bridge must surface that per-bot value
+    so the dashboard renders Mode: paper_live for each bot row when the
+    supervisor is in paper_live mode.
+    """
+    from eta_engine.scripts.jarvis_supervisor_bridge import (
+        jarvis_supervisor_bot_accounts,
+    )
+    hb_data = {
+        "ts": "2026-05-04T12:00:00+00:00",
+        # Top-level mode set to paper_live; every per-bot row should
+        # carry that value (and never silently fall back to paper_sim).
+        "mode": "paper_live",
+        "bots": [
+            {
+                "bot_id": "alpha",
+                "symbol": "BTC",
+                "strategy_kind": "x",
+                "direction": "long",
+                "n_entries": 0,
+                "n_exits": 0,
+                "realized_pnl": 0.0,
+                "open_position": None,
+                "last_bar_ts": "2026-05-04T12:00:00+00:00",
+                # New per-bot field (added 2026-05-04). Bridge must
+                # surface this verbatim.
+                "mode": "paper_live",
+            },
+            {
+                "bot_id": "beta",
+                "symbol": "ETH",
+                "strategy_kind": "y",
+                "direction": "long",
+                "n_entries": 0,
+                "n_exits": 0,
+                "realized_pnl": 0.0,
+                "open_position": None,
+                "last_bar_ts": "2026-05-04T12:00:00+00:00",
+                # No per-bot field on this row -> bridge must fall back
+                # to top-level hb["mode"] (also paper_live).
+            },
+        ],
+    }
+    hb = tmp_path / "heartbeat.json"
+    hb.write_text(json.dumps(hb_data), encoding="utf-8")
+    accounts = jarvis_supervisor_bot_accounts(heartbeat_path=hb)
+    assert len(accounts) == 2
+    assert accounts[0]["mode"] == "paper_live", "per-bot field must win"
+    assert accounts[1]["mode"] == "paper_live", "fallback to hb top-level"
+
+
 def test_supervisor_bridge_idle_status_when_no_entries_no_position(tmp_path: Path) -> None:
     """A bot that hasn't traded yet -> status 'idle', not 'running'."""
     from eta_engine.scripts.jarvis_supervisor_bridge import (

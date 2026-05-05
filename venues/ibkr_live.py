@@ -168,6 +168,19 @@ class LiveIbkrVenue(VenueBase):
     def __init__(self, config: Any | None = None) -> None:  # noqa: ANN401 — passthrough config
         super().__init__("DUQ319869", "")
         self.config = config  # kept for API compatibility, not used by TWS
+        self._client_id = type(self)._client_id
+        # Per-process unique clientId. Multiple consumers (supervisor + broker_router)
+        # collide on the hardcoded 99 → IB Error 326. Read ETA_IBKR_CLIENT_ID; if 0,
+        # let TWS auto-assign. Default 99 preserves legacy behavior.
+        env_cid = os.environ.get("ETA_IBKR_CLIENT_ID", "").strip()
+        if env_cid:
+            try:
+                self._client_id = int(env_cid)
+            except ValueError:
+                logger.warning(
+                    "ETA_IBKR_CLIENT_ID=%r is not an int; falling back to default %d",
+                    env_cid, self._client_id,
+                )
 
     def connection_endpoint(self) -> str:
         return "127.0.0.1:4002"

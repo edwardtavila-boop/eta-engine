@@ -232,11 +232,29 @@ class BotInstance:
     last_bar_ts: str = ""
     last_signal_at: str = ""
     last_jarvis_verdict: str = ""
+    # Diagnostic reason for last_jarvis_verdict == "NONE": one of
+    #   ""                              -> consult succeeded (verdict is real)
+    #   "jarvis_not_bootstrapped"       -> JarvisFull failed to initialize
+    #   "regime_block:<kind>@<regime>"  -> regime gate filtered this bot
+    #   "consult_exception:<ExcType>"   -> consult raised, see logs
+    # Surfaced into the heartbeat so the operator can see WHY 50/52 bots
+    # show NONE, without tailing the supervisor log. Empty after a
+    # successful consult — never carry stale diagnostic forward.
+    last_jarvis_verdict_reason: str = ""
     sage_bars: deque = field(default_factory=lambda: deque(maxlen=200))
 
-    def to_state(self) -> dict:
+    def to_state(self, *, mode: str | None = None) -> dict:
+        # Per-bot ``mode`` field is REQUIRED in the heartbeat so the
+        # dashboard can render Mode: paper_live for each bot row instead
+        # of a hardcoded ``paper_sim`` default. The mode is sourced from
+        # the supervisor-wide cfg.mode (no per-bot override today); if
+        # caller passes None we omit the field so callers without a cfg
+        # context (e.g. round-trip tests) don't get a stale value.
+        # See PAPER_LIVE_ROUTING_GAP.md (52 bots stuck on paper_sim badge).
         d = asdict(self)
         d.pop("sage_bars", None)
+        if mode is not None:
+            d["mode"] = mode
         return d
 
 
@@ -1453,7 +1471,15 @@ class JarvisStrategySupervisor:
         payload: dict,
         narrative: str,
     ):
+        # Track WHY we returned None so the supervisor heartbeat can
+        # distinguish "JARVIS not bootstrapped" from "regime blocked this
+        # strategy_kind" from "consult raised an exception". Without this,
+        # every None-return collapses into a single "NONE" string in the
+        # heartbeat and the operator can't tell which 50/52 bots are
+        # blocked-by-regime vs JARVIS-bootstrap-down vs raising-exceptions.
+        # Stored on the bot instance so it survives the return-None path.
         if self._jarvis_full is None:
+            bot.last_jarvis_verdict_reason = "jarvis_not_bootstrapped"
             return None
 
         # Regime-aware strategy gating. If lab/regime_detector has classified
@@ -1470,10 +1496,13 @@ class JarvisStrategySupervisor:
                 and bot.strategy_kind
                 and bot.strategy_kind in blocked
             ):
-                logger.debug(
+                primary = live_regime.get("primary_regime") or "unknown"
+                logger.info(
                     "regime-block %s.%s: strategy_kind=%s blocked by regime=%s",
-                    bot.bot_id, action, bot.strategy_kind,
-                    live_regime.get("primary_regime"),
+                    bot.bot_id, action, bot.strategy_kind, primary,
+                )
+                bot.last_jarvis_verdict_reason = (
+                    f"regime_block:{bot.strategy_kind}@{primary}"
                 )
                 return None
         except Exception:  # noqa: BLE001 -- regime feed must never block consults
@@ -1583,9 +1612,18 @@ class JarvisStrategySupervisor:
                 req=req, ctx=ctx,
                 current_narrative=narrative, bot_id=bot.bot_id,
             )
+            # consult() succeeded; clear any prior diagnostic reason
+            # so a recovered bot doesn't keep showing a stale block tag
+            # on the heartbeat after the regime gate clears.
+            bot.last_jarvis_verdict_reason = ""
             return verdict
         except Exception as exc:  # noqa: BLE001
             logger.warning("consult failed for %s: %s", bot.bot_id, exc)
+            # Surface exception class so the heartbeat can be grepped
+            # for the dominant failure mode without tailing logs.
+            bot.last_jarvis_verdict_reason = (
+                f"consult_exception:{type(exc).__name__}"
+            )
             return None
 
     @staticmethod
@@ -1629,7 +1667,16 @@ class JarvisStrategySupervisor:
             "size_multiplier": 1.0,
             "block_strategies": [],
         }
-        path = workspace_roots.ETA_RUNTIME_STATE_DIR / "regime_state.json"
+        # Path is jarvis_intel/regime_state.json — regime_detector emits
+        # under jarvis_intel/, not the bare state dir. The legacy bare
+        # path silently never resolved, so block_strategies stayed []
+        # forever and the regime gate was effectively dead. Two fallback
+        # paths kept for backward compat with older deployments.
+        path = (
+            workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "regime_state.json"
+        )
+        if not path.exists():
+            path = workspace_roots.ETA_RUNTIME_STATE_DIR / "regime_state.json"
         try:
             if not path.exists():
                 return defaults
@@ -1920,7 +1967,12 @@ class JarvisStrategySupervisor:
             readiness, readiness_by_bot = _load_bot_strategy_readiness_snapshot()
             bot_states = []
             for bot in self.bots:
-                state = bot.to_state()
+                # Pass cfg.mode so each per-bot dict carries an explicit
+                # ``mode`` field (paper_sim/paper_live/live). Without this
+                # the dashboard bridge fell back to a hardcoded paper_sim
+                # default and the entire fleet showed Mode: paper_sim
+                # even when supervisor was running paper_live.
+                state = bot.to_state(mode=self.cfg.mode)
                 state["strategy_readiness"] = readiness_by_bot.get(
                     bot.bot_id,
                     {

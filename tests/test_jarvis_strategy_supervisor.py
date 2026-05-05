@@ -298,6 +298,44 @@ def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypa
     assert bot["strategy_readiness"]["next_action"].startswith("Run per-bot promotion")
 
 
+def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> None:
+    """Regression: every per-bot heartbeat dict must carry ``mode`` field
+    sourced from cfg.mode. Without this, the dashboard bridge falls back
+    to a hardcoded ``paper_sim`` and all 52 bots show paper_sim despite
+    the supervisor running paper_live. See PAPER_LIVE_ROUTING_GAP.md.
+    """
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    cfg.mode = "paper_live"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    # Three bots, simulating the multi-bot fleet.
+    for bot_id in ("alpha", "beta", "gamma"):
+        sup.bots.append(BotInstance(
+            bot_id=bot_id, symbol="BTC", strategy_kind="x",
+            direction="long", cash=5000.0,
+        ))
+    sup._write_heartbeat(1)
+    payload = json.loads(
+        (cfg.state_dir / "heartbeat.json").read_text(encoding="utf-8"),
+    )
+    # Top-level cfg.mode pinned through to heartbeat.
+    assert payload["mode"] == "paper_live"
+    # Every per-bot dict must carry the same mode (no silent paper_sim).
+    assert len(payload["bots"]) == 3
+    for bot in payload["bots"]:
+        assert bot["mode"] == "paper_live", (
+            f"bot {bot['bot_id']} reports mode={bot.get('mode')!r}, "
+            "expected paper_live (cfg.mode inheritance broken)"
+        )
+
+
 # --- Synthetic JarvisContext ----------------------------------------
 
 

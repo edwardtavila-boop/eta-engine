@@ -72,11 +72,20 @@ def jarvis_supervisor_bot_accounts(
         return []
 
     hb_ts = str(hb.get("ts") or "")
-    mode = str(hb.get("mode") or "paper_sim")
+    # Top-level supervisor mode -- used as fallback when a per-bot mode
+    # field is missing on legacy heartbeats. The default of "paper_sim"
+    # remains the safety floor (no real orders) for an unparseable
+    # heartbeat. See PAPER_LIVE_ROUTING_GAP.md.
+    hb_mode = str(hb.get("mode") or "paper_sim")
     accounts: list[dict[str, Any]] = []
     for bot in raw_bots:
         if not isinstance(bot, dict):
             continue
+        # Prefer the per-bot ``mode`` field on the heartbeat (added
+        # 2026-05-04 to fix dashboard 52-bot paper_sim badge bug). Fall
+        # back to top-level ``hb["mode"]`` for older heartbeats that
+        # predate the per-bot field.
+        bot_mode = str(bot.get("mode") or hb_mode)
         n_entries = int(bot.get("n_entries") or 0)
         n_exits = int(bot.get("n_exits") or 0)
         realized_pnl = float(bot.get("realized_pnl") or 0.0)
@@ -87,6 +96,10 @@ def jarvis_supervisor_bot_accounts(
         wins = n_exits if realized_pnl > 0 else 0
         losses = n_exits if realized_pnl < 0 else 0
         last_verdict = str(bot.get("last_jarvis_verdict") or "")
+        # Diagnostic reason for last_jarvis_verdict == "NONE" set by the
+        # supervisor when JARVIS bootstrap is down, the regime gate fires,
+        # or consult() raised. Empty after a clean consult.
+        last_verdict_reason = str(bot.get("last_jarvis_verdict_reason") or "")
         strategy_readiness = bot.get("strategy_readiness")
         readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
         running = bool(bot.get("open_position")) or n_entries > 0
@@ -96,7 +109,7 @@ def jarvis_supervisor_bot_accounts(
             "name": str(bot.get("bot_id") or ""),
             "broker": "paper-sim",
             "strategy": str(bot.get("strategy_kind") or ""),
-            "mode": mode,
+            "mode": bot_mode,
             "status": status,
             "confirmed": True,
             "today": {
@@ -114,6 +127,7 @@ def jarvis_supervisor_bot_accounts(
             "symbol": str(bot.get("symbol") or ""),
             "direction": str(bot.get("direction") or ""),
             "last_jarvis_verdict": last_verdict,
+            "last_jarvis_verdict_reason": last_verdict_reason,
             "strategy_readiness": readiness_payload,
             "launch_lane": readiness_payload.get("launch_lane"),
             "can_paper_trade": bool(readiness_payload.get("can_paper_trade")),

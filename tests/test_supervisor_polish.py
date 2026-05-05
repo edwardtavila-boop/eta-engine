@@ -725,3 +725,181 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
         f"side={kwargs.get('side')!r} — Sage SHORT conv=0.7 should "
         "have flipped the long-registered bot to SELL"
     )
+
+
+# ─── PAPER_LIVE_ROUTING_GAP regression: NONE diagnostic reasons ───
+#
+# When the supervisor heartbeat shows ``last_jarvis_verdict: NONE`` for
+# 50/52 bots, the operator has no way to tell *why* — JARVIS down vs
+# regime-gated vs consult-raised all collapse to the same string. These
+# tests pin the new ``last_jarvis_verdict_reason`` field so each None
+# branch surfaces a distinct, greppable tag in the heartbeat.
+
+
+def _make_supervisor_for_consult(tmp_path):
+    """Build a JarvisStrategySupervisor with state_dir under tmp."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    return JarvisStrategySupervisor(cfg=cfg)
+
+
+def test_consult_jarvis_none_reason_tagged_when_jarvis_not_bootstrapped(tmp_path) -> None:
+    """When ``_jarvis_full is None`` (bootstrap failed), the bot's
+    diagnostic reason must be set so the heartbeat distinguishes this
+    from regime blocks. Without this tag, all 52 bots would show
+    ``last_jarvis_verdict=NONE`` with no clue why."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
+    sup = _make_supervisor_for_consult(tmp_path)
+    sup._jarvis_full = None  # simulate bootstrap failure
+    bot = BotInstance(
+        bot_id="test_bot", symbol="MNQ1", strategy_kind="orb_sage_gated",
+        direction="long", cash=5000.0,
+    )
+
+    verdict = sup._consult_jarvis(
+        bot=bot, signal_id="sig1", action="ORDER_PLACE",
+        payload={"symbol": "MNQ1", "side": "buy", "qty": 1.0},
+        narrative="test",
+    )
+    assert verdict is None
+    assert bot.last_jarvis_verdict_reason == "jarvis_not_bootstrapped", (
+        f"got reason={bot.last_jarvis_verdict_reason!r} — expected "
+        "'jarvis_not_bootstrapped' so the heartbeat shows JARVIS-down vs "
+        "regime-gated vs raised"
+    )
+
+
+def test_consult_jarvis_none_reason_tagged_when_regime_blocks_strategy(tmp_path) -> None:
+    """When the regime detector lists this bot's strategy_kind in
+    block_strategies, the diagnostic reason must encode strategy_kind +
+    primary_regime so the operator sees ``regime_block:<kind>@<regime>``
+    in the heartbeat — NOT a bare 'NONE'."""
+    from unittest.mock import patch
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
+    sup = _make_supervisor_for_consult(tmp_path)
+    # _jarvis_full must be truthy to clear the bootstrap branch
+    sup._jarvis_full = object()
+    bot = BotInstance(
+        bot_id="btc_optimized", symbol="BTC",
+        strategy_kind="confluence_scorecard",
+        direction="long", cash=5000.0,
+    )
+
+    fake_regime = {
+        "primary_regime": "vol_expansion",
+        "block_strategies": ["confluence_scorecard"],
+    }
+    with patch.object(sup, "_load_live_regime", return_value=fake_regime):
+        verdict = sup._consult_jarvis(
+            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            payload={"symbol": "BTC", "side": "buy", "qty": 1.0},
+            narrative="test",
+        )
+    assert verdict is None
+    assert bot.last_jarvis_verdict_reason == (
+        "regime_block:confluence_scorecard@vol_expansion"
+    ), f"got reason={bot.last_jarvis_verdict_reason!r}"
+
+
+def test_consult_jarvis_none_reason_tagged_when_consult_raises(tmp_path) -> None:
+    """When the underlying ``self._jarvis_full.consult()`` raises (or
+    any layer below it does), the supervisor must record the exception
+    type so the heartbeat shows ``consult_exception:<ExcType>`` —
+    enabling 'why are 50 bots NONE' to be answered without tailing
+    the supervisor log."""
+    from unittest.mock import MagicMock, patch
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
+    sup = _make_supervisor_for_consult(tmp_path)
+    # Provide a JarvisFull mock whose .consult() raises so the try/except
+    # in _consult_jarvis is exercised.
+    jf = MagicMock()
+    jf.consult.side_effect = RuntimeError("simulated layer failure")
+    sup._jarvis_full = jf
+    bot = BotInstance(
+        bot_id="eth_perp", symbol="ETH", strategy_kind="sage_daily_gated",
+        direction="long", cash=5000.0,
+    )
+
+    with patch.object(sup, "_load_live_regime", return_value={}):
+        verdict = sup._consult_jarvis(
+            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            payload={"symbol": "ETH", "side": "buy", "qty": 1.0},
+            narrative="test",
+        )
+    assert verdict is None
+    assert bot.last_jarvis_verdict_reason == "consult_exception:RuntimeError", (
+        f"got reason={bot.last_jarvis_verdict_reason!r} — expected "
+        "'consult_exception:RuntimeError'"
+    )
+
+
+def test_consult_jarvis_clears_reason_on_successful_verdict(tmp_path) -> None:
+    """A bot that previously hit a regime block and then later passes
+    the gate must NOT carry the stale 'regime_block:...' reason on its
+    heartbeat. The reason field must reset to '' on successful consult
+    so the operator doesn't chase a phantom block on a recovered bot."""
+    from unittest.mock import MagicMock, patch
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
+    sup = _make_supervisor_for_consult(tmp_path)
+    jf = MagicMock()
+    fake_verdict = MagicMock()
+    fake_verdict.consolidated.final_verdict = "APPROVED"
+    fake_verdict.is_blocked.return_value = False
+    fake_verdict.final_size_multiplier = 1.0
+    jf.consult.return_value = fake_verdict
+    sup._jarvis_full = jf
+
+    bot = BotInstance(
+        bot_id="mnq_futures_sage", symbol="MNQ1",
+        strategy_kind="orb_sage_gated",
+        direction="long", cash=5000.0,
+    )
+    # Pre-populate the reason as if a previous regime block fired.
+    bot.last_jarvis_verdict_reason = "regime_block:orb_sage_gated@chop"
+
+    with patch.object(sup, "_load_live_regime", return_value={}), \
+         patch.object(sup, "_build_synthetic_ctx", return_value=None):
+        verdict = sup._consult_jarvis(
+            bot=bot, signal_id="sig1", action="ORDER_PLACE",
+            payload={"symbol": "MNQ1", "side": "buy", "qty": 1.0},
+            narrative="test",
+        )
+
+    assert verdict is fake_verdict
+    assert bot.last_jarvis_verdict_reason == "", (
+        f"reason was not cleared after successful consult: "
+        f"{bot.last_jarvis_verdict_reason!r}"
+    )
+
+
+def test_botinstance_to_state_includes_verdict_reason() -> None:
+    """The diagnostic reason must round-trip through ``BotInstance.to_state``
+    so it surfaces in the supervisor heartbeat JSON. Without this, the
+    field exists in memory but never reaches the dashboard or
+    fleet-snap scripts that read the heartbeat file."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
+    bot = BotInstance(
+        bot_id="b1", symbol="MNQ1", strategy_kind="orb_sage_gated",
+    )
+    bot.last_jarvis_verdict = "NONE"
+    bot.last_jarvis_verdict_reason = "regime_block:orb_sage_gated@chop"
+    state = bot.to_state()
+    assert "last_jarvis_verdict_reason" in state, (
+        "to_state() must surface last_jarvis_verdict_reason or the "
+        "operator can't see WHY a bot's verdict is NONE in the heartbeat"
+    )
+    assert state["last_jarvis_verdict_reason"] == (
+        "regime_block:orb_sage_gated@chop"
+    )

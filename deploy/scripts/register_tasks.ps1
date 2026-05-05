@@ -95,4 +95,21 @@ foreach ($t in $bootTasks) {
     Write-Host "[ OK ] boot: $($t.Name)" -ForegroundColor Green
 }
 
-Write-Host "[ETA-tasks] All 15 tasks registered." -ForegroundColor Cyan
+# ----- Kaizen daily elite-framework loop ------------------------------------
+$kaizenTaskName = "ETA-Kaizen-Loop"
+$kaizenScript = Join-Path $InstallDir "scripts\kaizen_loop.py"
+if (Test-Path $kaizenScript) {
+    Unregister-ScheduledTask -TaskName $kaizenTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    $action = New-ScheduledTaskAction -Execute $venvPython `
+        -Argument "`"$kaizenScript`" --apply" -WorkingDirectory $workspaceRoot
+    $trigger = New-ScheduledTaskTrigger -Daily -At "06:00"
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
+        -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    Register-ScheduledTask -TaskName $kaizenTaskName -Action $action -Trigger $trigger `
+        -Settings $settings -User $env:USERNAME -RunLevel Limited | Out-Null
+    Write-Host "[ OK ] $kaizenTaskName (kaizen_loop.py --apply daily 06:00)" -ForegroundColor Green
+} else {
+    Write-Host "[WARN] $kaizenTaskName skipped; missing $kaizenScript" -ForegroundColor Yellow
+}
+
+Write-Host "[ETA-tasks] All persona, boot, and kaizen tasks registered." -ForegroundColor Cyan

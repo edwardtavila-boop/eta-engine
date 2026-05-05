@@ -277,7 +277,14 @@ After all bug fixes + supercharges + walk-forward IS/OOS + 90-day cross-validati
 
 ### Critical fleet-deployment risk: duplicate bots
 
-`btc_hybrid`, `btc_regime_trend_etf`, and `btc_sage_daily_etf` all return **identical** 90-day backtest results (135T / 27.4% WR / +$1,238 realistic / +$1,116 pessimistic / $29 commission / 0 rejected). They are the same underlying strategy registered under three names. **If all three were promoted to live, the fleet would deploy 3x risk on a single edge** — a critical risk-budget violation. Promote ONLY ONE of these three.
+`btc_hybrid`, `btc_regime_trend_etf`, and `btc_sage_daily_etf` all return **identical** 90-day backtest results (135T / 27.4% WR / +$1,238 realistic / +$1,116 pessimistic / $29 commission / 0 rejected).
+
+**Registry diagnostic confirms** all three are `kind=confluence_scorecard, symbol=BTC` — they wrap the same underlying sub-strategy with the same parameters under three different bot_ids. **If all three were promoted to live, the fleet would deploy 3x risk on a single edge** — a critical risk-budget violation. Promote ONLY ONE of these three.
+
+### Other registry findings
+
+- `btc_hybrid_sage` is `kind=orb_sage_gated, symbol=BTC, active=True` but the bridge factory **returns None** — the `orb_sage_gated` factory has no BTC code path. Either deactivate or add the BTC branch.
+- `gap_fill_mnq` and `gap_fill_btc` are intentionally deactivated by the operator (registry shows `strategy_id="*_DEACTIVATED"`).
 
 ### Six 90-day-verified candidates (positive realistic AND pessimistic):
 
