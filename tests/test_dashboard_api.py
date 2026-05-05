@@ -446,10 +446,15 @@ class TestDashboardAPI:
 
         cards = {card["id"]: card for card in data["cards"]}
         assert "cc-verdict-stream" in cards
+        assert "cc-strategy-supercharge-results" in cards
         assert "fl-roster" in cards
         assert "fl-controls" in cards
         assert "fl-equity-curve" in cards
         assert cards["cc-verdict-stream"]["source"] == "sse"
+        assert (
+            cards["cc-strategy-supercharge-results"]["endpoint"]
+            == "/api/jarvis/strategy_supercharge_results"
+        )
         assert cards["fl-controls"]["source"] == "client"
         assert cards["fl-roster"]["endpoint"] == "/api/bot-fleet?since_days=1"
         assert cards["fl-equity-curve"]["endpoint"].startswith("/api/fleet-equity?")

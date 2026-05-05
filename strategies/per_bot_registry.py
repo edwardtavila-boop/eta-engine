@@ -125,6 +125,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-01", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            # Elite scoreboard 2026-05-05: PF=0.43, Sharpe=-1.67,
+            # expectancy_R=-0.0352 over 112 closes — clearly losing.
+            # Sage's dow_theory dissented at 0.75 SHORT (primary
+            # downtrend) on every consultation; bot configured long-only
+            # could not adapt. Replaced by eth_sage_daily (ELITE: PF=2.53
+            # Sharpe=2.48 +$12.01). Retired per elite framework.
+            "deactivated": True,
+            "deactivated_on": "2026-05-05",
+            "deactivated_reason": (
+                "elite_scoreboard 2026-05-05: PF=0.43 Sharpe=-1.67 "
+                "expR=-0.0352 n=112 — fighting dow_theory short trend; "
+                "replaced by eth_sage_daily ELITE"
+            ),
         },
     ),
 
@@ -249,6 +262,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "BTC",
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-04-27", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            # Elite scoreboard 2026-05-05: PF=0.82, Sharpe=-0.40,
+            # expectancy_R=-0.0128 over 125 closes on real-data feed.
+            # Negative expectancy + already replaced by btc_hybrid_sage
+            # (ELITE: PF=2.42 Sharpe=2.06 +$24.56). Retired per the
+            # elite framework's "evolve or replace decaying strategies"
+            # principle. Live data invalidated the legacy DIAMOND tag.
+            "deactivated": True,
+            "deactivated_on": "2026-05-05",
+            "deactivated_reason": (
+                "elite_scoreboard 2026-05-05: PF=0.82 Sharpe=-0.40 "
+                "expR=-0.0128 over n=125 — replaced by btc_hybrid_sage ELITE"
+            ),
         },
     ),
 
@@ -1057,6 +1082,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "promotion_status": "shadow_benchmark",
             "shadow_reason": "12.5% WR paper soak. Compression breakout doesn't produce edge on ETH 1h.",
             "compression_config": {"compression_recency_window": 12, "min_close_location": 0.50, "min_volume_z": 0.2, "atr_stop_mult": 2.0, "rr_target": 2.5},
+            # Elite scoreboard 2026-05-05: PF=0.68 Sharpe=-0.93
+            # expR=-0.0245 over 124 closes — confirmed shadow_reason.
+            # Compression-breakout on ETH 1h has no edge regardless of
+            # tuning. Retired per elite framework.
+            "deactivated": True,
+            "deactivated_on": "2026-05-05",
+            "deactivated_reason": (
+                "elite_scoreboard 2026-05-05: PF=0.68 Sharpe=-0.93 "
+                "expR=-0.0245 n=124 — compression on ETH 1h has no edge"
+            ),
         },
     ),
 

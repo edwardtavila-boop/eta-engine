@@ -24,7 +24,6 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -46,7 +45,6 @@ from eta_engine.feeds.realistic_fill_sim import (  # noqa: E402
     RealisticFillSim,
 )
 from eta_engine.feeds.signal_validator import (  # noqa: E402
-    ValidationFailure,
     validate_signal,
 )
 
@@ -132,7 +130,7 @@ _LEGACY_MULTIPLIERS: dict[str, float] = {
 }
 
 
-def _bar_to_ohlcv(b, ts_iso: str) -> BarOHLCV:
+def _bar_to_ohlcv(b: object, ts_iso: str) -> BarOHLCV:
     return BarOHLCV(
         open=float(b.open), high=float(b.high), low=float(b.low),
         close=float(b.close), volume=float(b.volume), ts_iso=ts_iso,
@@ -150,7 +148,7 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
     eval_oos: bool = False,
     skip_days: int = 0,
     funding_cost_enabled: bool = False,
-    funding_provider=None,
+    funding_provider: object | None = None,
 ) -> SimResult:
     """Replay historical bars with realistic fills.
 
@@ -263,7 +261,6 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
             bars = bars[:split_idx]
 
     position: PaperPosition | None = None
-    pending_entry_side: str | None = None
     pending_entry_signal = None  # holds the signal object until next bar's open
     trades: list[PaperTrade] = []
 
@@ -302,7 +299,6 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
             stop_dist = abs(entry_fill.fill_price - sig.stop)
             if stop_dist <= 0:
                 pending_entry_signal = None
-                pending_entry_side = None
             else:
                 base_risk_pct = 0.01
                 risk_usd = peak_equity * base_risk_pct * max(0.25, min(sig.risk_mult, 1.5))
@@ -322,7 +318,6 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                     for f in vr.failures:
                         rejection_codes[f.code] = rejection_codes.get(f.code, 0) + 1
                     pending_entry_signal = None
-                    pending_entry_side = None
                 else:
                     position = PaperPosition(
                         bot_id=bot_id,
@@ -336,7 +331,6 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
                         entry_session_rth=is_rth_session(bar_ts_iso, spec.symbol),
                     )
                     pending_entry_signal = None
-                    pending_entry_side = None
                     # Continue: position can NOT also exit on its own entry bar
                     continue
 
@@ -415,7 +409,6 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
             if signal.is_actionable and signal.stop > 0 and signal.target > 0:
                 signals += 1
                 pending_entry_signal = signal
-                pending_entry_side = signal.side.value
 
         # --- 4. Update equity curve / drawdown ---------------------
         equity_curve.append(equity)

@@ -9,10 +9,7 @@ Tests for the 10-optimization bundle:
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # #5 META_UPGRADE
@@ -218,14 +215,8 @@ class TestStatusPage:
         assert "setAttribute('data-readiness', 'degraded')" in js
 
     def test_command_center_renders_strategy_supercharge_panel(self):
-        """Strategy-supercharge JS contract still wired in command_center
-        + panels modules. NOTE: the index.html-side ``data-panel-id=
-        "cc-strategy-supercharge"`` anchor was dropped in the 6a7b9af
-        rewrite; the JS contract here is the forward-compatible spec
-        for if/when the inline dashboard is replaced by the JS-modular
-        architecture again.
-        """
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
         js = (root / "js" / "command_center.js").read_text(encoding="utf-8")
         panels = (root / "js" / "panels.js").read_text(encoding="utf-8")
 
@@ -233,6 +224,15 @@ class TestStatusPage:
         assert "/api/jarvis/strategy_supercharge_manifest" in js
         assert "next_batch" in js
         assert "A+C now" in js
+        assert "StrategySuperchargeResultsPanel" in js
+        assert "cc-strategy-supercharge-results" in js
+        assert "/api/jarvis/strategy_supercharge_results" in js
+        assert "near_misses" in js
+        assert "retune_queue" in js
+        assert 'data-panel-id="cc-strategy-supercharge-results"' in html
+        assert "/api/jarvis/strategy_supercharge_results" in html
+        assert "strategyNearMisses" in html
+        assert "strategyRetuneQueue" in html
         assert "id.includes('supercharge')" in panels
 
     def test_status_page_mobile_fleet_and_equity_contracts(self):

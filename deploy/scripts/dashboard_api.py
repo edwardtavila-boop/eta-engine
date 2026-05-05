@@ -100,6 +100,14 @@ DASHBOARD_CARD_REGISTRY = (
         "stale_after_s": 60,
     },
     {
+        "id": "cc-strategy-supercharge-results",
+        "title": "Strategy Supercharge Results",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/strategy_supercharge_results",
+        "required": True,
+        "stale_after_s": 60,
+    },
+    {
         "id": "cc-v22-toggle",
         "title": "V22 Modulation",
         "source": "endpoint",
@@ -1419,8 +1427,6 @@ def jarvis_sharpe_drift() -> dict:
         "ts": iso8601,
       }
     """
-    from datetime import datetime as _dt, timezone as _tz
-
     rows = []
     drifted = 0
     healthy = 0
@@ -1440,12 +1446,12 @@ def jarvis_sharpe_drift() -> dict:
 
     # Cross-ref against registry for lab_audit
     try:
-        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
         from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
             _INSTRUMENT_CLASS_TO_BROAD,
         )
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
     except Exception:  # noqa: BLE001
-        return {"rows": [], "drifted_count": 0, "ts": _dt.now(_tz.utc).isoformat(),
+        return {"rows": [], "drifted_count": 0, "ts": datetime.now(UTC).isoformat(),
                 "error": "registry import failed"}
 
     for a in ASSIGNMENTS:
@@ -1521,7 +1527,7 @@ def jarvis_sharpe_drift() -> dict:
             "untested": untested,
         },
         "drifted_count": drifted,
-        "ts": _dt.now(_tz.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }
 
 
@@ -1530,7 +1536,6 @@ def jarvis_sharpe_drift() -> dict:
 def sage_explain_endpoint(symbol: str = "MNQ", side: str = "long") -> dict:
     ...
     try:
-        from pathlib import Path
         bars_file = _state_dir() / "raw_state" / f"{symbol}_bars.json"
         bars: list = []
         if bars_file and bars_file.exists():
@@ -1651,7 +1656,6 @@ def sage_school_registry_endpoint() -> dict:
 def sage_disagreement_heatmap_endpoint(symbol: str = "MNQ") -> dict:
     ...
     try:
-        from pathlib import Path
         bars_file = _state_dir() / "raw_state" / f"{symbol}_bars.json"
         if not bars_file or not bars_file.exists():
             return {"symbol": symbol, "status": "no_bars", "heatmap": {}}
@@ -3729,7 +3733,7 @@ def dashboard_telemetry() -> dict:
 
 # ── Legacy Command Center compatibility ──
 @app.get("/api/public/dashboard")
-async def public_dashboard():
+async def public_dashboard() -> JSONResponse:
     """Bridge for old Command Center React app."""
     from fastapi.responses import JSONResponse
     try:
@@ -3740,8 +3744,8 @@ async def public_dashboard():
     except Exception:
         return JSONResponse({"status": "offline", "bots": []})
 
-@app.get("/api/master/status")
-async def master_status():
+@app.get("/api/master/status", response_model=None)
+async def master_status() -> JSONResponse | dict[str, object]:
     """Proxy to Command Center master status for real runtime detail."""
     try:
         import httpx
@@ -3751,8 +3755,8 @@ async def master_status():
     except Exception:
         return {"status": "live", "mode": "autonomous", "uptime": "connected", "cc_proxy": "unavailable"}
 
-@app.get("/api/runtime-status")
-async def runtime_status():
+@app.get("/api/runtime-status", response_model=None)
+async def runtime_status() -> JSONResponse | dict[str, object]:
     """Proxy to Command Center for bridge runtime detail (paper_live/paper_sim)."""
     try:
         import httpx
@@ -3769,8 +3773,8 @@ async def runtime_status():
     except Exception:
         return {"mode": "unknown", "detail": "cc_unavailable"}
 
-@app.get("/api/bridge-status")
-async def bridge_status():
+@app.get("/api/bridge-status", response_model=None)
+async def bridge_status() -> JSONResponse | dict[str, object]:
     """Proxy to Command Center for bridge daily PnL and status."""
     try:
         import httpx

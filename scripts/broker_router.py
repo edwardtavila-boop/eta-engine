@@ -35,10 +35,13 @@ import signal
 import sys
 import traceback
 from collections import deque
+from collections.abc import Callable  # noqa: TC003 -- runtime annotation on lazy-loader return
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PARENT = ROOT.parent
@@ -56,7 +59,6 @@ from eta_engine.scripts.workspace_roots import (  # noqa: E402
 )
 from eta_engine.venues.base import (  # noqa: E402
     OrderRequest,
-    OrderResult,
     OrderStatus,
     OrderType,
     Side,
@@ -82,6 +84,45 @@ DEFAULT_STATE_ROOT = ETA_RUNTIME_STATE_DIR / "router"
 DEFAULT_INTERVAL_S = 5.0
 DEFAULT_MAX_RETRIES = 3
 
+#: Cap exponential retry backoff at 5 minutes. Formula:
+#: ``min(BACKOFF_CAP_S, interval_s * 2 ** attempts)``.
+BACKOFF_CAP_S = 300.0
+
+#: Suffix for the retry-meta sidecar written next to a file in
+#: ``processing/``. Schema:
+#: ``{"attempts": int, "last_attempt_ts": isoformat-str,
+#:   "last_reject_reason": str}``.
+RETRY_META_SUFFIX = ".retry_meta.json"
+
+#: Canonical empty retry-meta payload for fresh files.
+_EMPTY_RETRY_META: dict[str, Any] = {
+    "attempts": 0, "last_attempt_ts": "", "last_reject_reason": "",
+}
+
+#: Operator escape hatch — set ``ETA_GATE_BOOTSTRAP=1`` to allow first-run
+#: operation when the gate-chain module cannot be imported. Mirrors the
+#: pattern in ``firm/eta_engine/src/mnq/risk/gate_chain.py``.
+_GATE_BOOTSTRAP_ENV = "ETA_GATE_BOOTSTRAP"
+
+
+def _gate_bootstrap_enabled() -> bool:
+    """True iff ``ETA_GATE_BOOTSTRAP=1`` is set in the environment."""
+    return os.environ.get(_GATE_BOOTSTRAP_ENV, "").strip() == "1"
+
+
+def _load_build_default_chain() -> Callable[..., object]:
+    """Lazy-import :func:`build_default_chain` from the firm submodule.
+
+    Extracted into a module-level function so tests can monkeypatch the
+    import shim without poking at ``sys.modules``. Raises ``ImportError``
+    when the firm/eta_engine submodule is unavailable.
+    """
+    firm_src = ROOT.parent / "firm" / "eta_engine" / "src"
+    if firm_src.is_dir() and str(firm_src) not in sys.path:
+        sys.path.insert(0, str(firm_src))
+    from mnq.risk.gate_chain import build_default_chain  # type: ignore[import-not-found]
+    return build_default_chain
+
 #: Translate the supervisor's raw symbol token to the form the target
 #: venue expects. Keys are (raw_symbol, venue_name); when the venue is
 #: unknown, the IBKR mapping is used (since IBKR is the M2 default).
@@ -104,18 +145,166 @@ _SYMBOL_TABLE: dict[tuple[str, str], str] = {
 #: Recognized futures roots that don't need symbol normalization.
 _FUTURES_ROOTS = ("MNQ", "NQ", "ES", "MES", "RTY", "MBT", "MET")
 
+# ---------------------------------------------------------------------------
+# Per-bot routing config (eta_engine/configs/bot_broker_routing.yaml)
+# ---------------------------------------------------------------------------
+
+#: Default routing-config path; operators override via ``ETA_BROKER_ROUTING_CONFIG``.
+DEFAULT_ROUTING_CONFIG_PATH = ROOT / "configs" / "bot_broker_routing.yaml"
+_ROUTING_CONFIG_ENV = "ETA_BROKER_ROUTING_CONFIG"
+
+
+@dataclass(frozen=True, slots=True)
+class RoutingConfig:
+    """Parsed view of ``bot_broker_routing.yaml``.
+
+    Resolves ``venue_for(bot_id)`` and ``map_symbol(raw, venue)`` from
+    the YAML config. Per-bot overrides take precedence over
+    ``default.venue``; unlisted bots use the default. Missing file ->
+    permissive ``ibkr``-for-all default + WARNING. Malformed YAML or
+    wrong shape -> ``ValueError`` (fail loud).
+    """
+
+    default_venue: str
+    symbol_overrides: dict[str, dict[str, str]] = field(default_factory=dict)
+    per_bot: dict[str, dict[str, str]] = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> RoutingConfig:
+        """Load and parse the YAML. Path resolution: arg > env > default."""
+        resolved = cls._resolve_path(path)
+        if not resolved.is_file():
+            logger.warning(
+                "routing config not found at %s; using permissive default "
+                "(venue=ibkr for all bots, no symbol overrides)", resolved,
+            )
+            return cls(default_venue="ibkr", symbol_overrides={}, per_bot={})
+
+        try:
+            raw = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"routing config YAML parse failed at {resolved}: {exc}",
+            ) from exc
+
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"routing config root must be a mapping; got {type(raw).__name__}",
+            )
+
+        default_block = raw.get("default") or {}
+        if not isinstance(default_block, dict):
+            raise ValueError("routing config 'default' must be a mapping")
+        default_venue = str(default_block.get("venue", "ibkr") or "ibkr").strip().lower()
+
+        overrides_raw = default_block.get("symbol_overrides") or {}
+        if not isinstance(overrides_raw, dict):
+            raise ValueError(
+                "routing config 'default.symbol_overrides' must be a mapping",
+            )
+        symbol_overrides: dict[str, dict[str, str]] = {}
+        for sym, mapping in overrides_raw.items():
+            if not isinstance(mapping, dict):
+                raise ValueError(
+                    f"symbol_overrides[{sym!r}] must be a mapping of venue->symbol",
+                )
+            symbol_overrides[str(sym)] = {
+                str(v).strip().lower(): str(s) for v, s in mapping.items()
+            }
+
+        bots_raw = raw.get("bots") or {}
+        if not isinstance(bots_raw, dict):
+            raise ValueError("routing config 'bots' must be a mapping")
+        per_bot: dict[str, dict[str, str]] = {}
+        for bot_id, mapping in bots_raw.items():
+            if not isinstance(mapping, dict):
+                raise ValueError(f"bots[{bot_id!r}] must be a mapping")
+            per_bot[str(bot_id)] = {
+                str(k): str(v).strip().lower() for k, v in mapping.items()
+            }
+
+        return cls(
+            default_venue=default_venue,
+            symbol_overrides=symbol_overrides,
+            per_bot=per_bot,
+        )
+
+    @staticmethod
+    def _resolve_path(path: Path | None) -> Path:
+        if path is not None:
+            return Path(path)
+        env = os.environ.get(_ROUTING_CONFIG_ENV)
+        return Path(env) if env else DEFAULT_ROUTING_CONFIG_PATH
+
+    def venue_for(self, bot_id: str) -> str:
+        """Resolve the venue for ``bot_id``. Per-bot override > default."""
+        bot_cfg = self.per_bot.get(bot_id) or {}
+        venue = bot_cfg.get("venue") or self.default_venue
+        return str(venue).strip().lower()
+
+    def map_symbol(self, raw_symbol: str, venue: str) -> str:
+        """Translate raw -> venue-specific symbol via ``symbol_overrides``.
+
+        ``"tasty"``/``"tastytrade"`` are accepted aliases. If the raw
+        symbol is in overrides but the venue isn't listed there, raise
+        ``ValueError``. Otherwise fall through to futures-root
+        pass-through + legacy ``_SYMBOL_TABLE`` + stable-quote pass-through.
+        """
+        up = raw_symbol.strip().upper()
+        venue_norm = venue.strip().lower()
+        if venue_norm == "tastytrade":
+            venue_norm = "tasty"
+
+        override = self.symbol_overrides.get(up)
+        if override is not None:
+            mapped = override.get(venue_norm)
+            if mapped is not None:
+                return mapped
+            raise ValueError(
+                f"unsupported (symbol, venue) pair via routing config: "
+                f"({raw_symbol!r}, {venue!r})",
+            )
+
+        # 2. Futures pass-through (strips month-coded suffixes).
+        for root in _FUTURES_ROOTS:
+            if up == root:
+                return root
+            if up.startswith(root):
+                suffix = up[len(root):]
+                if suffix.isdigit() or (
+                    len(suffix) >= 2
+                    and suffix[0] in "FGHJKMNQUVXZ"
+                    and suffix[1:].isdigit()
+                ):
+                    return root
+
+        # 3. Legacy table fallback (kept for the bybit/okx unit-test paths).
+        legacy_venue = "tastytrade" if venue_norm == "tasty" else venue_norm
+        key = (up, legacy_venue)
+        if key in _SYMBOL_TABLE:
+            return _SYMBOL_TABLE[key]
+
+        # 4. Already-normalized stable-quote pass-through.
+        if up.endswith(("USD", "USDT", "USDC")):
+            return up
+
+        msg = (
+            f"unsupported (symbol, venue) pair: ({raw_symbol!r}, {venue!r})"
+        )
+        raise ValueError(msg)
+
 
 def normalize_symbol(raw_symbol: str, target_venue: str) -> str:
     """Translate a supervisor's raw symbol to the venue's expected form.
 
-    Supervisor writes ``BTC``/``ETH``/``SOL``/``XRP`` (raw crypto roots) or
-    futures forms like ``MNQ1`` (with month suffix). Venues expect
-    ``BTCUSD`` (IBKR PAXOS), ``BTCUSDT`` (Tastytrade/Bybit), or futures
-    roots stripped of any month suffix.
+    Backwards-compatible shim that delegates to
+    :meth:`RoutingConfig.map_symbol`. The config file is read on each
+    call (cheap; ~1 KB YAML); callers that need to amortize the cost
+    should hold their own ``RoutingConfig`` instance.
 
     Args:
         raw_symbol: Symbol string from the pending-order JSON.
-        target_venue: Lowercase venue name (e.g. ``"ibkr"``).
+        target_venue: Venue name (``"ibkr"``, ``"tasty"``, etc.).
 
     Returns:
         The venue-ready symbol string.
@@ -123,32 +312,7 @@ def normalize_symbol(raw_symbol: str, target_venue: str) -> str:
     Raises:
         ValueError: If the (symbol, venue) pair is unsupported.
     """
-    up = raw_symbol.strip().upper()
-    venue = target_venue.strip().lower()
-
-    # Futures pass-through: strip trailing month-coded suffix when present
-    # ("MNQ1" -> "MNQ", "MBTH26" -> "MBT").
-    for root in _FUTURES_ROOTS:
-        if up == root:
-            return root
-        if up.startswith(root):
-            suffix = up[len(root):]
-            # Bare-digit month index ("MNQ1") or CME month-code ("MBTH26").
-            if suffix.isdigit() or (
-                len(suffix) >= 2
-                and suffix[0] in "FGHJKMNQUVXZ"
-                and suffix[1:].isdigit()
-            ):
-                return root
-
-    key = (up, venue)
-    if key in _SYMBOL_TABLE:
-        return _SYMBOL_TABLE[key]
-    # Pass-through for already-normalized forms.
-    if up.endswith(("USD", "USDT", "USDC")):
-        return up
-    msg = f"unsupported (symbol, venue) pair: ({raw_symbol!r}, {target_venue!r})"
-    raise ValueError(msg)
+    return RoutingConfig.load().map_symbol(raw_symbol, target_venue)
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +409,8 @@ class BrokerRouter:
         interval_s: float = DEFAULT_INTERVAL_S,
         dry_run: bool = False,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        gate_chain: object | None = None,
+        routing_config: RoutingConfig | None = None,
     ) -> None:
         self.pending_dir = Path(pending_dir)
         self.state_root = Path(state_root)
@@ -253,6 +419,14 @@ class BrokerRouter:
         self.interval_s = max(0.5, float(interval_s))
         self.dry_run = bool(dry_run)
         self.max_retries = max(1, int(max_retries))
+        # Optional override hook: tests / shadow envs can inject a callable
+        # gate-chain (or object with .evaluate(**kwargs)). When None, the
+        # production lazy-import path runs.
+        self.gate_chain = gate_chain
+        # Per-bot routing config: tests inject; production loads from YAML.
+        self.routing_config = (
+            routing_config if routing_config is not None else RoutingConfig.load()
+        )
 
         self.processing_dir = self.state_root / "processing"
         self.blocked_dir = self.state_root / "blocked"
@@ -318,13 +492,24 @@ class BrokerRouter:
         await self._tick()
 
     async def _tick(self) -> None:
-        """One poll: scan for *.pending_order.json, dispatch each, heartbeat."""
+        """One poll: scan pending + processing dirs, dispatch each, heartbeat.
+
+        Two scans happen each tick:
+
+        1. Fresh files in ``pending_dir/*.pending_order.json`` -- moved to
+           ``processing/`` and run through the lifecycle with empty
+           retry-meta.
+        2. Retry files already in ``processing/`` -- re-run the lifecycle
+           if the per-attempt exponential backoff has elapsed. This is
+           how venue-rejected orders eventually retry without a fresh
+           supervisor write.
+        """
         try:
-            paths = sorted(self.pending_dir.glob("*.pending_order.json"))
+            pending_paths = sorted(self.pending_dir.glob("*.pending_order.json"))
         except OSError as exc:
             logger.warning("pending dir scan failed: %s", exc)
-            paths = []
-        for path in paths:
+            pending_paths = []
+        for path in pending_paths:
             if self._stopped:
                 break
             try:
@@ -334,17 +519,34 @@ class BrokerRouter:
                     "unhandled exception processing %s:\n%s",
                     path, traceback.format_exc(),
                 )
+
+        if not self.dry_run:
+            try:
+                processing_paths = sorted(
+                    self.processing_dir.glob("*.pending_order.json")
+                )
+            except OSError as exc:
+                logger.warning("processing dir scan failed: %s", exc)
+                processing_paths = []
+            for target in processing_paths:
+                if self._stopped:
+                    break
+                try:
+                    await self._process_retry_file(target)
+                except Exception:  # noqa: BLE001
+                    logger.error(
+                        "unhandled exception in retry %s:\n%s",
+                        target, traceback.format_exc(),
+                    )
+
         self._emit_heartbeat()
 
     # -- per-file lifecycle -------------------------------------------------
 
     async def _process_pending_file(self, path: Path) -> None:
-        """Move-to-processing, parse, gate, route, submit, archive."""
-        # 1. Atomic-move to processing/. If this raises (another worker grabbed
-        # the file, or the supervisor is mid-write) skip and let the next tick
-        # try again.
+        """Fresh-file entry: move-to-processing, then run the lifecycle."""
         if self.dry_run:
-            target = path  # leave the file in place
+            target = path
         else:
             target = self.processing_dir / path.name
             try:
@@ -352,7 +554,80 @@ class BrokerRouter:
             except OSError as exc:
                 logger.info("skip (move failed, likely raced): %s (%s)", path.name, exc)
                 return
+        await self._run_lifecycle(target, retry_meta=_EMPTY_RETRY_META.copy())
 
+    async def _process_retry_file(self, target: Path) -> None:
+        """Re-process a file already in ``processing/`` (sidecar-driven)."""
+        if target.name.endswith(RETRY_META_SUFFIX):
+            return
+        if not target.name.endswith(".pending_order.json"):
+            return
+        retry_meta = self._load_retry_meta(target)
+        attempts = int(retry_meta.get("attempts", 0))
+        if attempts >= self.max_retries:
+            logger.warning("retry file at max_retries: %s", target.name)
+            self._counts["failed"] += 1
+            self._record_event(target.name, "failed", "max_retries_on_retry_scan")
+            self._move_to_failed_with_meta(target, retry_meta)
+            return
+        if self._should_backoff(retry_meta):
+            return
+        await self._run_lifecycle(target, retry_meta=retry_meta)
+
+    def _retry_meta_path(self, target: Path) -> Path:
+        return target.with_name(target.name + RETRY_META_SUFFIX)
+
+    def _load_retry_meta(self, target: Path) -> dict[str, Any]:
+        """Read the retry-meta sidecar; any failure -> empty meta."""
+        try:
+            payload = json.loads(
+                self._retry_meta_path(target).read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            return _EMPTY_RETRY_META.copy()
+        return {
+            "attempts": int(payload.get("attempts", 0) or 0),
+            "last_attempt_ts": str(payload.get("last_attempt_ts", "") or ""),
+            "last_reject_reason": str(payload.get("last_reject_reason", "") or ""),
+        }
+
+    def _save_retry_meta(self, target: Path, meta: dict[str, Any]) -> None:
+        self._write_sidecar(self._retry_meta_path(target), meta)
+
+    def _clear_retry_meta(self, target: Path) -> None:
+        with contextlib.suppress(OSError):
+            self._retry_meta_path(target).unlink()
+
+    def _should_backoff(self, retry_meta: dict[str, Any]) -> bool:
+        """``min(BACKOFF_CAP_S, interval_s * 2**attempts)`` not yet elapsed."""
+        attempts = int(retry_meta.get("attempts", 0) or 0)
+        if attempts <= 0:
+            return False
+        last_ts = retry_meta.get("last_attempt_ts", "")
+        if not last_ts:
+            return False
+        try:
+            last_dt = datetime.fromisoformat(last_ts)
+        except (TypeError, ValueError):
+            return False
+        elapsed = (datetime.now(UTC) - last_dt).total_seconds()
+        return elapsed < min(BACKOFF_CAP_S, self.interval_s * (2 ** attempts))
+
+    def _move_to_failed_with_meta(
+        self, target: Path, retry_meta: dict[str, Any],
+    ) -> None:
+        """Move target -> failed/ and persist meta alongside for forensics."""
+        with contextlib.suppress(OSError):
+            self._atomic_move(target, self.failed_dir / target.name)
+        self._write_sidecar(
+            self.failed_dir / (target.name + RETRY_META_SUFFIX), retry_meta,
+        )
+        self._clear_retry_meta(target)
+
+    async def _run_lifecycle(
+        self, target: Path, *, retry_meta: dict[str, Any],
+    ) -> None:
+        """Shared parse->gate->submit pipeline. Used for fresh + retry paths."""
         # 2. Parse.
         try:
             order = parse_pending_file(target)
@@ -360,9 +635,9 @@ class BrokerRouter:
             self._counts["quarantined"] += 1
             self._record_event(target.name, "quarantined", str(exc))
             if not self.dry_run:
-                quarantine_target = self.quarantine_dir / target.name
                 with contextlib.suppress(OSError):
-                    self._atomic_move(target, quarantine_target)
+                    self._atomic_move(target, self.quarantine_dir / target.name)
+                self._clear_retry_meta(target)
             self._safe_journal(
                 actor=Actor.STRATEGY_ROUTER,
                 intent="pending_order_quarantined",
@@ -372,59 +647,49 @@ class BrokerRouter:
                 metadata={"path": str(target), "error": str(exc)},
             )
             return
+        except Exception as exc:  # noqa: BLE001
+            self._handle_processing_error(target, f"parse_pending_file raised: {exc}")
+            return
         self._counts["parsed"] += 1
 
-        # 3. Gate-chain evaluation. Lazy-import to keep this module testable
-        # without the firm/eta_engine submodule on sys.path.
-        gate_results = await self._evaluate_gates(order)
+        # 3. Gate-chain evaluation.
+        try:
+            gate_results = await self._evaluate_gates(order)
+        except Exception as exc:  # noqa: BLE001
+            self._handle_routing_error(order, target, f"gate evaluation failed: {exc}")
+            return
         gate_checks_summary = [
             ("+" if r["allow"] else "-") + r["gate"] for r in gate_results
         ]
         denied = next((r for r in gate_results if not r["allow"]), None)
         if denied is not None:
-            self._counts["blocked"] += 1
-            self._record_event(target.name, "blocked", denied["gate"])
-            block_meta = {
-                "denied_gate": denied["gate"],
-                "reason": denied["reason"],
-                "context": denied["context"],
-                "all_gates": gate_results,
-                "order": order.to_dict(),
-            }
-            if not self.dry_run:
-                self._write_sidecar(
-                    self.blocked_dir / f"{order.signal_id}_block.json",
-                    block_meta,
-                )
-                blocked_target = self.blocked_dir / target.name
-                with contextlib.suppress(OSError):
-                    self._atomic_move(target, blocked_target)
-            self._safe_journal(
-                actor=Actor.STRATEGY_ROUTER,
-                intent="pending_order_blocked",
-                rationale=f"gate={denied['gate']} reason={denied['reason']}",
-                gate_checks=gate_checks_summary,
-                outcome=Outcome.BLOCKED,
-                links=[f"signal:{order.signal_id}", f"bot:{order.bot_id}"],
-                metadata=block_meta,
-            )
+            self._handle_blocked(order, target, denied, gate_results, gate_checks_summary)
             return
 
-        # 4. Pick venue.
+        # 4. Resolve target venue + symbol from the per-bot routing config.
+        # ValueError -> quarantine (operator config error, retry after fix).
         try:
-            venue = self.smart_router.choose_venue(
-                order.symbol, order.qty, urgency="normal",
+            target_venue_name = self.routing_config.venue_for(order.bot_id)
+            venue_symbol = self.routing_config.map_symbol(
+                order.symbol, target_venue_name,
             )
-        except Exception as exc:  # noqa: BLE001
-            self._handle_routing_error(order, target, f"choose_venue failed: {exc}")
-            return
-
-        # 5. Normalize symbol for the chosen venue.
-        try:
-            venue_symbol = normalize_symbol(order.symbol, venue.name)
         except ValueError as exc:
-            self._handle_routing_error(order, target, f"normalize_symbol failed: {exc}")
+            self._handle_routing_config_unsupported(order, target, str(exc))
             return
+
+        # 5. Pick the live venue adapter by name; fall back to choose_venue
+        # for stand-ins that don't expose a name-based lookup.
+        venue = self._resolve_venue_adapter(target_venue_name, order)
+        if venue is None:
+            try:
+                venue = self.smart_router.choose_venue(
+                    order.symbol, order.qty, urgency="normal",
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._handle_routing_error(
+                    order, target, f"choose_venue failed: {exc}",
+                )
+                return
 
         # 6. Build OrderRequest.
         side_enum = Side.BUY if order.side == "BUY" else Side.SELL
@@ -460,6 +725,133 @@ class BrokerRouter:
         # 8. Submit. Venue handles its own idempotency / fleet / cap gates.
         await self._submit_and_finalize(
             order, target, venue, request, gate_checks_summary,
+            retry_meta=retry_meta,
+        )
+
+    def _handle_blocked(
+        self,
+        order: PendingOrder,
+        target: Path,
+        denied: dict[str, Any],
+        gate_results: list[dict[str, Any]],
+        gate_checks_summary: list[str],
+    ) -> None:
+        """Move to blocked/, journal a BLOCKED event.
+
+        Distinguishes the ``gate_chain_import_failed`` DENY (security
+        regression backstop) from a normal gate denial via the journal
+        intent and the block_meta reason field.
+        """
+        is_import_failed = denied["gate"] == "gate_chain_import_failed"
+        self._counts["blocked"] += 1
+        self._record_event(target.name, "blocked", denied["gate"])
+        block_meta = {
+            "denied_gate": denied["gate"],
+            "reason": (
+                "gate_chain_import_failed" if is_import_failed else denied["reason"]
+            ),
+            "context": denied["context"],
+            "all_gates": gate_results,
+            "order": order.to_dict(),
+        }
+        if not self.dry_run:
+            self._write_sidecar(
+                self.blocked_dir / f"{order.signal_id}_block.json", block_meta,
+            )
+            with contextlib.suppress(OSError):
+                self._atomic_move(target, self.blocked_dir / target.name)
+            self._clear_retry_meta(target)
+        intent = (
+            "gate_chain_import_failed" if is_import_failed else "pending_order_blocked"
+        )
+        rationale = (
+            f"gate_chain import failed; fail-closed DENY. detail={denied['reason']}"
+            if is_import_failed
+            else f"gate={denied['gate']} reason={denied['reason']}"
+        )
+        self._safe_journal(
+            actor=Actor.STRATEGY_ROUTER,
+            intent=intent,
+            rationale=rationale,
+            gate_checks=gate_checks_summary,
+            outcome=Outcome.BLOCKED,
+            links=[f"signal:{order.signal_id}", f"bot:{order.bot_id}"],
+            metadata=block_meta,
+        )
+
+    def _resolve_venue_adapter(
+        self, venue_name: str, order: PendingOrder,
+    ) -> VenueBase | None:
+        """Look up a venue adapter on the SmartRouter by name.
+
+        Tries (in order): ``_venue_by_name(name)``, ``_venue_map[name]``,
+        ``venue_map[name]``, and ``getattr(smart_router, name)``. Returns
+        ``None`` when none of those expose the venue -- the caller then
+        falls back to the legacy ``choose_venue`` path.
+        """
+        _ = order  # reserved: future per-bot/per-qty hook
+        sr = self.smart_router
+        by_name = getattr(sr, "_venue_by_name", None)
+        if callable(by_name):
+            try:
+                venue = by_name(venue_name)
+            except Exception:  # noqa: BLE001
+                venue = None
+            if venue is not None:
+                return venue
+        for attr in ("_venue_map", "venue_map"):
+            mapping = getattr(sr, attr, None)
+            if isinstance(mapping, dict):
+                venue = mapping.get(venue_name)
+                if venue is not None:
+                    return venue
+        venue = getattr(sr, venue_name, None)
+        if venue is not None and hasattr(venue, "place_order"):
+            return venue
+        return None
+
+    def _handle_routing_config_unsupported(
+        self, order: PendingOrder, target: Path, reason: str,
+    ) -> None:
+        """Quarantine an unmappable (bot, symbol, venue) triple. NOTED journal."""
+        self._counts["quarantined"] += 1
+        self._record_event(
+            target.name, "quarantined", "routing_config_unsupported_pair",
+        )
+        if not self.dry_run:
+            with contextlib.suppress(OSError):
+                self._atomic_move(target, self.quarantine_dir / target.name)
+            self._clear_retry_meta(target)
+        self._safe_journal(
+            actor=Actor.STRATEGY_ROUTER,
+            intent="pending_order_quarantined",
+            rationale=f"routing_config_unsupported_pair: {reason}",
+            outcome=Outcome.NOTED,
+            links=[
+                f"signal:{order.signal_id}", f"bot:{order.bot_id}",
+                f"file:{target.name}",
+            ],
+            metadata={
+                "reason": "routing_config_unsupported_pair",
+                "detail": reason, "order": order.to_dict(),
+            },
+        )
+
+    def _handle_processing_error(self, target: Path, reason: str) -> None:
+        """Fail one inconsistent work item without killing the router loop."""
+        self._counts["failed"] += 1
+        self._record_event(target.name, "processing_error", reason)
+        if not self.dry_run:
+            with contextlib.suppress(OSError):
+                self._atomic_move(target, self.failed_dir / target.name)
+            self._clear_retry_meta(target)
+        self._safe_journal(
+            actor=Actor.STRATEGY_ROUTER,
+            intent="pending_order_processing_error",
+            rationale=reason,
+            outcome=Outcome.FAILED,
+            links=[f"file:{target.name}"],
+            metadata={"reason": reason, "path": str(target)},
         )
 
     async def _submit_and_finalize(
@@ -469,81 +861,75 @@ class BrokerRouter:
         venue: VenueBase,
         request: OrderRequest,
         gate_checks_summary: list[str],
+        *,
+        retry_meta: dict[str, Any],
     ) -> None:
         """Send the order, classify the result, archive or fail."""
         self._counts["submitted"] += 1
         try:
             result = await venue.place_order(request)
         except Exception as exc:  # noqa: BLE001
-            self._handle_routing_error(
-                order, target, f"venue.place_order raised: {exc}",
-            )
+            self._handle_routing_error(order, target, f"venue.place_order raised: {exc}")
             return
 
         sidecar_payload = {
-            "signal_id": order.signal_id,
-            "bot_id": order.bot_id,
+            "signal_id": order.signal_id, "bot_id": order.bot_id,
             "venue": venue.name,
             "request": json.loads(request.model_dump_json()),
             "result": json.loads(result.model_dump_json()),
             "ts": datetime.now(UTC).isoformat(),
         }
         self._write_sidecar(
-            self.fill_results_dir / f"{order.signal_id}_result.json",
-            sidecar_payload,
+            self.fill_results_dir / f"{order.signal_id}_result.json", sidecar_payload,
         )
+        links = [
+            f"signal:{order.signal_id}",
+            f"bot:{order.bot_id}",
+            f"order:{result.order_id}",
+        ]
 
         if result.status is OrderStatus.REJECTED:
             self._counts["rejected"] += 1
-            self._retry_counts[order.signal_id] = (
-                self._retry_counts.get(order.signal_id, 0) + 1
+            attempts = int(retry_meta.get("attempts", 0)) + 1
+            reject_reason = (
+                getattr(result, "error_message", None)
+                or f"venue={venue.name} rejected order_id={result.order_id}"
             )
-            attempts = self._retry_counts[order.signal_id]
+            new_meta = {
+                "attempts": attempts,
+                "last_attempt_ts": datetime.now(UTC).isoformat(),
+                "last_reject_reason": str(reject_reason),
+            }
+            self._retry_counts[order.signal_id] = attempts
             if attempts >= self.max_retries:
                 self._counts["failed"] += 1
                 self._record_event(target.name, "failed", "max_retries")
-                fail_target = self.failed_dir / target.name
-                with contextlib.suppress(OSError):
-                    self._atomic_move(target, fail_target)
+                self._move_to_failed_with_meta(target, new_meta)
                 self._safe_journal(
-                    actor=Actor.STRATEGY_ROUTER,
-                    intent="pending_order_failed",
+                    actor=Actor.STRATEGY_ROUTER, intent="pending_order_failed",
                     rationale=(
                         f"venue={venue.name} rejected {attempts} times; "
                         f"order_id={result.order_id}"
                     ),
-                    gate_checks=gate_checks_summary,
-                    outcome=Outcome.FAILED,
-                    links=[
-                        f"signal:{order.signal_id}",
-                        f"bot:{order.bot_id}",
-                        f"order:{result.order_id}",
-                    ],
-                    metadata=sidecar_payload,
+                    gate_checks=gate_checks_summary, outcome=Outcome.FAILED,
+                    links=links, metadata=sidecar_payload,
                 )
                 self._retry_counts.pop(order.signal_id, None)
             else:
-                # Leave the file in processing/ for the next tick to retry.
-                logger.info(
-                    "rejected attempt=%d/%d signal=%s; will retry",
-                    attempts, self.max_retries, order.signal_id,
-                )
+                # Leave file in processing/ + persist retry-meta for the
+                # next tick (which honors exponential backoff).
+                self._save_retry_meta(target, new_meta)
+                logger.info("rejected attempt=%d/%d signal=%s; will retry",
+                            attempts, self.max_retries, order.signal_id)
                 self._record_event(target.name, "rejected_retry", str(attempts))
                 self._safe_journal(
-                    actor=Actor.STRATEGY_ROUTER,
-                    intent="pending_order_rejected_retry",
+                    actor=Actor.STRATEGY_ROUTER, intent="pending_order_rejected_retry",
                     rationale=(
                         f"venue={venue.name} rejected attempt={attempts}/"
                         f"{self.max_retries}"
                     ),
-                    gate_checks=gate_checks_summary,
-                    outcome=Outcome.NOTED,
-                    links=[
-                        f"signal:{order.signal_id}",
-                        f"bot:{order.bot_id}",
-                        f"order:{result.order_id}",
-                    ],
-                    metadata=sidecar_payload,
+                    gate_checks=gate_checks_summary, outcome=Outcome.NOTED,
+                    links=links, metadata=sidecar_payload,
                 )
             return
 
@@ -553,24 +939,17 @@ class BrokerRouter:
         self._retry_counts.pop(order.signal_id, None)
         archive_dated = self.archive_dir / datetime.now(UTC).strftime("%Y-%m-%d")
         archive_dated.mkdir(parents=True, exist_ok=True)
-        archive_target = archive_dated / target.name
         with contextlib.suppress(OSError):
-            self._atomic_move(target, archive_target)
+            self._atomic_move(target, archive_dated / target.name)
+        self._clear_retry_meta(target)
         self._safe_journal(
-            actor=Actor.STRATEGY_ROUTER,
-            intent="pending_order_executed",
+            actor=Actor.STRATEGY_ROUTER, intent="pending_order_executed",
             rationale=(
                 f"venue={venue.name} status={result.status.value} "
                 f"filled={result.filled_qty} avg_price={result.avg_price}"
             ),
-            gate_checks=gate_checks_summary,
-            outcome=Outcome.EXECUTED,
-            links=[
-                f"signal:{order.signal_id}",
-                f"bot:{order.bot_id}",
-                f"order:{result.order_id}",
-            ],
-            metadata=sidecar_payload,
+            gate_checks=gate_checks_summary, outcome=Outcome.EXECUTED,
+            links=links, metadata=sidecar_payload,
         )
 
     def _handle_routing_error(
@@ -582,6 +961,7 @@ class BrokerRouter:
         if not self.dry_run:
             with contextlib.suppress(OSError):
                 self._atomic_move(target, self.failed_dir / target.name)
+            self._clear_retry_meta(target)
         self._safe_journal(
             actor=Actor.STRATEGY_ROUTER,
             intent="pending_order_routing_error",
@@ -594,84 +974,127 @@ class BrokerRouter:
     # -- gate chain ---------------------------------------------------------
 
     async def _evaluate_gates(self, order: PendingOrder) -> list[dict[str, Any]]:
-        """Run the firm/eta_engine default gate chain. Returns list of dicts.
+        """Run the gate chain. Returns ``[{gate, allow, reason, context}, ...]``.
 
-        Each dict has keys ``gate``, ``allow``, ``reason``, ``context``.
-        Lazy-imports the gate chain so this module loads even when the
-        firm/eta_engine submodule isn't on sys.path.
+        On ``ImportError`` of the gate-chain module: fail-closed DENY by
+        default (gate=``gate_chain_import_failed``). When
+        ``ETA_GATE_BOOTSTRAP=1`` is set, log ERROR but allow through with
+        gate=``import_error_bootstrap``. Mirrors the escape-hatch pattern
+        in ``mnq.risk.gate_chain``.
+
+        If the test/operator has installed an override on
+        ``self.gate_chain`` (callable taking the same kwargs), that
+        callable is used directly instead of the lazy-imported factory.
         """
-        # Inject firm/eta_engine/src so ``mnq.risk.gate_chain`` resolves.
-        firm_src = ROOT.parent / "firm" / "eta_engine" / "src"
-        if firm_src.is_dir() and str(firm_src) not in sys.path:
-            sys.path.insert(0, str(firm_src))
+        # Override hook: tests / shadow envs can install a direct callable.
+        override = getattr(self, "gate_chain", None)
+        if override is not None:
+            try:
+                _allow, results = self._invoke_gate_chain_override(override, order)
+            except NotImplementedError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.error("gate_chain override raised %s; DENY (fail-closed)", exc)
+                return [{"gate": "chain_error", "allow": False,
+                         "reason": f"chain raised: {exc}", "context": {}}]
+            return [self._normalize_gate_result(r) for r in results]
 
         try:
-            from mnq.risk.gate_chain import build_default_chain  # type: ignore[import-not-found]
+            build_default_chain = _load_build_default_chain()
         except ImportError as exc:
-            logger.warning(
-                "gate chain import failed (%s); allowing order through "
-                "with a NOTED journal entry. Operator must investigate.",
-                exc,
+            tb = traceback.format_exc()
+            if _gate_bootstrap_enabled():
+                logger.error(
+                    "gate chain import failed (%s); ETA_GATE_BOOTSTRAP=1 set, "
+                    "allowing order through.\n%s", exc, tb,
+                )
+                return [{"gate": "import_error_bootstrap", "allow": True,
+                         "reason": f"gate_chain unavailable (bootstrap): {exc}",
+                         "context": {"traceback": tb}}]
+            logger.error(
+                "gate chain import failed (%s); fail-closed DENY. "
+                "Set ETA_GATE_BOOTSTRAP=1 only if you accept the risk.\n%s",
+                exc, tb,
             )
-            return [{
-                "gate": "import_error",
-                "allow": True,
-                "reason": f"gate_chain unavailable: {exc}",
-                "context": {},
-            }]
+            return [{"gate": "gate_chain_import_failed", "allow": False,
+                     "reason": f"gate_chain unavailable: {exc}",
+                     "context": {"traceback": tb}}]
 
-        # Pull current bot positions for the correlation gate. Tolerate
-        # the empty-state first-boot case via the documented env var.
-        try:
-            from eta_engine.obs.position_reconciler import fetch_bot_positions
-            agg = fetch_bot_positions()
-        except RuntimeError as exc:
-            if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
-                logger.info("empty bot-positions tolerated: %s", exc)
-                agg = {}
-            else:
-                logger.warning("fetch_bot_positions failed: %s", exc)
-                agg = {}
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("fetch_bot_positions errored: %s", exc)
-            agg = {}
-
-        # Collapse {symbol: {bot: qty}} into {symbol: int(net_qty)} for the
-        # correlation gate's expected shape.
-        open_positions: dict[str, int] = {}
-        for symbol, by_bot in agg.items():
-            net = sum(by_bot.values())
-            if abs(net) > 0.0:
-                open_positions[symbol] = int(round(net))
-
+        open_positions = self._collect_open_positions()
         try:
             chain = build_default_chain(
                 open_positions=open_positions,
                 new_symbol=order.symbol,
                 new_qty=int(round(order.qty)) or 1,
             )
-            allow, results = chain.evaluate()
+            _allow, results = chain.evaluate()
         except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "gate chain evaluation raised %s; treating as DENY (fail-closed)",
-                exc,
-            )
-            return [{
-                "gate": "chain_error",
-                "allow": False,
-                "reason": f"chain raised: {exc}",
-                "context": {},
-            }]
+            logger.error("gate chain evaluation raised %s; DENY (fail-closed)", exc)
+            return [{"gate": "chain_error", "allow": False,
+                     "reason": f"chain raised: {exc}", "context": {}}]
+        return [self._normalize_gate_result(r) for r in results]
 
-        return [
-            {
-                "gate": r.gate,
-                "allow": r.allow,
-                "reason": r.reason,
-                "context": dict(r.context) if r.context else {},
-            }
-            for r in results
-        ]
+    def _invoke_gate_chain_override(
+        self, override: object, order: PendingOrder,
+    ) -> tuple[bool, list[object]]:
+        """Invoke a test/shadow gate_chain override. Supports two shapes:
+
+        * Callable returning ``(allow, results)`` directly.
+        * Object with an ``.evaluate(**kwargs)`` method returning the same.
+        """
+        kwargs = {
+            "open_positions": self._collect_open_positions(),
+            "new_symbol": order.symbol,
+            "new_qty": int(round(order.qty)) or 1,
+        }
+        if callable(override):
+            return override(**kwargs)
+        return override.evaluate(**kwargs)
+
+    def _collect_open_positions(self) -> dict[str, int]:
+        """Pull aggregated bot positions for the correlation gate.
+
+        Honors ``ETA_RECONCILE_DISABLED`` (force empty) and
+        ``ETA_RECONCILE_ALLOW_EMPTY_STATE`` (tolerate first-boot empty).
+        Defensive: any error -> empty dict (logged), unless allow-empty
+        is unset and the source raises NotImplementedError -> propagated
+        as a routing error by the caller via journal-FAILED.
+        """
+        if os.environ.get("ETA_RECONCILE_DISABLED") == "1":
+            return {}
+        try:
+            from eta_engine.obs.position_reconciler import fetch_bot_positions
+            agg = fetch_bot_positions()
+        except NotImplementedError as exc:
+            if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
+                logger.info("empty bot-positions tolerated: %s", exc)
+                return {}
+            raise
+        except RuntimeError as exc:
+            if os.environ.get("ETA_RECONCILE_ALLOW_EMPTY_STATE") == "1":
+                logger.info("empty bot-positions tolerated: %s", exc)
+                return {}
+            logger.warning("fetch_bot_positions failed: %s", exc)
+            return {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fetch_bot_positions errored: %s", exc)
+            return {}
+        out: dict[str, int] = {}
+        for symbol, by_bot in agg.items():
+            net = sum(by_bot.values())
+            if abs(net) > 0.0:
+                out[symbol] = int(round(net))
+        return out
+
+    @staticmethod
+    def _normalize_gate_result(r: object) -> dict[str, Any]:
+        """Coerce a GateResult-shaped object into the dict shape we use."""
+        return {
+            "gate": getattr(r, "gate", ""),
+            "allow": bool(getattr(r, "allow", False)),
+            "reason": getattr(r, "reason", "") or "",
+            "context": dict(getattr(r, "context", {}) or {}),
+        }
 
     # -- IO helpers ---------------------------------------------------------
 
@@ -693,8 +1116,10 @@ class BrokerRouter:
 
     def _emit_heartbeat(self) -> None:
         """Write a small heartbeat snapshot for monitoring."""
+        now_iso = datetime.now(UTC).isoformat()
         snap = {
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": now_iso,
+            "last_poll_ts": now_iso,
             "pending_dir": str(self.pending_dir),
             "state_root": str(self.state_root),
             "dry_run": self.dry_run,

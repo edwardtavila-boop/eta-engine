@@ -1,0 +1,48 @@
+# EVOLUTIONARY TRADING ALGO  //  configs/bot_broker_routing.yaml
+# Per-bot broker routing config consumed by eta_engine.scripts.broker_router.
+#
+# Maps bot_id -> {venue, normalized_symbol}.
+# Bot IDs are extracted from filename: <bot_id>.pending_order.json
+# Venue values:
+#   "ibkr"  -> LiveIbkrVenue   (PRIMARY active futures broker)
+#   "tasty" -> TastytradeVenue (SECONDARY active futures broker)
+#
+# Workspace hard rule #2: Tradovate stays DORMANT unless the operator
+# explicitly reactivates it (ETA_TRADOVATE_ENABLED=1) AND updates
+# eta_engine.venues.router.DORMANT_BROKERS in the same batch.
+#
+# Symbol overrides translate the supervisor's raw symbol token to the form
+# the target venue expects:
+#   * IBKR PAXOS crypto: BTC -> BTCUSD, ETH -> ETHUSD, SOL -> SOLUSD
+#   * Tastytrade crypto: BTC -> BTCUSDT, ETH -> ETHUSDT, SOL -> SOLUSDT
+#   * Futures roots (MNQ/ES/NQ/GC/CL/6E) pass through unchanged
+#   * MNQ1 (month-suffixed supervisor form) collapses to MNQ on IBKR
+#
+# Loader: eta_engine.scripts.broker_router.RoutingConfig.load()
+# Override path via env: ETA_BROKER_ROUTING_CONFIG=/abs/path/to/file.yaml
+
+version: 1
+
+default:
+  venue: ibkr
+  symbol_overrides:
+    BTC:  { ibkr: BTCUSD,  tasty: BTCUSDT }
+    ETH:  { ibkr: ETHUSD,  tasty: ETHUSDT }
+    SOL:  { ibkr: SOLUSD,  tasty: SOLUSDT }
+    XRP:  { ibkr: XRPUSD,  tasty: XRPUSDT }
+    MNQ1: { ibkr: MNQ }
+    MNQ:  { ibkr: MNQ }
+    ES:   { ibkr: ES }
+    NQ:   { ibkr: NQ }
+    GC:   { ibkr: GC }
+    CL:   { ibkr: CL }
+    "6E": { ibkr: 6E }
+
+bots:
+  # Explicit per-bot overrides. Anything not listed inherits default.venue.
+  btc_optimized:    { venue: ibkr }
+  eth_perp:         { venue: ibkr }
+  sol_directional:  { venue: ibkr }
+  mnq_v7:           { venue: ibkr }
+  # Examples for tasty routing -- currently none, leave commented:
+  # btc_to_tasty: { venue: tasty }

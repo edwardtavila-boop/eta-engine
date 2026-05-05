@@ -42,7 +42,6 @@ from eta_engine.venues.base import (  # noqa: E402  (after importorskip)
     OrderStatus,
 )
 
-
 # ---------------------------------------------------------------------------
 # Tiny stand-ins
 # ---------------------------------------------------------------------------
@@ -239,29 +238,22 @@ def _make_router(
     max_retries: int = 3,
     interval_s: int = 5,
 ) -> Any:
-    """Construct a BrokerRouter. Tries the documented kwargs first; if
-    the implementation tightens the constructor we surface a clean error."""
-    kwargs: dict[str, Any] = {
-        "pending_dir": pending_dir,
-        "state_root": state_root,
-        "smart_router": smart_router,
-        "journal": journal,
-        "interval_s": interval_s,
-        "dry_run": dry_run,
-        "max_retries": max_retries,
-    }
-    if gate_chain is not None:
-        kwargs["gate_chain"] = gate_chain
-    try:
-        return broker_router.BrokerRouter(**kwargs)
-    except TypeError:
-        # Fallback: implementation may inject gate_chain via attribute
-        # rather than a constructor kwarg. Build then patch.
-        kwargs.pop("gate_chain", None)
-        router = broker_router.BrokerRouter(**kwargs)
-        if gate_chain is not None:
-            router.gate_chain = gate_chain  # type: ignore[attr-defined]
-        return router
+    """Construct a BrokerRouter. The gate_chain override is a constructor
+    kwarg: ``BrokerRouter(..., gate_chain=callable)``. The router calls
+    the override directly with ``open_positions``, ``new_symbol``, and
+    ``new_qty`` kwargs and expects ``(allow, [GateResult-shaped, ...])``
+    back, matching the production ``mnq.risk.gate_chain.build_default_chain``
+    contract."""
+    return broker_router.BrokerRouter(
+        pending_dir=pending_dir,
+        state_root=state_root,
+        smart_router=smart_router,
+        journal=journal,
+        interval_s=interval_s,
+        dry_run=dry_run,
+        max_retries=max_retries,
+        gate_chain=gate_chain,
+    )
 
 
 def _today_archive_dir(state_root: Path) -> Path:
@@ -320,12 +312,12 @@ class TestParsePendingFile:
         }
         path = tmp_path / "alpha.pending_order.json"
         path.write_text(json.dumps(bad), encoding="utf-8")
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             broker_router.parse_pending_file(path)
 
     def test_parse_pending_file_invalid_side_raises(self, tmp_path: Path) -> None:
         path = _write_pending(tmp_path, side="HOLD")
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             broker_router.parse_pending_file(path)
 
 
@@ -352,7 +344,7 @@ class TestNormalizeSymbol:
         assert broker_router.normalize_symbol("MNQ", "ibkr") == "MNQ"
 
     def test_normalize_symbol_unknown_pair_raises(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             broker_router.normalize_symbol("XYZ", "ibkr")
 
 
@@ -536,6 +528,15 @@ class TestLifecycle:
     def test_venue_rejected_retries_then_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Three REJECTs across three ticks -> file ends in failed/.
+
+        Pinned to the new retry behavior: each REJECT writes a sidecar
+        ``<file>.retry_meta.json`` and leaves the file in processing/.
+        Subsequent ticks read that sidecar and re-run the lifecycle. The
+        backoff is suppressed for the test by stubbing
+        ``broker_router.BrokerRouter._should_backoff`` to ``False`` so
+        the test doesn't have to sleep through real exponential delays.
+        """
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         path = _write_pending(pending_dir)
@@ -560,14 +561,30 @@ class TestLifecycle:
             gate_chain=gates,
             max_retries=3,
         )
-        asyncio.run(router._process_pending_file(path))
+        # Suppress exponential backoff so the test runs in milliseconds.
+        monkeypatch.setattr(
+            type(router), "_should_backoff", lambda *_a, **_k: False,
+        )
+
+        async def _drive() -> None:
+            # Tick 1: pending -> processing, attempts=1, leave in processing/
+            await router._tick()
+            # Tick 2: retry scan picks it up, attempts=2, leave in processing/
+            await router._tick()
+            # Tick 3: retry scan picks it up, attempts=3 == max -> failed/
+            await router._tick()
+
+        asyncio.run(_drive())
 
         failed = _find_under(state_root / "failed", path.name)
-        assert failed is not None
-        # Journal got 3 FAILED events
+        assert failed is not None, "expected file under state_root/failed/"
+        # File should NOT still be in processing/.
+        leftover = _find_under(state_root / "processing", path.name)
+        assert leftover is None, "file lingered in processing/ after max_retries"
+        # Three rejections -> 2 NOTED retry events + 1 FAILED terminal.
         failed_count = sum(1 for o in journal.outcomes() if str(o).upper() == "FAILED")
-        assert failed_count >= 3, (
-            f"expected >=3 FAILED events, got {failed_count} (outcomes={journal.outcomes()!r})"
+        assert failed_count >= 1, (
+            f"expected at least 1 FAILED event, got outcomes={journal.outcomes()!r}"
         )
 
     def test_dry_run_does_not_move_or_submit(
@@ -720,7 +737,13 @@ class TestLifecycle:
     def test_heartbeat_emitted_each_loop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Two tick-iterations should both refresh the heartbeat file."""
+        """Two ticks both refresh ``state_root/broker_router_heartbeat.json``.
+
+        Pinned to the actual API: the router exposes both ``_tick``
+        (async) and ``_emit_heartbeat`` (sync). The heartbeat path is
+        ``state_root / "broker_router_heartbeat.json"`` and the payload
+        contains ``last_poll_ts``.
+        """
         pending_dir = tmp_path / "pending"
         state_root = tmp_path / "state"
         venue = _FakeVenue()
@@ -737,46 +760,48 @@ class TestLifecycle:
             gate_chain=gates,
         )
 
-        # Drive two loop iterations directly via private _tick if exposed,
-        # otherwise fall back to invoking the documented heartbeat writer.
         async def _two_ticks() -> None:
-            tick_fn = getattr(router, "_tick", None) or getattr(
-                router, "_run_once", None
-            )
-            heartbeat_fn = getattr(router, "_emit_heartbeat", None) or getattr(
-                router, "_write_heartbeat", None
-            )
-            if tick_fn is not None:
-                # Documented: each iteration scans pending + emits heartbeat.
-                if asyncio.iscoroutinefunction(tick_fn):
-                    await tick_fn()
-                    await tick_fn()
-                else:
-                    tick_fn()
-                    tick_fn()
-            elif heartbeat_fn is not None:
-                if asyncio.iscoroutinefunction(heartbeat_fn):
-                    await heartbeat_fn()
-                    await heartbeat_fn()
-                else:
-                    heartbeat_fn()
-                    heartbeat_fn()
-            else:  # pragma: no cover  — flagged in coverage report
-                pytest.skip(
-                    "router exposes neither _tick/_run_once nor _emit_heartbeat; "
-                    "implementation must clarify heartbeat hook for this test"
-                )
+            await router._tick()
+            await router._tick()
 
         asyncio.run(_two_ticks())
 
-        hb_path = _find_under(state_root, "broker_router_heartbeat.json")
-        assert hb_path is not None, (
-            f"expected broker_router_heartbeat.json under {state_root!s}"
-        )
+        # Heartbeat path is pinned: ``state_root/broker_router_heartbeat.json``.
+        hb_path = state_root / "broker_router_heartbeat.json"
+        assert hb_path.exists(), f"expected heartbeat file at {hb_path!s}"
+        # And the router exposes the property too.
+        assert router.heartbeat_path == hb_path
         body = json.loads(hb_path.read_text(encoding="utf-8"))
         assert "last_poll_ts" in body, (
             f"heartbeat payload missing last_poll_ts; got keys={list(body)!r}"
         )
+
+    def test_emit_heartbeat_writes_directly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Direct ``_emit_heartbeat()`` call writes the snapshot."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+        )
+        router._emit_heartbeat()
+
+        hb_path = state_root / "broker_router_heartbeat.json"
+        assert hb_path.exists()
+        body = json.loads(hb_path.read_text(encoding="utf-8"))
+        assert "last_poll_ts" in body
+        assert "counts" in body
 
     def test_unrecoverable_processing_exception_does_not_kill_loop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -845,10 +870,10 @@ class TestPositionReconciliation:
 
         assert gates.calls, "gate-chain was never invoked"
         first = gates.calls[0]
-        # Implementation may name it `open_positions` or `positions`; accept either.
+        # Production gate-chain contract is {symbol: net_qty}.
         seen = first.get("open_positions") or first.get("positions")
-        assert seen == positions, (
-            f"gate chain received {seen!r}, expected {positions!r}"
+        assert seen == {"MNQ": 2}, (
+            f"gate chain received {seen!r}, expected collapsed net positions"
         )
 
     def test_reconcile_disabled_falls_through_to_empty_dict(
@@ -1040,11 +1065,429 @@ class TestIdempotency:
             journal=journal,
             gate_chain=gates,
         )
-        # Should not crash; outcome (skip vs collision-rename) is up to
-        # the implementation, but the loop must remain alive.
-        try:
-            asyncio.run(router._process_pending_file(path))
-        except Exception as exc:  # pragma: no cover
-            pytest.fail(
-                f"router crashed on pre-existing archive collision: {exc!r}"
-            )
+        # Pinned behavior: ``_atomic_move`` uses ``os.replace`` which is
+        # a silent overwrite-on-collision on both POSIX and Windows. The
+        # router does not crash and the archive entry contains the new
+        # fill_result (overwriting the prior empty stub).
+        asyncio.run(router._process_pending_file(path))
+
+        archived = _find_under(state_root / "archive", path.name)
+        assert archived is not None, "expected the file to land in archive/"
+        # The prior stub was ``{}``; after replace it should hold the
+        # supervisor JSON we wrote (signal_id is preserved).
+        body = archived.read_text(encoding="utf-8")
+        assert "sig-arch" in body, (
+            f"expected archive entry to be the new pending payload, got {body[:80]!r}"
+        )
+        # Venue was called; FILLED journaled.
+        assert len(venue.calls) == 1
+        outcomes = journal.outcomes()
+        assert any(str(o).upper() == "EXECUTED" for o in outcomes)
+
+
+# ---------------------------------------------------------------------------
+# Retry-meta sidecar (Issue 1: orphaned retries)
+# ---------------------------------------------------------------------------
+
+
+class TestRetryMetaSidecar:
+    def test_rejected_writes_retry_meta_in_processing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One REJECT writes ``<file>.retry_meta.json`` in processing/."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-meta-1")
+
+        venue = _FakeVenue(results=[
+            OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
+        ])
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=gates, max_retries=5,
+        )
+        asyncio.run(router._tick())
+
+        processing_dir = state_root / "processing"
+        proc_order = processing_dir / path.name
+        assert proc_order.exists(), "order file should remain in processing/ after REJECT"
+        meta_path = processing_dir / (path.name + ".retry_meta.json")
+        assert meta_path.exists(), "expected retry_meta sidecar in processing/"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert meta["attempts"] == 1
+        assert meta["last_attempt_ts"]
+        assert "last_reject_reason" in meta
+
+    def test_retry_path_picked_up_on_next_tick(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tick 2 re-runs the lifecycle for a file already in processing/."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-meta-2")
+
+        venue = _FakeVenue(results=[
+            OrderResult(order_id="OID", status=OrderStatus.REJECTED, filled_qty=0.0),
+            OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
+        ])
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=gates, max_retries=3,
+        )
+        monkeypatch.setattr(
+            type(router), "_should_backoff", lambda *_a, **_k: False,
+        )
+
+        async def _drive() -> None:
+            await router._tick()
+            await router._tick()
+
+        asyncio.run(_drive())
+        assert len(venue.calls) == 2, "expected the second tick to retry the order"
+        archived = _find_under(state_root / "archive", path.name)
+        assert archived is not None, "filled order should be archived"
+
+
+# ---------------------------------------------------------------------------
+# Gate-chain import failure (Issue 2: fail-closed by default + bootstrap)
+# ---------------------------------------------------------------------------
+
+
+class TestGateChainImportFailure:
+    def test_import_failure_blocks_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ImportError of gate_chain -> file lands in blocked/, NOT archive."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-block-imp")
+
+        def _raise_import_error() -> Any:
+            raise ImportError("simulated firm submodule missing")
+
+        monkeypatch.setattr(
+            broker_router, "_load_build_default_chain", _raise_import_error,
+        )
+        monkeypatch.delenv("ETA_GATE_BOOTSTRAP", raising=False)
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=None,  # production path
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        blocked_file = _find_under(state_root / "blocked", path.name)
+        assert blocked_file is not None, "expected file under state_root/blocked/"
+        assert _find_under(state_root / "archive", path.name) is None
+        meta_files = list((state_root / "blocked").rglob("*_block.json"))
+        assert meta_files, "expected a *_block.json sidecar"
+        meta_text = meta_files[0].read_text(encoding="utf-8")
+        assert "gate_chain_import_failed" in meta_text
+        assert any(
+            "gate_chain_import_failed" in i for i in journal.intents()
+        ), f"intents={journal.intents()!r}"
+        assert venue.calls == []
+
+    def test_import_failure_with_bootstrap_allows_through(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ETA_GATE_BOOTSTRAP=1 -> ImportError logs ERROR but allows through."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-bootstrap")
+
+        def _raise_import_error() -> Any:
+            raise ImportError("simulated firm submodule missing")
+
+        monkeypatch.setattr(
+            broker_router, "_load_build_default_chain", _raise_import_error,
+        )
+        monkeypatch.setenv("ETA_GATE_BOOTSTRAP", "1")
+
+        venue = _FakeVenue(results=[
+            OrderResult(order_id="OID", status=OrderStatus.FILLED, filled_qty=1.0),
+        ])
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=None,
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        assert len(venue.calls) == 1, "bootstrap should let the order through"
+        archived = _find_under(state_root / "archive", path.name)
+        assert archived is not None
+        assert _find_under(state_root / "blocked", path.name) is None
+
+
+# ---------------------------------------------------------------------------
+# Per-bot routing config (Issue 3: scale to 52 bots without hardcoded heuristics)
+# ---------------------------------------------------------------------------
+
+_VALID_ROUTING_YAML = """\
+version: 1
+default:
+  venue: ibkr
+  symbol_overrides:
+    BTC:  { ibkr: BTCUSD, tasty: BTCUSDT }
+    ETH:  { ibkr: ETHUSD, tasty: ETHUSDT }
+    MNQ:  { ibkr: MNQ }
+    MNQ1: { ibkr: MNQ }
+bots:
+  btc_optimized: { venue: ibkr }
+  btc_to_tasty:  { venue: tasty }
+"""
+
+
+def _write_routing_yaml(tmp_path: Path, body: str = _VALID_ROUTING_YAML) -> Path:
+    """Drop a routing-config YAML file into ``tmp_path`` and return the path."""
+    p = tmp_path / "routing.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+class TestRoutingConfig:
+    def test_load_from_path(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        assert cfg.default_venue == "ibkr"
+        # Per-bot block parsed.
+        assert "btc_optimized" in cfg.per_bot
+        assert cfg.per_bot["btc_to_tasty"]["venue"] == "tasty"
+        # Symbol overrides parsed and venue keys lower-cased.
+        assert cfg.symbol_overrides["BTC"]["ibkr"] == "BTCUSD"
+        assert cfg.symbol_overrides["BTC"]["tasty"] == "BTCUSDT"
+
+    def test_missing_file_returns_default(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        missing = tmp_path / "does_not_exist.yaml"
+        with caplog.at_level("WARNING", logger="eta_engine.broker_router"):
+            cfg = broker_router.RoutingConfig.load(missing)
+        # Default is the permissive ibkr-for-all config.
+        assert cfg.default_venue == "ibkr"
+        assert cfg.per_bot == {}
+        assert cfg.symbol_overrides == {}
+        # WARNING was emitted.
+        assert any(
+            "routing config not found" in rec.getMessage().lower()
+            for rec in caplog.records
+        ), f"expected WARNING about missing file, got {caplog.records!r}"
+
+    def test_malformed_yaml_raises(self, tmp_path: Path) -> None:
+        bad = tmp_path / "bad.yaml"
+        # Unbalanced mapping is a parse error.
+        bad.write_text("default:\n  venue: ibkr\n  symbol_overrides: [", encoding="utf-8")
+        with pytest.raises(ValueError):
+            broker_router.RoutingConfig.load(bad)
+
+    def test_per_bot_override_takes_precedence(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        # ``btc_to_tasty`` overrides default ibkr -> tasty.
+        assert cfg.venue_for("btc_to_tasty") == "tasty"
+        # ``btc_optimized`` is listed but matches default.
+        assert cfg.venue_for("btc_optimized") == "ibkr"
+
+    def test_default_used_when_bot_not_listed(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        assert cfg.venue_for("never_seen_bot") == "ibkr"
+
+    def test_map_symbol_basic(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        assert cfg.map_symbol("BTC", "ibkr") == "BTCUSD"
+        assert cfg.map_symbol("BTC", "tasty") == "BTCUSDT"
+        assert cfg.map_symbol("MNQ1", "ibkr") == "MNQ"
+
+    def test_map_symbol_unsupported_raises(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        with pytest.raises(ValueError):
+            cfg.map_symbol("XYZ", "ibkr")
+        # An override exists for BTC but only for ibkr+tasty -- a request
+        # to map BTC to an unlisted venue should also raise.
+        with pytest.raises(ValueError):
+            cfg.map_symbol("BTC", "bybit")
+
+    def test_map_symbol_no_override_returns_raw(self, tmp_path: Path) -> None:
+        # A futures-style symbol not listed under symbol_overrides falls
+        # through to the legacy futures-root pass-through.
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        assert cfg.map_symbol("ES", "ibkr") == "ES"
+        # Already-normalized stable-quote pass-through.
+        assert cfg.map_symbol("BTCUSDT", "tasty") == "BTCUSDT"
+
+    def test_env_var_override_picks_up_alternate_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        body = _VALID_ROUTING_YAML.replace("venue: ibkr", "venue: tasty", 1)
+        path = tmp_path / "alt.yaml"
+        path.write_text(body, encoding="utf-8")
+        monkeypatch.setenv("ETA_BROKER_ROUTING_CONFIG", str(path))
+        cfg = broker_router.RoutingConfig.load()
+        assert cfg.default_venue == "tasty"
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle integration: routing config drives venue selection
+# ---------------------------------------------------------------------------
+
+
+class _FakeMultiVenueRouter:
+    """SmartRouter stand-in with venue-by-name lookup, for routing-config tests."""
+
+    def __init__(self, venues_by_name: dict[str, _FakeVenue]) -> None:
+        self._venue_map = dict(venues_by_name)
+        self.choose_venue_calls: list[tuple[str, float, str]] = []
+        self.lookups: list[str] = []
+
+    def choose_venue(
+        self, symbol: str, qty: float, urgency: str = "normal",
+    ) -> _FakeVenue:
+        # The routing-config path should bypass this; the test asserts it.
+        self.choose_venue_calls.append((symbol, qty, urgency))
+        # Pick something sensible to avoid breaking unrelated callers.
+        return next(iter(self._venue_map.values()))
+
+    def _venue_by_name(self, name: str) -> _FakeVenue | None:
+        self.lookups.append(name)
+        return self._venue_map.get(name)
+
+
+class TestLifecycleRoutingConfig:
+    def test_unsupported_routing_pair_quarantined(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Pending file with unmapped symbol -> quarantine + venue NEVER called."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        # Symbol "ZZZ" is intentionally unmapped under all venues.
+        path = _write_pending(pending_dir, bot_id="alpha", symbol="ZZZ")
+
+        venue = _FakeVenue()
+        smart_router = _FakeMultiVenueRouter({"ibkr": venue, "tasty": venue})
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"BTC": {"ibkr": "BTCUSD"}},
+            per_bot={},
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=gates, routing_config=cfg,
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        # File ended up in quarantine/.
+        quarantined = _find_under(state_root / "quarantine", path.name)
+        assert quarantined is not None, (
+            f"expected file quarantined under {state_root / 'quarantine'!s}"
+        )
+        # Venue was NEVER called.
+        assert venue.calls == [], "venue must not be called for an unmapped pair"
+        # Journal recorded a NOTED quarantine event with the right reason.
+        outcomes = journal.outcomes()
+        assert any(str(o).upper() == "NOTED" for o in outcomes), (
+            f"expected NOTED outcome, got {outcomes!r}"
+        )
+        intents = journal.intents()
+        assert any("quarantine" in i.lower() for i in intents)
+        # Reason field flagged as routing_config_unsupported_pair.
+        meta_reasons: list[str] = []
+        for evt in journal.events:
+            md = getattr(evt, "metadata", {}) or {}
+            if md.get("reason"):
+                meta_reasons.append(str(md["reason"]))
+        assert any("routing_config_unsupported_pair" in r for r in meta_reasons), (
+            f"expected reason routing_config_unsupported_pair; got {meta_reasons!r}"
+        )
+
+    def test_per_bot_routing_picks_correct_venue(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Per-bot venue=tasty causes the tasty adapter to receive place_order."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir, bot_id="btc_to_tasty", signal_id="sig-tasty",
+            symbol="BTC",
+        )
+
+        ibkr_venue = _FakeVenue(
+            results=[OrderResult(
+                order_id="OID-IBKR", status=OrderStatus.FILLED, filled_qty=1.0,
+            )],
+        )
+        ibkr_venue.name = "ibkr"
+        tasty_venue = _FakeVenue(
+            results=[OrderResult(
+                order_id="OID-TASTY", status=OrderStatus.FILLED, filled_qty=1.0,
+            )],
+        )
+        tasty_venue.name = "tasty"
+        smart_router = _FakeMultiVenueRouter({
+            "ibkr": ibkr_venue, "tasty": tasty_venue,
+        })
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"BTC": {"ibkr": "BTCUSD", "tasty": "BTCUSDT"}},
+            per_bot={"btc_to_tasty": {"venue": "tasty"}},
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=gates, routing_config=cfg,
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        # The tasty adapter -- and ONLY the tasty adapter -- got the order.
+        assert len(tasty_venue.calls) == 1, (
+            f"expected the tasty venue to receive 1 order; got {len(tasty_venue.calls)}"
+        )
+        assert ibkr_venue.calls == [], (
+            "ibkr venue should not have been called for btc_to_tasty"
+        )
+        # Symbol was mapped to BTCUSDT for the tasty adapter.
+        assert tasty_venue.calls[0].symbol == "BTCUSDT", (
+            f"expected BTCUSDT; got {tasty_venue.calls[0].symbol!r}"
+        )
+        # The router used the venue-by-name lookup, not choose_venue.
+        assert "tasty" in smart_router.lookups, (
+            f"expected venue-by-name lookup for 'tasty'; got {smart_router.lookups!r}"
+        )
+        assert smart_router.choose_venue_calls == [], (
+            "choose_venue should be bypassed when routing config + venue map cover the route"
+        )

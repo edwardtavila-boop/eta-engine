@@ -320,6 +320,49 @@ class StrategySuperchargeManifestPanel extends Panel {
   }
 }
 
+// --- 5e. Strategy supercharge results ---
+class StrategySuperchargeResultsPanel extends Panel {
+  constructor() { super('cc-strategy-supercharge-results', '/api/jarvis/strategy_supercharge_results', 'Strategy Supercharge Results'); }
+  render(data) {
+    const summary = data.summary || {};
+    const nearMisses = Array.isArray(data.near_misses) ? data.near_misses : [];
+    const retuneQueue = Array.isArray(data.retune_queue) ? data.retune_queue : [];
+    if (data.error || data.status === 'unreadable') {
+      this.body.innerHTML = `<div class="text-amber-300 text-sm">Strategy results degraded: ${escapeHtml(data.error || 'results unreadable')}</div>`;
+      return;
+    }
+    const nearRows = nearMisses.slice(0, 4).map((item) => `
+      <li class="border-b border-zinc-800/70 pb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-mono text-cyan-300">${escapeHtml(item.bot_id || 'bot')}</span>
+          <span class="text-amber-300">${escapeHtml(item.result_status || 'near')}</span>
+        </div>
+        <div class="text-zinc-300">OOS Sharpe ${Number(item.oos_sharpe || 0).toFixed(2)} · DSR ${formatPct(item.dsr_pass_fraction || 0)}</div>
+      </li>`).join('');
+    const retuneRows = retuneQueue.slice(0, 4).map((item) => `
+      <li class="border-b border-zinc-800/70 pb-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-mono text-cyan-300">${escapeHtml(item.bot_id || 'bot')}</span>
+          <span class="text-emerald-300">${Number(item.priority_score || 0).toFixed(2)}</span>
+        </div>
+        <div class="text-zinc-300">${escapeHtml(item.issue_code || item.primary_focus || 'retune')}</div>
+        <div class="text-zinc-500">${escapeHtml(item.next_step || '')}</div>
+      </li>`).join('');
+    this.body.innerHTML = `
+      <div class="grid grid-cols-4 gap-2 text-xs mb-3">
+        <div><div class="text-zinc-500">tested</div><div class="text-cyan-300 text-lg font-mono">${Number(summary.tested || 0)}</div></div>
+        <div><div class="text-zinc-500">passed</div><div class="text-emerald-300 text-lg font-mono">${Number(summary.passed || 0)}</div></div>
+        <div><div class="text-zinc-500">failed</div><div class="text-red-300 text-lg font-mono">${Number(summary.failed || 0)}</div></div>
+        <div><div class="text-zinc-500">pending</div><div class="text-amber-300 text-lg font-mono">${Number(summary.pending || 0)}</div></div>
+      </div>
+      <div class="text-xs text-zinc-500 mb-3">best near miss: <span class="text-zinc-100 font-mono">${escapeHtml(summary.best_near_miss_bot || 'none')}</span></div>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div><div class="text-zinc-500 mb-1">near_misses</div><ul class="space-y-2">${nearRows || '<li class="text-zinc-500">No near misses.</li>'}</ul></div>
+        <div><div class="text-zinc-500 mb-1">retune_queue</div><ul class="space-y-2">${retuneRows || '<li class="text-emerald-300">No retunes queued.</li>'}</ul></div>
+      </div>`;
+  }
+}
+
 // --- 6. Policy diff ---
 class PolicyDiffPanel extends Panel {
   constructor() { super('cc-policy-diff', '/api/jarvis/policy_diff', 'Bandit Policy Diff'); }
@@ -434,6 +477,7 @@ onAuthenticated(() => {
     new OperatorQueuePanel(),
     new BotStrategyReadinessPanel(),
     new StrategySuperchargeManifestPanel(),
+    new StrategySuperchargeResultsPanel(),
     new PolicyDiffPanel(),
     new V22TogglePanel(),
     new EdgeLeaderboardPanel(),

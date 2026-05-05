@@ -11,6 +11,7 @@ from eta_engine.strategies.per_bot_registry import (
     all_assignments,
     bots,
     get_for_bot,
+    is_bot_active,
     summary_markdown,
 )
 
@@ -151,3 +152,19 @@ def test_btc_etf_assignments_use_canonical_history_root() -> None:
         assignment = get_for_bot(bot_id)
         assert assignment is not None
         assert assignment.extras.get("etf_csv_path") == expected
+
+
+def test_elite_scoreboard_deactivates_decayed_legacy_lanes() -> None:
+    expected_replacements = {
+        "eth_perp": "eth_sage_daily",
+        "btc_hybrid": "btc_hybrid_sage",
+        "eth_compression": "compression on ETH 1h has no edge",
+    }
+    for bot_id, reason_fragment in expected_replacements.items():
+        assignment = get_for_bot(bot_id)
+        assert assignment is not None
+        assert is_bot_active(bot_id) is False
+        assert assignment.extras.get("deactivated_on") == "2026-05-05"
+        reason = str(assignment.extras.get("deactivated_reason", ""))
+        assert "elite_scoreboard 2026-05-05" in reason
+        assert reason_fragment in reason

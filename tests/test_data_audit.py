@@ -113,11 +113,17 @@ def test_audit_runnable_when_all_critical_present(fully_covered_lib: DataLibrary
 
 def test_audit_blocked_when_critical_missing(tmp_path: Path) -> None:
     empty_lib = DataLibrary(roots=[tmp_path / "nope"])  # zero datasets
-    a = audit_bot("btc_hybrid", library=empty_lib)
+    # 2026-05-05: switched test from btc_hybrid to btc_optimized after
+    # btc_hybrid was deactivated by elite_scoreboard evidence (PF=0.82
+    # negative expectancy). Deactivated bots short-circuit audit_bot()
+    # to an empty BotAudit (deactivated=True, no requirements scanned)
+    # — by design, since the data audit doesn't care about retired bots.
+    # btc_optimized is the active replacement (same BTC critical bars).
+    a = audit_bot("btc_optimized", library=empty_lib)
     assert a is not None
     assert not a.is_runnable
     assert a.critical_coverage_pct == pytest.approx(0.0)
-    # btc_hybrid critical: BTC bars at 5m/1h/D (3 reqs after data-audit drift)
+    # btc_optimized critical: BTC bars at 5m/1h/D
     assert len(a.missing_critical) >= 3
 
 
@@ -139,18 +145,20 @@ def test_audit_uses_fear_greed_as_crypto_sentiment_proxy(tmp_path: Path) -> None
         [(1_775_000_000, 55.0, 55.0, 55.0, 55.0, 1.0)],
     )
 
-    a = audit_bot("btc_hybrid", library=DataLibrary(roots=[history]))
-
-    assert a is not None
-    available = {
-        (req.kind, req.symbol, req.timeframe, dataset.symbol, dataset.timeframe)
-        for req, dataset in a.available
-    }
-    assert ("sentiment", "BTC", "1h", "FEAR_GREEDMACRO", "D") in available
-    assert not any(
-        req.kind == "sentiment" and req.symbol == "BTC"
-        for req in a.missing_optional
+    # 2026-05-05: btc_hybrid is the only bot with a BTC sentiment
+    # requirement, but it was deactivated by elite_scoreboard evidence.
+    # audit_bot short-circuits on deactivated bots, so this test now
+    # validates the proxy-mapping logic via direct DataLibrary lookup
+    # rather than the full audit pipeline.
+    from eta_engine.data.requirements import DataRequirement
+    sentiment_req = DataRequirement(
+        kind="sentiment", symbol="BTC", timeframe="1h", critical=False,
     )
+    from eta_engine.data.audit import _resolve_library_lookup
+    ds = _resolve_library_lookup(sentiment_req, DataLibrary(roots=[history]))
+    assert ds is not None, "fear-greed proxy must resolve sentiment/BTC/1h"
+    assert ds.symbol == "FEAR_GREEDMACRO"
+    assert ds.timeframe == "D"
 
 
 def test_audit_all_returns_one_per_bot() -> None:
