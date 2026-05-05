@@ -108,8 +108,15 @@ def _scan_lab_reports() -> dict[str, dict[str, Any]]:
 # ─── Live metrics ───────────────────────────────────────────────
 
 
-def _scan_live_closes() -> dict[str, list[dict[str, Any]]]:
-    """Group trade_closes.jsonl rows by bot_id."""
+def _scan_live_closes(since_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Group trade_closes.jsonl rows by bot_id.
+
+    When ``since_iso`` is given (ISO-8601 timestamp), rows with ``ts``
+    older than that are dropped. This is what lets the operator
+    re-classify tiers using ONLY post-brake-fix data — sharpe values
+    over the mixed pre/post-fix window are misleading because the
+    pre-fix R-magnitudes were ~100× squashed by the random-close brake.
+    """
     out: dict[str, list[dict[str, Any]]] = defaultdict(list)
     if not _TRADE_CLOSES.exists():
         return out
@@ -123,6 +130,10 @@ def _scan_live_closes() -> dict[str, list[dict[str, Any]]]:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if since_iso:
+                    rec_ts = str(rec.get("ts", ""))
+                    if rec_ts < since_iso:
+                        continue
                 bid = rec.get("bot_id")
                 if bid:
                     out[bid].append(rec)
@@ -196,9 +207,9 @@ def _classify_tier(lab: dict[str, Any], live: dict[str, Any]) -> str:
 # ─── Combine ────────────────────────────────────────────────────
 
 
-def analyze() -> list[dict[str, Any]]:
+def analyze(since_iso: str | None = None) -> list[dict[str, Any]]:
     lab_by_bot = _scan_lab_reports()
-    closes_by_bot = _scan_live_closes()
+    closes_by_bot = _scan_live_closes(since_iso=since_iso)
     bot_ids = set(lab_by_bot) | set(closes_by_bot)
 
     rows: list[dict[str, Any]] = []
@@ -278,11 +289,21 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--json", action="store_true")
     p.add_argument("--asset", choices=("crypto", "futures", "other"), default=None)
+    p.add_argument(
+        "--since",
+        default=None,
+        help=(
+            "ISO-8601 timestamp; only count live closes at or after this ts. "
+            "Use 2026-05-04T23:31:00 to see post-brake-fix tiering."
+        ),
+    )
     args = p.parse_args(argv)
-    rows = analyze()
+    rows = analyze(since_iso=args.since)
     if args.json:
         print(json.dumps(rows, indent=2, default=str))
     else:
+        if args.since:
+            print(f"# live closes filtered to ts >= {args.since}")
         _print_text(rows, asset_filter=args.asset)
     return 0
 
