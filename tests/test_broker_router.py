@@ -257,6 +257,7 @@ def _make_router(
     dry_run: bool = False,
     max_retries: int = 3,
     interval_s: int = 5,
+    order_hold_path: Path | None = None,
 ) -> Any:
     """Construct a BrokerRouter. The gate_chain override is a constructor
     kwarg: ``BrokerRouter(..., gate_chain=callable)``. The router calls
@@ -273,6 +274,7 @@ def _make_router(
         dry_run=dry_run,
         max_retries=max_retries,
         gate_chain=gate_chain,
+        order_hold_path=order_hold_path,
     )
 
 
@@ -337,6 +339,60 @@ class TestParsePendingFile:
 
     def test_parse_pending_file_invalid_side_raises(self, tmp_path: Path) -> None:
         path = _write_pending(tmp_path, side="HOLD")
+        with pytest.raises(ValueError):
+            broker_router.parse_pending_file(path)
+
+    def test_parse_pending_file_with_brackets(self, tmp_path: Path) -> None:
+        """Bracket fields parse into PendingOrder.stop_price/target_price."""
+        payload = {
+            "ts": datetime.now(UTC).isoformat(),
+            "signal_id": "sig-bracket-001",
+            "side": "BUY",
+            "qty": 1.0,
+            "symbol": "MNQ",
+            "limit_price": 18_000.0,
+            "stop_price": 17_900.0,
+            "target_price": 18_100.0,
+        }
+        path = tmp_path / "alpha.pending_order.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        order = broker_router.parse_pending_file(path)
+        assert order.stop_price == 17_900.0
+        assert order.target_price == 18_100.0
+        # Sanity: required fields still parse correctly alongside.
+        assert order.signal_id == "sig-bracket-001"
+        assert order.limit_price == 18_000.0
+
+    def test_parse_pending_file_without_brackets_returns_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Back-compat: older files without brackets parse with None brackets.
+
+        The venue's bracket-required check (downstream of parse) is what
+        actually rejects naked entries; the parser stays permissive so
+        files written before the schema change still load.
+        """
+        path = _write_pending(tmp_path, bot_id="legacy")
+        order = broker_router.parse_pending_file(path)
+        assert order.stop_price is None
+        assert order.target_price is None
+
+    def test_parse_pending_file_non_numeric_bracket_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """Garbage bracket values fail parse rather than silently None-coercing."""
+        payload = {
+            "ts": datetime.now(UTC).isoformat(),
+            "signal_id": "sig-bad-bracket",
+            "side": "BUY",
+            "qty": 1.0,
+            "symbol": "MNQ",
+            "limit_price": 18_000.0,
+            "stop_price": "not-a-number",
+            "target_price": 18_100.0,
+        }
+        path = tmp_path / "alpha.pending_order.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
         with pytest.raises(ValueError):
             broker_router.parse_pending_file(path)
 
@@ -412,6 +468,72 @@ def _block_gate_chain(
 
 
 class TestLifecycle:
+    def test_order_entry_hold_leaves_pending_file_unsubmitted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Operator hold is a fail-closed runtime brake before any venue call."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-held", bot_id="alpha")
+        hold_path = tmp_path / "order_entry_hold.json"
+        hold_path.write_text(
+            json.dumps({"active": True, "reason": "manual_flatten"}),
+            encoding="utf-8",
+        )
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            order_hold_path=hold_path,
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        assert path.exists()
+        assert venue.calls == []
+        assert router._counts["held"] == 1
+
+    def test_run_once_heartbeat_surfaces_order_entry_hold(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-held", bot_id="alpha")
+        hold_path = tmp_path / "order_entry_hold.json"
+        hold_path.write_text(
+            json.dumps({"active": True, "reason": "broker_incident"}),
+            encoding="utf-8",
+        )
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+            order_hold_path=hold_path,
+        )
+
+        asyncio.run(router.run_once())
+
+        assert path.exists()
+        assert venue.calls == []
+        hb = json.loads((state_root / "broker_router_heartbeat.json").read_text())
+        assert hb["order_entry_hold"]["active"] is True
+        assert hb["order_entry_hold"]["reason"] == "broker_incident"
+
     def test_happy_path_filled_archives_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -464,6 +586,67 @@ class TestLifecycle:
         assert any(str(o).upper() == "EXECUTED" for o in outcomes), (
             f"expected EXECUTED in journal outcomes, got {outcomes!r}"
         )
+
+    def test_lifecycle_with_brackets_passes_through_to_order_request(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stop/target on the pending file land on the OrderRequest verbatim.
+
+        This is the closing half of the bracket-passthrough fix: the
+        supervisor writes brackets into the JSON, the router parses
+        them into PendingOrder, and then the OrderRequest the venue
+        actually sees carries them. Without this passthrough the venue
+        would reject every entry with a "missing bracket" error.
+        """
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        pending_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": datetime.now(UTC).isoformat(),
+            "signal_id": "sig-bracket-passthrough",
+            "side": "BUY",
+            "qty": 1.0,
+            "symbol": "MNQ",
+            "limit_price": 18_000.0,
+            "stop_price": 17_900.0,
+            "target_price": 18_100.0,
+        }
+        path = pending_dir / "alpha.pending_order.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        venue = _FakeVenue(
+            results=[
+                OrderResult(
+                    order_id="OID-BRK",
+                    status=OrderStatus.FILLED,
+                    filled_qty=1.0,
+                    avg_price=18_000.0,
+                ),
+            ]
+        )
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        assert len(venue.calls) == 1
+        req = venue.calls[0]
+        assert req.stop_price == 17_900.0
+        assert req.target_price == 18_100.0
+        # Required-field passthrough still intact.
+        assert req.qty == 1.0
+        assert req.price == 18_000.0
+        assert req.client_order_id == "sig-bracket-passthrough"
 
     def test_gate_blocked_moves_to_blocked_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1275,6 +1458,11 @@ default:
     ETH:  { ibkr: ETHUSD, tasty: ETHUSDT }
     MNQ:  { ibkr: MNQ }
     MNQ1: { ibkr: MNQ }
+    NG:   { ibkr: NG }
+    GC:   { ibkr: GC }
+    CL:   { ibkr: CL }
+    "6E": { ibkr: 6E }
+    M2K:  { ibkr: M2K }
 bots:
   btc_optimized: { venue: ibkr }
   btc_to_tasty:  { venue: tasty }
@@ -1361,6 +1549,15 @@ class TestRoutingConfig:
         assert cfg.map_symbol("ES", "ibkr") == "ES"
         # Already-normalized stable-quote pass-through.
         assert cfg.map_symbol("BTCUSDT", "tasty") == "BTCUSDT"
+
+    def test_map_symbol_expanded_us_futures_roots(self, tmp_path: Path) -> None:
+        path = _write_routing_yaml(tmp_path)
+        cfg = broker_router.RoutingConfig.load(path)
+        assert cfg.map_symbol("NG", "ibkr") == "NG"
+        assert cfg.map_symbol("GC", "ibkr") == "GC"
+        assert cfg.map_symbol("CL", "ibkr") == "CL"
+        assert cfg.map_symbol("6E", "ibkr") == "6E"
+        assert cfg.map_symbol("M2K", "ibkr") == "M2K"
 
     def test_env_var_override_picks_up_alternate_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

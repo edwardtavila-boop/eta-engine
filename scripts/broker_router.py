@@ -54,6 +54,11 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     Outcome,
     default_journal,
 )
+from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
+    OrderEntryHold,
+    default_hold_path,
+    load_order_entry_hold,
+)
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
     ETA_RUNTIME_STATE_DIR,
 )
@@ -143,7 +148,11 @@ _SYMBOL_TABLE: dict[tuple[str, str], str] = {
 }
 
 #: Recognized futures roots that don't need symbol normalization.
-_FUTURES_ROOTS = ("MNQ", "NQ", "ES", "MES", "RTY", "MBT", "MET")
+_FUTURES_ROOTS = (
+    "MNQ", "NQ", "ES", "MES", "RTY", "M2K",
+    "MBT", "MET", "NG", "CL", "GC", "MGC", "MCL",
+    "ZN", "ZB", "6E", "M6E",
+)
 
 # ---------------------------------------------------------------------------
 # Per-bot routing config (eta_engine/configs/bot_broker_routing.yaml)
@@ -322,7 +331,16 @@ def normalize_symbol(raw_symbol: str, target_venue: str) -> str:
 
 @dataclass(slots=True)
 class PendingOrder:
-    """One row of the supervisor pending-order JSONL contract."""
+    """One row of the supervisor pending-order JSONL contract.
+
+    ``stop_price`` and ``target_price`` carry the bracket the supervisor
+    computed at entry. When both are populated the venue layer attaches
+    a parent + STP child + LMT child OCO group; when both are ``None``
+    the venue layer rejects the entry as naked (fail-closed). Older
+    pending-order files without these fields parse with both set to
+    ``None`` so the rejection happens downstream in the venue's
+    bracket-required check rather than at parse time.
+    """
 
     ts: str
     signal_id: str
@@ -331,6 +349,8 @@ class PendingOrder:
     symbol: str
     limit_price: float
     bot_id: str
+    stop_price: float | None = None
+    target_price: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -340,6 +360,10 @@ def parse_pending_file(path: Path) -> PendingOrder:
     """Parse one ``<bot_id>.pending_order.json`` file.
 
     Bot id is taken from the filename stem (everything before the first ``.``).
+    ``stop_price`` and ``target_price`` are optional for back-compat with
+    older files; when absent the resulting :class:`PendingOrder` carries
+    ``None`` for both and the venue's bracket-required check enforces
+    the actual rejection downstream.
 
     Raises:
         ValueError: when JSON is malformed or any required field is missing.
@@ -374,6 +398,17 @@ def parse_pending_file(path: Path) -> PendingOrder:
     if qty <= 0.0:
         raise ValueError(f"non-positive qty {qty}")
 
+    # Optional bracket fields. None => caller (venue layer) decides
+    # whether the order is acceptable; this parser stays permissive so
+    # back-compat files (without brackets) still load.
+    stop_raw = payload.get("stop_price")
+    target_raw = payload.get("target_price")
+    try:
+        stop_price = float(stop_raw) if stop_raw is not None else None
+        target_price = float(target_raw) if target_raw is not None else None
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"non-numeric stop/target: {exc}") from exc
+
     return PendingOrder(
         ts=str(payload["ts"]),
         signal_id=str(payload["signal_id"]),
@@ -382,6 +417,8 @@ def parse_pending_file(path: Path) -> PendingOrder:
         symbol=str(payload["symbol"]),
         limit_price=limit_price,
         bot_id=bot_id,
+        stop_price=stop_price,
+        target_price=target_price,
     )
 
 
@@ -411,6 +448,7 @@ class BrokerRouter:
         max_retries: int = DEFAULT_MAX_RETRIES,
         gate_chain: object | None = None,
         routing_config: RoutingConfig | None = None,
+        order_hold_path: Path | None = None,
     ) -> None:
         self.pending_dir = Path(pending_dir)
         self.state_root = Path(state_root)
@@ -427,6 +465,7 @@ class BrokerRouter:
         self.routing_config = (
             routing_config if routing_config is not None else RoutingConfig.load()
         )
+        self.order_hold_path = Path(order_hold_path) if order_hold_path else default_hold_path()
 
         self.processing_dir = self.state_root / "processing"
         self.blocked_dir = self.state_root / "blocked"
@@ -458,6 +497,7 @@ class BrokerRouter:
             "rejected": 0,
             "failed": 0,
             "quarantined": 0,
+            "held": 0,
         }
 
     # -- lifecycle ----------------------------------------------------------
@@ -504,6 +544,18 @@ class BrokerRouter:
            how venue-rejected orders eventually retry without a fresh
            supervisor write.
         """
+        hold = self._order_entry_hold()
+        if hold.active:
+            self._counts["held"] += 1
+            self._record_event("runtime", "order_entry_hold", hold.reason)
+            logger.warning(
+                "broker_router order-entry hold active; skipping poll reason=%s path=%s",
+                hold.reason,
+                hold.path,
+            )
+            self._emit_heartbeat(hold=hold)
+            return
+
         try:
             pending_paths = sorted(self.pending_dir.glob("*.pending_order.json"))
         except OSError as exc:
@@ -539,12 +591,23 @@ class BrokerRouter:
                         target, traceback.format_exc(),
                     )
 
-        self._emit_heartbeat()
+        self._emit_heartbeat(hold=hold)
 
     # -- per-file lifecycle -------------------------------------------------
 
     async def _process_pending_file(self, path: Path) -> None:
         """Fresh-file entry: move-to-processing, then run the lifecycle."""
+        hold = self._order_entry_hold()
+        if hold.active:
+            self._counts["held"] += 1
+            self._record_event(path.name, "order_entry_hold", hold.reason)
+            logger.warning(
+                "pending order held in place: file=%s reason=%s path=%s",
+                path,
+                hold.reason,
+                hold.path,
+            )
+            return
         if self.dry_run:
             target = path
         else:
@@ -691,7 +754,9 @@ class BrokerRouter:
                 )
                 return
 
-        # 6. Build OrderRequest.
+        # 6. Build OrderRequest. Brackets pass through verbatim from the
+        # supervisor's pending-order JSON; the venue layer enforces the
+        # bracket-required check (naked entries get rejected there).
         side_enum = Side.BUY if order.side == "BUY" else Side.SELL
         request = OrderRequest(
             symbol=venue_symbol,
@@ -701,6 +766,8 @@ class BrokerRouter:
             price=order.limit_price,
             client_order_id=order.signal_id,
             bot_id=order.bot_id,
+            stop_price=order.stop_price,
+            target_price=order.target_price,
         )
 
         # 7. Dry-run short-circuit: log, do not submit, do not move.
@@ -1114,14 +1181,20 @@ class BrokerRouter:
         except OSError as exc:
             logger.warning("sidecar write failed %s: %s", path, exc)
 
-    def _emit_heartbeat(self) -> None:
+    def _order_entry_hold(self) -> OrderEntryHold:
+        """Load the shared operator order-entry hold state."""
+        return load_order_entry_hold(self.order_hold_path)
+
+    def _emit_heartbeat(self, *, hold: OrderEntryHold | None = None) -> None:
         """Write a small heartbeat snapshot for monitoring."""
         now_iso = datetime.now(UTC).isoformat()
+        hold = hold if hold is not None else self._order_entry_hold()
         snap = {
             "ts": now_iso,
             "last_poll_ts": now_iso,
             "pending_dir": str(self.pending_dir),
             "state_root": str(self.state_root),
+            "order_entry_hold": hold.to_dict(),
             "dry_run": self.dry_run,
             "interval_s": self.interval_s,
             "max_retries": self.max_retries,

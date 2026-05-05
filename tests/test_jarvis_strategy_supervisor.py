@@ -39,6 +39,34 @@ def test_mock_feed_handles_unknown_symbol() -> None:
     assert bar["close"] > 0
 
 
+def test_paper_live_symbol_allowlist_accepts_root_and_contract_alias(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ")
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        _paper_live_allowed_symbols,
+        _paper_live_symbol_allowed,
+    )
+
+    allowed = _paper_live_allowed_symbols()
+
+    assert _paper_live_symbol_allowed("MNQ", allowed) is True
+    assert _paper_live_symbol_allowed("MNQ1", allowed) is True
+    assert _paper_live_symbol_allowed("NQ1", allowed) is False
+    assert _paper_live_symbol_allowed("GC", allowed) is False
+
+
+def test_paper_live_symbol_allowlist_empty_allows_all(monkeypatch) -> None:
+    monkeypatch.delenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", raising=False)
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        _paper_live_allowed_symbols,
+        _paper_live_symbol_allowed,
+    )
+
+    assert _paper_live_allowed_symbols() is None
+    assert _paper_live_symbol_allowed("GC", None) is True
+
+
 # ─── ExecutionRouter ─────────────────────────────────────────────
 
 
@@ -98,7 +126,7 @@ def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
     assert bot.n_exits == 1
 
 
-def test_router_paper_live_writes_pending(tmp_path: Path) -> None:
+def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
         ExecutionRouter,
@@ -116,7 +144,107 @@ def test_router_paper_live_writes_pending(tmp_path: Path) -> None:
         bot=bot, signal_id="s1", side="BUY", bar=bar, size_mult=1.0,
     )
     pending = tmp_path / "paperlive.pending_order.json"
+    assert not pending.exists()
+
+
+def test_router_paper_live_broker_router_route_writes_pending(tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="paperlive", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    bar = {"close": 100.0}
+    router.submit_entry(
+        bot=bot, signal_id="s1", side="BUY", bar=bar, size_mult=1.0,
+    )
+    pending = tmp_path / "paperlive.pending_order.json"
     assert pending.exists()
+
+
+def test_router_paper_live_order_entry_hold_blocks_before_position(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    hold_path = tmp_path / "order_entry_hold.json"
+    hold_path.write_text(
+        '{"active": true, "reason": "manual_flatten"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ETA_ORDER_ENTRY_HOLD_PATH", str(hold_path))
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="held", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot, signal_id="s-held", side="BUY",
+        bar={"close": 100.0}, size_mult=1.0,
+    )
+
+    assert rec is None
+    assert bot.open_position is None
+    assert bot.n_entries == 0
+    assert not (tmp_path / "held.pending_order.json").exists()
+
+
+def test_write_pending_order_includes_brackets_when_available(
+    tmp_path: Path,
+) -> None:
+    """The supervisor's pending JSON must carry stop_price + target_price.
+
+    submit_entry() populates ``bot.open_position['bracket_stop']`` and
+    ``bot.open_position['bracket_target']`` at entry time; the
+    pending-order writer must echo those into the JSON so the
+    broker_router can pass them to the venue's OrderRequest. Without
+    them the venue layer rejects every entry as naked.
+    """
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="bracket_bot", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    bar = {"close": 100.0, "high": 101.0, "low": 99.0, "open": 99.5}
+    router.submit_entry(
+        bot=bot, signal_id="bracket-1", side="BUY", bar=bar, size_mult=1.0,
+    )
+    pending = tmp_path / "bracket_bot.pending_order.json"
+    assert pending.exists()
+    payload = json.loads(pending.read_text(encoding="utf-8"))
+    # Schema must now carry the bracket fields.
+    assert "stop_price" in payload
+    assert "target_price" in payload
+    # When the supervisor's bracket-compute path succeeded these mirror
+    # bot.open_position; if it fell through to the warn-once branch the
+    # writer still emits the keys (with null values) so the venue can
+    # fail-closed downstream rather than the supervisor dropping them.
+    pos = bot.open_position or {}
+    assert payload["stop_price"] == pos.get("bracket_stop")
+    assert payload["target_price"] == pos.get("bracket_target")
 
 
 def test_router_live_blocked_without_env(tmp_path: Path) -> None:

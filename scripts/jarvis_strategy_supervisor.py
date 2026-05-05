@@ -89,6 +89,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.runtime_order_hold import load_order_entry_hold  # noqa: E402
 
 logger = logging.getLogger("jarvis_strategy_supervisor")
 
@@ -210,6 +211,14 @@ class SupervisorConfig:
     # Live-money gate (extra safety; even paper_live still requires this False)
     live_money_enabled: bool = field(
         default_factory=lambda: _bool_env("ETA_LIVE_MONEY", default=False),
+    )
+    # paper_live order path. Default to direct TWS/IB Gateway routing; the
+    # broker-router pending-file lane is an opt-in alternate path so one
+    # signal_id is not submitted twice.
+    paper_live_order_route: str = field(
+        default_factory=lambda: os.getenv(
+            "ETA_PAPER_LIVE_ORDER_ROUTE", "direct_ibkr",
+        ).strip().lower(),
     )
 
 
@@ -422,6 +431,7 @@ _FUTURES_ROOTS = frozenset({
     "MNQ", "NQ", "ES", "MES", "GC", "MGC", "CL", "MCL",
     "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K",
 })
+_PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 
 
 def _classify_symbol(symbol: str) -> str:
@@ -434,14 +444,35 @@ def _classify_symbol(symbol: str) -> str:
     return "other"
 
 
+def _paper_live_allowed_symbols() -> frozenset[str] | None:
+    raw = os.getenv(_PAPER_LIVE_ALLOWED_SYMBOLS_ENV, "").strip()
+    if not raw:
+        return None
+    allowed = frozenset(
+        item.upper().lstrip("/").strip()
+        for item in raw.replace(";", ",").split(",")
+        if item.strip()
+    )
+    return allowed or None
+
+
+def _paper_live_symbol_allowed(symbol: str, allowed: frozenset[str] | None) -> bool:
+    if allowed is None:
+        return True
+    normalized = symbol.upper().lstrip("/").strip()
+    root = normalized.rstrip("0123456789")
+    return normalized in allowed or root in allowed
+
+
 class ExecutionRouter:
     """Routes approved entries to broker (or simulates them).
 
     paper_sim: simulates fills at the bar's close + small slippage,
                no broker call. Generates a synthetic FillRecord.
-    paper_live: writes order intent to the broker_fleet's pending
-                file; that worker submits via tastytrade/IBKR adapter.
-                (Plumbed; minimal for first-cut.)
+    paper_live: submits through one configured route. Default is direct
+                TWS/IB Gateway via LiveIbkrVenue; broker_router writes
+                pending files only when ETA_PAPER_LIVE_ORDER_ROUTE is
+                broker_router.
     live: gated behind ETA_LIVE_MONEY=1 (raises if attempted).
     """
 
@@ -504,6 +535,17 @@ class ExecutionRouter:
                 bot.bot_id,
             )
             return None
+
+        if self.cfg.mode in {"paper_live", "live"}:
+            hold = load_order_entry_hold()
+            if hold.active:
+                logger.warning(
+                    "%s entry SKIPPED: order-entry hold active reason=%s path=%s",
+                    bot.bot_id,
+                    hold.reason,
+                    hold.path,
+                )
+                return None
 
         # Compute simulated fill (mode=paper_sim)
         ref_price = float(bar.get("close", 0.0))
@@ -628,8 +670,15 @@ class ExecutionRouter:
         bot.last_signal_at = rec.fill_ts
 
         if self.cfg.mode == "paper_live":
-            # Write pending order file (for backward compat / audit)
-            self._write_pending_order(bot, rec)
+            _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
+            if _route in {"broker_router", "pending_file", "pending"}:
+                self._write_pending_order(bot, rec)
+                return rec
+            if _route not in {"direct_ibkr", "direct", "ibkr"}:
+                logger.warning(
+                    "unknown ETA_PAPER_LIVE_ORDER_ROUTE=%r; using direct_ibkr",
+                    self.cfg.paper_live_order_route,
+                )
             # Crypto paper-test path: when ETA_IBKR_CRYPTO is not enabled
             # (paper account lacks crypto trading permissions), skip the
             # broker round-trip but keep the simulated FillRecord +
@@ -644,6 +693,16 @@ class ExecutionRouter:
                 logger.info(
                     "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
                     rec.symbol, rec.side, rec.qty, rec.fill_price,
+                )
+                return rec
+            _allowed_symbols = _paper_live_allowed_symbols()
+            if not _paper_live_symbol_allowed(rec.symbol, _allowed_symbols):
+                logger.warning(
+                    "%s broker route SKIPPED: %s not in %s=%s",
+                    bot.bot_id,
+                    rec.symbol,
+                    _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
+                    ",".join(sorted(_allowed_symbols or ())),
                 )
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
@@ -797,6 +856,15 @@ class ExecutionRouter:
         return rec
 
     def _write_pending_order(self, bot: BotInstance, rec: FillRecord) -> None:
+        # Pull the planned bracket the supervisor computed at entry
+        # (set on bot.open_position by submit_entry just above this
+        # call). Both fields are required for futures entries — the
+        # venue layer rejects naked entries — so a missing bracket
+        # becomes a JSON ``null`` and the broker_router fails closed
+        # downstream rather than papering over the omission here.
+        pos = bot.open_position or {}
+        stop_price = pos.get("bracket_stop")
+        target_price = pos.get("bracket_target")
         try:
             f = self.bf_dir / f"{bot.bot_id}.pending_order.json"
             f.write_text(
@@ -807,6 +875,8 @@ class ExecutionRouter:
                     "qty": rec.qty,
                     "symbol": rec.symbol,
                     "limit_price": rec.fill_price,
+                    "stop_price": stop_price,
+                    "target_price": target_price,
                 }, indent=2),
                 encoding="utf-8",
             )
@@ -2183,6 +2253,7 @@ class JarvisStrategySupervisor:
                 "mode": self.cfg.mode,
                 "feed": self.cfg.data_feed,
                 "feed_health": feed_health,
+                "order_entry_hold": load_order_entry_hold().to_dict(),
                 "live_money_enabled": self.cfg.live_money_enabled,
                 "n_bots": len(self.bots),
                 "bot_strategy_readiness": readiness,

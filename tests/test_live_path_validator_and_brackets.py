@@ -48,6 +48,115 @@ def test_order_request_bracket_fields_optional():
     assert req.bot_id is None
 
 
+def test_live_ibkr_futures_map_covers_router_roots():
+    from eta_engine.venues.ibkr_live import FUTURES_MAP
+
+    symbols = (
+        "MNQ", "NQ", "ES", "MES", "RTY", "M2K",
+        "NG", "CL", "MCL", "GC", "MGC", "6E", "M6E",
+    )
+    for symbol in symbols:
+        assert symbol in FUTURES_MAP
+
+
+def test_futures_bracket_builder_uses_market_parent_for_market_entries():
+    import asyncio
+
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+    from eta_engine.venues.base import OrderType
+    from eta_engine.venues.ibkr_live import _build_futures_bracket_orders
+
+    class _Client:
+        def __init__(self) -> None:
+            self.next_id = 900
+
+        def getReqId(self) -> int:  # noqa: N802 - mirrors ib_insync API
+            self.next_id += 1
+            return self.next_id
+
+    class _IB:
+        client = _Client()
+
+    parent, take_profit, stop_loss = _build_futures_bracket_orders(
+        _IB(),
+        action="BUY",
+        qty=1,
+        order_type=OrderType.MARKET,
+        entry_price=None,
+        stop_price=27000.0,
+        target_price=27100.0,
+    )
+
+    assert parent.orderType == "MKT"
+    assert parent.transmit is False
+    assert take_profit.orderType == "LMT"
+    assert take_profit.parentId == parent.orderId
+    assert take_profit.transmit is False
+    assert stop_loss.orderType == "STP"
+    assert stop_loss.parentId == parent.orderId
+    assert stop_loss.transmit is True
+    for order in (parent, take_profit, stop_loss):
+        assert order.tif == "GTC"
+        assert order.outsideRth is True
+        assert order.conditionsIgnoreRth is True
+
+
+def test_futures_session_defaults_enable_globex_reduce_only_exits():
+    import asyncio
+
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+    from ib_insync import MarketOrder
+
+    from eta_engine.venues.ibkr_live import _apply_futures_session_defaults
+
+    order = _apply_futures_session_defaults(MarketOrder("SELL", 1))
+
+    assert order.tif == "GTC"
+    assert order.outsideRth is True
+    assert order.conditionsIgnoreRth is True
+
+
+def test_ibkr_submission_reject_reason_flags_cancelled_legs():
+    from eta_engine.venues.ibkr_live import _ibkr_submission_reject_reason
+
+    statuses = [
+        {"order_id": 1, "perm_id": 0, "status": "PendingSubmit"},
+        {"order_id": 2, "perm_id": 0, "status": "Cancelled"},
+    ]
+
+    assert "rejected/cancelled" in _ibkr_submission_reject_reason(statuses)
+
+
+def test_ibkr_submission_reject_reason_flags_unconfirmed_submit():
+    from eta_engine.venues.ibkr_live import _ibkr_submission_reject_reason
+
+    statuses = [
+        {"order_id": 1, "perm_id": 0, "status": "PendingSubmit"},
+        {"order_id": 2, "perm_id": 0, "status": "PendingSubmit"},
+    ]
+
+    assert "unconfirmed" in _ibkr_submission_reject_reason(statuses)
+
+
+def test_ibkr_submission_reject_reason_accepts_confirmed_or_perm_id():
+    from eta_engine.venues.ibkr_live import _ibkr_submission_reject_reason
+
+    assert _ibkr_submission_reject_reason(
+        [{"order_id": 1, "perm_id": 0, "status": "Submitted"}],
+    ) == ""
+    assert _ibkr_submission_reject_reason(
+        [{"order_id": 1, "perm_id": 12345, "status": "PendingSubmit"}],
+    ) == ""
+
+
 # ── Bracket-or-reject in venue ────────────────────────────────────
 
 
@@ -89,6 +198,51 @@ async def test_venue_rejects_naked_entry():
         or result.raw.get("note", "")  # any rejection note
         or result.status.value == "REJECTED"  # status alone is enough
     ), f"naked entry should be rejected, got raw={result.raw}"
+
+
+@pytest.mark.asyncio
+async def test_venue_connection_failure_records_retryable_idempotency(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import os
+    from importlib import reload
+
+    os.environ["ETA_LIVE_TRADING_ENABLED"] = "1"
+    os.environ["ETA_FLEET_RISK_LIMIT"] = "100000"
+    os.environ["ETA_POSITION_CAP"] = "5"
+    monkeypatch.setenv("ETA_IDEMPOTENCY_STORE", str(tmp_path / "idem.jsonl"))
+
+    from eta_engine.safety import idempotency
+    idempotency.reset_store_for_test()
+    reload(idempotency)
+
+    from eta_engine.venues.base import OrderRequest, Side
+    from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
+    venue = LiveIbkrVenue()
+    venue._ensure_connected = AsyncMock(return_value=False)
+    req = OrderRequest(
+        symbol="MNQ1",
+        side=Side.BUY,
+        qty=1.0,
+        stop_price=27000.0,
+        target_price=27100.0,
+        client_order_id="conn-retry-1",
+    )
+
+    result = await venue.place_order(req)
+
+    assert result.status.value == "REJECTED"
+    assert "TWS API connection" in result.raw["reason"]
+    retry = idempotency.check_or_register(
+        client_order_id="conn-retry-1",
+        venue="ibkr",
+        symbol="MNQ1",
+        intent_payload={"side": "BUY", "qty": 1.0},
+    )
+    assert retry.is_new
+    assert retry.note == "retry_after_retryable_failure"
 
 
 @_VENUE_MOCK_SKIP

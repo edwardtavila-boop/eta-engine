@@ -25,6 +25,9 @@ from eta_engine.venues.base import (
 
 logger = logging.getLogger(__name__)
 
+_IBKR_REJECTED_STATUSES = {"ApiCancelled", "Cancelled", "Inactive"}
+_IBKR_CONFIRMED_STATUSES = {"Filled", "PreSubmitted", "Submitted"}
+
 # ─── SYMBOL → CONTRACT MAP ───────────────────────────────────────
 # Futures: (symbol_root, exchange, multiplier)
 FUTURES_MAP: dict[str, tuple[str, str, str]] = {
@@ -35,10 +38,15 @@ FUTURES_MAP: dict[str, tuple[str, str, str]] = {
     "ES":   ("ES",  "CME", "50"),
     "ES1":  ("ES",  "CME", "50"),
     "MES":  ("MES", "CME", "5"),
+    "RTY":  ("RTY", "CME", "50"),
+    "M2K":  ("M2K", "CME", "5"),
     "MBT":  ("MBT", "CME", "0.1"),
     "MET":  ("MET", "CME", "0.1"),
     "NG":   ("NG",  "NYMEX", "10000"),
     "CL":   ("CL",  "NYMEX", "1000"),
+    "MCL":  ("MCL", "NYMEX", "100"),
+    "GC":   ("GC",  "COMEX", "100"),
+    "MGC":  ("MGC", "COMEX", "10"),
     "ZN":   ("ZN",  "CBOT", "1000"),
     "ZB":   ("ZB",  "CBOT", "1000"),
     "6E":   ("6E",  "CME", "125000"),
@@ -55,6 +63,116 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
     "SOLUSD": ("SOL", "PAXOS", "1"),
 }
 
+
+def _build_futures_bracket_orders(
+    ib: Any,  # noqa: ANN401 - ib_insync IB instance is dynamic
+    *,
+    action: str,
+    qty: float | int,
+    order_type: OrderType,
+    entry_price: float | None,
+    stop_price: float,
+    target_price: float,
+) -> list[Any]:
+    """Build a parent + take-profit + stop-loss bracket for futures.
+
+    ``IB.bracketOrder`` always creates a limit parent. The supervisor's
+    paper_live path sends market entries by default, so build the bracket
+    manually when the parent should be MKT.
+    """
+    from ib_insync import LimitOrder, MarketOrder, StopOrder
+
+    reverse_action = "BUY" if action == "SELL" else "SELL"
+    if order_type == OrderType.LIMIT and entry_price is not None:
+        parent = LimitOrder(
+            action,
+            qty,
+            float(entry_price),
+            orderId=ib.client.getReqId(),
+            transmit=False,
+        )
+    else:
+        parent = MarketOrder(
+            action,
+            qty,
+            orderId=ib.client.getReqId(),
+            transmit=False,
+        )
+    take_profit = LimitOrder(
+        reverse_action,
+        qty,
+        float(target_price),
+        orderId=ib.client.getReqId(),
+        transmit=False,
+        parentId=parent.orderId,
+    )
+    stop_loss = StopOrder(
+        reverse_action,
+        qty,
+        float(stop_price),
+        orderId=ib.client.getReqId(),
+        transmit=True,
+        parentId=parent.orderId,
+    )
+    return [_apply_futures_session_defaults(order) for order in (parent, take_profit, stop_loss)]
+
+
+def _apply_futures_session_defaults(order: Any) -> Any:  # noqa: ANN401 - ib_insync orders are dynamic
+    """Apply futures-safe execution defaults to IBKR order objects.
+
+    CME/NYMEX futures trade through the evening Globex session. Without
+    outsideRth enabled, TWS can accept an order as Submitted while holding it
+    out of execution until liquid/RTH hours.
+    """
+    order.tif = "GTC"
+    order.outsideRth = True
+    order.conditionsIgnoreRth = True
+    return order
+
+
+def _submit_confirm_seconds() -> float:
+    raw = os.environ.get("ETA_IBKR_SUBMIT_CONFIRM_SECONDS", "2.0").strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        logger.warning("ETA_IBKR_SUBMIT_CONFIRM_SECONDS=%r is invalid; using 2.0", raw)
+        return 2.0
+    return max(0.0, min(seconds, 10.0))
+
+
+def _trade_submit_snapshot(trade: Any) -> dict[str, Any]:  # noqa: ANN401 - ib_insync Trade is dynamic
+    order = getattr(trade, "order", None)
+    status = getattr(trade, "orderStatus", None)
+    return {
+        "order_id": getattr(order, "orderId", None),
+        "perm_id": getattr(order, "permId", None)
+        or getattr(status, "permId", None)
+        or 0,
+        "status": str(getattr(status, "status", "") or "Unknown"),
+        "filled": float(getattr(status, "filled", 0.0) or 0.0),
+        "remaining": float(getattr(status, "remaining", 0.0) or 0.0),
+        "avg_fill_price": float(getattr(status, "avgFillPrice", 0.0) or 0.0),
+    }
+
+
+def _ibkr_submission_reject_reason(statuses: list[dict[str, Any]]) -> str:
+    rejected = [
+        item for item in statuses
+        if str(item.get("status") or "") in _IBKR_REJECTED_STATUSES
+    ]
+    if rejected:
+        return f"IBKR rejected/cancelled submitted order legs: {rejected}"
+    confirmed = [
+        item for item in statuses
+        if (
+            str(item.get("status") or "") in _IBKR_CONFIRMED_STATUSES
+            or int(item.get("perm_id") or 0) > 0
+        )
+    ]
+    if statuses and not confirmed:
+        return f"IBKR submission unconfirmed after confirm window: {statuses}"
+    return ""
+
 # Per-process cache of resolved front-month YYYYMM strings keyed by
 # (root, exchange). Populated lazily on first contract build via an IB
 # qualifyContracts() call against ContFuture, then reused for the rest
@@ -62,12 +180,17 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
 _FRONT_MONTH_CACHE: dict[tuple[str, str], str] = {}
 
 
-def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") -> str:  # noqa: ANN401 — ib_insync IB instance
+async def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") -> str:  # noqa: ANN401 — ib_insync IB instance
     """Resolve the active front-month YYYYMM for a futures root via IB.
 
-    Uses ``ib_insync.ContFuture`` qualified through ``ib.qualifyContracts``;
-    IB returns the active front-month contract automatically. The result
-    is cached per (root, exchange) so subsequent calls are free.
+    Uses ``ib_insync.ContFuture`` qualified through
+    ``ib.qualifyContractsAsync``; IB returns the active front-month
+    contract automatically. The result is cached per (root, exchange)
+    so subsequent calls are free.
+
+    Async because the broker_router runs inside an asyncio event loop;
+    calling the sync ``qualifyContracts`` from inside an event loop
+    raises ``RuntimeError('This event loop is already running')``.
 
     Fails closed: if IB cannot resolve the contract, raises a
     RuntimeError. Hardcoded fallback was the production-breaking
@@ -82,10 +205,10 @@ def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") 
 
     cont = ContFuture(symbol=root, exchange=exchange, currency="USD")
     try:
-        qualified = ib.qualifyContracts(cont)
+        qualified = await ib.qualifyContractsAsync(cont)
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
-            f"Failed to resolve front-month {root} via IB qualifyContracts: {exc!r}",
+            f"Failed to resolve front-month {root} via IB qualifyContractsAsync: {exc!r}",
         ) from exc
 
     if not qualified:
@@ -109,13 +232,17 @@ def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") 
     return yyyymm
 
 
-def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # noqa: ANN401 — ib_insync types are dynamic
+async def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # noqa: ANN401 — ib_insync types are dynamic
     """Build an ib_insync Contract for the given symbol.
 
     For futures, an active IB connection (``ib``) is required so the
     front-month contract month can be resolved at first use. Passing
     ``ib=None`` for a futures symbol raises a RuntimeError — fail closed
     rather than silently targeting a stale month.
+
+    Async because front-month resolution must use the async
+    qualifyContracts variant when called from inside an event loop
+    (which the broker_router is).
     """
     from ib_insync import Contract, Future, Stock
 
@@ -129,7 +256,7 @@ def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # noqa: A
                 f"_make_contract({sym}) requires an IB connection to resolve "
                 f"the front-month contract; got ib=None",
             )
-        contract_month = _resolve_front_month_mnq(ib, root=root, exchange=exchange)
+        contract_month = await _resolve_front_month_mnq(ib, root=root, exchange=exchange)
         contract = Future(symbol=root, exchange=exchange, currency="USD")
         contract.lastTradeDateOrContractMonth = contract_month
         contract.multiplier = mult
@@ -341,12 +468,27 @@ class LiveIbkrVenue(VenueBase):
                 raw={"venue": self.name, "reason": f"idempotency unavailable: {exc!r}"},
             )
 
+        def _record_idempotency_status(
+            status: str,
+            reason: str,
+            **extra: Any,  # noqa: ANN401 - payload values are broker diagnostics
+        ) -> None:
+            with contextlib.suppress(Exception):
+                payload = {"venue": self.name, "reason": reason, **extra}
+                record_result(
+                    client_order_id=order_id,
+                    status=status,
+                    response_payload=payload,
+                )
+
         # ── CONNECT ───────────────────────────────────────────────
         if not await self._ensure_connected():
+            reason = "TWS API connection on port 4002 failed"
+            _record_idempotency_status("retryable_failed", reason)
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
-                raw={"venue": self.name, "reason": "TWS API connection on port 4002 failed"},
+                raw={"venue": self.name, "reason": reason},
             )
 
         # ── CONTRACT RESOLUTION (needs live IB for front-month) ───
@@ -354,19 +496,23 @@ class LiveIbkrVenue(VenueBase):
         # can query IB. Result is cached per (root, exchange) so this hits
         # IB only on the first order per process.
         try:
-            contract = _make_contract(request.symbol, self._ib)
+            contract = await _make_contract(request.symbol, self._ib)
         except Exception as exc:  # noqa: BLE001 — surface the resolver failure as a reject
             logger.error("LiveIbkrVenue contract resolution failed: %s", exc)
+            reason = f"contract resolution failed: {exc!r}"
+            _record_idempotency_status("rejected", reason, symbol=request.symbol)
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
-                raw={"venue": self.name, "reason": f"contract resolution failed: {exc!r}"},
+                raw={"venue": self.name, "reason": reason},
             )
         if contract is None:
+            reason = f"unknown IBKR contract for {request.symbol}"
+            _record_idempotency_status("rejected", reason, symbol=request.symbol)
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
-                raw={"venue": self.name, "reason": f"unknown IBKR contract for {request.symbol}"},
+                raw={"venue": self.name, "reason": reason},
             )
 
         # ── BUILD ORDER ───────────────────────────────────────────
@@ -390,12 +536,18 @@ class LiveIbkrVenue(VenueBase):
         # IBKR before producing fills. Honor an env opt-in so a future
         # account upgrade flips this on without code changes.
         if is_crypto and os.getenv("ETA_IBKR_CRYPTO", "").lower() not in {"1", "true", "yes", "on"}:
+            reason = (
+                "crypto disabled - account lacks crypto permissions; "
+                "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+            )
+            _record_idempotency_status("rejected", reason, symbol=request.symbol)
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
                 raw={
                     "venue": self.name,
-                    "reason": (
+                    "reason": reason,
+                    "legacy_reason": (
                         "crypto disabled — account lacks crypto permissions; "
                         "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
                     ),
@@ -407,6 +559,19 @@ class LiveIbkrVenue(VenueBase):
         # must NOT floor crypto qty to int.
         _raw_qty = abs(float(getattr(request, "qty", 1) or 1))
         qty: float | int = _raw_qty if is_crypto else int(_raw_qty)
+        if qty <= 0:
+            reason = f"order quantity rounds to zero for {request.symbol}: raw_qty={_raw_qty}"
+            _record_idempotency_status(
+                "rejected",
+                reason,
+                symbol=request.symbol,
+                raw_qty=_raw_qty,
+            )
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={"venue": self.name, "reason": reason, "raw_qty": _raw_qty},
+            )
 
         # ── BRACKET REQUIREMENT (futures only) ────────────────────
         # Futures entries MUST attach a bracket (parent MKT + STP child
@@ -417,18 +582,26 @@ class LiveIbkrVenue(VenueBase):
         # be gated by a bracket requirement).
         is_entry = not reduce_only
         if is_entry and not is_crypto and (stop_price is None or target_price is None):
+            reason = "entry order missing bracket (stop_price + target_price required)"
+            _record_idempotency_status(
+                "rejected",
+                reason,
+                stop_price=stop_price,
+                target_price=target_price,
+            )
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
                 raw={
                     "venue": self.name,
-                    "reason": "entry order missing bracket (stop_price + target_price required)",
+                    "reason": reason,
                     "stop_price": stop_price,
                     "target_price": target_price,
                 },
             )
 
         try:
+            submitted_trades = []
             if is_entry and is_crypto:
                 # PAXOS doesn't accept ib_insync.bracketOrder, so we build
                 # the bracket ourselves: market entry → wait for fill →
@@ -438,6 +611,7 @@ class LiveIbkrVenue(VenueBase):
                 ib_order.tif = "GTC"
                 trade = self._ib.placeOrder(contract, ib_order)
                 self._orders[order_id] = trade
+                submitted_trades = [trade]
                 logger.info(
                     "LiveIbkrVenue CRYPTO ENTRY: %s %s %.6f MKT → orderId=%s",
                     action, request.symbol, float(qty), trade.order.orderId,
@@ -496,7 +670,7 @@ class LiveIbkrVenue(VenueBase):
                         # OCO emulation: when either fills, cancel the
                         # sibling. Wrapped in suppress so a race (sibling
                         # already terminal) doesn't propagate.
-                        # noqa-ANN401: ib_insync Trade is dynamically typed
+                        # ib_insync Trade is dynamically typed.
                         def _make_canceler(other_trade):  # noqa: ANN001, ANN202
                             def _cb(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
                                 with contextlib.suppress(Exception):
@@ -525,29 +699,24 @@ class LiveIbkrVenue(VenueBase):
                             trade.orderStatus.status,
                         )
             elif is_entry:
-                # ib_insync.bracketOrder returns [parent, takeProfit,
-                # stopLoss] with transmit chained (parent.transmit=False,
-                # tp.transmit=False, sl.transmit=True) so the broker sees
-                # the OCO group atomically.
-                bracket = self._ib.bracketOrder(
-                    action,
-                    qty,
-                    limitPrice=float(target_price),
-                    takeProfitPrice=float(target_price),
-                    stopLossPrice=float(stop_price),
+                # Build the bracket manually so MARKET entries remain
+                # market parents. ib_insync.bracketOrder always creates a
+                # limit parent, which made the old "MKT entry" log line lie.
+                bracket = _build_futures_bracket_orders(
+                    self._ib,
+                    action=action,
+                    qty=qty,
+                    order_type=order_type,
+                    entry_price=getattr(request, "price", None),
+                    stop_price=float(stop_price),
+                    target_price=float(target_price),
                 )
-                # Override DAY default to GTC on every leg so the IBKR
-                # account preset doesn't trip Warning 10349 ("Order TIF
-                # was set to DAY based on order preset"); GTC carries
-                # bracket children across session boundaries until they
-                # fill or get cancelled by the OCO group.
-                for ib_order in bracket:
-                    ib_order.tif = "GTC"
                 trades = []
                 for ib_order in bracket:
                     trades.append(self._ib.placeOrder(contract, ib_order))
                 trade = trades[0]
                 self._orders[order_id] = trade
+                submitted_trades = trades
                 logger.info(
                     "LiveIbkrVenue BRACKET: %s %s %d MKT entry sl=%.4f tp=%.4f → parentId=%s",
                     action, request.symbol, qty, float(stop_price), float(target_price),
@@ -559,11 +728,60 @@ class LiveIbkrVenue(VenueBase):
                     ib_order = LimitOrder(action, qty, float(request.price))
                 else:
                     ib_order = MarketOrder(action, qty)
+                if not is_crypto:
+                    _apply_futures_session_defaults(ib_order)
                 trade = self._ib.placeOrder(contract, ib_order)
                 self._orders[order_id] = trade
+                submitted_trades = [trade]
                 logger.info(
                     "LiveIbkrVenue EXIT: %s %s %d @ %s → orderId=%s",
                     action, request.symbol, qty, order_type.value, trade.order.orderId,
+                )
+
+            submit_confirm_seconds = _submit_confirm_seconds()
+            if submitted_trades and submit_confirm_seconds > 0:
+                await asyncio.sleep(submit_confirm_seconds)
+            ib_statuses = [_trade_submit_snapshot(item) for item in submitted_trades]
+            reject_reason = _ibkr_submission_reject_reason(ib_statuses)
+            if reject_reason:
+                logger.warning(
+                    "LiveIbkrVenue submission not accepted: %s",
+                    reject_reason,
+                )
+                with contextlib.suppress(Exception):
+                    record_result(
+                        client_order_id=order_id,
+                        status="rejected",
+                        broker_order_id=str(trade.order.orderId),
+                        response_payload={
+                            "venue": self.name,
+                            "mode": "paper_live",
+                            "ibkr_order_id": trade.order.orderId,
+                            "symbol": request.symbol,
+                            "action": action,
+                            "qty": qty,
+                            "is_bracket": is_entry,
+                            "stop_price": stop_price,
+                            "target_price": target_price,
+                            "ib_statuses": ib_statuses,
+                            "reason": reject_reason,
+                        },
+                    )
+                return OrderResult(
+                    order_id=order_id,
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": reject_reason,
+                        "ibkr_order_id": trade.order.orderId,
+                        "symbol": request.symbol,
+                        "action": action,
+                        "qty": qty,
+                        "is_bracket": is_entry,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
+                        "ib_statuses": ib_statuses,
+                    },
                 )
 
             # ── RECORD RESULT ─────────────────────────────────────
@@ -582,6 +800,7 @@ class LiveIbkrVenue(VenueBase):
                         "is_bracket": is_entry,
                         "stop_price": stop_price,
                         "target_price": target_price,
+                        "ib_statuses": ib_statuses,
                     },
                 )
 
@@ -598,10 +817,12 @@ class LiveIbkrVenue(VenueBase):
                     "is_bracket": is_entry,
                     "stop_price": stop_price,
                     "target_price": target_price,
+                    "ib_statuses": ib_statuses,
                 },
             )
         except Exception as exc:
             logger.error("LiveIbkrVenue order failed: %s", exc)
+            _record_idempotency_status("failed_unknown", str(exc), symbol=request.symbol)
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.REJECTED,
