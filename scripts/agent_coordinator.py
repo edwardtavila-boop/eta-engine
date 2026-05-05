@@ -60,7 +60,7 @@ WORKSPACE_ROOT = Path("C:/EvolutionaryTradingAlgo")
 DEFAULT_STATE_ROOT = (
     WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "agent_coordination"
 )
-KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "deepseek")
+KNOWN_AGENTS: tuple[str, ...] = ("claude", "codex", "deepseek", "autopilot")
 DEFAULT_HEARTBEAT_STALE_MIN = 30
 
 
