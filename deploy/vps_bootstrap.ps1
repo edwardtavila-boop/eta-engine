@@ -18,6 +18,7 @@ param(
     [switch]$SkipForceMultiplier,
     [switch]$SkipQuantum,
     [switch]$SkipHealthCheck,
+    [switch]$SkipCodexOperator,
     [switch]$SkipDeepSeekTick,
     [switch]$SkipIbkrGateway,
     [switch]$SkipAllServices,
@@ -333,6 +334,27 @@ if (-not $SkipDeepSeekTick) {
     }
 }
 
+# --- Codex overnight operator + three-AI sync -------------------------------
+
+if (-not $SkipCodexOperator) {
+    Write-Host ""; Write-Host "=== Codex Overnight Operator ===" -ForegroundColor Green
+    $codexOperatorScript = "$EtaEngineDir\deploy\scripts\register_codex_operator_task.ps1"
+
+    if (Test-Path $codexOperatorScript) {
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $codexOperatorScript `
+                -InstallDir $EtaEngineDir `
+                -StateDir "$InstallRoot\var\eta_engine\state" `
+                -LogDir "$InstallRoot\logs\eta_engine" `
+                -PythonExe $pythonExe
+        } else {
+            Write-Host "  WOULD REGISTER: ETA-Codex-Overnight-Operator + ETA-ThreeAI-Sync" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  register_codex_operator_task.ps1 not found at $codexOperatorScript" -ForegroundColor Yellow
+    }
+}
+
 # â”€â”€ IBKR Gateway Watchdog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if (-not $SkipIbkrGateway) {
@@ -383,6 +405,8 @@ Write-Host ""
 Write-Host "Scheduled tasks:" -ForegroundColor White
 Write-Host "  ETA-HealthCheck                 â€” every 4h" -ForegroundColor Gray
 Write-Host "  ETA-Quantum-Daily-Rebalance      â€” daily 21:00 UTC" -ForegroundColor Gray
+Write-Host "  ETA-Codex-Overnight-Operator     -- every 10m" -ForegroundColor Gray
+Write-Host "  ETA-ThreeAI-Sync                 -- every 4h" -ForegroundColor Gray
 Write-Host "  ETA-DeepSeek-MachineGate         â€” every 2h" -ForegroundColor Gray
 Write-Host "  ETA-DeepSeek-CodexLane           â€” every 4h" -ForegroundColor Gray
 Write-Host "  ETA-Hermes-Jarvis-Flush          â€” daily 00:30 UTC" -ForegroundColor Gray
