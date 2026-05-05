@@ -43,12 +43,23 @@ _TRADE_CLOSES = Path(
 
 
 _DIAMOND_BOT_IDS = (
+    # Original DIAMOND tier (pre-brake-fix lab classification)
     "volume_profile_btc",
     "btc_hybrid",
     "btc_regime_trend_etf",
     "btc_sage_daily_etf",
     "volume_profile_mnq",
     "rsi_mr_mnq",
+    # Post-brake-fix top earners (2026-05-04, edge_analyzer --since
+    # 2026-05-04T23:31:00). These were classified outside the diamond
+    # tier historically but emerged as the strongest dollar producers
+    # once R-magnitudes started matching planned bracket distances.
+    "btc_hybrid_sage",      # +$18.10 / 3 trades / 100% WR
+    "funding_rate_btc",     # +$14.86 / 3 trades / 100% WR
+    "btc_optimized",        # +$14.04 / 3 trades / 100% WR
+    "btc_crypto_scalp",     # +$7.67  / 4 trades / 75%  WR
+    "vwap_mr_btc",          # +$7.14  / 3 trades / 67%  WR
+    "eth_sage_daily",       # +$6.28  / 2 trades / 100% WR
 )
 
 

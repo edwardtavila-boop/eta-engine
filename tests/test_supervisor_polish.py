@@ -614,3 +614,55 @@ def test_synthetic_ctx_open_risk_r_uses_planned_stop_distance(tmp_path) -> None:
         f"open_risk_r={ctx.equity.open_risk_r} too high; legacy bug "
         "would have set it to 5.0 (the open_count)"
     )
+
+
+# ─── close_trade carries actual regime, not hardcoded "neutral" ───
+
+
+def test_propagate_close_uses_live_regime_label(tmp_path, monkeypatch) -> None:
+    """_propagate_close was hardcoding regime="neutral" on every close,
+    which collapsed every JARVIS analog into one bucket and prevented
+    regime-conditional learning. The fix reads the live regime from
+    regime_state.json. This test verifies the regime label propagates.
+    """
+    from unittest.mock import patch
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        FillRecord,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    bot = BotInstance(
+        bot_id="rt", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+    rec = FillRecord(
+        bot_id="rt", signal_id="sig-1", side="SELL", symbol="BTC",
+        qty=0.001, fill_price=60000.0, fill_ts="2026-05-04T12:00:00Z",
+        realized_r=0.5, realized_pnl=10.0, paper=True, note="",
+    )
+
+    with patch.object(
+        sup, "_load_live_regime",
+        return_value={
+            "primary_regime": "trending_up",
+            "macro_bias": "risk_on",
+        },
+    ), patch(
+        "eta_engine.brain.jarvis_v3.feedback_loop.close_trade",
+    ) as mock_close:
+        sup._propagate_close(bot, rec)
+
+    assert mock_close.called, "close_trade must be invoked"
+    kwargs = mock_close.call_args.kwargs
+    assert kwargs["regime"] == "trending_up", (
+        f"regime={kwargs.get('regime')!r} — must reflect live "
+        "regime_state.json, not hardcoded 'neutral'"
+    )
+    assert kwargs["extra"]["macro_bias"] == "risk_on"

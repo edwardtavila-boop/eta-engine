@@ -1658,14 +1658,38 @@ class JarvisStrategySupervisor:
     def _propagate_close(self, bot: BotInstance, rec: FillRecord) -> None:
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
-            # Pass the per-trade pnl through extra so it lands in the
-            # JSONL audit log; the scoreboard + killswitch read this
-            # field. Without it, downstream tooling sees realized_r
-            # (risk-normalized) but no $$ figure.
+            # Read live regime from regime_state.json so trade closes
+            # carry the ACTUAL regime/macro_bias at close time. Every
+            # close was previously labeled regime="neutral" regardless
+            # of the live state, which collapsed every memory analog
+            # into a single bucket and prevented JARVIS from learning
+            # regime-conditional patterns. The pressure-test output
+            # showed this clearly: by_regime always reported only
+            # `neutral` for every bot, because every close was tagged
+            # neutral at write time.
+            live_regime = self._load_live_regime()
+            regime_label = str(live_regime.get("primary_regime", "neutral"))
+            macro_bias = str(live_regime.get("macro_bias", "neutral"))
+            # Session derived from UTC hour: 13:30-16:00 UTC = US morning,
+            # 16:00-21:00 = US afternoon, otherwise overnight/lunch. Crypto
+            # bots trade 24/7 so the session label is informational only —
+            # but it lets the feedback loop split by time-of-day analog.
+            try:
+                _h = datetime.now(UTC).hour
+            except Exception:  # noqa: BLE001
+                _h = -1
+            if 13 <= _h < 16:
+                session_label = "morning"
+            elif 16 <= _h < 21:
+                session_label = "afternoon"
+            elif _h >= 21 or _h < 1:
+                session_label = "close"
+            else:
+                session_label = "overnight"
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
-                regime="neutral", session="rth", stress=0.4,
+                regime=regime_label, session=session_label, stress=0.4,
                 direction=bot.direction,
                 action_taken="approve_full",
                 bot_id=bot.bot_id,
@@ -1678,6 +1702,7 @@ class JarvisStrategySupervisor:
                     "symbol": rec.symbol,
                     "side": rec.side,
                     "close_ts": rec.fill_ts,
+                    "macro_bias": macro_bias,
                 },
             )
         except Exception as exc:  # noqa: BLE001
