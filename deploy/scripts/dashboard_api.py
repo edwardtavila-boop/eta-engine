@@ -607,6 +607,42 @@ def _read_runtime_state() -> dict:
         return {"_warning": "missing_runtime_state", "_path": str(path)}
     return data if isinstance(data, dict) else {"_warning": "invalid_runtime_state", "_path": str(path)}
 
+def _ibgateway_reauth_snapshot() -> dict | None:
+    """Return the Gateway recovery-controller state when present."""
+    env_path = os.environ.get("ETA_IBGATEWAY_REAUTH_PATH")
+    candidates = [
+        Path(env_path) if env_path else None,
+        _state_dir() / "ibgateway_reauth.json",
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "ibgateway_reauth.json",
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not candidate.exists():
+            continue
+        data = _read_json_file(candidate)
+        status = str(data.get("status") or "").strip()
+        if not status:
+            continue
+        return {
+            "status": status,
+            "action": str(data.get("action") or ""),
+            "operator_action_required": data.get("operator_action_required") is True,
+            "operator_action": str(data.get("operator_action") or ""),
+            "restart_attempts": int(data.get("restart_attempts") or 0),
+            "last_restart_at": data.get("last_restart_at") or "",
+            "last_start_at": data.get("last_start_at") or "",
+            "last_task_name": data.get("last_task_name") or "",
+            "generated_at_utc": data.get("generated_at_utc") or "",
+            "source_path": key,
+        }
+    return None
+
 
 def _broker_gateway_snapshot() -> dict:
     """Return broker execution gateway health, separate from bot heartbeat liveness."""
@@ -642,6 +678,11 @@ def _broker_gateway_snapshot() -> dict:
             detail = f"{process_detail}; {detail}" if detail else process_detail
         if crash and crash.get("summary"):
             detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
+        recovery = _ibgateway_reauth_snapshot()
+        if recovery and recovery.get("status"):
+            detail = f"{detail}; recovery: {recovery['status']}" if detail else f"recovery: {recovery['status']}"
+            if recovery.get("operator_action_required"):
+                detail = f"{detail}; operator action required"
         return {
             "ibkr": {
                 "status": "connected" if healthy else "down",
@@ -656,6 +697,7 @@ def _broker_gateway_snapshot() -> dict:
                 "detail": detail,
                 "crash": crash,
                 "process": process,
+                "recovery": recovery,
                 "source_path": key,
             },
         }

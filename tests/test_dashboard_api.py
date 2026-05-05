@@ -1432,6 +1432,20 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
+        (state / "ibgateway_reauth.json").write_text(
+            json.dumps(
+                {
+                    "status": "auth_pending",
+                    "action": "none",
+                    "operator_action_required": True,
+                    "operator_action": "Complete the IBKR Gateway login or two-factor prompt.",
+                    "restart_attempts": 3,
+                    "last_task_name": "ETA-IBGateway-DailyRestart",
+                    "last_restart_at": "2026-05-05T14:39:16+00:00",
+                },
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
@@ -1443,10 +1457,14 @@ class TestDashboardAPI:
         assert ibkr["consecutive_failures"] == 72
         assert ibkr["detail"] == (
             "gateway process running; API not ready; skipped (socket down); "
-            "latest crash: IB Gateway JVM native-memory OOM"
+            "latest crash: IB Gateway JVM native-memory OOM; recovery: auth_pending; operator action required"
         )
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
         assert ibkr["process"]["running"] is True
+        assert ibkr["recovery"]["status"] == "auth_pending"
+        assert ibkr["recovery"]["operator_action_required"] is True
+        assert ibkr["recovery"]["restart_attempts"] == 3
+        assert "recovery: auth_pending" in ibkr["detail"]
 
     def test_bot_fleet_surfaces_broker_router_execution_state(self, app_client):
         """The roster exposes broker-router execution state separate from signal liveness."""

@@ -16,10 +16,11 @@ function Write-LogLine {
 }
 
 function Get-GatewayProcesses {
+    $expectedExe = Join-Path $GatewayDir "ibgateway.exe"
     Get-CimInstance Win32_Process |
         Where-Object {
-            $_.CommandLine -and
-            ($_.CommandLine -like "*$GatewayDir*" -or $_.CommandLine -like "*ibgateway*")
+            ($_.Name -ieq "ibgateway.exe") -or
+            ($_.ExecutablePath -and ($_.ExecutablePath -ieq $expectedExe))
         }
 }
 
@@ -46,16 +47,13 @@ if ($ForceRestart) {
     Start-Sleep -Seconds 5
 }
 
-$stdout = Join-Path $LogDir "ibgateway_stdout.log"
-$stderr = Join-Path $LogDir "ibgateway_stderr.log"
 $arguments = "-login=$LoginProfile"
+$cmdArgs = "/c start ""IBGateway"" /D ""$GatewayDir"" ""$exe"" $arguments"
 
-Write-LogLine "starting $exe $arguments"
-Start-Process -FilePath $exe `
-    -ArgumentList $arguments `
+Write-LogLine "starting detached $exe $arguments"
+Start-Process -FilePath "cmd.exe" `
+    -ArgumentList $cmdArgs `
     -WorkingDirectory $GatewayDir `
-    -RedirectStandardOutput $stdout `
-    -RedirectStandardError $stderr `
     -WindowStyle Hidden
 
 Write-LogLine "start requested"

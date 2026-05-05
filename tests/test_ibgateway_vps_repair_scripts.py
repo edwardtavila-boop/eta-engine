@@ -10,9 +10,13 @@ def test_ibgateway_starter_uses_canonical_logs_and_hidden_start() -> None:
 
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\logs\ibgateway" in text
     assert "Start-Process" in text
+    assert 'Start-Process -FilePath "cmd.exe"' in text
+    assert '/c start ""IBGateway""' in text
     assert "-WindowStyle Hidden" in text
     assert "ibgateway.exe" in text
     assert "-login=" in text
+    assert '$_.Name -ieq "ibgateway.exe"' in text
+    assert 'CommandLine -like "*ibgateway*"' not in text
 
 
 def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
