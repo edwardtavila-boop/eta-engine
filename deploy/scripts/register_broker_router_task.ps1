@@ -23,7 +23,7 @@ $PythonExe  = if (Test-Path $VenvPython) { $VenvPython } else { "python.exe" }
 
 $EnvVars = @{
     "ETA_BROKER_ROUTER_INTERVAL_S"  = "5"
-    "ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"
+    "ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\eta_engine\docs\btc_live\broker_fleet"
     "ETA_BROKER_ROUTER_STATE_ROOT"  = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router"
 }
 

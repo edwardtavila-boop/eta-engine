@@ -187,12 +187,14 @@ class TestStatusPage:
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
         assert "cache: 'no-store'" in html
 
-        # Trade visibility contract: trade-bearing supervisor rows must not
-        # collapse into a zero-trade table when total_trades is absent.
-        assert "<th>Last Trade</th>" in html
+        # Trade/activity visibility contract: supervisor signal updates are
+        # displayed separately from actual fill-backed trades.
+        assert "<th>Last Activity</th>" in html
         assert 'colspan="10"' in html
         assert "last_trade_ts" in html
-        assert "tradeUpdates" in html
+        assert "last_signal_ts" in html
+        assert "signalUpdates" in html
+        assert "broker_gateway" in html
 
         # Status indicator + clock (live freshness cues)
         assert 'id="statusDot"' in html

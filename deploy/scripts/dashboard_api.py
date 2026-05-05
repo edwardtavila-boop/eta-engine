@@ -579,6 +579,13 @@ def _readiness_only_roster_row(readiness: dict, *, now_ts: float) -> dict:
         "last_trade_side": None,
         "last_trade_r": None,
         "last_trade_qty": None,
+        "last_signal_ts": None,
+        "last_signal_age_s": None,
+        "last_signal_side": None,
+        "last_activity_ts": None,
+        "last_activity_age_s": None,
+        "last_activity_side": None,
+        "last_activity_type": None,
         "data_ts": now_ts,
         "data_age_s": 0.0,
         "heartbeat_age_s": None,
@@ -599,6 +606,64 @@ def _read_runtime_state() -> dict:
     except (OSError, json.JSONDecodeError):
         return {"_warning": "missing_runtime_state", "_path": str(path)}
     return data if isinstance(data, dict) else {"_warning": "invalid_runtime_state", "_path": str(path)}
+
+
+def _broker_gateway_snapshot() -> dict:
+    """Return broker execution gateway health, separate from bot heartbeat liveness."""
+    env_path = os.environ.get("ETA_TWS_WATCHDOG_PATH")
+    candidates = [
+        Path(env_path) if env_path else None,
+        _state_dir() / "tws_watchdog.json",
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "tws_watchdog.json",
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not candidate.exists():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        details = data.get("details") if isinstance(data.get("details"), dict) else {}
+        healthy = data.get("healthy") is True
+        return {
+            "ibkr": {
+                "status": "connected" if healthy else "down",
+                "healthy": healthy,
+                "checked_at": data.get("checked_at"),
+                "last_healthy_at": data.get("last_healthy_at"),
+                "consecutive_failures": int(data.get("consecutive_failures") or 0),
+                "host": details.get("host") or "127.0.0.1",
+                "port": int(details.get("port") or 4002),
+                "socket_ok": details.get("socket_ok") is True,
+                "handshake_ok": details.get("handshake_ok") is True,
+                "detail": str(details.get("handshake_detail") or ""),
+                "source_path": key,
+            },
+        }
+    return {
+        "ibkr": {
+            "status": "unknown",
+            "healthy": None,
+            "checked_at": None,
+            "last_healthy_at": None,
+            "consecutive_failures": 0,
+            "host": "127.0.0.1",
+            "port": 4002,
+            "socket_ok": None,
+            "handshake_ok": None,
+            "detail": "missing tws_watchdog.json",
+            "source_path": None,
+        },
+    }
 
 
 def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
@@ -1804,13 +1869,13 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     from datetime import UTC, datetime
     today = sup.get("today") or {}
     updated_at = str(sup.get("updated_at") or "")
-    last_trade_age_s: int | None = None
+    last_signal_age_s: int | None = None
     if updated_at:
         try:
             dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=UTC)
-            last_trade_age_s = max(0, int(now_ts - dt.timestamp()))
+            last_signal_age_s = max(0, int(now_ts - dt.timestamp()))
         except (ValueError, OSError):
             pass
     open_pos = sup.get("open_position") or {}
@@ -1829,14 +1894,21 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "status":              str(sup.get("status") or "unknown"),
         "todays_pnl":          float(today.get("pnl") or 0.0),
         "todays_pnl_source":   "supervisor_heartbeat",
-        "last_trade_ts":       updated_at or None,
-        "last_trade_age_s":    last_trade_age_s,
-        "last_trade_side":     last_side,
+        "last_trade_ts":       None,
+        "last_trade_age_s":    None,
+        "last_trade_side":     None,
         "last_trade_r":        None,
         "last_trade_qty":      None,
+        "last_signal_ts":      updated_at or None,
+        "last_signal_age_s":   last_signal_age_s,
+        "last_signal_side":    last_side,
+        "last_activity_ts":    updated_at or None,
+        "last_activity_age_s": last_signal_age_s,
+        "last_activity_side":  last_side,
+        "last_activity_type":  "signal" if updated_at else None,
         "data_ts":             now_ts,
         "data_age_s":          0.0,
-        "heartbeat_age_s":     last_trade_age_s,
+        "heartbeat_age_s":     last_signal_age_s,
         "source":              "jarvis_strategy_supervisor",
         "confirmed":           True,
         "mode":                str(sup.get("mode") or ""),
@@ -1930,6 +2002,9 @@ def bot_fleet_roster(
             status["last_trade_side"] = last_fill.get("side")
             status["last_trade_qty"] = last_fill.get("qty")
             status["last_trade_r"] = last_fill.get("realized_r")
+            status["last_activity_ts"] = status["last_trade_ts"]
+            status["last_activity_side"] = status["last_trade_side"]
+            status["last_activity_type"] = "trade"
             duration_s = (
                 last_fill.get("hold_seconds")
                 or last_fill.get("duration_s")
@@ -1947,10 +2022,18 @@ def bot_fleet_roster(
             status["last_trade_qty"] = None
             status["last_trade_r"] = None
             status["last_trade_duration_s"] = None
+            status["last_activity_ts"] = status.get("last_signal_ts") or None
+            status["last_activity_side"] = status.get("last_signal_side") or status.get("last_signal") or None
+            status["last_activity_type"] = "signal" if status.get("last_signal_ts") else None
         last_trade_dt = _parse_fill_dt(status.get("last_trade_ts"))
         status["last_trade_age_s"] = (
             max(0, int((datetime.now(UTC) - last_trade_dt).total_seconds()))
             if last_trade_dt is not None
+            else None
+        )
+        status["last_activity_age_s"] = (
+            status["last_trade_age_s"]
+            if status.get("last_activity_type") == "trade"
             else None
         )
         # Keep roster PnL live by deriving today's delta from the bot curve when available.
@@ -2056,6 +2139,7 @@ def bot_fleet_roster(
         },
         "server_ts":         now_ts,
         "live":              fills_stats,
+        "broker_gateway":    _broker_gateway_snapshot(),
         "window_since_days": since_days,
         **truth,
     }
@@ -2288,7 +2372,12 @@ def _supervisor_equity_payload(
     for row in rows:
         with contextlib.suppress(TypeError, ValueError):
             total_pnl += float(row.get("todays_pnl") or 0.0)
-        row_ts = str(row.get("last_trade_ts") or "")
+        row_ts = str(
+            row.get("last_trade_ts")
+            or row.get("last_activity_ts")
+            or row.get("last_signal_ts")
+            or "",
+        )
         if row_ts > latest_ts:
             latest_ts = row_ts
 

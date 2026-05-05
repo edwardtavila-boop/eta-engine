@@ -1276,6 +1276,15 @@ class TestDashboardAPI:
         assert mnq["todays_pnl"] == 2.0
         assert mnq["status"] == "running"
         assert mnq["source"] == "jarvis_strategy_supervisor"
+        assert mnq["last_trade_ts"] is None
+        assert mnq["last_trade_side"] is None
+        assert mnq["last_trade_qty"] is None
+        assert mnq["last_trade_r"] is None
+        assert mnq["last_signal_ts"] == "2026-04-28T12:00:00+00:00"
+        assert mnq["last_signal_side"] == "LONG"
+        assert mnq["last_activity_ts"] == "2026-04-28T12:00:00+00:00"
+        assert mnq["last_activity_side"] == "LONG"
+        assert mnq["last_activity_type"] == "signal"
         assert mnq["venue"] == "paper-sim"
         assert mnq["tier"] == "orb"
         assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
@@ -1385,6 +1394,43 @@ class TestDashboardAPI:
         assert nq["can_paper_trade"] is True
         assert nq["can_live_trade"] is False
         assert nq["readiness_next_action"].startswith("Run per-bot promotion")
+
+    def test_bot_fleet_surfaces_tws_gateway_health(self, app_client):
+        """The public roster reports broker execution health separately from bot liveness."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": "2026-05-05T12:45:22+00:00",
+                    "healthy": False,
+                    "consecutive_failures": 72,
+                    "last_healthy_at": "2026-05-05T06:08:00+00:00",
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": False,
+                        "handshake_ok": False,
+                        "handshake_detail": "skipped (socket down)",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        data = r.json()
+        ibkr = data["broker_gateway"]["ibkr"]
+        assert ibkr["status"] == "down"
+        assert ibkr["healthy"] is False
+        assert ibkr["port"] == 4002
+        assert ibkr["consecutive_failures"] == 72
+        assert ibkr["detail"] == "skipped (socket down)"
 
     def test_fleet_equity_uses_supervisor_when_curves_are_missing(self, app_client):
         """Fleet equity stays live from supervisor heartbeat when curve files are absent."""

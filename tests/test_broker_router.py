@@ -42,6 +42,26 @@ from eta_engine.venues.base import (  # noqa: E402  (after importorskip)
     OrderStatus,
 )
 
+
+def test_register_task_uses_eta_engine_pending_inbox() -> None:
+    """The scheduled task must poll the same inbox the supervisor writes."""
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "deploy"
+        / "scripts"
+        / "register_broker_router_task.ps1"
+    )
+    text = script.read_text(encoding="utf-8")
+    assert (
+        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\eta_engine\docs\btc_live\broker_fleet"'
+        in text
+    )
+    assert (
+        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"'
+        not in text
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tiny stand-ins
 # ---------------------------------------------------------------------------
