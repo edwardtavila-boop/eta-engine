@@ -44,6 +44,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 _ENV_LOADED = False
 _ENV_LOAD_LOCK = threading.Lock()
+_MONTHLY_SPEND: dict[str, float] = {}
 
 
 def _ensure_dotenv() -> None:
@@ -441,12 +443,36 @@ def _call_anthropic(
     *, model: str, system_prompt: str, user_message: str,
     max_tokens: int, temperature: float,
 ) -> LLMResponse:
-    """Call Anthropic Claude via the official SDK."""
+    """Call Anthropic Claude via the official SDK.
+    
+    SAFETY: requires ETA_USE_CLAUDE_API=1 env var or max_tokens is capped
+    at 100 to prevent accidental large API bills. The Claude Pro subscription
+    ($20/month) does NOT cover API usage — these are separate billing."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return LLMResponse(text="", model=model, provider=Provider.ANTHROPIC,
+                           input_tokens=0, output_tokens=0, cost_usd=0.0)
+    
+    # Kill-switch: refuse to call unless explicitly enabled
+    if not os.environ.get("ETA_USE_CLAUDE_API"):
+        return LLMResponse(text="", model=model, provider=Provider.ANTHROPIC,
+                           input_tokens=0, output_tokens=0, cost_usd=0.0)
+    
+    # Safety cap: never send more than 4096 tokens unless explicitly overridden
+    effective_max = min(max_tokens, 4096)
+    
+    # Monthly spend guard — refuse calls after $50/month budget
+    monthly_key = datetime.now(UTC).strftime("claude_spend_%Y_%m")
+    current = _MONTHLY_SPEND.get(monthly_key, 0.0)
+    if current >= 50.0:
+        return LLMResponse(text="", model=model, provider=Provider.ANTHROPIC,
+                           input_tokens=0, output_tokens=0, cost_usd=0.0)
+    
     from anthropic import Anthropic
-
-    client = Anthropic(timeout=30.0)
+    
+    client = Anthropic(api_key=api_key, timeout=30.0)
     kwargs: dict[str, Any] = {
-        "model": model, "max_tokens": max_tokens,
+        "model": model, "max_tokens": effective_max,
         "messages": [{"role": "user", "content": user_message}],
     }
     if system_prompt:
@@ -454,11 +480,13 @@ def _call_anthropic(
 
     resp = client.messages.create(**kwargs)
     text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    cost = _cost(model, resp.usage.input_tokens, resp.usage.output_tokens)
+    _MONTHLY_SPEND[monthly_key] = _MONTHLY_SPEND.get(monthly_key, 0.0) + cost
 
     return LLMResponse(
         text=text.strip(), model=model, provider=Provider.ANTHROPIC,
         input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-        cost_usd=_cost(model, resp.usage.input_tokens, resp.usage.output_tokens),
+        cost_usd=cost,
     )
 
 

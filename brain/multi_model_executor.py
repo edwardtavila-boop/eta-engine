@@ -81,5 +81,5 @@ def create_multimodel_fleet(
         admin=admin,
         executor=MultiModelExecutor(),
         journal_path=journal_path,
-        deepseek_personas=True,
+        deepseek_personas=_env_bool("ETA_USE_DEEPSEEK_PERSONAS", False),
     )
