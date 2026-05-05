@@ -76,6 +76,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 <div class="status-bar">
   <span><span class="status-dot" id="statusDot"></span><span id="statusText">Connecting...</span></span>
   <span id="clockText"></span>
+  <span id="apiSourceText"></span>
   <span id="lastTradeText"></span>
 </div>
 
@@ -85,7 +86,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3>Total PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub">Lifetime cumulative</div></div>
   <div class="card"><h3>Cumulative R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub">Lifetime realized R</div></div>
-  <div class="card"><h3>Total Trades</h3><div class="stat blue" id="totalTrades">—</div></div>
+  <div class="card"><h3>Total Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
@@ -120,9 +121,9 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 <div class="table-wrap">
   <table>
     <thead>
-      <tr><th>Bot</th><th>Symbol</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Verdict</th><th>PnL</th><th>WR%</th><th>Sharpe</th></tr>
+      <tr><th>Bot</th><th>Symbol</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Verdict</th><th>PnL</th><th>Last Trade</th><th>WR%</th><th>Sharpe</th></tr>
     </thead>
-    <tbody id="botTable"><tr><td colspan="9" class="loading">Loading fleet data...</td></tr></tbody>
+    <tbody id="botTable"><tr><td colspan="10" class="loading">Loading fleet data...</td></tr></tbody>
   </table>
 </div>
 
@@ -141,8 +142,8 @@ function esc(v) {
 async function fetchJson(urls) {
   for (const url of urls) {
     try {
-      const resp = await fetch(url);
-      if (resp && resp.ok) return await resp.json();
+      const resp = await fetch(url, {cache: 'no-store'});
+      if (resp && resp.ok) return {payload: await resp.json(), source: url};
     } catch(e) {}
   }
   return null;
@@ -152,26 +153,37 @@ async function fetchData() {
   const data = await fetchJson([API, API_ALT]);
   const strategyResults = await fetchJson([STRATEGY_RESULTS_API]);
   if (!data) { showOffline(); return; }
-  render(data, strategyResults || {});
+  render(data.payload, strategyResults ? strategyResults.payload : {}, data.source);
 }
 
 function showOffline() {
   document.getElementById('statusDot').className = 'status-dot stale';
   document.getElementById('statusText').textContent = 'API Offline';
+  document.getElementById('apiSourceText').textContent = 'Source: unavailable';
   ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
 }
 
-function render(d, strategyResults) {
+function sourceLabel(source) {
+  try {
+    return new URL(source, window.location.origin).host;
+  } catch(e) {
+    return source || 'unknown';
+  }
+}
+
+function render(d, strategyResults, dataSource) {
   const bots = d.bots || [];
   const summary = d.summary || {};
   const confirmed = d.confirmed_bots || 0;
   const stale = d.truth_status === 'stale';
+  const usingFallback = dataSource === API_ALT;
 
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : 'live');
   document.getElementById('statusText').textContent = stale ? 'Bots · stale' : bots.length + ' bots · live';
+  document.getElementById('apiSourceText').textContent = 'Source: ' + sourceLabel(dataSource) + (usingFallback ? ' (fallback)' : '');
   document.getElementById('totalBots').textContent = bots.length;
 
   const active = bots.filter(b => b.status !== 'idle').length;
@@ -198,8 +210,10 @@ function render(d, strategyResults) {
   rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
 
   // Total trades
-  const trades = bots.reduce((s,b) => s + (b.total_trades || 0), 0);
-  document.getElementById('totalTrades').textContent = trades || '—';
+  const trades = bots.reduce((s,b) => s + (Number(b.total_trades) || 0), 0);
+  const tradeUpdates = bots.filter(b => b.last_trade_ts).length;
+  document.getElementById('totalTrades').textContent = trades || tradeUpdates || '—';
+  document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : tradeUpdates ? 'bots with trade updates' : 'waiting for fills';
 
   // Verdicts — APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
   const verdicts = bots.map(b => b.last_jarvis_verdict || '');
@@ -211,7 +225,9 @@ function render(d, strategyResults) {
   const modes = [...new Set(bots.map(b => b.mode))].filter(Boolean).join(', ');
   document.getElementById('jarvisMode').textContent = modes || 'paper_sim';
 
-  const lastTrade = bots.filter(b => b.last_trade_ts).sort((a,b) => b.last_trade_ts > a.last_trade_ts ? 1 : -1)[0];
+  const lastTrade = bots
+    .filter(b => b.last_trade_ts)
+    .sort((a,b) => String(b.last_trade_ts).localeCompare(String(a.last_trade_ts)))[0];
   document.getElementById('lastTradeText').textContent = lastTrade ? 'Last Trade: ' + lastTrade.last_trade_ts.replace('T',' ').substring(0,19) : 'No trades yet';
 
   document.getElementById('gatewayStatus').textContent = confirmed > 0 ? 'Connected' : 'Not connected';
@@ -240,6 +256,8 @@ function render(d, strategyResults) {
     const verdictClass = (v === 'APPROVED' || v === 'CONDITIONAL') ? 'badge-approve'
       : (v === 'DENIED' || v === 'KILL' || v === 'REDUCE') ? 'badge-deny'
       : 'badge-idle';
+    const tradeTs = b.last_trade_ts ? String(b.last_trade_ts).replace('T',' ').substring(0,19) : '—';
+    const tradeSide = b.last_trade_side ? ' ' + b.last_trade_side : '';
     html += '<tr>' +
       '<td><strong>' + (b.id || b.name || '?') + '</strong></td>' +
       '<td>' + (b.symbol || '—') + '</td>' +
@@ -248,6 +266,7 @@ function render(d, strategyResults) {
       '<td><span class="' + (b.status === 'idle' ? 'badge-idle' : b.status === 'error' ? 'badge-loss' : 'badge-approve') + '">' + (b.status || '—') + '</span></td>' +
       '<td><span class="' + verdictClass + '">' + (b.last_jarvis_verdict || '—') + '</span></td>' +
       '<td class="' + ((b.todays_pnl || 0) > 0 ? 'green' : (b.todays_pnl || 0) < 0 ? 'red' : '') + '">$' + (b.todays_pnl || 0).toFixed(0) + '</td>' +
+      '<td>' + esc(tradeTs + tradeSide) + '</td>' +
       '<td>' + (b.win_rate_pct || '—') + '</td>' +
       '<td>' + (b.sharpe || '—') + '</td>' +
       '</tr>';

@@ -303,9 +303,25 @@ _DEFAULT_RUNTIME_STATE = _WORKSPACE_ROOT / "firm_command_center" / "var" / "data
 _DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT = (
     _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
 )
+_DEFAULT_CORS_ORIGINS = (
+    "https://ops.evolutionarytradingalgo.com",
+    "https://jarvis.evolutionarytradingalgo.com",
+    "https://app.evolutionarytradingalgo.com",
+    "https://evolutionarytradingalgo.com",
+    "https://www.evolutionarytradingalgo.com",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+)
 STATE_DIR = Path(os.environ.get("ETA_STATE_DIR", os.environ.get("ETA_STATE_DIR", str(_DEFAULT_STATE))))
 LOG_DIR   = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_DEFAULT_LOG))))
 _START_TS = time.time()
+
+
+def _dashboard_cors_origins() -> list[str]:
+    """Return public dashboard origins plus optional comma-separated overrides."""
+    configured = os.environ.get("ETA_DASHBOARD_CORS_ORIGINS", "")
+    extra = [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+    return list(dict.fromkeys((*_DEFAULT_CORS_ORIGINS, *extra)))
 
 
 def _dashboard_contract() -> dict:
@@ -647,7 +663,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=_dashboard_cors_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

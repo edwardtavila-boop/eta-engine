@@ -99,6 +99,18 @@ class TestDashboardAPI:
             "source_freshness",
         }
 
+    def test_public_ops_origin_can_read_fleet_api(self, app_client):
+        r = app_client.options(
+            "/api/bot-fleet",
+            headers={
+                "Origin": "https://ops.evolutionarytradingalgo.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert r.status_code == 200
+        assert r.headers["access-control-allow-origin"] == "https://ops.evolutionarytradingalgo.com"
+
     def test_heartbeat(self, app_client):
         r = app_client.get("/api/heartbeat")
         assert r.status_code == 200

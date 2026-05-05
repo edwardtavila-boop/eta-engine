@@ -180,9 +180,19 @@ class TestStatusPage:
         assert 'id="botTable"' in html
         assert 'id="pnlChart"' in html
         assert 'id="pnlHistoryLabel"' in html
+        assert 'id="apiSourceText"' in html
 
         # Live data fetch contract: dashboard pulls from /api/bot-fleet
         assert "/api/bot-fleet" in html
+        assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
+        assert "cache: 'no-store'" in html
+
+        # Trade visibility contract: trade-bearing supervisor rows must not
+        # collapse into a zero-trade table when total_trades is absent.
+        assert "<th>Last Trade</th>" in html
+        assert 'colspan="10"' in html
+        assert "last_trade_ts" in html
+        assert "tradeUpdates" in html
 
         # Status indicator + clock (live freshness cues)
         assert 'id="statusDot"' in html
