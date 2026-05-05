@@ -1,3 +1,13 @@
+# DEPRECATED: this module was a stale snapshot of
+# ``eta_engine/scripts/jarvis_strategy_supervisor.py`` left behind during
+# the wave-7/8 reorganization. It is NOT imported anywhere in production
+# (verified via grep across the workspace as of 2026-05-05). Kept in
+# sync with the canonical scripts/ copy until the operator confirms it
+# can be deleted, so a stray import doesn't get a divergent supervisor.
+#
+# DO NOT add new logic here — edit ``eta_engine/scripts/jarvis_strategy_supervisor.py``
+# instead. The canonical-path fix below mirrors Codex T-002.
+
 """JARVIS Strategy Supervisor (2026-04-27).
 
 The single multi-bot supervisor that runs the entire strategy fleet
@@ -174,8 +184,12 @@ class SupervisorConfig:
         default_factory=lambda: float(os.getenv("ETA_SUPERVISOR_STARTING_CASH", "5000")),
     )
     # Heartbeat output path
+    # Canonical workspace path per CLAUDE.md hard rule #1: writes go
+    # under ``var/eta_engine/state/...``, never the legacy in-repo
+    # ``state/...`` tree. Mirrors the canonical fix applied in the
+    # scripts/ copy (Codex T-002).
     state_dir: Path = field(
-        default_factory=lambda: ROOT / "state" / "jarvis_intel" / "supervisor",
+        default_factory=lambda: workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR,
     )
     # Live-money gate (extra safety; even paper_live still requires this False)
     live_money_enabled: bool = field(
@@ -675,7 +689,9 @@ class JarvisStrategySupervisor:
 
     # ── JARVIS consultation ─────────────────────────────────
 
-    def _consult_sage_for_bot(self, bot: BotInstance, bar: dict, side: str, entry_price: float):
+    def _consult_sage_for_bot(
+        self, bot: BotInstance, bar: dict, side: str, entry_price: float,
+    ) -> Any | None:  # noqa: ANN401 — deprecated mirror; SageReport lives in scripts/ copy
         """Consult Sage schools with the bot's accumulated bar buffer.
 
         Returns a SageReport or None if Sage isn't available or the

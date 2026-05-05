@@ -87,6 +87,72 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+#: Env-var override for the latch path. Tests / smoke scripts set this
+#: to point the latch at a tmp directory; production leaves it unset
+#: and the canonical workspace path resolves through workspace_roots.
+_PATH_ENV_VAR: str = "ETA_KILL_SWITCH_LATCH_PATH"
+
+#: One-time guard so the legacy-fallback read warning logs at most once
+#: per process.
+_LEGACY_FALLBACK_WARNED: bool = False
+
+
+def default_path() -> Path:
+    """Return the canonical workspace path for the latch.
+
+    Resolution order:
+      * ``$ETA_KILL_SWITCH_LATCH_PATH`` if set (used by tests / smoke runs)
+      * ``workspace_roots.ETA_KILL_SWITCH_LATCH_PATH`` (canonical, under
+        ``<workspace>/var/eta_engine/state/kill_switch_latch.json``)
+    """
+    override = os.environ.get(_PATH_ENV_VAR, "").strip()
+    if override:
+        return Path(override)
+    # Local import keeps core/ free of script-package import cycles.
+    from eta_engine.scripts import workspace_roots
+    return workspace_roots.ETA_KILL_SWITCH_LATCH_PATH
+
+
+def default_legacy_path() -> Path:
+    """Return the legacy in-repo path for the latch.
+
+    Used as a one-shot read fallback during the migration window so the
+    runtime can pick up a prior tripped latch even if it was last
+    persisted at the legacy location. NEVER used as a write target.
+    """
+    from eta_engine.scripts import workspace_roots
+    return workspace_roots.ETA_LEGACY_KILL_SWITCH_LATCH_PATH
+
+
+def resolve_existing_path() -> Path:
+    """Return the path to read the latch from, preferring canonical.
+
+    Falls back to the legacy in-repo path only when the canonical file
+    does not exist *and* the legacy file does. Logs a one-time WARNING
+    on every fallback so the operator knows a migration step is still
+    pending. The write path is always :func:`default_path`.
+    """
+    canonical = default_path()
+    if canonical.exists():
+        return canonical
+    legacy = default_legacy_path()
+    if legacy.exists():
+        global _LEGACY_FALLBACK_WARNED
+        if not _LEGACY_FALLBACK_WARNED:
+            log.warning(
+                "kill_switch_latch: reading from legacy in-repo path %s "
+                "(canonical %s missing). New writes will land at %s; "
+                "remove the legacy file once the canonical write has "
+                "rolled over.",
+                legacy,
+                canonical,
+                canonical,
+            )
+            _LEGACY_FALLBACK_WARNED = True
+        return legacy
+    return canonical
+
+
 #: Verdict actions that flip the latch to TRIPPED. Anything else is
 #: passed through without latching.
 _LATCHING_ACTIONS: frozenset[str] = frozenset(
@@ -390,4 +456,7 @@ __all__ = [
     "KillSwitchLatch",
     "LatchRecord",
     "LatchState",
+    "default_legacy_path",
+    "default_path",
+    "resolve_existing_path",
 ]

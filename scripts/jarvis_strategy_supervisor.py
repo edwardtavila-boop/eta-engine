@@ -817,6 +817,118 @@ class ExecutionRouter:
 # ─── Supervisor ───────────────────────────────────────────────────
 
 
+# ─── Heartbeat keep-alive thread ──────────────────────────────────
+#
+# The main heartbeat (`heartbeat.json`) is bound to the tick loop:
+# every iteration of `run_forever` walks the fleet, runs JARVIS
+# consult chains, talks to brokers, then writes the heartbeat. If
+# any of those blocks (a stuck ib_insync reconnect, a long JARVIS
+# layer, a hung futures call) the heartbeat goes stale by definition
+# even though the supervisor process is healthy and would recover on
+# the next tick.
+#
+# The keep-alive is a daemon thread that writes
+# `heartbeat_keepalive.json` with a single field:
+#
+#     {"keepalive_ts": "<utc-iso>"}
+#
+# every KEEPALIVE_PERIOD_S seconds, completely independent of the
+# main tick loop. The diagnostic CLI reads both files: a fresh
+# keepalive paired with a stale main heartbeat is reported as
+# `main_loop_stuck` (process alive, loop blocked); a stale keepalive
+# is reported as `supervisor_dead` (process gone). This lets the
+# operator triage with one diagnostic run instead of cross-checking
+# `ps` against the heartbeat age.
+
+_KEEPALIVE_PERIOD_S = float(os.getenv("ETA_SUPERVISOR_KEEPALIVE_PERIOD_S", "15"))
+_KEEPALIVE_FILENAME = "heartbeat_keepalive.json"
+
+
+class _HeartbeatKeepAlive:
+    """Daemon timer that writes a minimal "process alive" stamp.
+
+    Decoupled from the main tick loop so a blocked tick doesn't
+    silence the keep-alive. Uses ``threading.Event.wait(period)``
+    instead of ``time.sleep`` so ``stop()`` returns promptly even
+    when the period is large.
+    """
+
+    def __init__(self, *, state_dir: Path, period_s: float) -> None:
+        self._state_dir = state_dir
+        # Floor at 10ms so tests can run quickly; production cadence
+        # is set via ETA_SUPERVISOR_KEEPALIVE_PERIOD_S (default 15s).
+        # A 10ms floor still prevents a busy-loop-by-misconfig.
+        self._period_s = max(0.01, float(period_s))
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    @property
+    def path(self) -> Path:
+        return self._state_dir / _KEEPALIVE_FILENAME
+
+    def start(self) -> None:
+        """Spawn the daemon thread and write an initial stamp.
+
+        Daemon=True means the thread does not prevent process exit;
+        the thread additionally responds to ``stop()`` so SIGTERM
+        / SIGINT shutdowns are clean and the final keepalive stamp
+        is the actual shutdown moment, not a stale value.
+        """
+        if self._thread is not None and self._thread.is_alive():
+            return
+        # Write one stamp synchronously so a downstream diagnostic
+        # immediately after start() sees a fresh keepalive even if
+        # the thread hasn't gotten its first scheduling slice yet.
+        self._write_stamp()
+        thread = threading.Thread(
+            target=self._run,
+            name="jarvis-supervisor-keepalive",
+            daemon=True,
+        )
+        thread.start()
+        self._thread = thread
+
+    def stop(self, timeout: float = 2.0) -> None:
+        """Signal the thread to exit and wait briefly for it to join."""
+        self._stop_event.set()
+        thread = self._thread
+        if thread is None:
+            return
+        # join() respects the stop-event; the loop body returns
+        # within one period_s slice once the event is set.
+        with contextlib.suppress(RuntimeError):
+            thread.join(timeout=timeout)
+
+    def _run(self) -> None:
+        # First wait, then write — initial stamp was written by start().
+        while not self._stop_event.wait(self._period_s):
+            try:
+                self._write_stamp()
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception:  # noqa: BLE001 -- never crash the keepalive
+                # The keep-alive is the LAST line of liveness defense.
+                # Any failure here is caught + logged at WARNING but
+                # the loop continues — a transient disk-full or
+                # permission glitch must not silence the keepalive.
+                logger.warning(
+                    "keepalive stamp write failed; will retry in %.1fs",
+                    self._period_s,
+                    exc_info=True,
+                )
+
+    def _write_stamp(self) -> None:
+        self._state_dir.mkdir(parents=True, exist_ok=True)
+        payload = {"keepalive_ts": datetime.now(UTC).isoformat()}
+        # Atomic-ish write: small payload, single open(), no temp swap.
+        # Conflicts with the diagnostic reader are tolerated — the
+        # reader either gets the prior stamp or the new one, never a
+        # partially-written file at this scale.
+        self.path.write_text(
+            json.dumps(payload), encoding="utf-8",
+        )
+
+
 class JarvisStrategySupervisor:
     """The supervisor loop. JARVIS is the admin -- every decision
     flows through ``JarvisFull.consult()`` which chains all the
@@ -844,6 +956,14 @@ class JarvisStrategySupervisor:
             bf_dir=ROOT / "docs" / "btc_live" / "broker_fleet",
             bots_ref=lambda: self.bots,
         )
+        # Counter incremented every time _write_heartbeat catches an
+        # otherwise-uncaught exception. Surfaced in the sidecar JSONL
+        # and useful for tests / future health-check expansion.
+        self._heartbeat_write_errors: int = 0
+        # Slot for the keep-alive timer thread. Created lazily inside
+        # run_forever so unit tests that exercise _write_heartbeat
+        # directly don't spin up background threads.
+        self._keepalive: _HeartbeatKeepAlive | None = None
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -1103,12 +1223,33 @@ class JarvisStrategySupervisor:
             self.cfg.tick_s, self.cfg.live_money_enabled,
         )
 
+        # Keep-alive thread: writes a separate {"keepalive_ts": ...}
+        # file every KEEPALIVE_PERIOD_S seconds, independent of the main
+        # tick loop. This is the canonical "process is alive" stamp —
+        # even if _tick_once blocks (broker reconnect storm, ib_insync
+        # hang, deadlock in JARVIS consult chain) and the main heartbeat
+        # goes stale, the keep-alive proves the process itself is still
+        # scheduled. The diagnostic CLI reads both: fresh keepalive +
+        # stale main heartbeat → "main_loop_stuck", not "supervisor_dead".
+        self._keepalive = _HeartbeatKeepAlive(
+            state_dir=self.cfg.state_dir,
+            period_s=_KEEPALIVE_PERIOD_S,
+        )
+        self._keepalive.start()
+
         tick_count = 0
-        while not self._stopped:
-            tick_count += 1
-            self._tick_once(tick_count)
-            self._write_heartbeat(tick_count)
-            time.sleep(self.cfg.tick_s)
+        try:
+            while not self._stopped:
+                tick_count += 1
+                self._tick_once(tick_count)
+                self._write_heartbeat(tick_count)
+                time.sleep(self.cfg.tick_s)
+        finally:
+            # Daemon thread exits with the process, but signal the
+            # keepalive to stop cleanly so the final keepalive file
+            # reflects the actual shutdown moment, not a stale stamp.
+            with contextlib.suppress(Exception):
+                self._keepalive.stop()
 
         logger.info("supervisor stopped after %d ticks", tick_count)
         return 0
@@ -1116,6 +1257,13 @@ class JarvisStrategySupervisor:
     def _handle_stop(self, signum, frame) -> None:  # noqa: ANN001 -- signal callback signature
         logger.info("stop signal received (signum=%s)", signum)
         self._stopped = True
+        # Eagerly stop the keep-alive thread so SIGTERM/SIGINT shutdown
+        # is clean — daemon=True alone is not enough; the thread should
+        # observe the stop event and exit its loop body promptly.
+        keepalive = getattr(self, "_keepalive", None)
+        if keepalive is not None:
+            with contextlib.suppress(Exception):
+                keepalive.stop()
 
     def _tick_once(self, tick_count: int) -> None:
         for bot in self.bots:
@@ -1983,6 +2131,19 @@ class JarvisStrategySupervisor:
     # ── Heartbeat ───────────────────────────────────────────
 
     def _write_heartbeat(self, tick_count: int) -> None:
+        # The heartbeat path MUST NEVER crash the supervisor. A bad bot
+        # whose ``to_state`` raises, a malformed strategy-readiness
+        # snapshot, an unexpected feed_health serialization failure —
+        # all of them used to bubble out past the narrow ``OSError``
+        # catch and either (a) terminate the supervisor or (b) leak
+        # past ``_tick_once``'s per-bot try/except into the loop body.
+        # Either way the operator lost both the heartbeat and the
+        # supervisor in one move. The widened catch below converts any
+        # exception into a logged ERROR with traceback plus a
+        # ``heartbeat_write_errors.jsonl`` sidecar, then returns; the
+        # next tick will try again from a clean state. KeyboardInterrupt
+        # and SystemExit propagate unchanged so operator-initiated
+        # shutdowns still terminate the process.
         try:
             readiness, readiness_by_bot = _load_bot_strategy_readiness_snapshot()
             bot_states = []
@@ -2030,8 +2191,40 @@ class JarvisStrategySupervisor:
             (self.cfg.state_dir / "heartbeat.json").write_text(
                 json.dumps(payload, indent=2, default=str), encoding="utf-8",
             )
-        except OSError as exc:
-            logger.warning("heartbeat write failed: %s", exc)
+        except (KeyboardInterrupt, SystemExit):
+            # Operator-initiated shutdown — never swallow.
+            raise
+        except Exception as exc:  # noqa: BLE001 -- wide-catch is intentional
+            self._heartbeat_write_errors += 1
+            logger.exception(
+                "heartbeat write failed (count=%d): %s",
+                self._heartbeat_write_errors, exc,
+            )
+            with contextlib.suppress(Exception):
+                self._record_heartbeat_write_error(exc, tick_count)
+
+    def _record_heartbeat_write_error(
+        self, exc: BaseException, tick_count: int,
+    ) -> None:
+        """Append a structured record to the heartbeat-write error sidecar.
+
+        Sidecar lives next to ``heartbeat.json`` so the diagnostic CLI
+        and operator console can read both from the same directory.
+        Format is JSON-lines so the file is append-only and trivially
+        tailable; each entry includes ts, tick_count, exception type,
+        and ``repr(exc)`` for grep-friendly triage.
+        """
+        record = {
+            "ts": datetime.now(UTC).isoformat(),
+            "tick_count": tick_count,
+            "exc_type": type(exc).__name__,
+            "exc_repr": repr(exc),
+            "error_count": self._heartbeat_write_errors,
+        }
+        sidecar = self.cfg.state_dir / "heartbeat_write_errors.jsonl"
+        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        with sidecar.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, default=str) + "\n")
 
 
 # ─── CLI ──────────────────────────────────────────────────────────
