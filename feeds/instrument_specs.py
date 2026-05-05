@@ -113,6 +113,27 @@ _SPECS: dict[str, InstrumentSpec] = {
     "XRP":  InstrumentSpec("XRP",  tick_size=0.0001, point_value=1.0, commission_rt=0.0,
                            half_spread_ticks=2.0, base_slip_ticks=3.0,
                            overnight_slip_mult=1.0),
+    # Front-month suffixed aliases.  The data library uses "GC1/CL1/..."
+    # for the active front-month contract; the registry uses the same
+    # naming.  Without these aliases, get_spec(symbol) falls back to a
+    # default point_value=1.0 — and a 1.0 multiplier on contracts whose
+    # real multiplier is 100-125,000 produces catastrophic sizing bugs
+    # (saw $-866K loss on 8 6E trades in a 90d harness before the fix).
+    # Bug discovery: 2026-05-05 elite-gate sweep on commodities/forex.
+    "GC1":  InstrumentSpec("GC1",  tick_size=0.10, point_value=100.0, commission_rt=4.00,
+                           half_spread_ticks=1.0, base_slip_ticks=2.0),
+    "CL1":  InstrumentSpec("CL1",  tick_size=0.01, point_value=1000.0, commission_rt=4.50,
+                           half_spread_ticks=1.0, base_slip_ticks=2.0),
+    "NG1":  InstrumentSpec("NG1",  tick_size=0.001, point_value=10000.0, commission_rt=4.50,
+                           half_spread_ticks=1.0, base_slip_ticks=3.0),
+    "6E1":  InstrumentSpec("6E1",  tick_size=0.00005, point_value=125000.0, commission_rt=4.00,
+                           half_spread_ticks=1.0, base_slip_ticks=1.5),
+    "ZN1":  InstrumentSpec("ZN1",  tick_size=0.015625, point_value=1000.0, commission_rt=4.00,
+                           half_spread_ticks=1.0, base_slip_ticks=1.0),
+    "M2K1": InstrumentSpec("M2K1", tick_size=0.10, point_value=5.0,   commission_rt=1.40,
+                           half_spread_ticks=0.5, base_slip_ticks=2.0),
+    "YM1":  InstrumentSpec("YM1",  tick_size=1.0,  point_value=5.0,   commission_rt=4.00,
+                           half_spread_ticks=0.5, base_slip_ticks=2.0),
 }
 
 # Crypto spot taker fee (round-trip) as fraction of notional.  Applied
