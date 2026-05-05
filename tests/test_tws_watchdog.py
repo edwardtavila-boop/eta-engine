@@ -26,6 +26,17 @@ def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
     status_path = tmp_path / "tws_watchdog.json"
     monkeypatch.setattr(tws_watchdog, "_STATUS_PATH", status_path)
     monkeypatch.setattr(tws_watchdog, "_check_socket", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        tws_watchdog,
+        "_gateway_process_snapshot",
+        lambda *_args, **_kwargs: {
+            "running": True,
+            "pid": 8072,
+            "name": "ibgateway.exe",
+            "working_set_mb": 149.3,
+            "command_line": r"C:\Jts\ibgateway\1046\ibgateway.exe -login=apexpredatoribkr",
+        },
+    )
 
     rc = tws_watchdog.main(
         [
@@ -47,4 +58,5 @@ def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
     assert crash["summary"] == "IB Gateway JVM native-memory OOM"
     assert "Native memory allocation" in crash["native_allocation"]
     assert crash["xmx"] == "768m"
-
+    assert data["details"]["gateway_process"]["running"] is True
+    assert data["details"]["gateway_process"]["pid"] == 8072

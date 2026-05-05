@@ -634,8 +634,12 @@ def _broker_gateway_snapshot() -> dict:
             continue
         details = data.get("details") if isinstance(data.get("details"), dict) else {}
         crash = details.get("gateway_crash") if isinstance(details.get("gateway_crash"), dict) else None
+        process = details.get("gateway_process") if isinstance(details.get("gateway_process"), dict) else None
         healthy = data.get("healthy") is True
         detail = str(details.get("handshake_detail") or "")
+        if process and process.get("running") and not healthy:
+            process_detail = "gateway process running; API not ready"
+            detail = f"{process_detail}; {detail}" if detail else process_detail
         if crash and crash.get("summary"):
             detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
         return {
@@ -651,6 +655,7 @@ def _broker_gateway_snapshot() -> dict:
                 "handshake_ok": details.get("handshake_ok") is True,
                 "detail": detail,
                 "crash": crash,
+                "process": process,
                 "source_path": key,
             },
         }
@@ -667,6 +672,7 @@ def _broker_gateway_snapshot() -> dict:
             "handshake_ok": None,
             "detail": "missing tws_watchdog.json",
             "crash": None,
+            "process": None,
             "source_path": None,
         },
     }

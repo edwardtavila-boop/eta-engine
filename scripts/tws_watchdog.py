@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import json
 import logging
 import os
 import re
 import socket
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -121,6 +123,42 @@ def _latest_gateway_crash(crash_log_dir: Path) -> dict | None:
     }
 
 
+def _gateway_process_snapshot(gateway_dir: Path) -> dict | None:
+    """Return the live IB Gateway process, if Windows can see one."""
+    if os.name != "nt":
+        return None
+    try:
+        completed = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq ibgateway.exe", "/FO", "CSV", "/NH"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    output = completed.stdout.strip()
+    if completed.returncode != 0 or not output:
+        return None
+    try:
+        rows = list(csv.reader(output.splitlines()))
+    except csv.Error:
+        return None
+    if not rows or rows[0][0].lower().startswith("info:"):
+        return None
+    row = rows[0]
+    if len(row) < 5:
+        return None
+    memory_kb = float(re.sub(r"[^\d.]", "", row[4]) or 0)
+    return {
+        "running": True,
+        "pid": int(row[1]),
+        "name": row[0],
+        "working_set_mb": round(memory_kb / 1024, 1),
+        "gateway_dir": str(gateway_dir),
+    }
+
+
 def _load_status() -> dict:
     if not _STATUS_PATH.exists():
         return {}
@@ -148,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
         "--crash-log-dir",
         default=os.environ.get("ETA_TWS_CRASH_LOG_DIR", str(_DEFAULT_CRASH_LOG_DIR)),
         help="Directory containing IB Gateway hs_err_pid*.log crash artifacts.",
+    )
+    p.add_argument(
+        "--gateway-dir",
+        default=os.environ.get("ETA_TWS_GATEWAY_DIR", str(_DEFAULT_CRASH_LOG_DIR)),
+        help="IB Gateway installation directory used for process diagnostics.",
     )
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -191,6 +234,9 @@ def main(argv: list[str] | None = None) -> int:
     gateway_crash = None if healthy else _latest_gateway_crash(Path(args.crash_log_dir))
     if gateway_crash is not None:
         status["details"]["gateway_crash"] = gateway_crash
+    gateway_process = None if healthy else _gateway_process_snapshot(Path(args.gateway_dir))
+    if gateway_process is not None:
+        status["details"]["gateway_process"] = gateway_process
     _save_status(status)
 
     # Alert when we cross the threshold (only on the EDGE — N-th failure
@@ -209,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                     "port": args.port,
                     "handshake_detail": handshake_detail,
                     "gateway_crash": gateway_crash,
+                    "gateway_process": gateway_process,
                     "last_healthy_at": last_healthy_at,
                 },
                 severity="CRITICAL",

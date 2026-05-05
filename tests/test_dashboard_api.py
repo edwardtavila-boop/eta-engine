@@ -1421,6 +1421,12 @@ class TestDashboardAPI:
                             "summary": "IB Gateway JVM native-memory OOM",
                             "native_allocation": "Native memory allocation failed",
                         },
+                        "gateway_process": {
+                            "running": True,
+                            "pid": 8072,
+                            "name": "ibgateway.exe",
+                            "working_set_mb": 149.3,
+                        },
                     },
                 },
             ),
@@ -1435,8 +1441,12 @@ class TestDashboardAPI:
         assert ibkr["healthy"] is False
         assert ibkr["port"] == 4002
         assert ibkr["consecutive_failures"] == 72
-        assert ibkr["detail"] == "skipped (socket down); latest crash: IB Gateway JVM native-memory OOM"
+        assert ibkr["detail"] == (
+            "gateway process running; API not ready; skipped (socket down); "
+            "latest crash: IB Gateway JVM native-memory OOM"
+        )
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
+        assert ibkr["process"]["running"] is True
 
     def test_bot_fleet_surfaces_broker_router_execution_state(self, app_client):
         """The roster exposes broker-router execution state separate from signal liveness."""
