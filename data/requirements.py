@@ -905,6 +905,86 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         pending_assignment=True,
     ),
+
+    # ── Commodity + FX tier (2026-05-04) ─────────────────────────
+    # Five sweep_reclaim+scorecard bots launched alongside the
+    # composite-feed expansion that wired yfinance bars for 40+ futures
+    # symbols. Each bot consumes 1h bars on its symbol; correlation
+    # hints help cross_asset_correlation school. Active (not pending).
+
+    BotRequirements(
+        bot_id="gc_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "GC", "1h", critical=True),
+            DataRequirement("bars", "GC", "D", critical=False,
+                note="daily structure for sage daily gate"),
+            DataRequirement("correlation", "DXY", "1h", critical=False,
+                note="gold inversely tracks DXY"),
+            DataRequirement("correlation", "ES1", "1h", critical=False,
+                note="risk-off proxy"),
+        ),
+        sources_hint=(
+            "yfinance GC=F via composite feed",
+            "IBKR COMEX (near 24h Globex)",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="cl_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "CL", "1h", critical=True),
+            DataRequirement("bars", "CL", "D", critical=False,
+                note="daily inventory cycle"),
+            DataRequirement("correlation", "DXY", "1h", critical=False,
+                note="WTI is dollar-priced; loose inverse"),
+        ),
+        sources_hint=(
+            "yfinance CL=F via composite feed",
+            "IBKR NYMEX",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="ng_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "NG", "1h", critical=True),
+            DataRequirement("bars", "NG", "D", critical=False,
+                note="weekly EIA storage cycle"),
+        ),
+        sources_hint=(
+            "yfinance NG=F via composite feed",
+            "IBKR NYMEX",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="zn_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "ZN", "1h", critical=True),
+            DataRequirement("bars", "ZN", "D", critical=False,
+                note="rate-cycle context"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+            DataRequirement("correlation", "ES1", "1h", critical=False,
+                note="risk-on/off cross-check"),
+        ),
+        sources_hint=(
+            "yfinance ZN=F via composite feed",
+            "IBKR CBOT (near-24h Globex)",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="eur_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "6E", "1h", critical=True),
+            DataRequirement("correlation", "DXY", "1h", critical=False,
+                note="6E is essentially inverse-DXY"),
+        ),
+        sources_hint=(
+            "yfinance 6E=F via composite feed",
+            "IBKR CME FX",
+        ),
+    ),
 )
 
 

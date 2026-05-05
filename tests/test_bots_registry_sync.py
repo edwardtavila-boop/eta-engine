@@ -81,6 +81,20 @@ VARIANT_BOT_IDS: set[str] = {
     # MBT/MET — CME micro crypto futures, variants of BTC/ETH bots
     "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
     "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
+    # Anchor-sweep — named-anchor variant of sweep_reclaim for index futures.
+    # No own bot.py dir; runs through the existing MNQ/NQ bot dirs via
+    # the strategy_kind="anchor_sweep" dispatch.
+    "mnq_anchor_sweep",  # uses bots/mnq/
+    "nq_anchor_sweep",   # uses bots/nq/
+    # Commodity + FX tier (2026-05-04). All use sweep_reclaim+scorecard
+    # — the same template that produced btc_optimized as a top earner.
+    # No per-bot dir; runs through the strategy dispatcher with composite
+    # feed providing real yfinance bars (GC=F, CL=F, NG=F, ZN=F, 6E=F).
+    "gc_sweep_reclaim",   # Gold (GC=F via yfinance)
+    "cl_sweep_reclaim",   # WTI Crude (CL=F)
+    "ng_sweep_reclaim",   # Natural Gas (NG=F)
+    "zn_sweep_reclaim",   # 10Y Note (ZN=F)
+    "eur_sweep_reclaim",  # EUR/USD futures (6E=F)
 }
 
 

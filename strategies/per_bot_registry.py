@@ -1405,6 +1405,216 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # ═══════════════════════════════════════════════════════════════════
+    # COMMODITY + FX TIER (2026-05-04)
+    # User directive: "sage needs to read real data for all tickers
+    # including commodities". Pre-this-session the registry was crypto +
+    # equity-index futures only. With YF_MAP + _FUTURES_ROOTS extended
+    # to cover energies (CL/NG), metals (GC), rates (ZN), and FX (6E),
+    # Sage now has real bars for these symbols. Adding bots so the live
+    # supervisor actually consults Sage on them. All start with the
+    # proven sweep_reclaim + confluence_scorecard architecture (the
+    # btc_optimized template that produced the post-fix top earners) at
+    # conservative parameters — atr_stop_mult=2.0, rr_target=2.5,
+    # max_trades_per_day=2 — and `research_candidate` promotion status
+    # so they live in paper-soak until lab evidence promotes them.
+    # ═══════════════════════════════════════════════════════════════════
+    StrategyAssignment(
+        bot_id="gc_sweep_reclaim",
+        strategy_id="gc_sweep_reclaim_v1",
+        symbol="GC",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY: Gold (GC) sweep_reclaim+scorecard on 1h. Real "
+            "yfinance data via composite feed. Gold's safe-haven flow "
+            "produces clean liquidity sweeps at prior daily extremes; "
+            "Wyckoff distribution + accumulation visible at session "
+            "boundaries. Conservative atr_stop_mult=2.0 — gold ATR is "
+            "$25-40/h so stop ~ $50-80 per contract = ~$5-8k notional."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "GC",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="cl_sweep_reclaim",
+        strategy_id="cl_sweep_reclaim_v1",
+        symbol="CL",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY: WTI Crude (CL) sweep_reclaim+scorecard on 1h. "
+            "Real yfinance data. Energy markets are reflexive — supply/"
+            "demand shocks plus inventory flows produce strong intraday "
+            "trends and equally strong mean reversions at level "
+            "extremes. Sage's market_profile + vpa schools are well-"
+            "suited; expect dow_theory/wyckoff to drive bias."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "CL",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="ng_sweep_reclaim",
+        strategy_id="ng_sweep_reclaim_v1",
+        symbol="NG",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY: Natural Gas (NG) sweep_reclaim+scorecard on 1h. "
+            "NG is the most volatile mainstream futures contract — daily "
+            "ranges of 5-10% are routine. Wider stop multiplier may be "
+            "needed; start conservative and let lab evidence promote a "
+            "wider variant. Vol_regime school will frequently flag this."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "NG",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="zn_sweep_reclaim",
+        strategy_id="zn_sweep_reclaim_v1",
+        symbol="ZN",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY: 10Y Note (ZN) sweep_reclaim+scorecard on 1h. "
+            "Rates flow primarily on FOMC + macro releases; intraday "
+            "structure tends to respect 32nd ticks. Tight ATR (~$200-"
+            "$400) — point_value=$1000 means 1 contract risk = "
+            "stop_dist × 1000."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "ZN",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="eur_sweep_reclaim",
+        strategy_id="eur_sweep_reclaim_v1",
+        symbol="6E",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY: EUR/USD (6E) sweep_reclaim+scorecard on 1h. "
+            "FX session structure (London/NY overlap, Asian quiet) "
+            "produces predictable seasonality the school can pick up. "
+            "Tight stops; point_value=$125k makes any move material."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "6E",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
 )
 
 
