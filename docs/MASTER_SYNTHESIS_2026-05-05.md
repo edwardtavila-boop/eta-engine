@@ -316,6 +316,66 @@ The validator caught real bugs in 3 distinct strategy families. Two of three exp
 
 ---
 
+## Round 5: catastrophic-loss bug — instrument_specs aliases (`dfd3f99`)
+
+After the sidecar reset, re-ran the previously NO-DATA commodity/forex bots through the harness. The new symbol naming (`GC1`, `CL1`, `NG1`, `6E1`, `ZN1`, `M2K1`, `YM1`) made data available — but the results were catastrophic:
+
+| Bot | Initial run (pv=1.0) | Status |
+|-----|---------------------|--------|
+| ng_sweep_reclaim (NG1) | -$24,054 OOS | catastrophic |
+| eur_sweep_reclaim (6E1) | **-$866,603 OOS** | catastrophic |
+| zn_sweep_reclaim (ZN1) | -$2,955 OOS | bad |
+| cl_sweep_reclaim (CL1) | -$691 OOS | bad |
+| gc_sweep_reclaim (GC1) | +$491 OOS | small win |
+
+The 6E loss was suspiciously large — strategy lost more in 8 trades than several lifetimes of trading capital. Investigation:
+
+```
+$ get_spec("6E1")
+  point_value=1.0, tick_size=0.25  # ← DEFAULT FALLBACK
+$ get_spec("6E")
+  point_value=125000.0, tick_size=0.00005  # ← real CME spec
+```
+
+`instrument_specs.py` had specs for the BASE symbols (`GC`, `CL`, `NG`, `6E`, `ZN`, `MES`, `M2K`) but the bots use the front-month-suffixed names. `get_spec()` falls through to a conservative default (point_value=1.0) when the symbol isn't found — so the strategies thought they were sizing 1 contract but actually sized 100 to 125,000 contracts. Catastrophic-but-fake losses ensued.
+
+**Bug D fix:** add explicit aliases for `GC1`, `CL1`, `NG1`, `6E1`, `ZN1`, `M2K1`, `YM1` pointing to the correct CME multipliers.
+
+**After fix:**
+
+| Bot | Before fix | After fix | Sign change |
+|-----|-----------|-----------|-------------|
+| gc_sweep_reclaim | +$491 | +$507 | — |
+| cl_sweep_reclaim | -$691 | **+$186** | **flipped** |
+| ng_sweep_reclaim | -$24,054 | **+$152** | **flipped** |
+| zn_sweep_reclaim | -$2,955 | -$221 | reduced 13x |
+| eur_sweep_reclaim | -$866,603 | **+$213** | **flipped** |
+
+All catastrophic losses were artifacts of the missing point_value. The validator's notional_exceeds_cap was firing on what it thought were huge orders the entire time — masking the true strategy behavior with cascading sizing distortions.
+
+All 5 still RED on sample size (2-8 OOS trades over 90d) and don't beat their (now-corrected) random baselines. But the catastrophic-loss SIGNAL was bug, not strategy. Re-evaluation on longer windows is the right next step.
+
+### Round-5 lesson
+
+Three classes of bug now confirmed in the elite-gate pipeline:
+1. **Strategy-level signal bugs** (rr_too_small, rr_absurd, notional_cap on low-vol) — caught by validator at the boundary
+2. **Harness-level qty bugs** (paper_trade_sim re-computes qty, bypasses strategy fix)
+3. **Instrument-spec bugs** (missing aliases → default multiplier → fake catastrophic losses)
+
+The validator catches #1 immediately. The harness mirror-fix is #2. The instrument-spec bug (#3) is the most insidious because it manifests as plausible-looking "strategy lost a lot" verdicts that are actually pure sizing artifacts. Without round-5's investigation, the operator would have concluded NG and 6E strategies are dangerous when they're actually just untested.
+
+**Cumulative bug-fix landings (4 sources, 5 bugs):**
+
+| Bug | Where | Recovery |
+|-----|-------|----------|
+| `rr_too_small` (vwap_reversion) | strategies/vwap_reversion_strategy.py | 2 strategies recovered RED → YELLOW |
+| `rr_absurd` (volume_profile) | strategies/volume_profile_strategy.py | bug fixed; strategy revealed as no-edge |
+| `notional_exceeds_cap` (rsi_mean_reversion) | strategies/rsi_mean_reversion_strategy.py | bug fixed; strategy still loses |
+| `notional_exceeds_cap` (harness qty) | scripts/paper_trade_sim.py | mirror fix in the harness |
+| **catastrophic fake losses** (instrument_specs) | feeds/instrument_specs.py | 5 commodity/forex bots un-falsified |
+
+---
+
 ## Open items for the operator
 
 1. **Load missing instrument data** — 8 sweep_reclaim research_candidates (GC/CL/NG/ZN/6E/MES/M2K/YM) are deactivated until backing data is loaded. Per CLAUDE.md hard rule, Databento stays dormant unless you explicitly refresh it.
@@ -329,6 +389,8 @@ The validator caught real bugs in 3 distinct strategy families. Two of three exp
 ## Commit chain (this sprint)
 
 ```
+dfd3f99  fix(instrument_specs): add front-month suffixed aliases (catastrophic-loss bug)
+c4d7dd4  docs: synthesis update — round 4 (3 more bugs + sidecar reset event)
 9bc87d1  fix: round-4 bug hunt — volume_profile rr_absurd + harness notional cap
 a09b384  fix(vwap_reversion): rr_too_small bug — VWAP target too close to entry
 30e38e0  fleet: round-2 elite-gate sweep — 9 more bots tested, 6 deactivated
