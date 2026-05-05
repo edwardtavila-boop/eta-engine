@@ -182,6 +182,46 @@ def test_cap_qty_paper_futures_floor_disabled_returns_zero() -> None:
         os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
 
 
+def test_cap_qty_paper_futures_floors_when_fleet_exhausted() -> None:
+    """When fleet_remaining hits 0 (one MNQ contract pushes fleet over
+    the small default $5k cap), the paper futures floor still kicks in
+    so additional bots can take 1-contract entries. Without this, every
+    futures entry after the first one was killed at the fleet gate."""
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "5000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "1"
+    try:
+        # fleet already at $20k open notional (e.g. one MNQ at 1 contract);
+        # cap is $5k → fleet_remaining = 0 → fleet_exhausted, but the
+        # paper floor must still allow a 1-contract entry.
+        qty, reason = cap_qty_to_budget(
+            symbol="MNQ1", entry_price=20000.0, requested_qty=1.0,
+            fleet_open_notional_usd=20000.0,
+        )
+        assert reason == "paper_futures_floor"
+        assert qty == 1.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
+
+
+def test_cap_qty_fleet_exhausted_floor_disabled_returns_zero() -> None:
+    """Live deployments still respect the strict fleet cap when floor=0."""
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "5000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "0"
+    try:
+        qty, reason = cap_qty_to_budget(
+            symbol="MNQ1", entry_price=20000.0, requested_qty=1.0,
+            fleet_open_notional_usd=20000.0,
+        )
+        assert reason == "fleet_exhausted"
+        assert qty == 0.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
+
+
 def test_cap_qty_futures_passes_when_budget_covers_contract() -> None:
     """A budget that covers the full contract value lets the requested qty through."""
     from eta_engine.scripts.bracket_sizing import cap_qty_to_budget

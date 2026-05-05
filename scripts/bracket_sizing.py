@@ -249,6 +249,19 @@ def cap_qty_to_budget(
     # Fleet budget — what's left after existing open exposure?
     fleet_remaining = max(0.0, fleet_cap_usd - max(0.0, fleet_open_notional_usd))
     if fleet_remaining <= 0:
+        # Paper-mode futures floor: same rationale as the per-bot floor
+        # below — the fleet budget is a sanity guardrail in paper mode,
+        # not a real fund constraint. If a single MNQ contract ($20-40k
+        # notional) flips fleet_remaining negative, every other futures
+        # bot would be locked out for the rest of the day. Floor to 1
+        # contract per request to keep the fleet trading. Live deployments
+        # set ETA_PAPER_FUTURES_FLOOR=0 to restore strict behavior.
+        if (
+            not _is_crypto(symbol)
+            and abs(requested_qty) >= 1.0
+            and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+        ):
+            return 1.0, "paper_futures_floor"
         return 0.0, "fleet_exhausted"
 
     notional_cap = min(per_bot_cap_usd, fleet_remaining)
