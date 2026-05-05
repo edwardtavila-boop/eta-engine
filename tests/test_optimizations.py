@@ -173,6 +173,8 @@ class TestStatusPage:
             'id="riskBar"',
             'id="jarvisMode"',
             'id="gatewayStatus"',
+            'id="brokerRouterStatus"',
+            'id="brokerRouterSub"',
         ):
             assert anchor in html, f"missing dashboard anchor: {anchor}"
 
@@ -195,6 +197,7 @@ class TestStatusPage:
         assert "last_signal_ts" in html
         assert "signalUpdates" in html
         assert "broker_gateway" in html
+        assert "broker_router" in html
 
         # Status indicator + clock (live freshness cues)
         assert 'id="statusDot"' in html

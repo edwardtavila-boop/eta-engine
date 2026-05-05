@@ -1432,6 +1432,89 @@ class TestDashboardAPI:
         assert ibkr["consecutive_failures"] == 72
         assert ibkr["detail"] == "skipped (socket down)"
 
+    def test_bot_fleet_surfaces_broker_router_execution_state(self, app_client):
+        """The roster exposes broker-router execution state separate from signal liveness."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        pending_dir = state / "pending_orders"
+        router = state / "router"
+        result_dir = router / "fill_results"
+        failed_dir = router / "failed"
+        processing_dir = router / "processing"
+        pending_dir.mkdir(parents=True, exist_ok=True)
+        result_dir.mkdir(parents=True, exist_ok=True)
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        processing_dir.mkdir(parents=True, exist_ok=True)
+
+        (pending_dir / "eth_sage_daily.pending_order.json").write_text(
+            json.dumps({"signal_id": "sig-pending"}),
+            encoding="utf-8",
+        )
+        (processing_dir / "btc_hybrid.pending_order.json").write_text(
+            json.dumps({"signal_id": "sig-processing"}),
+            encoding="utf-8",
+        )
+        (failed_dir / "mnq_futures_sage.pending_order.json").write_text(
+            json.dumps({"signal_id": "sig-failed"}),
+            encoding="utf-8",
+        )
+        (failed_dir / "mnq_futures_sage.pending_order.json.retry_meta.json").write_text(
+            json.dumps(
+                {
+                    "attempts": 3,
+                    "last_attempt_ts": "2026-05-05T12:58:52+00:00",
+                    "last_reject_reason": "venue=ibkr rejected order_id=sig-reject",
+                },
+            ),
+            encoding="utf-8",
+        )
+        (result_dir / "sig-reject_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "sig-reject",
+                    "bot_id": "mnq_futures_sage",
+                    "venue": "ibkr",
+                    "ts": "2026-05-05T12:58:52+00:00",
+                    "result": {
+                        "status": "REJECTED",
+                        "order_id": "sig-reject",
+                        "filled_qty": 0,
+                        "avg_price": 0,
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        (router / "broker_router_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-05T12:59:00+00:00",
+                    "last_poll_ts": "2026-05-05T12:59:00+00:00",
+                    "pending_dir": str(pending_dir),
+                    "counts": {"submitted": 4, "rejected": 3, "failed": 1, "filled": 0},
+                    "recent_events": [{"kind": "failed", "detail": "max_retries"}],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        broker_router = r.json()["broker_router"]
+        assert broker_router["status"] == "blocked"
+        assert broker_router["pending_count"] == 1
+        assert broker_router["processing_count"] == 1
+        assert broker_router["failed_count"] == 1
+        assert broker_router["fill_results_count"] == 1
+        assert broker_router["result_status_counts"]["REJECTED"] == 1
+        assert broker_router["latest_result"]["bot_id"] == "mnq_futures_sage"
+        assert broker_router["latest_result"]["status"] == "REJECTED"
+        assert broker_router["latest_failure"]["attempts"] == 3
+        assert broker_router["latest_failure"]["last_reject_reason"] == "venue=ibkr rejected order_id=sig-reject"
+
     def test_fleet_equity_uses_supervisor_when_curves_are_missing(self, app_client):
         """Fleet equity stays live from supervisor heartbeat when curve files are absent."""
         import json

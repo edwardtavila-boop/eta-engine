@@ -666,6 +666,160 @@ def _broker_gateway_snapshot() -> dict:
     }
 
 
+def _read_json_file(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _count_matching_files(path: Path, pattern: str) -> int:
+    try:
+        return sum(1 for item in path.glob(pattern) if item.is_file())
+    except OSError:
+        return 0
+
+
+def _files_newest_first(path: Path, pattern: str, *, limit: int = 100) -> list[Path]:
+    try:
+        files = [item for item in path.glob(pattern) if item.is_file()]
+    except OSError:
+        return []
+    return sorted(
+        files,
+        key=lambda item: _safe_mtime(item) or 0.0,
+        reverse=True,
+    )[:limit]
+
+
+def _broker_router_state_root() -> Path:
+    """Locate broker-router state without falling back to legacy paths."""
+    env_root = os.environ.get("ETA_BROKER_ROUTER_STATE_ROOT")
+    candidates = [
+        Path(env_root) if env_root else None,
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "router",
+        _state_dir() / "router",
+    ]
+    for candidate in candidates:
+        if candidate is not None and candidate.exists():
+            return candidate
+    return candidates[0] or (_WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "router")
+
+
+def _normalize_router_result(path: Path, payload: dict) -> dict:
+    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    status = result.get("status") or payload.get("status")
+    raw = result.get("raw") if isinstance(result.get("raw"), dict) else {}
+    reason = (
+        result.get("error_message")
+        or result.get("reason")
+        or raw.get("error")
+        or raw.get("note")
+        or raw.get("detail")
+    )
+    return {
+        "signal_id": payload.get("signal_id") or request.get("client_order_id"),
+        "bot_id": payload.get("bot_id") or request.get("bot_id"),
+        "venue": payload.get("venue") or raw.get("venue"),
+        "status": str(status).upper() if status else None,
+        "order_id": result.get("order_id"),
+        "filled_qty": result.get("filled_qty"),
+        "avg_price": result.get("avg_price"),
+        "ts": payload.get("ts") or payload.get("submitted_at"),
+        "reason": reason,
+        "source_path": str(path),
+    }
+
+
+def _latest_router_failure(failed_dir: Path) -> dict | None:
+    for path in _files_newest_first(failed_dir, "*.retry_meta.json", limit=1):
+        payload = _read_json_file(path)
+        if not payload:
+            continue
+        return {
+            "attempts": int(payload.get("attempts") or 0),
+            "last_attempt_ts": payload.get("last_attempt_ts"),
+            "last_reject_reason": payload.get("last_reject_reason"),
+            "source_path": str(path),
+        }
+    return None
+
+
+def _broker_router_snapshot() -> dict:
+    """Return execution-router health, separate from strategy signal liveness."""
+    state_root = _broker_router_state_root()
+    heartbeat = _read_json_file(state_root / "broker_router_heartbeat.json")
+    pending_dir_raw = (
+        heartbeat.get("pending_dir")
+        or os.environ.get("ETA_BROKER_ROUTER_PENDING_DIR")
+        or str(_REPO_ROOT / "docs" / "btc_live" / "broker_fleet")
+    )
+    pending_dir = Path(str(pending_dir_raw))
+    processing_dir = state_root / "processing"
+    failed_dir = state_root / "failed"
+    blocked_dir = state_root / "blocked"
+    quarantine_dir = state_root / "quarantine"
+    result_dir = state_root / "fill_results"
+
+    result_status_counts: dict[str, int] = defaultdict(int)
+    latest_result: dict | None = None
+    for path in _files_newest_first(result_dir, "*_result.json"):
+        normalized = _normalize_router_result(path, _read_json_file(path))
+        status = str(normalized.get("status") or "UNKNOWN").upper()
+        result_status_counts[status] += 1
+        if latest_result is None:
+            latest_result = normalized
+
+    pending_count = _count_matching_files(pending_dir, "*.pending_order.json")
+    processing_count = _count_matching_files(processing_dir, "*.pending_order.json")
+    failed_count = _count_matching_files(failed_dir, "*.pending_order.json")
+    rejected_count = int(result_status_counts.get("REJECTED", 0))
+    terminal_count = sum(result_status_counts.values())
+
+    if failed_count or rejected_count:
+        status = "blocked"
+    elif pending_count or processing_count:
+        status = "processing"
+    elif heartbeat:
+        status = "ok" if terminal_count else "idle"
+    elif state_root.exists():
+        status = "idle"
+    else:
+        status = "unknown"
+
+    heartbeat_ts = heartbeat.get("last_poll_ts") or heartbeat.get("ts")
+    heartbeat_dt = _parse_fill_dt(heartbeat_ts)
+    heartbeat_age_s = (
+        max(0, int((datetime.now(UTC) - heartbeat_dt).total_seconds()))
+        if heartbeat_dt is not None
+        else None
+    )
+    counts = heartbeat.get("counts") if isinstance(heartbeat.get("counts"), dict) else {}
+    events = heartbeat.get("recent_events") if isinstance(heartbeat.get("recent_events"), list) else []
+
+    return {
+        "status": status,
+        "state_root": str(state_root),
+        "pending_dir": str(pending_dir),
+        "heartbeat_path": str(state_root / "broker_router_heartbeat.json"),
+        "heartbeat_ts": heartbeat_ts,
+        "heartbeat_age_s": heartbeat_age_s,
+        "pending_count": pending_count,
+        "processing_count": processing_count,
+        "failed_count": failed_count,
+        "blocked_count": _count_matching_files(blocked_dir, "*.pending_order.json"),
+        "quarantine_count": _count_matching_files(quarantine_dir, "*.pending_order.json"),
+        "fill_results_count": terminal_count,
+        "result_status_counts": dict(sorted(result_status_counts.items())),
+        "counts": counts,
+        "recent_events": events[-10:],
+        "latest_result": latest_result,
+        "latest_failure": _latest_router_failure(failed_dir),
+    }
+
+
 def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     """Explain exactly why the roster is live, stale, stopped, or empty."""
     runtime = _read_runtime_state()
@@ -2140,6 +2294,7 @@ def bot_fleet_roster(
         "server_ts":         now_ts,
         "live":              fills_stats,
         "broker_gateway":    _broker_gateway_snapshot(),
+        "broker_router":     _broker_router_snapshot(),
         "window_since_days": since_days,
         **truth,
     }

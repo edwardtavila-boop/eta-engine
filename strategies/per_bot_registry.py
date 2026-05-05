@@ -278,6 +278,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     ),
 
     # btc_regime_trend_etf — migrated to proven BTC architecture.
+    # DEACTIVATED 2026-05-05 — bit-for-bit identical config to btc_hybrid;
+    # 90d/180d audits returned identical trades + identical PnL. Three
+    # bots wrapping the same proven config = 3x risk on one edge with
+    # no diversification benefit.  Preserved (not deleted) so the slot
+    # is available for re-differentiation if the operator decides to
+    # explore a genuinely different parameter set.
     StrategyAssignment(
         bot_id="btc_regime_trend_etf",
         strategy_id="btc_regime_trend_etf_v1",
@@ -295,7 +301,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "to proven BTC sweep_reclaim+scorecard architecture."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "deactivated",
+            "deactivated": True,
+            "deactivation_reason": "duplicate of btc_hybrid (bit-for-bit identical sub_strategy_extras + scorecard_config); 90d/180d audits confirmed identical results. Re-differentiate parameters before reactivating.",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "level_lookback": 48, "reclaim_window": 3,
@@ -314,6 +322,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     ),
 
     # btc_sage_daily_etf — migrated to proven BTC architecture.
+    # DEACTIVATED 2026-05-05 — bit-for-bit identical config to btc_hybrid
+    # (same reason as btc_regime_trend_etf above).  fleet_corr_partner
+    # annotation predates the empirical-duplicate finding from the 90d
+    # audit; left in place for historical context.
     StrategyAssignment(
         bot_id="btc_sage_daily_etf",
         strategy_id="btc_sage_daily_etf_v1",
@@ -332,7 +344,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Sharpe was real but factory ignores registry config in paper mode."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "deactivated",
+            "deactivated": True,
+            "deactivation_reason": "duplicate of btc_hybrid (bit-for-bit identical sub_strategy_extras + scorecard_config); 90d/180d audits confirmed identical results. Re-differentiate parameters before reactivating.",
             "fleet_corr_partner": "btc_hybrid",
             "daily_loss_limit_pct": 4.0,
             "sub_strategy_kind": "sweep_reclaim",
@@ -1835,6 +1849,119 @@ def all_assignments() -> list[StrategyAssignment]:
 
 def bots() -> list[str]:
     return [a.bot_id for a in ASSIGNMENTS]
+
+
+def _config_signature(a: StrategyAssignment) -> tuple:
+    """Return a hashable signature representing the bot's tradeable config.
+
+    Two bots with the same signature will produce identical trades on the
+    same data — which means deploying both wastes a risk slot on the same
+    edge.  Used by ``find_duplicate_active_bots`` to surface the duplicates
+    so the operator can deactivate or differentiate before live capital
+    flows.
+
+    Signature includes:
+    - strategy_kind (e.g., confluence_scorecard, sweep_reclaim)
+    - sub_strategy_kind (when wrapping)
+    - sub_strategy_extras (the actual sub-strategy parameters)
+    - scorecard_config (when confluence_scorecard wraps)
+    - confluence_threshold
+
+    Excluded (these don't change trade behavior):
+    - bot_id, strategy_id, rationale
+    - promotion_status, fleet_corr_partner annotations
+    - per_ticker_optimal, etf_csv_path, daily_loss_limit_pct
+    """
+    extras = a.extras or {}
+    sub_extras = extras.get("sub_strategy_extras")
+    scorecard = extras.get("scorecard_config")
+
+    def _freeze(o: object) -> object:
+        if isinstance(o, dict):
+            return tuple(sorted((k, _freeze(v)) for k, v in o.items()))
+        if isinstance(o, list):
+            return tuple(_freeze(x) for x in o)
+        if isinstance(o, set | frozenset):
+            return tuple(sorted(_freeze(x) for x in o))
+        return o
+
+    return (
+        a.strategy_kind,
+        extras.get("sub_strategy_kind"),
+        _freeze(sub_extras),
+        _freeze(scorecard),
+        round(float(a.confluence_threshold or 0.0), 6),
+    )
+
+
+def find_duplicate_active_bots(
+    assignments: list[StrategyAssignment] | None = None,
+) -> list[tuple[str, str, list[str]]]:
+    """Surface (symbol, timeframe, [bot_ids]) groups whose active bots share
+    a bit-for-bit identical tradeable config.
+
+    Returns a list of duplicate groups; empty list = no duplicates.
+
+    Why: deploying two bots with identical config wastes a risk slot —
+    they make the same trades on the same data, so the operator pays for
+    diversification they don't actually get.  The 2026-05-05 audit found
+    btc_hybrid + btc_regime_trend_etf + btc_sage_daily_etf were all
+    bit-for-bit identical and would have routed 3x risk on a single edge
+    if all three reached live.  This guard catches the next instance
+    before it ships.
+    """
+    if assignments is None:
+        assignments = all_assignments()
+
+    # Group by (symbol, timeframe, signature)
+    groups: dict[tuple, list[str]] = {}
+    for a in assignments:
+        if not is_active(a):
+            continue
+        key = (a.symbol, a.timeframe, _config_signature(a))
+        groups.setdefault(key, []).append(a.bot_id)
+
+    duplicates: list[tuple[str, str, list[str]]] = []
+    for (symbol, timeframe, _sig), bot_ids in groups.items():
+        if len(bot_ids) >= 2:
+            duplicates.append((symbol, timeframe, sorted(bot_ids)))
+    return duplicates
+
+
+def validate_registry_no_duplicates(
+    assignments: list[StrategyAssignment] | None = None,
+    *,
+    raise_on_duplicate: bool = False,
+) -> list[str]:
+    """Validate the active fleet has no bot_id pairs with identical config.
+
+    Returns a list of human-readable warning messages (empty = clean fleet).
+    When ``raise_on_duplicate=True``, raises ``RuntimeError`` instead of
+    returning warnings — use this from startup wiring to fail-closed.
+
+    Two duplicate-active bots would route the same trades to the broker
+    twice, doubling risk on one edge — a critical risk-budget violation.
+    """
+    duplicates = find_duplicate_active_bots(assignments)
+    if not duplicates:
+        return []
+
+    warnings: list[str] = []
+    for symbol, timeframe, bot_ids in duplicates:
+        msg = (
+            f"DUPLICATE ACTIVE BOTS on {symbol}/{timeframe}: "
+            f"{', '.join(bot_ids)} have identical tradeable config "
+            f"(same strategy_kind + sub_strategy_extras + scorecard_config). "
+            f"Deactivate all but one OR differentiate the parameters before live."
+        )
+        warnings.append(msg)
+
+    if raise_on_duplicate:
+        raise RuntimeError(
+            f"registry has {len(duplicates)} duplicate-config bot group(s); "
+            f"refusing to load: " + " | ".join(warnings)
+        )
+    return warnings
 
 
 def summary_markdown() -> str:

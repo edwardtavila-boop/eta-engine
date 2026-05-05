@@ -91,6 +91,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div></div>
+  <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
@@ -160,10 +161,12 @@ function showOffline() {
   document.getElementById('statusDot').className = 'status-dot stale';
   document.getElementById('statusText').textContent = 'API Offline';
   document.getElementById('apiSourceText').textContent = 'Source: unavailable';
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
+  const routerSub = document.getElementById('brokerRouterSub');
+  if (routerSub) routerSub.textContent = '';
 }
 
 function sourceLabel(source) {
@@ -263,6 +266,22 @@ function render(d, strategyResults, dataSource) {
   const gatewayHealthy = ibkrGateway.status === 'connected';
   document.getElementById('gatewayStatus').textContent = gatewayKnown ? (gatewayHealthy ? 'Connected' : 'Down') : 'Unknown';
   document.getElementById('gatewayStatus').className = 'stat ' + (gatewayHealthy ? 'green' : gatewayKnown ? 'red' : 'yellow');
+
+  const brokerRouter = d.broker_router || {};
+  const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();
+  const routerLabels = {ok: 'OK', idle: 'Idle', processing: 'Processing', blocked: 'Blocked', unknown: 'Unknown'};
+  const routerClasses = {ok: 'green', idle: 'dim', processing: 'yellow', blocked: 'red', unknown: 'yellow'};
+  const rejected = brokerRouter.result_status_counts ? Number(brokerRouter.result_status_counts.REJECTED || 0) : 0;
+  const pending = Number(brokerRouter.pending_count || 0);
+  const processing = Number(brokerRouter.processing_count || 0);
+  const failed = Number(brokerRouter.failed_count || 0);
+  const results = Number(brokerRouter.fill_results_count || 0);
+  document.getElementById('brokerRouterStatus').textContent = routerLabels[routerStatus] || routerStatus.toUpperCase();
+  document.getElementById('brokerRouterStatus').className = 'stat ' + (routerClasses[routerStatus] || 'yellow');
+  document.getElementById('brokerRouterSub').textContent =
+    results || failed || pending || processing
+      ? results + ' results; ' + rejected + ' rejected; ' + failed + ' failed; ' + pending + ' pending'
+      : 'waiting for orders';
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   const risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
