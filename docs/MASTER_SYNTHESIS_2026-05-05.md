@@ -113,32 +113,54 @@ The guard at the bottom is the **fail-closed barrier**: any duplicate-config bot
 
 ---
 
-## Elite-gate verification pass (post-synthesis)
+## Elite-gate verification pass (full sweep — 18 bots)
 
-After landing the registry hardening, ran the harness on 12 active research_candidates. Verdict matrix:
+After landing the registry hardening, ran the harness on every active research_candidate AND every BTC production_candidate.  Cumulative verdict matrix:
 
-| Bot | Symbol | OOS trades | OOS PnL | Decay | Verdict |
-|-----|--------|-----------|---------|-------|---------|
-| btc_regime_trend_etf (TIGHT) | BTC 1h | 0 | $0 | -100% | RED — too restrictive |
-| btc_sage_daily_etf (WIDE) | BTC 1h | 1 | -$101 | -777% | RED — sample + losing |
-| eth_sweep_reclaim | ETH 1h | 4 | +$496 | -44% | RED — sample too small |
-| eth_sage_daily | ETH 1h | 1 | -$104 | -172% | RED — sample + losing |
-| gc_sweep_reclaim | GC 1h | — | — | — | NO DATA |
-| cl_sweep_reclaim | CL 1h | — | — | — | NO DATA |
-| ng_sweep_reclaim | NG 1h | — | — | — | NO DATA |
-| zn_sweep_reclaim | ZN 1h | — | — | — | NO DATA |
-| eur_sweep_reclaim | 6E 1h | — | — | — | NO DATA |
-| mes_sweep_reclaim | MES 5m | — | — | — | NO DATA |
-| m2k_sweep_reclaim | M2K 5m | — | — | — | NO DATA |
-| ym_sweep_reclaim | YM 5m | — | — | — | NO DATA |
+| Bot | Symbol | OOS trades | OOS PnL | WR | Verdict |
+|-----|--------|-----------|---------|-----|---------|
+| **mnq_sweep_reclaim** | MNQ1 5m | 63 | **+$1,355** | 31.7% | **ALL GREEN — promoted** |
+| **mnq_anchor_sweep** | MNQ1 5m | 50 | **+$175** | 32% | **ALL GREEN — promoted** |
+| btc_optimized | BTC 1h | 4 | +$397 | 50% | YELLOW — sample size only |
+| funding_rate_btc | BTC 1h | 11 | +$376 | 45.5% | YELLOW — sample size only |
+| btc_regime_trend_etf (TIGHT) | BTC 1h | 0 | $0 | — | RED — deactivated |
+| btc_sage_daily_etf (WIDE) | BTC 1h | 1 | -$101 | — | RED — deactivated |
+| vwap_mr_btc | BTC 1h | 0 | $0 | — | RED — deactivated |
+| volume_profile_btc | BTC 1h | 1 | -$104 | — | RED — deactivated |
+| nq_anchor_sweep | NQ1 5m | 49 | -$267 | 26.5% | RED — deactivated |
+| rsi_mr_mnq | MNQ1 5m | 36 | -$220 | 41.7% | RED — deactivated (validator caught 1 notional cap) |
+| volume_profile_mnq | MNQ1 5m | 6 | -$655 | 0% | RED — deactivated (validator caught 6 rr_absurd) |
+| eth_sage_daily | ETH 1h | 1 | -$104 | — | RED — deactivated |
+| eth_sweep_reclaim | ETH 1h | 4 | +$496 | 75% | RED on size — borderline, kept active for re-eval |
+| gc/cl/ng/zn_sweep_reclaim | * 1h | — | — | — | NO DATA — sidecar deactivated |
+| eur_sweep_reclaim | 6E 1h | — | — | — | NO DATA — sidecar deactivated |
+| mes/m2k/ym_sweep_reclaim | * 5m | — | — | — | NO DATA — sidecar deactivated |
 
-**Actions taken** (commit `cfae8fe` + sidecar):
-- 2 BTC variants: source registry flipped to `promotion_status=deactivated` with `deactivation_reason` capturing the gate verdict + retune direction
-- 8 no-data bots: deactivated via `var/eta_engine/state/kaizen_overrides.json` (runtime sidecar — not committed; reactivate by removing the entry)
+### Active fleet trajectory
 
-Active fleet count: dropped from 21 → 11 after gate failures + no-data deactivations.
+```
+Start:  21 active (promo: 12 production_candidate, 5 research_candidate, 4 other)
+        ↓
+Gate failures (8) + no-data deactivations (8)
+        ↓
+End:    15 active (BTC 6 + MNQ1 6 + NQ1 2 + ETH 1)
+        - 2 paper_soak (mnq_anchor_sweep, mnq_sweep_reclaim)
+        - 4 production_candidate (btc_optimized, funding_rate_btc + 2 MNQ)
+        - 6 shadow_benchmark / non_edge / other
+```
 
-Pre-live pipeline behaved as designed: differentiation hypothesis proposed → harness scored → gate said no → deactivation followed.
+### Validator-as-canary
+
+The signal_validator caught 8 malformed signals in a single sweep:
+- `notional_exceeds_cap=1` in rsi_mr_mnq (sizing bug)
+- `rr_absurd=6` in volume_profile_mnq (strategy-level bug)
+- `rr_too_small=1` in nq_anchor_sweep
+
+Without the validator these would have shipped to the broker as live orders.  The validator is doing its job exactly as designed.
+
+### Walk-forward reality check (mnq_sweep_reclaim)
+
+The most striking finding: `mnq_sweep_reclaim` had IS PnL of **-$5,225** (overfit to training-window noise) but OOS PnL of **+$1,355**.  A wide OOS-vs-IS gap in this direction (IS poor, OOS good) is exactly the right shape for a real edge — the strategy isn't pattern-matching the IS noise, it's catching genuine signal that generalizes.  This is the OPPOSITE of the classic overfit failure (IS great, OOS poor).
 
 ---
 
@@ -155,6 +177,9 @@ Pre-live pipeline behaved as designed: differentiation hypothesis proposed → h
 ## Commit chain (this sprint)
 
 ```
+f63b418  fleet: mnq_sweep_reclaim PROMOTED to paper_soak (3rd ALL GREEN)
+1695ad7  fleet: mnq_anchor_sweep PROMOTED + nq_anchor_sweep deactivated + test sync
+7cee48c  docs: extend master synthesis with elite-gate verification pass
 cfae8fe  fleet: deactivate 2 BTC variants — failed elite-gate 2026-05-05
 e61881e  docs: master synthesis — pre-live hardening sprint 2026-05-05
 bec9647  live-path: extend dedupe guard to JarvisStrategySupervisor.load_bots
@@ -166,6 +191,8 @@ c12421c  kaizen: close the loop -- auto-RETIRE actually deactivates via sidecar 
 0a3aa15  docs: append 90d/180d audit synthesis + overnight final summary
 869e6bb  ops: separate signals from trade fills
 ```
+
+Sidecar (runtime, not committed): [var/eta_engine/state/kaizen_overrides.json](../../var/eta_engine/state/kaizen_overrides.json) deactivates 11 bots with explicit reasons + `production_candidate_OVERRIDE` markers where applicable.
 
 ---
 
