@@ -85,8 +85,20 @@ def _load_bars(symbol: str, timeframe: str, limit: int = 300) -> list[dict[str, 
     bars: list[dict[str, Any]] = []
     for r in rows[-limit:]:
         with contextlib.suppress(KeyError, ValueError, TypeError):
+            # Cover the three timestamp-column conventions seen in this
+            # repo's CSVs: ts (ISO string), datetime/timestamp (ISO string),
+            # and time (Unix epoch seconds). Convert pure-digit strings
+            # to int so seasonality's _bar_timestamp_utc takes the epoch
+            # branch (datetime.fromtimestamp) instead of failing on
+            # fromisoformat("1715403600").
+            ts_raw: Any = (
+                r.get("ts") or r.get("timestamp")
+                or r.get("datetime") or r.get("time") or ""
+            )
+            if isinstance(ts_raw, str) and ts_raw.isdigit():
+                ts_raw = int(ts_raw)
             bars.append({
-                "ts": r.get("ts") or r.get("timestamp") or r.get("datetime") or "",
+                "ts": ts_raw,
                 "open": float(r.get("open") or r.get("Open") or 0),
                 "high": float(r.get("high") or r.get("High") or 0),
                 "low": float(r.get("low") or r.get("Low") or 0),
@@ -132,6 +144,29 @@ def consult_for_bot(
             "error": f"no bars at {assignment.symbol}/{assignment.timeframe}",
         }
 
+    # Build peer_returns from same-class siblings so cross_asset_correlation
+    # school can produce meaningful alignment instead of returning neutral.
+    peer_returns: dict[str, list[float]] = {}
+    self_class = _instrument_class(assignment.symbol)
+    self_root = assignment.symbol.upper().rstrip("0123456789")
+    peer_pool = ("BTC", "ETH", "SOL") if self_class == "crypto" else (
+        ("MNQ", "NQ", "ES") if self_class == "futures" else ()
+    )
+    for peer_sym in peer_pool:
+        if peer_sym == self_root:
+            continue
+        peer_bars = _load_bars(peer_sym, assignment.timeframe, limit=60)
+        if len(peer_bars) < 5:
+            continue
+        closes = [b["close"] for b in peer_bars if b.get("close")]
+        rets = [
+            (closes[i] - closes[i - 1]) / closes[i - 1]
+            for i in range(1, len(closes))
+            if closes[i - 1] > 0
+        ]
+        if rets:
+            peer_returns[peer_sym] = rets
+
     last_close = bars[-1]["close"]
     ctx = MarketContext(
         bars=bars,
@@ -139,6 +174,7 @@ def consult_for_bot(
         entry_price=last_close,
         symbol=assignment.symbol,
         instrument_class=_instrument_class(assignment.symbol),
+        peer_returns=peer_returns or None,
     )
 
     try:
