@@ -1134,18 +1134,46 @@ class JarvisStrategySupervisor:
 
         signal_id = f"{bot.bot_id}_{uuid.uuid4().hex[:8]}"
         entry_price = float(bar["close"])
+        # Default side from registry direction. SAGE-DRIVEN OVERRIDE: when
+        # ETA_SAGE_DRIVEN_SIDE=1 (default on), consult Sage with a neutral
+        # bias first, then USE its composite bias to pick the entry side
+        # so each bot can trade both LONG and SHORT depending on what the
+        # market actually offers — instead of hard-locking every bot to its
+        # registered direction. When Sage has no opinion (composite bias
+        # neutral or n_bars < 30 warmup), fall back to the registered
+        # direction. When Sage's composite bias OPPOSES the registered
+        # direction at decent conviction, take the OPPOSING side rather
+        # than fight the prevailing read.
         side = "long" if bot.direction == "long" else "short"
+        if os.getenv("ETA_SAGE_DRIVEN_SIDE", "1").lower() in {"1", "true", "yes", "on"}:
+            sage_probe = self._consult_sage_for_bot(bot, bar, side, entry_price)
+            if sage_probe is not None and getattr(sage_probe, "conviction", 0.0) >= 0.30:
+                _composite = str(getattr(sage_probe, "composite_bias", ""))
+                _composite = _composite.value if hasattr(_composite, "value") else _composite
+                _composite = _composite.lower() if _composite else ""
+                if _composite in {"long", "short"} and _composite != side:
+                    logger.info(
+                        "SAGE_FLIP %s registered=%s -> sage=%s (conv=%.2f)",
+                        bot.bot_id, side, _composite, sage_probe.conviction,
+                    )
+                    side = _composite
+            sage_report = sage_probe
+        else:
+            # Legacy path: registered direction only.
+            sage_report = self._consult_sage_for_bot(bot, bar, side, entry_price)
 
-        # Consult Sage with accumulated bar buffer for v22 modulation
-        sage_report = self._consult_sage_for_bot(bot, bar, side, entry_price)
-
+        # Use the (possibly Sage-flipped) side everywhere downstream so
+        # JARVIS, the order router, and the bracket geometry all agree
+        # on direction. Without this, JARVIS would consult against
+        # the bot's registered direction while the actual order would
+        # ship the Sage-chosen side — bracket inversion territory.
         payload = {
             "regime": "neutral",
             "session": "rth",
             "stress": 0.4,
-            "direction": bot.direction,
+            "direction": side,
             "sentiment": 0.0,
-            "side": "buy" if bot.direction == "long" else "sell",
+            "side": "buy" if side == "long" else "sell",
             "qty": 1.0,
             "symbol": bot.symbol,
             "confidence": 0.55,
@@ -1190,15 +1218,20 @@ class JarvisStrategySupervisor:
         except Exception:  # noqa: BLE001
             pass
 
-        side = "BUY" if bot.direction == "long" else "SELL"
+        # Order side derived from the (possibly Sage-flipped) `side`
+        # variable established above, NOT from bot.direction. Locking the
+        # broker side to the registered direction would defeat the whole
+        # Sage-driven side selection — we'd flip JARVIS context but ship
+        # the wrong side to the broker.
+        order_side = "BUY" if side == "long" else "SELL"
         rec = self._router.submit_entry(
-            bot=bot, signal_id=signal_id, side=side, bar=bar,
+            bot=bot, signal_id=signal_id, side=order_side, bar=bar,
             size_mult=size_mult,
         )
         if rec:
             logger.info(
                 "ENTRY  %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f)",
-                bot.bot_id, side, rec.qty, rec.fill_price,
+                bot.bot_id, order_side, rec.qty, rec.fill_price,
                 verdict.consolidated.final_verdict, size_mult,
             )
 
@@ -1310,6 +1343,16 @@ class JarvisStrategySupervisor:
 
         Returns a SageReport or None if Sage isn't available or the
         buffer has fewer than 30 bars.
+
+        Also caches the report in ``last_report_cache`` so the post-trade
+        feedback_loop can attribute realized R back to each school via
+        edge_tracker.observe(). Without this set_last call, every school
+        sat at hit_rate=0.5 / n_obs=0 forever — Sage was being consulted
+        but its predictions were never scored against outcomes, so the
+        learned weight_modifier and conviction calibration never engaged.
+        Previously only v22_sage_confluence policy fired set_last; with
+        the v27 advanced cascade in front of v22, the call never
+        happened in production.
         """
         bars = list(bot.sage_bars)
         if len(bars) < 30:
@@ -1322,7 +1365,11 @@ class JarvisStrategySupervisor:
                 entry_price=entry_price,
                 symbol=bot.symbol,
             )
-            return consult_sage(ctx)
+            report = consult_sage(ctx)
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
+                set_last(bot.symbol, side, report)
+            return report
         except Exception as exc:  # noqa: BLE001
             logger.debug("sage consultation for %s failed (non-fatal): %s", bot.bot_id, exc)
             return None

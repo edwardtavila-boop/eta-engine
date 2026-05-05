@@ -211,16 +211,35 @@ class JarvisFull:
                     sage_modulation = "loosened"
                 elif sage_conviction >= 0.65 and sage_alignment <= 0.30:
                     sage_modulation = "tightened"
+                # High-conviction single-school dissent veto: when 16 of
+                # 24 schools return neutral (no telemetry), the composite
+                # gets diluted to ~0.4 even when one classical school
+                # screams 0.75 conviction AGAINST the proposed direction.
+                # Sage's per-school insights then never reach the verdict
+                # downgrade path. This veto promotes sage_modulation to
+                # "tightened" when ANY ≥0.70-conviction school disagrees
+                # with the proposed entry side, regardless of composite.
+                # Threshold and which-schools-count are tunable via env.
+                _proposed = str(getattr(req, "payload", {}) or {}).lower()
+                _proposed_long = "long" in _proposed or "buy" in _proposed
+                _proposed_short = "short" in _proposed or "sell" in _proposed
+                _opp = "short" if _proposed_long else ("long" if _proposed_short else "")
+                if _opp:
+                    _strong_dissenters = [
+                        v for v in sage_report.per_school.values()
+                        if v.bias.value == _opp and v.conviction >= 0.70
+                    ]
+                    if _strong_dissenters and sage_modulation != "tightened":
+                        sage_modulation = "tightened_by_dissent"
         except Exception as exc:  # noqa: BLE001
             layer_errors.append(f"sage: {exc}")
 
         # 1. Core intelligence layer (enriched with sage score)
         payload = getattr(req, "payload", None) or {}
         if isinstance(payload, dict) and "sage_score" not in payload and sage_conviction > 0:
-            try:
+            import contextlib as _cl
+            with _cl.suppress(Exception):  # frozen or immutable request
                 object.__setattr__(req, "payload", {**payload, "sage_score": sage_conviction})
-            except Exception:  # noqa: BLE001
-                pass  # frozen or immutable request
         consolidated = self.intelligence.consult(
             req, ctx=ctx, current_narrative=current_narrative,
         )
@@ -364,6 +383,16 @@ class JarvisFull:
         # Premortem-based attenuation
         if kill_prob > 0.5:
             final_size *= max(0.0, 1.0 - kill_prob)
+        # Sage strong-dissent attenuation: when one or more high-conviction
+        # schools (≥0.70) explicitly dissent against the proposed entry
+        # side, halve the size. The composite-conviction path only fires at
+        # ≥0.65 composite which the diluted neutral-heavy fleet rarely
+        # reaches; this individual-school veto is the only way Sage's
+        # strongest insights (e.g. dow_theory SHORT @ 0.75 against a long-
+        # configured ETH bot in primary downtrend) actually reach the size
+        # multiplier.
+        if sage_modulation == "tightened_by_dissent":
+            final_size *= 0.5
         final_size = max(0.0, min(2.0, final_size))
 
         # 7. Narratives (Wave-18: LLM-augmented with template fallback)
@@ -432,7 +461,7 @@ class JarvisFull:
 
     # ── Sage integration ─────────────────────────────────
 
-    def _consult_sage_for_request(self, req: ActionRequest):
+    def _consult_sage_for_request(self, req: ActionRequest):  # noqa: ANN202 -- duck-typed SageReport opt-imported
         """Consult Sage schools from request payload bars.
 
         Returns a SageReport or None if bars are missing or Sage fails.
@@ -460,7 +489,7 @@ class JarvisFull:
                 ctx.funding = telem.get("funding")
                 ctx.onchain = telem.get("onchain")
                 ctx.options = telem.get("options")
-                setattr(ctx, "liquidation", telem.get("liquidation"))
+                ctx.liquidation = telem.get("liquidation")
             else:
                 # Seed synthetic telemetry so sage schools produce non-flatline results
                 ctx.funding = {

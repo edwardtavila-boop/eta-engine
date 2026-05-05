@@ -666,3 +666,62 @@ def test_propagate_close_uses_live_regime_label(tmp_path, monkeypatch) -> None:
         "regime_state.json, not hardcoded 'neutral'"
     )
     assert kwargs["extra"]["macro_bias"] == "risk_on"
+
+
+# ─── Sage-driven side override (LONG/SHORT per market regime) ─────
+
+
+def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
+    """When ETA_SAGE_DRIVEN_SIDE=1 and Sage's composite bias is SHORT
+    with conviction >=0.30, the supervisor should flip a long-registered
+    bot to SELL — not fight the prevailing read. This is what the
+    'supercharge LONG and SHORT for each strategy' directive needs.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from eta_engine.brain.jarvis_v3.sage.base import Bias
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_SAGE_DRIVEN_SIDE", "1")
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    bot = BotInstance(
+        bot_id="t1", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+
+    # Mock Sage probe → composite bias SHORT @ conv 0.7
+    mock_report = MagicMock()
+    mock_report.conviction = 0.7
+    mock_report.composite_bias = Bias.SHORT
+
+    # Mock JARVIS verdict → APPROVED (so submit_entry gets called)
+    mock_verdict = MagicMock()
+    mock_verdict.is_blocked.return_value = False
+    mock_verdict.consolidated.final_verdict = "APPROVED"
+    mock_verdict.consolidated.is_blocked.return_value = False
+    mock_verdict.final_size_multiplier = 1.0
+
+    submit_mock = MagicMock(return_value=None)
+
+    with patch.object(sup, "_consult_sage_for_bot", return_value=mock_report), \
+         patch.object(sup, "_consult_jarvis", return_value=mock_verdict), \
+         patch.object(sup, "_router") as router:
+        router.submit_entry = submit_mock
+        # Force the random dice to fire
+        with patch("random.random", return_value=0.0):
+            sup._maybe_enter(bot, {"close": 60000.0, "ts": "x"})
+
+    assert submit_mock.called, "submit_entry must be called"
+    kwargs = submit_mock.call_args.kwargs
+    assert kwargs["side"] == "SELL", (
+        f"side={kwargs.get('side')!r} — Sage SHORT conv=0.7 should "
+        "have flipped the long-registered bot to SELL"
+    )
