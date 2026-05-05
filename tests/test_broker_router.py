@@ -1459,10 +1459,14 @@ default:
     MNQ:  { ibkr: MNQ }
     MNQ1: { ibkr: MNQ }
     NG:   { ibkr: NG }
+    RTY:  { ibkr: RTY }
     GC:   { ibkr: GC }
+    MGC:  { ibkr: MGC }
     CL:   { ibkr: CL }
+    MCL:  { ibkr: MCL }
     "6E": { ibkr: 6E }
     M2K:  { ibkr: M2K }
+    M6E:  { ibkr: M6E }
 bots:
   btc_optimized: { venue: ibkr }
   btc_to_tasty:  { venue: tasty }
@@ -1554,10 +1558,14 @@ class TestRoutingConfig:
         path = _write_routing_yaml(tmp_path)
         cfg = broker_router.RoutingConfig.load(path)
         assert cfg.map_symbol("NG", "ibkr") == "NG"
+        assert cfg.map_symbol("RTY", "ibkr") == "RTY"
         assert cfg.map_symbol("GC", "ibkr") == "GC"
+        assert cfg.map_symbol("MGC", "ibkr") == "MGC"
         assert cfg.map_symbol("CL", "ibkr") == "CL"
+        assert cfg.map_symbol("MCL", "ibkr") == "MCL"
         assert cfg.map_symbol("6E", "ibkr") == "6E"
         assert cfg.map_symbol("M2K", "ibkr") == "M2K"
+        assert cfg.map_symbol("M6E", "ibkr") == "M6E"
 
     def test_env_var_override_picks_up_alternate_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
