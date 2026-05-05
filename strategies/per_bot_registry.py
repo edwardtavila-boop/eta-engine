@@ -82,8 +82,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "crypto_native": True,
             "sweep_preset": "eth",
             "research_candidate": True,
-                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5}, 
-            "daily_loss_limit_pct": 4.0, 
+                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "daily_loss_limit_pct": 4.0,
 },
     ),
 
@@ -180,7 +180,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_strict_mode": False,
             "sage_lookback_daily_bars": 200,
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-                    "daily_loss_limit_pct": 4.0, 
+                    "daily_loss_limit_pct": 4.0,
 },
     ),
 
@@ -226,8 +226,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
-                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5}, 
-            "daily_loss_limit_pct": 4.0, 
+                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "daily_loss_limit_pct": 4.0,
 },
     ),
 
@@ -1588,6 +1588,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # ELITE-GATE 2026-05-05 (365d window): ALL GREEN — promote to paper-soak.
+    #   30 OOS trades, +$589 OOS PnL, 36.7% WR, +248% decay,
+    #   beats random baseline by $12,171.  4th strategy through
+    #   the harness on all five lights (after btc_anchor_sweep,
+    #   mnq_anchor_sweep, mnq_sweep_reclaim).
+    #   Required two prior-round bug fixes to surface: round-5
+    #   instrument_specs alias (NG1 → real point_value=10000) +
+    #   round-6 longer evaluation window (90d only had 5 trades).
     StrategyAssignment(
         bot_id="ng_sweep_reclaim",
         strategy_id="ng_sweep_reclaim_v1",
@@ -1608,7 +1616,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "wider variant. Vol_regime school will frequently flag this."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
+            "elite_gate_passed": "2026-05-05",
+            "elite_gate_results": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "level_lookback": 48, "reclaim_window": 3,

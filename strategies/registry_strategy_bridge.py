@@ -88,29 +88,61 @@ def _build_callable_for_assignment(
     try:
         from eta_engine.scripts.run_research_grid import _build_strategy_factory
 
-        factory = _build_strategy_factory(kind, extras)
+        # Bug fix 2026-05-05: confluence_scorecard is handled at the
+        # CELL level in run_research_grid (not _build_strategy_factory)
+        # because it wraps a sub-strategy.  Bridge dispatch needs to
+        # mirror that behavior — extract the sub_strategy_kind from
+        # extras, build the sub-strategy factory, then wrap with
+        # ConfluenceScorecardStrategy.  Was blocking vwap_mr_btc and
+        # volume_profile_btc from running through the harness.
+        if kind == "confluence_scorecard":
+            sub_kind = str(extras.get("sub_strategy_kind") or "")
+            sub_extras = extras.get("sub_strategy_extras") or {}
+            sc_raw = extras.get("scorecard_config") or {}
+            if "per_ticker_optimal" in extras and isinstance(sub_extras, dict):
+                sub_extras.setdefault("per_ticker_optimal", extras["per_ticker_optimal"])
+            if not sub_kind:
+                raise ValueError("confluence_scorecard requires sub_strategy_kind in extras")
 
-        # Attach daily sage verdicts for sage_daily_gated strategies.
-        # The research_grid factory builds the strategy but doesn't
-        # attach the verdict provider — wire it here so bridge dispatch
-        # has REAL sage gating, not passthrough.
-        if kind == "sage_daily_gated":
-            symbol = str(assignment.symbol) if assignment else "BTC"
-            try:
-                from eta_engine.scripts.run_research_grid import (
-                    _with_daily_sage_provider,
-                )
+            from eta_engine.strategies.confluence_scorecard import (
+                ConfluenceScorecardConfig,
+                ConfluenceScorecardStrategy,
+            )
+            sc_cfg = ConfluenceScorecardConfig(
+                min_score=int(sc_raw.get("min_score", 2)),
+                a_plus_score=int(sc_raw.get("a_plus_score", 3)),
+                a_plus_size_mult=float(sc_raw.get("a_plus_size_mult", 1.3)),
+                fast_ema=int(sc_raw.get("fast_ema", 21)),
+                mid_ema=int(sc_raw.get("mid_ema", 50)),
+                slow_ema=int(sc_raw.get("slow_ema", 100)),
+            )
+            sub_factory = _build_strategy_factory(sub_kind, dict(sub_extras))
+            sub_strategy = sub_factory()
+            strategy = ConfluenceScorecardStrategy(sub_strategy, sc_cfg)
+        else:
+            factory = _build_strategy_factory(kind, extras)
 
-                inst_class = extras.get("instrument_class", "crypto")
-                factory = _with_daily_sage_provider(
-                    factory,
-                    symbol=symbol,
-                    instrument_class=inst_class,
-                )
-            except (ValueError, ImportError):
-                pass
+            # Attach daily sage verdicts for sage_daily_gated strategies.
+            # The research_grid factory builds the strategy but doesn't
+            # attach the verdict provider — wire it here so bridge dispatch
+            # has REAL sage gating, not passthrough.
+            if kind == "sage_daily_gated":
+                symbol = str(assignment.symbol) if assignment else "BTC"
+                try:
+                    from eta_engine.scripts.run_research_grid import (
+                        _with_daily_sage_provider,
+                    )
 
-        strategy = factory()
+                    inst_class = extras.get("instrument_class", "crypto")
+                    factory = _with_daily_sage_provider(
+                        factory,
+                        symbol=symbol,
+                        instrument_class=inst_class,
+                    )
+                except (ValueError, ImportError):
+                    pass
+
+            strategy = factory()
     except (ValueError, ImportError):
         pass
 
