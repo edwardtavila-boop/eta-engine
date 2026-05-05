@@ -1901,11 +1901,58 @@ class JarvisStrategySupervisor:
 # ─── CLI ──────────────────────────────────────────────────────────
 
 
+def _load_env_file_if_present() -> None:
+    """Load environment variables from a project ``.env`` file before
+    SupervisorConfig is constructed.
+
+    The Windows scheduled-task action launches python with NO environment
+    set (no shell wrapper), so every os.getenv("ETA_SUPERVISOR_FEED")
+    returned the default "mock". The supervisor then ran on synthetic
+    random walks instead of real composite feed (yfinance + coinbase +
+    ibkr fallback). Operator was unaware because the heartbeat shows
+    feed=mock but the scheduled task name implied production.
+
+    This loader looks at three candidate paths in order, takes the first
+    that exists, parses lines of the form ``KEY=VALUE`` (whitespace and
+    leading-`#` comments tolerated), and writes them into ``os.environ``
+    only when the key isn't already set — so an explicit shell export
+    or schtasks env always wins. Idempotent + non-fatal: any parse
+    failure is logged at warning and the supervisor continues.
+    """
+    candidates = (
+        Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\.env"),
+        Path(r"C:\EvolutionaryTradingAlgo\eta_engine\.env"),
+        Path(r"C:\EvolutionaryTradingAlgo\.env"),
+    )
+    for path in candidates:
+        try:
+            if not path.exists():
+                continue
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if not key:
+                    continue
+                if key not in os.environ:
+                    os.environ[key] = val
+            logger.info("loaded env vars from %s", path)
+            return
+        except OSError as exc:  # noqa: PERF203 -- per-path try/except is intentional
+            logger.warning("env load failed for %s: %s", path, exc)
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    _load_env_file_if_present()
     cfg = SupervisorConfig()
     supervisor = JarvisStrategySupervisor(cfg=cfg)
     return supervisor.run_forever()
