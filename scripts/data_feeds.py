@@ -363,6 +363,27 @@ class IbkrDataFeed:
         self._connect_lock = threading.Lock()
 
     def _ensure_connected(self) -> bool:
+        """Connect to TWS via the dedicated IBKR event loop.
+
+        The supervisor's main thread does not own an asyncio event loop —
+        it runs in sync code most of the time and only spins up loops
+        for specific async work via ``_run_on_live_ibkr_loop``. Calling
+        the *sync* ``ib_insync.IB.connect()`` from the supervisor's main
+        thread raises ``RuntimeError("There is no current event loop in
+        thread 'MainThread'.")`` because ib_insync internally calls
+        ``asyncio.get_event_loop()``. The supervisor's tick loop hits
+        this every time it tries to fetch IBKR bars and silently skips
+        the symbol (return False -> _empty_bar) — which is what
+        masquerades as "supervisor died after 1 minute" in the wild.
+
+        Fix: run the connect on the same dedicated background event
+        loop the venue layer uses (see ``venues.ibkr_live._run_on_live_ibkr_loop``).
+        That loop has a stable event-loop in its thread so ib_insync's
+        async + sync APIs both work. We use ``connectAsync`` to avoid
+        the sync-from-async footgun (calling sync ``connect()`` while
+        an outer loop is already running raises "This event loop is
+        already running").
+        """
         if self._ib is not None and self._ib.isConnected():
             return True
         with self._connect_lock:
@@ -372,10 +393,22 @@ class IbkrDataFeed:
                 import os
 
                 from ib_insync import IB
-                self._ib = IB()
-                self._ib.connect(self._host, self._port, clientId=self._client_id, timeout=8)
+                from eta_engine.scripts.jarvis_strategy_supervisor import (
+                    _run_on_live_ibkr_loop,
+                )
+
+                async def _do_connect() -> "IB":
+                    ib = IB()
+                    await ib.connectAsync(
+                        self._host, self._port,
+                        clientId=self._client_id, timeout=8,
+                    )
+                    mdt_val = int(os.getenv("ETA_IBKR_MARKETDATA_TYPE", "3"))
+                    ib.reqMarketDataType(mdt_val)
+                    return ib
+
+                self._ib = _run_on_live_ibkr_loop(_do_connect())
                 mdt = int(os.getenv("ETA_IBKR_MARKETDATA_TYPE", "3"))
-                self._ib.reqMarketDataType(mdt)
                 logger.info(
                     "IbkrDataFeed connected to TWS (clientId=%d, marketDataType=%d)",
                     self._client_id, mdt,
@@ -383,6 +416,7 @@ class IbkrDataFeed:
                 return True
             except Exception as exc:  # noqa: BLE001
                 logger.warning("IbkrDataFeed connect failed: %s", exc)
+                self._ib = None
                 return False
 
     def _make_contract(self, symbol: str) -> Any | None:  # noqa: ANN401 — ib_insync Contract
@@ -392,11 +426,19 @@ class IbkrDataFeed:
         resolver from ``ibkr_live`` so MNQ1 / NQ1 / etc. work the same
         way the order path does. Requires ``self._ib`` to be connected
         (caller invokes ``_ensure_connected()`` first).
+
+        ``_resolve_front_month_mnq`` is async; we run it on the same
+        dedicated IBKR loop as ``_ensure_connected``. See the comment
+        on ``_ensure_connected`` for why sync ib_insync calls from the
+        supervisor's main thread raise.
         """
         try:
             from eta_engine.venues.ibkr_live import (
                 FUTURES_MAP,
                 _resolve_front_month_mnq,
+            )
+            from eta_engine.scripts.jarvis_strategy_supervisor import (
+                _run_on_live_ibkr_loop,
             )
             from ib_insync import Future
         except ImportError:
@@ -407,7 +449,9 @@ class IbkrDataFeed:
         if sym in FUTURES_MAP:
             root, exchange, mult = FUTURES_MAP[sym]
             try:
-                contract_month = _resolve_front_month_mnq(self._ib, root=root, exchange=exchange)
+                contract_month = _run_on_live_ibkr_loop(
+                    _resolve_front_month_mnq(self._ib, root=root, exchange=exchange),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "IbkrDataFeed: front-month resolution failed for %s/%s: %s",
@@ -444,14 +488,25 @@ class IbkrDataFeed:
             # 30-min window of 1m bars: short enough to keep the call
             # cheap but long enough that IB always has data for the
             # current contract. 60s is rejected for futures.
-            bars = self._ib.reqHistoricalData(
-                contract,
-                endDateTime="",
-                durationStr="1800 S",
-                barSizeSetting="1 min",
-                whatToShow="TRADES",
-                useRTH=False,
-                formatDate=1,
+            #
+            # reqHistoricalDataAsync runs on the dedicated IBKR loop
+            # (same loop _ensure_connected used to connect). Calling
+            # the sync ``reqHistoricalData`` from the supervisor's
+            # main thread raises the same "no current event loop"
+            # RuntimeError that brought down the connect path.
+            from eta_engine.scripts.jarvis_strategy_supervisor import (  # noqa: PLC0415
+                _run_on_live_ibkr_loop,
+            )
+            bars = _run_on_live_ibkr_loop(
+                self._ib.reqHistoricalDataAsync(
+                    contract,
+                    endDateTime="",
+                    durationStr="1800 S",
+                    barSizeSetting="1 min",
+                    whatToShow="TRADES",
+                    useRTH=False,
+                    formatDate=1,
+                ),
             )
             if not bars:
                 logger.warning("IbkrDataFeed: empty bars for %s", symbol)

@@ -164,23 +164,39 @@ def test_ibkr_feed_uses_historical_data_for_futures() -> None:
     from eta_engine.scripts.data_feeds import IbkrDataFeed
     feed = IbkrDataFeed()
     # Mock the underlying IB and the connection. _make_contract calls
-    # _resolve_front_month_mnq which itself calls qualifyContracts then
-    # reads lastTradeDateOrContractMonth — provide an explicit string
-    # so the YYYYMM regex parser succeeds (the bare MagicMock proxies
-    # any attribute access to another mock object that fails parsing).
+    # _resolve_front_month_mnq which itself calls qualifyContractsAsync
+    # (we route via the dedicated IBKR loop to avoid the no-event-loop
+    # crash in supervisor's main thread). The async mock returns the
+    # qualified ContFuture; lastTradeDateOrContractMonth must be a
+    # real YYYYMMDD string for the front-month resolver's len-check.
+    import asyncio as _asyncio
+
     fake_ib = MagicMock()
     fake_ib.isConnected.return_value = True
     qualified_contract = MagicMock()
     qualified_contract.lastTradeDateOrContractMonth = "20260620"
+
+    async def _fake_qualify(*_a: object, **_k: object) -> list[object]:
+        return [qualified_contract]
+
+    fake_ib.qualifyContractsAsync.side_effect = _fake_qualify
+    # Keep the legacy sync attribute too so tests that branch on either
+    # side don't trip on missing-attr.
     fake_ib.qualifyContracts.return_value = [qualified_contract]
+
     fake_bar = MagicMock(open=21500.0, high=21520.0, low=21480.0, close=21510.0, volume=1500)
+
+    async def _fake_req_hist(*_a: object, **_k: object) -> list[object]:
+        return [fake_bar]
+
+    fake_ib.reqHistoricalDataAsync.side_effect = _fake_req_hist
     fake_ib.reqHistoricalData.return_value = [fake_bar]
     feed._ib = fake_ib
 
     bar = feed.get_bar("MNQ1")
     _assert_bar_shape(bar, "MNQ1")
     assert bar["close"] == 21510.0
-    fake_ib.reqHistoricalData.assert_called_once()
+    fake_ib.reqHistoricalDataAsync.assert_called_once()
 
 
 def test_ibkr_feed_returns_empty_when_disconnected() -> None:
@@ -236,10 +252,19 @@ def test_ibkr_feed_lazy_connect_is_mid_session_thread_safe(monkeypatch) -> None:
         def isConnected(self) -> bool:  # noqa: N802 - mirrors ib_insync.IB
             return self.connected
 
+        # Sync connect kept for any legacy caller; production path uses
+        # connectAsync via _run_on_live_ibkr_loop.
         def connect(self, host: str, port: int, *, clientId: int, timeout: int) -> None:  # noqa: N803
             with lock:
                 connects.append((host, port, clientId, timeout))
             time.sleep(0.02)
+            self.connected = True
+
+        async def connectAsync(  # noqa: N802 - mirrors ib_insync.IB
+            self, host: str, port: int, *, clientId: int, timeout: int,  # noqa: N803
+        ) -> None:
+            with lock:
+                connects.append((host, port, clientId, timeout))
             self.connected = True
 
         def reqMarketDataType(self, market_data_type: int) -> None:  # noqa: N802 - mirrors ib_insync.IB
