@@ -443,3 +443,109 @@ def sol_daily_sweep_preset() -> SweepReclaimConfig:
         max_trades_per_day=2,
         warmup_bars=72,
     )
+
+
+# ---------------------------------------------------------------------------
+# Commodity presets — parameter-perfect per ticker
+# ---------------------------------------------------------------------------
+
+
+def gc_sweep_preset() -> SweepReclaimConfig:
+    """Gold (GC) 1h — safe-haven asset, $25-40/h ATR on $2500 notional.
+    Wider stops (2.5x ATR = $62-100), tighter RR (2.0 given clean trends).
+    Wick threshold 0.35 — gold sweeps at prior highs/lows are reliable."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.35, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=2.5, rr_target=2.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
+def cl_sweep_preset() -> SweepReclaimConfig:
+    """Crude oil (CL) 1h — $60-80/bbl, ATR $1.50-2.50/h on $6,500 notional.
+    Tight ATR stop (1.5x = $2-4), RR 2.5 to capture trend runs.
+    Oil sweeps at session opens and inventory reports — wider lookback."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
+def ng_sweep_preset() -> SweepReclaimConfig:
+    """Natural gas (NG) 1h — $2-4/MMBtu, ATR $0.15-0.30/h on $2,500 notional.
+    Most volatile commodity — widest ATR stop (3.0x = $0.45-0.90),
+    highest RR (3.0 to compensate). Lower wick threshold (0.25) —
+    NG wicks are proportionally larger due to weather-driven gaps."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.2,
+        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
+def eur_sweep_preset() -> SweepReclaimConfig:
+    """Euro FX (6E) 1h — $1.05-1.15, ATR $0.005-0.01 on $125,000 notional.
+    Tightest ranges of all assets — wider lookback (72 bars = 3 days),
+    tighter stop (1.0x ATR = $5-10), moderate RR 2.0."""
+    return SweepReclaimConfig(
+        level_lookback=72, reclaim_window=3,
+        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=3, warmup_bars=72,
+    )
+
+
+def mes_sweep_preset() -> SweepReclaimConfig:
+    """Micro ES (MES) 1h — $50/pt on $2,500 notional, 1/10th ES.
+    Same volatility as MNQ/NQ index futures. MNQ-tuned params."""
+    return SweepReclaimConfig(
+        level_lookback=30, reclaim_window=3,
+        min_wick_pct=0.40, volume_z_lookback=20, min_volume_z=0.5,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=6,
+        max_trades_per_day=4, warmup_bars=50,
+    )
+
+
+def m2k_sweep_preset() -> SweepReclaimConfig:
+    """Micro Russell (M2K) 1h — $5/pt on $1,000 notional, 1/10th RTY.
+    Similar vol to MNQ, slightly wider ranges."""
+    return SweepReclaimConfig(
+        level_lookback=30, reclaim_window=3,
+        min_wick_pct=0.35, volume_z_lookback=20, min_volume_z=0.4,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
+        risk_per_trade_pct=0.005, min_bars_between_trades=8,
+        max_trades_per_day=3, warmup_bars=50,
+    )
+
+
+def ym_sweep_preset() -> SweepReclaimConfig:
+    """Mini Dow (YM) 1h — $5/pt on $5,000 notional, 1/2 ES.
+    Wider ranges than MNQ, more structured trends."""
+    return SweepReclaimConfig(
+        level_lookback=30, reclaim_window=3,
+        min_wick_pct=0.35, volume_z_lookback=20, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=2.0, rr_target=2.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=8,
+        max_trades_per_day=3, warmup_bars=50,
+    )
+
+
+def zn_sweep_preset() -> SweepReclaimConfig:
+    """10-Year T-Note (ZN) 1h — $1,000/pt on $110,000 notional.
+    Tightest ranges — wider lookback, tighter stop, higher RR."""
+    return SweepReclaimConfig(
+        level_lookback=72, reclaim_window=4,
+        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
+        atr_period=14, atr_stop_mult=1.0, rr_target=3.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )

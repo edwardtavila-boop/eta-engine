@@ -630,15 +630,27 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
             SweepReclaimConfig,
             SweepReclaimStrategy,
             btc_daily_sweep_preset,
+            cl_sweep_preset,
             eth_daily_sweep_preset,
+            eur_sweep_preset,
+            gc_sweep_preset,
+            m2k_sweep_preset,
+            mes_sweep_preset,
             mnq_intraday_sweep_preset,
+            ng_sweep_preset,
             nq_intraday_sweep_preset,
             sol_daily_sweep_preset,
+            ym_sweep_preset,
+            zn_sweep_preset,
         )
         preset_factories = {
-            "btc": btc_daily_sweep_preset, "eth": eth_daily_sweep_preset,
-            "sol": sol_daily_sweep_preset, "mnq": mnq_intraday_sweep_preset,
-            "nq": nq_intraday_sweep_preset,
+            "btc": btc_daily_sweep_preset, "cl": cl_sweep_preset,
+            "eth": eth_daily_sweep_preset, "eur": eur_sweep_preset,
+            "gc": gc_sweep_preset, "m2k": m2k_sweep_preset,
+            "mes": mes_sweep_preset, "mnq": mnq_intraday_sweep_preset,
+            "ng": ng_sweep_preset, "nq": nq_intraday_sweep_preset,
+            "sol": sol_daily_sweep_preset, "ym": ym_sweep_preset,
+            "zn": zn_sweep_preset,
         }
         preset_name = (extras.get("sweep_preset") or "btc").lower()
         base_cfg = preset_factories.get(preset_name, btc_daily_sweep_preset)()

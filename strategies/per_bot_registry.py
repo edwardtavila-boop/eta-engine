@@ -1537,7 +1537,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "gc", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1577,7 +1577,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "cl", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1626,7 +1626,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "elite_gate_passed": "2026-05-05",
             "elite_gate_results": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "ng", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1669,7 +1669,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "Keep as diagnostic only."
             ),
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "zn", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1707,7 +1707,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "eur", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1754,7 +1754,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "mes", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1793,7 +1793,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         extras={
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "m2k", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
@@ -1836,7 +1836,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "Keep as diagnostic only."
             ),
             "sub_strategy_kind": "sweep_reclaim",
-            "sub_strategy_extras": {
+            "sub_strategy_extras": {"sweep_preset": "ym", 
                 "level_lookback": 48, "reclaim_window": 3,
                 "min_wick_pct": 0.30, "min_volume_z": 0.3,
                 "rr_target": 2.5, "atr_stop_mult": 2.0,
