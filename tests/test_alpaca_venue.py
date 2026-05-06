@@ -1,0 +1,308 @@
+"""Tests for the Alpaca paper venue adapter.
+
+Mirrors ``test_tastytrade_ibkr_venues.py``: focuses on the deterministic
+paths (config, payload building, cost-basis pre-check, helpers, readiness)
+without hitting the network. Live integration is exercised via the smoke
+script invoked manually during operator verification.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from eta_engine.venues import (
+    AlpacaConfig,
+    AlpacaVenue,
+    ConnectionStatus,
+    OrderRequest,
+    OrderStatus,
+    OrderType,
+    Side,
+    alpaca_paper_readiness,
+)
+from eta_engine.venues.alpaca import (
+    ALPACA_CRYPTO_MIN_COST_BASIS_USD,
+    _alpaca_crypto_base,
+    _alpaca_quantity,
+    _alpaca_symbol,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+def test_alpaca_config_reads_secret_files(tmp_path: Path) -> None:
+    key_file = tmp_path / "alpaca_key.txt"
+    secret_file = tmp_path / "alpaca_secret.txt"
+    key_file.write_text("PKAAAAAAAAAAAAAAAAAA\n", encoding="utf-8")
+    secret_file.write_text("SECRETSECRETSECRETSECRETSECRETSECRETSECRET\n", encoding="utf-8")
+
+    # Override ETA_RUNTIME_ROOT so the default broker_paper.env auto-load
+    # in the real workspace doesn't shadow the test env.
+    config = AlpacaConfig.from_env({
+        "ETA_RUNTIME_ROOT": str(tmp_path),
+        "ALPACA_API_KEY_ID_FILE": str(key_file),
+        "ALPACA_API_SECRET_KEY_FILE": str(secret_file),
+    })
+
+    assert config.api_key_id == "PKAAAAAAAAAAAAAAAAAA"
+    assert config.api_secret_key.startswith("SECRET")
+    assert config.missing_requirements() == []
+
+
+def test_alpaca_config_missing_keys_marked_unready(tmp_path: Path) -> None:
+    config = AlpacaConfig.from_env({"ETA_RUNTIME_ROOT": str(tmp_path)})
+    missing = config.missing_requirements()
+
+    assert "ALPACA_API_KEY_ID" in missing
+    assert "ALPACA_API_SECRET_KEY" in missing
+
+
+def test_alpaca_config_rejects_live_host_when_paper_required(tmp_path: Path) -> None:
+    config = AlpacaConfig.from_env({
+        "ETA_RUNTIME_ROOT": str(tmp_path),
+        "ALPACA_API_KEY_ID": "PK1",
+        "ALPACA_API_SECRET_KEY": "SECRET1",
+        "ALPACA_BASE_URL": "https://api.alpaca.markets",
+    })
+
+    missing = config.missing_requirements()
+
+    assert any("paper-api.alpaca.markets" in entry for entry in missing)
+
+
+def test_alpaca_config_paper_host_check_can_be_disabled(tmp_path: Path) -> None:
+    config = AlpacaConfig.from_env({
+        "ETA_RUNTIME_ROOT": str(tmp_path),
+        "ALPACA_API_KEY_ID": "PK1",
+        "ALPACA_API_SECRET_KEY": "SECRET1",
+        "ALPACA_BASE_URL": "https://api.alpaca.markets",
+        "ALPACA_REQUIRE_PAPER_HOST": "false",
+    })
+
+    assert config.missing_requirements() == []
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def test_crypto_base_recognizes_supported_pairs() -> None:
+    assert _alpaca_crypto_base("BTC") == "BTC"
+    assert _alpaca_crypto_base("BTCUSD") == "BTC"
+    assert _alpaca_crypto_base("BTCUSDT") == "BTC"
+    assert _alpaca_crypto_base("BTC/USD") == "BTC"
+    assert _alpaca_crypto_base("BTC-USD") == "BTC"
+    assert _alpaca_crypto_base("ETH") == "ETH"
+    assert _alpaca_crypto_base("SOL") == "SOL"
+    assert _alpaca_crypto_base("XRP") == "XRP"
+    assert _alpaca_crypto_base("AVAX") == "AVAX"
+    assert _alpaca_crypto_base("LINK") == "LINK"
+    assert _alpaca_crypto_base("DOGE") == "DOGE"
+
+
+def test_crypto_base_rejects_non_crypto() -> None:
+    assert _alpaca_crypto_base("MNQ") is None
+    assert _alpaca_crypto_base("MNQM6") is None
+    assert _alpaca_crypto_base("/MNQ") is None
+    assert _alpaca_crypto_base("AAPL") is None
+    assert _alpaca_crypto_base("ZZZ") is None
+    assert _alpaca_crypto_base("") is None
+
+
+def test_alpaca_symbol_formats_crypto_as_base_usd() -> None:
+    assert _alpaca_symbol("BTCUSDT", is_crypto=True) == "BTC/USD"
+    assert _alpaca_symbol("ETH/USD", is_crypto=True) == "ETH/USD"
+    assert _alpaca_symbol("SOL", is_crypto=True) == "SOL/USD"
+
+
+def test_alpaca_symbol_passes_equity_through() -> None:
+    assert _alpaca_symbol("AAPL", is_crypto=False) == "AAPL"
+    assert _alpaca_symbol("spy", is_crypto=False) == "SPY"
+
+
+def test_alpaca_quantity_crypto_returns_decimal_string() -> None:
+    assert _alpaca_quantity(0.001, is_crypto=True) == "0.001"
+    assert _alpaca_quantity(0.5, is_crypto=True) == "0.5"
+    assert _alpaca_quantity(1.0, is_crypto=True) == "1"
+    # Trailing zeros trimmed.
+    assert _alpaca_quantity(0.00100000, is_crypto=True) == "0.001"
+
+
+def test_alpaca_quantity_equity_returns_int_string_when_whole() -> None:
+    assert _alpaca_quantity(1.0, is_crypto=False) == "1"
+    assert _alpaca_quantity(100.0, is_crypto=False) == "100"
+
+
+# ---------------------------------------------------------------------------
+# Payload builder
+# ---------------------------------------------------------------------------
+
+
+def test_build_order_payload_crypto_market_uses_gtc_and_base_usd() -> None:
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTCUSDT",
+        side=Side.BUY,
+        qty=0.001,
+        order_type=OrderType.MARKET,
+        client_order_id="cid-btc-1",
+    )
+
+    payload = venue.build_order_payload(req)
+
+    assert payload["symbol"] == "BTC/USD"
+    assert payload["qty"] == "0.001"
+    assert payload["side"] == "buy"
+    assert payload["type"] == "market"
+    # Crypto must use GTC, not DAY.
+    assert payload["time_in_force"] == "gtc"
+    assert payload["client_order_id"] == "cid-btc-1"
+    # Market orders do not carry limit_price.
+    assert "limit_price" not in payload
+
+
+def test_build_order_payload_crypto_limit_carries_limit_price() -> None:
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="ETH",
+        side=Side.SELL,
+        qty=0.5,
+        order_type=OrderType.LIMIT,
+        price=3500.0,
+        client_order_id="cid-eth-1",
+    )
+
+    payload = venue.build_order_payload(req)
+
+    assert payload["symbol"] == "ETH/USD"
+    assert payload["side"] == "sell"
+    assert payload["type"] == "limit"
+    assert payload["limit_price"] == "3500.0"
+
+
+def test_build_order_payload_truncates_long_client_order_id() -> None:
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    long_cid = "x" * 80
+    req = OrderRequest(
+        symbol="BTC", side=Side.BUY, qty=0.001, order_type=OrderType.MARKET,
+        client_order_id=long_cid,
+    )
+
+    payload = venue.build_order_payload(req)
+
+    # Alpaca caps client_order_id at 48 chars.
+    assert len(payload["client_order_id"]) == 48
+
+
+# ---------------------------------------------------------------------------
+# Cost-basis pre-check
+# ---------------------------------------------------------------------------
+
+
+def test_place_order_rejects_crypto_below_min_cost_basis() -> None:
+    """Crypto order with est_cost_basis < $10 rejects without network round-trip."""
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.0001,
+        order_type=OrderType.LIMIT,
+        price=50.0,  # 0.0001 * 50 = $0.005, far below $10 minimum
+        client_order_id="cb-test",
+    )
+
+    result = asyncio.run(venue.place_order(req))
+
+    assert result.status is OrderStatus.REJECTED
+    assert result.raw["reason"] == "alpaca_min_cost_basis"
+    assert result.raw["min_cost_basis_usd"] == ALPACA_CRYPTO_MIN_COST_BASIS_USD
+    assert result.raw["est_cost_basis_usd"] == 0.005
+
+
+def test_place_order_passes_cost_basis_check_when_above_minimum() -> None:
+    """qty * price >= $10 passes the pre-check (still degrades since no network)."""
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.0005,
+        order_type=OrderType.LIMIT,
+        price=80_000.0,  # 0.0005 * 80000 = $40, well above $10
+        client_order_id="cb-pass",
+    )
+
+    result = asyncio.run(venue.place_order(req))
+
+    # Without httpx + paper-api host, this falls through to mock OPEN —
+    # the important assertion is we did NOT see the cost-basis reject path.
+    assert result.raw.get("reason") != "alpaca_min_cost_basis"
+
+
+def test_place_order_skips_cost_basis_check_for_market_orders() -> None:
+    """Market orders have no limit_price so pre-check can't run; let server enforce."""
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC", side=Side.BUY, qty=0.0001, order_type=OrderType.MARKET,
+        client_order_id="market-test",
+    )
+
+    result = asyncio.run(venue.place_order(req))
+
+    # No client-side reject for market — the broker side will enforce on POST.
+    assert result.raw.get("reason") != "alpaca_min_cost_basis"
+
+
+# ---------------------------------------------------------------------------
+# Connection report (without network — connect() probes /v2/account but with
+# missing creds it short-circuits before any HTTP)
+# ---------------------------------------------------------------------------
+
+
+def test_connect_reports_stub_without_credentials() -> None:
+    venue = AlpacaVenue(AlpacaConfig())
+
+    report = asyncio.run(venue.connect())
+
+    assert report.venue == "alpaca"
+    assert report.status is ConnectionStatus.STUBBED
+    assert report.creds_present is False
+    assert "ALPACA_API_KEY_ID" in report.details["missing"]
+    assert report.details["mode"] == "paper"
+
+
+# ---------------------------------------------------------------------------
+# Readiness summary
+# ---------------------------------------------------------------------------
+
+
+def test_readiness_summary_unready_without_keys(tmp_path: Path) -> None:
+    summary = alpaca_paper_readiness({"ETA_RUNTIME_ROOT": str(tmp_path)})
+
+    assert summary["adapter_available"] is True
+    assert summary["ready"] is False
+    assert summary["mode"] == "paper"
+    assert "ALPACA_API_KEY_ID" in summary["missing"]
+
+
+def test_readiness_summary_includes_min_cost_basis_and_supported_bases(tmp_path: Path) -> None:
+    summary = alpaca_paper_readiness({
+        "ETA_RUNTIME_ROOT": str(tmp_path),
+        "ALPACA_API_KEY_ID": "PK1",
+        "ALPACA_API_SECRET_KEY": "SECRET1",
+    })
+
+    assert summary["ready"] is True
+    assert summary["min_cost_basis_usd"] == ALPACA_CRYPTO_MIN_COST_BASIS_USD
+    # All 7 of our crypto bot bases must appear in the supported list so
+    # the dashboard can rule out routing mismatches at a glance.
+    bases = set(summary["supported_crypto_bases"])
+    for required in ("BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE"):
+        assert required in bases, f"{required} missing from alpaca supported bases"

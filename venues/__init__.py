@@ -3,7 +3,11 @@ EVOLUTIONARY TRADING ALGO  //  venues
 =========================
 Execution surfaces. One interface, multiple exchanges.
 
-Crypto: Bybit + OKX.
+Crypto paper (active): Alpaca paper (BTC/ETH/SOL/XRP/AVAX/LINK/DOGE
+plus 16 more bases — added 2026-05-05 while Tastytrade cert sandbox
+crypto enablement is pending operator action).
+
+Crypto offshore (dev / non-US-person only): Bybit + OKX.
 
 Futures live (active): IBKR + Tastytrade.
 
@@ -13,6 +17,11 @@ and testable; live routing transparently substitutes to IBKR. See
 :mod:`eta_engine.venues.router` for the dormancy policy.
 """
 
+from eta_engine.venues.alpaca import (
+    AlpacaConfig,
+    AlpacaVenue,
+    alpaca_paper_readiness,
+)
 from eta_engine.venues.base import (
     ConnectionStatus,
     OrderRequest,
@@ -54,6 +63,8 @@ __all__ = [
     "DEFAULT_CRYPTO_VENUE",
     "DEFAULT_FUTURES_VENUE",
     "DORMANT_BROKERS",
+    "AlpacaConfig",
+    "AlpacaVenue",
     "BybitVenue",
     "BrokerConnectionManager",
     "BrokerConnectionSummary",
@@ -72,6 +83,7 @@ __all__ = [
     "TradovateVenue",
     "VenueBase",
     "VenueConnectionReport",
+    "alpaca_paper_readiness",
     "ibkr_paper_readiness",
     "tastytrade_paper_readiness",
     "write_broker_connection_report",

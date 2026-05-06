@@ -4,8 +4,9 @@
 # Maps bot_id -> {venue, normalized_symbol}.
 # Bot IDs are extracted from filename: <bot_id>.pending_order.json
 # Venue values:
-#   "ibkr"  -> LiveIbkrVenue   (PRIMARY active futures broker)
-#   "tasty" -> TastytradeVenue (SECONDARY active futures broker)
+#   "ibkr"   -> LiveIbkrVenue   (PRIMARY active futures broker)
+#   "tasty"  -> TastytradeVenue (SECONDARY futures broker; cert sandbox lacks crypto)
+#   "alpaca" -> AlpacaVenue     (ACTIVE crypto-paper broker as of 2026-05-05)
 #
 # Workspace hard rule #2: Tradovate stays DORMANT unless the operator
 # explicitly reactivates it (ETA_TRADOVATE_ENABLED=1) AND updates
@@ -15,6 +16,7 @@
 # the target venue expects:
 #   * IBKR PAXOS crypto: BTC -> BTCUSD, ETH -> ETHUSD, SOL -> SOLUSD
 #   * Tastytrade crypto: BTC -> BTCUSDT, ETH -> ETHUSDT, SOL -> SOLUSDT
+#   * Alpaca crypto:     BTC -> BTC/USD, ETH -> ETH/USD, etc. (BASE/USD form)
 #   * Futures roots (MNQ/ES/NQ/RTY/M2K/GC/MGC/CL/MCL/NG/6E/M6E) pass through unchanged
 #   * MNQ1 (month-suffixed supervisor form) collapses to MNQ on IBKR
 #
@@ -26,10 +28,17 @@ version: 1
 default:
   venue: ibkr
   symbol_overrides:
-    BTC:  { ibkr: BTCUSD,  tasty: BTCUSDT }
-    ETH:  { ibkr: ETHUSD,  tasty: ETHUSDT }
-    SOL:  { ibkr: SOLUSD,  tasty: SOLUSDT }
-    XRP:  { ibkr: XRPUSD,  tasty: XRPUSDT }
+    # IBKR PAXOS crypto inventory: BTC, ETH, SOL only (no XRP/AVAX/LINK/DOGE).
+    # Tastytrade cert sandbox crypto: pending api.support enablement (only 5 cryptos
+    # available in cert anyway: BCH/BTC/ETH/LTC/DOGE).
+    # Alpaca paper crypto: 73 pairs, all 7 of our bot bases tradeable.
+    BTC:  { ibkr: BTCUSD,  tasty: BTCUSDT,  alpaca: "BTC/USD" }
+    ETH:  { ibkr: ETHUSD,  tasty: ETHUSDT,  alpaca: "ETH/USD" }
+    SOL:  { ibkr: SOLUSD,  tasty: SOLUSDT,  alpaca: "SOL/USD" }
+    XRP:  { tasty: XRPUSDT,  alpaca: "XRP/USD" }
+    AVAX: { alpaca: "AVAX/USD" }
+    LINK: { alpaca: "LINK/USD" }
+    DOGE: { tasty: DOGEUSDT, alpaca: "DOGE/USD" }
     MNQ1: { ibkr: MNQ }
     MNQ:  { ibkr: MNQ }
     ES:   { ibkr: ES }
@@ -47,41 +56,45 @@ default:
 bots:
   # Explicit per-bot overrides. Anything not listed inherits default.venue (ibkr).
   #
-  # 2026-05-05 — crypto routing flipped to Tastytrade paper.
+  # 2026-05-05 (revised) — crypto routing flipped to Alpaca paper.
   # Reason: IBKR paper accounts cannot trade crypto (Paxos has no paper-trading
-  # product). Tastytrade paper is verified to support BTC/ETH/SOL spot.
+  # product). Tastytrade cert sandbox is wired up but the cert account doesn't
+  # have crypto trading enabled (gated behind api.support email — pending).
+  # Alpaca paper supports all 7 of our bot bases (BTC/ETH/SOL/XRP/AVAX/LINK/DOGE)
+  # with $0 setup friction; smoke fills verified end-to-end (BTC market fills
+  # at avg $81,247.80, real position 0.002175728 BTC).
   # Operator switches a specific crypto bot back to ibkr only after IBKR live
   # account is funded + crypto-enabled at the broker.
   #
   # Futures bots stay on ibkr (DUQ319869 paper).
 
-  # ── Crypto bots (Tastytrade paper) ─────────────────────────────────
-  btc_optimized:        { venue: tasty }
-  btc_hybrid:           { venue: tasty }
-  btc_regime_trend_etf: { venue: tasty }
-  btc_sage_daily_etf:   { venue: tasty }
-  btc_hybrid_sage:      { venue: tasty }
-  btc_ensemble_2of3:    { venue: tasty }
-  btc_crypto_scalp:     { venue: tasty }
-  btc_regime_trend:     { venue: tasty }
-  crypto_seed:          { venue: tasty }
-  eth_perp:             { venue: tasty }
-  eth_sweep_reclaim:    { venue: tasty }
-  eth_sage_daily:       { venue: tasty }
-  eth_compression:      { venue: tasty }
-  sol_perp:             { venue: tasty }
-  sol_directional:      { venue: tasty }
-  sol_sweep_scalp:      { venue: tasty }
-  xrp_perp:             { venue: tasty }
-  rsi_mr_btc:           { venue: tasty }
-  vwap_mr_btc:          { venue: tasty }
-  volume_profile_btc:   { venue: tasty }
-  gap_fill_btc:         { venue: tasty }
-  cross_asset_btc:      { venue: tasty }
-  funding_rate_btc:     { venue: tasty }
-  avax_sweep_reclaim:   { venue: tasty }
-  link_sweep_reclaim:   { venue: tasty }
-  doge_sweep_reclaim:   { venue: tasty }
+  # ── Crypto bots (Alpaca paper, account PA3HBV3PNWDN) ───────────────
+  btc_optimized:        { venue: alpaca }
+  btc_hybrid:           { venue: alpaca }
+  btc_regime_trend_etf: { venue: alpaca }
+  btc_sage_daily_etf:   { venue: alpaca }
+  btc_hybrid_sage:      { venue: alpaca }
+  btc_ensemble_2of3:    { venue: alpaca }
+  btc_crypto_scalp:     { venue: alpaca }
+  btc_regime_trend:     { venue: alpaca }
+  crypto_seed:          { venue: alpaca }
+  eth_perp:             { venue: alpaca }
+  eth_sweep_reclaim:    { venue: alpaca }
+  eth_sage_daily:       { venue: alpaca }
+  eth_compression:      { venue: alpaca }
+  sol_perp:             { venue: alpaca }
+  sol_directional:      { venue: alpaca }
+  sol_sweep_scalp:      { venue: alpaca }
+  xrp_perp:             { venue: alpaca }
+  rsi_mr_btc:           { venue: alpaca }
+  vwap_mr_btc:          { venue: alpaca }
+  volume_profile_btc:   { venue: alpaca }
+  gap_fill_btc:         { venue: alpaca }
+  cross_asset_btc:      { venue: alpaca }
+  funding_rate_btc:     { venue: alpaca }
+  avax_sweep_reclaim:   { venue: alpaca }
+  link_sweep_reclaim:   { venue: alpaca }
+  doge_sweep_reclaim:   { venue: alpaca }
 
   # ── Futures bots (IBKR paper, DUQ319869) ───────────────────────────
   mnq_v7:               { venue: ibkr }

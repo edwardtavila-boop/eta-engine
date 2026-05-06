@@ -40,6 +40,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Literal
 
+from eta_engine.venues.alpaca import AlpacaVenue
 from eta_engine.venues.base import OrderRequest, OrderResult, OrderStatus, VenueBase
 from eta_engine.venues.bybit import BybitVenue
 from eta_engine.venues.ibkr import IbkrClientPortalVenue as MockIbkrVenue
@@ -205,6 +206,7 @@ class SmartRouter:
         tradovate: TradovateVenue | None = None,
         ibkr: VenueBase | None = None,
         tastytrade: VenueBase | None = None,
+        alpaca: AlpacaVenue | None = None,
         preferred_crypto_venue: str = DEFAULT_CRYPTO_VENUE,
         preferred_futures_venue: str = DEFAULT_FUTURES_VENUE,
     ) -> None:
@@ -213,6 +215,7 @@ class SmartRouter:
         self.tradovate = tradovate or TradovateVenue()
         self.ibkr = ibkr or IbkrClientPortalVenue()
         self.tastytrade = tastytrade or TastytradeVenue()
+        self.alpaca = alpaca or AlpacaVenue()
         preferred_crypto_venue_norm = preferred_crypto_venue.strip().lower()
         if preferred_crypto_venue_norm not in {"bybit", "okx"}:
             raise ValueError("preferred_crypto_venue must be 'bybit' or 'okx'")
@@ -230,6 +233,7 @@ class SmartRouter:
             self.tradovate.name: CircuitBreaker(),
             self.ibkr.name: CircuitBreaker(),
             self.tastytrade.name: CircuitBreaker(),
+            self.alpaca.name: CircuitBreaker(),
         }
 
     def _venue_by_name(self, name: str) -> VenueBase | None:
@@ -240,6 +244,7 @@ class SmartRouter:
             self.tradovate.name: self.tradovate,
             self.ibkr.name: self.ibkr,
             self.tastytrade.name: self.tastytrade,
+            self.alpaca.name: self.alpaca,
         }
         # Operator-friendly aliases used in bot_broker_routing.yaml:
         aliases = {
@@ -247,6 +252,7 @@ class SmartRouter:
             "tt":        self.tastytrade,
             "ib":        self.ibkr,
             "interactivebrokers": self.ibkr,
+            "alp":       self.alpaca,
         }
         if name in lookup:
             return lookup[name]

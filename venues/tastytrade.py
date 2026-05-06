@@ -391,9 +391,11 @@ class TastytradeVenue(VenueBase):
         *,
         client_order_id: str | None = None,
     ) -> dict[str, Any]:
-        qty = int(request.qty)
-        if qty < 1:
-            raise ValueError("qty must be >= 1 for Tastytrade orders")
+        # Detect crypto from the symbol — overrides config.default_instrument_type
+        # so a single venue instance can route Future + Cryptocurrency legs.
+        instrument_type = (
+            "Cryptocurrency" if _crypto_base(request.symbol) else self.config.default_instrument_type
+        )
         order_type = _tasty_order_type(request.order_type)
         payload: dict[str, Any] = {
             "time-in-force": "Day",
@@ -401,10 +403,10 @@ class TastytradeVenue(VenueBase):
             "source": self.config.default_source,
             "legs": [
                 {
-                    "instrument-type": self.config.default_instrument_type,
-                    "symbol": _tasty_symbol(request.symbol),
+                    "instrument-type": instrument_type,
+                    "symbol": _tasty_symbol(request.symbol, instrument_type=instrument_type),
                     "action": "Buy to Open" if request.side is Side.BUY else "Sell to Close",
-                    "quantity": qty,
+                    "quantity": _tasty_quantity(request.qty, instrument_type=instrument_type),
                 },
             ],
         }
@@ -612,6 +614,56 @@ def _tasty_order_type(order_type: OrderType) -> str:
     raise ValueError(f"unsupported Tastytrade order_type={order_type!r}")
 
 
-def _tasty_symbol(symbol: str) -> str:
+# Tastytrade crypto inventory (cert sandbox only ships these 5; live adds a
+# few more such as USDC/AAVE — we still recognize SOL/AVAX/LINK/XRP so that
+# routing built around live can fail-soft on cert with a clear message).
+_TASTY_CRYPTO_BASES: frozenset[str] = frozenset(
+    {"BTC", "ETH", "BCH", "LTC", "DOGE", "SOL", "AVAX", "LINK", "XRP", "USDC", "AAVE"},
+)
+
+
+def _crypto_base(symbol: str) -> str | None:
+    """Extract the crypto base ticker, or return ``None`` if not crypto.
+
+    Accepts: ``BTC``, ``BTCUSD``, ``BTCUSDT``, ``BTC/USD``, ``BTC-USD``,
+    ``/BTC`` (degenerate), case-insensitive. Returns the canonical base
+    in upper-case (``"BTC"``).
+    """
+    raw = (symbol or "").strip().upper().lstrip("/")
+    if not raw:
+        return None
+    # Tolerate separators: BTC/USD, BTC-USD, BTC_USD
+    head = raw.split("/", 1)[0].split("-", 1)[0].split("_", 1)[0]
+    # Tolerate BTCUSD / BTCUSDT suffixes
+    for suffix in ("USDT", "USDC", "USD"):
+        if head.endswith(suffix) and len(head) > len(suffix):
+            head = head[: -len(suffix)]
+            break
+    return head if head in _TASTY_CRYPTO_BASES else None
+
+
+def _tasty_symbol(symbol: str, *, instrument_type: str = "Future") -> str:
+    """Format ``symbol`` for the Tastytrade orders API.
+
+    Crypto symbols use ``BASE/USD`` form (e.g. ``BTC/USD``). Futures keep
+    the leading-slash root form (e.g. ``/MNQM6``).
+    """
+    if instrument_type == "Cryptocurrency":
+        base = _crypto_base(symbol) or symbol.upper().strip().lstrip("/").split("/", 1)[0]
+        return f"{base}/USD"
     value = symbol.upper().strip()
     return value if value.startswith("/") else f"/{value}"
+
+
+def _tasty_quantity(qty: float, *, instrument_type: str) -> str | int:
+    """Format ``qty`` for a Tastytrade order leg.
+
+    Futures require integer quantities; crypto accepts decimals to 8 dp.
+    Returns a JSON-friendly type (``int`` or ``str``).
+    """
+    if instrument_type == "Cryptocurrency":
+        # Trim trailing zeros while preserving up to 8 dp.
+        return f"{qty:.8f}".rstrip("0").rstrip(".") or "0"
+    if qty < 1:
+        raise ValueError("qty must be >= 1 for Tastytrade futures orders")
+    return int(qty)

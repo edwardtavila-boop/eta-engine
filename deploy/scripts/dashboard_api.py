@@ -3732,12 +3732,17 @@ def list_tasks() -> dict:
 
 @app.get("/api/brokers")
 def broker_readiness() -> dict:
-    """Return the paper-broker readiness snapshot for IBKR + Tastytrade.
+    """Return the paper-broker readiness snapshot for IBKR + Tastytrade + Alpaca.
 
     Consumed by the 'Broker Paper' dashboard card to answer:
-    "are the four BTC lanes actually able to place orders right now?"
+    "which venues can actually place orders right now?"
+
+    Alpaca was added 2026-05-05 as the active crypto-paper venue while
+    Tastytrade cert sandbox crypto enablement is pending operator action
+    (api.support@tastytrade.com).
     """
     try:
+        from eta_engine.venues.alpaca import alpaca_paper_readiness
         from eta_engine.venues.ibkr import ibkr_paper_readiness
         from eta_engine.venues.tastytrade import tastytrade_paper_readiness
     except ImportError as exc:
@@ -3753,13 +3758,15 @@ def broker_readiness() -> dict:
         tasty = tastytrade_paper_readiness()
     except Exception as exc:  # noqa: BLE001
         tasty = {"adapter_available": False, "ready": False, "error": str(exc)}
+    try:
+        alpaca = alpaca_paper_readiness()
+    except Exception as exc:  # noqa: BLE001
+        alpaca = {"adapter_available": False, "ready": False, "error": str(exc)}
+    brokers = {"ibkr": ibkr, "tastytrade": tasty, "alpaca": alpaca}
     return {
-        "brokers": {
-            "ibkr": ibkr,
-            "tastytrade": tasty,
-        },
+        "brokers": brokers,
         "active_brokers": sorted(
-            name for name, report in {"ibkr": ibkr, "tastytrade": tasty}.items() if report.get("ready")
+            name for name, report in brokers.items() if report.get("ready")
         ),
     }
 
@@ -4041,6 +4048,7 @@ def all_systems_status() -> dict:
     # Brokers: try readiness checks, tolerate import errors
     ibkr_ready = False
     tasty_ready = False
+    alpaca_ready = False
     try:
         from eta_engine.venues.ibkr import ibkr_paper_readiness
 
@@ -4053,16 +4061,30 @@ def all_systems_status() -> dict:
         tasty_ready = bool(tastytrade_paper_readiness().get("ready"))
     except Exception:  # noqa: BLE001
         pass
-    if ibkr_ready and tasty_ready:
+    try:
+        from eta_engine.venues.alpaca import alpaca_paper_readiness
+
+        alpaca_ready = bool(alpaca_paper_readiness().get("ready"))
+    except Exception:  # noqa: BLE001
+        pass
+    ready_set = {
+        "ibkr": ibkr_ready,
+        "tastytrade": tasty_ready,
+        "alpaca": alpaca_ready,
+    }
+    ready_names = sorted(name for name, ok in ready_set.items() if ok)
+    # GREEN requires the two coverage-critical lanes: a futures venue
+    # (IBKR) AND a crypto venue (Alpaca, since Tastytrade cert crypto is
+    # pending support enablement). A single venue is YELLOW.
+    if ibkr_ready and alpaca_ready:
         out["brokers"] = {
             "status": "GREEN",
-            "detail": "ibkr+tastytrade ready",
+            "detail": f"ready: {','.join(ready_names)}",
         }
-    elif ibkr_ready or tasty_ready:
-        ready_one = "ibkr" if ibkr_ready else "tastytrade"
+    elif ready_names:
         out["brokers"] = {
             "status": "YELLOW",
-            "detail": f"only {ready_one} ready",
+            "detail": f"only {','.join(ready_names)} ready",
         }
     else:
         out["brokers"] = {

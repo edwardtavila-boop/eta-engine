@@ -739,15 +739,17 @@ class TestDashboardAPI:
     # Broker readiness + BTC fleet endpoints
     # ------------------------------------------------------------------ #
 
-    def test_brokers_endpoint_returns_both_readiness_reports(self, app_client):
+    def test_brokers_endpoint_returns_all_three_readiness_reports(self, app_client):
         r = app_client.get("/api/brokers")
         assert r.status_code == 200
         j = r.json()
-        assert set(j["brokers"].keys()) == {"ibkr", "tastytrade"}
-        # Both adapters must at least be importable -- they both have
+        # Alpaca was added 2026-05-05 as the active crypto-paper venue.
+        assert set(j["brokers"].keys()) == {"ibkr", "tastytrade", "alpaca"}
+        # All three adapters must at least be importable -- they all carry
         # `adapter_available=True` in their readiness output.
         assert j["brokers"]["ibkr"]["adapter_available"] is True
         assert j["brokers"]["tastytrade"]["adapter_available"] is True
+        assert j["brokers"]["alpaca"]["adapter_available"] is True
         # active_brokers is a sorted list of ready names (may be empty
         # in a test env with no creds, which is fine).
         assert isinstance(j["active_brokers"], list)
