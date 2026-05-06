@@ -224,7 +224,11 @@ class TestTastytradePaperExecution:
         posted_url, posted_body = stub.post_calls[0]
         assert posted_url.endswith("/accounts/5WT99999/orders")
         assert posted_body["order-type"] == "Market"
-        assert posted_body["legs"][0]["symbol"] == "/BTCUSD"
+        # Tastytrade crypto symbols use BASE/USD form (not the leading-slash
+        # futures form). The instrument-type-aware payload builder routes
+        # BTCUSD -> instrument-type=Cryptocurrency + symbol=BTC/USD.
+        assert posted_body["legs"][0]["symbol"] == "BTC/USD"
+        assert posted_body["legs"][0]["instrument-type"] == "Cryptocurrency"
 
     def test_place_order_degrades_on_transport_error(
         self,

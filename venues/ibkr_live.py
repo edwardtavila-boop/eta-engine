@@ -726,6 +726,47 @@ class LiveIbkrVenue(VenueBase):
                 status=OrderStatus.REJECTED,
                 raw={"venue": self.name, "reason": reason},
             )
+
+        # ── EARLY CRYPTO GUARD (before qualification) ───────────────
+        # Crypto contracts are detected via secType on the unqualified
+        # contract object — _make_contract sets secType="CRYPTO" for
+        # symbols in CRYPTO_MAP. Running the guard here short-circuits
+        # BEFORE _qualify_order_contract, which would otherwise need a
+        # live IB instance and burn a network call to discover what we
+        # already know: this account isn't crypto-enabled. Keeps the
+        # contract-less test mock path (test_ibkr_crypto_guard) green.
+        _is_crypto_early = getattr(contract, "secType", "") == "CRYPTO"
+        if _is_crypto_early:
+            _emit_crypto_guard_startup_log()
+            if not _crypto_env_enabled():
+                reason = (
+                    "crypto disabled - account lacks crypto permissions; "
+                    "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                )
+                from eta_engine.safety.idempotency import evict as _idem_evict
+                with contextlib.suppress(Exception):
+                    _idem_evict(order_id)
+                logger.info(
+                    "LiveIbkrVenue crypto pre-reject signal=%s symbol=%s "
+                    "(set ETA_IBKR_CRYPTO=1 to bypass once IBKR perms enabled)",
+                    order_id, request.symbol,
+                )
+                return OrderResult(
+                    order_id=order_id,
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": reason,
+                        "reason_code": "crypto_disabled",
+                        "no_cache": True,
+                        "legacy_reason": (
+                            "crypto disabled — account lacks crypto permissions; "
+                            "set ETA_IBKR_CRYPTO=1 once enabled at IBKR"
+                        ),
+                        "symbol": request.symbol,
+                    },
+                )
+
         try:
             contract = await _qualify_order_contract(
                 self._ib,
@@ -880,10 +921,9 @@ class LiveIbkrVenue(VenueBase):
             # Mutate the request's price so downstream paths (bracket /
             # exit single-leg) see the marketable limit and use it as
             # the parent limit price.
-            try:
+            with contextlib.suppress(Exception):
+                # pydantic may freeze the model; downstream uses local var.
                 request.price = limit_price
-            except Exception:  # noqa: BLE001 — pydantic may freeze; downstream uses local var
-                pass
             ref_price = limit_price
 
         # ── BRACKET REQUIREMENT (futures only) ────────────────────
