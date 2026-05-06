@@ -337,12 +337,19 @@ def test_readiness_summary_includes_min_cost_basis_and_supported_bases(tmp_path:
 # ---------------------------------------------------------------------------
 
 
-def test_build_payload_attaches_bracket_when_stop_and_target_present() -> None:
-    """Entry with stop+target gets order_class=bracket plus both child legs.
+def test_build_payload_no_bracket_for_crypto_even_with_stop_target() -> None:
+    """Crypto orders MUST NOT carry order_class=bracket.
 
-    Server-side OCO replaces the supervisor-memory bracket so a process
-    crash between entry fill and protective leg placement can no longer
-    leave the position naked.
+    Alpaca rejects crypto with HTTP 422
+    ``{"code":42210000,"message":"crypto orders not allowed for advanced
+    order_class: otoco"}`` if any advanced order_class is sent. Caught
+    live 2026-05-06. The supervisor's tick-level _maybe_exit path
+    manages stop/target for crypto positions instead — same pattern
+    used for IBKR PAXOS crypto, which has the same constraint.
+
+    Stop/target ARE still required on the OrderRequest (the
+    naked-entry-blocked check enforces them) so the supervisor can
+    drive its local exit logic.
     """
     venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
     req = OrderRequest(
@@ -353,21 +360,49 @@ def test_build_payload_attaches_bracket_when_stop_and_target_present() -> None:
         price=80_500.0,
         stop_price=79_000.0,
         target_price=82_000.0,
-        client_order_id="bracket-buy-1",
+        client_order_id="bracket-buy-crypto",
+    )
+
+    payload = venue.build_order_payload(req)
+
+    # Crypto path must NOT include any bracket fields.
+    assert "order_class" not in payload
+    assert "take_profit" not in payload
+    assert "stop_loss" not in payload
+    # Parent leg unchanged.
+    assert payload["symbol"] == "BTC/USD"
+    assert payload["side"] == "buy"
+    assert payload["limit_price"] == "80500.0"
+
+
+def test_build_payload_attaches_bracket_for_equity_with_stop_and_target() -> None:
+    """Equity (non-crypto) entries with stop+target DO get a server-side bracket.
+
+    Alpaca only forbids advanced order_class on crypto orders; equity
+    orders accept order_class=bracket cleanly. This pins the behavior
+    so the bracket attachment doesn't regress for the equity path
+    when the crypto exception is enforced.
+    """
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="SPY",
+        side=Side.BUY,
+        qty=10,
+        order_type=OrderType.LIMIT,
+        price=500.0,
+        stop_price=495.0,
+        target_price=510.0,
+        client_order_id="bracket-buy-equity",
     )
 
     payload = venue.build_order_payload(req)
 
     assert payload["order_class"] == "bracket"
-    # take_profit child carries a limit_price so a favorable move exits at TP.
-    assert payload["take_profit"] == {"limit_price": "82000.00"}
-    # stop_loss child carries stop_price (STP, not STP-LMT — we want
-    # guaranteed-fill on protective side, not slippage-bounded).
-    assert payload["stop_loss"] == {"stop_price": "79000.00"}
-    # Parent leg fields are unchanged by bracket attachment.
-    assert payload["symbol"] == "BTC/USD"
+    assert payload["take_profit"] == {"limit_price": "510.00"}
+    assert payload["stop_loss"] == {"stop_price": "495.00"}
+    assert payload["symbol"] == "SPY"
     assert payload["side"] == "buy"
-    assert payload["limit_price"] == "80500.0"
+    assert payload["limit_price"] == "500.0"
 
 
 def test_build_payload_no_bracket_for_reduce_only_exit() -> None:

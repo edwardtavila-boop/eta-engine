@@ -43,6 +43,68 @@ class ConnectionStatus(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class BracketStyle(StrEnum):
+    """How protective stop/target legs are attached to an entry order.
+
+    The two real-world execution styles for our active venues:
+
+    * ``SERVER_OCO`` — the broker accepts a single ``place_order`` that
+      registers the parent + STP child + LMT child as an OCO group on
+      the broker side. If the supervisor process crashes between the
+      parent fill and any subsequent code, the protective legs are
+      already at the broker. This is the IBKR live-paper futures path
+      (``_build_futures_bracket_orders``) and Alpaca's equity bracket
+      via ``order_class=bracket``.
+
+    * ``SUPERVISOR_LOCAL`` — the broker rejects advanced order classes
+      on this asset (e.g. Alpaca crypto returns HTTP 422 for any
+      non-``simple`` order_class). The entry ships as a plain market /
+      limit order; the supervisor's ``_maybe_exit`` tick-level loop
+      watches each bar and submits a ``reduce_only`` exit when the
+      live price pierces the stop or target. Stop/target are still
+      required on the OrderRequest so the supervisor knows where to
+      bail; they are NOT shipped to the broker.
+
+    A venue picks the style per (asset_class, symbol) via
+    ``bracket_style_for(symbol)``. The supervisor uses this to decide
+    whether to enable its tick-level exit watch for that bot.
+    """
+    SERVER_OCO = "server_oco"
+    SUPERVISOR_LOCAL = "supervisor_local"
+
+
+class ExecutionCapabilities(BaseModel):
+    """What an order path supports for one (venue, asset_class) pairing.
+
+    Surfaces the capabilities the supervisor needs to know to drive
+    correct lifecycle behavior. Each field mirrors a real broker-side
+    constraint we have already hit live:
+
+    * ``bracket_style`` — server-side OCO vs supervisor-local. See
+      :class:`BracketStyle`.
+    * ``min_cost_basis_usd`` — server-side notional minimum (Alpaca
+      crypto: $10; futures: 0; equity: 0). When non-zero, the venue
+      pre-checks ``qty * limit_price`` and rejects below threshold
+      with a deterministic reason.
+    * ``min_order_qty`` — fractional minimum (Alpaca crypto BTC:
+      0.000012437 from /v2/assets/BTC%2FUSD; futures: 1).
+    * ``supports_reduce_only`` — whether the broker honors the
+      ``reduce_only`` flag on an order. False means the supervisor
+      must compute the exit qty against current position before
+      submission (we do this regardless for safety, but this field
+      tells callers when the broker will silently bypass it).
+    * ``supports_session_aware_routing`` — ``True`` when the venue
+      respects the asset's primary session window for MARKET-to-LIMIT
+      conversion (IBKR via ``_in_primary_session``). Crypto venues
+      where the market is 24/7 should report ``False``.
+    """
+    bracket_style: BracketStyle
+    min_cost_basis_usd: float = 0.0
+    min_order_qty: float = 0.0
+    supports_reduce_only: bool = True
+    supports_session_aware_routing: bool = False
+
+
 class OrderRequest(BaseModel):
     """Venue-agnostic order spec."""
 
@@ -128,6 +190,29 @@ class VenueBase(ABC):
         """Best-effort order lookup for live reconciliation."""
         _ = symbol, order_id
         return None
+
+    def execution_capabilities_for(self, symbol: str) -> ExecutionCapabilities:
+        """Per-(venue, symbol) execution capability surface.
+
+        Default returns a conservative SERVER_OCO profile (matches
+        IBKR futures behavior). Venues with mixed asset classes — like
+        Alpaca, where equity supports server-side bracket but crypto
+        does not — override this to inspect the symbol and branch on
+        asset class.
+
+        The supervisor consults this to decide:
+          * Whether to enable its tick-level ``_maybe_exit`` watch for
+            that bot (only when bracket_style == SUPERVISOR_LOCAL).
+          * Whether to pre-check qty against ``min_cost_basis_usd``
+            and ``min_order_qty`` before submission.
+          * Whether to apply session-aware MARKET-to-LIMIT
+            conversion (IBKR-style RTH window check).
+
+        Default keeps existing behavior intact for venues that haven't
+        opted in yet.
+        """
+        _ = symbol
+        return ExecutionCapabilities(bracket_style=BracketStyle.SERVER_OCO)
 
     async def get_order_book(self, symbol: str, depth: int = 5) -> dict[str, Any] | None:
         """Best-effort top-of-book snapshot for live microstructure enrichment."""

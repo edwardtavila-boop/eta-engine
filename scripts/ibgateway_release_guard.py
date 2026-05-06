@@ -188,6 +188,26 @@ def run_guard(
         state["hold"] = hold.to_dict()
         return state
 
+    if not hold.active:
+        state = _base_state(
+            status="already_released",
+            action="none",
+            now=effective_now,
+            reason="fresh healthy watchdog; order-entry hold already clear",
+            operator_action_required=False,
+        )
+        state.update(
+            {
+                "healthy": True,
+                "watchdog_age_s": age_s,
+                "tws_status_path": str(tws_status_path),
+                "hold": hold.to_dict(),
+                "hold_path": str(hold_path),
+                "task_results": [],
+            },
+        )
+        return state
+
     task_results: list[JsonDict] = []
     if execute:
         write_order_entry_hold(active=False, reason=_CLEAR_REASON, path=Path(hold_path))

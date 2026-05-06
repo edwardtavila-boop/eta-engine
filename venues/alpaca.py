@@ -150,6 +150,47 @@ class AlpacaVenue(VenueBase):
     def connection_endpoint(self) -> str:
         return self.config.base_url
 
+    def execution_capabilities_for(self, symbol: str) -> "ExecutionCapabilities":
+        """Per-symbol execution capabilities for Alpaca.
+
+        Crypto vs equity differ on Alpaca in TWO meaningful ways:
+
+        1. ``bracket_style``: crypto returns HTTP 422 ``crypto orders
+           not allowed for advanced order_class: otoco`` for any
+           non-``simple`` order_class. The supervisor must drive
+           stops/targets via tick-level ``_maybe_exit`` watching. This
+           is BracketStyle.SUPERVISOR_LOCAL. Equity accepts
+           ``order_class=bracket`` cleanly — BracketStyle.SERVER_OCO.
+
+        2. ``min_cost_basis_usd``: crypto enforces $10 server-side
+           (caught live as HTTP 403 code 40310000). Equity has no
+           such floor.
+
+        Both branches: ``supports_session_aware_routing=False``
+        (Alpaca crypto is 24/7; Alpaca equity uses session via
+        ``time_in_force=day`` on the order itself).
+        """
+        from eta_engine.venues.base import BracketStyle, ExecutionCapabilities
+
+        is_crypto = bool(_alpaca_crypto_base(symbol))
+        if is_crypto:
+            return ExecutionCapabilities(
+                bracket_style=BracketStyle.SUPERVISOR_LOCAL,
+                min_cost_basis_usd=ALPACA_CRYPTO_MIN_COST_BASIS_USD,
+                min_order_qty=0.0,  # per-base min from /v2/assets is enforced server-side
+                supports_reduce_only=True,
+                supports_session_aware_routing=False,
+            )
+        # Equity path: Alpaca accepts server-side OCO via
+        # order_class=bracket. No cost-basis minimum on equity orders.
+        return ExecutionCapabilities(
+            bracket_style=BracketStyle.SERVER_OCO,
+            min_cost_basis_usd=0.0,
+            min_order_qty=1.0,  # whole-share floor for the equity path used here
+            supports_reduce_only=True,
+            supports_session_aware_routing=False,
+        )
+
     async def connect(self) -> VenueConnectionReport:
         """Connection probe.
 
@@ -475,18 +516,29 @@ class AlpacaVenue(VenueBase):
         if request.stop_price is not None and order_type in {"stop", "stop_limit"}:
             payload["stop_price"] = str(request.stop_price)
 
-        # ── BRACKET ATTACHMENT (entry orders only) ──────────────────
+        # ── BRACKET ATTACHMENT (entry orders only, EQUITY only) ────
         # When BOTH stop_price and target_price are populated AND this
-        # is NOT a reduce-only exit, attach a server-side bracket so the
-        # parent + TP + SL become an OCO group at Alpaca. The supervisor
-        # no longer has to chase post-fill bracket placement and a mid-
-        # flight crash can't leave the position naked. Mirrors the
-        # parent + STP + LMT layout that ibkr_live._build_futures_bracket_orders
-        # produces for futures.
+        # is NOT a reduce-only exit AND the symbol is NOT crypto, attach
+        # a server-side bracket so the parent + TP + SL become an OCO
+        # group at Alpaca. Mirrors the parent + STP + LMT layout that
+        # ibkr_live._build_futures_bracket_orders produces for futures.
+        #
+        # CRYPTO EXCEPTION: Alpaca rejects crypto orders with any
+        # `order_class` other than `simple` — sending `bracket`/`oto`/
+        # `oco`/`otoco` returns HTTP 422 ``{"code":42210000,"message":
+        # "crypto orders not allowed for advanced order_class: otoco"}``.
+        # Caught live 2026-05-06 when btc_optimized + eth_sage_daily
+        # entries hit the broker. For crypto, the supervisor's exit
+        # logic (``_maybe_exit`` in jarvis_strategy_supervisor.py) owns
+        # stop/target management — it watches each tick's bar and
+        # submits a reduce-only sell when the price pierces a level.
+        # That path was already in place for the IBKR-PAXOS crypto
+        # route, which has the same no-server-side-bracket constraint.
         if (
             not request.reduce_only
             and request.stop_price is not None
             and request.target_price is not None
+            and not is_crypto
         ):
             payload["order_class"] = "bracket"
             payload["take_profit"] = {

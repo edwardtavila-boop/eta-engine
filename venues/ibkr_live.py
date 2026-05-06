@@ -15,7 +15,9 @@ from datetime import UTC, datetime, time
 from typing import Any
 
 from eta_engine.venues.base import (
+    BracketStyle,
     ConnectionStatus,
+    ExecutionCapabilities,
     OrderRequest,
     OrderResult,
     OrderStatus,
@@ -526,6 +528,50 @@ class LiveIbkrVenue(VenueBase):
 
     def has_credentials(self) -> bool:
         return True
+
+    def execution_capabilities_for(self, symbol: str) -> ExecutionCapabilities:
+        """Per-symbol execution capabilities for IBKR live-paper.
+
+        IBKR's order surface is uniformly bracket-friendly across
+        futures + equity + options. Every non-reduce-only entry ships
+        as a parent-MKT/LMT + STP child + LMT child OCO group
+        (``_build_futures_bracket_orders``), so the broker holds the
+        protective legs server-side from the moment the parent fills.
+
+        Crypto on IBKR (PAXOS) is more limited — bracket attachment is
+        rejected with order-class errors and the venue's
+        ETA_IBKR_CRYPTO env-guard normally blocks crypto entries
+        entirely. We don't actively route crypto to IBKR (Alpaca owns
+        that asset class), but if a bot ever does, the supervisor's
+        local exit watch is the right path. SUPERVISOR_LOCAL for
+        crypto symbols.
+
+        Session-aware MARKET-to-LIMIT conversion (``_in_primary_session``)
+        is supported uniformly for futures.
+        """
+        sym = (symbol or "").upper().strip().lstrip("/")
+        # Strip a stable-quote suffix so BTCUSD/BTCUSDT both classify.
+        for suffix in ("USDT", "USDC", "USD"):
+            if sym.endswith(suffix) and len(sym) > len(suffix):
+                sym = sym[: -len(suffix)]
+                break
+        is_crypto = sym in CRYPTO_MAP or sym in {"BTC", "ETH", "SOL"}
+        if is_crypto:
+            return ExecutionCapabilities(
+                bracket_style=BracketStyle.SUPERVISOR_LOCAL,
+                min_cost_basis_usd=0.0,
+                min_order_qty=0.0,
+                supports_reduce_only=True,
+                supports_session_aware_routing=False,
+            )
+        # Futures (the main IBKR path) — server-side OCO + session-aware.
+        return ExecutionCapabilities(
+            bracket_style=BracketStyle.SERVER_OCO,
+            min_cost_basis_usd=0.0,
+            min_order_qty=1.0,
+            supports_reduce_only=True,
+            supports_session_aware_routing=True,
+        )
 
     def _get_lock(self) -> asyncio.Lock:
         if self._lock is None:
