@@ -71,7 +71,9 @@ logger = logging.getLogger("eta_engine.broker_router_validate")
 # ---------------------------------------------------------------------------
 
 #: Recognized venues. Kept narrow on purpose — adding a venue here means
-#: a real adapter exists in ``eta_engine.venues``.
+#: a real adapter exists in ``eta_engine.venues``. Tradovate remains DORMANT:
+#: this validator may recognize its adapter slot, but active routing must keep
+#: it disabled unless the broker dormancy mandate is updated in code and docs.
 KNOWN_VENUES: frozenset[str] = frozenset({
     "ibkr", "tastytrade", "tasty", "alpaca", "alp",
     "bybit", "okx", "tradovate",
