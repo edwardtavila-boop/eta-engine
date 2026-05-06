@@ -585,7 +585,7 @@ class TestVpsFailoverProbeUnderSyntheticState:
 
 
 class TestIbGateway1046RuntimeProbe:
-    def test_missing_gateway_install_is_red_blocker_with_install_command(self, monkeypatch) -> None:
+    def test_missing_gateway_install_is_red_blocker_with_guarded_install_command(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 
         states = {
@@ -614,7 +614,13 @@ class TestIbGateway1046RuntimeProbe:
         assert "NotSigned" in item.detail
         next_commands = item.evidence["blockers"][0]["next_commands"]
         assert "install_ibgateway_1046.ps1" in next_commands[0]
-        assert "-AllowUnsignedInstaller" in next_commands[0]
+        assert "-Install -RepairAfterInstall" in next_commands[0]
+        assert "-AllowUnsignedInstaller" not in next_commands[0]
+        assert item.evidence["allow_unsigned_requires_source_confirmation"] is True
+        assert (
+            item.evidence["blockers"][0]["evidence"]["allow_unsigned_requires_source_confirmation"]
+            is True
+        )
 
     def test_gateway_runtime_marks_done_when_api_handshake_is_healthy(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue

@@ -120,7 +120,8 @@ def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
     assert "[switch]$AllowUnsignedInstaller" in text
     assert "if ($signature.Status -ne \"Valid\" -and -not $AllowUnsignedInstaller)" in text
     assert "IB Gateway 10.46 is not installed at C:\\Jts\\ibgateway\\1046" in text
-    assert "-Install -AllowUnsignedInstaller -RepairAfterInstall" in text
+    assert "Rerun with -Install -RepairAfterInstall" in text
+    assert "-AllowUnsignedInstaller after confirming the official IBKR download source" in text
     assert "-DexecuteLauncherAction=false" in text
     assert "repair_ibgateway_vps.ps1" in text
     assert "$RepairAfterInstall" in text

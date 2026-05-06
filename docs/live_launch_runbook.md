@@ -346,6 +346,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scri
 # The helper refuses non-valid Authenticode installers unless explicitly allowed.
 # Only use -AllowUnsignedInstaller after confirming the official IBKR download source.
 # Audit-only mode now marks operator_action_required=true when 10.46 is absent.
+.\eta_engine\deploy\scripts\install_ibgateway_1046.ps1 -Install -RepairAfterInstall
+
+# If the guarded install stops on a non-valid Authenticode result, confirm the
+# installer came from the official IBKR download source before using this override:
 .\eta_engine\deploy\scripts\install_ibgateway_1046.ps1 -Install -AllowUnsignedInstaller -RepairAfterInstall
 python -m eta_engine.scripts.ibgateway_reauth_controller
 ```

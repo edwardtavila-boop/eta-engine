@@ -100,8 +100,8 @@ try {
         $result.operator_action_required = $true
         $result.operator_action = (
             "IB Gateway 10.46 is not installed at C:\Jts\ibgateway\1046. " +
-            "Confirm the official IBKR installer source, then rerun with " +
-            "-Install -AllowUnsignedInstaller -RepairAfterInstall."
+            "Rerun with -Install -RepairAfterInstall; only add " +
+            "-AllowUnsignedInstaller after confirming the official IBKR download source."
         )
     }
 

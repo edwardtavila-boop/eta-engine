@@ -923,20 +923,31 @@ class ExecutionRouter:
 
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
+            # broker_router route bypasses ETA_PAPER_LIVE_ALLOWED_SYMBOLS
+            # entirely. The routing yaml is the source of truth for
+            # which (bot, symbol) pairs go where; the allowlist was a
+            # belt-and-suspenders for the direct_ibkr path before
+            # multi-broker routing existed. Applying it on broker_router
+            # would block crypto bots whose symbols (BTC/ETH/...) are
+            # not in the allowlist that's curated for IBKR futures.
+            if _route in {"broker_router", "pending_file", "pending"}:
+                self._write_pending_order(bot, rec)
+                return rec
+            # ── direct_ibkr path ──────────────────────────────────
+            # Now the allowlist applies — direct_ibkr only handles the
+            # operator-curated futures set the IBKR account is
+            # provisioned for.
             _allowed_symbols = _paper_live_allowed_symbols()
             if not _paper_live_symbol_allowed(rec.symbol, _allowed_symbols):
                 logger.warning(
-                    "%s broker route SKIPPED: %s not in %s=%s",
+                    "%s direct_ibkr route SKIPPED: %s not in %s=%s",
                     bot.bot_id,
                     rec.symbol,
                     _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
                     ",".join(sorted(_allowed_symbols or ())),
                 )
-                _rollback_recorded_entry("symbol_not_allowed_for_broker_route")
+                _rollback_recorded_entry("symbol_not_allowed_for_direct_ibkr_route")
                 return None
-            if _route in {"broker_router", "pending_file", "pending"}:
-                self._write_pending_order(bot, rec)
-                return rec
             if _route not in {"direct_ibkr", "direct", "ibkr"}:
                 logger.warning(
                     "unknown ETA_PAPER_LIVE_ORDER_ROUTE=%r; using direct_ibkr",

@@ -169,9 +169,18 @@ def test_router_paper_live_broker_router_route_writes_pending(tmp_path: Path) ->
     assert pending.exists()
 
 
-def test_router_paper_live_broker_router_honors_allowed_symbols(
+def test_router_paper_live_broker_router_bypasses_allowed_symbols(
     tmp_path: Path, monkeypatch,
 ) -> None:
+    """ETA_PAPER_LIVE_ALLOWED_SYMBOLS is now a direct_ibkr-only gate.
+
+    The broker_router route consults the routing yaml as the source of
+    truth for which (bot, symbol) pairs go where. Applying the
+    allowlist on broker_router would block crypto bots whose symbols
+    aren't in the operator-curated futures set — which is exactly the
+    bug we hit live (BTC entries from btc_optimized routed to alpaca
+    were rejected because BTC wasn't in the futures allowlist).
+    """
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
         ExecutionRouter,
@@ -192,8 +201,37 @@ def test_router_paper_live_broker_router_honors_allowed_symbols(
         bot=bot, signal_id="s1", side="BUY", bar={"close": 100.0}, size_mult=1.0,
     )
 
+    # broker_router route writes the pending_order JSON regardless of
+    # the legacy allowlist; routing yaml decides where it actually goes.
+    assert rec is not None
+    assert (tmp_path / "crypto_live_paused.pending_order.json").exists()
+
+
+def test_router_paper_live_direct_ibkr_still_honors_allowed_symbols(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """The allowlist remains a hard gate on the direct_ibkr path."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="crypto_live_paused", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot, signal_id="s1", side="BUY", bar={"close": 100.0}, size_mult=1.0,
+    )
+
     assert rec is None
-    assert not (tmp_path / "crypto_live_paused.pending_order.json").exists()
     assert bot.open_position is None
 
 

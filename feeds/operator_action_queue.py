@@ -710,7 +710,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
             (
                 "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
                 ".\\eta_engine\\deploy\\scripts\\install_ibgateway_1046.ps1 "
-                "-Install -AllowUnsignedInstaller -RepairAfterInstall"
+                "-Install -RepairAfterInstall"
             ),
         ]
         severity = "red"
@@ -749,6 +749,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
         "repair": repair,
         "reauth": reauth,
         "tws_watchdog": tws,
+        "allow_unsigned_requires_source_confirmation": True,
         "blockers": [
             {
                 "name": "ibgateway_1046_runtime",
@@ -759,6 +760,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
                     "task_canonical": task_canonical,
                     "tws_healthy": tws_healthy,
                     "handshake_ok": handshake_ok,
+                    "allow_unsigned_requires_source_confirmation": True,
                 },
             },
         ],
