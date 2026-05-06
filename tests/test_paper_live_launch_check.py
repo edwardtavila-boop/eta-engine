@@ -216,6 +216,25 @@ def test_stale_launch_data_warns_without_blocking(monkeypatch) -> None:
     assert result["evidence"]["data_freshness"]["dataset_key"] == "MNQ1/5m/history"
 
 
+def test_anchor_sweep_kind_is_resolvable(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="nq_anchor_sweep",
+        strategy_id="nq_anchor_sweep_v1",
+        strategy_kind="anchor_sweep",
+        symbol="NQ1",
+        timeframe="5m",
+        extras={"promotion_status": "promoted"},
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_load_baseline_entry", lambda *_: {"strategy_id": "nq_anchor_sweep_v1"})
+
+    result = mod._audit_bot(assignment)
+
+    assert result["status"] == "READY"
+    assert not any(str(issue).startswith("unknown strategy_kind") for issue in result["issues"])
+
+
 def test_missing_critical_support_feed_blocks(monkeypatch) -> None:
     assignment = SimpleNamespace(
         bot_id="nq_futures",

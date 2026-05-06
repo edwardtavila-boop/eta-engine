@@ -61,6 +61,7 @@ _RESOLVABLE_KINDS: frozenset[str] = frozenset({
     "compression_breakout", "sweep_reclaim",
     "confluence_scorecard", "cross_asset_divergence", "funding_rate",
     "rsi_mean_reversion", "vwap_reversion", "volume_profile", "mtf_scalp",
+    "anchor_sweep",
 })
 _SHADOW_ONLY_STATUSES: frozenset[str] = frozenset({
     "shadow_benchmark",
