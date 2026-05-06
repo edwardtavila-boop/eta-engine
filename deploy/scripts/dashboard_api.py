@@ -1011,12 +1011,17 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     bots_dir = state_dir / "bots"
     supervisor_hb = state_dir / "jarvis_intel" / "supervisor" / "heartbeat.json"
     supervisor_liveness = _supervisor_liveness_snapshot(state_dir, server_ts=server_ts)
+    order_entry_hold = _order_entry_hold_snapshot({})
+    order_entry_hold_active = bool(order_entry_hold.get("active"))
+    order_entry_hold_reason = str(order_entry_hold.get("reason") or "order_entry_hold")
     warnings: list[str] = []
 
     if not bots_dir.exists():
         warnings.append(f"missing bot status directory: {bots_dir}")
     if not supervisor_hb.exists():
         warnings.append(f"missing JARVIS supervisor heartbeat: {supervisor_hb}")
+    if order_entry_hold_active:
+        warnings.append(f"order_entry_hold: {order_entry_hold_reason}")
 
     mode = str(runtime.get("mode") or "").strip()
     detail = str(runtime.get("detail") or "").strip()
@@ -1053,6 +1058,9 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         status = "empty"
         line = "No live ETA bot roster is publishing into the canonical state directory."
 
+    if order_entry_hold_active:
+        line = f"Paper-live execution is held: {order_entry_hold_reason}. {line}"
+
     return {
         "title": CANONICAL_BOT_FLEET_TITLE,
         **_dashboard_contract(),
@@ -1066,6 +1074,7 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         "supervisor_liveness": supervisor_liveness,
         "truth_status": status,
         "truth_summary_line": line,
+        "truth_execution_hold": order_entry_hold if order_entry_hold_active else {},
         "truth_warnings": warnings,
         "truth_checked_at": server_ts,
     }

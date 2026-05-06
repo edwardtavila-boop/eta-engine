@@ -1413,6 +1413,66 @@ class TestDashboardAPI:
         assert data["supervisor_liveness"]["keepalive_fresh"] is True
         assert data["supervisor_liveness"]["main_heartbeat_fresh"] is False
 
+    def test_bot_fleet_truth_summary_prioritizes_active_order_hold_when_roster_stale(
+        self,
+        app_client,
+    ):
+        """A stale roster should still lead with the active execution hold."""
+        import json
+        import os
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        stale_ts = (datetime.now(UTC) - timedelta(minutes=20)).isoformat()
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": stale_ts,
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_stale",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": None,
+                            "last_bar_ts": stale_ts,
+                        },
+                    ],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (state / "order_entry_hold.json").write_text(
+            json.dumps(
+                {
+                    "active": True,
+                    "reason": "ibgateway_waiting_for_manual_login_or_2fa",
+                    "operator": "codex",
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["truth_status"] == "stale"
+        assert data["truth_execution_hold"]["reason"] == "ibgateway_waiting_for_manual_login_or_2fa"
+        assert data["truth_summary_line"].startswith(
+            "Paper-live execution is held: ibgateway_waiting_for_manual_login_or_2fa"
+        )
+        assert "none have a fresh heartbeat" in data["truth_summary_line"]
+        assert "order_entry_hold: ibgateway_waiting_for_manual_login_or_2fa" in data["truth_warnings"]
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,
