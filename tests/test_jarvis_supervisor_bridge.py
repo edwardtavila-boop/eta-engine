@@ -103,6 +103,9 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["today"]["losses"] == 0
     assert mnq["today"]["pnl"] == 1.5
     assert mnq["source"] == "jarvis_strategy_supervisor"
+    assert mnq["updated_at"] == "2026-04-28T12:00:00+00:00"
+    assert mnq["heartbeat_ts"] == "2026-04-28T12:00:00+00:00"
+    assert mnq["last_signal_ts"] == "2026-04-28T12:00:00+00:00"
     assert mnq["last_jarvis_verdict"] == "APPROVED"
     assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
     assert mnq["launch_lane"] == "live_preflight"

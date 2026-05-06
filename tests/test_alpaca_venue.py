@@ -330,3 +330,126 @@ def test_readiness_summary_includes_min_cost_basis_and_supported_bases(tmp_path:
     bases = set(summary["supported_crypto_bases"])
     for required in ("BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE"):
         assert required in bases, f"{required} missing from alpaca supported bases"
+
+
+# ---------------------------------------------------------------------------
+# Bracket attachment (server-side OCO via order_class=bracket)
+# ---------------------------------------------------------------------------
+
+
+def test_build_payload_attaches_bracket_when_stop_and_target_present() -> None:
+    """Entry with stop+target gets order_class=bracket plus both child legs.
+
+    Server-side OCO replaces the supervisor-memory bracket so a process
+    crash between entry fill and protective leg placement can no longer
+    leave the position naked.
+    """
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.001,
+        order_type=OrderType.LIMIT,
+        price=80_500.0,
+        stop_price=79_000.0,
+        target_price=82_000.0,
+        client_order_id="bracket-buy-1",
+    )
+
+    payload = venue.build_order_payload(req)
+
+    assert payload["order_class"] == "bracket"
+    # take_profit child carries a limit_price so a favorable move exits at TP.
+    assert payload["take_profit"] == {"limit_price": "82000.00"}
+    # stop_loss child carries stop_price (STP, not STP-LMT — we want
+    # guaranteed-fill on protective side, not slippage-bounded).
+    assert payload["stop_loss"] == {"stop_price": "79000.00"}
+    # Parent leg fields are unchanged by bracket attachment.
+    assert payload["symbol"] == "BTC/USD"
+    assert payload["side"] == "buy"
+    assert payload["limit_price"] == "80500.0"
+
+
+def test_build_payload_no_bracket_for_reduce_only_exit() -> None:
+    """Exits (reduce_only=True) must NOT attach a bracket.
+
+    A bracket on an exit would either reject server-side (Alpaca rejects
+    order_class=bracket on reduce_only) or, worse, place fresh OCO
+    siblings that could re-open the position. Exit orders close the
+    position with a single bare leg.
+    """
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.SELL,
+        qty=0.001,
+        order_type=OrderType.MARKET,
+        # Even if stop/target somehow leak onto an exit, do not attach.
+        stop_price=79_000.0,
+        target_price=82_000.0,
+        reduce_only=True,
+        client_order_id="exit-1",
+    )
+
+    payload = venue.build_order_payload(req)
+
+    assert "order_class" not in payload
+    assert "take_profit" not in payload
+    assert "stop_loss" not in payload
+
+
+def test_place_order_rejects_naked_entry() -> None:
+    """Non-reduce-only entries without bracket fields must be rejected.
+
+    Mirrors the IBKR live-venue safety contract from
+    eta_engine/venues/base.py:OrderRequest. The supervisor MUST always
+    set stop_price + target_price on entries; if they are missing, the
+    venue layer fails closed rather than placing a naked position.
+    """
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.001,
+        order_type=OrderType.LIMIT,
+        price=80_500.0,
+        # No stop_price / target_price → naked entry.
+        client_order_id="naked-entry",
+    )
+
+    result = asyncio.run(venue.place_order(req))
+
+    assert result.status is OrderStatus.REJECTED
+    assert result.raw["reason"] == "naked_entry_blocked"
+    assert result.raw["stop_price"] is None
+    assert result.raw["target_price"] is None
+
+
+def test_bracket_geometry_buy_validates_stop_below_entry_target_above() -> None:
+    """Invalid BUY bracket (stop above entry, target below) is rejected.
+
+    A BUY bracket must satisfy stop < entry < target; otherwise the STP
+    converts to a MKT immediately on submission (stop already breached)
+    and the TP fills the moment price ticks up to entry — a guaranteed
+    losing round-trip. Catch the inversion before POST so the operator
+    gets a deterministic reject instead of a torn-up position.
+    """
+    venue = AlpacaVenue(AlpacaConfig(api_key_id="PK1", api_secret_key="SECRET1"))
+    # BUY with stop ABOVE entry and target BELOW entry — completely inverted.
+    req = OrderRequest(
+        symbol="BTC",
+        side=Side.BUY,
+        qty=0.001,
+        order_type=OrderType.LIMIT,
+        price=80_500.0,
+        stop_price=82_000.0,   # WRONG: should be below entry
+        target_price=79_000.0,  # WRONG: should be above entry
+        client_order_id="bad-buy-bracket",
+    )
+
+    result = asyncio.run(venue.place_order(req))
+
+    assert result.status is OrderStatus.REJECTED
+    assert result.raw["reason"] == "bracket_geometry_invalid"
+    assert result.raw["side"] == "BUY"
+    assert "stop < entry < target" in result.raw["detail"]

@@ -202,6 +202,57 @@ def test_router_paper_live_order_entry_hold_blocks_before_position(
     assert not (tmp_path / "held.pending_order.json").exists()
 
 
+def test_router_paper_live_direct_reject_rolls_back_position(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="paperlive",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50000.0,
+    )
+
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: object())
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_args, **_kwargs: OrderResult(
+            order_id="sig-reject",
+            status=OrderStatus.REJECTED,
+            raw={
+                "ibkr_order_id": 30,
+                "reason": "IBKR submission unconfirmed after confirm window",
+            },
+        ),
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-reject",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is None
+    assert bot.open_position is None
+    assert bot.n_entries == 0
+
+
 def test_write_pending_order_includes_brackets_when_available(
     tmp_path: Path,
 ) -> None:

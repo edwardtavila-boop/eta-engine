@@ -487,7 +487,7 @@ class TestDashboardAPI:
         assert data["cards"]["summary"]["stale"] == 0
         assert data["bot_fleet"]["bot_total"] >= 0
         assert data["bot_fleet"]["confirmed_bots"] == 0
-        assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live"}
+        assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live", "working"}
         if data["bot_fleet"]["bot_total"]:
             assert data["bot_fleet"]["truth_summary_line"]
         assert data["equity"]["source"] in {
@@ -1314,6 +1314,105 @@ class TestDashboardAPI:
             "source_freshness",
         }
 
+    def test_supervisor_heartbeat_freshness_is_not_last_signal_freshness(self, app_client):
+        """A quiet bot should stay live when the supervisor heartbeat is fresh."""
+        from datetime import UTC, datetime, timedelta
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        old_signal = (now - timedelta(minutes=20)).isoformat()
+        hb_ts = now.isoformat()
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": hb_ts,
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_quiet",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": None,
+                            "last_bar_ts": old_signal,
+                        },
+                    ],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        row = next(b for b in data["bots"] if b["name"] == "mnq_quiet")
+        assert data["truth_status"] == "live"
+        assert row["heartbeat_ts"] == hb_ts
+        assert row["heartbeat_age_s"] <= 10
+        assert row["last_signal_ts"] == old_signal
+        assert row["last_signal_age_s"] >= 20 * 60
+
+    def test_bot_fleet_reports_working_when_keepalive_is_fresh_but_main_snapshot_stale(
+        self,
+        app_client,
+    ):
+        """Keepalive prevents a busy supervisor tick from being shown as dead/stale."""
+        from datetime import UTC, datetime, timedelta
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        stale_ts = (now - timedelta(minutes=20)).isoformat()
+        keepalive_ts = now.isoformat()
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": stale_ts,
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_busy",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "direction": "long",
+                            "n_entries": 0,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": None,
+                            "last_bar_ts": stale_ts,
+                        },
+                    ],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (sup_dir / "heartbeat_keepalive.json").write_text(
+            json.dumps({"keepalive_ts": keepalive_ts}),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["truth_status"] == "working"
+        assert "supervisor process is alive" in data["truth_summary_line"]
+        assert data["supervisor_liveness"]["keepalive_fresh"] is True
+        assert data["supervisor_liveness"]["main_heartbeat_fresh"] is False
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,
@@ -1545,7 +1644,7 @@ class TestDashboardAPI:
         assert broker_router["processing_count"] == 1
         assert broker_router["failed_count"] == 1
         assert broker_router["active_blocker_count"] == 2
-        assert "historical_failed_orders" in broker_router["degraded_reasons"]
+        assert "historical_failed_orders" in broker_router["historical_reasons"]
         assert broker_router["fill_results_count"] == 1
         assert broker_router["result_status_counts"]["REJECTED"] == 1
         assert broker_router["latest_result"]["bot_id"] == "mnq_futures_sage"
@@ -1553,8 +1652,8 @@ class TestDashboardAPI:
         assert broker_router["latest_failure"]["attempts"] == 3
         assert broker_router["latest_failure"]["last_reject_reason"] == "venue=ibkr rejected order_id=sig-reject"
 
-    def test_bot_fleet_treats_historical_router_rejects_as_degraded(self, app_client):
-        """Old rejected router artifacts should not masquerade as an active block."""
+    def test_bot_fleet_treats_historical_router_rejects_as_history(self, app_client):
+        """Old rejected router artifacts should not masquerade as active degradation."""
         import json
         import os
         from pathlib import Path
@@ -1603,16 +1702,56 @@ class TestDashboardAPI:
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
         broker_router = r.json()["broker_router"]
-        assert broker_router["status"] == "degraded"
+        assert broker_router["status"] == "ok"
         assert broker_router["active_blocker_count"] == 0
+        assert broker_router["degraded_reasons"] == []
         assert broker_router["failed_count"] == 1
         assert broker_router["quarantine_count"] == 1
         assert broker_router["result_status_counts"]["REJECTED"] == 1
-        assert broker_router["degraded_reasons"] == [
+        assert broker_router["historical_reasons"] == [
             "historical_failed_orders",
             "historical_rejected_results",
             "quarantined_orders",
         ]
+
+    def test_bot_fleet_surfaces_order_hold_before_old_blocked_files(self, app_client):
+        """A live order-entry hold is the actionable router state."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        blocked_dir = router / "blocked"
+        blocked_dir.mkdir(parents=True, exist_ok=True)
+        (blocked_dir / "old.pending_order.json").write_text(
+            json.dumps({"signal_id": "old"}),
+            encoding="utf-8",
+        )
+        (router / "broker_router_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-05T12:59:00+00:00",
+                    "last_poll_ts": "2026-05-05T12:59:00+00:00",
+                    "counts": {"held": 1},
+                    "order_entry_hold": {
+                        "active": True,
+                        "reason": "ibkr_pending_submit_unconfirmed",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        broker_router = r.json()["broker_router"]
+        assert broker_router["status"] == "held"
+        assert broker_router["blocked_count"] == 1
+        assert broker_router["active_blocker_count"] == 0
+        assert broker_router["order_entry_hold"]["reason"] == "ibkr_pending_submit_unconfirmed"
+        assert broker_router["degraded_reasons"] == ["order_entry_hold"]
+        assert "historical_blocked_orders" in broker_router["historical_reasons"]
 
     def test_live_fills_include_ibkr_execution_snapshot_and_filter_pending_router_rows(self, app_client):
         """Live fill stats use real IBKR executions, not PendingSubmit router audit rows."""

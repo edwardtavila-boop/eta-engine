@@ -239,6 +239,12 @@ class AlpacaVenue(VenueBase):
         Pre-checks (deterministic rejects, no network round-trip):
           * Credentials configured.
           * Crypto cost basis >= ALPACA_CRYPTO_MIN_COST_BASIS_USD.
+          * Non-reduce-only entries MUST have stop_price + target_price
+            (bracket attachment). Naked entries are rejected at this
+            layer; mirrors the IBKR live-venue safety contract.
+          * Bracket geometry: stop must sit on the loss side of entry
+            and target on the profit side, otherwise the broker would
+            either reject or fill instantly into a worse position.
 
         Network path:
           * POST /v2/orders. On non-2xx, the HTTP body is captured into
@@ -270,6 +276,57 @@ class AlpacaVenue(VenueBase):
                         "est_cost_basis_usd": round(est_cost_basis, 4),
                         "qty": float(request.qty),
                         "limit_price": float(request.price),
+                    },
+                )
+
+        # ── BRACKET REQUIREMENT (non-reduce-only entries only) ──────────
+        # Mirror the IBKR live-venue safety contract: an entry order must
+        # carry both stop_price and target_price so the broker holds the
+        # OCO siblings server-side. If the supervisor crashes between the
+        # entry fill and the bracket attach, the position would otherwise
+        # be naked at Alpaca with no automatic stop. Reduce-only orders
+        # are EXITS — they intentionally bypass this check.
+        if not request.reduce_only:
+            stop_p = request.stop_price
+            target_p = request.target_price
+            if stop_p is None or target_p is None:
+                return OrderResult(
+                    order_id=self.idempotency_key(request),
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": "naked_entry_blocked",
+                        "stop_price": stop_p,
+                        "target_price": target_p,
+                        "symbol": request.symbol,
+                    },
+                )
+            # Geometry check: the OCO siblings must sit on the correct
+            # side of the entry reference price. For BUY: stop < entry
+            # < target. For SELL: target < entry < stop. Without this,
+            # Alpaca rejects the bracket server-side ("invalid order
+            # legs") and the operator sees the failure only after the
+            # parent fills — by which point the position is already on
+            # the books with no protection.
+            ref_price = request.price
+            geometry_error = _validate_bracket_geometry(
+                side=request.side,
+                ref_price=ref_price,
+                stop_price=stop_p,
+                target_price=target_p,
+            )
+            if geometry_error is not None:
+                return OrderResult(
+                    order_id=self.idempotency_key(request),
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": "bracket_geometry_invalid",
+                        "detail": geometry_error,
+                        "side": request.side.value,
+                        "ref_price": ref_price,
+                        "stop_price": stop_p,
+                        "target_price": target_p,
                     },
                 )
 
@@ -417,6 +474,32 @@ class AlpacaVenue(VenueBase):
             payload["limit_price"] = str(request.price)
         if request.stop_price is not None and order_type in {"stop", "stop_limit"}:
             payload["stop_price"] = str(request.stop_price)
+
+        # ── BRACKET ATTACHMENT (entry orders only) ──────────────────
+        # When BOTH stop_price and target_price are populated AND this
+        # is NOT a reduce-only exit, attach a server-side bracket so the
+        # parent + TP + SL become an OCO group at Alpaca. The supervisor
+        # no longer has to chase post-fill bracket placement and a mid-
+        # flight crash can't leave the position naked. Mirrors the
+        # parent + STP + LMT layout that ibkr_live._build_futures_bracket_orders
+        # produces for futures.
+        if (
+            not request.reduce_only
+            and request.stop_price is not None
+            and request.target_price is not None
+        ):
+            payload["order_class"] = "bracket"
+            payload["take_profit"] = {
+                "limit_price": _format_alpaca_price(float(request.target_price)),
+            }
+            # Alpaca's stop_loss leg accepts an optional limit_price to
+            # cap slippage on the protective side. We deliberately omit
+            # it — sending only stop_price gives a STP (market on stop)
+            # which always exits the position rather than risking a
+            # missed protective fill if price gaps through the limit.
+            payload["stop_loss"] = {
+                "stop_price": _format_alpaca_price(float(request.stop_price)),
+            }
         return payload
 
     # ------------------------------------------------------------------
@@ -624,6 +707,64 @@ def _alpaca_order_type(order_type: OrderType) -> str:
     if order_type in {OrderType.LIMIT, OrderType.POST_ONLY}:
         return "limit"
     raise ValueError(f"unsupported Alpaca order_type={order_type!r}")
+
+
+def _format_alpaca_price(price: float) -> str:
+    """Format a USD price for an Alpaca bracket child leg.
+
+    Alpaca accepts string-encoded prices on bracket children. Two cents
+    of precision is plenty for crypto bracket levels (BTC at $80k uses
+    full cents anyway) and keeps the JSON terse. The IBKR live venue
+    rounds bracket levels at the strategy layer, so by this point the
+    price is already an exit-quality number — we just stringify it.
+    """
+    return f"{float(price):.2f}"
+
+
+def _validate_bracket_geometry(
+    *,
+    side: Side,
+    ref_price: float | None,
+    stop_price: float,
+    target_price: float,
+) -> str | None:
+    """Sanity-check that the bracket OCO siblings sit on the right side.
+
+    Returns ``None`` when the geometry is valid (or when ``ref_price``
+    is ``None`` so we cannot reason about it — Alpaca will then enforce
+    server-side). Returns a human-readable detail string when the
+    bracket would invert into an instant-fill or broker-reject.
+
+    Rules:
+        BUY:  stop_price < ref_price < target_price
+        SELL: target_price < ref_price < stop_price
+
+    Equality on either side counts as invalid: a STP touching the entry
+    converts to MKT immediately and a TP at entry would close before
+    the position could ever profit.
+    """
+    if ref_price is None:
+        # Market-entry brackets without a reference price: defer to
+        # Alpaca's server-side validation. We could instead require a
+        # ref_price for all brackets, but that would force the supervisor
+        # to pass a working last-trade as price= even for MKT entries.
+        return None
+    if stop_price <= 0 or target_price <= 0:
+        return f"non-positive bracket level (stop={stop_price}, target={target_price})"
+    ref = float(ref_price)
+    if side is Side.BUY:
+        if not (stop_price < ref < target_price):
+            return (
+                f"BUY bracket requires stop < entry < target; got "
+                f"stop={stop_price}, entry={ref}, target={target_price}"
+            )
+    else:  # Side.SELL
+        if not (target_price < ref < stop_price):
+            return (
+                f"SELL bracket requires target < entry < stop; got "
+                f"target={target_price}, entry={ref}, stop={stop_price}"
+            )
+    return None
 
 
 # ---------------------------------------------------------------------------

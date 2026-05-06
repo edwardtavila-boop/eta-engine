@@ -207,6 +207,8 @@ class TestStatusPage:
         assert "broker_gateway" in html
         assert "gateway_crash" in html
         assert "broker_router" in html
+        assert "liveModes" in html
+        assert "historical_reasons" in html or "history:" in html
 
         # Status indicator + clock (live freshness cues)
         assert 'id="statusDot"' in html

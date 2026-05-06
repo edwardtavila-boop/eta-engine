@@ -53,13 +53,14 @@ def test_register_task_uses_eta_engine_pending_inbox() -> None:
     )
     text = script.read_text(encoding="utf-8")
     assert (
-        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\eta_engine\docs\btc_live\broker_fleet"'
+        r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router\pending"'
         in text
     )
     assert (
         r'"ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\docs\btc_live\broker_fleet"'
         not in text
     )
+    assert r"docs\btc_live\broker_fleet" not in text
 
 
 # ---------------------------------------------------------------------------

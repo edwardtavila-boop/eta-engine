@@ -220,6 +220,20 @@ class SupervisorConfig:
             "ETA_PAPER_LIVE_ORDER_ROUTE", "direct_ibkr",
         ).strip().lower(),
     )
+    # Broker-router order inbox. Keep pending order files in canonical
+    # runtime state, not mixed into generated broker-fleet status reports.
+    broker_router_pending_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv(
+                "ETA_BROKER_ROUTER_PENDING_DIR",
+                str(
+                    workspace_roots.ETA_RUNTIME_STATE_DIR
+                    / "router"
+                    / "pending"
+                ),
+            ),
+        ),
+    )
 
 
 # ─── Bot wrapper ──────────────────────────────────────────────────
@@ -250,6 +264,16 @@ class BotInstance:
     # show NONE, without tailing the supervisor log. Empty after a
     # successful consult — never carry stale diagnostic forward.
     last_jarvis_verdict_reason: str = ""
+    # Broker-reject backpressure counter — incremented every time a
+    # paper_live/live broker submission either returns a non-success
+    # status OR raises. Reset to 0 on a successful broker fill. The
+    # supervisor surfaces this in the heartbeat so the operator can
+    # see when one bot is repeatedly failing at the broker; downstream
+    # circuit-breakers can also gate further entries when it crosses a
+    # threshold. See submit_entry — the field MUST stay coherent with
+    # bot.open_position (no phantom open positions when the broker
+    # rejected).
+    consecutive_broker_rejects: int = 0
     sage_bars: deque = field(default_factory=lambda: deque(maxlen=200))
 
     def to_state(self, *, mode: str | None = None) -> dict:
@@ -415,10 +439,15 @@ _LIVE_IBKR_VENUE: Any | None = None
 
 def _get_live_ibkr_venue() -> Any:  # noqa: ANN401 — LiveIbkrVenue not import-time available
     global _LIVE_IBKR_VENUE
-    if _LIVE_IBKR_VENUE is None:
-        from eta_engine.venues.ibkr_live import LiveIbkrVenue
-        _LIVE_IBKR_VENUE = LiveIbkrVenue()
-    return _LIVE_IBKR_VENUE
+    # Lock the singleton init so a concurrent first-tick storm with N
+    # bots can't race two threads through the None check and create
+    # multiple TWS connections. Subsequent calls take the lock briefly
+    # but return the cached instance immediately.
+    with _LIVE_IBKR_LOCK:
+        if _LIVE_IBKR_VENUE is None:
+            from eta_engine.venues.ibkr_live import LiveIbkrVenue
+            _LIVE_IBKR_VENUE = LiveIbkrVenue()
+        return _LIVE_IBKR_VENUE
 
 
 # Symbol → instrument-class lookup. Used by sage cross-asset peer wiring
@@ -434,6 +463,36 @@ _FUTURES_ROOTS = frozenset({
 _PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 
 
+# Per-order contract caps (absolute hard ceiling, applied AFTER budget cap).
+# Even a budget-correct sizing must not exceed these — they are the last
+# line of defense against malformed bars / wrong-multiplier bugs. A
+# malformed bar that produces ref_price ≈ 1e-9 (the floor used in
+# submit_entry) yields a 5-billion-unit qty before any budget cap can
+# intervene; this dict catches that pathology after the budget cap.
+_MAX_QTY_PER_ORDER: dict[str, float] = {
+    # Futures (integer contracts): generous-but-bounded
+    "MNQ": 5, "NQ": 2, "ES": 2, "MES": 5, "RTY": 3, "M2K": 5,
+    "MBT": 3, "MET": 3,
+    "CL": 3, "MCL": 5, "NG": 3,
+    "GC": 2, "MGC": 5,
+    "ZN": 3, "ZB": 3,
+    "6E": 3, "M6E": 5,
+    # Crypto (fractional): cap at $5K notional-equivalent baseline
+    # (exact value computed by venue from ref_price * qty downstream)
+    "BTC": 0.1, "ETH": 5.0, "SOL": 200.0, "XRP": 50_000.0,
+    "AVAX": 200.0, "LINK": 1000.0, "DOGE": 100_000.0,
+}
+_MAX_QTY_DEFAULT_FUTURES = 3
+_MAX_QTY_DEFAULT_CRYPTO = 0.5  # crypto base unit, conservative
+
+
+# Sent-signal log filename for restart-safe deduplication. Lives under
+# the supervisor state_dir; the dedup window is 24h (older entries are
+# ignored to keep the file from growing unbounded).
+_SENT_SIGNALS_LOG_FILENAME = "sent_signals.jsonl"
+_SENT_SIGNALS_DEDUP_HOURS = 24
+
+
 def _classify_symbol(symbol: str) -> str:
     """Return one of {'crypto', 'futures', 'other'} for a bot symbol."""
     s = symbol.upper().lstrip("/").rstrip("0123456789")
@@ -442,6 +501,28 @@ def _classify_symbol(symbol: str) -> str:
     if s in _FUTURES_ROOTS:
         return "futures"
     return "other"
+
+
+def _round_to_tick(price: float, symbol: str) -> float:
+    """Round price to the symbol's tick grid.
+
+    Returns price unchanged when the spec lookup fails or the spec
+    reports a non-positive tick size. The supervisor was previously
+    writing un-rounded prices into pending_order JSON and into
+    ``bot.open_position["bracket_stop"|"bracket_target"]`` — IBKR
+    silently quantized the order while the supervisor's R-attribution
+    used the un-rounded value, drifting paper R from realized R by up
+    to ~half a tick per leg.
+    """
+    try:
+        from eta_engine.feeds.instrument_specs import get_spec
+        spec = get_spec(symbol)
+        tick = float(getattr(spec, "tick_size", 0) or 0)
+        if tick > 0:
+            return round(round(price / tick) * tick, 8)
+    except Exception:  # noqa: BLE001 — best-effort; never block on spec lookup
+        pass
+    return price
 
 
 def _paper_live_allowed_symbols() -> frozenset[str] | None:
@@ -547,10 +628,18 @@ class ExecutionRouter:
                 )
                 return None
 
-        # Compute simulated fill (mode=paper_sim)
+        # Compute simulated fill (mode=paper_sim).
+        # Adverse-selection slippage: a real BUY crosses the offer (fills
+        # ABOVE mid); a real SELL crosses the bid (fills BELOW mid). The
+        # earlier ``slippage_bps = 1.5 if BUY else -1.5`` formula gave
+        # SHORT entries a BETTER-than-mid fill, biasing every short trade
+        # by ~3 bps round-trip. Magnitude is always positive; only sign
+        # flips with side.
         ref_price = float(bar.get("close", 0.0))
-        slippage_bps = 1.5 if side == "BUY" else -1.5
-        fill_price = ref_price * (1.0 + slippage_bps / 10_000.0)
+        adverse_bps = 1.5  # always positive — slippage is always against the trader
+        sign_slip = 1.0 if side == "BUY" else -1.0  # BUY: above mid; SELL: below mid
+        fill_price = ref_price + sign_slip * (ref_price * adverse_bps / 10_000.0)
+        fill_price = _round_to_tick(fill_price, bot.symbol)
         # Size: use 10% of bot cash as risk unit (was 1%), with size_mult gating.
         # Floor at 1 contract for futures (CME/CBOT/NYMEX), allow fractional
         # for crypto spot (BTC/ETH/SOL).
@@ -569,9 +658,24 @@ class ExecutionRouter:
             "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
         }
         is_futures = _symbol_root in _futures_set
-        min_qty = 1 if is_futures else 0.001
-        qty = max(qty, min_qty)
-        qty = round(qty, 6) if not is_futures else float(int(qty))
+        # Round to instrument precision WITHOUT a floor-up. The earlier
+        # ``qty = max(qty, min_qty)`` would force a $5K crypto bot
+        # sizing 0.02 MNQ contracts up to 1 contract = ~$42K notional —
+        # the opposite of what a min_notional floor should do. Now: if
+        # the bot's budget can't afford even one whole-lot futures
+        # contract (or 0.001 crypto), skip the entry rather than
+        # over-sizing into a margin call.
+        if is_futures:
+            qty = float(int(qty))  # truncate to whole lot
+        else:
+            qty = round(qty, 6)
+        _min_qty = 1.0 if is_futures else 0.001
+        if qty < _min_qty:
+            logger.info(
+                "bot %s skipped: budget %.2f can't afford min lot (%s qty=%.6f < min=%.6f)",
+                bot.bot_id, bot.cash, bot.symbol, qty, _min_qty,
+            )
+            return None
 
         # ── CAPITAL BUDGET CAP ────────────────────────────────────
         # Hard-clamp the requested qty to the per-bot/fleet USD cap so
@@ -579,6 +683,12 @@ class ExecutionRouter:
         # ship $5K+ orders. cap_qty_to_budget reads ETA_LIVE_*_BUDGET_*
         # env vars; defaults are conservative (crypto $100/bot, $1500
         # fleet; futures $500/bot, $5000 fleet — paper-friendly).
+        #
+        # FAIL-CLOSED on budget-cap exception: a module bug or
+        # state-file corruption MUST NOT translate into shipping the
+        # uncapped qty. We log at CRITICAL, emit a structured journal
+        # event so the operator sees the failure immediately, and skip
+        # the entry entirely.
         try:
             from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
             fleet_notional = self._fleet_open_notional_for_symbol(bot.symbol)
@@ -594,8 +704,29 @@ class ExecutionRouter:
                     bot.bot_id, bot.symbol, qty, capped, _cap_reason, fleet_notional,
                 )
             qty = capped
-        except Exception as exc:  # noqa: BLE001 — cap is best-effort
-            logger.warning("budget cap failed for %s: %s", bot.bot_id, exc)
+        except Exception as exc:  # noqa: BLE001 — fail closed, see comment above
+            logger.critical(
+                "BUDGET CAP FAILED for %s symbol=%s requested_qty=%g: %s — "
+                "refusing entry (fail-closed)",
+                bot.bot_id, bot.symbol, qty, exc, exc_info=True,
+            )
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+                emit_event(
+                    layer="risk",
+                    event="budget_cap_failed",
+                    bot_id=bot.bot_id,
+                    cls=_classify_symbol(bot.symbol),
+                    details={
+                        "symbol": bot.symbol,
+                        "requested_qty": float(qty),
+                        "ref_price": float(ref_price),
+                        "exception_type": type(exc).__name__,
+                        "exception_msg": str(exc)[:500],
+                    },
+                    severity="CRITICAL",
+                )
+            return None
 
         if qty <= 0:
             logger.info(
@@ -603,6 +734,32 @@ class ExecutionRouter:
                 bot.bot_id, bot.symbol, ref_price,
             )
             return None
+
+        # ── HARD QTY CEILING ──────────────────────────────────────
+        # Last line of defense. Even if cap_qty_to_budget returns a
+        # plausible value, a malformed bar (ref_price near 1e-9) or a
+        # wrong contract multiplier could still translate into a wildly
+        # oversized request. The per-symbol _MAX_QTY_PER_ORDER dict is
+        # an ABSOLUTE clamp applied AFTER the budget cap — a separate
+        # belt-and-braces layer.
+        sym_norm = (
+            bot.symbol.upper().lstrip("/")
+            .replace("USDT", "").replace("USD", "")
+            .rstrip("0123456789")
+        )
+        _hard_cap = _MAX_QTY_PER_ORDER.get(sym_norm)
+        if _hard_cap is None:
+            _hard_cap = (
+                _MAX_QTY_DEFAULT_CRYPTO
+                if sym_norm in _CRYPTO_ROOTS
+                else _MAX_QTY_DEFAULT_FUTURES
+            )
+        if qty > _hard_cap:
+            logger.critical(
+                "HARD QTY CAP TRIPPED: bot=%s sym=%s requested=%g cap=%g",
+                bot.bot_id, bot.symbol, qty, _hard_cap,
+            )
+            qty = _hard_cap
 
         rec = FillRecord(
             bot_id=bot.bot_id,
@@ -643,8 +800,8 @@ class ExecutionRouter:
                 side=side, entry_price=rec.fill_price, bars=bot.sage_bars,
                 stop_mult_override=_sm, target_mult_override=_tm,
             )
-            bot.open_position["bracket_stop"] = round(_ps, 4)
-            bot.open_position["bracket_target"] = round(_pt, 4)
+            bot.open_position["bracket_stop"] = round(_round_to_tick(_ps, bot.symbol), 4)
+            bot.open_position["bracket_target"] = round(_round_to_tick(_pt, bot.symbol), 4)
             bot.open_position["bracket_src"] = f"paper:{_psrc}"
         except Exception as _exc:  # noqa: BLE001 — best effort
             # FIRST failure per bot logs at warning level so a systemic
@@ -668,6 +825,31 @@ class ExecutionRouter:
                 )
         bot.n_entries += 1
         bot.last_signal_at = rec.fill_ts
+
+        def _rollback_recorded_entry(reason: str) -> None:
+            """Undo the simulated entry when paper_live broker entry failed.
+
+            INVARIANT: bot.open_position must NEVER reflect a position the
+            broker has not accepted. We use PATTERN B from the audit —
+            optimistically set bot.open_position pre-call, then on any
+            non-success status OR exception, immediately clear it and
+            increment the per-bot reject counter. This keeps the
+            supervisor's belief about open positions strictly bounded by
+            broker-acknowledged fills.
+            """
+            if (
+                bot.open_position is not None
+                and bot.open_position.get("signal_id") == rec.signal_id
+            ):
+                bot.open_position = None
+            bot.n_entries = max(0, bot.n_entries - 1)
+            bot.consecutive_broker_rejects += 1
+            logger.critical(
+                "BROKER REJECT %s: paper_live entry rolled back (reason=%s "
+                "symbol=%s side=%s qty=%.6f signal_id=%s consecutive_rejects=%d)",
+                bot.bot_id, reason, rec.symbol, rec.side, rec.qty,
+                rec.signal_id, bot.consecutive_broker_rejects,
+            )
 
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
@@ -704,7 +886,8 @@ class ExecutionRouter:
                     _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
                     ",".join(sorted(_allowed_symbols or ())),
                 )
-                return rec
+                _rollback_recorded_entry("symbol_not_allowed_for_broker_route")
+                return None
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
                 from eta_engine.scripts.bracket_sizing import (
@@ -745,7 +928,8 @@ class ExecutionRouter:
                         "(side=%s ref=%.4f stop=%.4f target=%.4f src=%s)",
                         bot.bot_id, rec.side, _ref, _stop, _target, _bracket_src,
                     )
-                    return rec
+                    _rollback_recorded_entry("invalid_bracket_geometry")
+                    return None
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
                     bot.bot_id, _ref, _stop, _target, _bracket_src,
@@ -755,8 +939,8 @@ class ExecutionRouter:
                     side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
                     qty=abs(float(rec.qty)) or 1,
                     order_type=OrderType.MARKET,
-                    stop_price=round(_stop, 4),
-                    target_price=round(_target, 4),
+                    stop_price=round(_round_to_tick(_stop, rec.symbol), 4),
+                    target_price=round(_round_to_tick(_target, rec.symbol), 4),
                     bot_id=bot.bot_id,
                     # signal_id is unique per call (uuid4 hex slice), so
                     # using it as client_order_id stops two identical
@@ -783,18 +967,108 @@ class ExecutionRouter:
                 # of double-exiting via supervisor-side logic. The flag
                 # is read in _maybe_exit; if True, only an emergency
                 # stop (drawdown beyond 2x the bracket stop) overrides.
+                # The set of broker statuses that mean "supervisor MAY
+                # keep bot.open_position": OPEN, PARTIAL, FILLED. Any
+                # other status (REJECTED, CANCELLED, EXPIRED, UNKNOWN)
+                # forces an immediate rollback so phantom positions
+                # cannot leak through.
+                _ok_statuses = {"OPEN", "PARTIAL", "FILLED"}
                 if (
-                    _result.status.value == "OPEN"
+                    _result.status.value in _ok_statuses
                     and bot.open_position is not None
                 ):
                     bot.open_position["broker_bracket"] = True
-                    bot.open_position["bracket_stop"] = round(_stop, 4)
-                    bot.open_position["bracket_target"] = round(_target, 4)
+                    bot.open_position["bracket_stop"] = round(_round_to_tick(_stop, rec.symbol), 4)
+                    bot.open_position["bracket_target"] = round(_round_to_tick(_target, rec.symbol), 4)
                     bot.open_position["bracket_src"] = _bracket_src
+                    # Successful broker acknowledgement — reset the
+                    # consecutive-reject backpressure counter.
+                    bot.consecutive_broker_rejects = 0
+                elif _result.status.value not in _ok_statuses:
+                    _rollback_recorded_entry(
+                        f"broker_result={_result.status.value}; reason={_reason}",
+                    )
+                    return None
             except Exception as _exc:
                 logger.warning("DIRECT ORDER FAILED: %s %s: %s", rec.symbol, rec.side, _exc)
+                _rollback_recorded_entry(f"broker_exception={_exc}")
+                return None
 
         return rec
+
+    def _get_broker_position_qty(self, bot: BotInstance) -> float | None:
+        """Return the broker's authoritative position size for ``bot.symbol``.
+
+        Used by submit_exit so we never ship more than the broker actually
+        holds — partial fills, broker-side bracket leg fires, and clientId
+        races can all leave the broker holding fewer contracts than the
+        supervisor believes.
+
+        Returns the absolute quantity if the broker query succeeds, or
+        ``None`` if the query fails. In paper_sim (no broker) we return
+        the supervisor's own belief; the caller treats that as a no-op.
+        """
+        # paper_sim has no broker — fall back to the supervisor's belief
+        # so divergence checks become a no-op.
+        if self.cfg.mode != "paper_live":
+            pos = bot.open_position or {}
+            try:
+                return abs(float(pos.get("qty", 0) or 0))
+            except (TypeError, ValueError):
+                return None
+
+        # paper_live: pick the route that matches the symbol. IBKR is the
+        # default for futures + IBKR-routed crypto; AlpacaVenue is the
+        # alternate path for any bot the operator has wired through
+        # Alpaca. The route choice is symbol-driven today (no per-bot
+        # broker assignment yet), so we try IBKR first and fall through
+        # to Alpaca if the IBKR singleton isn't initialized.
+        symbol_upper = bot.symbol.upper()
+        try:
+            venue = _get_live_ibkr_venue()
+            broker_positions = _run_on_live_ibkr_loop(
+                venue.get_positions(), timeout=5.0,
+            ) or []
+            # IBKR returns {"symbol": "MNQ", "position": signed_qty, ...}.
+            # Match by stripped symbol root so MNQ1 in supervisor matches
+            # MNQ at the broker.
+            sym_root = symbol_upper.rstrip("0123456789").replace("USD", "")
+            for p in broker_positions:
+                p_sym = str(p.get("symbol", "")).upper()
+                p_root = p_sym.rstrip("0123456789").replace("USD", "")
+                if p_root == sym_root or p_sym == symbol_upper:
+                    return abs(float(p.get("position", 0) or 0))
+            # No matching broker position — broker holds 0.
+            return 0.0
+        except Exception as exc:  # noqa: BLE001 — fall through to Alpaca
+            logger.debug(
+                "_get_broker_position_qty IBKR query failed for %s: %s",
+                bot.bot_id, exc,
+            )
+
+        # Try Alpaca as a fallback. AlpacaVenue.get_positions() is async
+        # and the engine doesn't yet have a generic async runner outside
+        # the IBKR loop, so we wrap the asyncio.run path defensively.
+        try:
+            import asyncio
+            from eta_engine.venues.alpaca import AlpacaVenue
+            alpaca = AlpacaVenue()
+            try:
+                positions = asyncio.run(alpaca.get_positions())
+            except RuntimeError:
+                # Already inside a running loop (rare in supervisor; can
+                # happen in tests). Don't try to reuse it — just bail.
+                return None
+            for p in positions or []:
+                if str(p.get("symbol", "")).upper() == symbol_upper:
+                    return abs(float(p.get("position", 0) or 0))
+            return 0.0
+        except Exception as exc:  # noqa: BLE001 — broker query failed
+            logger.debug(
+                "_get_broker_position_qty Alpaca query failed for %s: %s",
+                bot.bot_id, exc,
+            )
+            return None
 
     def submit_exit(
         self,
@@ -802,13 +1076,102 @@ class ExecutionRouter:
         bot: BotInstance,
         bar: dict[str, Any],
     ) -> FillRecord | None:
+        """Close the bot's open position.
+
+        Returns the FillRecord for the exit; ``rec.entry_snapshot`` (a
+        dict mirroring the original entry fields) is attached as an
+        attribute so the caller can pass it into ``_propagate_close``.
+        Without that snapshot, _propagate_close would read
+        ``bot.open_position`` AFTER this method clears it and feed the
+        exit-side / exit-price into the edge_tracker — inverting the
+        feedback signal for every close.
+
+        The exit qty is reconciled against the broker via
+        ``_get_broker_position_qty`` — if the broker reports a smaller
+        size than the supervisor believes (partial fill, broker-bracket
+        leg fired, clientId race), the broker's number wins so we never
+        ship an oversized exit.
+        """
         if bot.open_position is None:
             return None
         pos = bot.open_position
-        ref_price = float(bar.get("close", pos["entry_price"]))
+        # ── BROKER-QTY RECONCILIATION ──────────────────────────────
+        # The supervisor's belief about position size can drift from
+        # broker reality across partial fills, broker-bracket leg fires,
+        # and clientId races. Querying the broker here keeps the exit
+        # bounded by what's actually held; if the query fails (broker
+        # unreachable / paper_sim has no broker), we fall back to the
+        # supervisor's belief but log it so the operator can investigate.
+        try:
+            supervisor_qty = abs(float(pos.get("qty", 0) or 0))
+        except (TypeError, ValueError):
+            supervisor_qty = 0.0
+        broker_qty = self._get_broker_position_qty(bot)
+        if broker_qty is None:
+            logger.info(
+                "submit_exit: broker qty unavailable for %s; using "
+                "supervisor qty=%.6f",
+                bot.bot_id, supervisor_qty,
+            )
+            exit_qty = supervisor_qty
+        elif broker_qty < supervisor_qty:
+            logger.warning(
+                "QTY DIVERGENCE %s: supervisor believes %.6f, broker holds "
+                "%.6f — sizing exit against broker qty",
+                bot.bot_id, supervisor_qty, broker_qty,
+            )
+            exit_qty = broker_qty
+        else:
+            exit_qty = supervisor_qty
         side_close = "SELL" if pos["side"] == "BUY" else "BUY"
-        slippage_bps = 1.5 if side_close == "BUY" else -1.5
-        fill_price = ref_price * (1.0 + slippage_bps / 10_000.0)
+        # Adverse slippage on exit (same sign convention as submit_entry):
+        # BUY-back fills above mid; SELL fills below mid. Magnitude is
+        # always positive. Earlier ``-1.5`` for SELL gave the trader a
+        # better-than-mid fill — wrong direction.
+        adverse_bps = 1.5
+        sign_slip_exit = 1.0 if side_close == "BUY" else -1.0
+        # Paper-sim exit fill routing (Fix 2): when ``_maybe_exit`` set
+        # ``exit_reason`` on the position, fill at the bracket-leg price
+        # rather than ``bar.close``. Real bracket legs cross the spread:
+        # stops fill slightly worse than the trigger, takeprofit limits
+        # fill at the limit (best case). This stops paper R from
+        # over-booking winners (filling at close above target) and
+        # under-booking wickers (filling at close after a wick stops us).
+        exit_reason = str(pos.get("exit_reason") or "")
+        entry_price = float(pos["entry_price"])
+        ref_close = float(bar.get("close", entry_price))
+        if exit_reason == "paper_stop" and pos.get("bracket_stop") is not None:
+            try:
+                stop_price = float(pos["bracket_stop"])
+                # Stop crossed the spread: fill is ADVERSE to the holder.
+                # LONG-side stop is below entry, exit is a SELL — receive
+                # below stop. SHORT-side stop is above entry, exit is a
+                # BUY — pay above stop. ``sign_slip_exit`` already encodes
+                # the side: SELL → -1 (below), BUY → +1 (above).
+                fill_price = stop_price + sign_slip_exit * (
+                    stop_price * adverse_bps / 10_000.0
+                )
+            except (TypeError, ValueError):
+                fill_price = ref_close + sign_slip_exit * (
+                    ref_close * adverse_bps / 10_000.0
+                )
+        elif exit_reason == "paper_target" and pos.get("bracket_target") is not None:
+            try:
+                # Take-profit limits fill AT the limit (best case) when
+                # the market trades through. No adverse slippage applied.
+                fill_price = float(pos["bracket_target"])
+            except (TypeError, ValueError):
+                fill_price = ref_close + sign_slip_exit * (
+                    ref_close * adverse_bps / 10_000.0
+                )
+        else:
+            # Default path (no bracket reason set, e.g. emergency exit,
+            # legacy random/percent fallback): mid + adverse slippage.
+            fill_price = ref_close + sign_slip_exit * (
+                ref_close * adverse_bps / 10_000.0
+            )
+        fill_price = _round_to_tick(fill_price, bot.symbol)
+        ref_price = ref_close  # legacy variable — preserved for downstream
 
         # Realized P&L (paper) — multiply by instrument point_value so
         # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
@@ -817,11 +1180,22 @@ class ExecutionRouter:
         try:
             from eta_engine.feeds.instrument_specs import get_spec
             _pv = float(get_spec(bot.symbol).point_value or 1.0)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # Surface the lookup failure so a registry/spec gap doesn't
+            # silently silently calculate futures PnL with multiplier=1
+            # (e.g. MNQ booked at 1/2x of true PnL).
+            logger.debug(
+                "point_value lookup failed for %s, defaulting to 1.0: %s",
+                bot.symbol, exc,
+            )
             _pv = 1.0
         sign = 1.0 if pos["side"] == "BUY" else -1.0
         pnl_per_unit = (fill_price - pos["entry_price"]) * sign
-        pnl = pnl_per_unit * pos["qty"] * _pv
+        # Use the reconciled exit_qty (broker-authoritative when available)
+        # for both the PnL calc AND the outgoing FillRecord. Otherwise
+        # downstream R-attribution and the broker order would disagree
+        # on size.
+        pnl = pnl_per_unit * exit_qty * _pv
         # Realized R: prefer planned bracket-stop distance × qty × pv as
         # the denominator. That is what the lab uses, so live R becomes
         # apples-to-apples comparable to lab expectancy_r. Falls back to
@@ -830,7 +1204,7 @@ class ExecutionRouter:
         risk_unit = 0.0
         if plan_stop is not None:
             with contextlib.suppress(TypeError, ValueError):
-                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * pos["qty"] * _pv
+                risk_unit = abs(float(plan_stop) - pos["entry_price"]) * exit_qty * _pv
         if risk_unit <= 0:
             risk_unit = bot.cash * 0.01
         realized_r = pnl / max(risk_unit, 1e-9) if risk_unit > 0 else 0.0
@@ -840,7 +1214,7 @@ class ExecutionRouter:
             signal_id=pos["signal_id"],
             side=side_close,
             symbol=bot.symbol,
-            qty=pos["qty"],
+            qty=exit_qty,
             fill_price=round(fill_price, 4),
             fill_ts=datetime.now(UTC).isoformat(),
             paper=True,
@@ -852,6 +1226,26 @@ class ExecutionRouter:
         bot.realized_pnl += pnl
         bot.cash += pnl
         bot.n_exits += 1
+        # Capture the entry-state snapshot BEFORE clearing bot.open_position
+        # so _propagate_close can pass real entry_side / entry_price into
+        # edge_tracker.observe(). Earlier this happened AFTER the clear,
+        # which meant every observe() saw a None pos and fell back to the
+        # exit FillRecord's side/price — inverted from what the tracker
+        # expects. The dict mirrors the open_position layout so callers
+        # can pass it straight into _propagate_close.
+        entry_snapshot = {
+            "side": pos.get("side"),
+            "entry_price": pos.get("entry_price"),
+            "qty": pos.get("qty"),
+            "bracket_stop": pos.get("bracket_stop"),
+            "bracket_target": pos.get("bracket_target"),
+            "signal_id": pos.get("signal_id"),
+        }
+        # Attach as an attribute (rather than a new field on FillRecord)
+        # to avoid touching the FillRecord dataclass — keeps the change
+        # local to the supervisor and doesn't ripple into journal/router
+        # serialization paths.
+        rec.entry_snapshot = entry_snapshot  # type: ignore[attr-defined]
         bot.open_position = None
         return rec
 
@@ -863,8 +1257,16 @@ class ExecutionRouter:
         # becomes a JSON ``null`` and the broker_router fails closed
         # downstream rather than papering over the omission here.
         pos = bot.open_position or {}
-        stop_price = pos.get("bracket_stop")
-        target_price = pos.get("bracket_target")
+        # Tick-grid rounding (Fix 4): stop/target/limit are already
+        # tick-rounded upstream when ``submit_entry`` writes them, but
+        # defensively re-round here so an externally-mutated
+        # bot.open_position can't ship un-quantized prices to IBKR
+        # while the supervisor records the un-rounded value.
+        _raw_stop = pos.get("bracket_stop")
+        _raw_target = pos.get("bracket_target")
+        stop_price = _round_to_tick(float(_raw_stop), rec.symbol) if _raw_stop is not None else None
+        target_price = _round_to_tick(float(_raw_target), rec.symbol) if _raw_target is not None else None
+        limit_price = _round_to_tick(float(rec.fill_price), rec.symbol)
         try:
             f = self.bf_dir / f"{bot.bot_id}.pending_order.json"
             f.write_text(
@@ -874,7 +1276,7 @@ class ExecutionRouter:
                     "side": rec.side,
                     "qty": rec.qty,
                     "symbol": rec.symbol,
-                    "limit_price": rec.fill_price,
+                    "limit_price": limit_price,
                     "stop_price": stop_price,
                     "target_price": target_price,
                 }, indent=2),
@@ -1004,6 +1406,11 @@ class JarvisStrategySupervisor:
     flows through ``JarvisFull.consult()`` which chains all the
     wave-7-16 intelligence layers."""
 
+    # Cached resolution of data_feeds._is_real_bar. Sentinel ``...`` =
+    # "not yet attempted"; ``None`` = "import failed permanently, do
+    # not retry on every tick"; otherwise = the callable.
+    _IS_REAL_BAR_FN: Any = ...
+
     def __init__(self, cfg: SupervisorConfig | None = None) -> None:
         self.cfg = cfg or SupervisorConfig()
         self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
@@ -1023,7 +1430,7 @@ class JarvisStrategySupervisor:
         self._memory = None
         self._router = ExecutionRouter(
             cfg=self.cfg,
-            bf_dir=ROOT / "docs" / "btc_live" / "broker_fleet",
+            bf_dir=self.cfg.broker_router_pending_dir,
             bots_ref=lambda: self.bots,
         )
         # Counter incremented every time _write_heartbeat catches an
@@ -1034,6 +1441,34 @@ class JarvisStrategySupervisor:
         # run_forever so unit tests that exercise _write_heartbeat
         # directly don't spin up background threads.
         self._keepalive: _HeartbeatKeepAlive | None = None
+        # Stop event for the main loop sleep. SIGTERM/SIGINT sets this
+        # so we don't have to wait the full tick_s before exiting.
+        self._stop_event = threading.Event()
+        # Per-instance dedup for feed-health alerts. Was a class-level
+        # mutable set, which would have leaked state between supervisor
+        # instances in the same process.
+        self._feed_health_alerted: set[str] = set()
+        # Restart-safe signal_id ledger. Populated by
+        # _load_recent_sent_signals() at the top of run_forever; consulted
+        # in _maybe_enter() before generating a fresh signal_id, and
+        # appended to via _record_sent_signal() after every successful
+        # broker submission.  This stops a crash-after-pending-write
+        # scenario from re-issuing the same broker submission on restart.
+        self._sent_signals: set[tuple[str, str]] = set()
+        # Reconcile-divergence guard (Fix 4 — restart safety). When
+        # reconcile_with_broker() detects positions at the broker that
+        # the supervisor has no record of, this flag is flipped True and
+        # _maybe_enter is short-circuited until the operator clears via
+        # ETA_RECONCILE_DIVERGENCE_ACK=1 or the
+        # ``state_dir/reconcile_divergence_acknowledged.txt`` file is
+        # touched after the divergence detection time.
+        self._reconcile_divergence_detected: bool = False
+        self._reconcile_divergence_at: datetime | None = None
+        # Per-bot reject-storm trip set. Bots in this set are skipped
+        # by _maybe_enter until consecutive_broker_rejects resets to 0
+        # (a successful broker fill clears it). Pairs with the
+        # consecutive_broker_rejects counter on BotInstance.
+        self._reject_tripped_bots: set[str] = set()
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -1120,9 +1555,8 @@ class JarvisStrategySupervisor:
             return False
 
     # ── Feed-health alerting ────────────────────────────────
-
-    _feed_health_alerted: set[str] = set()  # class-level dedup so we
-    # don't spam the events log every tick once a feed is degraded.
+    # NOTE: dedup state lives on each instance (self._feed_health_alerted),
+    # populated in __init__. Class-level was a mutable-default footgun.
 
     def _emit_feed_health_alerts(self, snapshot: dict[str, dict[str, int]]) -> None:
         """Emit a v3 event when any (feed, symbol) has empty-rate over
@@ -1172,6 +1606,224 @@ class JarvisStrategySupervisor:
                 cleared.add(key)
         self._feed_health_alerted -= cleared
 
+    # ── Restart-safe signal_id ledger ─────────────────────────
+    #
+    # The previous design generated signal_id with a fresh uuid4 every
+    # call. If the supervisor crashed after writing a pending_order
+    # JSON but before broker_router consumed it, the next session
+    # would generate a DIFFERENT uuid for the same logical entry and
+    # the broker_router could submit the stale file under a fresh
+    # submission key — duplicate fill. This dedup ledger persists
+    # every signal we ship; on restart we load the last 24h of
+    # signals and refuse to re-issue any of them.
+
+    def _sent_signals_log_path(self) -> Path:
+        return self.cfg.state_dir / _SENT_SIGNALS_LOG_FILENAME
+
+    def _record_sent_signal(
+        self, bot_id: str, signal_id: str, sent_at_iso: str,
+    ) -> None:
+        """Atomically append a single signal record to the JSONL ledger.
+
+        Atomicity strategy: read existing contents, append a single
+        line, write to a sibling .tmp file, then os.replace() — this
+        keeps the on-disk file in a consistent state even if the write
+        is interrupted mid-flush. For a JSONL append-only log this is
+        sufficient — we don't need full lock-file semantics because
+        only one supervisor process owns the ledger at a time.
+        """
+        path = self._sent_signals_log_path()
+        record = {
+            "bot_id": bot_id,
+            "signal_id": signal_id,
+            "sent_at_utc": sent_at_iso,
+        }
+        line = json.dumps(record, sort_keys=True)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            existing = ""
+            if path.exists():
+                try:
+                    existing = path.read_text(encoding="utf-8")
+                except OSError as exc:
+                    logger.warning(
+                        "_record_sent_signal: read of %s failed (%s); "
+                        "continuing with append-only write",
+                        path, exc,
+                    )
+                    existing = ""
+            new_payload = existing + (line + "\n")
+            tmp_path = path.with_suffix(path.suffix + ".tmp")
+            tmp_path.write_text(new_payload, encoding="utf-8")
+            os.replace(tmp_path, path)
+        except OSError as exc:
+            # The ledger is best-effort hardening — failing to record
+            # cannot block the trade itself. Log at WARNING so the
+            # operator notices but the system keeps running.
+            logger.warning(
+                "_record_sent_signal: failed to persist %s/%s: %s",
+                bot_id, signal_id, exc,
+            )
+
+    def _load_recent_sent_signals(
+        self, hours: int = _SENT_SIGNALS_DEDUP_HOURS,
+    ) -> set[tuple[str, str]]:
+        """Return (bot_id, signal_id) pairs sent in the last ``hours``.
+
+        Older entries are ignored to keep the dedup window bounded —
+        a 24h window comfortably covers any plausible restart and
+        keeps the file from growing unbounded.
+
+        Failure modes (file missing, malformed lines, parse errors)
+        return an empty set rather than raising — a corrupt ledger
+        must not block startup, only its anti-duplication coverage.
+        """
+        path = self._sent_signals_log_path()
+        if not path.exists():
+            return set()
+        cutoff = datetime.now(UTC).timestamp() - (max(0, int(hours)) * 3600)
+        out: set[tuple[str, str]] = set()
+        try:
+            for raw_line in path.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                ts_str = str(rec.get("sent_at_utc") or "")
+                bot_id = str(rec.get("bot_id") or "")
+                sig_id = str(rec.get("signal_id") or "")
+                if not (ts_str and bot_id and sig_id):
+                    continue
+                try:
+                    ts_dt = datetime.fromisoformat(ts_str)
+                    if ts_dt.tzinfo is None:
+                        ts_dt = ts_dt.replace(tzinfo=UTC)
+                    if ts_dt.timestamp() >= cutoff:
+                        out.add((bot_id, sig_id))
+                except (ValueError, TypeError):
+                    continue
+        except OSError as exc:
+            logger.warning(
+                "_load_recent_sent_signals: read of %s failed (%s); "
+                "starting with empty dedup set",
+                path, exc,
+            )
+            return set()
+        return out
+
+    # ── Reconcile-divergence acknowledgement check ────────────
+
+    def _reconcile_divergence_acknowledged(self) -> bool:
+        """Return True if the operator has cleared the divergence guard.
+
+        Two clearance paths:
+          1. Env: ``ETA_RECONCILE_DIVERGENCE_ACK=1`` (set on the running
+             supervisor process; intended for ops dev who restarts).
+          2. State file: ``state_dir/reconcile_divergence_acknowledged.txt``
+             whose mtime is AFTER the divergence-detection moment.
+        """
+        if os.environ.get(
+            "ETA_RECONCILE_DIVERGENCE_ACK", "",
+        ).strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+        path = self.cfg.state_dir / "reconcile_divergence_acknowledged.txt"
+        if not path.exists():
+            return False
+        if self._reconcile_divergence_at is None:
+            # No record of when the divergence was detected — be
+            # permissive and trust the ack-file presence.
+            return True
+        try:
+            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        except OSError:
+            return False
+        return mtime >= self._reconcile_divergence_at
+
+    # ── Reject-storm auto-trip check ──────────────────────────
+
+    def _check_reject_auto_trip(self, bot: BotInstance) -> bool:
+        """Return True when the bot should skip _maybe_enter due to
+        consecutive broker rejects breaching the configured threshold.
+
+        Threshold default is 5; configurable via env
+        ``ETA_MAX_CONSECUTIVE_REJECTS``. When the threshold trips, we
+        record a non-latching FLATTEN_BOT verdict on the kill_switch
+        latch (per-bot trips are intentionally non-latching, but the
+        verdict logging surface is useful) and add the bot to the
+        in-memory trip set. The trip is cleared automatically when
+        consecutive_broker_rejects resets to 0 (i.e. a successful
+        broker fill).
+        """
+        try:
+            threshold = int(os.environ.get("ETA_MAX_CONSECUTIVE_REJECTS", "5"))
+        except (TypeError, ValueError):
+            threshold = 5
+        threshold = max(1, threshold)
+        rejects = int(getattr(bot, "consecutive_broker_rejects", 0) or 0)
+        # Auto-clear the trip when the bot's reject counter resets.
+        if rejects == 0 and bot.bot_id in self._reject_tripped_bots:
+            self._reject_tripped_bots.discard(bot.bot_id)
+            logger.info(
+                "REJECT TRIP CLEARED %s: consecutive_broker_rejects back to 0",
+                bot.bot_id,
+            )
+            return False
+        if rejects >= threshold:
+            if bot.bot_id not in self._reject_tripped_bots:
+                self._reject_tripped_bots.add(bot.bot_id)
+                logger.critical(
+                    "REJECT STORM TRIP %s: %d consecutive broker rejects "
+                    "(threshold=%d) — entries halted for this bot until "
+                    "counter resets",
+                    bot.bot_id, rejects, threshold,
+                )
+                # Best-effort: record a non-latching FLATTEN_BOT verdict
+                # for telemetry. Per-bot trips do NOT flip the global
+                # latch — that is intentional design.
+                latch = getattr(self, "_kill_switch_latch", None)
+                if latch is not None:
+                    with contextlib.suppress(Exception):
+                        from eta_engine.core.kill_switch_runtime import (
+                            KillAction, KillSeverity, KillVerdict,
+                        )
+                        latch.record_verdict(
+                            KillVerdict(
+                                action=KillAction.FLATTEN_BOT,
+                                severity=KillSeverity.CRITICAL,
+                                reason=(
+                                    f"{bot.bot_id} has {rejects} consecutive "
+                                    f"broker rejects (threshold={threshold})"
+                                ),
+                                scope=f"bot:{bot.bot_id}",
+                                evidence={
+                                    "consecutive_broker_rejects": rejects,
+                                    "threshold": threshold,
+                                },
+                            )
+                        )
+                # Emit a v3 event so Hermes can ping the operator.
+                with contextlib.suppress(Exception):
+                    from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                        emit_event,
+                    )
+                    emit_event(
+                        layer="risk",
+                        event="reject_storm_trip",
+                        bot_id=bot.bot_id,
+                        details={
+                            "consecutive_broker_rejects": rejects,
+                            "threshold": threshold,
+                        },
+                        severity="CRITICAL",
+                    )
+            return True
+        return False
+
     # ── Broker reconciliation (run once on startup) ──────────
 
     def reconcile_with_broker(self) -> dict[str, Any]:
@@ -1179,6 +1831,15 @@ class JarvisStrategySupervisor:
         log divergence. Run once at startup so a supervisor restart
         with broker-side positions still open is surfaced before more
         signals fire and over-leverage the account.
+
+        Queries BOTH IBKR (futures, IBKR-routed crypto) and Alpaca
+        (crypto). When ANY divergence exists where the broker holds a
+        position the supervisor doesn't know about (broker_only OR
+        divergent), the supervisor's
+        ``_reconcile_divergence_detected`` flag is set. The main tick
+        loop short-circuits ``_maybe_enter`` for ALL bots until the
+        operator clears via env var or state file — see
+        ``_reconcile_divergence_acknowledged``.
 
         Does NOT auto-patch bot state — auto-attribution is unreliable
         when multiple bots share a symbol (5 BTC bots / 1 broker BTC
@@ -1191,27 +1852,73 @@ class JarvisStrategySupervisor:
             "supervisor_only": [],
             "divergent": [],
             "matched": 0,
+            "brokers_queried": [],
         }
         if self.cfg.mode != "paper_live":
             findings["skipped_reason"] = f"mode={self.cfg.mode} (only paper_live reconciles)"
             return findings
 
+        broker_by_root: dict[str, float] = {}
+
+        # ── IBKR ────────────────────────────────────────────────
         try:
             venue = _get_live_ibkr_venue()
-            broker_positions = _run_on_live_ibkr_loop(
+            ibkr_positions = _run_on_live_ibkr_loop(
                 venue.get_positions(), timeout=10.0,
             )
+            findings["brokers_queried"].append("ibkr")
+            for p in ibkr_positions or []:
+                sym_raw = str(p.get("symbol", "")).upper()
+                root = sym_raw.rstrip("0123456789").replace("USD", "")
+                broker_by_root[root] = broker_by_root.get(root, 0.0) + float(
+                    p.get("position", 0) or 0
+                )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("reconcile_with_broker: broker query failed: %s", exc)
-            findings["error"] = str(exc)
-            return findings
+            logger.warning("reconcile_with_broker: IBKR query failed: %s", exc)
+            findings["ibkr_error"] = str(exc)
 
-        # Sum broker positions by symbol root
-        broker_by_root: dict[str, float] = {}
-        for p in broker_positions or []:
-            sym_raw = str(p.get("symbol", "")).upper()
-            root = sym_raw.rstrip("0123456789").replace("USD", "")
-            broker_by_root[root] = broker_by_root.get(root, 0.0) + float(p.get("position", 0))
+        # ── Alpaca (crypto) ─────────────────────────────────────
+        # Crypto positions live at Alpaca for the BTC/ETH/SOL bots; an
+        # IBKR-only reconcile would silently miss broker-side crypto
+        # exposure on supervisor restart, exactly the failure mode
+        # this guard exists to prevent.
+        try:
+            from eta_engine.venues.alpaca import AlpacaVenue
+            alpaca = AlpacaVenue()
+            try:
+                alpaca_positions = asyncio.run(alpaca.get_positions())
+            except RuntimeError:
+                # Already inside a running loop. Use the IBKR-loop
+                # runner as a generic async runner — it just executes
+                # the coroutine and waits for the result.
+                alpaca_positions = _run_on_live_ibkr_loop(
+                    alpaca.get_positions(), timeout=10.0,
+                )
+            findings["brokers_queried"].append("alpaca")
+            for p in alpaca_positions or []:
+                sym_raw = str(p.get("symbol", "")).upper()
+                # Alpaca crypto symbols arrive as e.g. "BTCUSD" — strip
+                # the USD suffix and any digits so the root matches the
+                # supervisor's bot symbol root.
+                root = sym_raw.rstrip("0123456789").replace("USDT", "").replace("USD", "")
+                # Alpaca returns ``qty`` (signed) on positions; fall
+                # back to ``position`` for parity with the IBKR shape.
+                raw_qty = p.get("qty")
+                if raw_qty is None:
+                    raw_qty = p.get("position", 0)
+                try:
+                    qty_val = float(raw_qty or 0)
+                except (TypeError, ValueError):
+                    qty_val = 0.0
+                broker_by_root[root] = broker_by_root.get(root, 0.0) + qty_val
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("reconcile_with_broker: Alpaca query failed: %s", exc)
+            findings["alpaca_error"] = str(exc)
+
+        # If both brokers failed there is nothing to compare.
+        if not findings["brokers_queried"]:
+            findings["error"] = "no broker queries succeeded"
+            return findings
 
         # Sum supervisor positions by symbol root, signed
         supervisor_by_root: dict[str, float] = {}
@@ -1220,7 +1927,7 @@ class JarvisStrategySupervisor:
             if not pos:
                 continue
             sym_raw = bot.symbol.upper()
-            root = sym_raw.rstrip("0123456789").replace("USD", "")
+            root = sym_raw.rstrip("0123456789").replace("USDT", "").replace("USD", "")
             qty = abs(float(pos.get("qty", 0) or 0))
             side = str(pos.get("side", "BUY")).upper()
             signed = qty if side == "BUY" else -qty
@@ -1245,15 +1952,48 @@ class JarvisStrategySupervisor:
                     "delta": b_qty - s_qty,
                 })
 
-        if findings["broker_only"] or findings["supervisor_only"] or findings["divergent"]:
+        # Set the runtime divergence flag whenever the broker holds a
+        # position the supervisor doesn't know about (broker_only) OR
+        # both sides hold inconsistent qtys (divergent). supervisor_only
+        # is NOT a hold-orders condition: that's just stale supervisor
+        # state, not broker exposure the supervisor would layer on top
+        # of.
+        has_broker_unknown = bool(
+            findings["broker_only"] or findings["divergent"]
+        )
+        if has_broker_unknown:
+            self._reconcile_divergence_detected = True
+            self._reconcile_divergence_at = datetime.now(UTC)
+            logger.critical(
+                "RECONCILE BROKER POSITIONS UNKNOWN TO SUPERVISOR — "
+                "halting new entries until operator clears: "
+                "broker_only=%s divergent=%s",
+                findings["broker_only"], findings["divergent"],
+            )
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                    emit_event,
+                )
+                emit_event(
+                    layer="ops",
+                    event="reconcile_divergence_detected",
+                    bot_id="",
+                    details={
+                        "broker_only": findings["broker_only"],
+                        "divergent": findings["divergent"],
+                        "brokers_queried": findings["brokers_queried"],
+                    },
+                    severity="CRITICAL",
+                )
+        elif findings["broker_only"] or findings["supervisor_only"] or findings["divergent"]:
             logger.warning(
                 "RECONCILE divergence: broker_only=%s supervisor_only=%s divergent=%s",
                 findings["broker_only"], findings["supervisor_only"], findings["divergent"],
             )
         else:
             logger.info(
-                "RECONCILE: supervisor + broker agree on %d symbols",
-                findings["matched"],
+                "RECONCILE: supervisor + brokers agree on %d symbols (%s)",
+                findings["matched"], ",".join(findings["brokers_queried"]),
             )
 
         # Persist findings so the dashboard / red-team can see them
@@ -1270,9 +2010,52 @@ class JarvisStrategySupervisor:
         os_signal.signal(os_signal.SIGINT, self._handle_stop)
         os_signal.signal(os_signal.SIGTERM, self._handle_stop)
 
+        # Boot consult of the catastrophic-verdict latch. A latch tripped
+        # by a prior session must prevent THIS process from issuing any
+        # new entries. The latch fails closed: corrupt JSON / unreadable
+        # file -> TRIPPED, not ARMED. Operator clears with
+        # `python -m eta_engine.scripts.clear_kill_switch --confirm
+        # --operator <name>`. Boot bypass exists via ETA_LATCH_BOOT_BYPASS=1
+        # for ops dev only (not silent — emits a CRITICAL log line).
+        try:
+            from eta_engine.core.kill_switch_latch import (
+                KillSwitchLatch,
+                default_path as latch_default_path,
+            )
+            self._kill_switch_latch = KillSwitchLatch(latch_default_path())
+            ok, latch_reason = self._kill_switch_latch.boot_allowed()
+        except Exception as exc:  # noqa: BLE001 — boot consult is fail-closed
+            logger.critical(
+                "kill_switch_latch boot consult raised %s — refusing to start. "
+                "Investigate var/eta_engine/state/kill_switch_latch.json",
+                exc, exc_info=True,
+            )
+            return 3
+        if not ok:
+            if os.environ.get("ETA_LATCH_BOOT_BYPASS", "").strip().lower() in {"1", "true", "yes"}:
+                logger.critical(
+                    "kill_switch_latch is TRIPPED but ETA_LATCH_BOOT_BYPASS=1 — "
+                    "OPERATOR-AUTHORIZED override. Reason: %s",
+                    latch_reason,
+                )
+            else:
+                logger.error("REFUSING TO START: %s", latch_reason)
+                return 3
+
         if self.load_bots() == 0:
             logger.error("no active bots loaded; exiting")
             return 1
+
+        # Restart-safe signal_id ledger: load the last 24h of submitted
+        # signals so a crash-after-pending-write cannot result in a
+        # duplicate broker submission on restart. See _maybe_enter for
+        # the consult and _record_sent_signal for the append.
+        self._sent_signals = self._load_recent_sent_signals()
+        logger.info(
+            "supervisor remembers %d signals from the last %dh, "
+            "will not re-issue these",
+            len(self._sent_signals), _SENT_SIGNALS_DEDUP_HOURS,
+        )
 
         if not self.bootstrap_jarvis():
             logger.error("JarvisFull bootstrap failed; exiting")
@@ -1313,7 +2096,12 @@ class JarvisStrategySupervisor:
                 tick_count += 1
                 self._tick_once(tick_count)
                 self._write_heartbeat(tick_count)
-                time.sleep(self.cfg.tick_s)
+                # Use an Event so SIGTERM/SIGINT can wake us early
+                # rather than waiting for the full tick. Returns True
+                # if event was set (we'll exit on the next while-check),
+                # False after the timeout (continue looping).
+                if self._stop_event.wait(self.cfg.tick_s):
+                    break
         finally:
             # Daemon thread exits with the process, but signal the
             # keepalive to stop cleanly so the final keepalive file
@@ -1327,6 +2115,10 @@ class JarvisStrategySupervisor:
     def _handle_stop(self, signum, frame) -> None:  # noqa: ANN001 -- signal callback signature
         logger.info("stop signal received (signum=%s)", signum)
         self._stopped = True
+        # Wake the main loop's _stop_event.wait() immediately so
+        # shutdown isn't gated on the remaining tick_s window.
+        with contextlib.suppress(Exception):
+            self._stop_event.set()
         # Eagerly stop the keep-alive thread so SIGTERM/SIGINT shutdown
         # is clean — daemon=True alone is not enough; the thread should
         # observe the stop event and exit its loop body promptly.
@@ -1357,12 +2149,25 @@ class JarvisStrategySupervisor:
         # $48,998 PnL on YM (real $48k entry vs dummy $100). Refuse to
         # take action on flagged-empty bars; let the next tick try
         # again. _is_real_bar checks volume + OHLC flatline.
-        try:
-            from eta_engine.scripts.data_feeds import _is_real_bar
-            if not _is_real_bar(bar):
-                return
-        except Exception:  # noqa: BLE001
-            pass
+        #
+        # Cache the import result on the class — a permanent ImportError
+        # (e.g. data_feeds dropped this helper) would otherwise re-raise
+        # on every tick across every bot. Sentinel ``...`` = not yet
+        # tried; ``None`` = tried and failed permanently.
+        if JarvisStrategySupervisor._IS_REAL_BAR_FN is ...:
+            try:
+                from eta_engine.scripts.data_feeds import _is_real_bar
+                JarvisStrategySupervisor._IS_REAL_BAR_FN = _is_real_bar
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("_is_real_bar unavailable: %s", exc)
+                JarvisStrategySupervisor._IS_REAL_BAR_FN = None
+        _is_real_bar_fn = JarvisStrategySupervisor._IS_REAL_BAR_FN
+        if _is_real_bar_fn is not None:
+            try:
+                if not _is_real_bar_fn(bar):
+                    return
+            except Exception as exc:  # noqa: BLE001 — never break the tick on a guard helper
+                logger.debug("_is_real_bar(%s) raised: %s", bot.symbol, exc)
 
         # 2. If no open position, evaluate entry
         if bot.open_position is None:
@@ -1389,7 +2194,40 @@ class JarvisStrategySupervisor:
         # Mersenne Twister, seeded from os.urandom at import). Each call
         # produces a fresh independent draw, and the rate is high enough
         # that 16 bots produce visible activity every tick.
-        if random.random() > (1.0 / 5):
+        #
+        # Mock-only gate: this is scaffolding for the synthetic-feed
+        # validation lane. paper_live with a real feed (yfinance,
+        # ibkr, coinbase, composite) must NOT be 80%-skipped here —
+        # those entries are gated by JARVIS / Sage / consult layers
+        # downstream, not a uniform random veto.
+        if self.cfg.data_feed == "mock" and random.random() > (1.0 / 5):
+            return
+
+        # ── Reconcile-divergence guard ──────────────────────────────
+        # If reconcile_with_broker() detected positions at the broker
+        # the supervisor doesn't know about, refuse to layer fresh
+        # entries on top of the unknown exposure. Existing supervisor-
+        # known positions continue to manage themselves via _maybe_exit;
+        # only NEW entries are short-circuited here. Operator clears via
+        # ETA_RECONCILE_DIVERGENCE_ACK=1 or the on-disk ack file.
+        if self._reconcile_divergence_detected and not self._reconcile_divergence_acknowledged():
+            if not getattr(self, "_reconcile_divergence_warned", False):
+                logger.warning(
+                    "RECONCILE DIVERGENCE — entries halted for ALL bots "
+                    "until operator clears (ETA_RECONCILE_DIVERGENCE_ACK=1 "
+                    "or %s)",
+                    self.cfg.state_dir / "reconcile_divergence_acknowledged.txt",
+                )
+                self._reconcile_divergence_warned = True
+            return
+
+        # ── Reject-storm trip ───────────────────────────────────────
+        # Per-bot circuit breaker: if a bot has accumulated
+        # ETA_MAX_CONSECUTIVE_REJECTS (default 5) consecutive broker
+        # rejects without a successful fill in between, skip its
+        # entries entirely. The trip clears automatically when the
+        # bot's reject counter resets to 0 (next successful broker fill).
+        if self._check_reject_auto_trip(bot):
             return
 
         # Daily loss kill switch — refuses new entries when today's
@@ -1397,34 +2235,84 @@ class JarvisStrategySupervisor:
         # positions continue to manage themselves via brackets;
         # only NEW entries are blocked. Resets automatically at
         # midnight (operator timezone via ETA_KILLSWITCH_TIMEZONE).
+        # ── Catastrophic-verdict latch (per-entry consult) ──────────
+        # The boot consult in run_forever() blocks startup when latch is
+        # TRIPPED, but a verdict can flip the latch DURING a session.
+        # Re-read the latch on every entry attempt. Same fail-closed
+        # contract: corrupt latch -> TRIPPED. No exception swallowing
+        # here — if the latch read raises, we refuse the entry rather
+        # than let it through with an unobservable reason.
+        latch = getattr(self, "_kill_switch_latch", None)
+        if latch is not None:
+            try:
+                rec = latch.read()
+            except Exception as exc:  # noqa: BLE001 — latch read must fail closed
+                logger.critical(
+                    "kill_switch_latch read failed for %s — refusing entry: %s",
+                    bot.bot_id, exc,
+                )
+                return
+            if rec.is_tripped():
+                if not getattr(self, "_latch_warned_session", False):
+                    logger.warning(
+                        "KILL SWITCH LATCH TRIPPED — entries halted: scope=%s action=%s reason=%s",
+                        rec.scope, rec.action, rec.reason,
+                    )
+                    self._latch_warned_session = True
+                return
+
+        # ── Daily-loss killswitch ───────────────────────────────────
+        # Failure modes (file missing, malformed, import error) now
+        # FAIL CLOSED — the prior swallow-and-continue path is exactly
+        # the "killswitch silently disabled" gap the risk-execution
+        # review flagged. Only an explicit operator file clears this.
         try:
             from eta_engine.scripts.daily_loss_killswitch import (
                 is_killswitch_tripped,
             )
+        except ImportError as exc:
+            logger.critical(
+                "daily_loss_killswitch import failed (%s) — refusing entry until module present",
+                exc,
+            )
+            return
+        try:
             tripped, reason = is_killswitch_tripped()
-            if tripped:
-                if not getattr(self, "_killswitch_warned_today", False):
-                    logger.warning(
-                        "DAILY KILL SWITCH TRIPPED — entries halted: %s", reason,
+        except Exception as exc:  # noqa: BLE001 — gate failure must fail closed
+            logger.critical(
+                "daily_loss_killswitch raised %s — refusing entry; investigate state files",
+                exc, exc_info=True,
+            )
+            return
+        if tripped:
+            if not getattr(self, "_killswitch_warned_today", False):
+                logger.warning(
+                    "DAILY KILL SWITCH TRIPPED — entries halted: %s", reason,
+                )
+                self._killswitch_warned_today = True
+                # Emit a v3 event so Hermes pings the operator's phone.
+                with contextlib.suppress(Exception):
+                    from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                        emit_event,
                     )
-                    self._killswitch_warned_today = True
-                    # Emit a v3 event so Hermes pings the operator's phone.
-                    with contextlib.suppress(Exception):
-                        from eta_engine.brain.jarvis_v3.policies._v3_events import (
-                            emit_event,
-                        )
-                        emit_event(
-                            layer="ops",
-                            event="daily_kill_switch_tripped",
-                            bot_id=bot.bot_id,
-                            details={"reason": reason},
-                            severity="CRITICAL",
-                        )
-                return
-        except Exception as exc:  # noqa: BLE001 — gate is best-effort
-            logger.debug("killswitch check failed: %s", exc)
+                    emit_event(
+                        layer="ops",
+                        event="daily_kill_switch_tripped",
+                        bot_id=bot.bot_id,
+                        details={"reason": reason},
+                        severity="CRITICAL",
+                    )
+            return
 
+        # Generate a unique signal_id and consult the persisted ledger
+        # to make sure we never re-issue a signal_id that was already
+        # sent in the last 24h (collision is vanishingly unlikely with
+        # 32-bit hex slices but the cost of regenerating is negligible).
         signal_id = f"{bot.bot_id}_{uuid.uuid4().hex[:8]}"
+        _retries = 0
+        while (bot.bot_id, signal_id) in self._sent_signals and _retries < 8:
+            signal_id = f"{bot.bot_id}_{uuid.uuid4().hex[:8]}"
+            _retries += 1
         entry_price = float(bar["close"])
         # Default side from registry direction. SAGE-DRIVEN OVERRIDE: when
         # ETA_SAGE_DRIVEN_SIDE=1 (default on), consult Sage with a neutral
@@ -1521,6 +2409,12 @@ class JarvisStrategySupervisor:
             size_mult=size_mult,
         )
         if rec:
+            # Persist the signal_id to the dedup ledger so a crash
+            # immediately after this point cannot result in the same
+            # signal_id being reused on restart. Also seed the in-memory
+            # set so even within this session we don't re-issue.
+            self._sent_signals.add((bot.bot_id, signal_id))
+            self._record_sent_signal(bot.bot_id, signal_id, rec.fill_ts)
             logger.info(
                 "ENTRY  %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f)",
                 bot.bot_id, order_side, rec.qty, rec.fill_price,
@@ -1568,7 +2462,13 @@ class JarvisStrategySupervisor:
                 )
                 rec = self._router.submit_exit(bot=bot, bar=bar)
                 if rec:
-                    self._propagate_close(bot, rec)
+                    # Pass the entry snapshot captured by submit_exit so
+                    # _propagate_close sees the original entry side/price
+                    # rather than the cleared bot.open_position.
+                    self._propagate_close(
+                        bot, rec,
+                        entry_snapshot=getattr(rec, "entry_snapshot", None),
+                    )
             return
 
         # No broker bracket (paper_sim or paper-test crypto): supervisor-
@@ -1583,22 +2483,40 @@ class JarvisStrategySupervisor:
         plan_stop = pos.get("bracket_stop")
         plan_target = pos.get("bracket_target")
         is_buy = pos["side"] == "BUY"
+        # Fix 3: also check intrabar high/low against the bracket levels.
+        # Earlier ``cur_price`` (== bar.close) was the only trigger, so a
+        # bar that pierced the target intrabar but closed below it would
+        # not exit until the NEXT bar's close — biasing winners DOWN and
+        # latching wickers into the bar after the wick. Real bracket legs
+        # fire as soon as the level prints, regardless of the bar's close.
+        try:
+            bar_high = float(bar.get("high", cur_price))
+        except (TypeError, ValueError):
+            bar_high = cur_price
+        try:
+            bar_low = float(bar.get("low", cur_price))
+        except (TypeError, ValueError):
+            bar_low = cur_price
         if plan_stop is not None and plan_target is not None:
             try:
                 _ps = float(plan_stop)
                 _pt = float(plan_target)
                 if is_buy:
-                    if cur_price <= _ps:
+                    # LONG: stop is BELOW entry → fires when bar.low <= stop;
+                    # target is ABOVE entry → fires when bar.high >= target.
+                    if bar_low <= _ps:
                         should_exit = True
                         exit_reason = "paper_stop"
-                    elif cur_price >= _pt:
+                    elif bar_high >= _pt:
                         should_exit = True
                         exit_reason = "paper_target"
                 else:
-                    if cur_price >= _ps:
+                    # SHORT: stop is ABOVE entry → fires when bar.high >= stop;
+                    # target is BELOW entry → fires when bar.low <= target.
+                    if bar_high >= _ps:
                         should_exit = True
                         exit_reason = "paper_stop"
-                    elif cur_price <= _pt:
+                    elif bar_low <= _pt:
                         should_exit = True
                         exit_reason = "paper_target"
             except (TypeError, ValueError):
@@ -1625,8 +2543,14 @@ class JarvisStrategySupervisor:
                 bot.bot_id, rec.side, rec.qty, rec.fill_price,
                 rec.realized_r or 0.0,
             )
-            # Feedback loop: propagate to memory + bandits + calibrator
-            self._propagate_close(bot, rec)
+            # Feedback loop: propagate to memory + bandits + calibrator.
+            # Pass the entry snapshot captured by submit_exit so the
+            # edge_tracker observation receives the original entry-side /
+            # entry-price (before bot.open_position was cleared).
+            self._propagate_close(
+                bot, rec,
+                entry_snapshot=getattr(rec, "entry_snapshot", None),
+            )
 
     # ── JARVIS consultation ─────────────────────────────────
 
@@ -2079,8 +3003,26 @@ class JarvisStrategySupervisor:
             previous_regime=_prev,
             flipped_recently=_flipped,
         )
+        # Read the live daily-loss killswitch state so JARVIS layers
+        # downstream see TRUE when it's actually tripped. Hardcoded
+        # False meant the consult chain never knew the killswitch was
+        # active, so any policy keyed on this flag was effectively dead.
+        # Fail closed: any import/call failure → True so JARVIS errs on
+        # the side of caution (REVIEW/REDUCE tiers, never ALLOW_FULL).
+        try:
+            from eta_engine.scripts.daily_loss_killswitch import (
+                is_killswitch_tripped,
+            )
+            _ks_tripped, _ = is_killswitch_tripped()
+            kill_switch_active = bool(_ks_tripped)
+        except Exception as exc:  # noqa: BLE001 — fail closed
+            logger.debug(
+                "daily_loss_killswitch consult in JournalSnapshot failed; "
+                "assuming active=True: %s", exc,
+            )
+            kill_switch_active = True
         journal = JournalSnapshot(
-            kill_switch_active=False,
+            kill_switch_active=kill_switch_active,
             autopilot_mode="ACTIVE",
             overrides_last_24h=0,
             blocked_last_24h=0,
@@ -2095,7 +3037,27 @@ class JarvisStrategySupervisor:
             ],
         )
 
-    def _propagate_close(self, bot: BotInstance, rec: FillRecord) -> None:
+    def _propagate_close(
+        self,
+        bot: BotInstance,
+        rec: FillRecord,
+        entry_snapshot: dict | None = None,
+    ) -> None:
+        """Feed a closed trade into JARVIS memory, bandits, and edge_tracker.
+
+        ``entry_snapshot`` carries the entry-side fields (side, entry_price,
+        qty, stop, target, signal_id) captured BEFORE submit_exit cleared
+        ``bot.open_position``. Earlier this method read ``bot.open_position``
+        directly — which was always None at this point because submit_exit
+        had just cleared it — so the edge_tracker observation always took
+        the rec.side / rec.fill_price fallback. That fed the EXIT side and
+        EXIT price into the tracker, exactly inverting the feedback signal
+        for every close.
+
+        ``entry_snapshot=None`` is supported for legacy callers and falls
+        back to the old ``bot.open_position`` lookup so we don't regress
+        anything that hasn't been migrated.
+        """
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
             # Read live regime from regime_state.json so trade closes
@@ -2167,19 +3129,35 @@ class JarvisStrategySupervisor:
             from eta_engine.brain.jarvis_v3.sage.edge_tracker import (
                 default_tracker,
             )
-            entry_side = (
-                bot.open_position.get("side", "BUY").upper()
-                if bot.open_position else (rec.side or "BUY").upper()
-            )
             # The exit fill side is OPPOSITE the entry side; feedback loop
-            # wants the ENTRY side (the trade's direction). Use the
-            # original entry side from open_position when available, else
-            # invert the close FillRecord side.
+            # wants the ENTRY side (the trade's direction). Prefer the
+            # snapshot captured by submit_exit; fall back to bot.open_position
+            # (legacy callers) and finally to inverting rec.side. The exit
+            # FillRecord's side is the WRONG direction for the tracker, so
+            # using it as the primary source was the bug we're fixing.
+            if entry_snapshot is not None:
+                entry_side = str(entry_snapshot.get("side", "BUY")).upper()
+                entry_price_for_ctx = float(
+                    entry_snapshot.get("entry_price", 0) or 0,
+                )
+            elif bot.open_position is not None:
+                entry_side = str(
+                    bot.open_position.get("side", "BUY"),
+                ).upper()
+                entry_price_for_ctx = float(
+                    bot.open_position.get("entry_price", 0) or 0,
+                )
+            else:
+                # Last-resort fallback: invert the exit-side and use the
+                # exit fill price. Worse than the snapshot path but better
+                # than crashing.
+                inv_side = "BUY" if (rec.side or "").upper() == "SELL" else "SELL"
+                entry_side = inv_side
+                entry_price_for_ctx = float(rec.fill_price or 0)
             entry_dir = "long" if entry_side == "BUY" else "short"
             ctx = MarketContext(
                 bars=bars, side=entry_dir,
-                entry_price=float(bot.open_position.get("entry_price", 0))
-                if bot.open_position else float(rec.fill_price or 0),
+                entry_price=entry_price_for_ctx,
                 symbol=bot.symbol,
                 instrument_class=_classify_symbol(bot.symbol),
             )

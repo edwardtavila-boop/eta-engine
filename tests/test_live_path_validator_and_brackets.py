@@ -161,6 +161,50 @@ def test_ibkr_submission_reject_reason_accepts_confirmed_or_perm_id():
 
 
 @pytest.mark.asyncio
+async def test_ibkr_order_contract_is_qualified_before_submission():
+    from types import SimpleNamespace
+
+    from eta_engine.venues.ibkr_live import _qualify_order_contract
+
+    class _IB:
+        def __init__(self) -> None:
+            self.seen = None
+
+        async def qualifyContractsAsync(self, contract):  # noqa: N802 - ib_insync API
+            self.seen = contract
+            return [
+                SimpleNamespace(
+                    conId=770561201,
+                    localSymbol="MNQM6",
+                    symbol="MNQ",
+                ),
+            ]
+
+    raw_contract = SimpleNamespace(symbol="MNQ", lastTradeDateOrContractMonth="20260618")
+    ib = _IB()
+
+    qualified = await _qualify_order_contract(ib, raw_contract, "MNQ1")
+
+    assert ib.seen is raw_contract
+    assert qualified.conId == 770561201
+    assert qualified.localSymbol == "MNQM6"
+
+
+@pytest.mark.asyncio
+async def test_ibkr_order_contract_qualification_fails_closed():
+    from types import SimpleNamespace
+
+    from eta_engine.venues.ibkr_live import _qualify_order_contract
+
+    class _IB:
+        async def qualifyContractsAsync(self, contract):  # noqa: N802 - ib_insync API
+            return []
+
+    with pytest.raises(RuntimeError, match="no qualified order contract"):
+        await _qualify_order_contract(_IB(), SimpleNamespace(symbol="MNQ"), "MNQ1")
+
+
+@pytest.mark.asyncio
 async def test_venue_rejects_naked_entry():
     """Entry order without stop_price + target_price MUST be rejected."""
     import os

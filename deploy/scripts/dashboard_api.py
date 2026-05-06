@@ -806,8 +806,8 @@ def _broker_router_state_root() -> Path:
     env_root = os.environ.get("ETA_BROKER_ROUTER_STATE_ROOT")
     candidates = [
         Path(env_root) if env_root else None,
-        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "router",
         _state_dir() / "router",
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "router",
     ]
     for candidate in candidates:
         if candidate is not None and candidate.exists():
@@ -887,19 +887,27 @@ def _broker_router_snapshot() -> dict:
     quarantine_count = _count_matching_files(quarantine_dir, "*.pending_order.json")
     rejected_count = int(result_status_counts.get("REJECTED", 0))
     terminal_count = sum(result_status_counts.values())
-    active_blocker_count = pending_count + processing_count + blocked_count
-    degraded_reasons: list[str] = []
+    active_blocker_count = pending_count + processing_count
+    historical_reasons: list[str] = []
     if failed_count:
-        degraded_reasons.append("historical_failed_orders")
+        historical_reasons.append("historical_failed_orders")
+    if blocked_count:
+        historical_reasons.append("historical_blocked_orders")
     if rejected_count:
-        degraded_reasons.append("historical_rejected_results")
+        historical_reasons.append("historical_rejected_results")
     if quarantine_count:
-        degraded_reasons.append("quarantined_orders")
+        historical_reasons.append("quarantined_orders")
 
-    if pending_count or processing_count:
+    degraded_reasons: list[str] = []
+    hold = heartbeat.get("order_entry_hold") if isinstance(heartbeat.get("order_entry_hold"), dict) else {}
+    hold_active = bool(hold.get("active"))
+    if hold_active:
+        degraded_reasons.append("order_entry_hold")
+
+    if hold_active:
+        status = "held"
+    elif pending_count or processing_count:
         status = "processing"
-    elif blocked_count:
-        status = "blocked"
     elif degraded_reasons:
         status = "degraded"
     elif heartbeat:
@@ -933,6 +941,8 @@ def _broker_router_snapshot() -> dict:
         "quarantine_count": quarantine_count,
         "active_blocker_count": active_blocker_count,
         "degraded_reasons": degraded_reasons,
+        "historical_reasons": historical_reasons,
+        "order_entry_hold": hold,
         "fill_results_count": terminal_count,
         "result_status_counts": dict(sorted(result_status_counts.items())),
         "counts": counts,
@@ -942,12 +952,45 @@ def _broker_router_snapshot() -> dict:
     }
 
 
+def _iso_age_s(value: object, *, server_ts: float) -> int | None:
+    dt = _parse_fill_dt(value)
+    if dt is None:
+        return None
+    return max(0, int((datetime.fromtimestamp(server_ts, UTC) - dt).total_seconds()))
+
+
+def _supervisor_liveness_snapshot(state_dir: Path, *, server_ts: float) -> dict:
+    """Return main-loop and keepalive freshness for the JARVIS supervisor."""
+    supervisor_dir = state_dir / "jarvis_intel" / "supervisor"
+    main_path = supervisor_dir / "heartbeat.json"
+    keepalive_path = supervisor_dir / "heartbeat_keepalive.json"
+    main_payload = _read_json_file(main_path)
+    keepalive_payload = _read_json_file(keepalive_path)
+    main_ts = main_payload.get("ts")
+    keepalive_ts = keepalive_payload.get("keepalive_ts") or keepalive_payload.get("ts")
+    main_age_s = _iso_age_s(main_ts, server_ts=server_ts)
+    keepalive_age_s = _iso_age_s(keepalive_ts, server_ts=server_ts)
+    keepalive_fresh = keepalive_age_s is not None and keepalive_age_s <= 90
+    main_fresh = main_age_s is not None and main_age_s <= 300
+    return {
+        "main_heartbeat_path": str(main_path),
+        "main_heartbeat_ts": main_ts,
+        "main_heartbeat_age_s": main_age_s,
+        "main_heartbeat_fresh": main_fresh,
+        "keepalive_path": str(keepalive_path),
+        "keepalive_ts": keepalive_ts,
+        "keepalive_age_s": keepalive_age_s,
+        "keepalive_fresh": keepalive_fresh,
+    }
+
+
 def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     """Explain exactly why the roster is live, stale, stopped, or empty."""
     runtime = _read_runtime_state()
     state_dir = _state_dir()
     bots_dir = state_dir / "bots"
     supervisor_hb = state_dir / "jarvis_intel" / "supervisor" / "heartbeat.json"
+    supervisor_liveness = _supervisor_liveness_snapshot(state_dir, server_ts=server_ts)
     warnings: list[str] = []
 
     if not bots_dir.exists():
@@ -970,6 +1013,16 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     if fresh_rows:
         status = "live"
         line = f"Live ETA truth: {len(fresh_rows)}/{len(rows)} bot heartbeat(s) are fresh."
+    elif rows and supervisor_liveness["keepalive_fresh"]:
+        status = "working"
+        main_age = supervisor_liveness.get("main_heartbeat_age_s")
+        if main_age is not None:
+            line = (
+                "JARVIS supervisor process is alive; main bot snapshot is "
+                f"{main_age}s old while the current tick is still working."
+            )
+        else:
+            line = "JARVIS supervisor process is alive; waiting for the first main bot snapshot."
     elif rows:
         status = "stale"
         line = f"ETA roster has {len(rows)} bot row(s), but none have a fresh heartbeat."
@@ -990,6 +1043,7 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
         "runtime_mode": mode,
         "runtime_detail": detail,
         "runtime_updated_at": updated_at,
+        "supervisor_liveness": supervisor_liveness,
         "truth_status": status,
         "truth_summary_line": line,
         "truth_warnings": warnings,
@@ -2144,11 +2198,25 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     """Convert a jarvis_supervisor_bot_accounts() row into /api/bot-fleet roster shape."""
     from datetime import UTC, datetime
     today = sup.get("today") or {}
-    updated_at = str(sup.get("updated_at") or "")
-    last_signal_age_s: int | None = None
-    if updated_at:
+    heartbeat_at = str(sup.get("heartbeat_ts") or sup.get("updated_at") or "")
+    signal_at = str(sup.get("last_signal_ts") or sup.get("last_bar_ts") or "")
+    if not signal_at and "heartbeat_ts" not in sup:
+        # Legacy bridge rows only had updated_at. Treat it as both signal
+        # and heartbeat so old snapshots keep their historical behavior.
+        signal_at = heartbeat_at
+    heartbeat_age_s: int | None = None
+    if heartbeat_at:
         try:
-            dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            heartbeat_age_s = max(0, int(now_ts - dt.timestamp()))
+        except (ValueError, OSError):
+            pass
+    last_signal_age_s: int | None = None
+    if signal_at:
+        try:
+            dt = datetime.fromisoformat(signal_at.replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=UTC)
             last_signal_age_s = max(0, int(now_ts - dt.timestamp()))
@@ -2175,16 +2243,17 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "last_trade_side":     None,
         "last_trade_r":        None,
         "last_trade_qty":      None,
-        "last_signal_ts":      updated_at or None,
+        "last_signal_ts":      signal_at or None,
         "last_signal_age_s":   last_signal_age_s,
         "last_signal_side":    last_side,
-        "last_activity_ts":    updated_at or None,
-        "last_activity_age_s": last_signal_age_s,
+        "last_activity_ts":    signal_at or heartbeat_at or None,
+        "last_activity_age_s": last_signal_age_s if signal_at else heartbeat_age_s,
         "last_activity_side":  last_side,
-        "last_activity_type":  "signal" if updated_at else None,
+        "last_activity_type":  "signal" if signal_at else ("heartbeat" if heartbeat_at else None),
         "data_ts":             now_ts,
         "data_age_s":          0.0,
-        "heartbeat_age_s":     last_signal_age_s,
+        "heartbeat_ts":        heartbeat_at or None,
+        "heartbeat_age_s":     heartbeat_age_s,
         "source":              "jarvis_strategy_supervisor",
         "confirmed":           True,
         "mode":                str(sup.get("mode") or ""),

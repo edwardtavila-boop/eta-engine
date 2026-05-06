@@ -108,6 +108,7 @@ def jarvis_supervisor_bot_accounts(
         readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
         running = bool(bot.get("open_position")) or n_entries > 0
         status = "running" if running else "idle"
+        last_bar_ts = str(bot.get("last_bar_ts") or "")
         accounts.append({
             "id": str(bot.get("bot_id") or ""),
             "name": str(bot.get("bot_id") or ""),
@@ -125,7 +126,9 @@ def jarvis_supervisor_bot_accounts(
             },
             "open_position": bot.get("open_position") or {},
             "source": "jarvis_strategy_supervisor",
-            "updated_at": str(bot.get("last_bar_ts") or hb_ts),
+            "updated_at": hb_ts,
+            "heartbeat_ts": hb_ts,
+            "last_signal_ts": last_bar_ts,
             # Extra fields the dashboard ignores but useful for clients
             # reading the JSON directly:
             "symbol": str(bot.get("symbol") or ""),

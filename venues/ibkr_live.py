@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from datetime import UTC, datetime, time
 from typing import Any
 
 from eta_engine.venues.base import (
@@ -125,6 +126,107 @@ CRYPTO_MAP: dict[str, tuple[str, str, str]] = {
     "SOL":   ("SOL", "PAXOS", "1"),
     "SOLUSD": ("SOL", "PAXOS", "1"),
 }
+
+# ─── ASSET-CLASS PRIMARY SESSION MAP (America/New_York local time) ──
+# Microstructure review (2026-05-05) flagged that MARKET entries during
+# low-liquidity globex windows on CL/NG/6E/M6E/ZN/ZB/GC took 5-10 ticks
+# of slippage. These windows describe each contract's PRIMARY (deepest
+# liquidity) session — outside this window, MKT is converted to a
+# marketable LIMIT with a small tick buffer to bound slippage.
+#
+# Window keys are the IB ROOT symbol (as stored in FUTURES_MAP[sym][0]),
+# not the operator-facing trading code. CME Euro FX trades under "EUR"
+# at IB; supervisor sees "6E" but FUTURES_MAP rewrites to "EUR" before
+# the lookup hits this table.
+_ASSET_PRIMARY_SESSION_ET: dict[str, tuple[time, time]] = {
+    # CME equity-index futures: RTH 09:30 - 16:00 ET
+    "MNQ": (time(9, 30), time(16, 0)),
+    "NQ":  (time(9, 30), time(16, 0)),
+    "ES":  (time(9, 30), time(16, 0)),
+    "MES": (time(9, 30), time(16, 0)),
+    "RTY": (time(9, 30), time(16, 0)),
+    "M2K": (time(9, 30), time(16, 0)),
+    # CME crypto micros (24x5 by venue, but primary liquidity tracks RTH)
+    "MBT": (time(9, 30), time(16, 0)),
+    "MET": (time(9, 30), time(16, 0)),
+    # NYMEX energy: 09:00 - 14:30 ET pit/RTH window
+    "CL":  (time(9, 0),  time(14, 30)),
+    "MCL": (time(9, 0),  time(14, 30)),
+    "NG":  (time(9, 0),  time(14, 30)),
+    # COMEX metals: 08:20 - 13:30 ET
+    "GC":  (time(8, 20), time(13, 30)),
+    "MGC": (time(8, 20), time(13, 30)),
+    # CME FX: 08:20 - 15:00 ET (note IB indexes Euro FX as "EUR", not "6E")
+    "EUR": (time(8, 20), time(15, 0)),
+    "M6E": (time(8, 20), time(15, 0)),
+    # CBOT rates: 08:20 - 15:00 ET
+    "ZN":  (time(8, 20), time(15, 0)),
+    "ZB":  (time(8, 20), time(15, 0)),
+}
+
+
+def _in_primary_session(symbol: str, now_utc: datetime | None = None) -> bool:
+    """Return True iff ``symbol`` is currently inside its primary
+    (deep-liquidity) session.
+
+    - Looks the symbol up via ``FUTURES_MAP`` to obtain the IB root
+      symbol (e.g. ``"6E"`` -> ``"EUR"``), then checks
+      ``_ASSET_PRIMARY_SESSION_ET``.
+    - Converts ``now_utc`` (or ``datetime.now(UTC)``) to America/New_York
+      via ``zoneinfo`` from the stdlib.
+    - Weekend (Saturday/Sunday) returns False — futures globex weekend
+      breaks should never see MARKET entries.
+    - Unknown symbols default permissive (True) so an unmapped contract
+      doesn't accidentally block trading.
+    - Defensive: any failure (zoneinfo unavailable on the host build,
+      lookup error, anything else) returns True so a misconfigured prod
+      box doesn't suddenly stop trading.
+    """
+    try:
+        sym_norm = symbol.upper().strip()
+        # Map supervisor-facing symbol -> IB root symbol via FUTURES_MAP.
+        ib_root: str | None = None
+        if sym_norm in FUTURES_MAP:
+            ib_root = FUTURES_MAP[sym_norm][0]
+        else:
+            # Bare root ("CL", "ZN") not in FUTURES_MAP keys but in the
+            # session table directly — treat as a valid lookup.
+            if sym_norm in _ASSET_PRIMARY_SESSION_ET:
+                ib_root = sym_norm
+
+        if ib_root is None or ib_root not in _ASSET_PRIMARY_SESSION_ET:
+            # Unknown symbol — fail permissive so we don't block trading
+            # on a contract we haven't classified yet.
+            return True
+
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            # Some Python builds ship without zoneinfo (mostly slim
+            # containers). Fail permissive rather than blocking trades.
+            logger.warning(
+                "zoneinfo unavailable; skipping primary-session check for %s",
+                sym_norm,
+            )
+            return True
+
+        now = now_utc if now_utc is not None else datetime.now(UTC)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=UTC)
+        et = now.astimezone(ZoneInfo("America/New_York"))
+
+        # Weekday gate: Mon=0 ... Fri=4. Saturday/Sunday → not in session.
+        if et.weekday() >= 5:
+            return False
+
+        start, end = _ASSET_PRIMARY_SESSION_ET[ib_root]
+        return start <= et.time() <= end
+    except Exception as exc:  # noqa: BLE001 — must never raise
+        logger.warning(
+            "primary-session check failed for %s (%s); defaulting permissive",
+            symbol, exc,
+        )
+        return True
 
 
 def _build_futures_bracket_orders(
@@ -357,6 +459,29 @@ async def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # n
         return contract
 
     return None
+
+
+async def _qualify_order_contract(
+    ib: Any,  # noqa: ANN401 — ib_insync IB instance is dynamic
+    contract: Any,  # noqa: ANN401 — ib_insync contract is dynamic
+    symbol: str,
+) -> Any:  # noqa: ANN401 — ib_insync contract is dynamic
+    """Return the fully qualified contract that should be sent to placeOrder.
+
+    Resolving the active front month gives us the right expiry, but Gateway
+    still expects the final order contract to be qualified so the payload
+    carries the exact conId/localSymbol. Sending the unqualified Future has
+    produced broker-side PendingSubmit rows with no permId.
+    """
+    try:
+        qualified = await ib.qualifyContractsAsync(contract)
+    except Exception as exc:  # noqa: BLE001 - broker diagnostics belong upstream
+        raise RuntimeError(
+            f"failed to qualify IBKR order contract for {symbol}: {exc!r}",
+        ) from exc
+    if not qualified:
+        raise RuntimeError(f"IBKR returned no qualified order contract for {symbol}")
+    return qualified[0]
 
 
 class LiveIbkrVenue(VenueBase):
@@ -601,6 +726,21 @@ class LiveIbkrVenue(VenueBase):
                 status=OrderStatus.REJECTED,
                 raw={"venue": self.name, "reason": reason},
             )
+        try:
+            contract = await _qualify_order_contract(
+                self._ib,
+                contract,
+                request.symbol,
+            )
+        except Exception as exc:  # noqa: BLE001 — fail closed with the broker reason
+            logger.error("LiveIbkrVenue order contract qualification failed: %s", exc)
+            reason = f"contract qualification failed: {exc!r}"
+            _record_idempotency_status("rejected", reason, symbol=request.symbol)
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                raw={"venue": self.name, "reason": reason},
+            )
 
         # ── BUILD ORDER ───────────────────────────────────────────
         from ib_insync import LimitOrder, MarketOrder
@@ -682,6 +822,69 @@ class LiveIbkrVenue(VenueBase):
                 status=OrderStatus.REJECTED,
                 raw={"venue": self.name, "reason": reason, "raw_qty": _raw_qty},
             )
+
+        # ── SESSION-AWARE ORDER TYPE (futures only) ───────────────
+        # Microstructure review (2026-05-05): MARKET entries during
+        # low-liquidity globex windows took 5-10 ticks adverse on CL/NG
+        # /6E/M6E/ZN/ZB/GC. Outside the asset's primary session, convert
+        # MKT to a marketable LIMIT bounded by a small tick buffer. If
+        # we have no reference price, fail closed so the supervisor can
+        # re-issue with a price (preferred over silently sending a wide
+        # MKT into a thin book).
+        #
+        # Crypto orders (PAXOS) are NOT affected — they don't have a
+        # globex-style night session and the bracket apparatus differs.
+        ref_price = getattr(request, "price", None)
+        if (
+            order_type == OrderType.MARKET
+            and not is_crypto
+            and not _in_primary_session(request.symbol)
+        ):
+            if ref_price is None:
+                reason = "market_order_outside_primary_session_no_ref_price"
+                _record_idempotency_status(
+                    "rejected",
+                    reason,
+                    symbol=request.symbol,
+                )
+                return OrderResult(
+                    order_id=order_id,
+                    status=OrderStatus.REJECTED,
+                    raw={
+                        "venue": self.name,
+                        "reason": reason,
+                        "symbol": request.symbol,
+                    },
+                )
+            # Convert to marketable LIMIT: BUY pays up 3 ticks; SELL hits
+            # 3 ticks under. Tick size from instrument_specs when known.
+            try:
+                from eta_engine.feeds.instrument_specs import get_spec
+                tick_size = float(get_spec(request.symbol).tick_size)
+                if tick_size <= 0:
+                    tick_size = 0.25
+            except Exception:  # noqa: BLE001 — defensive default
+                tick_size = 0.25
+            buffer_ticks = 3
+            if action == "BUY":
+                limit_price = float(ref_price) + buffer_ticks * tick_size
+            else:
+                limit_price = float(ref_price) - buffer_ticks * tick_size
+            logger.info(
+                "LiveIbkrVenue session-aware order: %s %s outside primary "
+                "session → MKT → LMT @ %.6f (ref=%.6f, ticks=%d, tick_size=%.6f)",
+                action, request.symbol, limit_price, float(ref_price),
+                buffer_ticks, tick_size,
+            )
+            order_type = OrderType.LIMIT
+            # Mutate the request's price so downstream paths (bracket /
+            # exit single-leg) see the marketable limit and use it as
+            # the parent limit price.
+            try:
+                request.price = limit_price
+            except Exception:  # noqa: BLE001 — pydantic may freeze; downstream uses local var
+                pass
+            ref_price = limit_price
 
         # ── BRACKET REQUIREMENT (futures only) ────────────────────
         # Futures entries MUST attach a bracket (parent MKT + STP child
@@ -828,9 +1031,10 @@ class LiveIbkrVenue(VenueBase):
                 self._orders[order_id] = trade
                 submitted_trades = trades
                 logger.info(
-                    "LiveIbkrVenue BRACKET: %s %s %d MKT entry sl=%.4f tp=%.4f → parentId=%s",
-                    action, request.symbol, qty, float(stop_price), float(target_price),
-                    trade.order.orderId,
+                    "LiveIbkrVenue BRACKET: %s %s %d %s entry @ %s sl=%.4f tp=%.4f → parentId=%s",
+                    action, request.symbol, qty, order_type.value,
+                    getattr(request, "price", None), float(stop_price),
+                    float(target_price), trade.order.orderId,
                 )
             else:
                 # Reduce-only exit — single MKT/LMT, no bracket

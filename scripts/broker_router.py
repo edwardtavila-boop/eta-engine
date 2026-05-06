@@ -4,7 +4,7 @@ Dispatches each pending order through the gate chain, then submits via SmartRout
 Owns long-lived venue connections so all bots share one IBKR session.
 
 State layout under var/eta_engine/state/router/:
-  pending/    -- not used; we read from docs/btc_live/broker_fleet/
+  pending/    -- order inbox; supervisor writes *.pending_order.json here
   processing/ -- in-flight orders (atomic-rename lock)
   blocked/    -- gate-denied orders (audit)
   archive/<YYYY-MM-DD>/ -- terminal states (filled/rejected/etc.)
@@ -15,7 +15,7 @@ State layout under var/eta_engine/state/router/:
 
 Honors env vars:
   ETA_BROKER_ROUTER_INTERVAL_S (default 5)
-  ETA_BROKER_ROUTER_PENDING_DIR (default <repo>/eta_engine/docs/btc_live/broker_fleet)
+  ETA_BROKER_ROUTER_PENDING_DIR (default C:/EvolutionaryTradingAlgo/var/eta_engine/state/router/pending)
   ETA_BROKER_ROUTER_STATE_ROOT (default C:/EvolutionaryTradingAlgo/var/eta_engine/state/router)
   ETA_BROKER_ROUTER_DRY_RUN (default 0)
   ETA_BROKER_ROUTER_MAX_RETRIES (default 3)
@@ -77,14 +77,12 @@ logger = logging.getLogger("eta_engine.broker_router")
 # Defaults & symbol mapping
 # ---------------------------------------------------------------------------
 
-#: Default pending-order directory. Mirrors the supervisor write path
-#: in jarvis_strategy_supervisor.py:826
-#: (``ROOT / "docs" / "btc_live" / "broker_fleet"`` where ROOT is
-#: ``eta_engine/``). Operators may override with ETA_BROKER_ROUTER_PENDING_DIR.
-DEFAULT_PENDING_DIR = ROOT / "docs" / "btc_live" / "broker_fleet"
-
 #: Default router state root, anchored under canonical workspace state.
 DEFAULT_STATE_ROOT = ETA_RUNTIME_STATE_DIR / "router"
+
+#: Default pending-order directory. Mirrors the supervisor write path.
+#: Operators may override with ETA_BROKER_ROUTER_PENDING_DIR.
+DEFAULT_PENDING_DIR = DEFAULT_STATE_ROOT / "pending"
 
 DEFAULT_INTERVAL_S = 5.0
 DEFAULT_MAX_RETRIES = 3
