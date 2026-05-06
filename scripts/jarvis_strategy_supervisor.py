@@ -843,7 +843,11 @@ class ExecutionRouter:
             note=f"mode={self.cfg.mode}",
         )
 
-        # Record open position on the bot
+        # Record open position on the bot. The persist call below
+        # writes this dict to disk so a supervisor restart (watchdog
+        # relaunch / crash) doesn't drop the position from memory and
+        # cause the next tick to fire a fresh entry on top of the
+        # broker-side position the supervisor would otherwise forget.
         bot.open_position = {
             "side": side,
             "qty": qty,
@@ -851,6 +855,7 @@ class ExecutionRouter:
             "entry_ts": rec.fill_ts,
             "signal_id": signal_id,
         }
+        self._persist_open_position(bot)
         # Compute bracket levels at entry — ALWAYS, even for paper-only crypto
         # bots that never round-trip through the broker. Without this, paper
         # _maybe_exit falls through to a 1-in-15 random close that exits at
@@ -873,6 +878,9 @@ class ExecutionRouter:
             bot.open_position["bracket_stop"] = round(_round_to_tick(_ps, bot.symbol), 4)
             bot.open_position["bracket_target"] = round(_round_to_tick(_pt, bot.symbol), 4)
             bot.open_position["bracket_src"] = f"paper:{_psrc}"
+            # Re-persist with bracket fields included so a restart
+            # restores the planned stop/target, not just side+qty.
+            self._persist_open_position(bot)
         except Exception as _exc:  # noqa: BLE001 — best effort
             # FIRST failure per bot logs at warning level so a systemic
             # compute_bracket break doesn't disappear into debug. Subsequent
@@ -912,6 +920,7 @@ class ExecutionRouter:
                 and bot.open_position.get("signal_id") == rec.signal_id
             ):
                 bot.open_position = None
+                self._clear_persisted_open_position(bot)
             bot.n_entries = max(0, bot.n_entries - 1)
             bot.consecutive_broker_rejects += 1
             logger.critical(
@@ -1328,16 +1337,151 @@ class ExecutionRouter:
         # local to the supervisor and doesn't ripple into journal/router
         # serialization paths.
         rec.entry_snapshot = entry_snapshot  # type: ignore[attr-defined]
+        # ── PAPER_LIVE BROKER SHIP ──────────────────────────────────
+        # For paper_live mode the supervisor must SHIP the exit to the
+        # broker so the real Alpaca/IBKR position is closed, not just
+        # the supervisor's in-memory tracker. Without this, every
+        # _maybe_exit fires the simulation but the broker keeps the
+        # actual position open — fills accumulate on the venue while
+        # the supervisor thinks it's flat. Caught live 2026-05-06: BTC
+        # position 0.007322871 + ETH 0.084659818 stacked on Alpaca
+        # paper because exits never reached the broker.
+        #
+        # The pending JSON now carries reduce_only=True so the
+        # broker_router's pending_order_sanity_denial bypasses the
+        # bracket-required check (added by the reduce_only audit) and
+        # the venue's bracket-attachment block is skipped (already
+        # gated on `not request.reduce_only`).
+        if self.cfg.mode == "paper_live":
+            with contextlib.suppress(Exception):
+                self._write_pending_order(bot, rec, reduce_only=True)
         bot.open_position = None
+        self._clear_persisted_open_position(bot)
         return rec
 
-    def _write_pending_order(self, bot: BotInstance, rec: FillRecord) -> None:
+    # ── Open-position persistence (survives supervisor restarts) ─────
+    # The watchdog plus pre-existing crash modes mean the supervisor
+    # restarts more than once per session in the wild. Bot.open_position
+    # used to live in RAM only — every restart wiped it, so the next
+    # tick called _maybe_enter (no position) and stacked another entry
+    # on top of the broker-side position the supervisor had forgotten.
+    # Caught live 2026-05-06: 5 supervisor restarts in 37 min produced
+    # 3 stacked btc_optimized + 3 stacked eth_sage_daily entries that
+    # accumulated to ~$800 of crypto on Alpaca with no exits firing.
+    #
+    # Persistence layout: ``<state_dir>/bots/<bot_id>/open_position.json``
+    # with the full bot.open_position dict (side, qty, entry_price,
+    # entry_ts, signal_id, bracket_*). Atomic .tmp + os.replace so a
+    # mid-write crash never leaves a half-file. Cleared on every
+    # rollback / submit_exit so a stale file doesn't shadow a real
+    # closed position.
+
+    def _open_positions_dir(self) -> Path:
+        return self.cfg.state_dir / "bots"
+
+    def _open_position_path(self, bot_id: str) -> Path:
+        return self._open_positions_dir() / bot_id / "open_position.json"
+
+    def _persist_open_position(self, bot: BotInstance) -> None:
+        """Write bot.open_position to disk (atomic). No-op if None."""
+        if bot.open_position is None:
+            return
+        try:
+            path = self._open_position_path(bot.bot_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(bot.open_position, default=str), encoding="utf-8")
+            os.replace(tmp, path)
+        except Exception as exc:  # noqa: BLE001 — persistence is best-effort
+            logger.warning(
+                "_persist_open_position(%s) failed: %s — bot state may not survive restart",
+                bot.bot_id, exc,
+            )
+
+    def _clear_persisted_open_position(self, bot: BotInstance) -> None:
+        """Delete the persisted open_position file. Safe if missing."""
+        try:
+            path = self._open_position_path(bot.bot_id)
+            if path.exists():
+                path.unlink()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "_clear_persisted_open_position(%s) failed: %s",
+                bot.bot_id, exc,
+            )
+
+    def _load_persisted_open_positions(self) -> int:
+        """Restore bot.open_position from disk for each bot at startup.
+
+        Called from run_forever AFTER load_bots and BEFORE the tick
+        loop. Returns the count of positions restored — operator can
+        see this in the startup log to know the supervisor remembers
+        what it had before the restart.
+
+        Lives on ExecutionRouter (this class) but is dispatched from
+        JarvisStrategySupervisor.run_forever via self._router. The
+        bots list is accessed via the bots_ref callable the supervisor
+        passed at construction.
+        """
+        if not self._open_positions_dir().exists():
+            return 0
+        restored = 0
+        bot_by_id = {bot.bot_id: bot for bot in self._bots_ref()}
+        for bot_dir in self._open_positions_dir().iterdir():
+            if not bot_dir.is_dir():
+                continue
+            bot = bot_by_id.get(bot_dir.name)
+            if bot is None:
+                # Bot not in active fleet — leave the file in place; the
+                # operator may want to inspect it. A future supervisor
+                # cleanup pass can sweep stale dirs.
+                continue
+            path = bot_dir / "open_position.json"
+            if not path.exists():
+                continue
+            try:
+                bot.open_position = json.loads(path.read_text(encoding="utf-8"))
+                restored += 1
+                logger.info(
+                    "restored open_position for %s: side=%s entry_price=%s qty=%s signal_id=%s",
+                    bot.bot_id,
+                    bot.open_position.get("side"),
+                    bot.open_position.get("entry_price"),
+                    bot.open_position.get("qty"),
+                    bot.open_position.get("signal_id"),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "_load_persisted_open_positions: failed to read %s: %s",
+                    path, exc,
+                )
+        return restored
+
+    def _write_pending_order(
+        self,
+        bot: BotInstance,
+        rec: FillRecord,
+        *,
+        reduce_only: bool = False,
+    ) -> None:
         # Pull the planned bracket the supervisor computed at entry
         # (set on bot.open_position by submit_entry just above this
         # call). Both fields are required for futures entries — the
         # venue layer rejects naked entries — so a missing bracket
         # becomes a JSON ``null`` and the broker_router fails closed
         # downstream rather than papering over the omission here.
+        #
+        # ``reduce_only`` distinguishes EXITs (close an open position)
+        # from ENTRYs. SUPERVISOR_LOCAL bracket-style venues (Alpaca
+        # crypto, IBKR-PAXOS crypto) need this flag to round-trip from
+        # the supervisor → broker_router → venue so the venue (a)
+        # skips bracket attachment on the exit, and (b) routes the
+        # order as a position-reducer rather than a fresh entry. Without
+        # the round-trip, the broker would either reject the exit (long-
+        # only Alpaca crypto rejecting a SELL with no inventory hint)
+        # or double the position if the wire-side merged it as a fresh
+        # entry. The default ``False`` matches the historical entry-only
+        # call site so the caller doesn't have to opt in.
         pos = bot.open_position or {}
         # Tick-grid rounding (Fix 4): stop/target/limit are already
         # tick-rounded upstream when ``submit_entry`` writes them, but
@@ -1361,6 +1505,7 @@ class ExecutionRouter:
                     "limit_price": limit_price,
                     "stop_price": stop_price,
                     "target_price": target_price,
+                    "reduce_only": bool(reduce_only),
                 }, indent=2),
                 encoding="utf-8",
             )
@@ -2152,6 +2297,22 @@ class JarvisStrategySupervisor:
             "will not re-issue these",
             len(self._sent_signals), _SENT_SIGNALS_DEDUP_HOURS,
         )
+
+        # Restart-safe open-position state: restore each bot's
+        # bot.open_position from the on-disk persisted file. Without
+        # this, every supervisor restart drops the in-memory position
+        # and the next tick fires a fresh entry on top of the broker-
+        # side position. The persistence helpers live on
+        # ExecutionRouter (which owns state_dir + bots_ref) and are
+        # dispatched here on the router instance the supervisor owns.
+        restored_positions = self._router._load_persisted_open_positions()  # noqa: SLF001
+        if restored_positions:
+            logger.info(
+                "supervisor restored %d open_position(s) from disk — "
+                "tick loop will go to _maybe_exit for these bots until "
+                "stop/target pierces or operator clears the persisted file.",
+                restored_positions,
+            )
 
         if not self.bootstrap_jarvis():
             logger.error("JarvisFull bootstrap failed; exiting")

@@ -541,6 +541,60 @@ class TestLifecycle:
         assert hb["order_entry_hold"]["active"] is True
         assert hb["order_entry_hold"]["reason"] == "broker_incident"
 
+    def test_scoped_futures_hold_holds_futures_but_allows_crypto(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A futures/IBKR incident must not freeze Alpaca crypto routing."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        futures_path = _write_pending(
+            pending_dir,
+            bot_id="mnq_futures_sage",
+            signal_id="sig-futures-held",
+            symbol="MNQ1",
+        )
+        crypto_path = _write_pending(
+            pending_dir,
+            bot_id="btc_optimized",
+            signal_id="sig-crypto-allowed",
+            symbol="BTC",
+            qty=0.001,
+            limit_price=82_000.0,
+            stop_price=80_000.0,
+            target_price=84_000.0,
+        )
+        hold_path = tmp_path / "order_entry_hold.json"
+        hold_path.write_text(
+            json.dumps({
+                "active": True,
+                "reason": "ibkr_handshake_incident",
+                "scope": "futures",
+            }),
+            encoding="utf-8",
+        )
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+            order_hold_path=hold_path,
+        )
+
+        asyncio.run(router.run_once())
+
+        assert futures_path.exists()
+        assert not crypto_path.exists()
+        assert len(venue.calls) == 1
+        assert venue.calls[0].symbol == "BTC/USD"
+        assert _find_under(state_root / "archive", crypto_path.name) is not None
+        assert router._counts["held"] == 1
+
     def test_happy_path_filled_archives_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

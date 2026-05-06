@@ -596,6 +596,19 @@ class PendingOrder:
     pending-order files without these fields parse with both set to
     ``None`` so the rejection happens downstream in the venue's
     bracket-required check rather than at parse time.
+
+    ``reduce_only`` distinguishes EXIT orders (close an open position)
+    from ENTRY orders. It is critical for the SUPERVISOR_LOCAL bracket
+    style (e.g. Alpaca crypto, IBKR-PAXOS crypto) where the supervisor
+    owns stop/target management: when a paper-bracket leg fires, the
+    supervisor must ship a reduce_only=True order so the venue (a)
+    skips bracket attachment (a bracket on an exit either re-opens a
+    position or is rejected by the broker) and (b) treats the order
+    as a position-reducer rather than a fresh entry. Without the
+    round-trip preserving this flag, exits would be ambiguous from
+    entries on the wire and the broker could double the position.
+    Older pending-order files without this flag parse with
+    ``reduce_only=False`` so back-compat is preserved.
     """
 
     ts: str
@@ -607,6 +620,7 @@ class PendingOrder:
     bot_id: str
     stop_price: float | None = None
     target_price: float | None = None
+    reduce_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -665,6 +679,13 @@ def parse_pending_file(path: Path) -> PendingOrder:
     except (TypeError, ValueError) as exc:
         raise ValueError(f"non-numeric stop/target: {exc}") from exc
 
+    # Optional reduce_only flag. Default False so older pending files
+    # without this field continue to parse as entries — entries are the
+    # dominant case so the conservative default is safe. Anything that
+    # python's bool() considers truthy is treated as True; explicit
+    # JSON ``true``/``false`` round-trips losslessly.
+    reduce_only = bool(payload.get("reduce_only", False))
+
     return PendingOrder(
         ts=str(payload["ts"]),
         signal_id=str(payload["signal_id"]),
@@ -675,6 +696,7 @@ def parse_pending_file(path: Path) -> PendingOrder:
         bot_id=bot_id,
         stop_price=stop_price,
         target_price=target_price,
+        reduce_only=reduce_only,
     )
 
 
@@ -703,27 +725,38 @@ def pending_order_sanity_denial(order: PendingOrder) -> str:
             f"max_s={_MAX_PENDING_ORDER_AGE_S}"
         )
 
-    if order.stop_price is None or order.target_price is None:
-        return "missing bracket fields: stop_price and target_price are required"
+    # Reduce-only EXITs intentionally carry no bracket — the position is
+    # being closed, not opened. A bracket on an exit either re-opens the
+    # position (fresh OCO siblings) or is rejected by the venue. Skip the
+    # bracket-required and geometry checks for reduce_only orders;
+    # entries still require stop+target to fail closed against naked
+    # positions.
+    if not order.reduce_only:
+        if order.stop_price is None or order.target_price is None:
+            return "missing bracket fields: stop_price and target_price are required"
 
-    entry = float(order.limit_price)
-    stop = float(order.stop_price)
-    target = float(order.target_price)
-    if entry <= 0.0 or stop <= 0.0 or target <= 0.0:
-        return (
-            "non-positive bracket geometry: "
-            f"entry={entry} stop={stop} target={target}"
-        )
-    if order.side == "BUY" and not (stop < entry < target):
-        return (
-            "invalid BUY bracket geometry: "
-            f"stop={stop} entry={entry} target={target}"
-        )
-    if order.side == "SELL" and not (target < entry < stop):
-        return (
-            "invalid SELL bracket geometry: "
-            f"target={target} entry={entry} stop={stop}"
-        )
+        entry = float(order.limit_price)
+        stop = float(order.stop_price)
+        target = float(order.target_price)
+        if entry <= 0.0 or stop <= 0.0 or target <= 0.0:
+            return (
+                "non-positive bracket geometry: "
+                f"entry={entry} stop={stop} target={target}"
+            )
+        if order.side == "BUY" and not (stop < entry < target):
+            return (
+                "invalid BUY bracket geometry: "
+                f"stop={stop} entry={entry} target={target}"
+            )
+        if order.side == "SELL" and not (target < entry < stop):
+            return (
+                "invalid SELL bracket geometry: "
+                f"target={target} entry={entry} stop={stop}"
+            )
+    else:
+        entry = float(order.limit_price)
+        if entry <= 0.0:
+            return f"non-positive exit limit_price: entry={entry}"
 
     symbol = order.symbol.strip().upper().lstrip("/")
     min_price = _MIN_CRYPTO_LIMIT_PRICE.get(symbol)
@@ -859,7 +892,7 @@ class BrokerRouter:
            supervisor write.
         """
         hold = self._order_entry_hold()
-        if hold.active:
+        if hold.active and hold.scope == "all":
             self._counts["held"] += 1
             self._record_event("runtime", "order_entry_hold", hold.reason)
             logger.warning(
@@ -911,16 +944,7 @@ class BrokerRouter:
 
     async def _process_pending_file(self, path: Path) -> None:
         """Fresh-file entry: move-to-processing, then run the lifecycle."""
-        hold = self._order_entry_hold()
-        if hold.active:
-            self._counts["held"] += 1
-            self._record_event(path.name, "order_entry_hold", hold.reason)
-            logger.warning(
-                "pending order held in place: file=%s reason=%s path=%s",
-                path,
-                hold.reason,
-                hold.path,
-            )
+        if self._hold_blocks_file(path):
             return
         if self.dry_run:
             target = path
@@ -948,6 +972,8 @@ class BrokerRouter:
             self._move_to_failed_with_meta(target, retry_meta)
             return
         if self._should_backoff(retry_meta):
+            return
+        if self._hold_blocks_file(target):
             return
         await self._run_lifecycle(target, retry_meta=retry_meta)
 
@@ -1094,6 +1120,12 @@ class BrokerRouter:
         # 6. Build OrderRequest. Brackets pass through verbatim from the
         # supervisor's pending-order JSON; the venue layer enforces the
         # bracket-required check (naked entries get rejected there).
+        # ``reduce_only`` tracks supervisor-local exits — venues skip
+        # bracket attachment and route the order as a position-closer
+        # when this is True. Without forwarding this field, every exit
+        # the supervisor wrote as a pending JSON would arrive at the
+        # broker indistinguishable from a fresh entry, either doubling
+        # the position or being rejected by the bracket-required check.
         side_enum = Side.BUY if order.side == "BUY" else Side.SELL
         request = OrderRequest(
             symbol=venue_symbol,
@@ -1105,6 +1137,7 @@ class BrokerRouter:
             bot_id=order.bot_id,
             stop_price=order.stop_price,
             target_price=order.target_price,
+            reduce_only=order.reduce_only,
         )
 
         # 7. Dry-run short-circuit: log, do not submit, do not move.
@@ -1258,6 +1291,48 @@ class BrokerRouter:
             metadata={"reason": reason, "path": str(target)},
         )
 
+    def _hold_blocks_file(self, path: Path) -> bool:
+        """Return True when the runtime hold blocks this pending order.
+
+        ``scope=all`` is handled at the tick level. Scoped holds need the
+        pending order's resolved venue/asset class so an IBKR/futures
+        incident can pause futures while Alpaca crypto keeps routing.
+        Parse/config errors are intentionally left to the normal lifecycle
+        so bad files still quarantine instead of hiding behind a hold.
+        """
+        hold = self._order_entry_hold()
+        if not hold.active:
+            return False
+        if hold.scope == "all":
+            blocks = True
+            venue_name = "*"
+            asset_class = "*"
+        else:
+            try:
+                order = parse_pending_file(path)
+                venue_name = self.routing_config.venue_for(
+                    order.bot_id, symbol=order.symbol,
+                )
+                asset_class = _asset_class_for_symbol(order.symbol)
+            except Exception:  # noqa: BLE001
+                return False
+            blocks = hold.blocks(venue=venue_name, asset_class=asset_class)
+        if not blocks:
+            return False
+        self._counts["held"] += 1
+        self._record_event(path.name, "order_entry_hold", hold.reason)
+        logger.warning(
+            "pending order held in place: file=%s scope=%s reason=%s "
+            "venue=%s class=%s path=%s",
+            path,
+            hold.scope,
+            hold.reason,
+            venue_name,
+            asset_class,
+            hold.path,
+        )
+        return True
+
     #: Exception substrings that mark a TRANSIENT venue failure (i.e.
     #: worth retrying on the next venue in the chain). Anything not
     #: matching is treated as deterministic and stays on the same venue
@@ -1369,7 +1444,7 @@ class BrokerRouter:
             return None
         return self._resolve_venue_adapter(chain[idx], order)
 
-    def _venue_circuit(self, venue_name: str) -> Any:
+    def _venue_circuit(self, venue_name: str) -> object | None:
         """Return the per-venue CircuitBreaker on the SmartRouter, or None.
 
         Defensive lookup: the SmartRouter normally exposes
