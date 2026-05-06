@@ -50,6 +50,13 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     assert "schtasks timed out" in text
     assert "failed:" in text
     assert "restart_error" in text
+    assert "Get-JtsIniSnapshot" in text
+    assert "Get-VmOptionsSnapshot" in text
+    assert "api_port_configured" in text
+    assert "trusted_localhost" in text
+    assert "api_only_enabled" in text
+    assert "low_memory_profile_configured" in text
+    assert "gateway_config" in text
 
 
 def test_ibgateway_repair_enforces_single_1046_source() -> None:

@@ -253,6 +253,92 @@ function Update-JtsIni {
     Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
 }
 
+function Get-KeyValueSetting {
+    param(
+        [string[]]$Lines,
+        [string]$Key
+    )
+    foreach ($line in $Lines) {
+        $trimmed = [string]$line
+        if ($trimmed.StartsWith("$Key=", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring($Key.Length + 1).Trim()
+        }
+    }
+    return ""
+}
+
+function Get-VmOptionValue {
+    param(
+        [string[]]$Lines,
+        [string]$Prefix
+    )
+    foreach ($line in $Lines) {
+        $trimmed = ([string]$line).Trim()
+        if ($trimmed.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring($Prefix.Length).Trim()
+        }
+    }
+    return ""
+}
+
+function Get-JtsIniSnapshot {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [ordered]@{
+            path = $Path
+            exists = $false
+            configured = $false
+        }
+    }
+    $lines = @(Get-Content -LiteralPath $Path)
+    $localServerPort = Get-KeyValueSetting -Lines $lines -Key "LocalServerPort"
+    $trustedIps = Get-KeyValueSetting -Lines $lines -Key "TrustedIPs"
+    $apiOnly = Get-KeyValueSetting -Lines $lines -Key "ApiOnly"
+    $trustedLocalhost = @(($trustedIps -split ",") | Where-Object { $_.Trim() -eq "127.0.0.1" }).Count -gt 0
+    $apiOnlyEnabled = @("true", "yes", "1").Contains($apiOnly.ToLowerInvariant())
+    $apiPortConfigured = ($localServerPort -eq [string]$ApiPort)
+    return [ordered]@{
+        path = $Path
+        exists = $true
+        local_server_port = $localServerPort
+        trusted_ips = $trustedIps
+        api_only = $apiOnly
+        api_port_configured = $apiPortConfigured
+        trusted_localhost = $trustedLocalhost
+        api_only_enabled = $apiOnlyEnabled
+        configured = ($apiPortConfigured -and $trustedLocalhost -and $apiOnlyEnabled)
+    }
+}
+
+function Get-VmOptionsSnapshot {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [ordered]@{
+            path = $Path
+            exists = $false
+            configured = $false
+        }
+    }
+    $lines = @(Get-Content -LiteralPath $Path)
+    $xmx = Get-VmOptionValue -Lines $lines -Prefix "-Xmx"
+    $parallelThreads = Get-VmOptionValue -Lines $lines -Prefix "-XX:ParallelGCThreads="
+    $concThreads = Get-VmOptionValue -Lines $lines -Prefix "-XX:ConcGCThreads="
+    $lowMemoryProfileConfigured = (
+        $xmx -eq $Heap -and
+        $parallelThreads -eq [string]$ParallelGCThreads -and
+        $concThreads -eq [string]$ConcGCThreads
+    )
+    return [ordered]@{
+        path = $Path
+        exists = $true
+        xmx = $xmx
+        parallel_gc_threads = $parallelThreads
+        conc_gc_threads = $concThreads
+        low_memory_profile_configured = $lowMemoryProfileConfigured
+        configured = $lowMemoryProfileConfigured
+    }
+}
+
 function Invoke-SchtasksActionChange {
     param(
         [string]$TaskName,
@@ -351,6 +437,10 @@ $result = [ordered]@{
     conc_gc_threads = $ConcGCThreads
     backups = @{}
     tasks = @{}
+    gateway_config = [ordered]@{
+        jts_ini = @{}
+        vmoptions = @{}
+    }
     single_source = [ordered]@{
         inventory = @()
         non_canonical_installs = @()
@@ -427,6 +517,8 @@ $result.single_source.gateway_task_canonical = (
     $runNowIsCanonical -and
     $dailyRestartIsCanonical
 )
+$result.gateway_config.jts_ini = Get-JtsIniSnapshot -Path $jtsIniPath
+$result.gateway_config.vmoptions = Get-VmOptionsSnapshot -Path $vmOptionsPath
 $result.single_source.port_listeners = @(Get-PortListenerSnapshot)
 
 if ($RestartGateway) {
