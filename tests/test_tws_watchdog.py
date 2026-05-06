@@ -62,6 +62,32 @@ def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
     assert data["details"]["gateway_process"]["pid"] == 8072
 
 
+def test_gateway_process_snapshot_reports_not_running_when_tasklist_is_empty(
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.setattr(tws_watchdog.os, "name", "nt")
+    monkeypatch.setattr(
+        tws_watchdog.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='INFO: No tasks are running which match the specified criteria.\n',
+        ),
+    )
+
+    snapshot = tws_watchdog._gateway_process_snapshot(Path(r"C:\Jts\ibgateway\1046"))
+
+    assert snapshot == {
+        "running": False,
+        "gateway_dir": r"C:\Jts\ibgateway\1046",
+        "name": "ibgateway.exe",
+    }
+
+
 def test_successful_handshake_does_not_open_raw_socket_probe(
     tmp_path: Path,
     monkeypatch,

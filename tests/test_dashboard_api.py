@@ -1473,6 +1473,47 @@ class TestDashboardAPI:
         assert "none have a fresh heartbeat" in data["truth_summary_line"]
         assert "order_entry_hold: ibgateway_waiting_for_manual_login_or_2fa" in data["truth_warnings"]
 
+    def test_bot_fleet_gateway_detail_reports_process_not_running(self, app_client):
+        """Gateway process absence should be explicit, not hidden as missing metadata."""
+        import json
+        import os
+        from datetime import UTC, datetime
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": False,
+                    "consecutive_failures": 7,
+                    "last_healthy_at": "2026-05-06T04:43:25+00:00",
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": False,
+                        "handshake_ok": False,
+                        "handshake_detail": "ConnectionRefusedError",
+                        "gateway_process": {
+                            "running": False,
+                            "gateway_dir": r"C:\Jts\ibgateway\1046",
+                            "name": "ibgateway.exe",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        ibkr = r.json()["broker_gateway"]["ibkr"]
+        assert ibkr["status"] == "down"
+        assert ibkr["process"]["running"] is False
+        assert "gateway process not running" in ibkr["detail"]
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,

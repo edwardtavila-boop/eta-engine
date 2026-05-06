@@ -335,6 +335,11 @@ def _gateway_process_snapshot(gateway_dir: Path) -> dict | None:
     """Return the live IB Gateway process, if Windows can see one."""
     if os.name != "nt":
         return None
+    not_running = {
+        "running": False,
+        "gateway_dir": str(gateway_dir),
+        "name": "ibgateway.exe",
+    }
     try:
         completed = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq ibgateway.exe", "/FO", "CSV", "/NH"],
@@ -347,13 +352,13 @@ def _gateway_process_snapshot(gateway_dir: Path) -> dict | None:
         return None
     output = completed.stdout.strip()
     if completed.returncode != 0 or not output:
-        return None
+        return not_running
     try:
         rows = list(csv.reader(output.splitlines()))
     except csv.Error:
         return None
     if not rows or rows[0][0].lower().startswith("info:"):
-        return None
+        return not_running
     row = rows[0]
     if len(row) < 5:
         return None

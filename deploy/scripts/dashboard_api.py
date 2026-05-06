@@ -729,6 +729,9 @@ def _broker_gateway_snapshot() -> dict:
         if process and process.get("running") and not healthy:
             process_detail = "gateway process running; API not ready"
             detail = f"{process_detail}; {detail}" if detail else process_detail
+        elif process and process.get("running") is False and not healthy:
+            process_detail = "gateway process not running"
+            detail = f"{process_detail}; {detail}" if detail else process_detail
         if crash and crash.get("summary"):
             detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
         recovery = _ibgateway_reauth_snapshot()
