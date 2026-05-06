@@ -340,11 +340,12 @@ Gateway profile:
 
 ```powershell
 cd C:\EvolutionaryTradingAlgo
+.\eta_engine\deploy\scripts\install_ibgateway_1046.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\repair_ibgateway_vps.ps1
 
-# Only after the audit shows C:\Jts\ibgateway\1046 exists:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\repair_ibgateway_vps.ps1 `
-  -ApplyJtsIni -ApplyVmOptions -RepairTasks -EnforceSingleSource
+# The helper refuses non-valid Authenticode installers unless explicitly allowed.
+# Only use -AllowUnsignedInstaller after confirming the official IBKR download source.
+.\eta_engine\deploy\scripts\install_ibgateway_1046.ps1 -Install -AllowUnsignedInstaller -RepairAfterInstall
 python -m eta_engine.scripts.ibgateway_reauth_controller
 ```
 

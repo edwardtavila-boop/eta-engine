@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STARTER = ROOT / "deploy" / "scripts" / "start_ibgateway.ps1"
 REPAIR = ROOT / "deploy" / "scripts" / "repair_ibgateway_vps.ps1"
+INSTALL = ROOT / "deploy" / "scripts" / "install_ibgateway_1046.ps1"
 
 
 def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> None:
@@ -90,7 +91,7 @@ def test_ibgateway_repair_enforces_single_1046_source() -> None:
 def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (STARTER, REPAIR)
+        for path in (STARTER, REPAIR, INSTALL)
     )
 
     assert "OneDrive" not in combined
@@ -99,3 +100,25 @@ def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() ->
     assert "crypto_data" not in combined
     assert "TheFirm" not in combined
     assert "The_Firm" not in combined
+
+
+def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
+    text = INSTALL.read_text(encoding="utf-8")
+
+    assert "download2.interactivebrokers.com/installers/ibgateway/latest-standalone" in text
+    assert "ibgateway-latest-standalone-windows-x64.exe" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\downloads\ibgateway" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibgateway_install.json" in text
+    assert r"C:\Jts\ibgateway\1046" in text
+    assert "Assert-CanonicalEtaPath" in text
+    assert "Assert-Gateway1046" in text
+    assert "Get-FileHash" in text
+    assert "installer_sha256" in text
+    assert "Get-AuthenticodeSignature" in text
+    assert "authenticode_status" in text
+    assert "[switch]$Install" in text
+    assert "[switch]$AllowUnsignedInstaller" in text
+    assert "if ($signature.Status -ne \"Valid\" -and -not $AllowUnsignedInstaller)" in text
+    assert "-DexecuteLauncherAction=false" in text
+    assert "repair_ibgateway_vps.ps1" in text
+    assert "$RepairAfterInstall" in text

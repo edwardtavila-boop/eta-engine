@@ -1673,6 +1673,25 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
+        (state / "ibgateway_install.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": "2026-05-06T13:03:09+00:00",
+                    "downloaded": True,
+                    "installed": False,
+                    "install_requested": False,
+                    "install_attempted": False,
+                    "installer_path": (
+                        r"C:\EvolutionaryTradingAlgo\var\eta_engine\downloads\ibgateway"
+                        r"\ibgateway-latest-standalone-windows-x64.exe"
+                    ),
+                    "installer_length": 325524034,
+                    "installer_sha256": "ABC123",
+                    "authenticode_status": "NotSigned",
+                },
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
@@ -1685,6 +1704,7 @@ class TestDashboardAPI:
         assert ibkr["detail"] == (
             "gateway process running; API not ready; skipped (socket down); "
             "gateway config verified; latest crash: IB Gateway JVM native-memory OOM; "
+            "installer downloaded (NotSigned); "
             "recovery: auth_pending; operator action required"
         )
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
@@ -1692,6 +1712,8 @@ class TestDashboardAPI:
         assert ibkr["config"]["jts_ini"]["configured"] is True
         assert ibkr["config"]["vmoptions"]["configured"] is True
         assert ibkr["config"]["single_source"]["gateway_task_canonical"] is True
+        assert ibkr["install"]["downloaded"] is True
+        assert ibkr["install"]["authenticode_status"] == "NotSigned"
         assert ibkr["recovery"]["status"] == "auth_pending"
         assert ibkr["recovery"]["operator_action_required"] is True
         assert ibkr["recovery"]["restart_attempts"] == 3

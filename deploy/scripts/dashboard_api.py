@@ -678,6 +678,45 @@ def _ibgateway_reauth_snapshot() -> dict | None:
     return None
 
 
+def _ibgateway_install_snapshot() -> dict | None:
+    """Return the Gateway installer/download audit when present."""
+    env_path = os.environ.get("ETA_IBGATEWAY_INSTALL_PATH")
+    candidates = [
+        Path(env_path) if env_path else None,
+        _state_dir() / "ibgateway_install.json",
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "ibgateway_install.json",
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not candidate.exists():
+            continue
+        data = _read_json_file(candidate)
+        installer_path = str(data.get("installer_path") or "").strip()
+        if not installer_path:
+            continue
+        return {
+            "downloaded": data.get("downloaded") is True,
+            "installed": data.get("installed") is True,
+            "install_requested": data.get("install_requested") is True,
+            "install_attempted": data.get("install_attempted") is True,
+            "installer_path": installer_path,
+            "installer_length": int(data.get("installer_length") or 0),
+            "installer_sha256": str(data.get("installer_sha256") or ""),
+            "authenticode_status": str(data.get("authenticode_status") or ""),
+            "operator_action_required": data.get("operator_action_required") is True,
+            "operator_action": str(data.get("operator_action") or ""),
+            "generated_at_utc": data.get("generated_at_utc") or "",
+            "source_path": key,
+        }
+    return None
+
+
 def _ibgateway_repair_snapshot() -> dict | None:
     """Return the latest Gateway 10.46 repair/config audit when present."""
     env_path = os.environ.get("ETA_IBGATEWAY_REPAIR_PATH")
@@ -786,6 +825,14 @@ def _broker_gateway_snapshot() -> dict:
                 detail = f"{detail}; {verified_detail}" if detail else verified_detail
         if crash and crash.get("summary"):
             detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
+        install = _ibgateway_install_snapshot()
+        if install:
+            if install.get("downloaded"):
+                installer_detail = f"installer downloaded ({install.get('authenticode_status') or 'signature unknown'})"
+                detail = f"{detail}; {installer_detail}" if detail else installer_detail
+            if install.get("install_attempted") and not install.get("installed"):
+                install_detail = "installer ran but 10.46 is not installed"
+                detail = f"{detail}; {install_detail}" if detail else install_detail
         recovery = _ibgateway_reauth_snapshot()
         if recovery and recovery.get("status"):
             detail = f"{detail}; recovery: {recovery['status']}" if detail else f"recovery: {recovery['status']}"
@@ -806,6 +853,7 @@ def _broker_gateway_snapshot() -> dict:
                 "crash": crash,
                 "process": process,
                 "config": config,
+                "install": install,
                 "recovery": recovery,
                 "account_summary": account_summary,
                 "source_path": key,
