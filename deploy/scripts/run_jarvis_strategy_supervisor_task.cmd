@@ -6,10 +6,16 @@ set "ETA_ENGINE=%ETA_ROOT%\eta_engine"
 set "ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine"
 set "ETA_SUPERVISOR_MODE=paper_live"
 set "ETA_SUPERVISOR_FEED=composite"
-rem Crypto-only paper-live lane while the futures/commodities IBKR router is
-rem under scoped hold/refactor. This keeps Alpaca paper trading live without
-rem forcing the supervisor through IBKR reconciliation on every launch.
-set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,funding_rate_btc,btc_hybrid_sage,btc_ensemble_2of3,btc_crypto_scalp,crypto_seed"
+rem Crypto + futures paper-live lane (re-enabled 2026-05-06 after IBG
+rem came back up). Crypto routes to Alpaca, futures to IBKR, per
+rem configs/bot_broker_routing.yaml. The supervisor's clientId=187 and
+rem broker_router's clientId=43 are persistent and confirmed healthy
+rem (8/8 fills, 0 rejects on broker_router as of this commit).
+rem
+rem Futures coverage: one core bot per product so each lane gets a real
+rem signal. Expand later from per_bot_registry once we have a clean
+rem cycle on these.
+set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,funding_rate_btc,btc_hybrid_sage,btc_ensemble_2of3,btc_crypto_scalp,crypto_seed,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
