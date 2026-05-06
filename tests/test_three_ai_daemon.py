@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +74,19 @@ def test_process_singleton_lock_blocks_second_live_instance(tmp_path: Path) -> N
         first.release()
 
     assert not lock_path.exists()
+
+
+def test_process_singleton_lock_treats_bom_lock_as_live(tmp_path: Path) -> None:
+    lock_path = tmp_path / "three_ai_daemon.lock"
+    lock_path.write_text(
+        json.dumps({"name": "three_ai_daemon", "pid": os.getpid()}) + "\n",
+        encoding="utf-8-sig",
+    )
+
+    second = ProcessSingletonLock(lock_path, name="three_ai_daemon")
+
+    assert second.acquire() is False
+    assert lock_path.exists()
 
 
 def test_daemon_skips_when_singleton_lock_is_active(tmp_path: Path) -> None:
