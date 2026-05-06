@@ -3728,6 +3728,293 @@ _IBKR_PROBE_CACHE: dict = {"snapshot": None, "ts": 0.0}
 _IBKR_PROBE_CACHE_TTL_S = float(os.environ.get("ETA_DASHBOARD_IBKR_CACHE_TTL_S", "60"))
 _IBKR_PROBE_LOCK = threading.Lock()
 
+# Cache for per-bot Alpaca PnL probe. Same TTL pattern as IBKR.
+# Keyed dict: {"snapshot": {bot_id: {...}}, "ts": float}.
+_ALPACA_PER_BOT_CACHE: dict = {"snapshot": None, "ts": 0.0}
+_ALPACA_PER_BOT_CACHE_TTL_S = float(os.environ.get("ETA_DASHBOARD_ALPACA_PER_BOT_CACHE_TTL_S", "60"))
+_ALPACA_PER_BOT_LOCK = threading.Lock()
+
+# Drift alarm threshold (percentage points). live_wr lower than
+# backtest_wr_target by more than this triggers drift_alarm=true.
+_DRIFT_ALARM_PP_THRESHOLD = float(os.environ.get("ETA_DASHBOARD_DRIFT_ALARM_PP", "30"))
+# Minimum number of fills today before drift_alarm can fire — under this
+# we suppress the alarm because a tiny sample is meaningless.
+_DRIFT_ALARM_MIN_FILLS = int(os.environ.get("ETA_DASHBOARD_DRIFT_ALARM_MIN_FILLS", "5"))
+
+
+def _extract_bot_id_from_client_order_id(coid: str | None) -> str | None:
+    """Extract bot_id prefix from an Alpaca client_order_id.
+
+    The supervisor stamps Alpaca client_order_ids in the form
+    ``<bot_id>_<8charhex>``, e.g. ``vwap_mr_btc_cef83eb7``. Bot ids
+    themselves can contain underscores, so we strip the trailing
+    ``_<hex>`` token and return the prefix as the bot_id.
+
+    Returns ``None`` for empty/None input or values that don't match
+    the expected shape.
+    """
+    if not coid:
+        return None
+    s = str(coid).strip()
+    if not s:
+        return None
+    # Match a trailing underscore followed by an 8+ char hex token.
+    m = re.match(r"^(?P<bot_id>.+?)_(?P<suffix>[0-9a-fA-F]{6,})$", s)
+    if m and _BOT_ID_RE.match(m.group("bot_id") or ""):
+        return m.group("bot_id")
+    # Fall back: if the whole COID looks like a valid bot_id, use it.
+    if _BOT_ID_RE.match(s):
+        return s
+    return None
+
+
+def _parse_backtest_wr_from_text(text: str | None) -> float | None:
+    """Best-effort parse of "85.7% WR, +$1947 on 3000 bars" → 0.857.
+
+    Looks for the first `<number>% WR` token in the string. Returns the
+    win-rate as a float in [0, 1] (e.g. 85.7 → 0.857), or None when no
+    match is found. Tolerant of whitespace and comma-separated dollars.
+    """
+    if not text:
+        return None
+    try:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*%\s*WR", str(text), flags=re.IGNORECASE)
+        if not m:
+            return None
+        v = float(m.group(1))
+        if v < 0 or v > 100:
+            return None
+        return round(v / 100.0, 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _registry_backtest_wr_targets() -> dict[str, float]:
+    """Return ``{bot_id: backtest_wr}`` parsed from the registry.
+
+    Reads ``paper_soak_result`` first (most direct), falls back to the
+    rationale string. Failures degrade to an empty dict so the
+    drift-tracking layer simply omits the target field.
+    """
+    out: dict[str, float] = {}
+    try:
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return out
+    for a in ASSIGNMENTS:
+        bot_id = getattr(a, "bot_id", None)
+        if not bot_id:
+            continue
+        extras = getattr(a, "extras", None) or {}
+        soak = extras.get("paper_soak_result") if isinstance(extras, dict) else None
+        wr = _parse_backtest_wr_from_text(soak)
+        if wr is None:
+            wr = _parse_backtest_wr_from_text(getattr(a, "rationale", None))
+        if wr is not None:
+            out[str(bot_id)] = wr
+    return out
+
+
+def _alpaca_per_bot_pnl_snapshot(*, today_start_iso: str) -> dict:
+    """Return per-bot PnL aggregated from today's filled Alpaca orders.
+
+    Fetches /v2/orders?status=closed&after=<today_start_iso> and groups
+    by bot_id (extracted from the client_order_id prefix). For each bot:
+
+    * ``fills_today``      — count of filled orders today
+    * ``buy_qty``          — total quantity bought
+    * ``sell_qty``         — total quantity sold
+    * ``buy_notional``     — sum(filled_price * filled_qty) for buys
+    * ``sell_notional``    — sum(filled_price * filled_qty) for sells
+    * ``net_notional``     — sell_notional - buy_notional
+                             (≈ realized + open delta; positive = net cash in)
+    * ``wins``, ``losses`` — bot pairs of buy→sell (one round-trip per
+                             matched fill). For asymmetric flow we count
+                             completed pairs only.
+    * ``live_wr_today``    — wins / (wins+losses) when n>=1, else None
+    * ``backtest_wr_target`` — parsed from registry (None if unparseable)
+    * ``drift_alarm``      — True when live_wr < backtest_wr_target by
+                             more than ``_DRIFT_ALARM_PP_THRESHOLD`` and
+                             fills_today >= ``_DRIFT_ALARM_MIN_FILLS``.
+
+    Failures degrade to ``{"error": "...", "per_bot": {}}``. The
+    dashboard request must NOT crash on Alpaca downtime.
+    """
+    snapshot: dict = {
+        "ready": False,
+        "checked_utc": datetime.now(UTC).isoformat(),
+        "per_bot": {},
+        "drift_alarm_threshold_pp": _DRIFT_ALARM_PP_THRESHOLD,
+        "drift_alarm_min_fills": _DRIFT_ALARM_MIN_FILLS,
+    }
+    try:
+        from eta_engine.venues.alpaca import AlpacaConfig  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"alpaca_adapter_unavailable: {exc}"
+        return snapshot
+    try:
+        cfg = AlpacaConfig.from_env()
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"alpaca_config_error: {exc}"
+        return snapshot
+    missing = cfg.missing_requirements()
+    if missing:
+        snapshot["error"] = "alpaca_missing_config"
+        snapshot["missing"] = missing
+        return snapshot
+    try:
+        import httpx  # noqa: PLC0415
+    except ImportError:
+        snapshot["error"] = "httpx_unavailable"
+        return snapshot
+    headers = {
+        "APCA-API-KEY-ID": cfg.api_key_id,
+        "APCA-API-SECRET-KEY": cfg.api_secret_key,
+        "Accept": "application/json",
+    }
+    try:
+        with httpx.Client(base_url=cfg.base_url, headers=headers, timeout=8.0) as client:
+            ord_resp = client.get(
+                "/v2/orders",
+                params={"status": "closed", "after": today_start_iso, "limit": 500},
+            )
+            if ord_resp.status_code != 200:
+                snapshot["error"] = f"alpaca_orders_http_{ord_resp.status_code}"
+                return snapshot
+            orders = ord_resp.json() if isinstance(ord_resp.json(), list) else []
+    except Exception as exc:  # noqa: BLE001 — broker degrade must not crash dashboard
+        snapshot["error"] = f"alpaca_per_bot_probe_failed: {exc}"
+        return snapshot
+
+    targets = _registry_backtest_wr_targets()
+    by_bot: dict[str, dict] = {}
+    for o in orders:
+        if not isinstance(o, dict):
+            continue
+        if str(o.get("status") or "").lower() != "filled":
+            continue
+        bot_id = _extract_bot_id_from_client_order_id(o.get("client_order_id"))
+        if not bot_id:
+            bot_id = "_unknown"
+        side = str(o.get("side") or "").lower()
+        qty = _float_value(o.get("filled_qty")) or 0.0
+        price = _float_value(o.get("filled_avg_price")) or 0.0
+        notional = qty * price
+        bucket = by_bot.setdefault(bot_id, {
+            "fills_today": 0,
+            "buy_qty": 0.0,
+            "sell_qty": 0.0,
+            "buy_notional": 0.0,
+            "sell_notional": 0.0,
+            "symbols": set(),
+            "_realized_per_pair": [],
+            "_buy_stack": [],  # list of (qty, price) for FIFO matching
+        })
+        bucket["fills_today"] += 1
+        sym = o.get("symbol")
+        if sym:
+            bucket["symbols"].add(str(sym))
+        if side == "buy":
+            bucket["buy_qty"] += qty
+            bucket["buy_notional"] += notional
+            bucket["_buy_stack"].append((qty, price))
+        elif side == "sell":
+            bucket["sell_qty"] += qty
+            bucket["sell_notional"] += notional
+            # FIFO match against the bot's outstanding buys to compute
+            # realized per-pair PnL — gives us live_wr_today.
+            remaining = qty
+            while remaining > 1e-12 and bucket["_buy_stack"]:
+                buy_qty, buy_price = bucket["_buy_stack"][0]
+                matched = min(buy_qty, remaining)
+                pair_pnl = (price - buy_price) * matched
+                bucket["_realized_per_pair"].append(pair_pnl)
+                remaining -= matched
+                if matched >= buy_qty - 1e-12:
+                    bucket["_buy_stack"].pop(0)
+                else:
+                    bucket["_buy_stack"][0] = (buy_qty - matched, buy_price)
+
+    per_bot_out: dict[str, dict] = {}
+    for bot_id, bucket in by_bot.items():
+        wins = sum(1 for r in bucket["_realized_per_pair"] if r > 0)
+        losses = sum(1 for r in bucket["_realized_per_pair"] if r < 0)
+        live_wr: float | None = None
+        if (wins + losses) > 0:
+            live_wr = round(wins / (wins + losses), 4)
+        bt_wr = targets.get(bot_id)
+        drift_alarm = False
+        drift_gap_pp: float | None = None
+        if (
+            bt_wr is not None
+            and live_wr is not None
+            and bucket["fills_today"] >= _DRIFT_ALARM_MIN_FILLS
+        ):
+            drift_gap_pp = round((bt_wr - live_wr) * 100.0, 2)
+            if drift_gap_pp > _DRIFT_ALARM_PP_THRESHOLD:
+                drift_alarm = True
+        net_notional = round(bucket["sell_notional"] - bucket["buy_notional"], 2)
+        per_bot_out[bot_id] = {
+            "fills_today": bucket["fills_today"],
+            "buy_qty": round(bucket["buy_qty"], 8),
+            "sell_qty": round(bucket["sell_qty"], 8),
+            "buy_notional": round(bucket["buy_notional"], 2),
+            "sell_notional": round(bucket["sell_notional"], 2),
+            "net_notional": net_notional,
+            "symbols": sorted(bucket["symbols"]),
+            "wins": wins,
+            "losses": losses,
+            "live_wr_today": live_wr,
+            "backtest_wr_target": bt_wr,
+            "drift_gap_pp": drift_gap_pp,
+            "drift_alarm": drift_alarm,
+        }
+
+    snapshot["per_bot"] = per_bot_out
+    snapshot["bot_count"] = len(per_bot_out)
+    snapshot["drift_alarm_count"] = sum(
+        1 for v in per_bot_out.values() if v.get("drift_alarm")
+    )
+    snapshot["ready"] = True
+    return snapshot
+
+
+def _alpaca_per_bot_pnl_cached(*, today_start_iso: str) -> dict:
+    """Cached wrapper around :func:`_alpaca_per_bot_pnl_snapshot`.
+
+    Same lock+TTL pattern as ``_ibkr_live_state_snapshot`` so back-to-back
+    dashboard refreshes don't hammer Alpaca's REST. Cache is keyed on the
+    UTC day to avoid serving yesterday's snapshot after midnight rollover.
+    """
+    now_ts = time.time()
+    with _ALPACA_PER_BOT_LOCK:
+        cached = _ALPACA_PER_BOT_CACHE.get("snapshot")
+        cached_ts = float(_ALPACA_PER_BOT_CACHE.get("ts") or 0.0)
+        cached_day = _ALPACA_PER_BOT_CACHE.get("today_start_iso")
+        if (
+            cached is not None
+            and cached_day == today_start_iso
+            and (now_ts - cached_ts) < _ALPACA_PER_BOT_CACHE_TTL_S
+        ):
+            cached_copy = dict(cached)
+            cached_copy["served_from_cache"] = True
+            cached_copy["cache_age_s"] = round(now_ts - cached_ts, 2)
+            return cached_copy
+    try:
+        snap = _alpaca_per_bot_pnl_snapshot(today_start_iso=today_start_iso)
+    except Exception as exc:  # noqa: BLE001 — fail-soft for the dashboard
+        snap = {
+            "ready": False,
+            "error": f"alpaca_per_bot_unhandled: {exc}",
+            "per_bot": {},
+            "checked_utc": datetime.now(UTC).isoformat(),
+        }
+    with _ALPACA_PER_BOT_LOCK:
+        _ALPACA_PER_BOT_CACHE["snapshot"] = dict(snap)
+        _ALPACA_PER_BOT_CACHE["ts"] = time.time()
+        _ALPACA_PER_BOT_CACHE["today_start_iso"] = today_start_iso
+    return snap
+
 
 def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     """Pull live IBKR positions and today's executions via ib_insync.
@@ -3874,6 +4161,15 @@ def _live_broker_state_payload() -> dict:
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
     ibkr = _ibkr_live_state_snapshot(today_start_utc=today_start_utc)
+    # Per-bot Alpaca breakdown (added 2026-05-06). Wrapped to fail-soft.
+    try:
+        per_bot_alpaca = _alpaca_per_bot_pnl_cached(today_start_iso=today_start_iso)
+    except Exception as exc:  # noqa: BLE001
+        per_bot_alpaca = {
+            "ready": False,
+            "error": f"per_bot_payload_failed: {exc}",
+            "per_bot": {},
+        }
     today_actual_fills = (
         int(alpaca.get("today_filled_orders") or 0)
         + int(ibkr.get("today_executions") or 0)
@@ -3919,6 +4215,7 @@ def _live_broker_state_payload() -> dict:
         "win_rate_30d": win_rate_30d,
         "alpaca": alpaca,
         "ibkr": ibkr,
+        "per_bot_alpaca": per_bot_alpaca,
         "source": "live_broker_rest",
     }
 
@@ -3937,6 +4234,35 @@ def live_broker_state(response: Response) -> dict:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return _live_broker_state_payload()
+
+
+@app.get("/api/live/per_bot_alpaca")
+def live_per_bot_alpaca(response: Response) -> dict:
+    """Per-bot Alpaca PnL + drift-vs-backtest flag (added 2026-05-06).
+
+    Sibling endpoint to ``/api/live/broker_state`` — surfaces the same
+    per-bot rollup that ``live_broker_state`` embeds under the
+    ``per_bot_alpaca`` key so consumers that only need the breakdown
+    don't have to round-trip the aggregate snapshot.
+
+    Cache TTL is 60s by default (``ETA_DASHBOARD_ALPACA_PER_BOT_CACHE_TTL_S``).
+    Failure modes never crash — the helper returns ``ready=false`` plus an
+    ``error`` field instead.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
+    try:
+        return _alpaca_per_bot_pnl_cached(today_start_iso=today_start_iso)
+    except Exception as exc:  # noqa: BLE001 — fail-soft
+        return {
+            "ready": False,
+            "error": f"per_bot_endpoint_failed: {exc}",
+            "per_bot": {},
+            "checked_utc": datetime.now(UTC).isoformat(),
+        }
 
 
 @app.get("/api/preflight")
