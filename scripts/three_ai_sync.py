@@ -8,6 +8,7 @@ Intended to run as a scheduled task every 4 hours.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -17,8 +18,17 @@ from pathlib import Path
 WORKSPACE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKSPACE))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.process_singleton import ProcessSingletonLock, write_singleton_skip_report  # noqa: E402
 
-def run_coordination_cycle() -> dict[str, object]:
+DEFAULT_LOCK_NAME = "three_ai_sync.lock"
+
+
+def default_lock_path(state_root: Path | None = None) -> Path:
+    return (state_root or workspace_roots.ETA_RUNTIME_STATE_DIR) / DEFAULT_LOCK_NAME
+
+
+def run_coordination_cycle(*, state_root: Path | None = None) -> dict[str, object]:
     """One full coordination cycle across all three AIs."""
     from eta_engine.brain.model_policy import TaskCategory
     from eta_engine.brain.multi_model import force_multiplier_status, route_and_execute
@@ -92,7 +102,8 @@ def run_coordination_cycle() -> dict[str, object]:
         report["phases"]["codex_verify"] = {"error": str(e)}
 
     # Write report
-    report_path = WORKSPACE / "var" / "eta_engine" / "state" / "three_ai_coordination.jsonl"
+    state_root = state_root or workspace_roots.ETA_RUNTIME_STATE_DIR
+    report_path = state_root / "three_ai_coordination.jsonl"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "a") as f:
         f.write(json.dumps(report, default=str) + "\n")
@@ -100,10 +111,27 @@ def run_coordination_cycle() -> dict[str, object]:
     return report
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--state-root", type=Path, default=workspace_roots.ETA_RUNTIME_STATE_DIR)
+    parser.add_argument("--lock-file", type=Path, default=None)
+    parser.add_argument("--no-lock", action="store_true", help="Disable singleton guard for manual diagnostics.")
+    args = parser.parse_args(argv)
+
+    lock: ProcessSingletonLock | None = None
+    if not args.no_lock:
+        effective_lock_path = args.lock_file or default_lock_path(args.state_root)
+        lock = ProcessSingletonLock(effective_lock_path, name="three_ai_sync")
+        if not lock.acquire():
+            print(f"Three-AI Coordination Sync already running; skip lock={effective_lock_path}")
+            write_singleton_skip_report(state_root=args.state_root, lock_path=effective_lock_path, name="three_ai_sync")
+            return 0
+
     print("Three-AI Coordination Sync")
     print("=" * 50)
-    report = run_coordination_cycle()
+    if lock is not None:
+        print(f"Lock: {lock.path}")
+    report = run_coordination_cycle(state_root=args.state_root)
     for phase, data in report["phases"].items():
         if "error" in data:
             print(f"  {phase}: ERROR — {data['error'][:80]}")
@@ -111,3 +139,10 @@ if __name__ == "__main__":
             print(f"  {phase}: {data['provider']} ({data['elapsed_ms']:.0f}ms) — {data['text'][:80]}...")
     print(f"  Report: {report['cycle_id']}")
     print("=" * 50)
+    if lock is not None:
+        lock.release()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -13,6 +13,8 @@ def test_codex_operator_registrar_uses_canonical_state_paths() -> None:
     assert "var\\eta_engine\\state" in text
     assert "codex_overnight_operator.py" in text
     assert "three_ai_sync.py" in text
+    assert "-MultipleInstances IgnoreNew" in text
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 30)" in text
 
 
 def test_vps_bootstrap_invokes_codex_operator_registrar() -> None:

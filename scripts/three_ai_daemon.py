@@ -23,9 +23,11 @@ if str(WORKSPACE) not in sys.path:
 
 from eta_engine.brain.model_policy import TaskCategory  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.process_singleton import ProcessSingletonLock, write_singleton_skip_report  # noqa: E402
 
 DEFAULT_CYCLE_INTERVAL_SEC = 600
 DEFAULT_MAX_TOKENS = 300
+DEFAULT_LOCK_NAME = "three_ai_daemon.lock"
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,10 @@ def write_report(
     return {"jsonl": jsonl_path, "latest": latest_path}
 
 
+def default_lock_path(state_root: Path | None = None) -> Path:
+    return (state_root or workspace_roots.ETA_RUNTIME_STATE_DIR) / DEFAULT_LOCK_NAME
+
+
 def print_cycle_summary(report: dict[str, Any]) -> None:
     print(f"  Results: {report['status']} | {report['cycle_id']}")
     for result in report.get("results", {}).values():
@@ -171,25 +177,43 @@ def run_loop(
     max_cycles: int | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     state_root: Path | None = None,
+    lock_path: Path | None = None,
+    lock_enabled: bool = True,
     route: RouteFn | None = None,
     sleep: SleepFn = time.sleep,
 ) -> int:
+    state_root = state_root or workspace_roots.ETA_RUNTIME_STATE_DIR
+    lock: ProcessSingletonLock | None = None
+    if lock_enabled:
+        effective_lock_path = lock_path or default_lock_path(state_root)
+        lock = ProcessSingletonLock(effective_lock_path, name="three_ai_daemon")
+        if not lock.acquire():
+            print(f"Three-AI Autonomous Daemon already running; skip lock={effective_lock_path}")
+            write_singleton_skip_report(state_root=state_root, lock_path=effective_lock_path, name="three_ai_daemon")
+            return 0
+
     print(f"Three-AI Autonomous Daemon starting (cycle={interval_sec:g}s)")
     print(f"Workspace: {WORKSPACE}")
-    print(f"State: {state_root or workspace_roots.ETA_RUNTIME_STATE_DIR}")
+    print(f"State: {state_root}")
+    if lock is not None:
+        print(f"Lock: {lock.path}")
     print()
 
-    cycle = 0
-    while max_cycles is None or cycle < max_cycles:
-        cycle += 1
-        print(f"[Cycle {cycle}] {datetime.now(UTC).strftime('%H:%M:%S')} - dispatching...")
-        report = run_coordination_cycle(route=route, max_tokens=max_tokens)
-        write_report(report, state_root=state_root)
-        print_cycle_summary(report)
-        print()
-        if max_cycles is None or cycle < max_cycles:
-            sleep(interval_sec)
-    return 0
+    try:
+        cycle = 0
+        while max_cycles is None or cycle < max_cycles:
+            cycle += 1
+            print(f"[Cycle {cycle}] {datetime.now(UTC).strftime('%H:%M:%S')} - dispatching...")
+            report = run_coordination_cycle(route=route, max_tokens=max_tokens)
+            write_report(report, state_root=state_root)
+            print_cycle_summary(report)
+            print()
+            if max_cycles is None or cycle < max_cycles:
+                sleep(interval_sec)
+        return 0
+    finally:
+        if lock is not None:
+            lock.release()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -199,6 +223,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval-sec", type=float, default=DEFAULT_CYCLE_INTERVAL_SEC)
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
     parser.add_argument("--state-root", type=Path, default=workspace_roots.ETA_RUNTIME_STATE_DIR)
+    parser.add_argument("--lock-file", type=Path, default=None)
+    parser.add_argument("--no-lock", action="store_true", help="Disable singleton guard for manual diagnostics.")
     args = parser.parse_args(argv)
 
     max_cycles = 1 if args.once else args.max_cycles
@@ -207,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
         max_cycles=max_cycles,
         max_tokens=args.max_tokens,
         state_root=args.state_root,
+        lock_path=args.lock_file,
+        lock_enabled=not args.no_lock,
     )
 
 

@@ -3,7 +3,7 @@
   <name>ThreeAIDaemon</name>
   <description>ETA Three-AI Autonomous Coordination Daemon - Claude, DeepSeek, Codex in continuous parallel operation</description>
   <executable>C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe</executable>
-  <arguments>C:\EvolutionaryTradingAlgo\eta_engine\scripts\three_ai_daemon.py --interval-sec 600</arguments>
+  <arguments>C:\EvolutionaryTradingAlgo\eta_engine\scripts\three_ai_daemon.py --interval-sec 600 --state-root C:\EvolutionaryTradingAlgo\var\eta_engine\state --lock-file C:\EvolutionaryTradingAlgo\var\eta_engine\state\three_ai_daemon.lock</arguments>
   <workingdirectory>C:\EvolutionaryTradingAlgo\eta_engine</workingdirectory>
   <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\eta_engine;C:\EvolutionaryTradingAlgo\firm\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src"/>
   <env name="PYTHONIOENCODING" value="utf-8"/>
