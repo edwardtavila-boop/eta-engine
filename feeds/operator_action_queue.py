@@ -150,6 +150,28 @@ def _kill_switch_latch_state() -> str:
     return data.get("state", "UNKNOWN")
 
 
+def _runtime_state_path(name: str) -> Path:
+    """Return a canonical runtime-state artifact path."""
+    return ROOT.parent / "var" / "eta_engine" / "state" / name
+
+
+def _read_runtime_state(name: str) -> dict[str, Any]:
+    """Return a canonical runtime-state JSON artifact, or empty dict."""
+    p = _runtime_state_path(name)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _gateway_exe_present(gateway_dir: Path = Path(r"C:\Jts\ibgateway\1046")) -> bool:
+    """Return whether the canonical IB Gateway 10.46 executable exists."""
+    return (gateway_dir / "ibgateway.exe").exists()
+
+
 # ---------------------------------------------------------------------------
 # Per-OP-item probes
 # ---------------------------------------------------------------------------
@@ -653,6 +675,97 @@ def _op18_vps_failover_readiness() -> OpItem:
     return item
 
 
+def _op19_ibgateway_1046_runtime() -> OpItem:
+    item = OpItem(
+        op_id="OP-19",
+        title="Install/configure canonical IB Gateway 10.46 and recover TWS API 4002",
+        where="python -m eta_engine.scripts.ibkr_surface_status --skip-client-portal",
+    )
+    install = _read_runtime_state("ibgateway_install.json")
+    repair = _read_runtime_state("ibgateway_repair.json")
+    reauth = _read_runtime_state("ibgateway_reauth.json")
+    tws = _read_runtime_state("tws_watchdog.json")
+    gateway_exe = _gateway_exe_present()
+    single_source = repair.get("single_source") if isinstance(repair.get("single_source"), dict) else {}
+    task_states = single_source.get("task_states") if isinstance(single_source.get("task_states"), dict) else {}
+    task_canonical = bool(single_source.get("gateway_task_canonical"))
+    tws_healthy = tws.get("healthy") is True
+    handshake_ok = (tws.get("details") or {}).get("handshake_ok") is True
+
+    next_commands: list[str]
+    if gateway_exe and task_canonical and tws_healthy and handshake_ok:
+        item.verdict = VERDICT_DONE
+        item.detail = "IB Gateway 10.46, recovery tasks, and TWS API 4002 handshake are healthy."
+        next_commands = ["python -m eta_engine.scripts.ibkr_surface_status --skip-client-portal"]
+        severity = "green"
+    elif not gateway_exe:
+        signature = install.get("authenticode_status") or "unknown"
+        sha = install.get("installer_sha256") or "missing"
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "IB Gateway 10.46 is not installed; "
+            f"installer Authenticode={signature}, sha256={sha}."
+        )
+        next_commands = [
+            (
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
+                ".\\eta_engine\\deploy\\scripts\\install_ibgateway_1046.ps1 "
+                "-Install -AllowUnsignedInstaller -RepairAfterInstall"
+            ),
+        ]
+        severity = "red"
+    elif not task_canonical or not task_states:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = "IB Gateway 10.46 exists, but config/recovery tasks are not canonical."
+        next_commands = [
+            (
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
+                ".\\eta_engine\\deploy\\scripts\\repair_ibgateway_vps.ps1 "
+                "-ApplyJtsIni -ApplyVmOptions -RepairTasks -EnforceSingleSource"
+            ),
+        ]
+        severity = "red"
+    else:
+        status = reauth.get("status") or tws.get("status") or "not_ready"
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "IB Gateway 10.46 is present, but TWS API 4002 is not handshake-ready; "
+            f"status={status}."
+        )
+        next_commands = [
+            "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
+            "python -m eta_engine.scripts.ibgateway_reauth_controller --execute",
+        ]
+        severity = "red"
+
+    item.evidence = {
+        "overall_severity": severity,
+        "gateway_exe_present": gateway_exe,
+        "task_canonical": task_canonical,
+        "task_states": task_states,
+        "tws_healthy": tws_healthy,
+        "handshake_ok": handshake_ok,
+        "install": install,
+        "repair": repair,
+        "reauth": reauth,
+        "tws_watchdog": tws,
+        "blockers": [
+            {
+                "name": "ibgateway_1046_runtime",
+                "summary": item.detail,
+                "next_commands": next_commands,
+                "evidence": {
+                    "gateway_exe_present": gateway_exe,
+                    "task_canonical": task_canonical,
+                    "tws_healthy": tws_healthy,
+                    "handshake_ok": handshake_ok,
+                },
+            },
+        ],
+    }
+    return item
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -679,6 +792,7 @@ def collect_items() -> list[OpItem]:
     items.append(_op16_strategy_research_candidates())
     items.append(_op17_phase_advancement())
     items.append(_op18_vps_failover_readiness())
+    items.append(_op19_ibgateway_1046_runtime())
     return items
 
 

@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 class TestOpListShape:
     """The list size + each item's required fields."""
 
-    def test_collects_all_eighteen_op_items(self):
+    def test_collects_all_nineteen_op_items(self):
         items = collect_items()
-        assert len(items) == 18
+        assert len(items) == 19
 
     def test_op_ids_are_sequential(self):
         items = collect_items()
         op_ids = [i.op_id for i in items]
-        expected = [f"OP-{n}" for n in range(1, 19)]
+        expected = [f"OP-{n}" for n in range(1, 20)]
         assert op_ids == expected
 
     def test_every_item_has_a_title(self):
@@ -128,7 +128,7 @@ class TestRenderText:
     def test_renders_each_op_id(self):
         items = collect_items()
         text = render_text(items)
-        for n in range(1, 19):
+        for n in range(1, 20):
             assert f"OP-{n}" in text
 
 
@@ -148,10 +148,10 @@ class TestJsonOutput:
         payload = json.loads(captured)
         assert "items" in payload
         assert "summary" in payload
-        assert len(payload["items"]) == 18
+        assert len(payload["items"]) == 19
         # summary counts must equal items count
         total = sum(payload["summary"].values())
-        assert total == 18
+        assert total == 19
 
     def test_json_summary_has_all_four_verdicts(
         self,
@@ -582,3 +582,63 @@ class TestVpsFailoverProbeUnderSyntheticState:
         assert item.verdict == VERDICT_BLOCKED
         assert "next: cp .env.example .env && chmod 600 .env" in item.detail
         assert item.evidence["blockers"][0]["name"] == "secrets_present"
+
+
+class TestIbGateway1046RuntimeProbe:
+    def test_missing_gateway_install_is_red_blocker_with_install_command(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        states = {
+            "ibgateway_install.json": {
+                "authenticode_status": "NotSigned",
+                "installer_sha256": "ABC123",
+            },
+            "ibgateway_repair.json": {
+                "single_source": {
+                    "gateway_task_canonical": False,
+                    "task_states": {"ETA-IBGateway": "Missing"},
+                },
+            },
+            "ibgateway_reauth.json": {"status": "missing_recovery_task"},
+            "tws_watchdog.json": {"healthy": False},
+        }
+        monkeypatch.setattr(operator_action_queue, "_read_runtime_state", lambda name: states.get(name, {}))
+        monkeypatch.setattr(operator_action_queue, "_gateway_exe_present", lambda: False)
+
+        item = operator_action_queue._op19_ibgateway_1046_runtime()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["overall_severity"] == "red"
+        assert item.evidence["gateway_exe_present"] is False
+        assert "IB Gateway 10.46 is not installed" in item.detail
+        assert "NotSigned" in item.detail
+        next_commands = item.evidence["blockers"][0]["next_commands"]
+        assert "install_ibgateway_1046.ps1" in next_commands[0]
+        assert "-AllowUnsignedInstaller" in next_commands[0]
+
+    def test_gateway_runtime_marks_done_when_api_handshake_is_healthy(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        states = {
+            "ibgateway_install.json": {"installed": True},
+            "ibgateway_repair.json": {
+                "single_source": {
+                    "gateway_task_canonical": True,
+                    "task_states": {"ETA-IBGateway": "Ready"},
+                },
+            },
+            "ibgateway_reauth.json": {"status": "healthy"},
+            "tws_watchdog.json": {
+                "healthy": True,
+                "details": {"handshake_ok": True},
+            },
+        }
+        monkeypatch.setattr(operator_action_queue, "_read_runtime_state", lambda name: states.get(name, {}))
+        monkeypatch.setattr(operator_action_queue, "_gateway_exe_present", lambda: True)
+
+        item = operator_action_queue._op19_ibgateway_1046_runtime()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["overall_severity"] == "green"
+        assert item.evidence["task_canonical"] is True
+        assert item.evidence["handshake_ok"] is True

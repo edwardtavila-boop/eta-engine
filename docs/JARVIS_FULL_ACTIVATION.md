@@ -96,6 +96,10 @@ final flip from JarvisAdmin-only mode to the full intelligence layer.
   VPS failover readiness item backed by the same summary payload, so heartbeat
   automation and dashboards can see DR blockers from the existing operator
   queue instead of scraping checklist text.
+- `scripts/operator_action_queue.py --json` also includes `OP-19`, the live
+  IBKR Gateway 10.46/TWS API 4002 execution blocker, backed by installer,
+  repair, reauth, and watchdog artifacts so paper-live order blocking is ranked
+  ahead of lower-severity stale-data or alert-secret work.
 - `scripts/jarvis_status.py --json` now embeds a compact `operator_queue`
   snapshot with blocker counts and top actions, giving dashboards one JARVIS
   status call for both policy health and current operator blockers.
