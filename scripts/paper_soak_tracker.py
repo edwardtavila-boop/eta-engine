@@ -214,7 +214,7 @@ def run_session(days: int = 30, parallel: int = 0) -> int:
     return 0
 
 
-def _run_one_bot(a, days: int, now_iso: str, ledger: dict) -> None:
+def _run_one_bot(a: object, days: int, now_iso: str, ledger: dict) -> None:
     """Run one bot sequentially and update ledger in-place.
     Passes --skip-days equal to the bot's current session count
     so each session loads a different 30-day window."""
@@ -226,7 +226,7 @@ def _run_one_bot(a, days: int, now_iso: str, ledger: dict) -> None:
         cmd.extend(["--skip-days", str(skip)])
     print(f"  [{a.bot_id}] running {days}d (offset={skip}d)...", end=" ", flush=True)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if proc.returncode != 0 or not proc.stdout.strip():
             print(f"ERROR: {proc.stderr[:80] if proc.stderr else 'no output'}")
             return
@@ -249,7 +249,7 @@ def _run_one_bot(a, days: int, now_iso: str, ledger: dict) -> None:
         print(f"PARSE ERROR: {e}")
 
 
-def _run_one_bot_subprocess(a, days: int, session_count: int = 0) -> tuple[str, dict | None, str | None]:
+def _run_one_bot_subprocess(a: object, days: int, session_count: int = 0) -> tuple[str, dict | None, str | None]:
     """Run one bot in a subprocess (for parallel mode). Returns (bot_id, data_dict, error_str)."""
     import subprocess as sp
     cmd = [sys.executable, str(SIM_SCRIPT), "--bot", a.bot_id, "--days", str(days), "--json"]
@@ -257,7 +257,7 @@ def _run_one_bot_subprocess(a, days: int, session_count: int = 0) -> tuple[str, 
     if skip > 0:
         cmd.extend(["--skip-days", str(skip)])
     try:
-        proc = sp.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = sp.run(cmd, capture_output=True, text=True, timeout=1800)
         if proc.returncode == 0 and proc.stdout.strip():
             return a.bot_id, json.loads(proc.stdout), None
         return a.bot_id, None, proc.stderr[:80] if proc.stderr else "no output"
