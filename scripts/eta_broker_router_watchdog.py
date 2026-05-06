@@ -2,7 +2,7 @@
 
 Thin wrapper around :func:`eta_watchdog.watchdog_tick` that pre-targets
 the broker_router heartbeat + process. Lets the operator register a
-separate Windows scheduled task (``ETA-BrokerRouterWatchdog``) without
+separate Windows scheduled task (``ETA-BrokerRouter-Watchdog``) without
 needing to remember ``--component broker_router``.
 
 Behaviour matches :mod:`eta_engine.scripts.eta_watchdog`:
@@ -10,14 +10,14 @@ Behaviour matches :mod:`eta_engine.scripts.eta_watchdog`:
 * Reads ``var/eta_engine/state/router/broker_router_heartbeat.json``.
 * Looks for processes whose cmdline contains ``broker_router.py``.
 * On stale heartbeat: terminates lingering broker_router processes and
-  re-launches via the wrapper or Windows task ``ETA-BrokerRouter``.
+  re-launches via the Windows task ``ETA-Broker-Router``.
 * Honors the ``var/eta_engine/state/broker_router_disabled.txt`` opt-out.
 * Stamps ``var/eta_engine/state/broker_router_watchdog_heartbeat.json``.
 
 Configuration env
 -----------------
 * ``ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME``      -- task name for relaunch
-  (default ``ETA-BrokerRouter``).
+  (default ``ETA-Broker-Router``).
 * ``ETA_BROKER_ROUTER_WATCHDOG_WRAPPER_CMD``    -- direct wrapper invocation.
 * ``ETA_BROKER_ROUTER_WATCHDOG_PROCESS_NAME``   -- cmdline match substring
   (default ``broker_router.py``).
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             / "broker_router_watchdog_heartbeat.json"
         ),
         "task_name": os.getenv(
-            "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME", "ETA-BrokerRouter",
+            "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME", "ETA-Broker-Router",
         ),
         "wrapper_cmd": os.getenv("ETA_BROKER_ROUTER_WATCHDOG_WRAPPER_CMD") or None,
     }

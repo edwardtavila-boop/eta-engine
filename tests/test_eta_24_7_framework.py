@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -163,6 +164,29 @@ def test_watchdog_noop_when_supervisor_disabled_file_present(
     # Watchdog still records its own heartbeat so the operator can verify
     # the watchdog itself ran.
     assert (tmp_path / "watchdog_heartbeat.json").exists()
+
+
+def test_watchdog_powershell_pid_fallback_uses_env_needle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-psutil Windows fallback must not match its own command line."""
+    from eta_engine.scripts import eta_watchdog
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append({"cmd": cmd, "env": kwargs.get("env")})
+        return SimpleNamespace(stdout="123\nnot-a-pid\n456\n")
+
+    monkeypatch.setattr(eta_watchdog.os, "name", "nt")
+    monkeypatch.setattr(eta_watchdog.subprocess, "run", fake_run)
+
+    pids = eta_watchdog._find_pids_with_powershell("broker_router.py")
+
+    assert pids == [123, 456]
+    assert calls
+    assert "broker_router.py" not in " ".join(calls[0]["cmd"])
+    assert calls[0]["env"]["_ETA_WATCHDOG_PROCESS_NEEDLE"] == "broker_router.py"
 
 
 # --------------------------------------------------------------------------- #

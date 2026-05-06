@@ -14,6 +14,16 @@ class _NoPositionsAlpaca:
     async def get_positions(self) -> list[dict]:
         return []
 
+
+class _CryptoPositionsAlpaca:
+    async def get_positions(self) -> list[dict]:
+        return [{"symbol": "BTCUSD", "position": "0.25"}]
+
+
+class _BtcSlightDeltaAlpaca:
+    async def get_positions(self) -> list[dict]:
+        return [{"symbol": "BTCUSD", "qty": "0.008560545"}]
+
 # ─── ExecutionRouter fleet aggregation ──────────────────────────
 
 
@@ -77,6 +87,40 @@ def test_fleet_open_notional_handles_no_positions() -> None:
     assert router._fleet_open_notional_for_symbol("BTC") == 0.0
 
 
+def test_broker_position_qty_crypto_route_skips_ibkr(tmp_path) -> None:
+    """Crypto exits should size from Alpaca without touching IBKR first."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    bot = BotInstance(
+        bot_id="btc_optimized", symbol="BTC",
+        strategy_kind="confluence_scorecard",
+        direction="long", cash=5000.0,
+    )
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+
+    with patch(
+        "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
+        return_value=("alpaca", "crypto"),
+    ), patch(
+        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+        side_effect=AssertionError("IBKR should not size Alpaca crypto exits"),
+    ) as ibkr_venue, patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_CryptoPositionsAlpaca(),
+    ):
+        qty = router._get_broker_position_qty(bot)
+
+    ibkr_venue.assert_not_called()
+    assert qty == 0.25
+
+
 # ─── reconcile_with_broker ───────────────────────────────────────
 
 
@@ -124,6 +168,51 @@ def test_reconcile_detects_broker_only_position(tmp_path) -> None:
 
     assert findings["broker_only"] == [{"symbol": "MNQ", "broker_qty": 2.0}]
     assert not findings["divergent"]
+
+
+def test_reconcile_tolerates_tiny_crypto_fractional_fill_delta(tmp_path) -> None:
+    """Alpaca fractional crypto precision should not hard-halt entries."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="btc_optimized", symbol="BTC",
+        strategy_kind="confluence_scorecard",
+        direction="long", cash=5000.0,
+    )
+    bot.open_position = {
+        "side": "BUY",
+        "qty": 0.008582,
+        "entry_price": 81545.0,
+        "entry_ts": "x",
+        "signal_id": "x",
+    }
+    sup.bots = [bot]
+
+    with patch(
+        "eta_engine.scripts.jarvis_strategy_supervisor._resolve_bot_routing",
+        return_value=("alpaca", "crypto"),
+    ), patch(
+        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+        side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
+    ), patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_BtcSlightDeltaAlpaca(),
+    ):
+        findings = sup.reconcile_with_broker()
+
+    assert findings["matched"] == 1
+    assert findings["tolerated_deltas"]
+    assert not findings["broker_only"]
+    assert not findings["divergent"]
+    assert sup._reconcile_divergence_detected is False
     assert not findings["supervisor_only"]
 
 
@@ -160,6 +249,40 @@ def test_reconcile_detects_supervisor_only_position(tmp_path) -> None:
 
     assert findings["supervisor_only"] == [{"symbol": "BTC", "supervisor_qty": 0.01}]
     assert not findings["broker_only"]
+
+
+def test_reconcile_crypto_only_skips_ibkr_query(tmp_path) -> None:
+    """A crypto-only Alpaca roster must not touch a stale IBKR/TWS socket."""
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.bots = [
+        BotInstance(
+            bot_id="btc_optimized", symbol="BTC",
+            strategy_kind="confluence_scorecard",
+            direction="long", cash=5000.0,
+        )
+    ]
+
+    with patch(
+        "eta_engine.scripts.jarvis_strategy_supervisor._get_live_ibkr_venue",
+        side_effect=AssertionError("IBKR should not be queried for Alpaca crypto"),
+    ) as ibkr_venue, patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_NoPositionsAlpaca(),
+    ):
+        findings = sup.reconcile_with_broker()
+
+    ibkr_venue.assert_not_called()
+    assert findings["brokers_queried"] == ["alpaca"]
+    assert findings["ibkr_skipped_reason"] == "active roster routes away from ibkr/futures"
+    assert "ibkr_error" not in findings
 
 
 def test_reconcile_match_when_aligned(tmp_path) -> None:

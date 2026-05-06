@@ -1117,6 +1117,47 @@ class ExecutionRouter:
         # broker assignment yet), so we try IBKR first and fall through
         # to Alpaca if the IBKR singleton isn't initialized.
         symbol_upper = bot.symbol.upper()
+        resolved_venue, asset_class = _resolve_bot_routing(bot.bot_id, bot.symbol)
+
+        def _symbol_root(value: str) -> str:
+            return (
+                value.upper()
+                .replace("/", "")
+                .rstrip("0123456789")
+                .replace("USD", "")
+            )
+
+        def _matches_symbol(broker_symbol: object) -> bool:
+            p_sym = str(broker_symbol or "").upper()
+            return p_sym == symbol_upper or _symbol_root(p_sym) == _symbol_root(symbol_upper)
+
+        def _query_alpaca_qty() -> float | None:
+            try:
+                from eta_engine.venues.alpaca import AlpacaVenue
+
+                alpaca = AlpacaVenue()
+                try:
+                    positions = asyncio.run(alpaca.get_positions())
+                except RuntimeError:
+                    # Already inside a running loop (rare in supervisor; can
+                    # happen in tests). Don't try to reuse it; just bail.
+                    return None
+                for p in positions or []:
+                    if _matches_symbol(p.get("symbol")):
+                        return abs(float(p.get("position", 0) or 0))
+                return 0.0
+            except Exception as exc:  # noqa: BLE001 - broker query failed
+                logger.debug(
+                    "_get_broker_position_qty Alpaca query failed for %s: %s",
+                    bot.bot_id, exc,
+                )
+                return None
+
+        # Crypto routed to Alpaca must not wait on a stale IBKR socket before
+        # the local supervisor can size a reduce-only exit.
+        if resolved_venue == "alpaca" or asset_class == "crypto":
+            return _query_alpaca_qty()
+
         try:
             venue = _get_live_ibkr_venue()
             broker_positions = _run_on_live_ibkr_loop(
@@ -1153,7 +1194,7 @@ class ExecutionRouter:
                 # happen in tests). Don't try to reuse it — just bail.
                 return None
             for p in positions or []:
-                if str(p.get("symbol", "")).upper() == symbol_upper:
+                if _matches_symbol(p.get("symbol")):
                     return abs(float(p.get("position", 0) or 0))
             return 0.0
         except Exception as exc:  # noqa: BLE001 — broker query failed
@@ -1619,13 +1660,11 @@ class _HeartbeatKeepAlive:
     def _write_stamp(self) -> None:
         self._state_dir.mkdir(parents=True, exist_ok=True)
         payload = {"keepalive_ts": datetime.now(UTC).isoformat()}
-        # Atomic-ish write: small payload, single open(), no temp swap.
-        # Conflicts with the diagnostic reader are tolerated — the
-        # reader either gets the prior stamp or the new one, never a
-        # partially-written file at this scale.
-        self.path.write_text(
-            json.dumps(payload), encoding="utf-8",
-        )
+        # Use the same atomic-write shape as heartbeat.json so a concurrent
+        # diagnostic read never catches a zero-byte/truncated keepalive file.
+        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp_path, self.path)
 
 
 class JarvisStrategySupervisor:
@@ -2058,10 +2097,12 @@ class JarvisStrategySupervisor:
         with broker-side positions still open is surfaced before more
         signals fire and over-leverage the account.
 
-        Queries BOTH IBKR (futures, IBKR-routed crypto) and Alpaca
-        (crypto). When ANY divergence exists where the broker holds a
-        position the supervisor doesn't know about (broker_only OR
-        divergent), the supervisor's
+        Queries only the broker surfaces required by the active bot
+        roster. Empty rosters stay conservative and query all supported
+        broker surfaces so broker-only positions still surface. When ANY
+        divergence exists where the broker holds a position the
+        supervisor doesn't know about (broker_only OR divergent), the
+        supervisor's
         ``_reconcile_divergence_detected`` flag is set. The main tick
         loop short-circuits ``_maybe_enter`` for ALL bots until the
         operator clears via env var or state file — see
@@ -2086,60 +2127,89 @@ class JarvisStrategySupervisor:
 
         broker_by_root: dict[str, float] = {}
 
+        def _broker_surface_needed(surface: str) -> bool:
+            """Return True when the active roster needs a broker query.
+
+            Unknown routing stays conservative: query the surface rather
+            than silently skipping a possible broker-side position. That
+            preserves the original safety behavior while letting a known
+            crypto-only Alpaca roster avoid a fragile IBKR/TWS handshake.
+            """
+            if not self.bots:
+                return True
+            for bot in self.bots:
+                venue, asset_class = _resolve_bot_routing(bot.bot_id, bot.symbol)
+                if venue is None and asset_class is None:
+                    return True
+                if surface == "ibkr" and (venue == "ibkr" or asset_class == "futures"):
+                    return True
+                if surface == "alpaca" and (venue == "alpaca" or asset_class == "crypto"):
+                    return True
+            return False
+
+        query_ibkr = _broker_surface_needed("ibkr")
+        query_alpaca = _broker_surface_needed("alpaca")
+
         # ── IBKR ────────────────────────────────────────────────
-        try:
-            venue = _get_live_ibkr_venue()
-            ibkr_positions = _run_on_live_ibkr_loop(
-                venue.get_positions(), timeout=10.0,
-            )
-            findings["brokers_queried"].append("ibkr")
-            for p in ibkr_positions or []:
-                sym_raw = str(p.get("symbol", "")).upper()
-                root = sym_raw.rstrip("0123456789").replace("USD", "")
-                broker_by_root[root] = broker_by_root.get(root, 0.0) + float(
-                    p.get("position", 0) or 0
+        if query_ibkr:
+            try:
+                venue = _get_live_ibkr_venue()
+                ibkr_positions = _run_on_live_ibkr_loop(
+                    venue.get_positions(), timeout=10.0,
                 )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("reconcile_with_broker: IBKR query failed: %s", exc)
-            findings["ibkr_error"] = str(exc)
+                findings["brokers_queried"].append("ibkr")
+                for p in ibkr_positions or []:
+                    sym_raw = str(p.get("symbol", "")).upper()
+                    root = sym_raw.rstrip("0123456789").replace("USD", "")
+                    broker_by_root[root] = broker_by_root.get(root, 0.0) + float(
+                        p.get("position", 0) or 0
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("reconcile_with_broker: IBKR query failed: %s", exc)
+                findings["ibkr_error"] = str(exc)
+        else:
+            findings["ibkr_skipped_reason"] = "active roster routes away from ibkr/futures"
 
         # ── Alpaca (crypto) ─────────────────────────────────────
         # Crypto positions live at Alpaca for the BTC/ETH/SOL bots; an
         # IBKR-only reconcile would silently miss broker-side crypto
         # exposure on supervisor restart, exactly the failure mode
         # this guard exists to prevent.
-        try:
-            from eta_engine.venues.alpaca import AlpacaVenue
-            alpaca = AlpacaVenue()
+        if query_alpaca:
             try:
-                alpaca_positions = asyncio.run(alpaca.get_positions())
-            except RuntimeError:
-                # Already inside a running loop. Use the IBKR-loop
-                # runner as a generic async runner — it just executes
-                # the coroutine and waits for the result.
-                alpaca_positions = _run_on_live_ibkr_loop(
-                    alpaca.get_positions(), timeout=10.0,
-                )
-            findings["brokers_queried"].append("alpaca")
-            for p in alpaca_positions or []:
-                sym_raw = str(p.get("symbol", "")).upper()
-                # Alpaca crypto symbols arrive as e.g. "BTCUSD" — strip
-                # the USD suffix and any digits so the root matches the
-                # supervisor's bot symbol root.
-                root = sym_raw.rstrip("0123456789").replace("USDT", "").replace("USD", "")
-                # Alpaca returns ``qty`` (signed) on positions; fall
-                # back to ``position`` for parity with the IBKR shape.
-                raw_qty = p.get("qty")
-                if raw_qty is None:
-                    raw_qty = p.get("position", 0)
+                from eta_engine.venues.alpaca import AlpacaVenue
+                alpaca = AlpacaVenue()
                 try:
-                    qty_val = float(raw_qty or 0)
-                except (TypeError, ValueError):
-                    qty_val = 0.0
-                broker_by_root[root] = broker_by_root.get(root, 0.0) + qty_val
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("reconcile_with_broker: Alpaca query failed: %s", exc)
-            findings["alpaca_error"] = str(exc)
+                    alpaca_positions = asyncio.run(alpaca.get_positions())
+                except RuntimeError:
+                    # Already inside a running loop. Use the IBKR-loop
+                    # runner as a generic async runner — it just executes
+                    # the coroutine and waits for the result.
+                    alpaca_positions = _run_on_live_ibkr_loop(
+                        alpaca.get_positions(), timeout=10.0,
+                    )
+                findings["brokers_queried"].append("alpaca")
+                for p in alpaca_positions or []:
+                    sym_raw = str(p.get("symbol", "")).upper()
+                    # Alpaca crypto symbols arrive as e.g. "BTCUSD" — strip
+                    # the USD suffix and any digits so the root matches the
+                    # supervisor's bot symbol root.
+                    root = sym_raw.rstrip("0123456789").replace("USDT", "").replace("USD", "")
+                    # Alpaca returns ``qty`` (signed) on positions; fall
+                    # back to ``position`` for parity with the IBKR shape.
+                    raw_qty = p.get("qty")
+                    if raw_qty is None:
+                        raw_qty = p.get("position", 0)
+                    try:
+                        qty_val = float(raw_qty or 0)
+                    except (TypeError, ValueError):
+                        qty_val = 0.0
+                    broker_by_root[root] = broker_by_root.get(root, 0.0) + qty_val
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("reconcile_with_broker: Alpaca query failed: %s", exc)
+                findings["alpaca_error"] = str(exc)
+        else:
+            findings["alpaca_skipped_reason"] = "active roster routes away from alpaca/crypto"
 
         # If both brokers failed there is nothing to compare.
         if not findings["brokers_queried"]:
@@ -2163,8 +2233,24 @@ class JarvisStrategySupervisor:
         for root in set(broker_by_root) | set(supervisor_by_root):
             b_qty = broker_by_root.get(root, 0.0)
             s_qty = supervisor_by_root.get(root, 0.0)
-            if abs(b_qty - s_qty) < 1e-6:
+            diff = abs(b_qty - s_qty)
+            tolerance = 1e-6
+            if _classify_symbol(root) == "crypto":
+                # Alpaca crypto fills can differ from supervisor-requested
+                # fractional size by tiny precision/rounding amounts. Treat
+                # sub-1% aggregate differences as aligned so a legitimate
+                # paper position does not halt the next crypto tick.
+                tolerance = max(tolerance, abs(b_qty) * 0.01, abs(s_qty) * 0.01)
+            if diff <= tolerance:
                 findings["matched"] += 1
+                if diff > 1e-6:
+                    findings.setdefault("tolerated_deltas", []).append({
+                        "symbol": root,
+                        "broker_qty": b_qty,
+                        "supervisor_qty": s_qty,
+                        "delta": b_qty - s_qty,
+                        "tolerance": tolerance,
+                    })
                 continue
             if abs(s_qty) < 1e-6:
                 findings["broker_only"].append({"symbol": root, "broker_qty": b_qty})

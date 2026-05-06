@@ -23,7 +23,7 @@ Configuration env
 -----------------
 * ``ETA_WATCHDOG_STALE_S``        -- staleness threshold (default 300s).
 * ``ETA_WATCHDOG_TASK_NAME``      -- task name passed to schtasks /Run for
-  relaunch (default ``ETA-JarvisStrategySupervisor``).
+  relaunch (default ``ETA-Jarvis-Strategy-Supervisor``).
 * ``ETA_WATCHDOG_WRAPPER_CMD``    -- alternative: path to the wrapper .cmd.
   When set, the watchdog launches the wrapper directly with subprocess
   rather than going through Task Scheduler. Useful for unit tests.
@@ -44,6 +44,7 @@ Always-on guarantees
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -53,7 +54,10 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -162,10 +166,48 @@ def _read_heartbeat_age_s(path: Path) -> float | None:
 
 
 # ─── Process inspection ───────────────────────────────────────────────────
+def _find_pids_with_powershell(substring: str) -> list[int]:
+    """Return matching process IDs using Windows CIM when psutil is absent.
+
+    The VPS Python runtime may not have psutil installed. Rather than running
+    blind, fall back to PowerShell's CIM process inventory. The search needle is
+    passed through the environment so the temporary PowerShell command line does
+    not accidentally match itself.
+    """
+    if os.name != "nt" or not substring:
+        return []
+    env = os.environ.copy()
+    env["_ETA_WATCHDOG_PROCESS_NEEDLE"] = substring
+    command = (
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.CommandLine -like ('*' + $env:_ETA_WATCHDOG_PROCESS_NEEDLE + '*') } | "
+        "ForEach-Object { $_.ProcessId }"
+    )
+    try:
+        result = subprocess.run(  # noqa: S603, S607 - fixed executable and args
+            ["powershell", "-NoProfile", "-Command", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+            text=True,
+            env=env,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        try:
+            pids.append(int(line.strip()))
+        except ValueError:
+            continue
+    return pids
+
+
 def _find_supervisor_pids(substring: str) -> list[int]:
     """Return PIDs whose cmdline contains ``substring``.
 
-    Uses psutil when available; falls back to an empty list with a
+    Uses psutil when available; falls back to PowerShell/CIM when psutil is absent.
     WARNING when psutil is missing so the watchdog stays operational
     on minimal images. The watchdog will still relaunch when the
     heartbeat is stale — it just can't preemptively kill stuck
@@ -174,11 +216,15 @@ def _find_supervisor_pids(substring: str) -> list[int]:
     try:
         import psutil  # noqa: PLC0415
     except ImportError:
+        pids = _find_pids_with_powershell(substring)
+        if pids:
+            return pids
         logger.warning(
-            "psutil unavailable; watchdog cannot enumerate supervisor processes. "
-            "Install psutil to enable kill-and-relaunch on stuck processes.",
+            "psutil unavailable and PowerShell process fallback found no matching "
+            "processes for %r.",
+            substring,
         )
-        return []
+        return pids
     pids: list[int] = []
     for proc in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
         try:
@@ -265,8 +311,7 @@ def _relaunch_supervisor(
     try:
         result = subprocess.run(  # noqa: S603, S607
             ["schtasks", "/Run", "/TN", task_name],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
             check=False,
             text=True,
@@ -292,9 +337,9 @@ def watchdog_tick(
     watchdog_heartbeat_path: Path = DEFAULT_WATCHDOG_HEARTBEAT_PATH,
     task_name: str = DEFAULT_TASK_NAME,
     wrapper_cmd: str | None = None,
-    relaunch_fn: Any = None,
-    pid_fn: Any = None,
-    kill_fn: Any = None,
+    relaunch_fn: Callable[..., tuple[bool, str]] | None = None,
+    pid_fn: Callable[[str], list[int]] | None = None,
+    kill_fn: Callable[[list[int]], list[int]] | None = None,
 ) -> WatchdogDecision:
     """Run one watchdog cycle for ``component``.
 
@@ -377,7 +422,7 @@ def watchdog_tick(
 
 def _record(component: str, decision: WatchdogDecision) -> None:
     """Append the decision into uptime_events.jsonl."""
-    try:
+    with contextlib.suppress(Exception):
         record_uptime_event(
             component="watchdog",
             event=decision.action,
@@ -390,8 +435,6 @@ def _record(component: str, decision: WatchdogDecision) -> None:
                 "process_pids_seen": list(decision.process_pids_seen),
             },
         )
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def _write_watchdog_heartbeat(path: Path, decision: WatchdogDecision) -> None:
@@ -463,19 +506,12 @@ def main(argv: list[str] | None = None) -> int:
                 "broker_router.py",
             ),
             "task_name": os.getenv(
-                # Match the deployed VPS task name. Earlier default
-                # "ETA-BrokerRouter" doesn't exist; the deployed task
-                # is "ETA-BrokerRouter-Watchdog"... but THAT runs the
-                # watchdog itself, not the broker_router. The actual
-                # broker_router relaunches today via the wrapper at
-                # deploy/scripts/run_broker_router_task.cmd, which is
-                # spawned by the supervisor's own scheduled task or
-                # manually. Use a marker name that an operator can
-                # bind to a real task; if not bound, the watchdog
-                # falls back to spawning the wrapper directly via
-                # subprocess (see WatchdogConfig.fallback_command).
+                # Match the deployed VPS service task name. Earlier defaults
+                # such as "ETA-BrokerRouter" and "ETA-BrokerRouter-Service"
+                # do not exist on the live host, so relaunch attempts failed
+                # exactly when the paper-live router needed recovery.
                 "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME",
-                "ETA-BrokerRouter-Service",
+                "ETA-Broker-Router",
             ),
             "watchdog_heartbeat_path": (
                 workspace_roots.ETA_RUNTIME_STATE_DIR
