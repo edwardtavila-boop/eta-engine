@@ -1905,6 +1905,23 @@ def dashboard_payload(response: Response) -> dict:
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
+    # Additive: live broker reality (Alpaca + IBKR) so the panel can show
+    # broker-side fills/PnL alongside supervisor-journal counts. Wraps in
+    # try/except — a degraded broker must never tank the whole payload
+    # since /api/dashboard is the front page bootstrap.
+    try:
+        payload["live_broker_state"] = _live_broker_state_payload()
+    except Exception as exc:  # noqa: BLE001
+        payload["live_broker_state"] = {
+            "ready": False,
+            "error": f"live_broker_state_failed: {exc}",
+            "today_actual_fills": 0,
+            "today_realized_pnl": 0.0,
+            "total_unrealized_pnl": 0.0,
+            "open_position_count": 0,
+            "win_rate_30d": None,
+            "server_ts": time.time(),
+        }
     return payload
 
 
@@ -3583,6 +3600,299 @@ def _fills_activity_snapshot(bot: str | None = None) -> dict:
         "fills_24h": fills_24h,
         "source_counts_24h": dict(sorted(source_counts.items())),
     }
+
+
+# ---------------------------------------------------------------------------
+# Live broker reality surface (added 2026-05-06)
+# Exposes broker-side truth (Alpaca + IBKR) alongside the supervisor-journal
+# counts so the dashboard can show "actual fills today" / "live unrealized
+# PnL" rather than only signal-emit events. Never replaces existing fields.
+# Each leg fails-soft to ``error_<broker>`` so a degraded broker does not
+# take down the dashboard panel.
+# ---------------------------------------------------------------------------
+
+
+def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
+    """Pull /v2/orders (filled today) + /v2/positions from Alpaca paper.
+
+    Synchronous so it can run inside a regular FastAPI handler without
+    spinning an asyncio loop. Uses ``httpx`` directly with the same
+    secret-file resolution AlpacaVenue uses (``AlpacaConfig.from_env``).
+    """
+    snapshot: dict = {
+        "ready": False,
+        "today_filled_orders": 0,
+        "today_realized_pnl": 0.0,
+        "open_positions": [],
+        "open_position_count": 0,
+        "unrealized_pnl": 0.0,
+        "equity": None,
+        "buying_power": None,
+        "account_number": None,
+        "checked_utc": datetime.now(UTC).isoformat(),
+    }
+    try:
+        from eta_engine.venues.alpaca import AlpacaConfig
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"alpaca_adapter_unavailable: {exc}"
+        return snapshot
+    try:
+        cfg = AlpacaConfig.from_env()
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"alpaca_config_error: {exc}"
+        return snapshot
+    missing = cfg.missing_requirements()
+    if missing:
+        snapshot["error"] = "alpaca_missing_config"
+        snapshot["missing"] = missing
+        return snapshot
+    try:
+        import httpx  # noqa: PLC0415
+    except ImportError:
+        snapshot["error"] = "httpx_unavailable"
+        return snapshot
+    headers = {
+        "APCA-API-KEY-ID": cfg.api_key_id,
+        "APCA-API-SECRET-KEY": cfg.api_secret_key,
+        "Accept": "application/json",
+    }
+    try:
+        with httpx.Client(base_url=cfg.base_url, headers=headers, timeout=8.0) as client:
+            acct_resp = client.get("/v2/account")
+            if acct_resp.status_code == 200:
+                acct = acct_resp.json() if isinstance(acct_resp.json(), dict) else {}
+                snapshot["account_number"] = acct.get("account_number")
+                snapshot["equity"] = _float_value(acct.get("equity"))
+                snapshot["buying_power"] = _float_value(acct.get("buying_power"))
+                snapshot["last_equity"] = _float_value(acct.get("last_equity"))
+                last_eq = snapshot.get("last_equity")
+                eq = snapshot.get("equity")
+                if last_eq is not None and eq is not None:
+                    snapshot["today_realized_pnl"] = round(eq - last_eq, 2)
+            pos_resp = client.get("/v2/positions")
+            if pos_resp.status_code == 200:
+                positions = pos_resp.json() if isinstance(pos_resp.json(), list) else []
+                slim_positions: list[dict] = []
+                unreal = 0.0
+                for p in positions:
+                    if not isinstance(p, dict):
+                        continue
+                    upl = _float_value(p.get("unrealized_pl")) or 0.0
+                    unreal += upl
+                    slim_positions.append({
+                        "symbol": p.get("symbol"),
+                        "qty": _float_value(p.get("qty")),
+                        "avg_entry_price": _float_value(p.get("avg_entry_price")),
+                        "current_price": _float_value(p.get("current_price")),
+                        "market_value": _float_value(p.get("market_value")),
+                        "unrealized_pl": upl,
+                        "unrealized_plpc": _float_value(p.get("unrealized_plpc")),
+                        "side": p.get("side"),
+                    })
+                snapshot["open_positions"] = slim_positions
+                snapshot["open_position_count"] = len(slim_positions)
+                snapshot["unrealized_pnl"] = round(unreal, 2)
+            ord_resp = client.get(
+                "/v2/orders",
+                params={"status": "closed", "after": today_start_iso, "limit": 500},
+            )
+            if ord_resp.status_code == 200:
+                orders = ord_resp.json() if isinstance(ord_resp.json(), list) else []
+                filled = [o for o in orders if isinstance(o, dict) and str(o.get("status") or "").lower() == "filled"]
+                snapshot["today_filled_orders"] = len(filled)
+                # Surface the most recent N for the panel tape.
+                trimmed: list[dict] = []
+                for o in filled[:30]:
+                    trimmed.append({
+                        "symbol": o.get("symbol"),
+                        "side": o.get("side"),
+                        "filled_qty": _float_value(o.get("filled_qty")),
+                        "filled_avg_price": _float_value(o.get("filled_avg_price")),
+                        "filled_at": o.get("filled_at"),
+                        "client_order_id": o.get("client_order_id"),
+                    })
+                snapshot["recent_filled_orders"] = trimmed
+        snapshot["ready"] = True
+    except Exception as exc:  # noqa: BLE001 — broker degrade must not crash dashboard
+        snapshot["error"] = f"alpaca_probe_failed: {exc}"
+    return snapshot
+
+
+def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
+    """Pull live IBKR positions and today's executions via ib_insync.
+
+    Uses a one-shot connect on a high client_id (5xx range) to avoid
+    colliding with the supervisor's clientId=187. Disconnects immediately
+    so the supervisor's connection is undisturbed. Fails soft when ib_insync
+    is missing or the gateway is down.
+    """
+    snapshot: dict = {
+        "ready": False,
+        "today_executions": 0,
+        "open_positions": [],
+        "open_position_count": 0,
+        "unrealized_pnl": 0.0,
+        "checked_utc": datetime.now(UTC).isoformat(),
+    }
+    # ib_insync's package init calls asyncio.get_event_loop() at import
+    # time. FastAPI/AnyIO worker threads have no loop, so the import
+    # itself raises. Install a fresh loop in this thread BEFORE the
+    # import so the probe works inside sync handlers under uvicorn.
+    import asyncio  # noqa: PLC0415
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"event_loop_setup_failed: {exc}"
+        return snapshot
+    try:
+        from ib_insync import IB  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        snapshot["error"] = f"ib_insync_unavailable: {exc}"
+        with contextlib.suppress(Exception):
+            loop.close()
+        return snapshot
+    host = os.environ.get("ETA_IBKR_HOST", "127.0.0.1")
+    try:
+        port = int(os.environ.get("ETA_IBKR_PORT", "4002"))
+    except ValueError:
+        port = 4002
+    # Pick a transient client_id well outside the supervisor's range.
+    client_id = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID", str(secrets.randbelow(100) + 800)))
+    ib = IB()
+    try:
+        try:
+            loop.run_until_complete(ib.connectAsync(host, port, clientId=client_id, timeout=5))
+            try:
+                portfolio = list(ib.portfolio()) if ib.isConnected() else []
+            except Exception:  # noqa: BLE001
+                portfolio = []
+            unreal = 0.0
+            slim_positions: list[dict] = []
+            for item in portfolio:
+                try:
+                    upl = float(getattr(item, "unrealizedPNL", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    upl = 0.0
+                unreal += upl
+                contract = getattr(item, "contract", None)
+                slim_positions.append({
+                    "symbol": getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None),
+                    "secType": getattr(contract, "secType", None),
+                    "exchange": getattr(contract, "exchange", None),
+                    "position": float(getattr(item, "position", 0.0) or 0.0),
+                    "avg_cost": float(getattr(item, "averageCost", 0.0) or 0.0),
+                    "market_price": float(getattr(item, "marketPrice", 0.0) or 0.0),
+                    "market_value": float(getattr(item, "marketValue", 0.0) or 0.0),
+                    "unrealized_pnl": upl,
+                })
+            snapshot["open_positions"] = slim_positions
+            snapshot["open_position_count"] = len(slim_positions)
+            snapshot["unrealized_pnl"] = round(unreal, 2)
+            try:
+                fills = list(ib.fills()) if ib.isConnected() else []
+            except Exception:  # noqa: BLE001
+                fills = []
+            today_count = 0
+            for fill in fills:
+                exec_obj = getattr(fill, "execution", None)
+                fill_time = getattr(exec_obj, "time", None) if exec_obj is not None else None
+                if fill_time is None:
+                    continue
+                if isinstance(fill_time, datetime):
+                    ft = fill_time if fill_time.tzinfo else fill_time.replace(tzinfo=UTC)
+                    if ft >= today_start_utc:
+                        today_count += 1
+            snapshot["today_executions"] = today_count
+            snapshot["managed_accounts"] = list(ib.managedAccounts())
+            snapshot["client_id"] = client_id
+            snapshot["ready"] = True
+        finally:
+            with contextlib.suppress(Exception):
+                if ib.isConnected():
+                    ib.disconnect()
+            with contextlib.suppress(Exception):
+                loop.close()
+    except Exception as exc:  # noqa: BLE001 — broker degrade must not crash dashboard
+        snapshot["error"] = f"ibkr_probe_failed: {exc}"
+    return snapshot
+
+
+def _live_broker_state_payload() -> dict:
+    """Aggregate Alpaca + IBKR live state for the dashboard.
+
+    Surfaces ``today_actual_fills``, ``today_realized_pnl``,
+    ``total_unrealized_pnl`` derived from the brokers' own books — NOT
+    from the supervisor decision journal. The supervisor counts continue
+    to be served by ``/api/dashboard`` and ``/api/equity`` unchanged.
+    """
+    today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
+    alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
+    ibkr = _ibkr_live_state_snapshot(today_start_utc=today_start_utc)
+    today_actual_fills = (
+        int(alpaca.get("today_filled_orders") or 0)
+        + int(ibkr.get("today_executions") or 0)
+    )
+    today_realized_pnl = round(float(alpaca.get("today_realized_pnl") or 0.0), 2)
+    total_unrealized_pnl = round(
+        float(alpaca.get("unrealized_pnl") or 0.0)
+        + float(ibkr.get("unrealized_pnl") or 0.0),
+        2,
+    )
+    open_position_count = (
+        int(alpaca.get("open_position_count") or 0)
+        + int(ibkr.get("open_position_count") or 0)
+    )
+    # 30d win-rate from blotter fills (best-effort; uses local ledger
+    # because broker REST is too narrow for 30-day history without paging).
+    win_rate_30d: float | None = None
+    try:
+        wins = 0
+        losses = 0
+        cutoff = datetime.now(UTC) - timedelta(days=30)
+        for row in _recent_live_fill_rows():
+            ts_dt = _parse_fill_dt(row.get("ts"))
+            if ts_dt is None or ts_dt < cutoff:
+                continue
+            r = _float_value(row.get("realized_pnl") or row.get("pnl"))
+            if r is None:
+                continue
+            if r > 0:
+                wins += 1
+            elif r < 0:
+                losses += 1
+        if (wins + losses) > 0:
+            win_rate_30d = round(wins / (wins + losses), 4)
+    except Exception:  # noqa: BLE001
+        win_rate_30d = None
+    return {
+        "server_ts": time.time(),
+        "today_actual_fills": today_actual_fills,
+        "today_realized_pnl": today_realized_pnl,
+        "total_unrealized_pnl": total_unrealized_pnl,
+        "open_position_count": open_position_count,
+        "win_rate_30d": win_rate_30d,
+        "alpaca": alpaca,
+        "ibkr": ibkr,
+        "source": "live_broker_rest",
+    }
+
+
+@app.get("/api/live/broker_state")
+def live_broker_state(response: Response) -> dict:
+    """Live broker truth (Alpaca + IBKR) for dashboard reality-check panels.
+
+    Added 2026-05-06. Sits alongside ``/api/dashboard`` (supervisor-journal
+    truth) and ``/api/equity`` (per-bot heartbeat-derived equity). The
+    dashboard payload also embeds this rollup under ``live_broker_state``
+    so the front end can render reality-vs-journal side by side without
+    a second round trip.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _live_broker_state_payload()
 
 
 @app.get("/api/preflight")
