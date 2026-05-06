@@ -169,6 +169,34 @@ def test_router_paper_live_broker_router_route_writes_pending(tmp_path: Path) ->
     assert pending.exists()
 
 
+def test_router_paper_live_broker_router_honors_allowed_symbols(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="crypto_live_paused", symbol="BTC", strategy_kind="x",
+        direction="long", cash=5000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot, signal_id="s1", side="BUY", bar={"close": 100.0}, size_mult=1.0,
+    )
+
+    assert rec is None
+    assert not (tmp_path / "crypto_live_paused.pending_order.json").exists()
+    assert bot.open_position is None
+
+
 def test_router_paper_live_order_entry_hold_blocks_before_position(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -251,6 +279,130 @@ def test_router_paper_live_direct_reject_rolls_back_position(
     assert rec is None
     assert bot.open_position is None
     assert bot.n_entries == 0
+
+
+def test_router_paper_live_direct_order_carries_reference_price(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus, OrderType
+
+    class CapturingVenue:
+        def __init__(self) -> None:
+            self.request = None
+
+        def place_order(self, request):
+            self.request = request
+            return object()
+
+    venue = CapturingVenue()
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_args, **_kwargs: OrderResult(
+            order_id="sig-open",
+            status=OrderStatus.OPEN,
+            raw={"ibkr_order_id": 42},
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="paperlive",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=500000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-open",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert venue.request is not None
+    assert venue.request.order_type is OrderType.MARKET
+    assert venue.request.price == rec.fill_price
+    assert venue.request.stop_price is not None
+    assert venue.request.target_price is not None
+
+
+def test_router_paper_live_futures_floor_reaches_broker_with_small_cash(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    class CapturingVenue:
+        def __init__(self) -> None:
+            self.request = None
+
+        def place_order(self, request):
+            self.request = request
+            return object()
+
+    venue = CapturingVenue()
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "500")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "5000")
+    monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_args, **_kwargs: OrderResult(
+            order_id="sig-floor",
+            status=OrderStatus.OPEN,
+            raw={"ibkr_order_id": 43},
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="mnq_floor",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=50000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-floor",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert rec.qty == 1.0
+    assert venue.request is not None
+    assert venue.request.qty == 1.0
+    assert venue.request.price == rec.fill_price
 
 
 def test_write_pending_order_includes_brackets_when_available(
@@ -346,7 +498,8 @@ def test_config_defaults_safe() -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import SupervisorConfig
     # Remove env vars that affect defaults
     for k in ("ETA_SUPERVISOR_BOTS", "ETA_SUPERVISOR_FEED",
-              "ETA_SUPERVISOR_MODE", "ETA_LIVE_MONEY"):
+              "ETA_SUPERVISOR_MODE", "ETA_SUPERVISOR_STATE_DIR",
+              "ETA_LIVE_MONEY"):
         os.environ.pop(k, None)
     cfg = SupervisorConfig()
     assert cfg.mode == "paper_sim"
@@ -356,6 +509,51 @@ def test_config_defaults_safe() -> None:
 
 
 # ─── Supervisor (loop integration, fast smoke) ────────────────────
+
+
+def test_config_mock_feed_uses_isolated_default_state_dir(monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import SupervisorConfig
+
+    monkeypatch.delenv("ETA_SUPERVISOR_STATE_DIR", raising=False)
+    monkeypatch.setenv("ETA_SUPERVISOR_FEED", "mock")
+    monkeypatch.setenv("ETA_SUPERVISOR_MODE", "paper_sim")
+
+    cfg = SupervisorConfig()
+
+    assert cfg.state_dir == (
+        supervisor.workspace_roots.ETA_RUNTIME_STATE_DIR
+        / "jarvis_intel"
+        / "supervisor_mock"
+    )
+
+
+def test_config_explicit_state_dir_overrides_mock_isolation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import SupervisorConfig
+
+    monkeypatch.setenv("ETA_SUPERVISOR_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("ETA_SUPERVISOR_FEED", "mock")
+    monkeypatch.setenv("ETA_SUPERVISOR_MODE", "paper_sim")
+
+    cfg = SupervisorConfig()
+
+    assert cfg.state_dir == tmp_path
+
+
+def test_config_paper_live_composite_uses_canonical_state_dir(monkeypatch) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import SupervisorConfig
+
+    monkeypatch.delenv("ETA_SUPERVISOR_STATE_DIR", raising=False)
+    monkeypatch.setenv("ETA_SUPERVISOR_FEED", "composite")
+    monkeypatch.setenv("ETA_SUPERVISOR_MODE", "paper_live")
+
+    cfg = SupervisorConfig()
+
+    assert cfg.state_dir == supervisor.workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR
 
 
 def test_supervisor_loads_bots_and_bootstraps_jarvis(tmp_path: Path, monkeypatch) -> None:
@@ -386,6 +584,44 @@ def test_supervisor_one_tick_doesnt_crash_when_no_bots(tmp_path: Path) -> None:
     sup._tick_once(1)
     sup._write_heartbeat(1)
     assert (cfg.state_dir / "heartbeat.json").exists()
+
+
+def test_run_forever_writes_start_heartbeat_before_tick(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.core import kill_switch_latch as latch_mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class AllowLatch:
+        def boot_allowed(self) -> tuple[bool, str]:
+            return True, "armed"
+
+    monkeypatch.setattr(latch_mod, "KillSwitchLatch", lambda _path: AllowLatch())
+    monkeypatch.setattr(latch_mod, "default_path", lambda: tmp_path / "latch.json")
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    cfg.tick_s = 999
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    monkeypatch.setattr(sup, "load_bots", lambda: 1)
+    monkeypatch.setattr(sup, "bootstrap_jarvis", lambda: True)
+    monkeypatch.setattr(sup, "reconcile_with_broker", lambda: None)
+
+    observed = {"heartbeat_exists": False}
+
+    def fake_tick(_tick_count: int) -> None:
+        observed["heartbeat_exists"] = (cfg.state_dir / "heartbeat.json").exists()
+        sup._stopped = True
+        sup._stop_event.set()
+
+    monkeypatch.setattr(sup, "_tick_once", fake_tick)
+
+    assert sup.run_forever() == 0
+    assert observed["heartbeat_exists"] is True
 
 
 def test_supervisor_writes_heartbeat_with_bots(tmp_path: Path) -> None:

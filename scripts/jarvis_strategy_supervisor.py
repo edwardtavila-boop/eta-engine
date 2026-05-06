@@ -71,7 +71,6 @@ import random
 import signal as os_signal
 import sys
 import threading
-import time
 import uuid
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -187,6 +186,24 @@ if _env_path.exists():
                 os.environ.setdefault(_key.strip(), _val.strip())
 
 
+def _default_supervisor_state_dir() -> Path:
+    """Return the safest default state path for this supervisor process.
+
+    Production paper-live/composite writes to the canonical dashboard path.
+    Synthetic mock supervisors are useful for diagnostics, but they must not
+    overwrite the live heartbeat unless the operator explicitly opts in with
+    ETA_SUPERVISOR_STATE_DIR.
+    """
+    explicit = os.getenv("ETA_SUPERVISOR_STATE_DIR", "").strip()
+    if explicit:
+        return Path(explicit)
+    feed = os.getenv("ETA_SUPERVISOR_FEED", "mock").strip().lower()
+    mode = os.getenv("ETA_SUPERVISOR_MODE", "paper_sim").strip().lower()
+    if feed == "mock" and mode != "paper_live":
+        return workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "supervisor_mock"
+    return workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR
+
+
 
 @dataclass
 class SupervisorConfig:
@@ -206,7 +223,7 @@ class SupervisorConfig:
     )
     # Heartbeat output path
     state_dir: Path = field(
-        default_factory=lambda: workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR,
+        default_factory=_default_supervisor_state_dir,
     )
     # Live-money gate (extra safety; even paper_live still requires this False)
     live_money_enabled: bool = field(
@@ -666,7 +683,12 @@ class ExecutionRouter:
         # contract (or 0.001 crypto), skip the entry rather than
         # over-sizing into a margin call.
         if is_futures:
-            qty = float(int(qty))  # truncate to whole lot
+            paper_floor_enabled = (
+                self.cfg.mode == "paper_live"
+                and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+            )
+            # Let cap_qty_to_budget apply the explicit paper futures floor.
+            qty = 1.0 if 0.0 < qty < 1.0 and paper_floor_enabled else float(int(qty))
         else:
             qty = round(qty, 6)
         _min_qty = 1.0 if is_futures else 0.001
@@ -853,6 +875,17 @@ class ExecutionRouter:
 
         if self.cfg.mode == "paper_live":
             _route = (self.cfg.paper_live_order_route or "direct_ibkr").strip().lower()
+            _allowed_symbols = _paper_live_allowed_symbols()
+            if not _paper_live_symbol_allowed(rec.symbol, _allowed_symbols):
+                logger.warning(
+                    "%s broker route SKIPPED: %s not in %s=%s",
+                    bot.bot_id,
+                    rec.symbol,
+                    _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
+                    ",".join(sorted(_allowed_symbols or ())),
+                )
+                _rollback_recorded_entry("symbol_not_allowed_for_broker_route")
+                return None
             if _route in {"broker_router", "pending_file", "pending"}:
                 self._write_pending_order(bot, rec)
                 return rec
@@ -877,17 +910,6 @@ class ExecutionRouter:
                     rec.symbol, rec.side, rec.qty, rec.fill_price,
                 )
                 return rec
-            _allowed_symbols = _paper_live_allowed_symbols()
-            if not _paper_live_symbol_allowed(rec.symbol, _allowed_symbols):
-                logger.warning(
-                    "%s broker route SKIPPED: %s not in %s=%s",
-                    bot.bot_id,
-                    rec.symbol,
-                    _PAPER_LIVE_ALLOWED_SYMBOLS_ENV,
-                    ",".join(sorted(_allowed_symbols or ())),
-                )
-                _rollback_recorded_entry("symbol_not_allowed_for_broker_route")
-                return None
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
             try:
                 from eta_engine.scripts.bracket_sizing import (
@@ -939,6 +961,9 @@ class ExecutionRouter:
                     side=Side.BUY if rec.side.upper() == "BUY" else Side.SELL,
                     qty=abs(float(rec.qty)) or 1,
                     order_type=OrderType.MARKET,
+                    # LiveIbkrVenue uses this as the bounded reference when
+                    # it converts outside-session MKT entries to marketable LMT.
+                    price=round(_round_to_tick(_ref, rec.symbol), 4),
                     stop_price=round(_round_to_tick(_stop, rec.symbol), 4),
                     target_price=round(_round_to_tick(_target, rec.symbol), 4),
                     bot_id=bot.bot_id,
@@ -1050,8 +1075,8 @@ class ExecutionRouter:
         # and the engine doesn't yet have a generic async runner outside
         # the IBKR loop, so we wrap the asyncio.run path defensively.
         try:
-            import asyncio
             from eta_engine.venues.alpaca import AlpacaVenue
+
             alpaca = AlpacaVenue()
             try:
                 positions = asyncio.run(alpaca.get_positions())
@@ -1171,8 +1196,6 @@ class ExecutionRouter:
                 ref_close * adverse_bps / 10_000.0
             )
         fill_price = _round_to_tick(fill_price, bot.symbol)
-        ref_price = ref_close  # legacy variable — preserved for downstream
-
         # Realized P&L (paper) — multiply by instrument point_value so
         # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
         # accurate dollar PnL. Crypto spot returns point_value=1.0 from
@@ -1788,9 +1811,8 @@ class JarvisStrategySupervisor:
                 latch = getattr(self, "_kill_switch_latch", None)
                 if latch is not None:
                     with contextlib.suppress(Exception):
-                        from eta_engine.core.kill_switch_runtime import (
-                            KillAction, KillSeverity, KillVerdict,
-                        )
+                        from eta_engine.core.kill_switch_runtime import KillAction, KillSeverity, KillVerdict
+
                         latch.record_verdict(
                             KillVerdict(
                                 action=KillAction.FLATTEN_BOT,
@@ -2018,10 +2040,9 @@ class JarvisStrategySupervisor:
         # --operator <name>`. Boot bypass exists via ETA_LATCH_BOOT_BYPASS=1
         # for ops dev only (not silent — emits a CRITICAL log line).
         try:
-            from eta_engine.core.kill_switch_latch import (
-                KillSwitchLatch,
-                default_path as latch_default_path,
-            )
+            from eta_engine.core.kill_switch_latch import KillSwitchLatch
+            from eta_engine.core.kill_switch_latch import default_path as latch_default_path
+
             self._kill_switch_latch = KillSwitchLatch(latch_default_path())
             ok, latch_reason = self._kill_switch_latch.boot_allowed()
         except Exception as exc:  # noqa: BLE001 — boot consult is fail-closed
@@ -2094,6 +2115,11 @@ class JarvisStrategySupervisor:
         try:
             while not self._stopped:
                 tick_count += 1
+                # Publish a start-of-tick heartbeat before slow feed/LLM work.
+                # A composite fleet tick can legitimately take minutes; the
+                # dashboard should show "working" only when the loop is truly
+                # stale, not merely waiting for the first full tick to finish.
+                self._write_heartbeat(tick_count)
                 self._tick_once(tick_count)
                 self._write_heartbeat(tick_count)
                 # Use an Event so SIGTERM/SIGINT can wake us early

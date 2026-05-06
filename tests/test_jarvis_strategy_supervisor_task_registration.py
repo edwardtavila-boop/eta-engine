@@ -43,15 +43,11 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert r"C:\EvolutionaryTradingAlgo" in text
     assert "ETA_SUPERVISOR_MODE=paper_live" in text
     assert "ETA_SUPERVISOR_FEED=composite" in text
-    # 2026-05-05: flipped from direct_ibkr to broker_router so crypto bots
-    # actually flow through Alpaca paper instead of the direct_ibkr crypto
-    # paper-sim short-circuit. See run_jarvis_strategy_supervisor_task.cmd
-    # comments for the rationale.
+    # 2026-05-05: broker_router is the execution path, but the VPS allowlist
+    # keeps unconfigured crypto-paper venues paused until their keys are seeded.
     assert "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router" in text
-    assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1" in text
-    # Reconcile-divergence ack: leftover MNQ=1 paper position is operator-
-    # acknowledged. Clear when the stale position is closed at IBKR.
-    assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
+    assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
+    assert "ETA_RECONCILE_DIVERGENCE_ACK=1" not in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text

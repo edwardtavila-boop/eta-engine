@@ -12,17 +12,10 @@ rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-
 rem so crypto bots actually flow through Alpaca paper instead of the
 rem direct_ibkr crypto-paper short-circuit (line ~884 of supervisor).
 set "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router"
-rem ETA_PAPER_LIVE_ALLOWED_SYMBOLS only applies on the direct_ibkr path. With
-rem broker_router route, the routing yaml is the source of truth for which
-rem (bot, symbol) pairs route where, so this allowlist is effectively unused
-rem in the new flow. Kept for back-compat in case route ever flips back.
-set "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1"
-rem Operator-acknowledged: a leftover MNQ=1 paper position from a prior session
-rem is benign and unrelated to the crypto path. Setting this env var bypasses
-rem the reconcile-divergence guard's mtime check on the ack file (which gets
-rem invalidated on every supervisor restart). Clear/remove this env once the
-rem stale position is closed at IBKR.
-set "ETA_RECONCILE_DIVERGENCE_ACK=1"
+rem ETA_PAPER_LIVE_ALLOWED_SYMBOLS applies before both direct_ibkr and
+rem broker_router submission. Keep crypto paused here until Alpaca paper keys
+rem are seeded; route only US futures through the live IBKR Gateway.
+set "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1,ES,ES1,MES,MES1,RTY,RTY1,M2K,M2K1,YM,YM1,GC,GC1,MGC,MGC1,CL,CL1,MCL,MCL1,NG,NG1,ZN,ZN1,6E,6E1,M6E,M6E1"
 set "ETA_SUPERVISOR_STARTING_CASH=50000"
 set "ETA_BROKER_ROUTER_PENDING_DIR=%ETA_ROOT%\var\eta_engine\state\router\pending"
 rem IBKR Gateway can take several seconds to promote bracket legs from PendingSubmit.
