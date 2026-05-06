@@ -188,6 +188,51 @@ class TestDashboardAPI:
         assert r.json()["error"] == "probe exploded"
         assert r.json()["top_blockers"] == []
 
+    def test_jarvis_paper_live_transition_endpoint(self, app_client, monkeypatch):
+        from eta_engine.scripts import paper_live_transition_check
+
+        monkeypatch.setattr(
+            paper_live_transition_check,
+            "build_transition_check",
+            lambda **_kwargs: {
+                "status": "blocked",
+                "critical_ready": False,
+                "operator_queue_first_blocker_op_id": "OP-19",
+                "operator_queue_first_next_action": "install IB Gateway 10.46",
+                "paper_ready_bots": 10,
+                "gates": [{"name": "tws_api_4002", "passed": False}],
+            },
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "paper_live_transition_check"
+        assert data["status"] == "blocked"
+        assert data["critical_ready"] is False
+        assert data["operator_queue_first_blocker_op_id"] == "OP-19"
+        assert data["paper_ready_bots"] == 10
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_paper_live_transition_endpoint_fails_soft(self, app_client, monkeypatch):
+        from eta_engine.scripts import paper_live_transition_check
+
+        def boom(**_kwargs):
+            raise RuntimeError("transition probe exploded")
+
+        monkeypatch.setattr(paper_live_transition_check, "build_transition_check", boom)
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "paper_live_transition_check"
+        assert data["status"] == "unreadable"
+        assert data["critical_ready"] is False
+        assert data["error"] == "transition probe exploded"
+        assert data["gates"] == []
+
     def test_dashboard_uses_bot_strategy_readiness_summary(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
 
@@ -459,10 +504,12 @@ class TestDashboardAPI:
         cards = {card["id"]: card for card in data["cards"]}
         assert "cc-verdict-stream" in cards
         assert "cc-strategy-supercharge-results" in cards
+        assert "cc-paper-live-transition" in cards
         assert "fl-roster" in cards
         assert "fl-controls" in cards
         assert "fl-equity-curve" in cards
         assert cards["cc-verdict-stream"]["source"] == "sse"
+        assert cards["cc-paper-live-transition"]["endpoint"] == "/api/jarvis/paper_live_transition"
         assert (
             cards["cc-strategy-supercharge-results"]["endpoint"]
             == "/api/jarvis/strategy_supercharge_results"

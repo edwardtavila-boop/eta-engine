@@ -84,6 +84,14 @@ DASHBOARD_CARD_REGISTRY = (
         "stale_after_s": 30,
     },
     {
+        "id": "cc-paper-live-transition",
+        "title": "Paper Live Transition",
+        "source": "endpoint",
+        "endpoint": "/api/jarvis/paper_live_transition",
+        "required": True,
+        "stale_after_s": 30,
+    },
+    {
         "id": "cc-bot-strategy-readiness",
         "title": "Bot Strategy Readiness",
         "source": "endpoint",
@@ -1276,6 +1284,42 @@ def _operator_queue_payload() -> dict:
     }
 
 
+def _paper_live_transition_payload() -> dict:
+    """Return paper-live launch readiness without breaking the Command Center."""
+    try:
+        from eta_engine.scripts.paper_live_transition_check import build_transition_check
+
+        payload = build_transition_check()
+    except Exception as exc:  # noqa: BLE001 -- broker probes must fail soft in UI
+        return {
+            "source": "paper_live_transition_check",
+            "error": str(exc),
+            "status": "unreadable",
+            "critical_ready": False,
+            "launch_command": "",
+            "operator_queue_blocked_count": 0,
+            "operator_queue_first_blocker_op_id": None,
+            "operator_queue_first_next_action": None,
+            "paper_ready_bots": 0,
+            "gates": [],
+        }
+    if isinstance(payload, dict):
+        payload.setdefault("source", "paper_live_transition_check")
+        return payload
+    return {
+        "source": "paper_live_transition_check",
+        "error": "paper-live transition check returned a non-object payload",
+        "status": "unreadable",
+        "critical_ready": False,
+        "launch_command": "",
+        "operator_queue_blocked_count": 0,
+        "operator_queue_first_blocker_op_id": None,
+        "operator_queue_first_next_action": None,
+        "paper_ready_bots": 0,
+        "gates": [],
+    }
+
+
 def _bot_strategy_readiness_payload() -> dict:
     """Return bot strategy/data readiness without letting snapshot probes break the dashboard."""
     try:
@@ -1819,6 +1863,13 @@ def jarvis_operator_queue(response: Response) -> dict:
     """Current operator blockers, prioritized for dashboard rendering."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return _operator_queue_payload()
+
+
+@app.get("/api/jarvis/paper_live_transition")
+def jarvis_paper_live_transition(response: Response) -> dict:
+    """Current paper-live transition verdict for dashboard rendering."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return _paper_live_transition_payload()
 
 
 @app.get("/api/jarvis/bot_strategy_readiness")
