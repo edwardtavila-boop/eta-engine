@@ -6,16 +6,25 @@ set "ETA_ENGINE=%ETA_ROOT%\eta_engine"
 set "ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine"
 set "ETA_SUPERVISOR_MODE=paper_live"
 set "ETA_SUPERVISOR_FEED=composite"
-rem Crypto + futures paper-live lane (re-enabled 2026-05-06 after IBG
-rem came back up). Crypto routes to Alpaca, futures to IBKR, per
-rem configs/bot_broker_routing.yaml. The supervisor's clientId=187 and
-rem broker_router's clientId=43 are persistent and confirmed healthy
-rem (8/8 fills, 0 rejects on broker_router as of this commit).
+rem Crypto + futures paper-live lane (Alpaca for crypto, IBKR for
+rem futures, per configs/bot_broker_routing.yaml).
 rem
-rem Futures coverage: one core bot per product so each lane gets a real
-rem signal. Expand later from per_bot_registry once we have a clean
-rem cycle on these.
-set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,funding_rate_btc,btc_hybrid_sage,btc_ensemble_2of3,btc_crypto_scalp,crypto_seed,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
+rem CRYPTO ALPHA SET (5 bots, audited 2026-05-06):
+rem - btc_optimized: DIAMOND #4, 50% WR, +$35k backtest. PRIMARY.
+rem - vwap_mr_btc: DIAMOND #11, vwap reversion at 2σ on London open.
+rem - volume_profile_btc: DIAMOND #13, POC magnetic 168-bar profile.
+rem - funding_rate_btc: DIAMOND #18, persistent funding momentum.
+rem - eth_sage_daily: DIAMOND #3, 40% WR, +$3.8k backtest on ETH.
+rem
+rem DROPPED 2026-05-06 (proven negative-expectancy):
+rem - btc_hybrid_sage: 25% WR shadow, losing
+rem - btc_ensemble_2of3: 25% WR shadow, losing
+rem - crypto_seed: DCA non-edge accumulator (kept exposure-only role
+rem   but doesn't generate alpha — better to size other bots up)
+rem
+rem FUTURES SET (8 bots): one core per product (mnq, mes, m2k, ym, gc,
+rem cl, ng, zn, eur), routed via broker_router → IBKR.
+set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,funding_rate_btc,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
@@ -32,6 +41,28 @@ rem IBKR Gateway can take several seconds to promote bracket legs from PendingSu
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"
 rem Dedicated positive order-entry client id. Do not inherit machine-level 0.
 set "ETA_IBKR_CLIENT_ID=187"
+rem Capital management — lifted 2026-05-06 to share the FULL $50k
+rem starting cash across crypto + futures fleets per operator
+rem directive ("crypto fleet should run on the full $50k capital
+rem shared with futures and commodities"). The hard daily loss caps
+rem (4% per bot in registry) remain the per-bot circuit breaker, and
+rem JARVIS verdict size_mult (0.5 APPROVED / 0.24 CONDITIONAL) keeps
+rem any single signal from over-deploying.
+rem
+rem Per-bot caps lifted to $10k = 20% of equity per bot — bots will
+rem still self-limit via their max_qty_equity_pct / scorecard logic;
+rem this just removes per_bot as the binding constraint so the bot's
+rem internal sizing (which has been backtested) can fully express.
+rem
+rem Fleet caps lifted to full $50k. Crypto is cash-funded so $50k
+rem fleet = $50k of coins. Futures uses margin (~$1-2k per micro
+rem contract) so $50k notional needs only ~$10-15k of cash margin,
+rem leaving room for crypto fleet to coexist on the same Alpaca paper
+rem account ($99k equity per dashboard probe).
+set "ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD=10000"
+set "ETA_LIVE_CRYPTO_FLEET_BUDGET_USD=50000"
+set "ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD=10000"
+set "ETA_LIVE_FUTURES_FLEET_BUDGET_USD=50000"
 
 set "PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"

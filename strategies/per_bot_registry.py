@@ -237,6 +237,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "sweep_config": {
                     "rr_target": 3.0,
                     "atr_stop_mult": 2.0,
+                    # Caps added 2026-05-06 with warmup-lift to 1.0x size.
+                    # 4/day matches sweep_reclaim's natural rate (rare in
+                    # quiet sessions, can cluster in trending sessions).
+                    # 6 bars (~6h) between trades prevents stacking on the
+                    # same liquidity event.
+                    "max_trades_per_day": 4,
+                    "min_bars_between_trades": 6,
                 },
             },
             "scorecard_config": {
@@ -245,7 +252,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
-                    "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            # Warmup multiplier lifted 0.5 → 1.0 on 2026-05-06 after 50% WR + $35k
+            # backtest validation. This is the production-candidate primary BTC bot.
+            # Daily loss cap stays at 4% as the per-bot circuit breaker.
+            "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
             "daily_loss_limit_pct": 4.0,
 },
     ),
@@ -777,7 +787,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "BTC",
             "paper_soak_result": "85.7% WR, +$1,947 on 3000 bars",
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.33},
-            "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            # Warmup mult lifted 0.5 → 1.0 on 2026-05-06: paper soak showed
+            # 85.7% WR on 3000 bars + production_candidate stamp. Daily loss
+            # cap added as the per-bot circuit breaker.
+            "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
+            "daily_loss_limit_pct": 4.0,
         },
     ),
 
@@ -870,6 +884,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "per_ticker_optimal": "BTC",
             "research_candidate": True,
+            # Risk + warmup added 2026-05-06. production_candidate stamp +
+            # 1h timeframe (less noisy than 5m) means it's safe to start at
+            # full size; loss cap is the per-bot circuit breaker.
+            "daily_loss_limit_pct": 4.0,
         },
     ),
 
@@ -1045,7 +1063,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "grid_mode": True, "grid_min_profit_factor": 1.0,
                 "grid_max_dd_pct": 50.0, "grid_min_pos_fraction": 0.33,
             },
-            "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            # Warmup mult lifted 0.5 → 1.0 on 2026-05-06: paper soak 52.6% WR
+            # + $6,383 PnL on 19 trades, production_candidate stamp. Daily
+            # loss cap is the per-bot circuit breaker.
+            "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
+            "daily_loss_limit_pct": 4.0,
         },
     ),
 
