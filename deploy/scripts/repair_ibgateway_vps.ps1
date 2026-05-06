@@ -96,6 +96,40 @@ function Update-JtsIni {
     Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
 }
 
+function Invoke-SchtasksActionChange {
+    param(
+        [string]$TaskName,
+        [string]$Execute,
+        [string]$Arguments
+    )
+    $taskPath = "\$TaskName"
+    $taskRun = "$Execute $Arguments"
+    $escapedTaskPath = $taskPath.Replace('"', '\"')
+    $escapedTaskRun = $taskRun.Replace('"', '\"')
+    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $processInfo.FileName = "schtasks.exe"
+    $processInfo.Arguments = "/Change /TN `"$escapedTaskPath`" /TR `"$escapedTaskRun`""
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    $process = [System.Diagnostics.Process]::Start($processInfo)
+    if (-not $process.WaitForExit(15000)) {
+        $process.Kill()
+        return [ordered]@{
+            ok = $false
+            output = "schtasks timed out"
+        }
+    }
+    $output = @(
+        $process.StandardOutput.ReadToEnd()
+        $process.StandardError.ReadToEnd()
+    ) -join "`n"
+    return [ordered]@{
+        ok = ($process.ExitCode -eq 0)
+        output = $output
+    }
+}
+
 function Set-TaskActionIfPresent {
     param(
         [string]$TaskName,
@@ -110,7 +144,14 @@ function Set-TaskActionIfPresent {
             Set-ScheduledTask -TaskName $TaskName -Action $action -ErrorAction Stop | Out-Null
             return "updated"
         } catch {
-            return "failed: $($_.Exception.Message)"
+            $fallback = Invoke-SchtasksActionChange `
+                -TaskName $TaskName `
+                -Execute "powershell.exe" `
+                -Arguments $Arguments
+            if ($fallback.ok) {
+                return "updated_via_schtasks"
+            }
+            return "failed: $($_.Exception.Message); schtasks: $($fallback.output)"
         }
     }
     $trigger = if ($TaskName -eq "ETA-IBGateway-DailyRestart") {
@@ -153,7 +194,9 @@ $result = [ordered]@{
     backups = @{}
     tasks = @{}
     restarted = $false
+    restart_error = ""
 }
+$restartFailed = $false
 
 if ($ApplyVmOptions) {
     $result.backups.vmoptions = Backup-File -Path $vmOptionsPath -Stamp $stamp
@@ -176,10 +219,18 @@ if ($RepairTasks) {
 }
 
 if ($RestartGateway) {
-    & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -ForceRestart
-    $result.restarted = $true
+    try {
+        & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -ForceRestart
+        $result.restarted = $true
+    } catch {
+        $result.restart_error = $_.Exception.Message
+        $restartFailed = $true
+    }
 }
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StatePath) | Out-Null
 ($result | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $StatePath -Encoding ASCII
 $result | ConvertTo-Json -Depth 5
+if ($restartFailed) {
+    throw $result.restart_error
+}
