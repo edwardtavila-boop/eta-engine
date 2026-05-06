@@ -145,7 +145,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
-    # eth_sage_daily — consistent. 40% WR, +$3.8k on 80 trades.
+    # eth_sage_daily — ELITE-GATE 2026-05-05: ALL GREEN — promote to paper-soak.
+    #   Latest 720d lab retest cleared all gates: 370 trades, 52.7% WR,
+    #   Sharpe 0.859, PF 1.114, max DD 19.0%. This is now the active ETH
+    #   sage-daily paper-soak lane after eth_perp was retired.
     StrategyAssignment(
         bot_id="eth_sage_daily",
         strategy_id="eth_corb_sage_daily_v1",
@@ -164,7 +167,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "provides directional filtering that crypto_orb alone lacks."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
+            "elite_gate_passed": "2026-05-05",
+            "elite_gate_results": (
+                "370 trades, 52.7% WR, Sharpe 0.859, PF 1.114, "
+                "max DD 19.0%, pass_reason=all gates passed"
+            ),
             "walk_forward_overrides": {"agg_degradation_mode": True, "long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "underlying_strategy": "crypto_orb",
             # Differentiator from eth_sweep_reclaim (which is pure
