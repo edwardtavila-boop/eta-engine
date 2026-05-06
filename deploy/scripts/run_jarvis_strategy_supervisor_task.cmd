@@ -34,7 +34,7 @@ rem - crypto_seed: DCA non-edge accumulator
 rem
 rem FUTURES SET (8 bots): one core per CME/CBOT product (mnq, mes, m2k,
 rem ym, gc, cl, ng, zn, eur), routed via broker_router → IBKR.
-set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
+set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,mnq_futures_sage,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
