@@ -262,6 +262,7 @@ if (-not $SkipETATasks) {
     Write-Host ""; Write-Host "=== ETA Dashboard API + Bridge Tasks ===" -ForegroundColor Green
     $dashboardApiTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_api_task.ps1"
     $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
+    $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
 
     if (Test-Path $dashboardApiTaskScript) {
         Write-Host "  Registering canonical dashboard API task (127.0.0.1:8000)..." -ForegroundColor Gray
@@ -279,6 +280,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_proxy8421_bridge_task.ps1 not found at $proxy8421TaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $paperLiveTransitionTaskScript) {
+        Write-Host "  Registering paper-live transition cache refresher task (every 5m)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $paperLiveTransitionTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_paper_live_transition_check_task.ps1 not found at $paperLiveTransitionTaskScript" -ForegroundColor Yellow
     }
 }
 
@@ -438,6 +448,7 @@ Write-Host "  ETA-Reasoner       3 tasks  -- persona architectural" -ForegroundC
 Write-Host "  ETA-Jarvis-Live                  â€” boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Avengers-Fleet               â€” boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard                    â€” boot: logon trigger" -ForegroundColor Gray
+Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-IbkrGatewayWatchdog          â€” every 5m" -ForegroundColor Gray
 Write-Host ""
 Write-Host "WinSW Services:" -ForegroundColor White
