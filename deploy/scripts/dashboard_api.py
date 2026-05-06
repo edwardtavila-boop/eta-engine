@@ -833,6 +833,8 @@ def _broker_gateway_snapshot() -> dict:
             if install.get("install_attempted") and not install.get("installed"):
                 install_detail = "installer ran but 10.46 is not installed"
                 detail = f"{detail}; {install_detail}" if detail else install_detail
+            if install.get("operator_action_required"):
+                detail = f"{detail}; installer action required" if detail else "installer action required"
         recovery = _ibgateway_reauth_snapshot()
         if recovery and recovery.get("status"):
             detail = f"{detail}; recovery: {recovery['status']}" if detail else f"recovery: {recovery['status']}"

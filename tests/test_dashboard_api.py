@@ -1688,6 +1688,10 @@ class TestDashboardAPI:
                     "installer_length": 325524034,
                     "installer_sha256": "ABC123",
                     "authenticode_status": "NotSigned",
+                    "operator_action_required": True,
+                    "operator_action": (
+                        "IB Gateway 10.46 is not installed at C:\\Jts\\ibgateway\\1046."
+                    ),
                 },
             ),
             encoding="utf-8",
@@ -1705,6 +1709,7 @@ class TestDashboardAPI:
             "gateway process running; API not ready; skipped (socket down); "
             "gateway config verified; latest crash: IB Gateway JVM native-memory OOM; "
             "installer downloaded (NotSigned); "
+            "installer action required; "
             "recovery: auth_pending; operator action required"
         )
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
@@ -1714,6 +1719,7 @@ class TestDashboardAPI:
         assert ibkr["config"]["single_source"]["gateway_task_canonical"] is True
         assert ibkr["install"]["downloaded"] is True
         assert ibkr["install"]["authenticode_status"] == "NotSigned"
+        assert ibkr["install"]["operator_action_required"] is True
         assert ibkr["recovery"]["status"] == "auth_pending"
         assert ibkr["recovery"]["operator_action_required"] is True
         assert ibkr["recovery"]["restart_attempts"] == 3

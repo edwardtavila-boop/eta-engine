@@ -94,6 +94,16 @@ try {
     $result.authenticode_status = [string]$signature.Status
     $result.authenticode_status_message = [string]$signature.StatusMessage
     $result.signer_subject = $signer
+    $result.installed = Test-Path -LiteralPath (Join-Path $GatewayDir "ibgateway.exe")
+
+    if (-not $Install -and -not $result.installed) {
+        $result.operator_action_required = $true
+        $result.operator_action = (
+            "IB Gateway 10.46 is not installed at C:\Jts\ibgateway\1046. " +
+            "Confirm the official IBKR installer source, then rerun with " +
+            "-Install -AllowUnsignedInstaller -RepairAfterInstall."
+        )
+    }
 
     if ($Install) {
         if ($signature.Status -ne "Valid" -and -not $AllowUnsignedInstaller) {
