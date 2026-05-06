@@ -6,7 +6,8 @@ param(
     [string]$StateDir = "C:\EvolutionaryTradingAlgo\var\eta_engine\state",
     [int]$ApiPort = 4002,
     [int]$StartupTimeoutSeconds = 600,
-    [switch]$ForceRestart
+    [switch]$ForceRestart,
+    [switch]$AllowHealthyRestart
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,6 +111,11 @@ try {
     $lockStream = New-StartLock -Path $lockPath
 
     $listener = Get-ApiListener
+    if ($listener -and $ForceRestart -and -not $AllowHealthyRestart) {
+        Write-LogLine "ForceRestart requested but healthy API listener is already present port=$ApiPort pid=$($listener.OwningProcess); skipping restart to preserve authenticated IBKR session"
+        return
+    }
+
     if ($listener -and -not $ForceRestart) {
         Write-LogLine "existing gateway process running; no start needed port=$ApiPort pid=$($listener.OwningProcess)"
         return

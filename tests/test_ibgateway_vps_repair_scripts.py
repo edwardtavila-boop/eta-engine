@@ -31,6 +31,15 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "existing gateway process running; no start needed" in text
 
 
+def test_ibgateway_starter_does_not_force_restart_healthy_authenticated_gateway() -> None:
+    text = STARTER.read_text(encoding="utf-8")
+
+    assert "[switch]$AllowHealthyRestart" in text
+    assert "ForceRestart requested but healthy API listener is already present" in text
+    assert "skipping restart to preserve authenticated IBKR session" in text
+    assert "if ($listener -and $ForceRestart -and -not $AllowHealthyRestart)" in text
+
+
 def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     text = REPAIR.read_text(encoding="utf-8")
 
