@@ -233,6 +233,7 @@ class SmartRouter:
         }
 
     def _venue_by_name(self, name: str) -> VenueBase | None:
+        # Canonical names (whatever each venue defines as its `.name`):
         lookup = {
             self.bybit.name: self.bybit,
             self.okx.name: self.okx,
@@ -240,7 +241,16 @@ class SmartRouter:
             self.ibkr.name: self.ibkr,
             self.tastytrade.name: self.tastytrade,
         }
-        return lookup.get(name)
+        # Operator-friendly aliases used in bot_broker_routing.yaml:
+        aliases = {
+            "tasty":     self.tastytrade,
+            "tt":        self.tastytrade,
+            "ib":        self.ibkr,
+            "interactivebrokers": self.ibkr,
+        }
+        if name in lookup:
+            return lookup[name]
+        return aliases.get((name or "").strip().lower())
 
     # ----- routing -----
 
