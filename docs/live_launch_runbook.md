@@ -325,6 +325,26 @@ when creds are populated. If abort: check that the Gateway is running, the
 session is still authenticated, and `IBKR_ACCOUNT_ID` matches the logged-in
 account. Do NOT proceed without the primary smoke green.
 
+For `paper_live` direct order routing, the Client Portal smoke is not enough:
+IB Gateway/TWS API port `4002` must also be freshly healthy. Keep the
+order-entry hold engaged while completing the visible IBKR Gateway login or
+two-factor prompt, then release through the guarded command below. The guard
+refuses to clear the hold if `tws_watchdog.json` is missing, stale, unhealthy,
+or if the active hold reason is an unrelated operator incident.
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+.\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.runtime_order_hold status --json
+.\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.tws_watchdog --handshake-attempts 2 --handshake-timeout 20
+
+# Dry run first. Expect status=ready_to_release only after 4002 handshake is fresh.
+.\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.ibgateway_release_guard
+
+# Execute only after the dry run is green. This clears the IBKR-specific hold,
+# enables ETA-IBGateway-Reauth, and starts broker router + JARVIS supervisor.
+.\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.ibgateway_release_guard --execute
+```
+
 Tastytrade fallback failures are non-blocking for first live tick (the
 runtime will degrade to `no_broker_data` for Tastytrade and IBKR will keep
 serving). They are blocking once you intentionally exercise failover.
