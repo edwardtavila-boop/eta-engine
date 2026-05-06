@@ -104,7 +104,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         window_days=90,
         step_days=30,
         min_trades_per_window=3,
-        strategy_kind="sage_daily_gated",
+        strategy_kind="sweep_reclaim",
         rationale=(
             "DIAMOND #2: 40% WR, +$8.8k, 120 trades. Rescued from 0% WR by "
             "fixing RR 1.0→3.0 and adding sage daily gate. Sage filters the "
@@ -157,7 +157,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         window_days=90,
         step_days=30,
         min_trades_per_window=3,
-        strategy_kind="sage_daily_gated",
+        strategy_kind="sweep_reclaim",
         rationale=(
             "DIAMOND #3: 40% WR, +$3.8k, 80 trades. Consistent ETH performer. "
             "Sage daily gate on crypto_orb base. The daily sage verdict "
