@@ -45,10 +45,43 @@ default:
     M6E:  { ibkr: M6E }
 
 bots:
-  # Explicit per-bot overrides. Anything not listed inherits default.venue.
-  btc_optimized:    { venue: ibkr }
-  eth_perp:         { venue: ibkr }
-  sol_directional:  { venue: ibkr }
-  mnq_v7:           { venue: ibkr }
-  # Examples for tasty routing -- currently none, leave commented:
-  # btc_to_tasty: { venue: tasty }
+  # Explicit per-bot overrides. Anything not listed inherits default.venue (ibkr).
+  #
+  # 2026-05-05 — crypto routing flipped to Tastytrade paper.
+  # Reason: IBKR paper accounts cannot trade crypto (Paxos has no paper-trading
+  # product). Tastytrade paper is verified to support BTC/ETH/SOL spot.
+  # Operator switches a specific crypto bot back to ibkr only after IBKR live
+  # account is funded + crypto-enabled at the broker.
+  #
+  # Futures bots stay on ibkr (DUQ319869 paper).
+
+  # ── Crypto bots (Tastytrade paper) ─────────────────────────────────
+  btc_optimized:        { venue: tasty }
+  btc_hybrid:           { venue: tasty }
+  btc_regime_trend_etf: { venue: tasty }
+  btc_sage_daily_etf:   { venue: tasty }
+  btc_hybrid_sage:      { venue: tasty }
+  btc_ensemble_2of3:    { venue: tasty }
+  btc_crypto_scalp:     { venue: tasty }
+  btc_regime_trend:     { venue: tasty }
+  crypto_seed:          { venue: tasty }
+  eth_perp:             { venue: tasty }
+  eth_sweep_reclaim:    { venue: tasty }
+  eth_sage_daily:       { venue: tasty }
+  eth_compression:      { venue: tasty }
+  sol_perp:             { venue: tasty }
+  sol_directional:      { venue: tasty }
+  sol_sweep_scalp:      { venue: tasty }
+  xrp_perp:             { venue: tasty }
+  rsi_mr_btc:           { venue: tasty }
+  vwap_mr_btc:          { venue: tasty }
+  volume_profile_btc:   { venue: tasty }
+  gap_fill_btc:         { venue: tasty }
+  cross_asset_btc:      { venue: tasty }
+  funding_rate_btc:     { venue: tasty }
+  avax_sweep_reclaim:   { venue: tasty }
+  link_sweep_reclaim:   { venue: tasty }
+  doge_sweep_reclaim:   { venue: tasty }
+
+  # ── Futures bots (IBKR paper, DUQ319869) ───────────────────────────
+  mnq_v7:               { venue: ibkr }
