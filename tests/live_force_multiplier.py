@@ -1,10 +1,12 @@
 """Live integration test — DeepSeek API via Force Multiplier orchestrator."""
-import sys, logging
+import logging
+import sys
+
 sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
 logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s: %(message)s")
 
-from eta_engine.brain.multi_model import route_and_execute
 from eta_engine.brain.model_policy import TaskCategory
+from eta_engine.brain.multi_model import route_and_execute
 
 print("Testing DeepSeek route (BOILERPLATE -> deepseek)...")
 resp = route_and_execute(

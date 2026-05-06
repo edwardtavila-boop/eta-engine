@@ -1,8 +1,7 @@
-"""
+r"""
 Canonical VPS fix — single source of truth at C:\EvolutionaryTradingAlgo.
 Fixes service XML paths, re-registers WinSW services, validates, starts everything.
 """
-import os
 import subprocess
 import sys
 from pathlib import Path

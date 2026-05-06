@@ -60,8 +60,8 @@ def reauth_gateway() -> dict[str, Any]:
     it to the local gateway. Returns status dict.
     """
     import ssl
-    import urllib.request
     import urllib.parse
+    import urllib.request
 
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
@@ -69,7 +69,7 @@ def reauth_gateway() -> dict[str, Any]:
 
     state = _load_state()
     creds = _read_creds()
-    
+
     if not creds.get("username") or not creds.get("password"):
         return {"status": "error", "message": "No credentials configured. Set IBKR_USERNAME/IBKR_PASSWORD env vars."}
 
@@ -81,7 +81,7 @@ def reauth_gateway() -> dict[str, Any]:
         )
         with urllib.request.urlopen(req, context=ssl_ctx, timeout=15) as resp:
             status = json.loads(resp.read().decode())
-        
+
         if status.get("authenticated"):
             _save_state({
                 **state,
@@ -99,7 +99,7 @@ def reauth_gateway() -> dict[str, Any]:
             "mac": "",
             "machineName": "",
         }).encode()
-        
+
         req = urllib.request.Request(
             f"{IBKR_PROXY_HOST}/sso/Login",
             data=login_data,
@@ -109,19 +109,19 @@ def reauth_gateway() -> dict[str, Any]:
         with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
             body = resp.read().decode()
             redirect_url = resp.geturl()
-        
+
         # Step 3: Extract SSO token from redirect URL
         parsed = urllib.parse.urlparse(redirect_url)
         token_params = urllib.parse.parse_qs(parsed.query)
         sso_token = token_params.get("sso_token", [None])[0]
-        
+
         if not sso_token:
             # Token might be in the response body
             import re
             match = re.search(r'sso_token=([^&"\']+)', body)
             if match:
                 sso_token = match.group(1)
-        
+
         if not sso_token:
             return {"status": "error", "message": "Could not extract SSO token from login response"}
 

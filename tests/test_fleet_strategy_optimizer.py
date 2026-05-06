@@ -3,7 +3,6 @@ from __future__ import annotations
 from eta_engine.scripts.fleet_strategy_optimizer import (
     Candidate,
     CellRunResult,
-    _build_plans,
     _rank,
 )
 

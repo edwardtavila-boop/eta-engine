@@ -1,4 +1,5 @@
-import urllib.request, ssl, json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 
@@ -21,6 +22,7 @@ for ep in endpoints:
 # Try auth with form data to SSO
 print("\n=== Trying SSO auth ===")
 import http.client
+
 try:
     conn = http.client.HTTPSConnection('127.0.0.1', 5000, context=ctx)
     body = 'username=apexpredatoribkr&password=Rogue199478%21&hasSecondFactor=false'

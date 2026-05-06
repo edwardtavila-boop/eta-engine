@@ -1,4 +1,5 @@
-import urllib.request, json
+import json
+import urllib.request
 
 # Check operator queue for pending acks
 r = urllib.request.urlopen("http://127.0.0.1:8000/api/jarvis/operator_queue", timeout=10)

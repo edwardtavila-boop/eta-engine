@@ -1,5 +1,4 @@
 """Promote BTC-related bots from research_candidate → production_candidate."""
-import re
 from pathlib import Path
 
 fpath = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")

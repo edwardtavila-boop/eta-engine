@@ -1,6 +1,9 @@
 """ETA Basement-to-Ceiling Audit"""
-import json,subprocess,sys,time,urllib.request,ssl as _ssl
-from datetime import datetime,UTC
+import json
+import ssl as _ssl
+import subprocess
+import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 R=Path(r"C:\EvolutionaryTradingAlgo")
@@ -114,7 +117,7 @@ print("\n"+"="*60+"\n  6. LLM / DEEPSEEK\n"+"="*60)
 ep=E/".env"
 if ep.exists():
     c=ep.read_text()
-    say(f"DeepSeek key: present","DEEPSEEK_API_KEY=sk-" in c)
+    say("DeepSeek key: present","DEEPSEEK_API_KEY=sk-" in c)
 ah=S/"avengers_heartbeat.json"
 if ah.exists():
     try:

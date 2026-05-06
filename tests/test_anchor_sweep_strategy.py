@@ -13,7 +13,7 @@ Coverage:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from eta_engine.backtest.models import BacktestConfig

@@ -1,5 +1,4 @@
 """Supercharge fleet: apply optimal parameters from lab sweep + deactivate losers."""
-import json
 from pathlib import Path
 
 REGISTRY = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
@@ -34,17 +33,17 @@ for bot_id, params in OPTIMIZATIONS.items():
     if idx == -1:
         print(f"  SKIP {bot_id}: not found in registry")
         continue
-    
+
     # Find the extras block for this bot
     extras_start = content.find("extras={", idx)
     if extras_start == -1:
         print(f"  SKIP {bot_id}: no extras block")
         continue
-    
+
     # Extract the bot's atr_stop_mult and rr_target from extras
     modified = False
     lines = content[extras_start:].split("\n")
-    
+
     for param, value in params.items():
         # Look for the parameter in the extras block
         old_pattern = f'"{param}":'
@@ -57,7 +56,7 @@ for bot_id, params in OPTIMIZATIONS.items():
                 if old_pattern in block[line_start:line_start+50]:
                     # Found the parameter line
                     pass
-    
+
     lines = content[extras_start:extras_start+3000].split("\n")
     new_block = []
     for line in lines:
@@ -73,7 +72,7 @@ for bot_id, params in OPTIMIZATIONS.items():
                 print(f"  {bot_id}: {param} → {value}")
                 break
         new_block.append(line)
-    
+
     if modified:
         old_block = "\n".join(lines)
         new_block_str = "\n".join(new_block)
@@ -88,25 +87,25 @@ for bot_id in DEACTIVATE:
     if idx == -1:
         print(f"  SKIP deactivate {bot_id}: not found")
         continue
-    
+
     # Check if already deactivated
     extras = content[idx:idx+500]
     if '"deactivated": True' in extras or '"deactivated": true' in extras:
         print(f"  SKIP deactivate {bot_id}: already deactivated")
         continue
-    
+
     # Add deactivation to extras
     extras_start = content.find("extras={", idx)
     if extras_start == -1 or extras_start > idx + 500:
         print(f"  SKIP deactivate {bot_id}: no extras block near bot")
         continue
-    
+
     # Add deactivated flag
     bracket_idx = content.find("{", extras_start)
     if bracket_idx == -1 or bracket_idx > extras_start + 100:
         print(f"  SKIP deactivate {bot_id}: could not find extras bracket")
         continue
-    
+
     insert = '\n            "deactivated": True,\n            "deactivation_reason": "lab sweep 2026-05-04 — failing all gates",'
     content = content[:bracket_idx+1] + insert + content[bracket_idx+1:]
     print(f"  DEACTIVATE: {bot_id}")
@@ -121,7 +120,7 @@ if nq_search > -1:
             if bracket_idx > -1 and bracket_idx < nq_extras + 100:
                 insert = '\n            "deactivated": True,\n            "deactivation_reason": "lab sweep 2026-05-04 — sharpe 0.26, failing gate",'
                 content = content[:bracket_idx+1] + insert + content[bracket_idx+1:]
-                print(f"  DEACTIVATE: nq_futures_sage")
+                print("  DEACTIVATE: nq_futures_sage")
 
 print(f"\nDeactivated {len(DEACTIVATE)+1} losing bots")
 print(f"Total file size: {len(content)} chars")

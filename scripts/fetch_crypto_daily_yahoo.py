@@ -8,7 +8,7 @@ Usage:  python scripts/fetch_crypto_daily_yahoo.py [--symbols BTC,ETH]
 
 import argparse
 import csv
-from datetime import datetime, UTC
+from datetime import UTC
 from pathlib import Path
 
 try:
@@ -32,17 +32,17 @@ def fetch_daily(symbol: str, years: int = 2) -> list[dict]:
     """Fetch daily bars from yfinance. Returns canonical schema rows."""
     ticker = SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}-USD")
     print(f"[yfinance] Fetching {ticker} daily (period={years}y)...")
-    
+
     try:
         df = yf.download(ticker, period=f"{years}y", interval="1d", progress=False)
     except Exception as e:
         print(f"[yfinance] Download error for {ticker}: {e}")
         return []
-    
+
     if df.empty:
         print(f"[yfinance] Empty dataframe for {ticker}")
         return []
-    
+
     rows: list[dict] = []
     # Handle yfinance MultiIndex columns (newer versions)
     for idx, row in df.iterrows():
@@ -65,7 +65,7 @@ def fetch_daily(symbol: str, years: int = 2) -> list[dict]:
             "close": round(c, 2),
             "volume": round(v, 2),
         })
-    
+
     print(f"[yfinance] {len(rows)} daily rows for {ticker} ({rows[0]['time'][:10]} to {rows[-1]['time'][:10]})")
     return rows
 
@@ -86,7 +86,7 @@ def main():
     parser.add_argument("--symbols", default="BTC,ETH", help="Comma-separated symbols")
     parser.add_argument("--years", type=int, default=2, help="Years of history")
     args = parser.parse_args()
-    
+
     symbols = [s.strip().upper() for s in args.symbols.split(",")]
     for sym in symbols:
         if sym not in SYMBOL_MAP and f"{sym}-USD" not in SYMBOL_MAP.values():

@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from eta_engine.venues import router as router_mod
-from eta_engine.venues.ibkr import IbkrClientPortalVenue
 from eta_engine.venues.router import (
     ACTIVE_FUTURES_VENUES,
     DEFAULT_FUTURES_VENUE,

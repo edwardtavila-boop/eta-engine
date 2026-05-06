@@ -7,8 +7,8 @@ sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
 
 def test_cli_provider_imports():
     from eta_engine.brain.cli_provider import (
-        call_claude, call_codex, check_claude_available, check_codex_available,
-        cli_provider_status,
+        call_claude,
+        call_codex,
     )
     assert call_claude is not None
     assert call_codex is not None
@@ -23,7 +23,7 @@ def test_force_provider_enum():
 
 def test_multi_model_imports():
     from eta_engine.brain.multi_model import (
-        route_and_execute, force_multiplier_status, MultiModelResponse,
+        route_and_execute,
     )
     assert route_and_execute is not None
 
@@ -50,7 +50,7 @@ def test_force_multiplier_status():
 
 
 def test_routing_counts():
-    from eta_engine.brain.model_policy import TaskCategory, ForceProvider, force_provider_for
+    from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
     counts = Counter(force_provider_for(c) for c in TaskCategory)
     assert counts.get(ForceProvider.CLAUDE, 0) == 7
     assert counts.get(ForceProvider.CODEX, 0) == 4
@@ -59,7 +59,7 @@ def test_routing_counts():
 
 
 def test_specific_routes():
-    from eta_engine.brain.model_policy import TaskCategory, ForceProvider, force_provider_for
+    from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
 
     assert force_provider_for(TaskCategory.ARCHITECTURE_DECISION) == ForceProvider.CLAUDE
     assert force_provider_for(TaskCategory.CODE_REVIEW) == ForceProvider.CLAUDE
@@ -70,7 +70,7 @@ def test_specific_routes():
 
 
 def test_fallback_routing():
-    from eta_engine.brain.model_policy import TaskCategory, ForceProvider, force_provider_for
+    from eta_engine.brain.model_policy import ForceProvider, TaskCategory, force_provider_for
     all_cats = set(TaskCategory)
     routed = {c: force_provider_for(c) for c in all_cats}
     for cat, provider in routed.items():

@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"{b['oos_sharpe']:>+8.2f}")
 
         # Risk matrix breakdown
-        print(f"\nRisk matrix:")
+        print("\nRisk matrix:")
         for tier in ["elite", "strong", "baseline", "research"]:
             bots_in_tier = data["risk_matrix"][tier]
             if bots_in_tier:

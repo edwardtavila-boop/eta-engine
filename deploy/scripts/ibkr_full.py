@@ -1,4 +1,7 @@
-import urllib.request, ssl, json, http.cookiejar
+import http.cookiejar
+import json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 cj = http.cookiejar.CookieJar()
@@ -7,6 +10,7 @@ urllib.request.install_opener(opener)
 
 # Step 1: Login via SSO
 import http.client
+
 conn = http.client.HTTPSConnection('127.0.0.1', 5000, context=ctx)
 body = 'username=apexpredatoribkr&password=Rogue199478%21&hasSecondFactor=false'
 conn.request('POST', '/sso/Login', body=body,
@@ -32,7 +36,7 @@ print(f"Auth: {json.dumps(auth, indent=2)}")
 if auth.get('authenticated'):
     r2 = urllib.request.urlopen('https://127.0.0.1:5000/v1/api/portfolio/accounts', context=ctx)
     print(f"Accounts: {json.dumps(json.loads(r2.read()), indent=2)}")
-    
+
     # Step 4: Get orders
     r3 = urllib.request.urlopen('https://127.0.0.1:5000/v1/api/iserver/account/orders', context=ctx)
     print(f"Orders: {json.dumps(json.loads(r3.read()), indent=2)}")

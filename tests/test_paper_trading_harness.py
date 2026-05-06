@@ -12,13 +12,9 @@ Runs a complete paper-trading simulation:
 No broker. No live money. Pure integration test.
 """
 
-import json
 import tempfile
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-import pytest
 
 
 def _generate_bar_data(n_bars: int = 500, volatility: float = 0.01) -> list[dict]:
@@ -91,7 +87,6 @@ class TestPaperTradingHarness:
             tmp = Path(tmp_dir)
 
             from eta_engine.brain.jarvis_v3.kaizen_engine import KaizenEngine
-            from eta_engine.brain.jarvis_v3.kaizen_guard import KaizenGuard
 
             engine = KaizenEngine(
                 instruments=[mnq_cfg, btc_cfg],
@@ -153,7 +148,7 @@ class TestPaperTradingHarness:
         assert agent._check_budget() is True
 
     def test_multi_instrument_controllers(self):
-        from common.jarvis import InstrumentConfig, EdgeOptimizer, LossReducer, JarvisConscience
+        from common.jarvis import EdgeOptimizer, InstrumentConfig, JarvisConscience, LossReducer
 
         for factory in [InstrumentConfig.mnq, InstrumentConfig.btc, InstrumentConfig.eth]:
             cfg = factory()

@@ -1,4 +1,5 @@
-import urllib.request, json
+import json
+import urllib.request
 
 r = urllib.request.urlopen("http://127.0.0.1:8000/api/bot-fleet", timeout=10)
 d = json.loads(r.read())

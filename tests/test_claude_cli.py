@@ -1,5 +1,6 @@
 """Quick validation — Claude CLI via npx (non-interactive)."""
 import sys
+
 sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
 from eta_engine.brain.cli_provider import call_claude, check_claude_available
 

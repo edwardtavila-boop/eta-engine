@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from typing import Any
 from unittest import mock
 
 import pytest
@@ -41,7 +40,6 @@ from eta_engine.brain.jarvis_v3.policies.v23_fleet_aware import (
     _instrument_class,
     _is_overnight_eligible,
     _lab_sharpe,
-    _resolve_bot_assignment,
     _sharpe_to_size_factor,
     evaluate_v23,
 )

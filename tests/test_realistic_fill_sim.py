@@ -15,8 +15,6 @@ to a specific class of bug that the legacy paper_trade_sim shipped:
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from eta_engine.feeds.instrument_specs import (
@@ -28,7 +26,6 @@ from eta_engine.feeds.realistic_fill_sim import (
     BarOHLCV,
     RealisticFillSim,
 )
-
 
 # ── instrument specs ────────────────────────────────────────────────
 

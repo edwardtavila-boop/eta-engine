@@ -23,7 +23,42 @@
 # Loader: eta_engine.scripts.broker_router.RoutingConfig.load()
 # Override path via env: ETA_BROKER_ROUTING_CONFIG=/abs/path/to/file.yaml
 
-version: 1
+version: 2
+#
+# Schema v2 (2026-05-06):
+#   - `defaults` block: per-asset-class default venue. Used when a bot
+#     has no explicit override under `bots:`. Crypto -> alpaca, futures
+#     -> ibkr today. Equity is reserved for future support.
+#   - `failover` block: ordered fallback chains. The router tries the
+#     primary first, then walks the chain on a TRANSIENT failure
+#     (network/timeout) or when the primary's circuit is open. A
+#     deterministic reject (e.g. crypto-disabled) does NOT walk the
+#     chain — those surface through the existing retry-meta machinery.
+#   - `default` (no `s`) preserves v1 meaning so v1 yaml still loads.
+#
+# Resolution order (highest priority first) — see RoutingConfig.venue_for:
+#   1. bots[<id>].venue        (explicit per-bot pin)
+#   2. ETA_VENUE_OVERRIDE_<CLASS>  (operator env override)
+#   3. defaults.<asset_class>      (yaml v2)
+#   4. default.venue               (v1 back-compat)
+#   5. "ibkr"                      (last resort)
+#
+# Operators can flip a whole asset class to a different venue at
+# launch time without editing this file. Example:
+#   PowerShell:  $env:ETA_VENUE_OVERRIDE_CRYPTO = "tastytrade"
+#   bash/zsh:    export ETA_VENUE_OVERRIDE_CRYPTO=tastytrade
+
+defaults:
+  futures: ibkr
+  crypto: alpaca
+  # equity: alpaca   # reserved — flip on when equity routing lands
+
+failover:
+  # Crypto: alpaca primary, tasty becomes a real fallback once tasty
+  # cert/live crypto enablement lands (api.support email pending).
+  crypto: [alpaca, tastytrade]
+  # Futures: ibkr primary, tasty as the secondary FCM.
+  futures: [ibkr, tastytrade]
 
 default:
   venue: ibkr

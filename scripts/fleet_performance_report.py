@@ -93,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
 
         # Paper trade PnL summary from most recent fleet run
         print(f"\n{'='*90}")
-        print(f"ACTIONS: Run 'python -m eta_engine.scripts.paper_soak_tracker --days 30' to start paper-soak.")
-        print(f"  Then 'python -m eta_engine.scripts.fleet_supervisor --paper' for live paper trading.")
+        print("ACTIONS: Run 'python -m eta_engine.scripts.paper_soak_tracker --days 30' to start paper-soak.")
+        print("  Then 'python -m eta_engine.scripts.fleet_supervisor --paper' for live paper trading.")
 
     return 0
 

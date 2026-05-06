@@ -1,6 +1,8 @@
 """Smoke test: place a test order through LiveIbkrVenue."""
 import asyncio
-from eta_engine.venues.base import OrderRequest, Side, OrderType
+
+from eta_engine.venues.base import OrderRequest, OrderType, Side
+
 
 async def main():
     from eta_engine.venues.ibkr_live import LiveIbkrVenue

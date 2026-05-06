@@ -158,7 +158,7 @@ def run_audit(
         bot_ids = [a.bot_id for a in all_assignments() if is_active(a)]
 
     print(f"Auditing {len(bot_ids)} bots {'sequentially' if sequential else f'with {workers} workers'}...")
-    print(f"  Modes: legacy / realistic / pessimistic")
+    print("  Modes: legacy / realistic / pessimistic")
     if walk_forward:
         print(f"  Walk-forward: IS={is_fraction*100:.0f}%, OOS={(1-is_fraction)*100:.0f}%")
 

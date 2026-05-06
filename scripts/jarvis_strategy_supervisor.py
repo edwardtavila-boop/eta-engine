@@ -88,7 +88,10 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from eta_engine.scripts import workspace_roots  # noqa: E402
-from eta_engine.scripts.runtime_order_hold import load_order_entry_hold  # noqa: E402
+from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
+    load_order_entry_hold,
+)
+from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
 
 logger = logging.getLogger("jarvis_strategy_supervisor")
 
@@ -110,6 +113,28 @@ for _ib_logger in ("ib_insync", "ib_insync.client", "ib_insync.wrapper",
 
 def _bool_env(name: str, default: bool = False) -> bool:
     return os.getenv(name, "").lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_bot_routing(bot_id: str, symbol: str) -> tuple[str | None, str | None]:
+    """Resolve ``(venue, asset_class)`` for a bot/symbol pair.
+
+    Wraps :class:`broker_router.RoutingConfig` so the scope-aware order-
+    entry hold can decide whether a hold scoped to ``ibkr`` or
+    ``futures`` should release a crypto-Alpaca bot. Failure-tolerant:
+    any exception here returns ``(None, None)`` and the caller treats
+    that as "unknown routing -> apply hold legacy-style".
+    """
+    try:
+        from eta_engine.scripts.broker_router import (  # noqa: PLC0415
+            RoutingConfig,
+            _asset_class_for_symbol,
+        )
+        cfg = RoutingConfig.load()
+        venue = cfg.venue_for(bot_id, symbol=symbol)
+        asset_class = _asset_class_for_symbol(symbol)
+        return venue, asset_class
+    except Exception:  # noqa: BLE001 — routing is advisory here, never fatal
+        return None, None
 
 
 def _compact_strategy_readiness(row: dict[str, Any]) -> dict[str, Any]:
@@ -637,13 +662,36 @@ class ExecutionRouter:
         if self.cfg.mode in {"paper_live", "live"}:
             hold = load_order_entry_hold()
             if hold.active:
-                logger.warning(
-                    "%s entry SKIPPED: order-entry hold active reason=%s path=%s",
-                    bot.bot_id,
-                    hold.reason,
-                    hold.path,
+                # Scope-aware hold (2026-05-06): when the operator (or the
+                # IBG connection monitor) sets a hold with scope="ibkr" or
+                # scope="futures", crypto bots routed to Alpaca should keep
+                # trading. Resolve the bot's venue + asset class and let
+                # the hold decide. Missing routing context falls back to
+                # the legacy "block everything" behaviour.
+                resolved_venue, asset_class = _resolve_bot_routing(
+                    bot.bot_id, bot.symbol,
                 )
-                return None
+                if hold.blocks(venue=resolved_venue, asset_class=asset_class):
+                    logger.warning(
+                        "%s entry SKIPPED: order-entry hold active "
+                        "scope=%s reason=%s venue=%s class=%s path=%s",
+                        bot.bot_id,
+                        hold.scope,
+                        hold.reason,
+                        resolved_venue,
+                        asset_class,
+                        hold.path,
+                    )
+                    return None
+                logger.info(
+                    "%s entry ALLOWED past hold: scope=%s venue=%s class=%s "
+                    "(hold reason=%s) -- crypto/non-IBKR lane stays open",
+                    bot.bot_id,
+                    hold.scope,
+                    resolved_venue,
+                    asset_class,
+                    hold.reason,
+                )
 
         # Compute simulated fill (mode=paper_sim).
         # Adverse-selection slippage: a real BUY crosses the offer (fills
@@ -2032,6 +2080,22 @@ class JarvisStrategySupervisor:
         os_signal.signal(os_signal.SIGINT, self._handle_stop)
         os_signal.signal(os_signal.SIGTERM, self._handle_stop)
 
+        # Uptime telemetry: stamp a "start" event before any boot work so
+        # post-mortems can prove the process at least entered run_forever.
+        # Failure-tolerant: record_uptime_event swallows errors so a
+        # disk-full state directory cannot crash the supervisor.
+        with contextlib.suppress(Exception):
+            record_uptime_event(
+                component="supervisor",
+                event="start",
+                reason="run_forever_entered",
+                extra={
+                    "mode": self.cfg.mode,
+                    "feed": self.cfg.data_feed,
+                    "tick_s": self.cfg.tick_s,
+                },
+            )
+
         # Boot consult of the catastrophic-verdict latch. A latch tripped
         # by a prior session must prevent THIS process from issuing any
         # new entries. The latch fails closed: corrupt JSON / unreadable
@@ -2112,6 +2176,7 @@ class JarvisStrategySupervisor:
         self._keepalive.start()
 
         tick_count = 0
+        crash_exc: BaseException | None = None
         try:
             while not self._stopped:
                 tick_count += 1
@@ -2128,12 +2193,48 @@ class JarvisStrategySupervisor:
                 # False after the timeout (continue looping).
                 if self._stop_event.wait(self.cfg.tick_s):
                     break
+        except BaseException as exc:  # noqa: BLE001 — we re-raise unless it's a clean stop
+            crash_exc = exc
+            raise
         finally:
             # Daemon thread exits with the process, but signal the
             # keepalive to stop cleanly so the final keepalive file
             # reflects the actual shutdown moment, not a stale stamp.
             with contextlib.suppress(Exception):
                 self._keepalive.stop()
+            # Uptime telemetry: stamp a "stop" event so post-mortems know
+            # the process actually exited cleanly. A bare "start" entry
+            # without a matching "stop" tells the watchdog the supervisor
+            # crashed mid-tick.
+            with contextlib.suppress(Exception):
+                if crash_exc is not None and not isinstance(
+                    crash_exc, (KeyboardInterrupt, SystemExit),
+                ):
+                    import traceback as _tb
+                    last_line = ""
+                    with contextlib.suppress(Exception):
+                        tb_lines = _tb.format_exception(
+                            type(crash_exc), crash_exc, crash_exc.__traceback__,
+                        )
+                        last_line = (tb_lines[-1] if tb_lines else "").strip()
+                    record_uptime_event(
+                        component="supervisor",
+                        event="crash",
+                        reason=f"{type(crash_exc).__name__}: {crash_exc}",
+                        extra={
+                            "tick_count": tick_count,
+                            "last_traceback_line": last_line[:400],
+                        },
+                    )
+                else:
+                    record_uptime_event(
+                        component="supervisor",
+                        event="stop",
+                        reason="sigterm_or_clean_exit"
+                        if crash_exc is None
+                        else type(crash_exc).__name__,
+                        extra={"tick_count": tick_count},
+                    )
 
         logger.info("supervisor stopped after %d ticks", tick_count)
         return 0

@@ -1,4 +1,7 @@
-import urllib.request, ssl, json, http.cookiejar
+import http.cookiejar
+import json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 cj = http.cookiejar.CookieJar()
@@ -7,6 +10,7 @@ urllib.request.install_opener(opener)
 
 # Step 1: Login via SSO
 import http.client
+
 conn = http.client.HTTPSConnection('127.0.0.1', 5000, context=ctx)
 body = 'username=apexpredatoribkr&password=Rogue199478%21&hasSecondFactor=false'
 conn.request('POST', '/sso/Login', body=body,
@@ -15,7 +19,7 @@ resp = conn.getresponse()
 print(f"SSO Login: {resp.status}, cookies in response: {resp.getheader('Set-Cookie')}")
 conn.close()
 
-# Step 2: Try SSO validate endpoint  
+# Step 2: Try SSO validate endpoint
 req = urllib.request.Request('https://127.0.0.1:5000/sso/Validate?forwardTo=22&RL=1')
 try:
     r = urllib.request.urlopen(req, context=ctx)

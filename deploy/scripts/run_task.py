@@ -276,10 +276,10 @@ def _task_prompt_warmup(state_dir: Path) -> dict:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"skipped": True, "reason": "no API key"}
 
-    from eta_engine.brain.llm_provider import ModelTier, chat_completion
     from eta_engine.brain.jarvis_v3.claude_layer.prompts import (
         PERSONA_PREFIXES,
     )
+    from eta_engine.brain.llm_provider import ModelTier, chat_completion
 
     results: dict[str, dict] = {}
     total_cost_est = 0.0

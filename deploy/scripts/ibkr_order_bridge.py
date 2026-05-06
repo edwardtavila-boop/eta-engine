@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import sys
 import time
 from pathlib import Path
 
@@ -26,27 +24,27 @@ async def process_order(venue, fpath: Path) -> None:
         data = json.loads(fpath.read_text())
     except Exception:
         return
-    
+
     symbol = data.get("symbol", "UNKNOWN")
     side = data.get("side", "BUY")
     qty = data.get("qty", 1)
-    
-    from eta_engine.venues.base import OrderRequest, Side, OrderType
+
+    from eta_engine.venues.base import OrderRequest, OrderType, Side
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
-    
+
     venue = LiveIbkrVenue()
     await venue.connect()
-    
+
     req = OrderRequest(
         symbol=symbol,
         side=Side.BUY if side.upper() == "BUY" else Side.SELL,
         qty=abs(float(qty)) or 1,
         order_type=OrderType.MARKET,
     )
-    
+
     result = await venue.place_order(req)
     print(f"BRIDGE: {symbol} {side} x{qty} → {result.status} (id={result.order_id})")
-    
+
     # Archive processed order
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
@@ -57,13 +55,13 @@ async def main():
     print("IBKR Order Bridge starting...")
     print(f"Watching: {PENDING_DIR}")
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     from eta_engine.venues.ibkr_live import LiveIbkrVenue
     venue = LiveIbkrVenue()
-    
+
     if not await venue._ensure_connected():
         print("BRIDGE: Cannot connect to TWS on port 4002 — retrying in 30s...")
-    
+
     while True:
         pending = list(PENDING_DIR.glob("*.pending_order.json"))
         for fpath in pending:

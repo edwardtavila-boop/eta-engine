@@ -17,7 +17,7 @@ shipped:
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,7 +26,7 @@ from eta_engine.feeds.funding_ledger import (
     FundingSettlement,
 )
 
-UTC = timezone.utc
+UTC = UTC
 
 
 class _StaticRateProvider:

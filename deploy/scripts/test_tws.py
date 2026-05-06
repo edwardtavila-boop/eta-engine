@@ -1,4 +1,3 @@
-import sys
 try:
     from ib_insync import IB
     ib = IB()
@@ -9,7 +8,6 @@ try:
 except ModuleNotFoundError:
     print("ib_insync NOT installed — checking ibapi")
     try:
-        from ibapi.client import EClient
         print("ibapi available")
     except:
         print("No IBKR Python API libraries found")

@@ -1,4 +1,6 @@
-import urllib.request, ssl, json
+import json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 

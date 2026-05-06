@@ -322,28 +322,47 @@ class IbkrClientPortalVenue(VenueBase):
             return None
 
     async def _get(self, path: str) -> dict[str, Any] | None:
-        """GET against IBKR Client Portal; returns parsed JSON or ``None``.
+        """GET against IBKR Client Portal with transient-error retry.
 
         Uses an httpx AsyncClient with ``verify=False`` because the
         Client Portal Gateway ships with a self-signed certificate on
-        localhost. Errors, timeouts, and missing httpx all degrade to
-        ``None`` so callers can treat this as an oracle, not a commitment.
+        localhost. Transient network errors retry up to 3 times
+        (0.5s/1.5s/4.5s backoff) via the venues.connection retry decorator;
+        deterministic 4xx responses fall through to ``None`` immediately
+        so an HTTP 401 (unauthenticated) doesn't waste retries.
         """
         try:
-            import httpx  # noqa: PLC0415 -- lazy import keeps httpx optional
+            import httpx  # noqa: PLC0415, F401
         except ImportError:
             return None
-        url = f"{self.config.base_url}{path}"
+        from eta_engine.venues.connection import (  # noqa: PLC0415
+            DeterministicBrokerReject,
+            with_transient_retry,
+        )
+
+        retrying = with_transient_retry(logger_name=__name__)(self._get_once)
         try:
-            async with httpx.AsyncClient(
-                timeout=8.0,
-                verify=False,  # noqa: S501 -- localhost self-signed cert
-            ) as client:
-                resp = await client.get(url)
+            return await retrying(path)
+        except DeterministicBrokerReject:
+            return None
         except Exception:  # noqa: BLE001
             return None
+
+    async def _get_once(self, path: str) -> dict[str, Any] | None:
+        """Single GET attempt — lets transient httpx errors propagate."""
+        import httpx  # noqa: PLC0415
+
+        from eta_engine.venues.connection import DeterministicBrokerReject  # noqa: PLC0415
+        url = f"{self.config.base_url}{path}"
+        async with httpx.AsyncClient(
+            timeout=8.0,
+            verify=False,  # noqa: S501 -- localhost self-signed cert
+        ) as client:
+            resp = await client.get(url)
         if resp.status_code >= 400:
-            return None
+            raise DeterministicBrokerReject(
+                f"ibkr GET {path} status={resp.status_code}",
+            )
         try:
             return resp.json()
         except ValueError:

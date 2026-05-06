@@ -1,4 +1,3 @@
-import os, sys
 from pathlib import Path
 
 # Check supervisor execution

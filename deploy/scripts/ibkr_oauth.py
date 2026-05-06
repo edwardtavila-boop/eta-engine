@@ -1,4 +1,7 @@
-import urllib.request, ssl, json, http.cookiejar
+import http.cookiejar
+import json
+import ssl
+import urllib.request
 
 ctx = ssl._create_unverified_context()
 cj = http.cookiejar.CookieJar()

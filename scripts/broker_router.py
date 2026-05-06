@@ -31,15 +31,17 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import traceback
+import warnings
 from collections import deque
 from collections.abc import Callable  # noqa: TC003 -- runtime annotation on lazy-loader return
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -152,6 +154,94 @@ _FUTURES_ROOTS = (
     "ZN", "ZB", "6E", "M6E",
 )
 
+#: Recognized crypto bases; used for asset-class detection. Tracks the
+#: base coin tokens our supervisor emits (e.g. "BTC", "ETH", "SOL", "XRP",
+#: "AVAX", "LINK", "DOGE") plus a few extras tradeable on Alpaca paper.
+_CRYPTO_BASES: frozenset[str] = frozenset({
+    "BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE",
+    "BCH", "LTC", "AAVE", "BAT", "CRV", "DOT", "GRT", "MKR",
+    "PEPE", "SHIB", "SUSHI", "UNI", "XTZ", "YFI", "USDC", "USDT",
+})
+
+#: Quote suffixes that mark a symbol as crypto when paired with a known base
+#: ("BTCUSDT", "ETHUSD", "BTC/USD"). Order matters for greedy matching.
+_CRYPTO_QUOTE_SUFFIXES: tuple[str, ...] = ("USDT", "USDC", "USD")
+
+#: Regex for CME month-coded suffix (F/G/H/J/K/M/N/Q/U/V/X/Z + 1-2 digits)
+#: used to recognize futures month-codes like ``MNQM6`` or ``ESH26``.
+_FUTURES_MONTH_SUFFIX_RE = re.compile(r"^[FGHJKMNQUVXZ]\d{1,2}$")
+
+#: Asset-class literal type for routing resolution.
+AssetClass = Literal["crypto", "futures", "equity"]
+
+
+def _asset_class_for_symbol(symbol: str) -> AssetClass:
+    """Classify a raw supervisor symbol token into a routing asset class.
+
+    Detection order:
+      1. Futures roots (and ``<root><digits>`` / month-coded forms like
+         ``MNQM6``, ``MNQ1``) -> ``"futures"``.
+      2. Crypto natives, slash-quoted forms (``BTC/USD``), or stable-quote
+         suffix forms (``BTCUSDT``, ``ETHUSD``) -> ``"crypto"``.
+      3. Bare crypto bases (``BTC``, ``ETH``, ``SOL``, ...) -> ``"crypto"``.
+      4. Anything else -> ``"equity"``.
+
+    Examples:
+        >>> _asset_class_for_symbol("BTC")
+        'crypto'
+        >>> _asset_class_for_symbol("BTCUSDT")
+        'crypto'
+        >>> _asset_class_for_symbol("BTC/USD")
+        'crypto'
+        >>> _asset_class_for_symbol("MNQ")
+        'futures'
+        >>> _asset_class_for_symbol("MNQM6")
+        'futures'
+        >>> _asset_class_for_symbol("/MNQ")
+        'futures'
+        >>> _asset_class_for_symbol("SPY")
+        'equity'
+    """
+    raw = (symbol or "").strip().upper().lstrip("/")
+    if not raw:
+        return "equity"
+
+    # 1. Futures roots (exact, numeric-suffix, or CME month-coded suffix).
+    for root in _FUTURES_ROOTS:
+        if raw == root:
+            return "futures"
+        if raw.startswith(root):
+            suffix = raw[len(root):]
+            if not suffix:
+                return "futures"
+            if suffix.isdigit():
+                return "futures"
+            if _FUTURES_MONTH_SUFFIX_RE.fullmatch(suffix):
+                return "futures"
+
+    # 2. Slash form (BTC/USD, ETH/USDT) is always crypto.
+    if "/" in raw:
+        return "crypto"
+
+    # 3. Stable-quote suffix on a recognized crypto base.
+    for q in _CRYPTO_QUOTE_SUFFIXES:
+        if raw.endswith(q) and len(raw) > len(q):
+            base = raw[: -len(q)]
+            if base in _CRYPTO_BASES:
+                return "crypto"
+
+    # 4. Bare crypto base.
+    if raw in _CRYPTO_BASES:
+        return "crypto"
+
+    return "equity"
+
+
+#: Env-var prefix used by operational venue overrides. Setting
+#: ``ETA_VENUE_OVERRIDE_CRYPTO=tastytrade`` forces every crypto-classified
+#: symbol that lacks a per-bot pin to route through Tastytrade.
+_VENUE_OVERRIDE_ENV_PREFIX = "ETA_VENUE_OVERRIDE_"
+
 _MAX_PENDING_ORDER_AGE_S = 15 * 60
 _SMOKE_SIGNAL_TOKENS = ("smoke", "test", "dryrun", "dry_run")
 _MIN_CRYPTO_LIMIT_PRICE: dict[str, float] = {
@@ -180,22 +270,55 @@ _ROUTING_CONFIG_ENV = "ETA_BROKER_ROUTING_CONFIG"
 
 @dataclass(frozen=True, slots=True)
 class RoutingConfig:
-    """Parsed view of ``bot_broker_routing.yaml``.
+    """Parsed view of ``bot_broker_routing.yaml`` (v1 + v2 schema).
 
-    Resolves ``venue_for(bot_id)`` and ``map_symbol(raw, venue)`` from
-    the YAML config. Per-bot overrides take precedence over
-    ``default.venue``; unlisted bots use the default. Missing file ->
-    permissive ``ibkr``-for-all default + WARNING. Malformed YAML or
-    wrong shape -> ``ValueError`` (fail loud).
+    Schema v1 (legacy, still accepted):
+      ``default.venue`` is the only fallback when a bot is not listed
+      under ``bots:``. ``symbol_overrides`` lives under ``default``.
+
+    Schema v2 (current):
+      Adds two top-level blocks:
+
+      * ``defaults`` — per-asset-class default venues
+        (e.g. ``defaults.crypto: alpaca``, ``defaults.futures: ibkr``).
+      * ``failover`` — ordered fallback chains, keyed by asset class
+        (e.g. ``failover.crypto: [alpaca, tastytrade]``).
+
+      ``default`` (without ``s``) keeps its v1 meaning so v1 yaml files
+      still load.
+
+    Resolution order (see :meth:`venue_for`):
+      1. Per-bot explicit override (highest).
+      2. Env override ``ETA_VENUE_OVERRIDE_<ASSET_CLASS>`` (e.g.
+         ``ETA_VENUE_OVERRIDE_CRYPTO=tastytrade``).
+      3. ``defaults.<asset_class>`` from yaml (v2).
+      4. ``default.venue`` (v1 back-compat).
+      5. ``"ibkr"`` (last resort).
+
+    Missing file -> permissive ``ibkr``-for-all default + WARNING.
+    Malformed YAML or wrong shape -> ``ValueError`` (fail loud).
     """
 
     default_venue: str
     symbol_overrides: dict[str, dict[str, str]] = field(default_factory=dict)
     per_bot: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: Per-asset-class defaults parsed from v2 ``defaults`` block.
+    #: Example: ``{"crypto": "alpaca", "futures": "ibkr"}``.
+    asset_class_defaults: dict[str, str] = field(default_factory=dict)
+    #: Per-asset-class failover chains parsed from v2 ``failover`` block.
+    #: Example: ``{"crypto": ("alpaca", "tastytrade")}``.
+    failover_chains: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: Detected schema version (1 or 2). v1 inputs surface as 1 even when
+    #: the operator omits the ``version`` key — defensive default.
+    version: int = 1
 
     @classmethod
     def load(cls, path: Path | None = None) -> RoutingConfig:
-        """Load and parse the YAML. Path resolution: arg > env > default."""
+        """Load and parse the YAML. Path resolution: arg > env > default.
+
+        Accepts both v1 and v2 schemas. v2-only fields (``defaults``,
+        ``failover``) are optional; missing/empty maps default to ``{}``.
+        """
         resolved = cls._resolve_path(path)
         if not resolved.is_file():
             logger.warning(
@@ -215,6 +338,12 @@ class RoutingConfig:
             raise ValueError(
                 f"routing config root must be a mapping; got {type(raw).__name__}",
             )
+
+        # Schema version (defensive default 1 when omitted).
+        try:
+            version = int(raw.get("version") or 1)
+        except (TypeError, ValueError):
+            version = 1
 
         default_block = raw.get("default") or {}
         if not isinstance(default_block, dict):
@@ -247,10 +376,44 @@ class RoutingConfig:
                 str(k): str(v).strip().lower() for k, v in mapping.items()
             }
 
+        # v2 extensions (back-compat: missing keys -> {}).
+        defaults_raw = raw.get("defaults") or {}
+        if not isinstance(defaults_raw, dict):
+            raise ValueError("routing config 'defaults' must be a mapping")
+        asset_class_defaults: dict[str, str] = {}
+        for klass, venue_name in defaults_raw.items():
+            if not isinstance(klass, str) or not isinstance(venue_name, str):
+                raise ValueError(
+                    "routing config 'defaults' must map asset-class strings "
+                    "to venue strings",
+                )
+            asset_class_defaults[klass.strip().lower()] = venue_name.strip().lower()
+
+        failover_raw = raw.get("failover") or {}
+        if not isinstance(failover_raw, dict):
+            raise ValueError("routing config 'failover' must be a mapping")
+        failover_chains: dict[str, tuple[str, ...]] = {}
+        for klass, chain in failover_raw.items():
+            if not isinstance(klass, str):
+                raise ValueError("routing config 'failover' keys must be strings")
+            if not isinstance(chain, list) or not all(
+                isinstance(v, str) for v in chain
+            ):
+                raise ValueError(
+                    f"routing config 'failover[{klass!r}]' must be a list of "
+                    f"venue strings",
+                )
+            failover_chains[klass.strip().lower()] = tuple(
+                v.strip().lower() for v in chain if v.strip()
+            )
+
         return cls(
             default_venue=default_venue,
             symbol_overrides=symbol_overrides,
             per_bot=per_bot,
+            asset_class_defaults=asset_class_defaults,
+            failover_chains=failover_chains,
+            version=version,
         )
 
     @staticmethod
@@ -260,11 +423,89 @@ class RoutingConfig:
         env = os.environ.get(_ROUTING_CONFIG_ENV)
         return Path(env) if env else DEFAULT_ROUTING_CONFIG_PATH
 
-    def venue_for(self, bot_id: str) -> str:
-        """Resolve the venue for ``bot_id``. Per-bot override > default."""
+    def venue_for(
+        self,
+        bot_id: str,
+        symbol: str | None = None,
+    ) -> str:
+        """Resolve the venue for ``(bot_id, symbol)``.
+
+        Resolution order (highest priority first):
+          1. Per-bot explicit override (``bots[bot_id].venue``).
+          2. Env override ``ETA_VENUE_OVERRIDE_<ASSET_CLASS>`` when
+             ``symbol`` is provided (asset class derived from the symbol).
+          3. ``defaults.<asset_class>`` from yaml v2 (when ``symbol`` is
+             provided).
+          4. Top-level ``default.venue`` (v1 back-compat).
+          5. ``"ibkr"`` (last resort).
+
+        Backwards-compatible: callers that pass only ``bot_id`` retain
+        the v1 behaviour (per-bot override -> ``default.venue``); a
+        :class:`DeprecationWarning` is emitted to nudge callers toward
+        the symbol-aware form. The deprecation does NOT yet downgrade
+        functionality — it's an early-warning shim.
+        """
+        # 1. Per-bot explicit override always wins.
         bot_cfg = self.per_bot.get(bot_id) or {}
-        venue = bot_cfg.get("venue") or self.default_venue
-        return str(venue).strip().lower()
+        bot_pin = (bot_cfg.get("venue") or "").strip().lower()
+        if bot_pin:
+            return bot_pin
+
+        # No-symbol form: emit a deprecation hint, then collapse to v1
+        # behaviour (default_venue) so existing callers keep working.
+        if symbol is None:
+            warnings.warn(
+                "RoutingConfig.venue_for(bot_id) without a symbol is "
+                "deprecated; pass venue_for(bot_id, symbol=...) so the "
+                "asset-class default + ETA_VENUE_OVERRIDE_<CLASS> env "
+                "override can apply.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return self.default_venue or "ibkr"
+
+        klass = _asset_class_for_symbol(symbol)
+
+        # 2. Env override per asset class.
+        env_key = _VENUE_OVERRIDE_ENV_PREFIX + klass.upper()
+        env_val = (os.environ.get(env_key) or "").strip().lower()
+        if env_val:
+            return env_val
+
+        # 3. Asset-class default from yaml v2.
+        klass_default = (self.asset_class_defaults.get(klass) or "").strip().lower()
+        if klass_default:
+            return klass_default
+
+        # 4. v1 default.venue back-compat.
+        if self.default_venue:
+            return self.default_venue.strip().lower()
+
+        # 5. Last resort.
+        return "ibkr"
+
+    def failover_chain(
+        self,
+        bot_id: str,
+        symbol: str,
+    ) -> tuple[str, ...]:
+        """Return the ordered venue chain to try for ``(bot_id, symbol)``.
+
+        The first element is the resolved primary (per :meth:`venue_for`);
+        subsequent elements come from ``failover.<asset_class>`` minus
+        any duplicate of the primary. When no chain is configured, the
+        return is ``(primary,)``.
+        """
+        primary = self.venue_for(bot_id, symbol=symbol)
+        klass = _asset_class_for_symbol(symbol)
+        chain = self.failover_chains.get(klass, ())
+        ordered: list[str] = [primary]
+        for venue in chain:
+            v = (venue or "").strip().lower()
+            if not v or v in ordered:
+                continue
+            ordered.append(v)
+        return tuple(ordered)
 
     def map_symbol(self, raw_symbol: str, venue: str) -> str:
         """Translate raw -> venue-specific symbol via ``symbol_overrides``.
@@ -823,8 +1064,12 @@ class BrokerRouter:
 
         # 4. Resolve target venue + symbol from the per-bot routing config.
         # ValueError -> quarantine (operator config error, retry after fix).
+        # We pass the symbol so v2 asset-class defaults and the
+        # ETA_VENUE_OVERRIDE_<CLASS> env override can apply.
         try:
-            target_venue_name = self.routing_config.venue_for(order.bot_id)
+            target_venue_name = self.routing_config.venue_for(
+                order.bot_id, symbol=order.symbol,
+            )
             venue_symbol = self.routing_config.map_symbol(
                 order.symbol, target_venue_name,
             )
@@ -1013,6 +1258,158 @@ class BrokerRouter:
             metadata={"reason": reason, "path": str(target)},
         )
 
+    #: Exception substrings that mark a TRANSIENT venue failure (i.e.
+    #: worth retrying on the next venue in the chain). Anything not
+    #: matching is treated as deterministic and stays on the same venue
+    #: so the existing retry-meta machinery applies.
+    _TRANSIENT_FAILURE_TOKENS: tuple[str, ...] = (
+        "timeout", "timed out", "connection", "connectionerror",
+        "network", "unreachable", "reset by peer", "temporarily",
+        "503", "502", "504", "gateway",
+    )
+
+    @classmethod
+    def _is_transient_failure(cls, exc: BaseException) -> bool:
+        """True iff the exception text looks like a transport-level glitch.
+
+        Exact-class matches for timeout / connection-error subclasses
+        cover the common case; the fallback string scan picks up venue
+        SDK exceptions that don't subclass anything standard.
+        """
+        if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+            return True
+        msg = str(exc).lower()
+        return any(token in msg for token in cls._TRANSIENT_FAILURE_TOKENS)
+
+    async def _place_with_failover_chain(
+        self,
+        order: PendingOrder,
+        primary: VenueBase,
+        request: OrderRequest,
+    ) -> tuple[Any, VenueBase]:
+        """Submit ``request`` with failover across the configured chain.
+
+        Resolves the failover chain via
+        :meth:`RoutingConfig.failover_chain` (asset-class derived from
+        the symbol). The primary already comes resolved by the lifecycle
+        and is always tried first. If the primary's circuit is open OR
+        a transient failure raises, the next chain entry is consulted
+        in order. Deterministic rejects (REJECTED status, deterministic
+        exceptions) abort the chain immediately — those have to surface
+        through the normal retry-meta path so per-venue rejects don't
+        silently mask each other.
+
+        Returns ``(result, venue_used)``. Raises only on the LAST
+        venue's transient failure (so the caller still sees a real
+        exception when no fallback succeeds).
+        """
+        chain = self.routing_config.failover_chain(order.bot_id, order.symbol)
+        # Cap attempts at len(chain). When the chain is just (primary,),
+        # this collapses to a single attempt with no failover behaviour.
+        attempted: list[str] = []
+        last_exc: BaseException | None = None
+        venue: VenueBase | None = primary
+        chain_idx = 0
+
+        while venue is not None and chain_idx < len(chain):
+            attempted.append(venue.name)
+            # Per-venue circuit breaker check (when the SmartRouter
+            # exposes them).
+            circuit = self._venue_circuit(venue.name)
+            if circuit is not None and circuit.is_open():
+                logger.warning(
+                    "broker_router failover hop: venue=%s circuit OPEN; "
+                    "trying next-in-chain bot=%s signal=%s",
+                    venue.name, order.bot_id, order.signal_id,
+                )
+                chain_idx += 1
+                venue = self._next_chain_venue(chain, chain_idx, order)
+                continue
+
+            try:
+                result = await venue.place_order(request)
+                if circuit is not None:
+                    circuit.record_success()
+                return result, venue
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if circuit is not None:
+                    circuit.record_failure()
+                if not self._is_transient_failure(exc):
+                    # Deterministic — abort failover so rejection logic
+                    # records it on the resolved primary and the
+                    # retry-meta sidecar drives backoff there.
+                    raise
+                logger.warning(
+                    "broker_router failover hop: venue=%s transient failure "
+                    "(%s); trying next-in-chain bot=%s signal=%s",
+                    venue.name, exc, order.bot_id, order.signal_id,
+                )
+                chain_idx += 1
+                venue = self._next_chain_venue(chain, chain_idx, order)
+
+        # All venues in the chain raised transient failures — re-raise
+        # the last so the caller routes via _handle_routing_error.
+        if last_exc is not None:
+            raise last_exc
+        msg = (
+            f"failover chain exhausted with no attempts attempted={attempted!r} "
+            f"chain={chain!r}"
+        )
+        raise RuntimeError(msg)
+
+    def _next_chain_venue(
+        self,
+        chain: tuple[str, ...],
+        idx: int,
+        order: PendingOrder,
+    ) -> VenueBase | None:
+        """Look up the venue adapter for ``chain[idx]``, or ``None``."""
+        if idx >= len(chain):
+            return None
+        return self._resolve_venue_adapter(chain[idx], order)
+
+    def _venue_circuit(self, venue_name: str) -> Any:
+        """Return the per-venue CircuitBreaker on the SmartRouter, or None.
+
+        Defensive lookup: the SmartRouter normally exposes
+        ``_venue_circuits``, but tests may inject a stand-in router that
+        omits the attribute entirely.
+        """
+        circuits = getattr(self.smart_router, "_venue_circuits", None)
+        if isinstance(circuits, dict):
+            return circuits.get(venue_name)
+        return None
+
+    def venue_circuit_states(self) -> dict[str, str]:
+        """Snapshot every venue circuit as ``{name: closed|open|half-open}``.
+
+        ``half-open`` is reported when the breaker is configured but has
+        previously recorded failures shy of the threshold (i.e. partial
+        degradation). The dashboard ``/api/brokers`` reads this on its
+        next refresh via the heartbeat sidecar.
+        """
+        circuits = getattr(self.smart_router, "_venue_circuits", None)
+        if not isinstance(circuits, dict):
+            return {}
+        out: dict[str, str] = {}
+        for name, breaker in circuits.items():
+            try:
+                if breaker.is_open():
+                    out[name] = "open"
+                    continue
+                # ``_failures`` is a private internal but the public
+                # ``is_open()`` already exercised the half-open reset
+                # above; reading it here is forensic only.
+                failures = int(getattr(breaker, "_failures", 0) or 0)
+                if failures > 0:
+                    out[name] = "half-open"
+                else:
+                    out[name] = "closed"
+            except Exception:  # noqa: BLE001 — defensive read for ops surface
+                out[name] = "unknown"
+        return out
+
     async def _submit_and_finalize(
         self,
         order: PendingOrder,
@@ -1023,10 +1420,20 @@ class BrokerRouter:
         *,
         retry_meta: dict[str, Any],
     ) -> None:
-        """Send the order, classify the result, archive or fail."""
+        """Send the order, classify the result, archive or fail.
+
+        Wraps :meth:`_place_with_failover_chain` so a TRANSIENT failure
+        (network/timeout) on the resolved primary venue retries the
+        next venue in the configured failover chain. Deterministic
+        rejects (e.g. crypto-disabled) are NOT retried — those go
+        through the normal reject/retry-meta machinery on the SAME
+        venue so operators see consistent counters.
+        """
         self._counts["submitted"] += 1
         try:
-            result = await venue.place_order(request)
+            result, venue = await self._place_with_failover_chain(
+                order, venue, request,
+            )
         except Exception as exc:  # noqa: BLE001
             self._handle_routing_error(order, target, f"venue.place_order raised: {exc}")
             return
@@ -1278,7 +1685,13 @@ class BrokerRouter:
         return load_order_entry_hold(self.order_hold_path)
 
     def _emit_heartbeat(self, *, hold: OrderEntryHold | None = None) -> None:
-        """Write a small heartbeat snapshot for monitoring."""
+        """Write a small heartbeat snapshot for monitoring.
+
+        Includes ``venue_circuits``: a per-venue circuit-breaker state
+        dict (``closed`` / ``open`` / ``half-open``) so the dashboard's
+        ``/api/brokers`` endpoint can render live broker health on its
+        next refresh.
+        """
         now_iso = datetime.now(UTC).isoformat()
         hold = hold if hold is not None else self._order_entry_hold()
         snap = {
@@ -1292,6 +1705,7 @@ class BrokerRouter:
             "max_retries": self.max_retries,
             "counts": dict(self._counts),
             "recent_events": list(self._recent_events),
+            "venue_circuits": self.venue_circuit_states(),
         }
         self._write_sidecar(self.heartbeat_path, snap)
 

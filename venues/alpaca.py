@@ -574,27 +574,63 @@ class AlpacaVenue(VenueBase):
         return body
 
     async def _get(self, path: str) -> Any:  # noqa: ANN401 — list or dict per endpoint
+        """Read-only GET with transient-error retry.
+
+        Wraps :meth:`_get_once` with the standard transient retry decorator
+        from :mod:`eta_engine.venues.connection` (3 attempts, 0.5s/1.5s/4.5s
+        backoff). Deterministic broker rejects (4xx other than 404 / non-2xx
+        bodies) still return ``None`` to preserve the existing
+        "swallow + degrade" contract callers depend on. ImportError on
+        httpx is treated as a permanent stub mode and returns ``None``
+        without retries (httpx unavailable does not become available 4s later).
+        """
         try:
-            import httpx  # noqa: PLC0415 — lazy import
+            import httpx  # noqa: PLC0415, F401 — only checked for ImportError here
         except ImportError:
             return None
-        url = f"{self.config.base_url}{path}"
+        from eta_engine.venues.connection import (  # noqa: PLC0415
+            DeterministicBrokerReject,
+            with_transient_retry,
+        )
+
+        retrying = with_transient_retry(logger_name=__name__)(self._get_once)
         try:
-            async with httpx.AsyncClient(timeout=ALPACA_HTTP_TIMEOUT_S) as client:
-                resp = await client.get(url, headers=self._session_headers())
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("alpaca: GET %s network error: %s", path, exc)
+            return await retrying(path)
+        except DeterministicBrokerReject:
+            # Already logged at the rejection site — return None for the
+            # legacy caller contract.
             return None
+        except Exception as exc:  # noqa: BLE001
+            # Retries exhausted on a transient error. Fall through to the
+            # legacy degrade-to-None contract callers depend on.
+            logger.debug("alpaca: GET %s exhausted retries: %s", path, exc)
+            return None
+
+    async def _get_once(self, path: str) -> Any:  # noqa: ANN401
+        """Single GET attempt. Lets transient httpx errors propagate so
+        :func:`with_transient_retry` can decide whether to retry.
+
+        Non-2xx responses (other than 404) raise
+        :class:`DeterministicBrokerReject` so we don't waste retries on
+        a 403/422 that will not fix itself.
+        """
+        import httpx  # noqa: PLC0415
+
+        from eta_engine.venues.connection import DeterministicBrokerReject  # noqa: PLC0415
+
+        url = f"{self.config.base_url}{path}"
+        async with httpx.AsyncClient(timeout=ALPACA_HTTP_TIMEOUT_S) as client:
+            resp = await client.get(url, headers=self._session_headers())
         if resp.status_code == 404:
             return None
         if resp.status_code >= 400:
             logger.info(
                 "alpaca: GET %s returned %d body=%s",
-                path,
-                resp.status_code,
-                resp.text[:200],
+                path, resp.status_code, resp.text[:200],
             )
-            return None
+            raise DeterministicBrokerReject(
+                f"alpaca GET {path} status={resp.status_code} body={resp.text[:200]}",
+            )
         try:
             return resp.json()
         except ValueError:

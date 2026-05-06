@@ -229,11 +229,17 @@ function render(d, strategyResults, dataSource) {
   const bots = d.bots || [];
   const summary = d.summary || {};
   const confirmed = d.confirmed_bots || 0;
-  const stale = d.truth_status === 'stale';
+  const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
+  const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
   const usingFallback = dataSource === API_ALT;
 
   document.getElementById('statusDot').className = 'status-dot ' + (stale ? 'stale' : 'live');
-  document.getElementById('statusText').textContent = stale ? 'Bots · stale' : bots.length + ' bots · live';
+  document.getElementById('statusText').textContent =
+    truthStatus === 'working'
+      ? bots.length + ' bots · working'
+      : stale
+        ? 'Bots · stale'
+        : bots.length + ' bots · live';
   document.getElementById('apiSourceText').textContent = 'Source: ' + sourceLabel(dataSource) + (usingFallback ? ' (fallback)' : '');
   document.getElementById('totalBots').textContent = bots.length;
 
@@ -275,8 +281,13 @@ function render(d, strategyResults, dataSource) {
   document.getElementById('approvedCount').textContent = approved;
   document.getElementById('approvedCount').className = 'stat ' + (approved > 0 ? 'green' : 'dim');
 
-  const modes = [...new Set(bots.map(b => b.mode))].filter(Boolean).join(', ');
-  document.getElementById('jarvisMode').textContent = modes || 'paper_sim';
+  const liveModes = [...new Set(
+    bots
+      .filter(b => b.source === 'jarvis_strategy_supervisor' || b.confirmed === true)
+      .map(b => b.mode)
+  )].filter(Boolean);
+  const fallbackModes = [...new Set(bots.map(b => b.mode))].filter(Boolean);
+  document.getElementById('jarvisMode').textContent = (liveModes.length ? liveModes : fallbackModes).join(', ') || 'paper_sim';
 
   const lastTrade = bots
     .filter(b => b.last_trade_ts)
@@ -301,8 +312,8 @@ function render(d, strategyResults, dataSource) {
 
   const brokerRouter = d.broker_router || {};
   const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();
-  const routerLabels = {ok: 'OK', idle: 'Idle', processing: 'Processing', blocked: 'Blocked', unknown: 'Unknown'};
-  const routerClasses = {ok: 'green', idle: 'dim', processing: 'yellow', blocked: 'red', unknown: 'yellow'};
+  const routerLabels = {ok: 'OK', idle: 'Idle', processing: 'Processing', blocked: 'Blocked', held: 'Held', degraded: 'History', unknown: 'Unknown'};
+  const routerClasses = {ok: 'green', idle: 'dim', processing: 'yellow', blocked: 'red', held: 'yellow', degraded: 'yellow', unknown: 'yellow'};
   const rejected = brokerRouter.result_status_counts ? Number(brokerRouter.result_status_counts.REJECTED || 0) : 0;
   const pending = Number(brokerRouter.pending_count || 0);
   const processing = Number(brokerRouter.processing_count || 0);
@@ -310,10 +321,15 @@ function render(d, strategyResults, dataSource) {
   const results = Number(brokerRouter.fill_results_count || 0);
   document.getElementById('brokerRouterStatus').textContent = routerLabels[routerStatus] || routerStatus.toUpperCase();
   document.getElementById('brokerRouterStatus').className = 'stat ' + (routerClasses[routerStatus] || 'yellow');
+  const hold = brokerRouter.order_entry_hold || {};
   document.getElementById('brokerRouterSub').textContent =
-    results || failed || pending || processing
-      ? results + ' results; ' + rejected + ' rejected; ' + failed + ' failed; ' + pending + ' pending'
-      : 'waiting for orders';
+    routerStatus === 'held' && hold.reason
+      ? 'order-entry hold: ' + hold.reason
+      : (pending || processing)
+        ? processing + ' processing; ' + pending + ' pending'
+        : (results || failed)
+          ? 'history: ' + results + ' results; ' + rejected + ' rejected; ' + failed + ' failed'
+          : 'waiting for orders';
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   const risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';

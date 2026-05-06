@@ -1,4 +1,4 @@
-import json, sys
+import json
 from pathlib import Path
 
 d = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")

@@ -1,5 +1,5 @@
+
 from ib_insync import IB
-import asyncio
 
 ib = IB()
 ib.connect('127.0.0.1', 4002, clientId=101, timeout=5)

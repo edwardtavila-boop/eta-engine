@@ -14,7 +14,6 @@ from pydantic import ValidationError
 
 from eta_engine.venues import (
     BybitVenue,
-    IbkrClientPortalVenue,
     OkxVenue,
     OrderRequest,
     OrderResult,

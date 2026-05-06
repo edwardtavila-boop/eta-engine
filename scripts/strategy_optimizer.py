@@ -41,7 +41,7 @@ import json
 import math
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -309,7 +309,7 @@ def write_optimizer_report(
     print("=" * 96)
     print(f"  {n_trials} cells tested, {len(invalid)} errored, {len(valid)} valid")
 
-    print(f"\nTop 10 by OOS Sharpe:")
+    print("\nTop 10 by OOS Sharpe:")
     print(f"{'Rank':<5} {'Params':<60} {'IS$':>8} {'OOS$':>8} {'OOS-Tr':>6} "
           f"{'OOS-WR':>7} {'OOS-Sh':>7} {'Decay':>7}")
     print("-" * 110)
@@ -329,7 +329,7 @@ def write_optimizer_report(
                 print("  >>> Increase OOS sample, shrink the grid, or do not promote.")
 
     if invalid:
-        print(f"\nFirst 5 errors:")
+        print("\nFirst 5 errors:")
         for r in invalid[:5]:
             print(f"  {r.params}: {r.error}")
 
@@ -357,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if n_trials > 500:
         print(f"WARNING: {n_trials} cells is large.  Multiple-comparisons penalty grows fast.")
-        print(f"         Consider reducing the grid.")
+        print("         Consider reducing the grid.")
 
     results = run_optimization(
         kind=args.kind, symbol=args.symbol, timeframe=args.timeframe,

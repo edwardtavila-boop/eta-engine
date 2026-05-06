@@ -9,10 +9,8 @@ from __future__ import annotations
 import pytest
 
 from eta_engine.feeds.signal_validator import (
-    MAX_QTY_NOTIONAL_PCT_OF_EQUITY,
     validate_signal,
 )
-
 
 # ── side ──────────────────────────────────────────────────────────────
 
@@ -177,9 +175,10 @@ def test_typical_retail_futures_size_passes():
 def test_open_rejects_long_stop_above_entry():
     """The volume_profile bug class — _Open MUST refuse to construct
     a position with stop on the wrong side of entry."""
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),
@@ -194,9 +193,10 @@ def test_open_rejects_long_stop_above_entry():
 
 
 def test_open_rejects_short_stop_below_entry():
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),
@@ -211,9 +211,10 @@ def test_open_rejects_short_stop_below_entry():
 
 
 def test_open_rejects_long_target_below_entry():
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),
@@ -228,9 +229,10 @@ def test_open_rejects_long_target_below_entry():
 
 
 def test_open_accepts_valid_long():
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),
@@ -245,9 +247,10 @@ def test_open_accepts_valid_long():
 
 
 def test_open_accepts_valid_short():
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),
@@ -262,9 +265,10 @@ def test_open_accepts_valid_short():
 
 
 def test_open_rejects_zero_qty():
+    from datetime import UTC, datetime
+
     from eta_engine.backtest.engine import _Open
     from eta_engine.core.data_pipeline import BarData
-    from datetime import UTC, datetime
 
     bar = BarData(
         timestamp=datetime.now(tz=UTC),

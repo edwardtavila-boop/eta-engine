@@ -1,5 +1,8 @@
 """Quick parser for the walk-forward JSON files written to /tmp."""
-import json, glob, os
+import glob
+import json
+import os
+
 files = sorted(glob.glob(r'C:\Users\edwar\AppData\Local\Temp\wf_*.json'))
 print('Bot                     IS-T  IS-WR%   IS-PnL    OOS-T  OOS-WR% OOS-PnL    Decay')
 print('-' * 88)

@@ -2,18 +2,19 @@
 import asyncio
 from pathlib import Path
 
+
 async def main():
     print("=== Testing supervisor execution path ===")
-    
+
     # 1. Test direct venue creation (same code as supervisor)
     print("\n1. Creating LiveIbkrVenue...")
     try:
+        from eta_engine.venues.base import OrderRequest, OrderType, Side
         from eta_engine.venues.ibkr_live import LiveIbkrVenue
-        from eta_engine.venues.base import OrderRequest, Side, OrderType
         venue = LiveIbkrVenue()
         report = await venue.connect()
         print(f"   Connected: {report.status} (details: {report.details})")
-        
+
         # 2. Place a test order
         print("\n2. Placing test order (MNQ BUY qty=1)...")
         req = OrderRequest(
@@ -25,25 +26,25 @@ async def main():
         result = await venue.place_order(req)
         print(f"   Result: {result.status.value}")
         print(f"   Raw: {result.raw}")
-        
+
     except Exception as e:
         print(f"   ERROR: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-    
+
     # 3. Check the pending directory the supervisor writes to
     bf = Path("C:/EvolutionaryTradingAlgo/eta_engine/docs/btc_live/broker_fleet")
     print(f"\n3. Pending dir: {bf} (exists={bf.exists()})")
-    
+
     # 4. Check if we can write to the pending dir
     try:
         test_file = bf / "test_perm_check.json"
         test_file.write_text('{"test": true}')
         test_file.unlink()
-        print(f"   Writable: YES")
+        print("   Writable: YES")
     except Exception as e:
         print(f"   Writable: NO ({e})")
-    
+
     # 5. Check IBKR order count
     print("\n4. Checking IBKR orders via TWS...")
     try:
