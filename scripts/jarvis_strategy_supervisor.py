@@ -316,6 +316,14 @@ class BotInstance:
     # bot.open_position (no phantom open positions when the broker
     # rejected).
     consecutive_broker_rejects: int = 0
+    # Cross-bot aggregation rejection record. Set whenever this bot's
+    # entry was suppressed because another bot already fired a same-
+    # symbol/same-direction entry within the aggregation window. The
+    # operator can grep heartbeats for ``last_aggregation_reject_reason``
+    # to see which bots are getting consolidated. Empty string = no
+    # recent aggregation reject.
+    last_aggregation_reject_reason: str = ""
+    last_aggregation_reject_at: str = ""
     sage_bars: deque = field(default_factory=lambda: deque(maxlen=200))
 
     def to_state(self, *, mode: str | None = None) -> dict:
@@ -1735,6 +1743,15 @@ class JarvisStrategySupervisor:
         # (a successful broker fill clears it). Pairs with the
         # consecutive_broker_rejects counter on BotInstance.
         self._reject_tripped_bots: set[str] = set()
+        # Cross-bot aggregation cache. Maps (symbol, direction) ->
+        # {"first_bot_id": str, "fired_at": float} where fired_at is
+        # epoch seconds. ``_check_signal_aggregation`` consults this
+        # before allowing an entry — if a same-(symbol,direction) entry
+        # fired within ETA_BOT_AGGREGATION_WINDOW_S, the new entry is
+        # rejected. The first_bot_id is recorded on the second bot's
+        # heartbeat as ``last_aggregation_reject_reason`` so the
+        # operator can see which bots got consolidated.
+        self._aggregation_cache: dict[tuple[str, str], dict[str, Any]] = {}
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -2789,6 +2806,23 @@ class JarvisStrategySupervisor:
         # Sage-driven side selection — we'd flip JARVIS context but ship
         # the wrong side to the broker.
         order_side = "BUY" if side == "long" else "SELL"
+        # ── Cross-bot aggregation gate ──────────────────────────────
+        # When N>=2 alpha bots independently fire same-symbol same-
+        # direction entries inside the configured window, only the FIRST
+        # one goes through. Subsequent siblings are suppressed and the
+        # rejection is recorded on the bot's heartbeat for operator
+        # visibility. Env-flag: ETA_BOT_AGGREGATION_ENABLED (default ON).
+        consolidation_reason = self._check_signal_aggregation(
+            bot=bot, side=order_side, bar=bar,
+        )
+        if consolidation_reason:
+            bot.last_aggregation_reject_reason = consolidation_reason
+            bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+            logger.info(
+                "AGGREG %s suppressed entry: %s symbol=%s side=%s",
+                bot.bot_id, consolidation_reason, bot.symbol, order_side,
+            )
+            return
         rec = self._router.submit_entry(
             bot=bot, signal_id=signal_id, side=order_side, bar=bar,
             size_mult=size_mult,
@@ -2806,6 +2840,258 @@ class JarvisStrategySupervisor:
                 verdict.consolidated.final_verdict, size_mult,
             )
 
+    # ── Trailing stop / partial profit / aggregation helpers ─────────
+    #
+    # All three features are env-flagged so the operator can disable any
+    # one if it misbehaves. Defaults are conservative:
+    #   ETA_TRAILING_STOP_ENABLED      = "true" (default ON)
+    #   ETA_TRAILING_STOP_ACTIVATE_R   = 1.0    (move to BE at +1R)
+    #   ETA_PARTIAL_PROFIT_ENABLED     = "true" (default ON)
+    #   ETA_PARTIAL_PROFIT_R           = 1.0    (close half at +1R)
+    #   ETA_PARTIAL_PROFIT_PCT         = 0.5    (close 50% of size)
+    #   ETA_BOT_AGGREGATION_ENABLED    = "true" (default ON)
+    #   ETA_BOT_AGGREGATION_WINDOW_S   = 300    (5 min same-side window)
+    @staticmethod
+    def _env_flag(name: str, default: str = "true") -> bool:
+        """Truthy env flag check — accepts 1/true/yes/on (case-insens)."""
+        return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        try:
+            return float(os.getenv(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+
+    def _compute_realized_r(
+        self, pos: dict[str, Any], reference_price: float,
+    ) -> float | None:
+        """Return current unrealized-R for an open position, or None.
+
+        R is computed against the planned bracket-stop distance:
+            R = (price - entry) * sign / |entry - bracket_stop|
+        Returns None when bracket_stop is missing/invalid — caller must
+        fall back to legacy logic.
+        """
+        try:
+            entry = float(pos["entry_price"])
+            stop = float(pos.get("bracket_stop"))
+        except (TypeError, ValueError, KeyError):
+            return None
+        risk_per_unit = abs(entry - stop)
+        if risk_per_unit <= 0:
+            return None
+        sign = 1.0 if pos.get("side") == "BUY" else -1.0
+        return sign * (reference_price - entry) / risk_per_unit
+
+    def _maybe_apply_trailing_stop(
+        self, bot: BotInstance, pos: dict[str, Any], bar: dict[str, Any],
+    ) -> None:
+        """Move the bracket_stop to breakeven (or tighter) once price
+        reaches the configured R-multiple in our favor.
+
+        Once activated, this also acts as a price-following trailer: the
+        stop never moves AGAINST us (LONG: never lowered; SHORT: never
+        raised) and tightens proportionally as price extends past the
+        activation threshold.
+
+        Persists ``bot.open_position`` to disk after every adjustment via
+        ``_persist_open_position`` so the new stop survives restarts.
+        """
+        if not self._env_flag("ETA_TRAILING_STOP_ENABLED", "true"):
+            return
+        activate_r = self._env_float("ETA_TRAILING_STOP_ACTIVATE_R", 1.0)
+        # Use bar.high (LONG) / bar.low (SHORT) as the favorable reference
+        # so the trailer engages as soon as the bar PRINTS the threshold,
+        # not on the bar's close — matches how a real broker stop trails.
+        try:
+            bar_high = float(bar.get("high", bar.get("close")))
+            bar_low = float(bar.get("low", bar.get("close")))
+        except (TypeError, ValueError):
+            return
+        is_buy = pos.get("side") == "BUY"
+        favorable = bar_high if is_buy else bar_low
+        unrealized_r = self._compute_realized_r(pos, favorable)
+        if unrealized_r is None or unrealized_r < activate_r:
+            return
+        try:
+            entry = float(pos["entry_price"])
+            risk_per_unit = abs(entry - float(pos["bracket_stop"]))
+        except (TypeError, ValueError, KeyError):
+            return
+        # Pin the new stop at entry + (unrealized_r - activate_r) * risk_per_unit
+        # toward favor — i.e. once we're at +1R, stop = entry (BE); at
+        # +2R, stop = entry + 1R (locking in 1R); at +3R, stop = entry +
+        # 2R; etc. NEVER move the stop adversely.
+        excess_r = unrealized_r - activate_r
+        if is_buy:
+            new_stop = entry + excess_r * risk_per_unit
+            current_stop = float(pos.get("bracket_stop", entry))
+            if new_stop <= current_stop:
+                return  # never lower a LONG stop
+        else:
+            new_stop = entry - excess_r * risk_per_unit
+            current_stop = float(pos.get("bracket_stop", entry))
+            if new_stop >= current_stop:
+                return  # never raise a SHORT stop
+        prev_stop = pos.get("bracket_stop")
+        pos["bracket_stop"] = round(new_stop, 4)
+        pos["trailing_active"] = True
+        pos["trailing_last_r"] = round(unrealized_r, 4)
+        # Persist so a restart doesn't roll the stop back to entry.
+        with contextlib.suppress(Exception):
+            self._router._persist_open_position(bot)  # noqa: SLF001
+        logger.info(
+            "TRAIL  %s side=%s prev_stop=%s new_stop=%.4f r=%.3f activate_r=%.2f",
+            bot.bot_id, pos.get("side"), prev_stop, new_stop,
+            unrealized_r, activate_r,
+        )
+
+    def _maybe_take_partial_profit(
+        self, bot: BotInstance, pos: dict[str, Any], bar: dict[str, Any],
+    ) -> None:
+        """Close ``ETA_PARTIAL_PROFIT_PCT`` of position at
+        ``ETA_PARTIAL_PROFIT_R`` and let the remainder ride.
+
+        Only fires once per position (guarded by ``pos['partial_taken']``).
+        Sends a reduce_only exit through the existing ``submit_exit``
+        infrastructure for the partial slice, then rewrites
+        ``bot.open_position.qty`` to the remaining size and persists. The
+        runner can still hit the original target or the trailing-stop
+        breakeven move on the leftover qty.
+        """
+        if not self._env_flag("ETA_PARTIAL_PROFIT_ENABLED", "true"):
+            return
+        if pos.get("partial_taken"):
+            return
+        trigger_r = self._env_float("ETA_PARTIAL_PROFIT_R", 1.0)
+        pct = self._env_float("ETA_PARTIAL_PROFIT_PCT", 0.5)
+        if pct <= 0 or pct >= 1.0:
+            return
+        # Use bar.high (LONG) / bar.low (SHORT) so a wick that pierces
+        # the partial-profit threshold but closes below still fires.
+        try:
+            bar_high = float(bar.get("high", bar.get("close")))
+            bar_low = float(bar.get("low", bar.get("close")))
+        except (TypeError, ValueError):
+            return
+        is_buy = pos.get("side") == "BUY"
+        favorable = bar_high if is_buy else bar_low
+        unrealized_r = self._compute_realized_r(pos, favorable)
+        if unrealized_r is None or unrealized_r < trigger_r:
+            return
+        try:
+            full_qty = abs(float(pos.get("qty", 0) or 0))
+        except (TypeError, ValueError):
+            return
+        if full_qty <= 0:
+            return
+        partial_qty = full_qty * pct
+        remaining_qty = full_qty - partial_qty
+        if partial_qty <= 0 or remaining_qty <= 0:
+            return
+        # Tag exit_reason so submit_exit fills at target for paper-sim,
+        # mirroring the geometry of a take-profit limit hit.
+        original_qty = pos["qty"]
+        pos["exit_reason"] = "paper_partial_profit"
+        # Temporarily set qty to the partial slice so submit_exit ships
+        # only that size, then patch qty back to the remainder. This is
+        # the simplest path that reuses the existing reduce_only round-
+        # trip in submit_exit (paper_live ships reduce_only=True via
+        # _write_pending_order).
+        pos["qty"] = partial_qty
+        rec = None
+        try:
+            rec = self._router.submit_exit(bot=bot, bar=bar)
+        except Exception as exc:  # noqa: BLE001 — never break tick on partial
+            logger.exception(
+                "partial-profit exit raised for %s: %s — restoring full qty",
+                bot.bot_id, exc,
+            )
+            pos["qty"] = original_qty
+            return
+        # submit_exit ALWAYS clears bot.open_position when it returns a
+        # FillRecord. We need to restore the runner with the remaining
+        # qty so the trade keeps managing the second half.
+        if rec is not None:
+            runner = dict(pos)
+            runner["qty"] = remaining_qty
+            runner["partial_taken"] = True
+            runner["partial_qty"] = partial_qty
+            runner["partial_fill_price"] = rec.fill_price
+            runner["partial_realized_r"] = rec.realized_r
+            runner.pop("exit_reason", None)
+            bot.open_position = runner
+            with contextlib.suppress(Exception):
+                self._router._persist_open_position(bot)  # noqa: SLF001
+            logger.info(
+                "PARTIAL %s %s closed=%.6f remaining=%.6f r=%.3f trigger_r=%.2f",
+                bot.bot_id, pos.get("side"), partial_qty, remaining_qty,
+                unrealized_r, trigger_r,
+            )
+            # Propagate the partial close so feedback layers (memory /
+            # bandits / edge_tracker) see the realized-R contribution.
+            self._propagate_close(
+                bot, rec,
+                entry_snapshot=getattr(rec, "entry_snapshot", None),
+            )
+        else:
+            # submit_exit refused (broker qty unavailable, etc.) —
+            # restore qty so subsequent ticks can retry.
+            pos["qty"] = original_qty
+            pos.pop("exit_reason", None)
+
+    def _check_signal_aggregation(
+        self,
+        bot: BotInstance,
+        side: str,
+        bar: dict[str, Any],
+    ) -> str | None:
+        """Cross-bot dedup: if another bot in the fleet just fired the
+        same (symbol, direction) entry inside the aggregation window,
+        suppress this one and return the consolidation reason.
+
+        Returns None when the entry is allowed to proceed; returns a
+        non-empty reason string ("consolidated_with_<first_bot_id>") when
+        it should be rejected. The caller writes the reason to the bot's
+        heartbeat fields and aborts the entry.
+        """
+        if not self._env_flag("ETA_BOT_AGGREGATION_ENABLED", "true"):
+            return None
+        window_s = self._env_float("ETA_BOT_AGGREGATION_WINDOW_S", 300.0)
+        if window_s <= 0:
+            return None
+        # Normalize direction to BUY/SELL so flipped Sage decisions still
+        # consolidate against same-direction registrations.
+        direction = "BUY" if str(side).upper() in {"BUY", "LONG"} else "SELL"
+        key = (str(bot.symbol), direction)
+        import time as _time
+        now_s = _time.time()
+        entry = self._aggregation_cache.get(key)
+        if entry is not None:
+            age_s = now_s - float(entry.get("fired_at", 0.0))
+            first_bot_id = str(entry.get("first_bot_id", ""))
+            # Same-bot follow-on is NOT aggregation — that's just the
+            # same bot evaluating again. Only DIFFERENT bots get consolidated.
+            if age_s <= window_s and first_bot_id and first_bot_id != bot.bot_id:
+                return f"consolidated_with_{first_bot_id}"
+        # First-mover wins: stamp now so subsequent same-bar siblings
+        # see the consolidation. We stamp BEFORE the broker fires (so
+        # rapid-fire ticks across bots all see the same first_bot_id).
+        self._aggregation_cache[key] = {
+            "first_bot_id": bot.bot_id,
+            "fired_at": now_s,
+        }
+        # Garbage-collect entries older than 4x the window to keep the
+        # cache bounded across long-running supervisor sessions.
+        cutoff = now_s - 4.0 * window_s
+        for stale_key in [
+            k for k, v in self._aggregation_cache.items()
+            if float(v.get("fired_at", 0.0)) < cutoff
+        ]:
+            self._aggregation_cache.pop(stale_key, None)
+        return None
+
     def _maybe_exit(self, bot: BotInstance, bar: dict[str, Any]) -> None:
         # Simple exit: random 1-in-15 close OR drawdown > 1.5% from entry.
         # In paper_live with a broker-side bracket attached (the venue
@@ -2819,6 +3105,24 @@ class JarvisStrategySupervisor:
         pos = bot.open_position
         if pos is None:
             return
+        # ── Active position management hooks ────────────────────────
+        # Run BEFORE the broker-bracket short-circuit so the trailing
+        # stop and partial-profit features apply to paper_sim AND any
+        # paper_live variant where the broker doesn't have a server-side
+        # bracket (SUPERVISOR_LOCAL — Alpaca crypto, IBKR-PAXOS crypto).
+        # For broker-bracket variants the broker is authoritative on the
+        # exits, so trailing-stop adjustments would not propagate to the
+        # venue and partial-profit closes would conflict with the
+        # broker's OCO siblings — gate both behind broker_bracket=False.
+        broker_bracket_for_features = bool(pos.get("broker_bracket"))
+        if not broker_bracket_for_features:
+            self._maybe_take_partial_profit(bot, pos, bar)
+            # Re-read pos: partial-profit may have rotated bot.open_position
+            # to a fresh dict for the runner.
+            pos = bot.open_position
+            if pos is None:
+                return
+            self._maybe_apply_trailing_stop(bot, pos, bar)
         cur_price = float(bar["close"])
         entry_price = pos["entry_price"]
         sign = 1.0 if pos["side"] == "BUY" else -1.0
