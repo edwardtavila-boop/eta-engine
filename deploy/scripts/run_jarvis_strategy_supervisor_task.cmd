@@ -9,22 +9,32 @@ set "ETA_SUPERVISOR_FEED=composite"
 rem Crypto + futures paper-live lane (Alpaca for crypto, IBKR for
 rem futures, per configs/bot_broker_routing.yaml).
 rem
-rem CRYPTO ALPHA SET (5 bots, audited 2026-05-06):
-rem - btc_optimized: DIAMOND #4, 50% WR, +$35k backtest. PRIMARY.
-rem - vwap_mr_btc: DIAMOND #11, vwap reversion at 2σ on London open.
-rem - volume_profile_btc: DIAMOND #13, POC magnetic 168-bar profile.
-rem - funding_rate_btc: DIAMOND #18, persistent funding momentum.
-rem - eth_sage_daily: DIAMOND #3, 40% WR, +$3.8k backtest on ETH.
+rem ARCHITECTURAL SPLIT (operator directive 2026-05-06):
+rem - ALPACA = SPOT crypto only (BTC/USD, ETH/USD, SOL/USD, etc.)
+rem   No funding rates, no perp leverage, no futures concepts.
+rem - IBKR = FUTURES + commodities (MNQ, NQ, MES, GC, CL, NG, etc.)
+rem   plus crypto futures (MBT/MET CME micros, currently deactivated
+rem   pending re-tune for RTH session — see registry).
 rem
-rem DROPPED 2026-05-06 (proven negative-expectancy):
+rem ALPACA SPOT ALPHA SET (4 bots, all spot-native technicals):
+rem - btc_optimized: sweep_reclaim + scorecard (DIAMOND #4, 50% WR, +$35k)
+rem - vwap_mr_btc: VWAP fade at 2σ (DIAMOND #11, 85.7% paper soak WR)
+rem - volume_profile_btc: POC magnetic 168-bar (DIAMOND #13)
+rem - eth_sage_daily: sage_gated_orb on ETH (DIAMOND #3, 40% WR, +$3.8k)
+rem
+rem REMOVED 2026-05-06 — architectural mismatch:
+rem - funding_rate_btc: uses funding-rate INPUT (a futures-only concept)
+rem   while executing on Alpaca SPOT. Right home is IBKR with MBT
+rem   execution once a funding-aware MBT variant is built.
+rem
+rem PRIOR REMOVAL 2026-05-06 — proven negative-expectancy:
 rem - btc_hybrid_sage: 25% WR shadow, losing
 rem - btc_ensemble_2of3: 25% WR shadow, losing
-rem - crypto_seed: DCA non-edge accumulator (kept exposure-only role
-rem   but doesn't generate alpha — better to size other bots up)
+rem - crypto_seed: DCA non-edge accumulator
 rem
-rem FUTURES SET (8 bots): one core per product (mnq, mes, m2k, ym, gc,
-rem cl, ng, zn, eur), routed via broker_router → IBKR.
-set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,funding_rate_btc,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
+rem FUTURES SET (8 bots): one core per CME/CBOT product (mnq, mes, m2k,
+rem ym, gc, cl, ng, zn, eur), routed via broker_router → IBKR.
+set "ETA_SUPERVISOR_BOTS=eth_sweep_reclaim,eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,mnq_futures,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
