@@ -815,6 +815,26 @@ def _broker_router_state_root() -> Path:
     return candidates[0] or (_WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "router")
 
 
+def _order_entry_hold_snapshot(heartbeat: dict) -> dict:
+    """Return the canonical order-entry hold, with router heartbeat as a fallback."""
+    hold_path = _state_dir() / "order_entry_hold.json"
+    file_hold = _read_json_file(hold_path)
+    if file_hold:
+        hold = dict(file_hold)
+        hold["active"] = bool(file_hold.get("active", True))
+        hold["reason"] = str(file_hold.get("reason") or "")
+        hold["source"] = "order_entry_hold_file"
+        hold["path"] = str(hold_path)
+        return hold
+
+    heartbeat_hold = heartbeat.get("order_entry_hold")
+    if isinstance(heartbeat_hold, dict) and heartbeat_hold:
+        hold = dict(heartbeat_hold)
+        hold.setdefault("source", "broker_router_heartbeat")
+        return hold
+    return {}
+
+
 def _normalize_router_result(path: Path, payload: dict) -> dict:
     result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
     request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
@@ -899,7 +919,7 @@ def _broker_router_snapshot() -> dict:
         historical_reasons.append("quarantined_orders")
 
     degraded_reasons: list[str] = []
-    hold = heartbeat.get("order_entry_hold") if isinstance(heartbeat.get("order_entry_hold"), dict) else {}
+    hold = _order_entry_hold_snapshot(heartbeat)
     hold_active = bool(hold.get("active"))
     if hold_active:
         degraded_reasons.append("order_entry_hold")

@@ -1316,8 +1316,8 @@ class TestDashboardAPI:
 
     def test_supervisor_heartbeat_freshness_is_not_last_signal_freshness(self, app_client):
         """A quiet bot should stay live when the supervisor heartbeat is fresh."""
-        from datetime import UTC, datetime, timedelta
         import os
+        from datetime import UTC, datetime, timedelta
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
@@ -1366,8 +1366,8 @@ class TestDashboardAPI:
         app_client,
     ):
         """Keepalive prevents a busy supervisor tick from being shown as dead/stale."""
-        from datetime import UTC, datetime, timedelta
         import os
+        from datetime import UTC, datetime, timedelta
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
@@ -1752,6 +1752,45 @@ class TestDashboardAPI:
         assert broker_router["order_entry_hold"]["reason"] == "ibkr_pending_submit_unconfirmed"
         assert broker_router["degraded_reasons"] == ["order_entry_hold"]
         assert "historical_blocked_orders" in broker_router["historical_reasons"]
+
+    def test_bot_fleet_surfaces_global_order_hold_when_router_heartbeat_lacks_hold(self, app_client):
+        """The canonical order hold file remains authoritative when router heartbeat is sparse."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        router.mkdir(parents=True, exist_ok=True)
+        (state / "order_entry_hold.json").write_text(
+            json.dumps(
+                {
+                    "active": True,
+                    "reason": "ibgateway_waiting_for_manual_login_or_2fa",
+                    "operator": "codex",
+                },
+            ),
+            encoding="utf-8",
+        )
+        (router / "broker_router_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-05T12:59:00+00:00",
+                    "last_poll_ts": "2026-05-05T12:59:00+00:00",
+                    "counts": {"held": 1},
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        broker_router = r.json()["broker_router"]
+        assert broker_router["status"] == "held"
+        assert broker_router["order_entry_hold"]["reason"] == "ibgateway_waiting_for_manual_login_or_2fa"
+        assert broker_router["order_entry_hold"]["source"] == "order_entry_hold_file"
+        assert broker_router["order_entry_hold"]["path"].endswith("order_entry_hold.json")
+        assert broker_router["degraded_reasons"] == ["order_entry_hold"]
 
     def test_live_fills_include_ibkr_execution_snapshot_and_filter_pending_router_rows(self, app_client):
         """Live fill stats use real IBKR executions, not PendingSubmit router audit rows."""
