@@ -552,12 +552,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "mnq",
-                "sweep_config": {
-                    "rr_target": 3.0,
-                    "atr_stop_mult": 1.0,
-                    "max_trades_per_day": 4,
-                    "min_bars_between_trades": 6,
-                },
+            },
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "trend",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+                "enable_exhaustion_gate": False,
+                "enable_absorption_gate": False,
+                "enable_drift_boost": False,
             },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,

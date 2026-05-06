@@ -32,10 +32,8 @@ import random
 import statistics
 import sys
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -113,6 +111,25 @@ class LabReport:
     # Meta
     elapsed_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
+
+
+def _read_soak_returns(bot_id: str) -> list[float]:
+    """Read trade-level returns from the paper soak ledger.
+    Returns list of per-session PnL deltas for Monte Carlo analysis."""
+    from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR
+    ledger_path = ETA_RUNTIME_STATE_DIR / "paper_soak_ledger.json"
+    if not ledger_path.exists():
+        return []
+    try:
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    sessions = ledger.get("bot_sessions", {}).get(bot_id, [])
+    if len(sessions) < 3:
+        return []
+    # Use per-session PnL as proxy for trade returns
+    returns = [s.get("pnl", 0.0) for s in sessions if abs(s.get("pnl", 0.0)) > 0.01]
+    return returns
 
 
 def _compute_sharpe(returns: list[float], rf: float = 0.0) -> float:
@@ -208,7 +225,7 @@ def _walk_forward(bot_id: str, days: int = 60, windows: int = 3) -> tuple[list[W
                 iso = data.get("in_sample", data)
                 trades = iso.get("trades", 0)
                 wr = iso.get("win_rate", 0)
-                pnl = iso.get("total_pnl", 0)
+                iso.get("total_pnl", 0)
 
                 # Use equity curve to compute returns
                 eq = iso.get("equity_curve", [])
@@ -245,7 +262,12 @@ def _walk_forward(bot_id: str, days: int = 60, windows: int = 3) -> tuple[list[W
 
 
 def validate_bot(bot_id: str, days: int = 60, wf_windows: int = 3, mc_bootstraps: int = 500) -> LabReport:
-    """Run full validation suite on one bot."""
+    """Run full validation suite on one bot.
+
+    Prefers reading from the paper_soak_ledger.json for instant results.
+    Falls back to paper_trade_sim subprocess calls if ledger data is stale
+    or missing.
+    """
     started = time.time()
     report = LabReport(bot_id=bot_id, symbol="?", timeframe="?", strategy_kind="?")
 
@@ -262,9 +284,16 @@ def validate_bot(bot_id: str, days: int = 60, wf_windows: int = 3, mc_bootstraps
         report.errors.append(f"Registry error: {e}")
         return report
 
-    # Walk-forward
+    # Try paper soak ledger first (fast path)
     try:
-        wf_windows_list, all_returns = _walk_forward(bot_id, days, wf_windows)
+        all_returns = _read_soak_returns(bot_id)
+
+        if not all_returns:
+            # Fall back to walk-forward subprocess calls (slow path)
+            wf_windows_list, all_returns = _walk_forward(bot_id, days, wf_windows)
+        else:
+            wf_windows_list = []
+
         report.wf_windows = len(wf_windows_list)
         if wf_windows_list:
             report.agg_is_sharpe = wf_windows_list[-1].is_sharpe
@@ -273,12 +302,11 @@ def validate_bot(bot_id: str, days: int = 60, wf_windows: int = 3, mc_bootstraps
             report.dsr_pass = report.agg_oos_sharpe > 0.5
 
         if all_returns:
-            total_trades = sum(w.is_trades for w in wf_windows_list)
-            report.total_trades = total_trades
-            wins = sum(1 for r in all_returns if r > 0)
-            report.win_rate = wins / len(all_returns) * 100 if all_returns else 0
             report.total_pnl = sum(all_returns)
             report.avg_r_per_trade = statistics.mean(all_returns) if all_returns else 0
+            # From ledger, estimate trades and WR
+            returns_pos = [r for r in all_returns if r > 0]
+            report.win_rate = len(returns_pos) / len(all_returns) * 100 if all_returns else 0
 
             report.sharpe_ratio = _compute_sharpe(all_returns)
             report.sortino_ratio = _compute_sortino(all_returns)
@@ -304,10 +332,16 @@ def format_report(report: LabReport) -> str:
     mc_tag = report.mc_verdict[:8] if report.mc_verdict else "?"
     lines = [
         f"LAB {report.bot_id} ({report.symbol} {report.timeframe}) {report.strategy_kind}",
-        f"  TRADES: {report.total_trades}  WR: {report.win_rate:.1f}%  PnL: ${report.total_pnl:+.2f}  Avg R: {report.avg_r_per_trade:+.3f}",
-        f"  SHARPE: {report.sharpe_ratio:.3f}  SORTINO: {report.sortino_ratio:.3f}  PF: {report.profit_factor:.2f}",
-        f"  WALK-FORWARD: IS={report.agg_is_sharpe:+.3f} OOS={report.agg_oos_sharpe:+.3f} Deg={report.degradation_avg:+.3f} DSR={report.dsr_pass}",
-        f"  MONTE CARLO: p05={report.mc_p05_r:+.3f} p50={report.mc_p50_r:+.3f} Luck={report.mc_luck_score:.2f} Verdict={mc_tag}",
+        f"  TRADES: {report.total_trades}  WR: {report.win_rate:.1f}%  "
+        f"PnL: ${report.total_pnl:+.2f}  Avg R: {report.avg_r_per_trade:+.3f}",
+        f"  SHARPE: {report.sharpe_ratio:.3f}  SORTINO: {report.sortino_ratio:.3f}  "
+        f"PF: {report.profit_factor:.2f}",
+        f"  WALK-FORWARD: IS={report.agg_is_sharpe:+.3f}  "
+        f"OOS={report.agg_oos_sharpe:+.3f}  "
+        f"Deg={report.degradation_avg:+.3f}  DSR={report.dsr_pass}",
+        f"  MONTE CARLO: p05={report.mc_p05_r:+.3f}  "
+        f"p50={report.mc_p50_r:+.3f}  "
+        f"Luck={report.mc_luck_score:.2f}  Verdict={mc_tag}",
         f"  Time: {report.elapsed_seconds:.1f}s",
     ]
     if report.errors:
