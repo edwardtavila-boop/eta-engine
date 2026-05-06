@@ -68,16 +68,16 @@ def test_sweep_reclaim_has_preset_for_every_supported_asset() -> None:
 
 
 def test_sweep_reclaim_crypto_presets_differ_by_vol_class() -> None:
-    """SOL > BTC > ETH on ATR-stop (DeepSeek-tuned 2026-05-02).
+    """SOL > ETH > BTC on ATR-stop (paper-soak tuned 2026-05-06).
 
-    ETH gets a tighter stop (1.0) than BTC (1.5) because ETH sweeps
+    Historical notes said ETH sweeps
     are shallower and faster — wider stops degrade edge on ETH. SOL
-    is materially more volatile (~2x BTC) and keeps the widest stop.
+    still keeps widest, while soak evidence now puts ETH above BTC.
     """
     btc = btc_daily_sweep_preset()
     eth = eth_daily_sweep_preset()
     sol = sol_daily_sweep_preset()
-    assert eth.atr_stop_mult < btc.atr_stop_mult < sol.atr_stop_mult
+    assert btc.atr_stop_mult < eth.atr_stop_mult < sol.atr_stop_mult
     # Wick thresholds: SOL loosest (big fake wicks), ETH tightest
     # (DeepSeek-tuned 0.40 to reduce false reclaims on noisy ETH)
     assert sol.min_wick_pct < btc.min_wick_pct
@@ -86,12 +86,13 @@ def test_sweep_reclaim_crypto_presets_differ_by_vol_class() -> None:
 
 def test_sweep_reclaim_futures_vs_crypto_separation() -> None:
     """Intraday futures (MNQ, NQ) configs differ from crypto on
-    cooldown + max-trades-per-day (RTH-bounded vs 24/7)."""
+    lookback/cooldown/warmup cadence (RTH-bounded vs 24/7)."""
     mnq = mnq_intraday_sweep_preset()
     btc = btc_daily_sweep_preset()
-    # Intraday cooldown shorter, trades/day higher
+    # Intraday futures react faster; crypto waits across a longer 1h context.
+    assert mnq.level_lookback < btc.level_lookback
     assert mnq.min_bars_between_trades < btc.min_bars_between_trades
-    assert mnq.max_trades_per_day > btc.max_trades_per_day
+    assert mnq.warmup_bars < btc.warmup_bars
 
 
 def test_sweep_reclaim_sister_index_presets_match_shape() -> None:
