@@ -31,6 +31,7 @@ import re
 import socket
 import subprocess
 import time
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -84,9 +85,15 @@ def _watchdog_client_ids() -> tuple[int, ...]:
 
 def _ensure_asyncio_event_loop() -> None:
     """ib_insync still expects a default loop on Python versions that no longer create one."""
+    loop: asyncio.AbstractEventLoop | None = None
     try:
-        asyncio.get_event_loop()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            loop = asyncio.get_event_loop()
     except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        return
+    if loop is not None and loop.is_closed():
         asyncio.set_event_loop(asyncio.new_event_loop())
 
 
