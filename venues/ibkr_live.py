@@ -103,7 +103,16 @@ FUTURES_MAP: dict[str, tuple[str, str, str]] = {
     "MGC":  ("MGC", "COMEX", "10"),
     "ZN":   ("ZN",  "CBOT", "1000"),
     "ZB":   ("ZB",  "CBOT", "1000"),
-    "6E":   ("6E",  "CME", "125000"),
+    # CME Euro FX (full size): IB indexes the standard contract under
+    # symbol "EUR", not the operator-friendly "6E" trading code that
+    # appears on charts and in the supervisor. ContFuture(6E, CME)
+    # returns "no security definition"; ContFuture(EUR, CME) resolves
+    # cleanly. Keep "6E" as the supervisor-facing key so routing yaml
+    # stays readable, but use "EUR" as the IB symbol. Caught by smoke
+    # harness 2026-05-05.
+    "6E":   ("EUR", "CME", "125000"),
+    # Micro Euro FX: IB does index the micro under "M6E" (verified by
+    # the same smoke harness — qualified cleanly with month=20260615).
     "M6E":  ("M6E", "CME", "12500"),
 }
 
@@ -235,7 +244,22 @@ _FRONT_MONTH_CACHE: dict[tuple[str, str], str] = {}
 
 
 async def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "CME") -> str:  # noqa: ANN401 — ib_insync IB instance
-    """Resolve the active front-month YYYYMM for a futures root via IB.
+    """Resolve the active front-month contract date for a futures root via IB.
+
+    Returns the full date string IB returned for the qualified ContFuture
+    (e.g. ``"20260619"`` for MNQ Jun 2026, ``"20260519"`` for CL May
+    2026). Truncating this to ``YYYYMM`` works for products that IB
+    indexes by month (CME equity-index futures: MNQ/NQ/ES/MES/RTY/M2K)
+    but BREAKS for products IB indexes by exact expiry (NYMEX energy:
+    CL/MCL/NG and certain metals). Returning the full date works for
+    both cases — a more-specific ``lastTradeDateOrContractMonth`` is
+    always accepted by ``qualifyContractsAsync``.
+
+    Caught by the per-ticker smoke harness (2026-05-05): NYMEX CL/MCL/NG
+    failed with HTTP "No security definition" when this function
+    returned ``"202605"`` even though the ContFuture qualifier had
+    returned ``"20260519"`` (or similar). The previous truncation to 6
+    chars discarded the discriminating expiry day.
 
     Uses ``ib_insync.ContFuture`` qualified through
     ``ib.qualifyContractsAsync``; IB returns the active front-month
@@ -271,19 +295,18 @@ async def _resolve_front_month_mnq(ib: Any, root: str = "MNQ", exchange: str = "
         )
 
     last_trade = getattr(qualified[0], "lastTradeDateOrContractMonth", "") or ""
-    yyyymm = last_trade[:6]
-    if len(yyyymm) != 6 or not yyyymm.isdigit():
+    if not last_trade or not last_trade[:6].isdigit() or len(last_trade) not in (6, 8):
         raise RuntimeError(
             f"IB returned invalid lastTradeDateOrContractMonth={last_trade!r} "
-            f"for {root}/{exchange} — cannot derive YYYYMM",
+            f"for {root}/{exchange} — expected YYYYMM or YYYYMMDD",
         )
 
-    _FRONT_MONTH_CACHE[cache_key] = yyyymm
+    _FRONT_MONTH_CACHE[cache_key] = last_trade
     logger.info(
         "Resolved front-month %s/%s = %s (cached for session)",
-        root, exchange, yyyymm,
+        root, exchange, last_trade,
     )
-    return yyyymm
+    return last_trade
 
 
 async def _make_contract(symbol: str, ib: Any | None = None) -> Any | None:  # noqa: ANN401 — ib_insync types are dynamic
