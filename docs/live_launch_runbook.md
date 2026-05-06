@@ -332,6 +332,22 @@ two-factor prompt, then release through the guarded command below. The guard
 refuses to clear the hold if `tws_watchdog.json` is missing, stale, unhealthy,
 or if the active hold reason is an unrelated operator incident.
 
+If `ibgateway_reauth_controller` reports `status=missing_recovery_task`, do
+not promote to `paper_live`: the VPS cannot start the Gateway yet. First
+install/configure the canonical IB Gateway 10.46 source at
+`C:\Jts\ibgateway\1046`, then repair the ETA-owned tasks and low-memory
+Gateway profile:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\repair_ibgateway_vps.ps1
+
+# Only after the audit shows C:\Jts\ibgateway\1046 exists:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\repair_ibgateway_vps.ps1 `
+  -ApplyJtsIni -ApplyVmOptions -RepairTasks -EnforceSingleSource
+python -m eta_engine.scripts.ibgateway_reauth_controller
+```
+
 ```powershell
 cd C:\EvolutionaryTradingAlgo
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.runtime_order_hold status --json

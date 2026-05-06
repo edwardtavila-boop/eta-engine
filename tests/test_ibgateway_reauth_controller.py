@@ -53,6 +53,7 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
     state_path = tmp_path / "ibgateway_reauth.json"
     tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
     started: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
     monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
 
     result = controller.run_controller(
@@ -70,6 +71,29 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
     assert state["operator_action_required"] is False
 
 
+def test_process_down_missing_run_now_task_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda task_name: task_name != "ETA-IBGateway-RunNow")
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "missing_recovery_task"
+    assert result["action"] == "none"
+    assert result["operator_action_required"] is True
+    assert "ETA-IBGateway-RunNow" in result["reason"]
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["status"] == "missing_recovery_task"
+
+
 def test_stuck_running_gateway_restarts_once_then_waits_for_ibkr_login(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 
@@ -77,6 +101,7 @@ def test_stuck_running_gateway_restarts_once_then_waits_for_ibkr_login(tmp_path:
     state_path = tmp_path / "ibgateway_reauth.json"
     tws_status.write_text(json.dumps(_unhealthy_status(failures=4)), encoding="utf-8")
     restarted: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
     monkeypatch.setattr(controller, "_restart_scheduled_task", lambda task_name: restarted.append(task_name) or 0)
     now = datetime(2026, 5, 5, 13, 40, tzinfo=UTC)
 

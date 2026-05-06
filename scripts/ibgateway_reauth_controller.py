@@ -233,6 +233,41 @@ def _run_task_command(verb: str, task_name: str) -> int:
     return completed.returncode
 
 
+def _scheduled_task_exists(task_name: str) -> bool:
+    """Return whether a Windows scheduled task exists.
+
+    Non-Windows test/CI hosts may not have PowerShell or Task Scheduler; in
+    that case return True so portable unit tests can exercise decision logic
+    without requiring the Windows service layer. On the VPS this returns False
+    for missing recovery tasks, which prevents a misleading "started_gateway"
+    state when there is no task to start.
+    """
+    escaped = task_name.replace("'", "''")
+    try:
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                (
+                    "$task = Get-ScheduledTask "
+                    f"-TaskName '{escaped}' -ErrorAction SilentlyContinue; "
+                    "if ($null -eq $task) { exit 44 }; exit 0"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Unable to query scheduled task %s: %s", task_name, exc)
+        return True
+    return completed.returncode == 0
+
+
 def _start_scheduled_task(task_name: str) -> int:
     return _run_task_command("Start-ScheduledTask", task_name)
 
@@ -309,6 +344,25 @@ def run_controller(
     state["execute"] = execute
     if task_name:
         state["last_task_name"] = task_name
+        if not _scheduled_task_exists(task_name):
+            state.update(
+                {
+                    "status": "missing_recovery_task",
+                    "action": "none",
+                    "reason": (
+                        f"Required scheduled task {task_name} is missing; "
+                        "IB Gateway cannot be started by the reauth controller."
+                    ),
+                    "operator_action_required": True,
+                    "operator_action": (
+                        "Install/configure canonical IB Gateway 10.46, then run "
+                        "deploy\\scripts\\repair_ibgateway_vps.ps1 -RepairTasks "
+                        "-ApplyJtsIni -ApplyVmOptions -EnforceSingleSource."
+                    ),
+                },
+            )
+            _write_json(state_path, state)
+            return state
     if execute and task_name:
         if action == "restart_gateway":
             returncode = _restart_scheduled_task(task_name)
