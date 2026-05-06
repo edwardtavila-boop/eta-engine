@@ -404,20 +404,17 @@ def btc_daily_sweep_preset() -> SweepReclaimConfig:
 
 
 def eth_daily_sweep_preset() -> SweepReclaimConfig:
-    """Calibrated for ETH 1h bars. DeepSeek-tuned 2026-05-02."""
+    """Calibrated for ETH 1h bars. DeepSeek-tuned 2026-05-02.
+    PAPER-SOAK TUNED: atr_stop 1.0→2.0 (1.0x was too tight — ETH 1h
+    swings $80-150/bar. 2.0x gives $120-300 stop, enough to survive noise).
+    rr_target bumped 2.0→2.5 for positive expectancy at lower WR."""
     return SweepReclaimConfig(
-        level_lookback=48,
-        reclaim_window=3,
-        min_wick_pct=0.40,        # was 0.25 — tighter wick filter
-        volume_z_lookback=24,
-        min_volume_z=0.5,          # was 0.2 — higher volume threshold
-        atr_period=14,
-        atr_stop_mult=1.0,        # was 1.8 — tighter stop, lower drawdown
-        rr_target=2.0,
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
+        atr_period=14, atr_stop_mult=2.0,  # was 1.0 — too tight for ETH 1h
+        rr_target=2.5,                      # was 2.0
         risk_per_trade_pct=0.005,
-        min_bars_between_trades=12,
-        max_trades_per_day=2,
-        warmup_bars=72,
+        min_bars_between_trades=12, max_trades_per_day=2, warmup_bars=72,
     )
 
 
@@ -452,12 +449,12 @@ def sol_daily_sweep_preset() -> SweepReclaimConfig:
 
 def gc_sweep_preset() -> SweepReclaimConfig:
     """Gold (GC) 1h — safe-haven asset, $25-40/h ATR on $2500 notional.
-    Wider stops (2.5x ATR = $62-100), tighter RR (2.0 given clean trends).
-    Wick threshold 0.35 — gold sweeps at prior highs/lows are reliable."""
+    PAPER-SOAK TUNED: lookback 48→72 (3-day context for macro-pivot sweeps),
+    wick_pct 0.35→0.40 (tighter filter), rr_target 2.0→2.5."""
     return SweepReclaimConfig(
-        level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.35, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.5, rr_target=2.0,
+        level_lookback=72, reclaim_window=3,
+        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=2.5, rr_target=2.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
     )
@@ -478,13 +475,13 @@ def cl_sweep_preset() -> SweepReclaimConfig:
 
 def ng_sweep_preset() -> SweepReclaimConfig:
     """Natural gas (NG) 1h — $2-4/MMBtu, ATR $0.15-0.30/h on $2,500 notional.
-    Most volatile commodity — widest ATR stop (3.0x = $0.45-0.90),
-    highest RR (3.0 to compensate). Lower wick threshold (0.25) —
-    NG wicks are proportionally larger due to weather-driven gaps."""
+    Most volatile commodity — widest ATR stop (4.0x = $0.60-1.20),
+    highest RR (3.0 to compensate), highest vol_z filter (0.5).
+    PAPER-SOAK TUNED: ATR stop 3.0→4.0, vol_z 0.2→0.5."""
     return SweepReclaimConfig(
         level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
+        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.5,
+        atr_period=14, atr_stop_mult=4.0, rr_target=3.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
     )
