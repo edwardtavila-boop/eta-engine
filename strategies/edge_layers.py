@@ -554,10 +554,17 @@ class EdgeAmplifier:
                 structural_lookback=self.cfg.structural_lookback,
                 structural_buffer_mult=self.cfg.structural_buffer_mult,
             )
+            # rr_target may not exist on all _Open subclasses; compute from
+            # existing stop/target distances when absent.
+            rr = getattr(opened, 'rr_target', None)
+            if rr is None:
+                risk_dist = max(abs(opened.entry_price - opened.stop), 1e-9)
+                reward_dist = abs(opened.target - opened.entry_price)
+                rr = reward_dist / risk_dist
             new_target = (
-                opened.entry_price + opened.rr_target * new_dist
+                opened.entry_price + rr * new_dist
                 if side.upper() == "BUY"
-                else opened.entry_price - opened.rr_target * new_dist
+                else opened.entry_price - rr * new_dist
             )
             opened = replace(opened, stop=new_stop, target=new_target)
 

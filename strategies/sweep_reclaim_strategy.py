@@ -342,11 +342,11 @@ def mnq_intraday_sweep_preset() -> SweepReclaimConfig:
         volume_z_lookback=20,
         min_volume_z=0.5,
         atr_period=14,
-        atr_stop_mult=1.5,         # was 1.0 — wider stop, avoid premature exits
-        rr_target=2.0,              # was 2.0 — lower RR, improve win rate
+        atr_stop_mult=1.5,
+        rr_target=2.0,
         risk_per_trade_pct=0.005,
         min_bars_between_trades=6,
-        max_trades_per_day=2,       # was 4 — fewer trades, higher quality
+        max_trades_per_day=2,
         warmup_bars=50,
     )
 
