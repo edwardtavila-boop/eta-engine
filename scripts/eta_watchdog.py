@@ -3,14 +3,16 @@
 Runs as a separate Windows scheduled task on a 60-second interval. Reads
 the supervisor's heartbeat + keepalive files, decides whether the
 supervisor is alive, and relaunches the wrapper script when the
-heartbeat is stale or the process is gone.
+heartbeat is stale. A fresh heartbeat/keepalive wins over a missing PID
+scan because Task Scheduler/SYSTEM process enumeration can be unreliable
+on hardened Windows hosts.
 
 Behavior matrix
 ---------------
 | heartbeat_age      | process_alive | action                  |
 |--------------------|---------------|-------------------------|
 | fresh (< stale_s)  | yes           | noop                    |
-| fresh              | no            | relaunch                |
+| fresh              | no            | noop (pid unobserved)   |
 | stale              | yes           | kill + relaunch         |
 | stale / missing    | no            | relaunch                |
 
@@ -392,9 +394,13 @@ def watchdog_tick(
         _write_watchdog_heartbeat(watchdog_heartbeat_path, decision)
         return decision
 
-    if not stale and process_alive:
+    if not stale:
         decision.action = "noop"
-        decision.reason = "fresh_heartbeat_and_process_running"
+        decision.reason = (
+            "fresh_heartbeat_and_process_running"
+            if process_alive
+            else "fresh_heartbeat_process_unobserved"
+        )
         _record(component, decision)
         _write_watchdog_heartbeat(watchdog_heartbeat_path, decision)
         return decision

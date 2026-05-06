@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -126,6 +127,39 @@ def test_watchdog_relaunches_when_heartbeat_stale(
     assert relaunch_calls, "relaunch_fn should have been invoked"
     # Watchdog heartbeat is written so operators know the watchdog ran.
     assert (tmp_path / "watchdog_heartbeat.json").exists()
+
+
+def test_watchdog_trusts_fresh_heartbeat_when_pid_scan_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh heartbeat is stronger evidence than a flaky Windows PID scan."""
+    from eta_engine.scripts import eta_watchdog
+
+    hb_path = tmp_path / "supervisor_heartbeat.json"
+    hb_path.write_text(
+        json.dumps({"ts": datetime.now(UTC).isoformat(), "tick_count": 7}),
+        encoding="utf-8",
+    )
+
+    relaunch_calls: list[Any] = []
+    decision = eta_watchdog.watchdog_tick(
+        component="supervisor",
+        heartbeat_path=hb_path,
+        keepalive_path=None,
+        process_substring="jarvis_strategy_supervisor.py",
+        stale_s=60.0,
+        disabled_flag_path=tmp_path / "supervisor_disabled.txt",
+        watchdog_heartbeat_path=tmp_path / "watchdog_heartbeat.json",
+        relaunch_fn=lambda **_kw: (relaunch_calls.append(_kw) or (True, "bad")),
+        pid_fn=lambda _sub: [],
+        kill_fn=lambda _pids: [],
+    )
+
+    assert decision.action == "noop"
+    assert decision.stale is False
+    assert decision.process_alive is False
+    assert decision.reason == "fresh_heartbeat_process_unobserved"
+    assert relaunch_calls == []
 
 
 def test_watchdog_noop_when_supervisor_disabled_file_present(
