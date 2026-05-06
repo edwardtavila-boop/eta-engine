@@ -217,8 +217,12 @@ def _build_callable_for_assignment(
 
     # Wrap with AlphaSniper if cross-symbol/tape-reading config is present.
     # DISABLED during integration — re-enable with extras["alpha_enabled"] = True.
+    # Wrap with AlphaSniper — always on for tape reading (default=True unless
+    # extras explicitly sets "alpha_sniper": False). Tape reading is zero-cost
+    # same-symbol bar structure analysis. Intermarket confirmation is opt-in
+    # via provider attachment. A/B testing: set "alpha_sniper": False to disable.
     alpha_raw = extras.get("alpha_sniper")
-    if alpha_raw is not None and extras.get("alpha_enabled") is True:
+    if alpha_raw is not False:  # defaults to True — only False disables
         try:
             from eta_engine.strategies.alpha_sniper import AlphaSniper, AlphaSniperConfig
 
