@@ -358,6 +358,9 @@ cd C:\EvolutionaryTradingAlgo
 # One read-only transition check. This never clears holds or starts tasks.
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.paper_live_transition_check
 
+# If the IBKR hold is active for login/2FA, the transition payload should point
+# the operator to the visible Gateway prompt before the watchdog/release steps.
+
 # VPS visibility loop. Keeps the Command Center's transition card/cache fresh
 # while OP-19 is open; it never clears holds or submits orders.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_paper_live_transition_check_task.ps1 -Start

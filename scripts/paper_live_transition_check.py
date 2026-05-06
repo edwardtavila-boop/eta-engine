@@ -75,6 +75,25 @@ def _paper_ready_count(snapshot: dict[str, Any]) -> int:
         return 0
 
 
+def _op19_next_action(queue: dict[str, Any], release_guard: dict[str, Any]) -> str:
+    """Return the most actionable OP-19 recovery step for the operator."""
+    queue_action = str(queue.get("first_next_action") or "")
+    if _first_op_id(queue) != "OP-19":
+        return queue_action
+
+    hold = release_guard.get("hold") if isinstance(release_guard, dict) else {}
+    hold_payload = hold if isinstance(hold, dict) else {}
+    hold_active = bool(hold_payload.get("active"))
+    hold_reason = str(hold_payload.get("reason") or "")
+    if hold_active and hold_reason == "ibgateway_waiting_for_manual_login_or_2fa":
+        return (
+            "Complete the visible IBKR Gateway login/2FA, then run "
+            "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+        )
+
+    return queue_action
+
+
 def build_transition_check(
     *,
     check_client_portal: bool = False,
@@ -100,6 +119,7 @@ def build_transition_check(
     op19_clear = first_op != "OP-19"
     paper_ready = _paper_ready_count(queue)
     blockers = _blocked_count(queue)
+    op19_next_action = _op19_next_action(queue, release_guard)
 
     gates = [
         _gate(
@@ -122,7 +142,7 @@ def build_transition_check(
                 if op19_clear
                 else "OP-19 is still the top blocker: IB Gateway 10.46/API 4002 is not recovered"
             ),
-            next_action=str(queue.get("first_next_action") or ""),
+            next_action=op19_next_action,
         ),
         _gate(
             "paper_ready_bots",
@@ -147,7 +167,7 @@ def build_transition_check(
         "launch_command": _LAUNCH_COMMAND if critical_ready else "",
         "operator_queue_blocked_count": blockers,
         "operator_queue_first_blocker_op_id": first_op or None,
-        "operator_queue_first_next_action": queue.get("first_next_action"),
+        "operator_queue_first_next_action": op19_next_action or queue.get("first_next_action"),
         "paper_ready_bots": paper_ready,
         "gates": gates,
         "ibkr_surface_status": ibkr_status,

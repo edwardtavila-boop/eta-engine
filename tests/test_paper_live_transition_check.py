@@ -17,11 +17,16 @@ def _surface(*, ready: bool) -> dict[str, object]:
     }
 
 
-def _release(*, ready: bool) -> dict[str, object]:
+def _release(*, ready: bool, hold_reason: str = "") -> dict[str, object]:
     return {
         "status": "ready_to_release" if ready else "blocked_watchdog_unhealthy",
         "operator_action_required": not ready,
         "reason": "fresh healthy watchdog" if ready else "watchdog is unhealthy",
+        "hold": {
+            "active": bool(hold_reason),
+            "reason": hold_reason,
+            "scope": "ibkr" if hold_reason else "all",
+        },
     }
 
 
@@ -57,6 +62,34 @@ def test_transition_check_blocks_when_gateway_op19_is_top_blocker(monkeypatch) -
         "op19_gateway_runtime",
         "paper_ready_bots",
     ]
+
+
+def test_transition_check_prioritizes_visible_gateway_login_hold(monkeypatch) -> None:
+    from eta_engine.scripts import paper_live_transition_check as mod
+
+    monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=False))
+    monkeypatch.setattr(
+        mod.ibgateway_release_guard,
+        "run_guard",
+        lambda **_kwargs: _release(
+            ready=False,
+            hold_reason="ibgateway_waiting_for_manual_login_or_2fa",
+        ),
+    )
+    monkeypatch.setattr(
+        mod.operator_queue_snapshot,
+        "build_snapshot",
+        lambda **_kwargs: _queue(first_op="OP-19", blocked=4, paper_ready=22),
+    )
+
+    result = mod.build_transition_check()
+    op19_gate = next(gate for gate in result["gates"] if gate["name"] == "op19_gateway_runtime")
+
+    assert result["operator_queue_first_next_action"].startswith(
+        "Complete the visible IBKR Gateway login/2FA"
+    )
+    assert op19_gate["next_action"] == result["operator_queue_first_next_action"]
+    assert "tws_watchdog" in op19_gate["next_action"]
 
 
 def test_transition_check_ready_with_warnings_when_critical_gates_clear(monkeypatch) -> None:
