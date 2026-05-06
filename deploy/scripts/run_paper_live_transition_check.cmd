@@ -14,11 +14,23 @@ if not exist "%ETA_STATE_DIR%" mkdir "%ETA_STATE_DIR%"
 if not exist "%ETA_LOG_DIR%" mkdir "%ETA_LOG_DIR%"
 cd /d "%ETA_ROOT%"
 
+set "RUN_ID=%RANDOM%_%RANDOM%"
+set "STDOUT_TMP=%ETA_LOG_DIR%\paper_live_transition_check.%RUN_ID%.stdout.tmp.log"
+set "STDERR_TMP=%ETA_LOG_DIR%\paper_live_transition_check.%RUN_ID%.stderr.tmp.log"
+
 "%PYTHON_EXE%" -m eta_engine.scripts.paper_live_transition_check ^
-    1>> "%ETA_LOG_DIR%\paper_live_transition_check.stdout.log" ^
-    2>> "%ETA_LOG_DIR%\paper_live_transition_check.stderr.log"
+    1> "%STDOUT_TMP%" ^
+    2> "%STDERR_TMP%"
 
 set "CHECK_RC=%ERRORLEVEL%"
+if exist "%STDOUT_TMP%" (
+    type "%STDOUT_TMP%" >> "%ETA_LOG_DIR%\paper_live_transition_check.stdout.log"
+    del "%STDOUT_TMP%" 2>nul
+)
+if exist "%STDERR_TMP%" (
+    type "%STDERR_TMP%" >> "%ETA_LOG_DIR%\paper_live_transition_check.stderr.log"
+    del "%STDERR_TMP%" 2>nul
+)
 echo %DATE% %TIME% paper_live_transition_check exit_code=%CHECK_RC% >> "%ETA_LOG_DIR%\paper_live_transition_check.task.log"
 
 rem A blocked paper-live verdict exits nonzero by design. The artifact/logs are

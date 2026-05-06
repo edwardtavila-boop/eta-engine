@@ -17,10 +17,16 @@ def test_paper_live_transition_runner_writes_canonical_cache_without_task_failur
     assert r"ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine" in text
     assert "python.exe" in text
     assert "-m eta_engine.scripts.paper_live_transition_check" in text
+    assert "RUN_ID=%RANDOM%_%RANDOM%" in text
+    assert "STDOUT_TMP=%ETA_LOG_DIR%\\paper_live_transition_check.%RUN_ID%.stdout.tmp.log" in text
+    assert "STDERR_TMP=%ETA_LOG_DIR%\\paper_live_transition_check.%RUN_ID%.stderr.tmp.log" in text
     assert "paper_live_transition_check.stdout.log" in text
     assert "paper_live_transition_check.stderr.log" in text
     assert "paper_live_transition_check.task.log" in text
     assert "exit_code=%CHECK_RC%" in text
+    assert '1> "%STDOUT_TMP%"' in text
+    assert '2> "%STDERR_TMP%"' in text
+    assert '1>> "%ETA_LOG_DIR%\\paper_live_transition_check.stdout.log"' not in text
     assert "exit /b 0" in text
 
 
