@@ -31,6 +31,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
@@ -3718,14 +3719,39 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
     return snapshot
 
 
+# Cache for the IBKR probe — IB Gateway accumulates "orphan eServer"
+# slots when a connect handshake times out, and cleanup is slow (~8s).
+# Probing on every dashboard refresh can create orphans faster than IBG
+# cleans them, dragging probes into a timeout loop. 60s freshness is
+# plenty for an operator dashboard.
+_IBKR_PROBE_CACHE: dict = {"snapshot": None, "ts": 0.0}
+_IBKR_PROBE_CACHE_TTL_S = float(os.environ.get("ETA_DASHBOARD_IBKR_CACHE_TTL_S", "60"))
+_IBKR_PROBE_LOCK = threading.Lock()
+
+
 def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     """Pull live IBKR positions and today's executions via ib_insync.
 
-    Uses a one-shot connect on a high client_id (5xx range) to avoid
+    Uses a one-shot connect on a high client_id (8xx range) to avoid
     colliding with the supervisor's clientId=187. Disconnects immediately
     so the supervisor's connection is undisturbed. Fails soft when ib_insync
     is missing or the gateway is down.
+
+    Cached for ``ETA_DASHBOARD_IBKR_CACHE_TTL_S`` (default 60s). The lock
+    serializes concurrent dashboard requests so we never spawn two
+    overlapping probes — that's what creates the orphan-eServer pileup.
     """
+    now_ts = time.time()
+    with _IBKR_PROBE_LOCK:
+        cached = _IBKR_PROBE_CACHE.get("snapshot")
+        cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
+        if cached is not None and (now_ts - cached_ts) < _IBKR_PROBE_CACHE_TTL_S:
+            # Refresh the dynamic 'today' field but keep the rest cached
+            # so consumers get a stable shape even when serving from cache.
+            cached_copy = dict(cached)
+            cached_copy["served_from_cache"] = True
+            cached_copy["cache_age_s"] = round(now_ts - cached_ts, 2)
+            return cached_copy
     snapshot: dict = {
         "ready": False,
         "today_executions": 0,
@@ -3759,10 +3785,16 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
         port = 4002
     # Pick a transient client_id well outside the supervisor's range.
     client_id = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID", str(secrets.randbelow(100) + 800)))
+    # 5s wasn't enough under load — IBG is slow to handshake when the
+    # supervisor is also pumping market data. Bump to 12s; the dashboard
+    # endpoint only takes that hit when the gateway is actually slow.
+    connect_timeout = float(os.environ.get("ETA_DASHBOARD_IBKR_TIMEOUT_S", "12"))
     ib = IB()
     try:
         try:
-            loop.run_until_complete(ib.connectAsync(host, port, clientId=client_id, timeout=5))
+            loop.run_until_complete(
+                ib.connectAsync(host, port, clientId=client_id, timeout=connect_timeout)
+            )
             try:
                 portfolio = list(ib.portfolio()) if ib.isConnected() else []
             except Exception:  # noqa: BLE001
@@ -3814,7 +3846,19 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
             with contextlib.suppress(Exception):
                 loop.close()
     except Exception as exc:  # noqa: BLE001 — broker degrade must not crash dashboard
-        snapshot["error"] = f"ibkr_probe_failed: {exc}"
+        # Include the exception type because asyncio.TimeoutError /
+        # CancelledError both have empty str() reprs — without the type
+        # the operator just sees "ibkr_probe_failed: " with no detail.
+        exc_type = type(exc).__name__
+        exc_msg = str(exc) or repr(exc)
+        snapshot["error"] = f"ibkr_probe_failed:{exc_type}: {exc_msg}"
+        snapshot["client_id"] = client_id
+    # Cache outcome (success or failure) so back-to-back dashboard hits
+    # don't pile orphan eServers in IBG. Failure is cached too — there is
+    # no point in probing a wedged gateway every few seconds.
+    with _IBKR_PROBE_LOCK:
+        _IBKR_PROBE_CACHE["snapshot"] = dict(snapshot)
+        _IBKR_PROBE_CACHE["ts"] = time.time()
     return snapshot
 
 
