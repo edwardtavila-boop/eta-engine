@@ -36,6 +36,8 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
 
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\backups\ibgateway" in text
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibgateway_repair.json" in text
+    assert '[string]$JtsGatewayRoot = "C:\\Jts\\ibgateway"' in text
+    assert '[string]$CanonicalGatewayVersion = "1046"' in text
     assert '[string]$Heap = "512m"' in text
     assert "[int]$ParallelGCThreads = 2" in text
     assert "[int]$ConcGCThreads = 1" in text
@@ -48,6 +50,25 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     assert "schtasks timed out" in text
     assert "failed:" in text
     assert "restart_error" in text
+
+
+def test_ibgateway_repair_enforces_single_1046_source() -> None:
+    text = REPAIR.read_text(encoding="utf-8")
+
+    assert "Assert-CanonicalGatewayDir" in text
+    assert "Get-GatewayInstallInventory" in text
+    assert "non_canonical_installs" in text
+    assert "EnforceSingleSource" in text
+    assert "StopLegacyIbkrProcesses" in text
+    assert "ApexIbkrGatewayReauth" in text
+    assert "IBGatewayInstallAtLogon" in text
+    assert "ApexIbkrGatewayWatchdog" in text
+    assert "Disable-TaskIfPresent" in text
+    assert '"ETA-IBGateway" = Disable-TaskIfPresent' in text
+    assert "clientportal.gw" in text
+    assert "gateway_task_canonical" in text
+    assert "task_states" in text
+    assert "Get-PortListenerSnapshot" in text
 
 
 def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() -> None:

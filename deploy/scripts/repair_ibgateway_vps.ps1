@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$EtaEngineDir = "C:\EvolutionaryTradingAlgo\eta_engine",
+    [string]$JtsGatewayRoot = "C:\Jts\ibgateway",
+    [string]$CanonicalGatewayVersion = "1046",
     [string]$GatewayDir = "C:\Jts\ibgateway\1046",
     [string]$LoginProfile = "apexpredatoribkr",
     [string]$Heap = "512m",
@@ -10,6 +12,8 @@ param(
     [switch]$ApplyVmOptions,
     [switch]$ApplyJtsIni,
     [switch]$RepairTasks,
+    [switch]$EnforceSingleSource,
+    [switch]$StopLegacyIbkrProcesses,
     [switch]$RestartGateway
 )
 
@@ -24,6 +28,19 @@ function Assert-CanonicalEtaPath {
     $resolved = [System.IO.Path]::GetFullPath($Path)
     if (-not $resolved.StartsWith("C:\EvolutionaryTradingAlgo\", [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing non-canonical ETA path: $Path"
+    }
+}
+
+function Normalize-PathString {
+    param([string]$Path)
+    return [System.IO.Path]::GetFullPath($Path).TrimEnd("\").ToLowerInvariant()
+}
+
+function Assert-CanonicalGatewayDir {
+    param([string]$Path)
+    $expected = Join-Path $JtsGatewayRoot $CanonicalGatewayVersion
+    if ((Normalize-PathString -Path $Path) -ne (Normalize-PathString -Path $expected)) {
+        throw "Refusing non-canonical IB Gateway path: $Path; expected $expected"
     }
 }
 
@@ -47,8 +64,148 @@ function Backup-Task {
     }
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $backup = Join-Path $BackupDir "$Stamp-$TaskName.xml"
-    Export-ScheduledTask -TaskName $TaskName | Set-Content -LiteralPath $backup -Encoding ASCII
-    return $backup
+    try {
+        Export-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath |
+            Set-Content -LiteralPath $backup -Encoding ASCII
+        return $backup
+    } catch {
+        return "backup_failed: $($_.Exception.Message)"
+    }
+}
+
+function Get-TaskActionText {
+    param([string]$TaskName)
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return ""
+    }
+    return ($task.Actions | ForEach-Object { ($_.Execute + " " + $_.Arguments).Trim() }) -join " || "
+}
+
+function Get-TaskStateText {
+    param([string]$TaskName)
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return "Missing"
+    }
+    return [string]$task.State
+}
+
+function Invoke-SchtasksDisableTask {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+    $fullName = "$TaskPath$TaskName"
+    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $processInfo.FileName = "schtasks.exe"
+    $processInfo.Arguments = "/Change /TN `"$fullName`" /DISABLE"
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    $process = [System.Diagnostics.Process]::Start($processInfo)
+    if (-not $process.WaitForExit(15000)) {
+        $process.Kill()
+        return [ordered]@{
+            ok = $false
+            output = "schtasks disable timed out"
+        }
+    }
+    $output = @(
+        $process.StandardOutput.ReadToEnd()
+        $process.StandardError.ReadToEnd()
+    ) -join "`n"
+    return [ordered]@{
+        ok = ($process.ExitCode -eq 0)
+        output = $output
+    }
+}
+
+function Disable-TaskIfPresent {
+    param([string]$TaskName)
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return "missing"
+    }
+    try {
+        Disable-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Out-Null
+        return "disabled"
+    } catch {
+        $fallback = Invoke-SchtasksDisableTask `
+            -TaskPath $task.TaskPath `
+            -TaskName $task.TaskName
+        if ($fallback.ok) {
+            return "disabled_via_schtasks"
+        }
+        return "failed: $($_.Exception.Message); schtasks: $($fallback.output)"
+    }
+}
+
+function Get-GatewayInstallInventory {
+    $expected = Normalize-PathString -Path (Join-Path $JtsGatewayRoot $CanonicalGatewayVersion)
+    if (-not (Test-Path -LiteralPath $JtsGatewayRoot)) {
+        return @()
+    }
+    return @(
+        Get-ChildItem -Path $JtsGatewayRoot -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $exe = Join-Path $_.FullName "ibgateway.exe"
+                [ordered]@{
+                    version = $_.Name
+                    path = $_.FullName
+                    canonical = ((Normalize-PathString -Path $_.FullName) -eq $expected)
+                    has_exe = (Test-Path -LiteralPath $exe)
+                    last_write_time = $_.LastWriteTime.ToUniversalTime().ToString("o")
+                }
+            }
+    )
+}
+
+function Get-PortListenerSnapshot {
+    return @(
+        Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+            Where-Object { $_.LocalPort -in @($ApiPort, 5000, 5001, 7496, 7497) } |
+            Sort-Object LocalPort |
+            ForEach-Object {
+                [ordered]@{
+                    local_address = $_.LocalAddress
+                    local_port = $_.LocalPort
+                    owning_process = $_.OwningProcess
+                }
+            }
+    )
+}
+
+function Stop-LegacyIbkrProcess {
+    $canonicalDir = Normalize-PathString -Path $GatewayDir
+    return @(
+        Get-CimInstance Win32_Process |
+            Where-Object {
+                $cmd = [string]$_.CommandLine
+                $lower = $cmd.ToLowerInvariant()
+                $isGateway = $lower.Contains("\ibgateway\")
+                $isNonCanonicalGateway = $isGateway -and (-not $lower.Contains($canonicalDir))
+                $isClientPortalGateway = $lower.Contains("clientportal.gw")
+                $isNonCanonicalGateway -or $isClientPortalGateway
+            } |
+            ForEach-Object {
+                $entry = [ordered]@{
+                    process_id = $_.ProcessId
+                    name = $_.Name
+                    reason = if ([string]$_.CommandLine -match "clientportal\.gw") { "client_portal_gateway" } else { "non_canonical_ibgateway" }
+                    stopped = $false
+                }
+                if ($StopLegacyIbkrProcesses) {
+                    try {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                        $entry.stopped = $true
+                    } catch {
+                        $entry.error = $_.Exception.Message
+                    }
+                }
+                $entry
+            }
+    )
 }
 
 function Set-OrAppendLine {
@@ -176,6 +333,7 @@ function Set-TaskActionIfPresent {
 Assert-CanonicalEtaPath -Path $EtaEngineDir
 Assert-CanonicalEtaPath -Path $BackupDir
 Assert-CanonicalEtaPath -Path $StatePath
+Assert-CanonicalGatewayDir -Path $GatewayDir
 if (-not (Test-Path -LiteralPath $Starter)) {
     throw "Missing canonical starter: $Starter"
 }
@@ -193,10 +351,25 @@ $result = [ordered]@{
     conc_gc_threads = $ConcGCThreads
     backups = @{}
     tasks = @{}
+    single_source = [ordered]@{
+        inventory = @()
+        non_canonical_installs = @()
+        legacy_tasks = @{}
+        legacy_processes = @()
+        task_actions = @{}
+        task_states = @{}
+        gateway_task_canonical = $false
+        port_listeners = @()
+    }
     restarted = $false
     restart_error = ""
 }
 $restartFailed = $false
+
+$inventory = @(Get-GatewayInstallInventory)
+$result.single_source.inventory = $inventory
+$result.single_source.non_canonical_installs = @($inventory | Where-Object { -not $_.canonical })
+$result.single_source.port_listeners = @(Get-PortListenerSnapshot)
 
 if ($ApplyVmOptions) {
     $result.backups.vmoptions = Backup-File -Path $vmOptionsPath -Stamp $stamp
@@ -217,6 +390,44 @@ if ($RepairTasks) {
     $result.tasks."ETA-IBGateway-RunNow" = Set-TaskActionIfPresent -TaskName "ETA-IBGateway-RunNow" -Arguments $baseArgs
     $result.tasks."ETA-IBGateway-DailyRestart" = Set-TaskActionIfPresent -TaskName "ETA-IBGateway-DailyRestart" -Arguments "$baseArgs -ForceRestart"
 }
+
+if ($EnforceSingleSource) {
+    foreach ($legacyTaskName in @("ApexIbkrGatewayReauth", "IBGatewayInstallAtLogon", "ApexIbkrGatewayWatchdog")) {
+        $result.backups.$legacyTaskName = Backup-Task -TaskName $legacyTaskName -Stamp $stamp
+        $result.single_source.legacy_tasks.$legacyTaskName = Disable-TaskIfPresent -TaskName $legacyTaskName
+    }
+    $etaGatewayActionBeforeDisable = [string](Get-TaskActionText -TaskName "ETA-IBGateway")
+    $directGatewayExe = Join-Path $GatewayDir "ibgateway.exe"
+    if ($etaGatewayActionBeforeDisable.StartsWith($directGatewayExe, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $result.single_source.legacy_tasks."ETA-IBGateway" = Disable-TaskIfPresent -TaskName "ETA-IBGateway"
+    }
+    $result.single_source.legacy_processes = @(Stop-LegacyIbkrProcess)
+}
+
+foreach ($gatewayTaskName in @("ETA-IBGateway", "ETA-IBGateway-RunNow", "ETA-IBGateway-DailyRestart")) {
+    $result.single_source.task_actions.$gatewayTaskName = Get-TaskActionText -TaskName $gatewayTaskName
+    $result.single_source.task_states.$gatewayTaskName = Get-TaskStateText -TaskName $gatewayTaskName
+}
+$etaGatewayAction = [string]$result.single_source.task_actions."ETA-IBGateway"
+$runNowAction = [string]$result.single_source.task_actions."ETA-IBGateway-RunNow"
+$dailyRestartAction = [string]$result.single_source.task_actions."ETA-IBGateway-DailyRestart"
+$etaGatewayState = [string]$result.single_source.task_states."ETA-IBGateway"
+$runNowIsCanonical = $runNowAction.Contains("start_ibgateway.ps1") -and $runNowAction.Contains($GatewayDir)
+$dailyRestartIsCanonical = $dailyRestartAction.Contains("start_ibgateway.ps1") -and $dailyRestartAction.Contains($GatewayDir)
+$etaGatewayIsCanonicalOrDisabled = (
+    $etaGatewayState -eq "Disabled" -or
+    (
+        $etaGatewayAction.Contains("start_ibgateway.ps1") -and
+        $etaGatewayAction.Contains($GatewayDir) -and
+        (-not $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway.exe"), [System.StringComparison]::OrdinalIgnoreCase))
+    )
+)
+$result.single_source.gateway_task_canonical = (
+    $etaGatewayIsCanonicalOrDisabled -and
+    $runNowIsCanonical -and
+    $dailyRestartIsCanonical
+)
+$result.single_source.port_listeners = @(Get-PortListenerSnapshot)
 
 if ($RestartGateway) {
     try {
