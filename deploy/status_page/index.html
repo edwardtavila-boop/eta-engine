@@ -247,12 +247,31 @@ function render(d, strategyResults, dataSource) {
   document.getElementById('activeBots').textContent = active;
   document.getElementById('activeBots').className = 'stat ' + (active > 0 ? 'green' : 'blue');
 
-  // Today PnL
-  const todaysPnl = bots.reduce((s,b) => s + (b.todays_pnl || 0), 0);
+  // Live broker truth (Alpaca + IBKR REST). When present, this is the
+  // authoritative source for "Today PnL" and "Actual Trades" — broker
+  // books > supervisor signal-emit journal. Falls back to per-bot
+  // aggregates when the broker probe is unavailable so the panel still
+  // renders something.
+  const liveBroker = d.live_broker_state || null;
+  const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
+
+  // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
+  // so the panel reflects what actually moved on the broker today.
+  let todaysPnl;
+  let todayPnlSub;
+  if (liveBrokerReady) {
+    const realizedToday = Number(liveBroker.today_realized_pnl || 0);
+    const unrealized = Number(liveBroker.total_unrealized_pnl || 0);
+    todaysPnl = realizedToday + unrealized;
+    todayPnlSub = `realized $${realizedToday.toFixed(2)} + unrealized $${unrealized.toFixed(2)} (broker)`;
+  } else {
+    todaysPnl = bots.reduce((s,b) => s + (b.todays_pnl || 0), 0);
+    todayPnlSub = bots.length + ' bots aggregated';
+  }
   const pnlEl = document.getElementById('todayPnl');
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
-  document.getElementById('todayPnlSub').textContent = bots.length + ' bots aggregated';
+  document.getElementById('todayPnlSub').textContent = todayPnlSub;
 
   // Total PnL from summary or compute
   const totalPnl = summary.total_pnl != null ? summary.total_pnl : bots.reduce((s,b) => s + (b.total_pnl || b.todays_pnl || 0), 0);
@@ -266,13 +285,21 @@ function render(d, strategyResults, dataSource) {
   rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
   rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
 
-  // Actual trades are fill-backed. Signal heartbeats stay separate so the
-  // operator can tell "strategy fired" from "broker/paper fill recorded".
+  // Actual trades — prefer broker today_actual_fills (Alpaca filled
+  // orders + IBKR executions) over the supervisor's signal-emit count.
+  // Falls back to per-bot total_trades / fill-backed rows otherwise.
   const trades = bots.reduce((s,b) => s + (Number(b.total_trades) || 0), 0);
   const fillBackedRows = bots.filter(b => b.last_trade_ts).length;
   const signalUpdates = bots.filter(b => !b.last_trade_ts && (b.last_signal_ts || b.last_activity_ts)).length;
-  document.getElementById('totalTrades').textContent = trades || fillBackedRows || 0;
-  document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
+  if (liveBrokerReady) {
+    const liveFills = Number(liveBroker.today_actual_fills || 0);
+    const openPos = Number(liveBroker.open_position_count || 0);
+    document.getElementById('totalTrades').textContent = liveFills;
+    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openPos} open positions`;
+  } else {
+    document.getElementById('totalTrades').textContent = trades || fillBackedRows || 0;
+    document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
+  }
 
   // Verdicts — APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
   const verdicts = bots.map(b => b.last_jarvis_verdict || '');
@@ -301,14 +328,38 @@ function render(d, strategyResults, dataSource) {
       ? 'Latest Signal: ' + String(lastSignal.last_signal_ts || lastSignal.last_activity_ts).replace('T',' ').substring(0,19)
       : 'No executed trades yet';
 
+  // IBKR gateway: prefer the live REST probe (live_broker_state.ibkr.ready)
+  // when present — that is the same probe the supervisor uses, so it
+  // matches reality. Otherwise fall back to the broker_gateway snapshot.
   const ibkrGateway = (d.broker_gateway && d.broker_gateway.ibkr) || {};
   const gatewayKnown = ibkrGateway.status && ibkrGateway.status !== 'unknown';
-  const gatewayHealthy = ibkrGateway.status === 'connected';
-  document.getElementById('gatewayStatus').textContent = gatewayKnown ? (gatewayHealthy ? 'Connected' : 'Down') : 'Unknown';
-  document.getElementById('gatewayStatus').className = 'stat ' + (gatewayHealthy ? 'green' : gatewayKnown ? 'red' : 'yellow');
-  const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
-  document.getElementById('gatewayStatusSub').textContent =
-    gatewayCrash.summary || ibkrGateway.detail || '';
+  let gatewayLabel;
+  let gatewayClass;
+  let gatewaySub;
+  if (liveBroker && liveBroker.ibkr) {
+    if (liveBroker.ibkr.ready) {
+      gatewayLabel = 'Connected';
+      gatewayClass = 'green';
+      const acct = (liveBroker.ibkr.managed_accounts || [])[0];
+      gatewaySub = acct ? 'live REST · ' + acct : 'live REST probe ok';
+    } else {
+      gatewayLabel = 'Down';
+      gatewayClass = 'red';
+      gatewaySub = liveBroker.ibkr.error || 'live REST probe failed';
+    }
+  } else if (gatewayKnown) {
+    gatewayLabel = ibkrGateway.status === 'connected' ? 'Connected' : 'Down';
+    gatewayClass = ibkrGateway.status === 'connected' ? 'green' : 'red';
+    const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
+    gatewaySub = gatewayCrash.summary || ibkrGateway.detail || '';
+  } else {
+    gatewayLabel = 'Unknown';
+    gatewayClass = 'yellow';
+    gatewaySub = '';
+  }
+  document.getElementById('gatewayStatus').textContent = gatewayLabel;
+  document.getElementById('gatewayStatus').className = 'stat ' + gatewayClass;
+  document.getElementById('gatewayStatusSub').textContent = gatewaySub;
 
   const brokerRouter = d.broker_router || {};
   const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();
