@@ -355,6 +355,9 @@ cd C:\EvolutionaryTradingAlgo
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.runtime_order_hold status --json
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.tws_watchdog --handshake-attempts 2 --handshake-timeout 20
 
+# One read-only transition check. This never clears holds or starts tasks.
+.\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.paper_live_transition_check
+
 # Dry run first. Expect status=ready_to_release only after 4002 handshake is fresh.
 .\eta_engine\.venv\Scripts\python.exe -m eta_engine.scripts.ibgateway_release_guard
 
