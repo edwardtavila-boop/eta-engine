@@ -55,8 +55,17 @@ if (-not (Test-Path $bridge)) {
 $arguments = '"{0}" --listen-host {1} --listen-port {2} --target {3} --timeout {4}' -f `
     $bridge, $ListenHost, $ListenPort, $Target, $TimeoutSec
 
+$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($existing) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+}
+
+Get-CimInstance Win32_Process -Filter "name='python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { ([string]$_.CommandLine) -match "reverse_proxy_bridge\.py" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 $action = New-ScheduledTaskAction -Execute $python -Argument $arguments -WorkingDirectory $Root
-$trigger = New-ScheduledTaskTrigger -AtStartup
+$triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn))
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -RestartCount 999 `
@@ -70,7 +79,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task for ${ListenHost
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
-        -Trigger $trigger `
+        -Trigger $triggers `
         -Settings $settings `
         -Principal $principal `
         -Description "ETA compatibility bridge for Cloudflare remote ops route: ${ListenHost}:${ListenPort} -> ${Target}" `

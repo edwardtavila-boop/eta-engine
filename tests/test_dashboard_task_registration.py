@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_api_task.ps1"
+RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
+PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
+
+
+def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'TaskName = "ETA-Dashboard-API"' in text
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine" in text
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert '"logs\\eta_engine"' in text
+    assert "dashboard_api.stdout.log" in text
+    assert "dashboard_api.stderr.log" in text
+    assert "run_dashboard_api_task.cmd" in text
+    assert "NT AUTHORITY\\SYSTEM" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-ScheduledTaskTrigger -AtLogOn" in text
+    assert "RestartCount 999" in text
+    assert 'New-ScheduledTaskAction -Execute $Runner' in text
+    assert "Start-ScheduledTask -TaskName $TaskName" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "deploy.scripts.dashboard_api:app" in text
+
+
+def test_dashboard_api_task_registration_avoids_legacy_and_inline_launchers() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+    assert "powershell.exe" not in text
+    assert "-Command &" not in text
+    assert 'cmd.exe" -Argument' not in text
+    assert "_start_dash.py" not in text
+
+
+def test_dashboard_api_task_runner_sets_env_and_redirects_logs() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert "ETA_STATE_DIR=%ETA_ROOT%\\var\\eta_engine\\state" in text
+    assert "ETA_LOG_DIR=%ETA_ROOT%\\logs\\eta_engine" in text
+    assert "ETA_DASHBOARD_HOST=127.0.0.1" in text
+    assert "ETA_DASHBOARD_PORT=8000" in text
+    assert "deploy.scripts.dashboard_api:app" in text
+    assert "dashboard_api.stdout.log" in text
+    assert "dashboard_api.stderr.log" in text
+    assert "python.exe" in text
+    assert "exit /b %ERRORLEVEL%" in text
+
+
+def test_dashboard_api_task_runner_avoids_legacy_paths() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+
+
+def test_proxy8421_task_registration_replaces_stale_workers() -> None:
+    text = PROXY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'TaskName = "ETA-Proxy-8421"' in text
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine" in text
+    assert "reverse_proxy_bridge.py" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "Stop-ScheduledTask -TaskName $TaskName" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-ScheduledTaskTrigger -AtLogOn" in text
+    assert "RestartCount 999" in text
+    assert 'ListenHost = "127.0.0.1"' in text
+    assert "ListenPort = 8421" in text
+    assert "http://127.0.0.1:8000" in text
+
+
+def test_proxy8421_task_registration_avoids_legacy_paths() -> None:
+    text = PROXY_SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text

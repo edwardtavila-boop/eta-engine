@@ -32,7 +32,7 @@ $ErrorActionPreference = "Continue"
 if (-not $EtaEngineDir) { $EtaEngineDir = "$InstallRoot\eta_engine" }
 if (-not $FirmDir) { $FirmDir = "$InstallRoot\firm\eta_engine" }
 $venvPython = "$EtaEngineDir\.venv\Scripts\python.exe"
-$fccVenvPython = "$InstallRoot\firm_command_center\eta_engine\.venv\Scripts\python.exe"
+$fccVenvPython = "$FirmDir\.venv\Scripts\python.exe"
 $fccServicesDir = "$InstallRoot\firm_command_center\services"
 $winswExe = "$fccServicesDir\winsw.exe"
 
@@ -70,7 +70,7 @@ if (Test-Path $fccVenvPython) {
     Write-Host "  firm_command_center\.venv: PRESENT ($(& $fccVenvPython --version 2>&1))" -ForegroundColor Green
 } else {
     Write-Host "  firm_command_center\.venv: MISSING â€” WinSW services will fail" -ForegroundColor Yellow
-    Write-Host "    Create: cd $InstallRoot\firm_command_center\eta_engine && uv sync --locked" -ForegroundColor Gray
+    Write-Host "    Create: cd $FirmDir && uv sync --locked" -ForegroundColor Gray
 }
 
 if (Test-Path $winswExe) {
@@ -258,6 +258,28 @@ if (-not $SkipETATasks) {
         Write-Host "  register_tasks.ps1 not found at $registerTasksScript" -ForegroundColor Yellow
         Write-Host "  Run manually: $EtaEngineDir\deploy\scripts\register_tasks.ps1 -InstallDir $EtaEngineDir" -ForegroundColor Gray
     }
+
+    Write-Host ""; Write-Host "=== ETA Dashboard API + Bridge Tasks ===" -ForegroundColor Green
+    $dashboardApiTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_api_task.ps1"
+    $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
+
+    if (Test-Path $dashboardApiTaskScript) {
+        Write-Host "  Registering canonical dashboard API task (127.0.0.1:8000)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $dashboardApiTaskScript -Start
+        }
+    } else {
+        Write-Host "  register_dashboard_api_task.ps1 not found at $dashboardApiTaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $proxy8421TaskScript) {
+        Write-Host "  Registering dashboard bridge task (127.0.0.1:8421 -> 8000)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $proxy8421TaskScript -Root $EtaEngineDir -Start
+        }
+    } else {
+        Write-Host "  register_proxy8421_bridge_task.ps1 not found at $proxy8421TaskScript" -ForegroundColor Yellow
+    }
 }
 
 # â”€â”€ Health check scheduled task â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -359,7 +381,7 @@ if (-not $SkipCodexOperator) {
 
 if (-not $SkipIbkrGateway) {
     Write-Host ""; Write-Host "=== IBKR Gateway Watchdog ===" -ForegroundColor Green
-    $ibkrWatchdogScript = "$InstallRoot\firm_command_center\eta_engine\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
+    $ibkrWatchdogScript = "$EtaEngineDir\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
 
     # Fall back to $FirmDir path if the canonical path doesn't exist
     if (-not (Test-Path $ibkrWatchdogScript)) {
@@ -369,7 +391,7 @@ if (-not $SkipIbkrGateway) {
     if (Test-Path $ibkrWatchdogScript) {
         if (-not $WhatIf) {
             & $pwshPath -ExecutionPolicy Bypass -File $ibkrWatchdogScript `
-                -ApexRoot "$InstallRoot\firm_command_center\eta_engine" `
+                -ApexRoot $FirmDir `
                 -RunNow
             Write-Host "  Registered: ETAIbkrGatewayWatchdog (every 5m, auto-start on boot)" -ForegroundColor Green
         }
