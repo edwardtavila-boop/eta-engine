@@ -188,7 +188,46 @@ class TestDashboardAPI:
         assert r.json()["error"] == "probe exploded"
         assert r.json()["top_blockers"] == []
 
-    def test_jarvis_paper_live_transition_endpoint(self, app_client, monkeypatch):
+    def test_jarvis_paper_live_transition_endpoint_uses_cached_snapshot(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        from eta_engine.scripts import paper_live_transition_check
+
+        def boom(**_kwargs):
+            raise RuntimeError("live probe should not run")
+
+        monkeypatch.setattr(paper_live_transition_check, "build_transition_check", boom)
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-06T14:00:00+00:00",
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "operator_queue_first_blocker_op_id": "OP-19",
+                    "operator_queue_first_next_action": "install IB Gateway 10.46",
+                    "paper_ready_bots": 10,
+                    "gates": [{"name": "tws_api_4002", "passed": False}],
+                }
+            )
+        )
+
+        r = app_client.get("/api/jarvis/paper_live_transition")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "paper_live_transition_check_cache"
+        assert data["cache_status"] == "hit"
+        assert data["status"] == "blocked"
+        assert data["critical_ready"] is False
+        assert data["operator_queue_first_blocker_op_id"] == "OP-19"
+        assert data["paper_ready_bots"] == 10
+        assert data["source_age_s"] >= 0
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_jarvis_paper_live_transition_endpoint_refreshes_on_demand(self, app_client, monkeypatch):
         from eta_engine.scripts import paper_live_transition_check
 
         monkeypatch.setattr(
@@ -204,16 +243,13 @@ class TestDashboardAPI:
             },
         )
 
-        r = app_client.get("/api/jarvis/paper_live_transition")
+        r = app_client.get("/api/jarvis/paper_live_transition?refresh=1")
 
         assert r.status_code == 200
         data = r.json()
         assert data["source"] == "paper_live_transition_check"
         assert data["status"] == "blocked"
-        assert data["critical_ready"] is False
         assert data["operator_queue_first_blocker_op_id"] == "OP-19"
-        assert data["paper_ready_bots"] == 10
-        assert "no-store" in r.headers["Cache-Control"]
 
     def test_jarvis_paper_live_transition_endpoint_fails_soft(self, app_client, monkeypatch):
         from eta_engine.scripts import paper_live_transition_check
@@ -223,7 +259,7 @@ class TestDashboardAPI:
 
         monkeypatch.setattr(paper_live_transition_check, "build_transition_check", boom)
 
-        r = app_client.get("/api/jarvis/paper_live_transition")
+        r = app_client.get("/api/jarvis/paper_live_transition?refresh=1")
 
         assert r.status_code == 200
         data = r.json()

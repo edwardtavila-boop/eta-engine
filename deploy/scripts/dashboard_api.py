@@ -1284,8 +1284,76 @@ def _operator_queue_payload() -> dict:
     }
 
 
-def _paper_live_transition_payload() -> dict:
-    """Return paper-live launch readiness without breaking the Command Center."""
+def _paper_live_transition_cache_payload() -> dict:
+    """Return the latest paper-live transition artifact without running probes."""
+    path = _state_dir() / "paper_live_transition_check.json"
+    if not path.exists():
+        return {
+            "source": "paper_live_transition_check_cache",
+            "cache_status": "missing",
+            "cache_path": str(path),
+            "error": "paper-live transition cache missing; run python -m eta_engine.scripts.paper_live_transition_check",
+            "status": "unreadable",
+            "critical_ready": False,
+            "launch_command": "",
+            "operator_queue_blocked_count": 0,
+            "operator_queue_first_blocker_op_id": None,
+            "operator_queue_first_next_action": None,
+            "paper_ready_bots": 0,
+            "gates": [],
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 -- dashboard should fail soft
+        return {
+            "source": "paper_live_transition_check_cache",
+            "cache_status": "unreadable",
+            "cache_path": str(path),
+            "error": str(exc),
+            "status": "unreadable",
+            "critical_ready": False,
+            "launch_command": "",
+            "operator_queue_blocked_count": 0,
+            "operator_queue_first_blocker_op_id": None,
+            "operator_queue_first_next_action": None,
+            "paper_ready_bots": 0,
+            "gates": [],
+        }
+    if not isinstance(payload, dict):
+        return {
+            "source": "paper_live_transition_check_cache",
+            "cache_status": "unreadable",
+            "cache_path": str(path),
+            "error": "paper-live transition cache returned a non-object payload",
+            "status": "unreadable",
+            "critical_ready": False,
+            "launch_command": "",
+            "operator_queue_blocked_count": 0,
+            "operator_queue_first_blocker_op_id": None,
+            "operator_queue_first_next_action": None,
+            "paper_ready_bots": 0,
+            "gates": [],
+        }
+
+    generated_at = payload.get("generated_at")
+    source_age_s = None
+    if isinstance(generated_at, str) and generated_at:
+        with contextlib.suppress(ValueError):
+            source_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            source_age_s = max(0.0, datetime.now(UTC).timestamp() - source_dt.timestamp())
+    payload.setdefault("source", "paper_live_transition_check_cache")
+    payload["cache_status"] = "hit"
+    payload["cache_path"] = str(path)
+    if source_age_s is not None:
+        payload["source_age_s"] = round(source_age_s, 3)
+    return payload
+
+
+def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
+    """Return paper-live launch readiness without blocking the Command Center."""
+    if not refresh:
+        return _paper_live_transition_cache_payload()
+
     try:
         from eta_engine.scripts.paper_live_transition_check import build_transition_check
 
@@ -1866,10 +1934,10 @@ def jarvis_operator_queue(response: Response) -> dict:
 
 
 @app.get("/api/jarvis/paper_live_transition")
-def jarvis_paper_live_transition(response: Response) -> dict:
+def jarvis_paper_live_transition(response: Response, refresh: bool = False) -> dict:
     """Current paper-live transition verdict for dashboard rendering."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    return _paper_live_transition_payload()
+    return _paper_live_transition_payload(refresh=refresh)
 
 
 @app.get("/api/jarvis/bot_strategy_readiness")
