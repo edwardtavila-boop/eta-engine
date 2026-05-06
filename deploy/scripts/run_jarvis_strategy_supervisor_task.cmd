@@ -9,6 +9,10 @@ set "ETA_SUPERVISOR_FEED=composite"
 set "ETA_PAPER_LIVE_ORDER_ROUTE=direct_ibkr"
 set "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1"
 set "ETA_SUPERVISOR_STARTING_CASH=50000"
+rem IBKR Gateway can take several seconds to promote bracket legs from PendingSubmit.
+set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"
+rem Dedicated positive order-entry client id. Do not inherit machine-level 0.
+set "ETA_IBKR_CLIENT_ID=187"
 
 set "PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"

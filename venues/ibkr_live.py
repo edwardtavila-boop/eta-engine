@@ -351,17 +351,27 @@ class LiveIbkrVenue(VenueBase):
         self.config = config  # kept for API compatibility, not used by TWS
         self._client_id = type(self)._client_id
         # Per-process unique clientId. Multiple consumers (supervisor + broker_router)
-        # collide on the hardcoded 99 → IB Error 326. Read ETA_IBKR_CLIENT_ID; if 0,
-        # let TWS auto-assign. Default 99 preserves legacy behavior.
+        # collide on the hardcoded 99 → IB Error 326. Client id 0 is reserved-ish
+        # in TWS and has shown stuck PendingSubmit behavior for order-entry flows,
+        # so treat <=0 as invalid and require a positive dedicated id.
         env_cid = os.environ.get("ETA_IBKR_CLIENT_ID", "").strip()
         if env_cid:
             try:
-                self._client_id = int(env_cid)
+                parsed_client_id = int(env_cid)
             except ValueError:
                 logger.warning(
                     "ETA_IBKR_CLIENT_ID=%r is not an int; falling back to default %d",
                     env_cid, self._client_id,
                 )
+            else:
+                if parsed_client_id <= 0:
+                    logger.warning(
+                        "ETA_IBKR_CLIENT_ID=%r is not safe for order entry; "
+                        "falling back to default %d",
+                        env_cid, self._client_id,
+                    )
+                else:
+                    self._client_id = parsed_client_id
 
     def connection_endpoint(self) -> str:
         return "127.0.0.1:4002"

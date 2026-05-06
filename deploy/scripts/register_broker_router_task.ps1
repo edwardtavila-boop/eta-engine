@@ -18,6 +18,7 @@ $ErrorActionPreference = "Stop"
 
 $TaskName   = "ETA-Broker-Router"
 $WorkingDir = "C:\EvolutionaryTradingAlgo\eta_engine"
+$Runner     = Join-Path $WorkingDir "deploy\scripts\run_broker_router_task.cmd"
 $VenvPython = Join-Path $WorkingDir ".venv\Scripts\python.exe"
 $PythonExe  = if (Test-Path $VenvPython) { $VenvPython } else { "python.exe" }
 
@@ -38,8 +39,9 @@ $cmdLine = "/c $envPrefix cd /d ""$WorkingDir"" && ""$PythonExe"" -m eta_engine.
 if ($DryRun) {
     Write-Host "DRY RUN: would register task '$TaskName'"
     Write-Host "  Working dir : $WorkingDir"
-    Write-Host "  Python      : $PythonExe"
-    Write-Host "  Cmd line    : cmd.exe $cmdLine"
+    Write-Host "  Runner      : $Runner"
+    Write-Host "  Python      : $PythonExe (selected by runner)"
+    Write-Host "  Legacy cmd  : cmd.exe $cmdLine"
     Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
     Write-Host "  Triggers    : AtStartup + AtLogOn"
     Write-Host "  Restart     : 3 attempts, 1-minute delay"
@@ -54,7 +56,7 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 }
 
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $cmdLine -WorkingDirectory $WorkingDir
+$action = New-ScheduledTaskAction -Execute $Runner -WorkingDirectory $WorkingDir
 $triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn))
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `

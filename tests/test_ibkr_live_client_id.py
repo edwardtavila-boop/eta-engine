@@ -25,3 +25,19 @@ def test_live_ibkr_venue_invalid_env_client_id_falls_back(monkeypatch) -> None:
     venue = LiveIbkrVenue()
 
     assert venue._client_id == 99
+
+
+def test_live_ibkr_venue_zero_env_client_id_falls_back(monkeypatch) -> None:
+    monkeypatch.setenv("ETA_IBKR_CLIENT_ID", "0")
+
+    venue = LiveIbkrVenue()
+
+    assert venue._client_id == 99
+
+
+def test_live_ibkr_venue_negative_env_client_id_falls_back(monkeypatch) -> None:
+    monkeypatch.setenv("ETA_IBKR_CLIENT_ID", "-7")
+
+    venue = LiveIbkrVenue()
+
+    assert venue._client_id == 99

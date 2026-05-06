@@ -154,6 +154,23 @@ _FUTURES_ROOTS = (
     "ZN", "ZB", "6E", "M6E",
 )
 
+_MAX_PENDING_ORDER_AGE_S = 15 * 60
+_SMOKE_SIGNAL_TOKENS = ("smoke", "test", "dryrun", "dry_run")
+_MIN_CRYPTO_LIMIT_PRICE: dict[str, float] = {
+    "BTC": 1_000.0,
+    "BTCUSD": 1_000.0,
+    "BTCUSDT": 1_000.0,
+    "ETH": 100.0,
+    "ETHUSD": 100.0,
+    "ETHUSDT": 100.0,
+    "SOL": 1.0,
+    "SOLUSD": 1.0,
+    "SOLUSDT": 1.0,
+    "XRP": 0.01,
+    "XRPUSD": 0.01,
+    "XRPUSDT": 0.01,
+}
+
 # ---------------------------------------------------------------------------
 # Per-bot routing config (eta_engine/configs/bot_broker_routing.yaml)
 # ---------------------------------------------------------------------------
@@ -420,6 +437,64 @@ def parse_pending_file(path: Path) -> PendingOrder:
         stop_price=stop_price,
         target_price=target_price,
     )
+
+
+def pending_order_sanity_denial(order: PendingOrder) -> str:
+    """Return a fail-closed reason for obviously unsafe live-routing intents.
+
+    This is intentionally conservative. The supervisor can still simulate
+    entries in ``paper_live`` without a broker round-trip, but the broker
+    router must not transmit stale smoke files, naked entries, or impossible
+    crypto prices to a real paper broker session.
+    """
+    signal_id = order.signal_id.strip().lower()
+    if any(token in signal_id for token in _SMOKE_SIGNAL_TOKENS):
+        return f"signal_id contains non-live token: {order.signal_id!r}"
+
+    try:
+        ts = datetime.fromisoformat(order.ts.replace("Z", "+00:00"))
+    except ValueError:
+        return f"invalid pending order ts: {order.ts!r}"
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    age_s = (datetime.now(UTC) - ts.astimezone(UTC)).total_seconds()
+    if age_s > _MAX_PENDING_ORDER_AGE_S:
+        return (
+            f"stale pending order age_s={age_s:.1f} "
+            f"max_s={_MAX_PENDING_ORDER_AGE_S}"
+        )
+
+    if order.stop_price is None or order.target_price is None:
+        return "missing bracket fields: stop_price and target_price are required"
+
+    entry = float(order.limit_price)
+    stop = float(order.stop_price)
+    target = float(order.target_price)
+    if entry <= 0.0 or stop <= 0.0 or target <= 0.0:
+        return (
+            "non-positive bracket geometry: "
+            f"entry={entry} stop={stop} target={target}"
+        )
+    if order.side == "BUY" and not (stop < entry < target):
+        return (
+            "invalid BUY bracket geometry: "
+            f"stop={stop} entry={entry} target={target}"
+        )
+    if order.side == "SELL" and not (target < entry < stop):
+        return (
+            "invalid SELL bracket geometry: "
+            f"target={target} entry={entry} stop={stop}"
+        )
+
+    symbol = order.symbol.strip().upper().lstrip("/")
+    min_price = _MIN_CRYPTO_LIMIT_PRICE.get(symbol)
+    if min_price is not None and entry < min_price:
+        return (
+            f"implausible {symbol} limit_price={entry} "
+            f"below minimum sanity price={min_price}"
+        )
+
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +789,25 @@ class BrokerRouter:
             self._handle_processing_error(target, f"parse_pending_file raised: {exc}")
             return
         self._counts["parsed"] += 1
+
+        # 2b. Router-local sanity checks. These run before portfolio gates
+        # so stale smoke files or naked broker entries cannot hit a venue.
+        sanity_denial = pending_order_sanity_denial(order)
+        if sanity_denial:
+            denied = {
+                "gate": "pending_order_sanity",
+                "allow": False,
+                "reason": sanity_denial,
+                "context": {"order": order.to_dict()},
+            }
+            self._handle_blocked(
+                order,
+                target,
+                denied,
+                [denied],
+                ["-pending_order_sanity"],
+            )
+            return
 
         # 3. Gate-chain evaluation.
         try:

@@ -223,6 +223,9 @@ def _write_pending(
     ts: str | None = None,
     raw_text: str | None = None,
     suffix: str = ".pending_order.json",
+    stop_price: float | None = 24_900.0,
+    target_price: float | None = 25_100.0,
+    include_brackets: bool = True,
 ) -> Path:
     """Drop a pending-order JSON file into ``pending_dir``.
 
@@ -243,6 +246,9 @@ def _write_pending(
         "symbol": symbol,
         "limit_price": limit_price,
     }
+    if include_brackets:
+        payload["stop_price"] = stop_price
+        payload["target_price"] = target_price
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -372,7 +378,7 @@ class TestParsePendingFile:
         actually rejects naked entries; the parser stays permissive so
         files written before the schema change still load.
         """
-        path = _write_pending(tmp_path, bot_id="legacy")
+        path = _write_pending(tmp_path, bot_id="legacy", include_brackets=False)
         order = broker_router.parse_pending_file(path)
         assert order.stop_price is None
         assert order.target_price is None
@@ -690,6 +696,45 @@ class TestLifecycle:
         )
         # Venue NEVER called
         assert venue.calls == []
+
+    def test_pending_order_sanity_blocks_smoke_without_venue_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stale/smoke broker-intent files are fail-closed before venue routing."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir,
+            bot_id="btc_optimized",
+            signal_id="btc_optimized_smoke17",
+            symbol="BTC",
+            limit_price=1.0,
+            include_brackets=False,
+        )
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        _stub_fetch_positions(monkeypatch, {})
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=_allow_gate_chain(),
+        )
+
+        asyncio.run(router._process_pending_file(path))
+
+        blocked_file = _find_under(state_root / "blocked", path.name)
+        assert blocked_file is not None
+        assert venue.calls == []
+        meta_text = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in (state_root / "blocked").rglob("*_block.json")
+        )
+        assert "pending_order_sanity" in meta_text
+        assert "smoke" in meta_text
 
     def test_malformed_json_quarantined(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
