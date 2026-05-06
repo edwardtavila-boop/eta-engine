@@ -594,10 +594,24 @@ def _alpaca_symbol(symbol: str, *, is_crypto: bool) -> str:
 
 
 def _alpaca_quantity(qty: float, *, is_crypto: bool) -> str:
-    """Format ``qty`` for an Alpaca order. Always JSON-string for safety."""
+    """Format ``qty`` for an Alpaca order. Always JSON-string for safety.
+
+    Crypto: preserve exact decimal precision via ``str(float)`` → Decimal,
+    then trim trailing zeros. ``f"{qty:.8f}"`` rounds *to nearest*, which
+    can round UP (e.g. 0.002375228 -> 0.00237523) and produce an exit
+    order that requests more than the position holds. Alpaca rejects
+    those with HTTP 403 ``insufficient balance``. Using ``str(qty)``
+    keeps the shortest-decimal-round-trip representation Python uses,
+    which matches the precision Alpaca returns for position quantities.
+    """
     if is_crypto:
-        # Up to 8 dp; trim trailing zeros for cleanliness.
-        return f"{qty:.8f}".rstrip("0").rstrip(".") or "0"
+        from decimal import Decimal
+        # str(float) returns the shortest decimal that round-trips to the
+        # same float — preserves exact qty for any reasonable input
+        # (including position sizes pulled back from Alpaca's API).
+        d = Decimal(str(qty))
+        s = format(d, "f").rstrip("0").rstrip(".")
+        return s or "0"
     if qty < 1:
         # Alpaca supports fractional equity, but we don't use that path here.
         return f"{qty:.6f}".rstrip("0").rstrip(".") or "0"

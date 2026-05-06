@@ -141,6 +141,30 @@ def test_alpaca_quantity_equity_returns_int_string_when_whole() -> None:
     assert _alpaca_quantity(100.0, is_crypto=False) == "100"
 
 
+def test_alpaca_quantity_preserves_exit_precision_no_round_up() -> None:
+    """Exit orders must not request more qty than the position holds.
+
+    Alpaca returns position quantities with up to 9-10 dp precision.
+    A naive ``f"{qty:.8f}"`` rounds *to nearest*, so 0.002375228 becomes
+    0.00237523 — which is LARGER than the position and gets HTTP 403
+    ``insufficient balance``. This test pins the regression: position-
+    size qty must serialize back without exceeding the input.
+    """
+    # Real example caught in paper smoke (2026-05-05): 0.002375228 BTC
+    # position closing must serialize as <= 0.002375228, never 0.00237523.
+    qty_in = 0.002375228
+    qty_str = _alpaca_quantity(qty_in, is_crypto=True)
+
+    from decimal import Decimal
+    assert Decimal(qty_str) <= Decimal(str(qty_in)), (
+        f"qty serialization rounded UP: {qty_in} -> {qty_str} "
+        f"(would request more than position holds)"
+    )
+    # And the shortest-decimal round-trip should match exactly for inputs
+    # whose float repr is well-defined (most position sizes).
+    assert qty_str == "0.002375228"
+
+
 # ---------------------------------------------------------------------------
 # Payload builder
 # ---------------------------------------------------------------------------
