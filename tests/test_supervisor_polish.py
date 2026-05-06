@@ -9,6 +9,11 @@ import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+
+class _NoPositionsAlpaca:
+    async def get_positions(self) -> list[dict]:
+        return []
+
 # ─── ExecutionRouter fleet aggregation ──────────────────────────
 
 
@@ -111,6 +116,9 @@ def test_reconcile_detects_broker_only_position(tmp_path) -> None:
         return_value=[
             {"symbol": "MNQ", "position": 2.0, "avgCost": 27500.0},
         ],
+    ), patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_NoPositionsAlpaca(),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -144,6 +152,9 @@ def test_reconcile_detects_supervisor_only_position(tmp_path) -> None:
     ), patch(
         "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
         return_value=[],  # broker has nothing
+    ), patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_NoPositionsAlpaca(),
     ):
         findings = sup.reconcile_with_broker()
 
@@ -176,6 +187,9 @@ def test_reconcile_match_when_aligned(tmp_path) -> None:
     ), patch(
         "eta_engine.scripts.jarvis_strategy_supervisor._run_on_live_ibkr_loop",
         return_value=[{"symbol": "MNQ", "position": 1.0, "avgCost": 27500.0}],
+    ), patch(
+        "eta_engine.venues.alpaca.AlpacaVenue",
+        return_value=_NoPositionsAlpaca(),
     ):
         findings = sup.reconcile_with_broker()
 

@@ -67,7 +67,11 @@ logger = logging.getLogger("eta_watchdog")
 # ─── Defaults ─────────────────────────────────────────────────────────────
 DEFAULT_STALE_S = float(os.getenv("ETA_WATCHDOG_STALE_S", "300"))
 DEFAULT_TASK_NAME = os.getenv(
-    "ETA_WATCHDOG_TASK_NAME", "ETA-JarvisStrategySupervisor",
+    # Match the deployed scheduled-task name verbatim. The VPS task is
+    # created as ``ETA-Jarvis-Strategy-Supervisor`` (hyphenated). The
+    # earlier non-hyphenated default silently broke watchdog relaunches
+    # with ``ERROR: The system cannot find the file specified.``.
+    "ETA_WATCHDOG_TASK_NAME", "ETA-Jarvis-Strategy-Supervisor",
 )
 DEFAULT_PROCESS_SUBSTRING = os.getenv(
     "ETA_WATCHDOG_PROCESS_NAME", "jarvis_strategy_supervisor.py",
@@ -459,8 +463,19 @@ def main(argv: list[str] | None = None) -> int:
                 "broker_router.py",
             ),
             "task_name": os.getenv(
+                # Match the deployed VPS task name. Earlier default
+                # "ETA-BrokerRouter" doesn't exist; the deployed task
+                # is "ETA-BrokerRouter-Watchdog"... but THAT runs the
+                # watchdog itself, not the broker_router. The actual
+                # broker_router relaunches today via the wrapper at
+                # deploy/scripts/run_broker_router_task.cmd, which is
+                # spawned by the supervisor's own scheduled task or
+                # manually. Use a marker name that an operator can
+                # bind to a real task; if not bound, the watchdog
+                # falls back to spawning the wrapper directly via
+                # subprocess (see WatchdogConfig.fallback_command).
                 "ETA_BROKER_ROUTER_WATCHDOG_TASK_NAME",
-                "ETA-BrokerRouter",
+                "ETA-BrokerRouter-Service",
             ),
             "watchdog_heartbeat_path": (
                 workspace_roots.ETA_RUNTIME_STATE_DIR
