@@ -1648,6 +1648,31 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
+        (state / "ibgateway_repair.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": "2026-05-06T11:01:19+00:00",
+                    "gateway_config": {
+                        "jts_ini": {
+                            "configured": True,
+                            "local_server_port": "4002",
+                            "trusted_localhost": True,
+                            "api_only_enabled": True,
+                        },
+                        "vmoptions": {
+                            "configured": True,
+                            "xmx": "512m",
+                            "low_memory_profile_configured": True,
+                        },
+                    },
+                    "single_source": {
+                        "gateway_task_canonical": True,
+                        "port_listeners": [],
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
@@ -1659,10 +1684,14 @@ class TestDashboardAPI:
         assert ibkr["consecutive_failures"] == 72
         assert ibkr["detail"] == (
             "gateway process running; API not ready; skipped (socket down); "
-            "latest crash: IB Gateway JVM native-memory OOM; recovery: auth_pending; operator action required"
+            "gateway config verified; latest crash: IB Gateway JVM native-memory OOM; "
+            "recovery: auth_pending; operator action required"
         )
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
         assert ibkr["process"]["running"] is True
+        assert ibkr["config"]["jts_ini"]["configured"] is True
+        assert ibkr["config"]["vmoptions"]["configured"] is True
+        assert ibkr["config"]["single_source"]["gateway_task_canonical"] is True
         assert ibkr["recovery"]["status"] == "auth_pending"
         assert ibkr["recovery"]["operator_action_required"] is True
         assert ibkr["recovery"]["restart_attempts"] == 3

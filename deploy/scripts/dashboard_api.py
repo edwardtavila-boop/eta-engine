@@ -678,6 +678,49 @@ def _ibgateway_reauth_snapshot() -> dict | None:
     return None
 
 
+def _ibgateway_repair_snapshot() -> dict | None:
+    """Return the latest Gateway 10.46 repair/config audit when present."""
+    env_path = os.environ.get("ETA_IBGATEWAY_REPAIR_PATH")
+    candidates = [
+        Path(env_path) if env_path else None,
+        _state_dir() / "ibgateway_repair.json",
+        _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "ibgateway_repair.json",
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        data = _read_json_file(candidate)
+        gateway_config = (
+            data.get("gateway_config")
+            if isinstance(data.get("gateway_config"), dict)
+            else {}
+        )
+        if not gateway_config:
+            continue
+        single_source = (
+            data.get("single_source")
+            if isinstance(data.get("single_source"), dict)
+            else {}
+        )
+        return {
+            "generated_at_utc": data.get("generated_at_utc") or "",
+            "jts_ini": gateway_config.get("jts_ini") or {},
+            "vmoptions": gateway_config.get("vmoptions") or {},
+            "single_source": {
+                "gateway_task_canonical": single_source.get("gateway_task_canonical") is True,
+                "port_listeners": single_source.get("port_listeners") or [],
+                "non_canonical_installs": single_source.get("non_canonical_installs") or [],
+            },
+            "source_path": key,
+        }
+    return None
+
+
 def _tws_watchdog_candidates() -> list[Path]:
     env_path = os.environ.get("ETA_TWS_WATCHDOG_PATH")
     return [
@@ -732,6 +775,15 @@ def _broker_gateway_snapshot() -> dict:
         elif process and process.get("running") is False and not healthy:
             process_detail = "gateway process not running"
             detail = f"{process_detail}; {detail}" if detail else process_detail
+        config = _ibgateway_repair_snapshot()
+        if config:
+            jts_configured = bool((config.get("jts_ini") or {}).get("configured"))
+            vm_configured = bool((config.get("vmoptions") or {}).get("configured"))
+            single_source = config.get("single_source") or {}
+            task_canonical = bool(single_source.get("gateway_task_canonical"))
+            if jts_configured and vm_configured and task_canonical:
+                verified_detail = "gateway config verified"
+                detail = f"{detail}; {verified_detail}" if detail else verified_detail
         if crash and crash.get("summary"):
             detail = f"{detail}; latest crash: {crash['summary']}" if detail else str(crash["summary"])
         recovery = _ibgateway_reauth_snapshot()
@@ -753,6 +805,7 @@ def _broker_gateway_snapshot() -> dict:
                 "detail": detail,
                 "crash": crash,
                 "process": process,
+                "config": config,
                 "recovery": recovery,
                 "account_summary": account_summary,
                 "source_path": key,
