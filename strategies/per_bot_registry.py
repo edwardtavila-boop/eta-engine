@@ -268,6 +268,64 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
 },
     ),
 
+    # sol_optimized — paper-soak research bot for SOL diversification.
+    # Mirrors the proven btc_optimized mechanic (sweep_reclaim + scorecard)
+    # but on SOL/USD spot via Alpaca. Status starts at research_candidate
+    # with half-size warmup so the Kaizen loop can validate or auto-retire
+    # based on real-world expectancy (same gating that retired
+    # eth_sweep_reclaim with expR=-0.0945). Added 2026-05-06.
+    #
+    # Verified Alpaca paper supports SOL/USD pair. Symbol stays "SOL" so
+    # the venue adapter's _alpaca_crypto_base mapping resolves correctly
+    # (already maps SOL → SOLUSD).
+    StrategyAssignment(
+        bot_id="sol_optimized",
+        strategy_id="sol_optimized_v1",
+        symbol="SOL",
+        timeframe="1h",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=90,
+        step_days=30,
+        min_trades_per_window=3,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "RESEARCH 2026-05-06: SOL/USD diversification using btc_optimized's "
+            "proven mechanic (sweep_reclaim + confluence scorecard). SOL has "
+            "higher beta than BTC so similar sweep dynamics with wider stops. "
+            "Tuned: atr_stop_mult=2.5 (vs BTC's 2.0) for SOL's volatility. "
+            "Half-size warmup until Kaizen accumulates enough live trades "
+            "to validate the edge."
+        ),
+        extras={
+            "edge_enabled": True,
+            "edge_config": "btc_crypto",  # reuse BTC edge config; same family
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {
+                "sweep_preset": "btc",  # SOL uses same preset as BTC
+                "sweep_config": {
+                    "rr_target": 3.0,
+                    "atr_stop_mult": 2.5,  # wider for SOL's higher vol
+                    "max_trades_per_day": 4,
+                    "min_bars_between_trades": 6,
+                },
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "SOL",
+            "research_candidate": True,
+            # Half-size warmup; daily loss cap = circuit breaker. After 30
+            # days the Kaizen loop will have enough samples to either
+            # promote (lift mult to 1.0) or auto-retire (negative expR).
+            "warmup_policy": {"promoted_on": "2026-05-06", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
     # btc_hybrid — migrated to proven BTC architecture (was sage_daily_gated 0% WR).
     StrategyAssignment(
         bot_id="btc_hybrid",

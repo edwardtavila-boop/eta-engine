@@ -40,7 +40,7 @@ rem expectancy_r=-0.0945 on 78 live trades). Removed from the pinned
 rem set so the supervisor stops trying to load it on every restart.
 rem To re-enable: clear the entry in var/eta_engine/state/kaizen_overrides.json
 rem (or run: python -m eta_engine.scripts.kaizen_reactivate eth_sweep_reclaim).
-set "ETA_SUPERVISOR_BOTS=eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,mnq_futures_sage,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
+set "ETA_SUPERVISOR_BOTS=eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,sol_optimized,mnq_futures_sage,mes_sweep_reclaim,m2k_sweep_reclaim,ym_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
