@@ -96,6 +96,25 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
 
+<!-- Per-bot Alpaca live performance vs backtest target (added 2026-05-06) -->
+<div class="card" id="perBotAlpacaCard" style="margin-top:12px;display:none;">
+  <h3>Alpaca Per-Bot Performance — Live vs Backtest <span id="perBotAlpacaDriftCount" class="sub"></span></h3>
+  <div style="overflow-x:auto;">
+    <table id="perBotAlpacaTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="border-bottom:1px solid #444;text-align:left;">
+          <th style="padding:6px 8px;">Bot</th>
+          <th style="padding:6px 8px;">Fills today</th>
+          <th style="padding:6px 8px;">Live WR</th>
+          <th style="padding:6px 8px;">Backtest target</th>
+          <th style="padding:6px 8px;">Drift</th>
+        </tr>
+      </thead>
+      <tbody id="perBotAlpacaTbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <div class="supercharge-wrap" data-panel-id="cc-strategy-supercharge-results" data-source="/api/jarvis/strategy_supercharge_results">
   <div class="card supercharge-card">
     <h3>Strategy Supercharge Results</h3>
@@ -360,6 +379,50 @@ function render(d, strategyResults, dataSource) {
   document.getElementById('gatewayStatus').textContent = gatewayLabel;
   document.getElementById('gatewayStatus').className = 'stat ' + gatewayClass;
   document.getElementById('gatewayStatusSub').textContent = gatewaySub;
+
+  // Per-bot Alpaca live performance vs backtest target. Only render
+  // when we actually have per_bot data — otherwise hide the card so
+  // the front page stays clean. Drift alarms are highlighted in red
+  // so the operator can spot a degrading bot at a glance.
+  const perBot = liveBroker && liveBroker.per_bot_alpaca;
+  const perBotCard = document.getElementById('perBotAlpacaCard');
+  if (perBot && perBot.per_bot && perBotCard) {
+    const tbody = document.getElementById('perBotAlpacaTbody');
+    if (tbody) {
+      const rows = [];
+      // Sort: drift_alarm bots first, then by fills_today desc
+      const entries = Object.entries(perBot.per_bot).sort((a, b) => {
+        const da = a[1].drift_alarm ? 1 : 0;
+        const db = b[1].drift_alarm ? 1 : 0;
+        if (da !== db) return db - da;
+        return (Number(b[1].fills_today) || 0) - (Number(a[1].fills_today) || 0);
+      });
+      for (const [botId, info] of entries) {
+        // Skip non-bot COIDs (UUIDs, smoke-test prefixes)
+        if (/^[0-9a-f]{8}-/i.test(botId) || botId.startsWith('eta-')) continue;
+        const fills = Number(info.fills_today) || 0;
+        if (fills === 0) continue;
+        const liveWr = info.live_wr;
+        const btWr = info.backtest_wr_target;
+        const drift = info.drift_alarm;
+        const liveWrTxt = (liveWr === null || liveWr === undefined) ? '—' : (Number(liveWr) * 100).toFixed(1) + '%';
+        const btWrTxt = (btWr === null || btWr === undefined) ? '—' : (Number(btWr) * 100).toFixed(1) + '%';
+        const driftTxt = drift ? '<span style="color:#ff5555;font-weight:bold;">⚠ ALARM</span>' : '<span style="color:#888;">ok</span>';
+        const rowStyle = drift ? 'background:#3a1a1a;' : '';
+        rows.push(`<tr style="border-bottom:1px solid #333;${rowStyle}"><td style="padding:6px 8px;font-family:monospace;">${botId}</td><td style="padding:6px 8px;">${fills}</td><td style="padding:6px 8px;">${liveWrTxt}</td><td style="padding:6px 8px;">${btWrTxt}</td><td style="padding:6px 8px;">${driftTxt}</td></tr>`);
+      }
+      tbody.innerHTML = rows.join('');
+      const driftCount = Number(perBot.drift_alarm_count) || 0;
+      const driftCountEl = document.getElementById('perBotAlpacaDriftCount');
+      if (driftCountEl) {
+        driftCountEl.textContent = driftCount > 0 ? `(${driftCount} drift alarm${driftCount > 1 ? 's' : ''} firing)` : '(all bots healthy)';
+        driftCountEl.style.color = driftCount > 0 ? '#ff5555' : '#888';
+      }
+      perBotCard.style.display = rows.length > 0 ? 'block' : 'none';
+    }
+  } else if (perBotCard) {
+    perBotCard.style.display = 'none';
+  }
 
   const brokerRouter = d.broker_router || {};
   const routerStatus = String(brokerRouter.status || 'unknown').toLowerCase();
