@@ -346,7 +346,7 @@ def mnq_intraday_sweep_preset() -> SweepReclaimConfig:
         rr_target=2.0,              # was 2.0 — lower RR, improve win rate
         risk_per_trade_pct=0.005,
         min_bars_between_trades=6,
-        max_trades_per_day=4,
+        max_trades_per_day=2,       # was 4 — fewer trades, higher quality
         warmup_bars=50,
     )
 
