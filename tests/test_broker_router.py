@@ -1544,6 +1544,147 @@ class TestGateChainImportFailure:
         assert archived is not None
         assert _find_under(state_root / "blocked", path.name) is None
 
+    def test_production_gate_chain_uses_router_runtime_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The production gate chain must read fresh router state, not stale firm data."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, signal_id="sig-runtime-gates")
+        calls: list[dict[str, Any]] = []
+
+        class _AllowChain:
+            def evaluate(self) -> tuple[bool, list[_FakeGateResult]]:
+                return True, [_FakeGateResult(allow=True, gate="heartbeat", reason="alive")]
+
+        def _build_default_chain(**kwargs: Any) -> _AllowChain:
+            calls.append(dict(kwargs))
+            return _AllowChain()
+
+        monkeypatch.setattr(
+            broker_router,
+            "_load_build_default_chain",
+            lambda: _build_default_chain,
+        )
+        _stub_fetch_positions(monkeypatch, {"MNQ": {"alpha": 1.0}})
+
+        venue = _FakeVenue()
+        smart_router = _FakeSmartRouter(venue)
+        journal = _FakeJournal()
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=None,
+        )
+        asyncio.run(router.run_once())
+
+        assert len(venue.calls) == 1
+        assert calls, "build_default_chain was never invoked"
+        kwargs = calls[0]
+        assert kwargs["heartbeat_path"] == state_root / "broker_router_heartbeat.json"
+        assert kwargs["deadman_heartbeat_path"] == state_root / "broker_router_heartbeat.json"
+        assert kwargs["pre_trade_path"] == state_root / "pre_trade_gate.json"
+        assert kwargs["deadman_pre_trade_path"] == state_root / "pre_trade_gate.json"
+        assert kwargs["heat_state_path"] == state_root / "heat_state.json"
+        assert kwargs["journal_path"] == state_root / "gate_journal.sqlite"
+
+        pre_trade = json.loads((state_root / "pre_trade_gate.json").read_text(encoding="utf-8"))
+        heat_state = json.loads((state_root / "heat_state.json").read_text(encoding="utf-8"))
+        assert pre_trade["state"] == "COLD"
+        assert heat_state["source"] == "broker_router"
+        assert heat_state["positions"] == 1
+        assert heat_state["max_concurrent"] == 8
+        assert (state_root / "gate_journal.sqlite").exists()
+        assert _find_under(state_root / "archive", path.name) is not None
+
+    def test_readiness_gate_blocks_unapproved_bot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, bot_id="alpha", signal_id="sig-readiness")
+        readiness_path = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness_path.write_text(
+            json.dumps({
+                "rows": [{
+                    "bot_id": "alpha",
+                    "can_paper_trade": False,
+                    "can_live_trade": False,
+                    "launch_lane": "research",
+                    "data_status": "ready",
+                }],
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BROKER_ROUTER_ENFORCE_READINESS", "1")
+        monkeypatch.setattr(
+            broker_router,
+            "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH",
+            readiness_path,
+        )
+        _stub_fetch_positions(monkeypatch, {})
+
+        venue = _FakeVenue()
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=_FakeSmartRouter(venue),
+            journal=_FakeJournal(),
+            gate_chain=_allow_gate_chain(),
+        )
+        asyncio.run(router.run_once())
+
+        assert venue.calls == []
+        blocked = _find_under(state_root / "blocked", path.name)
+        assert blocked is not None
+        meta_text = (state_root / "blocked" / "sig-readiness_block.json").read_text(
+            encoding="utf-8"
+        )
+        assert "strategy_readiness" in meta_text
+        assert "not paper-approved" in meta_text
+
+    def test_readiness_gate_allows_paper_approved_bot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(pending_dir, bot_id="alpha", signal_id="sig-ready")
+        readiness_path = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness_path.write_text(
+            json.dumps({
+                "rows": [{
+                    "bot_id": "alpha",
+                    "can_paper_trade": True,
+                    "can_live_trade": False,
+                    "launch_lane": "paper_soak",
+                    "data_status": "ready",
+                }],
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BROKER_ROUTER_ENFORCE_READINESS", "1")
+        monkeypatch.setattr(
+            broker_router,
+            "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH",
+            readiness_path,
+        )
+        _stub_fetch_positions(monkeypatch, {})
+
+        venue = _FakeVenue()
+        router = _make_router(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=_FakeSmartRouter(venue),
+            journal=_FakeJournal(),
+            gate_chain=_allow_gate_chain(),
+        )
+        asyncio.run(router.run_once())
+
+        assert len(venue.calls) == 1
+        assert _find_under(state_root / "archive", path.name) is not None
+
 
 # ---------------------------------------------------------------------------
 # Per-bot routing config (Issue 3: scale to 52 bots without hardcoded heuristics)

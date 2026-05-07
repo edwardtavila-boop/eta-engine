@@ -26,6 +26,7 @@ $EnvVars = @{
     "ETA_BROKER_ROUTER_INTERVAL_S"  = "5"
     "ETA_BROKER_ROUTER_PENDING_DIR" = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router\pending"
     "ETA_BROKER_ROUTER_STATE_ROOT"  = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\router"
+    "ETA_BROKER_ROUTER_ENFORCE_READINESS" = "1"
 }
 
 # Windows scheduled tasks have no native env-var block, so set them

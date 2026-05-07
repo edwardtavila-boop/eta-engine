@@ -2034,6 +2034,56 @@ class TestDashboardAPI:
         assert broker_router["latest_failure"]["attempts"] == 3
         assert broker_router["latest_failure"]["last_reject_reason"] == "venue=ibkr rejected order_id=sig-reject"
 
+    def test_bot_fleet_derives_ibkr_parent_fill_from_raw_statuses(self, app_client):
+        """Dashboard must not show 0 filled when raw IBKR parent status filled."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        result_dir = router / "fill_results"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "sig-open_result.json").write_text(
+            json.dumps(
+                {
+                    "signal_id": "sig-open",
+                    "bot_id": "mnq_anchor_sweep",
+                    "venue": "ibkr",
+                    "ts": "2026-05-07T05:29:08+00:00",
+                    "result": {
+                        "status": "OPEN",
+                        "order_id": "sig-open",
+                        "filled_qty": 0.0,
+                        "avg_price": 0.0,
+                        "raw": {
+                            "ib_statuses": [
+                                {
+                                    "status": "Filled",
+                                    "filled": 1.0,
+                                    "avg_fill_price": 28709.5,
+                                },
+                                {
+                                    "status": "Submitted",
+                                    "filled": 0.0,
+                                    "avg_fill_price": 0.0,
+                                },
+                            ],
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        latest = r.json()["broker_router"]["latest_result"]
+        assert latest["status"] == "OPEN"
+        assert latest["filled_qty"] == 1.0
+        assert latest["avg_price"] == 28709.5
+
     def test_bot_fleet_treats_historical_router_rejects_as_history(self, app_client):
         """Old rejected router artifacts should not masquerade as active degradation."""
         import json

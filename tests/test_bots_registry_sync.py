@@ -78,9 +78,13 @@ VARIANT_BOT_IDS: set[str] = {
     "funding_rate_btc",
     "mnq_sweep_reclaim", "eth_sweep_reclaim", "sol_sweep_scalp",
     "mnq_futures_optimized", "btc_optimized", "btc_crypto_scalp",
+    "sol_optimized",  # SOL paper-soak variant; bot dir = bots/sol_perp/
     # MBT/MET — CME micro crypto futures, variants of BTC/ETH bots
     "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
     "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
+    "mbt_funding_basis",    # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_overnight_gap",    # uses bots/btc_hybrid/ via MBT strategy bridge
+    "met_rth_orb",          # uses bots/eth_perp/ via MET strategy bridge
     # Anchor-sweep — named-anchor variant of sweep_reclaim for index futures.
     # No own bot.py dir; runs through the existing MNQ/NQ bot dirs via
     # the strategy_kind="anchor_sweep" dispatch.

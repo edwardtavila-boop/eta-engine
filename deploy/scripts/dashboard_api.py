@@ -1012,6 +1012,44 @@ def _order_entry_hold_snapshot(heartbeat: dict) -> dict:
     return {}
 
 
+def _filled_summary_from_ib_statuses(raw: dict) -> tuple[float | None, float | None]:
+    statuses = raw.get("ib_statuses")
+    if not isinstance(statuses, list):
+        return None, None
+    filled_qty = 0.0
+    weighted_notional = 0.0
+    for item in statuses:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_filled = float(item.get("filled") or 0.0)
+            item_price = float(item.get("avg_fill_price") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if item_filled <= 0.0:
+            continue
+        filled_qty += item_filled
+        weighted_notional += item_filled * item_price
+    if filled_qty <= 0.0:
+        return None, None
+    return filled_qty, weighted_notional / filled_qty
+
+
+def _truthful_router_fill_fields(result: dict, raw: dict) -> tuple[object, object]:
+    filled_qty = result.get("filled_qty")
+    avg_price = result.get("avg_price")
+    try:
+        top_filled = float(filled_qty or 0.0)
+    except (TypeError, ValueError):
+        top_filled = 0.0
+    if top_filled > 0.0:
+        return filled_qty, avg_price
+    raw_filled, raw_avg_price = _filled_summary_from_ib_statuses(raw)
+    if raw_filled is None:
+        return filled_qty, avg_price
+    return raw_filled, raw_avg_price
+
+
 def _normalize_router_result(path: Path, payload: dict) -> dict:
     result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
     request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
@@ -1024,14 +1062,15 @@ def _normalize_router_result(path: Path, payload: dict) -> dict:
         or raw.get("note")
         or raw.get("detail")
     )
+    filled_qty, avg_price = _truthful_router_fill_fields(result, raw)
     return {
         "signal_id": payload.get("signal_id") or request.get("client_order_id"),
         "bot_id": payload.get("bot_id") or request.get("bot_id"),
         "venue": payload.get("venue") or raw.get("venue"),
         "status": str(status).upper() if status else None,
         "order_id": result.get("order_id"),
-        "filled_qty": result.get("filled_qty"),
-        "avg_price": result.get("avg_price"),
+        "filled_qty": filled_qty,
+        "avg_price": avg_price,
         "ts": payload.get("ts") or payload.get("submitted_at"),
         "reason": reason,
         "source_path": str(path),

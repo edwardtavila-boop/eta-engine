@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import signal
+import sqlite3
 import sys
 import traceback
 import warnings
@@ -62,6 +63,7 @@ from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
     load_order_entry_hold,
 )
 from eta_engine.scripts.workspace_roots import (  # noqa: E402
+    ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH,
     ETA_RUNTIME_STATE_DIR,
 )
 from eta_engine.venues.base import (  # noqa: E402
@@ -108,11 +110,34 @@ _EMPTY_RETRY_META: dict[str, Any] = {
 #: operation when the gate-chain module cannot be imported. Mirrors the
 #: pattern in ``firm/eta_engine/src/mnq/risk/gate_chain.py``.
 _GATE_BOOTSTRAP_ENV = "ETA_GATE_BOOTSTRAP"
+_READINESS_ENFORCE_ENV = "ETA_BROKER_ROUTER_ENFORCE_READINESS"
+_LIVE_MONEY_ENV = "ETA_LIVE_MONEY"
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        logger.warning("invalid integer env %s=%r; using %s", name, os.environ.get(name), default)
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        logger.warning("invalid float env %s=%r; using %s", name, os.environ.get(name), default)
+        return default
 
 
 def _gate_bootstrap_enabled() -> bool:
     """True iff ``ETA_GATE_BOOTSTRAP=1`` is set in the environment."""
     return os.environ.get(_GATE_BOOTSTRAP_ENV, "").strip() == "1"
+
+
+def _readiness_enforced() -> bool:
+    """True iff broker routing must honor the strategy-readiness matrix."""
+    return os.environ.get(_READINESS_ENFORCE_ENV, "").strip() == "1"
 
 
 def _load_build_default_chain() -> Callable[..., object]:
@@ -821,6 +846,9 @@ class BrokerRouter:
         self.failed_dir = self.state_root / "failed"
         self.fill_results_dir = self.state_root / "fill_results"
         self.heartbeat_path = self.state_root / "broker_router_heartbeat.json"
+        self.gate_pre_trade_path = self.state_root / "pre_trade_gate.json"
+        self.gate_heat_state_path = self.state_root / "heat_state.json"
+        self.gate_journal_path = self.state_root / "gate_journal.sqlite"
 
         for d in (
             self.processing_dir,
@@ -902,6 +930,10 @@ class BrokerRouter:
             )
             self._emit_heartbeat(hold=hold)
             return
+
+        # Stamp liveness before order evaluation so the fail-closed gate chain
+        # can trust this router's heartbeat even on the first tick after restart.
+        self._emit_heartbeat(hold=hold)
 
         try:
             pending_paths = sorted(self.pending_dir.glob("*.pending_order.json"))
@@ -1074,7 +1106,25 @@ class BrokerRouter:
             )
             return
 
-        # 3. Gate-chain evaluation.
+        # 3. Strategy-readiness approval gate.
+        readiness_denial = self._readiness_denial(order)
+        if readiness_denial:
+            denied = {
+                "gate": "strategy_readiness",
+                "allow": False,
+                "reason": readiness_denial,
+                "context": {"order": order.to_dict()},
+            }
+            self._handle_blocked(
+                order,
+                target,
+                denied,
+                [denied],
+                ["-strategy_readiness"],
+            )
+            return
+
+        # 4. Gate-chain evaluation.
         try:
             gate_results = await self._evaluate_gates(order)
         except Exception as exc:  # noqa: BLE001
@@ -1662,11 +1712,19 @@ class BrokerRouter:
                      "context": {"traceback": tb}}]
 
         open_positions = self._collect_open_positions()
+        hold = self._order_entry_hold()
+        self._sync_gate_state(hold=hold, open_positions=open_positions)
         try:
             chain = build_default_chain(
                 open_positions=open_positions,
                 new_symbol=order.symbol,
                 new_qty=int(round(order.qty)) or 1,
+                heartbeat_path=self.heartbeat_path,
+                deadman_heartbeat_path=self.heartbeat_path,
+                pre_trade_path=self.gate_pre_trade_path,
+                deadman_pre_trade_path=self.gate_pre_trade_path,
+                heat_state_path=self.gate_heat_state_path,
+                journal_path=self.gate_journal_path,
             )
             _allow, results = chain.evaluate()
         except Exception as exc:  # noqa: BLE001
@@ -1726,6 +1784,123 @@ class BrokerRouter:
             if abs(net) > 0.0:
                 out[symbol] = int(round(net))
         return out
+
+    def _readiness_denial(self, order: PendingOrder) -> str:
+        """Return a denial reason when a bot is not approved for routing."""
+        if not _readiness_enforced():
+            return ""
+        try:
+            payload = json.loads(
+                ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH.read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            return (
+                "strategy readiness snapshot missing: "
+                f"{ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH}"
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            return f"strategy readiness snapshot unreadable: {exc}"
+
+        rows = payload.get("rows") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return "strategy readiness snapshot malformed: rows missing"
+        match = next(
+            (
+                row for row in rows
+                if isinstance(row, dict) and str(row.get("bot_id") or "") == order.bot_id
+            ),
+            None,
+        )
+        if not isinstance(match, dict):
+            return f"bot {order.bot_id!r} missing from strategy readiness snapshot"
+
+        if os.environ.get(_LIVE_MONEY_ENV, "").strip() == "1":
+            if bool(match.get("can_live_trade")):
+                return ""
+            return (
+                f"bot {order.bot_id!r} is not live-approved "
+                f"(lane={match.get('launch_lane')}, data={match.get('data_status')})"
+            )
+        if bool(match.get("can_paper_trade")):
+            return ""
+        return (
+            f"bot {order.bot_id!r} is not paper-approved "
+            f"(lane={match.get('launch_lane')}, data={match.get('data_status')})"
+        )
+
+    def _sync_gate_state(
+        self,
+        *,
+        hold: OrderEntryHold,
+        open_positions: dict[str, int],
+    ) -> None:
+        """Keep the firm gate-chain state aligned with this live router.
+
+        The legacy ``mnq.risk.gate_chain`` defaults read static files under
+        the firm engine. In the ETA runtime the broker router is the active
+        order-entry boundary, so it provides fresh canonical state under
+        ``var/eta_engine/state/router`` before evaluating fail-closed gates.
+        """
+        now_iso = datetime.now(UTC).isoformat()
+        self._write_sidecar(
+            self.gate_pre_trade_path,
+            {
+                "ts": now_iso,
+                "state": "HOT" if hold.active else "COLD",
+                "reason": hold.reason or ("operator_hold" if hold.active else "router_clear"),
+                "scope": hold.scope,
+                "source": "broker_router",
+                "hold": hold.to_dict(),
+            },
+        )
+        self._write_sidecar(
+            self.gate_heat_state_path,
+            self._heat_state_snapshot(now_iso=now_iso, open_positions=open_positions),
+        )
+        self._ensure_gate_journal()
+
+    def _heat_state_snapshot(
+        self,
+        *,
+        now_iso: str,
+        open_positions: dict[str, int],
+    ) -> dict[str, Any]:
+        """Return a conservative heat-budget snapshot for multi-bot routing."""
+        nonzero_positions = {
+            symbol: qty for symbol, qty in open_positions.items() if int(qty or 0) != 0
+        }
+        max_concurrent = max(1, _env_int("ETA_BROKER_ROUTER_GATE_MAX_CONCURRENT", 8))
+        budget = max(0.01, _env_float("ETA_BROKER_ROUTER_GATE_BUDGET", 1.0))
+        current_heat = min(1.0, len(nonzero_positions) / max_concurrent)
+        return {
+            "ts": now_iso,
+            "regime": "transition",
+            "current_heat": round(current_heat, 4),
+            "budget": budget,
+            "utilization_pct": round(current_heat / budget * 100, 1),
+            "positions": len(nonzero_positions),
+            "max_concurrent": max_concurrent,
+            "sizing_fraction": 0.2,
+            "source": "broker_router",
+            "open_positions": nonzero_positions,
+            "writer_version": 1,
+        }
+
+    def _ensure_gate_journal(self) -> None:
+        """Ensure the governor gate has a readable SQLite journal shell."""
+        try:
+            self.gate_journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.gate_journal_path) as conn:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS events ("
+                    "seq INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "ts TEXT NOT NULL, "
+                    "event_type TEXT NOT NULL, "
+                    "payload TEXT NOT NULL"
+                    ")"
+                )
+        except sqlite3.Error as exc:
+            logger.warning("gate journal initialization failed %s: %s", self.gate_journal_path, exc)
 
     @staticmethod
     def _normalize_gate_result(r: object) -> dict[str, Any]:

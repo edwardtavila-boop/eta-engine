@@ -54,8 +54,11 @@ def compare_snapshots(
 
     changed_fields: list[str] = []
     blocked_count_delta = int(current.get("blocked_count") or 0) - int(previous.get("blocked_count") or 0)
-    launch_blocked_count_delta = int(current.get("launch_blocked_count") or 0) - int(
-        previous.get("launch_blocked_count") or 0
+    has_launch_blocked_count = "launch_blocked_count" in previous and "launch_blocked_count" in current
+    launch_blocked_count_delta = (
+        int(current.get("launch_blocked_count") or 0) - int(previous.get("launch_blocked_count") or 0)
+        if has_launch_blocked_count
+        else 0
     )
     status_changed = current.get("status") != previous.get("status")
     launch_status_changed = current.get("launch_status") != previous.get("launch_status")
@@ -76,11 +79,11 @@ def compare_snapshots(
     )
     if blocked_count_delta:
         changed_fields.append("blocked_count")
-    if launch_blocked_count_delta:
+    if has_launch_blocked_count and launch_blocked_count_delta:
         changed_fields.append("launch_blocked_count")
     if status_changed:
         changed_fields.append("status")
-    if launch_status_changed and ("launch_status" in previous or "launch_status" in current):
+    if launch_status_changed and ("launch_status" in previous and "launch_status" in current):
         changed_fields.append("launch_status")
     if first_blocker_changed:
         changed_fields.append("first_blocker_op_id")
@@ -88,7 +91,7 @@ def compare_snapshots(
         first_launch_blocker_changed
         and (
             "first_launch_blocker_op_id" in previous
-            or "first_launch_blocker_op_id" in current
+            and "first_launch_blocker_op_id" in current
         )
     ):
         changed_fields.append("first_launch_blocker_op_id")
@@ -98,7 +101,7 @@ def compare_snapshots(
         first_launch_next_action_changed
         and (
             "first_launch_next_action" in previous
-            or "first_launch_next_action" in current
+            and "first_launch_next_action" in current
         )
     ):
         changed_fields.append("first_launch_next_action")

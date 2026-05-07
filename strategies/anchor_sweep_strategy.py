@@ -541,17 +541,17 @@ def nq_anchor_sweep_preset() -> AnchorSweepConfig:
 
     Sized via ``risk_per_trade_pct * equity / stop_distance``; contract
     size differences (NQ $20/pt vs MNQ $2/pt) are absorbed by ``qty``.
-    Defined as a separate factory so future NQ-specific tuning has a
-    clean home.
+    Mirrors the MNQ paper-soak v2 stop/window defaults until NQ-specific
+    evidence justifies separate tuning.
     """
     return AnchorSweepConfig(
         anchor_set=("PDH", "PDL", "PMH", "PML", "ONH", "ONL"),
         min_wick_pct=0.50,
         volume_z_lookback=20,
         min_volume_z=0.5,
-        reclaim_window=1,
+        reclaim_window=2,
         atr_period=14,
-        atr_stop_mult=1.0,
+        atr_stop_mult=1.5,
         rr_target=2.0,
         risk_per_trade_pct=0.005,
         max_trades_per_day=3,

@@ -213,7 +213,8 @@ def test_vps_failover_missing_env_reports_template_and_active_brokers(
     assert result.details["copy_commands"][-2] == "cp .env.example .env && chmod 600 .env"
     assert result.details["active_brokers"] == ["IBKR", "Tastytrade"]
     assert result.details["dormant_brokers"] == ["Tradovate"]
-    assert "IBKR_ACCOUNT_ID" in result.details["required_groups"]["ibkr_primary"]
+    assert result.details["required_groups"]["ibkr_primary"] == ["IBKR_VENUE_TYPE=paper"]
+    assert "IBKR_ACCOUNT_ID" in result.details["recommended_groups"]["ibkr_client_portal_sidecars"]
     assert "TASTY_SESSION_TOKEN" in result.details["recommended_groups"]["tastytrade_fallback"]
 
 
@@ -243,7 +244,8 @@ def test_vps_failover_existing_env_with_empty_required_keys_stays_amber(
     assert result.severity == "amber"
     assert "runtime_mode" in result.details["required_missing"]
     assert "jarvis_budget" in result.details["required_missing"]
-    assert "ibkr_primary" in result.details["required_missing"]
+    assert "ibkr_primary" not in result.details["required_missing"]
+    assert "ibkr_client_portal_sidecars" in result.details["recommended_missing"]
     assert result.details["values_emitted"] is False
     assert "DU123" not in json.dumps(result.details)
 
@@ -261,7 +263,7 @@ def test_vps_failover_inline_comments_do_not_count_as_populated_env_values(tmp_p
         encoding="utf-8",
     )
 
-    state = vps_failover_drill._env_key_state(env_path)
+    state = vps_failover_drill._env_key_state(vps_failover_drill._read_env_values(env_path))
 
     assert state["EMPTY_WITH_COMMENT"] is False
     assert state["QUOTED_EMPTY"] is False

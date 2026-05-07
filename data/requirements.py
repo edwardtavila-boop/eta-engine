@@ -350,6 +350,21 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             "SolPerp — SOL perpetual (SOLUSDT on Binance/Tastytrade)",
         ),
     ),
+    # sol_optimized mirrors btc_optimized's sweep_reclaim + scorecard
+    # stack, but uses SOL-specific sweep/edge presets. Track it as its
+    # own promotable subject even though it shares bots/sol_perp/.
+    BotRequirements(
+        bot_id="sol_optimized",
+        requirements=(
+            DataRequirement("bars", "SOL", "5m", critical=True),
+            DataRequirement("bars", "SOL", "1h", critical=True),
+            DataRequirement("bars", "SOL", "D", critical=True,
+                note="regime + macro lens"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="SOL-BTC correlation for crypto beta regime"),
+        ),
+        sources_hint=("Coinbase SOL bars (scripts/fetch_crypto_bars_coinbase.py)",),
+    ),
     BotRequirements(
         bot_id="xrp_perp",
         requirements=(),
@@ -383,6 +398,48 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
             DataRequirement("correlation", "BTC", "1h", critical=False,
                 note="BTC-ETH correlation as regime confirmation"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
+        ),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
+    ),
+    BotRequirements(
+        bot_id="mbt_funding_basis",
+        requirements=(
+            DataRequirement("bars", "MBT", "5m", critical=True),
+            DataRequirement("bars", "MBT", "1h", critical=True),
+            DataRequirement("bars", "MBT", "D", critical=True,
+                note="contract regime + expiry context"),
+            DataRequirement("bars", "BTC", "5m", critical=True,
+                note="spot BTC reference for MBT basis proxy"),
+            DataRequirement("funding", "BTC", "8h", critical=False,
+                note="perp funding skew enriches basis-premium context"),
+        ),
+        sources_hint=(
+            "IBKR CME bars (via Client Portal Gateway)",
+            "Coinbase BTC spot bars for basis proxy",
+            "scripts/fetch_ibkr_crypto_bars.py",
+        ),
+    ),
+    BotRequirements(
+        bot_id="mbt_overnight_gap",
+        requirements=(
+            DataRequirement("bars", "MBT", "5m", critical=True),
+            DataRequirement("bars", "MBT", "1h", critical=True),
+            DataRequirement("bars", "MBT", "D", critical=True,
+                note="prior RTH close and overnight gap context"),
+            DataRequirement("bars", "BTC", "5m", critical=False,
+                note="spot BTC cross-check for overnight dislocations"),
+        ),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
+    ),
+    BotRequirements(
+        bot_id="met_rth_orb",
+        requirements=(
+            DataRequirement("bars", "MET", "5m", critical=True),
+            DataRequirement("bars", "MET", "1h", critical=True),
+            DataRequirement("bars", "MET", "D", critical=True,
+                note="RTH opening-range and daily ETH regime context"),
+            DataRequirement("correlation", "BTC", "1h", critical=False,
+                note="BTC-ETH correlation as regime confirmation"),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),

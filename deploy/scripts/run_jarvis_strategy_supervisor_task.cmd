@@ -55,7 +55,10 @@ rem "entry skipped: budget cap produced qty=0". Drop until either:
 rem   (a) we lift per-bot futures cap to fit 1 YM contract, OR
 rem   (b) we replace with MYM (Micro Dow ~$25k notional), OR
 rem   (c) ATR sizing logic for futures includes a min-1-contract floor.
-set "ETA_SUPERVISOR_BOTS=eth_sage_daily,btc_optimized,vwap_mr_btc,volume_profile_btc,sol_optimized,mnq_futures_sage,vwap_mr_mnq,mnq_futures_optimized,mes_sweep_reclaim,m2k_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,ng_sweep_reclaim,zn_sweep_reclaim,eur_sweep_reclaim"
+rem CURRENT APPROVED PAPER-LIVE ROSTER (readiness snapshot 2026-05-07):
+rem only can_paper_trade=true bots are pinned here; commodities and SOL wait
+rem for Claude/JARVIS approval before broker routing.
+set "ETA_SUPERVISOR_BOTS=eth_sage_daily,btc_optimized,mnq_futures_sage,mnq_sweep_reclaim,vwap_mr_mnq,vwap_mr_nq,vwap_mr_btc,volume_profile_btc,funding_rate_btc,mnq_anchor_sweep"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

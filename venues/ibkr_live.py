@@ -342,6 +342,29 @@ def _trade_submit_snapshot(trade: Any) -> dict[str, Any]:  # noqa: ANN401 - ib_i
     }
 
 
+def _filled_summary_from_statuses(statuses: list[dict[str, Any]]) -> tuple[float, float]:
+    """Summarize fills from IBKR order-status snapshots.
+
+    Bracket submissions stay OPEN because child OCO orders remain working, but
+    the parent can fill immediately. Surface that parent fill in OrderResult so
+    router/dashboard metrics do not show a successful entry as 0 filled.
+    """
+    filled_qty = 0.0
+    weighted_notional = 0.0
+    for item in statuses:
+        try:
+            item_filled = float(item.get("filled") or 0.0)
+            item_price = float(item.get("avg_fill_price") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if item_filled <= 0.0:
+            continue
+        filled_qty += item_filled
+        weighted_notional += item_filled * item_price
+    avg_price = weighted_notional / filled_qty if filled_qty > 0.0 else 0.0
+    return filled_qty, avg_price
+
+
 def _ibkr_submission_reject_reason(statuses: list[dict[str, Any]]) -> str:
     rejected = [
         item for item in statuses
@@ -1166,6 +1189,7 @@ class LiveIbkrVenue(VenueBase):
             if submitted_trades and submit_confirm_seconds > 0:
                 await asyncio.sleep(submit_confirm_seconds)
             ib_statuses = [_trade_submit_snapshot(item) for item in submitted_trades]
+            filled_qty, avg_price = _filled_summary_from_statuses(ib_statuses)
             reject_reason = _ibkr_submission_reject_reason(ib_statuses)
             if reject_reason:
                 logger.warning(
@@ -1187,6 +1211,8 @@ class LiveIbkrVenue(VenueBase):
                             "is_bracket": is_entry,
                             "stop_price": stop_price,
                             "target_price": target_price,
+                            "filled_qty": filled_qty,
+                            "avg_price": avg_price,
                             "ib_statuses": ib_statuses,
                             "reason": reject_reason,
                         },
@@ -1204,6 +1230,8 @@ class LiveIbkrVenue(VenueBase):
                         "is_bracket": is_entry,
                         "stop_price": stop_price,
                         "target_price": target_price,
+                        "filled_qty": filled_qty,
+                        "avg_price": avg_price,
                         "ib_statuses": ib_statuses,
                     },
                 )
@@ -1224,6 +1252,8 @@ class LiveIbkrVenue(VenueBase):
                         "is_bracket": is_entry,
                         "stop_price": stop_price,
                         "target_price": target_price,
+                        "filled_qty": filled_qty,
+                        "avg_price": avg_price,
                         "ib_statuses": ib_statuses,
                     },
                 )
@@ -1231,6 +1261,8 @@ class LiveIbkrVenue(VenueBase):
             return OrderResult(
                 order_id=order_id,
                 status=OrderStatus.OPEN,
+                filled_qty=filled_qty,
+                avg_price=avg_price,
                 raw={
                     "venue": self.name,
                     "mode": "paper_live",
@@ -1241,6 +1273,8 @@ class LiveIbkrVenue(VenueBase):
                     "is_bracket": is_entry,
                     "stop_price": stop_price,
                     "target_price": target_price,
+                    "filled_qty": filled_qty,
+                    "avg_price": avg_price,
                     "ib_statuses": ib_statuses,
                 },
             )

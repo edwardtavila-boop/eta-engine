@@ -90,6 +90,8 @@ _SPECS: dict[str, InstrumentSpec] = {
     # do NOT pay funding.  The funding_ledger will not charge funding on
     # these symbols.  Alpaca spot crypto (BTC, ETH, SOL, XRP) still routes
     # through the spot fallback specs below.
+    # Perp funding research must use the explicit BTC-PERP/ETH-PERP specs below,
+    # not these CME futures symbols.
     "BTC":  InstrumentSpec("BTC",  tick_size=5.0,  point_value=5.0,   commission_rt=11.00,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2,
@@ -104,6 +106,17 @@ _SPECS: dict[str, InstrumentSpec] = {
     "MET":  InstrumentSpec("MET",  tick_size=0.50, point_value=0.10,  commission_rt=2.50,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2),
+    # Explicit perpetual-swap specs for funding-cost accounting only.
+    # These keep CME BTC/ETH futures non-funding while preserving a
+    # deliberate perp path for research/backtests that model funding.
+    "BTC-PERP": InstrumentSpec("BTC-PERP", tick_size=0.01, point_value=1.0, commission_rt=0.0,
+                               half_spread_ticks=2.0, base_slip_ticks=3.0,
+                               overnight_slip_mult=1.0,
+                               is_perpetual=True),
+    "ETH-PERP": InstrumentSpec("ETH-PERP", tick_size=0.01, point_value=1.0, commission_rt=0.0,
+                               half_spread_ticks=2.0, base_slip_ticks=3.0,
+                               overnight_slip_mult=1.0,
+                               is_perpetual=True),
     # Crypto spot fallbacks (treat as 1x notional, taker fee ~5bps RT)
     # tick_size=0.01 dollars; point_value=$1 per $1 of price per 1 unit.
     # PnL math: pnl_usd = (exit_price - entry_price) * qty.  Commission =

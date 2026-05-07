@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,17 +44,43 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert r"C:\EvolutionaryTradingAlgo" in text
     assert "ETA_SUPERVISOR_MODE=paper_live" in text
     assert "ETA_SUPERVISOR_FEED=composite" in text
+    assert "ETA_SUPERVISOR_BOTS=" in text
     # 2026-05-05: broker_router is the execution path, but the VPS allowlist
     # keeps unconfigured crypto-paper venues paused until their keys are seeded.
     assert "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router" in text
     assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
-    assert "ETA_RECONCILE_DIVERGENCE_ACK=1" not in text
+    assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text
     assert "jarvis_strategy_supervisor.stderr.log" in text
     assert "python.exe" in text
     assert "exit /b %ERRORLEVEL%" in text
+
+
+def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    match = re.search(r'^set "ETA_SUPERVISOR_BOTS=([^"]+)"$', text, re.MULTILINE)
+
+    assert match is not None
+    bots = set(match.group(1).split(","))
+
+    assert bots == {
+        "eth_sage_daily",
+        "btc_optimized",
+        "mnq_futures_sage",
+        "mnq_sweep_reclaim",
+        "vwap_mr_mnq",
+        "vwap_mr_nq",
+        "vwap_mr_btc",
+        "volume_profile_btc",
+        "funding_rate_btc",
+        "mnq_anchor_sweep",
+    }
+    assert "sol_optimized" not in bots
+    assert "gc_sweep_reclaim" not in bots
+    assert "cl_sweep_reclaim" not in bots
+    assert "ng_sweep_reclaim" not in bots
 
 
 def test_supervisor_task_runner_avoids_legacy_paths() -> None:
