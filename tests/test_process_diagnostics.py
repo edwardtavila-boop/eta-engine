@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from deploy.scripts.process_diagnostics import (
+    ProcessCommandSummary,
+    collect_windows_processes,
     collect_windows_python_processes,
     duplicate_python_daemons,
     effective_python_processes,
+    summarize_process_commands,
 )
 
 
@@ -57,3 +60,70 @@ def test_collect_windows_python_processes_parses_singleton_and_invalid_json() ->
     assert len(rows) == 1
     assert rows[0]["ProcessId"] == 301
     assert collect_windows_python_processes(lambda _query: "not-json") == []
+
+
+def test_summarize_process_commands_flags_exact_cloudflared_duplicate() -> None:
+    tunnel_command = (
+        r"C:\Program Files (x86)\cloudflared\cloudflared.exe tunnel "
+        r"--config C:\EvolutionaryTradingAlgo\var\cloudflare\eta-engine-cloudflared.yml run"
+    )
+    rows = [
+        _row(
+            401,
+            1,
+            tunnel_command,
+            name="cloudflared.exe",
+        ),
+        _row(
+            402,
+            1,
+            tunnel_command,
+            name="cloudflared.exe",
+        ),
+    ]
+
+    assert summarize_process_commands(
+        rows,
+        process_name="cloudflared",
+        executables=("cloudflared.exe",),
+    ) == ProcessCommandSummary(total=2, unique_commands=1, duplicate_groups=1, extra_instances=1)
+
+
+def test_summarize_process_commands_allows_distinct_cloudflared_commands() -> None:
+    tunnel_command = (
+        r"C:\Program Files (x86)\cloudflared\cloudflared.exe tunnel "
+        r"--config C:\EvolutionaryTradingAlgo\var\cloudflare\eta-engine-cloudflared.yml run"
+    )
+    rows = [
+        _row(
+            501,
+            1,
+            tunnel_command,
+            name="cloudflared.exe",
+        ),
+        _row(
+            502,
+            1,
+            r"C:\Program Files (x86)\cloudflared\cloudflared.exe tunnel --url http://127.0.0.1:8000 --no-autoupdate",
+            name="cloudflared.exe",
+        ),
+    ]
+
+    assert summarize_process_commands(
+        rows,
+        process_name="cloudflared",
+        executables=("cloudflared.exe",),
+    ) == ProcessCommandSummary(total=2, unique_commands=2, duplicate_groups=0, extra_instances=0)
+
+
+def test_collect_windows_processes_parses_list_payload() -> None:
+    raw = (
+        '[{"ProcessId":601,"ParentProcessId":1,"Name":"cloudflared.exe",'
+        '"CommandLine":"cloudflared.exe tunnel run"},'
+        '{"ProcessId":602,"ParentProcessId":1,"Name":"cloudflared.exe",'
+        '"CommandLine":"cloudflared.exe tunnel run"}]'
+    )
+
+    rows = collect_windows_processes(lambda _query: raw, "cloudflared.exe")
+
+    assert [row["ProcessId"] for row in rows] == [601, 602]

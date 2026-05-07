@@ -10,9 +10,19 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from .process_diagnostics import collect_windows_python_processes, duplicate_python_daemons
+    from .process_diagnostics import (
+        collect_windows_processes,
+        collect_windows_python_processes,
+        duplicate_python_daemons,
+        summarize_process_commands,
+    )
 except ImportError:
-    from process_diagnostics import collect_windows_python_processes, duplicate_python_daemons
+    from process_diagnostics import (
+        collect_windows_processes,
+        collect_windows_python_processes,
+        duplicate_python_daemons,
+        summarize_process_commands,
+    )
 
 ROOT = Path(r"C:\EvolutionaryTradingAlgo")
 STATE_ROOT = ROOT / "var" / "eta_engine" / "state"
@@ -105,8 +115,25 @@ for port, name in [(5000, "IBKR"), (8000, "Dashboard")]:
 free_gb = round(as_float(ps("(Get-PSDrive C).Free/1GB") or "0"), 1)
 say(f"Disk:{free_gb}GB", free_gb > 5)
 
-cloudflared_count = as_int(ps("(Get-Process cloudflared* -ea 0).Count") or "0")
-say(f"Cloudflared:{cloudflared_count}", cloudflared_count >= 1)
+cloudflared_summary = summarize_process_commands(
+    collect_windows_processes(ps, "cloudflared.exe"),
+    process_name="cloudflared",
+    executables=("cloudflared.exe",),
+)
+if cloudflared_summary.total == 0:
+    say("Cloudflared:0", False)
+elif cloudflared_summary.extra_instances > 0:
+    say(
+        (
+            f"Cloudflared:{cloudflared_summary.total} "
+            f"({cloudflared_summary.extra_instances} duplicate extra instance(s))"
+        ),
+        False,
+    )
+elif cloudflared_summary.total > 1:
+    say(f"Cloudflared:{cloudflared_summary.total} distinct tunnel command(s)", None)
+else:
+    say("Cloudflared:1", True)
 
 section("2. DATA")
 for state_dir in [STATE_ROOT, ENGINE_ROOT / "state"]:
