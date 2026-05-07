@@ -8,7 +8,7 @@ packages = ["."]
 [project]
 name = "eta-engine"
 version = "0.1.0"
-description = "4-bot profit-recycling organism: MNQ/NQ → Crypto Seed → ETH/SOL/XRP Perps + Staking"
+description = "4-bot profit-recycling organism: MNQ/NQ -> Crypto Seed -> ETH/SOL/XRP Perps + Staking"
 authors = [{name = "Edward Avila", email = "edward.t.avila@gmail.com"}]
 requires-python = ">=3.12"
 dependencies = [
@@ -102,6 +102,13 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 # hermes_bridge embeds long Telegram webhook strings (E501) and FastAPI
 # route handlers whose return types are framework-specified (ANN201/202).
 "brain/jarvis_v3/hermes_bridge.py" = ["E501", "ANN201", "ANN202"]
+# fetch_tws_historical_bars + its tests mirror the ib_insync API surface
+# (Future / IB / qualifyContracts / reqHistoricalData with camelCase
+# methods, camelCase params like clientId / endDateTime / barSizeSetting,
+# and Any-typed contract/bar objects). N802/N803/ANN401 are the entire
+# ib_insync ABI -- silencing them here is correct, not laziness.
+"scripts/fetch_tws_historical_bars.py" = ["N802", "N803", "ANN401"]
+"tests/test_fetch_tws_historical_bars.py" = ["N802", "N803"]
 # Historical roadmap bump / decision ledger helpers intentionally embed long
 # copied roadmap strings; wrapping them hurts auditability more than it helps.
 "scripts/_bump_roadmap_v0_1_14.py" = ["E501"]
@@ -123,3 +130,5 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+
