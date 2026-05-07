@@ -1,4 +1,7 @@
-"""ETA Basement-to-Ceiling Audit"""
+"""ETA basement-to-ceiling audit."""
+
+from __future__ import annotations
+
 import json
 import ssl as _ssl
 import subprocess
@@ -6,169 +9,277 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-R=Path(r"C:\EvolutionaryTradingAlgo")
-S=R/"var"/"eta_engine"/"state"
-E=R/"eta_engine"
-ctx=_ssl._create_unverified_context()
-P,W,F=0,0,0
+try:
+    from .process_diagnostics import collect_windows_python_processes, duplicate_python_daemons
+except ImportError:
+    from process_diagnostics import collect_windows_python_processes, duplicate_python_daemons
 
-def say(l,ok=None):
-    global P,W,F
-    if ok is True:print(f"  [PASS] {l}");P+=1
-    elif ok is False:print(f"  [FAIL] {l}");F+=1
-    else:print(f"  [WARN] {l}");W+=1
+ROOT = Path(r"C:\EvolutionaryTradingAlgo")
+STATE_ROOT = ROOT / "var" / "eta_engine" / "state"
+ENGINE_ROOT = ROOT / "eta_engine"
+SSL_CONTEXT = _ssl._create_unverified_context()
+PASS_COUNT = 0
+WARN_COUNT = 0
+FAIL_COUNT = 0
 
-def api(p):
-    try: return json.loads(urllib.request.urlopen(f"http://127.0.0.1:8000{p}",timeout=10))
-    except: return None
 
-def ibkr(p):
-    try: return json.loads(urllib.request.urlopen(f"https://127.0.0.1:5000/v1/api{p}",context=ctx,timeout=10))
-    except Exception as e: return {"error":str(e)}
+def say(label: str, ok: bool | None = None) -> None:
+    global FAIL_COUNT, PASS_COUNT, WARN_COUNT
 
-def ps(cmd):
-    try: return subprocess.check_output(f'powershell -c "{cmd}"',shell=True,text=True)
-    except: return ""
+    if ok is True:
+        print(f"  [PASS] {label}")
+        PASS_COUNT += 1
+    elif ok is False:
+        print(f"  [FAIL] {label}")
+        FAIL_COUNT += 1
+    else:
+        print(f"  [WARN] {label}")
+        WARN_COUNT += 1
 
-# 1. INFRA
-print("\n"+"="*60+"\n  1. INFRA\n"+"="*60)
-pc=int(ps("(Get-Process python* -ea 0).Count")or"0");say(f"Python: {pc}",pc>=4)
-jc=int(ps("(Get-Process java* -ea 0).Count")or"0");say(f"Java(IBKR): {jc}",jc>=1)
-for pt,nm in[(5000,"IBKR"),(8000,"Dashboard")]:
-    s=ps(f"netstat -ano|sls ':{pt} .*LISTENING'");say(f"Port {pt}({nm})",bool(s.strip()))
-fg=round(float(ps("(Get-PSDrive C).Free/1GB")or"0"),1);say(f"Disk:{fg}GB",fg>5)
-cf=int(ps("(Get-Process cloudflared* -ea 0).Count")or"0");say(f"Cloudflared:{cf}",cf>=1)
 
-# 2. DATA
-print("\n"+"="*60+"\n  2. DATA\n"+"="*60)
-for d in[S, E/"state"]:
-    if d.exists():
-        fs=sorted(d.rglob("*.json"),key=lambda f:f.stat().st_mtime,reverse=True)
-        if fs:
-            a=(datetime.now()-datetime.fromtimestamp(fs[0].stat().st_mtime)).total_seconds()/60
-            say(f"State newest:{fs[0].name} ({a:.0f}m)",a<15)
-            break
-else:say("No state files",False)
+def section(title: str) -> None:
+    print("\n" + "=" * 60 + f"\n  {title}\n" + "=" * 60)
 
-vp=E/"state"/"jarvis_intel"/"verdicts.jsonl"
-if vp.exists():
-    a=(datetime.now()-datetime.fromtimestamp(vp.stat().st_mtime)).total_seconds()/60
-    say(f"Verdicts log: {a:.0f}m old",a<15)
-else:say("Verdicts missing",False)
 
-hp=S/"jarvis_live_health.json"
-if hp.exists():
+def api(path: str) -> object | None:
     try:
-        d=json.loads(hp.read_text());h=d.get("health","?")
-        say(f"JARVIS health: {h}",h in("GREEN","YELLOW"))
-    except:say("JARVIS health parse error",False)
-else:say("JARVIS health file missing",False)
+        with urllib.request.urlopen(f"http://127.0.0.1:8000{path}", timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
 
-# 3. SIGNALS
-print("\n"+"="*60+"\n  3. SIGNALS & BOTS\n"+"="*60)
-fleet=api("/api/bot-fleet")
-if fleet:
-    bots=fleet.get("bots",[])
-    t=len(bots)
-    active=sum(1 for b in bots if b.get("status")not in("idle","readiness_only"))
-    running=sum(1 for b in bots if b.get("status")=="running")
-    app=sum(1 for b in bots if b.get("last_jarvis_verdict")=="APPROVED")
-    cond=sum(1 for b in bots if b.get("last_jarvis_verdict")=="CONDITIONAL")
-    deny=sum(1 for b in bots if b.get("last_jarvis_verdict")=="DENIED")
-    say(f"Bots:{t} Active:{active} Running:{running}",running>0)
-    say(f"APPROVED:{app} COND:{cond} DENIED:{deny}",app+cond>0)
-    pnl=sum(b.get("todays_pnl",0)for b in bots)
-    say(f"Today PnL:${pnl:.0f}",pnl>-200)
-    errs=[b.get("id","?")for b in bots if b.get("status")=="error"]
-    ro=[b.get("id","?")for b in bots if b.get("status")=="readiness_only"]
-    say(f"Error bots:{len(errs)}",len(errs)==0)
-    if errs:print(f"         ERRORS: {errs}")
-    if ro:print(f"         INACTIVE(by design): {ro}")
-else:say("Fleet API unreachable",False)
 
-# 4. GATES
-print("\n"+"="*60+"\n  4. GATES & RISK\n"+"="*60)
-risk=api("/api/risk_gates")
-if risk:
-    any_k=risk.get("any_latched")or risk.get("any_killed")
-    say(f"Kill latch: {any_k}",not any_k)
-lp=E/"state"/"safety"/"kill_switch_latch.json"
-if lp.exists():
+def ibkr(path: str) -> object:
     try:
-        d=json.loads(lp.read_text())
-        say(f"Global kill:{d.get('flatten_all',False)}",not d.get("flatten_all"))
-    except:say("Kill latch bad",False)
-else:say("No kill latch",True)
+        with urllib.request.urlopen(
+            f"https://127.0.0.1:5000/v1/api{path}",
+            context=SSL_CONTEXT,
+            timeout=10,
+        ) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return {"error": str(exc)}
 
-# 5. EXECUTION
-print("\n"+"="*60+"\n  5. IBKR EXECUTION\n"+"="*60)
-auth=ibkr("/iserver/auth/status")
-if isinstance(auth,dict)and"error"not in auth:
-    say(f"Auth: auth={auth.get('authenticated')} conn={auth.get('connected')}",auth.get("authenticated"))
-else:say("IBKR auth fail",False)
-acct=ibkr("/portfolio/accounts")
-if isinstance(acct,list)and acct:
-    say(f"Account:{acct[0].get('accountId','?')}({acct[0].get('type','?')})",True)
-pos=ibkr("/portfolio/DUQ319869/positions/0")
-if isinstance(pos,list):say(f"Positions:{len(pos)}",True)
 
-# 6. LLM
-print("\n"+"="*60+"\n  6. LLM / DEEPSEEK\n"+"="*60)
-ep=E/".env"
-if ep.exists():
-    c=ep.read_text()
-    say("DeepSeek key: present","DEEPSEEK_API_KEY=sk-" in c)
-ah=S/"avengers_heartbeat.json"
-if ah.exists():
+def ps(command: str) -> str:
     try:
-        d=json.loads(ah.read_text());qs=d.get("quota_state","?")
-        say(f"Quota:{qs} (h{d.get('hourly_pct',0):.0%} d{d.get('daily_pct',0):.0%})",qs=="NORMAL")
-    except:say("Quota parse error",False)
+        return subprocess.check_output(f'powershell -c "{command}"', shell=True, text=True)
+    except Exception:
+        return ""
 
-# 7. SAFETY
-print("\n"+"="*60+"\n  7. SAFETY & DRAWDOWN\n"+"="*60)
-if fleet:
-    mdd=max((b.get("max_dd",0)or 0)for b in bots)
-    say(f"Max DD:${mdd:.0f}",mdd<500)
 
-# 8. EFFICIENCY
-print("\n"+"="*60+"\n  8. EFFICIENCY\n"+"="*60)
-dup=set()
-for tn in["jarvis_live","avengers_daemon"]:
-    c=int(ps(f"(gci Win32_Process -Filter 'Name=\"python.exe\"'|?{{$_.CommandLine -match '{tn}'}}).Count")or"0")
-    if c>1:dup.add(f"{tn}x{c}")
-if dup:say(f"Duplicates:{dup}",False)
-else:say("No duplicate processes",True)
-
-# 9. VERDICT QUALITY
-print("\n"+"="*60+"\n  9. VERDICT QUALITY\n"+"="*60)
-if vp.exists():
+def as_int(value: str, default: int = 0) -> int:
     try:
-        with open(vp,"rb")as f:lines=f.readlines()[-200:]
-        vs=[json.loads(l)for l in lines]
-        av=[v for v in vs if v.get("base_verdict")=="APPROVED"]
-        cv=[v for v in vs if v.get("base_verdict")=="CONDITIONAL"]
-        dv=[v for v in vs if v.get("base_verdict")=="DENIED"]
-        say(f"Last 200: {len(av)}APP/{len(cv)}COND/{len(dv)}DEN",len(dv)<len(av)*2)
-        confs=[v.get("confidence",0)for v in av+cv]
-        ac=sum(confs)/len(confs)if confs else 0
-        say(f"Avg confidence:{ac:.2f}",ac>0.4)
-        subs={}
-        for v in av+cv:
-            s=v.get("subsystem","?");subs[s]=subs.get(s,0)+1
-        if subs:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def as_float(value: str, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def minutes_since(path: Path) -> float:
+    return (datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 60
+
+
+def bot_float(bot: dict[object, object], field: str) -> float:
+    value = bot.get(field, 0)
+    return float(value) if isinstance(value, int | float) else 0.0
+
+
+section("1. INFRA")
+python_count = as_int(ps("(Get-Process python* -ea 0).Count") or "0")
+say(f"Python: {python_count}", python_count >= 4)
+
+java_count = as_int(ps("(Get-Process java* -ea 0).Count") or "0")
+say(f"Java(IBKR): {java_count}", java_count >= 1)
+
+for port, name in [(5000, "IBKR"), (8000, "Dashboard")]:
+    socket_state = ps(f"netstat -ano|sls ':{port} .*LISTENING'")
+    say(f"Port {port}({name})", bool(socket_state.strip()))
+
+free_gb = round(as_float(ps("(Get-PSDrive C).Free/1GB") or "0"), 1)
+say(f"Disk:{free_gb}GB", free_gb > 5)
+
+cloudflared_count = as_int(ps("(Get-Process cloudflared* -ea 0).Count") or "0")
+say(f"Cloudflared:{cloudflared_count}", cloudflared_count >= 1)
+
+section("2. DATA")
+for state_dir in [STATE_ROOT, ENGINE_ROOT / "state"]:
+    if not state_dir.exists():
+        continue
+
+    state_files = sorted(state_dir.rglob("*.json"), key=lambda file_path: file_path.stat().st_mtime, reverse=True)
+    if state_files:
+        age_minutes = minutes_since(state_files[0])
+        say(f"State newest:{state_files[0].name} ({age_minutes:.0f}m)", age_minutes < 15)
+        break
+else:
+    say("No state files", False)
+
+verdict_path = ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+if verdict_path.exists():
+    age_minutes = minutes_since(verdict_path)
+    say(f"Verdicts log: {age_minutes:.0f}m old", age_minutes < 15)
+else:
+    say("Verdicts missing", False)
+
+health_path = STATE_ROOT / "jarvis_live_health.json"
+if health_path.exists():
+    try:
+        health_payload = json.loads(health_path.read_text())
+        health = health_payload.get("health", "?") if isinstance(health_payload, dict) else "?"
+        say(f"JARVIS health: {health}", health in ("GREEN", "YELLOW"))
+    except Exception:
+        say("JARVIS health parse error", False)
+else:
+    say("JARVIS health file missing", False)
+
+section("3. SIGNALS & BOTS")
+fleet = api("/api/bot-fleet")
+fleet_bots: list[dict[object, object]] = []
+if isinstance(fleet, dict):
+    raw_bots = fleet.get("bots", [])
+    if isinstance(raw_bots, list):
+        fleet_bots = [bot for bot in raw_bots if isinstance(bot, dict)]
+
+    total_bots = len(fleet_bots)
+    active_bots = sum(1 for bot in fleet_bots if bot.get("status") not in ("idle", "readiness_only"))
+    running_bots = sum(1 for bot in fleet_bots if bot.get("status") == "running")
+    approved = sum(1 for bot in fleet_bots if bot.get("last_jarvis_verdict") == "APPROVED")
+    conditional = sum(1 for bot in fleet_bots if bot.get("last_jarvis_verdict") == "CONDITIONAL")
+    denied = sum(1 for bot in fleet_bots if bot.get("last_jarvis_verdict") == "DENIED")
+
+    say(f"Bots:{total_bots} Active:{active_bots} Running:{running_bots}", running_bots > 0)
+    say(f"APPROVED:{approved} COND:{conditional} DENIED:{denied}", approved + conditional > 0)
+    say(f"Today PnL:${sum(bot_float(bot, 'todays_pnl') for bot in fleet_bots):.0f}", True)
+
+    error_bots = [str(bot.get("id", "?")) for bot in fleet_bots if bot.get("status") == "error"]
+    readiness_only = [str(bot.get("id", "?")) for bot in fleet_bots if bot.get("status") == "readiness_only"]
+    say(f"Error bots:{len(error_bots)}", len(error_bots) == 0)
+    if error_bots:
+        print(f"         ERRORS: {error_bots}")
+    if readiness_only:
+        print(f"         INACTIVE(by design): {readiness_only}")
+else:
+    say("Fleet API unreachable", False)
+
+section("4. GATES & RISK")
+risk = api("/api/risk_gates")
+if isinstance(risk, dict):
+    any_kill = risk.get("any_latched") or risk.get("any_killed")
+    say(f"Kill latch: {any_kill}", not any_kill)
+
+kill_latch_path = ENGINE_ROOT / "state" / "safety" / "kill_switch_latch.json"
+if kill_latch_path.exists():
+    try:
+        kill_latch = json.loads(kill_latch_path.read_text())
+        flatten_all = kill_latch.get("flatten_all", False) if isinstance(kill_latch, dict) else False
+        say(f"Global kill:{flatten_all}", not flatten_all)
+    except Exception:
+        say("Kill latch bad", False)
+else:
+    say("No kill latch", True)
+
+section("5. IBKR EXECUTION")
+auth = ibkr("/iserver/auth/status")
+if isinstance(auth, dict) and "error" not in auth:
+    say(f"Auth: auth={auth.get('authenticated')} conn={auth.get('connected')}", bool(auth.get("authenticated")))
+else:
+    say("IBKR auth fail", False)
+
+account = ibkr("/portfolio/accounts")
+if isinstance(account, list) and account and isinstance(account[0], dict):
+    say(f"Account:{account[0].get('accountId', '?')}({account[0].get('type', '?')})", True)
+
+positions = ibkr("/portfolio/DUQ319869/positions/0")
+if isinstance(positions, list):
+    say(f"Positions:{len(positions)}", True)
+
+section("6. LLM / DEEPSEEK")
+env_path = ENGINE_ROOT / ".env"
+if env_path.exists():
+    say("DeepSeek key: present", "DEEPSEEK_API_KEY=sk-" in env_path.read_text())
+
+avengers_heartbeat = STATE_ROOT / "avengers_heartbeat.json"
+if avengers_heartbeat.exists():
+    try:
+        heartbeat = json.loads(avengers_heartbeat.read_text())
+        if isinstance(heartbeat, dict):
+            quota_state = heartbeat.get("quota_state", "?")
+            hourly_pct = float(heartbeat.get("hourly_pct", 0) or 0)
+            daily_pct = float(heartbeat.get("daily_pct", 0) or 0)
+            say(f"Quota:{quota_state} (h{hourly_pct:.0%} d{daily_pct:.0%})", quota_state == "NORMAL")
+    except Exception:
+        say("Quota parse error", False)
+
+section("7. SAFETY & DRAWDOWN")
+if fleet_bots:
+    max_drawdown = max(bot_float(bot, "max_dd") for bot in fleet_bots)
+    say(f"Max DD:${max_drawdown:.0f}", max_drawdown < 500)
+
+section("8. EFFICIENCY")
+duplicates = duplicate_python_daemons(collect_windows_python_processes(ps), ["jarvis_live", "avengers_daemon"])
+if duplicates:
+    say(f"Duplicates:{', '.join(duplicates)}", False)
+else:
+    say("No duplicate processes", True)
+
+section("9. VERDICT QUALITY")
+if verdict_path.exists():
+    try:
+        with verdict_path.open("rb") as handle:
+            recent_lines = handle.readlines()[-200:]
+
+        verdicts: list[dict[object, object]] = []
+        for raw_line in recent_lines:
+            parsed = json.loads(raw_line)
+            if isinstance(parsed, dict):
+                verdicts.append(parsed)
+
+        approved_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "APPROVED"]
+        conditional_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "CONDITIONAL"]
+        denied_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "DENIED"]
+
+        say(
+            f"Last 200: {len(approved_verdicts)}APP/{len(conditional_verdicts)}COND/{len(denied_verdicts)}DEN",
+            len(denied_verdicts) < len(approved_verdicts) * 2,
+        )
+
+        confidences = [
+            float(verdict.get("confidence", 0) or 0)
+            for verdict in approved_verdicts + conditional_verdicts
+        ]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+        say(f"Avg confidence:{avg_confidence:.2f}", avg_confidence > 0.4)
+
+        subsystems: dict[str, int] = {}
+        for verdict in approved_verdicts + conditional_verdicts:
+            subsystem = str(verdict.get("subsystem", "?"))
+            subsystems[subsystem] = subsystems.get(subsystem, 0) + 1
+
+        if subsystems:
             print("         By asset class:")
-            for s,cnt in sorted(subs.items(),key=lambda x:-x[1]):print(f"           {s:<20s} {cnt:>3d}")
-    except Exception as e:say(f"Verdict analysis err:{e}",False)
+            for subsystem, count in sorted(subsystems.items(), key=lambda item: -item[1]):
+                print(f"           {subsystem:<20s} {count:>3d}")
+    except Exception as exc:
+        say(f"Verdict analysis err:{exc}", False)
 
-# 10. DASHBOARD
-print("\n"+"="*60+"\n  10. DASHBOARD HEALTH\n"+"="*60)
-h=api("/health")
-if h:say(f"API status:{h.get('status','?')}",h.get("status")=="ok")
-else:say("Health endpoint fail",False)
+section("10. DASHBOARD HEALTH")
+health = api("/health")
+if isinstance(health, dict):
+    say(f"API status:{health.get('status', '?')}", health.get("status") == "ok")
+else:
+    say("Health endpoint fail", False)
 
-# SUMMARY
-print("\n"+"="*60+f"\n  PASS={P}  WARN={W}  FAIL={F}\n"+"="*60)
-if F==0 and W<=3:print("  VERDICT: SYSTEM HEALTHY")
-elif F<=2:print("  VERDICT: MINOR ISSUES")
-else:print("  VERDICT: ATTENTION REQUIRED")
+print("\n" + "=" * 60 + f"\n  PASS={PASS_COUNT}  WARN={WARN_COUNT}  FAIL={FAIL_COUNT}\n" + "=" * 60)
+if FAIL_COUNT == 0 and WARN_COUNT <= 3:
+    print("  VERDICT: SYSTEM HEALTHY")
+elif FAIL_COUNT <= 2:
+    print("  VERDICT: MINOR ISSUES")
+else:
+    print("  VERDICT: ATTENTION REQUIRED")
