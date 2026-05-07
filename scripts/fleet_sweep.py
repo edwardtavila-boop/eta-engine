@@ -182,6 +182,16 @@ def main() -> int:
             worst_strs.append(f'{r["bot_id"]}(${r["total_pnl"]:+.0f})')
         print(f"  Worst losers:     {', '.join(worst_strs)}")
 
+    # Auto-generate capital allocation config
+    try:
+        from eta_engine.feeds.capital_allocator import compute_allocations, save_allocation
+        alloc = compute_allocations(LEDGER_PATH)
+        save_allocation(alloc)
+        active_bots = sum(1 for b in alloc.bots.values() if b.status == "active")
+        print(f"  Capital allocation: {active_bots} active bots, config saved")
+    except Exception:
+        pass
+
     return 0
 
 
