@@ -102,6 +102,19 @@ def test_git_surface_reports_dirty_count(tmp_path: Path) -> None:
     assert surface.dirty_count == 1
 
 
+def test_git_surface_ignores_inherited_git_hook_env(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    (repo / "x.txt").write_text("x\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_INDEX_FILE", str(operator.ETA_ENGINE_ROOT / ".git" / "index"))
+
+    surface = operator._git_surface(repo)
+
+    assert surface.status == "dirty"
+    assert surface.dirty_count == 1
+
+
 def test_main_writes_report_and_returns_zero(tmp_path: Path, capsys) -> None:
     coordination = tmp_path / "coordination"
     reports = tmp_path / "reports"

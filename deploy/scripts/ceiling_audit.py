@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import ssl as _ssl
 import subprocess
 import urllib.request
 from datetime import datetime
@@ -27,7 +26,6 @@ except ImportError:
 ROOT = Path(r"C:\EvolutionaryTradingAlgo")
 STATE_ROOT = ROOT / "var" / "eta_engine" / "state"
 ENGINE_ROOT = ROOT / "eta_engine"
-SSL_CONTEXT = _ssl._create_unverified_context()
 PASS_COUNT = 0
 WARN_COUNT = 0
 FAIL_COUNT = 0
@@ -57,18 +55,6 @@ def api(path: str) -> object | None:
             return json.loads(response.read().decode("utf-8"))
     except Exception:
         return None
-
-
-def ibkr(path: str) -> object:
-    try:
-        with urllib.request.urlopen(
-            f"https://127.0.0.1:5000/v1/api{path}",
-            context=SSL_CONTEXT,
-            timeout=10,
-        ) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        return {"error": str(exc)}
 
 
 def ps(command: str) -> str:
@@ -101,6 +87,13 @@ def bot_float(bot: dict[object, object], field: str) -> float:
     return float(value) if isinstance(value, int | float) else 0.0
 
 
+def read_json_path(path: Path) -> object | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
 section("1. INFRA")
 python_count = as_int(ps("(Get-Process python* -ea 0).Count") or "0")
 say(f"Python: {python_count}", python_count >= 4)
@@ -108,7 +101,7 @@ say(f"Python: {python_count}", python_count >= 4)
 java_count = as_int(ps("(Get-Process java* -ea 0).Count") or "0")
 say(f"Java(IBKR): {java_count}", java_count >= 1)
 
-for port, name in [(5000, "IBKR"), (8000, "Dashboard")]:
+for port, name in [(4002, "IBKR Gateway API"), (8000, "Dashboard")]:
     socket_state = ps(f"netstat -ano|sls ':{port} .*LISTENING'")
     say(f"Port {port}({name})", bool(socket_state.strip()))
 
@@ -213,19 +206,41 @@ else:
     say("No kill latch", True)
 
 section("5. IBKR EXECUTION")
-auth = ibkr("/iserver/auth/status")
-if isinstance(auth, dict) and "error" not in auth:
-    say(f"Auth: auth={auth.get('authenticated')} conn={auth.get('connected')}", bool(auth.get("authenticated")))
+tws_status = read_json_path(STATE_ROOT / "tws_watchdog.json")
+if isinstance(tws_status, dict):
+    details = tws_status.get("details", {})
+    details = details if isinstance(details, dict) else {}
+    socket_ok = details.get("socket_ok") is True
+    handshake_ok = details.get("handshake_ok") is True
+    healthy = tws_status.get("healthy") is True and socket_ok and handshake_ok
+    say(f"IB Gateway API: socket={socket_ok} handshake={handshake_ok}", healthy)
+
+    handshake_detail = str(details.get("handshake_detail") or "")
+    if handshake_detail:
+        say(f"Gateway handshake: {handshake_detail[:120]}", True)
+
+    account_snapshot = details.get("account_snapshot", {})
+    account_snapshot = account_snapshot if isinstance(account_snapshot, dict) else {}
+    summary = account_snapshot.get("summary", {})
+    summary = summary if isinstance(summary, dict) else {}
+    accounts = summary.get("accounts") or account_snapshot.get("accounts") or []
+    say(
+        (
+            f"Account snapshot: accounts={accounts} "
+            f"positions={summary.get('positions_count', '?')} "
+            f"executions={summary.get('executions_count', '?')}"
+        ),
+        bool(accounts),
+    )
 else:
-    say("IBKR auth fail", False)
+    say("IB Gateway watchdog missing", False)
 
-account = ibkr("/portfolio/accounts")
-if isinstance(account, list) and account and isinstance(account[0], dict):
-    say(f"Account:{account[0].get('accountId', '?')}({account[0].get('type', '?')})", True)
-
-positions = ibkr("/portfolio/DUQ319869/positions/0")
-if isinstance(positions, list):
-    say(f"Positions:{len(positions)}", True)
+reauth = read_json_path(STATE_ROOT / "ibgateway_reauth.json")
+if isinstance(reauth, dict):
+    status = reauth.get("status") or reauth.get("action") or "?"
+    say(f"Gateway reauth:{status}", reauth.get("healthy") is True or status == "healthy")
+else:
+    say("Gateway reauth missing", False)
 
 section("6. LLM / DEEPSEEK")
 env_path = ENGINE_ROOT / ".env"
@@ -241,7 +256,7 @@ if avengers_heartbeat.exists():
             quota_state = heartbeat.get("quota_state", "?")
             hourly_pct = float(heartbeat.get("hourly_pct", 0) or 0)
             daily_pct = float(heartbeat.get("daily_pct", 0) or 0)
-            say(f"Quota:{quota_state} (h{hourly_pct:.0%} d{daily_pct:.0%})", quota_state == "NORMAL")
+            say(f"Quota:{quota_state} (h{hourly_pct:.0%} d{daily_pct:.0%})", quota_state in ("NORMAL", "OK"))
     except Exception:
         say("Quota parse error", False)
 

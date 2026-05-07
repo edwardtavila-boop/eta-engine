@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -35,6 +36,23 @@ from eta_engine.scripts.agent_coordinator import AgentCoordinator  # noqa: E402
 from eta_engine.scripts.workspace_roots import ETA_RUNTIME_STATE_DIR  # noqa: E402
 
 DEFAULT_REPORT_DIR = ETA_RUNTIME_STATE_DIR / "codex_operator"
+GIT_LOCAL_ENV_VARS = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_DIR",
+    "GIT_GRAFT_FILE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_WORK_TREE",
+)
 
 
 @dataclass(frozen=True)
@@ -106,10 +124,15 @@ class CodexOperatorReport:
 def _git_surface(path: Path) -> GitSurface:
     """Return a bounded git status summary without mutating the repo."""
 
+    git_env = os.environ.copy()
+    for name in GIT_LOCAL_ENV_VARS:
+        git_env.pop(name, None)
+
     try:
         result = subprocess.run(
             ["git", "status", "--branch", "--short"],
             cwd=path,
+            env=git_env,
             capture_output=True,
             text=True,
             timeout=15,
