@@ -85,21 +85,22 @@ _SPECS: dict[str, InstrumentSpec] = {
     # CBOT Rates
     "ZN":   InstrumentSpec("ZN",   tick_size=0.015625, point_value=1000.0, commission_rt=4.00,
                            half_spread_ticks=1.0, base_slip_ticks=1.0),
-    # CME Crypto Futures.  is_perpetual=True is used by funding_ledger
-    # when the engine explicitly invokes perp-funding accounting; CME
-    # BTC/ETH futures are NOT perps and do NOT pay funding — see TODO
-    # on InstrumentSpec.is_perpetual for the planned per-venue split.
+    # CME Crypto Futures.  BTC/ETH large contracts; MBT/MET micros.
+    # is_perpetual=False — CME futures are NOT perpetual swaps, they
+    # do NOT pay funding.  The funding_ledger will not charge funding on
+    # these symbols.  Alpaca spot crypto (BTC, ETH, SOL, XRP) still routes
+    # through the spot fallback specs below.
     "BTC":  InstrumentSpec("BTC",  tick_size=5.0,  point_value=5.0,   commission_rt=11.00,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
-                           overnight_slip_mult=1.2,  # 24x5 — less day/night gap
-                           is_perpetual=True),
+                           overnight_slip_mult=1.2,
+                           is_perpetual=False),
     "MBT":  InstrumentSpec("MBT",  tick_size=5.0,  point_value=0.10,  commission_rt=2.50,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2),
     "ETH":  InstrumentSpec("ETH",  tick_size=0.50, point_value=50.0,  commission_rt=11.00,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2,
-                           is_perpetual=True),
+                           is_perpetual=False),
     "MET":  InstrumentSpec("MET",  tick_size=0.50, point_value=0.10,  commission_rt=2.50,
                            half_spread_ticks=2.0, base_slip_ticks=2.0,
                            overnight_slip_mult=1.2),
@@ -113,6 +114,9 @@ _SPECS: dict[str, InstrumentSpec] = {
     "XRP":  InstrumentSpec("XRP",  tick_size=0.0001, point_value=1.0, commission_rt=0.0,
                            half_spread_ticks=2.0, base_slip_ticks=3.0,
                            overnight_slip_mult=1.0),
+    # CME Solana and XRP micro futures — not yet listed; specs TBD.
+    # When available, add as "SOL_FUT" or "XRP_FUT" to avoid collision
+    # with spot fallback specs above.
     # Front-month suffixed aliases.  The data library uses "GC1/CL1/..."
     # for the active front-month contract; the registry uses the same
     # naming.  Without these aliases, get_spec(symbol) falls back to a

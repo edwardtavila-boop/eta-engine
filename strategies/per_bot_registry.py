@@ -1470,7 +1470,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "US-person compliant, RTH-only CME session gating."
         ),
         extras={
-            "promotion_status": "production_candidate",
+            "promotion_status": "paper_soak",
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
@@ -1480,6 +1480,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "trend",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+                "enable_exhaustion_gate": False,
+                "enable_absorption_gate": False,
+                "enable_drift_boost": False,
+            },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
@@ -1487,9 +1498,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MBT",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "btc_hybrid",
-            "deactivated": True,
-            "deactivated_on": "2026-05-04",
-            "deactivated_reason": "lab_sweep_2026_05_04: mbt_sweep_reclaim failed gates (sharpe=-0.71, exp_R=-0.057)",
         },
     ),
 
@@ -1511,7 +1519,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "US-person compliant, RTH-only CME session gating."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.38},
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
@@ -1521,6 +1529,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "trend",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+                "enable_exhaustion_gate": False,
+                "enable_absorption_gate": False,
+                "enable_drift_boost": False,
+            },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
@@ -1528,9 +1547,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MET",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "eth_perp",
-            "deactivated": True,
-            "deactivated_on": "2026-05-04",
-            "deactivated_reason": "lab_sweep_2026_05_04: met_sweep_reclaim failed gates (sharpe=-0.47, exp_R=-0.038)",
         },
     ),
 
