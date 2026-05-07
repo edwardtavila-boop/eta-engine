@@ -844,3 +844,461 @@ def test_commodity_front_month_fallback_resolves(
     assert (tmp_path / f"{symbol}1_5m.csv").exists()
 
 
+# --- Back-fetch mode (multi-contract stitch) ---
+#
+# The 2026-05-07 fetcher run on the VPS exposed that TWS HMDS only has
+# data for the SPECIFIC current front-month contract -- monthly-roll
+# futures (MBT, MET, CL, MCL, NG) cap at ~70 days because the prior
+# months' contracts didn't exist before their listing date. The
+# `--back-fetch` mode enumerates each historical contract that was
+# front-month during the requested window and stitches them.
+
+
+def test_enumerate_back_fetch_contracts_540d_mbt_monthly() -> None:
+    """540d back from 2026-05-07 -> ~18-19 monthly contracts for MBT.
+
+    Range: 2024-11 through 2026-05 inclusive = 19 (Nov, Dec, Jan, Feb,
+    Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar,
+    Apr, May = 19 calendar months). The exact count is determined by
+    how the 540-day earliest cursor falls inside November 2024.
+    """
+    end = datetime(2026, 5, 7, tzinfo=UTC)
+    contracts = mod.enumerate_back_fetch_contracts(
+        symbol="MBT", days=540, end=end,
+    )
+    # 540d window crosses 18-19 calendar-month boundaries.
+    assert 18 <= len(contracts) <= 19
+    # Newest contract is the current front-month (or end-of-window).
+    last_year, last_month = contracts[-1]
+    assert (last_year, last_month) == (2026, 5)
+    # All entries unique, sorted ascending.
+    assert contracts == sorted(set(contracts))
+
+
+def test_enumerate_back_fetch_contracts_quarterly_mnq() -> None:
+    """For quarterly contracts (MNQ), 540d -> ~6 quarterly listings."""
+    end = datetime(2026, 5, 7, tzinfo=UTC)
+    contracts = mod.enumerate_back_fetch_contracts(
+        symbol="MNQ", days=540, end=end,
+    )
+    # All months are quarterly: 3, 6, 9, or 12.
+    for _y, m in contracts:
+        assert m in (3, 6, 9, 12), f"MNQ {m} is not a quarterly month"
+    # 540d / 90d-per-quarter = 6 quarterly contracts (give or take 1).
+    assert 5 <= len(contracts) <= 8
+
+
+def test_enumerate_back_fetch_contracts_monthly_cl() -> None:
+    """CL has monthly listings; 90d back from 2026-05-07 -> 4 contracts.
+
+    Range covers Feb, Mar, Apr, May 2026.
+    """
+    end = datetime(2026, 5, 7, tzinfo=UTC)
+    contracts = mod.enumerate_back_fetch_contracts(
+        symbol="CL", days=90, end=end,
+    )
+    assert (2026, 5) in contracts
+    assert (2026, 4) in contracts
+    assert (2026, 3) in contracts
+    # Should NOT include 2025 -- 90d back from 2026-05-07 is 2026-02-06.
+    assert all(y == 2026 for y, _m in contracts)
+
+
+def test_last_business_day_of_month_skips_weekend() -> None:
+    """Sat 31 May 2025 -> Fri 30 May 2025."""
+    # May 2025: 31 = Saturday, so last business day = 30 (Friday).
+    bd = mod._last_business_day_of_month(2025, 5)
+    assert bd.year == 2025 and bd.month == 5
+    assert bd.weekday() < 5
+
+
+def test_last_business_day_of_month_december_rollover() -> None:
+    """December rolls into next year's January-first calculation."""
+    bd = mod._last_business_day_of_month(2026, 12)
+    assert bd.year == 2026 and bd.month == 12
+    # Last weekday of Dec 2026: Dec 31 = Thursday.
+    assert bd.weekday() < 5
+
+
+def test_build_specific_future_pins_year_month() -> None:
+    """_build_specific_future encodes lastTradeDateOrContractMonth=YYYYMM."""
+    contract = mod._build_specific_future("MBT", 2026, 4)
+    assert contract.symbol == "MBT"
+    assert contract.lastTradeDateOrContractMonth == "202604"
+    assert contract.exchange == "CME"
+    assert contract.currency == "USD"
+    # includeExpired is required for fetching expired contracts.
+    assert contract.includeExpired is True
+
+
+def test_build_specific_future_rejects_unknown_symbol() -> None:
+    with pytest.raises(ValueError, match="unknown futures symbol"):
+        mod._build_specific_future("ZZZ_NOT_A_SYMBOL", 2026, 4)
+
+
+def test_plan_back_fetch_chunks_monthly_one_chunk() -> None:
+    """A monthly contract's ~30-day window should be ~1 chunk at 5m."""
+    plan = mod.plan_back_fetch_chunks(
+        symbol="MBT", year=2026, month=4, timeframe="5m",
+    )
+    # 30-day window / 30-day chunks = 1 chunk.
+    assert len(plan) == 1
+    assert plan[0].duration_str == "30 D"
+
+
+def test_plan_back_fetch_chunks_quarterly_three_chunks() -> None:
+    """A quarterly contract's ~90-day window -> 3 chunks at 5m."""
+    plan = mod.plan_back_fetch_chunks(
+        symbol="MNQ", year=2026, month=6, timeframe="5m",
+    )
+    # ~90-day window / 30-day chunks -> 3 chunks.
+    assert 2 <= len(plan) <= 4
+
+
+# --- Stitch (continuous + adjust) ---
+def test_stitch_continuous_no_adjust_concatenates_chronologically() -> None:
+    """Without --adjust, stitched output is the raw concatenation."""
+    rows_old = [
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
+         "close": 50050.0, "volume": 10.0},
+        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0,
+         "close": 50150.0, "volume": 11.0},
+    ]
+    rows_new = [
+        # Newer contract starts at higher price (e.g. roll premium of $200).
+        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0,
+         "close": 50400.0, "volume": 12.0},
+        {"time": 1900, "open": 50400.0, "high": 50500.0, "low": 50300.0,
+         "close": 50450.0, "volume": 13.0},
+    ]
+    out = mod._stitch_continuous(
+        [((2026, 4), rows_old), ((2026, 5), rows_new)],
+        adjust=False,
+    )
+    assert [r["time"] for r in out] == [1000, 1300, 1600, 1900]
+    # Old contract's close stays at 50150, raw -- discontinuity at roll.
+    assert out[1]["close"] == pytest.approx(50150.0)
+    assert out[2]["close"] == pytest.approx(50400.0)
+
+
+def test_stitch_continuous_with_adjust_makes_price_continuous() -> None:
+    """With --adjust, the older contract's OHLC is shifted by the
+    delta = first(new).close - last(old).close so the roll is seamless.
+    """
+    rows_old = [
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
+         "close": 50050.0, "volume": 10.0},
+        {"time": 1300, "open": 50050.0, "high": 50200.0, "low": 50000.0,
+         "close": 50150.0, "volume": 11.0},
+    ]
+    rows_new = [
+        {"time": 1600, "open": 50350.0, "high": 50450.0, "low": 50250.0,
+         "close": 50400.0, "volume": 12.0},
+    ]
+    out = mod._stitch_continuous(
+        [((2026, 4), rows_old), ((2026, 5), rows_new)],
+        adjust=True,
+    )
+    # Delta = 50400 (first close of new) - 50150 (last close of old) = +250.
+    # Older contract's OHLC must be shifted +250 so the boundary is seamless.
+    assert out[0]["close"] == pytest.approx(50050.0 + 250.0)
+    assert out[1]["close"] == pytest.approx(50150.0 + 250.0)
+    # Newer contract is unchanged.
+    assert out[2]["close"] == pytest.approx(50400.0)
+    # Volume is NOT shifted.
+    assert out[0]["volume"] == pytest.approx(10.0)
+
+
+def test_stitch_continuous_dedupes_overlapping_timestamps() -> None:
+    """If two contracts both report a bar at the same timestamp during the
+    roll overlap, only the older contract's value is kept (first-wins).
+    """
+    rows_old = [
+        {"time": 1000, "open": 1.0, "high": 1.0, "low": 1.0,
+         "close": 1.0, "volume": 1.0},
+        {"time": 2000, "open": 2.0, "high": 2.0, "low": 2.0,
+         "close": 2.0, "volume": 2.0},  # overlap with rows_new[0]
+    ]
+    rows_new = [
+        {"time": 2000, "open": 99.0, "high": 99.0, "low": 99.0,
+         "close": 99.0, "volume": 99.0},
+        {"time": 3000, "open": 3.0, "high": 3.0, "low": 3.0,
+         "close": 3.0, "volume": 3.0},
+    ]
+    out = mod._stitch_continuous(
+        [((2026, 4), rows_old), ((2026, 5), rows_new)],
+        adjust=False,
+    )
+    assert [r["time"] for r in out] == [1000, 2000, 3000]
+    # Old contract wins for the overlapping ts (first-wins dedupe).
+    assert out[1]["close"] == pytest.approx(2.0)
+
+
+def test_stitch_continuous_empty_input() -> None:
+    assert mod._stitch_continuous([]) == []
+
+
+def test_stitch_continuous_single_contract_no_adjust_or_change() -> None:
+    """Single contract: stitch is a passthrough (deduped, sorted)."""
+    rows = [
+        {"time": 1000, "open": 1, "high": 1, "low": 1,
+         "close": 1, "volume": 1},
+        {"time": 500, "open": 0.5, "high": 0.5, "low": 0.5,
+         "close": 0.5, "volume": 0.5},  # out-of-order
+    ]
+    out = mod._stitch_continuous([((2026, 5), rows)], adjust=True)
+    assert [r["time"] for r in out] == [500, 1000]
+
+
+# --- Back-fetch end-to-end with mocked IB ---
+
+
+class _BackFetchIB(_MockIB):
+    """Mock that handles per-contract qualifyContracts (no ambiguity)
+    and returns synthetic bars per chunk -- exercises the back-fetch
+    path which uses lastTradeDateOrContractMonth=YYYYMM.
+    """
+
+    def __init__(
+        self,
+        *,
+        synthetic_bars_per_chunk: int = 5,
+        unlisted_months: set[tuple[int, int]] | None = None,
+    ) -> None:
+        super().__init__(synthetic_bars_per_chunk=synthetic_bars_per_chunk)
+        self.unlisted_months = unlisted_months or set()
+        self.qualified_yyyymm: list[str] = []
+
+    def qualifyContracts(self, *contracts: Any) -> list[Any]:  # noqa: N802
+        self.qualify_calls.extend(contracts)
+        out: list[Any] = []
+        for c in contracts:
+            yyyymm = getattr(c, "lastTradeDateOrContractMonth", "")
+            self.qualified_yyyymm.append(yyyymm)
+            if len(yyyymm) >= 6:
+                year = int(yyyymm[:4])
+                month = int(yyyymm[4:6])
+                if (year, month) in self.unlisted_months:
+                    continue
+            out.append(_MockQualifiedContract(
+                symbol=getattr(c, "symbol", "?"), expiry=yyyymm,
+            ))
+        return out
+
+
+def test_back_fetch_mode_writes_csv_with_mocked_ib(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """End-to-end: --back-fetch enumerates monthly contracts, qualifies
+    each by YYYYMM, fetches per-contract chunks, stitches and writes CSV.
+    """
+    ib = _BackFetchIB(synthetic_bars_per_chunk=5)
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "90",  # ~4 monthly contracts
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+            "--back-fetch",
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    csv_path = tmp_path / "MBT1_5m.csv"
+    assert csv_path.exists()
+
+    # qualifyContracts called per contract (not just once).
+    assert len(ib.qualify_calls) >= 3
+    # Each call had a YYYYMM-pinned contract.
+    assert all(len(yyyymm) == 6 for yyyymm in ib.qualified_yyyymm)
+    # Every qualified contract had includeExpired=True (back-fetch needs
+    # expired contracts).
+    for c in ib.qualify_calls:
+        assert getattr(c, "includeExpired", False) is True
+
+    # Bars written.
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) >= 5  # at least one contract's bars made it in
+
+
+def test_back_fetch_skips_unlisted_contract_gracefully(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """If a historical contract isn't listed by IBKR (e.g. very old or
+    not yet listed), the back-fetcher logs and continues.
+    """
+    # Pretend Feb 2026 isn't listed -- everything else is.
+    ib = _BackFetchIB(
+        synthetic_bars_per_chunk=5,
+        unlisted_months={(2026, 2)},
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "90",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+            "--back-fetch",
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    csv_path = tmp_path / "MBT1_5m.csv"
+    assert csv_path.exists()
+
+
+def test_back_fetch_with_adjust_produces_continuous_csv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """--back-fetch --adjust produces a price-continuous series.
+
+    Each contract's chunk reports prices offset by chunk_index, so
+    rolls produce price discontinuities by construction. With --adjust,
+    the older contract's OHLC must be shifted to make the price series
+    continuous.
+    """
+    ib = _BackFetchIB(synthetic_bars_per_chunk=3)
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "90",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+            "--back-fetch",
+            "--adjust",
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    csv_path = tmp_path / "MBT1_5m.csv"
+    assert csv_path.exists()
+
+    # Output is still canonical CSV format (load_ohlcv expectations).
+    with csv_path.open() as f:
+        header = next(csv.reader(f))
+    assert header == ["time", "open", "high", "low", "close", "volume"]
+
+
+def test_back_fetch_dry_run_prints_per_contract_plan(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    """--dry-run --back-fetch prints the per-contract enumeration
+    instead of the legacy single-front-month plan.
+    """
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "540",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--dry-run",
+            "--back-fetch",
+        ],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "back-fetch" in out
+    assert "MBT" in out
+    assert "monthly" in out
+    # 540d / 1 contract per month -> 18-19 contracts listed.
+    assert any(f"{y}" in out for y in (2024, 2025, 2026))
+
+
+def test_back_fetch_dry_run_quarterly_symbol(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    """Quarterly symbols (MNQ) enumerate fewer contracts in --back-fetch
+    dry-run -- 540d / quarterly = ~6 contracts vs ~18 for monthly.
+    """
+    rc = mod.run(
+        [
+            "--symbols", "MNQ",
+            "--days", "540",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--dry-run",
+            "--back-fetch",
+        ],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "quarterly" in out
+
+
+def test_legacy_front_month_only_still_works_no_regression(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """--back-fetch is opt-in; default behavior unchanged.
+
+    This is the regression guard: the legacy front-month-only flow that
+    fetch_chunks() implements must still produce a CSV when --back-fetch
+    is NOT passed.
+    """
+    ib = _MockIB(synthetic_bars_per_chunk=5)
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "60",  # 2 chunks -- legacy mode
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+            # NO --back-fetch -- this exercises the unchanged legacy path.
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    csv_path = tmp_path / "MBT1_5m.csv"
+    assert csv_path.exists()
+    # qualifyContracts was called exactly ONCE (legacy front-month only).
+    assert len(ib.qualify_calls) == 1
+
+
+def test_back_fetch_csv_format_unchanged() -> None:
+    """The canonical CSV header must remain time,open,high,low,close,volume
+    so the lab harness signals_*  adapters (load_ohlcv) keep working.
+    """
+    # Write an in-memory back-fetch CSV via merge_with_existing -> write_csv.
+    rows = [
+        {"time": 1000, "open": 50000.0, "high": 50100.0, "low": 49900.0,
+         "close": 50050.0, "volume": 10.0},
+    ]
+    import io  # noqa: PLC0415 -- test-local
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["time", "open", "high", "low", "close", "volume"])
+    for r in rows:
+        w.writerow([r["time"], r["open"], r["high"], r["low"],
+                    r["close"], r["volume"]])
+    buf.seek(0)
+    header = next(csv.reader(buf))
+    assert header == ["time", "open", "high", "low", "close", "volume"]
+
+
+def test_parser_accepts_back_fetch_and_adjust_flags() -> None:
+    parser = mod.build_parser()
+    args = parser.parse_args(["--back-fetch"])
+    assert args.back_fetch is True
+    assert args.adjust is False
+
+    args = parser.parse_args(["--back-fetch", "--adjust"])
+    assert args.back_fetch is True
+    assert args.adjust is True
+
+    # Default: both off (regression guard).
+    args = parser.parse_args([])
+    assert args.back_fetch is False
+    assert args.adjust is False
+
+
