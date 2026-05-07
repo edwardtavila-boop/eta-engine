@@ -311,11 +311,15 @@ class RSIMeanReversionStrategy:
 
 
 def mnq_rsi_mr_preset() -> RSIMeanReversionConfig:
+    """Paper-soak v2 tuning (2026-05-06): atr_stop_mult 1.0→1.5 (tight
+    stops were getting hit on noise before the mean-reversion played out
+    on ~50 trades at near-breakeven), rr_target 1.5→2.0 (need bigger
+    wins to justify the tight-signal premium)."""
     return RSIMeanReversionConfig(
         rsi_period=10, oversold_threshold=25.0, overbought_threshold=75.0,
         bb_window=20, bb_std_mult=2.0,
         volume_z_lookback=20, min_volume_z=0.3, require_rejection=True,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=3, warmup_bars=50,
     )

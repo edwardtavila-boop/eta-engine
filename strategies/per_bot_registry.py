@@ -690,12 +690,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "overbought_threshold": 75.0,
                 "bb_window": 20, "bb_std_mult": 2.0,
                 "min_volume_z": 0.3, "require_rejection": True,
-                # PRESSURE TEST 2026-05-04: lab heatmap shows sharpe=1.81
-                # at stop_atr=1.0x vs 0.78 at 1.5x — tighter stop more
-                # than doubles risk-adjusted return. Counter-trend bots
-                # need fast invalidation; 1.0x lets the bot eat losses
-                # quickly and re-arm rather than ride a 1.5x drawdown.
-                "rr_target": 1.5, "atr_stop_mult": 1.0,
+                # PAPER-SOAK V2 tuning (2026-05-06): heatmap said 1.0x =
+                # sharpe 1.81, but actual paper soak showed ~50T at -$50
+                # (near-breakeven) — 1.0x was eating stops on noise before
+                # the mean-reversion could play out.  1.5x + rr 2.0 is the
+                # fleet-soak-informed target.
+                "rr_target": 2.0, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 3, "min_bars_between_trades": 12,
                 "warmup_bars": 50,
             },
@@ -843,8 +843,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sub_strategy_kind": "vwap_reversion",
             "sub_strategy_extras": {
                 "vwap_std_band": 2.0, "min_dev_std_mult": 1.5,
-                "min_volume_z": 0.0,
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
+                "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },
@@ -893,15 +893,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_qty_equity_pct": 0.005,
                 "require_rejection": True, "min_rejection_wick_pct": 0.25,
                 "min_volume_z": 0.3,
-                # PRESSURE TEST 2026-05-04: lab heatmap shows sharpe=0.73
-                # at stop_atr=2.5x vs 0.32 at current 1.0x — wider stop
-                # MORE than doubles sharpe. Volume-profile bot trades
-                # value-area extremes which often poke past with noise
-                # before reverting; tight 1.0x stop was getting hit on
-                # noise. 2.5x lets the auction-revert thesis breathe.
-                "rr_target": 1.5, "atr_stop_mult": 2.5,
+                "freeze_profile_after_warmup": False,
+                # PAPER-SOAK V2 (2026-05-06): freeze_profile_after_warmup
+                # was True — the killer bug.  Profile frozen at bars
+                # 0-1000 meant all 50 entries fired on STALE POC/VAH/VAL,
+                # explaining the -$2800 bleed.  False + warmup 500 lets
+                # the profile stay current.  rr_target 1.5→2.0.
+                "rr_target": 2.0, "atr_stop_mult": 2.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 24,
-                "warmup_bars": 1000,
+                "warmup_bars": 500,
             },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
@@ -942,9 +942,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_qty_equity_pct": 0.005,
                 "require_rejection": True, "min_rejection_wick_pct": 0.20,
                 "min_volume_z": 0.2,
-                "rr_target": 2.0, "atr_stop_mult": 1.5,
+                "freeze_profile_after_warmup": False,
+                "rr_target": 3.0, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 24,
-                "warmup_bars": 500,
+                "warmup_bars": 300,
             },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
@@ -1574,10 +1575,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "edge_config": {
                 "enable_session_gate": False,
                 "is_crypto": False,
-                "enable_structural_stops": True,
+                "enable_structural_stops": False,
                 "structural_lookback": 10,
                 "structural_buffer_mult": 0.25,
-                "enable_vol_sizing": True,
+                "enable_vol_sizing": False,
                 "vol_regime_lookback": 78,
                 "enable_exhaustion_gate": False,
                 "enable_absorption_gate": False,
@@ -1662,8 +1663,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "gc",
                 "level_lookback": 48, "reclaim_window": 3,
-                "min_wick_pct": 0.30, "min_volume_z": 0.3,
-                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "min_wick_pct": 0.40, "min_volume_z": 0.3,
+                "rr_target": 3.0, "atr_stop_mult": 3.0,
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
             },

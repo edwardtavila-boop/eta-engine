@@ -38,7 +38,7 @@ filter directional bias if the operator wants it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import time as _dtime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -487,10 +487,7 @@ class AnchorSweepStrategy:
         max_rr = 10.0
         implied_rr = abs(target - entry) / max(stop_dist_actual, 1e-9)
         if implied_rr > max_rr:
-            if side == "BUY":
-                target = entry + max_rr * stop_dist_actual
-            else:
-                target = entry - max_rr * stop_dist_actual
+            target = entry + max_rr * stop_dist_actual if side == "BUY" else entry - max_rr * stop_dist_actual
 
         from eta_engine.backtest.engine import _Open
 
@@ -517,15 +514,21 @@ class AnchorSweepStrategy:
 
 
 def mnq_anchor_sweep_preset() -> AnchorSweepConfig:
-    """MNQ 5m intraday — full named-anchor set."""
+    """MNQ 5m intraday — full named-anchor set.
+
+    Paper-soak v2 tuning (2026-05-06): atr_stop_mult 1.0→1.5 (22.9% WR
+    was largely stops hit by noise around named anchors — wider stop
+    gives the reclaim thesis room), reclaim_window 1→2 (one bar often
+    not enough for close-back-inside on MNQ 5m sweep wicks).
+    """
     return AnchorSweepConfig(
         anchor_set=("PDH", "PDL", "PMH", "PML", "ONH", "ONL"),
         min_wick_pct=0.50,
         volume_z_lookback=20,
         min_volume_z=0.5,
-        reclaim_window=1,
+        reclaim_window=2,
         atr_period=14,
-        atr_stop_mult=1.0,
+        atr_stop_mult=1.5,
         rr_target=2.0,
         risk_per_trade_pct=0.005,
         max_trades_per_day=3,

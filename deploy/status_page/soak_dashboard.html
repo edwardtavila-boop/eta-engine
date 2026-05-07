@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="description" content="Evolutionary Trading Algo — Paper Soak Dashboard" />
+  <meta name="theme-color" content="#05070b" />
+  <meta http-equiv="refresh" content="60" />
+  <title>ETA // Paper Soak Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020406;
+      --bg-2: #060b14;
+      --surface: rgba(8, 12, 20, 0.74);
+      --border: rgba(148, 163, 184, 0.14);
+      --text: #f4f7ff;
+      --muted: rgba(208, 220, 240, 0.76);
+      --cyan: #22d3ee;
+      --cyan-strong: #06b6d4;
+      --lime: #4ade80;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --gold: #f5d36b;
+      --display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
+      --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; color-scheme: dark; }
+    ::selection { background: rgba(197, 160, 89, 0.3); color: #fff; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 120% 90% at 50% -20%, rgba(34, 211, 238, 0.12), transparent 52%),
+        radial-gradient(circle at 18% 18%, rgba(245, 211, 107, 0.08), transparent 24%),
+        linear-gradient(180deg, #020409 0%, #05080f 40%, #03050a 100%);
+      font-family: var(--sans);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "ss01" on, "cv02" on;
+      min-height: 100vh;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(circle at 50% 0%, black 18%, transparent 72%);
+      opacity: 0.5;
+      z-index: 0;
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(1320px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 24px 0 clamp(30px, 4vw, 54px);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(22px) saturate(1.3);
+      background: linear-gradient(180deg, rgba(5, 8, 14, 0.94), rgba(3, 5, 10, 0.82));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 40px rgba(0, 0, 0, 0.34);
+    }
+    .topbar::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.34) 45%, rgba(251, 191, 36, 0.18) 55%, transparent);
+      pointer-events: none;
+    }
+    .topbar-inner {
+      width: min(1320px, calc(100% - 40px));
+      margin: 0 auto;
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .topbar-left h1 {
+      font-family: var(--display);
+      font-size: 1.4rem;
+      letter-spacing: -0.03em;
+      color: #fff;
+    }
+    .topbar-left h1 .accent { color: var(--cyan); }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 12px rgba(74, 222, 128, 0.5);
+      animation: pulse 2.4s ease-in-out infinite;
+      display: inline-block;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; transform: scale(0.96); }
+      50% { opacity: 1; transform: scale(1.08); }
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      padding: 18px 20px;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(0, 0, 0, 0.2);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+    }
+    .kpi-label {
+      font-size: 0.65rem;
+      font-family: var(--mono);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.84);
+      margin-bottom: 8px;
+    }
+    .kpi-value {
+      font-family: var(--display);
+      font-size: 1.8rem;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+    .kpi-sub {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .kpi-value.green { color: var(--lime); }
+    .kpi-value.red { color: var(--rose); }
+    .kpi-value.amber { color: var(--amber); }
+    .kpi-value.cyan { color: var(--cyan); }
+    .kpi-value.gold { color: var(--gold); }
+
+    .soak-table-wrap {
+      overflow-x: auto;
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.13);
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+    .soak-table-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 0 90px rgba(34, 211, 238, 0.04);
+      z-index: 2;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      position: relative;
+      z-index: 1;
+    }
+    thead th {
+      text-align: left;
+      padding: 14px 16px;
+      color: rgba(148, 163, 184, 0.84);
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    thead th:last-child { text-align: center; }
+    tbody td {
+      padding: 11px 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+    tr.diamond { background: linear-gradient(90deg, rgba(34, 211, 238, 0.1), rgba(74, 222, 128, 0.06)); border-left: 3px solid var(--cyan); }
+    tr.profitable { background: linear-gradient(90deg, rgba(74, 222, 128, 0.08), transparent 70%); }
+    tr.losing { background: linear-gradient(90deg, rgba(251, 113, 133, 0.1), transparent 70%); }
+    tr.thin { background: linear-gradient(90deg, rgba(251, 191, 36, 0.07), transparent 70%); }
+    tr.timeout { background: rgba(148, 163, 184, 0.04); filter: grayscale(0.5); }
+
+    .bot-name {
+      font-weight: 600;
+      color: #f8fafc;
+      font-family: var(--sans);
+    }
+    .bot-strategy {
+      font-size: 0.68rem;
+      color: rgba(148, 163, 184, 0.7);
+      font-family: var(--mono);
+    }
+    .bot-symbol {
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 0.8rem;
+      color: var(--cyan);
+    }
+    .pnl { font-family: var(--mono); font-weight: 600; font-size: 0.82rem; }
+    .pnl.positive { color: var(--lime); }
+    .pnl.negative { color: var(--rose); }
+    .sharpe { font-family: var(--mono); font-size: 0.8rem; }
+    .sharpe.good { color: var(--lime); }
+    .sharpe.ok { color: var(--amber); }
+    .sharpe.bad { color: var(--rose); }
+    .wr { font-family: var(--mono); font-size: 0.78rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.65rem;
+      font-family: var(--mono);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .badge-diamond { background: rgba(34, 211, 238, 0.15); color: #67e8f9; border: 1px solid rgba(34, 211, 238, 0.25); }
+    .badge-green { background: rgba(74, 222, 128, 0.12); color: var(--lime); }
+    .badge-red { background: rgba(251, 113, 133, 0.12); color: var(--rose); }
+    .badge-yellow { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
+    .badge-gray { background: rgba(148, 163, 184, 0.08); color: rgba(148, 163, 184, 0.7); }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-state h3 {
+      font-family: var(--display);
+      font-size: 1.3rem;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .footer-bar {
+      margin-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: rgba(148, 163, 184, 0.6);
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .footer-bar a { color: var(--cyan-strong); text-decoration: none; }
+    .footer-bar a:hover { text-decoration: underline; }
+
+    .load-error {
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(251, 113, 133, 0.25);
+      background: rgba(251, 113, 133, 0.06);
+      color: var(--rose);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 860px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .topbar-inner { flex-direction: column; align-items: flex-start; }
+    }
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 24px, 1320px); }
+      .kpi-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <span class="live-dot" id="statusDot"></span>
+        <h1>Paper Soak <span class="accent">Dashboard</span></h1>
+      </div>
+      <div class="topbar-right">
+        <span id="fleetLabel">Fleet: --</span>
+        <span id="pnlLabel">PnL: --</span>
+        <span id="diamondLabel">Diamonds: --</span>
+        <span id="clockLabel">--</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <div id="loadError" style="display:none;"></div>
+
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Bots</div>
+        <div class="kpi-value cyan" id="kpiTotalBots">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Fleet PnL</div>
+        <div class="kpi-value" id="kpiFleetPnL">--</div>
+        <div class="kpi-sub" id="kpiFleetPnLSub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Diamonds</div>
+        <div class="kpi-value gold" id="kpiDiamonds">--</div>
+        <div class="kpi-sub" id="kpiDiamondsSub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Profitable</div>
+        <div class="kpi-value green" id="kpiProfitable">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Losing</div>
+        <div class="kpi-value red" id="kpiLosing">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Trades</div>
+        <div class="kpi-value cyan" id="kpiTrades">--</div>
+      </div>
+    </div>
+
+    <div class="soak-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Bot</th>
+            <th>Symbol</th>
+            <th>Sessions</th>
+            <th>Trades</th>
+            <th>PnL</th>
+            <th>WR%</th>
+            <th>Sharpe</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="botTableBody">
+          <tr class="empty-state"><td colspan="8"><h3>Loading fleet data...</h3><p>Waiting for paper soak ledger refresh.</p></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer-bar">
+      <span>Auto-refresh: 60s</span>
+      <span id="refreshLabel">Last updated: --</span>
+      <span><a href="/api/soak/status" target="_blank">Raw JSON</a></span>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      var API = "/api/soak/data";
+      var SHARPE_THRESHOLD = 0.5;
+      var MIN_SESSIONS = 2;
+
+      function computeSharpe(returns) {
+        if (returns.length < 2) return 0;
+        var mean = returns.reduce(function(a, b) { return a + b; }, 0) / returns.length;
+        var sqDiffs = returns.map(function(v) { var d = v - mean; return d * d; });
+        var stdev = Math.sqrt(sqDiffs.reduce(function(a, b) { return a + b; }, 0) / (returns.length - 1));
+        if (stdev < 1e-9) return 0;
+        return mean / stdev;
+      }
+
+      function formatMoney(v) {
+        var abs = Math.abs(v);
+        var sign = v >= 0 ? "+" : "";
+        if (abs >= 1e6) return sign + "$" + (v / 1e6).toFixed(2) + "M";
+        if (abs >= 1000) return sign + "$" + (v / 1000).toFixed(1) + "k";
+        return sign + "$" + v.toFixed(0);
+      }
+
+      function formatPnL(v) {
+        var sign = v >= 0 ? "+" : "";
+        return sign + "$" + Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
+      }
+
+      function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      function setHtml(id, html) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+      }
+
+      function getStatusClass(bot) {
+        if (!bot.flag) return "";
+        if (bot.flag.indexOf("DIAMOND") >= 0) return "diamond";
+        if (bot.n_sessions < MIN_SESSIONS) return "thin";
+        if (bot.total_pnl > 0) return "profitable";
+        if (bot.total_pnl < 0) return "losing";
+        return "thin";
+      }
+
+      function getStatusBadge(bot) {
+        if (!bot.flag) return '<span class="badge badge-gray">TIMEOUT</span>';
+        if (bot.flag.indexOf("DIAMOND") >= 0) return '<span class="badge badge-diamond">DIAMOND</span>';
+        if (bot.n_sessions < MIN_SESSIONS) return '<span class="badge badge-yellow">THIN</span>';
+        if (bot.total_pnl > 0) return '<span class="badge badge-green">GREEN</span>';
+        if (bot.total_pnl < 0) return '<span class="badge badge-red">LOSS</span>';
+        return '<span class="badge badge-gray">IDLE</span>';
+      }
+
+      function renderBotRow(bot) {
+        var cls = getStatusClass(bot);
+        var pnlClass = bot.total_pnl >= 0 ? "positive" : "negative";
+        var sharpeClass = "";
+        if (bot.sharpe > SHARPE_THRESHOLD) sharpeClass = "good";
+        else if (bot.sharpe > 0) sharpeClass = "ok";
+        else if (bot.sharpe < -0.3) sharpeClass = "bad";
+
+        var sharpeVal = bot.sharpe.toFixed(2);
+        var wrVal = bot.wr.toFixed(1);
+
+        var row = '<tr class="' + cls + '">';
+        row += '<td><div class="bot-name">' + esc(bot.bot_id) + '</div><div class="bot-strategy">' + esc(bot.strategy || "") + '</div></td>';
+        row += '<td><span class="bot-symbol">' + esc(bot.symbol) + '</span></td>';
+        row += '<td>' + bot.n_sessions + '</td>';
+        row += '<td>' + bot.n_trades + '</td>';
+        row += '<td><span class="pnl ' + pnlClass + '">' + formatPnL(bot.total_pnl) + '</span></td>';
+        row += '<td><span class="wr">' + wrVal + '%</span></td>';
+        row += '<td><span class="sharpe ' + sharpeClass + '">' + sharpeVal + '</span></td>';
+        row += '<td>' + getStatusBadge(bot) + '</td>';
+        row += '</tr>';
+        return row;
+      }
+
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function renderDashboard(data) {
+        var bots = data.bots || [];
+
+        if (bots.length === 0) {
+          setHtml("botTableBody", '<tr class="empty-state"><td colspan="8"><h3>No bot data found</h3><p>Paper soak ledger exists but contains no bot sessions.</p></td></tr>');
+          setText("kpiTotalBots", "0");
+          setText("kpiFleetPnL", "$0");
+          setText("kpiDiamonds", "0");
+          setText("kpiProfitable", "0");
+          setText("kpiLosing", "0");
+          setText("kpiTrades", "0");
+          setText("fleetLabel", "Fleet: 0");
+          setText("pnlLabel", "PnL: $0");
+          setText("diamondLabel", "Diamonds: 0");
+          return;
+        }
+
+        // Sort by PnL descending (diamonds first, then profitable, then rest)
+        bots.sort(function(a, b) {
+          var aDiamond = a.flag && a.flag.indexOf("DIAMOND") >= 0 ? 1 : 0;
+          var bDiamond = b.flag && b.flag.indexOf("DIAMOND") >= 0 ? 1 : 0;
+          if (aDiamond !== bDiamond) return bDiamond - aDiamond;
+          return b.total_pnl - a.total_pnl;
+        });
+
+        var rows = "";
+        for (var i = 0; i < bots.length; i++) {
+          rows += renderBotRow(bots[i]);
+        }
+        setHtml("botTableBody", rows);
+
+        var totalBots = bots.length;
+        var fleetPnl = 0;
+        var diamonds = 0;
+        var profitable = 0;
+        var losers = 0;
+        var totalTrades = 0;
+        for (var j = 0; j < bots.length; j++) {
+          var b = bots[j];
+          fleetPnl += b.total_pnl;
+          totalTrades += b.n_trades;
+          if (b.flag && b.flag.indexOf("DIAMOND") >= 0) diamonds++;
+          if (b.total_pnl > 0) profitable++;
+          if (b.total_pnl < 0) losers++;
+        }
+
+        setText("kpiTotalBots", String(totalBots));
+        setText("kpiFleetPnL", formatPnL(fleetPnl));
+        setHtml("kpiFleetPnLSub", totalTrades + " trades across " + totalBots + " bots");
+        var kpiPnl = document.getElementById("kpiFleetPnL");
+        kpiPnl.className = "kpi-value " + (fleetPnl >= 0 ? "green" : "red");
+
+        setText("kpiDiamonds", String(diamonds));
+        setHtml("kpiDiamondsSub", "Sharpe &gt; " + SHARPE_THRESHOLD + " + PnL &gt; $0");
+
+        setText("kpiProfitable", String(profitable));
+        setText("kpiLosing", String(losers));
+        setText("kpiTrades", String(totalTrades));
+
+        setText("fleetLabel", "Fleet: " + totalBots);
+        setText("pnlLabel", "PnL: " + formatPnL(fleetPnl));
+        setText("diamondLabel", "Diamonds: " + diamonds);
+      }
+
+      function updateClock() {
+        var now = new Date();
+        setText("clockLabel", now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        setText("refreshLabel", "Last updated: " + now.toLocaleString([], { dateStyle: "short", timeStyle: "medium" }));
+      }
+
+      function showError(msg) {
+        var el = document.getElementById("loadError");
+        el.style.display = "block";
+        el.className = "load-error";
+        el.textContent = "ERROR: " + msg;
+      }
+
+      function hideError() {
+        document.getElementById("loadError").style.display = "none";
+      }
+
+      function loadData() {
+        fetch(API)
+          .then(function(res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then(function(data) {
+            hideError();
+            renderDashboard(data);
+            updateClock();
+            var dot = document.getElementById("statusDot");
+            dot.style.background = "#4ade80";
+          })
+          .catch(function(err) {
+            showError(err.message);
+            var dot = document.getElementById("statusDot");
+            dot.style.background = "#fb7185";
+          });
+      }
+
+      updateClock();
+      loadData();
+    })();
+  </script>
+</body>
+</html>

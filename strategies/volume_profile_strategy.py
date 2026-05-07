@@ -348,17 +348,22 @@ class VolumeProfileStrategy:
 
 
 def mnq_volume_profile_preset() -> VolumeProfileStrategyConfig:
+    """Paper-soak v2 tuning (2026-05-06): freeze_profile_after_warmup
+    False (the killer bug — frozen profile after warmup meant all entries
+    fired on STALE POC/VAH/VAL from bars 0-1000, explaining the -$2,800
+    bleed on 50 trades), warmup_bars 1000→500 (faster profile building),
+    rr_target 1.5→2.0 (auction-revert needs wider targets)."""
     return VolumeProfileStrategyConfig(
         profile_lookback=1000, bucket_size=2.0,
         min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
-        freeze_profile_after_warmup=True,
+        freeze_profile_after_warmup=False,
         require_rejection=True, min_rejection_wick_pct=0.25,
         volume_z_lookback=20, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
+        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=1000,
+        max_trades_per_day=2, warmup_bars=500,
     )
 
 
@@ -378,17 +383,20 @@ def nq_volume_profile_preset() -> VolumeProfileStrategyConfig:
 
 
 def btc_volume_profile_preset() -> VolumeProfileStrategyConfig:
+    """Paper-soak v2 tuning (2026-05-06): same freeze-profile fix as MNQ
+    (stale POC/VAH/VAL was the root cause), warmup_bars 500→300,
+    rr_target 2.0→3.0 (BTC trend moves need wider profit targets)."""
     return VolumeProfileStrategyConfig(
         profile_lookback=500, bucket_size=50.0,
         min_va_spread_atr_mult=2.0, min_extreme_distance_atr_mult=1.5,
         min_poc_distance_atr_mult=2.0,
         max_qty_equity_pct=0.005,
-        freeze_profile_after_warmup=True,
+        freeze_profile_after_warmup=False,
         require_rejection=True, min_rejection_wick_pct=0.20,
         volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
+        atr_period=14, atr_stop_mult=1.5, rr_target=3.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=24,
-        max_trades_per_day=2, warmup_bars=500,
+        max_trades_per_day=2, warmup_bars=300,
     )
 
 
