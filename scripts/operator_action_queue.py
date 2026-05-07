@@ -168,8 +168,16 @@ def _read_runtime_state(name: str) -> dict[str, Any]:
 
 
 def _gateway_exe_present(gateway_dir: Path = Path(r"C:\Jts\ibgateway\1046")) -> bool:
-    """Return whether the canonical IB Gateway 10.46 executable exists."""
-    return (gateway_dir / "ibgateway.exe").exists()
+    """Return whether the canonical IB Gateway 10.46 executable exists.
+
+    IBC renames the live gateway binary to ``ibgateway1.exe`` during its
+    wrapper install, so both names must count as a recovered canonical
+    runtime.
+    """
+    return any(
+        (gateway_dir / name).exists()
+        for name in ("ibgateway.exe", "ibgateway1.exe")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +310,7 @@ def _op5_telegram_creds() -> OpItem:
     chat = _env_key_present("TELEGRAM_CHAT_ID")
     if bot and chat:
         item.verdict = VERDICT_DONE
-        item.detail = "Both keys resolve"
+        item.detail = "Both keys resolve; Hermes alert transport is ready"
     else:
         item.verdict = VERDICT_BLOCKED
         missing = []
@@ -310,10 +318,15 @@ def _op5_telegram_creds() -> OpItem:
             missing.append("TELEGRAM_BOT_TOKEN")
         if not chat:
             missing.append("TELEGRAM_CHAT_ID")
-        item.detail = f"Missing: {', '.join(missing)}"
+        item.detail = (
+            f"Missing: {', '.join(missing)}. Hermes alert delivery stays degraded, "
+            "but this does not block the paper_live trading path."
+        )
     item.evidence = {
         "TELEGRAM_BOT_TOKEN": bot,
         "TELEGRAM_CHAT_ID": chat,
+        "launch_blocker": False,
+        "role": "alerts_transport",
     }
     return item
 
@@ -689,6 +702,8 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     single_source = repair.get("single_source") if isinstance(repair.get("single_source"), dict) else {}
     task_states = single_source.get("task_states") if isinstance(single_source.get("task_states"), dict) else {}
     task_canonical = bool(single_source.get("gateway_task_canonical"))
+    repair_tasks = repair.get("tasks") if isinstance(repair.get("tasks"), dict) else {}
+    eta_gateway_task_result = str(repair_tasks.get("ETA-IBGateway") or "").strip()
     tws_healthy = tws.get("healthy") is True
     handshake_ok = (tws.get("details") or {}).get("handshake_ok") is True
 
@@ -711,6 +726,22 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
                 "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
                 ".\\eta_engine\\deploy\\scripts\\install_ibgateway_1046.ps1 "
                 "-Install -RepairAfterInstall"
+            ),
+        ]
+        severity = "red"
+    elif gateway_exe and tws_healthy and handshake_ok and (not task_canonical or not task_states):
+        item.verdict = VERDICT_BLOCKED
+        item.detail = (
+            "IB Gateway 10.46 and TWS API 4002 are healthy, but the recovery/startup "
+            "tasks are still not canonical for unattended launch."
+        )
+        if eta_gateway_task_result:
+            item.detail += f" ETA-IBGateway update result: {eta_gateway_task_result}"
+        next_commands = [
+            (
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "
+                ".\\eta_engine\\deploy\\scripts\\repair_ibgateway_vps.ps1 "
+                "-ApplyJtsIni -ApplyVmOptions -RepairTasks -EnforceSingleSource -UseIbc"
             ),
         ]
         severity = "red"
@@ -742,6 +773,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
         "overall_severity": severity,
         "gateway_exe_present": gateway_exe,
         "task_canonical": task_canonical,
+        "task_update_result": eta_gateway_task_result,
         "task_states": task_states,
         "tws_healthy": tws_healthy,
         "handshake_ok": handshake_ok,
@@ -758,6 +790,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
                 "evidence": {
                     "gateway_exe_present": gateway_exe,
                     "task_canonical": task_canonical,
+                    "task_update_result": eta_gateway_task_result,
                     "tws_healthy": tws_healthy,
                     "handshake_ok": handshake_ok,
                     "allow_unsigned_requires_source_confirmation": True,

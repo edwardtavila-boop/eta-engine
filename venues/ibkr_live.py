@@ -31,6 +31,26 @@ logger = logging.getLogger(__name__)
 _IBKR_REJECTED_STATUSES = {"ApiCancelled", "Cancelled", "Inactive"}
 _IBKR_CONFIRMED_STATUSES = {"Filled", "PreSubmitted", "Submitted"}
 
+
+def ibkr_connect_timeout_seconds() -> int:
+    """Return the shared IBKR/TWS connect timeout in seconds."""
+    raw = os.environ.get("ETA_IBKR_CONNECT_TIMEOUT_S", "20").strip()
+    try:
+        timeout = int(float(raw))
+    except ValueError:
+        logger.warning(
+            "ETA_IBKR_CONNECT_TIMEOUT_S=%r is invalid; using 20 seconds",
+            raw,
+        )
+        return 20
+    if timeout <= 0:
+        logger.warning(
+            "ETA_IBKR_CONNECT_TIMEOUT_S=%r must be > 0; using 20 seconds",
+            raw,
+        )
+        return 20
+    return timeout
+
 # ─── Crypto guard startup-log latch ──────────────────────────────
 #
 # The local crypto pre-check (see place_order) emits one of two startup
@@ -611,18 +631,22 @@ class LiveIbkrVenue(VenueBase):
             # connect then hits Error 326 ("client id is already in use").
             # Backing off and retrying lets TWS finish the cleanup.
             last_exc: Exception | None = None
+            connect_timeout_s = ibkr_connect_timeout_seconds()
             for attempt in range(3):
                 try:
                     self._ib = IB()
                     await self._ib.connectAsync(
                         "127.0.0.1", 4002,
-                        clientId=self._client_id, timeout=5,
+                        clientId=self._client_id,
+                        timeout=connect_timeout_s,
                     )
                     self._connected = True
                     logger.info(
                         "LiveIbkrVenue connected to TWS on port 4002 "
-                        "(clientId=%d, attempt=%d)",
-                        self._client_id, attempt + 1,
+                        "(clientId=%d, attempt=%d, timeout=%ss)",
+                        self._client_id,
+                        attempt + 1,
+                        connect_timeout_s,
                     )
                     return True
                 except Exception as exc:  # noqa: BLE001

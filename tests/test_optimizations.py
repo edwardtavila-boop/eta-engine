@@ -176,6 +176,10 @@ class TestStatusPage:
             'id="gatewayStatusSub"',
             'id="brokerRouterStatus"',
             'id="brokerRouterSub"',
+            'id="paperLiveStatus"',
+            'id="paperLiveSub"',
+            'id="operatorQueueStatus"',
+            'id="operatorQueueSub"',
         ):
             assert anchor in html, f"missing dashboard anchor: {anchor}"
 
@@ -189,6 +193,9 @@ class TestStatusPage:
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
+        assert "const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';" in html
+        assert "const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';" in html
+        assert "endpointCandidates(" in html
         assert "cache: 'no-store'" in html
         assert "FETCH_TIMEOUT_MS" in html
         assert "AUX_FETCH_TIMEOUT_MS" in html
@@ -225,6 +232,17 @@ class TestStatusPage:
         assert "/api/jarvis/operator_queue" in js
         assert "top-operator-queue" in js
         assert "next_actions" in js
+        assert "launch_blocked_count" in js
+        assert "top_launch_blockers" in js
+
+    def test_command_center_renders_paper_live_transition_panel(self):
+        path = Path(__file__).resolve().parent.parent / "deploy" / "status_page" / "js" / "command_center.js"
+        js = path.read_text(encoding="utf-8")
+        assert "PaperLiveTransitionPanel" in js
+        assert "/api/jarvis/paper_live_transition" in js
+        assert "critical_ready" in js
+        assert "paper_ready_bots" in js
+        assert "operator_queue_first_launch_blocker_op_id" in js
 
     def test_command_center_renders_bot_strategy_readiness_panel(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"

@@ -197,26 +197,32 @@ class OperatorQueuePanel extends Panel {
   render(data) {
     const summary = data.summary || {};
     const blockers = data.top_blockers || [];
+    const launchBlockers = data.top_launch_blockers || [];
     const blocked = Number(summary.BLOCKED || 0);
+    const launchBlocked = Number(data.launch_blocked_count || 0);
     const observed = Number(summary.OBSERVED || 0);
     const unknown = Number(summary.UNKNOWN || 0);
     const top = document.getElementById('top-operator-queue');
     if (top) {
-      const cls = blocked > 0 ? 'text-amber-300' : 'text-emerald-300';
-      top.innerHTML = `<span>ops</span><span class="${cls}">${blocked} blocked</span>`;
+      const cls = blocked > 0 ? (launchBlocked > 0 ? 'text-red-300' : 'text-amber-300') : 'text-emerald-300';
+      const label = blocked > 0 ? `${blocked} blocked` : 'clear';
+      top.innerHTML = `<span>ops</span><span class="${cls}">${label}</span>`;
     }
     if (data.error) {
       this.body.innerHTML = `<div class="text-amber-300 text-sm">Operator queue degraded: ${escapeHtml(data.error)}</div>`;
       return;
     }
+    const primaryBlocker = launchBlockers[0] || blockers[0] || null;
     const actions = data.next_actions || [];
     const rows = blockers.slice(0, 5).map((item) => {
+      const isLaunchBlocker = launchBlockers.some((candidate) => candidate?.op_id === item?.op_id);
       const sev = String(item?.evidence?.overall_severity || '').toUpperCase();
       const sevChip = sev ? `<span class="text-amber-300">${escapeHtml(sev)}</span>` : '';
+      const launchChip = isLaunchBlocker ? '<span class="text-red-300">launch</span>' : '';
       return `<li class="border-b border-zinc-800/70 pb-2">
         <div class="flex items-center justify-between gap-2">
           <span class="font-mono text-cyan-300">${escapeHtml(item.op_id || 'OP')}</span>
-          ${sevChip}
+          <span class="flex items-center gap-2">${launchChip}${sevChip}</span>
         </div>
         <div class="text-zinc-100">${escapeHtml(item.title || '')}</div>
         <div class="text-zinc-500">${escapeHtml(item.detail || item.where || '')}</div>
@@ -226,13 +232,61 @@ class OperatorQueuePanel extends Panel {
       `<li class="font-mono text-zinc-300">${escapeHtml(action)}</li>`,
     ).join('');
     this.body.innerHTML = `
-      <div class="grid grid-cols-3 gap-2 text-xs mb-3">
+      <div class="grid grid-cols-4 gap-2 text-xs mb-3">
         <div><div class="text-zinc-500">blocked</div><div class="text-amber-300 text-lg font-mono">${blocked}</div></div>
+        <div><div class="text-zinc-500">launch</div><div class="text-red-300 text-lg font-mono">${launchBlocked}</div></div>
         <div><div class="text-zinc-500">observed</div><div class="text-cyan-300 text-lg font-mono">${observed}</div></div>
         <div><div class="text-zinc-500">unknown</div><div class="text-zinc-300 text-lg font-mono">${unknown}</div></div>
       </div>
+      ${primaryBlocker ? `<div class="text-xs text-zinc-500 mb-3">top blocker: <span class="text-zinc-200 font-mono">${escapeHtml(primaryBlocker.op_id || 'OP')}</span> ${escapeHtml(primaryBlocker.detail || primaryBlocker.title || '')}</div>` : ''}
       <ul class="space-y-2 text-xs">${rows || '<li class="text-emerald-300">No active operator blockers.</li>'}</ul>
       ${actionRows ? `<div class="text-xs text-zinc-500 mt-3 mb-1">next actions</div><ul class="space-y-1 text-xs">${actionRows}</ul>` : ''}`;
+  }
+}
+
+// --- 5c. Paper-live transition ---
+class PaperLiveTransitionPanel extends Panel {
+  constructor() { super('cc-paper-live-transition', '/api/jarvis/paper_live_transition', 'Paper Live Transition'); }
+  render(data) {
+    const status = String(data.status || 'unknown');
+    const criticalReady = !!data.critical_ready;
+    const paperReady = Number(data.paper_ready_bots || 0);
+    const launchBlocked = Number(data.operator_queue_launch_blocked_count || 0);
+    const firstGate = Array.isArray(data.gates) ? data.gates.find((gate) => gate && gate.passed === false) : null;
+    const blockerId = data.operator_queue_first_launch_blocker_op_id || data.operator_queue_first_blocker_op_id || '';
+    const nextAction = data.operator_queue_first_launch_next_action || data.operator_queue_first_next_action || '';
+    const detail = firstGate?.detail || nextAction || data.error || '';
+    const statusTone = criticalReady
+      ? 'text-emerald-300'
+      : status.startsWith('ready_with_')
+        ? 'text-amber-300'
+        : status === 'blocked'
+          ? 'text-red-300'
+          : 'text-zinc-300';
+    const statusLabel = criticalReady
+      ? 'ready'
+      : status.startsWith('ready_with_')
+        ? 'warning'
+        : status.replaceAll('_', ' ');
+    const top = document.getElementById('top-paper-live-transition');
+    if (top) {
+      top.innerHTML = `<span>paper</span><span class="${statusTone}">${escapeHtml(statusLabel)}</span>`;
+    }
+    if (data.error && status === 'unreadable') {
+      this.body.innerHTML = `<div class="text-amber-300 text-sm">Paper-live transition degraded: ${escapeHtml(data.error)}</div>`;
+      return;
+    }
+    this.body.innerHTML = `
+      <div class="grid grid-cols-3 gap-2 text-xs mb-3">
+        <div><div class="text-zinc-500">status</div><div class="${statusTone} text-lg font-mono">${escapeHtml(statusLabel)}</div></div>
+        <div><div class="text-zinc-500">paper ready</div><div class="text-cyan-300 text-lg font-mono">${paperReady}</div></div>
+        <div><div class="text-zinc-500">launch blockers</div><div class="${launchBlocked > 0 ? 'text-red-300' : 'text-emerald-300'} text-lg font-mono">${launchBlocked}</div></div>
+      </div>
+      <div class="text-xs text-zinc-500 mb-1">first blocker</div>
+      <div class="text-xs text-zinc-200 mb-3">${escapeHtml(blockerId || 'none')}</div>
+      <div class="text-xs text-zinc-500 mb-1">detail</div>
+      <div class="text-xs text-zinc-300">${escapeHtml(detail || 'No failed paper-live gates.')}</div>
+      ${nextAction ? `<div class="text-xs text-zinc-500 mt-3 mb-1">next action</div><div class="text-xs font-mono text-zinc-300">${escapeHtml(nextAction)}</div>` : ''}`;
   }
 }
 
@@ -475,6 +529,7 @@ onAuthenticated(() => {
     new DisagreementHeatmapPanel(),
     new StressMoodPanel(),
     new OperatorQueuePanel(),
+    new PaperLiveTransitionPanel(),
     new BotStrategyReadinessPanel(),
     new StrategySuperchargeManifestPanel(),
     new StrategySuperchargeResultsPanel(),

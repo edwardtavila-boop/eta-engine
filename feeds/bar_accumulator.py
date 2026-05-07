@@ -20,8 +20,10 @@ from typing import Any
 import numpy as np
  
 log = logging.getLogger("bar_accumulator")
- 
+
 DATA_DIR = Path("C:/EvolutionaryTradingAlgo/data")
+STATE_DIR = Path("C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+LOCK_PATH = STATE_DIR / "bar_accumulator.lock"
  
 # All symbols we track — mapped to TWS contract specs
 SYMBOLS = [
@@ -59,118 +61,171 @@ SYMBOLS = [
     {"symbol": "MCL1", "secType": "FUT", "exchange": "NYMEX", "currency": "USD", "csv": "MCL1_5m.csv"},
     {"symbol": "M6E1", "secType": "FUT", "exchange": "GLOBEX", "currency": "USD", "csv": "M6E1_5m.csv"},
 ]
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _acquire_run_lock() -> int | None:
+    """Return an open lock fd, or None when another live run owns the lock."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    if LOCK_PATH.exists():
+        try:
+            raw = LOCK_PATH.read_text(encoding="utf-8").splitlines()
+            prior_pid = int(raw[0].strip())
+        except (OSError, ValueError, IndexError):
+            prior_pid = 0
+        if prior_pid and _pid_alive(prior_pid):
+            return None
+        try:
+            LOCK_PATH.unlink()
+        except OSError:
+            return None
+
+    try:
+        fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+    except FileExistsError:
+        return None
+    os.write(fd, f"{os.getpid()}\n{datetime.now(UTC).isoformat()}\n".encode("utf-8"))
+    return fd
+
+
+def _release_run_lock(fd: int | None) -> None:
+    if fd is not None:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    try:
+        LOCK_PATH.unlink()
+    except OSError:
+        pass
  
  
 def accumulate_bars():
     """Main entry: pull bars from TWS, write CSVs."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
-    try:
-        import asyncio
-        from ib_insync import IB, Contract, util
-        util.patchAsyncio()
- 
-        ib = IB()
-        ib.connect("127.0.0.1", 4002, clientId=50, timeout=15)
-        log.info("Connected to TWS for bar accumulation")
-    except Exception as e:
-        log.warning("TWS not available for bar accumulation: %s", e)
-        _synthetic_bar_fallback()
+    lock_fd = _acquire_run_lock()
+    if lock_fd is None:
+        log.warning("bar_accumulator lock held at %s; skipping overlapping run", LOCK_PATH)
         return
- 
-    # Lazy import so the helper is only attempted under the FUT branch
-    try:
-        from ib_insync import ContFuture
-        _has_contfuture = True
-    except ImportError:
-        _has_contfuture = False
 
-    for spec in SYMBOLS:
+    try:
         try:
-            # CME/COMEX/NYMEX/CBOT futures use ContFuture (continuous
-            # front-month, auto-rolls). The aliased "1"-suffix entries
-            # (MNQ1, GC1, MGC1, etc.) need the suffix STRIPPED for IBKR
-            # contract resolution — IBKR's symbol is the bare root
-            # ("MNQ", not "MNQ1"). Without this strip every micro-with-1
-            # alias errors out as "No security definition has been found".
-            # Some IBKR exchange aliases don't resolve via ib_insync —
-            # remap to the canonical exchange code.
-            ibkr_exchange = spec["exchange"]
-            if ibkr_exchange == "GLOBEX":
-                ibkr_exchange = "CME"  # 6E / M6E live on CME (Globex is the platform, not the exchange code)
+            import asyncio
+            from ib_insync import IB, Contract, util
+            util.patchAsyncio()
 
-            # CME currency futures use IBKR's quirk: the contract.symbol
-            # is the CURRENCY ROOT (EUR/GBP/JPY), not the operator symbol
-            # ("6E"). The "6E" is the trading class. Without this remap,
-            # ContFuture(symbol="6E") returns "No security definition".
-            _CURRENCY_FUTURES = {
-                "6E":  ("EUR", "6E"),   # Euro FX (full size)
-                "M6E": ("EUR", "M6E"),  # Micro Euro FX
-                "6B":  ("GBP", "6B"),   # GB Pound
-                "M6B": ("GBP", "M6B"),
-                "6J":  ("JPY", "6J"),   # JP Yen
-                "6C":  ("CAD", "6C"),   # CA Dollar
-                "6A":  ("AUD", "6A"),   # AU Dollar
-            }
-
-            if spec["secType"] == "FUT" and _has_contfuture:
-                root_sym = spec["symbol"][:-1] if spec["symbol"].endswith("1") else spec["symbol"]
-                if root_sym in _CURRENCY_FUTURES:
-                    ibkr_sym, trading_class = _CURRENCY_FUTURES[root_sym]
-                    contract = ContFuture(
-                        ibkr_sym,
-                        exchange=ibkr_exchange,
-                        currency=spec["currency"],
-                        tradingClass=trading_class,
-                    )
-                else:
-                    contract = ContFuture(
-                        root_sym,
-                        exchange=ibkr_exchange,
-                        currency=spec["currency"],
-                    )
-            else:
-                contract = Contract()
-                contract.symbol = spec["symbol"]
-                contract.secType = spec["secType"]
-                contract.exchange = ibkr_exchange
-                contract.currency = spec["currency"]
-                contract.includeExpired = False
-
-            qualified = ib.qualifyContracts(contract)
-            if not qualified:
-                log.warning("Cannot qualify: %s (%s)", spec["symbol"], spec["exchange"])
-                _synthetic_bar_for_symbol(spec)
-                continue
-
-            c = qualified[0]
-            # Paxos crypto contracts only support AGGTRADES (aggregate
-            # trades), not TRADES — IBKR rejects with error 10299. Pick
-            # the right whatToShow value per asset class.
-            what_to_show = "AGGTRADES" if spec["secType"] == "CRYPTO" else "TRADES"
-            bars = ib.reqHistoricalData(
-                c, endDateTime="", durationStr="2 D",
-                barSizeSetting="5 mins", whatToShow=what_to_show,
-                useRTH=True, formatDate=1,
-            )
- 
-            if bars:
-                _write_csv(spec["csv"], bars)
-                log.info("Wrote %d bars for %s", len(bars), spec["symbol"])
-            else:
-                _synthetic_bar_for_symbol(spec)
+            ib = IB()
+            ib.connect("127.0.0.1", 4002, clientId=50, timeout=15)
+            log.info("Connected to TWS for bar accumulation")
         except Exception as e:
-            log.debug("Bar pull failed for %s: %s", spec["symbol"], e)
-            _synthetic_bar_for_symbol(spec)
+            log.warning("TWS not available for bar accumulation: %s", e)
+            _synthetic_bar_fallback()
+            return
  
-    try:
-        ib.disconnect()
-    except Exception:
-        pass
- 
-    # Also write a data inventory manifest
-    _write_inventory()
-    log.info("Bar accumulation complete")
+        # Lazy import so the helper is only attempted under the FUT branch
+        try:
+            from ib_insync import ContFuture
+            _has_contfuture = True
+        except ImportError:
+            _has_contfuture = False
+
+        for spec in SYMBOLS:
+            try:
+                # CME/COMEX/NYMEX/CBOT futures use ContFuture (continuous
+                # front-month, auto-rolls). The aliased "1"-suffix entries
+                # (MNQ1, GC1, MGC1, etc.) need the suffix STRIPPED for IBKR
+                # contract resolution — IBKR's symbol is the bare root
+                # ("MNQ", not "MNQ1"). Without this strip every micro-with-1
+                # alias errors out as "No security definition has been found".
+                # Some IBKR exchange aliases don't resolve via ib_insync —
+                # remap to the canonical exchange code.
+                ibkr_exchange = spec["exchange"]
+                if ibkr_exchange == "GLOBEX":
+                    ibkr_exchange = "CME"  # 6E / M6E live on CME (Globex is the platform, not the exchange code)
+
+                # CME currency futures use IBKR's quirk: the contract.symbol
+                # is the CURRENCY ROOT (EUR/GBP/JPY), not the operator symbol
+                # ("6E"). The "6E" is the trading class. Without this remap,
+                # ContFuture(symbol="6E") returns "No security definition".
+                _CURRENCY_FUTURES = {
+                    "6E":  ("EUR", "6E"),   # Euro FX (full size)
+                    "M6E": ("EUR", "M6E"),  # Micro Euro FX
+                    "6B":  ("GBP", "6B"),   # GB Pound
+                    "M6B": ("GBP", "M6B"),
+                    "6J":  ("JPY", "6J"),   # JP Yen
+                    "6C":  ("CAD", "6C"),   # CA Dollar
+                    "6A":  ("AUD", "6A"),   # AU Dollar
+                }
+
+                if spec["secType"] == "FUT" and _has_contfuture:
+                    root_sym = spec["symbol"][:-1] if spec["symbol"].endswith("1") else spec["symbol"]
+                    if root_sym in _CURRENCY_FUTURES:
+                        ibkr_sym, trading_class = _CURRENCY_FUTURES[root_sym]
+                        contract = ContFuture(
+                            ibkr_sym,
+                            exchange=ibkr_exchange,
+                            currency=spec["currency"],
+                            tradingClass=trading_class,
+                        )
+                    else:
+                        contract = ContFuture(
+                            root_sym,
+                            exchange=ibkr_exchange,
+                            currency=spec["currency"],
+                        )
+                else:
+                    contract = Contract()
+                    contract.symbol = spec["symbol"]
+                    contract.secType = spec["secType"]
+                    contract.exchange = ibkr_exchange
+                    contract.currency = spec["currency"]
+                    contract.includeExpired = False
+
+                qualified = ib.qualifyContracts(contract)
+                if not qualified:
+                    log.warning("Cannot qualify: %s (%s)", spec["symbol"], spec["exchange"])
+                    _synthetic_bar_for_symbol(spec)
+                    continue
+
+                c = qualified[0]
+                # Paxos crypto contracts only support AGGTRADES (aggregate
+                # trades), not TRADES — IBKR rejects with error 10299. Pick
+                # the right whatToShow value per asset class.
+                what_to_show = "AGGTRADES" if spec["secType"] == "CRYPTO" else "TRADES"
+                bars = ib.reqHistoricalData(
+                    c, endDateTime="", durationStr="2 D",
+                    barSizeSetting="5 mins", whatToShow=what_to_show,
+                    useRTH=True, formatDate=1,
+                )
+
+                if bars:
+                    _write_csv(spec["csv"], bars)
+                    log.info("Wrote %d bars for %s", len(bars), spec["symbol"])
+                else:
+                    _synthetic_bar_for_symbol(spec)
+            except Exception as e:
+                log.debug("Bar pull failed for %s: %s", spec["symbol"], e)
+                _synthetic_bar_for_symbol(spec)
+
+        try:
+            ib.disconnect()
+        except Exception:
+            pass
+
+        # Also write a data inventory manifest
+        _write_inventory()
+        log.info("Bar accumulation complete")
+    finally:
+        _release_run_lock(lock_fd)
  
  
 def _write_csv(filename: str, bars: list) -> None:

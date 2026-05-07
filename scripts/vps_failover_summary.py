@@ -23,7 +23,7 @@ from eta_engine.scripts import vps_failover_drill  # noqa: E402
 if TYPE_CHECKING:
     from eta_engine.scripts.vps_failover_drill import CheckResult
 
-_SEVERITY_ORDER = {"red": 3, "amber": 2, "skip": 1, "green": 0}
+_SEVERITY_ORDER = {"red": 3, "amber": 2, "green": 1, "skip": 0}
 
 
 def _overall_severity(checks: list[CheckResult]) -> str:
@@ -46,15 +46,26 @@ def _commands_for_check(check: CheckResult) -> list[str]:
     if isinstance(vps_commands, list):
         commands.extend(str(cmd) for cmd in vps_commands)
 
+    def _add_smoke_commands(entries: list[Any]) -> None:
+        entry_text = " ".join(
+            str(item.get("file") if isinstance(item, dict) else item)
+            for item in entries
+        )
+        if "decision_journal.jsonl" in entry_text:
+            commands.append("python -m eta_engine.scripts.decision_journal_smoke --json")
+        if "runtime_log.jsonl" in entry_text:
+            commands.append("python -m eta_engine.scripts.runtime_log_smoke --json")
+        if "drift_watchdog.jsonl" in entry_text:
+            commands.append("python -m eta_engine.scripts.drift_watchdog_smoke --json")
+        if "alerts_log.jsonl" in entry_text:
+            commands.append("python -m eta_engine.scripts.alerts_log_smoke --json")
+
     missing = details.get("missing")
     if isinstance(missing, list):
-        missing_text = " ".join(str(item) for item in missing)
-        if "decision_journal.jsonl" in missing_text:
-            commands.append("python -m eta_engine.scripts.decision_journal_smoke --json")
-        if "runtime_log.jsonl" in missing_text:
-            commands.append("python -m eta_engine.scripts.runtime_log_smoke --json")
-        if "drift_watchdog.jsonl" in missing_text:
-            commands.append("python -m eta_engine.scripts.drift_watchdog_smoke --json")
+        _add_smoke_commands(missing)
+    stale = details.get("stale")
+    if isinstance(stale, list):
+        _add_smoke_commands(stale)
 
     return list(dict.fromkeys(commands))
 

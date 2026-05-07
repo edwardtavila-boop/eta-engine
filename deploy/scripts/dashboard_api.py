@@ -408,12 +408,34 @@ def _dashboard_diagnostics_payload() -> dict:
     except Exception as exc:  # noqa: BLE001 -- diagnostics should fail soft.
         equity = {"series": [], "summary": {}, "source": "error", "_error": str(exc)}
 
+    operator_queue = _operator_queue_payload()
+    paper_live_transition = _paper_live_transition_payload(refresh=False)
     readiness = _bot_strategy_readiness_payload()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
     roster_summary = roster.get("summary") if isinstance(roster.get("summary"), dict) else {}
     equity_series = equity.get("series") if isinstance(equity.get("series"), list) else []
     equity_summary = equity.get("summary") if isinstance(equity.get("summary"), dict) else {}
     card_summary = cards.get("summary") if isinstance(cards.get("summary"), dict) else {}
+    operator_summary = (
+        operator_queue.get("summary") if isinstance(operator_queue.get("summary"), dict) else {}
+    )
+    top_operator_blockers = (
+        operator_queue.get("top_blockers") if isinstance(operator_queue.get("top_blockers"), list) else []
+    )
+    top_launch_blockers = (
+        operator_queue.get("top_launch_blockers")
+        if isinstance(operator_queue.get("top_launch_blockers"), list)
+        else []
+    )
+    first_operator_blocker = (
+        top_operator_blockers[0] if top_operator_blockers and isinstance(top_operator_blockers[0], dict) else {}
+    )
+    first_launch_blocker = (
+        top_launch_blockers[0] if top_launch_blockers and isinstance(top_launch_blockers[0], dict) else {}
+    )
+    first_failed_gate = _first_failed_gate(
+        paper_live_transition if isinstance(paper_live_transition, dict) else {}
+    )
     readiness_summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
     readiness_lanes = readiness_summary.get("launch_lanes") if isinstance(readiness_summary, dict) else {}
     readiness_lane_counts = readiness_lanes if isinstance(readiness_lanes, dict) else {}
@@ -482,12 +504,52 @@ def _dashboard_diagnostics_payload() -> dict:
             "top_action_count": len(readiness.get("top_actions") or []),
             "error": readiness.get("error"),
         },
+        "operator_queue": {
+            "blocked": int(operator_summary.get("BLOCKED") or 0),
+            "observed": int(operator_summary.get("OBSERVED") or 0),
+            "unknown": int(operator_summary.get("UNKNOWN") or 0),
+            "launch_blocked": int(operator_queue.get("launch_blocked_count") or 0),
+            "top_blocker_op_id": str(first_operator_blocker.get("op_id") or ""),
+            "top_blocker_title": str(first_operator_blocker.get("title") or ""),
+            "top_launch_blocker_op_id": str(first_launch_blocker.get("op_id") or ""),
+            "top_launch_blocker_detail": str(
+                first_launch_blocker.get("detail")
+                or first_launch_blocker.get("title")
+                or ""
+            ),
+            "error": operator_queue.get("error"),
+        },
+        "paper_live_transition": {
+            "status": str(paper_live_transition.get("status") or "unknown"),
+            "critical_ready": bool(paper_live_transition.get("critical_ready")),
+            "paper_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
+            "first_launch_blocker_op_id": str(
+                paper_live_transition.get("operator_queue_first_launch_blocker_op_id")
+                or paper_live_transition.get("operator_queue_first_blocker_op_id")
+                or ""
+            ),
+            "first_launch_next_action": str(
+                paper_live_transition.get("operator_queue_first_launch_next_action")
+                or paper_live_transition.get("operator_queue_first_next_action")
+                or ""
+            ),
+            "first_failed_gate": {
+                "name": str(first_failed_gate.get("name") or ""),
+                "detail": str(first_failed_gate.get("detail") or ""),
+                "next_action": str(first_failed_gate.get("next_action") or ""),
+            },
+            "source_age_s": paper_live_transition.get("source_age_s"),
+            "error": paper_live_transition.get("error"),
+        },
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
             "bot_fleet_contract": isinstance(roster.get("bots"), list),
             "equity_contract": "series" in equity,
             "bot_strategy_readiness_contract": readiness.get("status") == "ready" and not readiness.get("error"),
+            "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
+            "paper_live_transition_contract": isinstance(paper_live_transition, dict)
+            and "status" in paper_live_transition,
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }
@@ -1389,6 +1451,17 @@ def _paper_live_transition_payload(*, refresh: bool = False) -> dict:
     }
 
 
+def _first_failed_gate(payload: dict) -> dict:
+    """Return the first failed gate from a paper-live transition payload."""
+    gates = payload.get("gates")
+    if not isinstance(gates, list):
+        return {}
+    for gate in gates:
+        if isinstance(gate, dict) and gate.get("passed") is False:
+            return gate
+    return {}
+
+
 def _bot_strategy_readiness_payload() -> dict:
     """Return bot strategy/data readiness without letting snapshot probes break the dashboard."""
     try:
@@ -1903,6 +1976,7 @@ def dashboard_payload(response: Response) -> dict:
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     payload = dict(read_json_safe(_state_dir() / "dashboard_payload.json"))
     payload["operator_queue"] = _operator_queue_payload()
+    payload["paper_live_transition"] = _paper_live_transition_payload(refresh=False)
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()

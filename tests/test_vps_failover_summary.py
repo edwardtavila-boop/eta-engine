@@ -70,6 +70,31 @@ def test_summary_adds_smoke_commands_for_missing_canonical_state(monkeypatch) ->
     assert "python -m eta_engine.scripts.drift_watchdog_smoke --json" in commands
 
 
+def test_summary_adds_smoke_commands_for_stale_canonical_state(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    checks = [
+        vps_failover_drill.CheckResult(
+            name="state_files_fresh",
+            severity="amber",
+            summary="recommended state files stale",
+            details={
+                "stale": [
+                    {"file": "logs/eta_engine/runtime_log.jsonl", "age_h": 30.0},
+                    {"file": "logs/eta_engine/alerts_log.jsonl", "age_h": 30.0},
+                    {"file": "var/eta_engine/state/drift_watchdog.jsonl", "age_h": 30.0},
+                ]
+            },
+        )
+    ]
+    monkeypatch.setattr(vps_failover_drill, "collect_checks", lambda **_kwargs: checks)
+
+    summary = vps_failover_summary.build_summary()
+
+    commands = summary["blockers"][0]["next_commands"]
+    assert "python -m eta_engine.scripts.runtime_log_smoke --json" in commands
+    assert "python -m eta_engine.scripts.alerts_log_smoke --json" in commands
+    assert "python -m eta_engine.scripts.drift_watchdog_smoke --json" in commands
+
+
 def test_summary_json_main_prints_machine_readable_payload(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     checks = [
         vps_failover_drill.CheckResult(name="deploy_files_present", severity="green", summary="ok")
@@ -82,3 +107,16 @@ def test_summary_json_main_prints_machine_readable_payload(monkeypatch, capsys) 
     assert rc == 0
     assert payload["overall_severity"] == "green"
     assert payload["blockers"] == []
+
+
+def test_summary_prefers_green_over_optional_skip(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    checks = [
+        vps_failover_drill.CheckResult(name="deploy_files_present", severity="green", summary="ok"),
+        vps_failover_drill.CheckResult(name="backup_restore_round_trip", severity="skip", summary="skipped"),
+    ]
+    monkeypatch.setattr(vps_failover_drill, "collect_checks", lambda **_kwargs: checks)
+
+    summary = vps_failover_summary.build_summary()
+
+    assert summary["overall_severity"] == "green"
+    assert summary["exit_code"] == 0

@@ -109,13 +109,43 @@ _ENV_COPY_COMMANDS = [
     "cp .env.example .env && chmod 600 .env",
     "$EDITOR .env",
 ]
-_ENV_READINESS_REQUIRED_GROUPS: dict[str, list[str]] = {
+_ENV_RUNTIME_REQUIRED_GROUP = {
     "runtime_mode": ["ETA_MODE=PAPER"],
     "jarvis_budget": [
         "ANTHROPIC_API_KEY",
         "JARVIS_HOURLY_USD_BUDGET",
         "JARVIS_DAILY_USD_BUDGET",
     ],
+}
+_ENV_RUNTIME_REQUIRED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "runtime_mode": (("ETA_MODE",),),
+    "jarvis_budget": (
+        ("ANTHROPIC_API_KEY",),
+        ("JARVIS_HOURLY_USD_BUDGET",),
+        ("JARVIS_DAILY_USD_BUDGET",),
+    ),
+}
+_ENV_IBKR_DIRECT_REQUIRED_GROUP = {
+    "ibkr_primary": ["IBKR_VENUE_TYPE=paper"],
+}
+_ENV_IBKR_DIRECT_REQUIRED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "ibkr_primary": (("IBKR_VENUE_TYPE",),),
+}
+_ENV_IBKR_CLIENT_PORTAL_GROUP = {
+    "ibkr_client_portal_sidecars": [
+        "IBKR_CP_BASE_URL",
+        "IBKR_ACCOUNT_ID",
+        "IBKR_SYMBOL_CONID_MAP or IBKR_CONID_<SYMBOL>",
+    ],
+}
+_ENV_IBKR_CLIENT_PORTAL_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "ibkr_client_portal_sidecars": (
+        ("IBKR_CP_BASE_URL",),
+        ("IBKR_ACCOUNT_ID",),
+        ("IBKR_SYMBOL_CONID_MAP", "IBKR_CONID_"),
+    ),
+}
+_ENV_IBKR_FULL_REQUIRED_GROUP = {
     "ibkr_primary": [
         "IBKR_VENUE_TYPE=paper",
         "IBKR_CP_BASE_URL",
@@ -123,21 +153,7 @@ _ENV_READINESS_REQUIRED_GROUPS: dict[str, list[str]] = {
         "IBKR_SYMBOL_CONID_MAP or IBKR_CONID_<SYMBOL>",
     ],
 }
-_ENV_READINESS_RECOMMENDED_GROUPS: dict[str, list[str]] = {
-    "tastytrade_fallback": [
-        "TASTY_VENUE_TYPE=paper",
-        "TASTY_API_BASE_URL",
-        "TASTY_ACCOUNT_NUMBER",
-        "TASTY_SESSION_TOKEN",
-    ],
-}
-_ENV_REQUIRED_KEY_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
-    "runtime_mode": (("ETA_MODE",),),
-    "jarvis_budget": (
-        ("ANTHROPIC_API_KEY",),
-        ("JARVIS_HOURLY_USD_BUDGET",),
-        ("JARVIS_DAILY_USD_BUDGET",),
-    ),
+_ENV_IBKR_FULL_REQUIRED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
     "ibkr_primary": (
         ("IBKR_VENUE_TYPE",),
         ("IBKR_CP_BASE_URL",),
@@ -145,7 +161,15 @@ _ENV_REQUIRED_KEY_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("IBKR_SYMBOL_CONID_MAP", "IBKR_CONID_"),
     ),
 }
-_ENV_RECOMMENDED_KEY_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
+_ENV_TASTY_RECOMMENDED_GROUP = {
+    "tastytrade_fallback": [
+        "TASTY_VENUE_TYPE=paper",
+        "TASTY_API_BASE_URL",
+        "TASTY_ACCOUNT_NUMBER",
+        "TASTY_SESSION_TOKEN",
+    ],
+}
+_ENV_TASTY_RECOMMENDED_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
     "tastytrade_fallback": (
         ("TASTY_VENUE_TYPE",),
         ("TASTY_API_BASE_URL",),
@@ -153,6 +177,7 @@ _ENV_RECOMMENDED_KEY_OPTIONS: dict[str, tuple[tuple[str, ...], ...]] = {
         ("TASTY_SESSION_TOKEN",),
     ),
 }
+_DIRECT_IBKR_ROUTES = {"direct_ibkr", "direct", "ibkr", ""}
 _ENV_TEMPLATE_REQUIRED_TOKENS = [
     "ETA_MODE",
     "ANTHROPIC_API_KEY",
@@ -255,6 +280,8 @@ def _archive_name(path: Path) -> str:
 
 def _env_readiness_details() -> dict[str, Any]:
     """Return operator guidance for populating .env without exposing secrets."""
+    route = "direct_ibkr"
+    required_groups, recommended_groups = _env_readiness_groups(route)
     example_path = ROOT / _ENV_EXAMPLE_FILE
     return {
         "env_path": _display_path(ROOT / _SECRETS_FILE),
@@ -264,15 +291,16 @@ def _env_readiness_details() -> dict[str, Any]:
         "copy_commands": list(_ENV_COPY_COMMANDS),
         "active_brokers": ["IBKR", "Tastytrade"],
         "dormant_brokers": ["Tradovate"],
-        "required_groups": _ENV_READINESS_REQUIRED_GROUPS,
-        "recommended_groups": _ENV_READINESS_RECOMMENDED_GROUPS,
+        "paper_live_route": route,
+        "required_groups": required_groups,
+        "recommended_groups": recommended_groups,
         "note": "populate real values only; the DR drill inspects key names/non-empty status and never emits values",
     }
 
 
-def _env_key_state(path: Path) -> dict[str, bool]:
-    """Return env key -> has non-empty value without exposing values."""
-    key_state: dict[str, bool] = {}
+def _read_env_values(path: Path) -> dict[str, str]:
+    """Return env key -> cleaned raw value without exposing secrets elsewhere."""
+    env_values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -283,8 +311,13 @@ def _env_key_state(path: Path) -> dict[str, bool]:
         key = key.strip()
         if not key:
             continue
-        key_state[key] = bool(_clean_env_value(value))
-    return key_state
+        env_values[key] = _clean_env_value(value)
+    return env_values
+
+
+def _env_key_state(env_values: dict[str, str]) -> dict[str, bool]:
+    """Return env key -> has non-empty value without exposing values."""
+    return {key: bool(value) for key, value in env_values.items()}
 
 
 def _clean_env_value(value: str) -> str:
@@ -325,6 +358,38 @@ def _missing_env_requirements(
         if group_missing:
             missing[group] = group_missing
     return missing
+
+
+def _paper_live_route(env_values: dict[str, str]) -> str:
+    """Return the supervisor paper-live route implied by .env contents."""
+    route = str(env_values.get("ETA_PAPER_LIVE_ORDER_ROUTE") or "direct_ibkr").strip().lower()
+    return route or "direct_ibkr"
+
+
+def _env_readiness_groups(route: str) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Return display-safe required/recommended groups for ``route``."""
+    required = dict(_ENV_RUNTIME_REQUIRED_GROUP)
+    recommended = dict(_ENV_TASTY_RECOMMENDED_GROUP)
+    if route in _DIRECT_IBKR_ROUTES:
+        required.update(_ENV_IBKR_DIRECT_REQUIRED_GROUP)
+        recommended.update(_ENV_IBKR_CLIENT_PORTAL_GROUP)
+    else:
+        required.update(_ENV_IBKR_FULL_REQUIRED_GROUP)
+    return required, recommended
+
+
+def _env_option_groups(
+    route: str,
+) -> tuple[dict[str, tuple[tuple[str, ...], ...]], dict[str, tuple[tuple[str, ...], ...]]]:
+    """Return required/recommended key-option groups for ``route``."""
+    required = dict(_ENV_RUNTIME_REQUIRED_OPTIONS)
+    recommended = dict(_ENV_TASTY_RECOMMENDED_OPTIONS)
+    if route in _DIRECT_IBKR_ROUTES:
+        required.update(_ENV_IBKR_DIRECT_REQUIRED_OPTIONS)
+        recommended.update(_ENV_IBKR_CLIENT_PORTAL_OPTIONS)
+    else:
+        required.update(_ENV_IBKR_FULL_REQUIRED_OPTIONS)
+    return required, recommended
 
 
 def _vps_bash_validation_details(
@@ -446,7 +511,8 @@ def _check_secrets_present() -> CheckResult:
         )
     details = _env_readiness_details()
     try:
-        key_state = _env_key_state(p)
+        env_values = _read_env_values(p)
+        key_state = _env_key_state(env_values)
     except OSError as exc:
         return CheckResult(
             name="secrets_present",
@@ -454,10 +520,16 @@ def _check_secrets_present() -> CheckResult:
             summary=f".env exists but could not be inspected safely: {exc}",
             details={**details, "inspection_error": type(exc).__name__},
         )
-    missing_required = _missing_env_requirements(key_state, _ENV_REQUIRED_KEY_OPTIONS)
-    missing_recommended = _missing_env_requirements(key_state, _ENV_RECOMMENDED_KEY_OPTIONS)
+    route = _paper_live_route(env_values)
+    required_groups, recommended_groups = _env_readiness_groups(route)
+    required_options, recommended_options = _env_option_groups(route)
+    missing_required = _missing_env_requirements(key_state, required_options)
+    missing_recommended = _missing_env_requirements(key_state, recommended_options)
     inspected_details = {
         **details,
+        "paper_live_route": route,
+        "required_groups": required_groups,
+        "recommended_groups": recommended_groups,
         "required_missing": missing_required,
         "recommended_missing": missing_recommended,
         "inspected_keys_only": True,

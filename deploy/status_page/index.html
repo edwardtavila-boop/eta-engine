@@ -92,6 +92,8 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
+  <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
@@ -152,6 +154,9 @@ let autoRefresh = true, refreshTimer;
 const API = '/api/bot-fleet';
 const API_ALT = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
 const STRATEGY_RESULTS_API = '/api/jarvis/strategy_supercharge_results';
+const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
+const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
+const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
 let hasRendered = false;
@@ -161,6 +166,15 @@ function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[ch]));
+}
+
+function endpointCandidates(path) {
+  return [path, API_ALT_ROOT + path];
+}
+
+function compactText(value, maxLen = 120) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > maxLen ? text.slice(0, maxLen - 3) + '...' : text;
 }
 
 async function fetchJsonOnce(url, timeoutMs) {
@@ -187,12 +201,20 @@ async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, strategyResults] = await Promise.all([
+    const [data, strategyResults, operatorQueue, paperLive] = await Promise.all([
       fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
-      fetchJson([STRATEGY_RESULTS_API], AUX_FETCH_TIMEOUT_MS)
+      fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS)
     ]);
     if (!data) { showOffline(!hasRendered); return; }
-    render(data.payload, strategyResults ? strategyResults.payload : {}, data.source);
+    render(
+      data.payload,
+      strategyResults ? strategyResults.payload : {},
+      operatorQueue ? operatorQueue.payload : {},
+      paperLive ? paperLive.payload : {},
+      data.source
+    );
     hasRendered = true;
   } finally {
     loadInFlight = false;
@@ -207,7 +229,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -215,6 +237,10 @@ function showOffline(clearDashboard = true) {
   if (routerSub) routerSub.textContent = '';
   const gatewaySub = document.getElementById('gatewayStatusSub');
   if (gatewaySub) gatewaySub.textContent = '';
+  const paperLiveSub = document.getElementById('paperLiveSub');
+  if (paperLiveSub) paperLiveSub.textContent = '';
+  const operatorQueueSub = document.getElementById('operatorQueueSub');
+  if (operatorQueueSub) operatorQueueSub.textContent = '';
 }
 
 function sourceLabel(source) {
@@ -244,7 +270,7 @@ function activityForBot(bot) {
   return null;
 }
 
-function render(d, strategyResults, dataSource) {
+function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   const bots = d.bots || [];
   const summary = d.summary || {};
   const confirmed = d.confirmed_bots || 0;
@@ -444,6 +470,59 @@ function render(d, strategyResults, dataSource) {
         : (results || failed)
           ? 'history: ' + results + ' results; ' + rejected + ' rejected; ' + failed + ' failed'
           : 'waiting for orders';
+
+  const opSummary = operatorQueue?.summary || {};
+  const opBlocked = Number(opSummary.BLOCKED || 0);
+  const opLaunchBlocked = Number(operatorQueue?.launch_blocked_count || 0);
+  const opTopLaunch = Array.isArray(operatorQueue?.top_launch_blockers) ? operatorQueue.top_launch_blockers[0] : null;
+  const opTop = opTopLaunch || (Array.isArray(operatorQueue?.top_blockers) ? operatorQueue.top_blockers[0] : null);
+  let operatorQueueLabel = 'Clear';
+  let operatorQueueClass = 'green';
+  let operatorQueueSub = 'no active operator blockers';
+  if (operatorQueue?.error) {
+    operatorQueueLabel = 'Degraded';
+    operatorQueueClass = 'yellow';
+    operatorQueueSub = compactText(operatorQueue.error);
+  } else if (opBlocked > 0) {
+    operatorQueueLabel = opLaunchBlocked > 0 ? 'Blocked' : 'Watch';
+    operatorQueueClass = opLaunchBlocked > 0 ? 'red' : 'yellow';
+    operatorQueueSub = compactText(
+      `${opBlocked} blocked; ${opLaunchBlocked} launch. ${opTop?.op_id || ''} ${opTop?.detail || opTop?.title || ''}`.trim()
+    );
+  }
+  document.getElementById('operatorQueueStatus').textContent = operatorQueueLabel;
+  document.getElementById('operatorQueueStatus').className = 'stat ' + operatorQueueClass;
+  document.getElementById('operatorQueueSub').textContent = operatorQueueSub;
+
+  const paperStatus = String(paperLive?.status || 'unknown');
+  const paperReady = !!paperLive?.critical_ready;
+  const firstPaperGate = Array.isArray(paperLive?.gates) ? paperLive.gates.find((gate) => gate && gate.passed === false) : null;
+  const paperBlocker = paperLive?.operator_queue_first_launch_blocker_op_id || paperLive?.operator_queue_first_blocker_op_id || '';
+  const paperAction = paperLive?.operator_queue_first_launch_next_action || paperLive?.operator_queue_first_next_action || '';
+  const paperReadyBots = Number(paperLive?.paper_ready_bots || 0);
+  let paperLabel = 'Unknown';
+  let paperClass = 'yellow';
+  if (paperReady) {
+    paperLabel = 'Ready';
+    paperClass = 'green';
+  } else if (paperStatus.startsWith('ready_with_')) {
+    paperLabel = 'Warning';
+    paperClass = 'yellow';
+  } else if (paperStatus === 'blocked') {
+    paperLabel = 'Blocked';
+    paperClass = 'red';
+  } else if (paperStatus === 'unreadable') {
+    paperLabel = 'Degraded';
+    paperClass = 'yellow';
+  }
+  const paperDetail = compactText(
+    firstPaperGate?.detail || paperAction || paperLive?.error || 'waiting for launch readiness'
+  );
+  document.getElementById('paperLiveStatus').textContent = paperLabel;
+  document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;
+  document.getElementById('paperLiveSub').textContent = compactText(
+    `${paperReadyBots} paper ready${paperBlocker ? '; ' + paperBlocker : ''}. ${paperDetail}`.trim()
+  );
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   const risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';

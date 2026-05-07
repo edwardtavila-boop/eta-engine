@@ -84,7 +84,45 @@ def test_gateway_process_snapshot_reports_not_running_when_tasklist_is_empty(
     assert snapshot == {
         "running": False,
         "gateway_dir": r"C:\Jts\ibgateway\1046",
-        "name": "ibgateway.exe",
+        "name": "ibgateway.exe/ibgateway1.exe",
+    }
+
+
+def test_gateway_process_snapshot_detects_ibc_renamed_gateway_runtime(
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import tws_watchdog
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        image_name = args[2]
+        if image_name.endswith("ibgateway.exe"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout='INFO: No tasks are running which match the specified criteria.\n',
+            )
+        return SimpleNamespace(
+            returncode=0,
+            stdout='"ibgateway1.exe","11796","Console","1","324,988 K"\n',
+        )
+
+    monkeypatch.setattr(tws_watchdog.os, "name", "nt")
+    monkeypatch.setattr(tws_watchdog.subprocess, "run", fake_run)
+
+    snapshot = tws_watchdog._gateway_process_snapshot(Path(r"C:\Jts\ibgateway\1046"))
+
+    assert calls[0][2] == "IMAGENAME eq ibgateway.exe"
+    assert calls[1][2] == "IMAGENAME eq ibgateway1.exe"
+    assert snapshot == {
+        "running": True,
+        "pid": 11796,
+        "name": "ibgateway1.exe",
+        "working_set_mb": 317.4,
+        "gateway_dir": r"C:\Jts\ibgateway\1046",
     }
 
 
@@ -155,6 +193,33 @@ def test_watchdog_client_ids_can_be_overridden(monkeypatch) -> None:
     monkeypatch.setenv("ETA_TWS_WATCHDOG_CLIENT_IDS", "55, bad, 102")
 
     assert tws_watchdog._watchdog_client_ids() == (55, 102)
+
+
+def test_default_handshake_timeout_uses_shared_ibkr_timeout(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.delenv("ETA_TWS_WATCHDOG_HANDSHAKE_TIMEOUT_S", raising=False)
+    monkeypatch.setenv("ETA_IBKR_CONNECT_TIMEOUT_S", "20")
+
+    assert tws_watchdog._default_handshake_timeout() == 20.0
+
+
+def test_default_handshake_timeout_prefers_watchdog_override(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.setenv("ETA_IBKR_CONNECT_TIMEOUT_S", "20")
+    monkeypatch.setenv("ETA_TWS_WATCHDOG_HANDSHAKE_TIMEOUT_S", "26")
+
+    assert tws_watchdog._default_handshake_timeout() == 26.0
+
+
+def test_default_handshake_timeout_defaults_to_45_seconds(monkeypatch) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    monkeypatch.delenv("ETA_IBKR_CONNECT_TIMEOUT_S", raising=False)
+    monkeypatch.delenv("ETA_TWS_WATCHDOG_HANDSHAKE_TIMEOUT_S", raising=False)
+
+    assert tws_watchdog._default_handshake_timeout() == 45.0
 
 
 def test_ensure_asyncio_event_loop_creates_loop_when_missing(monkeypatch) -> None:
@@ -246,3 +311,61 @@ def test_account_snapshot_masks_account_and_captures_executions() -> None:
     assert snapshot["positions"][0]["account"] == "DUQ...9869"
     assert snapshot["executions"][0]["account"] == "DUQ...9869"
     assert snapshot["executions"][0]["bot"] == "mnq_futures_sage"
+
+
+def test_handshake_uses_readonly_ib_connection(monkeypatch) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import tws_watchdog
+
+    captured: dict[str, object] = {}
+
+    class FakeIB:
+        def __init__(self):
+            self.client = SimpleNamespace(serverVersion=lambda: 176)
+            self._connected = False
+
+        def connect(self, host, port, *, clientId, timeout, readonly=False):
+            captured.update(
+                {
+                    "host": host,
+                    "port": port,
+                    "clientId": clientId,
+                    "timeout": timeout,
+                    "readonly": readonly,
+                }
+            )
+            self._connected = True
+
+        def isConnected(self):
+            return self._connected
+
+        def disconnect(self):
+            self._connected = False
+
+    monkeypatch.setattr(tws_watchdog, "_ensure_asyncio_event_loop", lambda: None)
+    monkeypatch.setattr(tws_watchdog, "_watchdog_client_ids", lambda: (55,))
+    monkeypatch.setattr(
+        tws_watchdog,
+        "_snapshot_from_ib",
+        lambda _ib: {"summary": {"positions_count": 0, "executions_count": 0}},
+    )
+    monkeypatch.setitem(sys.modules, "ib_insync", SimpleNamespace(IB=FakeIB))
+
+    ok, detail = tws_watchdog._check_ib_handshake(
+        "127.0.0.1",
+        4002,
+        attempts=1,
+        timeout=12.0,
+    )
+
+    assert ok is True
+    assert "clientId=55" in detail
+    assert captured == {
+        "host": "127.0.0.1",
+        "port": 4002,
+        "clientId": 55,
+        "timeout": 12.0,
+        "readonly": True,
+    }

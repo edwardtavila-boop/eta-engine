@@ -4,6 +4,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STARTER = ROOT / "deploy" / "scripts" / "start_ibgateway.ps1"
 REPAIR = ROOT / "deploy" / "scripts" / "repair_ibgateway_vps.ps1"
 INSTALL = ROOT / "deploy" / "scripts" / "install_ibgateway_1046.ps1"
+IBC_INSTALL = ROOT / "deploy" / "scripts" / "install_ibc.ps1"
+IBC_CREDENTIALS = ROOT / "deploy" / "scripts" / "set_ibc_credentials.ps1"
 
 
 def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> None:
@@ -23,13 +25,27 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "gateway API listener ready" in text
     assert "StartupTimeoutSeconds" in text
     assert "[int]$StartupTimeoutSeconds = 600" in text
-    assert 'Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue' in text
+    assert 'Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue' in text
     assert "function Get-ProcessIdValue" in text
     assert "Stop-Process -Id $procId -Force" in text
     assert 'CommandLine -like "*ibgateway*"' not in text
     assert "$existingGateway = @(Get-GatewayProcesses)" in text
     assert "gateway process running without API listener" in text
     assert "existing gateway process running; no start needed" in text
+
+
+def test_ibgateway_scripts_treat_ibc_renamed_executable_as_canonical_runtime() -> None:
+    starter_text = STARTER.read_text(encoding="utf-8")
+    repair_text = REPAIR.read_text(encoding="utf-8")
+
+    for text in (starter_text, repair_text):
+        assert 'Join-Path $GatewayInstallDir "ibgateway1.exe"' in text
+        assert "function Test-GatewayInstallDir" in text
+        assert "function Resolve-GatewayExecutablePath" in text
+        assert "ibgateway.exe or ibgateway1.exe" in text
+
+    assert "direct launcher is using ibgateway1.exe because IBC has renamed the canonical executable" in starter_text
+    assert 'executable_name = if ($exe) { Split-Path -Leaf $exe } else { $null }' in repair_text
 
 
 def test_ibgateway_starter_does_not_force_restart_healthy_authenticated_gateway() -> None:
@@ -39,6 +55,33 @@ def test_ibgateway_starter_does_not_force_restart_healthy_authenticated_gateway(
     assert "ForceRestart requested but healthy API listener is already present" in text
     assert "skipping restart to preserve authenticated IBKR session" in text
     assert "if ($listener -and $ForceRestart -and -not $AllowHealthyRestart)" in text
+
+
+def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
+    text = STARTER.read_text(encoding="utf-8")
+
+    assert "[switch]$UseIbc" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibc_install.json" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\ibc\private\config.ini" in text
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine\secrets\ibkr_credentials.json" in text
+    assert 'Resolve-IbcInstallDir' in text
+    assert 'Resolve-IbcCredentials' in text
+    assert 'Write-IbcConfig' in text
+    assert 'StartIBC.bat' in text
+    assert '"/Gateway"' in text
+    assert '"/IbcPath:$ibcInstallDir"' in text
+    assert '"/Config:$IbcConfigPath"' in text
+    assert '"/TwsPath:$twsRootDir"' in text
+    assert '"/TwsSettingsPath:$GatewayDir"' in text
+    assert '"/Mode:$($IbcTradingMode.ToLowerInvariant())"' in text
+    assert '"/On2FATimeout:$($IbcTwoFactorTimeoutAction.ToLowerInvariant())"' in text
+    assert '[string]$IbcExistingSessionDetectedAction = "primaryoverride"' in text
+    assert '[string]$IbcAcceptIncomingConnectionAction = "accept"' in text
+    assert '"ExistingSessionDetectedAction=$ExistingSessionDetectedAction"' in text
+    assert '"AcceptIncomingConnectionAction=$AcceptIncomingConnectionAction"' in text
+    assert "OverrideTwsApiPort=$ApiPort" in text
+    assert "IBC launch requires IBKR credentials" in text
 
 
 def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
@@ -81,17 +124,29 @@ def test_ibgateway_repair_enforces_single_1046_source() -> None:
     assert "IBGatewayInstallAtLogon" in text
     assert "ApexIbkrGatewayWatchdog" in text
     assert "Disable-TaskIfPresent" in text
-    assert '"ETA-IBGateway" = Disable-TaskIfPresent' in text
+    assert "Enable-TaskIfPresent" in text
     assert "clientportal.gw" in text
     assert "gateway_task_canonical" in text
     assert "task_states" in text
     assert "Get-PortListenerSnapshot" in text
 
 
+def test_ibgateway_repair_can_switch_tasks_to_ibc_launcher() -> None:
+    text = REPAIR.read_text(encoding="utf-8")
+
+    assert "[switch]$UseIbc" in text
+    assert 'launcher_mode = if ($UseIbc) { "ibc" } else { "direct" }' in text
+    assert 'if ($UseIbc) {' in text
+    assert '$baseArgs += " -UseIbc"' in text
+    assert '$result.single_source.legacy_tasks."ETA-IBGateway" = Enable-TaskIfPresent -TaskName "ETA-IBGateway"' in text
+    assert '$etaGatewayState -ne "Disabled"' in text
+    assert '& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart' in text
+
+
 def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (STARTER, REPAIR, INSTALL)
+        for path in (STARTER, REPAIR, INSTALL, IBC_INSTALL, IBC_CREDENTIALS)
     )
 
     assert "OneDrive" not in combined
@@ -125,3 +180,34 @@ def test_ibgateway_installer_helper_is_canonical_audited_and_guarded() -> None:
     assert "-DexecuteLauncherAction=false" in text
     assert "repair_ibgateway_vps.ps1" in text
     assert "$RepairAfterInstall" in text
+
+
+def test_ibc_installer_is_canonical_and_uses_official_github_release() -> None:
+    text = IBC_INSTALL.read_text(encoding="utf-8")
+
+    assert "https://api.github.com/repos/IbcAlpha/IBC/releases/latest" in text
+    assert "https://api.github.com/repos/IbcAlpha/IBC/releases/tags/" in text
+    assert 'IBCWin-*.zip' in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\downloads\ibc" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibc_install.json" in text
+    assert "Resolve-ReleaseAsset" in text
+    assert "Find-IbcPayloadDir" in text
+    assert "Expand-Archive" in text
+    assert "scripts\\StartIBC.bat" in text
+    assert "EvolutionaryTradingAlgo-IBCInstaller" in text
+    assert "download_sha256" in text
+    assert "current_install_dir" in text
+
+
+def test_ibc_credentials_helper_seeds_machine_env_without_logging_values() -> None:
+    text = IBC_CREDENTIALS.read_text(encoding="utf-8")
+
+    assert r"C:\EvolutionaryTradingAlgo\eta_engine\secrets\ibkr_credentials.json" in text
+    assert "PromptForPassword" in text
+    assert "Resolve-JsonLoginId" in text
+    assert 'SetEnvironmentVariable("ETA_IBC_LOGIN_ID"' in text
+    assert 'SetEnvironmentVariable("ETA_IBC_PASSWORD"' in text
+    assert "ETA_IBC_LOGIN_ID=seeded" in text
+    assert "ETA_IBC_PASSWORD=seeded" in text
+    assert "Missing IBKR password" in text

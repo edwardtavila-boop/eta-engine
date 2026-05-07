@@ -396,12 +396,15 @@ class IbkrDataFeed:
                 from eta_engine.scripts.jarvis_strategy_supervisor import (
                     _run_on_live_ibkr_loop,
                 )
+                from eta_engine.venues.ibkr_live import ibkr_connect_timeout_seconds
 
                 async def _do_connect() -> "IB":
                     ib = IB()
+                    connect_timeout_s = ibkr_connect_timeout_seconds()
                     await ib.connectAsync(
                         self._host, self._port,
-                        clientId=self._client_id, timeout=8,
+                        clientId=self._client_id,
+                        timeout=connect_timeout_s,
                     )
                     mdt_val = int(os.getenv("ETA_IBKR_MARKETDATA_TYPE", "3"))
                     ib.reqMarketDataType(mdt_val)
@@ -409,9 +412,12 @@ class IbkrDataFeed:
 
                 self._ib = _run_on_live_ibkr_loop(_do_connect())
                 mdt = int(os.getenv("ETA_IBKR_MARKETDATA_TYPE", "3"))
+                connect_timeout_s = ibkr_connect_timeout_seconds()
                 logger.info(
-                    "IbkrDataFeed connected to TWS (clientId=%d, marketDataType=%d)",
-                    self._client_id, mdt,
+                    "IbkrDataFeed connected to TWS (clientId=%d, marketDataType=%d, timeout=%ss)",
+                    self._client_id,
+                    mdt,
+                    connect_timeout_s,
                 )
                 return True
             except Exception as exc:  # noqa: BLE001

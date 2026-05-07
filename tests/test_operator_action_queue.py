@@ -313,6 +313,17 @@ class TestActiveBrokerCredentialProbes:
         assert item.evidence["launch_blocker"] is False
         assert "not blocking first live tick" in item.detail
 
+
+class TestGatewayRuntimeProbe:
+    def test_gateway_exe_present_accepts_ibc_renamed_binary(self, tmp_path) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        gateway_dir = tmp_path / "1046"
+        gateway_dir.mkdir()
+        (gateway_dir / "ibgateway1.exe").write_text("", encoding="utf-8")
+
+        assert operator_action_queue._gateway_exe_present(gateway_dir) is True
+
     def test_unfunded_tastytrade_fallback_is_observed_not_launch_blocking(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 
@@ -323,6 +334,18 @@ class TestActiveBrokerCredentialProbes:
         assert item.verdict == VERDICT_OBSERVED
         assert item.evidence["role"] == "secondary_fallback"
         assert item.evidence["launch_blocker"] is False
+
+    def test_missing_telegram_creds_are_blocked_but_not_launch_blocking(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        monkeypatch.setattr(operator_action_queue, "_env_key_present", lambda _name: False)
+
+        item = operator_action_queue._op5_telegram_creds()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["launch_blocker"] is False
+        assert item.evidence["role"] == "alerts_transport"
+        assert "does not block the paper_live trading path" in item.detail
 
 
 class TestStrategyResearchCandidateProbe:
@@ -648,3 +671,37 @@ class TestIbGateway1046RuntimeProbe:
         assert item.evidence["overall_severity"] == "green"
         assert item.evidence["task_canonical"] is True
         assert item.evidence["handshake_ok"] is True
+
+    def test_gateway_runtime_reports_task_drift_when_live_api_is_healthy(self, monkeypatch) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        states = {
+            "ibgateway_install.json": {"installed": True},
+            "ibgateway_repair.json": {
+                "single_source": {
+                    "gateway_task_canonical": False,
+                    "task_states": {"ETA-IBGateway": "Ready"},
+                },
+                "tasks": {
+                    "ETA-IBGateway": "failed: The user name or password is incorrect.",
+                },
+            },
+            "ibgateway_reauth.json": {"status": "healthy"},
+            "tws_watchdog.json": {
+                "healthy": True,
+                "details": {"handshake_ok": True},
+            },
+        }
+        monkeypatch.setattr(operator_action_queue, "_read_runtime_state", lambda name: states.get(name, {}))
+        monkeypatch.setattr(operator_action_queue, "_gateway_exe_present", lambda: True)
+
+        item = operator_action_queue._op19_ibgateway_1046_runtime()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["overall_severity"] == "red"
+        assert item.evidence["task_canonical"] is False
+        assert item.evidence["handshake_ok"] is True
+        assert "TWS API 4002 are healthy" in item.detail
+        assert "The user name or password is incorrect" in item.detail
+        next_commands = item.evidence["blockers"][0]["next_commands"]
+        assert "-UseIbc" in next_commands[0]

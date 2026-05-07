@@ -296,7 +296,7 @@ def test_ibkr_feed_lazy_connect_is_mid_session_thread_safe(monkeypatch) -> None:
     assert not any(thread.is_alive() for thread in threads), "lazy connect deadlocked under concurrent access"
     assert errors == []
     assert results == [True] * 8
-    assert connects == [("127.0.0.1", 4002, 188, 8)]
+    assert connects == [("127.0.0.1", 4002, 188, 20)]
     assert market_data_types == [4]
 
 

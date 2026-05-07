@@ -42,17 +42,31 @@ def compare_snapshots(
             "changed": True,
             "changed_fields": ["baseline_missing"],
             "blocked_count_delta": None,
+            "launch_blocked_count_delta": None,
             "status_changed": None,
+            "launch_status_changed": None,
             "first_blocker_changed": None,
+            "first_launch_blocker_changed": None,
             "first_next_action_changed": None,
+            "first_launch_next_action_changed": None,
             "summary": "no previous operator queue snapshot",
         }
 
     changed_fields: list[str] = []
     blocked_count_delta = int(current.get("blocked_count") or 0) - int(previous.get("blocked_count") or 0)
+    launch_blocked_count_delta = int(current.get("launch_blocked_count") or 0) - int(
+        previous.get("launch_blocked_count") or 0
+    )
     status_changed = current.get("status") != previous.get("status")
+    launch_status_changed = current.get("launch_status") != previous.get("launch_status")
     first_blocker_changed = current.get("first_blocker_op_id") != previous.get("first_blocker_op_id")
+    first_launch_blocker_changed = current.get("first_launch_blocker_op_id") != previous.get(
+        "first_launch_blocker_op_id"
+    )
     first_next_action_changed = current.get("first_next_action") != previous.get("first_next_action")
+    first_launch_next_action_changed = current.get("first_launch_next_action") != previous.get(
+        "first_launch_next_action"
+    )
     bot_readiness_status_changed = current.get("bot_strategy_readiness_status") != previous.get(
         "bot_strategy_readiness_status"
     )
@@ -62,12 +76,32 @@ def compare_snapshots(
     )
     if blocked_count_delta:
         changed_fields.append("blocked_count")
+    if launch_blocked_count_delta:
+        changed_fields.append("launch_blocked_count")
     if status_changed:
         changed_fields.append("status")
+    if launch_status_changed and ("launch_status" in previous or "launch_status" in current):
+        changed_fields.append("launch_status")
     if first_blocker_changed:
         changed_fields.append("first_blocker_op_id")
+    if (
+        first_launch_blocker_changed
+        and (
+            "first_launch_blocker_op_id" in previous
+            or "first_launch_blocker_op_id" in current
+        )
+    ):
+        changed_fields.append("first_launch_blocker_op_id")
     if first_next_action_changed:
         changed_fields.append("first_next_action")
+    if (
+        first_launch_next_action_changed
+        and (
+            "first_launch_next_action" in previous
+            or "first_launch_next_action" in current
+        )
+    ):
+        changed_fields.append("first_launch_next_action")
     if (
         bot_readiness_status_changed
         and (
@@ -95,16 +129,24 @@ def compare_snapshots(
         "changed": changed,
         "changed_fields": changed_fields,
         "blocked_count_delta": blocked_count_delta,
+        "launch_blocked_count_delta": launch_blocked_count_delta,
         "status_changed": status_changed,
+        "launch_status_changed": launch_status_changed,
         "first_blocker_changed": first_blocker_changed,
+        "first_launch_blocker_changed": first_launch_blocker_changed,
         "first_next_action_changed": first_next_action_changed,
+        "first_launch_next_action_changed": first_launch_next_action_changed,
         "bot_strategy_readiness_status_changed": bot_readiness_status_changed,
         "bot_strategy_blocked_data_delta": bot_blocked_data_delta,
         "previous": {
             "status": previous.get("status"),
+            "launch_status": previous.get("launch_status"),
             "blocked_count": previous.get("blocked_count"),
+            "launch_blocked_count": previous.get("launch_blocked_count"),
             "first_blocker_op_id": previous.get("first_blocker_op_id"),
+            "first_launch_blocker_op_id": previous.get("first_launch_blocker_op_id"),
             "first_next_action": previous.get("first_next_action"),
+            "first_launch_next_action": previous.get("first_launch_next_action"),
             "bot_strategy_readiness_status": previous.get("bot_strategy_readiness_status"),
             "bot_strategy_blocked_data": previous.get("bot_strategy_blocked_data"),
             "generated_at": previous.get("generated_at"),
@@ -144,10 +186,32 @@ def build_snapshot(*, limit: int = 5) -> dict[str, Any]:
     readiness = jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
     summary = queue.get("summary") if isinstance(queue, dict) else {}
     top_blockers = queue.get("top_blockers") if isinstance(queue, dict) else []
+    top_launch_blockers = queue.get("top_launch_blockers") if isinstance(queue, dict) else []
     next_actions = queue.get("next_actions") if isinstance(queue, dict) else []
+    launch_next_actions = queue.get("launch_next_actions") if isinstance(queue, dict) else []
     blocked = int(summary.get("BLOCKED", 0)) if isinstance(summary, dict) else 0
+    raw_launch_blocked = queue.get("launch_blocked_count") if isinstance(queue, dict) else None
+    try:
+        launch_blocked = int(raw_launch_blocked) if raw_launch_blocked is not None else blocked
+    except (TypeError, ValueError):
+        launch_blocked = blocked
     first_blocker = top_blockers[0] if isinstance(top_blockers, list) and top_blockers else {}
+    first_launch_blocker = (
+        top_launch_blockers[0]
+        if isinstance(top_launch_blockers, list) and top_launch_blockers
+        else (first_blocker if launch_blocked > 0 else {})
+    )
     first_op_id = first_blocker.get("op_id") if isinstance(first_blocker, dict) else None
+    first_launch_op_id = first_launch_blocker.get("op_id") if isinstance(first_launch_blocker, dict) else None
+    first_launch_next_action = (
+        launch_next_actions[0]
+        if isinstance(launch_next_actions, list) and launch_next_actions
+        else (
+            next_actions[0]
+            if launch_blocked > 0 and isinstance(next_actions, list) and next_actions
+            else None
+        )
+    )
     bot_blocked_data, bot_paper_ready, bot_can_live_any = _readiness_summary(readiness)
     return {
         "schema_version": 1,
@@ -157,6 +221,11 @@ def build_snapshot(*, limit: int = 5) -> dict[str, Any]:
         "blocked_count": blocked,
         "first_blocker_op_id": first_op_id,
         "first_next_action": next_actions[0] if isinstance(next_actions, list) and next_actions else None,
+        "launch_status": "blocked" if launch_blocked else "clear",
+        "launch_blocked_count": launch_blocked,
+        "non_launch_blocked_count": max(blocked - launch_blocked, 0),
+        "first_launch_blocker_op_id": first_launch_op_id,
+        "first_launch_next_action": first_launch_next_action,
         "bot_strategy_readiness_status": _readiness_status(readiness, bot_blocked_data),
         "bot_strategy_blocked_data": bot_blocked_data,
         "bot_strategy_paper_ready": bot_paper_ready,
@@ -190,6 +259,7 @@ def _render_text(snapshot: dict[str, Any], path: Path | None) -> str:
     target = f" -> {path}" if path is not None else ""
     first = snapshot.get("first_blocker_op_id") or "none"
     action = snapshot.get("first_next_action") or "none"
+    launch_blocked = snapshot.get("launch_blocked_count")
     bot_status = snapshot.get("bot_strategy_readiness_status") or "unknown"
     bot_blocked = snapshot.get("bot_strategy_blocked_data")
     bot_paper = snapshot.get("bot_strategy_paper_ready")
@@ -197,7 +267,7 @@ def _render_text(snapshot: dict[str, Any], path: Path | None) -> str:
     drift_line = drift.get("summary") if isinstance(drift, dict) else None
     return (
         f"operator_queue_snapshot status={snapshot['status']} "
-        f"blocked={snapshot['blocked_count']} first={first} next={action}"
+        f"blocked={snapshot['blocked_count']} launch_blocked={launch_blocked} first={first} next={action}"
         f" bot_readiness={bot_status} bot_blocked_data={bot_blocked} bot_paper_ready={bot_paper}"
         f"{f' drift={drift_line}' if drift_line else ''}{target}"
     )

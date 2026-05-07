@@ -50,6 +50,9 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
             "error": str(exc),
             "summary": {},
             "top_blockers": [],
+            "launch_blocked_count": 0,
+            "top_launch_blockers": [],
+            "launch_next_actions": [],
         }
 
     verdict_order = (
@@ -72,6 +75,12 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         (item for item in items if item.verdict == operator_action_queue.VERDICT_BLOCKED),
         key=blocker_priority,
     )
+
+    def is_launch_blocker(item: object) -> bool:
+        evidence = getattr(item, "evidence", {})
+        if not isinstance(evidence, dict):
+            return True
+        return evidence.get("launch_blocker") is not False
 
     def next_actions_for_item(item: object) -> list[str]:
         evidence = getattr(item, "evidence", {})
@@ -102,9 +111,20 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         }
         for item in blocked_items
     ]
+    launch_blockers = [
+        blocker
+        for blocker in blockers
+        if not isinstance(blocker.get("evidence"), dict)
+        or blocker["evidence"].get("launch_blocker") is not False
+    ]
     next_actions = [
         action
         for blocker in blockers
+        for action in blocker.get("next_actions", [])
+    ][:limit]
+    launch_next_actions = [
+        action
+        for blocker in launch_blockers
         for action in blocker.get("next_actions", [])
     ][:limit]
     return {
@@ -113,6 +133,9 @@ def _operator_queue_summary(*, limit: int = 5) -> dict[str, object]:
         "summary": summary,
         "top_blockers": blockers[:limit],
         "next_actions": next_actions,
+        "launch_blocked_count": sum(1 for item in blocked_items if is_launch_blocker(item)),
+        "top_launch_blockers": launch_blockers[:limit],
+        "launch_next_actions": launch_next_actions,
     }
 
 

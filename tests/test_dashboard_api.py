@@ -121,6 +121,7 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.json()["regime"] == "NEUTRAL"
         assert "operator_queue" in r.json()
+        assert "paper_live_transition" in r.json()
         assert "no-store" in r.headers["Cache-Control"]
 
     def test_dashboard_cold_start_still_exposes_operator_queue(self, tmp_path, app_client):
@@ -584,6 +585,10 @@ class TestDashboardAPI:
         assert data["checks"]["card_contract"] is True
         assert data["checks"]["auth_contract"] is True
         assert "generated_at" in data
+        assert "operator_queue" in data
+        assert "paper_live_transition" in data
+        assert data["checks"]["operator_queue_contract"] is True
+        assert data["checks"]["paper_live_transition_contract"] is True
 
     def test_dashboard_diagnostics_includes_bot_strategy_readiness(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
@@ -613,6 +618,65 @@ class TestDashboardAPI:
         assert readiness["paper_ready"] == 10
         assert readiness["can_live_any"] is False
         assert readiness["launch_lanes"]["live_preflight"] == 6
+
+    def test_dashboard_diagnostics_includes_operator_and_paper_live_rollups(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "error": None,
+                "summary": {"BLOCKED": 1, "OBSERVED": 0, "UNKNOWN": 0},
+                "launch_blocked_count": 1,
+                "top_blockers": [{"op_id": "OP-19", "title": "Fix unattended launch"}],
+                "top_launch_blockers": [
+                    {
+                        "op_id": "OP-19",
+                        "title": "Fix unattended launch",
+                        "detail": "Gateway healthy, startup task still drifted.",
+                    }
+                ],
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-06T14:00:00+00:00",
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 10,
+                    "operator_queue_first_launch_blocker_op_id": "OP-19",
+                    "operator_queue_first_launch_next_action": "Rewrite ETA-IBGateway task",
+                    "gates": [
+                        {
+                            "name": "op19_gateway_runtime",
+                            "passed": False,
+                            "detail": "Gateway healthy, startup task still drifted.",
+                            "next_action": "Rewrite ETA-IBGateway task",
+                        }
+                    ],
+                }
+            )
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["operator_queue"]["blocked"] == 1
+        assert payload["operator_queue"]["launch_blocked"] == 1
+        assert payload["operator_queue"]["top_launch_blocker_op_id"] == "OP-19"
+        assert payload["paper_live_transition"]["status"] == "blocked"
+        assert payload["paper_live_transition"]["paper_ready_bots"] == 10
+        assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
+        assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "op19_gateway_runtime"
 
     def test_kaizen_summary(self, app_client):
         r = app_client.get("/api/kaizen")

@@ -32,6 +32,9 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
             "summary": {"BLOCKED": 2, "OBSERVED": 1, "UNKNOWN": 0, "DONE": 0},
             "top_blockers": [{"op_id": "OP-18", "title": "Resolve DR blockers"}],
             "next_actions": ["cp .env.example .env && chmod 600 .env"],
+            "launch_blocked_count": 1,
+            "top_launch_blockers": [{"op_id": "OP-18", "title": "Resolve DR blockers"}],
+            "launch_next_actions": ["cp .env.example .env && chmod 600 .env"],
             "error": None,
         },
     )
@@ -45,6 +48,11 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
     assert snapshot["blocked_count"] == 2
     assert snapshot["first_blocker_op_id"] == "OP-18"
     assert snapshot["first_next_action"] == "cp .env.example .env && chmod 600 .env"
+    assert snapshot["launch_status"] == "blocked"
+    assert snapshot["launch_blocked_count"] == 1
+    assert snapshot["non_launch_blocked_count"] == 1
+    assert snapshot["first_launch_blocker_op_id"] == "OP-18"
+    assert snapshot["first_launch_next_action"] == "cp .env.example .env && chmod 600 .env"
     assert snapshot["bot_strategy_readiness_status"] == "ready"
     assert snapshot["bot_strategy_blocked_data"] == 0
     assert snapshot["bot_strategy_paper_ready"] == 10
@@ -105,15 +113,23 @@ def test_write_snapshot_preserves_previous_target(tmp_path) -> None:
 def test_compare_snapshots_reports_changed_fields() -> None:
     previous = {
         "status": "blocked",
+        "launch_status": "blocked",
         "blocked_count": 2,
+        "launch_blocked_count": 2,
         "first_blocker_op_id": "OP-18",
+        "first_launch_blocker_op_id": "OP-18",
         "first_next_action": "old",
+        "first_launch_next_action": "old launch",
     }
     current = {
         "status": "blocked",
+        "launch_status": "clear",
         "blocked_count": 3,
+        "launch_blocked_count": 0,
         "first_blocker_op_id": "OP-18",
+        "first_launch_blocker_op_id": None,
         "first_next_action": "new",
+        "first_launch_next_action": None,
     }
 
     drift = operator_queue_snapshot.compare_snapshots(previous, current)
@@ -121,7 +137,15 @@ def test_compare_snapshots_reports_changed_fields() -> None:
     assert drift["previous_present"] is True
     assert drift["changed"] is True
     assert drift["blocked_count_delta"] == 1
-    assert drift["changed_fields"] == ["blocked_count", "first_next_action"]
+    assert drift["launch_blocked_count_delta"] == -2
+    assert drift["changed_fields"] == [
+        "blocked_count",
+        "launch_blocked_count",
+        "launch_status",
+        "first_launch_blocker_op_id",
+        "first_next_action",
+        "first_launch_next_action",
+    ]
 
 
 def test_compare_snapshots_reports_bot_readiness_drift() -> None:

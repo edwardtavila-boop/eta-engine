@@ -61,11 +61,34 @@ def _first_op_id(snapshot: dict[str, Any]) -> str:
     return str(raw or "")
 
 
+def _first_launch_op_id(snapshot: dict[str, Any]) -> str:
+    if "launch_blocked_count" in snapshot:
+        try:
+            if int(snapshot.get("launch_blocked_count") or 0) <= 0:
+                return ""
+        except (TypeError, ValueError):
+            return ""
+    raw = snapshot.get("first_launch_blocker_op_id")
+    if raw:
+        return str(raw)
+    return _first_op_id(snapshot)
+
+
 def _blocked_count(snapshot: dict[str, Any]) -> int:
     try:
         return int(snapshot.get("blocked_count") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _launch_blocked_count(snapshot: dict[str, Any]) -> int:
+    try:
+        raw = snapshot.get("launch_blocked_count")
+        if raw is None:
+            return _blocked_count(snapshot)
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return _blocked_count(snapshot)
 
 
 def _paper_ready_count(snapshot: dict[str, Any]) -> int:
@@ -77,9 +100,9 @@ def _paper_ready_count(snapshot: dict[str, Any]) -> int:
 
 def _op19_next_action(queue: dict[str, Any], release_guard: dict[str, Any]) -> str:
     """Return the most actionable OP-19 recovery step for the operator."""
-    queue_action = str(queue.get("first_next_action") or "")
-    if _first_op_id(queue) != "OP-19":
-        return queue_action
+    queue_action = str(queue.get("first_launch_next_action") or queue.get("first_next_action") or "")
+    if _first_launch_op_id(queue) != "OP-19":
+        return ""
 
     hold = release_guard.get("hold") if isinstance(release_guard, dict) else {}
     hold_payload = hold if isinstance(hold, dict) else {}
@@ -92,6 +115,28 @@ def _op19_next_action(queue: dict[str, Any], release_guard: dict[str, Any]) -> s
         )
 
     return queue_action
+
+
+def _first_launch_detail(snapshot: dict[str, Any]) -> str:
+    launch_op_id = _first_launch_op_id(snapshot)
+    if not launch_op_id:
+        return ""
+    queue = snapshot.get("operator_queue")
+    candidate_groups: list[Any] = []
+    if isinstance(queue, list):
+        candidate_groups.append(queue)
+    elif isinstance(queue, dict):
+        candidate_groups.append(queue.get("top_launch_blockers"))
+        candidate_groups.append(queue.get("top_blockers"))
+    for group in candidate_groups:
+        if not isinstance(group, list):
+            continue
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("op_id") or "") == launch_op_id:
+                return str(item.get("detail") or "")
+    return ""
 
 
 def build_transition_check(
@@ -112,13 +157,20 @@ def build_transition_check(
 
     paper_live_ready = bool(ibkr_status.get("summary", {}).get("paper_live_ready"))
     release_ready = (
-        str(release_guard.get("status") or "") in {"ready_to_release", "released"}
+        str(release_guard.get("status") or "") in {
+            "ready_to_release",
+            "released",
+            "already_released",
+        }
         and release_guard.get("operator_action_required") is False
     )
     first_op = _first_op_id(queue)
-    op19_clear = first_op != "OP-19"
+    first_launch_op = _first_launch_op_id(queue)
+    op19_clear = first_launch_op != "OP-19"
+    op19_detail = _first_launch_detail(queue)
     paper_ready = _paper_ready_count(queue)
     blockers = _blocked_count(queue)
+    launch_blockers = _launch_blocked_count(queue)
     op19_next_action = _op19_next_action(queue, release_guard)
 
     gates = [
@@ -140,7 +192,7 @@ def build_transition_check(
             detail=(
                 "OP-19 is clear"
                 if op19_clear
-                else "OP-19 is still the top blocker: IB Gateway 10.46/API 4002 is not recovered"
+                else (op19_detail or "OP-19 is still the top blocker: IB Gateway 10.46/API 4002 is not recovered")
             ),
             next_action=op19_next_action,
         ),
@@ -152,10 +204,8 @@ def build_transition_check(
         ),
     ]
     critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
-    if critical_ready and blockers == 0:
+    if critical_ready and launch_blockers == 0:
         status = "ready_to_launch_paper_live"
-    elif critical_ready:
-        status = "ready_with_operator_queue_warnings"
     else:
         status = "blocked"
 
@@ -164,10 +214,18 @@ def build_transition_check(
         "generated_at": _utc_now_iso(),
         "status": status,
         "critical_ready": critical_ready,
-        "launch_command": _LAUNCH_COMMAND if critical_ready else "",
+        "launch_command": _LAUNCH_COMMAND if critical_ready and launch_blockers == 0 else "",
         "operator_queue_blocked_count": blockers,
         "operator_queue_first_blocker_op_id": first_op or None,
-        "operator_queue_first_next_action": op19_next_action or queue.get("first_next_action"),
+        "operator_queue_first_next_action": queue.get("first_next_action"),
+        "operator_queue_launch_blocked_count": launch_blockers,
+        "operator_queue_warning_blocked_count": max(blockers - launch_blockers, 0),
+        "operator_queue_first_launch_blocker_op_id": first_launch_op or None,
+        "operator_queue_first_launch_next_action": (
+            op19_next_action or queue.get("first_launch_next_action")
+            if launch_blockers > 0
+            else None
+        ),
         "paper_ready_bots": paper_ready,
         "gates": gates,
         "ibkr_surface_status": ibkr_status,

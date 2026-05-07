@@ -14,6 +14,7 @@ param(
     [switch]$RepairTasks,
     [switch]$EnforceSingleSource,
     [switch]$StopLegacyIbkrProcesses,
+    [switch]$UseIbc,
     [switch]$RestartGateway
 )
 
@@ -34,6 +35,95 @@ function Assert-CanonicalEtaPath {
 function Normalize-PathString {
     param([string]$Path)
     return [System.IO.Path]::GetFullPath($Path).TrimEnd("\").ToLowerInvariant()
+}
+
+function Get-GatewayExecutableCandidates {
+    param([string]$GatewayInstallDir)
+
+    return @(
+        Join-Path $GatewayInstallDir "ibgateway.exe"
+        Join-Path $GatewayInstallDir "ibgateway1.exe"
+    )
+}
+
+function Test-GatewayInstallDir {
+    param([string]$GatewayInstallDir)
+
+    foreach ($candidate in (Get-GatewayExecutableCandidates -GatewayInstallDir $GatewayInstallDir)) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Resolve-GatewayExecutablePath {
+    param([string]$GatewayInstallDir)
+
+    foreach ($candidate in (Get-GatewayExecutableCandidates -GatewayInstallDir $GatewayInstallDir)) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "No runnable IB Gateway executable was found under $GatewayInstallDir"
+}
+
+function Resolve-GatewayDir {
+    param(
+        [string]$RequestedPath,
+        [string]$GatewayRoot,
+        [string]$RequestedVersion
+    )
+
+    if ($RequestedPath) {
+        $resolvedPath = [System.IO.Path]::GetFullPath($RequestedPath)
+        if (Test-GatewayInstallDir -GatewayInstallDir $resolvedPath) {
+            return $resolvedPath
+        }
+    }
+
+    $envGatewayDir = $env:ETA_IBGATEWAY_DIR
+    if ($envGatewayDir) {
+        $resolvedEnv = [System.IO.Path]::GetFullPath($envGatewayDir)
+        if (Test-GatewayInstallDir -GatewayInstallDir $resolvedEnv) {
+            return $resolvedEnv
+        }
+    }
+
+    if ($RequestedVersion) {
+        $versionPath = Join-Path $GatewayRoot $RequestedVersion
+        if (Test-GatewayInstallDir -GatewayInstallDir $versionPath) {
+            return [System.IO.Path]::GetFullPath($versionPath)
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $GatewayRoot)) {
+        throw "IB Gateway root not found: $GatewayRoot"
+    }
+
+    $candidates = @(
+        Get-ChildItem -Path $GatewayRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-GatewayInstallDir -GatewayInstallDir $_.FullName } |
+            Sort-Object `
+                @{ Expression = {
+                    $digits = [regex]::Match($_.Name, '\d+').Value
+                    if ($digits) { [int]$digits } else { 0 }
+                }; Descending = $true }, `
+                @{ Expression = { $_.LastWriteTimeUtc }; Descending = $true }
+    )
+
+    if ($candidates.Count -eq 0) {
+        throw "No installed IB Gateway directories with ibgateway.exe or ibgateway1.exe were found under $GatewayRoot"
+    }
+
+    return $candidates[0].FullName
+}
+
+function Resolve-GatewayVersion {
+    param([string]$Path)
+    return Split-Path -Leaf ([System.IO.Path]::GetFullPath($Path))
 }
 
 function Assert-CanonicalGatewayDir {
@@ -141,6 +231,20 @@ function Disable-TaskIfPresent {
     }
 }
 
+function Enable-TaskIfPresent {
+    param([string]$TaskName)
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return "missing"
+    }
+    try {
+        Enable-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Out-Null
+        return "enabled"
+    } catch {
+        return "failed: $($_.Exception.Message)"
+    }
+}
+
 function Get-GatewayInstallInventory {
     $expected = Normalize-PathString -Path (Join-Path $JtsGatewayRoot $CanonicalGatewayVersion)
     if (-not (Test-Path -LiteralPath $JtsGatewayRoot)) {
@@ -149,12 +253,16 @@ function Get-GatewayInstallInventory {
     return @(
         Get-ChildItem -Path $JtsGatewayRoot -Directory -ErrorAction SilentlyContinue |
             ForEach-Object {
-                $exe = Join-Path $_.FullName "ibgateway.exe"
+                $exe = $null
+                if (Test-GatewayInstallDir -GatewayInstallDir $_.FullName) {
+                    $exe = Resolve-GatewayExecutablePath -GatewayInstallDir $_.FullName
+                }
                 [ordered]@{
                     version = $_.Name
                     path = $_.FullName
                     canonical = ((Normalize-PathString -Path $_.FullName) -eq $expected)
-                    has_exe = (Test-Path -LiteralPath $exe)
+                    has_exe = ($null -ne $exe)
+                    executable_name = if ($exe) { Split-Path -Leaf $exe } else { $null }
                     last_write_time = $_.LastWriteTime.ToUniversalTime().ToString("o")
                 }
             }
@@ -419,6 +527,10 @@ function Set-TaskActionIfPresent {
 Assert-CanonicalEtaPath -Path $EtaEngineDir
 Assert-CanonicalEtaPath -Path $BackupDir
 Assert-CanonicalEtaPath -Path $StatePath
+$requestedGatewayDir = $GatewayDir
+$requestedGatewayVersion = $CanonicalGatewayVersion
+$GatewayDir = Resolve-GatewayDir -RequestedPath $GatewayDir -GatewayRoot $JtsGatewayRoot -RequestedVersion $CanonicalGatewayVersion
+$CanonicalGatewayVersion = Resolve-GatewayVersion -Path $GatewayDir
 Assert-CanonicalGatewayDir -Path $GatewayDir
 if (-not (Test-Path -LiteralPath $Starter)) {
     throw "Missing canonical starter: $Starter"
@@ -429,12 +541,16 @@ $vmOptionsPath = Join-Path $GatewayDir "ibgateway.vmoptions"
 $jtsIniPath = Join-Path $GatewayDir "jts.ini"
 $result = [ordered]@{
     generated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    requested_gateway_dir = $requestedGatewayDir
+    requested_gateway_version = $requestedGatewayVersion
     gateway_dir = $GatewayDir
+    canonical_gateway_version = $CanonicalGatewayVersion
     login_profile = $LoginProfile
     api_port = $ApiPort
     heap = $Heap
     parallel_gc_threads = $ParallelGCThreads
     conc_gc_threads = $ConcGCThreads
+    launcher_mode = if ($UseIbc) { "ibc" } else { "direct" }
     backups = @{}
     tasks = @{}
     gateway_config = [ordered]@{
@@ -473,6 +589,9 @@ if ($ApplyJtsIni) {
 
 if ($RepairTasks) {
     $baseArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$Starter`" -GatewayDir `"$GatewayDir`" -LoginProfile `"$LoginProfile`" -ApiPort $ApiPort"
+    if ($UseIbc) {
+        $baseArgs += " -UseIbc"
+    }
     $result.backups."ETA-IBGateway" = Backup-Task -TaskName "ETA-IBGateway" -Stamp $stamp
     $result.backups."ETA-IBGateway-RunNow" = Backup-Task -TaskName "ETA-IBGateway-RunNow" -Stamp $stamp
     $result.backups."ETA-IBGateway-DailyRestart" = Backup-Task -TaskName "ETA-IBGateway-DailyRestart" -Stamp $stamp
@@ -486,10 +605,17 @@ if ($EnforceSingleSource) {
         $result.backups.$legacyTaskName = Backup-Task -TaskName $legacyTaskName -Stamp $stamp
         $result.single_source.legacy_tasks.$legacyTaskName = Disable-TaskIfPresent -TaskName $legacyTaskName
     }
-    $etaGatewayActionBeforeDisable = [string](Get-TaskActionText -TaskName "ETA-IBGateway")
-    $directGatewayExe = Join-Path $GatewayDir "ibgateway.exe"
-    if ($etaGatewayActionBeforeDisable.StartsWith($directGatewayExe, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $result.single_source.legacy_tasks."ETA-IBGateway" = Disable-TaskIfPresent -TaskName "ETA-IBGateway"
+    if ($UseIbc) {
+        $result.single_source.legacy_tasks."ETA-IBGateway" = Enable-TaskIfPresent -TaskName "ETA-IBGateway"
+    } else {
+        $etaGatewayActionBeforeDisable = [string](Get-TaskActionText -TaskName "ETA-IBGateway")
+        $directGatewayExecutables = @(
+            Join-Path $GatewayDir "ibgateway.exe"
+            Join-Path $GatewayDir "ibgateway1.exe"
+        )
+        if ($directGatewayExecutables.Where({ $etaGatewayActionBeforeDisable.StartsWith($_, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0) {
+            $result.single_source.legacy_tasks."ETA-IBGateway" = Disable-TaskIfPresent -TaskName "ETA-IBGateway"
+        }
     }
     $result.single_source.legacy_processes = @(Stop-LegacyIbkrProcess)
 }
@@ -502,28 +628,51 @@ $etaGatewayAction = [string]$result.single_source.task_actions."ETA-IBGateway"
 $runNowAction = [string]$result.single_source.task_actions."ETA-IBGateway-RunNow"
 $dailyRestartAction = [string]$result.single_source.task_actions."ETA-IBGateway-DailyRestart"
 $etaGatewayState = [string]$result.single_source.task_states."ETA-IBGateway"
-$runNowIsCanonical = $runNowAction.Contains("start_ibgateway.ps1") -and $runNowAction.Contains($GatewayDir)
-$dailyRestartIsCanonical = $dailyRestartAction.Contains("start_ibgateway.ps1") -and $dailyRestartAction.Contains($GatewayDir)
+$ibcFlagExpected = if ($UseIbc) { $true } else { $false }
+$runNowIsCanonical = (
+    $runNowAction.Contains("start_ibgateway.ps1") -and
+    $runNowAction.Contains($GatewayDir) -and
+    ($runNowAction.Contains("-UseIbc") -eq $ibcFlagExpected)
+)
+$dailyRestartIsCanonical = (
+    $dailyRestartAction.Contains("start_ibgateway.ps1") -and
+    $dailyRestartAction.Contains($GatewayDir) -and
+    ($dailyRestartAction.Contains("-UseIbc") -eq $ibcFlagExpected)
+)
+$etaGatewayIsCanonical = (
+    $etaGatewayAction.Contains("start_ibgateway.ps1") -and
+    $etaGatewayAction.Contains($GatewayDir) -and
+    ($etaGatewayAction.Contains("-UseIbc") -eq $ibcFlagExpected) -and
+    (-not (
+        $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway.exe"), [System.StringComparison]::OrdinalIgnoreCase) -or
+        $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway1.exe"), [System.StringComparison]::OrdinalIgnoreCase)
+    ))
+)
 $etaGatewayIsCanonicalOrDisabled = (
     $etaGatewayState -eq "Disabled" -or
-    (
-        $etaGatewayAction.Contains("start_ibgateway.ps1") -and
-        $etaGatewayAction.Contains($GatewayDir) -and
-        (-not $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway.exe"), [System.StringComparison]::OrdinalIgnoreCase))
+    $etaGatewayIsCanonical
+)
+if ($UseIbc) {
+    $result.single_source.gateway_task_canonical = (
+        $etaGatewayState -ne "Disabled" -and
+        $etaGatewayIsCanonical -and
+        $runNowIsCanonical -and
+        $dailyRestartIsCanonical
     )
-)
-$result.single_source.gateway_task_canonical = (
-    $etaGatewayIsCanonicalOrDisabled -and
-    $runNowIsCanonical -and
-    $dailyRestartIsCanonical
-)
+} else {
+    $result.single_source.gateway_task_canonical = (
+        $etaGatewayIsCanonicalOrDisabled -and
+        $runNowIsCanonical -and
+        $dailyRestartIsCanonical
+    )
+}
 $result.gateway_config.jts_ini = Get-JtsIniSnapshot -Path $jtsIniPath
 $result.gateway_config.vmoptions = Get-VmOptionsSnapshot -Path $vmOptionsPath
 $result.single_source.port_listeners = @(Get-PortListenerSnapshot)
 
 if ($RestartGateway) {
     try {
-        & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -ForceRestart
+        & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart
         $result.restarted = $true
     } catch {
         $result.restart_error = $_.Exception.Message

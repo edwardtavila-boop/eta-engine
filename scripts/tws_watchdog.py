@@ -43,6 +43,7 @@ _STATUS_PATH = Path(
 )
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 _DEFAULT_WATCHDOG_CLIENT_IDS = (55, 99, 101, 102)
+_GATEWAY_PROCESS_NAMES = ("ibgateway.exe", "ibgateway1.exe")
 _LAST_ACCOUNT_SNAPSHOT: dict | None = None
 
 
@@ -81,6 +82,29 @@ def _watchdog_client_ids() -> tuple[int, ...]:
         with contextlib.suppress(ValueError):
             ids.append(int(chunk.strip()))
     return tuple(ids) or _DEFAULT_WATCHDOG_CLIENT_IDS
+
+
+def _default_handshake_timeout() -> float:
+    raw = (
+        os.environ.get("ETA_TWS_WATCHDOG_HANDSHAKE_TIMEOUT_S", "").strip()
+        or os.environ.get("ETA_IBKR_CONNECT_TIMEOUT_S", "").strip()
+        or "45"
+    )
+    try:
+        timeout = float(raw)
+    except ValueError:
+        logger.warning(
+            "watchdog handshake timeout %r is invalid; using 45.0 seconds",
+            raw,
+        )
+        return 45.0
+    if timeout <= 0:
+        logger.warning(
+            "watchdog handshake timeout %r must be > 0; using 45.0 seconds",
+            raw,
+        )
+        return 45.0
+    return timeout
 
 
 def _ensure_asyncio_event_loop() -> None:
@@ -246,12 +270,13 @@ def _check_ib_handshake(
     port: int,
     *,
     attempts: int = 2,
-    timeout: float = 12.0,
+    timeout: float | None = None,
 ) -> tuple[bool, str]:
     """Confirm we can complete an IB API handshake (not just TCP).
     Returns (ok, detail)."""
     global _LAST_ACCOUNT_SNAPSHOT
     _LAST_ACCOUNT_SNAPSHOT = None
+    timeout = _default_handshake_timeout() if timeout is None else timeout
     details: list[str] = []
     client_ids = _watchdog_client_ids()
     for attempt in range(1, max(1, attempts) + 1):
@@ -261,7 +286,13 @@ def _check_ib_handshake(
             from ib_insync import IB
             ib = IB()
             try:
-                ib.connect(host, port, clientId=client_id, timeout=timeout)
+                ib.connect(
+                    host,
+                    port,
+                    clientId=client_id,
+                    timeout=timeout,
+                    readonly=True,
+                )
                 server_version = ib.client.serverVersion() if ib.isConnected() else 0
                 if ib.isConnected():
                     with contextlib.suppress(Exception):
@@ -338,38 +369,40 @@ def _gateway_process_snapshot(gateway_dir: Path) -> dict | None:
     not_running = {
         "running": False,
         "gateway_dir": str(gateway_dir),
-        "name": "ibgateway.exe",
+        "name": "/".join(_GATEWAY_PROCESS_NAMES),
     }
-    try:
-        completed = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq ibgateway.exe", "/FO", "CSV", "/NH"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    output = completed.stdout.strip()
-    if completed.returncode != 0 or not output:
-        return not_running
-    try:
-        rows = list(csv.reader(output.splitlines()))
-    except csv.Error:
-        return None
-    if not rows or rows[0][0].lower().startswith("info:"):
-        return not_running
-    row = rows[0]
-    if len(row) < 5:
-        return None
-    memory_kb = float(re.sub(r"[^\d.]", "", row[4]) or 0)
-    return {
-        "running": True,
-        "pid": int(row[1]),
-        "name": row[0],
-        "working_set_mb": round(memory_kb / 1024, 1),
-        "gateway_dir": str(gateway_dir),
-    }
+    for process_name in _GATEWAY_PROCESS_NAMES:
+        try:
+            completed = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {process_name}", "/FO", "CSV", "/NH"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        output = completed.stdout.strip()
+        if completed.returncode != 0 or not output:
+            continue
+        try:
+            rows = list(csv.reader(output.splitlines()))
+        except csv.Error:
+            return None
+        if not rows or rows[0][0].lower().startswith("info:"):
+            continue
+        row = rows[0]
+        if len(row) < 5:
+            return None
+        memory_kb = float(re.sub(r"[^\d.]", "", row[4]) or 0)
+        return {
+            "running": True,
+            "pid": int(row[1]),
+            "name": row[0],
+            "working_set_mb": round(memory_kb / 1024, 1),
+            "gateway_dir": str(gateway_dir),
+        }
+    return not_running
 
 
 def _load_status() -> dict:
@@ -405,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--handshake-timeout",
         type=float,
-        default=12.0,
+        default=_default_handshake_timeout(),
         help="Seconds to wait for each IB API handshake attempt.",
     )
     p.add_argument(
