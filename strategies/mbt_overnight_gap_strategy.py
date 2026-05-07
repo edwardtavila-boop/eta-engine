@@ -61,6 +61,9 @@ if TYPE_CHECKING:
 
 
 _MBT_TICK_SIZE: float = 5.0
+# CME Micro Bitcoin: 0.10 BTC per contract. $1 of price move = $0.10 P&L.
+# Sizing math MUST multiply stop_dist by this to compute correct contract count.
+_MBT_POINT_VALUE: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -181,7 +184,8 @@ class MBTOvernightGapStrategy:
         equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
-        bar_date = bar.timestamp.date()
+        # Day boundary anchored to America/Chicago (CME local).
+        bar_date = bar.timestamp.astimezone(self._tz).date()
         new_day = self._last_day != bar_date
 
         # ── New session detection ──────────────────────────────────────
@@ -193,10 +197,27 @@ class MBTOvernightGapStrategy:
             self._gap_side = None
             self._gap_size = 0.0
             self._today_rth_open = None
-            # The last bar of the prior in-memory session is our
-            # "RTH close" anchor.
+            # The "RTH close" anchor must come from a bar that was inside
+            # CME RTH (08:30-15:00 CT) on the PRIOR day. If the bar feed
+            # includes ETH (extended-hours) bars between sessions, hist[-1]
+            # is an overnight bar, not a true RTH close — using it would
+            # silently corrupt every gap measurement.
+            #
+            # Walk hist backwards looking for the most recent bar that
+            # was: (a) on a different (prior) Chicago-local date AND
+            # (b) inside RTH. If none found within a reasonable lookback,
+            # leave the anchor None (gap detection skipped this session).
             if hist:
-                self._last_rth_close = hist[-1].close
+                anchor: BarData | None = None
+                for prior in reversed(hist[-200:]):  # ≤200 bars lookback
+                    prior_date = prior.timestamp.astimezone(self._tz).date()
+                    if prior_date == bar_date:
+                        continue  # same-day bar, keep walking
+                    if self._in_session(prior):
+                        anchor = prior
+                        break
+                if anchor is not None:
+                    self._last_rth_close = anchor.close
 
         self._bars_seen += 1
         in_sess = self._in_session(bar)
@@ -276,7 +297,10 @@ class MBTOvernightGapStrategy:
         if stop_dist <= 0.0:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
-        qty = risk_usd / stop_dist
+        # qty = $risk / ($-per-contract for stop_dist of price)
+        # $-per-contract = stop_dist × point_value. MBT pv=0.10 ⟹ without
+        # the multiplier the strategy would size 10x larger than intended.
+        qty = risk_usd / (stop_dist * _MBT_POINT_VALUE)
         if qty <= 0.0:
             return None
 

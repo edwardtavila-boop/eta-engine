@@ -52,6 +52,9 @@ if TYPE_CHECKING:
 
 
 _MET_TICK_SIZE: float = 0.50  # MET tick = 0.50 USD per CME spec
+# CME Micro Ether: 0.10 ETH per contract. $1 of price move = $0.10 P&L.
+# Sizing math MUST multiply stop_dist by this to compute correct contract count.
+_MET_POINT_VALUE: float = 0.10
 
 
 @dataclass
@@ -260,7 +263,11 @@ class METRTHORBStrategy:
         if stop_dist <= 0.0:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
-        qty = risk_usd / stop_dist
+        # qty = $risk / ($-per-contract for stop_dist of price)
+        # MET point_value=0.10. Without the multiplier the strategy would
+        # ask for fractional contracts that IBKR floors to 0 (no trade)
+        # OR rounds up (overrisk). The fix lands the qty in the right OOM.
+        qty = risk_usd / (stop_dist * _MET_POINT_VALUE)
         if qty <= 0.0:
             return None
 

@@ -19,6 +19,19 @@ tier_a:
       max_loss_usd: 1200              # 10% of $12k bucket (post-activation)
       consecutive_losses: 3
       action: "flatten_bot_and_pause_until_next_session"
+    # CME crypto micros (research_candidate as of 2026-05-07). Tighter
+    # caps than MNQ/NQ because the 3 strategies have NOT been lab-validated
+    # and the agents flagged sample-size + microstructure concerns. Each
+    # bucket caps at ~0.5% of a $50k account (research-scale) with a
+    # 3-loss circuit. Loosen after walk-forward + Monte-Carlo passes.
+    mbt:
+      max_loss_usd: 250
+      consecutive_losses: 3
+      action: "flatten_bot_and_pause_until_next_session"
+    met:
+      max_loss_usd: 250
+      consecutive_losses: 3
+      action: "flatten_bot_and_pause_until_next_session"
   eta_eval_preemptive:
     trigger: "trailing_balance_within_usd_of_apex_dd_limit"
     cushion_usd: 500

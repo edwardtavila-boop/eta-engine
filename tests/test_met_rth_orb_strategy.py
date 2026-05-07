@@ -263,6 +263,11 @@ def test_position_size_scales_with_equity() -> None:
     bar = _bar(8, 35, high=2_510.0, low=2_500.0, close=2_508.0)
     out = s.maybe_enter(bar, hist, 10_000.0, cfg)
     assert out is not None
-    # risk = 0.5% × 10_000 = 50; stop_dist ≈ 20 -> qty ≈ 2.5
-    assert out.qty == pytest.approx(2.5, rel=0.01)
+    # risk_usd = 0.5% × 10_000 = $50.
+    # stop_dist ≈ 20 price points; MET point_value=0.10 ⟹ $-per-contract
+    # for that stop = 20 × 0.10 = $2/contract.
+    # qty = $50 / $2 = 25 contracts (clamped downstream by the supervisor's
+    # _MAX_QTY_PER_ORDER["MET"]=3 cap — the strategy emits 25 here and the
+    # supervisor enforces the position cap before the order goes to IBKR).
+    assert out.qty == pytest.approx(25.0, rel=0.01)
 

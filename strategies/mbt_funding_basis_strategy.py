@@ -22,10 +22,17 @@ Mechanic
 --------
 1. Track a rolling window of "basis proxy" values. The strategy
    accepts a ``basis_provider`` callable that maps the current
-   bar to a basis-in-bps reading; if no provider is attached the
-   strategy degrades to using bar-to-bar log returns as a stand-in
-   (still useful for detecting hot-running price action that
-   typically coincides with rich basis).
+   bar to a basis-in-bps reading.
+
+   **IMPORTANT — current production deploy state (2026-05-07):** no
+   `basis_provider` is wired in production today. Without one the
+   strategy falls back to ``(close - prev_close) / prev_close`` —
+   i.e. a one-bar log return, which is **not** basis. In that
+   degraded mode the strategy is operating as a short-side momentum-
+   fade z-filter, NOT a basis-decay trade. Walk-forward results
+   produced in this state validate a different mechanism than the
+   strategy name implies. Wire a real provider (CME BRR vs MBT mid
+   feed) before treating any backtest result as a "basis" signal.
 2. On each bar compute the z-score of the proxy vs the rolling
    window. When z >= ``entry_z`` AND the most recent N bars are
    showing fading momentum (bearish reversal candle, lower-high
@@ -71,6 +78,9 @@ if TYPE_CHECKING:
 # stops/targets to the tick avoids "phantom-fill" off-grid prices in
 # realistic_fill_sim.
 _MBT_TICK_SIZE: float = 5.0
+# CME Micro Bitcoin: 0.10 BTC per contract. $1 of price move = $0.10 P&L.
+# Sizing math MUST multiply stop_dist by this to compute correct contract count.
+_MBT_POINT_VALUE: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -229,7 +239,10 @@ class MBTFundingBasisStrategy:
         equity: float,
         config: BacktestConfig,
     ) -> _Open | None:
-        bar_date = bar.timestamp.date()
+        # Day boundary anchored to America/Chicago (CME local). UTC-date
+        # would split the CME RTH session in winter and merge across
+        # sessions in summer — both bugs.
+        bar_date = bar.timestamp.astimezone(self._tz).date()
         if self._last_day != bar_date:
             self._last_day = bar_date
             self._trades_today = 0
@@ -283,7 +296,10 @@ class MBTFundingBasisStrategy:
         if stop_dist <= 0.0:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
-        qty = risk_usd / stop_dist
+        # qty = $risk / ($-per-contract for stop_dist of price)
+        # $-per-contract = stop_dist (price points) × point_value (dollars/point/contract)
+        # Without the point_value multiplier MBT would be sized 10x larger than intended.
+        qty = risk_usd / (stop_dist * _MBT_POINT_VALUE)
         if qty <= 0.0:
             return None
 
