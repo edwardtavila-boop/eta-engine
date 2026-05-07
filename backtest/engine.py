@@ -42,6 +42,24 @@ class _Open:
     # (e.g. "trending_up", "choppy"). None if the ctx_builder doesn't
     # populate one — preserves backward compatibility with old strategies.
     regime: str | None = None
+    # ── Scale-out / partial-exit fields (Option A) ──
+    # Strategies (e.g. SageGatedORB) that want classic ORB management
+    # set ``partial_target`` to a price level between entry and target.
+    # When the engine first sees that level hit, it locks in a partial
+    # exit, reduces ``qty`` to the runner fraction, and moves stop to
+    # entry (breakeven). The remaining qty rides to ``target``.
+    # ``partial_pnl_usd`` accumulates the locked-in cushion so the
+    # final Trade reflects net (partial + runner) pnl. None preserves
+    # legacy single-target behaviour for every existing strategy.
+    partial_target: float | None = None
+    # Fraction of qty closed at partial_target. 0.5 = half off.
+    # Honored only when ``partial_target`` is not None.
+    partial_qty_frac: float = 0.5
+    # Internal: whether the partial exit has already fired.
+    partial_taken: bool = False
+    # Internal: cushion locked in by the partial exit, summed into the
+    # final Trade. Counted in USD on the partial leg's contract-qty.
+    partial_pnl_usd: float = 0.0
 
     def __post_init__(self) -> None:
         # Hard invariant — catches the entire wrong-side-stop bug class
@@ -82,6 +100,28 @@ class _Open:
             raise ValueError(f"qty must be > 0, got {self.qty}")
         if self.entry_price <= 0:
             raise ValueError(f"entry_price must be > 0, got {self.entry_price}")
+        # Scale-out invariant: partial_target must lie between entry
+        # and target on the correct side. Same defensive layer as the
+        # stop/target check — a strategy emitting a wrong-side partial
+        # could mark a partial exit on entry-fill, which would silently
+        # corrupt the trade pnl. Catch at construction.
+        if self.partial_target is not None:
+            if not (0.0 < self.partial_qty_frac < 1.0):
+                raise ValueError(
+                    f"partial_qty_frac must be in (0, 1), got {self.partial_qty_frac}"
+                )
+            if s in {"BUY", "LONG"}:
+                if not (self.entry_price < self.partial_target < self.target):
+                    raise ValueError(
+                        f"LONG partial_target ({self.partial_target}) must be between "
+                        f"entry ({self.entry_price}) and target ({self.target})."
+                    )
+            else:  # SHORT
+                if not (self.target < self.partial_target < self.entry_price):
+                    raise ValueError(
+                        f"SHORT partial_target ({self.partial_target}) must be between "
+                        f"target ({self.target}) and entry ({self.entry_price})."
+                    )
 
 
 def _atr(hist: list[BarData], period: int = 14) -> float:
@@ -283,6 +323,43 @@ class BacktestEngine:
         )
 
     def _exit(self, t: _Open, bar: BarData) -> Trade | None:
+        # ── Phase 1: scale-out (partial exit) check ──
+        # When ``partial_target`` is set and not yet taken, a touch of
+        # the partial level locks in cushion on ``partial_qty_frac`` of
+        # the position, reduces ``qty`` to the runner, and moves stop
+        # to entry (breakeven). The remaining runner rides to target.
+        # On a bar that hits BOTH partial AND stop/target, partial is
+        # processed first — the optimistic ordering matches how a real
+        # broker would see the prints (price moved through partial on
+        # the way to the further level). This is the standard
+        # in-backtest convention; bar-internal sequencing is unknown.
+        if (
+            t.partial_target is not None
+            and not t.partial_taken
+            and (
+                (t.side == "BUY" and bar.high >= t.partial_target)
+                or (t.side == "SELL" and bar.low <= t.partial_target)
+            )
+        ):
+            partial_qty = t.qty * t.partial_qty_frac
+            direction = 1.0 if t.side == "BUY" else -1.0
+            t.partial_pnl_usd += direction * (t.partial_target - t.entry_price) * partial_qty
+            t.qty = t.qty - partial_qty
+            # Move stop to breakeven on the runner. This is the
+            # "lock in the trade can't lose" management half of the
+            # scale-out playbook — without it, a runner can give back
+            # the partial cushion when price reverses to the original
+            # stop. We respect the side-aware invariant by clamping
+            # against the existing stop direction (only tightens, never
+            # loosens).
+            if t.side == "BUY":
+                t.stop = max(t.stop, t.entry_price)
+            else:
+                t.stop = min(t.stop, t.entry_price)
+            t.partial_taken = True
+            # Falls through to check stop/target on the same bar with
+            # the now-reduced qty + tightened stop.
+
         stop_hit = (t.side == "BUY" and bar.low <= t.stop) or (t.side == "SELL" and bar.high >= t.stop)
         tgt_hit = (t.side == "BUY" and bar.high >= t.target) or (t.side == "SELL" and bar.low <= t.target)
         if stop_hit:
@@ -300,8 +377,22 @@ class BacktestEngine:
         exit_reason: str = "session_end",
     ) -> Trade:
         direction = 1.0 if t.side == "BUY" else -1.0
-        pnl_usd = direction * (exit_price - t.entry_price) * t.qty
+        # Runner pnl = direction × (exit - entry) × runner qty.
+        # When a partial was taken, ``t.qty`` already reflects the
+        # reduced runner size and ``t.partial_pnl_usd`` carries the
+        # locked-in cushion. Total = cushion + runner. R is computed
+        # against the ORIGINAL ``risk_usd`` so the R-units stay
+        # comparable across single-target and scale-out trades.
+        runner_pnl_usd = direction * (exit_price - t.entry_price) * t.qty
+        pnl_usd = runner_pnl_usd + t.partial_pnl_usd
         pnl_r = pnl_usd / t.risk_usd if t.risk_usd > 0.0 else 0.0
+        # Reflect that the trade's effective close was a scale-out by
+        # tagging the exit reason. Audits can spot the difference
+        # without parsing the partial fields.
+        if t.partial_taken and exit_reason == "target_hit":
+            exit_reason = "runner_target_hit"
+        elif t.partial_taken and exit_reason == "stop_hit":
+            exit_reason = "runner_stop_hit"
         return Trade(
             entry_time=t.entry_bar.timestamp,
             exit_time=bar.timestamp,

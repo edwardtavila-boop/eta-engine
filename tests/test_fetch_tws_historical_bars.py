@@ -639,3 +639,208 @@ def test_report_gaps_flags_skipped_bars() -> None:
     assert gaps[0] == (1300, 2500)
 
 
+# --- Commodity 5m fetch coverage (GC / CL / NG / ZN / 6E) ---
+#
+# The 2026-05-07 fleet audit found the 1h timeframe is too coarse for
+# commodities — most edges live at 15m or 5m intraday. These tests verify
+# the fetcher's _FUTURES_MAP knows the 5 commodities at the IBKR-correct
+# exchange + currency + multiplier and that the dry-run / front-month
+# paths work for them too.
+#
+# IBKR contract-resolution truth (mirrors venues/ibkr_live.py:FUTURES_MAP):
+#   GC, MGC -> COMEX (CME Group's metals child exchange)
+#   CL, MCL, NG -> NYMEX (CME Group's energy child exchange)
+#   ZN, ZB -> CBOT  (CME Group's rates child exchange)
+#   6E (indexed at IB as "EUR"), M6E -> CME (CME proper for FX)
+#
+# Wrong-exchange strings cause qualifyContracts to return [] silently
+# even on otherwise valid Future objects — caught in production by the
+# 2026-05-05 NYMEX CL/MCL/NG smoke-harness regression.
+_COMMODITY_SYMBOLS: tuple[str, ...] = ("GC", "CL", "NG", "ZN", "6E")
+
+
+def test_futures_map_covers_all_5_commodities() -> None:
+    """All 5 commodity contracts in the 2026-05-07 audit must be present."""
+    for sym in _COMMODITY_SYMBOLS:
+        assert sym in mod._FUTURES_MAP, (
+            f"commodity symbol {sym} missing from _FUTURES_MAP -- the "
+            "2026-05-07 fleet audit needs 15m/5m bars for this contract"
+        )
+
+
+def test_commodity_exchanges_match_ibkr_contract_resolution() -> None:
+    """Verify each commodity has the IBKR-correct exchange string.
+
+    IBKR's contract-resolution layer treats CME / COMEX / NYMEX / CBOT as
+    distinct venues even though they share a parent (CME Group). Using
+    the wrong child exchange (e.g. "CME" for GC instead of "COMEX") makes
+    qualifyContracts silently return [] -- the same failure mode that bit
+    NYMEX CL/MCL/NG in the 2026-05-05 smoke-harness sweep.
+    """
+    expected: dict[str, tuple[str, str]] = {
+        # symbol: (root, exchange) — must match venues.ibkr_live.FUTURES_MAP
+        "GC":  ("GC",  "COMEX"),
+        "MGC": ("MGC", "COMEX"),
+        "CL":  ("CL",  "NYMEX"),
+        "MCL": ("MCL", "NYMEX"),
+        "NG":  ("NG",  "NYMEX"),
+        "ZN":  ("ZN",  "CBOT"),
+        "ZB":  ("ZB",  "CBOT"),
+        # 6E: IB indexes Euro FX under "EUR" trading code, NOT "6E".
+        # See venues.ibkr_live._build_contract for the same translation.
+        "6E":  ("EUR", "CME"),
+        "M6E": ("M6E", "CME"),
+    }
+    for sym, (want_root, want_exchange) in expected.items():
+        spec = mod._FUTURES_MAP.get(sym)
+        assert spec is not None, f"{sym} missing from _FUTURES_MAP"
+        root, exchange, currency, _mult = spec
+        assert root == want_root, (
+            f"{sym}: root={root!r} but IBKR indexes it as {want_root!r} "
+            f"(see venues/ibkr_live.py)"
+        )
+        assert exchange == want_exchange, (
+            f"{sym}: exchange={exchange!r} but IBKR routes it on "
+            f"{want_exchange!r}; using the wrong child of CME Group makes "
+            "qualifyContracts return [] silently"
+        )
+        assert currency == "USD", f"{sym}: expected USD, got {currency!r}"
+
+
+def test_commodity_multipliers_match_instrument_specs() -> None:
+    """Multipliers must match feeds/instrument_specs.py point_value.
+
+    Wrong multiplier => catastrophic sizing bugs. The 2026-05-05 sweep
+    saw $-866K loss on 8 6E trades in 90d before the spec fix; the
+    fetcher's multiplier feeds the same downstream sizing path.
+    """
+    # (symbol, expected_multiplier_as_str)
+    expected_multipliers: dict[str, str] = {
+        "GC":  "100",      # USD per 1.0 of price (gold: $100/oz)
+        "MGC": "10",       # micro gold: 1/10th
+        "CL":  "1000",     # USD per $1.00 of crude (1000 bbl)
+        "MCL": "100",      # micro crude: 1/10th
+        "NG":  "10000",    # USD per 1.0 of nat gas price (10000 MMBtu)
+        "ZN":  "1000",     # USD per 1.0 of price (10y note)
+        "ZB":  "1000",     # USD per 1.0 of price (30y bond)
+        "6E":  "125000",   # full-size Euro FX: EUR 125,000
+        "M6E": "12500",    # micro Euro FX: 1/10th
+    }
+    for sym, want_mult in expected_multipliers.items():
+        spec = mod._FUTURES_MAP.get(sym)
+        assert spec is not None
+        _root, _exchange, _ccy, mult = spec
+        assert mult == want_mult, (
+            f"{sym}: multiplier={mult!r} but expected {want_mult!r}; "
+            "wrong multiplier => sizing-math errors downstream"
+        )
+
+
+@pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
+def test_commodity_dry_run_emits_chunk_plan(
+    symbol: str, capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    """--dry-run must produce a chunk plan for each commodity at 5m.
+
+    540d / 30d-per-chunk = 18 chunks/symbol (the runbook number). This
+    is the same chunking math MBT/MET use, so any commodity that fails
+    here would point to a regression in plan_chunks, not the symbol.
+    """
+    rc = mod.run([
+        "--symbols", symbol,
+        "--days", "540",
+        "--timeframe", "5m",
+        "--root", str(tmp_path),
+        "--dry-run",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert symbol in out
+    assert "18 chunks" in out, f"{symbol}: expected 18 chunks at 540d x 5m"
+    # No CSV created in dry-run.
+    assert not list(tmp_path.glob("*.csv"))
+
+
+def test_commodity_dry_run_total_for_5_symbols(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    """The 5-commodity 540d 5m fleet fetch is 5 x 18 = 90 chunks."""
+    rc = mod.run([
+        "--symbols", *_COMMODITY_SYMBOLS,
+        "--days", "540",
+        "--timeframe", "5m",
+        "--root", str(tmp_path),
+        "--dry-run",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "total chunks across symbols: 90" in out
+
+
+@pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
+def test_commodity_end_to_end_with_mocked_ib(
+    symbol: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Each commodity runs end-to-end against a mocked IB and writes its CSV.
+
+    Verifies the symbol resolves through _build_future + qualifyContracts
+    against a synthetic IB. No live TWS connection needed.
+    """
+    ib = _MockIB(synthetic_bars_per_chunk=5)
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", symbol,
+            "--days", "60",  # 2 chunks
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    csv_path = tmp_path / f"{symbol}1_5m.csv"
+    assert csv_path.exists(), f"{symbol}: canonical CSV not written"
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 10, f"{symbol}: expected 10 bars (2 chunks x 5)"
+
+
+@pytest.mark.parametrize("symbol", list(_COMMODITY_SYMBOLS))
+def test_commodity_front_month_fallback_resolves(
+    symbol: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The same qualifyContracts -> reqContractDetails fallback used by
+    MBT/MET must work for commodities, which also have multiple active
+    expirations (especially CL/NG with monthly listings 12+ months out).
+    """
+    ib = _AmbiguousIB(
+        candidate_expiries=[
+            "20240619",  # expired
+            "20260619",  # soonest non-expired (winner for 2026-05-07)
+            "20260919",
+            "20261219",
+        ],
+        synthetic_bars_per_chunk=5,
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", symbol,
+            "--days", "30",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+        ],
+        ib=ib,
+    )
+    assert rc == 0, f"{symbol}: front-month fallback failed"
+    # Fallback path was used.
+    assert len(ib.qualify_calls) == 1
+    assert len(ib.contract_details_calls) == 1
+    # CSV produced.
+    assert (tmp_path / f"{symbol}1_5m.csv").exists()
+
+

@@ -10,12 +10,15 @@ choppy, afternoon sessions).
 
 Mechanic
 --------
-1. Compute RSI(14) and Bollinger Bands (EMA 20 ± 2σ) on close prices.
-2. LONG entry: RSI < oversold_threshold (30) AND close within BB lower
-   band buffer AND volume > avg AND rejection candle (hammer/engulfing).
-3. SHORT entry: RSI > overbought_threshold (70) AND close within BB
+1. Compute RSI(14) and Bollinger Bands (EMA 20 +/- 2 sigma) on close
+   prices.
+2. LONG entry: RSI < rsi_long_threshold (20) AND close within BB lower
+   band buffer AND volume > avg AND rejection candle (hammer/engulfing)
+   AND HTF trend gate agrees (synthetic 1h EMA-50 slope is positive).
+3. SHORT entry: RSI > rsi_short_threshold (80) AND close within BB
    upper band buffer AND volume > avg AND rejection candle
-   (shooting star / bearish engulfing).
+   (shooting star / bearish engulfing) AND HTF trend gate agrees
+   (synthetic 1h EMA-50 slope is negative).
 4. Exit via ATR-based stops and RR targets. Mean-reversion targets are
    smaller than trend-following (RR 1.5-2.0 vs 2.5-3.0) because
    reversals rarely travel full range.
@@ -26,13 +29,31 @@ Designed to be wrapped by ConfluenceScorecardStrategy for supercharged
 gating. RSI/BB fires the mechanical trigger; confluence scorecard adds
 trend-alignment, VWAP, ATR regime, volume, HTF, session factors.
 
+HTF (higher-timeframe) trend gate (added 2026-05-07)
+----------------------------------------------------
+Per the 2026-05-07 fleet audit, `rsi_mr_mnq` was the top equity-index
+candidate (Sharpe 1.23, expR +0.090, 137 trades) but the audit flagged
+the textbook MR failure mode: fading bear capitulations into more bear.
+
+The HTF gate aggregates 12 5m bars into one synthetic 1h close, then
+computes an EMA(50) over those 1h closes. The trend signal is:
+
+  slope > 0  if  last_1h_close > ema_50  (HTF uptrend)
+  slope < 0  if  last_1h_close < ema_50  (HTF downtrend)
+
+LONG fires only when slope > 0 (don't fade bear capitulations).
+SHORT fires only when slope < 0 (don't fade bull breakouts).
+
+Gate is configurable via `require_htf_agreement: bool = True`. When
+False, behaviour is identical to the legacy strategy (audit A/B path).
+
 Configurable for asset class
 -----------------------------
-* MNQ 5m: rsi_period=10, oversold=25, overbought=75, bb_window=20,
+* MNQ 5m: rsi_period=10, rsi_long=25, rsi_short=75, bb_window=20,
   bb_std=2.0, atr_stop_mult=1.0, rr_target=1.5
-* BTC 1h: rsi_period=14, oversold=30, overbought=70, bb_window=20,
+* BTC 1h: rsi_period=14, rsi_long=30, rsi_short=70, bb_window=20,
   bb_std=2.0, atr_stop_mult=1.5, rr_target=2.0
-* ETH 1h: rsi_period=14, oversold=25, overbought=75, bb_window=20,
+* ETH 1h: rsi_period=14, rsi_long=25, rsi_short=75, bb_window=20,
   bb_std=2.5, atr_stop_mult=1.8, rr_target=2.0 (wider bands for ETH vol)
 """
 
@@ -52,8 +73,18 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class RSIMeanReversionConfig:
     rsi_period: int = 14
+    # Legacy thresholds kept for backward compatibility with presets that
+    # still set them; not consulted by maybe_enter (the gate uses the
+    # *_threshold pair below).  Removing them entirely would break
+    # external callers that read the field by name.
     oversold_threshold: float = 30.0
     overbought_threshold: float = 70.0
+
+    # 2026-05-07 HTF audit tuning: tighten from 25/75 -> 20/80 to reduce
+    # fire rate but improve quality.  These are the values consulted by
+    # maybe_enter; presets override them per asset class.
+    rsi_long_threshold: float = 20.0
+    rsi_short_threshold: float = 80.0
 
     bb_window: int = 20
     bb_std_mult: float = 2.0
@@ -82,9 +113,19 @@ class RSIMeanReversionConfig:
     allow_long: bool = True
     allow_short: bool = True
 
-    # Session filter — defaults to "off" so 24/7 ticker trading and
+    # HTF (higher-timeframe) trend gate (audit 2026-05-07):
+    #   - htf_lookback_5m_bars = 12  -> 12 5m bars per synthetic 1h close
+    #   - htf_ema_period       = 50  -> EMA-50 over synthetic 1h closes
+    #   - require_htf_agreement       -> when True (default) the gate is
+    #     active; when False, behaviour is identical to legacy strategy
+    #     (used by grid search to A/B-test the gate).
+    htf_lookback_5m_bars: int = 12
+    htf_ema_period: int = 50
+    require_htf_agreement: bool = True
+
+    # Session filter -- defaults to "off" so 24/7 ticker trading and
     # Globex futures both work without restriction.  Operators may
-    # opt in to "afternoon" (08:00-16:00 ET — currently UTC-naive,
+    # opt in to "afternoon" (08:00-16:00 ET -- currently UTC-naive,
     # see same caveat as VWAP MR).  Other modes can be added.
     session_filter: str = "off"
 
@@ -106,6 +147,22 @@ class RSIMeanReversionStrategy:
         self._n_vol_reject: int = 0
         self._n_adx_reject: int = 0
         self._n_fired: int = 0
+        # HTF trend-gate audit counters (added 2026-05-07): how many
+        # would-have-fired entries the HTF agreement check blocked.
+        self._n_htf_filtered_long: int = 0
+        self._n_htf_filtered_short: int = 0
+
+        # Synthetic-1h-EMA state.  We accumulate `htf_lookback_5m_bars`
+        # 5m closes into one synthetic 1h close (the last 5m close in
+        # the window), then update an EMA over the synthetic series.
+        self._htf_5m_count: int = 0
+        self._htf_last_5m_close: float | None = None
+        self._htf_last_1h_close: float | None = None
+        self._htf_ema: float | None = None
+        self._htf_ema_seed_buf: list[float] = []
+        # EMA smoothing constant -- standard 2/(N+1) form.  Computed once
+        # at __init__ rather than re-derived each bar.
+        self._htf_alpha: float = 2.0 / (self.cfg.htf_ema_period + 1)
 
     @property
     def stats(self) -> dict[str, int]:
@@ -115,6 +172,8 @@ class RSIMeanReversionStrategy:
             "short_signals": self._n_short_sig,
             "vol_rejects": self._n_vol_reject,
             "adx_rejects": self._n_adx_reject,
+            "htf_filtered_long": self._n_htf_filtered_long,
+            "htf_filtered_short": self._n_htf_filtered_short,
             "entries_fired": self._n_fired,
         }
 
@@ -187,6 +246,44 @@ class RSIMeanReversionStrategy:
             return time(8, 0) <= t <= time(16, 0)
         return True
 
+    def _update_htf_state(self, close: float) -> None:
+        """Roll the synthetic-1h-EMA forward by one 5m close.
+
+        Every `htf_lookback_5m_bars` 5m bars produces one synthetic 1h
+        close (= the last 5m close in the window).  The EMA is seeded
+        with a simple mean over the first `htf_ema_period` synthetic 1h
+        closes, then updated incrementally.
+        """
+        self._htf_last_5m_close = close
+        self._htf_5m_count += 1
+        if self._htf_5m_count < self.cfg.htf_lookback_5m_bars:
+            return
+        # Window complete -- finalize one synthetic 1h close.
+        self._htf_last_1h_close = close
+        self._htf_5m_count = 0
+        if self._htf_ema is None:
+            self._htf_ema_seed_buf.append(close)
+            if len(self._htf_ema_seed_buf) >= self.cfg.htf_ema_period:
+                self._htf_ema = sum(self._htf_ema_seed_buf) / len(self._htf_ema_seed_buf)
+                self._htf_ema_seed_buf = []
+        else:
+            self._htf_ema = self._htf_alpha * close + (1.0 - self._htf_alpha) * self._htf_ema
+
+    def _htf_slope(self) -> int | None:
+        """Return +1 (uptrend), -1 (downtrend), or None (not warm yet).
+
+        Sign convention: positive when last synthetic 1h close > EMA-50,
+        negative when below.  Equality returns 0 (treated as "no
+        agreement" for both LONG and SHORT by the gate).
+        """
+        if self._htf_ema is None or self._htf_last_1h_close is None:
+            return None
+        if self._htf_last_1h_close > self._htf_ema:
+            return 1
+        if self._htf_last_1h_close < self._htf_ema:
+            return -1
+        return 0
+
     def maybe_enter(
         self, bar: BarData, hist: list[BarData],
         equity: float, config: BacktestConfig,
@@ -201,6 +298,7 @@ class RSIMeanReversionStrategy:
         self._highs.append(bar.high)
         self._lows.append(bar.low)
         self._volume_window.append(bar.volume)
+        self._update_htf_state(bar.close)
 
         if self._bars_seen < self.cfg.warmup_bars:
             return None
@@ -222,13 +320,13 @@ class RSIMeanReversionStrategy:
         buffer = bb_range * 0.10
 
         side: str | None = None
-        if self.cfg.allow_long and rsi <= self.cfg.oversold_threshold:
+        if self.cfg.allow_long and rsi <= self.cfg.rsi_long_threshold:
             if bar.close <= bb_lower + buffer:
                 side = "BUY"
                 self._n_long_sig += 1
         elif (
             self.cfg.allow_short
-            and rsi >= self.cfg.overbought_threshold
+            and rsi >= self.cfg.rsi_short_threshold
             and bar.close >= bb_upper - buffer
         ):
             side = "SELL"
@@ -236,6 +334,30 @@ class RSIMeanReversionStrategy:
 
         if side is None:
             return None
+
+        # HTF trend gate: only fade RSI extremes when the higher
+        # timeframe agrees with the mean-reversion direction.  Audit
+        # 2026-05-07 -- prevents fading bear capitulations in a
+        # downtrend (and bull breakouts in an uptrend).
+        if self.cfg.require_htf_agreement:
+            slope = self._htf_slope()
+            # Until the HTF EMA seeds (`htf_ema_period` synthetic 1h
+            # closes), we have no trend signal -- block to stay
+            # conservative.  This is a one-time warmup cost; live runs
+            # accumulate the EMA across restarts via persisted state
+            # (or simply burn the first ~50h of bars).
+            if slope is None:
+                if side == "BUY":
+                    self._n_htf_filtered_long += 1
+                else:
+                    self._n_htf_filtered_short += 1
+                return None
+            if side == "BUY" and slope <= 0:
+                self._n_htf_filtered_long += 1
+                return None
+            if side == "SELL" and slope >= 0:
+                self._n_htf_filtered_short += 1
+                return None
 
         if not self._is_rejection(bar, side):
             return None
@@ -311,48 +433,67 @@ class RSIMeanReversionStrategy:
 
 
 def mnq_rsi_mr_preset() -> RSIMeanReversionConfig:
-    """Paper-soak v2 tuning (2026-05-06): atr_stop_mult 1.0→1.5 (tight
+    """Paper-soak v2 tuning (2026-05-06): atr_stop_mult 1.0->1.5 (tight
     stops were getting hit on noise before the mean-reversion played out
-    on ~50 trades at near-breakeven), rr_target 1.5→2.0 (need bigger
-    wins to justify the tight-signal premium)."""
+    on ~50 trades at near-breakeven), rr_target 1.5->2.0 (need bigger
+    wins to justify the tight-signal premium).
+
+    HTF audit (2026-05-07): tightened RSI thresholds 25/75 -> 20/80 and
+    activated the HTF trend gate to avoid fading bear capitulations."""
     return RSIMeanReversionConfig(
-        rsi_period=10, oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_period=10,
+        oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
         bb_window=20, bb_std_mult=2.0,
         volume_z_lookback=20, min_volume_z=0.3, require_rejection=True,
         atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=3, warmup_bars=50,
+        htf_lookback_5m_bars=12, htf_ema_period=50,
+        require_htf_agreement=True,
     )
 
 
 def nq_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
-        rsi_period=10, oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_period=10,
+        oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
         bb_window=20, bb_std_mult=2.0,
         volume_z_lookback=20, min_volume_z=0.3, require_rejection=True,
         atr_period=14, atr_stop_mult=1.0, rr_target=1.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=3, warmup_bars=50,
+        htf_lookback_5m_bars=12, htf_ema_period=50,
+        require_htf_agreement=True,
     )
 
 
 def btc_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
-        rsi_period=14, oversold_threshold=30.0, overbought_threshold=70.0,
+        rsi_period=14,
+        oversold_threshold=30.0, overbought_threshold=70.0,
+        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
         bb_window=20, bb_std_mult=2.0,
         volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
         atr_period=14, atr_stop_mult=1.5, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
+        htf_lookback_5m_bars=12, htf_ema_period=50,
+        require_htf_agreement=True,
     )
 
 
 def eth_rsi_mr_preset() -> RSIMeanReversionConfig:
     return RSIMeanReversionConfig(
-        rsi_period=14, oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_period=14,
+        oversold_threshold=25.0, overbought_threshold=75.0,
+        rsi_long_threshold=20.0, rsi_short_threshold=80.0,
         bb_window=20, bb_std_mult=2.5,
         volume_z_lookback=24, min_volume_z=0.2, require_rejection=True,
         atr_period=14, atr_stop_mult=1.8, rr_target=2.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
+        htf_lookback_5m_bars=12, htf_ema_period=50,
+        require_htf_agreement=True,
     )

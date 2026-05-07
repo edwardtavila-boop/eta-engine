@@ -110,11 +110,38 @@ class LabResult:
     walk_forward_windows: int = 0
     bars_used: int = 0
     coverage_days: float = 0.0
+    # `passed` retained for back-compat. New code should consult
+    # `passed_strict` - the rigor-gated verdict (see fields below).
+    # Still populated by the legacy gate (count + sharpe + positive expR).
     passed: bool = False
     pass_reason: str = ""
     fail_reasons: list[str] = field(default_factory=list)
     report_path: str = ""
     ts: str = ""
+    # --- Rigor extensions (2026-05-07) ----------------------------
+    # 1. Block-bootstrap CI on expR (R-multiples per trade)
+    expR_p5: float = 0.0
+    expR_p50: float = 0.0
+    expR_p95: float = 0.0
+    bootstrap_block_size: int = 0
+    bootstrap_n_resamples: int = 0
+    # 2. Multiple-testing adjustment (Bonferroni)
+    p_value_raw: float = 1.0
+    p_value_bonferroni: float = 1.0
+    multi_test_count: int = 0
+    # 3. Friction-aware net expR (per-trade R after RT costs)
+    expR_net: float = 0.0
+    friction_R_per_trade: float = 0.0
+    # 4. Split-half stability - same sign on first/second OOS half
+    expR_half_1: float = 0.0
+    expR_half_2: float = 0.0
+    split_half_sign_stable: bool = False
+    # 5. Deflated Sharpe (Lopez de Prado 2014)
+    sharpe_deflated: float = 0.0
+    # Strict gate verdict - replaces `passed` for go/no-go decisions
+    passed_strict: bool = False
+    strict_fail_reasons: list[str] = field(default_factory=list)
+    legacy_passed: bool = False  # mirror of `passed` for explicitness
 
 
 # ─── OHLCV bar loader ─────────────────────────────────────────────
@@ -1625,6 +1652,32 @@ class WalkForwardEngine:
             fail_reasons.append(f"max_dd {dd:.2f} R > 30% of trades")
         passed = not fail_reasons
 
+        # --- Rigor extensions (2026-05-07) ---------------------------
+        # Block-bootstrap CI, Bonferroni p-value, friction-aware net,
+        # split-half stability, deflated Sharpe. Operator can override
+        # multi_test_count via spec["multi_test_count"]; otherwise we
+        # use the count of active strategies in the registry.
+        from eta_engine.feeds.strategy_lab.rigor import compute_rigor
+        rigor_n = spec.get("multi_test_count")
+        rigor_block = int(spec.get("bootstrap_block_size", 5))
+        rigor_reps = int(spec.get("bootstrap_n_resamples", 5000))
+        rigor_seed = int(spec.get("bootstrap_seed", 12345))
+        rigor_stop_mult = float(spec.get("avg_stop_atr_mult", 1.5))
+        # Engine's avg ATR (in price points) over the bar series gives
+        # friction.R_per_trade a realistic stop-distance scale.
+        atr_nonzero = atr_arr[atr_arr > 0]
+        rigor_atr_pts = float(atr_nonzero.mean()) if atr_nonzero.size else None
+        rigor = compute_rigor(
+            arr,
+            symbol=sym,
+            multi_test_count=int(rigor_n) if rigor_n is not None else None,
+            block_size=rigor_block,
+            n_resamples=rigor_reps,
+            avg_stop_atr_mult=rigor_stop_mult,
+            typical_atr_pts=rigor_atr_pts,
+            seed=rigor_seed,
+        )
+
         return LabResult(
             strategy_id=str(spec.get("id") or spec.get("strategy_id") or "candidate"),
             bot_id=str(spec.get("bot_id") or ""),
@@ -1640,8 +1693,25 @@ class WalkForwardEngine:
             bars_used=len(bars["close"]),
             coverage_days=round((bars["time"][-1] - bars["time"][0]) / 86400.0, 1) if len(bars["time"]) > 1 else 0.0,
             passed=passed,
+            legacy_passed=passed,
             pass_reason="all gates passed" if passed else "",
             fail_reasons=fail_reasons,
+            expR_p5=round(rigor.expR_p5, 4),
+            expR_p50=round(rigor.expR_p50, 4),
+            expR_p95=round(rigor.expR_p95, 4),
+            bootstrap_block_size=rigor.bootstrap_block_size,
+            bootstrap_n_resamples=rigor_reps,
+            p_value_raw=round(rigor.p_value_raw, 5),
+            p_value_bonferroni=round(rigor.p_value_bonferroni, 5),
+            multi_test_count=rigor.multi_test_count,
+            expR_net=round(rigor.expR_net, 4),
+            friction_R_per_trade=round(rigor.friction_R_per_trade, 5),
+            expR_half_1=round(rigor.expR_half_1, 4),
+            expR_half_2=round(rigor.expR_half_2, 4),
+            split_half_sign_stable=rigor.split_half_sign_stable,
+            sharpe_deflated=round(rigor.sharpe_deflated, 3),
+            passed_strict=rigor.passed_strict,
+            strict_fail_reasons=list(rigor.strict_fail_reasons),
             ts=datetime.now(UTC).isoformat(),
         )
 

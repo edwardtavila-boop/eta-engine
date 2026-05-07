@@ -86,6 +86,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "research_candidate": True,
                     "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Fleet audit 2026-05-07: bootstrap p(expR<=0)=0.997. "
+                "Negative expectancy with 99.7% confidence over 569 trades. "
+                "Identical lab metrics to eth_sage_daily and eth_perp "
+                "(= one strategy in three wrappers)."
+            ),
 },
     ),
 
@@ -140,7 +148,10 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "deactivated_reason": (
                 "elite_scoreboard 2026-05-05: PF=0.43 Sharpe=-1.67 "
                 "expR=-0.0352 n=112 — fighting dow_theory short trend; "
-                "replaced by eth_sage_daily ELITE"
+                "replaced by eth_sage_daily ELITE. "
+                "Fleet audit 2026-05-07 confirms: identical lab signal "
+                "generator to eth_sweep_reclaim and eth_sage_daily — "
+                "three names, one strategy."
             ),
         },
     ),
@@ -167,9 +178,21 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "provides directional filtering that crypto_orb alone lacks."
         ),
         extras={
-            "promotion_status": "paper_soak",
-            "elite_gate_passed": "2026-05-05",
-            "elite_gate_results": (
+            "promotion_status": "research_candidate",
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Fleet audit 2026-05-07: dispatches to identical signal "
+                "generator as eth_sweep_reclaim and eth_perp — confirmed "
+                "by lab returning identical 569-trade metrics. The "
+                "'ELITE-GATE 2026-05-05 ALL GREEN' result is contradicted "
+                "by the lab. Either the elite-gate path uses a different "
+                "harness whose results are unreproducible, or the claim "
+                "is wrong. Demoted pending walk-forward + bootstrap CI "
+                "on canonical bars."
+            ),
+            "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
+            "elite_gate_results_PRIOR_CLAIM": (
                 "370 trades, 52.7% WR, Sharpe 0.859, PF 1.114, "
                 "max DD 19.0%, pass_reason=all gates passed"
             ),
@@ -385,8 +408,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "deactivated_on": "2026-05-05",
             "deactivated_reason": (
                 "elite_scoreboard 2026-05-05: PF=0.82 Sharpe=-0.40 "
-                "expR=-0.0128 over n=125 — replaced by btc_hybrid_sage ELITE"
+                "expR=-0.0128 over n=125 — replaced by btc_hybrid_sage ELITE. "
+                "Fleet audit 2026-05-07 confirms duplicate: identical lab "
+                "metrics to btc_optimized (541 trades, expR +0.139, "
+                "Sharpe 1.67 — exactly the same numbers). Same signal "
+                "generator dispatch via confluence_scorecard + "
+                "sweep_reclaim. Single registry slot kept under "
+                "btc_optimized."
             ),
+            "fleet_audit_dedup_on": "2026-05-07",
         },
     ),
 
@@ -1248,8 +1278,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "max_trades_per_day": 2, "min_bars_between_trades": 12, "warmup_bars": 72,
             "risk_per_trade_pct": 0.005,
             "deactivated": True,
-            "deactivated_on": "2026-05-04",
-            "deactivated_reason": "lab_sweep_2026_05_04: sol_perp failed gates (sharpe=-0.96, exp_R=-0.077, wr=0.346)",
+            "deactivated_on": "2026-05-07",
+            "deactivated_on_PRIOR_CLAIM": "2026-05-04",
+            "deactivated_reason_PRIOR_CLAIM": "lab_sweep_2026_05_04: sol_perp failed gates (sharpe=-0.96, exp_R=-0.077, wr=0.346)",
+            "deactivated_reason": (
+                "Fleet audit 2026-05-07: identical lab metrics to "
+                "sol_optimized (589 trades, same signal). Same "
+                "kind+sub_strategy dispatch."
+            ),
         },
     ),
 

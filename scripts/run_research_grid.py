@@ -280,10 +280,27 @@ def _build_orb_sage_gated_factory(
     overlay_enabled = bool(
         extras.get("overlay_enabled", extras.get("sage_overlay_enabled", True)),
     )
+    # 2026-05-07 redesign: scale-out + VIX filter knobs flow from
+    # registry extras → SageGatedORBConfig. Defaults match the live
+    # mnq_futures_sage wiring (scale-out at 1.5R, runner via the ORB
+    # rr_target, VIX p90 over 252 5m bars). Each flag can be flipped
+    # independently for ablation runs.
+    enable_scale_out = bool(extras.get("enable_scale_out", True))
+    rr_partial = float(extras.get("rr_partial", 1.5))
+    partial_qty_frac = float(extras.get("partial_qty_frac", 0.5))
+    enable_vix_filter = bool(extras.get("enable_vix_filter", True))
+    vix_lookback_bars = int(extras.get("vix_lookback_bars", 252))
+    vix_pct_threshold = float(extras.get("vix_pct_threshold", 0.90))
     cfg = SageGatedORBConfig(
         orb=orb_cfg,
         sage=sage_cfg,
         overlay_enabled=overlay_enabled,
+        enable_scale_out=enable_scale_out,
+        rr_partial=rr_partial,
+        partial_qty_frac=partial_qty_frac,
+        enable_vix_filter=enable_vix_filter,
+        vix_lookback_bars=vix_lookback_bars,
+        vix_pct_threshold=vix_pct_threshold,
     )
     return lambda: SageGatedORBStrategy(cfg)
 

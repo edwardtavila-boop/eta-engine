@@ -204,13 +204,19 @@ class VolumeProfileStrategy:
             self._trades_today = 0
 
         self._bars_seen += 1
-        self._volume_window.append(bar.volume)
 
         typical = (bar.high + bar.low + bar.close) / 3.0
         bucket = self._bucket_price(typical)
 
-        # try/finally guarantees the bar is recorded AFTER the entry
-        # decision — fixes the look-ahead.
+        # try/finally guarantees both the profile AND the volume window
+        # are updated AFTER the entry decision — fixes the look-ahead.
+        # Audit 2026-05-07 found the volume window was being appended
+        # BEFORE _evaluate_entry, contaminating _volume_z_score with
+        # the current bar's volume in the mean+stdev. The volume z-score
+        # is the strategy's primary entry filter; this contamination
+        # explained the suspicious 58% WR / 0.05R expR pattern (filter
+        # appeared well-calibrated only because it referenced the bar
+        # it was filtering).
         try:
             if self._bars_seen < self.cfg.warmup_bars:
                 return None
@@ -224,6 +230,7 @@ class VolumeProfileStrategy:
             return self._evaluate_entry(bar, hist, equity)
         finally:
             self._append_bar_to_profile(bucket, bar.volume)
+            self._volume_window.append(bar.volume)
 
     def _evaluate_entry(
         self, bar: BarData, hist: list[BarData], equity: float,
