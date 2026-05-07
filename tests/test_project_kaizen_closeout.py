@@ -86,3 +86,41 @@ def test_closeout_uses_wiring_preflight_for_submodule_gate(tmp_path: Path, monke
     submodule_gate = next(gate for gate in report["gates"] if gate["name"] == "submodule_status")
     assert submodule_gate["status"] == "pass"
     assert "eta_engine.scripts.submodule_wiring_preflight" in submodule_gate["extra"]["args"]
+
+
+def test_live_closeout_allows_remote_supervisor_truth_for_local_health(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import project_kaizen_closeout as closeout
+
+    commands: list[list[str]] = []
+
+    def fake_run_command(args, *, cwd, timeout_s):
+        commands.append(list(args))
+        return closeout.CommandResult(
+            args=list(args),
+            cwd=str(cwd),
+            returncode=0,
+            stdout="",
+            stderr="",
+            duration_s=0.01,
+        )
+
+    monkeypatch.setattr(closeout, "_run_command", fake_run_command)
+    monkeypatch.setattr(
+        closeout,
+        "_live_endpoint_gate",
+        lambda name, url, *, timeout_s: closeout._gate(name, "pass", "ok"),
+    )
+
+    closeout.run_closeout(
+        root=tmp_path,
+        output_dir=tmp_path / "state",
+        python_exe=sys.executable,
+        include_live=True,
+        run_tests=False,
+    )
+
+    health_args = next(args for args in commands if "eta_engine.scripts.health_check" in args)
+    assert "--allow-remote-supervisor-truth" in health_args

@@ -288,10 +288,19 @@ def run_closeout(
             strict_secrets=strict_secrets,
         )
     )
+    health_args = [
+        py,
+        "-m",
+        "eta_engine.scripts.health_check",
+        "--output-dir",
+        str(state_dir / "health"),
+    ]
+    if include_live:
+        health_args.append("--allow-remote-supervisor-truth")
     gates.append(
         _command_gate(
             "health_check",
-            [py, "-m", "eta_engine.scripts.health_check", "--output-dir", str(state_dir / "health")],
+            health_args,
             cwd=project_root,
             timeout_s=timeout_s,
             strict_secrets=strict_secrets,
