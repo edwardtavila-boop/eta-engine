@@ -661,6 +661,23 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "NQ",
             "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Two independent methodologies agree this bot has no edge:\n"
+                "  - VPS kaizen daily run (real closed trades, n=60): "
+                "tier=DECAY mc=MIXED expR=-0.0431; auto-deactivated to "
+                "kaizen_overrides.json sidecar.\n"
+                "  - Strict-gate audit 2026-05-07 (backtest, n=1179): "
+                "Sharpe 0.42, expR_net +0.026, sh_def -0.99. Marginal "
+                "positive on backtest, negative on real fills.\n"
+                "Real-fill verdict wins because it reflects actual broker "
+                "frictions, slippage, and execution timing rather than "
+                "the audit's mid-bar fill assumption. Code-level retire "
+                "added so the local supervisor matches the VPS kaizen "
+                "decision (sidecar files don't propagate across machines). "
+                "Audit data: eta_engine/reports/strict_gate_20260507T194017Z.json"
+            ),
         },
     ),
 
