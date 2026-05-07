@@ -45,6 +45,27 @@ if TYPE_CHECKING:
     from eta_engine.core.data_pipeline import BarData
 
 
+def _coerce_time(value: time | str) -> time:
+    """Accept ``datetime.time`` or ``"HH:MM"`` / ``"HH:MM:SS"`` strings.
+
+    Lets registries (which prefer JSON-friendly strings) and Python
+    callers (which already have ``time`` objects) share the same
+    config without each having to import ``datetime.time``.
+    """
+    if isinstance(value, time):
+        return value
+    if isinstance(value, str):
+        parts = value.split(":")
+        if len(parts) == 2:
+            h, m = parts
+            return time(int(h), int(m))
+        if len(parts) == 3:
+            h, m, s = parts
+            return time(int(h), int(m), int(s))
+    msg = f"session window must be datetime.time or 'HH:MM' string, got {value!r}"
+    raise ValueError(msg)
+
+
 @dataclass(frozen=True)
 class VWAPReversionConfig:
     vwap_std_band: float = 2.0
@@ -75,14 +96,25 @@ class VWAPReversionConfig:
     # Session window for entry filtering.  Defaults are PERMISSIVE
     # (00:00-23:59) so the strategy works on 24/7 tickers and on
     # futures running through Globex.  Operators who want to restrict
-    # to a specific window (e.g., RTH-only or afternoon-only) must
-    # explicitly set both ``session_start`` and ``session_end``.
-    # ``session_tz`` controls the timezone the bars are converted to
-    # before comparing.  When the window covers the full day the
-    # timezone is irrelevant.
+    # to a specific window (e.g., RTH-only or afternoon-only or
+    # London-open for crypto) must explicitly set both
+    # ``session_start`` and ``session_end``.  ``session_tz`` controls
+    # the timezone the bars are converted to before comparing.  When
+    # the window covers the full day the timezone is irrelevant.
+    #
+    # Accepts ``datetime.time`` or ``"HH:MM"`` strings — strings are
+    # coerced in __post_init__ so registries can stay JSON-friendly.
     session_start: time = time(0, 0)
     session_end: time = time(23, 59)
     session_tz: str = "UTC"
+
+    def __post_init__(self) -> None:
+        # Frozen dataclass — bypass __setattr__ guard via object.__setattr__
+        # only when coercion is needed.  Type-correct values are left alone.
+        if not isinstance(self.session_start, time):
+            object.__setattr__(self, "session_start", _coerce_time(self.session_start))
+        if not isinstance(self.session_end, time):
+            object.__setattr__(self, "session_end", _coerce_time(self.session_end))
 
 
 class VWAPReversionStrategy:

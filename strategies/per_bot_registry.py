@@ -278,6 +278,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # Verified Alpaca paper supports SOL/USD pair. Symbol stays "SOL" so
     # the venue adapter's _alpaca_crypto_base mapping resolves correctly
     # (already maps SOL → SOLUSD).
+    #
+    # 2026-05-07: switched sweep_preset btc → sol and edge_config
+    # btc_crypto → sol_crypto.  Both SOL-specific presets exist
+    # (sol_daily_sweep_preset in sweep_reclaim_strategy.py and
+    # sol_crypto_preset in edge_layers.py) and are calibrated for SOL's
+    # ~2x BTC volatility (wider ATR stop, higher absorption threshold,
+    # lower wick/volume floors).  The previous "btc"/"btc_crypto"
+    # fallback was leaking BTC-tuned thresholds into SOL — masked by
+    # raw atr_stop_mult/rr_target overrides but every other knob was
+    # wrong.
     StrategyAssignment(
         bot_id="sol_optimized",
         strategy_id="sol_optimized_v1",
@@ -294,20 +304,23 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "RESEARCH 2026-05-06: SOL/USD diversification using btc_optimized's "
             "proven mechanic (sweep_reclaim + confluence scorecard). SOL has "
             "higher beta than BTC so similar sweep dynamics with wider stops. "
-            "Tuned: atr_stop_mult=2.5 (vs BTC's 2.0) for SOL's volatility. "
-            "Half-size warmup until Kaizen accumulates enough live trades "
-            "to validate the edge."
+            "Uses SOL-specific sweep_preset (sol_daily_sweep_preset) and "
+            "sol_crypto edge preset, both calibrated for SOL's ~2x BTC "
+            "volatility. Half-size warmup until Kaizen accumulates enough "
+            "live trades to validate the edge."
         ),
         extras={
             "edge_enabled": True,
-            "edge_config": "btc_crypto",  # reuse BTC edge config; same family
+            "edge_config": "sol_crypto",  # SOL-tuned edge thresholds (was btc_crypto)
             "promotion_status": "research_candidate",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
-                "sweep_preset": "btc",  # SOL uses same preset as BTC
+                "sweep_preset": "sol",  # SOL-specific preset (was "btc" fallback)
                 "sweep_config": {
                     "rr_target": 3.0,
-                    "atr_stop_mult": 2.5,  # wider for SOL's higher vol
+                    # Pin atr_stop_mult to the SOL preset's 2.2 anchor; the
+                    # earlier 2.5 was a guess on top of BTC defaults.
+                    "atr_stop_mult": 2.5,
                     "max_trades_per_day": 4,
                     "min_bars_between_trades": 6,
                 },
@@ -834,7 +847,9 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         rationale=(
             "DIAMOND #11: VWAP reversion on BTC 1h. UTC-anchored VWAP, "
             "fades deviations > 2σ. London open session bias (07:00-09:00 "
-            "UTC) where VWAP reversion edge is strongest for crypto. "
+            "UTC) where VWAP reversion edge is strongest for crypto — "
+            "ENFORCED via session_start/session_end (was rationale-only "
+            "until 2026-05-07; preset defaults were fully permissive). "
             "Complements btc_optimized (trend) with uncorrelated VWAP "
             "mean-reversion edge."
         ),
@@ -847,6 +862,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "rr_target": 2.5, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 2, "min_bars_between_trades": 12,
                 "warmup_bars": 72,
+                # London-window gate (07:00-09:00 UTC). Strings are coerced
+                # to datetime.time in VWAPReversionConfig.__post_init__ so
+                # the registry stays JSON-friendly.
+                "session_start": "07:00",
+                "session_end": "09:00",
+                "session_tz": "UTC",
             },
             "scorecard_config": {
                 "min_score": 1, "a_plus_score": 2, "a_plus_size_mult": 1.5,
@@ -931,9 +952,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "rolling profile (~7 days). POC magnetic effect is stronger on "
             "longer timeframes. Complements sweep_reclaim by providing a "
             "separate auction-theory edge from a completely different "
-            "mechanic (gravitational vs momentum)."
+            "mechanic (gravitational vs momentum). Wraps with btc_crypto "
+            "edge preset for vol-regime-aware position sizing — VP entries "
+            "near VAH/VAL benefit from sizing-down in expanded vol regimes."
         ),
         extras={
+            "edge_enabled": True,
+            # 2026-05-07: added edge_config so EdgeAmplifier wraps the
+            # strategy and applies vol_sizing.  Without this, VP fired at
+            # the same notional regardless of regime — same gap that
+            # prompted the SOL/ETH presets to ship enable_vol_sizing=True.
+            "edge_config": "btc_crypto",
             "promotion_status": "production_candidate",
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
@@ -1547,6 +1576,111 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MET",
             "daily_loss_limit_pct": 4.0,
             "fleet_corr_partner": "eth_perp",
+        },
+    ),
+
+    # ═══════════════════════════════════════════════════════════════════
+    # CME CRYPTO MICRO FUTURES — RESEARCH CANDIDATES (2026-05-07)
+    # Three new MBT/MET strategies designed for the FUTURES microstructure
+    # (RTH-only, leverage-aware, tick-quantized). Different from the spot
+    # crypto playbook — separate strategy classes, not preset overrides.
+    # All start as research_candidate; promotion to paper_soak gated on
+    # walk-forward + Monte Carlo per docs/STRATEGY_OPTIMIZATION_ROADMAP.md.
+    # ═══════════════════════════════════════════════════════════════════
+
+    StrategyAssignment(
+        bot_id="mbt_funding_basis",
+        strategy_id="mbt_funding_basis_v1",
+        symbol="MBT",
+        timeframe="5m",
+        scorer_name="btc",  # MBT tracks BTC; reuse BTC scorer for walk-forward
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=30,
+        min_trades_per_window=10,
+        strategy_kind="mbt_funding_basis",
+        rationale=(
+            "MBT basis-premium fade: when CME MBT trades rich vs BTC spot, "
+            "the premium decays toward fair value. Short-only (rich-premium "
+            "decay favors fading the upside). RTH-gated 08:30-15:00 CT. "
+            "Research_candidate — needs walk-forward validation."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "mean_reversion",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+            },
+            "daily_loss_limit_pct": 3.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="mbt_overnight_gap",
+        strategy_id="mbt_overnight_gap_v1",
+        symbol="MBT",
+        timeframe="5m",
+        scorer_name="btc",  # MBT tracks BTC; reuse BTC scorer for walk-forward
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=30,
+        min_trades_per_window=10,
+        strategy_kind="mbt_overnight_gap",
+        rationale=(
+            "MBT overnight-gap fade: Asia-session illiquid moves create "
+            "gaps between prior RTH close and NY open. Fade the gap on "
+            "the assumption it mean-reverts in NY hours. Both directions. "
+            "RTH-gated. Research_candidate — needs walk-forward validation."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "mean_reversion",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+            },
+            "daily_loss_limit_pct": 3.0,
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="met_rth_orb",
+        strategy_id="met_rth_orb_v1",
+        symbol="MET",
+        timeframe="5m",
+        scorer_name="btc",  # MET tracks ETH; no ETH scorer, BTC is closest correlated
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=30,
+        min_trades_per_window=10,
+        strategy_kind="met_rth_orb",
+        rationale=(
+            "MET 5m Opening Range Breakout: first 5m of CME RTH defines "
+            "the range; clean breakout fires entry. Tick-quantized "
+            "(MET tick=$0.50 USD), 1.0×ATR stop, 2R target, one trade/day. "
+            "Research_candidate — needs walk-forward validation."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "trend",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+            },
+            "daily_loss_limit_pct": 3.0,
         },
     ),
 

@@ -93,6 +93,13 @@ def test_thresholds_in_valid_range() -> None:
         # for MNQ/NQ. Self-contained — wick-pierce + close-reclaim of
         # PDH/PDL/PMH/PML/ONH/ONL is the entire trigger.
         "anchor_sweep",
+        # CME crypto micro futures (2026-05-07): MBT/MET strategies that
+        # have their own internal triggers (basis-premium z-score, overnight
+        # gap detection, opening-range breakout) — they don't read the
+        # generic confluence threshold.
+        "mbt_funding_basis",
+        "mbt_overnight_gap",
+        "met_rth_orb",
     }
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:

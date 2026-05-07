@@ -525,6 +525,48 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
 
         return ConfluenceScorecardStrategy(None, sc_cfg)
 
+    if kind == "mbt_funding_basis":
+        from eta_engine.strategies.mbt_funding_basis_strategy import (
+            MBTFundingBasisConfig,
+            MBTFundingBasisStrategy,
+        )
+
+        cfg_raw = extras.get("mbt_funding_basis_config", {})
+        cfg = (
+            MBTFundingBasisConfig(**cfg_raw)
+            if isinstance(cfg_raw, dict) and cfg_raw
+            else MBTFundingBasisConfig()
+        )
+        return MBTFundingBasisStrategy(cfg)
+
+    if kind == "mbt_overnight_gap":
+        from eta_engine.strategies.mbt_overnight_gap_strategy import (
+            MBTOvernightGapConfig,
+            MBTOvernightGapStrategy,
+        )
+
+        cfg_raw = extras.get("mbt_overnight_gap_config", {})
+        cfg = (
+            MBTOvernightGapConfig(**cfg_raw)
+            if isinstance(cfg_raw, dict) and cfg_raw
+            else MBTOvernightGapConfig()
+        )
+        return MBTOvernightGapStrategy(cfg)
+
+    if kind == "met_rth_orb":
+        from eta_engine.strategies.met_rth_orb_strategy import (
+            METRTHORBConfig,
+            METRTHORBStrategy,
+        )
+
+        cfg_raw = extras.get("met_rth_orb_config", {})
+        cfg = (
+            METRTHORBConfig(**cfg_raw)
+            if isinstance(cfg_raw, dict) and cfg_raw
+            else METRTHORBConfig()
+        )
+        return METRTHORBStrategy(cfg)
+
     return None
 
 

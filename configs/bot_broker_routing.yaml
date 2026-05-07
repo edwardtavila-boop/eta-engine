@@ -87,6 +87,13 @@ default:
     NG:   { ibkr: NG }
     "6E": { ibkr: 6E }
     M6E:  { ibkr: M6E }
+    # MBT/MET = CME crypto micro futures (NOT spot crypto). They route
+    # to IBKR even though _classify_symbol() lumps them with crypto for
+    # price-feed purposes. The bots: section pins specific bot_ids; the
+    # symbol_overrides entries below ensure the on-the-wire symbol is
+    # what IBKR expects (no /USD suffix — these are CME contracts).
+    MBT:  { ibkr: MBT }
+    MET:  { ibkr: MET }
 
 bots:
   # Explicit per-bot overrides. Anything not listed inherits default.venue (ibkr).
@@ -133,3 +140,13 @@ bots:
 
   # ── Futures bots (IBKR paper, DUQ319869) ───────────────────────────
   mnq_v7:               { venue: ibkr }
+
+  # ── Crypto-futures (CME micros — MBT/MET — IBKR paper) ─────────────
+  # These are CME contracts on Bitcoin/Ether, NOT spot crypto. They
+  # route to IBKR explicitly to override the defaults.crypto -> alpaca
+  # rule that _classify_symbol() would otherwise pick.
+  mbt_sweep_reclaim:    { venue: ibkr }
+  met_sweep_reclaim:    { venue: ibkr }
+  mbt_funding_basis:    { venue: ibkr }
+  mbt_overnight_gap:    { venue: ibkr }
+  met_rth_orb:          { venue: ibkr }

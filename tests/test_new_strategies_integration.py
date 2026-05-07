@@ -166,6 +166,157 @@ def test_providers_available():
     assert callable(fund)
 
 
+# ---------------------------------------------------------------------------
+# Alpaca SPOT crypto-bot tuning gates (2026-05-07)
+# ---------------------------------------------------------------------------
+#
+# These tests guard the three audit-flagged tuning gaps for the active
+# Alpaca paper SPOT crypto lineup (BTC/ETH/SOL).  They lock in:
+#
+#  - sol_optimized uses sol_daily_sweep_preset + sol_crypto edge preset
+#    (was silently inheriting the BTC fallback for both)
+#  - vwap_mr_btc enforces its London-window gate (07:00-09:00 UTC) — the
+#    rationale claimed it but the preset was permissive
+#  - volume_profile_btc wraps with EdgeAmplifier so vol_sizing applies
+#    (no edge_config in extras meant raw notional fired regardless of
+#    vol regime)
+#
+# Each test pins behaviour at the bridge / factory layer that runs in
+# live paper soak, so a regression that re-introduces the BTC fallback
+# or strips the session gate fails here, not in production.
+
+
+def test_sol_optimized_uses_sol_specific_sweep_preset() -> None:
+    """sol_optimized must build with the SOL preset, not the BTC fallback."""
+    from eta_engine.strategies.sweep_reclaim_strategy import (
+        SweepReclaimStrategy,
+        sol_daily_sweep_preset,
+    )
+
+    a = get_for_bot("sol_optimized")
+    assert a is not None
+    sub = a.extras["sub_strategy_extras"]
+    assert sub["sweep_preset"] == "sol", (
+        f"sol_optimized must pin sweep_preset='sol', got {sub['sweep_preset']!r}"
+    )
+    assert a.extras["edge_config"] == "sol_crypto", (
+        f"sol_optimized must use sol_crypto edge preset, got {a.extras['edge_config']!r}"
+    )
+
+    # Verify factory honors the preset choice — config field that's
+    # SOL-distinct from BTC is min_wick_pct (SOL: 0.20, BTC: 0.30)
+    sol_cfg = sol_daily_sweep_preset()
+    assert sol_cfg.min_wick_pct == 0.20  # sentinel: SOL preset signature
+
+    factory = _build_strategy_factory("sweep_reclaim", dict(sub))
+    strat = factory()
+    assert isinstance(strat, SweepReclaimStrategy)
+    # SOL preset's wick threshold survives the override merge (overrides
+    # only set rr_target / atr_stop_mult / max_trades_per_day /
+    # min_bars_between_trades, leaving everything else from the preset).
+    assert strat.cfg.min_wick_pct == 0.20, (
+        f"SOL preset min_wick_pct lost in build; got {strat.cfg.min_wick_pct} "
+        "(BTC fallback would yield 0.30)"
+    )
+
+
+def test_vwap_mr_btc_enforces_london_window_gate() -> None:
+    """vwap_mr_btc must enforce the 07:00-09:00 UTC entry window."""
+    from datetime import time
+
+    from eta_engine.strategies.vwap_reversion_strategy import (
+        VWAPReversionConfig,
+        VWAPReversionStrategy,
+    )
+
+    a = get_for_bot("vwap_mr_btc")
+    assert a is not None
+    sub = a.extras["sub_strategy_extras"]
+    assert sub.get("session_start") == "07:00"
+    assert sub.get("session_end") == "09:00"
+    assert sub.get("session_tz") == "UTC"
+
+    # End-to-end: factory builds the config with parsed time objects.
+    factory = _build_strategy_factory("vwap_reversion", {"per_ticker_optimal": "btc", **dict(sub)})
+    strat = factory()
+    assert isinstance(strat, VWAPReversionStrategy)
+    assert strat.cfg.session_start == time(7, 0)
+    assert strat.cfg.session_end == time(9, 0)
+    assert strat.cfg.session_tz == "UTC"
+
+    # Direct config coercion path (registry-friendly strings).
+    cfg = VWAPReversionConfig(session_start="07:00", session_end="09:00")
+    assert cfg.session_start == time(7, 0)
+    assert cfg.session_end == time(9, 0)
+
+
+def test_volume_profile_btc_wraps_with_edge_amplifier() -> None:
+    """volume_profile_btc must wrap with EdgeAmplifier so vol_sizing applies."""
+    from eta_engine.strategies.edge_layers import EdgeAmplifier, btc_crypto_preset
+    from eta_engine.strategies.registry_strategy_bridge import (
+        _build_callable_for_assignment,
+    )
+
+    a = get_for_bot("volume_profile_btc")
+    assert a is not None
+    assert a.extras.get("edge_enabled") is True, (
+        "volume_profile_btc missing edge_enabled — vol_sizing won't apply"
+    )
+    assert a.extras.get("edge_config") == "btc_crypto", (
+        f"expected btc_crypto edge preset, got {a.extras.get('edge_config')!r}"
+    )
+
+    # Bridge wraps the raw VP strategy with EdgeAmplifier when edge_config
+    # is set.  Without the wrapper, vol_sizing would never fire.
+    clear_strategy_cache()
+    result = build_registry_dispatch("volume_profile_btc")
+    assert result is not None
+    _eligibility, registry = result
+    assert len(registry) >= 1
+    fn = list(registry.values())[0]
+    assert callable(fn)
+
+    # Inspect the bridge closure to confirm the EdgeAmplifier wrap.  The
+    # outermost wrap may also be AlphaSniper (intermarket tape-reading is
+    # default-on in the bridge), so we walk the chain via _sub / _wrapped
+    # attributes to find the EdgeAmplifier layer.
+    callable_fn = _build_callable_for_assignment(a)
+    assert callable_fn is not None
+    cellnames = callable_fn.__code__.co_freevars
+    cellvals = {n: callable_fn.__closure__[i].cell_contents
+                for i, n in enumerate(cellnames)}
+    outer = cellvals.get("strategy") or cellvals.get("wrapped")
+    assert outer is not None, f"no strategy in closure freevars: {cellnames}"
+
+    # Walk the wrap chain looking for EdgeAmplifier.  Each wrapper holds
+    # its sub-strategy under one of a small set of known attribute names.
+    found_amplifier: EdgeAmplifier | None = None
+    cursor: object | None = outer
+    seen: set[int] = set()
+    for _ in range(6):  # depth guard — chains don't legitimately exceed this
+        if cursor is None or id(cursor) in seen:
+            break
+        seen.add(id(cursor))
+        if isinstance(cursor, EdgeAmplifier):
+            found_amplifier = cursor
+            break
+        cursor = (
+            getattr(cursor, "_sub", None)
+            or getattr(cursor, "_wrapped", None)
+            or getattr(cursor, "_inner", None)
+            or getattr(cursor, "_strategy", None)
+        )
+
+    assert found_amplifier is not None, (
+        f"EdgeAmplifier not found in wrap chain starting at {type(outer).__name__}"
+    )
+    # btc_crypto preset has enable_vol_sizing=True — assert that
+    # specifically since that's the audit's point.
+    expected = btc_crypto_preset()
+    assert expected.enable_vol_sizing is True
+    assert found_amplifier.cfg.enable_vol_sizing is True
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
