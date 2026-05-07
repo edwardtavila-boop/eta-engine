@@ -576,6 +576,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "max_trades_per_day": 1,
                 "volume_mult": 1.5,
             },
+            # 2026-05-07: scale-out + VIX filter knobs (commit 1fec044).
+            # _build_orb_sage_gated_factory reads these as top-level keys
+            # in extras and wires them into SageGatedORBConfig. Defaults
+            # mirror the new SageGatedORBConfig defaults but are made
+            # explicit here so the registry is the source of truth.
+            "enable_scale_out": True,
+            "rr_partial": 1.5,
+            "partial_qty_frac": 0.5,
+            "enable_vix_filter": True,
+            "vix_lookback_bars": 252,
+            "vix_pct_threshold": 0.90,
             "per_ticker_optimal": "MNQ",
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
@@ -626,6 +637,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "ema_bias_period": 200,
                 "max_trades_per_day": 1,
             },
+            # 2026-05-07: scale-out + VIX filter knobs (commit 1fec044).
+            # _build_orb_sage_gated_factory reads these as top-level keys
+            # in extras and wires them into SageGatedORBConfig.
+            "enable_scale_out": True,
+            "rr_partial": 1.5,
+            "partial_qty_frac": 0.5,
+            "enable_vix_filter": True,
+            "vix_lookback_bars": 252,
+            "vix_pct_threshold": 0.90,
             "per_ticker_optimal": "NQ",
             "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
@@ -741,6 +761,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "rr_target": 2.0, "atr_stop_mult": 1.5,
                 "max_trades_per_day": 3, "min_bars_between_trades": 12,
                 "warmup_bars": 50,
+                # 2026-05-07: HTF agreement gate on 5m bars (commit 1fec044).
+                # rsi_long/short_threshold are stricter A+ thresholds the
+                # strategy now consumes alongside oversold/overbought; HTF
+                # flags require the 5m bar to align with the 1h EMA50 trend.
+                "rsi_long_threshold": 20.0,
+                "rsi_short_threshold": 80.0,
+                "htf_lookback_5m_bars": 12,
+                "htf_ema_period": 50,
+                "require_htf_agreement": True,
             },
             "scorecard_config": {
                 "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,

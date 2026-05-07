@@ -1,0 +1,3391 @@
+{
+  "scanned_at": "2026-05-07T13:57:50.068105+00:00",
+  "overall": "FAIL",
+  "files": [
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\BTC_1h.csv",
+      "rows": 17275,
+      "summary": {
+        "total_issues": 1,
+        "by_type": {
+          "gap": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\BTC_1m.csv",
+      "rows": 26905,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\BTC_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\BTC_D.csv",
+      "rows": 4230,
+      "summary": {
+        "total_issues": 116,
+        "by_type": {
+          "adjacent_jump": 115,
+          "ohlc_invalid": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 58,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1414 (+15.19%) threshold=10.00%",
+          "ts": 1415750400,
+          "rollover_candidate": false,
+          "magnitude_pct": 15.1936,
+          "prev_close": 367.69500732421875,
+          "close": 423.5610046386719
+        },
+        {
+          "row": 110,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1140 (-10.78%) threshold=10.00%",
+          "ts": 1420243200,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.7767,
+          "prev_close": 315.0320129394531,
+          "close": 281.0820007324219
+        },
+        {
+          "row": 120,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1703 (-15.66%) threshold=10.00%",
+          "ts": 1421107200,
+          "rollover_candidate": false,
+          "magnitude_pct": -15.6593,
+          "prev_close": 267.7959899902344,
+          "close": 225.86099243164062
+        },
+        {
+          "row": 121,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.2376 (-21.14%) threshold=10.00%",
+          "ts": 1421193600,
+          "rollover_candidate": false,
+          "magnitude_pct": -21.1449,
+          "prev_close": 225.86099243164062,
+          "close": 178.10299682617188
+        },
+        {
+          "row": 122,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1640 (+17.82%) threshold=10.00%",
+          "ts": 1421280000,
+          "rollover_candidate": false,
+          "magnitude_pct": 17.8217,
+          "prev_close": 178.10299682617188,
+          "close": 209.843994140625
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\BTCFUND_8h.csv",
+      "rows": 1195,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\ETH_1h.csv",
+      "rows": 17275,
+      "summary": {
+        "total_issues": 2,
+        "by_type": {
+          "adjacent_jump": 1,
+          "gap": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 6430,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1230 (-11.57%) threshold=10.00%",
+          "ts": 1738544400,
+          "rollover_candidate": false,
+          "magnitude_pct": -11.5696,
+          "prev_close": 2822.84,
+          "close": 2496.25
+        },
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\ETH_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\ETH_D.csv",
+      "rows": 3081,
+      "summary": {
+        "total_issues": 147,
+        "by_type": {
+          "adjacent_jump": 145,
+          "ohlc_invalid": 2
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 17,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1466 (+15.79%) threshold=10.00%",
+          "ts": 1511481600,
+          "rollover_candidate": false,
+          "magnitude_pct": 15.7851,
+          "prev_close": 410.1659851074219,
+          "close": 474.9110107421875
+        },
+        {
+          "row": 22,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1009 (-9.60%) threshold=10.00%",
+          "ts": 1511913600,
+          "rollover_candidate": false,
+          "magnitude_pct": -9.5959,
+          "prev_close": 472.9020080566406,
+          "close": 427.52301025390625
+        },
+        {
+          "row": 34,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1538 (+16.62%) threshold=10.00%",
+          "ts": 1512950400,
+          "rollover_candidate": false,
+          "magnitude_pct": 16.6202,
+          "prev_close": 441.72100830078125,
+          "close": 515.135986328125
+        },
+        {
+          "row": 35,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.2347 (+26.46%) threshold=10.00%",
+          "ts": 1513036800,
+          "rollover_candidate": false,
+          "magnitude_pct": 26.4581,
+          "prev_close": 515.135986328125,
+          "close": 651.4310302734375
+        },
+        {
+          "row": 41,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0987 (+10.37%) threshold=10.00%",
+          "ts": 1513555200,
+          "rollover_candidate": false,
+          "magnitude_pct": 10.3712,
+          "prev_close": 719.9749755859375,
+          "close": 794.64501953125
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\ETHFUND_8h.csv",
+      "rows": 1195,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\SOL_1h.csv",
+      "rows": 16975,
+      "summary": {
+        "total_issues": 5,
+        "by_type": {
+          "adjacent_jump": 3,
+          "gap": 2
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 7092,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1127 (+11.93%) threshold=10.00%",
+          "ts": 1740927600,
+          "rollover_candidate": false,
+          "magnitude_pct": 11.9323,
+          "prev_close": 140.71,
+          "close": 157.5
+        },
+        {
+          "row": 8006,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0977 (+10.26%) threshold=10.00%",
+          "ts": 1744218000,
+          "rollover_candidate": false,
+          "magnitude_pct": 10.2588,
+          "prev_close": 108.2,
+          "close": 119.3
+        },
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 16197,
+          "type": "gap",
+          "detail": "1083600s gap = 301.0 bar intervals (threshold=3)",
+          "ts": 1774803600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 16197,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1409 (-13.14%) threshold=10.00%",
+          "ts": 1774803600,
+          "rollover_candidate": false,
+          "magnitude_pct": -13.1422,
+          "prev_close": 93.82,
+          "close": 81.49
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\SOL_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\SOL_D.csv",
+      "rows": 1080,
+      "summary": {
+        "total_issues": 41,
+        "by_type": {
+          "adjacent_jump": 41
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 25,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1066 (-10.11%) threshold=10.00%",
+          "ts": 1686355200,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.1149,
+          "prev_close": 17.4,
+          "close": 15.64
+        },
+        {
+          "row": 44,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1185 (+12.58%) threshold=10.00%",
+          "ts": 1687996800,
+          "rollover_candidate": false,
+          "magnitude_pct": 12.5782,
+          "prev_close": 15.98,
+          "close": 17.99
+        },
+        {
+          "row": 58,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1714 (+18.70%) threshold=10.00%",
+          "ts": 1689206400,
+          "rollover_candidate": false,
+          "magnitude_pct": 18.6959,
+          "prev_close": 21.93,
+          "close": 26.03
+        },
+        {
+          "row": 138,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1111 (+11.75%) threshold=10.00%",
+          "ts": 1696118400,
+          "rollover_candidate": false,
+          "magnitude_pct": 11.7509,
+          "prev_close": 21.36,
+          "close": 23.87
+        },
+        {
+          "row": 178,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.2248 (+25.21%) threshold=10.00%",
+          "ts": 1699574400,
+          "rollover_candidate": false,
+          "magnitude_pct": 25.2097,
+          "prev_close": 45.3,
+          "close": 56.72
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\history\\SOLFUND_8h.csv",
+      "rows": 199,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\BTC_1h.csv",
+      "rows": 17275,
+      "summary": {
+        "total_issues": 1,
+        "by_type": {
+          "gap": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\BTC_1m.csv",
+      "rows": 26905,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\BTC_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\BTC_D.csv",
+      "rows": 4230,
+      "summary": {
+        "total_issues": 116,
+        "by_type": {
+          "adjacent_jump": 115,
+          "ohlc_invalid": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 58,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1414 (+15.19%) threshold=10.00%",
+          "ts": 1415750400,
+          "rollover_candidate": false,
+          "magnitude_pct": 15.1936,
+          "prev_close": 367.69500732421875,
+          "close": 423.5610046386719
+        },
+        {
+          "row": 110,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1140 (-10.78%) threshold=10.00%",
+          "ts": 1420243200,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.7767,
+          "prev_close": 315.0320129394531,
+          "close": 281.0820007324219
+        },
+        {
+          "row": 120,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1703 (-15.66%) threshold=10.00%",
+          "ts": 1421107200,
+          "rollover_candidate": false,
+          "magnitude_pct": -15.6593,
+          "prev_close": 267.7959899902344,
+          "close": 225.86099243164062
+        },
+        {
+          "row": 121,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.2376 (-21.14%) threshold=10.00%",
+          "ts": 1421193600,
+          "rollover_candidate": false,
+          "magnitude_pct": -21.1449,
+          "prev_close": 225.86099243164062,
+          "close": 178.10299682617188
+        },
+        {
+          "row": 122,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1640 (+17.82%) threshold=10.00%",
+          "ts": 1421280000,
+          "rollover_candidate": false,
+          "magnitude_pct": 17.8217,
+          "prev_close": 178.10299682617188,
+          "close": 209.843994140625
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\BTCFUND_8h.csv",
+      "rows": 199,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\ETH_1h.csv",
+      "rows": 17275,
+      "summary": {
+        "total_issues": 2,
+        "by_type": {
+          "adjacent_jump": 1,
+          "gap": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 6430,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1230 (-11.57%) threshold=10.00%",
+          "ts": 1738544400,
+          "rollover_candidate": false,
+          "magnitude_pct": -11.5696,
+          "prev_close": 2822.84,
+          "close": 2496.25
+        },
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\ETH_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\ETH_D.csv",
+      "rows": 3081,
+      "summary": {
+        "total_issues": 147,
+        "by_type": {
+          "adjacent_jump": 145,
+          "ohlc_invalid": 2
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 17,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1466 (+15.79%) threshold=10.00%",
+          "ts": 1511481600,
+          "rollover_candidate": false,
+          "magnitude_pct": 15.7851,
+          "prev_close": 410.1659851074219,
+          "close": 474.9110107421875
+        },
+        {
+          "row": 22,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1009 (-9.60%) threshold=10.00%",
+          "ts": 1511913600,
+          "rollover_candidate": false,
+          "magnitude_pct": -9.5959,
+          "prev_close": 472.9020080566406,
+          "close": 427.52301025390625
+        },
+        {
+          "row": 34,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1538 (+16.62%) threshold=10.00%",
+          "ts": 1512950400,
+          "rollover_candidate": false,
+          "magnitude_pct": 16.6202,
+          "prev_close": 441.72100830078125,
+          "close": 515.135986328125
+        },
+        {
+          "row": 35,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.2347 (+26.46%) threshold=10.00%",
+          "ts": 1513036800,
+          "rollover_candidate": false,
+          "magnitude_pct": 26.4581,
+          "prev_close": 515.135986328125,
+          "close": 651.4310302734375
+        },
+        {
+          "row": 41,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0987 (+10.37%) threshold=10.00%",
+          "ts": 1513555200,
+          "rollover_candidate": false,
+          "magnitude_pct": 10.3712,
+          "prev_close": 719.9749755859375,
+          "close": 794.64501953125
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\ETHFUND_8h.csv",
+      "rows": 199,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\SOL_1h.csv",
+      "rows": 16975,
+      "summary": {
+        "total_issues": 5,
+        "by_type": {
+          "adjacent_jump": 3,
+          "gap": 2
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 7092,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1127 (+11.93%) threshold=10.00%",
+          "ts": 1740927600,
+          "rollover_candidate": false,
+          "magnitude_pct": 11.9323,
+          "prev_close": 140.71,
+          "close": 157.5
+        },
+        {
+          "row": 8006,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0977 (+10.26%) threshold=10.00%",
+          "ts": 1744218000,
+          "rollover_candidate": false,
+          "magnitude_pct": 10.2588,
+          "prev_close": 108.2,
+          "close": 119.3
+        },
+        {
+          "row": 12781,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1761426000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 16197,
+          "type": "gap",
+          "detail": "1083600s gap = 301.0 bar intervals (threshold=3)",
+          "ts": 1774803600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 16197,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1409 (-13.14%) threshold=10.00%",
+          "ts": 1774803600,
+          "rollover_candidate": false,
+          "magnitude_pct": -13.1422,
+          "prev_close": 93.82,
+          "close": 81.49
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\SOL_5m.csv",
+      "rows": 25919,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\SOL_D.csv",
+      "rows": 1080,
+      "summary": {
+        "total_issues": 41,
+        "by_type": {
+          "adjacent_jump": 41
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 25,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1066 (-10.11%) threshold=10.00%",
+          "ts": 1686355200,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.1149,
+          "prev_close": 17.4,
+          "close": 15.64
+        },
+        {
+          "row": 44,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1185 (+12.58%) threshold=10.00%",
+          "ts": 1687996800,
+          "rollover_candidate": false,
+          "magnitude_pct": 12.5782,
+          "prev_close": 15.98,
+          "close": 17.99
+        },
+        {
+          "row": 58,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1714 (+18.70%) threshold=10.00%",
+          "ts": 1689206400,
+          "rollover_candidate": false,
+          "magnitude_pct": 18.6959,
+          "prev_close": 21.93,
+          "close": 26.03
+        },
+        {
+          "row": 138,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1111 (+11.75%) threshold=10.00%",
+          "ts": 1696118400,
+          "rollover_candidate": false,
+          "magnitude_pct": 11.7509,
+          "prev_close": 21.36,
+          "close": 23.87
+        },
+        {
+          "row": 178,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.2248 (+25.21%) threshold=10.00%",
+          "ts": 1699574400,
+          "rollover_candidate": false,
+          "magnitude_pct": 25.2097,
+          "prev_close": 45.3,
+          "close": 56.72
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\data\\crypto\\ibkr\\history\\SOLFUND_8h.csv",
+      "rows": 199,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\6E1_1h.csv",
+      "rows": 13715,
+      "summary": {
+        "total_issues": 23,
+        "by_type": {
+          "gap": 23
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 519,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1071,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2635,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3003,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1718856000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3210,
+          "type": "gap",
+          "detail": "37800s gap = 10.5 bar intervals (threshold=3)",
+          "ts": 1720013400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\BTC_ETF_FLOWS.csv",
+      "rows": 590,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\BTC_FEAR_GREED.csv",
+      "rows": 3004,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\BTC_LTH_PROXY.csv",
+      "rows": 1236,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\CL1_1h.csv",
+      "rows": 13469,
+      "summary": {
+        "total_issues": 59,
+        "by_type": {
+          "gap": 44,
+          "adjacent_jump": 15
+        },
+        "rollover_candidates": 4,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 155,
+          "type": "gap",
+          "detail": "46800s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1703059200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 508,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 612,
+          "type": "gap",
+          "detail": "46800s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1705996800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1046,
+          "type": "gap",
+          "detail": "93600s gap = 26.0 bar intervals (threshold=3)",
+          "ts": 1708408800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1060,
+          "type": "gap",
+          "detail": "46800s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1708502400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\DXY_1h.csv",
+      "rows": 14300,
+      "summary": {
+        "total_issues": 28,
+        "by_type": {
+          "gap": 28
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 330,
+          "type": "gap",
+          "detail": "111600s gap = 31.0 bar intervals (threshold=3)",
+          "ts": 1703566800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 420,
+          "type": "gap",
+          "detail": "111600s gap = 31.0 bar intervals (threshold=3)",
+          "ts": 1704171600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 636,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1212,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2849,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\DXY_5m.csv",
+      "rows": 13443,
+      "summary": {
+        "total_issues": 42,
+        "by_type": {
+          "gap": 42
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 219,
+          "type": "gap",
+          "detail": "6300s gap = 21.0 bar intervals (threshold=3)",
+          "ts": 1771461900,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 487,
+          "type": "gap",
+          "detail": "5400s gap = 18.0 bar intervals (threshold=3)",
+          "ts": 1771547400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1032,
+          "type": "gap",
+          "detail": "6300s gap = 21.0 bar intervals (threshold=3)",
+          "ts": 1771893900,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1300,
+          "type": "gap",
+          "detail": "6300s gap = 21.0 bar intervals (threshold=3)",
+          "ts": 1771980300,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1568,
+          "type": "gap",
+          "detail": "6300s gap = 21.0 bar intervals (threshold=3)",
+          "ts": 1772066700,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\DXY_D.csv",
+      "rows": 331,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\ES1_1m.csv",
+      "rows": 2454094,
+      "summary": {
+        "total_issues": 196362,
+        "by_type": {
+          "adjacent_jump": 194331,
+          "gap": 2013,
+          "ohlc_invalid": 18
+        },
+        "rollover_candidates": 11696,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 437,
+          "type": "adjacent_jump",
+          "detail": "log_return=-6.2348 (-99.80%) threshold=5.00%",
+          "ts": 1556695500,
+          "rollover_candidate": false,
+          "magnitude_pct": -99.804,
+          "prev_close": 2959.25,
+          "close": 5.8
+        },
+        {
+          "row": 438,
+          "type": "adjacent_jump",
+          "detail": "log_return=6.2349 (+50925.86%) threshold=5.00%",
+          "ts": 1556695560,
+          "rollover_candidate": false,
+          "magnitude_pct": 50925.8621,
+          "prev_close": 5.8,
+          "close": 2959.5
+        },
+        {
+          "row": 700,
+          "type": "adjacent_jump",
+          "detail": "log_return=-5.6454 (-99.65%) threshold=5.00%",
+          "ts": 1556711280,
+          "rollover_candidate": false,
+          "magnitude_pct": -99.6466,
+          "prev_close": 2957.25,
+          "close": 10.45
+        },
+        {
+          "row": 701,
+          "type": "adjacent_jump",
+          "detail": "log_return=5.6455 (+28201.44%) threshold=5.00%",
+          "ts": 1556711340,
+          "rollover_candidate": false,
+          "magnitude_pct": 28201.4354,
+          "prev_close": 10.45,
+          "close": 2957.5
+        },
+        {
+          "row": 740,
+          "type": "adjacent_jump",
+          "detail": "log_return=-6.2260 (-99.80%) threshold=5.00%",
+          "ts": 1556713680,
+          "rollover_candidate": false,
+          "magnitude_pct": -99.8023,
+          "prev_close": 2958.5,
+          "close": 5.85
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\ES1_5m.csv",
+      "rows": 494020,
+      "summary": {
+        "total_issues": 145790,
+        "by_type": {
+          "ohlc_invalid": 104024,
+          "adjacent_jump": 39791,
+          "gap": 1975
+        },
+        "rollover_candidates": 2300,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 91,
+          "type": "ohlc_invalid",
+          "detail": "intra-bar range 2953.9500 > 50% of close 2959.5000 (high=2959.75, low=5.8)",
+          "ts": 1556695500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 143,
+          "type": "ohlc_invalid",
+          "detail": "intra-bar range 2947.3000 > 50% of close 2957.5000 (high=2957.75, low=10.45)",
+          "ts": 1556711100,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 151,
+          "type": "ohlc_invalid",
+          "detail": "intra-bar range 2952.6500 > 50% of close 2958.5000 (high=2958.5, low=5.85)",
+          "ts": 1556713500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 171,
+          "type": "ohlc_invalid",
+          "detail": "intra-bar range 2946.4000 > 50% of close 2951.2500 (high=2952.25, low=5.85)",
+          "ts": 1556719500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 189,
+          "type": "ohlc_invalid",
+          "detail": "intra-bar range 2954.4500 > 50% of close 5.8000 (high=2960.25, low=5.8)",
+          "ts": 1556724900,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\ES1_D.csv",
+      "rows": 331,
+      "summary": {
+        "total_issues": 3,
+        "by_type": {
+          "adjacent_jump": 3
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 65,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0502 (-4.89%) threshold=5.00%",
+          "ts": 1743638400,
+          "rollover_candidate": false,
+          "magnitude_pct": -4.893,
+          "prev_close": 5712.25,
+          "close": 5432.75
+        },
+        {
+          "row": 66,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0612 (-5.94%) threshold=5.00%",
+          "ts": 1743724800,
+          "rollover_candidate": false,
+          "magnitude_pct": -5.9362,
+          "prev_close": 5432.75,
+          "close": 5110.25
+        },
+        {
+          "row": 69,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0896 (+9.38%) threshold=5.00%",
+          "ts": 1744156800,
+          "rollover_candidate": false,
+          "magnitude_pct": 9.377,
+          "prev_close": 5020.25,
+          "close": 5491.0
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\ETH_ETF_FLOWS.csv",
+      "rows": 452,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\GC1_1h.csv",
+      "rows": 13717,
+      "summary": {
+        "total_issues": 27,
+        "by_type": {
+          "gap": 25,
+          "adjacent_jump": 2
+        },
+        "rollover_candidates": 2,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 519,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1071,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2635,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3003,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1718856000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3210,
+          "type": "gap",
+          "detail": "37800s gap = 10.5 bar intervals (threshold=3)",
+          "ts": 1720013400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\M2K1_1h.csv",
+      "rows": 13706,
+      "summary": {
+        "total_issues": 26,
+        "by_type": {
+          "gap": 25,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 519,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1071,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2635,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3003,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1718856000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3210,
+          "type": "gap",
+          "detail": "37800s gap = 10.5 bar intervals (threshold=3)",
+          "ts": 1720013400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\M2K1_5m.csv",
+      "rows": 13646,
+      "summary": {
+        "total_issues": 42,
+        "by_type": {
+          "gap": 42
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 205,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1771974000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 480,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772060400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 755,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772146800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1304,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772492400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1579,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772578800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MBT1_5m.csv",
+      "rows": 13439,
+      "summary": {
+        "total_issues": 52,
+        "by_type": {
+          "gap": 52
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 205,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772146800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 477,
+          "type": "gap",
+          "detail": "177300s gap = 591.0 bar intervals (threshold=3)",
+          "ts": 1772406600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 751,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772492400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1026,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772578800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1301,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772665200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MES1_1h.csv",
+      "rows": 13694,
+      "summary": {
+        "total_issues": 26,
+        "by_type": {
+          "gap": 25,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 519,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1071,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2635,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3003,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1718856000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3210,
+          "type": "gap",
+          "detail": "37800s gap = 10.5 bar intervals (threshold=3)",
+          "ts": 1720013400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MES1_1m.csv",
+      "rows": 1152078,
+      "summary": {
+        "total_issues": 712,
+        "by_type": {
+          "gap": 712
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 1382,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1672786800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2762,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1672873200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 4142,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1672959600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 6902,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1673305200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 8282,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1673391600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MES1_5m.csv",
+      "rows": 13647,
+      "summary": {
+        "total_issues": 42,
+        "by_type": {
+          "gap": 42
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 205,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1771974000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 480,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772060400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 755,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772146800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1304,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772492400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1579,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772578800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MET1_5m.csv",
+      "rows": 12862,
+      "summary": {
+        "total_issues": 79,
+        "by_type": {
+          "gap": 79
+        },
+        "rollover_candidates": 0,
+        "asset_class": "crypto",
+        "threshold_pct": 10.0
+      },
+      "sample_issues": [
+        {
+          "row": 194,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772146800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 227,
+          "type": "gap",
+          "detail": "1500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1772161500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 231,
+          "type": "gap",
+          "detail": "1500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1772164500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 242,
+          "type": "gap",
+          "detail": "1500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1772169300,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 244,
+          "type": "gap",
+          "detail": "1200s gap = 4.0 bar intervals (threshold=3)",
+          "ts": 1772171400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_15m.csv",
+      "rows": 20464,
+      "summary": {
+        "total_issues": 180,
+        "by_type": {
+          "gap": 180
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 94,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1748901600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 186,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1748988000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 278,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749074400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 370,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749160800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 554,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749506400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_1h.csv",
+      "rows": 23572,
+      "summary": {
+        "total_issues": 37,
+        "by_type": {
+          "gap": 36,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 722,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1653948000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1063,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1655762400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1289,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1656972000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2320,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1662415200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3650,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1669330800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_1m.csv",
+      "rows": 22679,
+      "summary": {
+        "total_issues": 13,
+        "by_type": {
+          "gap": 13
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 1382,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774303200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2762,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774389600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 4142,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774476000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 5522,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774562400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 8282,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774908000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_1s.csv",
+      "rows": 50117,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_4h.csv",
+      "rows": 10698,
+      "summary": {
+        "total_issues": 13,
+        "by_type": {
+          "gap": 6,
+          "adjacent_jump": 7
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 997,
+          "type": "gap",
+          "detail": "115200s gap = 8.0 bar intervals (threshold=3)",
+          "ts": 1577314800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1021,
+          "type": "gap",
+          "detail": "100800s gap = 7.0 bar intervals (threshold=3)",
+          "ts": 1577919600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1301,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0493 (-4.81%) threshold=5.00%",
+          "ts": 1583704800,
+          "rollover_candidate": false,
+          "magnitude_pct": -4.8067,
+          "prev_close": 8503.75,
+          "close": 8095.0
+        },
+        {
+          "row": 1319,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0489 (-4.77%) threshold=5.00%",
+          "ts": 1583964000,
+          "rollover_candidate": false,
+          "magnitude_pct": -4.7748,
+          "prev_close": 8005.5,
+          "close": 7623.25
+        },
+        {
+          "row": 1324,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0534 (-5.20%) threshold=5.00%",
+          "ts": 1584036000,
+          "rollover_candidate": false,
+          "magnitude_pct": -5.202,
+          "prev_close": 7554.75,
+          "close": 7161.75
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_5m.csv",
+      "rows": 23192,
+      "summary": {
+        "total_issues": 68,
+        "by_type": {
+          "gap": 68
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 278,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767049200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 554,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767135600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 830,
+          "type": "gap",
+          "detail": "90300s gap = 301.0 bar intervals (threshold=3)",
+          "ts": 1767308400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1382,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767654000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1658,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767740400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_D.csv",
+      "rows": 1758,
+      "summary": {
+        "total_issues": 16,
+        "by_type": {
+          "adjacent_jump": 16
+        },
+        "rollover_candidates": 2,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 207,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0543 (-5.28%) threshold=5.00%",
+          "ts": 1582758000,
+          "rollover_candidate": false,
+          "magnitude_pct": -5.2823,
+          "prev_close": 8850.25,
+          "close": 8382.75
+        },
+        {
+          "row": 214,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0671 (-6.49%) threshold=5.00%",
+          "ts": 1583704800,
+          "rollover_candidate": false,
+          "magnitude_pct": -6.4887,
+          "prev_close": 8503.25,
+          "close": 7951.5
+        },
+        {
+          "row": 217,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1037 (-9.85%) threshold=5.00%",
+          "ts": 1583964000,
+          "rollover_candidate": false,
+          "magnitude_pct": -9.8488,
+          "prev_close": 8003.5,
+          "close": 7215.25
+        },
+        {
+          "row": 218,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0927 (+9.71%) threshold=5.00%",
+          "ts": 1584050400,
+          "rollover_candidate": false,
+          "magnitude_pct": 9.7086,
+          "prev_close": 7215.25,
+          "close": 7915.75
+        },
+        {
+          "row": 219,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1148 (-10.84%) threshold=5.00%",
+          "ts": 1584309600,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.8423,
+          "prev_close": 7915.75,
+          "close": 7057.5
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\MNQ1_W.csv",
+      "rows": 363,
+      "summary": {
+        "total_issues": 32,
+        "by_type": {
+          "adjacent_jump": 32
+        },
+        "rollover_candidates": 2,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 44,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1122 (-10.62%) threshold=5.00%",
+          "ts": 1582498800,
+          "rollover_candidate": false,
+          "magnitude_pct": -10.6154,
+          "prev_close": 9458.0,
+          "close": 8454.0
+        },
+        {
+          "row": 46,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0716 (-6.91%) threshold=5.00%",
+          "ts": 1583704800,
+          "rollover_candidate": false,
+          "magnitude_pct": -6.9091,
+          "prev_close": 8503.25,
+          "close": 7915.75
+        },
+        {
+          "row": 47,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1274 (-11.96%) threshold=5.00%",
+          "ts": 1584309600,
+          "rollover_candidate": false,
+          "magnitude_pct": -11.9603,
+          "prev_close": 7915.75,
+          "close": 6969.0
+        },
+        {
+          "row": 48,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0825 (+8.60%) threshold=5.00%",
+          "ts": 1584914400,
+          "rollover_candidate": true,
+          "magnitude_pct": 8.6024,
+          "prev_close": 6969.0,
+          "close": 7568.5
+        },
+        {
+          "row": 50,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0896 (+9.37%) threshold=5.00%",
+          "ts": 1586124000,
+          "rollover_candidate": false,
+          "magnitude_pct": 9.3682,
+          "prev_close": 7522.75,
+          "close": 8227.5
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NG1_1h.csv",
+      "rows": 13460,
+      "summary": {
+        "total_issues": 116,
+        "by_type": {
+          "gap": 45,
+          "adjacent_jump": 70,
+          "ohlc_invalid": 1
+        },
+        "rollover_candidates": 53,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 263,
+          "type": "gap",
+          "detail": "46800s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1703750400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 263,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0785 (-7.55%) threshold=5.00%",
+          "ts": 1703750400,
+          "rollover_candidate": true,
+          "magnitude_pct": -7.5544,
+          "prev_close": 2.621000051498413,
+          "close": 2.4230000972747803
+        },
+        {
+          "row": 300,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0636 (+6.57%) threshold=5.00%",
+          "ts": 1704171600,
+          "rollover_candidate": true,
+          "magnitude_pct": 6.5679,
+          "prev_close": 2.496999979019165,
+          "close": 2.6610000133514404
+        },
+        {
+          "row": 501,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0683 (-6.60%) threshold=5.00%",
+          "ts": 1705273200,
+          "rollover_candidate": false,
+          "magnitude_pct": -6.6046,
+          "prev_close": 3.3310000896453857,
+          "close": 3.1110000610351562
+        },
+        {
+          "row": 507,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_15m.csv",
+      "rows": 20465,
+      "summary": {
+        "total_issues": 180,
+        "by_type": {
+          "gap": 180
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 94,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1748901600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 186,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1748988000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 278,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749074400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 370,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749160800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 554,
+          "type": "gap",
+          "detail": "4500s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1749506400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_1h.csv",
+      "rows": 25255,
+      "summary": {
+        "total_issues": 39,
+        "by_type": {
+          "gap": 38,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 251,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1642460400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 822,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1645484400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2405,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1653948000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2746,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1655762400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2972,
+          "type": "gap",
+          "detail": "21600s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1656972000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_1m.csv",
+      "rows": 22681,
+      "summary": {
+        "total_issues": 13,
+        "by_type": {
+          "gap": 13
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 1382,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774303200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2762,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774389600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 4142,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774476000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 5522,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774562400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 8282,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1774908000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_1s.csv",
+      "rows": 32315,
+      "summary": {
+        "total_issues": 0,
+        "by_type": {},
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": []
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_4h.csv",
+      "rows": 20442,
+      "summary": {
+        "total_issues": 19,
+        "by_type": {
+          "gap": 12,
+          "adjacent_jump": 7
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 1514,
+          "type": "gap",
+          "detail": "158400s gap = 11.0 bar intervals (threshold=3)",
+          "ts": 1388055600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1535,
+          "type": "gap",
+          "detail": "144000s gap = 10.0 bar intervals (threshold=3)",
+          "ts": 1388660400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3046,
+          "type": "gap",
+          "detail": "115200s gap = 8.0 bar intervals (threshold=3)",
+          "ts": 1419548400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3070,
+          "type": "gap",
+          "detail": "100800s gap = 7.0 bar intervals (threshold=3)",
+          "ts": 1420153200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 9202,
+          "type": "gap",
+          "detail": "115200s gap = 8.0 bar intervals (threshold=3)",
+          "ts": 1545778800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_5m.csv",
+      "rows": 23192,
+      "summary": {
+        "total_issues": 68,
+        "by_type": {
+          "gap": 68
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 278,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767049200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 554,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767135600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 830,
+          "type": "gap",
+          "detail": "90300s gap = 301.0 bar intervals (threshold=3)",
+          "ts": 1767308400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1382,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767654000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1658,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1767740400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_D.csv",
+      "rows": 6785,
+      "summary": {
+        "total_issues": 134,
+        "by_type": {
+          "gap": 3,
+          "adjacent_jump": 131
+        },
+        "rollover_candidates": 10,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 4,
+          "type": "gap",
+          "detail": "432000s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 931212000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 131,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0752 (-7.24%) threshold=5.00%",
+          "ts": 946940400,
+          "rollover_candidate": false,
+          "magnitude_pct": -7.2443,
+          "prev_close": 3837.5,
+          "close": 3559.5
+        },
+        {
+          "row": 133,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0564 (-5.49%) threshold=5.00%",
+          "ts": 947113200,
+          "rollover_candidate": false,
+          "magnitude_pct": -5.4875,
+          "prev_close": 3508.0,
+          "close": 3315.5
+        },
+        {
+          "row": 134,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0717 (+7.43%) threshold=5.00%",
+          "ts": 947199600,
+          "rollover_candidate": false,
+          "magnitude_pct": 7.4348,
+          "prev_close": 3315.5,
+          "close": 3562.0
+        },
+        {
+          "row": 135,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0557 (+5.73%) threshold=5.00%",
+          "ts": 947458800,
+          "rollover_candidate": false,
+          "magnitude_pct": 5.7271,
+          "prev_close": 3562.0,
+          "close": 3766.0
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\NQ1_W.csv",
+      "rows": 1399,
+      "summary": {
+        "total_issues": 169,
+        "by_type": {
+          "adjacent_jump": 169
+        },
+        "rollover_candidates": 9,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 5,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0757 (-7.29%) threshold=5.00%",
+          "ts": 932335200,
+          "rollover_candidate": false,
+          "magnitude_pct": -7.2866,
+          "prev_close": 2484.0,
+          "close": 2303.0
+        },
+        {
+          "row": 14,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0571 (-5.55%) threshold=5.00%",
+          "ts": 937778400,
+          "rollover_candidate": true,
+          "magnitude_pct": -5.548,
+          "prev_close": 2568.5,
+          "close": 2426.0
+        },
+        {
+          "row": 16,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0585 (+6.03%) threshold=5.00%",
+          "ts": 938988000,
+          "rollover_candidate": false,
+          "magnitude_pct": 6.0251,
+          "prev_close": 2431.5,
+          "close": 2578.0
+        },
+        {
+          "row": 17,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0649 (-6.28%) threshold=5.00%",
+          "ts": 939592800,
+          "rollover_candidate": false,
+          "magnitude_pct": -6.2839,
+          "prev_close": 2578.0,
+          "close": 2416.0
+        },
+        {
+          "row": 19,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0617 (+6.37%) threshold=5.00%",
+          "ts": 940802400,
+          "rollover_candidate": false,
+          "magnitude_pct": 6.3689,
+          "prev_close": 2496.5,
+          "close": 2655.5
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\RTY1_1m.csv",
+      "rows": 1888,
+      "summary": {
+        "total_issues": 4,
+        "by_type": {
+          "gap": 4
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 674,
+          "type": "gap",
+          "detail": "3660s gap = 61.0 bar intervals (threshold=3)",
+          "ts": 1776117600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 902,
+          "type": "gap",
+          "detail": "300s gap = 5.0 bar intervals (threshold=3)",
+          "ts": 1776131880,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 970,
+          "type": "gap",
+          "detail": "240s gap = 4.0 bar intervals (threshold=3)",
+          "ts": 1776136380,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1013,
+          "type": "gap",
+          "detail": "240s gap = 4.0 bar intervals (threshold=3)",
+          "ts": 1776139800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\RTY1_5m.csv",
+      "rows": 1888,
+      "summary": {
+        "total_issues": 5,
+        "by_type": {
+          "gap": 5
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 256,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1775512800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 532,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1775599200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 808,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1775685600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1084,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1775772000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1636,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1776117600,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\SPY_D.csv",
+      "rows": 328,
+      "summary": {
+        "total_issues": 3,
+        "by_type": {
+          "adjacent_jump": 3
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 64,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0505 (-4.93%) threshold=5.00%",
+          "ts": 1743638400,
+          "rollover_candidate": false,
+          "magnitude_pct": -4.9281,
+          "prev_close": 564.52001953125,
+          "close": 536.7000122070312
+        },
+        {
+          "row": 65,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0603 (-5.85%) threshold=5.00%",
+          "ts": 1743724800,
+          "rollover_candidate": false,
+          "magnitude_pct": -5.8543,
+          "prev_close": 536.7000122070312,
+          "close": 505.2799987792969
+        },
+        {
+          "row": 68,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0999 (+10.50%) threshold=5.00%",
+          "ts": 1744156800,
+          "rollover_candidate": false,
+          "magnitude_pct": 10.5019,
+          "prev_close": 496.4800109863281,
+          "close": 548.6199951171875
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\VIX_1m.csv",
+      "rows": 5415,
+      "summary": {
+        "total_issues": 13,
+        "by_type": {
+          "gap": 12,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 373,
+          "type": "gap",
+          "detail": "360s gap = 6.0 bar intervals (threshold=3)",
+          "ts": 1776778260,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 777,
+          "type": "gap",
+          "detail": "39660s gap = 661.0 bar intervals (threshold=3)",
+          "ts": 1776842100,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1148,
+          "type": "gap",
+          "detail": "420s gap = 7.0 bar intervals (threshold=3)",
+          "ts": 1776864720,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1551,
+          "type": "gap",
+          "detail": "39660s gap = 661.0 bar intervals (threshold=3)",
+          "ts": 1776928500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1910,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0500 (+5.13%) threshold=5.00%",
+          "ts": 1776950040,
+          "rollover_candidate": false,
+          "magnitude_pct": 5.1322,
+          "prev_close": 19.290000915527344,
+          "close": 20.280000686645508
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\VIX_5m.csv",
+      "rows": 9111,
+      "summary": {
+        "total_issues": 66,
+        "by_type": {
+          "gap": 46,
+          "adjacent_jump": 20
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 149,
+          "type": "gap",
+          "detail": "39900s gap = 133.0 bar intervals (threshold=3)",
+          "ts": 1770365700,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 459,
+          "type": "gap",
+          "detail": "39900s gap = 133.0 bar intervals (threshold=3)",
+          "ts": 1770711300,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 615,
+          "type": "gap",
+          "detail": "39900s gap = 133.0 bar intervals (threshold=3)",
+          "ts": 1770797700,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 771,
+          "type": "gap",
+          "detail": "39900s gap = 133.0 bar intervals (threshold=3)",
+          "ts": 1770884100,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 927,
+          "type": "gap",
+          "detail": "39900s gap = 133.0 bar intervals (threshold=3)",
+          "ts": 1770970500,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\VIX_D.csv",
+      "rows": 6609,
+      "summary": {
+        "total_issues": 2592,
+        "by_type": {
+          "adjacent_jump": 2583,
+          "gap": 3,
+          "ohlc_invalid": 6
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 3,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.1094 (+11.57%) threshold=5.00%",
+          "ts": 946944000,
+          "rollover_candidate": false,
+          "magnitude_pct": 11.5655,
+          "prev_close": 24.209999084472656,
+          "close": 27.010000228881836
+        },
+        {
+          "row": 6,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.1694 (-15.58%) threshold=5.00%",
+          "ts": 947203200,
+          "rollover_candidate": false,
+          "magnitude_pct": -15.5849,
+          "prev_close": 25.729999542236328,
+          "close": 21.719999313354492
+        },
+        {
+          "row": 10,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0507 (-4.95%) threshold=5.00%",
+          "ts": 947721600,
+          "rollover_candidate": false,
+          "magnitude_pct": -4.9475,
+          "prev_close": 22.84000015258789,
+          "close": 21.709999084472656
+        },
+        {
+          "row": 11,
+          "type": "adjacent_jump",
+          "detail": "log_return=-0.0992 (-9.44%) threshold=5.00%",
+          "ts": 947808000,
+          "rollover_candidate": false,
+          "magnitude_pct": -9.4427,
+          "prev_close": 21.709999084472656,
+          "close": 19.65999984741211
+        },
+        {
+          "row": 12,
+          "type": "adjacent_jump",
+          "detail": "log_return=0.0895 (+9.36%) threshold=5.00%",
+          "ts": 948153600,
+          "rollover_candidate": false,
+          "magnitude_pct": 9.3591,
+          "prev_close": 19.65999984741211,
+          "close": 21.5
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\YM1_1h.csv",
+      "rows": 13664,
+      "summary": {
+        "total_issues": 31,
+        "by_type": {
+          "gap": 30,
+          "adjacent_jump": 1
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 104,
+          "type": "gap",
+          "detail": "25200s gap = 7.0 bar intervals (threshold=3)",
+          "ts": 1702674000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 513,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1065,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1490,
+          "type": "gap",
+          "detail": "25200s gap = 7.0 bar intervals (threshold=3)",
+          "ts": 1710532800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2624,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\YM1_5m.csv",
+      "rows": 13686,
+      "summary": {
+        "total_issues": 42,
+        "by_type": {
+          "gap": 42
+        },
+        "rollover_candidates": 0,
+        "asset_class": "futures",
+        "threshold_pct": 5.0
+      },
+      "sample_issues": [
+        {
+          "row": 206,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1771974000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 482,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772060400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 758,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772146800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1308,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772492400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1584,
+          "type": "gap",
+          "detail": "3900s gap = 13.0 bar intervals (threshold=3)",
+          "ts": 1772578800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    },
+    {
+      "path": "C:\\EvolutionaryTradingAlgo\\mnq_data\\history\\ZN1_1h.csv",
+      "rows": 13639,
+      "summary": {
+        "total_issues": 26,
+        "by_type": {
+          "gap": 26
+        },
+        "rollover_candidates": 0,
+        "asset_class": "treasury",
+        "threshold_pct": 3.0
+      },
+      "sample_issues": [
+        {
+          "row": 519,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1705381200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 1071,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1708405200,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 2635,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1716868800,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3003,
+          "type": "gap",
+          "detail": "90000s gap = 25.0 bar intervals (threshold=3)",
+          "ts": 1718856000,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        },
+        {
+          "row": 3210,
+          "type": "gap",
+          "detail": "37800s gap = 10.5 bar intervals (threshold=3)",
+          "ts": 1720013400,
+          "rollover_candidate": false,
+          "magnitude_pct": null,
+          "prev_close": null,
+          "close": null
+        }
+      ]
+    }
+  ]
+}
