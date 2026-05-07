@@ -158,8 +158,10 @@ def summarize_process_commands(
 def collect_windows_processes(ps_runner: PsRunner, process_name: str) -> list[ProcessRow]:
     """Collect Win32 process rows through the audit script's PowerShell runner."""
 
+    safe_process_name = process_name.replace("'", "''")
     query = (
-        f"Get-CimInstance Win32_Process -Filter 'Name=\"{process_name}\"' | "
+        "Get-CimInstance Win32_Process | "
+        f"Where-Object {{ $_.Name -eq '{safe_process_name}' }} | "
         "Select-Object ProcessId,ParentProcessId,Name,CommandLine | "
         "ConvertTo-Json -Compress"
     )

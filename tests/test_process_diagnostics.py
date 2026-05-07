@@ -127,3 +127,18 @@ def test_collect_windows_processes_parses_list_payload() -> None:
     rows = collect_windows_processes(lambda _query: raw, "cloudflared.exe")
 
     assert [row["ProcessId"] for row in rows] == [601, 602]
+
+
+def test_collect_windows_processes_uses_shell_safe_name_filter() -> None:
+    captured: list[str] = []
+
+    def runner(query: str) -> str:
+        captured.append(query)
+        return "[]"
+
+    collect_windows_processes(runner, "cloudflared.exe")
+
+    assert captured
+    assert "-Filter" not in captured[0]
+    assert "Where-Object" in captured[0]
+    assert "$_.Name -eq 'cloudflared.exe'" in captured[0]

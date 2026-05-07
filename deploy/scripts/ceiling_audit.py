@@ -230,7 +230,8 @@ if isinstance(positions, list):
 section("6. LLM / DEEPSEEK")
 env_path = ENGINE_ROOT / ".env"
 if env_path.exists():
-    say("DeepSeek key: present", "DEEPSEEK_API_KEY=sk-" in env_path.read_text())
+    env_text = env_path.read_text(encoding="utf-8", errors="replace")
+    say("DeepSeek key: present", "DEEPSEEK_API_KEY=sk-" in env_text)
 
 avengers_heartbeat = STATE_ROOT / "avengers_heartbeat.json"
 if avengers_heartbeat.exists():
