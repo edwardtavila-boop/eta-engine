@@ -60,24 +60,35 @@ def test_factory_builds_all_kinds():
 def test_bridge_builds_active_bots():
     """All active new bots build through bridge dispatch.
 
-    Note: removed on 2026-05-05 after elite-gate harness verdicts:
-      vwap_mr_btc      RED — 0 OOS trades over 90d
-      volume_profile_btc RED — 1 OOS trade losing $104
-      rsi_mr_mnq       RED — 36 OOS trades losing $220 (validator
-                             caught 1 notional_exceeds_cap)
-      volume_profile_mnq RED — 6 OOS trades losing $655 (validator
-                                caught SIX rr_absurd signals)
-      vwap_mr_mnq      RED — 10 OOS trades, +$780 BUT 2 signals
-                              rejected (rr_too_small) — bug in strategy
-      vwap_mr_nq       RED — 12 OOS trades, +$708 BUT 2 signals
-                              rejected (rr_too_small) — same bug
-      cross_asset_mnq  RED — 34 OOS trades, +$243 BUT decay -66%
-                              (severe overfit)
+    Retire log:
+      2026-05-05 (elite-gate harness): vwap_mr_btc, volume_profile_btc,
+        rsi_mr_mnq, volume_profile_mnq, vwap_mr_mnq, vwap_mr_nq,
+        cross_asset_mnq -- various OOS-degradation modes.
+      2026-05-07 (post-dispatch-fix strict-gate audit): funding_rate_btc
+        (8481 trades, Sharpe -0.05, deflated Sharpe -2.4 -- statistical
+        zero), vwap_mr_mnq + vwap_mr_nq (confirmed dispatch-collapse
+        artifacts at sh_def -8.92 / -8.85). See
+        eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json.
+
+    Active list below is the representative bot per still-live
+    confluence_scorecard sub-strategy kind. If the only bot for a kind
+    gets retired, drop it here and add the next representative.
     Sidecar deactivation at var/eta_engine/state/kaizen_overrides.json
-    — they reappear here when reactivated."""
+    -- bots reappear here when reactivated."""
     clear_strategy_cache()
     active = [
-        "funding_rate_btc",
+        # rsi_mean_reversion still has rsi_mr_mnq active (top survivor of
+        # 2026-05-07 audit: 137 trades, Sharpe 1.91, expR_net +0.124,
+        # split_half_sign_stable=True).
+        "rsi_mr_mnq",
+        # volume_profile still has volume_profile_mnq active.
+        "volume_profile_mnq",
+        # cross_asset_divergence still has cross_asset_mnq active.
+        "cross_asset_mnq",
+        # vwap_reversion still has vwap_mr_btc active (BTC variant).
+        "vwap_mr_btc",
+        # sweep_reclaim has many active bots; pick one representative.
+        "mes_sweep_reclaim",
     ]
     for bot_id in active:
         result = build_registry_dispatch(bot_id)

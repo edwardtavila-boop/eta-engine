@@ -848,6 +848,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "walk_forward_overrides": {"long_haul_mode": True, "long_haul_min_pos_fraction": 0.33},
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07 (post-dispatch-fix): 8178 trades, "
+                "Sharpe -1.25, expR_net -0.134, deflated Sharpe -8.92. "
+                "Pre-fix metrics (Sharpe ~1.95) were an artifact of the "
+                "signals_confluence_scorecard dispatch-collapse bug (this bot's "
+                "scorer was being fed rsi_mr_mnq's signals). Once dispatched to "
+                "its own vwap_reversion generator, the edge collapsed. "
+                "8178 sample trades with sh_def -8.92 is unambiguously no edge. "
+                "Audit data: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -887,6 +899,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "NQ",
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07 (post-dispatch-fix): 8125 trades, "
+                "Sharpe -1.24, expR_net -0.12, deflated Sharpe -8.85. "
+                "Same dispatch-collapse story as vwap_mr_mnq -- pre-fix metrics "
+                "stole signals from rsi_mr_mnq; once routed to the vwap_reversion "
+                "generator the edge vanished. 8125 trades is plenty of sample to "
+                "rule out edge. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1225,6 +1248,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # loss cap is the per-bot circuit breaker.
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07 (post-dispatch-fix): 8481 trades, "
+                "Sharpe -0.05, expR_net -0.029, deflated Sharpe -2.4, "
+                "split_half_sign_stable=False. With 8481 attempts the bot has had "
+                "every chance to surface an edge -- the result is statistical zero. "
+                "The 19-trade paper-soak result that promoted this bot was a tiny "
+                "sample inside a noisy distribution; the 8481-trade backtest is "
+                "the truth. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1731,6 +1766,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "daily_loss_limit_pct": 3.0,
             # Optional config overrides (otherwise mbt_zfade_preset wins):
             # "mbt_zfade_config": {"entry_z": 2.5, "rr_target": 1.5, ...}
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Selection-bias confirmed by strict-gate audit 2026-05-07: "
+                "70d window gave Sharpe 1.86 (the basis for promotion), "
+                "564d window gives Sharpe -0.05, expR_net -0.159, "
+                "split_half_sign_stable=False. The 70d in-sample number was "
+                "the upper tail of a noisy distribution. With the full "
+                "564d sample the bot is no-edge. This is a textbook "
+                "selection-bias retire. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
