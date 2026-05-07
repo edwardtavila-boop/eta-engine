@@ -20,3 +20,11 @@ def test_ceiling_audit_accepts_ok_quota_state() -> None:
     text = AUDIT.read_text(encoding="utf-8")
 
     assert 'quota_state in ("NORMAL", "OK")' in text
+
+
+def test_ceiling_audit_accepts_conditional_non_denied_verdict_stream() -> None:
+    text = AUDIT.read_text(encoding="utf-8")
+
+    assert "non_denied_verdicts = approved_verdicts + conditional_verdicts" in text
+    assert "len(non_denied_verdicts) > 0" in text
+    assert "len(denied_verdicts) < len(non_denied_verdicts) * 2" in text

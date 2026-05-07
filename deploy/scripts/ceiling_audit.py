@@ -287,21 +287,22 @@ if verdict_path.exists():
         approved_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "APPROVED"]
         conditional_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "CONDITIONAL"]
         denied_verdicts = [verdict for verdict in verdicts if verdict.get("base_verdict") == "DENIED"]
+        non_denied_verdicts = approved_verdicts + conditional_verdicts
 
         say(
             f"Last 200: {len(approved_verdicts)}APP/{len(conditional_verdicts)}COND/{len(denied_verdicts)}DEN",
-            len(denied_verdicts) < len(approved_verdicts) * 2,
+            len(non_denied_verdicts) > 0 and len(denied_verdicts) < len(non_denied_verdicts) * 2,
         )
 
         confidences = [
             float(verdict.get("confidence", 0) or 0)
-            for verdict in approved_verdicts + conditional_verdicts
+            for verdict in non_denied_verdicts
         ]
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0
         say(f"Avg confidence:{avg_confidence:.2f}", avg_confidence > 0.4)
 
         subsystems: dict[str, int] = {}
-        for verdict in approved_verdicts + conditional_verdicts:
+        for verdict in non_denied_verdicts:
             subsystem = str(verdict.get("subsystem", "?"))
             subsystems[subsystem] = subsystems.get(subsystem, 0) + 1
 
