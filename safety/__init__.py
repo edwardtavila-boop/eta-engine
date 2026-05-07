@@ -18,10 +18,25 @@ Exposed gates:
   :class:`fleet_risk_gate.FleetRiskBreach` when the fleet's same-day
   aggregate P&L drops below the daily-loss budget. No-op when no
   gate has been registered (paper / test paths).
+* :func:`cross_bot_position_tracker.assert_fleet_position_cap` --
+  raises :class:`cross_bot_position_tracker.FleetPositionCapExceeded`
+  when an order would push the fleet net position for a symbol root
+  beyond its configured cap. No-op when no tracker has been
+  registered. Composes with the per-order ``position_cap`` gate to
+  prevent two bots routed to the same root from accidentally
+  combining into a fleet-level position the operator did not
+  authorise.
 """
 
 from __future__ import annotations
 
+from eta_engine.safety.cross_bot_position_tracker import (
+    CrossBotPositionTracker,
+    FleetPositionCapExceeded,
+    assert_fleet_position_cap,
+    get_cross_bot_position_tracker,
+    register_cross_bot_position_tracker,
+)
 from eta_engine.safety.fleet_risk_gate import (
     FleetRiskBreach,
     FleetRiskGate,
@@ -39,13 +54,18 @@ from eta_engine.safety.position_cap import (
 )
 
 __all__ = [
+    "CrossBotPositionTracker",
+    "FleetPositionCapExceeded",
     "FleetRiskBreach",
     "FleetRiskGate",
     "LiveTradingDisabled",
     "PositionCapExceeded",
+    "assert_fleet_position_cap",
     "assert_fleet_within_budget",
     "assert_live_allowed",
     "assert_within_caps",
+    "get_cross_bot_position_tracker",
     "get_fleet_risk_gate",
+    "register_cross_bot_position_tracker",
     "register_fleet_risk_gate",
 ]

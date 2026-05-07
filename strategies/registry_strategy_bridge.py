@@ -526,6 +526,7 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         return ConfluenceScorecardStrategy(None, sc_cfg)
 
     if kind == "mbt_funding_basis":
+        from eta_engine.feeds.cme_basis_provider import build_basis_provider
         from eta_engine.strategies.mbt_funding_basis_strategy import (
             MBTFundingBasisConfig,
             MBTFundingBasisStrategy,
@@ -537,7 +538,22 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
             if isinstance(cfg_raw, dict) and cfg_raw
             else MBTFundingBasisConfig()
         )
-        return MBTFundingBasisStrategy(cfg)
+        # Basis-provider dispatch. ``internal_log_return`` (the legacy
+        # default) returns None and the strategy keeps its silent built-in
+        # fallback. ``log_return_fallback`` wires an explicitly-named
+        # provider so audits can confirm the proxy is in use. ``cme_basis``
+        # wires the real spot-vs-futures provider; soft-fails to None
+        # when the spot CSV is missing.
+        provider_kind = str(extras.get("basis_provider_kind", "internal_log_return"))
+        spot_csv = extras.get("basis_spot_csv")
+        try:
+            provider = build_basis_provider(
+                provider_kind,
+                spot_csv=spot_csv if isinstance(spot_csv, (str)) else None,
+            )
+        except ValueError:
+            provider = None
+        return MBTFundingBasisStrategy(cfg, basis_provider=provider)
 
     if kind == "mbt_overnight_gap":
         from eta_engine.strategies.mbt_overnight_gap_strategy import (

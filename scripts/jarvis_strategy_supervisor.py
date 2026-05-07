@@ -81,6 +81,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
+    from eta_engine.core.events_calendar import EventsCalendar
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
     sys.path.insert(0, str(ROOT.parent))
@@ -330,6 +332,17 @@ class BotInstance:
     last_aggregation_reject_reason: str = ""
     last_aggregation_reject_at: str = ""
     sage_bars: deque = field(default_factory=lambda: deque(maxlen=200))
+    # Registry-derived daily-loss floor (percentage of starting_cash).
+    # Default mirrors ``BotConfig.daily_loss_cap_pct`` so bots without a
+    # ``daily_loss_limit_pct`` extra still see runtime enforcement instead
+    # of the legacy "no per-bot cap" silence.
+    daily_loss_limit_pct: float = 2.5
+    # Session-aware state owned by ``supervisor_session_wiring``:
+    # the SessionGate handle, daily PnL anchor, and halt flag. Wired
+    # at load time from registry extras; stays None for legacy paths
+    # that do not run through ``load_bots``. ``Any`` typing avoids a
+    # circular import with the wiring module.
+    session_state: Any = None
 
     def to_state(self, *, mode: str | None = None) -> dict:
         # Per-bot ``mode`` field is REQUIRED in the heartbeat so the
@@ -341,6 +354,9 @@ class BotInstance:
         # See PAPER_LIVE_ROUTING_GAP.md (52 bots stuck on paper_sim badge).
         d = asdict(self)
         d.pop("sage_bars", None)
+        # session_state is a runtime helper struct (gate handle + PnL
+        # anchor) — never serialize it into the heartbeat / journal.
+        d.pop("session_state", None)
         if mode is not None:
             d["mode"] = mode
         return d
@@ -1409,6 +1425,28 @@ class ExecutionRouter:
         if self.cfg.mode == "paper_live":
             with contextlib.suppress(Exception):
                 self._write_pending_order(bot, rec, reduce_only=True)
+        # Decrement the cross-bot net-position tracker. submit_exit
+        # only reaches this point when bot.open_position was non-None
+        # at entry AND the close size was reconciled against broker
+        # truth (see _get_broker_position_qty above), so this is the
+        # broker-acked exit boundary.
+        try:
+            from eta_engine.safety.cross_bot_position_tracker import (  # noqa: I001
+                get_cross_bot_position_tracker,
+                normalize_root as _cbpt_normalize_root,
+            )
+            tracker = get_cross_bot_position_tracker()
+            if tracker is not None:
+                tracker.record_exit(
+                    symbol_root=_cbpt_normalize_root(rec.symbol),
+                    side=rec.side,
+                    qty=rec.qty,
+                )
+        except Exception as exc:  # noqa: BLE001 -- never block on tracker write
+            logger.warning(
+                "cross_bot_tracker.record_exit(%s) failed: %s",
+                bot.bot_id, exc,
+            )
         bot.open_position = None
         self._clear_persisted_open_position(bot)
         return rec
@@ -1757,6 +1795,41 @@ class JarvisStrategySupervisor:
         # heartbeat as ``last_aggregation_reject_reason`` so the
         # operator can see which bots got consolidated.
         self._aggregation_cache: dict[tuple[str, str], dict[str, Any]] = {}
+        # Cross-bot net-position tracker (2026-05-07 -- concrete Apex
+        # blast scenario: 2 MBT bots each ship qty=3 SHORT past the
+        # per-order cap, combine into 6 MBT short = ~$48k notional on
+        # a $50k account; one 1.5x ATR adverse move = 24% of Apex
+        # Tier-A trailing buffer in seconds). The tracker keeps a
+        # process-wide running net keyed by symbol root, persists to
+        # disk so a restart restores the running net, and is
+        # reconciled against broker truth at startup. _maybe_enter
+        # consults it via ``assert_fleet_position_cap`` BEFORE
+        # ``submit_entry`` runs; record_entry/record_exit fire on the
+        # broker-acked-success branches so the running net stays
+        # bounded by what the broker has actually accepted.
+        from eta_engine.safety.cross_bot_position_tracker import (  # noqa: I001
+            STATE_FILENAME as _CBPT_FILENAME,
+            CrossBotPositionTracker,
+            register_cross_bot_position_tracker,
+        )
+        self._cross_bot_tracker = CrossBotPositionTracker(
+            state_path=self.cfg.state_dir / _CBPT_FILENAME,
+        )
+        register_cross_bot_position_tracker(self._cross_bot_tracker)
+        # Shared news/events calendar consumed by every per-bot
+        # SessionGate. Built lazily on first need from
+        # ``ETA_EVENTS_CALENDAR_PATH`` (when set + loadable). None when
+        # there is no calendar configured, in which case news blackout
+        # is a no-op for every gate.
+        self._events_calendar: Any | None = None
+        # Sentinel for repeated dedup of "blocked-by-gate" log lines.
+        # Maps (bot_id, reason) -> bool so we don't spam the supervisor
+        # log with one line per tick when entries are gated for an
+        # extended window (e.g. all of the overnight session).
+        self._gate_block_logged: dict[tuple[str, str], bool] = {}
+        # Same shape, scoped to "halted by daily loss cap" so we log
+        # once per (bot, session_date).
+        self._daily_halt_logged: dict[tuple[str, str], bool] = {}
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -1796,23 +1869,79 @@ class JarvisStrategySupervisor:
             x.strip() for x in self.cfg.bots_env.split(",") if x.strip()
         }
 
+        # Lazily import the session-gate wiring helpers. Importing
+        # here (rather than at module top) keeps the supervisor's
+        # import graph from cross-binding with core.session_gate at
+        # collection time, which simplifies the unit-test fixtures
+        # that exercise routing helpers without needing zoneinfo
+        # data files installed.
+        from eta_engine.scripts.supervisor_session_wiring import (
+            BotSessionState,
+            build_session_gate,
+            extract_daily_loss_limit_pct,
+        )
+
+        # Lazy-load the shared events calendar. ``None`` is fine —
+        # news blackout simply becomes a no-op.
+        events_calendar = self._get_events_calendar()
+
         for a in ASSIGNMENTS:
             if pinned and a.bot_id not in pinned:
                 continue
             if not is_active(a):
                 continue
+            symbol = getattr(a, "symbol", a.bot_id.upper())
+            extras = getattr(a, "extras", {}) or {}
+            daily_cap = extract_daily_loss_limit_pct(extras, default=2.5)
+            gate = build_session_gate(
+                symbol=symbol, extras=extras, calendar=events_calendar,
+            )
+            session_state = BotSessionState(gate=gate)
             self.bots.append(BotInstance(
                 bot_id=a.bot_id,
-                symbol=getattr(a, "symbol", a.bot_id.upper()),
+                symbol=symbol,
                 strategy_kind=getattr(a, "strategy_kind", "unknown"),
                 direction=getattr(a, "default_direction", "long"),
                 cash=self.cfg.starting_cash_per_bot,
+                daily_loss_limit_pct=daily_cap,
+                session_state=session_state,
             ))
         logger.info(
             "loaded %d bots (pinned filter: %s)",
             len(self.bots), pinned or "ALL",
         )
         return len(self.bots)
+
+    def _get_events_calendar(self) -> EventsCalendar | None:
+        """Return the shared events calendar, building it lazily.
+
+        Looks for ``ETA_EVENTS_CALENDAR_PATH`` pointing at a JSON file
+        of the schema documented in :func:`events_calendar.load_from_json`.
+        Any failure (missing path, unreadable file, malformed payload)
+        is swallowed: the supervisor returns ``None`` and downstream
+        gates simply skip the news-blackout check, which is the safe
+        default. ``None`` is cached so we don't retry on every load.
+        """
+        if self._events_calendar is not None:
+            return self._events_calendar
+        path = os.getenv("ETA_EVENTS_CALENDAR_PATH", "").strip()
+        if not path:
+            return None
+        try:
+            from eta_engine.core.events_calendar import load_from_json
+            cal = load_from_json(path)
+        except Exception as exc:  # noqa: BLE001 — calendar is advisory
+            logger.warning(
+                "events_calendar load failed (%s) — news blackout disabled",
+                exc,
+            )
+            return None
+        self._events_calendar = cal
+        logger.info(
+            "events_calendar loaded: path=%s events=%d",
+            path, len(getattr(cal, "events", []) or []),
+        )
+        return cal
 
     # ── JarvisFull bootstrap ─────────────────────────────────
 
@@ -2330,6 +2459,32 @@ class JarvisStrategySupervisor:
                 findings["matched"], ",".join(findings["brokers_queried"]),
             )
 
+        # Resync the cross-bot net-position tracker against broker
+        # truth. Only roots the broker actually responded for are
+        # overwritten; roots queried but not present collapse to 0
+        # (broker confirmed flat). Roots NOT in any successful query
+        # are left alone -- e.g. an IBKR-only reconcile must not zero
+        # out an Alpaca-held BTC position. This is the only point in
+        # the lifecycle where broker truth wins over the tracker.
+        try:
+            tracker = getattr(self, "_cross_bot_tracker", None)
+            if tracker is not None and findings.get("brokers_queried"):
+                roots_to_resync = set(broker_by_root) | set(supervisor_by_root)
+                resync_map = {
+                    root: float(broker_by_root.get(root, 0.0))
+                    for root in roots_to_resync
+                }
+                tracker.resync_from_broker(by_root=resync_map)
+                logger.info(
+                    "cross_bot_tracker resynced from broker: %s",
+                    tracker.snapshot(),
+                )
+        except Exception as exc:  # noqa: BLE001 -- resync failure must not block reconcile
+            logger.warning(
+                "cross_bot_tracker resync failed: %s -- tracker may "
+                "drift from broker until next reconcile", exc,
+            )
+
         # Persist findings so the dashboard / red-team can see them
         with contextlib.suppress(OSError):
             (self.cfg.state_dir / "reconcile_last.json").write_text(
@@ -2420,6 +2575,26 @@ class JarvisStrategySupervisor:
                 "tick loop will go to _maybe_exit for these bots until "
                 "stop/target pierces or operator clears the persisted file.",
                 restored_positions,
+            )
+
+        # Restart-safe cross-bot net-position tracker. Load before
+        # bootstrap so a crash that happens during bootstrap can not
+        # widen the gap between disk and live brokers.  The tracker
+        # is then resynced against broker truth inside
+        # reconcile_with_broker() below; broker wins on any
+        # disagreement.
+        try:
+            restored_roots = self._cross_bot_tracker.load()
+            if restored_roots:
+                logger.info(
+                    "supervisor restored cross-bot net-position book: "
+                    "%d root(s), snapshot=%s",
+                    restored_roots, self._cross_bot_tracker.snapshot(),
+                )
+        except Exception as exc:  # noqa: BLE001 -- load failure must not block startup; reconcile fixes drift
+            logger.warning(
+                "cross_bot_tracker.load() failed (%s) -- starting from "
+                "zero net; broker reconcile will populate.", exc,
             )
 
         if not self.bootstrap_jarvis():
@@ -2576,13 +2751,141 @@ class JarvisStrategySupervisor:
             except Exception as exc:  # noqa: BLE001 — never break the tick on a guard helper
                 logger.debug("_is_real_bar(%s) raised: %s", bot.symbol, exc)
 
+        # ── Session-gate EoD flatten ───────────────────────────────
+        # Runs BEFORE the open_position branch so a bot that entered
+        # mid-session and is now past the EoD cutoff gets force-flat
+        # instead of falling into _maybe_exit (which only checks
+        # bracket levels). Crypto bots' gate uses a 23:59:59 cutoff
+        # so this never trips spuriously for 24/7 lanes.
+        now = datetime.now(UTC)
+        if bot.open_position is not None:
+            self._maybe_flatten_for_eod(bot, bar, now=now)
+            # Re-read open_position: a successful flatten clears it,
+            # which means the next branch should take the entry path
+            # (which immediately fails the entry gate due to the same
+            # EoD condition — defensive double-check).
+            if bot.open_position is None:
+                self._maybe_enter(bot, bar)
+                return
+
         # 2. If no open position, evaluate entry
         if bot.open_position is None:
             self._maybe_enter(bot, bar)
         else:
             self._maybe_exit(bot, bar)
 
+    def _maybe_flatten_for_eod(
+        self, bot: BotInstance, bar: dict[str, Any], *, now: datetime,
+    ) -> None:
+        """Force-flatten any open position when the SessionGate signals EoD.
+
+        Skips bots without a configured gate (legacy / 24/7 crypto cutoff
+        sentinel). On flatten, marks ``pos["exit_reason"]`` as
+        ``"eod_flatten"`` so ``submit_exit``'s reason tag in the
+        FillRecord is unambiguous, and pipes the close through the
+        normal feedback loop via ``_propagate_close``.
+        """
+        from eta_engine.scripts.supervisor_session_wiring import should_flatten_now
+
+        flatten, reason = should_flatten_now(bot.session_state, now=now)
+        if not flatten:
+            return
+        pos = bot.open_position
+        if pos is None:
+            return
+        pos["exit_reason"] = "eod_flatten"
+        logger.warning(
+            "EOD FLATTEN %s: %s — closing %s position",
+            bot.bot_id, reason, pos.get("side", "?"),
+        )
+        rec = self._router.submit_exit(bot=bot, bar=bar)
+        if rec is None:
+            return
+        # _propagate_close requires the entry snapshot captured by
+        # submit_exit so edge_tracker observes the original entry side
+        # rather than the freshly-cleared position.
+        self._propagate_close(
+            bot, rec,
+            entry_snapshot=getattr(rec, "entry_snapshot", None),
+        )
+        # After a force-flatten, also re-evaluate the daily-loss cap
+        # so a session-ending loss immediately blocks any future
+        # re-entry attempts on the same session date.
+        self._enforce_daily_loss_cap(bot, now=now)
+
+    def _enforce_daily_loss_cap(
+        self, bot: BotInstance, *, now: datetime,
+    ) -> bool:
+        """Update the bot's daily-loss state and return halted-or-not.
+
+        Pulls realized PnL from the BotInstance, compares against the
+        registry-derived ``daily_loss_limit_pct`` against the bot's
+        starting cash, and toggles ``session_state.halted_until_session_date``.
+        Returns the halted boolean for callers that want to short-
+        circuit on the spot. Idempotent within a session.
+        """
+        if bot.session_state is None:
+            return False
+        from eta_engine.scripts.supervisor_session_wiring import (
+            enforce_daily_loss_cap,
+        )
+        starting_cash = float(self.cfg.starting_cash_per_bot or bot.cash or 0.0)
+        halted, _loss_pct = enforce_daily_loss_cap(
+            bot.session_state,
+            realized_pnl=float(bot.realized_pnl),
+            starting_cash=starting_cash,
+            daily_loss_limit_pct=float(bot.daily_loss_limit_pct),
+            now=now,
+        )
+        if halted:
+            key = (bot.bot_id, bot.session_state.daily_session_date)
+            if not self._daily_halt_logged.get(key):
+                logger.warning(
+                    "DAILY LOSS HALT %s: realized_pnl=%.2f limit=%.2f%% "
+                    "session=%s — entries blocked until next session",
+                    bot.bot_id, bot.realized_pnl, bot.daily_loss_limit_pct,
+                    bot.session_state.daily_session_date,
+                )
+                self._daily_halt_logged[key] = True
+        return halted
+
     def _maybe_enter(self, bot: BotInstance, bar: dict[str, Any]) -> None:
+        # ── Session-gate entry check ───────────────────────────────
+        # Runs before everything else so a bot blocked by RTH / EoD /
+        # news_blackout never gets through to the dice / JARVIS /
+        # router layers. Bots without a configured gate
+        # (enable_session_gate=False or missing edge_config) bypass
+        # this block by design — see supervisor_session_wiring.
+        now = datetime.now(UTC)
+        from eta_engine.scripts.supervisor_session_wiring import (
+            evaluate_pre_entry_gate,
+        )
+        allowed, reason = evaluate_pre_entry_gate(bot.session_state, now=now)
+        if not allowed:
+            key = (bot.bot_id, reason)
+            if not self._gate_block_logged.get(key):
+                logger.info(
+                    "SESSION GATE block %s: reason=%s symbol=%s",
+                    bot.bot_id, reason, bot.symbol,
+                )
+                self._gate_block_logged[key] = True
+            return
+        # Clear the dedup cache for this bot when re-allowed so the
+        # next future block emits a fresh log line.
+        self._gate_block_logged = {
+            k: v for k, v in self._gate_block_logged.items()
+            if k[0] != bot.bot_id
+        }
+
+        # ── Per-bot daily-loss cap (registry: daily_loss_limit_pct) ───
+        # Halts new entries when realized PnL since the session anchor
+        # has crossed -daily_loss_limit_pct of starting cash. Resets
+        # automatically at the next ET-date rollover via the wiring
+        # helper. Stale halts from a previous session are also cleared
+        # by enforce_daily_loss_cap when the date rolls.
+        if self._enforce_daily_loss_cap(bot, now=now):
+            return
+
         # Mock entry signal: per-call independent dice, ~1-in-5 fire rate.
         #
         # The earlier ``random.Random(int(time.time())).random()`` was
@@ -2828,6 +3131,72 @@ class JarvisStrategySupervisor:
                 bot.bot_id, consolidation_reason, bot.symbol, order_side,
             )
             return
+
+        # Cross-bot net-position cap. The supervisor has already
+        # passed the per-order cap and the per-bot capital cap; this
+        # gate composes those into a fleet-net check against the
+        # configured per-root cap (env override:
+        # ``ETA_FLEET_POSITION_CAP_<ROOT>``; defaults: MBT/MET=3).
+        # Sizing here uses the registry-configured per-order ceiling
+        # as the worst-case estimate; the underlying clamp in
+        # submit_entry catches anything smaller. If the worst case
+        # already breaches the fleet cap, refuse before any broker
+        # round-trip.
+        try:
+            from eta_engine.safety.cross_bot_position_tracker import (
+                FleetPositionCapExceeded,
+                normalize_root,
+                resolve_fleet_cap,
+            )
+            sym_root_for_cap = normalize_root(bot.symbol)
+            est_qty = float(
+                _MAX_QTY_PER_ORDER.get(
+                    sym_root_for_cap,
+                    _MAX_QTY_DEFAULT_FUTURES if sym_root_for_cap in _FUTURES_ROOTS
+                    else _MAX_QTY_DEFAULT_CRYPTO,
+                ),
+            )
+            self._cross_bot_tracker.assert_fleet_position_cap(
+                symbol_root=sym_root_for_cap,
+                side=order_side,
+                requested_delta=est_qty,
+                fleet_cap=resolve_fleet_cap(sym_root_for_cap),
+            )
+        except FleetPositionCapExceeded as exc:
+            bot.last_aggregation_reject_reason = (
+                "fleet_position_cap: root=" + str(exc.root)
+                + " current=" + format(exc.current_net, "+g")
+                + " req=" + format(exc.requested_delta, "+g")
+                + " proposed=" + format(exc.proposed_total, "+g")
+                + " cap=" + format(exc.fleet_cap, "g")
+            )
+            bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+            logger.warning(
+                "FLEET POSITION CAP %s blocked entry: %s",
+                bot.bot_id, exc,
+            )
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                    emit_event,
+                )
+                emit_event(
+                    layer="risk",
+                    event="fleet_position_cap_blocked",
+                    bot_id=bot.bot_id,
+                    cls=_classify_symbol(bot.symbol),
+                    details={
+                        "root": exc.root,
+                        "current_net": exc.current_net,
+                        "requested_delta": exc.requested_delta,
+                        "proposed_total": exc.proposed_total,
+                        "fleet_cap": exc.fleet_cap,
+                        "side": order_side,
+                        "symbol": bot.symbol,
+                    },
+                    severity="WARNING",
+                )
+            return
+
         rec = self._router.submit_entry(
             bot=bot, signal_id=signal_id, side=order_side, bar=bar,
             size_mult=size_mult,
@@ -2839,6 +3208,25 @@ class JarvisStrategySupervisor:
             # set so even within this session we don't re-issue.
             self._sent_signals.add((bot.bot_id, signal_id))
             self._record_sent_signal(bot.bot_id, signal_id, rec.fill_ts)
+            # Record the broker-acked entry on the cross-bot tracker.
+            # ``rec`` is non-None only on broker-success branches
+            # (paper_sim, paper_live OK/PARTIAL/FILLED, broker_router
+            # pending). The rollback path returns None, so this stays
+            # bounded by broker truth.
+            try:
+                from eta_engine.safety.cross_bot_position_tracker import (
+                    normalize_root as _cbpt_normalize_root,
+                )
+                self._cross_bot_tracker.record_entry(
+                    symbol_root=_cbpt_normalize_root(rec.symbol),
+                    side=rec.side,
+                    qty=rec.qty,
+                )
+            except Exception as exc:  # noqa: BLE001 -- never block on tracker write
+                logger.warning(
+                    "cross_bot_tracker.record_entry(%s) failed: %s",
+                    bot.bot_id, exc,
+                )
             logger.info(
                 "ENTRY  %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f)",
                 bot.bot_id, order_side, rec.qty, rec.fill_price,
@@ -3752,6 +4140,14 @@ class JarvisStrategySupervisor:
         back to the old ``bot.open_position`` lookup so we don't regress
         anything that hasn't been migrated.
         """
+        # Re-check the daily loss cap on every close so a losing trade
+        # that pushes us past the floor immediately blocks subsequent
+        # entries within the same session, without waiting for the
+        # next _maybe_enter call. Best-effort — the underlying state
+        # lives on the BotInstance, so any error here is swallowed
+        # to keep the feedback path running.
+        with contextlib.suppress(Exception):
+            self._enforce_daily_loss_cap(bot, now=datetime.now(UTC))
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
             # Read live regime from regime_state.json so trade closes

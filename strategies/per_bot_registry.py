@@ -1617,6 +1617,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "enable_vol_sizing": True,
             },
             "daily_loss_limit_pct": 3.0,
+            # Basis provider wiring (see feeds/cme_basis_provider.py and
+            # docs/MBT_BASIS_PROVIDER.md). Production today is on
+            # ``log_return_fallback`` — an explicitly-named substitute for
+            # the strategy's silent log-return proxy. Flip this to
+            # ``cme_basis`` once BTC spot data is reliably maintained at
+            # data/crypto/history/BTC_5m.csv (or wire a callable).
+            "basis_provider_kind": "log_return_fallback",
         },
     ),
 

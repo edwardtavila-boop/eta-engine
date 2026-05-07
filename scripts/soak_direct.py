@@ -1,4 +1,5 @@
-"""Direct fleet soak — bypass paper_soak_tracker's threading issues on VPS."""
+"""Direct fleet soak — bypass paper_soak_tracker's threading issues on VPS.
+Supports multi-session mode: soak_direct.py 7  for 7 sessions x 60d each."""
 import json
 import os
 import subprocess
@@ -20,9 +21,10 @@ SIM = r"C:\EvolutionaryTradingAlgo\eta_engine\scripts\paper_trade_sim.py"
 
 DAYS = 60
 TIMEOUT = 1200
+SESSIONS = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
-# Load or init ledger — always start fresh for single-pass soak
-ledger = {"bot_sessions": {}}
+# Load or init ledger
+ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.exists() else {"bot_sessions": {}}
 
 # Get eligible bots
 assignments = [a for a in all_assignments() if is_active(a)]

@@ -39,11 +39,11 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import yaml
@@ -228,7 +228,9 @@ def signals_sweep_reclaim(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> 
     return out
 
 
-def signals_compression_breakout(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_compression_breakout(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Bollinger band narrowing + ATR-z low → directional breakout.
 
     2026-05-04: raised default compression_pct 0.20 → 0.40 (top-40% lowest-ATR
@@ -261,7 +263,9 @@ def signals_compression_breakout(bars: dict[str, np.ndarray], spec: dict[str, An
     return out
 
 
-def signals_confluence_scorecard(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_confluence_scorecard(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """2-of-5 confluence (tunable): trend, slow alignment, vol z, momentum, follow-through.
 
     2026-05-04: relaxed primary trend gate from strict 3-EMA stack (fast>mid>slow)
@@ -509,7 +513,9 @@ def signals_confluence(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> lis
     return signals_confluence_scorecard(bars, relaxed)
 
 
-def signals_rsi_mean_reversion(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_rsi_mean_reversion(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Counter-trend RSI mean-reversion at BB extremes.
 
     Long when RSI < oversold AND close at/below lower BB band.
@@ -541,16 +547,24 @@ def signals_rsi_mean_reversion(bars: dict[str, np.ndarray], spec: dict[str, Any]
         upper = mu + bb_std_mult * sigma
         lower = mu - bb_std_mult * sigma
         if rsi[i] < oversold and close[i] <= lower:
-            if require_rejection and close[i] >= low[i] + 0.25 * (high[i] - low[i]):
+            if (
+                require_rejection
+                and close[i] >= low[i] + 0.25 * (high[i] - low[i])
+            ) or not require_rejection:
                 # Bar closed in upper 75% of its range → rejection of low
                 out.append((i, "long", stop_atr, target_atr))
-            elif not require_rejection:
-                out.append((i, "long", stop_atr, target_atr))
-        elif rsi[i] > overbought and close[i] >= upper:
-            if require_rejection and close[i] <= high[i] - 0.25 * (high[i] - low[i]):
-                out.append((i, "short", stop_atr, target_atr))
-            elif not require_rejection:
-                out.append((i, "short", stop_atr, target_atr))
+        elif (
+            rsi[i] > overbought
+            and close[i] >= upper
+            and (
+                (
+                    require_rejection
+                    and close[i] <= high[i] - 0.25 * (high[i] - low[i])
+                )
+                or not require_rejection
+            )
+        ):
+            out.append((i, "short", stop_atr, target_atr))
     return out
 
 
@@ -603,7 +617,9 @@ def signals_volume_profile(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
     return out
 
 
-def signals_cross_asset_divergence(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_cross_asset_divergence(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Mean-reversion on cross-asset divergence.
 
     When the primary symbol's z-scored return diverges from a rolling correlation
@@ -739,7 +755,9 @@ def signals_dxy_gold_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) 
     return out
 
 
-def signals_treasury_safe_haven(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_treasury_safe_haven(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Treasury futures (ZN/ZB) flight-to-safety on VIX spikes.
 
     Asset-class rationale: when VIX spikes (rapid risk-off), capital flows
@@ -860,7 +878,9 @@ def signals_es_vix_inverse(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
     return out
 
 
-def signals_commodity_ratio_mr(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_commodity_ratio_mr(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Cross-commodity ratio mean-reversion (CL/GC, GC/SI, etc.).
 
     Asset-class rationale: cross-commodity ratios mean-revert because the
@@ -932,7 +952,9 @@ def signals_commodity_ratio_mr(bars: dict[str, np.ndarray], spec: dict[str, Any]
     return out
 
 
-def signals_overnight_gap_fade(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_overnight_gap_fade(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Fade large overnight gaps in index futures (NQ/ES/MNQ).
 
     Asset-class rationale: index futures trade ETH (overnight) on lower
@@ -1035,7 +1057,9 @@ def signals_index_lead_lag(bars: dict[str, np.ndarray], spec: dict[str, Any]) ->
     return out
 
 
-def signals_commodity_session_breakout(bars: dict[str, np.ndarray], spec: dict[str, Any]) -> list[tuple[int, str, float, float]]:
+def signals_commodity_session_breakout(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
     """Volatility-compressed session breakout for commodities (GC/CL/NG).
 
     Asset-class rationale: commodities trend longer than equities once a
@@ -1084,6 +1108,217 @@ def signals_commodity_session_breakout(bars: dict[str, np.ndarray], spec: dict[s
     return out
 
 
+# ─── Stateful-class adapters (MBT / MET) ──────────────────────────
+# The next three generators wrap stateful strategy classes that expose
+# `maybe_enter(bar, hist, equity, config) -> _Open | None`. The classes
+# carry per-day state (opening range, basis window, gap anchor) that
+# would be tedious to re-encode as numpy. The adapters replay the bar
+# stream through the class, emitting a `(idx, side, stop_atr, target_atr)`
+# tuple for each fire, matching the `signals_X` contract used by
+# `WalkForwardEngine.run()`. The harness's `_simulate_trade` re-derives
+# entry/stop/target from these multiples — the strategy's own absolute
+# stop/target prices are not used here, only the ATR ratios from cfg.
+#
+# Why a closure over the bar window? The strategy classes need
+# `BarData` (timezone-aware `datetime`) plus a `BacktestConfig` for
+# their interface. We synthesize these lazily from the numpy bar dict.
+
+
+def _bars_to_bar_data_list(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[object]:
+    """Materialize numpy bar dict into a list of BarData for stateful
+    strategies. Lazy import so this module stays importable without
+    pulling pydantic models when only numpy generators are used."""
+    from datetime import datetime as _dt
+
+    from eta_engine.core.data_pipeline import BarData
+
+    symbol = str(spec.get("symbol") or "MNQ")
+    times = bars["time"]
+    o = bars["open"]
+    h = bars["high"]
+    lo = bars["low"]
+    c = bars["close"]
+    v = bars["volume"]
+    out: list[object] = []
+    for i in range(len(c)):
+        # Bar files store unix epoch seconds (UTC) in the "time" column.
+        ts = _dt.fromtimestamp(float(times[i]), tz=UTC)
+        out.append(BarData(
+            timestamp=ts, symbol=symbol,
+            open=float(o[i]), high=float(h[i]), low=float(lo[i]),
+            close=float(c[i]), volume=float(v[i]),
+        ))
+    return out
+
+
+def _stub_backtest_config(spec: dict[str, Any]) -> object:
+    """Build a minimal BacktestConfig the strategies can carry. The
+    strategies only inspect timezone-naive scalar fields; values here
+    are placeholders that don't affect signal logic."""
+    from eta_engine.backtest.models import BacktestConfig
+
+    sym = str(spec.get("symbol") or "MNQ")
+    equity = float(spec.get("initial_equity", 10_000.0))
+    return BacktestConfig(
+        start_date=datetime(2026, 1, 1, tzinfo=UTC),
+        end_date=datetime(2099, 12, 31, tzinfo=UTC),
+        symbol=sym,
+        initial_equity=equity,
+        risk_per_trade_pct=float(spec.get("risk_per_trade_pct", 0.005)),
+        confluence_threshold=0.0,
+        max_trades_per_day=10,
+    )
+
+
+def _replay_class_strategy(
+    strategy: object,
+    bars: dict[str, np.ndarray],
+    spec: dict[str, Any],
+    *,
+    atr_stop_mult: float,
+    rr_target: float,
+) -> list[tuple[int, str, float, float]]:
+    """Bar-by-bar replay of a stateful strategy class through the lab
+    bar window. Emits one (idx, side, stop_atr, target_atr) per fire.
+
+    The class's own absolute stop/target are intentionally discarded —
+    the harness re-prices off its own ATR. We only need the ATR
+    multiples (carried from cfg) and the side mapping BUY→long /
+    SELL→short.
+    """
+    target_atr = atr_stop_mult * rr_target
+    bar_list = _bars_to_bar_data_list(bars, spec)
+    cfg = _stub_backtest_config(spec)
+    equity = float(spec.get("initial_equity", 10_000.0))
+
+    out: list[tuple[int, str, float, float]] = []
+    hist: list[object] = []
+    for i, bar in enumerate(bar_list):
+        # Strategies expect hist = ALL prior bars (some look at hist[-N:]
+        # for ATR/EMA windows). Pass the running buffer up to but not
+        # including the current bar; current bar is the `bar` arg.
+        try:
+            opened = strategy.maybe_enter(bar, hist, equity, cfg)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - never let a single-bar crash kill the lab run
+            opened = None
+        if opened is not None:
+            side_raw = str(opened.side).upper()
+            side = "long" if side_raw in {"BUY", "LONG"} else "short"
+            out.append((i, side, atr_stop_mult, target_atr))
+        hist.append(bar)
+    return out
+
+
+def signals_mbt_funding_basis(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `MBTFundingBasisStrategy` — basis-premium fade on MBT.
+
+    Spec keys honored (all optional; fall back to preset defaults):
+      basis_lookback, entry_z, exit_z, momentum_lookback,
+      require_lower_highs, atr_period, atr_stop_mult, rr_target,
+      risk_per_trade_pct, min_bars_between_trades, max_trades_per_day,
+      warmup_bars, allow_long, allow_short.
+    """
+    from eta_engine.strategies.mbt_funding_basis_strategy import (
+        MBTFundingBasisConfig,
+        MBTFundingBasisStrategy,
+        mbt_funding_basis_preset,
+    )
+
+    base = mbt_funding_basis_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "basis_lookback", "entry_z", "exit_z", "momentum_lookback",
+        "require_lower_highs", "atr_period", "atr_stop_mult", "rr_target",
+        "risk_per_trade_pct", "min_bars_between_trades",
+        "max_trades_per_day", "warmup_bars", "allow_long", "allow_short",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = MBTFundingBasisConfig(**{**base.__dict__, **overrides})
+    strategy = MBTFundingBasisStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
+def signals_mbt_overnight_gap(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `MBTOvernightGapStrategy` — Asia-overnight gap fade
+    on MBT at the CME RTH open.
+
+    Spec keys honored (all optional):
+      min_gap_atr_mult, max_gap_atr_mult, entry_window_bars,
+      atr_period, atr_stop_mult, rr_target, risk_per_trade_pct,
+      min_session_gap_hours, max_trades_per_day, warmup_bars,
+      allow_long, allow_short.
+    """
+    from eta_engine.strategies.mbt_overnight_gap_strategy import (
+        MBTOvernightGapConfig,
+        MBTOvernightGapStrategy,
+        mbt_overnight_gap_preset,
+    )
+
+    base = mbt_overnight_gap_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "min_gap_atr_mult", "max_gap_atr_mult", "entry_window_bars",
+        "atr_period", "atr_stop_mult", "rr_target", "risk_per_trade_pct",
+        "min_session_gap_hours", "max_trades_per_day", "warmup_bars",
+        "allow_long", "allow_short",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = MBTOvernightGapConfig(**{**base.__dict__, **overrides})
+    strategy = MBTOvernightGapStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
+def signals_met_rth_orb(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `METRTHORBStrategy` — 5-minute opening-range
+    breakout on MET (CME Micro Ether) RTH.
+
+    Spec keys honored (all optional):
+      range_minutes, min_range_pts, ema_bias_period, volume_mult,
+      volume_lookback, atr_period, atr_stop_mult, rr_target,
+      risk_per_trade_pct, max_trades_per_day.
+    """
+    from eta_engine.strategies.met_rth_orb_strategy import (
+        METRTHORBConfig,
+        METRTHORBStrategy,
+        met_rth_orb_preset,
+    )
+
+    base = met_rth_orb_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "range_minutes", "min_range_pts", "ema_bias_period", "volume_mult",
+        "volume_lookback", "atr_period", "atr_stop_mult", "rr_target",
+        "risk_per_trade_pct", "max_trades_per_day",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = METRTHORBConfig(**{**base.__dict__, **overrides})
+    strategy = METRTHORBStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
 SIGNAL_GENERATORS: dict[str, Callable] = {
     "ema_cross":            signals_ema_cross,
     "sweep_reclaim":        signals_sweep_reclaim,
@@ -1110,6 +1345,10 @@ SIGNAL_GENERATORS: dict[str, Callable] = {
     # v2.8 cross-commodity + session-anchored generators (2026-05-04 round 11)
     "commodity_ratio_mr":        signals_commodity_ratio_mr,
     "overnight_gap_fade":        signals_overnight_gap_fade,
+    # v2.9 stateful-class adapters for MBT / MET (2026-05-07 commit ddac736)
+    "mbt_funding_basis":         signals_mbt_funding_basis,
+    "mbt_overnight_gap":         signals_mbt_overnight_gap,
+    "met_rth_orb":               signals_met_rth_orb,
 }
 
 
@@ -1189,7 +1428,7 @@ class WalkForwardEngine:
         composite_min = int(spec.get("__composite_min_score__", 2))
         gen_kind = composite_sub if composite_sub in SIGNAL_GENERATORS else kind
 
-        for train_range, test_range in windows:
+        for _train_range, test_range in windows:
             test_bars = {k: v[test_range.start : test_range.stop] for k, v in bars.items()}
             raw_sigs = SIGNAL_GENERATORS[gen_kind](test_bars, spec)
             if composite_sub:
@@ -1244,10 +1483,14 @@ class WalkForwardEngine:
         # >0 expectancy via asymmetric R-multiples. Drop WR floor to 35%
         # and rely on expectancy + sharpe + dd as the real edge tests.
         fail_reasons = []
-        if win_rate < 0.35: fail_reasons.append(f"win_rate {win_rate:.2%} < 35%")
-        if sharpe < 0.5: fail_reasons.append(f"sharpe {sharpe:.2f} < 0.5")
-        if expectancy <= 0: fail_reasons.append(f"expectancy {expectancy:.3f} R <= 0")
-        if dd > 0.3 * len(arr): fail_reasons.append(f"max_dd {dd:.2f} R > 30% of trades")
+        if win_rate < 0.35:
+            fail_reasons.append(f"win_rate {win_rate:.2%} < 35%")
+        if sharpe < 0.5:
+            fail_reasons.append(f"sharpe {sharpe:.2f} < 0.5")
+        if expectancy <= 0:
+            fail_reasons.append(f"expectancy {expectancy:.3f} R <= 0")
+        if dd > 0.3 * len(arr):
+            fail_reasons.append(f"max_dd {dd:.2f} R > 30% of trades")
         passed = not fail_reasons
 
         return LabResult(
@@ -1307,7 +1550,15 @@ class WalkForwardEngine:
                 la = atr_arr[idx] if atr_arr[idx] > 0 else entry * 0.005
                 stop = entry - la * sm if side == "long" else entry + la * sm
                 target = entry + la * tm if side == "long" else entry - la * tm
-                pnl_r, _ = _simulate_trade(entry, bars["high"][idx+1:], bars["low"][idx+1:], bars["close"][idx+1:], side, stop, target)
+                pnl_r, _ = _simulate_trade(
+                    entry,
+                    bars["high"][idx + 1:],
+                    bars["low"][idx + 1:],
+                    bars["close"][idx + 1:],
+                    side,
+                    stop,
+                    target,
+                )
                 trades_r.append(pnl_r)
             if trades_r:
                 a = np.array(trades_r)
@@ -1382,25 +1633,25 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
         # Flatten + alias so each bot's actual parameters reach the engine
         # — without this, every confluence_scorecard bot ran with the same
         # defaults and produced identical Sharpe (Tier-3 cluster degeneracy).
-        _SPEC_KEYS = ("stop_atr", "target_atr", "ema_fast", "ema_mid", "ema_slow",
-                      "lookback", "min_wick_pct", "min_score", "sigma_mult",
-                      "bb_period", "bb_compression_pct", "range_bars",
-                      "trend_window",
-                      # cross_asset / counter-trend / vp params
-                      "z_threshold", "partner_symbol", "partner_timeframe",
-                      "rsi_period", "oversold_threshold", "overbought_threshold",
-                      "bb_window", "bb_std_mult", "require_rejection",
-                      "vp_lookback", "vp_bins", "vp_proximity_pct",
-                      # round-10/11 macro-driver params
-                      "dxy_break_lookback", "gold_trend_window",
-                      "vix_spike_lookback", "vix_spike_pct", "vix_collapse_pct",
-                      "treasury_mean_window",
-                      "vix_lookback", "vix_extreme_pct",
-                      "ratio_window",
-                      "gap_atr_mult", "atr_window", "reversal_lookback",
-                      "lead_lookback", "lead_break_pct", "follower_lag_pct",
-                      "atr_pct_threshold", "momentum_bars")
-        _ALIASES = {
+        spec_keys = ("stop_atr", "target_atr", "ema_fast", "ema_mid", "ema_slow",
+                     "lookback", "min_wick_pct", "min_score", "sigma_mult",
+                     "bb_period", "bb_compression_pct", "range_bars",
+                     "trend_window",
+                     # cross_asset / counter-trend / vp params
+                     "z_threshold", "partner_symbol", "partner_timeframe",
+                     "rsi_period", "oversold_threshold", "overbought_threshold",
+                     "bb_window", "bb_std_mult", "require_rejection",
+                     "vp_lookback", "vp_bins", "vp_proximity_pct",
+                     # round-10/11 macro-driver params
+                     "dxy_break_lookback", "gold_trend_window",
+                     "vix_spike_lookback", "vix_spike_pct", "vix_collapse_pct",
+                     "treasury_mean_window",
+                     "vix_lookback", "vix_extreme_pct",
+                     "ratio_window",
+                     "gap_atr_mult", "atr_window", "reversal_lookback",
+                     "lead_lookback", "lead_break_pct", "follower_lag_pct",
+                     "atr_pct_threshold", "momentum_bars")
+        aliases = {
             "fast_ema": "ema_fast", "mid_ema": "ema_mid", "slow_ema": "ema_slow",
             "ema_bias_period": "ema_slow",
             "atr_stop_mult": "stop_atr",
@@ -1411,13 +1662,18 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
             "min_z_threshold": "z_threshold",
             "reference_asset": "partner_symbol",
         }
-        _SPEC_KEYS_EXTRA = ("partner_symbol", "z_threshold", "lookback")
         if isinstance(a.extras, Mapping):
-            def _ingest(src: Mapping[str, Any]) -> None:
+            def _ingest(
+                src: Mapping[str, Any],
+                *,
+                key_aliases: Mapping[str, str] = aliases,
+                allowed_keys: tuple[str, ...] = spec_keys,
+                target_spec: dict[str, Any] = spec,
+            ) -> None:
                 for k, v in src.items():
-                    canonical = _ALIASES.get(k, k)
-                    if canonical in _SPEC_KEYS and canonical not in spec:
-                        spec[canonical] = v
+                    canonical = key_aliases.get(k, k)
+                    if canonical in allowed_keys and canonical not in target_spec:
+                        target_spec[canonical] = v
             _ingest(a.extras)
             for nested_key in ("scorecard_config", "crypto_orb_config",
                                "sweep_config", "compression_config",
@@ -1437,7 +1693,7 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
             # generator, override strategy_kind so each bot exercises its
             # actual logic rather than the generic scorecard. Aliases match
             # the registry's naming conventions.
-            _SUB_KIND_ALIASES = {
+            sub_kind_aliases = {
                 "vwap_mean_reversion":    "vwap_mr",
                 "vwap_reversion":         "vwap_mr",
                 "vwap_mr":                "vwap_mr",
@@ -1458,13 +1714,13 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
                 "divergence":             "cross_asset_divergence",
             }
             sub_kind = str(a.extras.get("sub_strategy_kind") or "").strip()
-            mapped = _SUB_KIND_ALIASES.get(sub_kind)
+            mapped = sub_kind_aliases.get(sub_kind)
             # Counter-trend strategies must NOT be filtered by the
             # scorecard's trend gate — the trend gate by definition
             # disagrees with their entry direction (RSI<25 long while
             # trend is down, etc.). For these, dispatch directly to
             # the sub-strategy without composite filter.
-            _COUNTER_TREND_KINDS = {"rsi_mean_reversion", "vwap_mr"}
+            counter_trend_kinds = {"rsi_mean_reversion", "vwap_mr"}
             if mapped and mapped in SIGNAL_GENERATORS:
                 # COMPOSITE FILTER (2026-05-04): if registry has BOTH
                 # strategy_kind="confluence_scorecard" and a registered
@@ -1473,7 +1729,7 @@ def fleet_sweep(out_dir: Path | None = None) -> dict[str, Any]:
                 # DIAMOND architecture (e.g. btc_optimized = sweep_reclaim
                 # entries × scorecard quality filter). Skipped for
                 # counter-trend strategies (they get pure dispatch).
-                if a.strategy_kind == "confluence_scorecard" and mapped not in _COUNTER_TREND_KINDS:
+                if a.strategy_kind == "confluence_scorecard" and mapped not in counter_trend_kinds:
                     spec["__composite_sub_kind__"] = mapped
                     spec["__composite_min_score__"] = int(
                         a.extras.get("scorecard_config", {}).get("min_score", 2)
