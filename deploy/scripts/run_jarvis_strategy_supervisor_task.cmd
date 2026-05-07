@@ -97,7 +97,7 @@ rem                       fired 3 entries in 5 min, all "skipped:
 rem                       budget cap produced qty=0". Re-pin only after
 rem                       (a) MYM (Micro Dow) variant added to registry,
 rem                       OR (b) per-bot budget lifted for YM specifically.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

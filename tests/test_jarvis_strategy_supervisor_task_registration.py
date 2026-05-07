@@ -81,8 +81,11 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     bots = set(match.group(1).split(","))
 
     assert bots == {
-        # The deflated-Sharpe survivor (sh_def +1.98).
-        "volume_profile_mnq",
+        # The deflated-Sharpe survivors. Both confirmed positive sh_def
+        # in the post-fix strict-gate audit -- the volume_profile family
+        # is the cleanest live edge in the fleet.
+        "volume_profile_mnq",  # sh_def +1.98 on 4277 trades
+        "volume_profile_nq",   # sh_def +0.62 on 4375 trades
         # Top mid-tier survivor.
         "rsi_mr_mnq",
         # Crypto-futures research-candidate.

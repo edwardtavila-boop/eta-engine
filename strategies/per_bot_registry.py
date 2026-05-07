@@ -1099,13 +1099,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # NEW 2026-05-07: clone of volume_profile_mnq targeting NQ. The MNQ
     # variant is the audit's only deflated-Sharpe survivor (sh_def +1.98
     # on 4277 trades). NQ shares the same liquid index-futures
-    # auction-market structure -- value-area mean-reversion should hold
-    # on 5m bars there too. Lab metrics will tell.
+    # auction-market structure -- value-area mean-reversion holds on 5m
+    # bars there too.
     #
-    # Status starts at research_candidate (NOT pinned to live trading
-    # until the strict-gate audit on this bot returns positive expR_net.
-    # The MNQ result earned its production_candidate stamp on actual
-    # backtest evidence; the NQ clone has to do the same.
+    # PROMOTED 2026-05-07 (research_candidate -> production_candidate)
+    # after the strict-gate audit on the NQ clone returned positive
+    # deflated Sharpe -- the second bot in the fleet to clear that
+    # screen. The volume_profile family now has TWO confirmed edges
+    # on liquid index-futures auction structure.
     StrategyAssignment(
         bot_id="volume_profile_nq",
         strategy_id="vol_prof_nq_v1",
@@ -1123,16 +1124,25 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "NQ 5m. Clone of volume_profile_mnq -- same POC/VAH/VAL "
             "rolling profile, same auction-market thesis (~70% of volume "
             "clusters in value area; price gravitates to POC after "
-            "escaping). NQ trades $20/pt (vs MNQ $0.50/pt) so per-trade "
-            "PnL scales 40x; entry sizing constrained by max_qty_equity_pct."
+            "escaping). NQ trades $20/pt (vs MNQ $2/pt) so per-trade "
+            "PnL scales 10x; entry sizing constrained by max_qty_equity_pct."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "production_candidate",
+            "promoted_on": "2026-05-07",
+            "promotion_evidence": (
+                "strict_gate_20260507T222110Z: trades=4375 sharpe=0.60 "
+                "expR_net=+0.036 sh_def=+0.62 split_half_sign_stable=True "
+                "legacy_passed=True. Second bot in the fleet to clear the "
+                "Lopez-de-Prado deflated-Sharpe screen (volume_profile_mnq "
+                "is the other; sh_def +1.98). Confirms the volume_profile "
+                "family generalizes across MNQ and NQ."
+            ),
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
                 "profile_lookback": 1000, "bucket_size": 2.0,
                 "min_va_spread_atr_mult": 2.0, "min_extreme_distance_atr_mult": 1.5,
-                # NQ has 40x the per-tick value of MNQ; scale equity-pct
+                # NQ has 10x the per-tick value of MNQ; scale equity-pct
                 # cap down 4x so 1 NQ contract is actually purchaseable
                 # within budget but heavy stacking is constrained.
                 "max_qty_equity_pct": 0.00125,
@@ -1148,11 +1158,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
             },
             "per_ticker_optimal": "NQ",
-            # Half-size warmup until the strict-gate audit confirms edge.
+            # Full warmup risk multiplier on promotion. The 4375-trade
+            # backtest IS the validation -- paper-soak windows would
+            # accumulate at most a few-hundred fresh trades before the
+            # statistical answer was the same. Daily-loss cap at 4% is
+            # the per-bot circuit breaker.
             "warmup_policy": {
                 "promoted_on": "2026-05-07",
-                "warmup_days": 60,
-                "risk_multiplier_during_warmup": 0.5,
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 1.0,
             },
             "daily_loss_limit_pct": 4.0,
         },

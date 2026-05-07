@@ -19,6 +19,7 @@ import pytest
 
 from eta_engine.feeds.instrument_specs import (
     CRYPTO_SPOT_TAKER_FEE_RT,
+    effective_point_value,
     get_spec,
     is_rth_session,
 )
@@ -53,6 +54,21 @@ def test_unknown_symbol_falls_back_to_conservative_default():
     s = get_spec("ZZZ_NOT_REAL")
     assert s.point_value == 1.0
     assert s.commission_rt == 4.0
+
+
+def test_effective_point_value_resolves_crypto_spot_vs_futures():
+    """BTC/ETH are ambiguous roots: CME futures in get_spec, spot in live routing."""
+    assert get_spec("BTC").point_value == 5.0
+    assert effective_point_value("BTC", route="auto") == 1.0
+    assert effective_point_value("BTC", route="spot") == 1.0
+    assert effective_point_value("BTC", route="futures") == 5.0
+
+    assert get_spec("ETH").point_value == 50.0
+    assert effective_point_value("ETH", route="auto") == 1.0
+    assert effective_point_value("ETH", route="futures") == 50.0
+
+    assert effective_point_value("MBT", route="auto") == 0.10
+    assert effective_point_value("MNQ1", route="auto") == 2.0
 
 
 # ── entry fills ────────────────────────────────────────────────────
