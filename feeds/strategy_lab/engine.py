@@ -1319,6 +1319,48 @@ def signals_met_rth_orb(
     )
 
 
+def signals_mbt_zfade(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `MBTZFadeStrategy` — z-score momentum-fade on MBT
+    with HTF (1h) trend-opposition filter. Honest rename of the legacy
+    mbt_funding_basis (which never had a basis_provider wired).
+
+    Spec keys honored (all optional):
+      proxy_lookback, entry_z, exit_z,
+      htf_trend_lookback_5m_bars, htf_ema_period, require_htf_opposition,
+      atr_period, atr_stop_mult, rr_target, risk_per_trade_pct,
+      time_stop_bars, min_bars_between_trades, max_trades_per_day,
+      warmup_bars, allow_long, allow_short.
+    """
+    from eta_engine.strategies.mbt_zfade_strategy import (
+        MBTZFadeConfig,
+        MBTZFadeStrategy,
+        mbt_zfade_preset,
+    )
+
+    base = mbt_zfade_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "proxy_lookback", "entry_z", "exit_z",
+        "htf_trend_lookback_5m_bars", "htf_ema_period",
+        "require_htf_opposition",
+        "atr_period", "atr_stop_mult", "rr_target",
+        "risk_per_trade_pct", "time_stop_bars",
+        "min_bars_between_trades", "max_trades_per_day",
+        "warmup_bars", "allow_long", "allow_short",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = MBTZFadeConfig(**{**base.__dict__, **overrides})
+    strategy = MBTZFadeStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
 def signals_mbt_rth_orb(
     bars: dict[str, np.ndarray], spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
@@ -1390,6 +1432,9 @@ SIGNAL_GENERATORS: dict[str, Callable] = {
     # v2.10 MBT RTH ORB — migrated from met_rth_orb after EDA showed
     # MET friction-to-stop ratio of 663% is uneconomic (2026-05-07).
     "mbt_rth_orb":               signals_mbt_rth_orb,
+    # v2.11 MBT z-fade — honest rename of mbt_funding_basis with HTF
+    # trend filter + EDA-derived thresholds (z>=2.5, RR=1.5).
+    "mbt_zfade":                 signals_mbt_zfade,
 }
 
 

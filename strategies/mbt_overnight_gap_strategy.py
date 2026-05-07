@@ -1,17 +1,30 @@
 """
 EVOLUTIONARY TRADING ALGO  //  strategies.mbt_overnight_gap_strategy
 =====================================================================
-MBT (CME Bitcoin Micro Future) — Asia overnight gap fade at NY RTH open.
+MBT (CME Bitcoin Micro Future) -- overnight gap CONTINUATION at NY RTH
+open.
 
-Concept
--------
-CME bitcoin futures trade nearly 24h, but liquidity drops off
-sharply during Asia hours. Whatever flow does run in Asia tends to
-push price into thin books — funds rolling positions, prop desks
-hedging, single-broker liquidations. By the time the NY RTH open
-re-engages the deepest order books (~08:30 CT) the Asia move
-frequently reverses as US arbitrage capital re-anchors price to
-spot BTC and the prior US close.
+Pivot history (2026-05-07)
+--------------------------
+This strategy was originally a gap-FADE (mean reversion: gap-up at NY
+open -> SHORT, gap-down -> LONG). The 70d EDA on MBT 5m data
+(2026-02-26 -> 2026-05-07, 49 RTH sessions) refuted the fade thesis:
+  * Gap distribution: ~33% fill / ~33% extend / ~33% no-move.
+  * Large gaps (>2%) extended (continued) at rates higher than fill.
+  * Same-RTH gap-fill rate on >1.0xATR gaps was ~0%.
+The mean-reversion edge is dead. The file is preserved (and the
+class name is preserved) but the trade direction is REVERSED into a
+continuation thesis. Any code that imports MBTOvernightGapStrategy
+will keep working; the side it returns is now the opposite of the
+old build.
+
+Concept (post-pivot)
+--------------------
+CME bitcoin futures trade nearly 24h. Asia-hours flow into thin books
+moves price; the NY RTH open does NOT reliably mean-revert that move
+on MBT -- when the gap is large enough to clear the noise floor, NY
+liquidity tends to extend the move rather than fade it. The trade is
+to align with the gap on the open and ride the continuation.
 
 Mechanic
 --------
@@ -19,32 +32,39 @@ Mechanic
    RTH session begins, compute the overnight gap = (RTH-open price)
    minus prior-RTH-close.
 2. If the gap exceeds ``min_gap_atr_mult`` x ATR but is below
-   ``max_gap_atr_mult`` (over-large gaps are news-driven and trend,
-   not fade):
-   - Gap up -> fade SHORT at NY open
-   - Gap down -> fade LONG at NY open
-3. Trade window: only the first ``entry_window_bars`` bars after
-   the RTH open are eligible. Beyond that window the gap edge has
-   decayed.
-4. Stop = 1.0 x ATR beyond the session extreme. Target = prior
-   close (full gap fill) OR 2R, whichever is closer (prefer the
-   structural target when it's tighter).
+   ``max_gap_atr_mult`` (excessive gaps are news-driven, often
+   exhaust quickly on retest):
+   - Gap up -> LONG at NY open (continuation, NOT fade).
+   - Gap down -> SHORT at NY open (continuation, NOT fade).
+3. Confirmation: the entry bar must close in the CONTINUATION
+   direction (close > open for a long after gap-up; close < open for
+   a short after gap-down). The legacy fade code required the bar to
+   close in the FADE direction -- that rule was filtering out the
+   exact bars on which the new thesis works, so it's been reversed.
+4. Trade window: only the first ``entry_window_bars`` bars after
+   the RTH open are eligible.
+5. Stop = 1.0 x ATR. Target = 2R. Prior-close (full gap fill) is no
+   longer used as a structural target -- under the continuation
+   thesis we are explicitly NOT trying to revisit prior close.
 
 Risk
 ----
-- 1.0x ATR stop. Scales with realized vol; tighter than spot to
-  reflect the cleaner mean-reversion thesis on a finite gap.
+- 1.0x ATR stop. Scales with realized vol.
+- 2R RR target (in the direction of the gap).
 - Tick-quantized exits to MBT's 5.0 USD tick.
-- Single trade per session. The opportunity is the open; if it
-  doesn't pay we walk away.
+- Single trade per session.
+- Min-gap floor raised from 0.3xATR -> 1.0xATR per EDA (smaller gaps
+  are noise; the continuation edge only shows on real gaps).
 
 Status
 ------
-research_candidate — defaults are CONSERVATIVE, not optimized.
-TODO: walk-forward validate gap thresholds against historical MBT
-data; the 0.3x / 1.0x ATR band is a reasonable starting point per
-the gap_fill_strategy literature but MBT-specific thresholds may
-differ.
+research_candidate. The pivot from fade -> continuation is a thesis
+inversion derived from a single 49-session in-sample look. EDA
+explicitly noted: 49 sessions is NOT walk-forward validation. The
+hypothesis that "large gaps continue" survived an in-sample peek
+and may not survive walk-forward. Walk-forward + Monte Carlo +
+operator-signed kill criteria gate MUST clear before promotion past
+paper-soak.
 """
 
 from __future__ import annotations
@@ -68,15 +88,19 @@ _MBT_POINT_VALUE: float = 0.10
 
 @dataclass(frozen=True)
 class MBTOvernightGapConfig:
-    """Parameters for the MBT overnight-gap fade.
+    """Parameters for the MBT overnight-gap CONTINUATION trade.
 
-    Defaults are CONSERVATIVE; walk-forward validation must precede
-    any promotion past paper-soak.
+    Defaults reflect the post-pivot continuation thesis. EDA-derived
+    where called out; otherwise CONSERVATIVE. Walk-forward validation
+    must precede any promotion past paper-soak.
     """
 
-    # Gap classification — both bounds matter (small gaps are noise,
-    # large gaps are news-driven trends, not fades).
-    min_gap_atr_mult: float = 0.3
+    # Gap classification -- both bounds matter. Floor was raised from
+    # the legacy fade's 0.3xATR to 1.0xATR per EDA: gaps below 1xATR
+    # are noise; the continuation edge only shows on real gaps.
+    # Ceiling stays at 1.5xATR -- over-large gaps are news-driven and
+    # often exhaust on retest.
+    min_gap_atr_mult: float = 1.0
     max_gap_atr_mult: float = 1.5
 
     # Session window
@@ -188,7 +212,7 @@ class MBTOvernightGapStrategy:
         bar_date = bar.timestamp.astimezone(self._tz).date()
         new_day = self._last_day != bar_date
 
-        # ── New session detection ──────────────────────────────────────
+        # --- New session detection ---
         if new_day:
             # Roll session anchors
             self._last_day = bar_date
@@ -200,7 +224,7 @@ class MBTOvernightGapStrategy:
             # The "RTH close" anchor must come from a bar that was inside
             # CME RTH (08:30-15:00 CT) on the PRIOR day. If the bar feed
             # includes ETH (extended-hours) bars between sessions, hist[-1]
-            # is an overnight bar, not a true RTH close — using it would
+            # is an overnight bar, not a true RTH close -- using it would
             # silently corrupt every gap measurement.
             #
             # Walk hist backwards looking for the most recent bar that
@@ -209,7 +233,7 @@ class MBTOvernightGapStrategy:
             # leave the anchor None (gap detection skipped this session).
             if hist:
                 anchor: BarData | None = None
-                for prior in reversed(hist[-200:]):  # ≤200 bars lookback
+                for prior in reversed(hist[-200:]):  # <=200 bars lookback
                     prior_date = prior.timestamp.astimezone(self._tz).date()
                     if prior_date == bar_date:
                         continue  # same-day bar, keep walking
@@ -251,16 +275,20 @@ class MBTOvernightGapStrategy:
                         else:
                             self._n_gaps_detected += 1
                             self._gap_size = gap_abs
+                            # CONTINUATION (post-2026-05-07 pivot):
+                            # gap-up -> LONG to ride the move;
+                            # gap-down -> SHORT. The legacy code
+                            # had these reversed (fade thesis).
                             if self._today_rth_open > self._last_rth_close:
-                                self._gap_side = "SELL"  # fade gap up
+                                self._gap_side = "BUY"   # continue gap up
                             else:
-                                self._gap_side = "BUY"  # fade gap down
+                                self._gap_side = "SELL"  # continue gap down
 
         # Track post-open bar count for window enforcement
         if in_sess and self._today_rth_open is not None:
             self._post_open_bars += 1
 
-        # ── Eligibility gates ─────────────────────────────────────────
+        # --- Eligibility gates ---
         if self._bars_seen < self.cfg.warmup_bars:
             return None
         if not in_sess:
@@ -281,12 +309,16 @@ class MBTOvernightGapStrategy:
         if side == "SELL" and not self.cfg.allow_short:
             return None
 
-        # Confirmation: simple bar-direction match — the bar should
-        # be moving in the fade direction (lower close than open
-        # for SHORT; higher close than open for LONG).
-        if side == "SELL" and bar.close >= bar.open:
-            return None
+        # Confirmation: bar must close in the CONTINUATION direction.
+        # Post-pivot thesis: a gap-up that sees a green entry-bar
+        # close (close > open) is the move acknowledging itself; a
+        # gap-up with a red bar is the start of an exhaustion fade
+        # we explicitly do NOT want to be long. (Legacy fade build
+        # required the OPPOSITE bar direction; that rule was filtering
+        # out the exact bars on which the new thesis works.)
         if side == "BUY" and bar.close <= bar.open:
+            return None
+        if side == "SELL" and bar.close >= bar.open:
             return None
 
         # Risk sizing
@@ -298,29 +330,25 @@ class MBTOvernightGapStrategy:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
         # qty = $risk / ($-per-contract for stop_dist of price)
-        # $-per-contract = stop_dist × point_value. MBT pv=0.10 ⟹ without
+        # $-per-contract = stop_dist x point_value. MBT pv=0.10 => without
         # the multiplier the strategy would size 10x larger than intended.
         qty = risk_usd / (stop_dist * _MBT_POINT_VALUE)
         if qty <= 0.0:
             return None
 
         entry = bar.close
-        prior_close = self._last_rth_close
 
+        # Continuation thesis: the target is always RR-based in the
+        # direction of the gap. The legacy fade code preferred prior-
+        # close (a "gap fill" target); under continuation we are
+        # explicitly NOT trying to revisit prior close, so that branch
+        # is dropped.
         if side == "BUY":
             raw_stop = entry - stop_dist
-            # Prefer prior close as target if it's an ABOVE-entry value
-            # (gap fill); else fall back to RR.
-            if prior_close is not None and prior_close > entry:
-                raw_target = prior_close
-            else:
-                raw_target = entry + self.cfg.rr_target * stop_dist
+            raw_target = entry + self.cfg.rr_target * stop_dist
         else:
             raw_stop = entry + stop_dist
-            if prior_close is not None and prior_close < entry:
-                raw_target = prior_close
-            else:
-                raw_target = entry - self.cfg.rr_target * stop_dist
+            raw_target = entry - self.cfg.rr_target * stop_dist
 
         stop = self._quantize_to_tick(raw_stop, _MBT_TICK_SIZE)
         target = self._quantize_to_tick(raw_target, _MBT_TICK_SIZE)
@@ -348,7 +376,10 @@ class MBTOvernightGapStrategy:
             entry_bar=bar, side=side, qty=qty, entry_price=entry,
             stop=stop, target=target, risk_usd=risk_usd,
             confluence=8.0, leverage=1.0,
-            regime=f"mbt_overnight_gap_{side.lower()}_{self._gap_size:.0f}",
+            regime=(
+                f"mbt_overnight_gap_continuation_{side.lower()}_"
+                f"{self._gap_size:.0f}"
+            ),
         )
 
 
@@ -358,13 +389,18 @@ class MBTOvernightGapStrategy:
 
 
 def mbt_overnight_gap_preset() -> MBTOvernightGapConfig:
-    """Default research_candidate config for MBT overnight-gap fade.
+    """Default research_candidate config for MBT overnight-gap
+    CONTINUATION trade (post-2026-05-07 pivot from fade thesis).
 
-    NOTE: defaults are CONSERVATIVE. Walk-forward validation
-    against MBT historical data is required before promotion.
+    NOTE: 49-session in-sample EDA is NOT walk-forward validation.
+    The continuation thesis is a hypothesis derived from a single
+    in-sample look. Walk-forward + Monte Carlo + operator-signed
+    kill criteria gate MUST clear before promotion past paper-soak.
     """
     return MBTOvernightGapConfig(
-        min_gap_atr_mult=0.3,
+        # EDA-derived: 1.0xATR is the floor below which gaps are
+        # noise; the continuation edge only shows on real gaps.
+        min_gap_atr_mult=1.0,
         max_gap_atr_mult=1.5,
         entry_window_bars=6,
         atr_period=14,

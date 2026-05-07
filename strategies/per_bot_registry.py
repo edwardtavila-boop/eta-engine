@@ -1627,38 +1627,74 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # MBT z-fade — honest rename of mbt_funding_basis with HTF-trend
+    # filter + EDA-derived thresholds (z>=2.5, RR=1.5, 4-bar time-stop).
+    # The original "funding basis" name was misleading: production has
+    # no basis_provider wired, so the strategy was always running a
+    # log-return z-score fade. This bot is that strategy, named honestly,
+    # tuned to EDA findings (n=150 fires at z>=2.5, 54% reversal,
+    # +$0.90/trade net of $1.50 RT friction on MBT 5m).
     StrategyAssignment(
-        bot_id="mbt_overnight_gap",
-        strategy_id="mbt_overnight_gap_v1",
+        bot_id="mbt_zfade",
+        strategy_id="mbt_zfade_v1",
         symbol="MBT",
         timeframe="5m",
-        scorer_name="btc",  # MBT tracks BTC; reuse BTC scorer for walk-forward
+        scorer_name="btc",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
-        window_days=180,
+        window_days=540,
         step_days=30,
-        min_trades_per_window=10,
-        strategy_kind="mbt_overnight_gap",
+        min_trades_per_window=20,
+        strategy_kind="mbt_zfade",
         rationale=(
-            "MBT overnight-gap fade: Asia-session illiquid moves create "
-            "gaps between prior RTH close and NY open. Fade the gap on "
-            "the assumption it mean-reverts in NY hours. Both directions. "
-            "RTH-gated. Research_candidate — needs walk-forward validation."
+            "MBT 5m z-score fade — short-side momentum reversal at "
+            "abs(z)>=2.5 with HTF (1h) trend-opposition filter. Honest "
+            "rename of legacy mbt_funding_basis (which never actually "
+            "measured basis). EDA expR=+0.18 in-sample on 70d, n=150. "
+            "Research_candidate — needs walk-forward + Monte Carlo."
         ),
         extras={
-            # RETIRED 2026-05-07 — EDA verdict: gap-fade thesis empirically
-            # demolished on 70-day MBT data. Continuation rate 45.8% ≈ fill
-            # rate 37.5% (coin flip). Large gaps (>2%) fill 0% same-RTH.
-            # Weekend gap n=10 too few sessions to calibrate. The strategy
-            # file is preserved for the session-detection logic — flip
-            # `deactivated: False` only after a redesign + new EDA pass.
-            "deactivated": True,
-            "deactivated_on": "2026-05-07",
-            "deactivated_reason": (
-                "EDA 70d in-sample: gap fill 33% / extension 33% / "
-                "no-move 33% (coin flip, no edge). Large gaps fill 0% "
-                "same-session. Retire pending redesign."
-            ),
+            "promotion_status": "research_candidate",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "mean_reversion",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+            },
+            "daily_loss_limit_pct": 3.0,
+            # Optional config overrides (otherwise mbt_zfade_preset wins):
+            # "mbt_zfade_config": {"entry_z": 2.5, "rr_target": 1.5, ...}
+        },
+    ),
+
+    StrategyAssignment(
+        bot_id="mbt_overnight_gap",
+        strategy_id="mbt_overnight_gap_v2",  # v2: continuation thesis
+        symbol="MBT",
+        timeframe="5m",
+        scorer_name="btc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=540,
+        step_days=30,
+        min_trades_per_window=20,
+        strategy_kind="mbt_overnight_gap",
+        rationale=(
+            "MBT overnight-gap CONTINUATION (v2, 2026-05-07 redesign): "
+            "Asia-session moves CONTINUE in NY hours when ≥1.0×ATR. "
+            "Reversed from the v1 mean-reversion thesis after 70d EDA "
+            "showed fill 33% / extend 33% / no-move 33% (fade was coin "
+            "flip; large gaps >2% fill 0% same-RTH = continuation tail). "
+            "min_gap_atr_mult bumped 0.3→1.0; bar-direction confirmation "
+            "now requires CONTINUATION close, not fade. Research_candidate."
+        ),
+        extras={
+            # REACTIVATED 2026-05-07 — pivoted thesis from fade to
+            # continuation per EDA. Walk-forward sample on 70d will be
+            # tiny (1.0×ATR filter is restrictive); needs 540d IBKR data
+            # before any conclusions can be drawn.
             "promotion_status": "research_candidate",
             "edge_enabled": True,
             "edge_config": {

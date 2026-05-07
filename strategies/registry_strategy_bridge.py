@@ -598,6 +598,21 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
         return MBTRTHORBStrategy(cfg)
 
+    if kind == "mbt_zfade":
+        from eta_engine.strategies.mbt_zfade_strategy import (
+            MBTZFadeConfig,
+            MBTZFadeStrategy,
+            mbt_zfade_preset,
+        )
+
+        cfg_raw = extras.get("mbt_zfade_config", {})
+        cfg = (
+            MBTZFadeConfig(**cfg_raw)
+            if isinstance(cfg_raw, dict) and cfg_raw
+            else mbt_zfade_preset()
+        )
+        return MBTZFadeStrategy(cfg)
+
     return None
 
 

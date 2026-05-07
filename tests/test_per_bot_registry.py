@@ -101,6 +101,7 @@ def test_thresholds_in_valid_range() -> None:
         "mbt_overnight_gap",
         "met_rth_orb",
         "mbt_rth_orb",
+        "mbt_zfade",
     }
     for a in ASSIGNMENTS:
         if a.strategy_kind in _IGNORES_THRESHOLD:

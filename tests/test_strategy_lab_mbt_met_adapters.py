@@ -208,39 +208,41 @@ def test_mbt_funding_basis_fade_triggers_adapter() -> None:
 # ─── MBT overnight gap fade ───────────────────────────────────────────────
 
 
-def test_mbt_overnight_gap_fade_triggers_adapter() -> None:
-    """Synth: prior-day RTH bar at 14:00 CT, then a >= 4h time gap, then
-    next-day RTH-open bar at 08:30 CT with open ABOVE prior close by a
-    fraction of ATR (in the 0.3-1.5 band).
+def test_mbt_overnight_gap_continuation_triggers_adapter() -> None:
+    """v2 thesis (2026-05-07): the strategy now CONTINUES gaps rather
+    than fading them.
 
-    The class fades a gap-up SHORT when bar.close < bar.open. We craft the
-    bar that way so the bar-direction confirmation passes.
+    Synth: prior-day RTH bar at 14:00 CT, ≥4h time gap, next-day RTH-
+    open bar at 08:30 CT with open ABOVE prior close by ≥1.0 ATR. The
+    bar must close in the CONTINUATION direction (close > open after a
+    gap-up) for the bar-direction confirmation. Adapter should return
+    a LONG (continuation) signal.
     """
     base = 50_000.0
     rows: list[tuple[float, float, float, float, float, float]] = []
 
-    # Day 14 — pre-RTH warmup bars (build ATR history). All inside 06:00-08:25 CT.
+    # Day 14 pre-RTH warmup
     for k in range(6):
         h = 6 + (k * 25) // 60
         m = (k * 25) % 60
         ts = _local_ct_epoch(2026, 6, 14, h, m)
         rows.append((ts, base, base + 50.0, base - 50.0, base, 1000.0))
 
-    # Day 14 — RTH bars (08:30 to 14:00). Last RTH bar at 14:00 sets the
-    # anchor for the next-day gap. Keep them flat near `base`.
-    for h in range(8, 15):  # 08:00 .. 14:00 inclusive (08:00 is pre-RTH)
+    # Day 14 RTH bars 08:30-14:00, flat at `base`
+    for h in range(8, 15):
         ts = _local_ct_epoch(2026, 6, 14, h, 30 if h == 8 else 0)
         rows.append((ts, base, base + 50.0, base - 50.0, base, 1000.0))
-    # Force the final D14 RTH bar at 14:00 CT, close == base (anchor).
+    # Anchor: close at 14:00 CT == base
     rows.append((_local_ct_epoch(2026, 6, 14, 14, 0),
                  base, base + 50.0, base - 50.0, base, 1000.0))
 
-    # Day 15 — RTH OPEN at 08:30 CT, gap-up of 100 (~ ATR ≈ 100 → gap ≈ 1.0 ATR).
-    # Bar opens at base+100, closes at base+50 (close < open → SHORT confirmation).
-    gap = 100.0
+    # Day 15 RTH OPEN at 08:30 CT — gap-up of 150 (≥1.0 ATR for a
+    # 100-pt ATR sample). Bar opens at base+150 and closes HIGHER
+    # (continuation): close=base+200, so close>open.
+    gap = 150.0
     rows.append((_local_ct_epoch(2026, 6, 15, 8, 30),
-                 base + gap, base + gap + 20.0, base + gap - 60.0,
-                 base + gap - 50.0, 5000.0))
+                 base + gap, base + gap + 80.0, base + gap - 20.0,
+                 base + gap + 50.0, 5000.0))
     bars = _make_bars(rows)
 
     spec: dict[str, object] = {
@@ -249,13 +251,13 @@ def test_mbt_overnight_gap_fade_triggers_adapter() -> None:
         "warmup_bars": 5,
         "atr_period": 5,
         "min_session_gap_hours": 4.0,
-        # Defaults: min_gap_atr_mult=0.3, max_gap_atr_mult=1.5 — our
-        # gap of ~1.0 ATR sits comfortably inside.
+        # v2 defaults: min_gap_atr_mult=1.0 — our gap of ~1.5 ATR clears.
     }
     sigs = signals_mbt_overnight_gap(bars, spec)
 
-    assert sigs, "expected at least one short signal from MBT overnight-gap fade"
+    assert sigs, "expected at least one continuation signal from MBT overnight-gap v2"
     idx, side, stop_atr, target_atr = sigs[-1]
-    assert side == "short"
+    # v2: gap-up + bar continues up (close > open) ⟹ LONG continuation
+    assert side == "long"
     assert stop_atr > 0.0
     assert target_atr > 0.0
