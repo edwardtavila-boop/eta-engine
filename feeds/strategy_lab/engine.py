@@ -1319,6 +1319,44 @@ def signals_met_rth_orb(
     )
 
 
+def signals_mbt_rth_orb(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `MBTRTHORBStrategy` — 5-minute opening-range
+    breakout on MBT (CME Micro Bitcoin) RTH. Migrated from
+    met_rth_orb after the MET friction floor proved uneconomic
+    (see docs/STRATEGY_OPTIMIZATION_ROADMAP.md and the 2026-05-07
+    EDA report).
+
+    Spec keys honored (all optional; fall back to EDA-derived preset):
+      range_minutes, min_range_pts, ema_bias_period, volume_mult,
+      volume_lookback, atr_period, atr_stop_mult, rr_target,
+      risk_per_trade_pct, max_trades_per_day.
+    """
+    from eta_engine.strategies.mbt_rth_orb_strategy import (
+        MBTRTHORBConfig,
+        MBTRTHORBStrategy,
+        mbt_rth_orb_preset,
+    )
+
+    base = mbt_rth_orb_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "range_minutes", "min_range_pts", "ema_bias_period", "volume_mult",
+        "volume_lookback", "atr_period", "atr_stop_mult", "rr_target",
+        "risk_per_trade_pct", "max_trades_per_day",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = MBTRTHORBConfig(**{**base.__dict__, **overrides})
+    strategy = MBTRTHORBStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
 SIGNAL_GENERATORS: dict[str, Callable] = {
     "ema_cross":            signals_ema_cross,
     "sweep_reclaim":        signals_sweep_reclaim,
@@ -1349,6 +1387,9 @@ SIGNAL_GENERATORS: dict[str, Callable] = {
     "mbt_funding_basis":         signals_mbt_funding_basis,
     "mbt_overnight_gap":         signals_mbt_overnight_gap,
     "met_rth_orb":               signals_met_rth_orb,
+    # v2.10 MBT RTH ORB — migrated from met_rth_orb after EDA showed
+    # MET friction-to-stop ratio of 663% is uneconomic (2026-05-07).
+    "mbt_rth_orb":               signals_mbt_rth_orb,
 }
 
 

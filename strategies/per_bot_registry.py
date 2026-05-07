@@ -1646,6 +1646,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "RTH-gated. Research_candidate — needs walk-forward validation."
         ),
         extras={
+            # RETIRED 2026-05-07 — EDA verdict: gap-fade thesis empirically
+            # demolished on 70-day MBT data. Continuation rate 45.8% ≈ fill
+            # rate 37.5% (coin flip). Large gaps (>2%) fill 0% same-RTH.
+            # Weekend gap n=10 too few sessions to calibrate. The strategy
+            # file is preserved for the session-detection logic — flip
+            # `deactivated: False` only after a redesign + new EDA pass.
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "EDA 70d in-sample: gap fill 33% / extension 33% / "
+                "no-move 33% (coin flip, no edge). Large gaps fill 0% "
+                "same-session. Retire pending redesign."
+            ),
             "promotion_status": "research_candidate",
             "edge_enabled": True,
             "edge_config": {
@@ -1678,6 +1691,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Research_candidate — needs walk-forward validation."
         ),
         extras={
+            # RETIRED 2026-05-07 — EDA verdict: MET friction floor
+            # ($2.70 RT commission+spread) is 663% of a 1.0xATR stop.
+            # No parameter combination produces positive expectancy.
+            # Even a 100% target rate at RR=4 yields net -$2.54/trade.
+            # The strategy mechanic (5m ORB) is fine; the asset is wrong.
+            # The migrated lineage lives in `mbt_rth_orb` (MBT has 11%
+            # friction-to-stop ratio — workable economics).
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "EDA 70d: MET 1xATR stop = $0.41/contract; "
+                "RT friction = $2.70 = 663% of risk. Migrated mechanic "
+                "to mbt_rth_orb (MBT economics workable)."
+            ),
             "promotion_status": "research_candidate",
             "edge_enabled": True,
             "edge_config": {
@@ -1688,6 +1715,53 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "enable_vol_sizing": True,
             },
             "daily_loss_limit_pct": 3.0,
+        },
+    ),
+
+    # ═══════════════════════════════════════════════════════════════════
+    # MBT RTH ORB — 2026-05-07
+    # Migrated from met_rth_orb after 70d EDA showed MET friction
+    # economics are uneconomic. MBT has the same mechanic but viable
+    # tick value. EDA-derived parameters: min_range_pts=245 (p25 of
+    # 5m opening range), rr_target=3.0 (best vs 2.0 friction-eaten /
+    # 4.0 too-few-hits), 1.0xATR stop. In-sample expR=+0.28 on n=49,
+    # CI wide. Walk-forward + kill criteria (docs/KILL_CRITERIA_MBT_MET.md)
+    # MUST clear before paper_soak_active.
+    # ═══════════════════════════════════════════════════════════════════
+    StrategyAssignment(
+        bot_id="mbt_rth_orb",
+        strategy_id="mbt_rth_orb_v1",
+        symbol="MBT",
+        timeframe="5m",
+        scorer_name="btc",  # MBT tracks BTC
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=540,  # bumped from 180 — quant agent recommendation
+        step_days=30,
+        min_trades_per_window=20,  # bumped from 10 — sample-size floor
+        strategy_kind="mbt_rth_orb",
+        rationale=(
+            "MBT 5m Opening Range Breakout — EDA-derived from 70d "
+            "in-sample (2026-05-07). p25-range filter skips dead opens; "
+            "RR=3.0 clears the $1.50 RT friction floor where RR=2.0 "
+            "could not. In-sample expR=+0.28 on n=49 sessions — "
+            "research_candidate, requires 540d walk-forward + Monte "
+            "Carlo + signed kill criteria before paper-soak."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": True,
+                "is_crypto": False,
+                "strategy_mode": "trend",
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+            },
+            "daily_loss_limit_pct": 3.0,
+            # Pre-registered kill criteria:
+            #   docs/KILL_CRITERIA_MBT_MET.md (operator must sign before
+            #   promotion past research_candidate).
         },
     ),
 

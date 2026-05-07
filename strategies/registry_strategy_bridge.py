@@ -583,6 +583,21 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
         return METRTHORBStrategy(cfg)
 
+    if kind == "mbt_rth_orb":
+        from eta_engine.strategies.mbt_rth_orb_strategy import (
+            MBTRTHORBConfig,
+            MBTRTHORBStrategy,
+            mbt_rth_orb_preset,
+        )
+
+        cfg_raw = extras.get("mbt_rth_orb_config", {})
+        cfg = (
+            MBTRTHORBConfig(**cfg_raw)
+            if isinstance(cfg_raw, dict) and cfg_raw
+            else mbt_rth_orb_preset()
+        )
+        return MBTRTHORBStrategy(cfg)
+
     return None
 
 
