@@ -40,6 +40,16 @@ def test_serve_js_module(client, tmp_path, monkeypatch) -> None:
     assert "export const x" in r.text
 
 
+def test_service_worker_cleanup_unregisters_stale_clients(client) -> None:
+    """Stale browser service-worker registrations should get a cleanup script."""
+    r = client.get("/service-worker.js")
+    assert r.status_code == 200
+    assert "javascript" in r.headers["content-type"].lower()
+    assert "registration.unregister" in r.text
+    assert "skipWaiting" in r.text
+    assert "no-store" in r.headers.get("cache-control", "").lower()
+
+
 def test_js_path_traversal_blocked(client, tmp_path, monkeypatch) -> None:
     """Reject path-traversal attempts."""
     from eta_engine.deploy.scripts import dashboard_api

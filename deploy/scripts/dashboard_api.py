@@ -1896,6 +1896,12 @@ def auth_step_up(
 
 _STATUS_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "index.html"
 _SCORECARD_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "scorecard.html"
+_SERVICE_WORKER_CLEANUP_JS = """
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.registration.unregister());
+});
+""".strip()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1931,6 +1937,16 @@ def favicon() -> FileResponse | HTMLResponse:
     if fav.exists():
         return FileResponse(str(fav))
     return HTMLResponse(status_code=204)
+
+
+@app.get("/service-worker.js", response_class=PlainTextResponse)
+def service_worker_cleanup() -> PlainTextResponse:
+    """Unregister stale service workers left by older dashboard builds."""
+    return PlainTextResponse(
+        _SERVICE_WORKER_CLEANUP_JS,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @app.get("/theme.css", response_class=PlainTextResponse)
