@@ -268,6 +268,27 @@ function normalizeAvgCost(symbol, avgCost, marketPrice) {
 }
 
 function buildBrokerPositions(liveBroker) {
+  const exposurePositions = liveBroker?.position_exposure?.open_positions || [];
+  if (Array.isArray(exposurePositions) && exposurePositions.length) {
+    return exposurePositions.map((p) => {
+      const venue = String(p.venue || '').toLowerCase();
+      const qty = finiteNumber(p.qty);
+      return {
+        broker: venue === 'ibkr' ? 'IBKR paper' : venue === 'alpaca' ? 'Alpaca paper' : venue || 'broker',
+        symbol: p.symbol || 'open',
+        side: p.side || 'open',
+        qty: qty == null ? p.qty : Math.abs(qty),
+        avg: p.avg_entry_price,
+        mark: p.current_price,
+        value: p.market_value,
+        pnl: p.unrealized_pnl,
+        pnlPct: p.unrealized_pct,
+        protection: venue === 'ibkr'
+          ? 'Futures route requires broker-side TP/SL OCO bracket on new entries; watchdog backs up detached brackets.'
+          : 'Supervisor-local target/stop monitor; exits submit reduce-only close orders.'
+      };
+    });
+  }
   const positions = [];
   const alpacaPositions = liveBroker?.alpaca?.open_positions || [];
   for (const p of alpacaPositions) {
@@ -303,7 +324,39 @@ function buildBrokerPositions(liveBroker) {
   return positions;
 }
 
+function renderRecentCloses(closes) {
+  const rows = Array.isArray(closes) ? closes.slice(0, 6) : [];
+  if (!rows.length) {
+    return '<div class="empty-panel">No recent close evidence in the Jarvis trade-close ledger yet.</div>';
+  }
+  return `<div class="mt-3">
+    <div class="text-xs text-zinc-500 mb-1">recent close evidence</div>
+    <div class="router-tape">${rows.map((c) => {
+      const realized = finiteNumber(c.realized_pnl);
+      const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
+      const rText = c.realized_r == null ? 'R n/a' : Number(c.realized_r).toFixed(2) + 'R';
+      return `<div class="tape-row">
+        <div class="tape-head">
+          <strong>${esc(c.bot_id || c.symbol || 'closed trade')}</strong>
+          <span class="badge ${realized == null ? 'badge-idle' : realized >= 0 ? 'badge-win' : 'badge-loss'}">${esc(c.action_taken || 'closed')}</span>
+        </div>
+        <div class="tape-meta">
+          <span>symbol <strong>${esc(c.symbol || 'n/a')}</strong></span>
+          <span>side <strong>${esc(c.side || 'n/a')}</strong></span>
+          <span>qty <strong>${esc(formatQty(c.qty))}</strong></span>
+          <span>fill <strong>${esc(formatMoney(c.fill_price, 2))}</strong></span>
+          <span>realized <strong class="${realizedClass}">${esc(formatMoney(realized, 2))}</strong></span>
+          <span>R <strong>${esc(rText)}</strong></span>
+          <span>time <strong>${esc(formatTimeShort(c.close_ts || c.ts))}</strong></span>
+        </div>
+      </div>`;
+    }).join('')}</div>
+  </div>`;
+}
+
 function renderOpsTruthSections(d, liveBroker, brokerRouter) {
+  const exposure = liveBroker?.position_exposure || {};
+  const target_exit_visibility = exposure.target_exit_visibility || {};
   const positions = buildBrokerPositions(liveBroker);
   const positionSummary = document.getElementById('positionSummary');
   const positionsPanel = document.getElementById('openPositionsPanel');
@@ -318,13 +371,17 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
     `<span class="truth-chip"><strong>${positions.length}</strong> open positions</span>`,
     `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
     `<span class="truth-chip"><strong>${formatMoney(totalRealized ?? 0)}</strong> realized today</span>`,
-    `<span class="truth-chip"><strong>${formatMoney(totalUnrealized ?? 0)}</strong> unrealized</span>`
+    `<span class="truth-chip"><strong>${formatMoney(totalUnrealized ?? 0)}</strong> unrealized</span>`,
+    `<span class="truth-chip"><strong>${Number(exposure.recent_close_count || 0)}</strong> recent closes</span>`,
+    `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].join('');
 
+  let positionsHtml = '';
   if (!positions.length) {
-    positionsPanel.innerHTML = '<div class="empty-panel">Flat right now. New futures entries must carry broker OCO brackets; crypto paper entries are watched by supervisor-local target/stop exits.</div>';
+    const detail = target_exit_visibility.detail || 'New futures entries must carry broker OCO brackets; crypto paper entries are watched by supervisor-local target/stop exits.';
+    positionsHtml = `<div class="empty-panel">Flat right now. ${esc(detail)}</div>`;
   } else {
-    positionsPanel.innerHTML = positions.map((p) => {
+    positionsHtml = positions.map((p) => {
       const pnl = finiteNumber(p.pnl);
       const pnlClass = pnl == null ? 'dim' : pnl >= 0 ? 'green' : 'red';
       const pctLine = p.pnlPct == null ? '' : ` (${formatPctText(p.pnlPct)})`;
@@ -344,6 +401,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
       </div>`;
     }).join('');
   }
+  positionsPanel.innerHTML = positionsHtml + renderRecentCloses(exposure.recent_closes);
 
   const counts = brokerRouter?.counts || {};
   const recentEvents = Array.isArray(brokerRouter?.recent_events) ? brokerRouter.recent_events : [];

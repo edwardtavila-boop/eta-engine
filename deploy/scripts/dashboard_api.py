@@ -3773,6 +3773,159 @@ def _derive_ibkr_today_realized_pnl(snapshot: dict) -> float:
     return 0.0
 
 
+def _recent_trade_closes(limit: int = 25) -> list[dict]:
+    """Return the newest Jarvis trade-close ledger rows without heavy reads."""
+    path = _state_dir() / "jarvis_intel" / "trade_closes.jsonl"
+    if not path.exists():
+        return []
+    try:
+        max_bytes = int(os.environ.get("ETA_DASHBOARD_TRADE_CLOSE_TAIL_BYTES", "1048576"))
+    except ValueError:
+        max_bytes = 1_048_576
+    max_bytes = max(8192, min(max_bytes, 8_388_608))
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - max_bytes))
+            raw_lines = fh.read().decode("utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+
+    out: list[dict] = []
+    for raw in reversed(raw_lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            out.append(row)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
+    """Normalize Alpaca/IBKR position rows into one operator-facing shape."""
+    if not isinstance(row, dict):
+        return None
+    symbol = row.get("symbol")
+    if symbol is None:
+        return None
+    qty = _float_value(row.get("qty") if venue == "alpaca" else row.get("position"))
+    raw_side = str(row.get("side") or "").strip().lower()
+    if raw_side not in {"long", "short"}:
+        if qty is not None and qty < 0:
+            raw_side = "short"
+        elif qty is not None and qty > 0:
+            raw_side = "long"
+        else:
+            raw_side = "unknown"
+    return {
+        "venue": venue,
+        "symbol": str(symbol),
+        "side": raw_side,
+        "qty": qty,
+        "avg_entry_price": _float_value(
+            row.get("avg_entry_price") if venue == "alpaca" else row.get("avg_cost")
+        ),
+        "current_price": _float_value(
+            row.get("current_price") if venue == "alpaca" else row.get("market_price")
+        ),
+        "market_value": _float_value(row.get("market_value")),
+        "unrealized_pnl": _float_value(
+            row.get("unrealized_pl") if venue == "alpaca" else row.get("unrealized_pnl")
+        ),
+        "unrealized_pct": _float_value(row.get("unrealized_plpc")),
+        "sec_type": row.get("secType") or row.get("sec_type"),
+        "exchange": row.get("exchange"),
+    }
+
+
+def _normalize_trade_close(row: dict) -> dict | None:
+    """Normalize Jarvis close-ledger rows for dashboard close evidence."""
+    if not isinstance(row, dict):
+        return None
+    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+    layers_updated = row.get("layers_updated")
+    layer_errors = row.get("layer_errors")
+    return {
+        "ts": row.get("ts") or extra.get("close_ts"),
+        "close_ts": extra.get("close_ts") or row.get("ts"),
+        "bot_id": row.get("bot_id"),
+        "symbol": extra.get("symbol") or row.get("symbol"),
+        "side": extra.get("side") or row.get("direction"),
+        "qty": _float_value(extra.get("qty") or row.get("qty")),
+        "fill_price": _float_value(extra.get("fill_price") or row.get("fill_price")),
+        "realized_pnl": _float_value(extra.get("realized_pnl") or row.get("realized_pnl")),
+        "realized_r": _float_value(row.get("realized_r")),
+        "action_taken": row.get("action_taken"),
+        "layers_updated": layers_updated if isinstance(layers_updated, list) else [],
+        "layer_errors": layer_errors if isinstance(layer_errors, list) else [],
+    }
+
+
+def _position_exposure_payload(
+    live_broker_state: dict,
+    *,
+    recent_closes: list[dict] | None = None,
+) -> dict:
+    """Read-only open-position and close-evidence rollup for the dashboard."""
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    alpaca = live_broker_state.get("alpaca") if isinstance(live_broker_state.get("alpaca"), dict) else {}
+    ibkr = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
+
+    open_positions: list[dict] = []
+    for row in alpaca.get("open_positions") or []:
+        normalized = _normalize_live_position(row, venue="alpaca")
+        if normalized:
+            open_positions.append(normalized)
+    for row in ibkr.get("open_positions") or []:
+        normalized = _normalize_live_position(row, venue="ibkr")
+        if normalized:
+            open_positions.append(normalized)
+
+    if recent_closes is None:
+        recent_closes = _recent_trade_closes(limit=25)
+    normalized_closes: list[dict] = []
+    for row in recent_closes:
+        normalized = _normalize_trade_close(row)
+        if normalized:
+            normalized_closes.append(normalized)
+
+    open_position_count = len(open_positions)
+    if open_position_count:
+        target_status = "open_positions_detected"
+        target_detail = (
+            "Broker open positions are visible; supervisor/router remain the "
+            "authority for stop, target, and flatten actions."
+        )
+    elif alpaca or ibkr:
+        target_status = "flat"
+        target_detail = "No broker open positions detected in the current snapshot."
+    else:
+        target_status = "broker_snapshot_unavailable"
+        target_detail = "No broker position snapshot is available for this request."
+
+    return {
+        "ready": "error" not in live_broker_state,
+        "source": "live_broker_rest+trade_closes",
+        "server_ts": time.time(),
+        "open_position_count": open_position_count,
+        "symbols_open": sorted({p["symbol"] for p in open_positions if p.get("symbol")}),
+        "open_positions": open_positions,
+        "recent_closes": normalized_closes,
+        "recent_close_count": len(normalized_closes),
+        "target_exit_visibility": {
+            "status": target_status,
+            "detail": target_detail,
+        },
+    }
+
+
 def _live_fill_paths() -> list[tuple[Path, str]]:
     """Known live execution ledgers; router rows are filtered to true fills."""
     state = _state_dir()
@@ -4587,7 +4740,7 @@ def _live_broker_state_payload() -> dict:
             win_rate_30d = round(wins / (wins + losses), 4)
     except Exception:  # noqa: BLE001
         win_rate_30d = None
-    return {
+    payload = {
         "server_ts": time.time(),
         "today_actual_fills": today_actual_fills,
         "today_realized_pnl": today_realized_pnl,
@@ -4599,6 +4752,8 @@ def _live_broker_state_payload() -> dict:
         "per_bot_alpaca": per_bot_alpaca,
         "source": "live_broker_rest",
     }
+    payload["position_exposure"] = _position_exposure_payload(payload)
+    return payload
 
 
 @app.get("/api/live/broker_state")
@@ -4615,6 +4770,19 @@ def live_broker_state(response: Response) -> dict:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return _live_broker_state_payload()
+
+
+@app.get("/api/live/position_exposure")
+def live_position_exposure(response: Response) -> dict:
+    """Read-only broker open-position plus recent close evidence rollup."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    live_state = _live_broker_state_payload()
+    embedded = live_state.get("position_exposure") if isinstance(live_state, dict) else None
+    if isinstance(embedded, dict):
+        return embedded
+    return _position_exposure_payload(live_state)
 
 
 @app.get("/api/live/per_bot_alpaca")

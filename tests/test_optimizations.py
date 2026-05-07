@@ -322,6 +322,15 @@ class TestStatusPage:
         assert "document.hidden" in panels
         assert "cache: 'no-store'" in auth
 
+    def test_status_page_uses_position_exposure_close_evidence(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "liveBroker?.position_exposure" in html
+        assert "recent close evidence" in html
+        assert "renderRecentCloses" in html
+        assert "target_exit_visibility" in html
+
     def test_status_page_card_health_contract_is_wired(self):
         """Card-health JS+CSS contract still intact. The index.html-side
         ``id="top-card-health"`` anchor was dropped in 6a7b9af; the

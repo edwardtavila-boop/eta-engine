@@ -1846,6 +1846,108 @@ class TestDashboardAPI:
         assert live["ibkr"]["today_realized_pnl"] == 10133.83
         assert live["alpaca"]["today_realized_pnl"] == -15.03
 
+    def test_position_exposure_normalizes_broker_positions_and_recent_closes(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        live_state = {
+            "open_position_count": 2,
+            "alpaca": {
+                "ready": True,
+                "open_positions": [
+                    {
+                        "symbol": "BTCUSD",
+                        "side": "long",
+                        "qty": 0.04,
+                        "avg_entry_price": 101000.0,
+                        "current_price": 102250.0,
+                        "market_value": 4090.0,
+                        "unrealized_pl": 50.0,
+                        "unrealized_plpc": 0.0123,
+                    },
+                ],
+            },
+            "ibkr": {
+                "ready": True,
+                "open_positions": [
+                    {
+                        "symbol": "MNQM6",
+                        "secType": "FUT",
+                        "exchange": "CME",
+                        "position": -1.0,
+                        "avg_cost": 18400.0,
+                        "market_price": 18380.0,
+                        "market_value": -18380.0,
+                        "unrealized_pnl": 40.0,
+                    },
+                ],
+            },
+        }
+        recent_closes = [
+            {
+                "ts": "2026-05-07T16:05:01+00:00",
+                "bot_id": "btc_optimized",
+                "realized_r": 1.25,
+                "action_taken": "closed",
+                "layers_updated": ["trade_memory", "edge_optimizer"],
+                "layer_errors": [],
+                "extra": {
+                    "symbol": "BTC",
+                    "side": "SELL",
+                    "qty": 0.04,
+                    "fill_price": 102250.0,
+                    "realized_pnl": 50.0,
+                    "close_ts": "2026-05-07T16:05:01+00:00",
+                },
+            },
+        ]
+
+        exposure = mod._position_exposure_payload(live_state, recent_closes=recent_closes)
+
+        assert exposure["ready"] is True
+        assert exposure["open_position_count"] == 2
+        assert exposure["symbols_open"] == ["BTCUSD", "MNQM6"]
+        assert exposure["target_exit_visibility"]["status"] == "open_positions_detected"
+        alpaca_pos = exposure["open_positions"][0]
+        assert alpaca_pos["venue"] == "alpaca"
+        assert alpaca_pos["symbol"] == "BTCUSD"
+        assert alpaca_pos["qty"] == 0.04
+        assert alpaca_pos["unrealized_pnl"] == 50.0
+        ibkr_pos = exposure["open_positions"][1]
+        assert ibkr_pos["venue"] == "ibkr"
+        assert ibkr_pos["side"] == "short"
+        assert ibkr_pos["sec_type"] == "FUT"
+        close = exposure["recent_closes"][0]
+        assert close["bot_id"] == "btc_optimized"
+        assert close["realized_pnl"] == 50.0
+        assert close["layers_updated"] == ["trade_memory", "edge_optimizer"]
+
+    def test_live_position_exposure_endpoint_returns_read_only_rollup(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "open_position_count": 1,
+                "alpaca": {
+                    "ready": True,
+                    "open_positions": [{"symbol": "ETHUSD", "qty": 0.5, "side": "long"}],
+                },
+                "ibkr": {"ready": True, "open_positions": []},
+            },
+        )
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=25: [])
+
+        r = app_client.get("/api/live/position_exposure")
+
+        assert r.status_code == 200
+        assert "no-store" in r.headers["Cache-Control"]
+        payload = r.json()
+        assert payload["ready"] is True
+        assert payload["source"] == "live_broker_rest+trade_closes"
+        assert payload["open_position_count"] == 1
+        assert payload["open_positions"][0]["symbol"] == "ETHUSD"
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,
