@@ -555,6 +555,130 @@ def _dashboard_diagnostics_payload() -> dict:
     }
 
 
+def _dashboard_cross_check_payload() -> dict:
+    """Compare card-health and diagnostics card summaries as a public route."""
+    server_ts = time.time()
+    card_health = _dashboard_card_health_payload()
+    diagnostics = _dashboard_diagnostics_payload()
+    card_summary = card_health.get("summary") if isinstance(card_health.get("summary"), dict) else {}
+    diagnostics_cards = diagnostics.get("cards") if isinstance(diagnostics.get("cards"), dict) else {}
+    diagnostics_summary = (
+        diagnostics_cards.get("summary") if isinstance(diagnostics_cards.get("summary"), dict) else {}
+    )
+    findings: list[str] = []
+    for key in ("total", "dead", "stale"):
+        left = int(card_summary.get(key) or 0)
+        right = int(diagnostics_summary.get(key) or 0)
+        if left != right:
+            findings.append(f"card summary {key} mismatch: card-health={left} diagnostics={right}")
+    card_dead = card_health.get("dead_cards") if isinstance(card_health.get("dead_cards"), list) else []
+    diagnostics_dead = (
+        diagnostics_cards.get("dead_cards") if isinstance(diagnostics_cards.get("dead_cards"), list) else []
+    )
+    if len(card_dead) != len(diagnostics_dead):
+        findings.append(
+            f"dead_cards length mismatch: card-health={len(card_dead)} diagnostics={len(diagnostics_dead)}"
+        )
+    return {
+        **_dashboard_contract(),
+        "source_of_truth": "dashboard_cross_check",
+        "generated_at": datetime.fromtimestamp(server_ts, UTC).isoformat(),
+        "server_ts": server_ts,
+        "status": "ok" if not findings else "warn",
+        "findings": findings,
+        "checks": {
+            "route_backed": True,
+            "card_summary_match": not findings,
+            "no_dead_cards": int(card_summary.get("dead") or 0) == 0,
+            "no_stale_cards": int(card_summary.get("stale") or 0) == 0,
+        },
+        "card_health": {"summary": card_summary, "dead_cards": card_dead},
+        "diagnostics": {"cards": diagnostics_cards},
+    }
+
+
+def _dashboard_data_cross_check_payload() -> dict:
+    """Compare direct bot/equity endpoints with the diagnostics rollup."""
+    server_ts = time.time()
+    try:
+        bot_fleet = bot_fleet_roster(Response(), since_days=1)
+    except Exception as exc:  # noqa: BLE001 -- operator route must fail soft.
+        bot_fleet = {"bots": [], "summary": {}, "confirmed_bots": 0, "_error": str(exc)}
+    try:
+        fleet_equity = equity_curve(range="1d", normalize=True, since_days=1, response=Response())
+    except Exception as exc:  # noqa: BLE001 -- operator route must fail soft.
+        fleet_equity = {"series": [], "curve": [], "source": "error", "_error": str(exc)}
+    diagnostics = _dashboard_diagnostics_payload()
+    fleet_rows = bot_fleet.get("bots") if isinstance(bot_fleet.get("bots"), list) else []
+    fleet_summary = bot_fleet.get("summary") if isinstance(bot_fleet.get("summary"), dict) else {}
+    diag_fleet = diagnostics.get("bot_fleet") if isinstance(diagnostics.get("bot_fleet"), dict) else {}
+    equity_series = fleet_equity.get("series") if isinstance(fleet_equity.get("series"), list) else []
+    if not equity_series:
+        equity_series = fleet_equity.get("curve") if isinstance(fleet_equity.get("curve"), list) else []
+    diag_equity = diagnostics.get("equity") if isinstance(diagnostics.get("equity"), dict) else {}
+
+    direct_total = int(fleet_summary.get("bot_total") or len(fleet_rows))
+    direct_confirmed = int(bot_fleet.get("confirmed_bots") or fleet_summary.get("confirmed_bots") or 0)
+    direct_truth = str(bot_fleet.get("truth_status") or fleet_summary.get("truth_status") or "")
+    diag_total = int(diag_fleet.get("bot_total") or 0)
+    diag_confirmed = int(diag_fleet.get("confirmed_bots") or 0)
+    diag_truth = str(diag_fleet.get("truth_status") or "")
+    direct_points = len(equity_series)
+    diag_points = int(diag_equity.get("point_count") or 0)
+    direct_equity_truth = str(fleet_equity.get("session_truth_status") or "")
+    diag_equity_truth = str(diag_equity.get("session_truth_status") or "")
+    direct_equity_source = str(fleet_equity.get("source") or "")
+    diag_equity_source = str(diag_equity.get("source") or "")
+
+    findings: list[str] = []
+    if direct_total != diag_total:
+        findings.append(f"bot_fleet total mismatch: endpoint={direct_total} diagnostics={diag_total}")
+    if direct_confirmed != diag_confirmed:
+        findings.append(
+            f"bot_fleet confirmed mismatch: endpoint={direct_confirmed} diagnostics={diag_confirmed}"
+        )
+    if direct_truth and diag_truth and direct_truth != diag_truth:
+        findings.append(f"bot_fleet truth_status mismatch: endpoint={direct_truth!r} diagnostics={diag_truth!r}")
+    if direct_points != diag_points:
+        findings.append(f"equity point_count mismatch: endpoint={direct_points} diagnostics={diag_points}")
+    if direct_equity_truth and diag_equity_truth and direct_equity_truth != diag_equity_truth:
+        findings.append(
+            "equity session_truth_status mismatch: "
+            f"endpoint={direct_equity_truth!r} diagnostics={diag_equity_truth!r}"
+        )
+    if direct_equity_source and diag_equity_source and direct_equity_source != diag_equity_source:
+        findings.append(
+            f"equity source mismatch: endpoint={direct_equity_source!r} diagnostics={diag_equity_source!r}"
+        )
+
+    return {
+        **_dashboard_contract(),
+        "source_of_truth": "dashboard_data_cross_check",
+        "generated_at": datetime.fromtimestamp(server_ts, UTC).isoformat(),
+        "server_ts": server_ts,
+        "status": "ok" if not findings else "warn",
+        "findings": findings,
+        "direct": {
+            "bot_fleet": {
+                "bot_total": direct_total,
+                "confirmed_bots": direct_confirmed,
+                "truth_status": direct_truth,
+                "error": bot_fleet.get("_error"),
+            },
+            "equity": {
+                "point_count": direct_points,
+                "session_truth_status": direct_equity_truth,
+                "source": direct_equity_source,
+                "error": fleet_equity.get("_error"),
+            },
+        },
+        "diagnostics": {
+            "bot_fleet": diag_fleet,
+            "equity": diag_equity,
+        },
+    }
+
+
 def _state_dir() -> Path:
     """Lazy state-dir resolver so tests can monkeypatch state paths.
 
@@ -2071,6 +2195,24 @@ def dashboard_diagnostics(response: Response) -> dict:
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return _dashboard_diagnostics_payload()
+
+
+@app.get("/api/dashboard/cross-check")
+def dashboard_cross_check(response: Response) -> dict:
+    """V1 route-backed card-health vs diagnostics consistency check."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _dashboard_cross_check_payload()
+
+
+@app.get("/api/dashboard/data-cross-check")
+def dashboard_data_cross_check(response: Response) -> dict:
+    """V1 route-backed direct endpoint vs diagnostics data consistency check."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _dashboard_data_cross_check_payload()
 
 
 @app.get("/api/jarvis/operator_queue")

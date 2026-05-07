@@ -590,6 +590,38 @@ class TestDashboardAPI:
         assert data["checks"]["operator_queue_contract"] is True
         assert data["checks"]["paper_live_transition_contract"] is True
 
+    def test_dashboard_cross_check_is_route_backed(self, app_client):
+        r = app_client.get("/api/dashboard/cross-check")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["dashboard_version"] == "v1"
+        assert data["release_stage"] == "pre_beta"
+        assert data["source_of_truth"] == "dashboard_cross_check"
+        assert data["status"] == "ok"
+        assert data["findings"] == []
+        assert data["checks"]["route_backed"] is True
+        assert data["checks"]["card_summary_match"] is True
+        assert data["card_health"]["summary"]["dead"] == 0
+        assert "no-store" in r.headers["Cache-Control"]
+
+    def test_dashboard_data_cross_check_is_route_backed(self, app_client):
+        r = app_client.get("/api/dashboard/data-cross-check")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["dashboard_version"] == "v1"
+        assert data["release_stage"] == "pre_beta"
+        assert data["source_of_truth"] == "dashboard_data_cross_check"
+        assert data["status"] == "ok"
+        assert data["findings"] == []
+        assert data["direct"]["bot_fleet"]["bot_total"] == data["diagnostics"]["bot_fleet"]["bot_total"]
+        assert (
+            data["direct"]["equity"]["point_count"]
+            == data["diagnostics"]["equity"]["point_count"]
+        )
+        assert "no-store" in r.headers["Cache-Control"]
+
     def test_dashboard_diagnostics_includes_bot_strategy_readiness(self, app_client, monkeypatch):
         from eta_engine.scripts import jarvis_status
 
