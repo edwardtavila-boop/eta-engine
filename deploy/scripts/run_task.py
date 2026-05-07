@@ -423,7 +423,7 @@ def _task_meta_upgrade(state_dir: Path) -> dict:
     # 4. Tests green -> restart services (Windows only; Linux systemd path TBD)
     restarted: list[str] = []
     if shutil.which("powershell"):
-        for svc in ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard", "Apex-Cloudflare-Tunnel"):
+        for svc in ("ETA-PaperLive-Supervisor", "ETA-Dashboard-API", "ETA-Broker-Router", "ETA-IBGateway"):
             try:
                 subprocess.run(
                     [
@@ -465,7 +465,7 @@ def _task_health_watchdog(state_dir: Path) -> dict:
     import subprocess
 
     report: dict = {"ts": datetime.now(UTC).isoformat(), "actions": []}
-    services = ("Apex-Jarvis-Live", "Apex-Avengers-Fleet", "Apex-Dashboard", "Apex-Cloudflare-Tunnel")
+    services = ("ETA-PaperLive-Supervisor", "ETA-Dashboard-API", "ETA-Broker-Router", "ETA-IBGateway")
     if os.name != "nt":
         return {"skipped": True, "reason": "watchdog is Windows-only"}
 
