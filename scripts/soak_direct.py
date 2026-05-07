@@ -39,74 +39,97 @@ t0 = time.time()
 results = []
 
 with open(str(LOG), "w", encoding="utf-8") as log:
-    log.write(f"Direct soak: {len(eligible)} bots, {DAYS}d windows\n")
+    log.write(f"Multi-session soak: {len(eligible)} bots, {DAYS}d x {SESSIONS} sessions\n")
     log.write(f"Start: {datetime.now(UTC).isoformat()}\n\n")
 
-    for a in eligible:
-        bid = a.bot_id
-        msg = f"[{bid}] running {DAYS}d..."
-        print(msg, end=" ", flush=True)
-        log.write(f"{msg}\n")
+    for session_num in range(SESSIONS):
+        session_start = time.time()
+        skip_base = session_num * DAYS
+        log.write(f"\n=== Session {session_num + 1}/{SESSIONS} (skip={skip_base}d) ===\n")
         log.flush()
+        print(f"\n=== Session {session_num + 1}/{SESSIONS} ===", flush=True)
 
-        cmd = [PYTHON, "-u", SIM, "--bot", bid, "--days", str(DAYS), "--json"]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
-            if proc.returncode == 0 and proc.stdout.strip():
-                data = json.loads(proc.stdout)
-                iso = data.get("in_sample", data)
-                trades = iso.get("trades", 0)
-                pnl = iso.get("total_pnl", 0)
-                wr = iso.get("win_rate", 0)
-                rth = iso.get("rth_trades", 0)
-                ovn = iso.get("overnight_trades", 0)
+        for a in eligible:
+            bid = a.bot_id
+            session_count = len(ledger["bot_sessions"].get(bid, []))
+            skip = session_count * DAYS
 
-                # Build session row
-                now_iso = datetime.now(UTC).isoformat()
-                session = {
-                    "date": now_iso,
-                    "days": DAYS,
-                    "bars": iso.get("bars_processed", 0),
-                    "signals": iso.get("signals", 0),
-                    "trades": trades,
-                    "winners": sum(1 for _ in range(trades) if _ < trades * wr/100),
-                    "losers": trades - int(trades * wr/100) if wr > 0 else trades,
-                    "win_rate": wr,
-                    "pnl": pnl,
-                    "gross_pnl": iso.get("gross_pnl", pnl),
-                    "commissions": iso.get("total_comm", 0),
-                    "avg_pnl_per_trade": pnl/max(trades, 1),
-                    "max_dd": iso.get("mdd", 0),
-                    "rth_trades": rth,
-                    "overnight_trades": ovn,
-                    "mode": "realistic",
-                }
-                ledger.setdefault("bot_sessions", {}).setdefault(bid, []).append(session)
-                LEDGER.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+            cmd = [PYTHON, "-u", SIM, "--bot", bid, "--days", str(DAYS), "--json"]
+            if skip > 0:
+                cmd.extend(["--skip-days", str(skip)])
 
-                result = f"OK {trades}T pnl=${pnl:+.2f} WR={wr:.1f}% RTH={rth} OVN={ovn}"
-            else:
-                result = f"FAILED rc={proc.returncode}"
-                if proc.stderr:
-                    result += f" {proc.stderr[:80]}"
+            msg = f"[{bid}] running {DAYS}d (skip={skip}d)..."
+            print(msg, end=" ", flush=True)
+            log.write(f"{msg}\n")
+            log.flush()
 
-        except subprocess.TimeoutExpired:
-            result = "TIMEOUT"
-        except Exception as e:
-            result = f"ERROR: {e}"
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
+                if proc.returncode == 0 and proc.stdout.strip():
+                    data = json.loads(proc.stdout)
+                    iso = data.get("in_sample", data)
+                    trades = iso.get("trades", 0)
+                    pnl = iso.get("total_pnl", 0)
+                    wr = iso.get("win_rate", 0)
+                    rth = iso.get("rth_trades", 0)
+                    ovn = iso.get("overnight_trades", 0)
 
-        print(result, flush=True)
-        log.write(f"  {result}\n")
+                    # Build session row
+                    now_iso = datetime.now(UTC).isoformat()
+                    session = {
+                        "date": now_iso,
+                        "days": DAYS,
+                        "bars": iso.get("bars_processed", 0),
+                        "signals": iso.get("signals", 0),
+                        "trades": trades,
+                        "winners": sum(1 for _ in range(trades) if _ < trades * wr/100),
+                        "losers": trades - int(trades * wr/100) if wr > 0 else trades,
+                        "win_rate": wr,
+                        "pnl": pnl,
+                        "gross_pnl": iso.get("gross_pnl", pnl),
+                        "commissions": iso.get("total_comm", 0),
+                        "avg_pnl_per_trade": pnl/max(trades, 1),
+                        "max_dd": iso.get("mdd", 0),
+                        "rth_trades": rth,
+                        "overnight_trades": ovn,
+                        "mode": "realistic",
+                    }
+                    ledger.setdefault("bot_sessions", {}).setdefault(bid, []).append(session)
+                    LEDGER.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+
+                    result = f"OK {trades}T pnl=${pnl:+.2f} WR={wr:.1f}% RTH={rth} OVN={ovn}"
+                else:
+                    result = f"FAILED rc={proc.returncode}"
+                    if proc.stderr:
+                        result += f" {proc.stderr[:80]}"
+
+            except subprocess.TimeoutExpired:
+                result = "TIMEOUT"
+            except Exception as e:
+                result = f"ERROR: {e}"
+
+            print(result, flush=True)
+            log.write(f"  {result}\n")
+            log.flush()
+
+        session_elapsed = time.time() - session_start
+        session_pnl = sum(
+            sum(s.get("pnl", 0) for s in ledger["bot_sessions"].get(b.bot_id, [])[-1:])
+            for b in eligible
+            if ledger["bot_sessions"].get(b.bot_id)
+        )
+        print(f"  Session {session_num+1} PnL: ${session_pnl:+.0f} ({session_elapsed/60:.1f} min)", flush=True)
+        log.write(f"Session {session_num+1} complete: {session_elapsed/60:.1f} min\n")
         log.flush()
 
 elapsed = time.time() - t0
 
 # Summary
-print(f"\n=== COMPLETE ({elapsed/60:.1f} min) ===")
+print(f"\n=== COMPLETE ({elapsed/60:.1f} min, {SESSIONS} sessions) ===")
 total_pnl = sum(
     sum(s.get("pnl", 0) for s in sessions)
     for sessions in ledger.get("bot_sessions", {}).values()
 )
-print(f"Bots processed: {len(eligible)}")
-print(f"Fleet PnL: ${total_pnl:+.2f}")
+sessions_total = sum(len(s) for s in ledger.get("bot_sessions", {}).values())
+print(f"Bots: {len(eligible)} | Sessions: {sessions_total} | Fleet PnL: ${total_pnl:+.2f}")
 print(f"Ledger: {LEDGER}")
