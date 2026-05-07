@@ -4,6 +4,7 @@ param(
     [string]$Root = "C:\EvolutionaryTradingAlgo",
     [string]$CloudflaredExe = "C:\Program Files (x86)\cloudflared\cloudflared.exe",
     [string]$ConfigPath = "C:\EvolutionaryTradingAlgo\var\cloudflare\eta-engine-cloudflared.yml",
+    [bool]$PreferInstalledService = $true,
     [switch]$Start,
     [switch]$RestartExistingProcess
 )
@@ -34,6 +35,37 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 $logDir = Join-Path $RootFull "logs\cloudflare"
 Assert-CanonicalEtaPath -Path $logDir
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+$cloudflaredService = Get-CimInstance Win32_Service -Filter "Name='Cloudflared'" -ErrorAction SilentlyContinue
+if ($PreferInstalledService -and $cloudflaredService) {
+    $servicePath = [string]$cloudflaredService.PathName
+    $serviceOwnsConfig = $servicePath.IndexOf($ConfigPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    if ($serviceOwnsConfig) {
+        $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if ($existingTask) {
+            Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+
+        if ($Start -and $cloudflaredService.State -ne "Running") {
+            Start-Service -Name $cloudflaredService.Name
+            Start-Sleep -Seconds 2
+            $cloudflaredService = Get-CimInstance Win32_Service -Filter "Name='Cloudflared'" -ErrorAction SilentlyContinue
+        }
+
+        [pscustomobject]@{
+            TaskName = $TaskName
+            State = "SkippedServiceOwner"
+            ServiceName = $cloudflaredService.Name
+            ServiceState = $cloudflaredService.State
+            UserId = "NT AUTHORITY\SYSTEM"
+            ConfigPath = $ConfigPath
+            CloudflaredExe = $CloudflaredExe
+            ScheduledTaskRemoved = [bool]$existingTask
+        }
+        return
+    }
+}
 
 if ($RestartExistingProcess) {
     Get-Process cloudflared -ErrorAction SilentlyContinue |

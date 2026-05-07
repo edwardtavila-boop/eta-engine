@@ -55,10 +55,39 @@ rem "entry skipped: budget cap produced qty=0". Drop until either:
 rem   (a) we lift per-bot futures cap to fit 1 YM contract, OR
 rem   (b) we replace with MYM (Micro Dow ~$25k notional), OR
 rem   (c) ATR sizing logic for futures includes a min-1-contract floor.
-rem CURRENT APPROVED PAPER-LIVE ROSTER (readiness snapshot 2026-05-07):
-rem only can_paper_trade=true bots are pinned here; commodities and SOL wait
-rem for Claude/JARVIS approval before broker routing.
-set "ETA_SUPERVISOR_BOTS=eth_sage_daily,btc_optimized,mnq_futures_sage,mnq_sweep_reclaim,vwap_mr_mnq,vwap_mr_nq,vwap_mr_btc,volume_profile_btc,funding_rate_btc,mnq_anchor_sweep"
+rem CURRENT APPROVED PAPER-LIVE ROSTER (readiness snapshot 2026-05-07 v2):
+rem Roster rebuilt 2026-05-07 from the post-dispatch-fix strict-gate audit
+rem (eta_engine/reports/strict_gate_20260507T194017Z.json). Prior pin had
+rem 7 of 10 bots already retired in the registry; this one matches the
+rem audit's actual survivors.
+rem
+rem Pinned bots and rationale:
+rem   volume_profile_mnq -- THE deflated-Sharpe survivor (sh_def +1.98,
+rem                         4277 trades, split-stable). Just promoted to
+rem                         production_candidate. The single highest-
+rem                         confidence edge in the fleet.
+rem   rsi_mr_mnq         -- top mid-tier survivor (Sharpe 1.91, 137T,
+rem                         expR_net +0.124, split-stable).
+rem   mbt_funding_basis  -- crypto-futures research_candidate (Sharpe 3.77,
+rem                         expR_net +0.200, split-stable, n=31).
+rem   mes_sweep_reclaim, ym_sweep_reclaim, m2k_sweep_reclaim,
+rem   eur_sweep_reclaim, gc_sweep_reclaim, cl_sweep_reclaim --
+rem                         commodity sweep_reclaim family. All positive
+rem                         expR_net in audit. Small per-bot samples (14-34
+rem                         trades) but the family pattern is consistent.
+rem   volume_profile_btc -- already pinned; kept to monitor (net neg in
+rem                         audit but split-stable; let kaizen retire if
+rem                         confirmed on real fills).
+rem   mnq_anchor_sweep   -- already pinned; positive net (+0.116) on 113
+rem                         trades, split-unstable but worth watching.
+rem   mnq_futures_sage   -- already pinned; flat net (-0.003); kaizen says
+rem                         SCALE_UP based on real fills (luck=0.0 / n=61).
+rem
+rem Skipped: ng_sweep_reclaim (data quality flag in registry - rollover
+rem artifacts make the Sharpe 8.31 unreliable); sol_optimized (n=17 too
+rem small for live capital); mbt_sweep_reclaim/met_sweep_reclaim/
+rem mbt_overnight_gap (zero trades pending bar-data hydration).
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,ym_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
