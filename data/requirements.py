@@ -432,6 +432,30 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
     ),
     BotRequirements(
+        bot_id="mbt_zfade",
+        requirements=(
+            DataRequirement("bars", "MBT", "5m", critical=True),
+            DataRequirement("bars", "MBT", "1h", critical=True,
+                note="HTF trend-opposition filter"),
+            DataRequirement("bars", "MBT", "D", critical=False,
+                note="contract regime and volatility context"),
+            DataRequirement("bars", "BTC", "5m", critical=False,
+                note="spot BTC cross-check for MBT dislocations"),
+        ),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
+    ),
+    BotRequirements(
+        bot_id="mbt_rth_orb",
+        requirements=(
+            DataRequirement("bars", "MBT", "5m", critical=True),
+            DataRequirement("bars", "MBT", "1h", critical=True,
+                note="opening-range context and trend filter"),
+            DataRequirement("bars", "MBT", "D", critical=False,
+                note="RTH regime and contract context"),
+        ),
+        sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
+    ),
+    BotRequirements(
         bot_id="met_rth_orb",
         requirements=(
             DataRequirement("bars", "MET", "5m", critical=True),

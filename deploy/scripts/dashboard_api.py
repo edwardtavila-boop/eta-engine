@@ -2607,9 +2607,35 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
             last_signal_age_s = max(0, int(now_ts - dt.timestamp()))
         except (ValueError, OSError):
             pass
-    open_pos = sup.get("open_position") or {}
+    open_pos_raw = sup.get("open_position") or {}
+    open_pos = open_pos_raw if isinstance(open_pos_raw, dict) else {}
+    bracket_stop = _float_value(
+        open_pos.get("bracket_stop") or open_pos.get("stop_price"),
+    )
+    bracket_target = _float_value(
+        open_pos.get("bracket_target") or open_pos.get("target_price"),
+    )
+    broker_bracket = bool(open_pos.get("broker_bracket"))
+    bracket_src = str(open_pos.get("bracket_src") or open_pos.get("exit_src") or "")
+    position_state = {"state": "flat"}
+    if open_pos:
+        position_state = {
+            "state": "open",
+            "side": str(open_pos.get("side") or "").upper(),
+            "qty": _float_value(open_pos.get("qty") or open_pos.get("quantity")),
+            "entry_price": _float_value(open_pos.get("entry_price")),
+            "mark_price": _float_value(
+                open_pos.get("mark_price") or open_pos.get("last_price"),
+            ),
+            "bracket_stop": bracket_stop,
+            "bracket_target": bracket_target,
+            "broker_bracket": broker_bracket,
+            "bracket_src": bracket_src,
+            "signal_id": str(open_pos.get("signal_id") or ""),
+            "opened_at": open_pos.get("opened_at") or open_pos.get("ts"),
+        }
     last_side: str | None = None
-    if isinstance(open_pos, dict) and open_pos.get("side"):
+    if open_pos.get("side"):
         last_side = str(open_pos["side"])
     elif sup.get("direction"):
         last_side = str(sup["direction"]).upper()
@@ -2644,6 +2670,12 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "mode":                str(sup.get("mode") or ""),
         "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
         "strategy_readiness":  strategy_readiness,
+        "open_position":       open_pos,
+        "position_state":      position_state,
+        "bracket_stop":        bracket_stop,
+        "bracket_target":      bracket_target,
+        "broker_bracket":      broker_bracket,
+        "bracket_src":         bracket_src,
         "launch_lane":         str(sup.get("launch_lane") or strategy_readiness.get("launch_lane") or ""),
         "can_paper_trade":     bool(sup.get("can_paper_trade") or strategy_readiness.get("can_paper_trade")),
         "can_live_trade":      bool(sup.get("can_live_trade") or strategy_readiness.get("can_live_trade")),

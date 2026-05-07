@@ -83,7 +83,9 @@ VARIANT_BOT_IDS: set[str] = {
     "mbt_sweep_reclaim",    # uses bots/btc_hybrid/ (MBT tracks BTCUSDT)
     "met_sweep_reclaim",    # uses bots/eth_perp/ (MET tracks ETHUSDT)
     "mbt_funding_basis",    # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_zfade",            # uses bots/btc_hybrid/ via MBT strategy bridge
     "mbt_overnight_gap",    # uses bots/btc_hybrid/ via MBT strategy bridge
+    "mbt_rth_orb",          # uses bots/btc_hybrid/ via MBT strategy bridge
     "met_rth_orb",          # uses bots/eth_perp/ via MET strategy bridge
     # Anchor-sweep — named-anchor variant of sweep_reclaim for index futures.
     # No own bot.py dir; runs through the existing MNQ/NQ bot dirs via

@@ -1406,7 +1406,17 @@ class TestDashboardAPI:
                     "n_entries": 2,
                     "n_exits": 1,
                     "realized_pnl": -0.5,
-                    "open_position": {"side": "BUY", "entry_price": 67000.0},
+                    "open_position": {
+                        "side": "BUY",
+                        "qty": 0.05,
+                        "entry_price": 67000.0,
+                        "mark_price": 67350.0,
+                        "bracket_stop": 66200.0,
+                        "bracket_target": 68400.0,
+                        "broker_bracket": False,
+                        "bracket_src": "supervisor_local",
+                        "signal_id": "btc_hybrid_001",
+                    },
                     "last_jarvis_verdict": "CONDITIONAL",
                     "last_bar_ts": "2026-04-28T12:00:00+00:00",
                 },
@@ -1440,6 +1450,15 @@ class TestDashboardAPI:
         assert mnq["launch_lane"] == "live_preflight"
         assert mnq["can_paper_trade"] is True
         assert mnq["can_live_trade"] is False
+        btc = next(b for b in data["bots"] if b["name"] == "btc_hybrid")
+        assert btc["open_position"]["entry_price"] == 67000.0
+        assert btc["position_state"]["state"] == "open"
+        assert btc["position_state"]["side"] == "BUY"
+        assert btc["position_state"]["qty"] == 0.05
+        assert btc["bracket_stop"] == 66200.0
+        assert btc["bracket_target"] == 68400.0
+        assert btc["broker_bracket"] is False
+        assert btc["bracket_src"] == "supervisor_local"
 
         drill = app_client.get("/api/bot-fleet/mnq_futures")
         assert drill.status_code == 200

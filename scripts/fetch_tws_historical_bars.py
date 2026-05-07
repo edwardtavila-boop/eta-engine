@@ -190,6 +190,12 @@ class _IbProto(Protocol):
     def disconnect(self) -> None: ...
     def isConnected(self) -> bool: ...
     def qualifyContracts(self, *contracts: Any) -> list[Any]: ...
+    # reqContractDetails is the canonical IBKR way to enumerate contract
+    # candidates when qualifyContracts hits ambiguity. CME crypto micros
+    # (MBT/MET) routinely have 11+ active expirations; an unqualified
+    # Future(symbol=root) returns [] from qualifyContracts because of
+    # ambiguity. We fall back to reqContractDetails + front-month pick.
+    def reqContractDetails(self, contract: Any) -> list[Any]: ...
     def reqHistoricalData(
         self,
         contract: Any,
@@ -255,6 +261,72 @@ def _build_future(symbol: str) -> Any:
     contract = Future(symbol=root, exchange=exchange, currency=currency)
     contract.includeExpired = False
     return contract
+
+
+def _resolve_front_month_via_details(
+    ib: _IbProto, contract: Any, symbol: str,
+) -> Any | None:
+    """When qualifyContracts is ambiguous, enumerate via reqContractDetails
+    and pick the soonest non-expired expiration.
+
+    CME crypto micros (MBT/MET) have 11+ active months. An unqualified
+    ``Future(symbol=root)`` matches all of them and qualifyContracts
+    returns []. The proven workaround used by the Client Portal-based
+    fetcher is to enumerate then sort by ``lastTradeDateOrContractMonth``
+    and pick the first non-expired entry.
+
+    Returns the qualified front-month contract, or None if no
+    non-expired contracts are found.
+    """
+    try:
+        details = ib.reqContractDetails(contract)
+    except Exception as exc:  # noqa: BLE001 — broker-side errors are non-fatal
+        log.error("reqContractDetails failed for %s: %s", symbol, exc)
+        return None
+    if not details:
+        log.error("reqContractDetails returned 0 candidates for %s", symbol)
+        return None
+
+    today = datetime.now(UTC).strftime("%Y%m%d")
+    candidates: list[tuple[str, Any]] = []
+    for d in details:
+        # ContractDetails wraps a Contract; ib_insync exposes both
+        # contract.lastTradeDateOrContractMonth (e.g. "20260627") and
+        # the bare-month form (e.g. "202606"). Pick the first available.
+        c = getattr(d, "contract", d)
+        expiry_raw = (
+            getattr(c, "lastTradeDateOrContractMonth", "")
+            or getattr(d, "contractMonth", "")
+            or ""
+        )
+        expiry = str(expiry_raw).strip()
+        if not expiry:
+            continue
+        if len(expiry) == 6:  # "202606" → "20260601" for sorting
+            expiry = expiry + "01"
+        if expiry < today:
+            continue  # already expired
+        candidates.append((expiry, c))
+
+    if not candidates:
+        log.error(
+            "no non-expired contracts in reqContractDetails for %s "
+            "(today=%s, candidates=%d)",
+            symbol, today, len(details),
+        )
+        return None
+
+    candidates.sort(key=lambda x: x[0])
+    expiry, qualified = candidates[0]
+    log.info(
+        "front-month resolved for %s -> %s expiry=%s "
+        "(out of %d candidates)",
+        symbol,
+        getattr(qualified, "localSymbol", "?"),
+        expiry,
+        len(candidates),
+    )
+    return qualified
 
 
 def _format_end_dt_for_tws(dt: datetime) -> str:
@@ -380,12 +452,24 @@ def fetch_chunks(
     contract = _build_future(symbol)
     qualified_list = ib.qualifyContracts(contract)
     if not qualified_list:
-        log.error(
-            "qualifyContracts returned nothing for %s -- contract resolution failed",
+        # Ambiguous symbol (multiple active expirations). CME crypto
+        # micros — MBT/MET — return [] from qualifyContracts because
+        # they have 11+ months listed. Fall back to reqContractDetails
+        # + front-month selection.
+        log.warning(
+            "qualifyContracts ambiguous for %s -- falling back to "
+            "reqContractDetails for front-month resolution",
             symbol,
         )
-        return []
-    qualified = qualified_list[0]
+        qualified = _resolve_front_month_via_details(ib, contract, symbol)
+        if qualified is None:
+            log.error(
+                "front-month resolution failed for %s -- aborting fetch",
+                symbol,
+            )
+            return []
+    else:
+        qualified = qualified_list[0]
     log.info(
         "qualified %s -> %s/%s expiry=%s",
         symbol,

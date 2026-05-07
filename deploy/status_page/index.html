@@ -58,7 +58,24 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .supercharge-list li{border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:.65rem;background:rgba(255,255,255,.02);font-size:.75rem}
 .supercharge-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
 .supercharge-note{color:var(--dim);font-size:.7rem;margin-top:.25rem}
+.ops-truth-wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:1rem;padding:0 2rem 1.5rem}
+.truth-summary{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.truth-chip{border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:.35rem .65rem;background:rgba(255,255,255,.025);font-size:.72rem;color:var(--dim)}
+.truth-chip strong{color:var(--text);margin-right:.25rem}
+.position-list,.router-tape{display:grid;gap:.65rem}
+.position-card,.tape-row{border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(255,255,255,.02);padding:.75rem}
+.position-head,.tape-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.35rem}
+.position-head strong,.tape-head strong{font-size:.86rem}
+.position-meta,.tape-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.45rem;color:var(--dim);font-size:.72rem}
+.position-meta span,.tape-meta span{display:block}
+.protection-line{margin-top:.55rem;color:var(--blue);font-size:.72rem}
+.position-cell{min-width:150px}
+.position-cell .main,.protection-cell .main{display:block;font-weight:700}
+.position-cell .subline,.protection-cell .subline{display:block;margin-top:.18rem;color:var(--dim);font-size:.68rem}
+.protection-cell{min-width:190px;color:var(--blue)}
+.empty-panel{border:1px dashed rgba(255,255,255,.10);border-radius:10px;padding:.9rem;color:var(--dim);font-size:.78rem}
 @media(max-width:640px){.grid{grid-template-columns:1fr 1fr;padding:1rem}.header{padding:.75rem 1rem;flex-wrap:wrap}}
+@media(max-width:900px){.ops-truth-wrap{grid-template-columns:1fr;padding:0 1rem 1rem}}
 </style>
 </head>
 <body>
@@ -140,12 +157,29 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   </div>
 </div>
 
+<div class="ops-truth-wrap">
+  <div class="card">
+    <h3>Open Positions &amp; Exit Protection</h3>
+    <div class="truth-summary" id="positionSummary"></div>
+    <div class="position-list" id="openPositionsPanel">
+      <div class="empty-panel">Waiting for broker position truth...</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Broker Router Tape</h3>
+    <div class="truth-summary" id="routerTapeSummary"></div>
+    <div class="router-tape" id="routerTapePanel">
+      <div class="empty-panel">Waiting for router executions...</div>
+    </div>
+  </div>
+</div>
+
 <div class="table-wrap">
   <table>
     <thead>
-      <tr><th>Bot</th><th>Symbol</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Verdict</th><th>PnL</th><th>Last Activity</th><th>WR%</th><th>Sharpe</th></tr>
+      <tr><th>Bot</th><th>Symbol</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Verdict</th><th>PnL</th><th>Position</th><th>Protection</th><th>Last Activity</th><th>WR%</th><th>Sharpe</th></tr>
     </thead>
-    <tbody id="botTable"><tr><td colspan="10" class="loading">Loading fleet data...</td></tr></tbody>
+    <tbody id="botTable"><tr><td colspan="12" class="loading">Loading fleet data...</td></tr></tbody>
   </table>
 </div>
 
@@ -175,6 +209,184 @@ function endpointCandidates(path) {
 function compactText(value, maxLen = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > maxLen ? text.slice(0, maxLen - 3) + '...' : text;
+}
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatMoney(value, digits = 2) {
+  const n = finiteNumber(value);
+  if (n == null) return 'n/a';
+  const prefix = n < 0 ? '-$' : '$';
+  return prefix + Math.abs(n).toFixed(digits);
+}
+
+function formatQty(value) {
+  const n = finiteNumber(value);
+  if (n == null) return 'n/a';
+  if (Math.abs(n) >= 10) return n.toFixed(2).replace(/\.00$/, '');
+  if (Math.abs(n) >= 1) return n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatPctText(value) {
+  const n = finiteNumber(value);
+  if (n == null) return 'n/a';
+  const pct = Math.abs(n) <= 1 ? n * 100 : n;
+  return pct.toFixed(2) + '%';
+}
+
+function formatTimeShort(value) {
+  if (!value) return 'n/a';
+  return String(value).replace('T', ' ').replace('Z', '').substring(0, 19);
+}
+
+function futuresMultiplier(symbol) {
+  const s = String(symbol || '').toUpperCase();
+  if (s.startsWith('MNQ')) return 2;
+  if (s.startsWith('NQ')) return 20;
+  if (s.startsWith('MES')) return 5;
+  if (s.startsWith('ES')) return 50;
+  if (s.startsWith('M2K')) return 5;
+  if (s.startsWith('RTY')) return 50;
+  if (s.startsWith('MGC')) return 10;
+  if (s.startsWith('GC')) return 100;
+  if (s.startsWith('MCL')) return 100;
+  if (s.startsWith('CL')) return 1000;
+  return 1;
+}
+
+function normalizeAvgCost(symbol, avgCost, marketPrice) {
+  const avg = finiteNumber(avgCost);
+  const mark = finiteNumber(marketPrice);
+  if (avg == null) return null;
+  if (mark == null || Math.abs(avg) <= Math.abs(mark) * 3) return avg;
+  const mult = futuresMultiplier(symbol);
+  return mult > 1 ? avg / mult : avg;
+}
+
+function buildBrokerPositions(liveBroker) {
+  const positions = [];
+  const alpacaPositions = liveBroker?.alpaca?.open_positions || [];
+  for (const p of alpacaPositions) {
+    positions.push({
+      broker: 'Alpaca paper',
+      symbol: p.symbol || 'crypto',
+      side: p.side || 'open',
+      qty: p.qty,
+      avg: p.avg_entry_price,
+      mark: p.current_price,
+      value: p.market_value,
+      pnl: p.unrealized_pl,
+      pnlPct: p.unrealized_plpc,
+      protection: 'Supervisor-local target/stop monitor; exits submit reduce-only close orders.'
+    });
+  }
+  const ibkrPositions = liveBroker?.ibkr?.open_positions || [];
+  for (const p of ibkrPositions) {
+    const qty = finiteNumber(p.position);
+    positions.push({
+      broker: 'IBKR paper',
+      symbol: p.symbol || 'future',
+      side: qty == null ? 'open' : qty >= 0 ? 'long' : 'short',
+      qty: qty == null ? p.position : Math.abs(qty),
+      avg: normalizeAvgCost(p.symbol, p.avg_cost, p.market_price),
+      mark: p.market_price,
+      value: p.market_value,
+      pnl: p.unrealized_pnl,
+      pnlPct: null,
+      protection: 'Futures route requires broker-side TP/SL OCO bracket on new entries; watchdog backs up detached brackets.'
+    });
+  }
+  return positions;
+}
+
+function renderOpsTruthSections(d, liveBroker, brokerRouter) {
+  const positions = buildBrokerPositions(liveBroker);
+  const positionSummary = document.getElementById('positionSummary');
+  const positionsPanel = document.getElementById('openPositionsPanel');
+  const routerSummary = document.getElementById('routerTapeSummary');
+  const routerPanel = document.getElementById('routerTapePanel');
+  if (!positionSummary || !positionsPanel || !routerSummary || !routerPanel) return;
+
+  const totalRealized = finiteNumber(liveBroker?.today_realized_pnl);
+  const totalUnrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
+  const fillsToday = finiteNumber(liveBroker?.today_actual_fills);
+  positionSummary.innerHTML = [
+    `<span class="truth-chip"><strong>${positions.length}</strong> open positions</span>`,
+    `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
+    `<span class="truth-chip"><strong>${formatMoney(totalRealized ?? 0)}</strong> realized today</span>`,
+    `<span class="truth-chip"><strong>${formatMoney(totalUnrealized ?? 0)}</strong> unrealized</span>`
+  ].join('');
+
+  if (!positions.length) {
+    positionsPanel.innerHTML = '<div class="empty-panel">Flat right now. New futures entries must carry broker OCO brackets; crypto paper entries are watched by supervisor-local target/stop exits.</div>';
+  } else {
+    positionsPanel.innerHTML = positions.map((p) => {
+      const pnl = finiteNumber(p.pnl);
+      const pnlClass = pnl == null ? 'dim' : pnl >= 0 ? 'green' : 'red';
+      const pctLine = p.pnlPct == null ? '' : ` (${formatPctText(p.pnlPct)})`;
+      return `<div class="position-card">
+        <div class="position-head">
+          <strong>${esc(p.symbol)} <span class="dim">${esc(p.broker)}</span></strong>
+          <span class="badge ${pnl == null ? 'badge-idle' : pnl >= 0 ? 'badge-win' : 'badge-loss'}">${esc(String(p.side).toUpperCase())}</span>
+        </div>
+        <div class="position-meta">
+          <span>qty <strong>${esc(formatQty(p.qty))}</strong></span>
+          <span>avg <strong>${esc(formatMoney(p.avg, 2))}</strong></span>
+          <span>mark <strong>${esc(formatMoney(p.mark, 2))}</strong></span>
+          <span>value <strong>${esc(formatMoney(p.value, 2))}</strong></span>
+          <span>PnL <strong class="${pnlClass}">${esc(formatMoney(p.pnl, 2))}${esc(pctLine)}</strong></span>
+        </div>
+        <div class="protection-line">${esc(p.protection)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const counts = brokerRouter?.counts || {};
+  const recentEvents = Array.isArray(brokerRouter?.recent_events) ? brokerRouter.recent_events : [];
+  const latest = brokerRouter?.latest_result || null;
+  const hold = brokerRouter?.order_entry_hold || {};
+  routerSummary.innerHTML = [
+    `<span class="truth-chip"><strong>${Number(counts.parsed || 0)}</strong> parsed</span>`,
+    `<span class="truth-chip"><strong>${Number(counts.submitted || 0)}</strong> submitted</span>`,
+    `<span class="truth-chip"><strong>${Number(counts.filled || 0)}</strong> filled</span>`,
+    `<span class="truth-chip"><strong>${Number(brokerRouter?.pending_count || 0)}</strong> pending</span>`,
+    `<span class="truth-chip"><strong>${hold.active ? 'ON' : 'OFF'}</strong> entry hold</span>`
+  ].join('');
+
+  const rows = [];
+  if (latest) {
+    const price = finiteNumber(latest.avg_price);
+    rows.push(`<div class="tape-row">
+      <div class="tape-head">
+        <strong>${esc(latest.bot_id || 'latest order')}</strong>
+        <span class="badge ${String(latest.status || '').toUpperCase() === 'REJECTED' ? 'badge-loss' : 'badge-approve'}">${esc(latest.status || 'result')}</span>
+      </div>
+      <div class="tape-meta">
+        <span>venue <strong>${esc(latest.venue || 'n/a')}</strong></span>
+        <span>signal <strong>${esc(latest.signal_id || 'n/a')}</strong></span>
+        <span>qty <strong>${esc(formatQty(latest.filled_qty))}</strong></span>
+        <span>avg <strong>${price && price > 0 ? esc(formatMoney(price, 2)) : 'open/no fill price'}</strong></span>
+        <span>time <strong>${esc(formatTimeShort(latest.ts))}</strong></span>
+      </div>
+    </div>`);
+  }
+  for (const event of recentEvents.slice(-6).reverse()) {
+    rows.push(`<div class="tape-row">
+      <div class="tape-head">
+        <strong>${esc(event.file || event.kind || 'router event')}</strong>
+        <span class="badge ${event.kind === 'failed' ? 'badge-loss' : 'badge-approve'}">${esc(event.detail || event.kind || 'event')}</span>
+      </div>
+      <div class="tape-meta">
+        <span>kind <strong>${esc(event.kind || 'n/a')}</strong></span>
+        <span>time <strong>${esc(formatTimeShort(event.ts))}</strong></span>
+      </div>
+    </div>`);
+  }
+  routerPanel.innerHTML = rows.join('') || '<div class="empty-panel">No router tape yet. Pending orders, fills, and rejects will appear here as they happen.</div>';
 }
 
 async function fetchJsonOnce(url, timeoutMs) {
@@ -268,6 +480,50 @@ function activityForBot(bot) {
     };
   }
   return null;
+}
+
+function positionForBot(bot) {
+  const state = bot.position_state || {};
+  const open = state.state === 'open' || (bot.open_position && Object.keys(bot.open_position).length);
+  if (!open) {
+    return {
+      text: 'flat',
+      sub: bot.can_paper_trade ? 'armed for paper entries' : 'readiness only',
+      open: false
+    };
+  }
+  const source = state.state === 'open' ? state : (bot.open_position || {});
+  const side = String(source.side || bot.last_activity_side || '').toUpperCase() || 'OPEN';
+  const qty = finiteNumber(source.qty);
+  const entry = finiteNumber(source.entry_price);
+  return {
+    text: `${side} ${qty == null ? '' : formatQty(qty)}`.trim(),
+    sub: entry == null ? 'entry pending' : `entry ${formatMoney(entry, 2)}`,
+    open: true
+  };
+}
+
+function protectionForBot(bot) {
+  const state = bot.position_state || {};
+  const open = state.state === 'open' || (bot.open_position && Object.keys(bot.open_position).length);
+  const stop = finiteNumber(bot.bracket_stop ?? state.bracket_stop);
+  const target = finiteNumber(bot.bracket_target ?? state.bracket_target);
+  const brokerBracket = Boolean(bot.broker_bracket ?? state.broker_bracket);
+  const src = String(bot.bracket_src || state.bracket_src || '').replace(/_/g, ' ');
+  if (!open) {
+    return {text: 'armed on entry', sub: 'target/stop required before exposure'};
+  }
+  const route = brokerBracket
+    ? 'broker OCO TP/SL'
+    : src.startsWith('paper')
+      ? 'paper supervisor target/stop exit'
+      : (src ? src : 'supervisor target/stop');
+  const targetText = target == null ? 'target n/a' : `target ${formatMoney(target, 2)}`;
+  const stopText = stop == null ? 'stop n/a' : `stop ${formatMoney(stop, 2)}`;
+  return {
+    text: route,
+    sub: `${targetText} / ${stopText}`
+  };
 }
 
 function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
@@ -470,6 +726,7 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
         : (results || failed)
           ? 'history: ' + results + ' results; ' + rejected + ' rejected; ' + failed + ' failed'
           : 'waiting for orders';
+  renderOpsTruthSections(d, liveBroker, brokerRouter);
 
   const opSummary = operatorQueue?.summary || {};
   const opBlocked = Number(opSummary.BLOCKED || 0);
@@ -561,6 +818,8 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
       : 'badge-idle';
     const activity = activityForBot(b);
     const activityText = activity ? activity.type + ' ' + String(activity.ts).replace('T',' ').substring(0,19) + (activity.side ? ' ' + activity.side : '') : '—';
+    const position = positionForBot(b);
+    const protection = protectionForBot(b);
     html += '<tr>' +
       '<td><strong>' + (b.id || b.name || '?') + '</strong></td>' +
       '<td>' + (b.symbol || '—') + '</td>' +
@@ -569,6 +828,8 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
       '<td><span class="' + (b.status === 'idle' ? 'badge-idle' : b.status === 'error' ? 'badge-loss' : 'badge-approve') + '">' + (b.status || '—') + '</span></td>' +
       '<td><span class="' + verdictClass + '">' + (b.last_jarvis_verdict || '—') + '</span></td>' +
       '<td class="' + ((b.todays_pnl || 0) > 0 ? 'green' : (b.todays_pnl || 0) < 0 ? 'red' : '') + '">$' + (b.todays_pnl || 0).toFixed(0) + '</td>' +
+      '<td class="position-cell"><span class="main">' + esc(position.text) + '</span><span class="subline">' + esc(position.sub) + '</span></td>' +
+      '<td class="protection-cell"><span class="main">' + esc(protection.text) + '</span><span class="subline">' + esc(protection.sub) + '</span></td>' +
       '<td>' + esc(activityText) + '</td>' +
       '<td>' + (b.win_rate_pct || '—') + '</td>' +
       '<td>' + (b.sharpe || '—') + '</td>' +

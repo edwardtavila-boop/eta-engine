@@ -83,13 +83,18 @@ class _MockIB:
     def isConnected(self) -> bool:
         return self._connected
 
-    def qualifyContracts(self, *contracts: Any) -> list[Any]:
+    def qualifyContracts(self, *contracts: Any) -> list[Any]:  # noqa: N802
         self.qualify_calls.extend(contracts)
         # Return a fake qualified contract for each input.
         return [
             _MockQualifiedContract(symbol=getattr(c, "symbol", "?"))
             for c in contracts
         ]
+
+    def reqContractDetails(self, contract: Any) -> list[Any]:  # noqa: N802
+        # Default mock: shouldn't be called when qualifyContracts succeeds.
+        # Subclasses override this to test the front-month-fallback path.
+        return []
 
     def reqHistoricalData(
         self,
@@ -518,6 +523,107 @@ def test_run_returns_1_on_connect_failure(
         ib=ib,
     )
     assert rc == 1
+
+
+# --- Front-month fallback (reqContractDetails when qualifyContracts ambiguous) ---
+
+
+class _MockContractDetails:
+    """Wraps a Contract — mirrors ib_insync.ContractDetails interface."""
+
+    def __init__(self, expiry: str, symbol: str = "MBT") -> None:
+        self.contract = _MockQualifiedContract(symbol=symbol, expiry=expiry)
+        self.contractMonth = expiry[:6] if len(expiry) >= 6 else expiry
+
+
+class _AmbiguousIB(_MockIB):
+    """Mock that returns [] from qualifyContracts, simulating ambiguity
+    (CME crypto micros have 11+ active months) and exposes
+    reqContractDetails for the front-month fallback."""
+
+    def __init__(self, candidate_expiries: list[str], **kw: Any) -> None:
+        super().__init__(**kw)
+        self._candidate_expiries = candidate_expiries
+        self.contract_details_calls: list[Any] = []
+
+    def qualifyContracts(self, *contracts: Any) -> list[Any]:  # noqa: N802
+        self.qualify_calls.extend(contracts)
+        return []  # ambiguous
+
+    def reqContractDetails(self, contract: Any) -> list[Any]:  # noqa: N802
+        self.contract_details_calls.append(contract)
+        return [_MockContractDetails(e) for e in self._candidate_expiries]
+
+
+def test_front_month_fallback_picks_soonest_non_expired(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """When qualifyContracts returns [] (ambiguous), the fetcher must fall
+    back to reqContractDetails and pick the SOONEST non-expired expiration.
+    """
+    # Today=20260507 in test; soonest non-expired = 20260627.
+    ib = _AmbiguousIB(
+        candidate_expiries=[
+            "20240619",  # already expired
+            "20260919",  # later
+            "20260627",  # soonest non-expired (winner)
+            "20261219",  # latest
+        ],
+        synthetic_bars_per_chunk=5,
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "30",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+        ],
+        ib=ib,
+    )
+    assert rc == 0
+    # Fallback path was hit (qualifyContracts returned [] then
+    # reqContractDetails was called).
+    assert len(ib.qualify_calls) == 1
+    assert len(ib.contract_details_calls) == 1
+    # CSV was produced — front-month resolution succeeded.
+    csv_path = tmp_path / "MBT1_5m.csv"
+    assert csv_path.exists()
+    # And the historical-bars call used the resolved contract.
+    assert len(ib.history_calls) >= 1
+
+
+def test_front_month_fallback_aborts_when_all_expired(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """All candidates expired → fetcher logs + skips the symbol cleanly."""
+    ib = _AmbiguousIB(
+        candidate_expiries=["20240619", "20240919", "20241219"],
+        synthetic_bars_per_chunk=5,
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda *_a, **_kw: None)
+
+    rc = mod.run(
+        [
+            "--symbols", "MBT",
+            "--days", "30",
+            "--end", "2026-05-07",
+            "--root", str(tmp_path),
+            "--pacing-sleep", "0",
+        ],
+        ib=ib,
+    )
+    # rc=1 because zero rows fetched globally (single symbol failed).
+    # That's correct behavior — fail-loud at exit code level even though
+    # the fetcher itself didn't crash.
+    assert rc == 1
+    # The fetcher aborts before issuing any reqHistoricalData call.
+    assert len(ib.history_calls) == 0
+    # Fallback was attempted (reqContractDetails called) and recognized
+    # all candidates as expired.
+    assert len(ib.contract_details_calls) == 1
 
 
 # --- Gap report ---

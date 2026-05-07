@@ -1319,6 +1319,49 @@ def signals_met_rth_orb(
     )
 
 
+def signals_anchor_sweep(
+    bars: dict[str, np.ndarray], spec: dict[str, Any],
+) -> list[tuple[int, str, float, float]]:
+    """Adapter for `AnchorSweepStrategy` — named-anchor variant of
+    sweep_reclaim for US index futures (MNQ/NQ/ES/RTY/M2K).
+
+    Closes the gap that left `mnq_anchor_sweep` running paper-soak
+    with no lab evaluation surface (the strategy_kind was registered
+    in registry_strategy_bridge but missing from SIGNAL_GENERATORS,
+    so WalkForwardEngine.run() returned `unknown strategy_kind=...`
+    for it).
+
+    Spec keys honored (all optional; fall back to MNQ preset):
+      lookback, reclaim_window, min_wick_pct, min_volume_z,
+      rr_target, atr_stop_mult, max_trades_per_day,
+      min_bars_between_trades, warmup_bars.
+    """
+    from eta_engine.strategies.anchor_sweep_strategy import (
+        AnchorSweepConfig,
+        AnchorSweepStrategy,
+        mnq_anchor_sweep_preset,
+        nq_anchor_sweep_preset,
+    )
+
+    sym = (spec.get("symbol") or "").upper()
+    base = nq_anchor_sweep_preset() if sym.startswith("NQ") else mnq_anchor_sweep_preset()
+    overrides: dict[str, Any] = {}
+    for key in (
+        "lookback", "reclaim_window", "min_wick_pct", "min_volume_z",
+        "rr_target", "atr_stop_mult", "max_trades_per_day",
+        "min_bars_between_trades", "warmup_bars",
+    ):
+        if key in spec:
+            overrides[key] = spec[key]
+    cfg = AnchorSweepConfig(**{**base.__dict__, **overrides})
+    strategy = AnchorSweepStrategy(cfg)
+    return _replay_class_strategy(
+        strategy, bars, spec,
+        atr_stop_mult=float(spec.get("stop_atr", cfg.atr_stop_mult)),
+        rr_target=float(spec.get("target_atr_rr", cfg.rr_target)),
+    )
+
+
 def signals_mbt_zfade(
     bars: dict[str, np.ndarray], spec: dict[str, Any],
 ) -> list[tuple[int, str, float, float]]:
@@ -1435,6 +1478,9 @@ SIGNAL_GENERATORS: dict[str, Callable] = {
     # v2.11 MBT z-fade — honest rename of mbt_funding_basis with HTF
     # trend filter + EDA-derived thresholds (z>=2.5, RR=1.5).
     "mbt_zfade":                 signals_mbt_zfade,
+    # v2.12 anchor_sweep — closes the gap that left mnq_anchor_sweep
+    # running live with no lab evaluation surface (2026-05-07 fleet audit).
+    "anchor_sweep":              signals_anchor_sweep,
 }
 
 

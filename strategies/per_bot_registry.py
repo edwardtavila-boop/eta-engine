@@ -2013,9 +2013,27 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "wider variant. Vol_regime school will frequently flag this."
         ),
         extras={
-            "promotion_status": "paper_soak",
-            "elite_gate_passed": "2026-05-05",
-            "elite_gate_results": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
+            # DEMOTED 2026-05-07 — quant-agent EDA verdict: the
+            # 2026-05-05 elite-gate result is unreproducible on the
+            # canonical bar files. The saved lab artifact at
+            # reports/lab_reports/ng_sweep_reclaim/...json shows
+            # `total_trades: 0` + `bar file missing: NG/1h`. The
+            # _fleet_sweep.json has all 5 commodity bots failing the
+            # same way. Composite mode fires only ~36 trades over
+            # 2.4y (well below noise floor). Plus NG1_1h.csv has
+            # 65 adjacent-close jumps >5% (rollover artifacts).
+            # Demoted from paper_soak to research_candidate. Re-run
+            # elite-gate on canonical bars + rollover-adjusted data
+            # before any re-promotion.
+            "promotion_status": "research_candidate",
+            "demoted_on": "2026-05-07",
+            "demoted_reason": (
+                "elite-gate result unreproducible (lab artifact shows "
+                "0 trades, bar file missing); composite mode fires <40 "
+                "trades on 2.4y; NG1 1h has 65 rollover-jump bars."
+            ),
+            "elite_gate_passed_PRIOR_CLAIM": "2026-05-05 (DISPUTED)",
+            "elite_gate_results_PRIOR_CLAIM": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "ng",
                 "level_lookback": 48, "reclaim_window": 3,
