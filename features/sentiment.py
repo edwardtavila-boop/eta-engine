@@ -8,18 +8,22 @@ Galaxy Score / AltRank / social volume / Fear & Greed divergence.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from eta_engine.data.sentiment_lunarcrush import LunarCrushClient
 from eta_engine.features.base import Feature
+from eta_engine.features.mcp_taps import (
+    McpTap,
+    lunarcrush_snapshot,
+    use_mcp_taps_enabled,
+)
 
 if TYPE_CHECKING:
     from eta_engine.core.data_pipeline import BarData
 
-# Production path: `LunarCrushClient` (below) hits the LunarCrush REST API.
-# Optional MCP-tap path: see `features.mcp_taps.lunarcrush_snapshot` — used
-# when the runtime exposes the lunarcrush MCP (agent sessions).
+logger = logging.getLogger(__name__)
 
 
 def contrarian_extreme_score(galaxy_score: float, fng: int) -> float:
@@ -69,8 +73,27 @@ async def fetch_sentiment_snapshot(
     asset: str,
     *,
     client: LunarCrushClient | None = None,
+    mcp_client: McpTap | None = None,
+    symbol: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch sentiment metrics via the LunarCrush facade."""
+    """Fetch sentiment metrics via LunarCrush.
+
+    Prefers the MCP tap path when ``ETA_USE_MCP_TAPS=1`` and an
+    ``mcp_client`` implementing ``McpTap`` is provided.  Degrades
+    gracefully to the REST ``LunarCrushClient`` when the MCP client is
+    missing or the flag is off.
+    """
+    if use_mcp_taps_enabled():
+        if mcp_client is None:
+            logger.warning(
+                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; "
+                "falling back to REST LunarCrushClient for %s",
+                asset,
+            )
+        else:
+            snap = lunarcrush_snapshot(asset, symbol=symbol, mcp=mcp_client)
+            return snap.to_ctx()
+
     client = client or LunarCrushClient()
     galaxy_score, alt_rank, social_volume, fear_greed = await asyncio.gather(
         client.fetch_galaxy_score(asset),

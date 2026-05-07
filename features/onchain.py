@@ -8,18 +8,22 @@ Whale transfers + exchange netflow + active addresses.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from eta_engine.data.onchain_blockscout import BlockscoutClient
 from eta_engine.features.base import Feature
+from eta_engine.features.mcp_taps import (
+    McpTap,
+    blockscout_snapshot,
+    use_mcp_taps_enabled,
+)
 
 if TYPE_CHECKING:
     from eta_engine.core.data_pipeline import BarData
 
-# Production path: `BlockscoutClient` (above) hits the Blockscout REST API.
-# Optional MCP-tap path: see `features.mcp_taps.blockscout_snapshot` — used
-# when the runtime exposes the blockscout MCP (agent sessions).
+logger = logging.getLogger(__name__)
 
 
 def whale_delta_score(current: int, baseline: int) -> float:
@@ -61,12 +65,39 @@ async def fetch_onchain_snapshot(
     asset: str,
     *,
     client: BlockscoutClient | None = None,
+    mcp_client: McpTap | None = None,
+    address: str | None = None,
+    chain_id: int = 1,
 ) -> dict[str, Any]:
-    """Fetch on-chain metrics via the Blockscout facade.
+    """Fetch on-chain metrics via Blockscout.
 
-    The underlying client is still transport-agnostic, but this path now
-    exercises the real integration seam instead of hardcoding neutral values.
+    Prefers the MCP tap path when ``ETA_USE_MCP_TAPS=1`` and an
+    ``mcp_client`` implementing ``McpTap`` is provided with a valid
+    ``address``.  Degrades gracefully to the REST ``BlockscoutClient``
+    when the MCP client is missing or the flag is off.
     """
+    if use_mcp_taps_enabled():
+        if mcp_client is None:
+            logger.warning(
+                "ETA_USE_MCP_TAPS=1 but no mcp_client provided; "
+                "falling back to REST BlockscoutClient for %s",
+                asset,
+            )
+        elif address is None:
+            logger.warning(
+                "ETA_USE_MCP_TAPS=1 but no on-chain address supplied for %s; "
+                "falling back to REST BlockscoutClient",
+                asset,
+            )
+        else:
+            snap = blockscout_snapshot(
+                asset,
+                address=address,
+                chain_id=chain_id,
+                mcp=mcp_client,
+            )
+            return snap.to_ctx()
+
     client = client or BlockscoutClient()
     transfers, netflow_usd, active_delta = await asyncio.gather(
         client.fetch_whale_transfers(asset),
