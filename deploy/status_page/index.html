@@ -684,7 +684,7 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
         if (/^[0-9a-f]{8}-/i.test(botId) || botId.startsWith('eta-')) continue;
         const fills = Number(info.fills_today) || 0;
         if (fills === 0) continue;
-        const liveWr = info.live_wr;
+        const liveWr = info.live_wr_today ?? info.live_wr;
         const btWr = info.backtest_wr_target;
         const drift = info.drift_alarm;
         const liveWrTxt = (liveWr === null || liveWr === undefined) ? '—' : (Number(liveWr) * 100).toFixed(1) + '%';

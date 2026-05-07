@@ -207,9 +207,10 @@ class TestStatusPage:
         # Trade/activity visibility contract: supervisor signal updates are
         # displayed separately from actual fill-backed trades.
         assert "<th>Last Activity</th>" in html
-        assert 'colspan="10"' in html
+        assert 'colspan="12"' in html
         assert "last_trade_ts" in html
         assert "last_signal_ts" in html
+        assert "live_wr_today" in html
         assert "signalUpdates" in html
         assert "broker_gateway" in html
         assert "gateway_crash" in html
