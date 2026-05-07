@@ -595,6 +595,19 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_btc_bars.py (Coinbase spot bars)",),
     ),
+    # 2026-05-07: NQ clone of volume_profile_mnq -- the deflated-Sharpe
+    # survivor on MNQ. Audit pending; pinning gated on the strict-gate
+    # result returning positive expR_net + split_half_sign_stable=True.
+    BotRequirements(
+        bot_id="volume_profile_nq",
+        requirements=(
+            DataRequirement("bars", "NQ1", "5m", critical=True),
+            DataRequirement("bars", "NQ1", "1h", critical=True),
+            DataRequirement("bars", "NQ1", "D", critical=True,
+                note="daily POC anchors session value-area"),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py",),
+    ),
 
     # Gap-fill — needs daily to detect overnight gap
     BotRequirements(

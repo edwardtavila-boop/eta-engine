@@ -101,8 +101,8 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <div class="card"><h3>Total Bots</h3><div class="stat green" id="totalBots">—</div></div>
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
-  <div class="card"><h3 id="totalPnlLabel">Total PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">Lifetime cumulative</div></div>
-  <div class="card"><h3>Cumulative R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">Lifetime realized R</div></div>
+  <div class="card"><h3 id="totalPnlLabel">Lifetime PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">waiting for lifetime ledger</div></div>
+  <div class="card"><h3>Cumulative R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for realized-R outcomes</div></div>
   <div class="card"><h3>Actual Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
@@ -672,32 +672,54 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
   // a real lifetime field, show it; otherwise mark the card as unavailable
   // and let the broker-backed Today PnL carry the live proof.
-  const summaryTotalPnl = finiteNumber(summary.total_pnl);
+  const summaryTotalPnl = finiteNumber(summary.lifetime_total_pnl ?? summary.total_pnl);
   const totalPnl = summaryTotalPnl;
   const tpnlEl = document.getElementById('totalPnl');
   const totalPnlSub = document.getElementById('totalPnlSub');
+  const totalPnlLabel = document.getElementById('totalPnlLabel');
   if (totalPnl == null) {
+    if (totalPnlLabel) totalPnlLabel.textContent = 'Lifetime PnL';
     tpnlEl.textContent = '—';
     tpnlEl.className = 'stat dim';
     if (totalPnlSub) totalPnlSub.textContent = liveBrokerReady
       ? 'lifetime ledger not attached; today shown above'
       : 'lifetime ledger unavailable';
   } else {
+    if (totalPnlLabel) totalPnlLabel.textContent = 'Lifetime PnL';
     tpnlEl.textContent = '$' + totalPnl.toFixed(0);
     tpnlEl.className = 'stat ' + (totalPnl > 0 ? 'green' : totalPnl < 0 ? 'red' : 'dim');
-    if (totalPnlSub) totalPnlSub.textContent = summary.total_pnl_source || 'Lifetime cumulative';
+    if (totalPnlSub) totalPnlSub.textContent = summary.lifetime_total_pnl_source || summary.total_pnl_source || 'lifetime ledger';
   }
 
-  // Cumulative R: show unavailable until at least one R-tagged closed trade
-  // exists. Missing R evidence must not render as +0.00R.
-  const rValues = bots.map(b => finiteNumber(b.last_trade_r)).filter(v => v != null);
+  // Cumulative R: only trust close evidence that has an actual realized
+  // outcome attached. Placeholder close rows with qty=null / pnl=null / R=0
+  // are audit breadcrumbs, not performance outcomes.
+  const closeRows = Array.isArray(liveBroker?.position_exposure?.recent_closes)
+    ? liveBroker.position_exposure.recent_closes
+    : [];
+  let rValues = closeRows
+    .map(c => ({
+      r: finiteNumber(c.realized_r),
+      pnl: finiteNumber(c.realized_pnl),
+      qty: finiteNumber(c.qty)
+    }))
+    .filter(c => c.r != null && (Math.abs(c.r) > 1e-9 || c.pnl != null || c.qty != null))
+    .map(c => c.r);
+  if (!rValues.length && !closeRows.length) {
+    rValues = bots
+      .filter(b => b.last_trade_ts && finiteNumber(b.last_trade_qty) != null)
+      .map(b => finiteNumber(b.last_trade_r))
+      .filter(v => v != null);
+  }
   const cumR = rValues.length ? rValues.reduce((s, v) => s + v, 0) : null;
   const rEl = document.getElementById('cumulativeR');
   const rSub = document.getElementById('cumulativeRSub');
   if (cumR == null) {
     rEl.textContent = '—';
     rEl.className = 'stat dim';
-    if (rSub) rSub.textContent = 'waiting for R-tagged closed trades';
+    if (rSub) rSub.textContent = closeRows.length
+      ? 'close ledger present; realized R not attached yet'
+      : 'waiting for realized-R closed trades';
   } else {
     rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
     rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
@@ -919,15 +941,24 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   const brokerWr = liveBroker && liveBroker.win_rate_30d != null
     ? Number(liveBroker.win_rate_30d) * 100
     : null;
+  const brokerWrToday = liveBroker && liveBroker.win_rate_today != null
+    ? Number(liveBroker.win_rate_today) * 100
+    : null;
   if (brokerWr != null && Number.isFinite(brokerWr)) {
     document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
     document.getElementById('winRateDetail').textContent = '30d closed-trade outcomes (broker ledger)';
+  } else if (brokerWrToday != null && Number.isFinite(brokerWrToday)) {
+    const outcomeCount = Number(liveBroker.closed_outcome_count_today || liveBroker.evaluated_outcome_count_today || 0);
+    const wrSource = liveBroker.win_rate_source === 'alpaca_filled_order_pairs' ? 'Alpaca ' : '';
+    document.getElementById('winRate').textContent = brokerWrToday.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (brokerWrToday > 50 ? 'green' : brokerWrToday > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}closed broker outcome${outcomeCount === 1 ? '' : 's'} today`;
   } else {
     document.getElementById('winRate').textContent = '—';
     document.getElementById('winRate').className = 'stat dim';
     document.getElementById('winRateDetail').textContent = liveBrokerReady
-      ? 'waiting for closed-trade outcomes'
+      ? `${Number(liveBroker.today_actual_fills || 0)} fills; closed outcome PnL not tagged yet`
       : 'broker outcome history unavailable';
   }
 

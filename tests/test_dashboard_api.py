@@ -1416,6 +1416,9 @@ class TestDashboardAPI:
                 "total_unrealized_pnl": -25.25,
                 "open_position_count": 2,
                 "win_rate_30d": 0.625,
+                "win_rate_today": 0.5,
+                "win_rate_source": "alpaca_filled_order_pairs",
+                "closed_outcome_count_today": 4,
                 "alpaca": {"ready": True},
                 "ibkr": {"ready": False},
             },
@@ -1431,6 +1434,9 @@ class TestDashboardAPI:
         assert summary["broker_today_actual_fills"] == 7
         assert summary["broker_open_position_count"] == 2
         assert summary["broker_win_rate_30d"] == 0.625
+        assert summary["broker_win_rate_today"] == 0.5
+        assert summary["broker_win_rate_source"] == "alpaca_filled_order_pairs"
+        assert summary["broker_closed_outcomes_today"] == 4
         assert summary["pnl_summary_source"] == "live_broker_state"
         assert "total_pnl" not in summary
 
@@ -1845,6 +1851,43 @@ class TestDashboardAPI:
         assert mod._derive_ibkr_today_realized_pnl(
             {"account_summary_realized_pnl": 321.98}
         ) == 321.98
+
+    def test_closed_outcomes_from_alpaca_filled_order_pairs(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        outcomes = mod._closed_outcomes_from_filled_orders([
+            {
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "filled_qty": "1.0",
+                "filled_avg_price": "100.00",
+                "filled_at": "2026-05-07T14:00:00Z",
+                "status": "filled",
+            },
+            {
+                "symbol": "BTC/USD",
+                "side": "sell",
+                "filled_qty": "0.5",
+                "filled_avg_price": "110.00",
+                "filled_at": "2026-05-07T15:00:00Z",
+                "status": "filled",
+            },
+            {
+                "symbol": "BTC/USD",
+                "side": "sell",
+                "filled_qty": "0.5",
+                "filled_avg_price": "90.00",
+                "filled_at": "2026-05-07T16:00:00Z",
+                "status": "filled",
+            },
+        ])
+
+        assert outcomes["closed_outcome_count"] == 2
+        assert outcomes["evaluated_outcome_count"] == 2
+        assert outcomes["winning_outcomes"] == 1
+        assert outcomes["losing_outcomes"] == 1
+        assert outcomes["win_rate"] == 0.5
+        assert [row["realized_pnl"] for row in outcomes["recent_outcomes"]] == [-5.0, 5.0]
 
     def test_live_broker_state_aggregates_ibkr_realized_pnl(self, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

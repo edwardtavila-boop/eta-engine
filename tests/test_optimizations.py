@@ -222,7 +222,8 @@ class TestStatusPage:
         assert "isRuntimeActiveBot" in html
         assert "readiness/staged rows" in html
         assert "lifetime ledger not attached; today shown above" in html
-        assert "waiting for R-tagged closed trades" in html
+        assert "waiting for realized-R closed trades" in html
+        assert "close ledger present; realized R not attached yet" in html
         assert "open/no fill qty" in html
         assert "open/no-fill" in html
         assert "actualRouterFills" in html

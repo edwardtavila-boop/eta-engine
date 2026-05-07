@@ -137,6 +137,32 @@ def test_short_breakout_below_range_low() -> None:
     assert out.side == "SELL"
 
 
+def test_retest_touch_without_close_confirmation_waits() -> None:
+    s = _fixture_strategy(
+        range_minutes=15,
+        require_retest=True,
+        retest_require_close_bounce=True,
+    )
+    cfg = _config_for_test()
+    for h, m in [(9, 30), (9, 35), (9, 40)]:
+        s.maybe_enter(_bar(h, m, high=120.0, low=100.0), [], 10_000.0, cfg)
+    hist = [_bar(8, m, high=120.0, low=100.0) for m in range(0, 30, 5)]
+
+    breakout = _bar(9, 45, high=125.0, low=121.0, close=124.0)
+    assert s.maybe_enter(breakout, hist, 10_000.0, cfg) is None
+    assert s._day.pending_breakout is True
+
+    retest_touch = _bar(9, 50, high=121.0, low=119.0, close=119.5)
+    assert s.maybe_enter(retest_touch, hist + [breakout], 10_000.0, cfg) is None
+    assert s._day.retest_done is True
+    assert s._day.pending_breakout is True
+
+    confirmed = _bar(9, 55, high=123.0, low=119.5, close=121.0)
+    out = s.maybe_enter(confirmed, hist + [breakout, retest_touch], 10_000.0, cfg)
+    assert out is not None
+    assert out.side == "BUY"
+
+
 def test_no_breakout_inside_range() -> None:
     s = _fixture_strategy(range_minutes=15)
     cfg = _config_for_test()

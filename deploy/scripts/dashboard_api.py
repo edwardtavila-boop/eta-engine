@@ -3870,6 +3870,73 @@ def _normalize_trade_close(row: dict) -> dict | None:
     }
 
 
+def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
+    """Derive same-day closed outcomes from broker filled-order pairs.
+
+    This is intentionally conservative and only pairs fills from the order
+    payload already returned by the broker. It does not claim lifetime or 30d
+    performance; it gives the dashboard a truthful same-day outcome rate when
+    the close ledger has not yet written realized PnL rows.
+    """
+    lots_by_symbol: dict[str, list[dict[str, float | str]]] = defaultdict(list)
+    outcomes: list[dict[str, object]] = []
+
+    def _order_dt(row: dict) -> datetime:
+        parsed = _parse_fill_dt(row.get("filled_at") or row.get("ts") or row.get("submitted_at"))
+        return parsed or datetime.min.replace(tzinfo=UTC)
+
+    for order in sorted((o for o in orders if isinstance(o, dict)), key=_order_dt):
+        symbol = str(order.get("symbol") or "").strip()
+        side = str(order.get("side") or "").strip().lower()
+        qty = _float_value(order.get("filled_qty") or order.get("qty"))
+        price = _float_value(order.get("filled_avg_price") or order.get("price"))
+        if not symbol or side not in {"buy", "sell"} or qty is None or qty <= 0 or price is None:
+            continue
+        remaining = qty
+        opposite = "sell" if side == "buy" else "buy"
+        lots = lots_by_symbol[symbol]
+        while remaining > 1e-12 and lots and lots[0]["side"] == opposite:
+            lot = lots[0]
+            lot_qty = float(lot["qty"])
+            close_qty = min(remaining, lot_qty)
+            entry_price = float(lot["price"])
+            pnl = (
+                (price - entry_price) * close_qty
+                if lot["side"] == "buy"
+                else (entry_price - price) * close_qty
+            )
+            outcomes.append(
+                {
+                    "symbol": symbol,
+                    "closed_side": "long" if lot["side"] == "buy" else "short",
+                    "qty": round(close_qty, 8),
+                    "entry_price": round(entry_price, 8),
+                    "exit_price": round(price, 8),
+                    "realized_pnl": round(pnl, 6),
+                    "closed_at": order.get("filled_at") or order.get("ts"),
+                },
+            )
+            remaining -= close_qty
+            lot["qty"] = round(lot_qty - close_qty, 12)
+            if float(lot["qty"]) <= 1e-12:
+                lots.pop(0)
+        if remaining > 1e-12:
+            lots.append({"side": side, "qty": round(remaining, 12), "price": price})
+
+    wins = sum(1 for row in outcomes if float(row.get("realized_pnl") or 0.0) > 0)
+    losses = sum(1 for row in outcomes if float(row.get("realized_pnl") or 0.0) < 0)
+    evaluated = wins + losses
+    win_rate = round(wins / evaluated, 4) if evaluated else None
+    return {
+        "closed_outcome_count": len(outcomes),
+        "evaluated_outcome_count": evaluated,
+        "winning_outcomes": wins,
+        "losing_outcomes": losses,
+        "win_rate": win_rate,
+        "recent_outcomes": outcomes[-20:][::-1],
+    }
+
+
 def _broker_summary_fields(live_broker_state: dict) -> dict:
     """Broker-backed rollup fields for /api/bot-fleet.summary.
 
@@ -3884,6 +3951,8 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     fills = _float_value(live_broker_state.get("today_actual_fills"))
     open_positions = _float_value(live_broker_state.get("open_position_count"))
     win_rate = _float_value(live_broker_state.get("win_rate_30d"))
+    win_rate_today = _float_value(live_broker_state.get("win_rate_today"))
+    closed_outcomes_today = _float_value(live_broker_state.get("closed_outcome_count_today"))
     out: dict[str, object] = {
         "pnl_summary_source": "live_broker_state",
     }
@@ -3899,6 +3968,11 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
         out["broker_open_position_count"] = int(open_positions)
     if win_rate is not None:
         out["broker_win_rate_30d"] = win_rate
+    if win_rate_today is not None:
+        out["broker_win_rate_today"] = win_rate_today
+        out["broker_win_rate_source"] = str(live_broker_state.get("win_rate_source") or "")
+    if closed_outcomes_today is not None:
+        out["broker_closed_outcomes_today"] = int(closed_outcomes_today)
     return out
 
 
@@ -4230,6 +4304,13 @@ def _alpaca_live_state_snapshot(*, today_start_iso: str) -> dict:
                 orders = ord_resp.json() if isinstance(ord_resp.json(), list) else []
                 filled = [o for o in orders if isinstance(o, dict) and str(o.get("status") or "").lower() == "filled"]
                 snapshot["today_filled_orders"] = len(filled)
+                outcomes = _closed_outcomes_from_filled_orders(filled)
+                snapshot["today_closed_outcome_count"] = outcomes["closed_outcome_count"]
+                snapshot["today_evaluated_outcome_count"] = outcomes["evaluated_outcome_count"]
+                snapshot["today_winning_outcomes"] = outcomes["winning_outcomes"]
+                snapshot["today_losing_outcomes"] = outcomes["losing_outcomes"]
+                snapshot["today_win_rate"] = outcomes["win_rate"]
+                snapshot["recent_closed_outcomes"] = outcomes["recent_outcomes"]
                 # Surface the most recent N for the panel tape.
                 trimmed: list[dict] = []
                 for o in filled[:30]:
@@ -4752,6 +4833,9 @@ def _live_broker_state_payload() -> dict:
         int(alpaca.get("open_position_count") or 0)
         + int(ibkr.get("open_position_count") or 0)
     )
+    win_rate_today = _float_value(alpaca.get("today_win_rate"))
+    closed_outcome_count_today = int(alpaca.get("today_closed_outcome_count") or 0)
+    evaluated_outcome_count_today = int(alpaca.get("today_evaluated_outcome_count") or 0)
     # 30d win-rate from blotter fills (best-effort; uses local ledger
     # because broker REST is too narrow for 30-day history without paging).
     win_rate_30d: float | None = None
@@ -4781,6 +4865,10 @@ def _live_broker_state_payload() -> dict:
         "total_unrealized_pnl": total_unrealized_pnl,
         "open_position_count": open_position_count,
         "win_rate_30d": win_rate_30d,
+        "win_rate_today": win_rate_today,
+        "closed_outcome_count_today": closed_outcome_count_today,
+        "evaluated_outcome_count_today": evaluated_outcome_count_today,
+        "win_rate_source": "alpaca_filled_order_pairs" if win_rate_today is not None else "",
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,

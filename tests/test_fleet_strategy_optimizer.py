@@ -3,6 +3,7 @@ from __future__ import annotations
 from eta_engine.scripts.fleet_strategy_optimizer import (
     Candidate,
     CellRunResult,
+    _build_plans,
     _rank,
 )
 
@@ -88,3 +89,12 @@ def test_optimizer_includes_registered_eth_crypto_orb_anchor() -> None:
 def test_optimizer_includes_registered_sol_crypto_orb_anchor_with_trade_cap() -> None:
     import pytest
     pytest.skip("sol_perp deactivated in lab_sweep_2026_05_04")
+
+
+def test_optimizer_accepts_active_sol_optimized_variant() -> None:
+    plans_by_bot = {plan.bot_id: plan for plan in _build_plans()}
+
+    plan = plans_by_bot["sol_optimized"]
+    assert plan.symbol == "SOL"
+    assert plan.timeframe == "1h"
+    assert plan.candidates

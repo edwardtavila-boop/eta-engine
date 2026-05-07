@@ -225,6 +225,8 @@ def test_cap_qty_fleet_exhausted_floor_disabled_returns_zero() -> None:
 def test_cap_qty_futures_passes_when_budget_covers_contract() -> None:
     """A budget that covers the full contract value lets the requested qty through."""
     from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    # MNQ point_value = $2/pt -> 1 contract notional = $27,500 * 2 = $55,000.
+    # Need a budget >= that for the request to pass.
     os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "60000"
     os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "100000"
     try:
@@ -236,6 +238,114 @@ def test_cap_qty_futures_passes_when_budget_covers_contract() -> None:
     finally:
         os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
         os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+
+
+def test_cap_qty_uses_contract_multiplier_for_notional() -> None:
+    """REGRESSION 2026-05-07: cap_qty_to_budget must include the contract
+    multiplier (point_value) when computing notional. Earlier code used
+    ``qty * entry_price`` alone, which under-counted notional by the
+    multiplier (5x for YM, 50x for ES, 100x for GC) -- letting bots size
+    positions WAY past the per-bot cap on full-sized futures.
+
+    YM at 49639 with point_value=$5/pt -> 1 contract notional = $248,195.
+    A $10k per-bot cap should NOT permit even fractional YM exposure.
+    """
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "50000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "0"  # disable floor for clean test
+    try:
+        # Request 1.0 YM contract: true notional = $248,195, way over $10k cap.
+        # With the bug, supervisor saw notional = $49,639 (still over, OK).
+        # With the bug + a smaller request like 0.1, supervisor saw
+        # notional = $4,964 < $10k -> "ok" (WRONG: true notional = $24,820).
+        qty, reason = cap_qty_to_budget(
+            symbol="YM", entry_price=49639.0, requested_qty=0.1,
+        )
+        # Post-fix: 0.1 * 49639 * 5 = $24,820 > $10k cap, so this MUST be capped.
+        assert reason == "per_bot_capped", (
+            f"YM 0.1 contract at $24,820 notional MUST be capped at $10k; "
+            f"got reason={reason} qty={qty}"
+        )
+        # Capped notional must equal the cap: 10000 / (49639 * 5) = 0.04
+        # Then int-floored to 0 (futures min-1-lot, floor disabled for this test).
+        assert qty == 0.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
+
+
+def test_cap_qty_gold_full_contract_correctly_capped() -> None:
+    """GC point_value = $100/pt. 1 contract at $4,700 -> $470,000 notional.
+    The pre-fix code reported notional as just $4,700 -- a 100x undercount.
+    Verify the fix prevents an unlimited Gold position from slipping under
+    the per-bot cap.
+    """
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "50000"
+    os.environ["ETA_PAPER_FUTURES_FLOOR"] = "0"
+    try:
+        # Even 1 GC contract at $470k notional must be capped at $10k.
+        qty, reason = cap_qty_to_budget(
+            symbol="GC", entry_price=4700.0, requested_qty=1.0,
+        )
+        assert reason == "per_bot_capped"
+        # Capped: 10000 / (4700 * 100) = 0.0212 -> int -> 0 contracts.
+        assert qty == 0.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+        os.environ.pop("ETA_PAPER_FUTURES_FLOOR", None)
+
+
+def test_cap_qty_micro_gold_fits_normal_budget() -> None:
+    """MGC (Micro Gold) point_value = $10/pt. 1 contract at $4,700
+    notional = $47,000. With a $50k per-bot cap, 1 MGC fits cleanly.
+
+    This pins the fix's correctness from the OTHER side: the multiplier-
+    aware code must also let legitimate trades through, not just block
+    over-sized ones.
+    """
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "50000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "200000"
+    try:
+        qty, reason = cap_qty_to_budget(
+            symbol="MGC", entry_price=4700.0, requested_qty=1.0,
+        )
+        assert reason == "ok"
+        assert qty == 1.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+
+
+def test_cap_qty_crypto_spot_unchanged_by_multiplier_fix() -> None:
+    """The point_value fix must NOT affect crypto spot trading where
+    notional has always been correctly ``qty * price``. BTC, ETH, SOL
+    on Alpaca paper are 1.0-multiplier instruments.
+    """
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD"] = "1000"
+    os.environ["ETA_LIVE_CRYPTO_FLEET_BUDGET_USD"] = "5000"
+    try:
+        # 0.01 BTC * $80k = $800 < $1k cap -> ok
+        qty, reason = cap_qty_to_budget(
+            symbol="BTC", entry_price=80000.0, requested_qty=0.01,
+        )
+        assert reason == "ok"
+        assert qty == 0.01
+        # 0.02 BTC * $80k = $1600 > $1k cap -> per_bot_capped to 0.0125
+        qty, reason = cap_qty_to_budget(
+            symbol="BTC", entry_price=80000.0, requested_qty=0.02,
+        )
+        assert reason == "per_bot_capped"
+        assert abs(qty * 80000.0 - 1000.0) < 1.0
+    finally:
+        os.environ.pop("ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_CRYPTO_FLEET_BUDGET_USD", None)
 
 
 # ─── Per-asset bracket precision (FX rounding-collapse fix) ────

@@ -300,20 +300,23 @@ def _build_plans() -> list[BotPlan]:
     )
 
     # SOL 1h — high-beta BTC proxy. Wider-stop crypto_orb + trend.
-    plans.append(
-        BotPlan(
-            bot_id="sol_perp",
-            symbol="SOL",
-            timeframe="1h",
-            window_days=90,
-            step_days=30,
-            min_trades_per_window=3,
-            candidates=_with_registered_candidate(
-                "sol_perp",
-                _crypto_orb_grid() + _crypto_trend_grid(),
+    # sol_optimized is the active paper-soak variant; sol_perp is kept as
+    # the older research anchor so existing optimizer workflows still run.
+    for bot in ("sol_perp", "sol_optimized"):
+        plans.append(
+            BotPlan(
+                bot_id=bot,
+                symbol="SOL",
+                timeframe="1h",
+                window_days=90,
+                step_days=30,
+                min_trades_per_window=3,
+                candidates=_with_registered_candidate(
+                    bot,
+                    _crypto_orb_grid() + _crypto_trend_grid(),
+                ),
             ),
-        ),
-    )
+        )
 
     # crypto_seed — daily DCA accumulator. Trend on daily fits.
     plans.append(

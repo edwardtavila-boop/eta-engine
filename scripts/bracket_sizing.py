@@ -259,6 +259,51 @@ def _safe_float(v: object) -> float | None:
         return None
 
 
+def _point_value(symbol: str) -> float:
+    """Return the contract multiplier (USD value per 1.0 of price).
+
+    Lookup order (first match wins):
+      1. Spot crypto roots (BTC, ETH, SOL, etc.) -> 1.0 even if the
+         instrument_specs table has a CME-futures entry for the same
+         ticker. The supervisor's BTC/ETH bots route through Alpaca
+         spot where 1.0 BTC * $80k = $80k of buying-power use.
+      2. instrument_specs.get_spec(symbol).point_value -- the
+         authoritative table for futures (MNQ=$2/pt, ES=$50/pt,
+         GC=$100/pt, YM=$1/pt per CME). MBT and MET (CME crypto micros)
+         are looked up here, not via (1).
+      3. 1.0 fallback for anything else.
+
+    Why this is safety-critical: prior to 2026-05-07 the budget cap was
+    qty * entry_price WITHOUT multiplier, under-counting notional by
+    anywhere from 5x (YM) to 100x (GC), letting bots size positions
+    that consumed FAR more capital than the cap allows. For a $10k cap,
+    GC at $4700 with requested_qty=2 reported notional=$9,400 and
+    passed -- but the true notional is $470,000 * 2 = $940,000.
+    """
+    root = _root(symbol)
+
+    # 1. Spot crypto: Alpaca paper / spot exchanges trade BASE/USD with
+    # 1:1 quote-currency notional. instrument_specs has a "BTC" entry
+    # for CME Bitcoin Futures (point_value=$5/pt) which is wrong for
+    # the spot path. MBT/MET are intentionally NOT in this set -- they
+    # are CME crypto-futures with their own multipliers.
+    if root in _CRYPTO_ROOTS - {"MBT", "MET"}:
+        return 1.0
+
+    # 2. Authoritative futures spec table.
+    try:
+        from eta_engine.feeds.instrument_specs import get_spec
+        spec = get_spec(symbol)
+        pv = float(getattr(spec, "point_value", 0.0) or 0.0)
+        if pv > 0:
+            return pv
+    except Exception:  # noqa: BLE001 -- fall through to defaults
+        pass
+
+    # 3. Conservative default: assume 1.0 so we never silently over-trade.
+    return 1.0
+
+
 def cap_qty_to_budget(
     *,
     symbol: str,
@@ -272,6 +317,13 @@ def cap_qty_to_budget(
     is exceeded. ``reason`` is one of "ok", "per_bot_capped",
     "fleet_capped", "fleet_exhausted". The supervisor logs the reason
     so the operator can see when budgets are clamping signals.
+
+    Notional math: ``qty * entry_price * point_value``. The point_value
+    (contract multiplier) is the difference between "Dow at 49639" and
+    "1 YM contract has $248,195 of economic exposure." Earlier
+    iterations of this function omitted ``point_value`` and reported
+    notional in INDEX-POINT terms, which silently under-counted by 5x
+    to 100x for full-sized futures (caught 2026-05-07).
     """
     if entry_price <= 0:
         return requested_qty, "ok"
@@ -279,7 +331,8 @@ def cap_qty_to_budget(
     per_bot_cap_usd = _budget_per_bot_usd(symbol)
     fleet_cap_usd = _fleet_budget_usd(symbol)
 
-    requested_notional = abs(requested_qty) * entry_price
+    point_value = _point_value(symbol)
+    requested_notional = abs(requested_qty) * entry_price * point_value
 
     # Fleet budget — what's left after existing open exposure?
     fleet_remaining = max(0.0, fleet_cap_usd - max(0.0, fleet_open_notional_usd))
@@ -303,7 +356,12 @@ def cap_qty_to_budget(
     if requested_notional <= notional_cap:
         return requested_qty, "ok"
 
-    capped_qty = notional_cap / entry_price
+    # capped_qty * entry_price * point_value == notional_cap, so divide
+    # back through the multiplier. Earlier code did
+    # ``notional_cap / entry_price`` which was missing point_value -- the
+    # capped qty came out in index-point units instead of contract units,
+    # over-stating the allowed contract count by the multiplier.
+    capped_qty = notional_cap / (entry_price * point_value)
     # Round consistently with the supervisor's existing precision.
     if _is_crypto(symbol):
         capped_qty = round(capped_qty, 6)

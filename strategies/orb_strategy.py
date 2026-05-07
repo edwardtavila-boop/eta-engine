@@ -318,6 +318,8 @@ class ORBStrategy:
 
         # ── Phase 2.6: retest logic (when enabled) ──
         if self.cfg.require_retest and self._day.pending_breakout:
+            side = None
+            entry_price = bar.close
             broken = self._day.broken_level
             pside = self._day.pending_side
             retest_band = self.cfg.retest_atr_band * atr
