@@ -49,6 +49,21 @@ def test_check_secrets_rejects_invalid_ibkr_credentials_json(tmp_path) -> None:
     assert "username" in creds_result.detail.lower() or "login" in creds_result.detail.lower()
 
 
+def test_check_secrets_reports_binary_json_as_invalid(tmp_path) -> None:
+    _write_required_baseline(tmp_path)
+    (tmp_path / "secrets" / "ibkr_credentials.json").write_text(
+        json.dumps({"username": "apexpredator"}),
+        encoding="utf-8",
+    )
+    (tmp_path / "secrets" / "quantum_creds.json").write_bytes(b"\xff\xfe\x00\x00")
+
+    results = _result_by_path(secrets_validator.check_secrets(root=tmp_path))
+
+    quantum_result = results["secrets/quantum_creds.json"]
+    assert quantum_result.status == secrets_validator.SecretStatus.INVALID
+    assert "json" in quantum_result.detail.lower()
+
+
 def test_main_supports_json_output(tmp_path, monkeypatch, capsys) -> None:
     _write_required_baseline(tmp_path)
     (tmp_path / "secrets" / "ibkr_credentials.json").write_text(
