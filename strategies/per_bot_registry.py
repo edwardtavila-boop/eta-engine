@@ -288,7 +288,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # Daily loss cap stays at 4% as the per-bot circuit breaker.
             "warmup_policy": {"promoted_on": "2026-05-05", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
             "daily_loss_limit_pct": 4.0,
-},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: Sharpe -2.82, expR_net -0.241, "
+                "deflated Sharpe -2.62 over 17 trades. Sample size is small "
+                "but the magnitude of underperformance (Sharpe < -2.5) and "
+                "the alignment with the broader BTC-bot pattern (every BTC "
+                "bot in this audit is net-negative) means the 50% WR + $35k "
+                "paper-soak that promoted this bot was a tail draw, not a "
+                "stable edge. BTC sweep_reclaim has not held up out-of-sample. "
+                "Audit: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
+        },
     ),
 
     # sol_optimized — paper-soak research bot for SOL diversification.
@@ -713,6 +725,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 34 trades, Sharpe -3.97, "
+                "expR_net -0.32, deflated Sharpe -3.14. Sample is small but "
+                "Sharpe < -3 is structural failure, not noise. The elite-gate "
+                "result that promoted this bot (63T OOS, +$1355 PnL, 31.7% WR) "
+                "was a single window outcome that did not generalize. "
+                "Confluence_scorecard sweep_reclaim on MNQ 5m is fighting the "
+                "wrong regime -- mnq_anchor_sweep (Sharpe 1.54, expR_net "
+                "+0.116) covers MNQ sweep mechanics. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -963,6 +988,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # cap added as the per-bot circuit breaker.
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 1.0},
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 4969 trades, Sharpe 0.17, "
+                "expR_net -0.010, split_half_sign_stable=False, deflated "
+                "Sharpe -1.35. Same family as the retired vwap_mr_mnq/nq -- "
+                "BTC variant has more sample (4969 trades) but still no "
+                "edge once friction is netted. The 85.7% WR paper-soak that "
+                "promoted this bot was a single 3000-bar window not "
+                "representative of the full distribution. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1150,6 +1187,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 927 trades, Sharpe -0.18, "
+                "expR_net -0.042, split_half_sign_stable=False, deflated "
+                "Sharpe -2.45. The 16-trade paper-soak (+$1,084) was a "
+                "tail draw; with 927 trades the structural answer is no "
+                "edge. NQ/ES ratio mean-reversion does not hold on MNQ 5m. "
+                "Audit: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1295,6 +1342,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "orb_range_minutes": 60,
             "orb_config": {"range_minutes": 60, "rr_target": 2.5, "atr_stop_mult": 2.5, "ema_bias_period": 100, "max_trades_per_day": 2},
             "instrument_class": "crypto",
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 757 trades, Sharpe -0.65, "
+                "expR_net -0.082, split_half_sign_stable=False, deflated "
+                "Sharpe -3.18. Shadow_benchmark status acknowledged the 25% "
+                "WR paper-soak; the 757-trade backtest confirms no edge in "
+                "the orb_sage_gated mechanic on BTC 1h. Diagnostic value is "
+                "outweighed by JARVIS-consult overhead and sim-equity drain. "
+                "Audit: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1317,6 +1375,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "min_agreement_count": 3,
             "voters": ["regime_trend", "regime_trend_etf", "sage_daily_gated"],
             "etf_csv_path": _ETF_FLOWS_PATH,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 2110 trades, Sharpe 0.00, "
+                "expR_net -0.025, split_half_sign_stable=False, deflated "
+                "Sharpe -2.10. Sharpe of literally zero across 2110 trades "
+                "is the cleanest possible no-edge signal. Ensemble voting "
+                "of three losing voters has not synthesized an edge. "
+                "Audit: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1426,6 +1494,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "BTC",
             "crypto_native": True,
             "mtf_scalp_config": {"htf_bars_per_aggregate": 12, "ltf_rr_target": 2.5, "ltf_atr_stop_mult": 1.5, "max_trades_per_day": 6},
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 348 trades, Sharpe -0.29, "
+                "expR_net -0.123, split_half_sign_stable=False, deflated "
+                "Sharpe -2.44. Already shadow_benchmark for being 0% WR on "
+                "paper-soak; the 348-trade backtest confirms the timeframe "
+                "is wrong for BTC. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 
@@ -1473,7 +1551,22 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         step_days=180,
         min_trades_per_window=5,
         rationale="DCA accumulator — non-edge strategy for exposure, not alpha.",
-        extras={"promotion_status": "non_edge_strategy", "non_edge_reason": "DCA accumulator, not alpha edge."},
+        extras={
+            "promotion_status": "non_edge_strategy",
+            "non_edge_reason": "DCA accumulator, not alpha edge.",
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 2065 trades, Sharpe -0.30, "
+                "expR_net -0.037, split_half_sign_stable=False, deflated "
+                "Sharpe -2.96. The 'non-edge DCA accumulator' framing was "
+                "tolerated when this bot was idle, but at 2065 backtest "
+                "trades it is actively bleeding the sim. Real BTC exposure "
+                "should come from a passive long position, not from a bot "
+                "consuming JARVIS-consult slots. Audit: "
+                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
+        },
     ),
 
     StrategyAssignment(
@@ -2204,6 +2297,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "ZN",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-07",
+            "deactivated_reason": (
+                "Strict-gate audit 2026-05-07: 21 trades, Sharpe 0.20, "
+                "expR_net -0.191, split_half_sign_stable=False, deflated "
+                "Sharpe -2.06. Already shadow_benchmark for losing -$3.6k "
+                "in prior windows. The 21-trade backtest (-0.191 net "
+                "expectancy) confirms ZN sweep_reclaim has no edge on 1h. "
+                "Audit: eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+            ),
         },
     ),
 

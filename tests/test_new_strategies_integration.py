@@ -73,20 +73,26 @@ def test_bridge_builds_active_bots():
     Active list below is the representative bot per still-live
     confluence_scorecard sub-strategy kind. If the only bot for a kind
     gets retired, drop it here and add the next representative.
+
+    Post-2026-05-07 round-2 retire batch: vwap_reversion, funding_rate,
+    cross_asset_divergence, gap_fill all have ZERO active bots in their
+    families now. Only sweep_reclaim, rsi_mean_reversion, volume_profile,
+    and orb_sage_gated still have active members. The list below
+    intentionally excludes the dead families -- there is nothing to
+    test if no production bot exercises that bridge path.
+
     Sidecar deactivation at var/eta_engine/state/kaizen_overrides.json
     -- bots reappear here when reactivated."""
     clear_strategy_cache()
     active = [
-        # rsi_mean_reversion still has rsi_mr_mnq active (top survivor of
-        # 2026-05-07 audit: 137 trades, Sharpe 1.91, expR_net +0.124,
+        # rsi_mean_reversion: rsi_mr_mnq is the top survivor of the
+        # 2026-05-07 audit (137 trades, Sharpe 1.91, expR_net +0.124,
         # split_half_sign_stable=True).
         "rsi_mr_mnq",
-        # volume_profile still has volume_profile_mnq active.
+        # volume_profile: two active bots; volume_profile_mnq and
+        # volume_profile_btc both still surface evidence.
         "volume_profile_mnq",
-        # cross_asset_divergence still has cross_asset_mnq active.
-        "cross_asset_mnq",
-        # vwap_reversion still has vwap_mr_btc active (BTC variant).
-        "vwap_mr_btc",
+        "volume_profile_btc",
         # sweep_reclaim has many active bots; pick one representative.
         "mes_sweep_reclaim",
     ]

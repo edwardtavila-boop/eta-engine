@@ -113,17 +113,18 @@ def test_audit_runnable_when_all_critical_present(fully_covered_lib: DataLibrary
 
 def test_audit_blocked_when_critical_missing(tmp_path: Path) -> None:
     empty_lib = DataLibrary(roots=[tmp_path / "nope"])  # zero datasets
-    # 2026-05-05: switched test from btc_hybrid to btc_optimized after
-    # btc_hybrid was deactivated by elite_scoreboard evidence (PF=0.82
-    # negative expectancy). Deactivated bots short-circuit audit_bot()
-    # to an empty BotAudit (deactivated=True, no requirements scanned)
-    # — by design, since the data audit doesn't care about retired bots.
-    # btc_optimized is the active replacement (same BTC critical bars).
-    a = audit_bot("btc_optimized", library=empty_lib)
+    # Reference-bot history: btc_hybrid (deactivated 2026-05-05 by
+    # elite_scoreboard) -> btc_optimized (deactivated 2026-05-07 by the
+    # post-dispatch-fix strict-gate audit, Sharpe -2.82) ->
+    # volume_profile_btc (still active, same BTC critical bars).
+    # Deactivated bots short-circuit audit_bot() to a runnable=True empty
+    # BotAudit -- the data audit doesn't care about retired bots --
+    # so the reference must always point at a still-active bot.
+    a = audit_bot("volume_profile_btc", library=empty_lib)
     assert a is not None
     assert not a.is_runnable
     assert a.critical_coverage_pct == pytest.approx(0.0)
-    # btc_optimized critical: BTC bars at 5m/1h/D
+    # volume_profile_btc critical: BTC bars at 5m/1h/D
     assert len(a.missing_critical) >= 3
 
 

@@ -49,13 +49,14 @@ def tmp_action_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_is_active_true_when_sidecar_missing(tmp_overrides: Path) -> None:
     """Empty / missing sidecar → registry decides on its own.
 
-    Uses ``btc_optimized`` (an ELITE-tier bot from the 2026-05-05 kaizen
-    pass) as a known-active reference. Don't use ``mnq_futures`` —
-    that one was registry-deprecated in favor of ``mnq_futures_sage``.
+    Uses ``rsi_mr_mnq`` as a known-active reference. It is the top survivor
+    of the 2026-05-07 strict-gate audit (137 trades, Sharpe 1.91,
+    expR_net +0.124, split_half_sign_stable=True). Previous reference
+    ``btc_optimized`` was retired 2026-05-07 (Sharpe -2.82).
     """
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("btc_optimized") is True
+    assert is_bot_active("rsi_mr_mnq") is True
     assert not tmp_overrides.exists()  # no sidecar created accidentally
 
 
@@ -63,7 +64,7 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
     """Bot in sidecar → drops out of is_active()."""
     tmp_overrides.write_text(
         json.dumps({"deactivated": {
-            "btc_optimized": {
+            "rsi_mr_mnq": {
                 "applied_at": "2026-05-05T06:00:00+00:00",
                 "reason": "tier=DECAY mc=DEAD test fixture",
             },
@@ -73,7 +74,7 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
 
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("btc_optimized") is False
+    assert is_bot_active("rsi_mr_mnq") is False
 
 
 def test_is_active_ignores_malformed_sidecar(tmp_overrides: Path) -> None:
@@ -83,19 +84,19 @@ def test_is_active_ignores_malformed_sidecar(tmp_overrides: Path) -> None:
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
     # Still active because the parse failed and we returned {}.
-    assert is_bot_active("btc_optimized") is True
+    assert is_bot_active("rsi_mr_mnq") is True
 
 
 def test_is_active_ignores_wrong_schema(tmp_overrides: Path) -> None:
     """Sidecar with deactivated=<list> instead of dict → ignored safely."""
     tmp_overrides.write_text(
-        json.dumps({"deactivated": ["btc_optimized"]}),  # wrong shape
+        json.dumps({"deactivated": ["rsi_mr_mnq"]}),  # wrong shape
         encoding="utf-8",
     )
 
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("btc_optimized") is True
+    assert is_bot_active("rsi_mr_mnq") is True
 
 
 def test_registry_deactivation_takes_precedence_over_missing_sidecar(

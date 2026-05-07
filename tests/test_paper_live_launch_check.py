@@ -362,8 +362,12 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
     """
     history = tmp_path / "history"
     history.mkdir()
-    # Seed every CRITICAL btc_optimized feed so they all show up in evidence:
+    # Seed every CRITICAL volume_profile_btc feed so they all show up in evidence:
     # bars BTC 5m, 1h, D. (1m + funding + onchain are non-critical.)
+    # (Was btc_optimized until 2026-05-07; that bot was retired by the
+    # post-dispatch-fix strict-gate audit so audit_bot returns deactivated
+    # and the helper short-circuits with empty evidence. volume_profile_btc
+    # is the still-active BTC bot covering the same data requirements.)
     for filename in ("BTC_5m.csv", "BTC_1h.csv", "BTC_D.csv"):
         with (history / filename).open("w", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh)
@@ -371,7 +375,7 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
             writer.writerow([1_775_000_000, 100.0, 101.0, 99.0, 100.5, 10_000.0])
 
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
-        "btc_optimized",
+        "volume_profile_btc",
         primary_symbol="BTC",
         primary_timeframe="1h",   # primary excluded from evidence
         library=DataLibrary(roots=[history]),
