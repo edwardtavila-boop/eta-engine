@@ -180,7 +180,15 @@ def load_order_entry_hold(path: Path | None = None) -> OrderEntryHold:
             payload={"raw": payload},
         )
 
-    active = bool(payload.get("active", True))
+    if "active" in payload:
+        active = bool(payload.get("active"))
+    elif "hold" in payload:
+        # Legacy compatibility: older operator tooling wrote
+        # {"hold": true|false} instead of {"active": ...}. Preserve the
+        # explicit legacy intent so a cleared hold does not fail closed.
+        active = bool(payload.get("hold"))
+    else:
+        active = True
     scope = _normalise_scope(payload.get("scope"))
     return OrderEntryHold(
         active=active,
