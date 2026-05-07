@@ -51,14 +51,22 @@ MIN_SESSIONS = 2
 ALLOCATION_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\capital_allocation.json")
 
 
-def classify_pool(symbol: str) -> str:
-    """Classify a symbol into spot, futures, or leveraged pool."""
-    sym_upper = symbol.upper().rstrip("1")
-    if sym_upper in LEVERAGED_SYMBOLS:
+def classify_pool(bot_id: str) -> str:
+    """Classify a bot into spot, futures, or leveraged pool by its ID."""
+    bid_lower = bot_id.lower()
+    # Leveraged crypto futures (MBT/MET on CME)
+    if any(x in bid_lower for x in ("mbt_", "met_")):
         return "leveraged"
-    if sym_upper in FUTURES_SYMBOLS:
-        return "futures"
-    return "spot"  # Default: spot if unknown
+    # Spot crypto (BTC/ETH/SOL)
+    if any(x in bid_lower for x in ("btc_", "eth_", "sol_")):
+        # Exclude eth_sweep_reclaim which is futures-like on ETH
+        if "perp" in bid_lower or "futures" in bid_lower:
+            return "futures"
+        return "spot"
+    if any(x in bid_lower for x in ("vwap_mr_btc", "volume_profile_btc", "funding_rate_btc")):
+        return "spot"
+    # Everything else is futures
+    return "futures"
 
 
 def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> PortfolioAllocation:
@@ -68,7 +76,6 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
 
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
     sessions = ledger.get("bot_sessions", {})
-    registry = _read_registry_map()
 
     allocation = PortfolioAllocation(total_capital=total_capital)
 
@@ -81,11 +88,9 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
         total_pnl = sum(pnls)
         winners = sum(1 for p in pnls if p > 0)
         win_rate = winners / len(pnls) if pnls else 0
-        reg = registry.get(bot_id, {})
-        symbol = reg.get("symbol", "?")
-        pool = classify_pool(symbol)
+        pool = classify_pool(bot_id)
         bot_stats[bot_id] = {
-            "symbol": symbol, "pool": pool, "total_pnl": total_pnl,
+            "symbol": bot_id, "pool": pool, "total_pnl": total_pnl,
             "win_rate": win_rate, "sessions": len(bot_sessions),
         }
 
