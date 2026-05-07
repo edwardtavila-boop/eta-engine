@@ -113,7 +113,12 @@ class MacroSnapshot(BaseModel):
 
 
 class EquitySnapshot(BaseModel):
-    account_equity: float = Field(ge=0.0)
+    # Equity CAN go negative -- after a margin call, a runaway-PnL bug, or
+    # simply a deeply underwater paper account. Rejecting negative values at
+    # the schema layer turns "the fleet is in trouble" into "JARVIS is dead",
+    # which is precisely the wrong failure mode. Let the value through and let
+    # the policy layer respond (kill switch, equity-halt rule, etc.).
+    account_equity: float
     daily_pnl: float
     daily_drawdown_pct: float = Field(
         ge=0.0,

@@ -72,15 +72,20 @@ def _ok_journal(
 # --------------------------------------------------------------------------- #
 
 
-def test_equity_rejects_negative_equity() -> None:
-    with pytest.raises(ValidationError):
-        EquitySnapshot(
-            account_equity=-1.0,
-            daily_pnl=0.0,
-            daily_drawdown_pct=0.0,
-            open_positions=0,
-            open_risk_r=0.0,
-        )
+def test_equity_accepts_negative_equity() -> None:
+    """Negative equity is a real state (drawdown, accounting bug, margin
+    call). The schema must let it through so JARVIS can react -- a hard
+    pydantic reject collapses the consult loop instead of triggering a
+    halt rule. Validated by the 2026-05-07 outage where every supervisor
+    consult failed with `account_equity ge=0` against -678356.0."""
+    snap = EquitySnapshot(
+        account_equity=-1.0,
+        daily_pnl=0.0,
+        daily_drawdown_pct=0.0,
+        open_positions=0,
+        open_risk_r=0.0,
+    )
+    assert snap.account_equity == -1.0
 
 
 def test_equity_rejects_dd_over_100pct() -> None:
