@@ -63,6 +63,14 @@ rem IBKR Gateway can take several seconds to promote bracket legs from PendingSu
 set "ETA_IBKR_SUBMIT_CONFIRM_SECONDS=10"
 rem Dedicated positive order-entry client id. Do not inherit machine-level 0.
 set "ETA_IBKR_CLIENT_ID=187"
+rem ACK reconcile divergence — set 2026-05-07 because Alpaca paper held
+rem positions from prior session restarts that supervisor hadn't fully
+rem persisted, and IBKR side has 3 futures positions from earlier today.
+rem Without this ack, supervisor halts ALL new entries until operator
+rem clears via env var or `reconcile_divergence_acknowledged.txt` file.
+rem Once both lanes catch up + supervisor's open_position.json fully
+rem reflects broker truth, this can be removed.
+set "ETA_RECONCILE_DIVERGENCE_ACK=1"
 rem Capital management — lifted 2026-05-06 to share the FULL $50k
 rem starting cash across crypto + futures fleets per operator
 rem directive ("crypto fleet should run on the full $50k capital
