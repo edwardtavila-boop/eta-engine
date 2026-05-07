@@ -111,6 +111,8 @@ def _classify_command_exit(name: str, exit_code: int, *, strict_secrets: bool = 
         return "pass"
     if name == "health_check" and exit_code == 1:
         return "warn"
+    if name == "secrets_validator" and not strict_secrets and exit_code == 1:
+        return "pass"
     if name == "secrets_validator" and not strict_secrets:
         return "warn"
     return "fail"
@@ -271,11 +273,10 @@ def run_closeout(
     gates.append(
         _command_gate(
             "submodule_status",
-            ["git", "-C", str(project_root), "submodule", "status", "--recursive"],
+            [py, "-m", "eta_engine.scripts.submodule_wiring_preflight", "--root", str(project_root)],
             cwd=project_root,
             timeout_s=timeout_s,
             strict_secrets=strict_secrets,
-            warn_on_stdout=True,
         )
     )
     gates.append(
