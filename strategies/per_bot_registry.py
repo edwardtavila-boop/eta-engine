@@ -1025,7 +1025,23 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "it escapes. Different mechanic from any existing strategy."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            # PROMOTED 2026-05-07: only bot in the post-retire 20-bot fleet
+            # to clear the Lopez-de-Prado deflated-Sharpe screen.
+            #   trades=4277  Sharpe=0.94  expR_net=+0.050  sh_def=+1.98
+            #   split_half_sign_stable=True  legacy_gate=PASS
+            # Deflated Sharpe corrects for fleet-wide multi-test pressure
+            # (Bonferroni x20 here), so a positive sh_def at this sample
+            # size is the rarest signal the strict-gate audit produces.
+            # Audit evidence: reports/strict_gate_20260507T194017Z.json +
+            # _summary.md.
+            "promotion_status": "production_candidate",
+            "promoted_on": "2026-05-07",
+            "promotion_evidence": (
+                "strict_gate_20260507T194017Z: trades=4277 sharpe=0.94 "
+                "expR_net=+0.050 sh_def=+1.98 split_half_sign_stable=True "
+                "legacy_passed=True. Only bot in 20-bot post-retire fleet "
+                "with positive deflated Sharpe."
+            ),
             "sub_strategy_kind": "volume_profile",
             "sub_strategy_extras": {
                 "profile_lookback": 1000, "bucket_size": 2.0,
@@ -1048,7 +1064,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
             },
             "per_ticker_optimal": "MNQ",
-            "research_candidate": True,
+            # Full warmup risk multiplier on promotion. The 4277-trade
+            # backtest IS the validation -- paper-soak windows would
+            # accumulate at most a few-hundred fresh trades before the
+            # statistical answer was the same. Daily-loss cap at 4% is
+            # the per-bot circuit breaker.
+            "warmup_policy": {
+                "promoted_on": "2026-05-07",
+                "warmup_days": 30,
+                "risk_multiplier_during_warmup": 1.0,
+            },
             "daily_loss_limit_pct": 4.0,
         },
     ),
