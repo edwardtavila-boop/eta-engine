@@ -70,7 +70,7 @@ _TELEGRAM_CHAT_ID_PATTERN = re.compile(r"^-?\d{5,}$")
 _IBKR_ACCOUNT_ID_PATTERN = re.compile(r"^[A-Za-z]{2,6}[A-Za-z0-9]{3,}$")
 _IBKR_LOGIN_KEYS = ("username", "user", "login", "ib_login_id", "user_id")
 _TASTYTRADE_LOGIN_KEYS = ("username", "user", "login", "email")
-_TASTYTRADE_SECRET_KEYS = ("password", "pass", "remember_token", "session_token", "api_token")
+_TASTYTRADE_SECRET_KEYS = ("password", "pass", "password_file", "remember_token", "session_token", "api_token")
 
 
 def _looks_like_placeholder(value: str) -> bool:
@@ -106,8 +106,23 @@ def _validate_text_secret(
 
 def _load_json_object(path: Path) -> dict[str, Any] | None:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raw = path.read_bytes()
+    except OSError:
+        return None
+
+    text: str | None = None
+    for encoding in ("utf-8-sig", "utf-8", "utf-16"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        return None
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
         return None
     if not isinstance(data, dict):
         return None

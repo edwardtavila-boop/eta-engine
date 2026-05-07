@@ -64,6 +64,28 @@ def test_check_secrets_reports_binary_json_as_invalid(tmp_path) -> None:
     assert "json" in quantum_result.detail.lower()
 
 
+def test_check_secrets_accepts_windows_encoded_json_files(tmp_path) -> None:
+    _write_required_baseline(tmp_path)
+    (tmp_path / "secrets" / "ibkr_credentials.json").write_text(
+        json.dumps({"username": "apexpredator"}),
+        encoding="utf-8-sig",
+    )
+    (tmp_path / "secrets" / "quantum_creds.json").write_text(
+        json.dumps({"dwave": {"token": "live-token"}, "budget": {"enable_cloud": False}}),
+        encoding="utf-16",
+    )
+    (tmp_path / "secrets" / "tastytrade_credentials.json").write_text(
+        json.dumps({"login": "operator@example.com", "password_file": "secrets/tastytrade_password.txt"}),
+        encoding="utf-8-sig",
+    )
+
+    results = _result_by_path(secrets_validator.check_secrets(root=tmp_path))
+
+    assert results["secrets/ibkr_credentials.json"].status == secrets_validator.SecretStatus.PRESENT
+    assert results["secrets/quantum_creds.json"].status == secrets_validator.SecretStatus.PRESENT
+    assert results["secrets/tastytrade_credentials.json"].status == secrets_validator.SecretStatus.PRESENT
+
+
 def test_main_supports_json_output(tmp_path, monkeypatch, capsys) -> None:
     _write_required_baseline(tmp_path)
     (tmp_path / "secrets" / "ibkr_credentials.json").write_text(
