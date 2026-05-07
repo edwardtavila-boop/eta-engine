@@ -220,4 +220,7 @@ if __name__ == "__main__":
         pool = getattr(alloc, f"{pool_name}_pool")
         print(f"\n{pool_name.upper()} ({POOL_SPLIT[pool_name]*100:.0f}% = ${pool['capital']:,.0f}):")
         for bid, bd in sorted(pool.get("bots", {}).items(), key=lambda x: -x[1]["pnl_total"]):
-            print(f"  {bid}: {bd['status']:6s}  weight={bd['weight']:.1%}  capital=${bd['capital']:,.0f}  PnL=${bd['pnl_total']:+,.0f}")
+            print(
+                f"  {bid}: {bd['status']:6s}  weight={bd['weight']:.1%}  "
+                f"capital=${bd['capital']:,.0f}  PnL=${bd['pnl_total']:+,.0f}"
+            )
