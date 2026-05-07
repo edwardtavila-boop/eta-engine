@@ -59,6 +59,21 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
 
 
 def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> None:
+    """Pin matches the post-2026-05-07 strict-gate audit survivors.
+
+    The pin was rebuilt 2026-05-07 because 7 of the prior 10 pinned bots
+    had been retired by the dispatch-fix audit batches (vwap_mr_mnq/nq/btc,
+    btc_optimized, funding_rate_btc, mnq_futures_sage NQ variant, etc.).
+    The new pin includes the audit's 9 positive-net survivors plus the 3
+    incumbents that still pass active-status checks.
+
+    SKIPPED from pin (intentional):
+      ng_sweep_reclaim    -- registry flags rollover-artifact bars
+      sol_optimized       -- n=17 too small for live capital
+      mbt_sweep_reclaim,
+      met_sweep_reclaim,
+      mbt_overnight_gap   -- await bar-data hydration
+    """
     text = RUNNER.read_text(encoding="utf-8")
     match = re.search(r'^set "ETA_SUPERVISOR_BOTS=([^"]+)"$', text, re.MULTILINE)
 
@@ -66,21 +81,49 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     bots = set(match.group(1).split(","))
 
     assert bots == {
-        "eth_sage_daily",
-        "btc_optimized",
-        "mnq_futures_sage",
-        "mnq_sweep_reclaim",
-        "vwap_mr_mnq",
-        "vwap_mr_nq",
-        "vwap_mr_btc",
+        # The deflated-Sharpe survivor (sh_def +1.98).
+        "volume_profile_mnq",
+        # Top mid-tier survivor.
+        "rsi_mr_mnq",
+        # Crypto-futures research-candidate.
+        "mbt_funding_basis",
+        # Commodity sweep_reclaim family (all positive expR_net in audit).
+        "mes_sweep_reclaim",
+        "ym_sweep_reclaim",
+        "m2k_sweep_reclaim",
+        "eur_sweep_reclaim",
+        "gc_sweep_reclaim",
+        "cl_sweep_reclaim",
+        # Incumbents kept for monitoring / kaizen-recommended SCALE_UP.
         "volume_profile_btc",
-        "funding_rate_btc",
         "mnq_anchor_sweep",
+        "mnq_futures_sage",
     }
-    assert "sol_optimized" not in bots
-    assert "gc_sweep_reclaim" not in bots
-    assert "cl_sweep_reclaim" not in bots
-    assert "ng_sweep_reclaim" not in bots
+    # Bots intentionally NOT in the pin -- documented in the bot lists above
+    # and in the runner cmd's prelude comments.
+    assert "ng_sweep_reclaim" not in bots, (
+        "ng_sweep_reclaim has rollover-artifact bar data; do not pin until "
+        "NG1 1h is re-fetched on canonical rollover-adjusted source."
+    )
+    assert "sol_optimized" not in bots, (
+        "sol_optimized has only 17 trades in the audit; too small for live "
+        "capital allocation."
+    )
+    assert "mbt_sweep_reclaim" not in bots, (
+        "mbt_sweep_reclaim shows zero trades in the audit; awaits "
+        "MBT 1h bar-data hydration."
+    )
+    assert "met_sweep_reclaim" not in bots
+    assert "mbt_overnight_gap" not in bots
+    # Round-1 + round-2 + round-3 retires must not appear:
+    for retired in (
+        "vwap_mr_mnq", "vwap_mr_nq", "funding_rate_btc", "mbt_zfade",
+        "btc_optimized", "mnq_sweep_reclaim", "zn_sweep_reclaim",
+        "btc_crypto_scalp", "btc_hybrid_sage", "cross_asset_mnq",
+        "crypto_seed", "btc_ensemble_2of3", "vwap_mr_btc",
+        "nq_futures_sage",
+    ):
+        assert retired not in bots, f"retired bot '{retired}' must not be pinned"
 
 
 def test_supervisor_task_runner_avoids_legacy_paths() -> None:
