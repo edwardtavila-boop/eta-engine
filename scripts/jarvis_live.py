@@ -327,8 +327,70 @@ async def _background_feed_connect(feed: object) -> None:
         logger.debug("multi_feed: background connect failed: %s", exc)
 
 
-async def _hermes_tick(i: int) -> None:
-    """Poll Telegram for commands every tick with staggered heartbeat."""
+def _build_heartbeat_message(supervisor=None, reports=None, _live_feed=None) -> str:
+    """Build a rich status message for the periodic Telegram heartbeat."""
+    lines = ["*ETA Fleet Status*"]
+    try:
+        from pathlib import Path
+        import json
+        state_dir = os.environ.get("ETA_STATE_DIR", "C:/EvolutionaryTradingAlgo/var/eta_engine/state")
+        ledger_path = Path(state_dir) / "paper_soak_ledger.json"
+        if ledger_path.exists():
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+            sessions = ledger.get("bot_sessions", {})
+            if sessions:
+                total_pnl = sum(
+                    sum(s.get("pnl", 0) for s in bot_sessions)
+                    for bot_sessions in sessions.values()
+                )
+                diamond_bots = sum(
+                    1 for bot_sessions in sessions.values()
+                    if sum(s.get("pnl", 0) for s in bot_sessions) > 0
+                )
+                total_bots = len(sessions)
+                lines.append(f"Fleet: {diamond_bots}/{total_bots} profitable | PnL: `${total_pnl:+,.0f}`")
+    except Exception:
+        pass
+    if supervisor is not None:
+        try:
+            health = supervisor.snapshot_health()
+            lines.append(f"Health: {health.health}")
+            if health.reasons and any(health.reasons):
+                rlist = [r for r in health.reasons if r]
+                if rlist:
+                    lines.append(f"Issues: {' | '.join(rlist[:3])}")
+        except Exception:
+            pass
+    if reports and len(reports) > 0:
+        try:
+            last = reports[-1]
+            lines.append(f"Tick: {getattr(last, 'tick_count', '?')} | Stale: {getattr(last, 'stale_s', '?')}s ago")
+        except Exception:
+            pass
+    if _live_feed is not None:
+        try:
+            all_bars = getattr(_live_feed, "all_bars", lambda: {})()
+            for sym in ("MNQ", "BTC", "ETH", "NQ"):
+                bar = all_bars.get(sym, {})
+                if bar and bar.get("close"):
+                    lines.append(f"{sym}: {bar['close']:,.0f}")
+        except Exception:
+            pass
+    try:
+        wd_path = Path(state_dir) / "tws_watchdog.json"
+        if wd_path.exists():
+            wd = json.loads(wd_path.read_text(encoding="utf-8"))
+            lines.append("IBKR: Connected" if wd.get("healthy") else "IBKR: Degraded")
+    except Exception:
+        pass
+    if len(lines) == 1:
+        lines.append("All systems nominal")
+    return "\n".join(lines)
+
+
+async def _hermes_tick(i: int, supervisor=None, reports=None, _live_feed=None) -> None:
+    """Poll Telegram for commands every tick with staggered heartbeat.
+    On every 30th tick, sends a rich status summary instead of bare 'nominal'."""
     if i == 0:
         return
     try:
@@ -337,7 +399,8 @@ async def _hermes_tick(i: int) -> None:
         if responses:
             logger.info("hermes: %d command(s) processed", len(responses))
         if i % 30 == 0 and os.environ.get("TELEGRAM_BOT_TOKEN"):
-            await send_alert("Jarvis Heartbeat", "All systems nominal", "INFO")
+            msg = _build_heartbeat_message(supervisor, reports, _live_feed)
+            await send_alert("ETA Status", msg, "INFO")
     except Exception as exc:
         logger.debug("hermes tick error (non-fatal): %s", exc)
 
@@ -441,7 +504,7 @@ async def run_live(
             except Exception:
                 logger.debug("ibkr reauth error (non-fatal)")
             try:
-                await _hermes_tick(i)
+                await _hermes_tick(i, supervisor, reports, _live_feed)
             except Exception:
                 logger.debug("hermes tick error (non-fatal)")
             try:
