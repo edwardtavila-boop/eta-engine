@@ -710,6 +710,54 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "op19_gateway_runtime"
 
+    def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path):
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["status"] == "live"
+        assert payload["mode"] == "autonomous"
+        assert payload["uptime"] == "connected"
+        assert payload["cc_proxy"] == "local"
+        assert payload["paper"]["mode"] == "paper_live"
+        assert payload["paper"]["paper_ready_bots"] == 5
+        assert payload["runtime"]["paper_live_ready"] is True
+
+    def test_runtime_and_bridge_status_use_local_master_payload(self, app_client, tmp_path):
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "gates": [],
+                }
+            )
+        )
+
+        runtime = app_client.get("/api/runtime-status")
+        bridge = app_client.get("/api/bridge-status")
+
+        assert runtime.status_code == 200
+        assert runtime.json()["mode"] == "paper_live"
+        assert bridge.status_code == 200
+        assert bridge.json()["paper"]["status"] == "ready_to_launch_paper_live"
+
     def test_kaizen_summary(self, app_client):
         r = app_client.get("/api/kaizen")
         assert r.status_code == 200

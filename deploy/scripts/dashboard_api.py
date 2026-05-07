@@ -5950,48 +5950,58 @@ async def public_dashboard() -> JSONResponse:
     except Exception:
         return JSONResponse({"status": "offline", "bots": []})
 
+
+def _local_master_status_payload() -> dict[str, object]:
+    """Return the local Command Center status without proxying back into this app."""
+    paper = _paper_live_transition_payload(refresh=False)
+    paper_ready = bool(paper.get("critical_ready"))
+    operator_queue = _operator_queue_payload()
+    launch_blocked = int(operator_queue.get("launch_blocked_count") or 0)
+    blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
+    runtime_mode = "paper_live" if paper_ready else "paper_sim"
+    return {
+        "status": "live",
+        "mode": "autonomous",
+        "uptime": "connected",
+        "cc_proxy": "local",
+        "runtime": {
+            "mode": runtime_mode,
+            "paper_live_ready": paper_ready,
+            "operator_queue_blocked_count": blocked,
+            "operator_queue_launch_blocked_count": launch_blocked,
+        },
+        "paper": {
+            "mode": runtime_mode,
+            "status": paper.get("status") or "unknown",
+            "critical_ready": paper_ready,
+            "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
+        },
+        "daily": {},
+    }
+
+
 @app.get("/api/master/status", response_model=None)
-async def master_status() -> JSONResponse | dict[str, object]:
-    """Proxy to Command Center master status for real runtime detail."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get("http://127.0.0.1:8421/api/master/status")
-            return JSONResponse(r.json())
-    except Exception:
-        return {"status": "live", "mode": "autonomous", "uptime": "connected", "cc_proxy": "unavailable"}
+def master_status() -> dict[str, object]:
+    """Compatibility status endpoint for public ops and beta-app launch tabs."""
+    return _local_master_status_payload()
 
 @app.get("/api/runtime-status", response_model=None)
-async def runtime_status() -> JSONResponse | dict[str, object]:
-    """Proxy to Command Center for bridge runtime detail (paper_live/paper_sim)."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get("http://127.0.0.1:8421/api/master/status")
-            data = r.json()
-            paper = data.get("paper", {})
-            runtime = data.get("runtime", {})
-            return JSONResponse({
-                "paper": paper,
-                "runtime": runtime,
-                "mode": paper.get("mode", "unknown"),
-            })
-    except Exception:
-        return {"mode": "unknown", "detail": "cc_unavailable"}
+def runtime_status() -> dict[str, object]:
+    """Compatibility runtime detail bridge (paper_live/paper_sim)."""
+    data = _local_master_status_payload()
+    paper = data.get("paper", {})
+    runtime = data.get("runtime", {})
+    return {
+        "paper": paper,
+        "runtime": runtime,
+        "mode": paper.get("mode", "unknown") if isinstance(paper, dict) else "unknown",
+    }
 
 @app.get("/api/bridge-status", response_model=None)
-async def bridge_status() -> JSONResponse | dict[str, object]:
-    """Proxy to Command Center for bridge daily PnL and status."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get("http://127.0.0.1:8421/api/master/status")
-            data = r.json()
-            daily = data.get("daily", {})
-            paper = data.get("paper", {})
-            return JSONResponse({
-                "daily": daily,
-                "paper": paper,
-            })
-    except Exception:
-        return {"daily": {}, "detail": "cc_unavailable"}
+def bridge_status() -> dict[str, object]:
+    """Compatibility bridge for daily PnL and paper status."""
+    data = _local_master_status_payload()
+    return {
+        "daily": data.get("daily", {}),
+        "paper": data.get("paper", {}),
+    }
