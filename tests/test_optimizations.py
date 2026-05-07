@@ -164,10 +164,13 @@ class TestStatusPage:
         for anchor in (
             'id="todayPnl"',
             'id="totalPnl"',
+            'id="totalPnlSub"',
             'id="totalTrades"',
             'id="winRate"',
             'id="cumulativeR"',
+            'id="cumulativeRSub"',
             'id="activeBots"',
+            'id="activeBotsSub"',
             'id="totalBots"',
             'id="riskLevel"',
             'id="riskBar"',
@@ -215,6 +218,15 @@ class TestStatusPage:
         assert "broker_gateway" in html
         assert "gateway_crash" in html
         assert "broker_router" in html
+        assert "value === null || value === undefined || value === ''" in html
+        assert "isRuntimeActiveBot" in html
+        assert "readiness/staged rows" in html
+        assert "lifetime ledger not attached; today shown above" in html
+        assert "waiting for R-tagged closed trades" in html
+        assert "open/no fill qty" in html
+        assert "open/no-fill" in html
+        assert "actualRouterFills" in html
+        assert "paperLaunchBlocked" in html
         assert "liveModes" in html
         assert "historical_reasons" in html or "history:" in html
 

@@ -1394,6 +1394,46 @@ class TestDashboardAPI:
         assert drill_data["strategy_readiness"]["launch_lane"] == "live_preflight"
         assert "_warning" not in drill_data
 
+    def test_bot_fleet_summary_carries_broker_net_without_fake_lifetime(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """Broker session truth is exposed without pretending it is lifetime PnL."""
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "today_actual_fills": 7,
+                "today_realized_pnl": 125.5,
+                "total_unrealized_pnl": -25.25,
+                "open_position_count": 2,
+                "win_rate_30d": 0.625,
+                "alpaca": {"ready": True},
+                "ibkr": {"ready": False},
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        summary = r.json()["summary"]
+        assert summary["broker_net_pnl"] == 100.25
+        assert summary["broker_today_realized_pnl"] == 125.5
+        assert summary["broker_total_unrealized_pnl"] == -25.25
+        assert summary["broker_today_actual_fills"] == 7
+        assert summary["broker_open_position_count"] == 2
+        assert summary["broker_win_rate_30d"] == 0.625
+        assert summary["pnl_summary_source"] == "live_broker_state"
+        assert "total_pnl" not in summary
+
     def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
         import json

@@ -500,6 +500,40 @@ class TestCryptoSeedProbeUnderSyntheticState:
         assert item.evidence["bot_id"] == "crypto_seed"
         assert "non-edge BTC exposure accumulator" in item.detail
 
+    def test_deactivated_non_edge_assignment_marks_done_when_audit_is_clean(self, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from eta_engine.scripts import operator_action_queue
+
+        assignment = SimpleNamespace(
+            bot_id="crypto_seed",
+            extras={
+                "promotion_status": "non_edge_strategy",
+                "non_edge_reason": "DCA accumulator, not alpha edge.",
+                "deactivated": True,
+            },
+        )
+        monkeypatch.setattr(
+            "eta_engine.strategies.per_bot_registry.get_for_bot",
+            lambda bot_id: assignment if bot_id == "crypto_seed" else None,
+        )
+        monkeypatch.setattr(
+            "eta_engine.scripts.paper_live_launch_check._audit_bot",
+            lambda _assignment: {
+                "bot_id": "crypto_seed",
+                "status": "READY",
+                "promotion_status": "deactivated",
+                "warnings": [],
+                "issues": [],
+            },
+        )
+
+        item = operator_action_queue._op15_crypto_seed()
+
+        assert item.verdict == VERDICT_DONE
+        assert item.evidence["evidence"]["launch_role"] == "non_edge_exposure"
+        assert item.evidence["evidence"]["registry_deactivated"] is True
+
     def test_missing_crypto_seed_assignment_stays_blocked(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 

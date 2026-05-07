@@ -67,6 +67,42 @@ def _report(
     return path
 
 
+def _current_shape_report(  # type: ignore[no-untyped-def]
+    tmp_path,
+    name: str,
+    bot_id: str,
+    *,
+    windows: int,
+    oos_sharpe: float,
+    dsr_pass: float,
+    verdict: str,
+):
+    path = tmp_path / name
+    path.write_text(
+        "\n".join(
+            [
+                "# Research Grid - 2026-05-07T22:05:27+00:00",
+                "",
+                "Artifact class: `promotable`",
+                "",
+                (
+                    "| Config | Sym/TF | Scorer | Thr | Gate | WF | DSR N | W | +OOS | "
+                    "IS Sh | OOS Sh | Deg% | DSR med | DSR pass% | Verdict | Note |"
+                ),
+                "|---|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+                (
+                    f"| {bot_id} | MNQ1/5m | mnq | 0.0 | - | anchored | 1 | {windows} | 1 | "
+                    f"0.740 | {oos_sharpe:.3f} | 0.0 | 1.000 | {dsr_pass:.1f} | "
+                    f"{verdict} | 14304 bars / 73d |"
+                ),
+                "",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_results_collect_latest_report_per_manifest_bot(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from eta_engine.scripts.strategy_supercharge_results import build_results
 
@@ -118,6 +154,37 @@ def test_results_collect_latest_report_per_manifest_bot(tmp_path) -> None:  # ty
     assert btc["report_path"] == str(latest)
     assert results["rows_by_bot"]["eth_perp"]["result_status"] == "pass"
     assert results["rows_by_bot"]["mnq_sage_consensus"]["result_status"] == "pending"
+
+
+def test_results_parse_current_research_grid_table_shape(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from eta_engine.scripts.strategy_supercharge_results import build_results
+
+    report = _current_shape_report(
+        tmp_path,
+        "research_grid_20260507_220527_current.md",
+        "mnq_anchor_sweep",
+        windows=1,
+        oos_sharpe=0.979,
+        dsr_pass=100.0,
+        verdict="PASS",
+    )
+
+    results = build_results(
+        manifest=_manifest(["mnq_anchor_sweep"]),
+        report_dir=tmp_path,
+        generated_at="2026-05-07T22:06:00+00:00",
+    )
+
+    row = results["rows_by_bot"]["mnq_anchor_sweep"]
+    assert results["summary"]["tested"] == 1
+    assert results["summary"]["passed"] == 1
+    assert row["result_status"] == "pass"
+    assert row["windows"] == 1
+    assert row["positive_oos_windows"] == 1
+    assert row["oos_sharpe"] == 0.979
+    assert row["dsr_pass_fraction"] == 1.0
+    assert row["note"] == "14304 bars / 73d"
+    assert row["report_path"] == str(report)
 
 
 def test_results_ignore_reports_older_than_manifest(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -172,6 +239,38 @@ def test_results_can_load_canonical_manifest_snapshot(tmp_path) -> None:  # type
 
     assert results["summary"]["tested"] == 1
     assert results["rows_by_bot"]["eth_perp"]["result_status"] == "pass"
+
+
+def test_results_keep_reports_when_manifest_is_built_inline(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from eta_engine.scripts import strategy_supercharge_manifest
+    from eta_engine.scripts.strategy_supercharge_results import build_results
+
+    _current_shape_report(
+        tmp_path,
+        "research_grid_20260507_220527_current.md",
+        "mnq_anchor_sweep",
+        windows=1,
+        oos_sharpe=0.979,
+        dsr_pass=100.0,
+        verdict="PASS",
+    )
+    monkeypatch.setattr(
+        strategy_supercharge_manifest,
+        "build_manifest",
+        lambda: _manifest(["mnq_anchor_sweep"], generated_at="2099-01-01T00:00:00+00:00"),
+    )
+
+    results = build_results(
+        manifest_path=tmp_path / "missing_manifest.json",
+        report_dir=tmp_path,
+        generated_at="2026-05-07T22:06:00+00:00",
+    )
+
+    assert results["summary"]["tested"] == 1
+    assert results["rows_by_bot"]["mnq_anchor_sweep"]["result_status"] == "pass"
+    assert results["rows_by_bot"]["mnq_anchor_sweep"]["report_path"].endswith(
+        "research_grid_20260507_220527_current.md",
+    )
 
 
 def test_results_rank_near_misses_for_next_retune(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -308,6 +407,45 @@ def test_results_emit_ranked_retune_plan_for_cross_asset_failures(tmp_path) -> N
     assert results["retune_queue"][0]["symbol"] == "SOL"
     assert results["retune_queue"][0]["strategy_kind"] == "crypto_orb"
     assert results["retune_queue"][0]["issue_code"] == "strict_gate_near_miss"
+
+
+def test_results_classify_pending_data_repair_rows_separately(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from eta_engine.scripts.strategy_supercharge_results import build_results
+
+    manifest = _manifest(
+        ["cl_sweep_reclaim"],
+        metadata={
+            "cl_sweep_reclaim": {
+                "action_type": "data_repair_recheck",
+                "next_gate": "data_repair_before_retune",
+                "missing_critical": ["bars:CL/5m"],
+                "command": [
+                    "python",
+                    "-m",
+                    "eta_engine.scripts.bot_strategy_readiness",
+                    "--bot-id",
+                    "cl_sweep_reclaim",
+                    "--snapshot",
+                    "--json",
+                    "--no-write",
+                ],
+            },
+        },
+    )
+
+    results = build_results(
+        manifest=manifest,
+        report_dir=tmp_path,
+        generated_at="2026-04-30T04:05:00+00:00",
+    )
+
+    plan = results["rows_by_bot"]["cl_sweep_reclaim"]["retune_plan"]
+    queue_item = results["retune_queue"][0]
+    assert plan["issue_code"] == "data_repair_required"
+    assert plan["optimizer_command"][2] == "eta_engine.scripts.bot_strategy_readiness"
+    assert "data-repair recheck" in plan["next_step"]
+    assert queue_item["issue_code"] == "data_repair_required"
+    assert "do not retune" in queue_item["next_step"]
 
 
 def test_results_write_snapshot_round_trips(tmp_path) -> None:  # type: ignore[no-untyped-def]

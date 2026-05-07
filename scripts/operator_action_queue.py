@@ -513,19 +513,40 @@ def _op15_crypto_seed() -> OpItem:
 
     result = _audit_bot(assignment)
     evidence = result.get("evidence", {})
-    launch_role = evidence.get("launch_role") if isinstance(evidence, dict) else None
-    if result.get("status") == "READY" and launch_role == "non_edge_exposure":
+    if not isinstance(evidence, dict):
+        evidence = {}
+    extras = getattr(assignment, "extras", {}) or {}
+    if not isinstance(extras, dict):
+        extras = {}
+    launch_role = evidence.get("launch_role")
+    registry_promotion_status = extras.get("promotion_status")
+    registry_non_edge = (
+        launch_role == "non_edge_exposure"
+        or registry_promotion_status == "non_edge_strategy"
+        or bool(extras.get("non_edge_reason"))
+    )
+    issues = result.get("issues") or []
+    warnings = result.get("warnings") or []
+    if result.get("status") == "READY" and registry_non_edge and not issues and not warnings:
         item.verdict = VERDICT_DONE
         item.detail = (
             "crypto_seed is ready as a non-edge BTC exposure accumulator; "
             "it is no longer treated as a blocked alpha redesign item."
         )
-        item.evidence = result
+        enriched_evidence = dict(evidence)
+        enriched_evidence.setdefault("launch_role", "non_edge_exposure")
+        if isinstance(registry_promotion_status, str) and registry_promotion_status:
+            enriched_evidence["registry_promotion_status"] = registry_promotion_status
+        if bool(extras.get("deactivated")):
+            enriched_evidence["registry_deactivated"] = True
+        if result.get("promotion_status"):
+            enriched_evidence["audit_promotion_status"] = result.get("promotion_status")
+        item.evidence = {**result, "evidence": enriched_evidence}
         return item
 
     item.verdict = VERDICT_BLOCKED
-    warnings = result.get("warnings") or result.get("issues") or ["readiness check did not clear"]
-    item.detail = f"crypto_seed readiness still needs work: {warnings[0]}"
+    blockers = warnings or issues or ["readiness check did not clear"]
+    item.detail = f"crypto_seed readiness still needs work: {blockers[0]}"
     item.evidence = result
     return item
 

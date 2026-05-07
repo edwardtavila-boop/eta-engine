@@ -1095,6 +1095,69 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # volume_profile_nq — Volume Profile / Value Area on NQ 5m.
+    # NEW 2026-05-07: clone of volume_profile_mnq targeting NQ. The MNQ
+    # variant is the audit's only deflated-Sharpe survivor (sh_def +1.98
+    # on 4277 trades). NQ shares the same liquid index-futures
+    # auction-market structure -- value-area mean-reversion should hold
+    # on 5m bars there too. Lab metrics will tell.
+    #
+    # Status starts at research_candidate (NOT pinned to live trading
+    # until the strict-gate audit on this bot returns positive expR_net.
+    # The MNQ result earned its production_candidate stamp on actual
+    # backtest evidence; the NQ clone has to do the same.
+    StrategyAssignment(
+        bot_id="volume_profile_nq",
+        strategy_id="vol_prof_nq_v1",
+        symbol="NQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "DIAMOND #12b: Volume profile / value area mean-reversion on "
+            "NQ 5m. Clone of volume_profile_mnq -- same POC/VAH/VAL "
+            "rolling profile, same auction-market thesis (~70% of volume "
+            "clusters in value area; price gravitates to POC after "
+            "escaping). NQ trades $20/pt (vs MNQ $0.50/pt) so per-trade "
+            "PnL scales 40x; entry sizing constrained by max_qty_equity_pct."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "volume_profile",
+            "sub_strategy_extras": {
+                "profile_lookback": 1000, "bucket_size": 2.0,
+                "min_va_spread_atr_mult": 2.0, "min_extreme_distance_atr_mult": 1.5,
+                # NQ has 40x the per-tick value of MNQ; scale equity-pct
+                # cap down 4x so 1 NQ contract is actually purchaseable
+                # within budget but heavy stacking is constrained.
+                "max_qty_equity_pct": 0.00125,
+                "require_rejection": True, "min_rejection_wick_pct": 0.25,
+                "min_volume_z": 0.3,
+                "freeze_profile_after_warmup": False,
+                "rr_target": 2.0, "atr_stop_mult": 2.5,
+                "max_trades_per_day": 2, "min_bars_between_trades": 24,
+                "warmup_bars": 500,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+            },
+            "per_ticker_optimal": "NQ",
+            # Half-size warmup until the strict-gate audit confirms edge.
+            "warmup_policy": {
+                "promoted_on": "2026-05-07",
+                "warmup_days": 60,
+                "risk_multiplier_during_warmup": 0.5,
+            },
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
     # volume_profile_btc — Volume Profile / Value Area on BTC 1h.
     StrategyAssignment(
         bot_id="volume_profile_btc",

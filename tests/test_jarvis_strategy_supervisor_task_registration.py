@@ -88,8 +88,11 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # Crypto-futures research-candidate.
         "mbt_funding_basis",
         # Commodity sweep_reclaim family (all positive expR_net in audit).
+        # ym_sweep_reclaim removed 2026-05-07 18:05 EDT after observing
+        # YM @ ~$250k notional couldn't fit $10k per-bot budget;
+        # supervisor logged "budget cap produced qty=0" 3 times in 5
+        # minutes. Re-pin only with MYM variant or budget-cap exception.
         "mes_sweep_reclaim",
-        "ym_sweep_reclaim",
         "m2k_sweep_reclaim",
         "eur_sweep_reclaim",
         "gc_sweep_reclaim",
@@ -104,6 +107,11 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     assert "ng_sweep_reclaim" not in bots, (
         "ng_sweep_reclaim has rollover-artifact bar data; do not pin until "
         "NG1 1h is re-fetched on canonical rollover-adjusted source."
+    )
+    assert "ym_sweep_reclaim" not in bots, (
+        "ym_sweep_reclaim cannot fit $10k per-bot budget at YM ~$250k "
+        "notional; ATR sizing rounds to 0 contracts. Re-pin only with "
+        "MYM variant or budget-cap exception."
     )
     assert "sol_optimized" not in bots, (
         "sol_optimized has only 17 trades in the audit; too small for live "

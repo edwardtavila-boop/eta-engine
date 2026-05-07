@@ -29,10 +29,10 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +200,59 @@ def test_supervisor_exit_for_crypto_writes_reduce_only_pending(
     assert payload["side"] == "SELL"
     assert payload["qty"] == 0.05
     assert payload["symbol"] == "BTC"
+
+
+def test_supervisor_exit_with_zero_broker_qty_clears_without_pending(
+    tmp_path: Path,
+) -> None:
+    """A stale supervisor position must not ship a qty=0 reduce-only order.
+
+    Live failure mode: Alpaca/IBKR already showed flat for a bot, but the
+    supervisor still had a local open_position. submit_exit reconciled to
+    broker_qty=0, then wrote ``qty: 0`` pending_order files that the broker
+    router had to quarantine. The safe behavior is to clear the stale local
+    position, book no close, and write no broker intent.
+    """
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.state_dir = tmp_path / "state"
+    pending_dir = tmp_path / "pending"
+    router = ExecutionRouter(cfg=cfg, bf_dir=pending_dir)
+    router._get_broker_position_qty = lambda _bot: 0.0  # type: ignore[method-assign]
+
+    bot = BotInstance(
+        bot_id="volume_profile_btc",
+        symbol="BTC",
+        strategy_kind="crypto_local",
+        direction="long",
+        cash=5_000.0,
+    )
+    bot.open_position = {
+        "side": "BUY",
+        "qty": 0.05,
+        "entry_price": 80_500.0,
+        "entry_ts": "2026-05-06T11:00:00+00:00",
+        "signal_id": "entry-sig-001",
+        "bracket_stop": 79_000.0,
+        "bracket_target": 81_900.0,
+    }
+    router._persist_open_position(bot)
+
+    rec = router.submit_exit(bot=bot, bar={"close": 81_900.0})
+
+    assert rec is None
+    assert bot.open_position is None
+    assert bot.n_exits == 0
+    assert bot.realized_pnl == 0.0
+    assert not (pending_dir / "volume_profile_btc.pending_order.json").exists()
+    persisted = cfg.state_dir / "open_positions" / "volume_profile_btc" / "open_position.json"
+    assert not persisted.exists()
 
 
 def test_supervisor_entry_pending_default_reduce_only_is_false(

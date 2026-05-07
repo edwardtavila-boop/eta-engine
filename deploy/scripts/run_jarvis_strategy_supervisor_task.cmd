@@ -87,7 +87,17 @@ rem Skipped: ng_sweep_reclaim (data quality flag in registry - rollover
 rem artifacts make the Sharpe 8.31 unreliable); sol_optimized (n=17 too
 rem small for live capital); mbt_sweep_reclaim/met_sweep_reclaim/
 rem mbt_overnight_gap (zero trades pending bar-data hydration).
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,ym_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
+rem
+rem Removed 2026-05-07 18:05 EDT after verifying live-paper behavior:
+rem   ym_sweep_reclaim -- YM at ~$250k notional cannot fit the $10k
+rem                       per-bot budget cap. ATR sizing produces 0.02
+rem                       contracts (req=0.020145) which rounds to 0
+rem                       under "min-1-lot" futures discipline. Bot
+rem                       fired 3 entries in 5 min, all "skipped:
+rem                       budget cap produced qty=0". Re-pin only after
+rem                       (a) MYM (Micro Dow) variant added to registry,
+rem                       OR (b) per-bot budget lifted for YM specifically.
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

@@ -3055,6 +3055,7 @@ def bot_fleet_roster(
             "win_rate_30d": None,
             "server_ts": time.time(),
         }
+    broker_summary = _broker_summary_fields(live_broker_state)
     return {
         "bots":              rows,
         "confirmed_bots":    confirmed_bots,
@@ -3069,6 +3070,7 @@ def bot_fleet_roster(
             ),
             "truth_status": truth["truth_status"],
             "truth_summary_line": truth["truth_summary_line"],
+            **broker_summary,
         },
         "server_ts":         now_ts,
         "live":              fills_stats,
@@ -3866,6 +3868,38 @@ def _normalize_trade_close(row: dict) -> dict | None:
         "layers_updated": layers_updated if isinstance(layers_updated, list) else [],
         "layer_errors": layer_errors if isinstance(layer_errors, list) else [],
     }
+
+
+def _broker_summary_fields(live_broker_state: dict) -> dict:
+    """Broker-backed rollup fields for /api/bot-fleet.summary.
+
+    These fields are deliberately named as broker/session truth instead of
+    ``total_pnl``. A missing lifetime ledger must not be rendered as a fake
+    zero-dollar lifetime result by downstream dashboards.
+    """
+    if not isinstance(live_broker_state, dict) or live_broker_state.get("error"):
+        return {}
+    realized = _float_value(live_broker_state.get("today_realized_pnl"))
+    unrealized = _float_value(live_broker_state.get("total_unrealized_pnl"))
+    fills = _float_value(live_broker_state.get("today_actual_fills"))
+    open_positions = _float_value(live_broker_state.get("open_position_count"))
+    win_rate = _float_value(live_broker_state.get("win_rate_30d"))
+    out: dict[str, object] = {
+        "pnl_summary_source": "live_broker_state",
+    }
+    if realized is not None:
+        out["broker_today_realized_pnl"] = round(realized, 2)
+    if unrealized is not None:
+        out["broker_total_unrealized_pnl"] = round(unrealized, 2)
+    if realized is not None or unrealized is not None:
+        out["broker_net_pnl"] = round((realized or 0.0) + (unrealized or 0.0), 2)
+    if fills is not None:
+        out["broker_today_actual_fills"] = int(fills)
+    if open_positions is not None:
+        out["broker_open_position_count"] = int(open_positions)
+    if win_rate is not None:
+        out["broker_win_rate_30d"] = win_rate
+    return out
 
 
 def _position_exposure_payload(

@@ -73,6 +73,8 @@ VARIANT_BOT_IDS: set[str] = {
     "rsi_mr_mnq", "rsi_mr_btc",
     "vwap_mr_mnq", "vwap_mr_btc", "vwap_mr_nq", "vwap_mr_eth",
     "volume_profile_mnq", "volume_profile_btc",
+    "volume_profile_nq",  # added 2026-05-07: clone of volume_profile_mnq for
+                          # NQ 5m. Audit pending; runs through bots/nq/.
     "gap_fill_mnq", "gap_fill_btc",
     "cross_asset_mnq", "cross_asset_btc",
     "funding_rate_btc",

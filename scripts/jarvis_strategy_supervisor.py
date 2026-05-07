@@ -1286,6 +1286,18 @@ class ExecutionRouter:
             exit_qty = broker_qty
         else:
             exit_qty = supervisor_qty
+        if exit_qty <= 0.0:
+            logger.warning(
+                "submit_exit skipped for %s: reconciled exit_qty=%.6f "
+                "(supervisor_qty=%.6f broker_qty=%s); clearing stale local position",
+                bot.bot_id,
+                exit_qty,
+                supervisor_qty,
+                "unknown" if broker_qty is None else f"{broker_qty:.6f}",
+            )
+            bot.open_position = None
+            self._clear_persisted_open_position(bot)
+            return None
         side_close = "SELL" if pos["side"] == "BUY" else "BUY"
         # Adverse slippage on exit (same sign convention as submit_entry):
         # BUY-back fills above mid; SELL fills below mid. Magnitude is

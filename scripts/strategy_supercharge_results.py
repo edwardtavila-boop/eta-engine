@@ -126,6 +126,14 @@ def _int_cell(value: str) -> int:
         return 0
 
 
+def _is_numeric_cell(value: str) -> bool:
+    try:
+        float(value.strip())
+    except ValueError:
+        return False
+    return True
+
+
 def _artifact_class(text: str) -> str:
     match = re.search(r"Artifact class:\s*`([^`]+)`", text)
     return match.group(1) if match else "unknown"
@@ -151,23 +159,45 @@ def _parse_report(path: Path) -> list[dict[str, object]]:
         bot_id = cells[0]
         if not bot_id or bot_id.lower() == "config":
             continue
-        verdict = cells[12].upper()
-        dsr_percent = _float_cell(cells[11])
+        # Current research-grid reports include WF and DSR N columns; older
+        # snapshots did not. Preserve both so fresh VPS reports are ingested.
+        if len(cells) >= 16 and not _is_numeric_cell(cells[5]):
+            windows_idx = 7
+            positive_oos_idx = 8
+            is_sharpe_idx = 9
+            oos_sharpe_idx = 10
+            degradation_idx = 11
+            dsr_median_idx = 12
+            dsr_pass_idx = 13
+            verdict_idx = 14
+            note_idx = 15
+        else:
+            windows_idx = 5
+            positive_oos_idx = 6
+            is_sharpe_idx = 7
+            oos_sharpe_idx = 8
+            degradation_idx = 9
+            dsr_median_idx = 10
+            dsr_pass_idx = 11
+            verdict_idx = 12
+            note_idx = 13
+        verdict = cells[verdict_idx].upper()
+        dsr_percent = _float_cell(cells[dsr_pass_idx])
         rows.append(
             {
                 "bot_id": bot_id,
                 "symbol_timeframe": cells[1],
                 "scorer": cells[2],
-                "windows": _int_cell(cells[5]),
-                "positive_oos_windows": _int_cell(cells[6]),
-                "is_sharpe": _float_cell(cells[7]),
-                "oos_sharpe": _float_cell(cells[8]),
-                "degradation_pct": _float_cell(cells[9]),
-                "dsr_median": _float_cell(cells[10]),
+                "windows": _int_cell(cells[windows_idx]),
+                "positive_oos_windows": _int_cell(cells[positive_oos_idx]),
+                "is_sharpe": _float_cell(cells[is_sharpe_idx]),
+                "oos_sharpe": _float_cell(cells[oos_sharpe_idx]),
+                "degradation_pct": _float_cell(cells[degradation_idx]),
+                "dsr_median": _float_cell(cells[dsr_median_idx]),
                 "dsr_pass_fraction": dsr_percent / 100.0,
                 "verdict": verdict,
                 "result_status": "pass" if verdict == "PASS" else "fail",
-                "note": cells[13],
+                "note": cells[note_idx],
                 "artifact_class": artifact_class,
                 "report_path": str(path),
                 "report_mtime": path.stat().st_mtime,
@@ -302,6 +332,15 @@ def _retune_issue_code(row: dict[str, object]) -> str:
     if status == "pass":
         return "pass_ready_for_soak_review"
     if status == "pending":
+        action_type = str(row.get("action_type") or "")
+        next_gate = str(row.get("next_gate") or "")
+        missing_critical = row.get("missing_critical")
+        if (
+            action_type == "data_repair_recheck"
+            or next_gate == "data_repair_before_retune"
+            or (isinstance(missing_critical, list) and len(missing_critical) > 0)
+        ):
+            return "data_repair_required"
         return "pending_retest"
     windows = int(row.get("windows") or 0)
     if windows <= 0:
@@ -329,6 +368,7 @@ def _retune_priority_score(row: dict[str, object], issue_code: str) -> float:
         "insufficient_walk_forward_windows": 800.0,
         "mixed_oos_decay": 650.0,
         "negative_oos_edge": 500.0,
+        "data_repair_required": 400.0,
         "pending_retest": 300.0,
         "pass_ready_for_soak_review": 100.0,
     }
@@ -348,6 +388,8 @@ def _next_step(issue_code: str) -> str:
         return "Hold live routing; review paper-soak and promotion gates before any registry or broker change."
     if issue_code == "pending_retest":
         return "Run the manifest smoke command first so retuning is based on current-batch evidence."
+    if issue_code == "data_repair_required":
+        return "Run the manifest data-repair recheck first; do not retune until critical coverage clears."
     if issue_code == "insufficient_walk_forward_windows":
         return "Repair data coverage or widen the smoke window before ranking strategy quality."
     if issue_code == "strict_gate_near_miss":
@@ -364,7 +406,11 @@ def _retune_plan(row: dict[str, object]) -> dict[str, object]:
     issue_code = _retune_issue_code(row)
     playbook = _style_playbook(row)
     command: list[str] = []
-    if issue_code not in {"pass_ready_for_soak_review", "pending_retest"} and bot_id:
+    if issue_code == "data_repair_required":
+        row_command = row.get("command")
+        if isinstance(row_command, list):
+            command = [str(part) for part in row_command]
+    elif issue_code not in {"pass_ready_for_soak_review", "pending_retest"} and bot_id:
         command = _optimizer_command(bot_id)
     return {
         "issue_code": issue_code,
@@ -481,15 +527,17 @@ def build_results(
     generated_at: str | None = None,
 ) -> dict[str, object]:
     """Return latest pass/fail/pending retest status for manifest targets."""
+    manifest_built_inline = False
     if manifest is None:
         manifest = _load_manifest_snapshot(manifest_path)
         if manifest is None:
             from eta_engine.scripts.strategy_supercharge_manifest import build_manifest
 
             manifest = build_manifest()
+            manifest_built_inline = True
 
     report_rows = _latest_reports_by_bot(report_dir)
-    min_report_mtime = _cutoff_mtime(manifest)
+    min_report_mtime = 0.0 if manifest_built_inline else _cutoff_mtime(manifest)
     rows: list[dict[str, object]] = []
     for order, target in enumerate(_manifest_rows(manifest)):
         bot_id = str(target.get("bot_id") or "").strip()
