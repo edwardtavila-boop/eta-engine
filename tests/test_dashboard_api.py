@@ -1639,6 +1639,63 @@ class TestDashboardAPI:
         assert "none have a fresh heartbeat" in data["truth_summary_line"]
         assert "order_entry_hold: ibgateway_waiting_for_manual_login_or_2fa" in data["truth_warnings"]
 
+    def test_truth_snapshot_suppresses_legacy_state_warnings_when_supervisor_rows_are_live(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """Fresh supervisor rows are the live truth source, even if legacy bot files are absent."""
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            mod,
+            "_read_runtime_state",
+            lambda: {
+                "_warning": "missing_runtime_state",
+                "_path": r"C:\EvolutionaryTradingAlgo\firm_command_center\var\data\runtime_state.json",
+            },
+        )
+
+        truth = mod._truth_snapshot([{"heartbeat_age_s": 12}], server_ts=1778160000.0)
+
+        assert truth["truth_status"] == "live"
+        assert "missing_runtime_state" not in truth["truth_warnings"]
+        assert not any("missing bot status directory" in w for w in truth["truth_warnings"])
+
+    def test_truth_snapshot_reports_state_warnings_when_no_live_rows(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """State warnings still surface when no live heartbeat rows can prove fleet truth."""
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            mod,
+            "_read_runtime_state",
+            lambda: {"_warning": "missing_runtime_state", "_path": "runtime_state.json"},
+        )
+
+        truth = mod._truth_snapshot([], server_ts=1778160000.0)
+
+        assert truth["truth_status"] == "empty"
+        assert "missing_runtime_state" in truth["truth_warnings"]
+        assert any("missing bot status directory" in w for w in truth["truth_warnings"])
+
     def test_bot_fleet_gateway_detail_reports_process_not_running(self, app_client):
         """Gateway process absence should be explicit, not hidden as missing metadata."""
         import json

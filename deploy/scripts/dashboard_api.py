@@ -1232,8 +1232,6 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     order_entry_hold_reason = str(order_entry_hold.get("reason") or "order_entry_hold")
     warnings: list[str] = []
 
-    if not bots_dir.exists():
-        warnings.append(f"missing bot status directory: {bots_dir}")
     if not supervisor_hb.exists():
         warnings.append(f"missing JARVIS supervisor heartbeat: {supervisor_hb}")
     if order_entry_hold_active:
@@ -1242,15 +1240,17 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     mode = str(runtime.get("mode") or "").strip()
     detail = str(runtime.get("detail") or "").strip()
     updated_at = str(runtime.get("updated_at") or "").strip()
-    if runtime.get("_warning"):
-        warnings.append(str(runtime["_warning"]))
-    if mode or detail:
-        warnings.append(f"runtime reports {mode or 'unknown'} / {detail or 'no_detail'}")
 
     fresh_rows = [
         row for row in rows
         if row.get("heartbeat_age_s") is not None and float(row.get("heartbeat_age_s") or 0) <= 300
     ]
+    if runtime.get("_warning") and not fresh_rows:
+        warnings.append(str(runtime["_warning"]))
+    if mode or detail:
+        warnings.append(f"runtime reports {mode or 'unknown'} / {detail or 'no_detail'}")
+    if not bots_dir.exists() and not fresh_rows:
+        warnings.append(f"missing bot status directory: {bots_dir}")
     if fresh_rows:
         status = "live"
         line = f"Live ETA truth: {len(fresh_rows)}/{len(rows)} bot heartbeat(s) are fresh."
