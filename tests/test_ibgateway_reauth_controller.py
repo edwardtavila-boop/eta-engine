@@ -65,10 +65,43 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
 
     assert result["status"] == "started_gateway"
     assert result["action"] == "start_gateway"
+    assert result["recovery_lane"]["controller_task"] == "ETA-IBGateway-Reauth"
+    assert result["recovery_lane"]["next_task"] == "ETA-IBGateway-RunNow"
     assert started == ["ETA-IBGateway-RunNow"]
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["last_task_name"] == "ETA-IBGateway-RunNow"
     assert state["operator_action_required"] is False
+    assert state["recovery_lane"]["restart_task"] == "ETA-IBGateway-DailyRestart"
+
+
+def test_process_down_falls_back_to_gateway_task_when_run_now_missing(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
+    started: list[str] = []
+    monkeypatch.setattr(
+        controller,
+        "_scheduled_task_exists",
+        lambda task_name: task_name == controller.GATEWAY_TASK_NAME,
+    )
+    monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "started_gateway"
+    assert result["action"] == "start_gateway"
+    assert result["last_task_name"] == "ETA-IBGateway"
+    assert result["recovery_lane"]["next_task"] == "ETA-IBGateway"
+    assert result["recovery_lane"]["start_task_mode"] == "gateway_task_fallback"
+    assert "Falling back to ETA-IBGateway" in result["reason"]
+    assert started == ["ETA-IBGateway"]
 
 
 def test_process_down_missing_run_now_task_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
@@ -77,7 +110,7 @@ def test_process_down_missing_run_now_task_requires_operator_action(tmp_path: Pa
     tws_status = tmp_path / "tws_watchdog.json"
     state_path = tmp_path / "ibgateway_reauth.json"
     tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
-    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda task_name: task_name != "ETA-IBGateway-RunNow")
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: False)
 
     result = controller.run_controller(
         tws_status_path=tws_status,
@@ -175,3 +208,18 @@ def test_reauth_controller_and_registrar_avoid_password_sso_and_legacy_paths() -
     assert "C:\\crypto_data" not in combined
     assert "TheFirm" not in combined
     assert "The_Firm" not in combined
+
+
+def test_bootstrap_registers_canonical_ibgateway_reauth_lane() -> None:
+    root = Path(__file__).resolve().parents[1]
+    bootstrap_text = (root / "deploy" / "vps_bootstrap.ps1").read_text(encoding="utf-8")
+    registrar_text = (root / "deploy" / "scripts" / "register_ibgateway_reauth_task.ps1").read_text(
+        encoding="utf-8",
+    )
+
+    assert "register_ibgateway_reauth_task.ps1" in bootstrap_text
+    assert "ETA-IBGateway-Reauth" in bootstrap_text
+    assert "-Start" in bootstrap_text
+    assert "register_ibkr_gateway_watchdog_task.ps1" not in bootstrap_text
+    assert "[switch]$Start" in registrar_text
+    assert "Start-ScheduledTask -TaskName $TaskName" in registrar_text

@@ -24,13 +24,24 @@ logger = logging.getLogger(__name__)
 type JsonValue = str | int | float | bool | None | dict[str, JsonValue] | list[JsonValue]
 type JsonDict = dict[str, JsonValue]
 
-_DEFAULT_TWS_STATUS_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
-_DEFAULT_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"
-_DEFAULT_RUN_NOW_TASK = "ETA-IBGateway-RunNow"
-_DEFAULT_RESTART_TASK = "ETA-IBGateway-DailyRestart"
+REAUTH_TASK_NAME = "ETA-IBGateway-Reauth"
+GATEWAY_TASK_NAME = "ETA-IBGateway"
+RUN_NOW_TASK_NAME = "ETA-IBGateway-RunNow"
+RESTART_TASK_NAME = "ETA-IBGateway-DailyRestart"
+DEFAULT_TWS_STATUS_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
+DEFAULT_REAUTH_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"
+_DEFAULT_TWS_STATUS_PATH = DEFAULT_TWS_STATUS_PATH
+_DEFAULT_STATE_PATH = DEFAULT_REAUTH_STATE_PATH
+_DEFAULT_GATEWAY_TASK = GATEWAY_TASK_NAME
+_DEFAULT_RUN_NOW_TASK = RUN_NOW_TASK_NAME
+_DEFAULT_RESTART_TASK = RESTART_TASK_NAME
 _DEFAULT_FAILURE_THRESHOLD = 3
 _DEFAULT_COOLDOWN_MINUTES = 20
 _DEFAULT_MAX_RESTART_ATTEMPTS = 3
+_DEFAULT_REPAIR_COMMAND = (
+    r"deploy\scripts\repair_ibgateway_vps.ps1 -RepairTasks "
+    r"-ApplyJtsIni -ApplyVmOptions -EnforceSingleSource"
+)
 
 
 def _json_dict(value: object) -> JsonDict:
@@ -76,6 +87,25 @@ def _parse_time(value: object) -> datetime | None:
 
 def _iso(now: datetime) -> str:
     return now.astimezone(UTC).isoformat()
+
+
+def recovery_lane_metadata(
+    *,
+    tws_status_path: Path = DEFAULT_TWS_STATUS_PATH,
+    state_path: Path = DEFAULT_REAUTH_STATE_PATH,
+    gateway_task: str = GATEWAY_TASK_NAME,
+    run_now_task: str = RUN_NOW_TASK_NAME,
+    restart_task: str = RESTART_TASK_NAME,
+) -> JsonDict:
+    return {
+        "controller_task": REAUTH_TASK_NAME,
+        "watchdog_status_path": str(tws_status_path),
+        "state_path": str(state_path),
+        "gateway_task": gateway_task,
+        "run_now_task": run_now_task,
+        "restart_task": restart_task,
+        "repair_command": _DEFAULT_REPAIR_COMMAND,
+    }
 
 
 def _base_decision(
@@ -311,6 +341,7 @@ def run_controller(
     *,
     tws_status_path: Path = _DEFAULT_TWS_STATUS_PATH,
     state_path: Path = _DEFAULT_STATE_PATH,
+    gateway_task: str = _DEFAULT_GATEWAY_TASK,
     run_now_task: str = _DEFAULT_RUN_NOW_TASK,
     restart_task: str = _DEFAULT_RESTART_TASK,
     execute: bool = False,
@@ -321,6 +352,13 @@ def run_controller(
 ) -> JsonDict:
     """Run one controller tick and persist the operator-facing state."""
     effective_now = now or datetime.now(UTC)
+    lane = recovery_lane_metadata(
+        tws_status_path=tws_status_path,
+        state_path=state_path,
+        gateway_task=gateway_task,
+        run_now_task=run_now_task,
+        restart_task=restart_task,
+    )
     tws_status = _read_json(tws_status_path)
     prior_state = _read_json(state_path)
     decision = decide_reauth_action(
@@ -335,15 +373,26 @@ def run_controller(
     task_name = ""
     action = str(decision.get("action") or "")
     if action == "start_gateway":
-        task_name = run_now_task
+        if _scheduled_task_exists(run_now_task):
+            task_name = run_now_task
+        elif gateway_task and _scheduled_task_exists(gateway_task):
+            task_name = gateway_task
+            decision["reason"] = (
+                f"{decision['reason']} Falling back to {gateway_task} because {run_now_task} is missing."
+            )
+            lane["start_task_mode"] = "gateway_task_fallback"
+        else:
+            task_name = run_now_task
     elif action == "restart_gateway":
         task_name = restart_task
 
     state = dict(decision)
     state["tws_status_path"] = str(tws_status_path)
+    state["recovery_lane"] = lane
     state["execute"] = execute
     if task_name:
         state["last_task_name"] = task_name
+        state["recovery_lane"]["next_task"] = task_name
         if not _scheduled_task_exists(task_name):
             state.update(
                 {
@@ -356,8 +405,7 @@ def run_controller(
                     "operator_action_required": True,
                     "operator_action": (
                         "Install/configure canonical IB Gateway 10.46, then run "
-                        "deploy\\scripts\\repair_ibgateway_vps.ps1 -RepairTasks "
-                        "-ApplyJtsIni -ApplyVmOptions -EnforceSingleSource."
+                        f"{lane['repair_command']}."
                     ),
                 },
             )
@@ -385,6 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--execute", action="store_true", help="Actually start Gateway scheduled tasks when needed.")
     parser.add_argument("--tws-status", type=Path, default=_DEFAULT_TWS_STATUS_PATH)
     parser.add_argument("--state", type=Path, default=_DEFAULT_STATE_PATH)
+    parser.add_argument("--gateway-task", default=_DEFAULT_GATEWAY_TASK)
     parser.add_argument("--run-now-task", default=_DEFAULT_RUN_NOW_TASK)
     parser.add_argument("--restart-task", default=_DEFAULT_RESTART_TASK)
     parser.add_argument("--failure-threshold", type=int, default=_DEFAULT_FAILURE_THRESHOLD)
@@ -399,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     state = run_controller(
         tws_status_path=args.tws_status,
         state_path=args.state,
+        gateway_task=args.gateway_task,
         run_now_task=args.run_now_task,
         restart_task=args.restart_task,
         execute=args.execute,

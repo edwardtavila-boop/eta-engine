@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_api_task.ps1"
 RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
+PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -75,11 +76,14 @@ def test_proxy8421_task_registration_replaces_stale_workers() -> None:
     assert 'TaskName = "ETA-Proxy-8421"' in text
     assert r"C:\EvolutionaryTradingAlgo\eta_engine" in text
     assert "reverse_proxy_bridge.py" in text
+    assert "run_proxy8421_task.cmd" in text
     assert "Get-CimInstance Win32_Process" in text
     assert "Stop-ScheduledTask -TaskName $TaskName" in text
+    assert "Unregister-ScheduledTask -TaskName $TaskName" in text
     assert "New-ScheduledTaskTrigger -AtStartup" in text
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
     assert "RestartCount 999" in text
+    assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text
     assert 'ListenHost = "127.0.0.1"' in text
     assert "ListenPort = 8421" in text
     assert "http://127.0.0.1:8000" in text
@@ -87,6 +91,31 @@ def test_proxy8421_task_registration_replaces_stale_workers() -> None:
 
 def test_proxy8421_task_registration_avoids_legacy_paths() -> None:
     text = PROXY_SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+
+
+def test_proxy8421_task_runner_is_canonical_and_logged() -> None:
+    text = PROXY_RUNNER.read_text(encoding="utf-8")
+
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert "ETA_PROXY_HOST=127.0.0.1" in text
+    assert "ETA_PROXY_PORT=8421" in text
+    assert "ETA_PROXY_TARGET=http://127.0.0.1:8000" in text
+    assert "reverse_proxy_bridge.py" in text
+    assert "proxy_8421.stdout.log" in text
+    assert "proxy_8421.stderr.log" in text
+    assert "python.exe" in text
+    assert "exit /b %ERRORLEVEL%" in text
+
+
+def test_proxy8421_task_runner_avoids_legacy_paths() -> None:
+    text = PROXY_RUNNER.read_text(encoding="utf-8")
 
     assert "OneDrive" not in text
     assert "LOCALAPPDATA" not in text

@@ -2813,6 +2813,19 @@ def bot_fleet_roster(
         if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
     truth = _truth_snapshot(rows, server_ts=now_ts)
+    try:
+        live_broker_state = _live_broker_state_payload()
+    except Exception as exc:  # noqa: BLE001
+        live_broker_state = {
+            "ready": False,
+            "error": f"live_broker_state_failed: {exc}",
+            "today_actual_fills": 0,
+            "today_realized_pnl": 0.0,
+            "total_unrealized_pnl": 0.0,
+            "open_position_count": 0,
+            "win_rate_30d": None,
+            "server_ts": time.time(),
+        }
     return {
         "bots":              rows,
         "confirmed_bots":    confirmed_bots,
@@ -2830,6 +2843,7 @@ def bot_fleet_roster(
         },
         "server_ts":         now_ts,
         "live":              fills_stats,
+        "live_broker_state": live_broker_state,
         "broker_gateway":    _broker_gateway_snapshot(),
         "broker_router":     _broker_router_snapshot(),
         "window_since_days": since_days,
@@ -3505,6 +3519,31 @@ def _float_value(value: object) -> float | None:
         return None
 
 
+def _derive_ibkr_today_realized_pnl(snapshot: dict) -> float:
+    """Best-effort split of IBKR's intraday futures PnL into realized PnL.
+
+    IBKR account summary exposes ``FuturesPNL`` as the current-day futures
+    bucket. When positions are still open, subtract the live unrealized PnL so
+    the dashboard keeps the open exposure in the unrealized bucket. Once the
+    book is flat, the full futures bucket should show up as realized.
+    """
+
+    futures_pnl = _float_value(snapshot.get("futures_pnl"))
+    unrealized = _float_value(snapshot.get("unrealized_pnl")) or 0.0
+    if futures_pnl is not None:
+        realized = futures_pnl - unrealized
+        if abs(realized) < 0.005:
+            return 0.0
+        return round(realized, 2)
+    for key in ("req_pnl_realized_pnl", "account_summary_realized_pnl"):
+        fallback = _float_value(snapshot.get(key))
+        if fallback is not None:
+            if abs(fallback) < 0.005:
+                return 0.0
+            return round(fallback, 2)
+    return 0.0
+
+
 def _live_fill_paths() -> list[tuple[Path, str]]:
     """Known live execution ledgers; router rows are filtered to true fills."""
     state = _state_dir()
@@ -4116,9 +4155,14 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     snapshot: dict = {
         "ready": False,
         "today_executions": 0,
+        "today_realized_pnl": 0.0,
         "open_positions": [],
         "open_position_count": 0,
         "unrealized_pnl": 0.0,
+        "futures_pnl": None,
+        "account_summary_realized_pnl": None,
+        "account_summary_unrealized_pnl": None,
+        "account_summary_tags": {},
         "checked_utc": datetime.now(UTC).isoformat(),
     }
     # ib_insync's package init calls asyncio.get_event_loop() at import
@@ -4160,6 +4204,36 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                 portfolio = list(ib.portfolio()) if ib.isConnected() else []
             except Exception:  # noqa: BLE001
                 portfolio = []
+            managed_accounts = list(ib.managedAccounts()) if ib.isConnected() else []
+            snapshot["managed_accounts"] = managed_accounts
+            try:
+                account_summary = list(ib.accountSummary()) if ib.isConnected() else []
+            except Exception:  # noqa: BLE001
+                account_summary = []
+            preferred_account = next(
+                (acct for acct in managed_accounts if acct not in (None, "", "All")),
+                None,
+            )
+            summary_tags: dict[str, float] = {}
+            for row in account_summary:
+                tag = getattr(row, "tag", None)
+                if tag not in {"FuturesPNL", "RealizedPnL", "UnrealizedPnL"}:
+                    continue
+                value = _float_value(getattr(row, "value", None))
+                if value is None:
+                    continue
+                account = getattr(row, "account", None)
+                if tag not in summary_tags or account == preferred_account:
+                    summary_tags[tag] = value
+            snapshot["account_summary_tags"] = {
+                tag: round(value, 2) for tag, value in summary_tags.items()
+            }
+            if "FuturesPNL" in summary_tags:
+                snapshot["futures_pnl"] = round(summary_tags["FuturesPNL"], 2)
+            if "RealizedPnL" in summary_tags:
+                snapshot["account_summary_realized_pnl"] = round(summary_tags["RealizedPnL"], 2)
+            if "UnrealizedPnL" in summary_tags:
+                snapshot["account_summary_unrealized_pnl"] = round(summary_tags["UnrealizedPnL"], 2)
             unreal = 0.0
             slim_positions: list[dict] = []
             for item in portfolio:
@@ -4197,7 +4271,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                     if ft >= today_start_utc:
                         today_count += 1
             snapshot["today_executions"] = today_count
-            snapshot["managed_accounts"] = list(ib.managedAccounts())
+            snapshot["today_realized_pnl"] = _derive_ibkr_today_realized_pnl(snapshot)
             snapshot["client_id"] = client_id
             snapshot["ready"] = True
         finally:
@@ -4248,7 +4322,11 @@ def _live_broker_state_payload() -> dict:
         int(alpaca.get("today_filled_orders") or 0)
         + int(ibkr.get("today_executions") or 0)
     )
-    today_realized_pnl = round(float(alpaca.get("today_realized_pnl") or 0.0), 2)
+    today_realized_pnl = round(
+        float(alpaca.get("today_realized_pnl") or 0.0)
+        + float(ibkr.get("today_realized_pnl") or 0.0),
+        2,
+    )
     total_unrealized_pnl = round(
         float(alpaca.get("unrealized_pnl") or 0.0)
         + float(ibkr.get("unrealized_pnl") or 0.0),

@@ -530,11 +530,23 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   document.getElementById('riskLevel').className = 'stat ' + (risk === 'Low' ? 'green' : risk === 'Medium' ? 'yellow' : 'red');
   document.getElementById('riskBar').style.width = Math.min(80, maxDD / 50) + '%';
 
-  // Win rate
-  const wr = denied + approved > 0 ? (approved / (denied + approved) * 100) : 0;
-  document.getElementById('winRate').textContent = wr.toFixed(1) + '%';
-  document.getElementById('winRate').className = 'stat ' + (wr > 50 ? 'green' : wr > 25 ? 'yellow' : 'red');
-  document.getElementById('winRateDetail').textContent = approved + ' approved, ' + denied + ' denied';
+  // Win rate — use the broker-backed 30d closed-trade outcome rate when
+  // available. JARVIS verdict counts are policy signals, not realized PnL
+  // outcomes, so they must not paint this card red as if they were losses.
+  const brokerWr = liveBroker && liveBroker.win_rate_30d != null
+    ? Number(liveBroker.win_rate_30d) * 100
+    : null;
+  if (brokerWr != null && Number.isFinite(brokerWr)) {
+    document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = '30d closed-trade outcomes (broker ledger)';
+  } else {
+    document.getElementById('winRate').textContent = '—';
+    document.getElementById('winRate').className = 'stat dim';
+    document.getElementById('winRateDetail').textContent = liveBrokerReady
+      ? 'waiting for closed-trade outcomes'
+      : 'broker outcome history unavailable';
+  }
 
   // PnL chart — will draw once data flows
   drawSelfContainedChart(bots, todaysPnl, totalPnl);

@@ -5,6 +5,8 @@ param(
     [string]$CanonicalGatewayVersion = "1046",
     [string]$GatewayDir = "C:\Jts\ibgateway\1046",
     [string]$LoginProfile = "apexpredatoribkr",
+    [string]$TaskUser = "",
+    [string]$TaskPassword = "",
     [string]$Heap = "512m",
     [int]$ParallelGCThreads = 2,
     [int]$ConcGCThreads = 1,
@@ -179,6 +181,21 @@ function Get-TaskStateText {
         return "Missing"
     }
     return [string]$task.State
+}
+
+function Resolve-TaskUserForTask {
+    param([string]$TaskName)
+
+    if (-not [string]::IsNullOrWhiteSpace($TaskUser)) {
+        return $TaskUser.Trim()
+    }
+
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task -and -not [string]::IsNullOrWhiteSpace([string]$task.Principal.UserId)) {
+        return [string]$task.Principal.UserId
+    }
+
+    return ""
 }
 
 function Invoke-SchtasksDisableTask {
@@ -451,15 +468,23 @@ function Invoke-SchtasksActionChange {
     param(
         [string]$TaskName,
         [string]$Execute,
-        [string]$Arguments
+        [string]$Arguments,
+        [string]$TaskRunAsUser = "",
+        [string]$TaskRunAsPassword = ""
     )
     $taskPath = "\$TaskName"
     $taskRun = "$Execute $Arguments"
     $escapedTaskPath = $taskPath.Replace('"', '\"')
     $escapedTaskRun = $taskRun.Replace('"', '\"')
+    $schtasksArgs = "/Change /TN `"$escapedTaskPath`" /TR `"$escapedTaskRun`""
+    if (-not [string]::IsNullOrWhiteSpace($TaskRunAsUser) -and -not [string]::IsNullOrWhiteSpace($TaskRunAsPassword)) {
+        $escapedTaskUser = $TaskRunAsUser.Replace('"', '\"')
+        $escapedTaskPassword = $TaskRunAsPassword.Replace('"', '\"')
+        $schtasksArgs += " /RU `"$escapedTaskUser`" /RP `"$escapedTaskPassword`""
+    }
     $processInfo = New-Object System.Diagnostics.ProcessStartInfo
     $processInfo.FileName = "schtasks.exe"
-    $processInfo.Arguments = "/Change /TN `"$escapedTaskPath`" /TR `"$escapedTaskRun`""
+    $processInfo.Arguments = $schtasksArgs
     $processInfo.UseShellExecute = $false
     $processInfo.RedirectStandardOutput = $true
     $processInfo.RedirectStandardError = $true
@@ -498,7 +523,9 @@ function Set-TaskActionIfPresent {
             $fallback = Invoke-SchtasksActionChange `
                 -TaskName $TaskName `
                 -Execute "powershell.exe" `
-                -Arguments $Arguments
+                -Arguments $Arguments `
+                -TaskRunAsUser (Resolve-TaskUserForTask -TaskName $TaskName) `
+                -TaskRunAsPassword $TaskPassword
             if ($fallback.ok) {
                 return "updated_via_schtasks"
             }

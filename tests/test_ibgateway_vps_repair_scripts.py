@@ -91,6 +91,8 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibgateway_repair.json" in text
     assert '[string]$JtsGatewayRoot = "C:\\Jts\\ibgateway"' in text
     assert '[string]$CanonicalGatewayVersion = "1046"' in text
+    assert '[string]$TaskUser = ""' in text
+    assert '[string]$TaskPassword = ""' in text
     assert '[string]$Heap = "512m"' in text
     assert "[int]$ParallelGCThreads = 2" in text
     assert "[int]$ConcGCThreads = 1" in text
@@ -101,6 +103,7 @@ def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
     assert "updated_via_schtasks" in text
     assert "WaitForExit(15000)" in text
     assert "schtasks timed out" in text
+    assert '/RU `"$escapedTaskUser`" /RP `"$escapedTaskPassword`"' in text
     assert "failed:" in text
     assert "restart_error" in text
     assert "Get-JtsIniSnapshot" in text
@@ -136,11 +139,17 @@ def test_ibgateway_repair_can_switch_tasks_to_ibc_launcher() -> None:
 
     assert "[switch]$UseIbc" in text
     assert 'launcher_mode = if ($UseIbc) { "ibc" } else { "direct" }' in text
+    assert "Resolve-TaskUserForTask" in text
+    assert "-TaskRunAsUser (Resolve-TaskUserForTask -TaskName $TaskName)" in text
+    assert "-TaskRunAsPassword $TaskPassword" in text
     assert 'if ($UseIbc) {' in text
     assert '$baseArgs += " -UseIbc"' in text
     assert '$result.single_source.legacy_tasks."ETA-IBGateway" = Enable-TaskIfPresent -TaskName "ETA-IBGateway"' in text
     assert '$etaGatewayState -ne "Disabled"' in text
-    assert '& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart' in text
+    assert (
+        '& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile '
+        '-ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart' in text
+    )
 
 
 def test_ibgateway_repair_scripts_do_not_reintroduce_legacy_workspace_paths() -> None:

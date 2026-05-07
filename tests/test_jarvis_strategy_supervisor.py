@@ -70,6 +70,15 @@ def test_paper_live_symbol_allowlist_empty_allows_all(monkeypatch) -> None:
 # ─── ExecutionRouter ─────────────────────────────────────────────
 
 
+def test_env_file_loader_tolerates_non_utf8_bytes(tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import _read_env_file_lines
+
+    env_path = tmp_path / ".env"
+    env_path.write_bytes(b"ETA_SUPERVISOR_FEED=composite\n# bad byte: \x9d\n")
+
+    assert _read_env_file_lines(env_path)[0] == "ETA_SUPERVISOR_FEED=composite"
+
+
 def test_router_submit_entry_paper_sim(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,

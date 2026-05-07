@@ -390,23 +390,16 @@ if (-not $SkipCodexOperator) {
 # â”€â”€ IBKR Gateway Watchdog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if (-not $SkipIbkrGateway) {
-    Write-Host ""; Write-Host "=== IBKR Gateway Watchdog ===" -ForegroundColor Green
-    $ibkrWatchdogScript = "$EtaEngineDir\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
+    Write-Host ""; Write-Host "=== IBKR Gateway Recovery ===" -ForegroundColor Green
+    $ibkrRecoveryScript = "$EtaEngineDir\deploy\scripts\register_ibgateway_reauth_task.ps1"
 
-    # Fall back to $FirmDir path if the canonical path doesn't exist
-    if (-not (Test-Path $ibkrWatchdogScript)) {
-        $ibkrWatchdogScript = "$FirmDir\deploy\windows\register_ibkr_gateway_watchdog_task.ps1"
-    }
-
-    if (Test-Path $ibkrWatchdogScript) {
+    if (Test-Path $ibkrRecoveryScript) {
         if (-not $WhatIf) {
-            & $pwshPath -ExecutionPolicy Bypass -File $ibkrWatchdogScript `
-                -ApexRoot $FirmDir `
-                -RunNow
-            Write-Host "  Registered: ETAIbkrGatewayWatchdog (every 5m, auto-start on boot)" -ForegroundColor Green
+            & $pwshPath -ExecutionPolicy Bypass -File $ibkrRecoveryScript -Start
+            Write-Host "  Registered: ETA-IBGateway-Reauth (startup + every 5m, canonical recovery lane)" -ForegroundColor Green
         }
     } else {
-        Write-Host "  register_ibkr_gateway_watchdog_task.ps1 not found â€” skipping" -ForegroundColor Yellow
+        Write-Host "  register_ibgateway_reauth_task.ps1 not found - skipping" -ForegroundColor Yellow
     }
 }
 
@@ -449,7 +442,7 @@ Write-Host "  ETA-Jarvis-Live                  â€” boot: logon trigger" -Fo
 Write-Host "  ETA-Avengers-Fleet               â€” boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard                    â€” boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
-Write-Host "  ETA-IbkrGatewayWatchdog          â€” every 5m" -ForegroundColor Gray
+Write-Host "  ETA-IBGateway-Reauth             â€” startup + every 5m" -ForegroundColor Gray
 Write-Host ""
 Write-Host "WinSW Services:" -ForegroundColor White
 Write-Host "  FirmCore                         â€” live runtime core" -ForegroundColor Gray

@@ -16,6 +16,7 @@ Exit codes: 0 = healthy, 1 = warning, 2 = critical
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from dataclasses import dataclass, field
@@ -255,8 +256,20 @@ def run_health_check(*, output_dir: Path | None = None) -> VpsHealthReport:
     return report
 
 
-def main() -> int:
-    report = run_health_check(output_dir=_STATE_DIR / "health")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the ETA VPS health gate.")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=_STATE_DIR / "health",
+        help="Directory where health snapshots should be written.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    report = run_health_check(output_dir=args.output_dir)
     print(json.dumps(report.to_dict(), indent=2))
     if report.action_items:
         print("\nACTION ITEMS:", file=sys.stderr)

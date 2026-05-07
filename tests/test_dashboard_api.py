@@ -1661,6 +1661,83 @@ class TestDashboardAPI:
         assert ibkr["process"]["running"] is False
         assert "gateway process not running" in ibkr["detail"]
 
+    def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 12,
+                "today_realized_pnl": 125.5,
+                "total_unrealized_pnl": 42.25,
+                "open_position_count": 3,
+                "server_ts": 1778119427.0,
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        live_broker = r.json()["live_broker_state"]
+        assert live_broker["ready"] is True
+        assert live_broker["today_actual_fills"] == 12
+        assert live_broker["open_position_count"] == 3
+
+    def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        assert mod._derive_ibkr_today_realized_pnl(
+            {"futures_pnl": 10133.83, "unrealized_pnl": 0.0}
+        ) == 10133.83
+        assert mod._derive_ibkr_today_realized_pnl(
+            {"futures_pnl": 10133.83, "unrealized_pnl": 133.83}
+        ) == 10000.0
+        assert mod._derive_ibkr_today_realized_pnl(
+            {"account_summary_realized_pnl": 321.98}
+        ) == 321.98
+
+    def test_live_broker_state_aggregates_ibkr_realized_pnl(self, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_alpaca_live_state_snapshot",
+            lambda **kwargs: {
+                "today_filled_orders": 2,
+                "today_realized_pnl": -15.03,
+                "unrealized_pnl": -5.34,
+                "open_position_count": 2,
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_ibkr_live_state_snapshot",
+            lambda **kwargs: {
+                "today_executions": 18,
+                "today_realized_pnl": 10133.83,
+                "unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "ready": True,
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_alpaca_per_bot_pnl_cached",
+            lambda **kwargs: {"ready": True, "per_bot": {}},
+        )
+        monkeypatch.setattr(mod, "_recent_live_fill_rows", lambda: [])
+
+        live = mod._live_broker_state_payload()
+
+        assert live["today_actual_fills"] == 20
+        assert live["today_realized_pnl"] == 10118.8
+        assert live["total_unrealized_pnl"] == -5.34
+        assert live["open_position_count"] == 2
+        assert live["ibkr"]["today_realized_pnl"] == 10133.83
+        assert live["alpaca"]["today_realized_pnl"] == -15.03
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,

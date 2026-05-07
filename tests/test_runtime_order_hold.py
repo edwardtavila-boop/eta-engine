@@ -62,6 +62,36 @@ def test_env_hold_overrides_inactive_file(tmp_path: Path, monkeypatch) -> None:
     assert hold.source == "ETA_ORDER_ENTRY_HOLD"
 
 
+def test_legacy_hold_false_file_is_inactive(tmp_path: Path, monkeypatch) -> None:
+    hold_path = tmp_path / "order_entry_hold.json"
+    hold_path.write_text(
+        '{"hold": false, "reason": "cleared_by_operator"}',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ETA_ORDER_ENTRY_HOLD", raising=False)
+
+    hold = load_order_entry_hold(hold_path)
+
+    assert hold.active is False
+    assert hold.reason == "cleared_by_operator"
+    assert hold.source == "file"
+
+
+def test_legacy_hold_true_file_is_active(tmp_path: Path, monkeypatch) -> None:
+    hold_path = tmp_path / "order_entry_hold.json"
+    hold_path.write_text(
+        '{"hold": true, "reason": "legacy_operator_hold"}',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ETA_ORDER_ENTRY_HOLD", raising=False)
+
+    hold = load_order_entry_hold(hold_path)
+
+    assert hold.active is True
+    assert hold.reason == "legacy_operator_hold"
+    assert hold.source == "file"
+
+
 def test_status_accepts_json_flag_for_operator_scripts(
     tmp_path: Path,
     monkeypatch,

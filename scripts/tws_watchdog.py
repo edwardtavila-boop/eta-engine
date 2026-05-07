@@ -35,6 +35,8 @@ import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eta_engine.scripts import ibgateway_reauth_controller
+
 logger = logging.getLogger(__name__)
 
 
@@ -420,6 +422,20 @@ def _save_status(status: dict) -> None:
         _STATUS_PATH.write_text(json.dumps(status, indent=2, default=str), encoding="utf-8")
 
 
+def _recovery_lane_snapshot(*, healthy: bool) -> dict:
+    lane = ibgateway_reauth_controller.recovery_lane_metadata(
+        tws_status_path=_STATUS_PATH,
+        state_path=ibgateway_reauth_controller.DEFAULT_REAUTH_STATE_PATH,
+        run_now_task=ibgateway_reauth_controller.RUN_NOW_TASK_NAME,
+        restart_task=ibgateway_reauth_controller.RESTART_TASK_NAME,
+    )
+    lane["action_owner"] = lane["controller_task"]
+    lane["operator_action"] = "" if healthy else (
+        f"Inspect {lane['state_path']} or start {lane['controller_task']} after clearing any IBKR login or 2FA prompt."
+    )
+    return lane
+
+
 def main(argv: list[str] | None = None) -> int:
     global _LAST_ACCOUNT_SNAPSHOT
     p = argparse.ArgumentParser(description=__doc__)
@@ -486,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
         "healthy": healthy,
         "consecutive_failures": consecutive_failures,
         "last_healthy_at": last_healthy_at,
+        "recovery_lane": _recovery_lane_snapshot(healthy=healthy),
         "details": {
             "host": args.host,
             "port": args.port,

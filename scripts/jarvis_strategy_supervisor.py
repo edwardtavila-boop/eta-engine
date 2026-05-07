@@ -201,14 +201,19 @@ def _load_bot_strategy_readiness_snapshot(
 
 
 # Load .env so os.getenv() sees paper_live / STARTING_CASH etc
+def _read_env_file_lines(path: Path) -> list[str]:
+    """Read an env file without letting one bad byte kill the supervisor."""
+
+    return path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+
+
 _env_path = Path(__file__).resolve().parents[1] / ".env"
 if _env_path.exists():
-    with open(_env_path) as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _key, _, _val = _line.partition("=")
-                os.environ.setdefault(_key.strip(), _val.strip())
+    for _line in _read_env_file_lines(_env_path):
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _key, _, _val = _line.partition("=")
+            os.environ.setdefault(_key.strip(), _val.strip())
 
 
 def _default_supervisor_state_dir() -> Path:
@@ -3995,7 +4000,7 @@ def _load_env_file_if_present() -> None:
         try:
             if not path.exists():
                 continue
-            for raw in path.read_text(encoding="utf-8").splitlines():
+            for raw in _read_env_file_lines(path):
                 line = raw.strip()
                 if not line or line.startswith("#"):
                     continue

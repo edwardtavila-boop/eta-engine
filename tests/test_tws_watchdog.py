@@ -152,6 +152,9 @@ def test_successful_handshake_does_not_open_raw_socket_probe(
     assert data["healthy"] is True
     assert data["details"]["socket_ok"] is True
     assert data["details"]["handshake_ok"] is True
+    assert data["recovery_lane"]["controller_task"] == "ETA-IBGateway-Reauth"
+    assert data["recovery_lane"]["state_path"].endswith("ibgateway_reauth.json")
+    assert data["recovery_lane"]["operator_action"] == ""
 
 
 def test_failed_handshake_uses_raw_socket_probe_for_classification(
@@ -177,6 +180,8 @@ def test_failed_handshake_uses_raw_socket_probe_for_classification(
     assert data["details"]["socket_ok"] is True
     assert data["details"]["handshake_ok"] is False
     assert data["details"]["handshake_detail"] == "TimeoutError()"
+    assert data["recovery_lane"]["controller_task"] == "ETA-IBGateway-Reauth"
+    assert "Inspect" in data["recovery_lane"]["operator_action"]
 
 
 def test_watchdog_client_ids_use_reserved_low_id_pool(monkeypatch) -> None:
@@ -322,11 +327,11 @@ def test_handshake_uses_readonly_ib_connection(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeIB:
-        def __init__(self):
+        def __init__(self) -> None:
             self.client = SimpleNamespace(serverVersion=lambda: 176)
             self._connected = False
 
-        def connect(self, host, port, *, clientId, timeout, readonly=False):
+        def connect(self, host, port, *, clientId, timeout, readonly=False):  # noqa: N803 — mocks ib_insync API
             captured.update(
                 {
                     "host": host,
@@ -338,7 +343,7 @@ def test_handshake_uses_readonly_ib_connection(monkeypatch) -> None:
             )
             self._connected = True
 
-        def isConnected(self):
+        def isConnected(self):  # noqa: N802 — mocks ib_insync API
             return self._connected
 
         def disconnect(self):

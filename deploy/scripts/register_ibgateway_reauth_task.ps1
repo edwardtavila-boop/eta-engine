@@ -4,7 +4,10 @@
 # configured Gateway profile and Windows user ownership stay intact.
 
 [CmdletBinding()]
-param([switch]$DryRun)
+param(
+    [switch]$DryRun,
+    [switch]$Start
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -28,6 +31,7 @@ if ($DryRun) {
     Write-Host "  Cmd line    : cmd.exe $cmdLine"
     Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
     Write-Host "  Triggers    : AtStartup + every 5 minutes"
+    Write-Host "  Start now   : $($Start.IsPresent)"
     exit 0
 }
 
@@ -54,9 +58,14 @@ $principal = New-ScheduledTaskPrincipal `
 
 Register-ScheduledTask `
     -TaskName $TaskName `
-    -Description "Safe IB Gateway recovery controller: starts canonical Gateway tasks and surfaces login/2FA holds." `
+    -Description "Canonical IB Gateway recovery controller: reads watchdog health and starts the canonical Gateway tasks when safe." `
     -Action $action -Trigger $triggers -Settings $settings -Principal $principal `
     -Force | Out-Null
 
 Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup plus every 5 minutes."
-Write-Host "    Start now with:  Start-ScheduledTask -TaskName '$TaskName'"
+if ($Start) {
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Host "    Started '$TaskName' immediately."
+} else {
+    Write-Host "    Start now with:  Start-ScheduledTask -TaskName '$TaskName'"
+}

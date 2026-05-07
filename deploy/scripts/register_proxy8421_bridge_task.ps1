@@ -1,4 +1,4 @@
- [CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$TaskName = "ETA-Proxy-8421",
     [string]$Root = "C:\EvolutionaryTradingAlgo\eta_engine",
@@ -45,26 +45,36 @@ function Resolve-PythonRuntime {
 
 $python = Resolve-PythonRuntime -Root $Root -ExplicitPython $Python
 $bridge = Join-Path $Root "deploy\scripts\reverse_proxy_bridge.py"
+$runner = Join-Path $Root "deploy\scripts\run_proxy8421_task.cmd"
+$workspaceRoot = Split-Path -Parent $Root
+$logDir = Join-Path $workspaceRoot "logs\eta_engine"
 
 if (-not (Test-Path $bridge)) {
     throw "Missing reverse proxy bridge: $bridge"
 }
 
-& $python -m py_compile $bridge
+if (-not (Test-Path $runner)) {
+    throw "Missing proxy8421 task runner: $runner"
+}
 
-$arguments = '"{0}" --listen-host {1} --listen-port {2} --target {3} --timeout {4}' -f `
-    $bridge, $ListenHost, $ListenPort, $Target, $TimeoutSec
+& $python -m py_compile $bridge
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 }
 
 Get-CimInstance Win32_Process -Filter "name='python.exe'" -ErrorAction SilentlyContinue |
     Where-Object { ([string]$_.CommandLine) -match "reverse_proxy_bridge\.py" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-$action = New-ScheduledTaskAction -Execute $python -Argument $arguments -WorkingDirectory $Root
+Get-CimInstance Win32_Process -Filter "name='cmd.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { ([string]$_.CommandLine) -match "run_proxy8421_task\.cmd|reverse_proxy_bridge\.py" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+$action = New-ScheduledTaskAction -Execute $runner -WorkingDirectory $Root
 $triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn))
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
@@ -72,7 +82,8 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable
+    -StartWhenAvailable `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
 if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task for ${ListenHost}:${ListenPort} -> ${Target}")) {
@@ -90,13 +101,14 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task for ${ListenHost
     }
 
     Get-ScheduledTask -TaskName $TaskName |
-        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="LogonType";Expression={$_.Principal.LogonType}},@{Name="Python";Expression={$python}}
+        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="LogonType";Expression={$_.Principal.LogonType}},@{Name="Runner";Expression={$runner}},@{Name="Python";Expression={$python}}
 } else {
     [pscustomobject]@{
         TaskName = $TaskName
         State = "WhatIf"
         UserId = "SYSTEM"
         LogonType = "ServiceAccount"
+        Runner = $runner
         Python = $python
         Target = $Target
         Listen = "${ListenHost}:${ListenPort}"
