@@ -3,6 +3,12 @@
 .env
 .env.local
 .env.*.local
+
+# Bar-data hygiene full reports — 100MB+ per run, exceeds pre-commit hook ceiling.
+# Slim summaries (*_slim.json) are committed instead.
+reports/bar_data_hygiene/baseline_*.json
+!reports/bar_data_hygiene/baseline_*_slim.json
+reports/bar_data_hygiene/*_full.json
 .env.tradovate
 .env.tradovate.*
 *.key

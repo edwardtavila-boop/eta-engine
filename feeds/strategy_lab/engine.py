@@ -63,6 +63,34 @@ LAB_REPORTS_ROOT       = _WS / "reports" / "lab_reports"
 
 CRYPTO_SYMBOLS = {"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE", "ADA", "DOT"}
 
+SUB_STRATEGY_KIND_ALIASES = {
+    "vwap_mean_reversion": "vwap_mr",
+    "vwap_reversion": "vwap_mr",
+    "vwap_mr": "vwap_mr",
+    "sweep_reclaim": "sweep_reclaim",
+    "compression_breakout": "compression_breakout",
+    "ema_cross": "ema_cross",
+    "orb_sage_gated": "orb_sage_gated",
+    "sage_daily_gated": "sage_daily_gated",
+    "ensemble_voting": "ensemble_voting",
+    "mtf_scalp": "mtf_scalp",
+    # v2.3 (2026-05-04) - break MNQ cluster degeneracy.
+    "rsi_mean_reversion": "rsi_mean_reversion",
+    "rsi_mr": "rsi_mean_reversion",
+    "volume_profile": "volume_profile",
+    "vp": "volume_profile",
+    "cross_asset_divergence": "cross_asset_divergence",
+    "cross_asset": "cross_asset_divergence",
+    "divergence": "cross_asset_divergence",
+}
+
+COUNTER_TREND_SUB_KINDS = {"rsi_mean_reversion", "vwap_mr"}
+
+
+def _normalize_sub_strategy_kind(raw: object) -> str:
+    sub_kind = str(raw or "").strip()
+    return SUB_STRATEGY_KIND_ALIASES.get(sub_kind, sub_kind)
+
 # Map asset-class → canonical bar filename pattern
 def _resolve_bar_path(symbol: str, timeframe: str) -> Path | None:
     sym = symbol.upper()
@@ -299,7 +327,43 @@ def signals_confluence_scorecard(
     to 2-EMA (fast>mid) so signals actually fire on shorter histories. Slow EMA
     alignment is now a scoring component, not a hard gate. min_score raised to
     keep selectivity.
+
+    2026-05-07 dispatch-collapse fix: when ``spec`` carries a ``sub_strategy_kind``
+    (the registry's DIAMOND-tier composition pattern: sub-strategy entries × scorecard
+    quality filter), this function dispatches to the sub-strategy's own signal
+    generator and FILTERS the resulting entries by ``scorecard_score_at >= min_score``.
+    Previously, every confluence_scorecard bot returned the same generic 2-EMA output
+    regardless of sub_strategy_kind, causing ~10 distinct bots to collapse to identical
+    metrics in the strict-gate audit (10970 trades / Sharpe 0.37 / expR +0.004 across
+    every confluence_scorecard bot regardless of declared sub-strategy).
     """
+    sub_kind = _normalize_sub_strategy_kind(spec.get("sub_strategy_kind"))
+    if sub_kind:
+        # Composition path: dispatch to sub-strategy, then quality-filter.
+        sub_spec = dict(spec)
+        # If the registry passed sub-strategy params nested, hoist them up.
+        sub_extras = spec.get("sub_strategy_extras") or {}
+        if isinstance(sub_extras, dict):
+            for k, v in sub_extras.items():
+                sub_spec.setdefault(k, v)
+        # Find the sub-generator. Recursive lookup avoided — explicit dispatch
+        # to known kinds keeps the dependency clear.
+        sub_gen = SIGNAL_GENERATORS.get(sub_kind) if sub_kind != "confluence_scorecard" else None
+        if sub_gen is None:
+            # Unknown sub-kind; fall through to legacy generic behavior so we
+            # never silently drop a registry assignment.
+            pass
+        else:
+            raw_entries = sub_gen(bars, sub_spec)
+            if sub_kind in COUNTER_TREND_SUB_KINDS:
+                return raw_entries
+            min_score = int(spec.get("min_score", 2))
+            return [
+                (i, side, stop_atr, target_atr)
+                for (i, side, stop_atr, target_atr) in raw_entries
+                if scorecard_score_at(bars, spec, i, side) >= min_score
+            ]
+
     close = bars["close"]
     volume = bars["volume"]
     fast = _ema(close, int(spec.get("ema_fast", 9)))
