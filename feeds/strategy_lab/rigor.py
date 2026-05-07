@@ -211,7 +211,18 @@ def friction_R_per_trade(
     atr_pts = typical_atr_pts if typical_atr_pts is not None else fallback_atr_pts.get(
         symbol.upper(), 1.0,
     )
-    stop_distance_dollars = avg_stop_atr_mult * atr_pts * spec.point_value
+    # 2026-05-07: was ``spec.point_value`` directly. That returned 5.0 for
+    # BTC and 50.0 for ETH from the CME futures table even when the audit
+    # is evaluating spot-routed bots (multiplier=1.0). The result was
+    # under-stated friction per R for BTC/ETH spot bots, which inflated
+    # net_expR. ``effective_point_value`` resolves the spot vs futures
+    # ambiguity correctly.
+    try:
+        from eta_engine.feeds.instrument_specs import effective_point_value
+        pv = float(effective_point_value(symbol, route="auto") or spec.point_value)
+    except Exception:  # noqa: BLE001
+        pv = spec.point_value
+    stop_distance_dollars = avg_stop_atr_mult * atr_pts * pv
     if stop_distance_dollars <= 0.0:
         return 0.0
     return float(rt_friction_dollars / stop_distance_dollars)

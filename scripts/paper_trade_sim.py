@@ -203,8 +203,19 @@ def run_simulation(  # noqa: PLR0915 — single coherent loop, intentionally inl
             bars = all_bars[:len(all_bars) - skip_extra]
 
     spec = get_spec(assignment.symbol)
-    # Allow caller override but prefer the spec table
-    pv = point_value if point_value is not None else spec.point_value
+    # Allow caller override but prefer the spec table.
+    # 2026-05-07: switched from ``spec.point_value`` to
+    # ``effective_point_value`` to resolve the BTC/ETH spot-vs-futures
+    # ambiguity (get_spec("BTC") returns the CME spec at 5.0 but spot
+    # bots want 1.0). See umbrella fix in commit log.
+    if point_value is not None:
+        pv = point_value
+    else:
+        try:
+            from eta_engine.feeds.instrument_specs import effective_point_value
+            pv = float(effective_point_value(assignment.symbol, route="auto") or spec.point_value)
+        except Exception:  # noqa: BLE001
+            pv = spec.point_value
 
     fill_sim = RealisticFillSim(mode=mode, seed=seed)
 
@@ -509,7 +520,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     bar_limit = int(args.days * bars_per_day)
 
     spec = get_spec(assignment.symbol)
-    pv = spec.point_value
+    # 2026-05-07: ``effective_point_value`` resolves the spot vs CME-
+    # futures ambiguity for BTC/ETH (see umbrella fix). Falls back to
+    # ``spec.point_value`` for futures and unknown symbols.
+    try:
+        from eta_engine.feeds.instrument_specs import effective_point_value
+        pv = float(effective_point_value(assignment.symbol, route="auto") or spec.point_value)
+    except Exception:  # noqa: BLE001
+        pv = spec.point_value
 
     def _run(eval_oos: bool, is_fraction: float | None) -> SimResult:
         return run_simulation(

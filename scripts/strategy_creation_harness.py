@@ -82,11 +82,11 @@ class HarnessReport:
 
     @property
     def all_green(self) -> bool:
-        return all(l.status == "GREEN" for l in self.lights)
+        return all(light.status == "GREEN" for light in self.lights)
 
     @property
     def any_red(self) -> bool:
-        return any(l.status == "RED" for l in self.lights)
+        return any(light.status == "RED" for light in self.lights)
 
 
 def _evaluate_bot(bot_id: str, days: int, is_fraction: float) -> dict:
@@ -155,6 +155,16 @@ def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100
         return 0.0
 
     spec = get_spec(symbol)
+    # 2026-05-07: ``effective_point_value`` resolves the BTC/ETH spot
+    # vs CME-futures multiplier ambiguity (see umbrella fix). Used in
+    # the pnl calc below in place of ``spec.point_value``.
+    try:
+        from eta_engine.feeds.instrument_specs import effective_point_value
+        _harness_pv = float(
+            effective_point_value(symbol, route="auto") or spec.point_value
+        )
+    except Exception:  # noqa: BLE001
+        _harness_pv = spec.point_value
     sim = RealisticFillSim(mode="realistic", seed=seed)
     for b in bars[:20]:
         sim.feed_bar_volume(float(b.volume))
@@ -199,9 +209,9 @@ def _random_baseline(symbol: str, timeframe: str, days: int, n_trades: int = 100
                                    bar=ohlcv, spec=spec)
             if ex.exit_reason != "no_exit":
                 if side == "LONG":
-                    pnl = (ex.fill_price - entry_fill.fill_price) * qty * spec.point_value
+                    pnl = (ex.fill_price - entry_fill.fill_price) * qty * _harness_pv
                 else:
-                    pnl = (entry_fill.fill_price - ex.fill_price) * qty * spec.point_value
+                    pnl = (entry_fill.fill_price - ex.fill_price) * qty * _harness_pv
                 pnl -= sim.commission_for_trade(spec, qty, ex.fill_price)
                 pnl_total += pnl
                 break
@@ -353,8 +363,8 @@ def print_reports(reports: list[HarnessReport]) -> int:
         if r.baseline_pnl is not None:
             print(f"  Random-baseline PnL: ${r.baseline_pnl:+.2f}")
         print("  Gate:")
-        for l in r.lights:
-            print(f"    {l.emoji()} {l.name:<22} {l.detail}")
+        for light in r.lights:
+            print(f"    {light.emoji()} {light.name:<22} {light.detail}")
         if r.all_green:
             print("  >>> ALL GREEN — promote to paper-soak")
         elif r.any_red:

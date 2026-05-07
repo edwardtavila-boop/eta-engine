@@ -1348,14 +1348,20 @@ class ExecutionRouter:
         fill_price = _round_to_tick(fill_price, bot.symbol)
         # Realized P&L (paper) — multiply by instrument point_value so
         # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
-        # accurate dollar PnL. Crypto spot returns point_value=1.0 from
-        # the default-spec branch, so it falls through unchanged.
+        # accurate dollar PnL. Spot crypto (BTC/ETH/SOL on Alpaca paper)
+        # returns 1.0 here because qty * price already equals USD notional.
+        # Use ``effective_point_value`` rather than ``get_spec().point_value``
+        # directly: get_spec("BTC") returns the CME Bitcoin Futures spec
+        # (point_value=5.0) which is WRONG for spot trades and was the
+        # root cause of the supervisor's -$678k sim-equity drift on
+        # 2026-05-07. effective_point_value resolves the spot/futures
+        # ambiguity for the supervisor's auto routing.
         try:
-            from eta_engine.feeds.instrument_specs import get_spec
-            _pv = float(get_spec(bot.symbol).point_value or 1.0)
+            from eta_engine.feeds.instrument_specs import effective_point_value
+            _pv = float(effective_point_value(bot.symbol, route="auto") or 1.0)
         except Exception as exc:  # noqa: BLE001
             # Surface the lookup failure so a registry/spec gap doesn't
-            # silently silently calculate futures PnL with multiplier=1
+            # silently calculate futures PnL with multiplier=1
             # (e.g. MNQ booked at 1/2x of true PnL).
             logger.debug(
                 "point_value lookup failed for %s, defaulting to 1.0: %s",
@@ -4049,11 +4055,14 @@ class JarvisStrategySupervisor:
         # Multiply per-bot risk by the instrument's point_value so futures
         # contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) contribute
         # the right number of dollars to the aggregate R-at-risk.
-        # Crypto spot defaults to point_value=1.0 and stays unchanged.
+        # Spot crypto (BTC/ETH/SOL on Alpaca paper) returns 1.0 from
+        # effective_point_value -- get_spec("BTC") would return the CME
+        # Bitcoin Futures spec (point_value=5.0) which is wrong here
+        # (would over-state R-risk by 5x and prematurely block entries).
         try:
-            from eta_engine.feeds.instrument_specs import get_spec as _get_spec
+            from eta_engine.feeds.instrument_specs import effective_point_value as _eff_pv
         except Exception:  # noqa: BLE001
-            _get_spec = None
+            _eff_pv = None
         open_risk_r_total = 0.0
         for _b in self.bots:
             if _b.open_position is None:
@@ -4068,8 +4077,8 @@ class JarvisStrategySupervisor:
                 continue
             try:
                 _pv = (
-                    float(_get_spec(_b.symbol).point_value or 1.0)
-                    if _get_spec else 1.0
+                    float(_eff_pv(_b.symbol, route="auto") or 1.0)
+                    if _eff_pv else 1.0
                 )
                 _risk_dollars = abs(float(_bs) - float(_entry)) * float(_qty) * _pv
                 _r_unit = max(float(_b.cash) * 0.01, 1e-9)

@@ -160,7 +160,16 @@ CRYPTO_SPOT_SYMBOLS: frozenset[str] = frozenset({"SOL", "XRP"})
 
 
 def get_spec(symbol: str) -> InstrumentSpec:
-    """Return the spec for symbol or a conservative default."""
+    """Return the spec for symbol or a conservative default.
+
+    NOTE on multi-venue ambiguity: for symbols that exist on multiple
+    venues with different multipliers (BTC and ETH most notably -- CME
+    Bitcoin Futures has point_value=$5/pt while spot BTC on Alpaca
+    paper has point_value=1.0), this returns the FIRST matching entry
+    in ``_SPECS`` (the CME futures spec). When the caller routes the
+    trade to spot, use ``effective_point_value(symbol, route="spot")``
+    instead -- that helper resolves the ambiguity safely.
+    """
     s = symbol.upper()
     if s in _SPECS:
         return _SPECS[s]
@@ -168,6 +177,69 @@ def get_spec(symbol: str) -> InstrumentSpec:
         symbol=s, tick_size=0.25, point_value=1.0, commission_rt=4.0,
         half_spread_ticks=2.0, base_slip_ticks=3.0,
     )
+
+
+# Crypto roots that, when traded on a SPOT venue (Alpaca paper, Coinbase,
+# etc.), have point_value=1.0 -- i.e. qty * price already equals the USD
+# notional and there is no contract multiplier to layer on. This set is
+# the union of ``_root()``-normalized identifiers used elsewhere in the
+# engine. MBT and MET are intentionally NOT in this set: those are CME
+# crypto-MICRO futures whose multipliers ($0.10/pt) live in ``_SPECS``.
+_SPOT_CRYPTO_ROOTS: frozenset[str] = frozenset({
+    "BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE",
+})
+
+
+def effective_point_value(symbol: str, *, route: str = "auto") -> float:
+    """Return the contract multiplier the engine should use for THIS
+    trade's notional / PnL math.
+
+    Resolves the multi-venue ambiguity that has bitten the codebase
+    repeatedly (see 2026-05-07 bracket_sizing fix + supervisor PnL fix):
+    ``get_spec("BTC")`` returns the CME Bitcoin Futures spec
+    (point_value=$5/pt) but the supervisor's BTC bots route through
+    Alpaca SPOT where the right multiplier is 1.0. Using the wrong
+    multiplier silently inflates / deflates PnL by 5x for BTC, 50x for
+    ETH, etc.
+
+    ``route`` overrides:
+      * "spot"    -> 1.0 for any spot-crypto root, else fall through to
+                     get_spec(symbol).point_value.
+      * "futures" -> always defer to get_spec(symbol).point_value.
+      * "auto"    -> default. For roots in ``_SPOT_CRYPTO_ROOTS`` returns
+                     1.0 (the supervisor's BTC/ETH/SOL bots all route
+                     through Alpaca spot). For everything else, defer
+                     to get_spec.
+
+    Why "auto" defaults to spot for the crypto roots: the *current*
+    fleet routes those tickers through Alpaca paper. If a future bot
+    routes BTC through CME Bitcoin Futures, it MUST pass route="futures"
+    explicitly so this helper doesn't silently assume spot.
+
+    The function never returns 0.0 (would zero out PnL); falls back to
+    1.0 if the spec lookup throws.
+    """
+    s = symbol.upper()
+    root = s.lstrip("/").rstrip("0123456789")
+    for suffix in ("USDT", "USD"):
+        if root.endswith(suffix):
+            root = root[: -len(suffix)] or root
+
+    # ``route="spot"`` AND known spot-crypto root: definitive 1.0.
+    # ``route="auto"`` AND known spot-crypto root: also 1.0 (the current
+    # fleet wires BTC/ETH/SOL bots through Alpaca spot). For any other
+    # combination we fall through to the spec table.
+    if route in ("auto", "spot") and root in _SPOT_CRYPTO_ROOTS:
+        return 1.0
+
+    try:
+        spec = get_spec(symbol)
+        pv = float(getattr(spec, "point_value", 0.0) or 0.0)
+        if pv > 0:
+            return pv
+    except Exception:  # noqa: BLE001 -- conservative default
+        pass
+    return 1.0
 
 
 def is_rth_session(ts_iso: str, instrument: str) -> bool:

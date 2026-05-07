@@ -262,46 +262,17 @@ def _safe_float(v: object) -> float | None:
 def _point_value(symbol: str) -> float:
     """Return the contract multiplier (USD value per 1.0 of price).
 
-    Lookup order (first match wins):
-      1. Spot crypto roots (BTC, ETH, SOL, etc.) -> 1.0 even if the
-         instrument_specs table has a CME-futures entry for the same
-         ticker. The supervisor's BTC/ETH bots route through Alpaca
-         spot where 1.0 BTC * $80k = $80k of buying-power use.
-      2. instrument_specs.get_spec(symbol).point_value -- the
-         authoritative table for futures (MNQ=$2/pt, ES=$50/pt,
-         GC=$100/pt, YM=$1/pt per CME). MBT and MET (CME crypto micros)
-         are looked up here, not via (1).
-      3. 1.0 fallback for anything else.
-
-    Why this is safety-critical: prior to 2026-05-07 the budget cap was
-    qty * entry_price WITHOUT multiplier, under-counting notional by
-    anywhere from 5x (YM) to 100x (GC), letting bots size positions
-    that consumed FAR more capital than the cap allows. For a $10k cap,
-    GC at $4700 with requested_qty=2 reported notional=$9,400 and
-    passed -- but the true notional is $470,000 * 2 = $940,000.
+    Thin wrapper over ``feeds.instrument_specs.effective_point_value``
+    -- kept here so callers don't have to import from feeds. The shared
+    helper handles the multi-venue ambiguity (BTC=5.0 in CME futures
+    spec vs 1.0 on Alpaca spot, etc.) so all PnL / sizing call sites
+    use the same resolution rule.
     """
-    root = _root(symbol)
-
-    # 1. Spot crypto: Alpaca paper / spot exchanges trade BASE/USD with
-    # 1:1 quote-currency notional. instrument_specs has a "BTC" entry
-    # for CME Bitcoin Futures (point_value=$5/pt) which is wrong for
-    # the spot path. MBT/MET are intentionally NOT in this set -- they
-    # are CME crypto-futures with their own multipliers.
-    if root in _CRYPTO_ROOTS - {"MBT", "MET"}:
-        return 1.0
-
-    # 2. Authoritative futures spec table.
     try:
-        from eta_engine.feeds.instrument_specs import get_spec
-        spec = get_spec(symbol)
-        pv = float(getattr(spec, "point_value", 0.0) or 0.0)
-        if pv > 0:
-            return pv
-    except Exception:  # noqa: BLE001 -- fall through to defaults
-        pass
-
-    # 3. Conservative default: assume 1.0 so we never silently over-trade.
-    return 1.0
+        from eta_engine.feeds.instrument_specs import effective_point_value
+        return effective_point_value(symbol, route="auto")
+    except Exception:  # noqa: BLE001 -- conservative fallback
+        return 1.0
 
 
 def cap_qty_to_budget(
