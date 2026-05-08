@@ -158,7 +158,39 @@ td{background:rgba(255,255,255,.02);border-top:1px solid rgba(255,255,255,.035);
 tbody tr td:first-child{border-left:1px solid rgba(255,255,255,.035);border-radius:12px 0 0 12px}
 tbody tr td:last-child{border-right:1px solid rgba(255,255,255,.035);border-radius:0 12px 12px 0}
 tr:hover td{background:rgba(100,215,255,.055)}
+.portfolio-command{grid-template-columns:minmax(0,1fr) 260px;padding-top:.75rem}
+.portfolio-hero{padding:1.15rem}
+.portfolio-hero h2{font-size:clamp(1.35rem,2.3vw,2.35rem)}
+.portfolio-narrative{margin:.6rem 0 .75rem;font-size:.84rem}
+.portfolio-orb{padding:1rem}
+.orb-ring{width:min(205px,62vw)}
+.orb-value{font-size:1.72rem}
+.hero-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:.55rem;margin-top:.8rem}
+.hero-metric{border:1px solid rgba(255,255,255,.08);border-radius:15px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.018));padding:.65rem .7rem;min-width:0}
+.hero-metric span{display:block;color:var(--dim);font-size:.62rem;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-metric strong{display:block;margin-top:.2rem;color:#f8fbff;font-size:1rem;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-metric small{display:block;margin-top:.12rem;color:#8fa3b8;font-size:.66rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.portfolio-analytics{grid-template-columns:minmax(0,1.35fr) minmax(240px,.65fr);padding:.4rem 2rem .85rem}
+.wide-card{min-height:unset}
+.grid{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.62rem;padding:.7rem 2rem .9rem}
+.card{padding:.9rem;border-radius:15px}
+.card h3{margin-bottom:.45rem;font-size:.59rem}
+.card .stat{font-size:1.28rem;line-height:1.05}
+.card .sub{font-size:.66rem;line-height:1.28}
+.collapsible-section{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(8,14,22,.78),rgba(3,8,14,.88));box-shadow:0 14px 44px rgba(0,0,0,.18);overflow:hidden}
+.collapsible-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.82rem 1rem;color:#f7fbff;font-weight:800}
+.collapsible-summary::-webkit-details-marker{display:none}
+.collapsible-summary:after{content:"+";display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:var(--accent);flex:0 0 auto}
+.collapsible-section[open]>.collapsible-summary:after{content:"-"}
+.collapsible-summary small{margin-left:.45rem;color:var(--dim);font-weight:500;font-size:.68rem}
+.collapsible-section>.card,.collapsible-section>.supercharge-wrap,.collapsible-section>.ops-truth-wrap,.collapsible-section>.allocation-sections,.collapsible-section>.table-wrap{margin:0;padding:0 1rem 1rem}
+.collapsible-section>.card{background:transparent;border:0;box-shadow:none}
+.collapsible-section>.table-wrap{overflow-x:auto}
+.collapsible-section.vps-root-detail-wrap{padding:0}
+.ops-truth-wrap{padding:0;grid-template-columns:minmax(0,1fr) minmax(300px,.85fr)}
+.allocation-sections{padding:0}
 @media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
+@media(max-width:980px){.collapsible-section{margin-left:1rem;margin-right:1rem}.grid{grid-template-columns:repeat(auto-fit,minmax(136px,1fr));padding-left:1rem;padding-right:1rem}.portfolio-command{grid-template-columns:1fr}.portfolio-analytics{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -187,6 +219,12 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <p class="portfolio-narrative" id="portfolioNarrative">Waiting for live portfolio truth...</p>
     <div class="hero-chips" id="portfolioHeroChips">
       <span class="hero-chip">Loading allocation...</span>
+    </div>
+    <div class="hero-metrics" id="portfolioHeroMetrics">
+      <div class="hero-metric"><span>Today Net</span><strong>--</strong><small>broker pending</small></div>
+      <div class="hero-metric"><span>Lifetime PnL</span><strong>--</strong><small>ledger pending</small></div>
+      <div class="hero-metric"><span>Exposure</span><strong>--</strong><small>open book</small></div>
+      <div class="hero-metric"><span>Readiness</span><strong>--</strong><small>paper/live</small></div>
     </div>
   </div>
   <div class="premium-panel portfolio-orb">
@@ -250,7 +288,8 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
 
-<section class="vps-root-detail-wrap" id="vpsRootDetailsWrap">
+<details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
+  <summary class="collapsible-summary">VPS Root Reconciliation <small>review gates and dirty-tree plan</small></summary>
   <div class="card vps-root-detail-card">
     <div class="panel-head">
       <div>
@@ -268,11 +307,13 @@ tr:hover td{background:rgba(100,215,255,.055)}
       </div>
     </div>
   </div>
-</section>
+</details>
 
 <!-- Per-bot Alpaca live performance vs backtest target (added 2026-05-06) -->
-<div class="card" id="perBotAlpacaCard" style="margin-top:12px;display:none;">
-  <h3>Alpaca Per-Bot Performance — Live vs Backtest <span id="perBotAlpacaDriftCount" class="sub"></span></h3>
+<details class="collapsible-section" id="perBotAlpacaSection" style="display:none;">
+  <summary class="collapsible-summary">Alpaca Per-Bot Performance <small id="perBotAlpacaDriftCount">waiting for fills</small></summary>
+<div class="card" id="perBotAlpacaCard" style="display:none;">
+  <h3>Live vs Backtest</h3>
   <div style="overflow-x:auto;">
     <table id="perBotAlpacaTable" style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
@@ -288,7 +329,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </table>
   </div>
 </div>
+</details>
 
+<details class="collapsible-section" id="strategySuperchargeSection">
+  <summary class="collapsible-summary">Strategy Supercharge Results <small id="strategySuperchargeSummary">loading near-misses and retunes</small></summary>
 <div class="supercharge-wrap" data-panel-id="cc-strategy-supercharge-results" data-source="/api/jarvis/strategy_supercharge_results">
   <div class="card supercharge-card">
     <h3>Strategy Supercharge Results</h3>
@@ -311,7 +355,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
 </div>
+</details>
 
+<details class="collapsible-section" id="opsTruthSection" open>
+  <summary class="collapsible-summary">Open Positions, Exits, and Router Tape <small id="opsTruthSummaryLine">broker truth loading</small></summary>
 <div class="ops-truth-wrap">
   <div class="card">
     <h3>Open Positions &amp; Exit Protection</h3>
@@ -328,7 +375,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
 </div>
+</details>
 
+<details class="collapsible-section" id="allocationSectionWrap">
+  <summary class="collapsible-summary">Portfolio Sleeve Details <small id="allocationSectionSummary">grouped allocation rows</small></summary>
 <section class="allocation-sections" id="allocationSections">
   <div class="allocation-group">
     <div class="allocation-group-head">
@@ -339,7 +389,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
 </section>
+</details>
 
+<details class="collapsible-section" id="botRosterDetails">
+  <summary class="collapsible-summary">Full Bot Roster <small id="botRosterSummary">loading table</small></summary>
 <div class="table-wrap">
   <table>
     <thead>
@@ -348,6 +401,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <tbody id="botTable"><tr><td colspan="12" class="loading">Loading fleet data...</td></tr></tbody>
   </table>
 </div>
+</details>
 
 <script>
 let autoRefresh = true, refreshTimer;
@@ -358,6 +412,7 @@ const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
 const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
 const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
 const VPS_ROOT_RECONCILIATION_API = '/api/vps/root-reconciliation';
+const FLEET_EQUITY_API = '/api/fleet-equity?range=all&normalize=1&since_days=7';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
@@ -513,6 +568,32 @@ function formatMoneyOrUnavailable(value, digits = 2) {
 function brokerHasPnlTruth(liveBroker) {
   return finiteNumber(liveBroker?.today_realized_pnl) != null
     || finiteNumber(liveBroker?.total_unrealized_pnl) != null;
+}
+
+function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
+  const equitySummary = fleetEquity?.summary && typeof fleetEquity.summary === 'object'
+    ? fleetEquity.summary
+    : {};
+  const candidates = [
+    {
+      value: finiteNumber(summary?.lifetime_total_pnl),
+      source: summary?.lifetime_total_pnl_source || 'lifetime ledger'
+    },
+    {
+      value: finiteNumber(summary?.total_pnl),
+      source: summary?.total_pnl_source || 'summary total_pnl'
+    },
+    {
+      value: finiteNumber(portfolioSummary?.lifetime_total_pnl),
+      source: portfolioSummary?.lifetime_total_pnl_source || 'portfolio lifetime ledger'
+    },
+    {
+      value: finiteNumber(equitySummary.total_pnl),
+      source: `fleet equity: ${fleetEquity?.source || 'unknown'}`
+    }
+  ];
+  const usable = candidates.find(item => item.value != null);
+  return usable || {value: null, source: 'waiting for lifetime ledger'};
 }
 
 function formatQty(value) {
@@ -696,6 +777,10 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
   const totalRealized = finiteNumber(liveBroker?.today_realized_pnl);
   const totalUnrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const fillsToday = finiteNumber(liveBroker?.today_actual_fills);
+  const opsTruthSummary = document.getElementById('opsTruthSummaryLine');
+  if (opsTruthSummary) {
+    opsTruthSummary.textContent = `${brokerPositions.length} broker open, ${fillsToday ?? 0} fills today, ${formatMoneyOrUnavailable(totalUnrealized)} unrealized`;
+  }
   positionSummary.innerHTML = [
     `<span class="truth-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
     `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> supervisor open</span>`,
@@ -916,13 +1001,11 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
     bucket.open += Number(sleeve.open_position_count || sleeve.open || 0);
   }
   const positions = buildBrokerPositions(liveBroker);
-  if (!apiSleeves.length) {
-    for (const p of positions) {
-      const bucket = ensure(assetBucket(p.symbol));
-      bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
-      bucket.pnl += finiteNumber(p.pnl) || 0;
-      bucket.open += 1;
-    }
+  for (const p of positions) {
+    const bucket = ensure(assetBucket(p.symbol));
+    bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
+    bucket.pnl += finiteNumber(p.pnl) || 0;
+    bucket.open += 1;
   }
   for (const bot of bots) {
     const bucket = ensure(assetBucket(bot.symbol));
@@ -939,7 +1022,7 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
   });
 }
 
-function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary) {
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
@@ -950,10 +1033,12 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const portfolioSleeves = Array.isArray(portfolioSummary?.allocation_sleeves)
     ? portfolioSummary.allocation_sleeves.length
     : 0;
+  const paperReady = finiteNumber(paperLive?.paper_ready_bots) ?? bots.filter(bot => bot.can_paper_trade).length;
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
   const narrative = document.getElementById('portfolioNarrative');
   const chips = document.getElementById('portfolioHeroChips');
+  const heroMetrics = document.getElementById('portfolioHeroMetrics');
   if (orb) {
     const net = portfolioNet ?? todaysPnl;
     orb.textContent = formatMoney(net, 0);
@@ -974,6 +1059,16 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       hiddenCount > 0 ? `<span class="hero-chip"><strong>${hiddenCount}</strong> disabled hidden</span>` : '',
     ].filter(Boolean).join('');
   }
+  if (heroMetrics) {
+    const lifetimeValue = lifetimeEvidence?.value;
+    const readinessText = `${paperReady} paper-ready`;
+    heroMetrics.innerHTML = [
+      {label: 'Today Net', value: formatMoney(todaysPnl, 0), sub: 'realized + unrealized'},
+      {label: 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
+      {label: 'Open Exposure', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} broker position${brokerPositions.length === 1 ? '' : 's'}`},
+      {label: 'Readiness', value: readinessText, sub: `${active} active now`}
+    ].map(item => `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, 38))}</small></div>`).join('');
+  }
 }
 
 function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
@@ -982,6 +1077,10 @@ function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
   const totalBots = Math.max(1, bots.length);
   const pills = document.getElementById('allocationPills');
   const sections = document.getElementById('allocationSections');
+  const allocationSummary = document.getElementById('allocationSectionSummary');
+  if (allocationSummary) {
+    allocationSummary.textContent = `${buckets.length} sleeves, ${formatMoney(totalExposure, 0)} exposure, ${bots.length} visible bots`;
+  }
   if (pills) {
     pills.innerHTML = buckets.map(bucket => {
       const weight = totalExposure > 0
@@ -1046,13 +1145,14 @@ async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot] = await Promise.all([
+    const [data, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity] = await Promise.all([
       fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), AUX_FETCH_TIMEOUT_MS),
-      fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), AUX_FETCH_TIMEOUT_MS)
+      fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(FLEET_EQUITY_API), AUX_FETCH_TIMEOUT_MS)
     ]);
     if (!data) { showOffline(!hasRendered); return; }
     render(
@@ -1062,6 +1162,7 @@ async function fetchData() {
       paperLive ? paperLive.payload : {},
       diagnostics ? diagnostics.payload : {},
       vpsRoot ? vpsRoot.payload : {},
+      fleetEquity ? fleetEquity.payload : {},
       data.source
     );
     hasRendered = true;
@@ -1272,7 +1373,7 @@ function renderVpsRootDetails(vpsRoot) {
   }).join('');
 }
 
-function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, dataSource) {
+function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource) {
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
   const summary = d.summary || {};
@@ -1311,6 +1412,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
+  const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity || {});
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
   // so the panel reflects what actually moved on the broker today.
@@ -1331,7 +1433,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
-  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary);
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive || {});
   renderContributionGraph(bots, liveBroker, portfolioSummary);
   renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
@@ -1341,8 +1443,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
   // a real lifetime field, show it; otherwise mark the card as unavailable
   // and let the broker-backed Today PnL carry the live proof.
-  const summaryTotalPnl = finiteNumber(summary.lifetime_total_pnl ?? summary.total_pnl);
-  const totalPnl = summaryTotalPnl;
+  const totalPnl = lifetimeEvidence.value;
   const tpnlEl = document.getElementById('totalPnl');
   const totalPnlSub = document.getElementById('totalPnlSub');
   const totalPnlLabel = document.getElementById('totalPnlLabel');
@@ -1357,7 +1458,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     if (totalPnlLabel) totalPnlLabel.textContent = 'Lifetime PnL';
     tpnlEl.textContent = '$' + totalPnl.toFixed(0);
     tpnlEl.className = 'stat ' + (totalPnl > 0 ? 'green' : totalPnl < 0 ? 'red' : 'dim');
-    if (totalPnlSub) totalPnlSub.textContent = summary.lifetime_total_pnl_source || summary.total_pnl_source || 'lifetime ledger';
+    if (totalPnlSub) totalPnlSub.textContent = lifetimeEvidence.source || 'lifetime ledger';
   }
 
   // Cumulative R: only trust close evidence that has an actual realized
@@ -1508,6 +1609,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   // so the operator can spot a degrading bot at a glance.
   const perBot = liveBroker && liveBroker.per_bot_alpaca;
   const perBotCard = document.getElementById('perBotAlpacaCard');
+  const perBotSection = document.getElementById('perBotAlpacaSection');
   if (perBot && perBot.per_bot && perBotCard) {
     const tbody = document.getElementById('perBotAlpacaTbody');
     if (tbody) {
@@ -1541,9 +1643,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
         driftCountEl.style.color = driftCount > 0 ? '#ff5555' : '#888';
       }
       perBotCard.style.display = rows.length > 0 ? 'block' : 'none';
+      if (perBotSection) perBotSection.style.display = rows.length > 0 ? 'block' : 'none';
     }
   } else if (perBotCard) {
     perBotCard.style.display = 'none';
+    if (perBotSection) perBotSection.style.display = 'none';
   }
 
   const brokerRouter = d.broker_router || {};
@@ -1743,6 +1847,10 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       '<td>' + (b.sharpe || '—') + '</td>' +
       '</tr>';
   }
+  const botRosterSummary = document.getElementById('botRosterSummary');
+  if (botRosterSummary) {
+    botRosterSummary.textContent = `${bots.length} visible, ${active} active, ${hiddenCount} hidden disabled/removed`;
+  }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   renderStrategySuperchargeResults(strategyResults || {});
   updateClock();
@@ -1757,6 +1865,10 @@ function renderStrategySuperchargeResults(data) {
   document.getElementById('strategyFailed').textContent = summary.failed ?? '—';
   document.getElementById('strategyPending').textContent = summary.pending ?? '—';
   document.getElementById('strategyBestNearMiss').textContent = summary.best_near_miss_bot || 'none';
+  const strategySummary = document.getElementById('strategySuperchargeSummary');
+  if (strategySummary) {
+    strategySummary.textContent = `${summary.passed ?? 0} passed, ${summary.failed ?? 0} failed, ${nearMisses.length} near-miss, ${retuneQueue.length} retune`;
+  }
 
   if (data.error || data.status === 'unreadable') {
     document.getElementById('strategyNearMisses').innerHTML = '<li class="yellow">strategy_supercharge_results degraded: ' + esc(data.error || 'unreadable') + '</li>';
