@@ -205,10 +205,16 @@ class TestStatusPage:
         assert "target_exit_summary" in html
         assert "position_staleness" in html
         assert "force_flatten_due_count" in html
+        assert "seconds_to_next_action" in html
+        assert "formatDurationSeconds" in html
+        assert "next review" in html
+        assert "review due now" in html
         assert "past max-hold; force flatten due" in html
         assert "tighten_stop_due" in html
         assert "Tighten Stop" in html
         assert "operator ack due" in html
+        assert "operator ack due; oldest" in html
+        assert "exit watch active; next review" in html
         assert "drawdown + exit-watch SLA" in html
         assert "paper_watching" in html
         assert "paper-local open" in html

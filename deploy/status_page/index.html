@@ -453,6 +453,15 @@ function formatAgeSeconds(value) {
   return Math.round(n / 3600) + 'h ago';
 }
 
+function formatDurationSeconds(value) {
+  const n = finiteNumber(value);
+  if (n == null) return 'timing unknown';
+  if (n < 0) return 'due now';
+  if (n < 60) return Math.round(n) + 's';
+  if (n < 3600) return Math.round(n / 60) + 'm';
+  return Math.round(n / 3600) + 'h';
+}
+
 const HIDDEN_BOT_VALUES = new Set(['deactivated', 'disabled', 'removed', 'retired', 'inactive']);
 const TRUTHY_FLAG_VALUES = new Set(['true', '1', 'yes', 'y']);
 const FALSY_FLAG_VALUES = new Set(['false', '0', 'no', 'n']);
@@ -1769,7 +1778,21 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const forceFlattenDue = Number(stalePositions.force_flatten_due_count ?? summary.force_flatten_due_count ?? 0) || 0;
   const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
   const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
-  const oldestAge = Number(stalePositions.oldest_position?.age_s ?? stalePositions.max_age_s ?? 0) || 0;
+  const oldestPosition = stalePositions.oldest_position && typeof stalePositions.oldest_position === 'object'
+    ? stalePositions.oldest_position
+    : {};
+  const oldestAge = Number(oldestPosition.age_s ?? stalePositions.max_age_s ?? 0) || 0;
+  const secondsToNextAction = finiteNumber(oldestPosition.seconds_to_next_action);
+  const nextActionName = String(oldestPosition.next_action || '').replace(/_/g, ' ').trim();
+  const oldestName = [oldestPosition.bot, oldestPosition.symbol].filter(Boolean).join(' ');
+  const oldestDescriptor = oldestName
+    ? `${oldestName} ${formatAgeSeconds(oldestAge)}`
+    : formatAgeSeconds(oldestAge);
+  const nextActionText = secondsToNextAction != null && secondsToNextAction > 0
+    ? `next review ${formatDurationSeconds(secondsToNextAction)}${nextActionName ? ' - ' + nextActionName : ''}${oldestName ? ' - ' + oldestName : ''}`
+    : secondsToNextAction != null && secondsToNextAction <= 0
+      ? `review due now${nextActionName ? ' - ' + nextActionName : ''}${oldestName ? ' - ' + oldestName : ''}`
+      : '';
   const staleExitStatus = forceFlattenDue > 0
     ? 'force_flatten_due'
     : tightenStopDue > 0
@@ -1809,26 +1832,26 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : 'nearest target n/a';
     const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
     const staleText = forceFlattenDue > 0
-      ? `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due; oldest ${formatAgeSeconds(oldestAge)}`
+      ? `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due; oldest ${oldestDescriptor}`
       : tightenStopDue > 0
-        ? `${tightenStopDue} stop tighten due; oldest ${formatAgeSeconds(oldestAge)}`
+        ? `${tightenStopDue} stop tighten due; oldest ${oldestDescriptor}`
         : requireAckDue > 0
-          ? `${requireAckDue} operator ack due; oldest ${formatAgeSeconds(oldestAge)}`
+          ? `${requireAckDue} operator ack due; oldest ${oldestDescriptor}`
           : '';
     const fallback = [
-      staleText,
       `${Number(exitWatch.broker_open_position_count ?? liveBroker.open_position_count ?? 0)} broker open`,
       `${Number(exitWatch.supervisor_local_position_count || 0)} paper-local open`,
       `${Number(exitWatch.supervisor_watch_count || 0)} supervisor`,
       `${Number(exitWatch.broker_bracket_count || 0)} broker OCO`,
       `${Number(exitWatch.missing_bracket_count || 0)} missing`,
+      nextActionText,
       nearestText,
       touched ? `${touched} touched` : ''
     ].filter(Boolean).join('; ');
     exitStatusEl.textContent = exitLabels[exitStatus] || exitStatus.toUpperCase();
     exitStatusEl.className = 'stat ' + (exitClasses[exitStatus] || 'yellow');
     exitSubEl.textContent = compactText(
-      staleText ? `${staleText}; ${exitWatch.summary_line || fallback}` : (exitWatch.summary_line || fallback),
+      [staleText, nextActionText, exitWatch.summary_line || fallback].filter(Boolean).join('; '),
       145,
     );
   }
@@ -1921,7 +1944,10 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const due = tightenStopDue > 0
       ? `${tightenStopDue} stop tighten due`
       : `${requireAckDue} position ack due`;
-    riskDetail = `${due}; oldest ${formatAgeSeconds(oldestAge)}`;
+    riskDetail = `${due}; oldest ${oldestDescriptor}`;
+  } else if (secondsToNextAction != null && secondsToNextAction > 0 && oldestAge > 0) {
+    if (secondsToNextAction <= 300) risk = risk === 'High' ? risk : 'Medium';
+    riskDetail = `exit watch active; ${nextActionText || 'next review pending'}`;
   }
   document.getElementById('riskLevel').textContent = risk;
   document.getElementById('riskLevel').className = 'stat ' + (risk === 'Low' ? 'green' : risk === 'Medium' ? 'yellow' : 'red');
