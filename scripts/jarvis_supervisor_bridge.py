@@ -111,6 +111,10 @@ def jarvis_supervisor_bot_accounts(
         running = bool(open_position) or n_entries > 0
         status = "running" if running else "idle"
         last_bar_ts = str(bot.get("last_bar_ts") or "")
+        # A bar refresh is market-data freshness, not a trading signal.
+        # Surface true signal time when the supervisor has actually fired
+        # an entry, and keep last_bar_ts separate for activity displays.
+        last_signal_at = str(bot.get("last_signal_at") or bot.get("last_signal_ts") or "")
         accounts.append({
             "id": str(bot.get("bot_id") or ""),
             "name": str(bot.get("bot_id") or ""),
@@ -131,7 +135,9 @@ def jarvis_supervisor_bot_accounts(
             "source": "jarvis_strategy_supervisor",
             "updated_at": hb_ts,
             "heartbeat_ts": hb_ts,
-            "last_signal_ts": last_bar_ts,
+            "last_signal_ts": last_signal_at,
+            "last_signal_at": last_signal_at,
+            "last_bar_ts": last_bar_ts,
             # Extra fields the dashboard ignores but useful for clients
             # reading the JSON directly:
             "symbol": str(bot.get("symbol") or ""),

@@ -2358,6 +2358,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             ),
             "elite_gate_passed_PRIOR_CLAIM": "2026-05-05 (DISPUTED)",
             "elite_gate_results_PRIOR_CLAIM": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
+            # 2026-05-07 reconciliation: re-ran the harness on the same
+            # 365d window and got 30 OOS trades + +$589 OOS again.
+            # However the quant demote (rollover artifacts in NG1_1h.csv,
+            # 65 adjacent-close jumps >5%) is legitimate — the harness
+            # cannot distinguish real edge from rollover-jump bias on
+            # this dataset.  Status: KEEP DEMOTED until rollover-adjusted
+            # NG1 history is loaded.  Both verdicts coexist intentionally.
+            "elite_gate_reconciliation_2026_05_07": "fresh harness re-confirms 30T/+$589/+174% decay; quant demote stands due to NG1 1h rollover-artifact data quality issue.",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "ng",
                 "level_lookback": 48, "reclaim_window": 3,

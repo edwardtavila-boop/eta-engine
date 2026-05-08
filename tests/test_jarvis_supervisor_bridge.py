@@ -62,6 +62,7 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
                 "realized_pnl": 1.5,
                 "open_position": None,
                 "last_jarvis_verdict": "APPROVED",
+                "last_signal_at": "2026-04-28T11:57:00+00:00",
                 "last_bar_ts": "2026-04-28T12:00:00+00:00",
                 "strategy_readiness": {
                     "status": "ready",
@@ -105,7 +106,9 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["source"] == "jarvis_strategy_supervisor"
     assert mnq["updated_at"] == "2026-04-28T12:00:00+00:00"
     assert mnq["heartbeat_ts"] == "2026-04-28T12:00:00+00:00"
-    assert mnq["last_signal_ts"] == "2026-04-28T12:00:00+00:00"
+    assert mnq["last_signal_ts"] == "2026-04-28T11:57:00+00:00"
+    assert mnq["last_signal_at"] == "2026-04-28T11:57:00+00:00"
+    assert mnq["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
     assert mnq["last_jarvis_verdict"] == "APPROVED"
     assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
     assert mnq["launch_lane"] == "live_preflight"
@@ -207,6 +210,8 @@ def test_supervisor_bridge_idle_status_when_no_entries_no_position(tmp_path: Pat
     accounts = jarvis_supervisor_bot_accounts(heartbeat_path=hb)
     assert len(accounts) == 1
     assert accounts[0]["status"] == "idle"
+    assert accounts[0]["last_signal_ts"] == ""
+    assert accounts[0]["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
 
 
 def test_merge_returns_payload_unchanged_when_no_heartbeat(tmp_path: Path) -> None:

@@ -826,6 +826,39 @@ def _readiness_only_roster_row(readiness: dict, *, now_ts: float) -> dict:
     return row
 
 
+_HIDDEN_BOT_ROW_VALUES = {
+    "deactivated",
+    "disabled",
+    "removed",
+    "retired",
+    "inactive",
+}
+
+
+def _is_hidden_bot_row(row: dict) -> bool:
+    """Return True when a bot was intentionally removed from display surfaces."""
+    if not isinstance(row, dict):
+        return False
+    readiness = row.get("strategy_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    values = (
+        row.get("status"),
+        row.get("mode"),
+        row.get("launch_lane"),
+        row.get("promotion_status"),
+        row.get("data_status"),
+        readiness.get("status"),
+        readiness.get("launch_lane"),
+        readiness.get("promotion_status"),
+        readiness.get("data_status"),
+    )
+    if any(str(value or "").strip().lower() in _HIDDEN_BOT_ROW_VALUES for value in values):
+        return True
+    # Readiness snapshots mark old/retired rows with active=false. Do not
+    # hide a live supervisor row that somehow still has exposure attached.
+    return readiness.get("active") is False and not row.get("open_positions")
+
+
 def _read_runtime_state() -> dict:
     """Read runtime state without letting service diagnostics break the dashboard."""
     path = _runtime_state_path()
@@ -2812,33 +2845,31 @@ def _supervisor_exit_visibility(
 def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     """Convert a jarvis_supervisor_bot_accounts() row into /api/bot-fleet roster shape."""
     from datetime import UTC, datetime
+
+    def _age_seconds(value: str) -> int | None:
+        if not value:
+            return None
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return max(0, int(now_ts - dt.timestamp()))
+        except (ValueError, OSError):
+            return None
+
     today = sup.get("today") or {}
     heartbeat_at = str(sup.get("heartbeat_ts") or sup.get("updated_at") or "")
-    signal_at = str(sup.get("last_signal_ts") or sup.get("last_bar_ts") or "")
-    if not signal_at and "heartbeat_ts" not in sup:
-        # Legacy bridge rows only had updated_at. Treat it as both signal
-        # and heartbeat so old snapshots keep their historical behavior.
-        signal_at = heartbeat_at
-    heartbeat_age_s: int | None = None
-    if heartbeat_at:
-        try:
-            dt = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=UTC)
-            heartbeat_age_s = max(0, int(now_ts - dt.timestamp()))
-        except (ValueError, OSError):
-            pass
-    last_signal_age_s: int | None = None
-    if signal_at:
-        try:
-            dt = datetime.fromisoformat(signal_at.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=UTC)
-            last_signal_age_s = max(0, int(now_ts - dt.timestamp()))
-        except (ValueError, OSError):
-            pass
+    signal_at = str(sup.get("last_signal_ts") or sup.get("last_signal_at") or "")
+    heartbeat_age_s = _age_seconds(heartbeat_at)
+    last_signal_age_s = _age_seconds(signal_at)
     open_pos_raw = sup.get("open_position") or {}
     open_pos = open_pos_raw if isinstance(open_pos_raw, dict) else {}
+    position_opened_at = str(
+        open_pos.get("entry_ts")
+        or open_pos.get("opened_at")
+        or open_pos.get("ts")
+        or "",
+    )
     bracket_stop = _float_value(
         open_pos.get("bracket_stop") or open_pos.get("stop_price"),
     )
@@ -2890,7 +2921,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
             "broker_bracket": broker_bracket,
             "bracket_src": bracket_src,
             "signal_id": str(open_pos.get("signal_id") or ""),
-            "opened_at": open_pos.get("opened_at") or open_pos.get("ts"),
+            "opened_at": position_opened_at or None,
             "last_bar_ts": last_bar_ts,
             "last_bar_high": last_bar_high,
             "last_bar_low": last_bar_low,
@@ -2902,6 +2933,32 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     elif sup.get("direction"):
         last_side = str(sup["direction"]).upper()
     strategy_readiness = sup.get("strategy_readiness") if isinstance(sup.get("strategy_readiness"), dict) else {}
+    bar_at = str(sup.get("last_bar_ts") or "")
+    if signal_at:
+        activity_ts = signal_at
+        activity_age_s = last_signal_age_s
+        activity_type = "signal"
+        activity_side = last_side
+    elif position_opened_at:
+        activity_ts = position_opened_at
+        activity_age_s = _age_seconds(position_opened_at)
+        activity_type = "position"
+        activity_side = last_side
+    elif bar_at:
+        activity_ts = bar_at
+        activity_age_s = _age_seconds(bar_at)
+        activity_type = "bar"
+        activity_side = None
+    elif heartbeat_at:
+        activity_ts = heartbeat_at
+        activity_age_s = heartbeat_age_s
+        activity_type = "heartbeat"
+        activity_side = None
+    else:
+        activity_ts = ""
+        activity_age_s = None
+        activity_type = None
+        activity_side = None
     return {
         "id":                  str(sup.get("id") or ""),
         "name":                str(sup.get("name") or ""),
@@ -2918,11 +2975,12 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "last_trade_qty":      None,
         "last_signal_ts":      signal_at or None,
         "last_signal_age_s":   last_signal_age_s,
-        "last_signal_side":    last_side,
-        "last_activity_ts":    signal_at or heartbeat_at or None,
-        "last_activity_age_s": last_signal_age_s if signal_at else heartbeat_age_s,
-        "last_activity_side":  last_side,
-        "last_activity_type":  "signal" if signal_at else ("heartbeat" if heartbeat_at else None),
+        "last_signal_side":    last_side if signal_at else None,
+        "last_activity_ts":    activity_ts or None,
+        "last_activity_age_s": activity_age_s,
+        "last_activity_side":  activity_side,
+        "last_activity_type":  activity_type,
+        "last_bar_ts":         bar_at or None,
         "data_ts":             now_ts,
         "data_age_s":          0.0,
         "heartbeat_ts":        heartbeat_at or None,
@@ -2974,6 +3032,7 @@ def bot_fleet_roster(
     response: Response,
     bot: str | None = None,
     since_days: int = 1,
+    include_disabled: bool = False,
 ) -> dict:
     """Roster: scan state/bots/<name>/status.json for each bot."""
     from datetime import UTC, datetime
@@ -3141,6 +3200,9 @@ def bot_fleet_roster(
             continue
         rows.append(_readiness_only_roster_row(readiness, now_ts=now_ts))
         readiness_seen.add(bot_id)
+
+    if not include_disabled:
+        rows = [row for row in rows if not _is_hidden_bot_row(row)]
 
     confirmed_bots = sum(
         1 for r in rows

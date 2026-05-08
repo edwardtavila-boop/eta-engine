@@ -76,6 +76,67 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .empty-panel{border:1px dashed rgba(255,255,255,.10);border-radius:10px;padding:.9rem;color:var(--dim);font-size:.78rem}
 @media(max-width:640px){.grid{grid-template-columns:1fr 1fr;padding:1rem}.header{padding:.75rem 1rem;flex-wrap:wrap}}
 @media(max-width:900px){.ops-truth-wrap{grid-template-columns:1fr;padding:0 1rem 1rem}}
+:root{--bg:#02050a;--card:rgba(9,15,24,.78);--border:rgba(137,170,199,.18);--green:#36f0a2;--red:#ff5b6e;--yellow:#ffd166;--blue:#64d7ff;--text:#edf7ff;--dim:#8294a7;--accent:#e6b85c;--glass:rgba(255,255,255,.045);--line:rgba(255,255,255,.075)}
+body{background:radial-gradient(circle at 18% 0%,rgba(100,215,255,.18),transparent 34%),radial-gradient(circle at 90% 12%,rgba(230,184,92,.12),transparent 28%),linear-gradient(145deg,#02050a,#07111c 45%,#02050a);font-family:"Aptos Display","Bahnschrift","Segoe UI",sans-serif;letter-spacing:.01em}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 0 42%,rgba(255,255,255,.035) 43%,transparent 46% 100%),radial-gradient(circle at 50% -20%,rgba(255,255,255,.16),transparent 35%);mix-blend-mode:screen}
+.header{backdrop-filter:blur(18px);background:linear-gradient(180deg,rgba(5,10,18,.92),rgba(5,10,18,.68));box-shadow:0 18px 60px rgba(0,0,0,.28)}
+.header h1{font-size:1.35rem;letter-spacing:.04em;background:linear-gradient(90deg,#fff4d6,var(--accent),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .meta{margin-top:.25rem;color:#a9bad0}
+.grid{padding:1.25rem 2rem;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:.85rem}
+.card{background:linear-gradient(145deg,rgba(12,19,30,.84),rgba(3,8,14,.88));border-color:var(--border);border-radius:18px;box-shadow:0 16px 50px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06)}
+.card h3{color:#a7b7c8;letter-spacing:1.8px}
+.card .stat{font-size:1.75rem}
+.status-bar{padding:1rem 2rem .35rem;color:#9cb0c5}
+.controls{padding:0;justify-content:flex-end}
+.controls button{border-radius:999px;background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.12)}
+.controls button.active,.controls button:hover{background:rgba(230,184,92,.16);border-color:rgba(230,184,92,.5)}
+.portfolio-command{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:1rem;padding:1rem 2rem .5rem}
+.portfolio-hero,.premium-panel{border:1px solid var(--border);border-radius:24px;background:linear-gradient(140deg,rgba(14,23,36,.86),rgba(4,10,18,.86));box-shadow:0 22px 80px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;position:relative}
+.portfolio-hero:after,.premium-panel:after{content:"";position:absolute;inset:auto -15% -45% 35%;height:170px;background:radial-gradient(circle,rgba(100,215,255,.18),transparent 66%);pointer-events:none}
+.portfolio-hero{padding:1.5rem}
+.eyebrow{font-size:.68rem;text-transform:uppercase;letter-spacing:2.2px;color:var(--accent);margin-bottom:.45rem}
+.portfolio-hero h2{font-size:clamp(1.7rem,3vw,3rem);line-height:1.02;max-width:760px;color:#f7fbff}
+.portfolio-narrative{max-width:800px;margin:.85rem 0 1rem;color:#a7b7c8;font-size:.92rem}
+.hero-chips,.allocation-pills{display:flex;gap:.5rem;flex-wrap:wrap}
+.hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:.4rem .72rem;background:rgba(255,255,255,.045);font-size:.74rem;color:#b8c7d8}
+.hero-chip strong,.allocation-pill strong{color:#f7fbff}
+.portfolio-orb{min-height:100%;padding:1.4rem;display:grid;place-items:center;text-align:center}
+.orb-ring{width:min(250px,70vw);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:conic-gradient(from 220deg,var(--green),var(--blue),var(--accent),var(--green));padding:1px;box-shadow:0 0 60px rgba(100,215,255,.18)}
+.orb-inner{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 25%,rgba(255,255,255,.12),transparent 30%),linear-gradient(145deg,#091421,#03060a);display:grid;place-items:center;padding:1.4rem}
+.orb-label{font-size:.66rem;text-transform:uppercase;letter-spacing:1.8px;color:#8fa3b8}
+.orb-value{font-size:2.1rem;font-weight:800;color:#fff;margin:.25rem 0}
+.orb-sub{font-size:.78rem;color:#9fb1c5}
+.portfolio-analytics{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(290px,.8fr);gap:1rem;padding:.5rem 2rem 1.25rem}
+.wide-card{min-height:265px}
+.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+.panel-kicker{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px}
+.contribution-graph{display:grid;gap:.68rem}
+.contribution-row{display:grid;grid-template-columns:minmax(125px,.9fr) minmax(120px,1.6fr) 92px;gap:.75rem;align-items:center;font-size:.78rem}
+.contribution-name{min-width:0}
+.contribution-name strong{display:block;color:#f3f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contribution-name span{display:block;color:var(--dim);font-size:.68rem;margin-top:.1rem}
+.contribution-track{height:11px;border-radius:999px;background:rgba(255,255,255,.055);overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.045)}
+.contribution-fill{height:100%;border-radius:999px;min-width:3px;background:linear-gradient(90deg,var(--blue),var(--green))}
+.contribution-fill.negative{background:linear-gradient(90deg,var(--red),#ff9f7a)}
+.contribution-value{text-align:right;font-variant-numeric:tabular-nums}
+.allocation-sections{display:grid;gap:1rem;padding:0 2rem 1.5rem}
+.allocation-group{border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(12,19,30,.72),rgba(3,8,14,.76));padding:1rem}
+.allocation-group-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.8rem}
+.allocation-group-title{font-weight:800;color:#f5f9ff}
+.allocation-group-sub{color:var(--dim);font-size:.74rem}
+.allocation-bot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.65rem}
+.mini-bot-card{border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:.75rem;background:rgba(255,255,255,.035)}
+.mini-bot-card .top{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.35rem}
+.mini-bot-card strong{color:#f8fbff}
+.mini-bot-card .line{display:flex;justify-content:space-between;gap:.5rem;color:var(--dim);font-size:.72rem}
+.mini-bot-card .line span:last-child{color:#dbe7f3;text-align:right}
+.table-wrap{padding:0 2rem 2rem}
+table{border-spacing:0 5px;border-collapse:separate}
+td{background:rgba(255,255,255,.02);border-top:1px solid rgba(255,255,255,.035);border-bottom:1px solid rgba(255,255,255,.035)}
+tbody tr td:first-child{border-left:1px solid rgba(255,255,255,.035);border-radius:12px 0 0 12px}
+tbody tr td:last-child{border-right:1px solid rgba(255,255,255,.035);border-radius:0 12px 12px 0}
+tr:hover td{background:rgba(100,215,255,.055)}
+@media(max-width:980px){.portfolio-command,.portfolio-analytics{grid-template-columns:1fr;padding-left:1rem;padding-right:1rem}.allocation-sections{padding-left:1rem;padding-right:1rem}}
 </style>
 </head>
 <body>
@@ -96,6 +157,54 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   <span id="apiSourceText"></span>
   <span id="lastTradeText"></span>
 </div>
+
+<section class="portfolio-command">
+  <div class="portfolio-hero">
+    <div class="eyebrow">Portfolio Command</div>
+    <h2>Capital, exposure, and execution truth in one cockpit.</h2>
+    <p class="portfolio-narrative" id="portfolioNarrative">Waiting for live portfolio truth...</p>
+    <div class="hero-chips" id="portfolioHeroChips">
+      <span class="hero-chip">Loading allocation...</span>
+    </div>
+  </div>
+  <div class="premium-panel portfolio-orb">
+    <div class="orb-ring">
+      <div class="orb-inner">
+        <div>
+          <div class="orb-label">Broker Net Today</div>
+          <div class="orb-value" id="portfolioNetOrb">--</div>
+          <div class="orb-sub" id="portfolioNetOrbSub">realized + unrealized</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="portfolio-analytics">
+  <div class="card wide-card">
+    <div class="panel-head">
+      <div>
+        <h3>Portfolio PnL Contribution</h3>
+        <div class="panel-kicker" id="contributionSub">Open exposure and realized close evidence</div>
+      </div>
+      <div class="truth-chip" id="contributionSource">broker first</div>
+    </div>
+    <div class="contribution-graph" id="pnlContributionGraph">
+      <div class="empty-panel">Waiting for contribution data...</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="panel-head">
+      <div>
+        <h3>Portfolio Allocation</h3>
+        <div class="panel-kicker">Grouped by asset sleeve</div>
+      </div>
+    </div>
+    <div class="allocation-pills" id="allocationPills">
+      <span class="allocation-pill">Loading sleeves...</span>
+    </div>
+  </div>
+</section>
 
 <div class="grid">
   <div class="card"><h3>Total Bots</h3><div class="stat green" id="totalBots">—</div></div>
@@ -174,6 +283,17 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
   </div>
 </div>
 
+<section class="allocation-sections" id="allocationSections">
+  <div class="allocation-group">
+    <div class="allocation-group-head">
+      <div>
+        <div class="allocation-group-title">Portfolio Sleeves</div>
+        <div class="allocation-group-sub">Live bots will group here by asset class once the roster loads.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <div class="table-wrap">
   <table>
     <thead>
@@ -215,6 +335,35 @@ function finiteNumber(value) {
   if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+const HIDDEN_BOT_VALUES = new Set(['deactivated', 'disabled', 'removed', 'retired', 'inactive']);
+
+function isDisplayableBot(bot) {
+  const readiness = bot?.strategy_readiness || {};
+  const values = [
+    bot?.status,
+    bot?.mode,
+    bot?.launch_lane,
+    bot?.promotion_status,
+    bot?.data_status,
+    readiness.status,
+    readiness.launch_lane,
+    readiness.promotion_status,
+    readiness.data_status
+  ].map(v => String(v || '').trim().toLowerCase());
+  if (values.some(v => HIDDEN_BOT_VALUES.has(v))) return false;
+  if (readiness.active === false && Number(bot?.open_positions || 0) <= 0) return false;
+  return true;
+}
+
+function assetBucket(symbol) {
+  const s = String(symbol || '').toUpperCase();
+  if (['BTC','ETH','SOL','XRP','MBT','MET'].some(x => s.startsWith(x))) return 'Crypto';
+  if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index Futures';
+  if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals and Energy';
+  if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates and FX';
+  return 'Research and Other';
 }
 
 function isRuntimeActiveBot(bot) {
@@ -517,6 +666,189 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
   routerPanel.innerHTML = rows.join('') || '<div class="empty-panel">No router tape yet. Pending orders, fills, and rejects will appear here as they happen.</div>';
 }
 
+function brokerContributionRows(liveBroker) {
+  const rows = [];
+  const exposureRows = liveBroker?.position_exposure?.open_positions;
+  if (Array.isArray(exposureRows)) {
+    for (const p of exposureRows) {
+      const pnl = finiteNumber(p.unrealized_pnl);
+      if (pnl == null && finiteNumber(p.market_value) == null) continue;
+      rows.push({
+        label: p.symbol || p.bot_id || 'open position',
+        sub: `${p.venue || 'broker'} open exposure`,
+        bucket: assetBucket(p.symbol),
+        pnl: pnl || 0,
+        value: Math.abs(finiteNumber(p.market_value) || 0)
+      });
+    }
+  }
+  const closes = liveBroker?.position_exposure?.recent_closes;
+  if (Array.isArray(closes)) {
+    for (const c of closes.slice(0, 8)) {
+      const pnl = finiteNumber(c.realized_pnl);
+      if (pnl == null) continue;
+      rows.push({
+        label: c.bot_id || c.symbol || 'closed trade',
+        sub: `${c.symbol || 'symbol'} realized close`,
+        bucket: assetBucket(c.symbol),
+        pnl,
+        value: Math.abs(pnl)
+      });
+    }
+  }
+  return rows;
+}
+
+function botContributionRows(bots) {
+  return bots
+    .map(bot => ({
+      label: bot.id || bot.name || bot.symbol || 'bot',
+      sub: `${bot.symbol || 'symbol'} ${bot.tier || bot.strategy || ''}`.trim(),
+      bucket: assetBucket(bot.symbol),
+      pnl: finiteNumber(bot.todays_pnl) || 0,
+      value: Math.abs(finiteNumber(bot.todays_pnl) || 0)
+    }))
+    .filter(row => row.value > 0);
+}
+
+function renderContributionGraph(bots, liveBroker) {
+  const el = document.getElementById('pnlContributionGraph');
+  const source = document.getElementById('contributionSource');
+  const sub = document.getElementById('contributionSub');
+  if (!el) return;
+  let rows = brokerContributionRows(liveBroker);
+  let sourceLabelText = 'broker exposure';
+  if (!rows.length) {
+    rows = botContributionRows(bots);
+    sourceLabelText = 'bot PnL fallback';
+  }
+  rows.sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  const topRows = rows.slice(0, 8);
+  if (source) source.textContent = sourceLabelText;
+  if (sub) sub.textContent = topRows.length
+    ? `${topRows.length} live contributors ranked by absolute PnL impact`
+    : 'Waiting for open exposure, fills, or bot PnL movement';
+  if (!topRows.length) {
+    el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
+    return;
+  }
+  const maxAbs = Math.max(1, ...topRows.map(row => Math.abs(row.pnl)));
+  el.innerHTML = topRows.map(row => {
+    const width = Math.max(4, Math.round((Math.abs(row.pnl) / maxAbs) * 100));
+    const klass = row.pnl < 0 ? 'negative' : '';
+    const valueClass = row.pnl < 0 ? 'red' : row.pnl > 0 ? 'green' : 'dim';
+    return `<div class="contribution-row">
+      <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} | ${esc(row.sub)}</span></div>
+      <div class="contribution-track"><div class="contribution-fill ${klass}" style="width:${width}%"></div></div>
+      <div class="contribution-value ${valueClass}">${esc(formatMoney(row.pnl, 2))}</div>
+    </div>`;
+  }).join('');
+}
+
+function allocationBuckets(bots, liveBroker) {
+  const buckets = new Map();
+  const ensure = (name) => {
+    if (!buckets.has(name)) buckets.set(name, {name, bots: [], exposure: 0, pnl: 0, open: 0});
+    return buckets.get(name);
+  };
+  const positions = buildBrokerPositions(liveBroker);
+  for (const p of positions) {
+    const bucket = ensure(assetBucket(p.symbol));
+    bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
+    bucket.pnl += finiteNumber(p.pnl) || 0;
+    bucket.open += 1;
+  }
+  for (const bot of bots) {
+    const bucket = ensure(assetBucket(bot.symbol));
+    bucket.bots.push(bot);
+    if (!positions.length) {
+      bucket.pnl += finiteNumber(bot.todays_pnl) || 0;
+      if (Number(bot.open_positions || 0) > 0) bucket.open += Number(bot.open_positions || 0);
+    }
+  }
+  return Array.from(buckets.values()).sort((a, b) => {
+    const av = a.exposure || Math.abs(a.pnl) || a.bots.length;
+    const bv = b.exposure || Math.abs(b.pnl) || b.bots.length;
+    return bv - av;
+  });
+}
+
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl) {
+  const brokerPositions = buildBrokerPositions(liveBroker);
+  const active = bots.filter(isRuntimeActiveBot).length;
+  const realized = finiteNumber(liveBroker?.today_realized_pnl) || 0;
+  const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl) || 0;
+  const openExposure = brokerPositions.reduce((sum, p) => sum + Math.abs(finiteNumber(p.value) || 0), 0);
+  const orb = document.getElementById('portfolioNetOrb');
+  const orbSub = document.getElementById('portfolioNetOrbSub');
+  const narrative = document.getElementById('portfolioNarrative');
+  const chips = document.getElementById('portfolioHeroChips');
+  if (orb) {
+    orb.textContent = formatMoney(todaysPnl, 0);
+    orb.className = 'orb-value ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : '');
+  }
+  if (orbSub) orbSub.textContent = `${formatMoney(realized, 2)} realized | ${formatMoney(unrealized, 2)} unrealized`;
+  if (narrative) {
+    const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
+    narrative.textContent = `${active} active display bots across ${bots.length} visible roster rows. ${truth}`;
+  }
+  if (chips) {
+    chips.innerHTML = [
+      `<span class="hero-chip"><strong>${bots.length}</strong> visible bots</span>`,
+      `<span class="hero-chip"><strong>${active}</strong> active</span>`,
+      `<span class="hero-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
+      `<span class="hero-chip"><strong>${formatMoney(openExposure, 0)}</strong> exposure</span>`,
+      hiddenCount > 0 ? `<span class="hero-chip"><strong>${hiddenCount}</strong> disabled hidden</span>` : '',
+    ].filter(Boolean).join('');
+  }
+}
+
+function renderAllocationPillsAndSections(bots, liveBroker) {
+  const buckets = allocationBuckets(bots, liveBroker);
+  const totalExposure = buckets.reduce((sum, b) => sum + (b.exposure || 0), 0);
+  const totalBots = Math.max(1, bots.length);
+  const pills = document.getElementById('allocationPills');
+  const sections = document.getElementById('allocationSections');
+  if (pills) {
+    pills.innerHTML = buckets.map(bucket => {
+      const weight = totalExposure > 0
+        ? (bucket.exposure / totalExposure) * 100
+        : (bucket.bots.length / totalBots) * 100;
+      return `<span class="allocation-pill"><strong>${esc(bucket.name)}</strong> ${weight.toFixed(0)}%</span>`;
+    }).join('') || '<span class="allocation-pill">No active allocation rows</span>';
+  }
+  if (!sections) return;
+  if (!buckets.length) {
+    sections.innerHTML = '<div class="allocation-group"><div class="allocation-group-sub">No visible bots after disabled/removed filtering.</div></div>';
+    return;
+  }
+  sections.innerHTML = buckets.map(bucket => {
+    const botRows = bucket.bots
+      .sort((a, b) => String(a.symbol || '').localeCompare(String(b.symbol || '')))
+      .slice(0, 8)
+      .map(bot => {
+        const activity = activityForBot(bot);
+        const position = positionForBot(bot);
+        return `<div class="mini-bot-card">
+          <div class="top"><strong>${esc(bot.id || bot.name || 'bot')}</strong><span class="badge ${isRuntimeActiveBot(bot) ? 'badge-approve' : 'badge-idle'}">${esc(bot.status || 'unknown')}</span></div>
+          <div class="line"><span>symbol / strategy</span><span>${esc(bot.symbol || '--')} / ${esc(bot.tier || bot.strategy || '--')}</span></div>
+          <div class="line"><span>position</span><span>${esc(position.text)}</span></div>
+          <div class="line"><span>activity</span><span>${activity ? esc(activity.type + ' ' + formatTimeShort(activity.ts)) : 'waiting'}</span></div>
+        </div>`;
+      }).join('');
+    const botOverflow = bucket.bots.length > 8 ? `<div class="empty-panel">${bucket.bots.length - 8} more bots in this sleeve hidden for focus.</div>` : '';
+    return `<div class="allocation-group">
+      <div class="allocation-group-head">
+        <div>
+          <div class="allocation-group-title">${esc(bucket.name)}</div>
+          <div class="allocation-group-sub">${bucket.bots.length} visible bots | ${bucket.open} open | ${formatMoney(bucket.exposure, 0)} exposure | ${formatMoney(bucket.pnl, 2)} PnL</div>
+        </div>
+      </div>
+      <div class="allocation-bot-grid">${botRows || '<div class="empty-panel">No visible bots in this sleeve; broker exposure only.</div>'}${botOverflow}</div>
+    </div>`;
+  }).join('');
+}
+
 async function fetchJsonOnce(url, timeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -599,12 +931,19 @@ function activityForBot(bot) {
       type: 'TRADE'
     };
   }
-  const signalTs = bot.last_signal_ts || (bot.last_activity_type !== 'trade' ? bot.last_activity_ts : '');
+  const signalTs = bot.last_signal_ts;
   if (signalTs) {
     return {
       ts: signalTs,
       side: bot.last_signal_side || bot.last_activity_side || '',
       type: 'SIGNAL'
+    };
+  }
+  if (bot.last_activity_ts && bot.last_activity_type) {
+    return {
+      ts: bot.last_activity_ts,
+      side: bot.last_activity_side || '',
+      type: String(bot.last_activity_type).toUpperCase()
     };
   }
   return null;
@@ -666,7 +1005,9 @@ function protectionForBot(bot) {
 }
 
 function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
-  const bots = d.bots || [];
+  const allBots = Array.isArray(d.bots) ? d.bots : [];
+  const bots = allBots.filter(isDisplayableBot);
+  const hiddenCount = Math.max(0, allBots.length - bots.length);
   const summary = d.summary || {};
   const confirmed = d.confirmed_bots || 0;
   const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
@@ -688,7 +1029,9 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   document.getElementById('activeBots').textContent = active;
   document.getElementById('activeBots').className = 'stat ' + (active > 0 ? 'green' : 'blue');
   const activeSub = document.getElementById('activeBotsSub');
-  if (activeSub) activeSub.textContent = staged > 0 ? staged + ' readiness/staged rows' : 'runtime-active bots';
+  if (activeSub) activeSub.textContent = hiddenCount > 0
+    ? `${staged} staged; ${hiddenCount} disabled hidden`
+    : staged > 0 ? staged + ' readiness/staged rows' : 'runtime-active bots';
 
   // Live broker truth (Alpaca + IBKR REST). When present, this is the
   // authoritative source for "Today PnL" and "Actual Trades" — broker
@@ -715,6 +1058,9 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl);
+  renderContributionGraph(bots, liveBroker);
+  renderAllocationPillsAndSections(bots, liveBroker);
 
   // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
   // a real lifetime field, show it; otherwise mark the card as unavailable
@@ -778,7 +1124,7 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   // Falls back to per-bot total_trades / fill-backed rows otherwise.
   const trades = bots.reduce((s,b) => s + (Number(b.total_trades) || 0), 0);
   const fillBackedRows = bots.filter(b => b.last_trade_ts).length;
-  const signalUpdates = bots.filter(b => !b.last_trade_ts && (b.last_signal_ts || b.last_activity_ts)).length;
+  const signalUpdates = bots.filter(b => !b.last_trade_ts && b.last_signal_ts).length;
   if (liveBrokerReady) {
     const liveFills = Number(liveBroker.today_actual_fills || 0);
     const openPos = Number(liveBroker.open_position_count || 0);
@@ -808,12 +1154,12 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
     .filter(b => b.last_trade_ts)
     .sort((a,b) => String(b.last_trade_ts).localeCompare(String(a.last_trade_ts)))[0];
   const lastSignal = bots
-    .filter(b => !b.last_trade_ts && (b.last_signal_ts || b.last_activity_ts))
-    .sort((a,b) => String(b.last_signal_ts || b.last_activity_ts).localeCompare(String(a.last_signal_ts || a.last_activity_ts)))[0];
+    .filter(b => !b.last_trade_ts && b.last_signal_ts)
+    .sort((a,b) => String(b.last_signal_ts).localeCompare(String(a.last_signal_ts)))[0];
   document.getElementById('lastTradeText').textContent = lastTrade
     ? 'Last Trade: ' + lastTrade.last_trade_ts.replace('T',' ').substring(0,19)
     : lastSignal
-      ? 'Latest Signal: ' + String(lastSignal.last_signal_ts || lastSignal.last_activity_ts).replace('T',' ').substring(0,19)
+      ? 'Latest Signal: ' + String(lastSignal.last_signal_ts).replace('T',' ').substring(0,19)
       : 'No executed trades yet';
 
   // IBKR gateway: prefer the live REST probe (live_broker_state.ibkr.ready)
@@ -917,7 +1263,7 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
           : (results || failed)
             ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
             : 'waiting for orders';
-  renderOpsTruthSections(d, liveBroker, brokerRouter);
+  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter);
 
   const opSummary = operatorQueue?.summary || {};
   const opBlocked = Number(opSummary.BLOCKED || 0);
@@ -1039,7 +1385,7 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
       '<td>' + (b.sharpe || '—') + '</td>' +
       '</tr>';
   }
-  document.getElementById('botTable').innerHTML = html;
+  document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   renderStrategySuperchargeResults(strategyResults || {});
   updateClock();
 }

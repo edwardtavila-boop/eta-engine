@@ -1395,7 +1395,10 @@ class TestDashboardAPI:
                     "schema_version": 1,
                     "generated_at": "2026-04-29T21:30:00+00:00",
                     "source": "bot_strategy_readiness",
-                    "summary": {"total_bots": 1, "launch_lanes": {"live_preflight": 1}},
+                    "summary": {
+                        "total_bots": 2,
+                        "launch_lanes": {"live_preflight": 1, "deactivated": 1},
+                    },
                     "rows": [
                         {
                             "bot_id": "nq_daily_drb",
@@ -1411,6 +1414,21 @@ class TestDashboardAPI:
                             "can_paper_trade": True,
                             "can_live_trade": False,
                             "next_action": "Run per-bot promotion preflight before live routing.",
+                        },
+                        {
+                            "bot_id": "removed_legacy_bot",
+                            "strategy_id": "removed_legacy_bot_v1",
+                            "strategy_kind": "legacy",
+                            "symbol": "NQ",
+                            "timeframe": "1d",
+                            "active": False,
+                            "promotion_status": "retired",
+                            "baseline_status": "removed",
+                            "data_status": "disabled",
+                            "launch_lane": "deactivated",
+                            "can_paper_trade": False,
+                            "can_live_trade": False,
+                            "next_action": "Removed from the active fleet.",
                         }
                     ],
                 }
@@ -1422,6 +1440,7 @@ class TestDashboardAPI:
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
         data = r.json()
+        assert "removed_legacy_bot" not in [b["name"] for b in data["bots"]]
         nq = next(b for b in data["bots"] if b["name"] == "nq_daily_drb")
         assert nq["source"] == "bot_strategy_readiness_snapshot"
         assert nq["status"] == "readiness_only"
@@ -1433,6 +1452,14 @@ class TestDashboardAPI:
         filtered = app_client.get("/api/bot-fleet?bot=nq_daily_drb")
         assert filtered.status_code == 200
         assert [row["name"] for row in filtered.json()["bots"]] == ["nq_daily_drb"]
+
+        hidden = app_client.get("/api/bot-fleet?bot=removed_legacy_bot")
+        assert hidden.status_code == 200
+        assert hidden.json()["bots"] == []
+
+        hidden_debug = app_client.get("/api/bot-fleet?bot=removed_legacy_bot&include_disabled=true")
+        assert hidden_debug.status_code == 200
+        assert [row["name"] for row in hidden_debug.json()["bots"]] == ["removed_legacy_bot"]
 
         drill = app_client.get("/api/bot-fleet/nq_daily_drb")
         assert drill.status_code == 200
@@ -1515,6 +1542,7 @@ class TestDashboardAPI:
                     "realized_pnl": 2.0,
                     "open_position": None,
                     "last_jarvis_verdict": "APPROVED",
+                    "last_signal_at": "2026-04-28T11:59:00+00:00",
                     "last_bar_ts": "2026-04-28T12:00:00+00:00",
                     "strategy_readiness": {
                         "status": "ready",
@@ -1536,6 +1564,7 @@ class TestDashboardAPI:
                         "side": "BUY",
                         "qty": 0.05,
                         "entry_price": 67000.0,
+                        "entry_ts": "2026-04-28T11:58:30+00:00",
                         "mark_price": 67350.0,
                         "bracket_stop": 66200.0,
                         "bracket_target": 68400.0,
@@ -1567,11 +1596,12 @@ class TestDashboardAPI:
         assert mnq["last_trade_side"] is None
         assert mnq["last_trade_qty"] is None
         assert mnq["last_trade_r"] is None
-        assert mnq["last_signal_ts"] == "2026-04-28T12:00:00+00:00"
+        assert mnq["last_signal_ts"] == "2026-04-28T11:59:00+00:00"
         assert mnq["last_signal_side"] == "LONG"
-        assert mnq["last_activity_ts"] == "2026-04-28T12:00:00+00:00"
+        assert mnq["last_activity_ts"] == "2026-04-28T11:59:00+00:00"
         assert mnq["last_activity_side"] == "LONG"
         assert mnq["last_activity_type"] == "signal"
+        assert mnq["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
         assert mnq["venue"] == "paper-sim"
         assert mnq["tier"] == "orb"
         assert mnq["strategy_readiness"]["launch_lane"] == "live_preflight"
@@ -1613,6 +1643,46 @@ class TestDashboardAPI:
             "auth_session",
             "source_freshness",
         }
+
+    def test_bot_fleet_keeps_bar_refreshes_out_of_signal_times(self, app_client):
+        """Supervisor bar timestamps are freshness evidence, not trade signals."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        hb = {
+            "ts": "2026-04-28T12:00:05+00:00",
+            "mode": "paper_live",
+            "bots": [
+                {
+                    "bot_id": "bar_only_mnq",
+                    "symbol": "MNQ1",
+                    "strategy_kind": "orb",
+                    "direction": "long",
+                    "n_entries": 0,
+                    "n_exits": 0,
+                    "realized_pnl": 0.0,
+                    "open_position": None,
+                    "last_jarvis_verdict": "NONE",
+                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                }
+            ],
+        }
+        (sup_dir / "heartbeat.json").write_text(json.dumps(hb))
+
+        r = app_client.get("/api/bot-fleet")
+        assert r.status_code == 200
+        row = next(b for b in r.json()["bots"] if b["name"] == "bar_only_mnq")
+        assert row["last_signal_ts"] is None
+        assert row["last_signal_side"] is None
+        assert row["last_activity_ts"] == "2026-04-28T12:00:00+00:00"
+        assert row["last_activity_side"] is None
+        assert row["last_activity_type"] == "bar"
+        assert row["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
 
     def test_bot_fleet_drilldown_prefers_supervisor_open_position(self, app_client):
         """Per-bot drilldown must not hide live supervisor positions behind legacy status."""
@@ -1710,6 +1780,7 @@ class TestDashboardAPI:
                             "n_exits": 0,
                             "realized_pnl": 0.0,
                             "open_position": None,
+                            "last_signal_at": old_signal,
                             "last_bar_ts": old_signal,
                         },
                     ],

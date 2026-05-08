@@ -476,3 +476,66 @@ After this sprint:
 - BTC trio explores parameter space rather than triplicating one edge
 
 The pre-live pipeline now has the guards it needed before the first live dollar.
+
+---
+
+## Round 7: 365d re-verification on the post-reset fleet + cloud routine cleanup (2026-05-07)
+
+After parallel work substantially restructured the registry (eth_sweep_reclaim, btc_optimized, vwap_mr_*, btc_anchor_sweep all gone or renamed; new mbt_*, met_*, sol_optimized added), re-ran the harness on the current active fleet at 365-day windows.
+
+### 365d verdict matrix
+
+| Bot | Symbol | OOS trades | OOS PnL | WR | Decay | Verdict |
+|-----|--------|-----------|---------|----|----|---------|
+| **mnq_anchor_sweep** | MNQ1 5m | **47** | **+$135** | **34.0%** | **+105%** | **ALL GREEN — paper_soak holds** |
+| **ng_sweep_reclaim** | NG1 1h | **30** | **+$589** | **36.7%** | **+174%** | **ALL GREEN (fresh) BUT quant demote stands due to rollover artifacts** |
+| sol_optimized | SOL 1h | 21 | +$198 | 28.6% | +112% | YELLOW — 4/5 GREEN, sample 21 < 30 |
+| mnq_futures_optimized | MNQ1 5m | 4 | +$496 | 75% | +488% | RED — sample frozen at 4 (low frequency) |
+| gc_sweep_reclaim | GC1 1h | 12 | -$221 | 16.7% | +77% | RED — losing, can't beat gold bull-run baseline |
+| eur_sweep_reclaim | 6E1 1h | 22 | -$209 | 27.3% | -227% | RED — severe overfit |
+| mbt_sweep_reclaim | MBT 1h | — | — | — | — | NO DATA |
+| met_sweep_reclaim | MET 1h | — | — | — | — | NO DATA |
+
+### NG1 reconciliation: two verdicts, one decision
+
+A quant-agent EDA on 2026-05-07 demoted ng_sweep_reclaim from paper_soak → research_candidate citing:
+- NG1_1h.csv has 65 adjacent-close jumps >5% (rollover artifacts)
+- Composite-mode firing rate is <40 trades over 2.4y (below noise floor)
+- Lab artifact shows `total_trades: 0`, `bar file missing: NG/1h`
+
+My fresh 365d harness today re-confirms **30 OOS trades + +$589 OOS + +174% decay**. The numbers reproduce. But the rollover-artifact concern is legitimate — the harness cannot distinguish real edge from rollover-jump bias on a contaminated dataset.
+
+**Decision:** keep the demote. Add a reconciliation field on the bot's extras that records both verdicts side-by-side. Re-promotion gated on rollover-adjusted NG1 history being loaded.
+
+### Cloud routines (Anthropic remote-trigger fleet)
+
+Separate ops cleanup: 20 → 8 enabled, all 8 renamed `eta:` and re-pointed at canonical superproject:
+- 12 disabled: 4 redundant code-quality scans (canonical pre-commit covers them) + 6 legacy-superseded + 2 duplicates
+- 8 retained for live ops: IBKR + Tastytrade session monitors, backup-state, trade-journal reconcile, stuck-killswitch, commit-cadence (now scans superproject + 3 submodules), Apex Trader Funding eval, ml_scorer staleness
+- Compute saved: ~12 fewer remote-CCR sessions per week
+- All 8 prompts rewritten with submodule-init step, canonical script paths (`eta_engine/scripts/`), canonical alerts log (`logs/eta_engine/alerts_log.jsonl`), and two-step submodule-bump commit pattern per CLAUDE.md submodule discipline
+
+### Final paper_soak fleet (verified ALL GREEN edges)
+
+```
+mnq_anchor_sweep    MNQ1 5m   47T (365d) +$135   34.0% WR  +105% decay
+ng_sweep_reclaim    NG1 1h    30T (365d) +$589   36.7% WR  +174% decay
+                              ↑ fresh-harness GREEN, but research_candidate per data-quality demote
+```
+
+**Honest final count: 1 fully-promoted ALL GREEN edge in paper_soak (mnq_anchor_sweep) + 1 disputed-data GREEN under data-quality hold (ng_sweep_reclaim).**
+
+The quant-agent demote of ng_sweep_reclaim is the right call — paper-soaking on rollover-contaminated data would propagate the bias into live decisions. The fix is loading rollover-adjusted NG1 history, not arguing with the demote.
+
+### What survives this session as durable infrastructure
+
+| Layer | Module | Tests |
+|-------|--------|-------|
+| Realistic fill | `feeds/instrument_specs.py` (with front-month aliases), `feeds/realistic_fill_sim.py`, `feeds/funding_ledger.py` | 41 |
+| Signal validator | `feeds/signal_validator.py` | 24 |
+| Walk-forward harness | `scripts/strategy_creation_harness.py`, `scripts/paper_trade_sim.py` (with notional cap mirror) | — |
+| Strategy bug fixes | `strategies/vwap_reversion_strategy.py` (rr_too_small), `strategies/volume_profile_strategy.py` (rr_absurd), `strategies/rsi_mean_reversion_strategy.py` (notional cap) | — |
+| Bridge dispatch | `strategies/registry_strategy_bridge.py` (confluence_scorecard wraps sub-strategy) | — |
+| Live-path guards | `feeds/mnq_live_supervisor.py` + `scripts/jarvis_strategy_supervisor.py` (dedupe) + `bots/mnq/bot.py` (validator wired) + `venues/ibkr_live.py` (bracket-or-reject) + `backtest/engine.py` `_Open` invariant | 6 + integration |
+
+**Test sweep at session close: 5,653 passing / 50 skipped.**
