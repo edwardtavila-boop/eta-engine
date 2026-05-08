@@ -10,6 +10,9 @@ param(
     [string]$TaskName = "ETA-Dashboard-API",
     [string]$ProbeUri = "http://127.0.0.1:8000/api/bot-fleet",
     [int]$ProbeDelaySeconds = 8,
+    [int]$ProbeAttempts = 4,
+    [int]$ProbeTimeoutSeconds = 35,
+    [int]$ProbeRetryDelaySeconds = 5,
     [switch]$SkipGitPull
 )
 
@@ -105,7 +108,32 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Restart canonical ETA dashboard API task
 }
 
 Start-Sleep -Seconds ([Math]::Max(0, $ProbeDelaySeconds))
-$probe = Invoke-RestMethod -Uri $ProbeUri -TimeoutSec 25
+$probe = $null
+$lastProbeError = $null
+$probeAttempt = 0
+$probeAttempts = [Math]::Max(1, $ProbeAttempts)
+$probeTimeout = [Math]::Max(1, $ProbeTimeoutSeconds)
+$probeRetryDelay = [Math]::Max(0, $ProbeRetryDelaySeconds)
+
+for ($attempt = 1; $attempt -le $probeAttempts; $attempt++) {
+    $probeAttempt = $attempt
+    try {
+        $probe = Invoke-RestMethod -Uri $ProbeUri -TimeoutSec $probeTimeout
+        break
+    }
+    catch {
+        $lastProbeError = $_.Exception.Message
+        Write-Warning "Dashboard probe attempt $attempt of $probeAttempts failed: $lastProbeError"
+        if ($attempt -lt $probeAttempts) {
+            Start-Sleep -Seconds $probeRetryDelay
+        }
+    }
+}
+
+if (-not $probe) {
+    throw "Dashboard probe failed after $probeAttempts attempt(s): $lastProbeError"
+}
+
 $botsCount = ($probe.bots | Measure-Object).Count
 $exitSummaryPresent = [bool]$probe.PSObject.Properties["target_exit_summary"]
 $head = ""
@@ -125,6 +153,9 @@ finally {
     engine_head = $head
     task = $TaskName
     probe_uri = $ProbeUri
+    probe_attempt = $probeAttempt
+    probe_attempts = $probeAttempts
+    probe_timeout_seconds = $probeTimeout
     bots = $botsCount
     target_exit_summary = $exitSummaryPresent
     target_exit_status = $probe.target_exit_summary.status
