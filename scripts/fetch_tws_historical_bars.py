@@ -138,6 +138,13 @@ _FUTURES_MAP: dict[str, tuple[str, str, str, str]] = {
     "ZB":   ("ZB",  "CBOT",  "USD", "1000"),
     "6E":   ("EUR", "CME",   "USD", "125000"),
     "M6E":  ("M6E", "CME",   "USD", "12500"),
+    # Dow equity-index futures (added 2026-05-07): YM is the E-mini Dow
+    # contract (CBOT, $5/pt); MYM is the Micro variant (CBOT, $0.50/pt).
+    # Both list quarterly (Mar/Jun/Sep/Dec). Without these entries the
+    # fetcher cannot back-fetch YM/MYM history; YM bots had to rely on
+    # whatever 5m data already existed (~71 days).
+    "YM":   ("YM",  "CBOT",  "USD", "5"),
+    "MYM":  ("MYM", "CBOT",  "USD", "0.5"),
 }
 
 # Roll cadence per symbol. ``monthly`` -> every calendar month is a
@@ -166,6 +173,10 @@ _ROLL_CADENCE: dict[str, str] = {
     "ZB":   "quarterly",
     "6E":   "quarterly",
     "M6E":  "quarterly",
+    # Dow equity-index futures roll quarterly (Mar/Jun/Sep/Dec) like the
+    # rest of the CME equity-index family. Used by --back-fetch mode.
+    "YM":   "quarterly",
+    "MYM":  "quarterly",
 }
 
 # CME month codes (full set, for monthly-listed contracts).

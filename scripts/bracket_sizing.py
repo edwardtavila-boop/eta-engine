@@ -221,7 +221,14 @@ def _budget_per_bot_usd(symbol: str, *, bot_id: str | None = None) -> float:
                     override = (a.extras or {}).get("per_bot_budget_usd")
                     if override is not None:
                         try:
-                            return float(override)
+                            parsed = float(override)
+                            if parsed > 0:
+                                return parsed
+                            logger.warning(
+                                "bot %s has non-positive per_bot_budget_usd=%r; "
+                                "falling back to asset-class default",
+                                bot_id, override,
+                            )
                         except (TypeError, ValueError):
                             logger.warning(
                                 "bot %s has malformed per_bot_budget_usd=%r; "

@@ -71,6 +71,15 @@ def test_effective_point_value_resolves_crypto_spot_vs_futures():
     assert effective_point_value("MNQ1", route="auto") == 2.0
 
 
+def test_get_spec_resolves_bare_and_front_month_aliases():
+    from eta_engine.feeds.instrument_specs import get_spec
+
+    assert get_spec("YM").point_value == 5.0
+    assert get_spec("YM").symbol == "YM1"
+    assert get_spec("MGC1").point_value == 10.0
+    assert get_spec("MGC1").symbol == "MGC"
+
+
 # ── entry fills ────────────────────────────────────────────────────
 
 

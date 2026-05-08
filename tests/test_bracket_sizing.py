@@ -349,7 +349,7 @@ def test_paper_floor_disabled_in_live_mode() -> None:
         os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
 
 
-def test_paper_floor_enabled_via_explicit_live_money_flag() -> None:
+def test_paper_floor_disabled_via_explicit_live_money_flag() -> None:
     """``ETA_SUPERVISOR_LIVE_MONEY=1`` is the explicit live flag -- when
     set it must also disable the paper floor regardless of MODE."""
     from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
@@ -422,6 +422,28 @@ def test_per_bot_budget_override_malformed_falls_back_to_default() -> None:
         ):
             cap = _budget_per_bot_usd("YM1", bot_id="broken_bot")
             # Falls back to asset-class default (NOT the malformed override).
+            assert cap == 10000.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+
+
+def test_per_bot_budget_override_non_positive_falls_back_to_default() -> None:
+    """Zero/negative overrides are unsafe and must not bypass defaults."""
+    from unittest.mock import patch
+
+    from eta_engine.scripts.bracket_sizing import _budget_per_bot_usd
+
+    fake_assignment = type(
+        "FakeAssignment", (),
+        {"bot_id": "broken_bot", "extras": {"per_bot_budget_usd": -1}},
+    )
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    try:
+        with patch(
+            "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+            [fake_assignment],
+        ):
+            cap = _budget_per_bot_usd("YM1", bot_id="broken_bot")
             assert cap == 10000.0
     finally:
         os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)

@@ -151,6 +151,13 @@ _SPECS: dict[str, InstrumentSpec] = {
                            half_spread_ticks=0.5, base_slip_ticks=2.0),
     "YM1":  InstrumentSpec("YM1",  tick_size=1.0,  point_value=5.0,   commission_rt=4.00,
                            half_spread_ticks=0.5, base_slip_ticks=2.0),
+    # Micro Dow (added 2026-05-07): tick=1.0pt, $0.50/pt -> $0.50 tick value.
+    # Commission scales with the smaller contract; IBKR retail is ~$1.40 RT
+    # for micros vs $4.00 for full-size equity-index.
+    "MYM":  InstrumentSpec("MYM",  tick_size=1.0,  point_value=0.5,   commission_rt=1.40,
+                           half_spread_ticks=0.5, base_slip_ticks=2.0),
+    "MYM1": InstrumentSpec("MYM1", tick_size=1.0,  point_value=0.5,   commission_rt=1.40,
+                           half_spread_ticks=0.5, base_slip_ticks=2.0),
 }
 
 # Crypto spot taker fee (round-trip) as fraction of notional.  Applied
@@ -198,6 +205,9 @@ def get_spec(symbol: str) -> InstrumentSpec:
     suffixed = f"{s}1"
     if suffixed in _SPECS:
         return _SPECS[suffixed]
+    stripped = _strip_front_month_suffix(s)
+    if stripped != s and stripped in _SPECS:
+        return _SPECS[stripped]
     return InstrumentSpec(
         symbol=s, tick_size=0.25, point_value=1.0, commission_rt=4.0,
         half_spread_ticks=2.0, base_slip_ticks=3.0,

@@ -796,6 +796,7 @@ class ExecutionRouter:
                 entry_price=ref_price,
                 requested_qty=qty,
                 fleet_open_notional_usd=fleet_notional,
+                bot_id=bot.bot_id,
             )
             if _cap_reason != "ok":
                 logger.info(

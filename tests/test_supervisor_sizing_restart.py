@@ -27,10 +27,10 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 
 class _StubVenue:
@@ -72,7 +72,17 @@ def test_hard_qty_cap_trips_on_oversized_request(
 
     # Force cap_qty_to_budget to return a wildly oversized qty (100 MNQ),
     # bypassing the budget logic entirely. The hard cap (5) must clamp.
-    def _fake_cap(*, symbol, entry_price, requested_qty, fleet_open_notional_usd):  # noqa: ANN001
+    captured_cap_kwargs: dict[str, object] = {}
+
+    def _fake_cap(  # noqa: ANN001
+        *,
+        symbol,
+        entry_price,
+        requested_qty,
+        fleet_open_notional_usd,
+        bot_id=None,
+    ):
+        captured_cap_kwargs["bot_id"] = bot_id
         return 100.0, "ok"
 
     monkeypatch.setattr(
@@ -91,6 +101,7 @@ def test_hard_qty_cap_trips_on_oversized_request(
             bot=bot, signal_id="sig_oversize", side="BUY", bar=bar, size_mult=1.0,
         )
     assert rec is not None
+    assert captured_cap_kwargs["bot_id"] == "oversized_bot"
     # MNQ hard cap is 5
     assert rec.qty == 5.0, f"hard cap should clamp at 5, got {rec.qty}"
     # CRITICAL log emitted

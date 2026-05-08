@@ -304,6 +304,14 @@ def test_canonical_bar_path_respects_root_override(tmp_path: Path) -> None:
     assert p == tmp_path / "ES1_5m.csv"
 
 
+def test_dow_futures_supported_with_quarterly_rolls(tmp_path: Path) -> None:
+    assert mod._FUTURES_MAP["YM"] == ("YM", "CBOT", "USD", "5")
+    assert mod._FUTURES_MAP["MYM"] == ("MYM", "CBOT", "USD", "0.5")
+    assert mod._ROLL_CADENCE["YM"] == "quarterly"
+    assert mod._ROLL_CADENCE["MYM"] == "quarterly"
+    assert mod.canonical_bar_path("YM", "5m", root=tmp_path).name == "YM1_5m.csv"
+
+
 def test_csv_format_matches_load_ohlcv_expectations(tmp_path: Path) -> None:
     out_path = tmp_path / "MBT1_5m.csv"
     rows = [
@@ -1300,5 +1308,4 @@ def test_parser_accepts_back_fetch_and_adjust_flags() -> None:
     args = parser.parse_args([])
     assert args.back_fetch is False
     assert args.adjust is False
-
 
