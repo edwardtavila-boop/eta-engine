@@ -22,12 +22,15 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "ibgateway.exe" in text
     assert "-login=" in text
     assert "function Wait-ApiListener" in text
+    assert "function Wait-NoApiListener" in text
     assert "gateway API listener ready" in text
     assert "StartupTimeoutSeconds" in text
     assert "[int]$StartupTimeoutSeconds = 600" in text
     assert 'Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue' in text
     assert "function Get-ProcessIdValue" in text
     assert "Stop-Process -Id $procId -Force" in text
+    assert "stopping existing gateway API listener owner" in text
+    assert "Timed out waiting for IB Gateway API listener to exit" in text
     assert 'CommandLine -like "*ibgateway*"' not in text
     assert "$existingGateway = @(Get-GatewayProcesses)" in text
     assert "gateway process running without API listener" in text

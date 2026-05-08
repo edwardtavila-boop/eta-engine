@@ -466,6 +466,20 @@ function Wait-NoGatewayProcesses {
     return $false
 }
 
+function Wait-NoApiListener {
+    param([int]$TimeoutSeconds = 60)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (-not (Get-ApiListener)) {
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
 function Wait-ApiListener {
     param([int]$TimeoutSeconds = 600)
 
@@ -581,14 +595,26 @@ try {
     }
 
     if ($ForceRestart) {
+        $existingGatewayPids = @($existingGateway | ForEach-Object { Get-ProcessIdValue $_ })
         foreach ($proc in $existingGateway) {
             $procId = Get-ProcessIdValue $proc
             Write-LogLine "stopping existing gateway process pid=$procId"
             Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
         }
+        if ($listener) {
+            $listenerPid = [int]$listener.OwningProcess
+            if ($listenerPid -gt 0 -and ($existingGatewayPids -notcontains $listenerPid)) {
+                Write-LogLine "stopping existing gateway API listener owner pid=$listenerPid"
+                Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
+            }
+        }
         if (-not (Wait-NoGatewayProcesses -TimeoutSeconds 60)) {
             $remaining = @(Get-GatewayProcesses | ForEach-Object { Get-ProcessIdValue $_ }) -join ","
             throw "Timed out waiting for IB Gateway processes to exit. remaining=$remaining"
+        }
+        if (-not (Wait-NoApiListener -TimeoutSeconds 60)) {
+            $remainingListener = Get-ApiListener
+            throw "Timed out waiting for IB Gateway API listener to exit. remaining_pid=$($remainingListener.OwningProcess)"
         }
     }
 
