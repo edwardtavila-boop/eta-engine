@@ -4437,15 +4437,24 @@ def _normalize_trade_close(row: dict) -> dict | None:
     extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
     layers_updated = row.get("layers_updated")
     layer_errors = row.get("layer_errors")
+    qty_value = _first_present(extra, ("qty",))
+    if qty_value is None:
+        qty_value = _first_present(row, ("qty", "quantity"))
+    fill_value = _first_present(extra, ("fill_price", "price"))
+    if fill_value is None:
+        fill_value = _first_present(row, ("fill_price", "price"))
+    pnl_value = _first_present(extra, ("realized_pnl", "pnl"))
+    if pnl_value is None:
+        pnl_value = _first_present(row, ("realized_pnl", "pnl"))
     return {
         "ts": row.get("ts") or extra.get("close_ts"),
         "close_ts": extra.get("close_ts") or row.get("ts"),
         "bot_id": row.get("bot_id"),
         "symbol": extra.get("symbol") or row.get("symbol"),
         "side": extra.get("side") or row.get("direction"),
-        "qty": _float_value(extra.get("qty") or row.get("qty")),
-        "fill_price": _float_value(extra.get("fill_price") or row.get("fill_price")),
-        "realized_pnl": _float_value(extra.get("realized_pnl") or row.get("realized_pnl")),
+        "qty": _float_value(qty_value),
+        "fill_price": _float_value(fill_value),
+        "realized_pnl": _float_value(pnl_value),
         "realized_r": _float_value(row.get("realized_r")),
         "action_taken": row.get("action_taken"),
         "layers_updated": layers_updated if isinstance(layers_updated, list) else [],

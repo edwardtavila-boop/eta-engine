@@ -116,6 +116,33 @@ class TestDashboardAPI:
         assert "0 broker open" in summary["summary_line"]
         assert "1 supervisor paper-local open" in summary["summary_line"]
 
+    def test_normalize_trade_close_preserves_zero_values_from_extra(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        close = mod._normalize_trade_close(
+            {
+                "ts": "2026-05-07T21:14:22.210169+00:00",
+                "bot_id": "volume_profile_btc",
+                "realized_r": 0.0,
+                "action_taken": "approve_full",
+                "layers_updated": ["memory"],
+                "layer_errors": [],
+                "extra": {
+                    "realized_pnl": 0.0,
+                    "fill_price": 79775.0,
+                    "qty": 0.0,
+                    "symbol": "BTC",
+                    "side": "BUY",
+                    "close_ts": "2026-05-07T21:14:21.990957+00:00",
+                },
+            },
+        )
+
+        assert close is not None
+        assert close["realized_pnl"] == 0.0
+        assert close["qty"] == 0.0
+        assert close["fill_price"] == 79775.0
+
     def test_health(self, app_client):
         r = app_client.get("/health")
         assert r.status_code == 200
