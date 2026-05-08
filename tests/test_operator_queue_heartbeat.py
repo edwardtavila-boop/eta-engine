@@ -5,6 +5,13 @@ import json
 from eta_engine.scripts import jarvis_status, operator_queue_heartbeat
 
 
+def test_feed_heartbeat_entrypoint_delegates_to_canonical_script() -> None:
+    from eta_engine.feeds import operator_queue_heartbeat as feed_heartbeat
+
+    assert feed_heartbeat.build_snapshot_with_drift is operator_queue_heartbeat.build_snapshot_with_drift
+    assert feed_heartbeat.build_heartbeat is operator_queue_heartbeat.build_heartbeat
+
+
 def _queue(blocked: int, *, op_id: str | None = "OP-18", action: str | None = "fix it") -> dict[str, object]:
     blockers = [{"op_id": op_id}] if op_id else []
     actions = [action] if action else []

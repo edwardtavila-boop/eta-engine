@@ -82,16 +82,19 @@ def _queue(
 def test_transition_check_blocks_when_gateway_op19_is_top_blocker(monkeypatch) -> None:
     from eta_engine.scripts import paper_live_transition_check as mod
 
+    observed: dict[str, object] = {}
     monkeypatch.setattr(mod.ibkr_surface_status, "build_status", lambda **_kwargs: _surface(ready=False))
     monkeypatch.setattr(mod.ibgateway_release_guard, "run_guard", lambda **_kwargs: _release(ready=False))
-    monkeypatch.setattr(
-        mod.operator_queue_snapshot,
-        "build_snapshot",
-        lambda **_kwargs: _queue(first_op="OP-19", blocked=5, paper_ready=10),
-    )
+
+    def _build_snapshot(**kwargs: object) -> dict[str, object]:
+        observed["kwargs"] = kwargs
+        return _queue(first_op="OP-19", blocked=5, paper_ready=10)
+
+    monkeypatch.setattr(mod.operator_queue_snapshot, "build_snapshot", _build_snapshot)
 
     result = mod.build_transition_check()
 
+    assert observed["kwargs"]["refresh_readiness"] is True
     assert result["status"] == "blocked"
     assert result["critical_ready"] is False
     assert result["launch_command"] == ""

@@ -183,10 +183,94 @@ def _readiness_summary(readiness: dict[str, Any]) -> tuple[int, int, bool]:
     return blocked_data, paper_ready, can_live_any
 
 
-def build_snapshot(*, limit: int = 5) -> dict[str, Any]:
+def _readiness_top_actions(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, object]]:
+    lane_rank = {
+        "blocked_data": 0,
+        "live_preflight": 1,
+        "paper_soak": 2,
+        "research": 3,
+        "shadow_only": 4,
+        "non_edge": 5,
+        "deactivated": 6,
+    }
+    top_actions: list[dict[str, object]] = []
+    for row in sorted(
+        (item for item in rows if item.get("next_action")),
+        key=lambda item: (lane_rank.get(str(item.get("launch_lane") or ""), 7), str(item.get("bot_id") or "")),
+    ):
+        if len(top_actions) >= max(0, limit):
+            break
+        top_actions.append(
+            {
+                "bot_id": row.get("bot_id"),
+                "strategy_id": row.get("strategy_id"),
+                "launch_lane": row.get("launch_lane"),
+                "data_status": row.get("data_status"),
+                "promotion_status": row.get("promotion_status"),
+                "can_paper_trade": bool(row.get("can_paper_trade")),
+                "can_live_trade": bool(row.get("can_live_trade")),
+                "next_action": row.get("next_action"),
+            }
+        )
+    return top_actions
+
+
+def _build_current_readiness_summary(*, limit: int) -> dict[str, Any]:
+    """Build a fresh supervisor-pinned readiness payload for launch surfaces.
+
+    The cached ``bot_strategy_readiness_latest.json`` can lag the active
+    supervisor pin when strategy promotion changes land between scheduled
+    refreshes. Operator snapshots drive paper-live cards, so prefer a fresh
+    supervisor-pinned matrix there and fall back to the cached summary only if
+    the live build fails.
+    """
+    try:
+        from eta_engine.scripts import bot_strategy_readiness
+
+        supervisor_pinned = bot_strategy_readiness.supervisor_pinned_bot_ids()
+        rows = bot_strategy_readiness.build_readiness_matrix(bot_ids=list(supervisor_pinned))
+        snapshot = bot_strategy_readiness.build_snapshot(
+            rows,
+            scope="supervisor_pinned",
+            supervisor_pinned=supervisor_pinned,
+        )
+        row_payloads = [dict(item) for item in snapshot.get("rows", []) if isinstance(item, dict)]
+        rows_by_bot = {
+            bot_id: row
+            for row in row_payloads
+            if (bot_id := str(row.get("bot_id") or row.get("id") or row.get("name") or "").strip())
+        }
+        return {
+            "source": "bot_strategy_readiness",
+            "path": str(workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH),
+            "status": "ready",
+            "schema_version": snapshot.get("schema_version"),
+            "generated_at": snapshot.get("generated_at"),
+            "scope": snapshot.get("scope"),
+            "supervisor_pinned": snapshot.get("supervisor_pinned") or [],
+            "summary": snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {},
+            "row_count": len(row_payloads),
+            "rows": row_payloads,
+            "rows_by_bot": rows_by_bot,
+            "top_actions": _readiness_top_actions(row_payloads, limit=limit),
+            "cache_refresh": "fresh_supervisor_pinned",
+        }
+    except Exception as exc:  # noqa: BLE001 - snapshot must fail soft for ops.
+        payload = jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
+        payload = dict(payload) if isinstance(payload, dict) else {}
+        payload["cache_refresh"] = "cached_fallback"
+        payload["refresh_error"] = str(exc)
+        return payload
+
+
+def build_snapshot(*, limit: int = 5, refresh_readiness: bool = False) -> dict[str, Any]:
     """Return the canonical automation snapshot payload."""
     queue = jarvis_status.build_operator_queue_summary(limit=limit)
-    readiness = jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
+    readiness = (
+        _build_current_readiness_summary(limit=limit)
+        if refresh_readiness
+        else jarvis_status.build_bot_strategy_readiness_summary(limit=limit)
+    )
     summary = queue.get("summary") if isinstance(queue, dict) else {}
     top_blockers = queue.get("top_blockers") if isinstance(queue, dict) else []
     top_launch_blockers = queue.get("top_launch_blockers") if isinstance(queue, dict) else []
@@ -283,10 +367,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--json", action="store_true", help="print JSON payload")
     parser.add_argument("--no-write", action="store_true", help="build and print without writing the artifact")
+    parser.add_argument(
+        "--cached-readiness",
+        action="store_true",
+        help="use the cached bot_strategy_readiness_latest.json instead of rebuilding supervisor-pinned readiness",
+    )
     parser.add_argument("--strict", action="store_true", help="exit 2 when blockers are present")
     args = parser.parse_args(argv)
 
-    snapshot = build_snapshot(limit=max(1, args.limit))
+    snapshot = build_snapshot(limit=max(1, args.limit), refresh_readiness=not args.cached_readiness)
     previous_path = args.previous or default_previous_path_for(args.out)
     previous = load_snapshot(args.out) or load_snapshot(previous_path)
     snapshot["drift"] = compare_snapshots(previous, snapshot)

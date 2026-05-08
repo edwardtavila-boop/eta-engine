@@ -112,6 +112,9 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .panel-kicker{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px}
 .contribution-graph{display:grid;gap:.68rem}
 .contribution-row{display:grid;grid-template-columns:minmax(125px,.9fr) minmax(120px,1.6fr) 92px;gap:.75rem;align-items:center;font-size:.78rem}
+.contribution-row{border:1px solid rgba(255,255,255,.055);border-radius:14px;padding:.55rem .65rem;background:rgba(255,255,255,.022)}
+.contribution-row.positive{border-color:rgba(54,240,162,.14)}
+.contribution-row.negative{border-color:rgba(255,91,110,.18)}
 .contribution-name{min-width:0}
 .contribution-name strong{display:block;color:#f3f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .contribution-name span{display:block;color:var(--dim);font-size:.68rem;margin-top:.1rem}
@@ -391,9 +394,52 @@ function formatAgeSeconds(value) {
 }
 
 const HIDDEN_BOT_VALUES = new Set(['deactivated', 'disabled', 'removed', 'retired', 'inactive']);
+const TRUTHY_FLAG_VALUES = new Set(['true', '1', 'yes', 'y']);
+const FALSY_FLAG_VALUES = new Set(['false', '0', 'no', 'n']);
+const SLEEVE_LABELS = {
+  crypto: 'Crypto',
+  digital_assets: 'Crypto',
+  equity_index_futures: 'Equity Index Futures',
+  index_futures: 'Equity Index Futures',
+  metals_energy: 'Metals and Energy',
+  metals_and_energy: 'Metals and Energy',
+  commodities: 'Metals and Energy',
+  rates_fx: 'Rates and FX',
+  rates_and_fx: 'Rates and FX',
+  research_other: 'Research and Other',
+  research_and_other: 'Research and Other'
+};
+
+function normalizeFlag(value) {
+  if (value === true || value === false) return value;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (TRUTHY_FLAG_VALUES.has(text)) return true;
+  if (FALSY_FLAG_VALUES.has(text)) return false;
+  return null;
+}
+
+function hasOpenBotExposure(bot) {
+  const state = bot?.position_state || {};
+  const openPosition = bot?.open_position && typeof bot.open_position === 'object'
+    ? Object.keys(bot.open_position).length > 0
+    : false;
+  return state.state === 'open'
+    || state.open === true
+    || openPosition
+    || Number(bot?.open_positions || 0) > 0;
+}
+
+function sleeveLabel(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!key) return 'Research and Other';
+  return SLEEVE_LABELS[key] || key.split('_').filter(Boolean).map(
+    part => part.charAt(0).toUpperCase() + part.slice(1)
+  ).join(' ');
+}
 
 function isDisplayableBot(bot) {
   const readiness = bot?.strategy_readiness || {};
+  const hasExposure = hasOpenBotExposure(bot);
   const values = [
     bot?.status,
     bot?.mode,
@@ -405,8 +451,29 @@ function isDisplayableBot(bot) {
     readiness.promotion_status,
     readiness.data_status
   ].map(v => String(v || '').trim().toLowerCase());
-  if (values.some(v => HIDDEN_BOT_VALUES.has(v))) return false;
-  if (readiness.active === false && Number(bot?.open_positions || 0) <= 0) return false;
+  if (values.some(v => HIDDEN_BOT_VALUES.has(v)) && !hasExposure) return false;
+  const activeFlags = [
+    bot?.active,
+    bot?.enabled,
+    bot?.is_active,
+    bot?.is_enabled,
+    bot?.registry_active,
+    bot?.registry_enabled,
+    readiness.active,
+    readiness.enabled
+  ].map(normalizeFlag);
+  if (activeFlags.some(v => v === false) && !hasExposure) return false;
+  const disabledFlags = [
+    bot?.disabled,
+    bot?.removed,
+    bot?.retired,
+    bot?.deactivated,
+    bot?.registry_deactivated,
+    readiness.disabled,
+    readiness.removed,
+    readiness.deactivated
+  ].map(normalizeFlag);
+  if (disabledFlags.some(v => v === true) && !hasExposure) return false;
   return true;
 }
 
@@ -764,6 +831,27 @@ function brokerContributionRows(liveBroker) {
   return rows;
 }
 
+function portfolioContributionRows(portfolioSummary) {
+  const contributors = Array.isArray(portfolioSummary?.pnl_contributors)
+    ? portfolioSummary.pnl_contributors
+    : [];
+  return contributors.map((row) => {
+    const pnl = finiteNumber(
+      row.unrealized_pnl ?? row.realized_pnl ?? row.pnl ?? row.today_pnl
+    );
+    const exposure = finiteNumber(row.market_value ?? row.exposure ?? row.notional);
+    if (pnl == null && exposure == null) return null;
+    return {
+      label: row.symbol || row.bot_id || row.name || 'portfolio contributor',
+      sub: `${row.venue || row.source || 'portfolio'} ${exposure == null ? 'PnL' : 'exposure ' + formatMoney(exposure, 0)}`,
+      bucket: sleeveLabel(row.sleeve || row.bucket || assetBucket(row.symbol)),
+      pnl: pnl || 0,
+      value: Math.abs(pnl || 0) || Math.abs(exposure || 0),
+      exposure
+    };
+  }).filter(Boolean);
+}
+
 function botContributionRows(bots) {
   return bots
     .map(bot => ({
@@ -776,18 +864,19 @@ function botContributionRows(bots) {
     .filter(row => row.value > 0);
 }
 
-function renderContributionGraph(bots, liveBroker) {
+function renderContributionGraph(bots, liveBroker, portfolioSummary) {
   const el = document.getElementById('pnlContributionGraph');
   const source = document.getElementById('contributionSource');
   const sub = document.getElementById('contributionSub');
   if (!el) return;
-  let rows = brokerContributionRows(liveBroker);
-  let sourceLabelText = 'broker exposure';
+  let rows = portfolioContributionRows(portfolioSummary);
+  let sourceLabelText = rows.length ? 'portfolio API' : 'broker exposure';
+  if (!rows.length) rows = brokerContributionRows(liveBroker);
   if (!rows.length) {
     rows = botContributionRows(bots);
     sourceLabelText = 'bot PnL fallback';
   }
-  rows.sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  rows.sort((a, b) => (b.value || Math.abs(b.pnl)) - (a.value || Math.abs(a.pnl)));
   const topRows = rows.slice(0, 8);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
@@ -797,12 +886,13 @@ function renderContributionGraph(bots, liveBroker) {
     el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
     return;
   }
-  const maxAbs = Math.max(1, ...topRows.map(row => Math.abs(row.pnl)));
+  const maxAbs = Math.max(1, ...topRows.map(row => row.value || Math.abs(row.pnl)));
   el.innerHTML = topRows.map(row => {
-    const width = Math.max(4, Math.round((Math.abs(row.pnl) / maxAbs) * 100));
+    const width = Math.max(4, Math.round(((row.value || Math.abs(row.pnl)) / maxAbs) * 100));
     const klass = row.pnl < 0 ? 'negative' : '';
     const valueClass = row.pnl < 0 ? 'red' : row.pnl > 0 ? 'green' : 'dim';
-    return `<div class="contribution-row">
+    const rowClass = row.pnl < 0 ? 'negative' : row.pnl > 0 ? 'positive' : '';
+    return `<div class="contribution-row ${rowClass}">
       <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} | ${esc(row.sub)}</span></div>
       <div class="contribution-track"><div class="contribution-fill ${klass}" style="width:${width}%"></div></div>
       <div class="contribution-value ${valueClass}">${esc(formatMoney(row.pnl, 2))}</div>
@@ -810,23 +900,34 @@ function renderContributionGraph(bots, liveBroker) {
   }).join('');
 }
 
-function allocationBuckets(bots, liveBroker) {
+function allocationBuckets(bots, liveBroker, portfolioSummary) {
   const buckets = new Map();
   const ensure = (name) => {
     if (!buckets.has(name)) buckets.set(name, {name, bots: [], exposure: 0, pnl: 0, open: 0});
     return buckets.get(name);
   };
+  const apiSleeves = Array.isArray(portfolioSummary?.allocation_sleeves)
+    ? portfolioSummary.allocation_sleeves
+    : [];
+  for (const sleeve of apiSleeves) {
+    const bucket = ensure(sleeveLabel(sleeve.sleeve || sleeve.name || sleeve.bucket));
+    bucket.exposure += Math.abs(finiteNumber(sleeve.exposure ?? sleeve.market_value ?? sleeve.notional) || 0);
+    bucket.pnl += finiteNumber(sleeve.unrealized_pnl ?? sleeve.realized_pnl ?? sleeve.pnl) || 0;
+    bucket.open += Number(sleeve.open_position_count || sleeve.open || 0);
+  }
   const positions = buildBrokerPositions(liveBroker);
-  for (const p of positions) {
-    const bucket = ensure(assetBucket(p.symbol));
-    bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
-    bucket.pnl += finiteNumber(p.pnl) || 0;
-    bucket.open += 1;
+  if (!apiSleeves.length) {
+    for (const p of positions) {
+      const bucket = ensure(assetBucket(p.symbol));
+      bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
+      bucket.pnl += finiteNumber(p.pnl) || 0;
+      bucket.open += 1;
+    }
   }
   for (const bot of bots) {
     const bucket = ensure(assetBucket(bot.symbol));
     bucket.bots.push(bot);
-    if (!positions.length) {
+    if (!positions.length && !apiSleeves.length) {
       bucket.pnl += finiteNumber(bot.todays_pnl) || 0;
       if (Number(bot.open_positions || 0) > 0) bucket.open += Number(bot.open_positions || 0);
     }
@@ -838,38 +939,45 @@ function allocationBuckets(bots, liveBroker) {
   });
 }
 
-function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl) {
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
   const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const openExposure = brokerPositions.reduce((sum, p) => sum + Math.abs(finiteNumber(p.value) || 0), 0);
+  const portfolioNet = finiteNumber(portfolioSummary?.broker_net_pnl);
+  const portfolioExposure = finiteNumber(portfolioSummary?.total_exposure ?? portfolioSummary?.broker_open_exposure);
+  const portfolioSleeves = Array.isArray(portfolioSummary?.allocation_sleeves)
+    ? portfolioSummary.allocation_sleeves.length
+    : 0;
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
   const narrative = document.getElementById('portfolioNarrative');
   const chips = document.getElementById('portfolioHeroChips');
   if (orb) {
-    orb.textContent = formatMoney(todaysPnl, 0);
-    orb.className = 'orb-value ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : '');
+    const net = portfolioNet ?? todaysPnl;
+    orb.textContent = formatMoney(net, 0);
+    orb.className = 'orb-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : '');
   }
   if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} unrealized`;
   if (narrative) {
     const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
-    narrative.textContent = `${active} active display bots across ${bots.length} visible roster rows. ${truth}`;
+    const sleeveText = portfolioSleeves ? `${portfolioSleeves} allocation sleeves` : 'allocation sleeves loading';
+    narrative.textContent = `${active} active display bots across ${bots.length} visible roster rows and ${sleeveText}. ${truth}`;
   }
   if (chips) {
     chips.innerHTML = [
       `<span class="hero-chip"><strong>${bots.length}</strong> visible bots</span>`,
       `<span class="hero-chip"><strong>${active}</strong> active</span>`,
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
-      `<span class="hero-chip"><strong>${formatMoney(openExposure, 0)}</strong> exposure</span>`,
+      `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> exposure</span>`,
       hiddenCount > 0 ? `<span class="hero-chip"><strong>${hiddenCount}</strong> disabled hidden</span>` : '',
     ].filter(Boolean).join('');
   }
 }
 
-function renderAllocationPillsAndSections(bots, liveBroker) {
-  const buckets = allocationBuckets(bots, liveBroker);
+function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
+  const buckets = allocationBuckets(bots, liveBroker, portfolioSummary);
   const totalExposure = buckets.reduce((sum, b) => sum + (b.exposure || 0), 0);
   const totalBots = Math.max(1, bots.length);
   const pills = document.getElementById('allocationPills');
@@ -1167,8 +1275,10 @@ function renderVpsRootDetails(vpsRoot) {
 function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, dataSource) {
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
-  const hiddenCount = Math.max(0, allBots.length - bots.length);
   const summary = d.summary || {};
+  const portfolioSummary = d.portfolio_summary || summary.portfolio_summary || {};
+  const hiddenFromPayload = finiteNumber(portfolioSummary.hidden_disabled_count);
+  const hiddenCount = Math.max(0, allBots.length - bots.length, hiddenFromPayload || 0);
   const confirmed = d.confirmed_bots || 0;
   const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
   const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
@@ -1221,9 +1331,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
-  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl);
-  renderContributionGraph(bots, liveBroker);
-  renderAllocationPillsAndSections(bots, liveBroker);
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary);
+  renderContributionGraph(bots, liveBroker, portfolioSummary);
+  renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
   renderVpsRootReview(vpsRootPlan);
   renderVpsRootDetails(vpsRootPlan);

@@ -130,6 +130,25 @@ elseif ($submoduleDrift -gt 0 -or $sourceUntracked -gt 0) {
     $risk = "medium"
 }
 
+$approvalGates = [ordered]@{
+    cleanup = "blocked_until_manual_approval"
+    branch_update = "blocked_until_source_review"
+    submodule_alignment = if ($submoduleDrift -gt 0) { "manual_review_required" } else { "clear" }
+    generated_artifact_cleanup = "blocked_until_source_safe"
+    credential_rotation = "reserved_for_go_live"
+}
+
+$recommendedAction = "Rerun the read-only inventory and live probes; no root cleanup is authorized by this plan."
+if ($sourceDeleted -gt 0 -or $unknownDeleted -gt 0) {
+    $recommendedAction = "Review tracked source/governance deletions before branch updates, cleanup, or root replacement."
+}
+elseif ($submoduleDrift -gt 0) {
+    $recommendedAction = "Commit or intentionally pin companion repos before updating the superproject root."
+}
+elseif ($sourceUntracked -gt 0) {
+    $recommendedAction = "Classify source/governance untracked files before any generated-artifact cleanup."
+}
+
 $steps = @(
     New-PlanStep `
         -Id "freeze-and-backup" `
@@ -177,6 +196,8 @@ $plan = [ordered]@{
     risk_level = $risk
     cleanup_allowed = $false
     destructive_actions_performed = $false
+    recommended_action = $recommendedAction
+    approval_gates = $approvalGates
     counts = $counts
     summary = [ordered]@{
         source_or_governance_deleted = $sourceDeleted
@@ -201,6 +222,7 @@ $markdown = @(
     "- Risk: $($plan.risk_level)"
     "- Cleanup allowed: false"
     "- Destructive actions performed: false"
+    "- Recommended action: $recommendedAction"
     ""
     "## Summary"
     ""
@@ -212,6 +234,14 @@ $markdown = @(
     "- Local diagnostic untracked artifacts: $localDiagnosticUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
+    ""
+    "## Approval gates"
+    ""
+    "- Cleanup: $($approvalGates.cleanup)"
+    "- Branch update: $($approvalGates.branch_update)"
+    "- Submodule alignment: $($approvalGates.submodule_alignment)"
+    "- Generated artifact cleanup: $($approvalGates.generated_artifact_cleanup)"
+    "- Credential rotation: $($approvalGates.credential_rotation)"
     ""
     "## Steps"
 )

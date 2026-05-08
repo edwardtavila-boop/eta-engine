@@ -5,6 +5,13 @@ import json
 from eta_engine.scripts import jarvis_status, operator_queue_snapshot
 
 
+def test_feed_snapshot_entrypoint_delegates_to_canonical_script() -> None:
+    from eta_engine.feeds import operator_queue_snapshot as feed_snapshot
+
+    assert feed_snapshot.build_snapshot is operator_queue_snapshot.build_snapshot
+    assert feed_snapshot.write_snapshot is operator_queue_snapshot.write_snapshot
+
+
 def _readiness(
     *,
     status: str = "ready",
@@ -57,6 +64,30 @@ def test_build_snapshot_summarizes_top_blocker(monkeypatch) -> None:  # type: ig
     assert snapshot["bot_strategy_blocked_data"] == 0
     assert snapshot["bot_strategy_paper_ready"] == 10
     assert snapshot["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 10
+
+
+def test_build_snapshot_can_refresh_supervisor_pinned_readiness(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        jarvis_status,
+        "build_operator_queue_summary",
+        lambda **_kwargs: {
+            "summary": {"BLOCKED": 0, "OBSERVED": 1, "UNKNOWN": 0, "DONE": 0},
+            "top_blockers": [],
+            "next_actions": [],
+            "error": None,
+        },
+    )
+    monkeypatch.setattr(
+        operator_queue_snapshot,
+        "_build_current_readiness_summary",
+        lambda **_kwargs: _readiness(paper_ready=12),
+    )
+
+    snapshot = operator_queue_snapshot.build_snapshot(limit=3, refresh_readiness=True)
+
+    assert snapshot["status"] == "clear"
+    assert snapshot["bot_strategy_paper_ready"] == 12
+    assert snapshot["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 12
 
 
 def test_write_snapshot_uses_atomic_temp_then_target(tmp_path) -> None:

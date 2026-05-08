@@ -17,11 +17,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from eta_engine.scripts import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+
+from eta_engine.scripts import (  # noqa: E402
     ibgateway_release_guard,
     ibkr_surface_status,
     operator_queue_snapshot,
@@ -153,7 +158,7 @@ def build_transition_check(
         execute=False,
         max_watchdog_age_s=max_watchdog_age_s,
     )
-    queue = operator_queue_snapshot.build_snapshot(limit=limit)
+    queue = operator_queue_snapshot.build_snapshot(limit=limit, refresh_readiness=True)
 
     paper_live_ready = bool(ibkr_status.get("summary", {}).get("paper_live_ready"))
     release_ready = (
@@ -204,10 +209,7 @@ def build_transition_check(
         ),
     ]
     critical_ready = all(gate["passed"] for gate in gates if gate["critical"])
-    if critical_ready and launch_blockers == 0:
-        status = "ready_to_launch_paper_live"
-    else:
-        status = "blocked"
+    status = "ready_to_launch_paper_live" if critical_ready and launch_blockers == 0 else "blocked"
 
     return {
         "schema_version": 1,

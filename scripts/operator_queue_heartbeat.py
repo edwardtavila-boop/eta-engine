@@ -69,10 +69,14 @@ def build_snapshot_with_drift(
     out_path: Path,
     previous_path: Path | None,
     limit: int,
+    refresh_readiness: bool = True,
 ) -> dict[str, Any]:
     """Build the operator queue snapshot and attach its drift block."""
     resolved_previous_path = previous_path or operator_queue_snapshot.default_previous_path_for(out_path)
-    snapshot = operator_queue_snapshot.build_snapshot(limit=max(1, limit))
+    snapshot = operator_queue_snapshot.build_snapshot(
+        limit=max(1, limit),
+        refresh_readiness=refresh_readiness,
+    )
     previous = operator_queue_snapshot.load_snapshot(out_path) or operator_queue_snapshot.load_snapshot(
         resolved_previous_path
     )
@@ -87,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--json", action="store_true", help="print JSON heartbeat payload")
     parser.add_argument(
+        "--cached-readiness",
+        action="store_true",
+        help="use the cached bot strategy readiness artifact instead of refreshing supervisor-pinned readiness",
+    )
+    parser.add_argument(
         "--changed-only",
         action="store_true",
         help="suppress output when the queue did not drift since the prior snapshot",
@@ -97,7 +106,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     previous_path = args.previous or operator_queue_snapshot.default_previous_path_for(args.out)
-    snapshot = build_snapshot_with_drift(out_path=args.out, previous_path=previous_path, limit=args.limit)
+    snapshot = build_snapshot_with_drift(
+        out_path=args.out,
+        previous_path=previous_path,
+        limit=args.limit,
+        refresh_readiness=not args.cached_readiness,
+    )
     written_path = (
         None
         if args.no_write
