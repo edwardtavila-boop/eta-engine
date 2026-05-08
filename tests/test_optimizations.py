@@ -247,6 +247,17 @@ class TestStatusPage:
         assert "source === 'fills_intraday'" in html
         assert "total_pnl_is_lifetime" in html
         assert "value: finiteNumber(equitySummary.total_pnl)" not in html
+        assert "function botSleeveLabel" in html
+        assert "priority_bucket" in html
+        assert "primary_edges" in html
+        assert "edge_thesis" in html
+        assert "exit_playbook" in html
+        assert "risk_playbook" in html
+        assert "daily_focus" in html
+        assert "CME Crypto Futures" in html
+        assert "Spot Crypto" in html
+        assert "edge-chip-row" in html
+        assert "allocation-doctrine" in html
         assert "waiting for realized-R closed trades" in html
         assert "close ledger present; realized R not attached yet" in html
         assert "open/no fill qty" in html

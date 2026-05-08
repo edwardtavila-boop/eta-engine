@@ -133,6 +133,11 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .mini-bot-card strong{color:#f8fbff}
 .mini-bot-card .line{display:flex;justify-content:space-between;gap:.5rem;color:var(--dim);font-size:.72rem}
 .mini-bot-card .line span:last-child{color:#dbe7f3;text-align:right}
+.edge-chip-row{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 .35rem}
+.edge-chip{border:1px solid rgba(230,184,92,.22);border-radius:999px;background:rgba(230,184,92,.075);color:#f6dca3;padding:.18rem .45rem;font-size:.62rem;letter-spacing:.04em;text-transform:uppercase}
+.doctrine-line{margin-top:.34rem;color:#9fb1c5;font-size:.68rem;line-height:1.35}
+.doctrine-line strong{display:inline;color:#dcecff;font-size:.68rem}
+.allocation-doctrine{margin-top:.35rem;color:#9fb1c5;font-size:.72rem;line-height:1.4;max-width:980px}
 .exit-watch-card{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(8,23,22,.84),rgba(3,8,14,.9))}
 .exit-watch-card .sub{line-height:1.35}
 .vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9));cursor:pointer}
@@ -456,6 +461,8 @@ const SLEEVE_LABELS = {
   digital_assets: 'Crypto',
   equity_index_futures: 'Equity Index Futures',
   index_futures: 'Equity Index Futures',
+  cme_crypto_futures: 'CME Crypto Futures',
+  spot_crypto: 'Spot Crypto',
   metals_energy: 'Metals and Energy',
   metals_and_energy: 'Metals and Energy',
   commodities: 'Metals and Energy',
@@ -492,8 +499,32 @@ function sleeveLabel(value) {
   ).join(' ');
 }
 
+function strategyReadiness(bot) {
+  return bot?.strategy_readiness && typeof bot.strategy_readiness === 'object'
+    ? bot.strategy_readiness
+    : {};
+}
+
+function firstText(value) {
+  if (Array.isArray(value)) return String(value.find(Boolean) || '').trim();
+  return String(value || '').trim();
+}
+
+function botSleeveLabel(bot) {
+  const readiness = strategyReadiness(bot);
+  return sleeveLabel(readiness.priority_bucket || readiness.asset_class || assetBucket(bot?.symbol));
+}
+
+function botPrimaryEdge(bot) {
+  return firstText(strategyReadiness(bot).primary_edges);
+}
+
+function botDailyFocus(bot) {
+  return compactText(strategyReadiness(bot).daily_focus || '', 150);
+}
+
 function isDisplayableBot(bot) {
-  const readiness = bot?.strategy_readiness || {};
+  const readiness = strategyReadiness(bot);
   const hasExposure = hasOpenBotExposure(bot);
   const values = [
     bot?.status,
@@ -534,7 +565,8 @@ function isDisplayableBot(bot) {
 
 function assetBucket(symbol) {
   const s = String(symbol || '').toUpperCase();
-  if (['BTC','ETH','SOL','XRP','MBT','MET'].some(x => s.startsWith(x))) return 'Crypto';
+  if (['MBT','MET'].some(x => s.startsWith(x))) return 'CME Crypto Futures';
+  if (['BTC','ETH','SOL','XRP'].some(x => s.startsWith(x))) return 'Spot Crypto';
   if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index Futures';
   if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals and Energy';
   if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates and FX';
@@ -970,7 +1002,7 @@ function botContributionRows(bots) {
     .map(bot => ({
       label: bot.id || bot.name || bot.symbol || 'bot',
       sub: `${bot.symbol || 'symbol'} ${bot.tier || bot.strategy || ''}`.trim(),
-      bucket: assetBucket(bot.symbol),
+      bucket: botSleeveLabel(bot),
       pnl: finiteNumber(bot.todays_pnl) || 0,
       value: Math.abs(finiteNumber(bot.todays_pnl) || 0)
     }))
@@ -1016,7 +1048,9 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary) {
 function allocationBuckets(bots, liveBroker, portfolioSummary) {
   const buckets = new Map();
   const ensure = (name) => {
-    if (!buckets.has(name)) buckets.set(name, {name, bots: [], exposure: 0, pnl: 0, open: 0});
+    if (!buckets.has(name)) {
+      buckets.set(name, {name, bots: [], exposure: 0, pnl: 0, open: 0, focus: '', edges: new Map()});
+    }
     return buckets.get(name);
   };
   const apiSleeves = Array.isArray(portfolioSummary?.allocation_sleeves)
@@ -1036,8 +1070,11 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
     bucket.open += 1;
   }
   for (const bot of bots) {
-    const bucket = ensure(assetBucket(bot.symbol));
+    const bucket = ensure(botSleeveLabel(bot));
     bucket.bots.push(bot);
+    const edge = botPrimaryEdge(bot);
+    if (edge) bucket.edges.set(edge, (bucket.edges.get(edge) || 0) + 1);
+    if (!bucket.focus) bucket.focus = botDailyFocus(bot);
     if (!positions.length && !apiSleeves.length) {
       bucket.pnl += finiteNumber(bot.todays_pnl) || 0;
       if (Number(bot.open_positions || 0) > 0) bucket.open += Number(bot.open_positions || 0);
@@ -1131,19 +1168,38 @@ function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
       .map(bot => {
         const activity = activityForBot(bot);
         const position = positionForBot(bot);
+        const readiness = strategyReadiness(bot);
+        const edge = botPrimaryEdge(bot);
+        const thesis = compactText(readiness.edge_thesis || '', 105);
+        const exit = compactText(readiness.exit_playbook || '', 95);
+        const risk = compactText(readiness.risk_playbook || '', 95);
+        const chips = [
+          edge ? `<span class="edge-chip">${esc(edge)}</span>` : '',
+          readiness.priority_bucket ? `<span class="edge-chip">${esc(sleeveLabel(readiness.priority_bucket))}</span>` : ''
+        ].filter(Boolean).join('');
         return `<div class="mini-bot-card">
           <div class="top"><strong>${esc(bot.id || bot.name || 'bot')}</strong><span class="badge ${isRuntimeActiveBot(bot) ? 'badge-approve' : 'badge-idle'}">${esc(bot.status || 'unknown')}</span></div>
           <div class="line"><span>symbol / strategy</span><span>${esc(bot.symbol || '--')} / ${esc(bot.tier || bot.strategy || '--')}</span></div>
           <div class="line"><span>position</span><span>${esc(position.text)}</span></div>
           <div class="line"><span>activity</span><span>${activity ? esc(activity.type + ' ' + formatTimeShort(activity.ts)) : 'waiting'}</span></div>
+          ${chips ? `<div class="edge-chip-row">${chips}</div>` : ''}
+          ${thesis ? `<div class="doctrine-line"><strong>Edge:</strong> ${esc(thesis)}</div>` : ''}
+          ${exit ? `<div class="doctrine-line"><strong>Exit:</strong> ${esc(exit)}</div>` : ''}
+          ${risk ? `<div class="doctrine-line"><strong>Risk:</strong> ${esc(risk)}</div>` : ''}
         </div>`;
       }).join('');
     const botOverflow = bucket.bots.length > 8 ? `<div class="empty-panel">${bucket.bots.length - 8} more bots in this sleeve hidden for focus.</div>` : '';
+    const topEdges = Array.from(bucket.edges.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([edge, count]) => `${edge}${count > 1 ? ' x' + count : ''}`)
+      .join(' | ');
     return `<div class="allocation-group">
       <div class="allocation-group-head">
         <div>
           <div class="allocation-group-title">${esc(bucket.name)}</div>
-          <div class="allocation-group-sub">${bucket.bots.length} visible bots | ${bucket.open} open | ${formatMoney(bucket.exposure, 0)} exposure | ${formatMoney(bucket.pnl, 2)} PnL</div>
+          <div class="allocation-group-sub">${bucket.bots.length} visible bots | ${bucket.open} open | ${formatMoney(bucket.exposure, 0)} exposure | ${formatMoney(bucket.pnl, 2)} PnL${topEdges ? ' | ' + esc(topEdges) : ''}</div>
+          ${bucket.focus ? `<div class="allocation-doctrine">${esc(bucket.focus)}</div>` : ''}
         </div>
       </div>
       <div class="allocation-bot-grid">${botRows || '<div class="empty-panel">No visible bots in this sleeve; broker exposure only.</div>'}${botOverflow}</div>
