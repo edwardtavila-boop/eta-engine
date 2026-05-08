@@ -213,9 +213,20 @@ rem contract) so $50k notional needs only ~$10-15k of cash margin,
 rem leaving room for crypto fleet to coexist on the same Alpaca paper
 rem account ($99k equity per dashboard probe).
 set "ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD=10000"
-set "ETA_LIVE_CRYPTO_FLEET_BUDGET_USD=50000"
+rem CRYPTO_FLEET_BUDGET lifted 2026-05-08 from $50k to $200k. The
+rem fleet_notional accounting is contract-notional-based (qty × price),
+rem so a single MBT futures contract @ $80k notional alone would saturate
+rem the prior $50k cap and lock out every other crypto bot. Lifting to
+rem $200k matches the actual paper-account margin headroom (MBT margin is
+rem only ~$1.5k per contract; per-bot $10k cap remains the binding $-
+rem constraint downstream).
+set "ETA_LIVE_CRYPTO_FLEET_BUDGET_USD=200000"
 set "ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD=10000"
-set "ETA_LIVE_FUTURES_FLEET_BUDGET_USD=50000"
+rem FUTURES_FLEET_BUDGET lifted 2026-05-08 from $50k to $300k. Same
+rem rationale: contract-notional accounting + 5+ index-futures positions
+rem (each $28k+ notional) saturates a $50k cap; per-bot $10k stays the
+rem binding $-constraint. Paper margin overhead is ~$2k per micro contract.
+set "ETA_LIVE_FUTURES_FLEET_BUDGET_USD=300000"
 rem Cross-bot fleet position caps (DEFAULT_ROOT_CAPS overrides). The
 rem hard-coded fallback is 10 units which is fine for $20k+ futures
 rem contracts but wrong for spot crypto where $200 SOL × 10 = $2k
