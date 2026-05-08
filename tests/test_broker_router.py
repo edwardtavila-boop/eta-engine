@@ -2044,3 +2044,60 @@ class TestLifecycleRoutingConfig:
         assert venue.account_id == 1234567
         assert venue.api_key == "blusky@example.com"
         assert venue.cid == "999"
+
+    def test_prop_account_alias_reads_prefixed_keyring_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        values = {
+            "BLUSKY_TRADOVATE_ACCOUNT_ID": "7654321",
+            "BLUSKY_TRADOVATE_USERNAME": "blusky-keyring@example.com",
+            "BLUSKY_TRADOVATE_PASSWORD": "pw",
+            "BLUSKY_TRADOVATE_APP_ID": "EtaEngine",
+            "BLUSKY_TRADOVATE_APP_SECRET": "app-secret",
+            "BLUSKY_TRADOVATE_CID": "888",
+        }
+        for key in values:
+            monkeypatch.delenv(key, raising=False)
+
+        class _FakeSecrets:
+            def get(self, key: str, required: bool = True) -> str | None:
+                val = values.get(key)
+                if val is None and required:
+                    raise KeyError(key)
+                return val
+
+        monkeypatch.setattr(broker_router, "SECRETS", _FakeSecrets(), raising=False)
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"MNQ": {"tradovate": "MNQ"}},
+            per_bot={"volume_profile_mnq": {"venue": "tradovate", "account_alias": "blusky_50k"}},
+            prop_accounts={
+                "blusky_50k": {
+                    "venue": "tradovate",
+                    "env": "demo",
+                    "account_id_env": "BLUSKY_TRADOVATE_ACCOUNT_ID",
+                    "creds_env_prefix": "BLUSKY_",
+                },
+            },
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=_FakeMultiVenueRouter({}),
+            journal=_FakeJournal(),
+            gate_chain=_allow_gate_chain(),
+            routing_config=cfg,
+        )
+
+        account = cfg.prop_account_for("volume_profile_mnq")
+        assert account is not None
+        venue = router._resolve_prop_account_venue(account)
+
+        assert venue is not None
+        assert venue.name == "tradovate"
+        assert venue.account_id == 7654321
+        assert venue.api_key == "blusky-keyring@example.com"
+        assert venue.cid == "888"

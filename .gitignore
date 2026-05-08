@@ -58,6 +58,7 @@ docs/_synth_*.json
 docs/_baseline_test.json
 docs/_synthetic_drop.json
 docs/_p9_dump.json
+docs/tradovate_auth_status.json
 
 # Timestamped runtime artifacts (pattern: *_YYYYMMDDTHHMMSSZ.json).
 # Keep committed: README.md, *_latest.json, *_decisions.jsonl. The per-run

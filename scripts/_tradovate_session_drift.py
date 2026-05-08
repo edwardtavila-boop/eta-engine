@@ -1,6 +1,6 @@
 """Tradovate OAuth session keep-alive monitor.
 
-Reads ``docs/tradovate_auth_status.json`` (overwritten by
+Reads ``var/eta_engine/state/tradovate_auth_status.json`` (overwritten by
 ``scripts/authorize_tradovate.py`` on every auth attempt) and surfaces:
 
 1. **Expired or near-expired access token** -- token_expires_at is in
@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_STATUS = ROOT / "docs" / "tradovate_auth_status.json"
+DEFAULT_STATUS = ROOT.parent / "var" / "eta_engine" / "state" / "tradovate_auth_status.json"
 
 
 def _parse_iso(s: str) -> float | None:

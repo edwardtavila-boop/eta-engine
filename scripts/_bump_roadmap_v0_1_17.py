@@ -6,7 +6,7 @@ Records the Tradovate authorization work:
     latent bug where `sec` and `password` both aliased to api_secret).
   * tests/test_authorize_tradovate.py (8 new tests) +
     tests/test_venues_tradovate_http.py (+2 regression tests).
-  * docs/tradovate_auth_status.json artifact written per run.
+  * var/eta_engine/state/tradovate_auth_status.json artifact written per run.
 
 Also: P9_ROLLOUT.live_tiny_size note is updated with the new credential
 contract + runnable entrypoint. Task stays pending because actual creds
@@ -47,7 +47,7 @@ def main() -> None:
         "entrypoint": "eta_engine.scripts.authorize_tradovate",
         "endpoint_demo": "https://demo.tradovateapi.com/v1",
         "endpoint_live": "https://live.tradovateapi.com/v1",
-        "status_artifact": "eta_engine/docs/tradovate_auth_status.json",
+        "status_artifact": "var/eta_engine/state/tradovate_auth_status.json",
         "required_secrets": [
             "TRADOVATE_USERNAME",
             "TRADOVATE_PASSWORD",

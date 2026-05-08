@@ -952,7 +952,7 @@
       "entrypoint": "eta_engine.scripts.authorize_tradovate",
       "endpoint_demo": "https://demo.tradovateapi.com/v1",
       "endpoint_live": "https://live.tradovateapi.com/v1",
-      "status_artifact": "eta_engine/docs/tradovate_auth_status.json",
+      "status_artifact": "var/eta_engine/state/tradovate_auth_status.json",
       "required_secrets": [
         "TRADOVATE_USERNAME",
         "TRADOVATE_PASSWORD",

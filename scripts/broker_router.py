@@ -51,6 +51,7 @@ PARENT = ROOT.parent
 if str(PARENT) not in sys.path:
     sys.path.insert(0, str(PARENT))
 
+from eta_engine.core.secrets import SECRETS  # noqa: E402
 from eta_engine.obs.decision_journal import (  # noqa: E402
     Actor,
     DecisionJournal,
@@ -1370,14 +1371,22 @@ class BrokerRouter:
         account_id_env = (account.get("account_id_env") or "").strip()
         if not account_id_env:
             raise ValueError(f"prop account {alias} missing account_id_env")
-        account_id = (os.environ.get(account_id_env) or "").strip()
+
+        def _secret_value(key: str) -> str:
+            env_val = (os.environ.get(key) or "").strip()
+            if env_val:
+                return env_val
+            secret_val = SECRETS.get(key, required=False)
+            return str(secret_val or "").strip()
+
+        account_id = _secret_value(account_id_env)
         if not account_id:
-            raise ValueError(f"prop account {alias} missing account id env {account_id_env}")
+            raise ValueError(f"prop account {alias} missing account id secret {account_id_env}")
 
         prefix = (account.get("creds_env_prefix") or "").strip()
 
         def _cred(name: str) -> str:
-            return (os.environ.get(f"{prefix}{name}") or "").strip()
+            return _secret_value(f"{prefix}{name}")
 
         required = (
             "TRADOVATE_USERNAME",

@@ -53,6 +53,39 @@ def test_cmd_check_returns_1_when_some_missing(
     assert sts.cmd_check() == 1
 
 
+def test_prop_account_fields_prefix_credentials_and_account_id() -> None:
+    fields = sts.fields_for_prop_account("blusky_50k")
+    assert [field[0] for field in fields] == [
+        "BLUSKY_TRADOVATE_ACCOUNT_ID",
+        "BLUSKY_TRADOVATE_USERNAME",
+        "BLUSKY_TRADOVATE_PASSWORD",
+        "BLUSKY_TRADOVATE_APP_ID",
+        "BLUSKY_TRADOVATE_APP_SECRET",
+        "BLUSKY_TRADOVATE_CID",
+    ]
+
+
+def test_cmd_check_supports_prop_account_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fields = sts.fields_for_prop_account("blusky_50k")
+    present = {field[0] for field in fields}
+    monkeypatch.setattr(
+        sts.SECRETS,
+        "get",
+        lambda k, required=False: "x" if k in present else None,  # noqa: ARG005
+    )
+
+    rc = sts.cmd_check(fields=fields, title="BluSky Tradovate prop secret status")
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "BluSky Tradovate prop secret status" in out
+    assert "BLUSKY_TRADOVATE_ACCOUNT_ID" in out
+    assert "All 6 Tradovate secrets present" in out
+
+
 # --------------------------------------------------------------------------- #
 # --reset
 # --------------------------------------------------------------------------- #

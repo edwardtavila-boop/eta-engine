@@ -16,10 +16,12 @@ Exit codes:
 Usage:
     python -m eta_engine.scripts.authorize_tradovate             # demo
     python -m eta_engine.scripts.authorize_tradovate --live      # live URL
+    python -m eta_engine.scripts.authorize_tradovate --prop-account blusky_50k
     python -m eta_engine.scripts.authorize_tradovate --json      # machine-readable
 
 Writes:
-    docs/tradovate_auth_status.json  — per-run report, overwritten each run.
+    var/eta_engine/state/tradovate_auth_status.json -- per-run report,
+    overwritten each run.
 
 This script does NOT log secret values. Only last-4 of the access token
 and the key names it attempted to read are emitted.
@@ -91,7 +93,7 @@ def _secret(key: str) -> str:
     return value
 
 ROOT = _ROOT
-STATUS_PATH = ROOT / "docs" / "tradovate_auth_status.json"
+STATUS_PATH = ROOT.parent / "var" / "eta_engine" / "state" / "tradovate_auth_status.json"
 
 _REQUIRED = [
     TRADOVATE_USERNAME,
@@ -101,11 +103,17 @@ _REQUIRED = [
     TRADOVATE_CID,
 ]
 
+_PROP_ACCOUNT_PREFIXES = {
+    "blusky_50k": "BLUSKY_",
+    "mffu_50k": "MFFU_",
+}
+
 
 @dataclass
 class AuthReport:
     kind: str = "eta_tradovate_auth_status"
     generated_at_utc: str = ""
+    credential_scope: str = "default"
     endpoint: str = ""
     demo: bool = True
     creds_present: dict[str, bool] = field(default_factory=dict)
@@ -117,9 +125,27 @@ class AuthReport:
     token_expires_at: str = ""
 
 
-def _build_report() -> AuthReport:
-    report = AuthReport(generated_at_utc=datetime.now(UTC).isoformat())
-    for k in _REQUIRED:
+def _required_keys(prefix: str = "") -> list[str]:
+    return [f"{prefix}{key}" for key in _REQUIRED]
+
+
+def _prefix_for_prop_account(prop_account: str | None) -> tuple[str, str]:
+    if not prop_account:
+        return "", "default"
+    alias = prop_account.strip().lower()
+    try:
+        return _PROP_ACCOUNT_PREFIXES[alias], alias
+    except KeyError as exc:
+        choices = ", ".join(sorted(_PROP_ACCOUNT_PREFIXES))
+        raise ValueError(f"unknown prop account alias {prop_account!r}; expected one of: {choices}") from exc
+
+
+def _build_report(required_keys: list[str] | None = None, credential_scope: str = "default") -> AuthReport:
+    report = AuthReport(
+        generated_at_utc=datetime.now(UTC).isoformat(),
+        credential_scope=credential_scope,
+    )
+    for k in required_keys or _REQUIRED:
         v = SECRETS.get(k, required=False)
         report.creds_present[k] = bool(v)
     report.has_all_creds = all(report.creds_present.values())
@@ -132,7 +158,7 @@ def _last4(s: str | None) -> str:
     return s[-4:] if len(s) >= 4 else "****"
 
 
-async def _run(demo: bool) -> tuple[int, AuthReport]:
+async def _run(demo: bool, prop_account: str | None = None) -> tuple[int, AuthReport]:
     # Workspace hard rule #2: Tradovate is dormant unless explicitly reactivated.
     if not _truthy(os.environ.get("ETA_TRADOVATE_ENABLED")):
         raise RuntimeError(
@@ -140,7 +166,9 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
             "set ETA_TRADOVATE_ENABLED=1 to activate"
         )
 
-    report = _build_report()
+    prefix, credential_scope = _prefix_for_prop_account(prop_account)
+    required = _required_keys(prefix)
+    report = _build_report(required, credential_scope)
     report.demo = demo
     report.endpoint = TRADOVATE_DEMO if demo else TRADOVATE_LIVE
 
@@ -152,7 +180,7 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
         report.result = "STUBBED"
         missing = [k for k, ok in report.creds_present.items() if not ok]
         report.reason = (
-            f"missing {len(missing)}/{len(_REQUIRED)} creds: "
+            f"missing {len(missing)}/{len(required)} creds: "
             f"{','.join(missing)} -- populate via keyring or eta_engine/.env "
             f"and rerun"
         )
@@ -162,11 +190,11 @@ async def _run(demo: bool) -> tuple[int, AuthReport]:
         return 2, report
 
     # Real auth path — creds are present.
-    username = _secret(TRADOVATE_USERNAME)
-    password = _secret(TRADOVATE_PASSWORD)
-    app_id = _secret(TRADOVATE_APP_ID) or "EtaEngine"
-    cid = _secret(TRADOVATE_CID)
-    app_secret = _secret(TRADOVATE_APP_SECRET)
+    username = _secret(f"{prefix}{TRADOVATE_USERNAME}")
+    password = _secret(f"{prefix}{TRADOVATE_PASSWORD}")
+    app_id = _secret(f"{prefix}{TRADOVATE_APP_ID}") or "EtaEngine"
+    cid = _secret(f"{prefix}{TRADOVATE_CID}")
+    app_secret = _secret(f"{prefix}{TRADOVATE_APP_SECRET}")
     venue = TradovateVenue(
         api_key=username,
         api_secret=password,
@@ -202,6 +230,7 @@ def _print_human(report: AuthReport) -> None:
     print("EVOLUTIONARY TRADING ALGO -- Tradovate Authorization")
     print("=" * 66)
     print(f"endpoint     : {report.endpoint}")
+    print(f"credential_scope: {report.credential_scope}")
     print(f"auth_path    : {report.auth_path}")
     print(f"has_all_creds: {report.has_all_creds}")
     for k, ok in report.creds_present.items():
@@ -220,10 +249,15 @@ def _print_human(report: AuthReport) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Tradovate OAuth2 authorize")
     ap.add_argument("--live", action="store_true", help="Use live URL instead of demo (default: demo)")
+    ap.add_argument(
+        "--prop-account",
+        choices=sorted(_PROP_ACCOUNT_PREFIXES),
+        help="Authorize with a prop-account credential prefix, e.g. BLUSKY_*. ",
+    )
     ap.add_argument("--json", action="store_true", help="Emit only the JSON report on stdout")
     args = ap.parse_args()
 
-    rc, report = asyncio.run(_run(demo=not args.live))
+    rc, report = asyncio.run(_run(demo=not args.live, prop_account=args.prop_account))
     path = _write(report)
     if args.json:
         print(json.dumps(asdict(report), indent=2))

@@ -109,6 +109,14 @@ def _enable_tradovate_for_tests(
 # --------------------------------------------------------------------------- #
 
 
+def test_default_status_path_uses_runtime_state() -> None:
+    parts = set(azt.STATUS_PATH.parts)
+
+    assert {"var", "eta_engine", "state"}.issubset(parts)
+    assert "docs" not in parts
+    assert azt.STATUS_PATH.name == "tradovate_auth_status.json"
+
+
 def test_stubbed_when_all_creds_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -217,6 +225,61 @@ def test_authorized_when_all_creds_present_and_http_ok(
     assert payload["sec"] == "app-sec-xyz"
     assert payload["cid"] == "12345"
     assert payload["appId"] == "EtaEngine"
+
+
+def test_authorize_prop_account_reads_prefixed_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_secrets(
+        monkeypatch,
+        {
+            "TRADOVATE_USERNAME": "generic-should-not-be-used@example.com",
+            "TRADOVATE_PASSWORD": "generic-pw",
+            "TRADOVATE_APP_ID": "GenericApp",
+            "TRADOVATE_APP_SECRET": "generic-sec",
+            "TRADOVATE_CID": "111",
+            "BLUSKY_TRADOVATE_USERNAME": "blusky@example.com",
+            "BLUSKY_TRADOVATE_PASSWORD": "prop-pw",
+            "BLUSKY_TRADOVATE_APP_ID": "EtaEngine",
+            "BLUSKY_TRADOVATE_APP_SECRET": "prop-sec",
+            "BLUSKY_TRADOVATE_CID": "222",
+        },
+    )
+    _patch_status_dir(monkeypatch, tmp_path)
+
+    real_init = TradovateVenue.__init__
+    captured_session: dict[str, _FakeSession] = {}
+
+    def wrapped_init(self: TradovateVenue, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)
+        sess = _FakeSession()
+        sess.enqueue(
+            200,
+            {
+                "accessToken": "PROP-TOKEN-ABCDEF7777",
+                "mdAccessToken": "MD-TOKEN",
+                "expirationTime": "2099-01-01T00:00:00Z",
+            },
+        )
+        self._session = sess
+        captured_session["s"] = sess
+
+    monkeypatch.setattr(TradovateVenue, "__init__", wrapped_init)
+
+    rc, report = asyncio.run(azt._run(demo=True, prop_account="blusky_50k"))
+
+    assert rc == 0
+    assert report.result == "AUTHORIZED"
+    assert report.credential_scope == "blusky_50k"
+    assert report.creds_present["BLUSKY_TRADOVATE_USERNAME"] is True
+    assert "TRADOVATE_USERNAME" not in report.creds_present
+
+    payload = json.loads(captured_session["s"].calls[0]["data"])
+    assert payload["name"] == "blusky@example.com"
+    assert payload["password"] == "prop-pw"
+    assert payload["sec"] == "prop-sec"
+    assert payload["cid"] == "222"
 
 
 # --------------------------------------------------------------------------- #
