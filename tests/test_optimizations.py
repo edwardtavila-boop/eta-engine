@@ -183,6 +183,8 @@ class TestStatusPage:
             'id="paperLiveSub"',
             'id="operatorQueueStatus"',
             'id="operatorQueueSub"',
+            'id="signalCadenceStatus"',
+            'id="signalCadenceSub"',
             'id="opsProxyStatus"',
             'id="opsProxySub"',
         ):
@@ -216,6 +218,7 @@ class TestStatusPage:
         assert 'colspan="12"' in html
         assert "last_trade_ts" in html
         assert "last_signal_ts" in html
+        assert "signal_cadence" in html
         assert "live_wr_today" in html
         assert "signalUpdates" in html
         assert "broker_gateway" in html

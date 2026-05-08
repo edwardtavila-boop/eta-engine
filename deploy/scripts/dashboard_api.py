@@ -1427,6 +1427,63 @@ def _iso_age_s(value: object, *, server_ts: float) -> int | None:
     return max(0, int((datetime.fromtimestamp(server_ts, UTC) - dt).total_seconds()))
 
 
+def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
+    """Explain whether supervisor signal timestamps are staggered or clustered."""
+    signal_buckets: defaultdict[str, list[str]] = defaultdict(list)
+    latest_dt: datetime | None = None
+    latest_ts = ""
+    for row in rows:
+        signal_ts = row.get("last_signal_ts")
+        signal_dt = _parse_fill_dt(signal_ts)
+        if signal_dt is None:
+            continue
+        if latest_dt is None or signal_dt > latest_dt:
+            latest_dt = signal_dt
+            latest_ts = str(signal_ts or "")
+        bucket = signal_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        bot_name = str(row.get("name") or row.get("id") or row.get("bot_id") or row.get("symbol") or "?")
+        signal_buckets[bucket].append(bot_name)
+
+    signal_count = sum(len(names) for names in signal_buckets.values())
+    unique_seconds = len(signal_buckets)
+    top_second = ""
+    top_bots: list[str] = []
+    if signal_buckets:
+        top_second, top_bots = max(signal_buckets.items(), key=lambda item: (len(item[1]), item[0]))
+    synchronized_seconds = {
+        second: names for second, names in signal_buckets.items() if len(names) > 1
+    }
+    max_same_second = len(top_bots)
+    same_second_ratio = round(max_same_second / signal_count, 3) if signal_count else 0.0
+    if not signal_count:
+        status = "no_signals"
+        detail = "no signal timestamps in visible roster"
+    elif max_same_second >= max(3, int(signal_count * 0.5)):
+        status = "clustered"
+        detail = f"{max_same_second}/{signal_count} visible signals share one second"
+    elif synchronized_seconds:
+        status = "mixed"
+        detail = f"{len(synchronized_seconds)} same-second cluster(s); cadence otherwise staggered"
+    else:
+        status = "staggered"
+        detail = f"{signal_count} visible signals across {unique_seconds} timestamp second(s)"
+
+    return {
+        "status": status,
+        "detail": detail,
+        "signal_update_count": signal_count,
+        "unique_signal_seconds": unique_seconds,
+        "latest_signal_ts": latest_ts or None,
+        "latest_signal_age_s": _iso_age_s(latest_ts, server_ts=server_ts) if latest_ts else None,
+        "max_same_second": max_same_second,
+        "same_second_ratio": same_second_ratio,
+        "top_signal_second": top_second or None,
+        "top_signal_bots": sorted(top_bots)[:8],
+        "synchronized_signal_seconds": len(synchronized_seconds),
+        "synchronized_signal_bots": sum(len(names) for names in synchronized_seconds.values()),
+    }
+
+
 def _supervisor_liveness_snapshot(state_dir: Path, *, server_ts: float) -> dict:
     """Return main-loop and keepalive freshness for the JARVIS supervisor."""
     supervisor_dir = state_dir / "jarvis_intel" / "supervisor"
@@ -3286,6 +3343,7 @@ def bot_fleet_roster(
         if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
     truth = _truth_snapshot(rows, server_ts=now_ts)
+    signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
     try:
         live_broker_state = _live_broker_state_payload()
     except Exception as exc:  # noqa: BLE001
@@ -3314,8 +3372,15 @@ def bot_fleet_roster(
             ),
             "truth_status": truth["truth_status"],
             "truth_summary_line": truth["truth_summary_line"],
+            "latest_signal_ts": signal_cadence["latest_signal_ts"],
+            "signal_cadence_status": signal_cadence["status"],
+            "signal_update_count": signal_cadence["signal_update_count"],
+            "unique_signal_seconds": signal_cadence["unique_signal_seconds"],
+            "max_same_second": signal_cadence["max_same_second"],
             **broker_summary,
         },
+        "latest_signal_ts":  signal_cadence["latest_signal_ts"],
+        "signal_cadence":    signal_cadence,
         "server_ts":         now_ts,
         "live":              fills_stats,
         "live_broker_state": live_broker_state,

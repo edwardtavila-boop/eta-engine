@@ -221,6 +221,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
+  <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
@@ -913,7 +914,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','opsProxyStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -925,6 +926,8 @@ function showOffline(clearDashboard = true) {
   if (paperLiveSub) paperLiveSub.textContent = '';
   const operatorQueueSub = document.getElementById('operatorQueueSub');
   if (operatorQueueSub) operatorQueueSub.textContent = '';
+  const signalCadenceSub = document.getElementById('signalCadenceSub');
+  if (signalCadenceSub) signalCadenceSub.textContent = '';
   const opsProxySub = document.getElementById('opsProxySub');
   if (opsProxySub) opsProxySub.textContent = '';
 }
@@ -1175,6 +1178,20 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
     : lastSignal
       ? 'Latest Signal: ' + String(lastSignal.last_signal_ts).replace('T',' ').substring(0,19)
       : 'No executed trades yet';
+
+  const cadence = d.signal_cadence || summary.signal_cadence || {};
+  const cadenceStatus = String(cadence.status || summary.signal_cadence_status || 'unknown').toLowerCase();
+  const cadenceLabels = {staggered: 'Staggered', mixed: 'Mixed', clustered: 'Clustered', no_signals: 'No Signals', unknown: 'Unknown'};
+  const cadenceClasses = {staggered: 'green', mixed: 'yellow', clustered: 'red', no_signals: 'dim', unknown: 'yellow'};
+  const signalCount = Number(cadence.signal_update_count ?? summary.signal_update_count ?? signalUpdates);
+  const uniqueSeconds = Number(cadence.unique_signal_seconds ?? summary.unique_signal_seconds ?? 0);
+  const maxSameSecond = Number(cadence.max_same_second ?? summary.max_same_second ?? 0);
+  const cadenceDetail = cadence.detail || `${signalCount} signal updates across ${uniqueSeconds || '?'} seconds`;
+  const cadenceLatest = cadence.latest_signal_ts || d.latest_signal_ts || summary.latest_signal_ts || '';
+  const cadenceAge = cadenceLatest ? '; latest ' + formatAgeSeconds(cadence.latest_signal_age_s) : '';
+  document.getElementById('signalCadenceStatus').textContent = cadenceLabels[cadenceStatus] || cadenceStatus.toUpperCase();
+  document.getElementById('signalCadenceStatus').className = 'stat ' + (cadenceClasses[cadenceStatus] || 'yellow');
+  document.getElementById('signalCadenceSub').textContent = compactText(`${cadenceDetail}; max ${maxSameSecond}/sec${cadenceAge}`);
 
   // IBKR gateway: prefer the live REST probe (live_broker_state.ibkr.ready)
   // when present — that is the same probe the supervisor uses, so it

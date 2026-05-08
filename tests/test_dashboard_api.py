@@ -1678,6 +1678,13 @@ class TestDashboardAPI:
         assert btc["bracket_target"] == 68400.0
         assert btc["broker_bracket"] is False
         assert btc["bracket_src"] == "supervisor_local"
+        assert data["latest_signal_ts"] == "2026-04-28T11:59:00+00:00"
+        assert data["summary"]["latest_signal_ts"] == "2026-04-28T11:59:00+00:00"
+        assert data["signal_cadence"]["status"] == "staggered"
+        assert data["signal_cadence"]["signal_update_count"] == 2
+        assert data["signal_cadence"]["unique_signal_seconds"] == 2
+        assert data["signal_cadence"]["max_same_second"] == 1
+        assert data["summary"]["signal_cadence_status"] == "staggered"
 
         drill = app_client.get("/api/bot-fleet/mnq_futures")
         assert drill.status_code == 200
@@ -1738,6 +1745,52 @@ class TestDashboardAPI:
         assert row["last_activity_side"] is None
         assert row["last_activity_type"] == "bar"
         assert row["last_bar_ts"] == "2026-04-28T12:00:00+00:00"
+        assert r.json()["signal_cadence"]["status"] == "no_signals"
+
+    def test_bot_fleet_signal_cadence_flags_same_second_clusters(self, app_client):
+        """Same-second signal bursts should be visible instead of hand-waved."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        signal_ts = "2026-04-28T12:01:15.123456+00:00"
+        hb = {
+            "ts": "2026-04-28T12:01:20+00:00",
+            "mode": "paper_live",
+            "bots": [
+                {
+                    "bot_id": f"clustered_{idx}",
+                    "symbol": symbol,
+                    "strategy_kind": "confluence",
+                    "direction": "long",
+                    "n_entries": 1,
+                    "n_exits": 0,
+                    "realized_pnl": 0.0,
+                    "open_position": None,
+                    "last_signal_ts": signal_ts,
+                    "last_signal_side": "BUY",
+                    "last_bar_ts": "2026-04-28T12:00:00+00:00",
+                }
+                for idx, symbol in enumerate(["BTC", "ETH", "SOL"], start=1)
+            ],
+        }
+        (sup_dir / "heartbeat.json").write_text(json.dumps(hb))
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        cadence = r.json()["signal_cadence"]
+        assert cadence["status"] == "clustered"
+        assert cadence["signal_update_count"] == 3
+        assert cadence["unique_signal_seconds"] == 1
+        assert cadence["max_same_second"] == 3
+        assert cadence["same_second_ratio"] == 1.0
+        assert cadence["top_signal_second"] == "2026-04-28T12:01:15Z"
+        assert cadence["synchronized_signal_seconds"] == 1
 
     def test_bot_fleet_drilldown_prefers_supervisor_open_position(self, app_client):
         """Per-bot drilldown must not hide live supervisor positions behind legacy status."""
