@@ -33,7 +33,9 @@ from __future__ import annotations
 from eta_engine.safety.cross_bot_position_tracker import (
     CrossBotPositionTracker,
     FleetPositionCapExceeded,
+    PropSleeveCapExceeded,
     assert_fleet_position_cap,
+    assert_prop_sleeve_cap,
     get_cross_bot_position_tracker,
     register_cross_bot_position_tracker,
 )
@@ -60,7 +62,9 @@ __all__ = [
     "FleetRiskGate",
     "LiveTradingDisabled",
     "PositionCapExceeded",
+    "PropSleeveCapExceeded",
     "assert_fleet_position_cap",
+    "assert_prop_sleeve_cap",
     "assert_fleet_within_budget",
     "assert_live_allowed",
     "assert_within_caps",

@@ -21,11 +21,13 @@ from eta_engine.safety.cross_bot_position_tracker import (
     STATE_FILENAME,
     CrossBotPositionTracker,
     FleetPositionCapExceeded,
+    PropSleeveCapExceeded,
     assert_fleet_position_cap,
     get_cross_bot_position_tracker,
     normalize_root,
     register_cross_bot_position_tracker,
     resolve_fleet_cap,
+    resolve_prop_sleeve_cap,
     signed_delta,
 )
 
@@ -83,6 +85,49 @@ def test_resolve_fleet_cap_falls_back_when_nothing_set(monkeypatch) -> None:
     monkeypatch.delenv("ETA_FLEET_POSITION_CAP_ZZZ", raising=False)
     monkeypatch.delenv("ETA_FLEET_POSITION_CAP_DEFAULT", raising=False)
     assert resolve_fleet_cap("ZZZ") == DEFAULT_FALLBACK_CAP
+
+
+def test_resolve_prop_sleeve_cap_env_override(monkeypatch) -> None:
+    monkeypatch.setenv("ETA_PROP_SLEEVE_CAP_NASDAQ_MNQ_EQUIV", "6")
+
+    assert resolve_prop_sleeve_cap("NASDAQ") == 6.0
+
+
+def test_nasdaq_sleeve_blocks_mnq_when_nq_already_open() -> None:
+    """1 NQ is 10 MNQ-equivalent, so an additional same-side MNQ entry
+    must be blocked when the Nasdaq sleeve cap is 10 MNQ-equivalent."""
+    tracker = CrossBotPositionTracker()
+    tracker.record_entry(symbol_root="NQ", side="BUY", qty=1)
+
+    with pytest.raises(PropSleeveCapExceeded) as excinfo:
+        tracker.assert_prop_sleeve_cap(
+            symbol_root="MNQ",
+            side="BUY",
+            requested_delta=1,
+            sleeve_cap=10,
+        )
+
+    err = excinfo.value
+    assert err.sleeve == "NASDAQ"
+    assert err.root == "MNQ"
+    assert err.current_equiv == 10.0
+    assert err.requested_equiv == 1.0
+    assert err.proposed_equiv == 11.0
+    assert err.sleeve_cap == 10.0
+
+
+def test_nasdaq_sleeve_allows_reducing_opposite_exposure() -> None:
+    """An opposite-side MNQ order that reduces existing NQ-equivalent
+    exposure is allowed because it lowers net Nasdaq risk."""
+    tracker = CrossBotPositionTracker()
+    tracker.record_entry(symbol_root="NQ", side="BUY", qty=1)
+
+    tracker.assert_prop_sleeve_cap(
+        symbol_root="MNQ",
+        side="SELL",
+        requested_delta=1,
+        sleeve_cap=10,
+    )
 
 
 def test_two_bots_short_mbt_second_is_blocked_at_fleet_cap_3() -> None:
@@ -317,3 +362,77 @@ def test_supervisor_blocks_when_fleet_cap_breached(
             requested_delta=3,
             fleet_cap=3,
         )
+
+
+def test_supervisor_blocks_nasdaq_sleeve_breach(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class _Verdict:
+        final_size_multiplier = 1.0
+        consolidated = type("_Consolidated", (), {"final_verdict": "APPROVED"})()
+
+        @staticmethod
+        def is_blocked() -> bool:
+            return False
+
+    monkeypatch.setenv("ETA_SUPERVISOR_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("ETA_PROP_SLEEVE_CAP_NASDAQ_MNQ_EQUIV", "10")
+    monkeypatch.setattr(
+        daily_loss_killswitch,
+        "is_killswitch_tripped",
+        lambda: (False, "clear"),
+    )
+    register_cross_bot_position_tracker(None)
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.cfg.data_feed = "unit"
+    sup._cross_bot_tracker.record_entry(  # noqa: SLF001
+        symbol_root="NQ",
+        side="BUY",
+        qty=1,
+    )
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sup, "_check_signal_aggregation", lambda **_kwargs: None)
+    monkeypatch.setattr(sup, "_consult_jarvis", lambda **_kwargs: _Verdict())
+
+    def fail_if_router_reached(**_kwargs):
+        raise AssertionError("prop sleeve cap should block before submit_entry")
+
+    monkeypatch.setattr(sup._router, "submit_entry", fail_if_router_reached)  # noqa: SLF001
+    bot = BotInstance(
+        bot_id="mnq_prop_candidate",
+        symbol="MNQ1",
+        strategy_kind="confluence_scorecard",
+        direction="long",
+        cash=5000.0,
+    )
+
+    sup._maybe_enter(
+        bot,
+        {
+            "ts": "2026-05-08T20:30:00+00:00",
+            "open": 29000.0,
+            "high": 29010.0,
+            "low": 28990.0,
+            "close": 29000.0,
+            "volume": 10,
+        },
+    )
+
+    assert bot.open_position is None
+    assert bot.last_aggregation_reject_reason.startswith("prop_sleeve_cap:NASDAQ")
+    assert bot.last_aggregation_reject_at

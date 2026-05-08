@@ -48,6 +48,17 @@ an operator can tighten without redeploy:
 
 Defaults baked into :data:`DEFAULT_ROOT_CAPS` reflect the active
 research-candidate scale: MBT/MET = 3 net contracts.
+
+Prop sleeves
+------------
+Some instruments are not the same root but ARE the same economic bet.
+The prop-fund Nasdaq lane uses MNQ and NQ together: NQ is 10x MNQ by
+contract multiplier, so the tracker also exposes an equivalent-exposure
+gate keyed by sleeve:
+
+* ``NASDAQ``: ``MNQ = 1 MNQ-equivalent``, ``NQ = 10 MNQ-equivalent``.
+* ``ETA_PROP_SLEEVE_CAP_NASDAQ_MNQ_EQUIV`` controls the cap.
+* ``ETA_PROP_SLEEVE_CAP_DISABLED`` disables this extra sleeve gate.
 """
 
 from __future__ import annotations
@@ -71,6 +82,17 @@ DEFAULT_ROOT_CAPS: dict[str, float] = {
 }
 
 DEFAULT_FALLBACK_CAP: float = 10.0
+
+DEFAULT_PROP_SLEEVE_CAPS: dict[str, float] = {
+    "NASDAQ": 10.0,
+}
+
+PROP_SLEEVE_MULTIPLIERS: dict[str, dict[str, float]] = {
+    "NASDAQ": {
+        "MNQ": 1.0,
+        "NQ": 10.0,
+    },
+}
 
 STATE_FILENAME: str = "cross_bot_positions.json"
 
@@ -121,6 +143,29 @@ class FleetPositionCapExceeded(RuntimeError):  # noqa: N818 - public API keeps e
         self.fleet_cap = fleet_cap
 
 
+class PropSleeveCapExceeded(RuntimeError):  # noqa: N818 - public API mirrors existing cap exception.
+    """Raised when an order would overstack a correlated prop sleeve."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        sleeve: str,
+        root: str,
+        current_equiv: float,
+        requested_equiv: float,
+        proposed_equiv: float,
+        sleeve_cap: float,
+    ) -> None:
+        super().__init__(message)
+        self.sleeve = sleeve
+        self.root = root
+        self.current_equiv = current_equiv
+        self.requested_equiv = requested_equiv
+        self.proposed_equiv = proposed_equiv
+        self.sleeve_cap = sleeve_cap
+
+
 def resolve_fleet_cap(root: str) -> float:
     """Resolve the active fleet cap for a symbol root.
 
@@ -151,6 +196,41 @@ def resolve_fleet_cap(root: str) -> float:
         except ValueError:
             pass
     return DEFAULT_FALLBACK_CAP
+
+
+def prop_sleeve_for_root(root: str) -> str | None:
+    """Return the prop sleeve name for a root, or None when not sleeved."""
+    root_u = normalize_root(root)
+    for sleeve, multipliers in PROP_SLEEVE_MULTIPLIERS.items():
+        if root_u in multipliers:
+            return sleeve
+    return None
+
+
+def resolve_prop_sleeve_cap(sleeve: str) -> float:
+    """Resolve the MNQ-equivalent cap for a correlated prop sleeve."""
+    sleeve_u = (sleeve or "").upper()
+    raw = os.environ.get(
+        "ETA_PROP_SLEEVE_CAP_" + sleeve_u + "_MNQ_EQUIV",
+        "",
+    ).strip()
+    if raw:
+        try:
+            return abs(float(raw))
+        except ValueError:
+            logger.warning(
+                "ETA_PROP_SLEEVE_CAP_%s_MNQ_EQUIV=%r is not a number; "
+                "falling through to defaults",
+                sleeve_u,
+                raw,
+            )
+    raw_default = os.environ.get("ETA_PROP_SLEEVE_CAP_DEFAULT_MNQ_EQUIV", "").strip()
+    if raw_default:
+        try:
+            return abs(float(raw_default))
+        except ValueError:
+            pass
+    return DEFAULT_PROP_SLEEVE_CAPS.get(sleeve_u, DEFAULT_FALLBACK_CAP)
 
 
 @dataclass
@@ -217,6 +297,56 @@ class CrossBotPositionTracker:
                 requested_delta=signed,
                 proposed_total=proposed,
                 fleet_cap=cap,
+            )
+
+    def assert_prop_sleeve_cap(
+        self,
+        *,
+        symbol_root: str,
+        side: str,
+        requested_delta: float,
+        sleeve_cap: float | None = None,
+    ) -> None:
+        """Pass when a correlated prop sleeve remains within its cap.
+
+        The comparison is made in equivalent contracts, not raw contract
+        count. For the Nasdaq sleeve, ``1 NQ`` counts as ``10 MNQ``.
+        Opposite-side orders that reduce net sleeve exposure are allowed.
+        """
+        if self.disabled or _is_truthy_env("ETA_PROP_SLEEVE_CAP_DISABLED"):
+            return
+        root = normalize_root(symbol_root)
+        sleeve = prop_sleeve_for_root(root)
+        if sleeve is None:
+            return
+        multipliers = PROP_SLEEVE_MULTIPLIERS[sleeve]
+        requested_equiv = signed_delta(side, requested_delta) * multipliers[root]
+        if sleeve_cap is None:
+            sleeve_cap = resolve_prop_sleeve_cap(sleeve)
+        cap = abs(float(sleeve_cap))
+        with self._lock:
+            current = sum(
+                float(self._net_by_root.get(member_root, 0.0)) * member_mult
+                for member_root, member_mult in multipliers.items()
+            )
+        proposed = current + requested_equiv
+        if abs(proposed) > cap + 1e-9:
+            msg = (
+                "prop sleeve cap exceeded: sleeve=" + sleeve
+                + " root=" + root
+                + " current_equiv=" + format(current, "+g")
+                + " requested_equiv=" + format(requested_equiv, "+g")
+                + " proposed_equiv=" + format(proposed, "+g")
+                + " cap=" + format(cap, "g")
+            )
+            raise PropSleeveCapExceeded(
+                msg,
+                sleeve=sleeve,
+                root=root,
+                current_equiv=current,
+                requested_equiv=requested_equiv,
+                proposed_equiv=proposed,
+                sleeve_cap=cap,
             )
 
     def record_entry(self, *, symbol_root: str, side: str, qty: float) -> float:
@@ -355,16 +485,41 @@ def assert_fleet_position_cap(
     )
 
 
+def assert_prop_sleeve_cap(
+    *,
+    symbol_root: str,
+    side: str,
+    requested_delta: float,
+    sleeve_cap: float | None = None,
+) -> None:
+    """Module-level prop-sleeve gate - dispatches to the singleton."""
+    tracker = _singleton
+    if tracker is None:
+        return
+    tracker.assert_prop_sleeve_cap(
+        symbol_root=symbol_root,
+        side=side,
+        requested_delta=requested_delta,
+        sleeve_cap=sleeve_cap,
+    )
+
+
 __all__ = [
     "CrossBotPositionTracker",
     "DEFAULT_FALLBACK_CAP",
+    "DEFAULT_PROP_SLEEVE_CAPS",
     "DEFAULT_ROOT_CAPS",
     "FleetPositionCapExceeded",
+    "PROP_SLEEVE_MULTIPLIERS",
+    "PropSleeveCapExceeded",
     "STATE_FILENAME",
     "assert_fleet_position_cap",
+    "assert_prop_sleeve_cap",
     "get_cross_bot_position_tracker",
     "normalize_root",
+    "prop_sleeve_for_root",
     "register_cross_bot_position_tracker",
     "resolve_fleet_cap",
+    "resolve_prop_sleeve_cap",
     "signed_delta",
 ]

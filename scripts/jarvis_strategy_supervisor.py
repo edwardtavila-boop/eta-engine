@@ -3421,8 +3421,10 @@ class JarvisStrategySupervisor:
         try:
             from eta_engine.safety.cross_bot_position_tracker import (
                 FleetPositionCapExceeded,
+                PropSleeveCapExceeded,
                 normalize_root,
                 resolve_fleet_cap,
+                resolve_prop_sleeve_cap,
             )
             sym_root_for_cap = normalize_root(bot.symbol)
             est_qty = float(
@@ -3437,6 +3439,12 @@ class JarvisStrategySupervisor:
                 side=order_side,
                 requested_delta=est_qty,
                 fleet_cap=resolve_fleet_cap(sym_root_for_cap),
+            )
+            self._cross_bot_tracker.assert_prop_sleeve_cap(
+                symbol_root=sym_root_for_cap,
+                side=order_side,
+                requested_delta=est_qty,
+                sleeve_cap=resolve_prop_sleeve_cap("NASDAQ"),
             )
         except FleetPositionCapExceeded as exc:
             bot.last_aggregation_reject_reason = (
@@ -3466,6 +3474,43 @@ class JarvisStrategySupervisor:
                         "requested_delta": exc.requested_delta,
                         "proposed_total": exc.proposed_total,
                         "fleet_cap": exc.fleet_cap,
+                        "side": order_side,
+                        "symbol": bot.symbol,
+                    },
+                    severity="WARNING",
+                )
+            return
+        except PropSleeveCapExceeded as exc:
+            bot.last_aggregation_reject_reason = (
+                "prop_sleeve_cap:" + str(exc.sleeve)
+                + " root=" + str(exc.root)
+                + " current_equiv=" + format(exc.current_equiv, "+g")
+                + " req_equiv=" + format(exc.requested_equiv, "+g")
+                + " proposed_equiv=" + format(exc.proposed_equiv, "+g")
+                + " cap=" + format(exc.sleeve_cap, "g")
+            )
+            bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+            logger.warning(
+                "PROP SLEEVE CAP %s blocked entry: %s",
+                bot.bot_id,
+                exc,
+            )
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.jarvis_v3.policies._v3_events import (
+                    emit_event,
+                )
+                emit_event(
+                    layer="risk",
+                    event="prop_sleeve_cap_blocked",
+                    bot_id=bot.bot_id,
+                    cls=_classify_symbol(bot.symbol),
+                    details={
+                        "sleeve": exc.sleeve,
+                        "root": exc.root,
+                        "current_equiv": exc.current_equiv,
+                        "requested_equiv": exc.requested_equiv,
+                        "proposed_equiv": exc.proposed_equiv,
+                        "sleeve_cap": exc.sleeve_cap,
                         "side": order_side,
                         "symbol": bot.symbol,
                     },
