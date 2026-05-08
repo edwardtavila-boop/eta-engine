@@ -82,7 +82,7 @@ foreach ($svc in $services) {
 # ── 4. PORTS ──────────────────────────────────────────────────
 Write-Host "`n=== 4. PORT LISTENING ===" -ForegroundColor Cyan
 $ports = @{
-    5000 = "IBKR Gateway"
+    4002 = "IBKR TWS API"
     8000 = "Dashboard API"
     8421 = "Dashboard proxy"
     8422 = "Force Multiplier status"
@@ -95,21 +95,8 @@ foreach ($p in $ports.Keys) {
 
 # ── 5. IBKR GATEWAY API ───────────────────────────────────────
 Write-Host "`n=== 5. IBKR GATEWAY CONNECTIVITY ===" -ForegroundColor Cyan
-try {
-    $ibkr = Invoke-WebRequest -Uri "https://127.0.0.1:5000/v1/api/one/user" -SkipCertificateCheck -TimeoutSec 10
-    if ($ibkr.StatusCode -eq 200) {
-        Say "IBKR Gateway auth status: OK (authenticated)" $true
-        try {
-            $acct = Invoke-WebRequest -Uri "https://127.0.0.1:5000/v1/api/portfolio/accounts" -SkipCertificateCheck -TimeoutSec 5
-            Say "IBKR accounts endpoint: OK" $true
-            Write-Host "         $($acct.Content)"
-        } catch { Say "IBKR accounts endpoint" $false }
-    } else {
-        Say "IBKR Gateway response code $($ibkr.StatusCode)" $false
-    }
-} catch {
-    Say "IBKR Gateway unreachable (port 5000)" $false
-}
+$ibkrTws = netstat -ano 2>$null | Select-String "LISTENING" | Select-String ":4002 "
+Say "IBKR TWS API listening on 127.0.0.1:4002" ($ibkrTws -ne $null)
 
 
 # ── 6. DEEPSEEK API ───────────────────────────────────────────

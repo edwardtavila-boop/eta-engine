@@ -29,14 +29,14 @@ foreach($s in $sv){$x=Get-Service $s -ea $e;S "$s ($($x.Status))" ($x -and $x.St
 
 # 4. PORTS
 Write-Host "`n=== PORTS ===" -f Cyan
-$ports=@{5000="IBKR Gateway";8000="Dashboard API";8421="Dashboard proxy";8422="FM status"}
+$ports=@{4002="IBKR TWS API";8000="Dashboard API";8421="Dashboard proxy";8422="FM status"}
 foreach($port in $ports.Keys){
 $n=netstat -ano 2>$null|Select-String ":$port .*LISTENING";S "Port $port ($($ports[$port]))" ($n -ne $null)}
 
 # 5. IBKR
 Write-Host "`n=== IBKR GATEWAY ===" -f Cyan
-try{$r=Invoke-RestMethod -Uri "https://127.0.0.1:5000/v1/api/portfolio/accounts" -SkipCertificateCheck -TimeoutSec 10
-S "IBKR auth: $($r.Count) account(s)" $true;Write-Host "         $r" -f Gray}catch{S "IBKR gateway (port 5000)" $false}
+$ibkr=netstat -ano 2>$null|Select-String ":4002 .*LISTENING"
+S "IBKR TWS API (port 4002)" ($ibkr -ne $null)
 
 # 6. DEEPSEEK
 Write-Host "`n=== DEEPSEEK KEY ===" -f Cyan

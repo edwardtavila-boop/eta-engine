@@ -138,13 +138,19 @@ def test_vps_diagnostics_probe_active_dashboard_ports() -> None:
     compact = DIAG_COMPACT_SCRIPT.read_text(encoding="utf-8")
     full = FULL_DIAGNOSTICS_SCRIPT.read_text(encoding="utf-8")
 
+    assert '4002="IBKR TWS API"' in compact
     assert '8000="Dashboard API"' in compact
     assert '8421="Dashboard proxy"' in compact
     assert '8422="FM status"' in compact
+    assert "portfolio/accounts" not in compact
+    assert "127.0.0.1:5000" not in compact
     assert "8420" not in compact
+    assert '4002 = "IBKR TWS API"' in full
     assert '8000 = "Dashboard API"' in full
     assert '8421 = "Dashboard proxy"' in full
     assert '8422 = "Force Multiplier status"' in full
+    assert "portfolio/accounts" not in full
+    assert "127.0.0.1:5000" not in full
     assert '8420="Command Center"' not in full
     assert '8420 = "Command Center"' not in full
 
