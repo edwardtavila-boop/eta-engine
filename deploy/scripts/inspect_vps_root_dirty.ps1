@@ -37,6 +37,9 @@ function Get-PathCategory {
     param([Parameter(Mandatory = $true)][string]$Path)
     $p = ($Path -replace "\\", "/").Trim()
 
+    if ($p -match "\.bak(\.|$)" -or $p -match "\.bak_[0-9]{8}_[0-9]{6}$") {
+        return "local_backup_artifact"
+    }
     if ($p -match "^(eta|eta_engine|firm|mnq_bot|mnq_backtest|mnq_eta_bot|tradingview-mcp|website)$") {
         return "submodule_or_companion_repo"
     }

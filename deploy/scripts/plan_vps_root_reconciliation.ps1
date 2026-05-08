@@ -114,6 +114,7 @@ $sourceDeleted = Get-Count -Node $deleted -Name "source_or_governance"
 $unknownDeleted = Get-Count -Node $deleted -Name "unknown"
 $generatedDeleted = Get-Count -Node $deleted -Name "generated_market_or_research_artifact"
 $generatedUntracked = Get-Count -Node $untracked -Name "generated_market_or_research_artifact"
+$localBackupUntracked = Get-Count -Node $untracked -Name "local_backup_artifact"
 $sourceUntracked = Get-Count -Node $untracked -Name "source_or_governance"
 $submoduleDrift = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_drift"]) {
@@ -155,8 +156,8 @@ $steps = @(
         -Title "Separate generated market/research artifacts from source" `
         -Risk "medium" `
         -Decision "manual_review_required" `
-        -Action "Archive or ignore generated market/research artifacts only after source/governance files are safe." `
-        -Evidence (@("generated_deleted=$generatedDeleted", "generated_untracked=$generatedUntracked") + (Get-Sample -Node $untracked -Name "generated_market_or_research_artifact"))
+        -Action "Archive or ignore generated market/research artifacts and local backup artifacts only after source/governance files are safe." `
+        -Evidence (@("generated_deleted=$generatedDeleted", "generated_untracked=$generatedUntracked", "local_backup_untracked=$localBackupUntracked") + (Get-Sample -Node $untracked -Name "generated_market_or_research_artifact") + (Get-Sample -Node $untracked -Name "local_backup_artifact"))
     New-PlanStep `
         -Id "verify-after-reconciliation" `
         -Title "Verify live ops after any approved reconciliation" `
@@ -181,6 +182,7 @@ $plan = [ordered]@{
         unknown_deleted = $unknownDeleted
         generated_deleted = $generatedDeleted
         generated_untracked = $generatedUntracked
+        local_backup_untracked = $localBackupUntracked
         source_or_governance_untracked = $sourceUntracked
         submodule_drift = $submoduleDrift
     }
@@ -204,6 +206,7 @@ $markdown = @(
     "- Unknown tracked deletions: $unknownDeleted"
     "- Generated tracked deletions: $generatedDeleted"
     "- Generated untracked artifacts: $generatedUntracked"
+    "- Local backup untracked artifacts: $localBackupUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
     ""

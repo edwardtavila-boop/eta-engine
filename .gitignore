@@ -42,6 +42,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Local one-off diagnostics and scratch probes.
+/dev/
+
 # Artifacts that are transient (keep committed reports)
 /tmp/
 /logs/
