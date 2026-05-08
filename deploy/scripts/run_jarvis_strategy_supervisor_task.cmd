@@ -109,7 +109,20 @@ rem Active pin: 12 -> 7 bots. Smaller but every bot in this list has
 rem positive net expR on the corrected engine; 1 bot
 rem (volume_profile_mnq) is the only strict-gate survivor in the entire
 rem audit set (sh_def +2.86 on 2916 trades).
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage"
+rem
+rem MICRO-TIER ADDITION 2026-05-08 (operator directive: "switching to
+rem mym for now as micros are key due to starting off with limited
+rem funds"): mym_sweep_reclaim added to the pin per its strict-gate
+rem audit on 624d MYM1 1h data:
+rem   mym_sweep_reclaim -- n=11, Sharpe=8.62, expR_net=+0.672, split=True
+rem                        Per-trade quality is the highest in the fleet.
+rem                        Sample is small (n<30) so it fails strict-gate,
+rem                        but legacy gate passes (L=true) and per-trade
+rem                        edge dwarfs every other pinned bot. Pin as
+rem                        research_candidate for paper-soak fills.
+rem MGC + MCL pending deeper data hydration; will pin after re-audit if
+rem they show similar profile (positive expR_net + split-stable).
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mym_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

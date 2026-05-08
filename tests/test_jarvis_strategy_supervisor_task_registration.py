@@ -104,6 +104,13 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # Incumbents kept for kaizen monitoring (positive net):
         "mnq_anchor_sweep",
         "mnq_futures_sage",
+        # MICRO-TIER ADDITION 2026-05-08 (operator directive: switching
+        # to micros for limited starting capital). MYM strict-gate audit
+        # (eta_engine/reports/strict_gate_mym.json): n=11, sharpe=8.62,
+        # expR_net=+0.672, split=True. Per-trade quality dwarfs every
+        # other pinned bot; small sample fails strict-gate but legacy
+        # gate passes (L=true). Pinned for paper-soak.
+        "mym_sweep_reclaim",
     }
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
