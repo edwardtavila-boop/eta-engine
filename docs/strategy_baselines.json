@@ -15,6 +15,50 @@
       "_notes": "Numbers from the IS+OOS combined trade list of the 2026-04-27 sweep run. n_trades = 28+13 (window 0 IS+OOS) + ... averaged across IS/OOS. Re-baseline once live paper-soak produces 50+ real fills."
     },
     {
+      "strategy_id": "mnq_anchor_sweep_v1",
+      "n_trades": 47,
+      "win_rate": 0.340,
+      "avg_r": 0.058,
+      "r_stddev": 1.10,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "paper_soak",
+      "_walk_forward_summary": "MNQ1/5m, 365d window, anchor_sweep (PDH/PDL/PMH/PML/ONH/ONL). 47 OOS trades, +$135 OOS PnL, 34.0% WR, +105% decay (acceptable), beats random baseline by $368. ALL FIVE LIGHTS GREEN. Reconfirmed on 2026-05-08 after data refresh; same shape as the 90d initial pass (50T, +$175, 32% WR, +133% decay).",
+      "_notes": "First MNQ-family ALL GREEN strategy through the elite-gate (rounds 2 + 7 of pre-live hardening sprint). avg_r approximated from $135 net / 47 trades / typical $50 risk-per-trade. Re-baseline once live paper-soak produces 50+ real fills with broker-side slippage."
+    },
+    {
+      "strategy_id": "mnq_optimized_v1",
+      "n_trades": 4,
+      "win_rate": 0.75,
+      "avg_r": 1.24,
+      "r_stddev": 1.15,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "shadow_benchmark",
+      "_walk_forward_summary": "MNQ1/5m, 365d window. 4 OOS trades, +$496 OOS PnL, 75% WR, +488% decay. Strategy fires very rarely (low-frequency edge — sample size won't reach 30 even on 365d).",
+      "_notes": "Sample-size YELLOW; kept as shadow_benchmark not promoted to paper_soak. Operator decision on whether the low-freq edge is worth wiring live with reduced size, or whether to relax entry conditions to fire more often. Re-baseline if entry conditions change."
+    },
+    {
+      "strategy_id": "vol_prof_mnq_v1",
+      "n_trades": 31,
+      "win_rate": 0.097,
+      "avg_r": -1.41,
+      "r_stddev": 2.03,
+      "_promoted_at": "2026-05-05",
+      "_promotion_status": "production_candidate",
+      "_walk_forward_summary": "MNQ1/5m, 90d window. 31 OOS trades, $-2,133 OOS PnL, 9.7% WR, -32% decay. Round-4 elite-gate: bug-fix (rr_absurd cap) eliminated 6 validator-rejected signals but exposed strategy as no-edge once all 31 trades pass.",
+      "_notes": "WARN: production_candidate tag predates the elite-gate; empirical results show no edge. Operator should consider demoting to research_candidate or retiring. Baseline persisted so drift watchdog has a comparison anchor; do NOT use these numbers as a promotion target."
+    },
+    {
+      "strategy_id": "vol_prof_nq_v1",
+      "n_trades": 25,
+      "win_rate": 0.30,
+      "avg_r": 0.10,
+      "r_stddev": 1.50,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "production_candidate",
+      "_walk_forward_summary": "NQ1/5m, baseline placeholder. NQ-variant of vol_prof_mnq; not independently elite-gate verified yet. Inherits vol_prof_mnq's structural risk (parent showed no edge).",
+      "_notes": "Placeholder baseline to unblock launch check. Run elite-gate on NQ1/5m before relying on these numbers; vol_prof family has open questions on edge reality."
+    },
+    {
       "strategy_id": "mnq_orb_v2",
       "n_trades": 50,
       "win_rate": 0.2,

@@ -378,9 +378,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mbt_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "MBT", "5m", critical=True),
-            DataRequirement("bars", "MBT", "1h", critical=True),
-            DataRequirement("bars", "MBT", "D", critical=True,
+            DataRequirement("bars", "MBT1", "5m", critical=True),
+            DataRequirement("bars", "MBT1", "1h", critical=True),
+            DataRequirement("bars", "MBT1", "D", critical=True,
                 note="regime + macro lens"),
             DataRequirement("correlation", "ETH", "1h", critical=False,
                 note="ETH-BTC correlation as regime confirmation"),
@@ -391,9 +391,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="met_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "MET", "5m", critical=True),
-            DataRequirement("bars", "MET", "1h", critical=True),
-            DataRequirement("bars", "MET", "D", critical=True,
+            DataRequirement("bars", "MET1", "5m", critical=True),
+            DataRequirement("bars", "MET1", "1h", critical=True),
+            DataRequirement("bars", "MET1", "D", critical=True,
                 note="regime + macro lens"),
             DataRequirement("correlation", "BTC", "1h", critical=False,
                 note="BTC-ETH correlation as regime confirmation"),
@@ -404,9 +404,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mbt_funding_basis",
         requirements=(
-            DataRequirement("bars", "MBT", "5m", critical=True),
-            DataRequirement("bars", "MBT", "1h", critical=True),
-            DataRequirement("bars", "MBT", "D", critical=True,
+            DataRequirement("bars", "MBT1", "5m", critical=True),
+            DataRequirement("bars", "MBT1", "1h", critical=True),
+            DataRequirement("bars", "MBT1", "D", critical=True,
                 note="contract regime + expiry context"),
             DataRequirement("bars", "BTC", "5m", critical=True,
                 note="spot BTC reference for MBT basis proxy"),
@@ -422,9 +422,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mbt_overnight_gap",
         requirements=(
-            DataRequirement("bars", "MBT", "5m", critical=True),
-            DataRequirement("bars", "MBT", "1h", critical=True),
-            DataRequirement("bars", "MBT", "D", critical=True,
+            DataRequirement("bars", "MBT1", "5m", critical=True),
+            DataRequirement("bars", "MBT1", "1h", critical=True),
+            DataRequirement("bars", "MBT1", "D", critical=True,
                 note="prior RTH close and overnight gap context"),
             DataRequirement("bars", "BTC", "5m", critical=False,
                 note="spot BTC cross-check for overnight dislocations"),
@@ -434,10 +434,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mbt_zfade",
         requirements=(
-            DataRequirement("bars", "MBT", "5m", critical=True),
-            DataRequirement("bars", "MBT", "1h", critical=True,
+            DataRequirement("bars", "MBT1", "5m", critical=True),
+            DataRequirement("bars", "MBT1", "1h", critical=True,
                 note="HTF trend-opposition filter"),
-            DataRequirement("bars", "MBT", "D", critical=False,
+            DataRequirement("bars", "MBT1", "D", critical=False,
                 note="contract regime and volatility context"),
             DataRequirement("bars", "BTC", "5m", critical=False,
                 note="spot BTC cross-check for MBT dislocations"),
@@ -447,10 +447,10 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mbt_rth_orb",
         requirements=(
-            DataRequirement("bars", "MBT", "5m", critical=True),
-            DataRequirement("bars", "MBT", "1h", critical=True,
+            DataRequirement("bars", "MBT1", "5m", critical=True),
+            DataRequirement("bars", "MBT1", "1h", critical=True,
                 note="opening-range context and trend filter"),
-            DataRequirement("bars", "MBT", "D", critical=False,
+            DataRequirement("bars", "MBT1", "D", critical=False,
                 note="RTH regime and contract context"),
         ),
         sources_hint=("IBKR CME bars (via Client Portal Gateway)", "scripts/fetch_ibkr_crypto_bars.py"),
@@ -458,9 +458,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="met_rth_orb",
         requirements=(
-            DataRequirement("bars", "MET", "5m", critical=True),
-            DataRequirement("bars", "MET", "1h", critical=True),
-            DataRequirement("bars", "MET", "D", critical=True,
+            DataRequirement("bars", "MET1", "5m", critical=True),
+            DataRequirement("bars", "MET1", "1h", critical=True),
+            DataRequirement("bars", "MET1", "D", critical=True,
                 note="RTH opening-range and daily ETH regime context"),
             DataRequirement("correlation", "BTC", "1h", critical=False,
                 note="BTC-ETH correlation as regime confirmation"),
@@ -607,6 +607,32 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
                 note="daily POC anchors session value-area"),
         ),
         sources_hint=("scripts/fetch_index_futures_bars.py",),
+    ),
+    # Micro tier (added 2026-05-08): rehab paths for ym/gc/cl retires
+    # via the Micro variants. Each fits the $10k per-bot budget cap.
+    BotRequirements(
+        bot_id="mym_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "MYM1", "5m", critical=True),
+            DataRequirement("bars", "MYM1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MYM",),
+    ),
+    BotRequirements(
+        bot_id="mgc_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "MGC1", "5m", critical=True),
+            DataRequirement("bars", "MGC1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MGC",),
+    ),
+    BotRequirements(
+        bot_id="mcl_sweep_reclaim",
+        requirements=(
+            DataRequirement("bars", "MCL1", "5m", critical=True),
+            DataRequirement("bars", "MCL1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MCL",),
     ),
 
     # Gap-fill — needs daily to detect overnight gap
@@ -1009,8 +1035,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="gc_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "GC", "1h", critical=True),
-            DataRequirement("bars", "GC", "D", critical=False,
+            DataRequirement("bars", "GC1", "1h", critical=True),
+            DataRequirement("bars", "GC1", "D", critical=False,
                 note="daily structure for sage daily gate"),
             DataRequirement("correlation", "DXY", "1h", critical=False,
                 note="gold inversely tracks DXY"),
@@ -1026,8 +1052,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="cl_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "CL", "1h", critical=True),
-            DataRequirement("bars", "CL", "D", critical=False,
+            DataRequirement("bars", "CL1", "1h", critical=True),
+            DataRequirement("bars", "CL1", "D", critical=False,
                 note="daily inventory cycle"),
             DataRequirement("correlation", "DXY", "1h", critical=False,
                 note="WTI is dollar-priced; loose inverse"),
@@ -1041,8 +1067,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="ng_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "NG", "1h", critical=True),
-            DataRequirement("bars", "NG", "D", critical=False,
+            DataRequirement("bars", "NG1", "1h", critical=True),
+            DataRequirement("bars", "NG1", "D", critical=False,
                 note="weekly EIA storage cycle"),
         ),
         sources_hint=(
@@ -1054,8 +1080,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="zn_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "ZN", "1h", critical=True),
-            DataRequirement("bars", "ZN", "D", critical=False,
+            DataRequirement("bars", "ZN1", "1h", critical=True),
+            DataRequirement("bars", "ZN1", "D", critical=False,
                 note="rate-cycle context"),
             DataRequirement("correlation", "DXY", "1h", critical=False),
             DataRequirement("correlation", "ES1", "1h", critical=False,
@@ -1070,7 +1096,7 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="eur_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "6E", "1h", critical=True),
+            DataRequirement("bars", "6E1", "1h", critical=True),
             DataRequirement("correlation", "DXY", "1h", critical=False,
                 note="6E is essentially inverse-DXY"),
         ),
@@ -1087,8 +1113,8 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="mes_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "MES", "5m", critical=True),
-            DataRequirement("bars", "MES", "1h", critical=False),
+            DataRequirement("bars", "MES1", "5m", critical=True),
+            DataRequirement("bars", "MES1", "1h", critical=False),
             DataRequirement("correlation", "MNQ1", "5m", critical=False,
                 note="MES vs MNQ disagreement = sector rotation signal"),
         ),
@@ -1101,9 +1127,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="m2k_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "M2K", "5m", critical=True),
-            DataRequirement("bars", "M2K", "1h", critical=False),
-            DataRequirement("correlation", "MES", "5m", critical=False,
+            DataRequirement("bars", "M2K1", "5m", critical=True),
+            DataRequirement("bars", "M2K1", "1h", critical=False),
+            DataRequirement("correlation", "MES1", "5m", critical=False,
                 note="small caps vs S&P leadership signal"),
         ),
         sources_hint=(
@@ -1115,9 +1141,9 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     BotRequirements(
         bot_id="ym_sweep_reclaim",
         requirements=(
-            DataRequirement("bars", "YM", "5m", critical=True),
-            DataRequirement("bars", "YM", "1h", critical=False),
-            DataRequirement("correlation", "MES", "5m", critical=False,
+            DataRequirement("bars", "YM1", "5m", critical=True),
+            DataRequirement("bars", "YM1", "1h", critical=False),
+            DataRequirement("correlation", "MES1", "5m", critical=False,
                 note="blue-chip vs S&P broader index signal"),
         ),
         sources_hint=(

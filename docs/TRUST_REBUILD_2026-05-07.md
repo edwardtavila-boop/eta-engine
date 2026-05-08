@@ -127,3 +127,75 @@ fills (the gold-standard data source) were never affected by the
 bugs. Going forward, treat backtest numbers as a screening tool only;
 make pin/retire/promote decisions on the basis of 30+ days of real
 fills aggregated by daily kaizen.
+
+---
+
+## Update 2026-05-08 — Round-4 retire on corrected engine
+
+The first strict-gate audit run on the corrected engine
+(`reports/strict_gate_20260508T031716Z.json`) flipped 5 prior pin
+members from positive to negative net expR:
+
+| Bot | Pre-fix | Post-fix | Action |
+|---|---|---|---|
+| volume_profile_btc | net -0.040 | net **-0.139**, sh_def -2.14 | **RETIRED** |
+| rsi_mr_mnq | net +0.124, split=True | net **-0.003**, split=False | **RETIRED** |
+| gc_sweep_reclaim | net +0.131 | net **-0.179** | **RETIRED** |
+| cl_sweep_reclaim | net +0.032 | net **-0.052** | **RETIRED** |
+| mes_sweep_reclaim | net +0.120 (n=34) | net **-0.484** (n=5 valid) | **RETIRED** |
+
+**The single strict-gate survivor across all 20 audited bots:**
+
+  `volume_profile_mnq` — Sharpe 1.39, expR_net +0.088, **sh_def +2.86**,
+  split-stable, 2916 trades. **L+S** flag (legacy AND strict gates pass).
+
+`volume_profile_nq` is the next-strongest at sh_def +2.08 (just below
+strict).
+
+### Today's daily kaizen at 06:00 UTC
+
+Auto-applied 8 RETIRE actions via the 2-run confirmation gate (bots
+with prior-day RETIRE recommendations now sidecar-deactivated). All
+8 overlap with the registry-level retires from rounds 1-3:
+btc_crypto_scalp, eth_sweep_reclaim, eth_perp, eth_compression,
+natgas_compression, crude_compression, cross_asset_mnq,
+euro_vwap_mr. Belt-and-suspenders deactivation.
+
+### Active fleet (7 bots, all positive net on corrected engine)
+
+| Bot | Sym | Sharpe | expR_net | sh_def | Notes |
+|---|---|---:|---:|---:|---|
+| volume_profile_mnq | MNQ1 | 1.39 | +0.088 | **+2.86** | **STRICT GATE PASS**, only one in fleet |
+| volume_profile_nq | NQ1 | 1.13 | +0.080 | +2.08 | Just below strict |
+| mbt_funding_basis | MBT | 3.77 | +0.200 | -0.61 | Split-stable, small sample (n=31) |
+| m2k_sweep_reclaim | M2K1 | 4.66 | +0.361 | -0.52 | n=23, sample-bonus Sharpe |
+| eur_sweep_reclaim | 6E1 | 3.34 | +0.219 | -0.88 | Split-stable, n=25 |
+| mnq_anchor_sweep | MNQ1 | 2.07 | +0.167 | -0.86 | Split-stable, n=68 |
+| mnq_futures_sage | MNQ1 | 0.70 | +0.039 | -0.74 | Marginal positive, n=701 |
+
+### Hardening since the original doc
+
+- **`bracket_sizing._paper_floor_enabled()`** — live mode auto-disables
+  the sub-1-lot floor so a budget cap can never silently over-trade
+  on a live account (was a 50× over-risk surface in paper code).
+- **`per_bot_budget_usd` registry override** — high-notional contracts
+  (YM/GC/ES) can declare their own bigger cap without lifting the
+  default fleet-wide.
+- **Missing futures roots** added: YM, MYM, ZF, ZT, M6B, M6A, 6B, 6A,
+  6J, M6J. Without these, YM bots silently fell into the "other"
+  asset-class default ($100/bot) which killed every entry on the cap.
+- **`get_spec` symmetry**: bare-form ("YM") and front-month ("YM1")
+  forms now resolve to the same spec via `_strip_front_month_suffix`.
+- **`_FUTURES_MAP`** in fetcher: YM and MYM TWS routing added so
+  `--symbols YM MYM` no longer fails with "no map".
+- **`MYM` instrument spec** added to `_SPECS`.
+
+### Data hydration
+
+- **YM, MYM, M2K, RTY**: each ~120,800 5m bars + ~10,500 1h bars,
+  624 days of history (2024-08-21 → 2026-05-08) on the VPS.
+- **ES 1h**: 7 years (43k bars) resampled from existing 5m source.
+- **MBT/MET 1h**: 564 days resampled from 5m source.
+
+The audit engine now has full historical coverage for every active
+bot's primary timeframe.

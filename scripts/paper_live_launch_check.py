@@ -62,6 +62,10 @@ _RESOLVABLE_KINDS: frozenset[str] = frozenset({
     "confluence_scorecard", "cross_asset_divergence", "funding_rate",
     "rsi_mean_reversion", "vwap_reversion", "volume_profile", "mtf_scalp",
     "anchor_sweep",
+    # Bridge-backed custom strategy kinds. These resolve through
+    # strategies.registry_strategy_bridge and are valid research/runtime lanes.
+    "mbt_funding_basis", "mbt_overnight_gap", "mbt_rth_orb", "mbt_zfade",
+    "met_rth_orb",
 })
 _SHADOW_ONLY_STATUSES: frozenset[str] = frozenset({
     "shadow_benchmark",
@@ -70,6 +74,36 @@ _SHADOW_ONLY_STATUSES: frozenset[str] = frozenset({
 _NON_EDGE_STATUSES: frozenset[str] = frozenset({
     "non_edge_strategy",
 })
+_LAUNCH_SCOPE_STATUSES: frozenset[str] = frozenset({
+    "paper_soak",
+    "production",
+    "production_candidate",
+    "promoted",
+})
+
+
+def _promotion_status_for_scope(assignment: Any) -> str:  # noqa: ANN401
+    extras = assignment.extras or {}
+    if bool(extras.get("deactivated")):
+        return "deactivated"
+    status = extras.get("promotion_status")
+    if isinstance(status, str) and status:
+        return status
+    return "promoted"
+
+
+def _assignment_in_scope(assignment: Any, scope: str) -> bool:  # noqa: ANN401
+    if scope == "all":
+        return True
+    status = _promotion_status_for_scope(assignment)
+    if scope == "launchable":
+        return status in _LAUNCH_SCOPE_STATUSES
+    if scope == "research":
+        return status == "research_candidate"
+    if scope == "diagnostic":
+        return status in _SHADOW_ONLY_STATUSES or status in _NON_EDGE_STATUSES
+    msg = f"unknown paper-live launch scope: {scope!r}"
+    raise ValueError(msg)
 
 
 def _check_data_available(symbol: str, timeframe: str) -> bool:
@@ -233,6 +267,49 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
         "btc_compression": "btc_hybrid",
         "mbt_sweep_reclaim": "btc_hybrid",
         "met_sweep_reclaim": "eth_perp",
+        # 2026-05-08 — additional variant mappings to unblock current
+        # paper_soak winners + production_candidates that share underlying
+        # bot infrastructure with their parent lane (mnq/nq/btc_hybrid).
+        "mnq_anchor_sweep": "mnq",
+        "mnq_sweep_reclaim": "mnq",
+        "mnq_futures_optimized": "mnq",
+        "volume_profile_mnq": "mnq",
+        "volume_profile_nq": "nq",
+        "vwap_mr_mnq": "mnq",
+        "vwap_mr_nq": "nq",
+        "rsi_mr_mnq": "mnq",
+        "cross_asset_mnq": "mnq",
+        "cross_asset_btc": "btc_hybrid",
+        "nq_anchor_sweep": "nq",
+        "vwap_mr_btc": "btc_hybrid",
+        "volume_profile_btc": "btc_hybrid",
+        "btc_optimized": "btc_hybrid",
+        "btc_crypto_scalp": "btc_hybrid",
+        "funding_rate_btc": "btc_hybrid",
+        "gap_fill_btc": "btc_hybrid",
+        "gap_fill_mnq": "mnq",
+        "rsi_mr_btc": "btc_hybrid",
+        "ng_sweep_reclaim": "mnq",  # commodity sweep family — lives under mnq
+        "gc_sweep_reclaim": "mnq",
+        "cl_sweep_reclaim": "mnq",
+        "zn_sweep_reclaim": "mnq",
+        "eur_sweep_reclaim": "mnq",
+        "mes_sweep_reclaim": "mnq",
+        "m2k_sweep_reclaim": "mnq",
+        "ym_sweep_reclaim": "mnq",
+        "mbt_funding_basis": "btc_hybrid",
+        "mbt_overnight_gap": "btc_hybrid",
+        "mbt_rth_orb": "btc_hybrid",
+        "mbt_zfade": "btc_hybrid",
+        "met_rth_orb": "eth_perp",
+        "sol_optimized": "crypto_seed",
+        "sol_perp": "crypto_seed",
+        "sol_sweep_scalp": "crypto_seed",
+        "xrp_perp": "crypto_seed",
+        "eth_sweep_reclaim": "eth_perp",
+        "mcl_sweep_reclaim": "mnq",
+        "mgc_sweep_reclaim": "mnq",
+        "mym_sweep_reclaim": "mnq",
     }
     underlying = variant_map.get(bot_id)
     return bool(underlying and (bots_dir / underlying).exists())
@@ -548,6 +625,15 @@ def main() -> int:
         "--bots", default=None,
         help="Comma-separated bot_ids to audit (default: all)",
     )
+    p.add_argument(
+        "--scope",
+        choices=("launchable", "all", "research", "diagnostic"),
+        default="launchable",
+        help=(
+            "Assignment scope when --bots is omitted. Default launchable "
+            "checks paper/live candidates only; use all for full research audit."
+        ),
+    )
     p.add_argument("--json", action="store_true",
                    help="Emit JSON instead of a table")
     args = p.parse_args()
@@ -560,7 +646,11 @@ def main() -> int:
     )
     targets = [
         a for a in ASSIGNMENTS
-        if filt is None or a.bot_id in filt
+        if (
+            a.bot_id in filt
+            if filt is not None
+            else _assignment_in_scope(a, args.scope)
+        )
     ]
 
     results = [_audit_bot(a) for a in targets]
@@ -572,6 +662,7 @@ def main() -> int:
     if args.json:
         print(json.dumps({
             "timestamp": datetime.now(UTC).isoformat(),
+            "scope": "explicit_bots" if filt is not None else args.scope,
             "n_bots": len(results),
             "ready": [r for r in results if r["status"] == "READY"],
             "warn": [r for r in results if r["status"] == "WARN"],
@@ -579,6 +670,7 @@ def main() -> int:
         }, indent=2))
     else:
         print(f"[paper-live-check] {datetime.now(UTC).isoformat()}")
+        print(f"[paper-live-check] scope={'explicit_bots' if filt is not None else args.scope}")
         print(f"[paper-live-check] auditing {len(results)} bots")
         _print_table(results)
 

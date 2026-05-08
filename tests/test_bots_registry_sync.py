@@ -75,6 +75,9 @@ VARIANT_BOT_IDS: set[str] = {
     "volume_profile_mnq", "volume_profile_btc",
     "volume_profile_nq",  # added 2026-05-07: clone of volume_profile_mnq for
                           # NQ 5m. Audit pending; runs through bots/nq/.
+    "mym_sweep_reclaim",  # added 2026-05-08: MYM rehab path for ym_sweep_reclaim.
+    "mgc_sweep_reclaim",  # added 2026-05-08: MGC rehab path for gc_sweep_reclaim.
+    "mcl_sweep_reclaim",  # added 2026-05-08: MCL rehab path for cl_sweep_reclaim.
     "gap_fill_mnq", "gap_fill_btc",
     "cross_asset_mnq", "cross_asset_btc",
     "funding_rate_btc",

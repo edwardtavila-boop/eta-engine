@@ -235,6 +235,36 @@ def test_anchor_sweep_kind_is_resolvable(monkeypatch) -> None:
     assert not any(str(issue).startswith("unknown strategy_kind") for issue in result["issues"])
 
 
+def test_bridge_backed_mbt_kinds_are_resolvable(monkeypatch) -> None:
+    assignment = SimpleNamespace(
+        bot_id="mbt_rth_orb",
+        strategy_id="mbt_rth_orb_v1",
+        strategy_kind="mbt_rth_orb",
+        symbol="MBT1",
+        timeframe="5m",
+        extras={"promotion_status": "research_candidate"},
+    )
+    monkeypatch.setattr(mod, "_check_data_available", lambda *_: True)
+    monkeypatch.setattr(mod, "_check_bot_dir_exists", lambda *_: True)
+    monkeypatch.setattr(mod, "_load_baseline_entry", lambda *_: {"strategy_id": "mbt_rth_orb_v1"})
+
+    result = mod._audit_bot(assignment)
+
+    assert not any(str(issue).startswith("unknown strategy_kind") for issue in result["issues"])
+
+
+def test_default_launch_scope_excludes_research_and_diagnostic_lanes() -> None:
+    launchable = SimpleNamespace(extras={"promotion_status": "paper_soak"})
+    research = SimpleNamespace(extras={"promotion_status": "research_candidate"})
+    shadow = SimpleNamespace(extras={"promotion_status": "shadow_benchmark"})
+    deactivated = SimpleNamespace(extras={"promotion_status": "paper_soak", "deactivated": True})
+
+    assert mod._assignment_in_scope(launchable, "launchable") is True
+    assert mod._assignment_in_scope(research, "launchable") is False
+    assert mod._assignment_in_scope(shadow, "launchable") is False
+    assert mod._assignment_in_scope(deactivated, "launchable") is False
+
+
 def test_missing_critical_support_feed_blocks(monkeypatch) -> None:
     assignment = SimpleNamespace(
         bot_id="nq_futures",

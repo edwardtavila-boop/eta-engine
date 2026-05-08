@@ -1461,7 +1461,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     # ═══════════════════════════════════════════════════════════════════
 
     # MBT/MET micro futures — de-duplicated. See correct entries at end of
-    # file with symbol="MBT"/"MET". These stubs were duplicates.
+    # file with symbol="MBT1"/"MET". These stubs were duplicates.
 
     # ═══════════════════════════════════════════════════════════════════
     # SHADOW BENCHMARK — diagnostic only, not for live exposure
@@ -1823,7 +1823,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mbt_sweep_reclaim",
         strategy_id="mbt_sweep_reclaim_v1",
-        symbol="MBT",
+        symbol="MBT1",
         timeframe="1h",
         scorer_name="btc",
         confluence_threshold=0.0,
@@ -1872,7 +1872,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="met_sweep_reclaim",
         strategy_id="met_sweep_reclaim_v1",
-        symbol="MET",
+        symbol="MET1",
         timeframe="1h",
         scorer_name="btc",
         confluence_threshold=0.0,
@@ -1930,7 +1930,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mbt_funding_basis",
         strategy_id="mbt_funding_basis_v1",
-        symbol="MBT",
+        symbol="MBT1",
         timeframe="5m",
         scorer_name="btc",  # MBT tracks BTC; reuse BTC scorer for walk-forward
         confluence_threshold=0.0,
@@ -1976,7 +1976,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mbt_zfade",
         strategy_id="mbt_zfade_v1",
-        symbol="MBT",
+        symbol="MBT1",
         timeframe="5m",
         scorer_name="btc",
         confluence_threshold=0.0,
@@ -2023,7 +2023,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mbt_overnight_gap",
         strategy_id="mbt_overnight_gap_v2",  # v2: continuation thesis
-        symbol="MBT",
+        symbol="MBT1",
         timeframe="5m",
         scorer_name="btc",
         confluence_threshold=0.0,
@@ -2062,7 +2062,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="met_rth_orb",
         strategy_id="met_rth_orb_v1",
-        symbol="MET",
+        symbol="MET1",
         timeframe="5m",
         scorer_name="btc",  # MET tracks ETH; no ETH scorer, BTC is closest correlated
         confluence_threshold=0.0,
@@ -2118,7 +2118,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
     StrategyAssignment(
         bot_id="mbt_rth_orb",
         strategy_id="mbt_rth_orb_v1",
-        symbol="MBT",
+        symbol="MBT1",
         timeframe="5m",
         scorer_name="btc",  # MBT tracks BTC
         confluence_threshold=0.0,
@@ -2661,6 +2661,144 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "YM",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # MICRO TIER (added 2026-05-08): the "limited starting capital"
+    # cohort. These bots clone the proven sweep_reclaim+scorecard
+    # template onto the micro-variant contracts where notional fits
+    # the per-bot $10k budget without needing the paper_futures_floor
+    # lift. Each is a direct rehab path for a retired full-size
+    # cousin per docs/STRATEGY_REHAB_PLAN.md.
+
+    # mym_sweep_reclaim — Micro Dow rehab path for ym_sweep_reclaim.
+    # MYM at ~$25k notional (vs YM ~$248k) fits within typical micro
+    # margin (~$1.1k); 624 days of MYM 1h data backfilled 2026-05-08.
+    StrategyAssignment(
+        bot_id="mym_sweep_reclaim",
+        strategy_id="mym_sweep_reclaim_v1",
+        symbol="MYM1",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=120,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "EQUITY-INDEX MICRO: Dow Jones MICRO (MYM) sweep_reclaim + "
+            "scorecard on 1h. point_value=$0.50/pt vs YM $5/pt -- 10x "
+            "less notional, fits the $10k per-bot budget cap cleanly. "
+            "Same Dow-following structure as YM; provides 30-stock "
+            "blue-chip diversification in the equity-index basket "
+            "without the YM cap-fit issue."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {"sweep_preset": "mym",
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MYM",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # mgc_sweep_reclaim — Micro Gold rehab path for gc_sweep_reclaim.
+    # MGC at ~$47k notional (vs GC ~$470k) fits within micro margin
+    # (~$1.1k). The full-size GC variant lost -0.179 net on the
+    # corrected engine (16 trades) -- friction at $100/pt full-size
+    # multiplier dominated. MGC at $10/pt has 10x lower friction-per-R.
+    StrategyAssignment(
+        bot_id="mgc_sweep_reclaim",
+        strategy_id="mgc_sweep_reclaim_v1",
+        symbol="MGC1",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY MICRO: Gold MICRO (MGC) sweep_reclaim + scorecard "
+            "on 1h. point_value=$10/pt vs GC $100/pt -- 10x less "
+            "notional + commission scaled to micro tier. Same gold "
+            "safe-haven flow / NY-session sweep structure as the "
+            "retired gc_sweep_reclaim, but with the friction-per-R "
+            "actually trade-able at micro scale."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {"sweep_preset": "mgc",
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.40, "min_volume_z": 0.3,
+                "rr_target": 3.0, "atr_stop_mult": 3.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MGC",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # mcl_sweep_reclaim — Micro Crude rehab path for cl_sweep_reclaim.
+    # MCL at ~$9.7k notional (vs CL ~$97k) fits cleanly. Full CL
+    # variant flipped -0.052 net on corrected engine; MCL has $100/pt
+    # vs $1000/pt, so 10x lower friction-per-R.
+    StrategyAssignment(
+        bot_id="mcl_sweep_reclaim",
+        strategy_id="mcl_sweep_reclaim_v1",
+        symbol="MCL1",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "COMMODITY MICRO: Micro WTI Crude (MCL) sweep_reclaim + "
+            "scorecard on 1h. point_value=$100/pt vs CL $1000/pt -- "
+            "10x less notional. Energy reflexivity / inventory-cycle "
+            "sweeps at session boundaries; same mechanic as the "
+            "retired cl_sweep_reclaim but at the right capital tier."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {"sweep_preset": "mcl",
+                "level_lookback": 48, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 2.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MCL",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },
