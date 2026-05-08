@@ -2504,7 +2504,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Tight stops; point_value=$125k makes any move material."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "eur",
                 "level_lookback": 48, "reclaim_window": 3,
@@ -2518,7 +2518,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "6E",
-            "research_candidate": True,
+            "research_candidate": False,
             "daily_loss_limit_pct": 4.0,
         },
     ),
@@ -2603,7 +2603,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "tell when M2K is leading or lagging the broader index."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "m2k",
                 "level_lookback": 48, "reclaim_window": 3,
@@ -2617,7 +2617,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "M2K",
-            "research_candidate": True,
+            "research_candidate": False,
             "daily_loss_limit_pct": 4.0,
         },
     ),
@@ -2696,7 +2696,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "without the YM cap-fit issue."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "mym",
                 "level_lookback": 48, "reclaim_window": 3,
@@ -2710,7 +2710,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "MYM",
-            "research_candidate": True,
+            "research_candidate": False,
             "daily_loss_limit_pct": 4.0,
         },
     ),
@@ -2784,7 +2784,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "retired cl_sweep_reclaim but at the right capital tier."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "mcl",
                 "level_lookback": 48, "reclaim_window": 3,
@@ -2798,7 +2798,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "MCL",
-            "research_candidate": True,
+            "research_candidate": False,
             "daily_loss_limit_pct": 4.0,
         },
     ),

@@ -65,9 +65,9 @@
       "avg_r": 0.672,
       "r_stddev": 1.50,
       "_promoted_at": "2026-05-08",
-      "_promotion_status": "research_candidate",
+      "_promotion_status": "paper_soak",
       "_walk_forward_summary": "MYM1/1h, 624d window. Strict-gate audit (eta_engine/reports/strict_gate_mym.json): n=11 trades, sharpe=8.62, expR_net=+0.672, sh_def=-0.12, split=True, L=true (legacy gate pass), S=false (strict gate fail on n<30). Per-trade quality is the highest in the entire fleet; sample-size limited.",
-      "_notes": "MICRO-TIER PIN 2026-05-08 per operator directive (switching to micros for limited starting capital). MYM ~$25k notional fits $10k per-bot budget. Canonical MYM1_1h.csv (10510 bars) and MYM1_5m.csv (120805 bars) are present under C:\\EvolutionaryTradingAlgo\\mnq_data\\history on home and VPS; paper_live_launch_check reports WARN, not BLOCK, because this remains a research candidate. Re-baseline once 30+ real paper fills land. avg_r approximated from expR_net since strict-gate uses friction-net per-trade R."
+      "_notes": "MICRO-TIER PIN 2026-05-08 per operator directive (switching to micros for limited starting capital). MYM ~$25k notional fits $10k per-bot budget. Canonical MYM1_1h.csv (10510 bars) and MYM1_5m.csv (120805 bars) are present under C:\\EvolutionaryTradingAlgo\\mnq_data\\history on home and VPS; promoted to paper_soak after launch check reported no BLOCK and baseline was persisted. Re-baseline once 30+ real paper fills land. avg_r approximated from expR_net since strict-gate uses friction-net per-trade R."
     },
     {
       "strategy_id": "mcl_sweep_reclaim_v1",
@@ -76,7 +76,7 @@
       "avg_r": 0.111,
       "r_stddev": 1.40,
       "_promoted_at": "2026-05-08",
-      "_promotion_status": "research_candidate",
+      "_promotion_status": "paper_soak",
       "_walk_forward_summary": "MCL1/1h, 2yr window post-fetch (11,529 bars). Strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16, sharpe=2.00, expR_net=+0.111, sh_def=-1.39, split=True, L=true. Profile mirrors mnq_anchor_sweep (already pinned). MCL micro friction (10x less than full CL) unlocks the energy-reflexivity edge that cl_sweep_reclaim couldn't deliver.",
       "_notes": "MICRO-TIER PIN 2026-05-08. Micro WTI Crude rehab path for retired cl_sweep_reclaim. Re-baseline once 30+ live fills land; current avg_r is from expR_net. First live ENTRY landed 07:45 UTC at $94.82."
     },
@@ -98,9 +98,9 @@
       "avg_r": 0.219,
       "r_stddev": 1.45,
       "_promoted_at": "2026-05-08",
-      "_promotion_status": "research_candidate",
+      "_promotion_status": "paper_soak",
       "_walk_forward_summary": "6E1/1h, full history. Strict-gate audit (round-3): n=25, sharpe=3.34, expR_net=+0.219, sh_def=-0.88, split=True. Pinned in 7-bot post-correction roster. FX (EUR/USD futures) sweep on 1h bars; reasonable per-trade quality with split-stable signal.",
-      "_notes": "Pinned 2026-05-08 in 9-bot active roster. Re-baseline once 30+ live fills land. avg_r from expR_net."
+      "_notes": "Promoted to paper_soak 2026-05-08 in the active supervisor roster after persisted positive baseline and no launch BLOCK. Re-baseline once 30+ live fills land. avg_r from expR_net."
     },
     {
       "strategy_id": "m2k_sweep_reclaim_v1",
@@ -109,9 +109,9 @@
       "avg_r": 0.361,
       "r_stddev": 1.50,
       "_promoted_at": "2026-05-08",
-      "_promotion_status": "research_candidate",
+      "_promotion_status": "paper_soak",
       "_walk_forward_summary": "M2K1/1h, full history. Strict-gate audit (round-3): n=23, sharpe=4.66, expR_net=+0.361, sh_def=-0.52, split=True. Russell 2000 micro futures sweep on 1h bars. Pinned in 7-bot post-correction roster.",
-      "_notes": "Pinned 2026-05-08 in 9-bot active roster. Small-cap leadership at risk-on inflection points. Re-baseline once 30+ live fills land."
+      "_notes": "Promoted to paper_soak 2026-05-08 in the active supervisor roster after persisted positive baseline and no launch BLOCK. Small-cap leadership at risk-on inflection points. Re-baseline once 30+ live fills land."
     },
     {
       "strategy_id": "ng_sweep_reclaim_v1",
