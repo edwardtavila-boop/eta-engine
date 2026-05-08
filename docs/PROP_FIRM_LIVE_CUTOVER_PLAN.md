@@ -123,6 +123,14 @@ Phase 4: Live watched cutover.
 
 ## Operator Checklist
 
+- Use `docs/TRADOVATE_API_DEPOSIT_PREP.md` as the day-by-day runbook for the
+  personal Tradovate API deposit, API add-on, OAuth smoke, readiness check,
+  and first dry-run sequence.
+- Before funding, run:
+  `python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit`.
+- After funding/API activation, require:
+  `python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover`
+  to report `READY_FOR_DRY_RUN` before editing any winning-bot route.
 - Create BluSky and My Funded Futures accounts only after confirming their current automation language.
 - Capture the account IDs and Tradovate credential source for each.
 - Keep `TRADOVATE_LIVE=0` until demo/sim smoke passes.
