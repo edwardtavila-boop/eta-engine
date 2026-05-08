@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -24,7 +25,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
+ENGINE_ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = ENGINE_ROOT.parent if ENGINE_ROOT.name == "eta_engine" else ENGINE_ROOT
+ROOT = Path(os.environ.get("ETA_WORKSPACE_ROOT") or WORKSPACE_ROOT)
 
 
 class SecretStatus(StrEnum):

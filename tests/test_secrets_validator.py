@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from eta_engine.scripts import secrets_validator
+
+
+def test_default_root_points_to_canonical_workspace_root() -> None:
+    assert Path(__file__).resolve().parents[2] == secrets_validator.ROOT
 
 
 def _write_required_baseline(root) -> None:

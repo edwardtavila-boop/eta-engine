@@ -219,12 +219,19 @@ set "ETA_LIVE_FUTURES_FLEET_BUDGET_USD=50000"
 rem Cross-bot fleet position caps (DEFAULT_ROOT_CAPS overrides). The
 rem hard-coded fallback is 10 units which is fine for $20k+ futures
 rem contracts but wrong for spot crypto where $200 SOL × 10 = $2k
-rem (way under per-bot $10k budget). Match the per-bot $ budget at
-rem typical price levels: SOL=50 units (~$10k @ $200), BTC=0.15
-rem units (~$12k @ $80k), ETH=2.5 units (~$10k @ $4000).
-set "ETA_FLEET_POSITION_CAP_SOL=50"
-set "ETA_FLEET_POSITION_CAP_BTC=0.15"
-set "ETA_FLEET_POSITION_CAP_ETH=2.5"
+rem (way under per-bot $10k budget).
+rem
+rem Note the cap-flow order matters: cross_bot_position_tracker fires
+rem BEFORE bracket_sizing.cap_qty_to_budget, so the cap must be high
+rem enough to admit the strategy's RAW requested qty (which can be
+rem up to 4× per-bot budget under verdict size_mult). bracket_sizing
+rem then reduces qty to fit per_bot $ budget downstream.
+rem  SOL: 250 units max (raw budget/price=50, 4x verdict mult=200)
+rem  BTC: 1.0  units max (raw budget/price=0.15 @ $80k, 4x verdict=0.6)
+rem  ETH: 12   units max (raw budget/price=2.5 @ $4k, 4x verdict=10)
+set "ETA_FLEET_POSITION_CAP_SOL=250"
+set "ETA_FLEET_POSITION_CAP_BTC=1.0"
+set "ETA_FLEET_POSITION_CAP_ETH=12"
 
 set "PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"

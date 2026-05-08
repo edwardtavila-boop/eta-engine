@@ -53,8 +53,9 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=" in text
     # Cross-bot fleet position caps for spot crypto roots: the hard-coded
     # DEFAULT_FALLBACK_CAP=10 fits $20k+ futures contracts but not spot
-    # crypto (SOL @ $200 × 10 = $2k, well under per-bot $10k budget).
-    # Set explicit caps that match per-bot budget at typical prices.
+    # crypto (SOL @ $200 x 10 = $2k, well under per-bot $10k budget).
+    # Set explicit caps high enough for raw pre-budget qty; bracket
+    # sizing still enforces per-bot dollars downstream.
     assert "ETA_FLEET_POSITION_CAP_SOL=" in text
     assert "ETA_FLEET_POSITION_CAP_BTC=" in text
     assert "ETA_FLEET_POSITION_CAP_ETH=" in text
