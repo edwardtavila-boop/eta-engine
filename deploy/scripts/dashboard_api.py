@@ -6569,11 +6569,52 @@ def _local_master_status_payload() -> dict[str, object]:
     launch_blocked = int(operator_queue.get("launch_blocked_count") or 0)
     blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
     runtime_mode = "paper_live" if paper_ready else "paper_sim"
+    generated_at = datetime.now(UTC).isoformat()
+    broker_gateway = _broker_gateway_snapshot()
+    gateway_ibkr = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
+    gateway_status = str(gateway_ibkr.get("status") or broker_gateway.get("status") or "unknown").lower()
+    gateway_detail = str(gateway_ibkr.get("detail") or broker_gateway.get("detail") or "")
+    broker_router = _broker_router_snapshot()
+    router_status = str(broker_router.get("status") or "unknown").lower()
+
+    def _gateway_card_status(status: str) -> str:
+        if status == "connected":
+            return "GREEN"
+        if status == "down":
+            return "RED"
+        return "YELLOW"
+
+    def _router_card_status(status: str) -> str:
+        if status in {"ok", "idle", "processing"}:
+            return "GREEN"
+        if status in {"held", "degraded"}:
+            return "YELLOW"
+        return "RED" if status == "unknown" else "YELLOW"
+
+    paper_live = dict(paper)
+    paper_live.update(
+        {
+            "mode": runtime_mode,
+            "status": paper.get("status") or "unknown",
+            "critical_ready": paper_ready,
+            "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
+            "operator_queue_blocked_count": blocked,
+            "operator_queue_launch_blocked_count": launch_blocked,
+        }
+    )
+    paper_card_status = (
+        "GREEN"
+        if paper_ready and blocked == 0 and launch_blocked == 0
+        else "RED"
+        if launch_blocked
+        else "YELLOW"
+    )
     return {
         "status": "live",
         "mode": "autonomous",
         "uptime": "connected",
         "cc_proxy": "local",
+        "generated_at": generated_at,
         "runtime": {
             "mode": runtime_mode,
             "paper_live_ready": paper_ready,
@@ -6585,6 +6626,37 @@ def _local_master_status_payload() -> dict[str, object]:
             "status": paper.get("status") or "unknown",
             "critical_ready": paper_ready,
             "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
+        },
+        "paper_live": paper_live,
+        "systems": {
+            "dashboard": {
+                "status": "GREEN",
+                "detail": "dashboard API answering local master status",
+                "source": "local",
+                "checked_at": generated_at,
+            },
+            "ibkr": {
+                "status": _gateway_card_status(gateway_status),
+                "detail": gateway_detail or gateway_status,
+                "source": "broker_gateway",
+                "raw_status": gateway_status,
+                "checked_at": gateway_ibkr.get("checked_at") or broker_gateway.get("checked_at"),
+            },
+            "broker": {
+                "status": _router_card_status(router_status),
+                "detail": router_status,
+                "source": "broker_router",
+                "raw_status": router_status,
+                "active_blocker_count": int(broker_router.get("active_blocker_count") or 0),
+            },
+            "paper_live": {
+                "status": paper_card_status,
+                "detail": str(paper.get("status") or "unknown"),
+                "source": "paper_live_transition",
+                "critical_ready": paper_ready,
+                "operator_queue_blocked_count": blocked,
+                "operator_queue_launch_blocked_count": launch_blocked,
+            },
         },
         "daily": {},
     }

@@ -822,7 +822,14 @@ class TestDashboardAPI:
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
-    def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path):
+    def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
@@ -848,6 +855,13 @@ class TestDashboardAPI:
         assert payload["paper"]["mode"] == "paper_live"
         assert payload["paper"]["paper_ready_bots"] == 5
         assert payload["runtime"]["paper_live_ready"] is True
+        assert payload["paper_live"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["critical_ready"] is True
+        assert payload["paper_live"]["operator_queue_blocked_count"] == 0
+        assert payload["systems"]["dashboard"]["status"] == "GREEN"
+        assert payload["systems"]["paper_live"]["status"] == "GREEN"
+        assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
+        assert payload["systems"]["broker"]["source"] == "broker_router"
 
     def test_runtime_and_bridge_status_use_local_master_payload(self, app_client, tmp_path):
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
