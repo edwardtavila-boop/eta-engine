@@ -183,6 +183,8 @@ class TestStatusPage:
             'id="paperLiveSub"',
             'id="operatorQueueStatus"',
             'id="operatorQueueSub"',
+            'id="opsProxyStatus"',
+            'id="opsProxySub"',
         ):
             assert anchor in html, f"missing dashboard anchor: {anchor}"
 
@@ -198,6 +200,7 @@ class TestStatusPage:
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
         assert "const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';" in html
         assert "const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';" in html
+        assert "const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';" in html
         assert "endpointCandidates(" in html
         assert "cache: 'no-store'" in html
         assert "FETCH_TIMEOUT_MS" in html

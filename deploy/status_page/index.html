@@ -221,6 +221,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
+  <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
 
@@ -310,6 +311,7 @@ const API_ALT = 'https://jarvis.evolutionarytradingalgo.com/api/bot-fleet';
 const STRATEGY_RESULTS_API = '/api/jarvis/strategy_supercharge_results';
 const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
 const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
+const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
@@ -335,6 +337,14 @@ function finiteNumber(value) {
   if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function formatAgeSeconds(value) {
+  const n = finiteNumber(value);
+  if (n == null) return 'age unknown';
+  if (n < 60) return Math.round(n) + 's ago';
+  if (n < 3600) return Math.round(n / 60) + 'm ago';
+  return Math.round(n / 3600) + 'h ago';
 }
 
 const HIDDEN_BOT_VALUES = new Set(['deactivated', 'disabled', 'removed', 'retired', 'inactive']);
@@ -873,11 +883,12 @@ async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, strategyResults, operatorQueue, paperLive] = await Promise.all([
+    const [data, strategyResults, operatorQueue, paperLive, diagnostics] = await Promise.all([
       fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
-      fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS)
+      fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), AUX_FETCH_TIMEOUT_MS)
     ]);
     if (!data) { showOffline(!hasRendered); return; }
     render(
@@ -885,6 +896,7 @@ async function fetchData() {
       strategyResults ? strategyResults.payload : {},
       operatorQueue ? operatorQueue.payload : {},
       paperLive ? paperLive.payload : {},
+      diagnostics ? diagnostics.payload : {},
       data.source
     );
     hasRendered = true;
@@ -901,7 +913,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','opsProxyStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -913,6 +925,8 @@ function showOffline(clearDashboard = true) {
   if (paperLiveSub) paperLiveSub.textContent = '';
   const operatorQueueSub = document.getElementById('operatorQueueSub');
   if (operatorQueueSub) operatorQueueSub.textContent = '';
+  const opsProxySub = document.getElementById('opsProxySub');
+  if (opsProxySub) opsProxySub.textContent = '';
 }
 
 function sourceLabel(source) {
@@ -1004,7 +1018,7 @@ function protectionForBot(bot) {
   };
 }
 
-function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
+function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataSource) {
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
   const hiddenCount = Math.max(0, allBots.length - bots.length);
@@ -1321,6 +1335,17 @@ function render(d, strategyResults, operatorQueue, paperLive, dataSource) {
   document.getElementById('paperLiveSub').textContent = compactText(
     `${paperReadyBots} paper ready${paperBlocker ? '; ' + paperBlocker : ''}. ${paperDetail}`.trim()
   );
+
+  const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
+  const proxyStatus = String(proxyWatchdog.status || 'unknown').toLowerCase();
+  const proxyLabels = {ok: 'Self-Healing', missing: 'Missing', stale: 'Stale', failed: 'Failed', degraded: 'Degraded', unknown: 'Unknown'};
+  const proxyClasses = {ok: 'green', missing: 'yellow', stale: 'yellow', failed: 'red', degraded: 'red', unknown: 'yellow'};
+  const proxyReason = compactText(proxyWatchdog.probe_reason || proxyWatchdog.summary || 'watchdog not reporting');
+  const proxyAction = proxyWatchdog.action ? String(proxyWatchdog.action).replace(/_/g, ' ') : 'unknown';
+  const proxyAge = formatAgeSeconds(proxyWatchdog.checked_age_s ?? proxyWatchdog.heartbeat_age_s);
+  document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
+  document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
+  document.getElementById('opsProxySub').textContent = compactText(`${proxyAction}; ${proxyReason}; ${proxyAge}`);
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   const risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';

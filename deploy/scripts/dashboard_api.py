@@ -392,11 +392,83 @@ def _dashboard_card_health_payload() -> dict:
     }
 
 
+def _dashboard_proxy_watchdog_payload(*, server_ts: float) -> dict:
+    """Summarize the 8421 proxy bridge self-heal heartbeat for diagnostics."""
+    heartbeat_path = _state_dir() / "dashboard_proxy_watchdog_heartbeat.json"
+    payload = _read_json_file(heartbeat_path)
+    if not payload:
+        return {
+            "status": "missing",
+            "fresh": False,
+            "heartbeat_path": str(heartbeat_path),
+            "heartbeat_ts": None,
+            "heartbeat_age_s": None,
+            "checked_at": None,
+            "action": "missing",
+            "task_name": "",
+            "probe_healthy": None,
+            "probe_reason": "heartbeat_missing",
+            "status_code": None,
+            "restart_ok": None,
+            "restart_reason": None,
+            "summary": "dashboard proxy watchdog heartbeat missing",
+        }
+
+    decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
+    probe = decision.get("post_restart_probe") if isinstance(decision.get("post_restart_probe"), dict) else {}
+    if not probe:
+        probe = decision.get("probe") if isinstance(decision.get("probe"), dict) else {}
+
+    heartbeat_ts = payload.get("ts")
+    checked_at = decision.get("checked_at") or heartbeat_ts
+    heartbeat_age_s = _iso_age_s(heartbeat_ts, server_ts=server_ts)
+    checked_age_s = _iso_age_s(checked_at, server_ts=server_ts)
+    age_s = checked_age_s if checked_age_s is not None else heartbeat_age_s
+    action = str(decision.get("action") or "unknown")
+    probe_healthy = probe.get("healthy") if isinstance(probe.get("healthy"), bool) else None
+    restart_ok = decision.get("restart_ok") if isinstance(decision.get("restart_ok"), bool) else None
+    probe_reason = str(probe.get("reason") or decision.get("restart_reason") or "unknown")
+
+    if age_s is None:
+        status = "unknown"
+    elif age_s > 180:
+        status = "stale"
+    elif action == "restart_failed" or restart_ok is False:
+        status = "failed"
+    elif probe_healthy is False:
+        status = "degraded"
+    elif probe_healthy is True:
+        status = "ok"
+    else:
+        status = "unknown"
+
+    return {
+        "status": status,
+        "fresh": age_s is not None and age_s <= 180,
+        "heartbeat_path": str(heartbeat_path),
+        "heartbeat_ts": heartbeat_ts,
+        "heartbeat_age_s": heartbeat_age_s,
+        "checked_at": checked_at,
+        "checked_age_s": checked_age_s,
+        "action": action,
+        "task_name": str(decision.get("task_name") or ""),
+        "probe_healthy": probe_healthy,
+        "probe_reason": probe_reason,
+        "status_code": probe.get("status_code"),
+        "elapsed_ms": probe.get("elapsed_ms"),
+        "body_len": probe.get("body_len"),
+        "restart_ok": restart_ok,
+        "restart_reason": decision.get("restart_reason"),
+        "summary": f"{action}: {probe_reason}",
+    }
+
+
 def _dashboard_diagnostics_payload() -> dict:
     """Single source-of-truth rollup for Command Center self-diagnostics."""
     server_ts = time.time()
     generated_at = datetime.fromtimestamp(server_ts, UTC).isoformat()
     cards = _dashboard_card_health_payload()
+    dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
 
     try:
         roster = bot_fleet_roster(Response(), since_days=1)
@@ -541,6 +613,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "source_age_s": paper_live_transition.get("source_age_s"),
             "error": paper_live_transition.get("error"),
         },
+        "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -550,6 +623,8 @@ def _dashboard_diagnostics_payload() -> dict:
             "operator_queue_contract": isinstance(operator_queue, dict) and "summary" in operator_queue,
             "paper_live_transition_contract": isinstance(paper_live_transition, dict)
             and "status" in paper_live_transition,
+            "dashboard_proxy_watchdog_contract": dashboard_proxy_watchdog.get("status")
+            in {"ok", "missing", "stale", "failed", "degraded", "unknown"},
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }

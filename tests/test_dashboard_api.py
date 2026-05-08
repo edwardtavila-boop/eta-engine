@@ -6,6 +6,7 @@ Predator dashboard.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -589,6 +590,15 @@ class TestDashboardAPI:
         assert "paper_live_transition" in data
         assert data["checks"]["operator_queue_contract"] is True
         assert data["checks"]["paper_live_transition_contract"] is True
+        assert data["dashboard_proxy_watchdog"]["status"] in {
+            "ok",
+            "missing",
+            "stale",
+            "failed",
+            "degraded",
+            "unknown",
+        }
+        assert data["checks"]["dashboard_proxy_watchdog_contract"] is True
 
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")
@@ -709,6 +719,49 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["paper_ready_bots"] == 10
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "op19_gateway_runtime"
+
+    def test_dashboard_diagnostics_includes_proxy_watchdog_rollup(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "component": "dashboard_proxy_watchdog",
+                    "decision": {
+                        "checked_at": datetime.now(UTC).isoformat(),
+                        "action": "noop",
+                        "task_name": "ETA-Proxy-8421",
+                        "probe": {
+                            "healthy": True,
+                            "url": "http://127.0.0.1:8421/",
+                            "status_code": 200,
+                            "reason": "ok",
+                            "elapsed_ms": 15,
+                            "body_len": 77000,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        watchdog = payload["dashboard_proxy_watchdog"]
+        assert watchdog["status"] == "ok"
+        assert watchdog["fresh"] is True
+        assert watchdog["action"] == "noop"
+        assert watchdog["task_name"] == "ETA-Proxy-8421"
+        assert watchdog["probe_healthy"] is True
+        assert watchdog["probe_reason"] == "ok"
+        assert watchdog["status_code"] == 200
+        assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
+        assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
 
     def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path):
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
