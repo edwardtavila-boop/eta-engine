@@ -43,6 +43,43 @@
 - Apex eval rules (3% daily, 5% trailing) are well within `volume_profile_mnq`'s audit drawdown profile
 - MNQ is Apex's most-traded product — perfect alignment with our top strategy
 
+### Second prop firm: Topstep (don't put all eggs in one basket)
+
+Operator directive 2026-05-08: add a SECOND prop firm so an Apex
+account closure / rule change / eval failure doesn't kill the
+live-money path. Tradovate stays under the dormancy_mandate Appendix A
+gate; the second prop reactivation lands in the same operator-
+authorized commit when credentials are wired.
+
+**Pick: Topstep $50k Trading Combine (also via Tradovate API).** Why:
+- **Zero new code** — same 399-line `eta_engine/venues/tradovate.py`
+  adapter reused with a different `accountId` + OAuth credential set
+- **80% profit split from start** vs Apex's 30→90% scaling — Topstep
+  delivers larger early payouts on the same edge
+- **TIGHTER rules:** $1k daily loss (vs Apex $2,500), 4% trailing DD
+  (vs Apex 5%) — passing Topstep proves the strategy at higher rigor
+- **Operationally independent:** if Apex changes rules / freezes /
+  fails eval, Topstep account is intact (separate creds, separate
+  rules, separate UX); this is the diversification the operator asked
+  for
+
+### Dual-prop architecture summary
+
+| | Apex 50k Static | Topstep 50k Trading Combine |
+|---|---|---|
+| Adapter | `tradovate.py` (un-dormancy) | Same adapter, separate instance |
+| Account ID | `apex_50k_static_001` | `topstep_50k_combine_001` |
+| Daily loss | $2,500 (5%) | $1,000 (2%) — TIGHTER |
+| Trailing DD | $2,500 (5%) | $2,000 (4%) — TIGHTER |
+| Profit split (live) | 30→90% scaling | 80% from start |
+| Routing mode | broker_router replicates | (parallel order on each) |
+
+**Implementation cost:** if Apex un-dormancy is 2-3 days, Topstep is
++1 day on top (just credential + routing config). Both prop accounts
+get the SAME `volume_profile_mnq` signal; each account's daily-loss
+and trailing-DD circuit breakers are enforced INDEPENDENTLY by the
+supervisor's existing per-account guardrails.
+
 ---
 
 ## Strategy ranking for the live slot
@@ -164,6 +201,66 @@ Already implemented (399 lines):
    TRADOVATE_ENV=live                      # vs demo
    ```
 
+### Dual-prop multi-account routing (Apex + Topstep replication)
+
+> **Reminder: Tradovate stays DORMANT.** The dual-prop replication
+> below is governed by the same dormancy_mandate Appendix A gate;
+> activation requires the operator-authorized credential commit for
+> BOTH props.
+
+The 399-line tradovate.py adapter accepts `account_id` in
+`_build_place_payload(request, account_id=N)` (line 242). Multi-account
+routing is a config + adapter-instance pattern, not a code rewrite:
+
+```yaml
+# configs/bot_broker_routing.yaml — dual-prop replication block
+prop_accounts:
+  apex_50k_static:
+    venue: tradovate
+    env: live
+    account_id_env: APEX_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: APEX_         # APEX_TRADOVATE_USER_NAME, etc.
+    daily_loss_usd: 2500
+    trailing_dd_usd: 2500
+  topstep_50k_combine:
+    venue: tradovate
+    env: live
+    account_id_env: TOPSTEP_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: TOPSTEP_
+    daily_loss_usd: 1000
+    trailing_dd_usd: 2000
+
+bots:
+  volume_profile_mnq:
+    routing: replicate
+    accounts: [apex_50k_static, topstep_50k_combine]
+```
+
+**`routing: replicate`** — the new broker_router mode. Per signal:
+1. Compute per-account qty independently (each account has its own
+   per-bot budget cap)
+2. Submit order to BOTH accounts in parallel via asyncio.gather
+3. If either account's daily-loss or trailing-DD circuit breaker is
+   tripped, that account skips this signal — the other proceeds
+4. Reconcile each account independently; broker_only positions on
+   one account don't affect the other
+
+**Failure modes handled per-account by supervisor:**
+- Apex API down → Topstep keeps trading
+- Apex daily-loss tripped → Apex pauses 24h; Topstep continues
+- Apex eval failed (account closed) → Topstep continues; only one
+  capital base lost
+- Tradovate platform-wide outage → BOTH affected (this is the
+  shared-API risk; mitigated only by adding a Rithmic-based prop
+  later as a third venue, see below)
+
+**Future API-diversification path** (NOT in 7-day scope): add a
+Rithmic-based prop (e.g. TradeDay, Take Profit Trader) using a new
+`eta_engine/venues/rithmic_live.py` adapter. Rithmic uses a different
+binary protocol, so a Tradovate platform outage wouldn't take down
+all three. Estimated effort: 1-2 weeks for adapter + tests + un-
+dormancy review. Add to roadmap, not the Day-7 plan.
+
 4. **TWS-equivalent watchdog** (optional but good): the `eta_engine/safety` module has health-check patterns for IBKR; mirror one for Tradovate session-token expiry (it already auto-refreshes 5min before expiry per `_token_expiring()`).
 
 ### JARVIS command surface (already in place)
@@ -194,12 +291,28 @@ Total: **2-3 days from "operator gets API keys" to "first Tradovate live fill"**
 
 | If you want | Do this |
 |---|---|
-| Maximum capital leverage on confirmed edge | Apex Static $50k + vol_prof_mnq via Tradovate |
-| Faster to "first live trade" | Personal $2k + IBKR live + vol_prof_mnq (paper-broker already wired) |
-| Diversification with crypto | Add sol_optimized on Alpaca live (same flip as crypto-paper) |
-| All three | Apex prop for futures, IBKR personal for backup, Alpaca for crypto |
+| Maximum capital leverage on one prop | Apex Static $50k + vol_prof_mnq |
+| **Don't put all eggs in one basket** | **Apex 50k + Topstep 50k (dual-prop replication)** |
+| Faster to "first live trade" | Personal $2k + IBKR live + vol_prof_mnq |
+| Diversification with crypto | Add sol_optimized on Alpaca live |
+| All four | Apex + Topstep for futures (dual replication), IBKR personal for backup, Alpaca for crypto |
 
-**Recommended starting move:** Sign up Apex $50k Static eval today. Cost: $167/month. Use the 7-day paper-soak window to also pass the eval (10 min trading days minimum). Day 8 = first real-money trade on the prop-funded account.
+**Recommended starting move (operator's "don't put all eggs in one basket"):**
+Sign up BOTH Apex $50k Static AND Topstep $50k Trading Combine today.
+Cost: ~$167 + $165 = **~$332/month** while in eval. Use the 7-day
+paper-soak window to pass both evals (10 min trading days each, MNQ
+on both). Day 8 = first real-money trades simultaneously on TWO
+independent prop-funded accounts running the same audit-confirmed
+edge.
+
+The dual-prop replication delivers:
+- **~2× capital exposure** on the same edge ($50k + $50k = $100k base)
+- **~2× expected daily PnL** per the strategy's audit profile
+- **Independent rule-violation surfaces** — losing one eval does NOT
+  close the other; one prop firm freezing accounts does NOT pause the
+  other; one account's daily-loss trip does NOT pause the other
+- **Same Tradovate adapter codepath** (399 lines, already implemented
+  under un-dormancy gate), different OAuth + accountId per prop firm
 
 ---
 
