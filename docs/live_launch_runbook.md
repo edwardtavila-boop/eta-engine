@@ -366,7 +366,8 @@ cd C:\EvolutionaryTradingAlgo
 # the operator to the visible Gateway prompt before the watchdog/release steps.
 
 # VPS visibility loop. Keeps the Command Center's transition card/cache fresh
-# while OP-19 is open; it never clears holds or submits orders.
+# while OP-19 is open; it also refreshes bot_strategy_readiness_latest.json
+# first so the readiness endpoint and transition card agree. It never clears holds or submits orders.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eta_engine\deploy\scripts\register_paper_live_transition_check_task.ps1 -Start
 
 # Dry run first. Expect status=ready_to_release only after 4002 handshake is fresh.

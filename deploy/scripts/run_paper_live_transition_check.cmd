@@ -15,8 +15,27 @@ if not exist "%ETA_LOG_DIR%" mkdir "%ETA_LOG_DIR%"
 cd /d "%ETA_ROOT%"
 
 set "RUN_ID=%RANDOM%_%RANDOM%"
+set "READINESS_STDOUT_TMP=%ETA_LOG_DIR%\bot_strategy_readiness.%RUN_ID%.stdout.tmp.log"
+set "READINESS_STDERR_TMP=%ETA_LOG_DIR%\bot_strategy_readiness.%RUN_ID%.stderr.tmp.log"
 set "STDOUT_TMP=%ETA_LOG_DIR%\paper_live_transition_check.%RUN_ID%.stdout.tmp.log"
 set "STDERR_TMP=%ETA_LOG_DIR%\paper_live_transition_check.%RUN_ID%.stderr.tmp.log"
+
+"%PYTHON_EXE%" -m eta_engine.scripts.bot_strategy_readiness ^
+    --scope supervisor_pinned ^
+    --snapshot ^
+    1> "%READINESS_STDOUT_TMP%" ^
+    2> "%READINESS_STDERR_TMP%"
+
+set "READINESS_RC=%ERRORLEVEL%"
+if exist "%READINESS_STDOUT_TMP%" (
+    type "%READINESS_STDOUT_TMP%" >> "%ETA_LOG_DIR%\bot_strategy_readiness.stdout.log"
+    del "%READINESS_STDOUT_TMP%" 2>nul
+)
+if exist "%READINESS_STDERR_TMP%" (
+    type "%READINESS_STDERR_TMP%" >> "%ETA_LOG_DIR%\bot_strategy_readiness.stderr.log"
+    del "%READINESS_STDERR_TMP%" 2>nul
+)
+echo %DATE% %TIME% bot_strategy_readiness exit_code=%READINESS_RC% >> "%ETA_LOG_DIR%\bot_strategy_readiness.task.log"
 
 "%PYTHON_EXE%" -m eta_engine.scripts.paper_live_transition_check ^
     1> "%STDOUT_TMP%" ^

@@ -16,6 +16,14 @@ def test_paper_live_transition_runner_writes_canonical_cache_without_task_failur
     assert r"ETA_STATE_DIR=%ETA_ROOT%\var\eta_engine\state" in text
     assert r"ETA_LOG_DIR=%ETA_ROOT%\logs\eta_engine" in text
     assert "python.exe" in text
+    assert "-m eta_engine.scripts.bot_strategy_readiness" in text
+    assert "--scope supervisor_pinned" in text
+    assert "--snapshot" in text
+    assert "READINESS_STDOUT_TMP=%ETA_LOG_DIR%\\bot_strategy_readiness.%RUN_ID%.stdout.tmp.log" in text
+    assert "READINESS_STDERR_TMP=%ETA_LOG_DIR%\\bot_strategy_readiness.%RUN_ID%.stderr.tmp.log" in text
+    assert "bot_strategy_readiness.stdout.log" in text
+    assert "bot_strategy_readiness.stderr.log" in text
+    assert "bot_strategy_readiness.task.log" in text
     assert "-m eta_engine.scripts.paper_live_transition_check" in text
     assert "RUN_ID=%RANDOM%_%RANDOM%" in text
     assert "STDOUT_TMP=%ETA_LOG_DIR%\\paper_live_transition_check.%RUN_ID%.stdout.tmp.log" in text
