@@ -19,7 +19,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 LEDGER_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\paper_soak_ledger.json")
 REGISTRY_PATH = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
-HTML_PATH = Path(__file__).resolve().parent / "soak_dashboard.html"
+STATUS_PAGE_DIR = Path(__file__).resolve().parent
+WORKSPACE_ROOT = Path(r"C:\EvolutionaryTradingAlgo")
+ELITE_DASHBOARD_PATH = WORKSPACE_ROOT / "firm_command_center" / "var" / "elite_dashboard.html"
+SOAK_DASHBOARD_PATH = STATUS_PAGE_DIR / "soak_dashboard.html"
+HTML_PATHS = (ELITE_DASHBOARD_PATH, SOAK_DASHBOARD_PATH)
 
 app = FastAPI(title="ETA Paper Soak Dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -140,8 +144,9 @@ async def soak_data() -> dict[str, object]:
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
-    if HTML_PATH.exists():
-        return HTMLResponse(content=HTML_PATH.read_text(encoding="utf-8"))
+    for html_path in HTML_PATHS:
+        if html_path.exists():
+            return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
 
 
