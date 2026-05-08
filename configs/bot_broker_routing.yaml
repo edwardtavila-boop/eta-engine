@@ -17,8 +17,8 @@
 #   * IBKR PAXOS crypto: BTC -> BTCUSD, ETH -> ETHUSD, SOL -> SOLUSD
 #   * Tastytrade crypto: BTC -> BTCUSDT, ETH -> ETHUSDT, SOL -> SOLUSDT
 #   * Alpaca crypto:     BTC -> BTC/USD, ETH -> ETH/USD, etc. (BASE/USD form)
-#   * Futures roots (MNQ/ES/NQ/RTY/M2K/GC/MGC/CL/MCL/NG/6E/M6E) pass through unchanged
-#   * MNQ1 (month-suffixed supervisor form) collapses to MNQ on IBKR
+#   * Futures roots (MNQ/ES/NQ/RTY/M2K/MYM/GC/MGC/CL/MCL/NG/6E/M6E) pass through unchanged
+#   * MNQ1/MYM1 (front-month supervisor forms) collapse to MNQ/MYM on IBKR
 #
 # Loader: eta_engine.scripts.broker_router.RoutingConfig.load()
 # Override path via env: ETA_BROKER_ROUTING_CONFIG=/abs/path/to/file.yaml
@@ -80,6 +80,8 @@ default:
     NQ:   { ibkr: NQ }
     RTY:  { ibkr: RTY }
     M2K:  { ibkr: M2K }
+    MYM1: { ibkr: MYM }
+    MYM:  { ibkr: MYM }
     GC:   { ibkr: GC }
     MGC:  { ibkr: MGC }
     CL:   { ibkr: CL }

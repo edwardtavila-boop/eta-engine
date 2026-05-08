@@ -49,6 +49,7 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     # keeps unconfigured crypto-paper venues paused until their keys are seeded.
     assert "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router" in text
     assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
+    assert "MYM,MYM1" in text
     assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
     assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=" in text
     # Cross-bot fleet position caps for spot crypto roots: the hard-coded

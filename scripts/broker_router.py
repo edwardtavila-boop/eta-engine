@@ -175,6 +175,7 @@ _SYMBOL_TABLE: dict[tuple[str, str], str] = {
 #: Recognized futures roots that don't need symbol normalization.
 _FUTURES_ROOTS = (
     "MNQ", "NQ", "ES", "MES", "RTY", "M2K",
+    "MYM",
     "MBT", "MET", "NG", "CL", "GC", "MGC", "MCL",
     "ZN", "ZB", "6E", "M6E",
 )

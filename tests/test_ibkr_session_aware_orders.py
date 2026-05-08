@@ -145,6 +145,8 @@ def test_each_asset_class_session_window() -> None:
     assert _in_primary_session("ES", _et_to_utc(*weekday, 12, 0)) is True
     assert _in_primary_session("ES", _et_to_utc(*weekday, 17, 0)) is False
     assert _in_primary_session("MES", _et_to_utc(*weekday, 14, 0)) is True
+    assert _in_primary_session("MYM", _et_to_utc(*weekday, 10, 0)) is True
+    assert _in_primary_session("MYM", _et_to_utc(*weekday, 17, 0)) is False
 
     # CME crypto micros: 09:30 - 16:00 ET (primary liquidity tracks RTH)
     assert _in_primary_session("MBT", _et_to_utc(*weekday, 11, 0)) is True
@@ -180,7 +182,7 @@ def test_session_table_covers_all_required_asset_classes() -> None:
     """Belt-and-suspenders: every asset class the microstructure review
     flagged must have an entry in the session table."""
     required_roots = {
-        "MNQ", "NQ", "ES", "MES", "RTY", "M2K",  # CME equity index
+        "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "MYM",  # CME/CBOT equity index
         "MBT", "MET",                              # CME crypto micros
         "CL", "MCL", "NG",                         # NYMEX energy
         "GC", "MGC",                               # COMEX metals

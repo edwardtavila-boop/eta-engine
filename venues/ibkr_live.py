@@ -117,6 +117,8 @@ FUTURES_MAP: dict[str, tuple[str, str, str]] = {
     "MES":  ("MES", "CME", "5"),
     "RTY":  ("RTY", "CME", "50"),
     "M2K":  ("M2K", "CME", "5"),
+    "MYM":  ("MYM", "CBOT", "0.5"),
+    "MYM1": ("MYM", "CBOT", "0.5"),
     "MBT":  ("MBT", "CME", "0.1"),
     "MET":  ("MET", "CME", "0.1"),
     "NG":   ("NG",  "NYMEX", "10000"),
@@ -168,6 +170,7 @@ _ASSET_PRIMARY_SESSION_ET: dict[str, tuple[time, time]] = {
     "MES": (time(9, 30), time(16, 0)),
     "RTY": (time(9, 30), time(16, 0)),
     "M2K": (time(9, 30), time(16, 0)),
+    "MYM": (time(9, 30), time(16, 0)),
     # CME crypto micros (24x5 by venue, but primary liquidity tracks RTH)
     "MBT": (time(9, 30), time(16, 0)),
     "MET": (time(9, 30), time(16, 0)),

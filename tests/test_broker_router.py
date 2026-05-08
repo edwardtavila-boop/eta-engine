@@ -1703,6 +1703,8 @@ default:
     RTY:  { ibkr: RTY }
     GC:   { ibkr: GC }
     MGC:  { ibkr: MGC }
+    MYM:  { ibkr: MYM }
+    MYM1: { ibkr: MYM }
     CL:   { ibkr: CL }
     MCL:  { ibkr: MCL }
     "6E": { ibkr: 6E }
@@ -1775,6 +1777,7 @@ class TestRoutingConfig:
         assert cfg.map_symbol("BTC", "ibkr") == "BTCUSD"
         assert cfg.map_symbol("BTC", "tasty") == "BTCUSDT"
         assert cfg.map_symbol("MNQ1", "ibkr") == "MNQ"
+        assert cfg.map_symbol("MYM1", "ibkr") == "MYM"
 
     def test_map_symbol_unsupported_raises(self, tmp_path: Path) -> None:
         path = _write_routing_yaml(tmp_path)
@@ -1800,6 +1803,8 @@ class TestRoutingConfig:
         cfg = broker_router.RoutingConfig.load(path)
         assert cfg.map_symbol("NG", "ibkr") == "NG"
         assert cfg.map_symbol("RTY", "ibkr") == "RTY"
+        assert cfg.map_symbol("MYM", "ibkr") == "MYM"
+        assert cfg.map_symbol("MYM1", "ibkr") == "MYM"
         assert cfg.map_symbol("GC", "ibkr") == "GC"
         assert cfg.map_symbol("MGC", "ibkr") == "MGC"
         assert cfg.map_symbol("CL", "ibkr") == "CL"

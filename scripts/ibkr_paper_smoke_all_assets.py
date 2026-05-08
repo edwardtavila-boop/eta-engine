@@ -23,7 +23,7 @@ Usage::
   python -m eta_engine.scripts.ibkr_paper_smoke_all_assets --place
 
 Default symbol set covers every contract referenced by the active bot
-fleet's routing yaml: MNQ, NQ, ES, RTY, M2K, GC, MGC, CL, MCL, NG, 6E, M6E.
+fleet's routing yaml: MNQ, NQ, ES, RTY, M2K, MYM, GC, MGC, CL, MCL, NG, 6E, M6E.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # IBKR paper does not support PAXOS crypto, so those symbols would
 # always FAIL on a paper smoke and pollute the report.
 DEFAULT_SMOKE_SYMBOLS: tuple[str, ...] = (
-    "MNQ", "NQ", "ES", "MES", "RTY", "M2K",
+    "MNQ", "NQ", "ES", "MES", "RTY", "M2K", "MYM",
     "GC", "MGC", "CL", "MCL", "NG",
     "6E", "M6E",
 )

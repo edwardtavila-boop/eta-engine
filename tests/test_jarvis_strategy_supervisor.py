@@ -70,6 +70,57 @@ def test_paper_live_symbol_allowlist_empty_allows_all(monkeypatch) -> None:
 # ─── ExecutionRouter ─────────────────────────────────────────────
 
 
+def test_micro_dow_front_month_is_classified_as_futures() -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import _classify_symbol
+
+    assert _classify_symbol("MYM1") == "futures"
+    assert _classify_symbol("MYM") == "futures"
+
+
+def test_micro_dow_entry_uses_whole_contract_pending_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    monkeypatch.delenv("ETA_SUPERVISOR_LIVE_MONEY", raising=False)
+    monkeypatch.delenv("ETA_SUPERVISOR_MODE", raising=False)
+    monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "broker_router"
+    cfg.broker_router_pending_dir = tmp_path
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="mym_sweep_reclaim",
+        symbol="MYM1",
+        strategy_kind="confluence_scorecard",
+        direction="long",
+        cash=50000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="mym_test",
+        side="BUY",
+        bar={"close": 50000.0, "high": 50050.0, "low": 49950.0, "open": 50000.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert rec.qty == 1.0
+    pending = json.loads((tmp_path / "mym_sweep_reclaim.pending_order.json").read_text())
+    assert pending["symbol"] == "MYM1"
+    assert pending["qty"] == 1.0
+
+
 def test_env_file_loader_tolerates_non_utf8_bytes(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import _read_env_file_lines
 

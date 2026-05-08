@@ -539,7 +539,7 @@ _CRYPTO_ROOTS = frozenset({
 })
 _FUTURES_ROOTS = frozenset({
     "MNQ", "NQ", "ES", "MES", "GC", "MGC", "CL", "MCL",
-    "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K",
+    "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K", "MYM",
 })
 _PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 
@@ -552,7 +552,7 @@ _PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 # intervene; this dict catches that pathology after the budget cap.
 _MAX_QTY_PER_ORDER: dict[str, float] = {
     # Futures (integer contracts): generous-but-bounded
-    "MNQ": 5, "NQ": 2, "ES": 2, "MES": 5, "RTY": 3, "M2K": 5,
+    "MNQ": 5, "NQ": 2, "ES": 2, "MES": 5, "RTY": 3, "M2K": 5, "MYM": 5,
     "MBT": 3, "MET": 3,
     "CL": 3, "MCL": 5, "NG": 3,
     "GC": 2, "MGC": 5,
@@ -759,7 +759,7 @@ class ExecutionRouter:
         _symbol_root = symbol_upper.rstrip("0123456789")
         _futures_set = {
             "MNQ", "NQ", "ES", "MES", "MBT", "MET", "NG", "CL", "GC",
-            "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
+            "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K", "MYM",
         }
         is_futures = _symbol_root in _futures_set
         # Round to instrument precision WITHOUT a floor-up. The earlier
