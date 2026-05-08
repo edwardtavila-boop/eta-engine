@@ -39,6 +39,8 @@ Gates checked
     reconcile_on_reconnect  — _trade_journal_reconcile.py exits GREEN on current journals
     crash_recovery_simulated — synthetic orphaned runtime_start detected by reconcile
     abort_on_red_loop       — each RED gate triggers ABORT() — checked by simulation
+    clock_drift             - optional: local clock drift vs HTTP Date header < 3s
+    alert_dispatcher_echo   - optional: alert dispatcher writes a probe event
 """
 
 from __future__ import annotations

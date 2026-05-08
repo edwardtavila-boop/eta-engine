@@ -379,15 +379,39 @@ def _op9_clock_drift(preflight: dict[str, Any]) -> OpItem:
     gates = preflight.get("gates") or []
     drift_gate = next((g for g in gates if g.get("name") == "clock_drift"), None)
     if drift_gate is None:
-        item.verdict = VERDICT_UNKNOWN
-        item.detail = "preflight report has no clock_drift gate"
-    elif drift_gate.get("status") == "PASS":
+        item.verdict = VERDICT_OBSERVED
+        item.detail = (
+            "preflight report has no clock_drift gate yet; rerun the live-tiny "
+            "preflight on the trading host. Missing evidence is visible, but "
+            "does not block launch unless the gate reports FAIL."
+        )
+        item.evidence = {
+            "gate_missing": True,
+            "launch_blocker": False,
+            "next_command": "python -m eta_engine.scripts.live_tiny_preflight_dryrun",
+        }
+        return item
+
+    status = str(drift_gate.get("status", "UNKNOWN")).upper()
+    if status == "PASS":
         item.verdict = VERDICT_DONE
         item.detail = drift_gate.get("detail", "clock_drift PASS")
-    else:
+        item.evidence = {**drift_gate, "launch_blocker": False}
+    elif status == "FAIL":
         item.verdict = VERDICT_BLOCKED
         item.detail = f"clock_drift {drift_gate.get('status')}: {drift_gate.get('detail', '')}"
-    item.evidence = drift_gate or {}
+        item.evidence = {**drift_gate, "launch_blocker": True}
+    elif status == "SKIP":
+        item.verdict = VERDICT_OBSERVED
+        item.detail = (
+            f"clock_drift SKIP: {drift_gate.get('detail', '')}. "
+            "Visible for operator follow-up; not launch-blocking unless it flips FAIL."
+        )
+        item.evidence = {**drift_gate, "launch_blocker": False}
+    else:
+        item.verdict = VERDICT_UNKNOWN
+        item.detail = f"clock_drift {status}: {drift_gate.get('detail', '')}"
+        item.evidence = {**drift_gate, "launch_blocker": False}
     return item
 
 
