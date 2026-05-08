@@ -901,6 +901,34 @@ def _readiness_only_roster_row(readiness: dict, *, now_ts: float) -> dict:
     return row
 
 
+def _registry_active_by_bot() -> dict[str, bool]:
+    """Return per-bot registry activation truth for display filtering."""
+    try:
+        from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active
+    except Exception:  # noqa: BLE001 -- dashboard must fail soft.
+        return {}
+    active_by_bot: dict[str, bool] = {}
+    for assignment in ASSIGNMENTS:
+        bot_id = str(getattr(assignment, "bot_id", "") or "").strip()
+        if not bot_id:
+            continue
+        with contextlib.suppress(Exception):
+            active_by_bot[bot_id] = bool(is_active(assignment))
+    return active_by_bot
+
+
+def _row_has_open_exposure(row: dict) -> bool:
+    """Avoid hiding retired bots if they still have position risk attached."""
+    with contextlib.suppress(TypeError, ValueError):
+        if float(row.get("open_positions") or 0) > 0:
+            return True
+    open_position = row.get("open_position")
+    if isinstance(open_position, dict) and open_position:
+        return True
+    position_state = row.get("position_state")
+    return isinstance(position_state, dict) and str(position_state.get("state") or "").lower() == "open"
+
+
 _HIDDEN_BOT_ROW_VALUES = {
     "deactivated",
     "disabled",
@@ -929,9 +957,11 @@ def _is_hidden_bot_row(row: dict) -> bool:
     )
     if any(str(value or "").strip().lower() in _HIDDEN_BOT_ROW_VALUES for value in values):
         return True
+    if row.get("registry_deactivated") is True and not _row_has_open_exposure(row):
+        return True
     # Readiness snapshots mark old/retired rows with active=false. Do not
     # hide a live supervisor row that somehow still has exposure attached.
-    return readiness.get("active") is False and not row.get("open_positions")
+    return readiness.get("active") is False and not _row_has_open_exposure(row)
 
 
 def _read_runtime_state() -> dict:
@@ -3334,6 +3364,13 @@ def bot_fleet_roster(
             continue
         rows.append(_readiness_only_roster_row(readiness, now_ts=now_ts))
         readiness_seen.add(bot_id)
+
+    registry_active = _registry_active_by_bot()
+    for row in rows:
+        row_bot_id = str(row.get("name") or row.get("id") or row.get("bot_id") or "").strip()
+        if row_bot_id in registry_active:
+            row["registry_active"] = registry_active[row_bot_id]
+            row["registry_deactivated"] = registry_active[row_bot_id] is False
 
     if not include_disabled:
         rows = [row for row in rows if not _is_hidden_bot_row(row)]

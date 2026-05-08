@@ -1371,14 +1371,14 @@ class TestDashboardAPI:
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
-        bot_dir = state / "bots" / "eth_compression"
+        bot_dir = state / "bots" / "sol_optimized"
         bot_dir.mkdir(parents=True, exist_ok=True)
         (bot_dir / "status.json").write_text(
             json.dumps(
                 {
-                    "name": "eth_compression",
-                    "symbol": "ETH",
-                    "tier": "compression",
+                    "name": "sol_optimized",
+                    "symbol": "SOL",
+                    "tier": "confluence_scorecard",
                     "venue": "paper-sim",
                     "status": "running",
                     "todays_pnl": 0.0,
@@ -1396,10 +1396,10 @@ class TestDashboardAPI:
                     "summary": {"total_bots": 1, "launch_lanes": {"paper_soak": 1}},
                     "rows": [
                         {
-                            "bot_id": "eth_compression",
-                            "strategy_id": "eth_compression_v1",
-                            "strategy_kind": "compression",
-                            "symbol": "ETH",
+                            "bot_id": "sol_optimized",
+                            "strategy_id": "sol_optimized_v1",
+                            "strategy_kind": "confluence_scorecard",
+                            "symbol": "SOL",
                             "timeframe": "1h",
                             "active": True,
                             "promotion_status": "paper_ready",
@@ -1419,14 +1419,14 @@ class TestDashboardAPI:
 
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
-        eth = next(b for b in r.json()["bots"] if b["name"] == "eth_compression")
-        assert eth["strategy_readiness"]["strategy_id"] == "eth_compression_v1"
+        eth = next(b for b in r.json()["bots"] if b["name"] == "sol_optimized")
+        assert eth["strategy_readiness"]["strategy_id"] == "sol_optimized_v1"
         assert eth["launch_lane"] == "paper_soak"
         assert eth["can_paper_trade"] is True
         assert eth["can_live_trade"] is False
         assert eth["readiness_next_action"] == "Run paper-soak and broker drift checks before live routing."
 
-        drill = app_client.get("/api/bot-fleet/eth_compression")
+        drill = app_client.get("/api/bot-fleet/sol_optimized")
         assert drill.status_code == 200
         drill_data = drill.json()
         assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "paper_soak"
@@ -1454,10 +1454,10 @@ class TestDashboardAPI:
                     },
                     "rows": [
                         {
-                            "bot_id": "nq_daily_drb",
-                            "strategy_id": "nq_daily_drb_v1",
-                            "strategy_kind": "daily_drb",
-                            "symbol": "NQ",
+                            "bot_id": "volume_profile_nq",
+                            "strategy_id": "volume_profile_nq_v1",
+                            "strategy_kind": "confluence_scorecard",
+                            "symbol": "NQ1",
                             "timeframe": "1d",
                             "active": True,
                             "promotion_status": "production",
@@ -1494,17 +1494,17 @@ class TestDashboardAPI:
         assert r.status_code == 200
         data = r.json()
         assert "removed_legacy_bot" not in [b["name"] for b in data["bots"]]
-        nq = next(b for b in data["bots"] if b["name"] == "nq_daily_drb")
+        nq = next(b for b in data["bots"] if b["name"] == "volume_profile_nq")
         assert nq["source"] == "bot_strategy_readiness_snapshot"
         assert nq["status"] == "readiness_only"
-        assert nq["strategy_readiness"]["strategy_id"] == "nq_daily_drb_v1"
+        assert nq["strategy_readiness"]["strategy_id"] == "volume_profile_nq_v1"
         assert nq["launch_lane"] == "live_preflight"
         assert nq["can_paper_trade"] is True
         assert nq["readiness_next_action"].startswith("Run per-bot promotion")
 
-        filtered = app_client.get("/api/bot-fleet?bot=nq_daily_drb")
+        filtered = app_client.get("/api/bot-fleet?bot=volume_profile_nq")
         assert filtered.status_code == 200
-        assert [row["name"] for row in filtered.json()["bots"]] == ["nq_daily_drb"]
+        assert [row["name"] for row in filtered.json()["bots"]] == ["volume_profile_nq"]
 
         hidden = app_client.get("/api/bot-fleet?bot=removed_legacy_bot")
         assert hidden.status_code == 200
@@ -1514,7 +1514,7 @@ class TestDashboardAPI:
         assert hidden_debug.status_code == 200
         assert [row["name"] for row in hidden_debug.json()["bots"]] == ["removed_legacy_bot"]
 
-        drill = app_client.get("/api/bot-fleet/nq_daily_drb")
+        drill = app_client.get("/api/bot-fleet/volume_profile_nq")
         assert drill.status_code == 200
         drill_data = drill.json()
         assert drill_data["status"]["source"] == "bot_strategy_readiness_snapshot"
@@ -1586,7 +1586,7 @@ class TestDashboardAPI:
             "mode": "paper_sim",
             "bots": [
                 {
-                    "bot_id": "mnq_futures",
+                    "bot_id": "mnq_futures_sage",
                     "symbol": "MNQ1",
                     "strategy_kind": "orb",
                     "direction": "long",
@@ -1638,10 +1638,10 @@ class TestDashboardAPI:
         assert r.status_code == 200
         data = r.json()
         names = [b["name"] for b in data["bots"]]
-        assert "mnq_futures" in names, f"mnq_futures missing from roster: {names}"
+        assert "mnq_futures_sage" in names, f"mnq_futures_sage missing from roster: {names}"
         assert "btc_hybrid" in names, f"btc_hybrid missing from roster: {names}"
 
-        mnq = next(b for b in data["bots"] if b["name"] == "mnq_futures")
+        mnq = next(b for b in data["bots"] if b["name"] == "mnq_futures_sage")
         assert mnq["todays_pnl"] == 2.0
         assert mnq["status"] == "running"
         assert mnq["source"] == "jarvis_strategy_supervisor"
@@ -1686,7 +1686,7 @@ class TestDashboardAPI:
         assert data["signal_cadence"]["max_same_second"] == 1
         assert data["summary"]["signal_cadence_status"] == "staggered"
 
-        drill = app_client.get("/api/bot-fleet/mnq_futures")
+        drill = app_client.get("/api/bot-fleet/mnq_futures_sage")
         assert drill.status_code == 200
         drill_data = drill.json()
         assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "live_preflight"
@@ -1791,6 +1791,63 @@ class TestDashboardAPI:
         assert cadence["same_second_ratio"] == 1.0
         assert cadence["top_signal_second"] == "2026-04-28T12:01:15Z"
         assert cadence["synchronized_signal_seconds"] == 1
+
+    def test_bot_fleet_hides_registry_deactivated_supervisor_rows(self, app_client):
+        """Registry-retired bots should not leak through live supervisor heartbeats."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "bots").mkdir(parents=True, exist_ok=True)
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        hb = {
+            "ts": "2026-05-08T03:40:00+00:00",
+            "mode": "paper_live",
+            "bots": [
+                {
+                    "bot_id": "rsi_mr_mnq",
+                    "symbol": "MNQ1",
+                    "strategy_kind": "confluence_scorecard",
+                    "direction": "long",
+                    "n_entries": 1,
+                    "n_exits": 0,
+                    "realized_pnl": 0.0,
+                    "open_position": None,
+                    "last_signal_ts": "2026-05-08T03:39:00+00:00",
+                    "last_signal_side": "BUY",
+                    "last_bar_ts": "2026-05-08T03:39:30+00:00",
+                },
+                {
+                    "bot_id": "sol_optimized",
+                    "symbol": "SOL",
+                    "strategy_kind": "confluence_scorecard",
+                    "direction": "long",
+                    "n_entries": 1,
+                    "n_exits": 0,
+                    "realized_pnl": 0.0,
+                    "open_position": None,
+                    "last_signal_ts": "2026-05-08T03:39:10+00:00",
+                    "last_signal_side": "BUY",
+                    "last_bar_ts": "2026-05-08T03:39:30+00:00",
+                },
+            ],
+        }
+        (sup_dir / "heartbeat.json").write_text(json.dumps(hb), encoding="utf-8")
+
+        visible = app_client.get("/api/bot-fleet")
+
+        assert visible.status_code == 200
+        names = {row["name"] for row in visible.json()["bots"]}
+        assert "sol_optimized" in names
+        assert "rsi_mr_mnq" not in names
+
+        debug = app_client.get("/api/bot-fleet?include_disabled=true")
+        rows = {row["name"]: row for row in debug.json()["bots"]}
+        assert rows["rsi_mr_mnq"]["registry_deactivated"] is True
+        assert rows["rsi_mr_mnq"]["registry_active"] is False
+        assert rows["sol_optimized"]["registry_active"] is True
 
     def test_bot_fleet_drilldown_prefers_supervisor_open_position(self, app_client):
         """Per-bot drilldown must not hide live supervisor positions behind legacy status."""
@@ -2356,7 +2413,7 @@ class TestDashboardAPI:
                     "mode": "paper_sim",
                     "bots": [
                         {
-                            "bot_id": "nq_futures",
+                            "bot_id": "volume_profile_nq",
                             "symbol": "NQ1",
                             "strategy_kind": "orb",
                             "direction": "long",
@@ -2381,9 +2438,9 @@ class TestDashboardAPI:
                     "summary": {"total_bots": 1, "launch_lanes": {"live_preflight": 1}},
                     "rows": [
                         {
-                            "bot_id": "nq_futures",
-                            "strategy_id": "nq_orb_v1",
-                            "strategy_kind": "orb",
+                            "bot_id": "volume_profile_nq",
+                            "strategy_id": "volume_profile_nq_v1",
+                            "strategy_kind": "confluence_scorecard",
                             "symbol": "NQ1",
                             "timeframe": "5m",
                             "active": True,
@@ -2406,12 +2463,12 @@ class TestDashboardAPI:
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
         data = r.json()
-        nq_rows = [b for b in data["bots"] if b["name"] == "nq_futures"]
+        nq_rows = [b for b in data["bots"] if b["name"] == "volume_profile_nq"]
         assert len(nq_rows) == 1
         nq = nq_rows[0]
         assert nq["source"] == "jarvis_strategy_supervisor"
         assert nq["status"] == "running"
-        assert nq["strategy_readiness"]["strategy_id"] == "nq_orb_v1"
+        assert nq["strategy_readiness"]["strategy_id"] == "volume_profile_nq_v1"
         assert nq["launch_lane"] == "live_preflight"
         assert nq["can_paper_trade"] is True
         assert nq["can_live_trade"] is False
