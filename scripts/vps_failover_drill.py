@@ -90,6 +90,9 @@ _STATE_FILES_REQUIRED: list[str] = [
     "docs/strategy_baselines.json",
     "var/eta_engine/state/decision_journal.jsonl",
 ]
+_STATE_FILES_FRESHNESS_EXEMPT: set[str] = {
+    "docs/strategy_baselines.json",
+}
 _STATIC_STATE_FILES_RECOMMENDED: list[str] = []
 # .env is special: inspect only key names / non-empty status and never emit values.
 _SECRETS_FILE = ".env"
@@ -469,11 +472,13 @@ def _check_state_files_present() -> CheckResult:
 
 
 def _check_state_files_fresh() -> CheckResult:
-    """1b. State files have been touched within the last 24h."""
+    """1b. Dynamic state files have been touched within the last 24h."""
     stale: list[tuple[str, float]] = []
     now = datetime.now(UTC).timestamp()
     required, recommended = _state_file_paths()
     for label, p in required + recommended:
+        if label in _STATE_FILES_FRESHNESS_EXEMPT:
+            continue
         if not p.exists():
             continue
         age_h = (now - p.stat().st_mtime) / 3600
