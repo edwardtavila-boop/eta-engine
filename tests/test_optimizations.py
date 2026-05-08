@@ -355,6 +355,9 @@ class TestStatusPage:
         assert "recent close evidence" in html
         assert "renderRecentCloses" in html
         assert "target_exit_visibility" in html
+        assert "broker_open_position_count" in html
+        assert "supervisor_local_position_count" in html
+        assert "paper-local watched" in html
 
     def test_status_page_card_health_contract_is_wired(self):
         """Card-health JS+CSS contract still intact. The index.html-side

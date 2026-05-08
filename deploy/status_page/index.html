@@ -1151,9 +1151,16 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
   const signalUpdates = bots.filter(b => !b.last_trade_ts && b.last_signal_ts).length;
   if (liveBrokerReady) {
     const liveFills = Number(liveBroker.today_actual_fills || 0);
-    const openPos = Number(liveBroker.open_position_count || 0);
+    const exposure = liveBroker.position_exposure || {};
+    const brokerOpen = Number(exposure.broker_open_position_count ?? liveBroker.open_position_count ?? 0);
+    const supervisorOpen = Number(exposure.supervisor_local_position_count || 0);
+    const supervisorWatch = Number(exposure.supervisor_watch_count || 0);
+    const openText = supervisorOpen > 0
+      ? `${brokerOpen} broker open; ${supervisorOpen} paper-local watched`
+      : `${brokerOpen} broker open`;
+    const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
     document.getElementById('totalTrades').textContent = liveFills;
-    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openPos} open positions`;
+    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}`;
   } else {
     document.getElementById('totalTrades').textContent = trades || fillBackedRows || 0;
     document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
