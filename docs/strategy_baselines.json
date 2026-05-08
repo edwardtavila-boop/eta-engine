@@ -125,6 +125,17 @@
       "_notes": "REHABILITATED 2026-05-08. Prior 2026-05-07 demote correctly attributed to data quality, not strategy. Re-promoted to paper_soak after clean-data audit. Re-baseline once 30+ live fills land. avg_r approximated from expR_net."
     },
     {
+      "strategy_id": "mbt_funding_basis_v1",
+      "n_trades": 31,
+      "win_rate": 0.45,
+      "avg_r": 0.200,
+      "r_stddev": 1.40,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "paper_soak",
+      "_walk_forward_summary": "MBT1/5m, full-history audit. Strict-gate audit (eta_engine/reports/strict_gate_20260508T031716Z.json): n=31 trades, sharpe=3.77, expR_net=+0.200, sh_def=-0.61, split=True, L=true (legacy gate pass). Crypto-futures funding-basis strategy with the largest sample of any positive-net audit bot in the MBT family.",
+      "_notes": "MBT funding-basis strategy. Was previously kept as research_candidate / exit-watch-only pending baseline persistence. Audit n=31 with positive expR_net and split-stable signal qualifies for paper_soak promotion. Re-baseline once 30+ live fills land."
+    },
+    {
       "strategy_id": "mnq_orb_v2",
       "n_trades": 50,
       "win_rate": 0.2,

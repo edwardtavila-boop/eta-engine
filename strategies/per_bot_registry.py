@@ -1953,10 +1953,14 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "MBT basis-premium fade: when CME MBT trades rich vs BTC spot, "
             "the premium decays toward fair value. Short-only (rich-premium "
             "decay favors fading the upside). RTH-gated 08:30-15:00 CT. "
-            "Research_candidate — needs walk-forward validation."
+            "Strict-gate audit 2026-05-08 (strict_gate_20260508T031716Z.json): "
+            "n=31 trades, sharpe 3.77, expR_net +0.200, sh_def -0.61, "
+            "split=True, L=true. "
+            "Promoted to paper_soak after baseline persisted in "
+            "docs/strategy_baselines.json."
         ),
         extras={
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "edge_enabled": True,
             "edge_config": {
                 "enable_session_gate": True,

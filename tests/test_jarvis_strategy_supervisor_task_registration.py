@@ -50,7 +50,7 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router" in text
     assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
     assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
-    assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=mbt_funding_basis" in text
+    assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=" in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text
@@ -103,6 +103,14 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # Incumbents kept for kaizen monitoring (positive net):
         "mnq_anchor_sweep",
         "mnq_futures_sage",
+        # Crypto-futures basis-fade. Strict-gate audit
+        # (strict_gate_20260508T031716Z.json): n=31 trades,
+        # sharpe 3.77, expR_net +0.200, sh_def -0.61, split=True,
+        # L=true. Largest sample of any
+        # positive-net MBT-family audit bot. Re-pinned 2026-05-08
+        # after baseline persisted and promotion_status raised to
+        # paper_soak.
+        "mbt_funding_basis",
         # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
         # sharpe=2.00, expR_net=+0.111, split=True. Profile mirrors
         # the already-pinned mnq_anchor_sweep. Legacy gate passes
@@ -127,11 +135,11 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     }
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
-    assert "mbt_funding_basis" not in bots, (
-        "mbt_funding_basis is research/baseline_missing and must remain "
-        "exit-watch only until a persisted baseline plus paper-soak "
-        "promotion exists."
-    )
+    # mbt_funding_basis was previously held as exit-watch only while no
+    # baseline was persisted; the 2026-05-08 audit (n=31, +0.200 expR_net,
+    # split=True) is now persisted in strategy_baselines.json, registry
+    # promotion_status is raised to paper_soak, and the bot is part of
+    # the active pin (asserted at the set-equality above).
     # ng_sweep_reclaim was previously held off the pin while NG1 1h had
     # rollover-jump artifacts; the 2026-05-08 TWS continuous-front-month
     # back-fetch produced a clean 28-month series, the strict-gate audit
