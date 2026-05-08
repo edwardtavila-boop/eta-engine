@@ -104,13 +104,6 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # Incumbents kept for kaizen monitoring (positive net):
         "mnq_anchor_sweep",
         "mnq_futures_sage",
-        # MICRO-TIER ADDITION 2026-05-08 (operator directive: switching
-        # to micros for limited starting capital). MYM strict-gate audit
-        # (eta_engine/reports/strict_gate_mym.json): n=11, sharpe=8.62,
-        # expR_net=+0.672, split=True. Per-trade quality dwarfs every
-        # other pinned bot; small sample fails strict-gate but legacy
-        # gate passes (L=true). Pinned for paper-soak.
-        "mym_sweep_reclaim",
         # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
         # sharpe=2.00, expR_net=+0.111, split=True. Profile mirrors
         # the already-pinned mnq_anchor_sweep. Legacy gate passes
@@ -129,6 +122,10 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         "ym_sweep_reclaim cannot fit $10k per-bot budget at YM ~$250k "
         "notional; ATR sizing rounds to 0 contracts. Re-pin only with "
         "MYM variant or budget-cap exception."
+    )
+    assert "mym_sweep_reclaim" not in bots, (
+        "mym_sweep_reclaim is a positive research candidate, but it must stay "
+        "off the supervisor pin until canonical MYM1 1h and 5m bars are present."
     )
     assert "sol_optimized" not in bots, (
         "sol_optimized has only 17 trades in the audit; too small for live "

@@ -115,11 +115,12 @@ rem mym for now as micros are key due to starting off with limited
 rem funds"). Added per strict-gate audits on 1h history (MYM=624d,
 rem MGC=2yr post-fetch, MCL=2yr post-fetch):
 rem
-rem   mym_sweep_reclaim -- n=11, Sharpe=8.62, expR_net=+0.672, split=True
-rem                        Per-trade quality is the highest in the fleet.
-rem                        Sample small (n<30) so fails strict-gate, but
-rem                        legacy gate passes (L=true) and per-trade edge
-rem                        dwarfs every other pinned bot.
+rem   mym_sweep_reclaim -- HELD 2026-05-08: strict_gate_mym.json is
+rem                        positive, but the canonical data library is
+rem                        missing MYM1_1h.csv and MYM1_5m.csv in the
+rem                        canonical futures-history directory.
+rem                        Do not pin until those real bars are fetched
+rem                        and paper_live_launch_check reports no block.
 rem   mcl_sweep_reclaim -- n=16, Sharpe=2.00, expR_net=+0.111, split=True
 rem                        Profile mirrors mnq_anchor_sweep (split-stable,
 rem                        positive net, similar Sharpe). Legacy gate
@@ -132,7 +133,7 @@ rem                        Strategy fires once per ~70 days on 2yr of MGC1
 rem                        1h data; insufficient frequency. Same template
 rem                        on MNQ/MCL fires 2-3x more often. Leave for
 rem                        future template tuning or alternative timeframe.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mym_sweep_reclaim,mcl_sweep_reclaim"
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05
