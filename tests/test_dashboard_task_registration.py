@@ -10,6 +10,7 @@ PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
+ROOT_RECONCILE_PLAN_SCRIPT = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -208,6 +209,38 @@ def test_root_dirty_inspector_is_read_only_and_canonical() -> None:
 
 def test_root_dirty_inspector_avoids_destructive_commands() -> None:
     text = ROOT_DIRTY_INSPECT_SCRIPT.read_text(encoding="utf-8")
+
+    forbidden = (
+        "git reset",
+        "git clean",
+        "git checkout",
+        "Remove-Item",
+        "Move-Item",
+        "git add",
+        "git commit",
+    )
+    for token in forbidden:
+        assert token not in text
+
+
+def test_root_reconciliation_planner_is_review_only() -> None:
+    text = ROOT_RECONCILE_PLAN_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Root = "C:\\EvolutionaryTradingAlgo"' in text
+    assert "review_plan_only" in text
+    assert "vps_root_dirty_inventory.json" in text
+    assert "vps_root_reconciliation_plan.json" in text
+    assert "vps_root_reconciliation_plan.md" in text
+    assert "manual_review_required" in text
+    assert "restore-source-governance" in text
+    assert "align-submodules" in text
+    assert "classify-generated-artifacts" in text
+    assert "cleanup_allowed = $false" in text
+    assert "destructive_actions_performed = $false" in text
+
+
+def test_root_reconciliation_planner_avoids_destructive_commands() -> None:
+    text = ROOT_RECONCILE_PLAN_SCRIPT.read_text(encoding="utf-8")
 
     forbidden = (
         "git reset",
