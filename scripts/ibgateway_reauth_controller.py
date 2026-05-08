@@ -243,6 +243,39 @@ def _task_command(verb: str, task_name: str) -> str:
     return f"{verb} -TaskName '{escaped}' -ErrorAction SilentlyContinue"
 
 
+def _scheduled_task_state(task_name: str) -> str:
+    escaped = task_name.replace("'", "''")
+    try:
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                (
+                    "$task = Get-ScheduledTask "
+                    f"-TaskName '{escaped}' -ErrorAction SilentlyContinue; "
+                    "if ($null -eq $task) { exit 44 }; "
+                    "Write-Output ([string]$task.State); exit 0"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Unable to query scheduled task state for %s: %s", task_name, exc)
+        return "unknown"
+    if completed.returncode == 44:
+        return "missing"
+    if completed.returncode != 0:
+        logger.warning("Unable to query scheduled task state for %s: %s", task_name, completed.stderr.strip())
+        return "unknown"
+    return completed.stdout.strip() or "unknown"
+
+
 def _run_task_command(verb: str, task_name: str) -> int:
     completed = subprocess.run(
         [
@@ -296,6 +329,15 @@ def _scheduled_task_exists(task_name: str) -> bool:
         logger.warning("Unable to query scheduled task %s: %s", task_name, exc)
         return True
     return completed.returncode == 0
+
+
+def _scheduled_task_is_runnable(task_name: str) -> bool:
+    state = _scheduled_task_state(task_name).lower()
+    if state == "disabled":
+        return False
+    if state in {"missing", ""}:
+        return _scheduled_task_exists(task_name)
+    return True
 
 
 def _start_scheduled_task(task_name: str) -> int:
@@ -373,12 +415,17 @@ def run_controller(
     task_name = ""
     action = str(decision.get("action") or "")
     if action == "start_gateway":
-        if _scheduled_task_exists(run_now_task):
+        run_now_exists = _scheduled_task_exists(run_now_task)
+        run_now_runnable = run_now_exists and _scheduled_task_is_runnable(run_now_task)
+        gateway_runnable = bool(gateway_task) and _scheduled_task_exists(gateway_task) and _scheduled_task_is_runnable(
+            gateway_task,
+        )
+        if run_now_runnable:
             task_name = run_now_task
-        elif gateway_task and _scheduled_task_exists(gateway_task):
+        elif gateway_runnable:
             task_name = gateway_task
             decision["reason"] = (
-                f"{decision['reason']} Falling back to {gateway_task} because {run_now_task} is missing."
+                f"{decision['reason']} Falling back to {gateway_task} because {run_now_task} is missing or disabled."
             )
             lane["start_task_mode"] = "gateway_task_fallback"
         else:
@@ -405,6 +452,21 @@ def run_controller(
                     "operator_action_required": True,
                     "operator_action": (
                         "Install/configure canonical IB Gateway 10.46, then run "
+                        f"{lane['repair_command']}."
+                    ),
+                },
+            )
+            _write_json(state_path, state)
+            return state
+        if not _scheduled_task_is_runnable(task_name):
+            state.update(
+                {
+                    "status": "recovery_task_disabled",
+                    "action": "none",
+                    "reason": f"Required scheduled task {task_name} is disabled.",
+                    "operator_action_required": True,
+                    "operator_action": (
+                        f"Enable scheduled task {task_name}, or repair the canonical IB Gateway task lane with "
                         f"{lane['repair_command']}."
                     ),
                 },

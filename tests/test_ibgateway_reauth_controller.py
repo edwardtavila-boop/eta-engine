@@ -104,6 +104,36 @@ def test_process_down_falls_back_to_gateway_task_when_run_now_missing(tmp_path: 
     assert started == ["ETA-IBGateway"]
 
 
+def test_process_down_falls_back_to_gateway_task_when_run_now_disabled(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
+    started: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(
+        controller,
+        "_scheduled_task_is_runnable",
+        lambda task_name: task_name == controller.GATEWAY_TASK_NAME,
+    )
+    monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "started_gateway"
+    assert result["last_task_name"] == "ETA-IBGateway"
+    assert result["recovery_lane"]["next_task"] == "ETA-IBGateway"
+    assert result["recovery_lane"]["start_task_mode"] == "gateway_task_fallback"
+    assert "missing or disabled" in result["reason"]
+    assert started == ["ETA-IBGateway"]
+
+
 def test_process_down_missing_run_now_task_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 
