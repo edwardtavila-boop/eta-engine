@@ -281,7 +281,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target/stop monitor</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
-  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
+  <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit-watch SLA</div></div>
   <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
   <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
@@ -1815,10 +1815,31 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('opsProxySub').textContent = compactText(`${proxyAction}; ${proxyReason}; ${proxyAge}`);
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
-  const risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
+  const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
+    ? exitWatch.position_staleness
+    : {};
+  const forceFlattenDue = Number(stalePositions.force_flatten_due_count ?? summary.force_flatten_due_count ?? 0) || 0;
+  const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
+  const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
+  const oldestAge = Number(stalePositions.oldest_position?.age_s ?? stalePositions.max_age_s ?? 0) || 0;
+  let risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
+  let riskDetail = maxDD > 0
+    ? `max drawdown ${formatMoney(maxDD, 0)}`
+    : 'drawdown quiet';
+  if (forceFlattenDue > 0) {
+    risk = 'High';
+    riskDetail = `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due`;
+  } else if (tightenStopDue > 0 || requireAckDue > 0) {
+    risk = risk === 'High' ? risk : 'Medium';
+    const due = tightenStopDue > 0
+      ? `${tightenStopDue} stop tighten due`
+      : `${requireAckDue} position ack due`;
+    riskDetail = `${due}; oldest ${formatAgeSeconds(oldestAge)}`;
+  }
   document.getElementById('riskLevel').textContent = risk;
   document.getElementById('riskLevel').className = 'stat ' + (risk === 'Low' ? 'green' : risk === 'Medium' ? 'yellow' : 'red');
-  document.getElementById('riskBar').style.width = Math.min(80, maxDD / 50) + '%';
+  document.getElementById('riskBar').style.width = forceFlattenDue > 0 ? '95%' : Math.min(80, maxDD / 50) + '%';
+  document.getElementById('riskSub').textContent = compactText(riskDetail);
 
   // Win rate — use the broker-backed 30d closed-trade outcome rate when
   // available. JARVIS verdict counts are policy signals, not realized PnL

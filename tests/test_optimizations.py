@@ -174,6 +174,7 @@ class TestStatusPage:
             'id="totalBots"',
             'id="riskLevel"',
             'id="riskBar"',
+            'id="riskSub"',
             'id="jarvisMode"',
             'id="gatewayStatus"',
             'id="gatewayStatusSub"',
@@ -202,6 +203,10 @@ class TestStatusPage:
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
         assert "target_exit_summary" in html
+        assert "position_staleness" in html
+        assert "force_flatten_due_count" in html
+        assert "past max-hold; force flatten due" in html
+        assert "drawdown + exit-watch SLA" in html
         assert "paper_watching" in html
         assert "paper-local open" in html
         assert "gateway healthy; broker data probe timed out" in html
