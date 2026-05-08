@@ -172,6 +172,9 @@ def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
     assert "probe_attempts" in text
     assert "probe_timeout_seconds" in text
     assert "target_exit_summary" in text
+    assert "root_dirty_summary" in text
+    assert "deleted_tracked_count" in text
+    assert "untracked_count" in text
 
 
 def test_dashboard_sync_script_avoids_legacy_paths_and_root_pull() -> None:

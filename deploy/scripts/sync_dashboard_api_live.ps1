@@ -62,12 +62,41 @@ if (-not (Test-Path -LiteralPath $DashboardApi)) {
 }
 
 $rootDirty = $false
+$rootDirtySummary = [ordered]@{
+    branch = ""
+    head = ""
+    status_count = 0
+    deleted_tracked_count = 0
+    modified_tracked_count = 0
+    untracked_count = 0
+}
 Push-Location -LiteralPath $RootFull
 try {
-    $rootPorcelain = (& git status --porcelain 2>$null)
-    $rootDirty = [bool]$rootPorcelain
+    $rootBranch = ((& git branch --show-current 2>$null) | Select-Object -First 1)
+    $rootHead = ((& git rev-parse --short HEAD 2>$null) | Select-Object -First 1)
+    $rootPorcelain = @(& git status --porcelain 2>$null)
+    $rootDeletedTracked = @(& git ls-files -d 2>$null)
+    $rootModifiedTracked = @(& git diff --name-only --diff-filter=M 2>$null)
+    $rootUntracked = @(& git ls-files --others --exclude-standard 2>$null)
+    $rootDirty = $rootPorcelain.Count -gt 0
+    $rootDirtySummary = [ordered]@{
+        branch = "$rootBranch".Trim()
+        head = "$rootHead".Trim()
+        status_count = $rootPorcelain.Count
+        deleted_tracked_count = $rootDeletedTracked.Count
+        modified_tracked_count = $rootModifiedTracked.Count
+        untracked_count = $rootUntracked.Count
+    }
     if ($rootDirty) {
-        Write-Warning "Root checkout has local changes; leaving superproject untouched and syncing eta_engine only."
+        Write-Warning (
+            "Root checkout has local changes " +
+            "(branch=$($rootDirtySummary.branch), head=$($rootDirtySummary.head), " +
+            "status=$($rootDirtySummary.status_count), " +
+            "deleted_tracked=$($rootDirtySummary.deleted_tracked_count), " +
+            "modified_tracked=$($rootDirtySummary.modified_tracked_count), " +
+            "untracked=$($rootDirtySummary.untracked_count)); " +
+            "leaving superproject untouched and syncing eta_engine only."
+        )
     }
 }
 finally {
@@ -149,6 +178,7 @@ finally {
     status = "ok"
     root = $RootFull
     root_dirty = $rootDirty
+    root_dirty_summary = $rootDirtySummary
     engine_dir = $EngineDir
     engine_head = $head
     task = $TaskName
