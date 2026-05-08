@@ -29,8 +29,9 @@ foreach($s in $sv){$x=Get-Service $s -ea $e;S "$s ($($x.Status))" ($x -and $x.St
 
 # 4. PORTS
 Write-Host "`n=== PORTS ===" -f Cyan
-foreach($port in @(5000,8000,8420)){
-$n=netstat -ano 2>$null|Select-String ":$port .*LISTENING";S "Port $port" ($n -ne $null)}
+$ports=@{5000="IBKR Gateway";8000="Dashboard API";8421="Dashboard proxy";8422="FM status"}
+foreach($port in $ports.Keys){
+$n=netstat -ano 2>$null|Select-String ":$port .*LISTENING";S "Port $port ($($ports[$port]))" ($n -ne $null)}
 
 # 5. IBKR
 Write-Host "`n=== IBKR GATEWAY ===" -f Cyan

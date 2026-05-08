@@ -11,6 +11,11 @@ PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
 ROOT_RECONCILE_PLAN_SCRIPT = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
+DIAG_COMPACT_SCRIPT = ROOT / "deploy" / "scripts" / "diag_compact.ps1"
+FULL_DIAGNOSTICS_SCRIPT = ROOT / "deploy" / "scripts" / "full_diagnostics.ps1"
+VPS_BOOTSTRAP_SCRIPTS = (
+    ROOT / "deploy" / "vps_bootstrap.ps1",
+)
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -127,6 +132,32 @@ def test_proxy8421_task_runner_avoids_legacy_paths() -> None:
     assert "crypto_data" not in text
     assert "TheFirm" not in text
     assert "The_Firm" not in text
+
+
+def test_vps_diagnostics_probe_active_dashboard_ports() -> None:
+    compact = DIAG_COMPACT_SCRIPT.read_text(encoding="utf-8")
+    full = FULL_DIAGNOSTICS_SCRIPT.read_text(encoding="utf-8")
+
+    assert '8000="Dashboard API"' in compact
+    assert '8421="Dashboard proxy"' in compact
+    assert '8422="FM status"' in compact
+    assert "8420" not in compact
+    assert '8000 = "Dashboard API"' in full
+    assert '8421 = "Dashboard proxy"' in full
+    assert '8422 = "Force Multiplier status"' in full
+    assert '8420="Command Center"' not in full
+    assert '8420 = "Command Center"' not in full
+
+
+def test_vps_bootstrap_summaries_name_active_dashboard_topology() -> None:
+    for path in VPS_BOOTSTRAP_SCRIPTS:
+        text = path.read_text(encoding="utf-8")
+        assert "ETA-Dashboard-API" in text
+        assert "127.0.0.1:8000 canonical API" in text
+        assert "ETA-Proxy-8421" in text
+        assert "127.0.0.1:8421 -> 8000" in text
+        assert "dashboard on port 8420" not in text
+        assert "dashboard (127.0.0.1:8420)" not in text
 
 
 def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:

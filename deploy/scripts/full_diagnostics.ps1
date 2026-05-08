@@ -81,7 +81,12 @@ foreach ($svc in $services) {
 
 # ── 4. PORTS ──────────────────────────────────────────────────
 Write-Host "`n=== 4. PORT LISTENING ===" -ForegroundColor Cyan
-$ports = @{5000="IBKR Gateway"; 8000="Dashboard API"; 8420="Command Center"}
+$ports = @{
+    5000 = "IBKR Gateway"
+    8000 = "Dashboard API"
+    8421 = "Dashboard proxy"
+    8422 = "Force Multiplier status"
+}
 foreach ($p in $ports.Keys) {
     $listening = netstat -ano 2>$null | Select-String "LISTENING" | Select-String ":$p "
     Say "Port $p ($($ports[$p]))" ($listening -ne $null)
@@ -180,7 +185,7 @@ foreach ($dir in $logDirs) {
 Write-Host "`n=== 9. PYTHON MODULE SMOKE ===" -ForegroundColor Cyan
 $venvPython = "C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
-    $venvPython = "C:\EvolutionaryTradingAlgo\firm_command_center\eta_engine\.venv\Scripts\python.exe"
+    $venvPython = "python.exe"
 }
 if (Test-Path $venvPython) {
     $test = & $venvPython -c "from eta_engine.strategies import per_bot_registry; from eta_engine.scripts import workspace_roots; print('import OK')" 2>&1

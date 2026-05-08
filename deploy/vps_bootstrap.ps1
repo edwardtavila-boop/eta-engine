@@ -483,6 +483,8 @@ Write-Host "  ETA-Reasoner       3 tasks  -- persona architectural" -ForegroundC
 Write-Host "  ETA-Jarvis-Live                  -- boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Avengers-Fleet               -- boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard                    -- boot: logon trigger" -ForegroundColor Gray
+Write-Host "  ETA-Dashboard-API                -- 127.0.0.1:8000 canonical API" -ForegroundColor Gray
+Write-Host "  ETA-Proxy-8421                   -- ops bridge 127.0.0.1:8421 -> 8000" -ForegroundColor Gray
 Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
@@ -493,7 +495,7 @@ Write-Host ""
 Write-Host "WinSW Services:" -ForegroundColor White
 Write-Host "  FirmCore                         -- live runtime core" -ForegroundColor Gray
 Write-Host "  FirmWatchdog                     -- watchdog heartbeat" -ForegroundColor Gray
-Write-Host "  FirmCommandCenter  -- dashboard on port 8420" -ForegroundColor Gray
+Write-Host "  FirmCommandCenter                -- legacy service; ETA API is 8000 + proxy 8421" -ForegroundColor Gray
 Write-Host "  FirmCommandCenterEdge            -- Caddy reverse proxy" -ForegroundColor Gray
 Write-Host "  FirmCommandCenterTunnel          -- Cloudflare tunnel" -ForegroundColor Gray
 Write-Host "  HermesJarvisTelegram             -- Telegram bridge" -ForegroundColor Gray
