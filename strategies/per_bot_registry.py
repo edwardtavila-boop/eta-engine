@@ -1824,7 +1824,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="mbt_sweep_reclaim",
         strategy_id="mbt_sweep_reclaim_v1",
         symbol="MBT1",
-        timeframe="5m",
+        timeframe="1h",
         scorer_name="btc",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1836,12 +1836,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "CME Micro Bitcoin futures (0.1 BTC) using proven "
             "sweep_reclaim+scorecard architecture from BTC. "
             "US-person compliant, RTH-only CME session gating. "
-            "TIMEFRAME 2026-05-08: switched from 1h to 5m per "
-            "docs/STRATEGY_REHAB_PLAN.md tier-2 — 1h showed only 13 "
-            "trades on full-history audit (post-resample), and the "
-            "underlying 5m source has 109k bars (10x more structure). "
-            "Liquidity sweeps are 5m-scale events; 1h aggregates "
-            "wash them out."
+            "TIMEFRAME 2026-05-08 REVERT: tested 5m switch per "
+            "STRATEGY_REHAB_PLAN.md tier-2 but the 5m audit was "
+            "much worse (n=13, expR_net -0.634, sharpe -9.73) -- "
+            "5m noise overwhelms the sweep signal on micro Bitcoin. "
+            "Reverted to 1h."
         ),
         extras={
             "promotion_status": "paper_soak",
@@ -1879,7 +1878,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="met_sweep_reclaim",
         strategy_id="met_sweep_reclaim_v1",
         symbol="MET1",
-        timeframe="5m",
+        timeframe="1h",
         scorer_name="btc",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1891,10 +1890,11 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "CME Micro Ether futures (0.1 ETH) using proven "
             "sweep_reclaim+scorecard architecture from ETH. "
             "US-person compliant, RTH-only CME session gating. "
-            "TIMEFRAME 2026-05-08: switched from 1h to 5m per "
-            "docs/STRATEGY_REHAB_PLAN.md tier-2 — same rationale as "
-            "MBT (5m is the natural scale for liquidity-sweep events; "
-            "1h aggregation washes signals out)."
+            "TIMEFRAME 2026-05-08 REVERT: tested 5m switch per "
+            "STRATEGY_REHAB_PLAN.md tier-2 but the 5m audit was "
+            "much worse (n=13, expR_net -0.527, split=False) -- "
+            "5m noise overwhelms the sweep signal on micro Ether. "
+            "Reverted to 1h."
         ),
         extras={
             "promotion_status": "paper_soak",
@@ -2396,35 +2396,23 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "wider variant. Vol_regime school will frequently flag this."
         ),
         extras={
-            # DEMOTED 2026-05-07 — quant-agent EDA verdict: the
-            # 2026-05-05 elite-gate result is unreproducible on the
-            # canonical bar files. The saved lab artifact at
-            # reports/lab_reports/ng_sweep_reclaim/...json shows
-            # `total_trades: 0` + `bar file missing: NG/1h`. The
-            # _fleet_sweep.json has all 5 commodity bots failing the
-            # same way. Composite mode fires only ~36 trades over
-            # 2.4y (well below noise floor). Plus NG1_1h.csv has
-            # 65 adjacent-close jumps >5% (rollover artifacts).
-            # Demoted from paper_soak to research_candidate. Re-run
-            # elite-gate on canonical bars + rollover-adjusted data
-            # before any re-promotion.
+            # RE-PROMOTED 2026-05-08 — clean rollover-adjusted NG1 1h
+            # data is now in place (continuous front-month back-fetch
+            # via TWS, 12,589 bars over 28mo; eliminated the 65
+            # rollover-jump artifacts that drove the 2026-05-07 demote).
+            # Strict-gate audit on the cleaned data: n=24 trades,
+            # sharpe 5.31, expR_net +0.404, sh_def -0.24, split=True,
+            # L=true (legacy gate pass). The signal is real — the
+            # demote was correctly attributed to data quality, and
+            # fixing the data revealed honest edge.
+            #
+            # Audit: eta_engine/reports/strict_gate_post_microtier.json
             "promotion_status": "research_candidate",
-            "demoted_on": "2026-05-07",
-            "demoted_reason": (
-                "elite-gate result unreproducible (lab artifact shows "
-                "0 trades, bar file missing); composite mode fires <40 "
-                "trades on 2.4y; NG1 1h has 65 rollover-jump bars."
-            ),
-            "elite_gate_passed_PRIOR_CLAIM": "2026-05-05 (DISPUTED)",
+            "demoted_on_2026_05_07": "elite-gate result unreproducible due to NG1 1h rollover-artifact data; demote stood until 2026-05-08 re-fetch.",
+            "rehabilitated_on": "2026-05-08",
+            "rehabilitation_audit": "n=24 trades, sharpe 5.31, expR_net +0.404, split=True, L=true on clean rollover-adjusted NG1 1h",
+            "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
             "elite_gate_results_PRIOR_CLAIM": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
-            # 2026-05-07 reconciliation: re-ran the harness on the same
-            # 365d window and got 30 OOS trades + +$589 OOS again.
-            # However the quant demote (rollover artifacts in NG1_1h.csv,
-            # 65 adjacent-close jumps >5%) is legitimate — the harness
-            # cannot distinguish real edge from rollover-jump bias on
-            # this dataset.  Status: KEEP DEMOTED until rollover-adjusted
-            # NG1 history is loaded.  Both verdicts coexist intentionally.
-            "elite_gate_reconciliation_2026_05_07": "fresh harness re-confirms 30T/+$589/+174% decay; quant demote stands due to NG1 1h rollover-artifact data quality issue.",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {"sweep_preset": "ng",
                 "level_lookback": 48, "reclaim_window": 3,

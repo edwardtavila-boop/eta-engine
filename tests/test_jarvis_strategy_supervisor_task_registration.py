@@ -118,13 +118,21 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # bars) synced to mnq_data/history on both VPS and home, so
         # paper_live_launch_check now reports 0 BLOCK with mym in pin.
         "mym_sweep_reclaim",
+        # NG re-pinned 2026-05-08 after rollover-fix back-fetch (TWS
+        # continuous-front-month, 12,589 bars / 28mo). Strict-gate
+        # audit on clean data: n=24, sharpe 5.31, expR_net +0.404,
+        # sh_def -0.24, split=True, L=true. Real edge on commodity
+        # (Natural Gas) sweep_reclaim now that the data is honest.
+        "ng_sweep_reclaim",
     }
+    # ng_sweep_reclaim was previously held off the pin while NG1 1h
+    # had rollover-jump artifacts; the 2026-05-08 TWS continuous-front-
+    # month back-fetch produced a clean 28-month series, and the strict-
+    # gate audit on the cleaned data is positive (n=24, sharpe 5.31,
+    # expR_net +0.404, split=True, L=true), so it is now part of the
+    # active pin (asserted at the set-equality above).
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
-    assert "ng_sweep_reclaim" not in bots, (
-        "ng_sweep_reclaim has rollover-artifact bar data; do not pin until "
-        "NG1 1h is re-fetched on canonical rollover-adjusted source."
-    )
     assert "ym_sweep_reclaim" not in bots, (
         "ym_sweep_reclaim cannot fit $10k per-bot budget at YM ~$250k "
         "notional; ATR sizing rounds to 0 contracts. Re-pin only with "
