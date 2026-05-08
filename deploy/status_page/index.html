@@ -132,15 +132,30 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .mini-bot-card .line span:last-child{color:#dbe7f3;text-align:right}
 .exit-watch-card{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(8,23,22,.84),rgba(3,8,14,.9))}
 .exit-watch-card .sub{line-height:1.35}
-.vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9))}
+.vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9));cursor:pointer}
+.vps-root-card:hover{box-shadow:0 0 0 1px rgba(255,209,102,.28),0 18px 38px rgba(0,0,0,.2);transform:translateY(-1px)}
 .vps-root-card .sub{line-height:1.35}
+.vps-root-detail-wrap{padding:0 2rem 1.25rem}
+.vps-root-detail-card{border-color:rgba(255,209,102,.24);background:radial-gradient(circle at 8% 0%,rgba(255,209,102,.13),transparent 32%),linear-gradient(145deg,rgba(13,15,18,.88),rgba(4,8,14,.94))}
+.vps-root-detail-grid{display:grid;grid-template-columns:minmax(230px,.42fr) minmax(0,1fr);gap:1rem}
+.vps-root-detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:.6rem;align-content:start}
+.vps-root-metric{border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:.75rem;background:rgba(255,255,255,.035)}
+.vps-root-metric strong{display:block;color:#fff;font-size:1.25rem;line-height:1.1}
+.vps-root-metric span{display:block;margin-top:.2rem;color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:1px}
+.vps-root-step-list{display:grid;gap:.62rem}
+.vps-root-step{border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:.8rem;background:linear-gradient(145deg,rgba(255,255,255,.04),rgba(255,255,255,.015))}
+.vps-root-step-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.8rem;margin-bottom:.35rem}
+.vps-root-step-top strong{color:#f7fbff}
+.vps-root-step-top span{border:1px solid rgba(255,209,102,.18);border-radius:999px;padding:.18rem .45rem;color:#ffd166;font-size:.64rem;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}
+.vps-root-action{color:#c9d6e4;font-size:.78rem;line-height:1.4}
+.vps-root-evidence{margin-top:.35rem;color:#8fa3b8;font-size:.68rem;line-height:1.35}
 .table-wrap{padding:0 2rem 2rem}
 table{border-spacing:0 5px;border-collapse:separate}
 td{background:rgba(255,255,255,.02);border-top:1px solid rgba(255,255,255,.035);border-bottom:1px solid rgba(255,255,255,.035)}
 tbody tr td:first-child{border-left:1px solid rgba(255,255,255,.035);border-radius:12px 0 0 12px}
 tbody tr td:last-child{border-right:1px solid rgba(255,255,255,.035);border-radius:0 12px 12px 0}
 tr:hover td{background:rgba(100,215,255,.055)}
-@media(max-width:980px){.portfolio-command,.portfolio-analytics{grid-template-columns:1fr;padding-left:1rem;padding-right:1rem}.allocation-sections{padding-left:1rem;padding-right:1rem}}
+@media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
 </style>
 </head>
 <body>
@@ -228,9 +243,29 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
   <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
-  <div class="card vps-root-card"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
+  <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
+
+<section class="vps-root-detail-wrap" id="vpsRootDetailsWrap">
+  <div class="card vps-root-detail-card">
+    <div class="panel-head">
+      <div>
+        <h3>VPS Root Reconciliation Details</h3>
+        <div class="panel-kicker" id="vpsRootDetailKicker">review-only plan</div>
+      </div>
+      <div class="truth-chip" id="vpsRootDetailStatus">waiting for plan</div>
+    </div>
+    <div class="vps-root-detail-grid">
+      <div class="vps-root-detail-summary" id="vpsRootSummaryTiles">
+        <div class="empty-panel">Waiting for VPS root plan...</div>
+      </div>
+      <div class="vps-root-step-list" id="vpsRootSteps">
+        <div class="empty-panel">Review steps will appear here.</div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- Per-bot Alpaca live performance vs backtest target (added 2026-05-06) -->
 <div class="card" id="perBotAlpacaCard" style="margin-top:12px;display:none;">
@@ -943,6 +978,7 @@ function showOffline(clearDashboard = true) {
   if (opsProxySub) opsProxySub.textContent = '';
   const vpsRootSub = document.getElementById('vpsRootSub');
   if (vpsRootSub) vpsRootSub.textContent = '';
+  renderVpsRootDetails({});
 }
 
 function sourceLabel(source) {
@@ -1054,6 +1090,70 @@ function renderVpsRootReview(vpsRoot) {
     : `risk ${risk}; source deleted ${sourceDeleted}; submodules ${submoduleDrift}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
 }
 
+function focusVpsRootDetails() {
+  const el = document.getElementById('vpsRootDetailsWrap');
+  if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function renderVpsRootDetails(vpsRoot) {
+  const summaryEl = document.getElementById('vpsRootSummaryTiles');
+  const stepsEl = document.getElementById('vpsRootSteps');
+  const statusEl = document.getElementById('vpsRootDetailStatus');
+  const kickerEl = document.getElementById('vpsRootDetailKicker');
+  if (!summaryEl || !stepsEl || !statusEl || !kickerEl) return;
+
+  const payload = vpsRoot || {};
+  const status = String(payload.status || 'missing').toLowerCase();
+  const risk = String(payload.risk_level || 'unknown').toLowerCase();
+  const summary = payload.summary || {};
+  const counts = payload.counts || {};
+  const cleanupAllowed = payload.cleanup_allowed === true;
+  const steps = Array.isArray(payload.steps) ? payload.steps : [];
+
+  const statusText = status === 'missing'
+    ? 'Missing plan'
+    : cleanupAllowed
+      ? 'Cleanup allowed'
+      : 'Cleanup locked';
+  statusEl.textContent = statusText;
+  statusEl.className = 'truth-chip';
+  kickerEl.textContent = [payload.source || 'vps_root_reconciliation_plan', payload.plan_status || 'read-only'].filter(Boolean).join(' | ');
+
+  const metrics = [
+    ['Risk', risk],
+    ['Cleanup', cleanupAllowed ? 'allowed' : 'locked'],
+    ['Source deleted', finiteNumber(summary.source_or_governance_deleted) ?? 0],
+    ['Unknown deleted', finiteNumber(summary.unknown_deleted) ?? 0],
+    ['Submodule drift', finiteNumber(summary.submodule_drift ?? counts.submodule_drift) ?? 0],
+    ['Generated untracked', finiteNumber(summary.generated_untracked) ?? 0],
+    ['Status rows', finiteNumber(counts.status) ?? 0],
+    ['Review steps', steps.length]
+  ];
+  summaryEl.innerHTML = metrics.map(([label, value]) => `
+    <div class="vps-root-metric">
+      <strong>${esc(value)}</strong>
+      <span>${esc(label)}</span>
+    </div>
+  `).join('');
+
+  if (!steps.length) {
+    stepsEl.innerHTML = '<div class="empty-panel">No reconciliation steps found. Run the VPS root inventory before any cleanup.</div>';
+    return;
+  }
+
+  stepsEl.innerHTML = steps.map((step, idx) => {
+    const evidence = Array.isArray(step.evidence) ? step.evidence.slice(0, 3).join(' | ') : '';
+    return `<div class="vps-root-step">
+      <div class="vps-root-step-top">
+        <strong>${esc(step.title || step.id || 'Review step ' + (idx + 1))}</strong>
+        <span>${esc(step.decision || step.risk || 'review')}</span>
+      </div>
+      <div class="vps-root-action">${esc(step.action || 'No action text supplied by the reconciliation plan.')}</div>
+      ${evidence ? `<div class="vps-root-evidence">${esc(evidence)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, dataSource) {
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
@@ -1111,7 +1211,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl);
   renderContributionGraph(bots, liveBroker);
   renderAllocationPillsAndSections(bots, liveBroker);
-  renderVpsRootReview(vpsRoot || d.vps_root_reconciliation || {});
+  const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
+  renderVpsRootReview(vpsRootPlan);
+  renderVpsRootDetails(vpsRootPlan);
 
   // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
   // a real lifetime field, show it; otherwise mark the card as unavailable

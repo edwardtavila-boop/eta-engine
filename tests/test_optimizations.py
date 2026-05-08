@@ -366,9 +366,16 @@ class TestStatusPage:
         assert "VPS Root Review" in html
         assert "vpsRootStatus" in html
         assert "vpsRootSub" in html
+        assert "vpsRootDetailsWrap" in html
+        assert "vpsRootSteps" in html
         assert "/api/vps/root-reconciliation" in html
         assert "renderVpsRootReview" in html
+        assert "renderVpsRootDetails" in html
+        assert "focusVpsRootDetails" in html
+        assert "scrollIntoView" in html
         assert "source_or_governance_deleted" in html
+        assert "generated_untracked" in html
+        assert "steps.length" in html
         assert "cleanupAllowed" in html
         assert "'locked'" in html
 
