@@ -99,7 +99,7 @@
       "broker_backup": "tastytrade",
       "broker_backups": ["tastytrade"],
       "broker_dormant": ["tradovate"],
-      "broker_dormant_reason": "funding-blocked (operator mandate 2026-04-24); tradovate comes back online when funding clears",
+      "broker_dormant_reason": "default dormant; operator approved controlled prop-fund testing on 2026-05-08 via ETA_TRADOVATE_ENABLED=1 plus prop account credentials",
       "data_primary": "databento",
       "data_backup": "ninjatrader",
       "storage": "arcticdb",

@@ -60,6 +60,11 @@ logger = logging.getLogger(__name__)
 
 Urgency = Literal["low", "normal", "high"]
 
+
+def _env_flag(name: str) -> bool:
+    """Return True for explicit operator enablement env flags."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "y"}
+
 _CRYPTO_NATIVES = {"ETHUSDT", "BTCUSDT", "SOLUSDT", "XRPUSDT"}
 _FUTURES_ROOTS = ("MNQ", "NQ", "ES", "MES", "RTY")
 
@@ -96,7 +101,9 @@ NON_FCM_VENUES: frozenset[str] = frozenset({
 #: explicitly select a dormant broker get transparently routed to the
 #: default active venue with a loud warning. Flip to ``frozenset()`` to
 #: re-enable the full broker set.
-DORMANT_BROKERS: frozenset[str] = frozenset({"tradovate"})
+TRADOVATE_ENABLED_ENV = "ETA_TRADOVATE_ENABLED"
+TRADOVATE_ENABLED: bool = _env_flag(TRADOVATE_ENABLED_ENV)
+DORMANT_BROKERS: frozenset[str] = frozenset() if TRADOVATE_ENABLED else frozenset({"tradovate"})
 
 #: Preferred futures venue when the caller does not pin one. IBKR is
 #: the most robust adapter in the active set.
@@ -277,6 +284,8 @@ class SmartRouter:
                 return self.ibkr
             if preferred == "tastytrade":
                 return self.tastytrade
+            if preferred == "tradovate":
+                return self.tradovate
             msg = f"resolved futures venue has no active adapter: {preferred!r}"
             raise RuntimeError(msg)
         if _is_crypto(symbol):

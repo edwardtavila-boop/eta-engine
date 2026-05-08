@@ -58,6 +58,12 @@ def test_connect_name_blocks_dormant_tradovate_before_adapter_probe() -> None:
     assert "DORMANT" in report.error
 
 
+def test_tradovate_builder_uses_account_id_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRADOVATE_ACCOUNT_ID", "7654321")
+    venue = connection_mod._build_tradovate(demo=True)
+    assert venue.account_id == 7654321
+
+
 def test_connect_name_blocks_us_person_non_fcm_venues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

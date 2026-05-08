@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -36,6 +37,17 @@ _HTTP_RETRY = 1  # one retry on transient network error
 
 _SIDE_MAP = {Side.BUY: "Buy", Side.SELL: "Sell"}
 _OTYPE_MAP = {OrderType.MARKET: "Market", OrderType.LIMIT: "Limit", OrderType.POST_ONLY: "Limit"}
+
+
+def _coerce_account_id(value: int | str | None) -> int:
+    """Tradovate requires an integer accountId; missing/non-numeric stays safe at 0."""
+    if value is None:
+        return 0
+    try:
+        return int(str(value).strip() or "0")
+    except ValueError:
+        logger.warning("tradovate account_id is non-numeric; using accountId=0")
+        return 0
 
 
 def _third_friday(year: int, month: int) -> datetime:
@@ -70,10 +82,14 @@ class TradovateVenue(VenueBase):
         app_version: str = "1.0",
         cid: str = "",
         app_secret: str = "",
+        account_id: int | str | None = None,
     ) -> None:
         super().__init__(api_key, api_secret)
         self.demo: bool = demo
         self.app_id, self.app_version, self.cid = app_id, app_version, cid
+        self.account_id: int = _coerce_account_id(
+            account_id if account_id is not None else os.environ.get("TRADOVATE_ACCOUNT_ID"),
+        )
         # Tradovate's OAuth2 /auth/accessTokenRequest wants TWO secrets:
         # `password` = user's Tradovate account password (api_secret here),
         # `sec`      = API-app secret issued when the app's cid was registered.
@@ -239,12 +255,13 @@ class TradovateVenue(VenueBase):
         m = quarterly[0]
         return f"{root}{_QUARTERLY_MONTHS[m]}{(now.year + 1) % 10}"
 
-    def _build_place_payload(self, request: OrderRequest, account_id: int = 0) -> dict[str, Any]:
+    def _build_place_payload(self, request: OrderRequest, account_id: int | None = None) -> dict[str, Any]:
         symbol = request.symbol
         if symbol.upper() in {"MNQ", "NQ", "ES", "MES", "RTY"}:
             symbol = self.resolve_contract(symbol)
+        resolved_account_id = self.account_id if account_id is None else account_id
         payload: dict[str, Any] = {
-            "accountId": account_id,
+            "accountId": resolved_account_id,
             "action": _SIDE_MAP[request.side],
             "symbol": symbol,
             "orderQty": int(request.qty),

@@ -10,6 +10,7 @@ must be substituted with the active default and a warning logged.
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 from pathlib import Path
@@ -48,6 +49,21 @@ class TestBrokerPolicyConstants:
     def test_active_futures_venues_contains_ibkr_and_tastytrade(self) -> None:
         assert "ibkr" in ACTIVE_FUTURES_VENUES
         assert "tastytrade" in ACTIVE_FUTURES_VENUES
+
+    def test_operator_can_explicitly_enable_tradovate_for_prop_testing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("ETA_TRADOVATE_ENABLED", "1")
+        reloaded = importlib.reload(router_mod)
+        try:
+            assert "tradovate" not in reloaded.DORMANT_BROKERS
+            assert "tradovate" in reloaded.ACTIVE_FUTURES_VENUES
+            router = reloaded.SmartRouter(preferred_futures_venue="tradovate")
+            assert router.choose_venue("MNQ", 1).name == "tradovate"
+        finally:
+            monkeypatch.delenv("ETA_TRADOVATE_ENABLED", raising=False)
+            importlib.reload(router_mod)
 
 
 # --- SmartRouter default behavior -------------------------------------------

@@ -247,6 +247,26 @@ async def test_place_order_http_success_returns_open_with_orderid(
 
 
 @pytest.mark.asyncio
+async def test_place_order_uses_configured_account_id(fake_session: _FakeSession) -> None:
+    venue = TradovateVenue(
+        api_key="user@example.com",
+        api_secret="s3cret",
+        demo=True,
+        cid="12345",
+        account_id="987654",
+    )
+    venue._session = fake_session
+    fake_session.enqueue(200, {"accessToken": "T", "expirationTime": "2099-01-01T00:00:00Z"})
+    fake_session.enqueue(200, {"orderId": 4001})
+
+    req = OrderRequest(symbol="MNQ", side=Side.BUY, qty=1)
+    await venue.place_order(req)
+
+    body = json.loads(fake_session.calls[1]["data"])
+    assert body["accountId"] == 987654
+
+
+@pytest.mark.asyncio
 async def test_place_order_http_rejection_returns_rejected(
     creds_venue: TradovateVenue,
     fake_session: _FakeSession,
@@ -416,6 +436,29 @@ async def test_bracket_order_http_success_returns_three_legs(
     assert body["entry"]["action"] == "Buy"
     assert body["brackets"][0]["orderType"] == "Stop"
     assert body["brackets"][1]["orderType"] == "Limit"
+
+
+@pytest.mark.asyncio
+async def test_bracket_order_uses_configured_account_id(fake_session: _FakeSession) -> None:
+    venue = TradovateVenue(
+        api_key="user@example.com",
+        api_secret="s3cret",
+        demo=True,
+        cid="12345",
+        account_id=24680,
+    )
+    venue._session = fake_session
+    from datetime import UTC, datetime, timedelta
+
+    venue._access_token = "T"
+    venue._expiration = datetime.now(UTC) + timedelta(hours=1)
+    fake_session.enqueue(200, {"orderId": 5001, "clOrdId": "oso-xyz"})
+
+    req = OrderRequest(symbol="MNQ", side=Side.BUY, qty=1, order_type=OrderType.MARKET)
+    await venue.bracket_order(req, stop_price=20_000.0, target_price=20_100.0)
+
+    body = json.loads(fake_session.calls[-1]["data"])
+    assert body["entry"]["accountId"] == 24680
 
 
 @pytest.mark.asyncio

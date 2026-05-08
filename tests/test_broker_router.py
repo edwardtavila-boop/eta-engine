@@ -1962,3 +1962,85 @@ class TestLifecycleRoutingConfig:
         assert smart_router.choose_venue_calls == [], (
             "choose_venue should be bypassed when routing config + venue map cover the route"
         )
+
+    def test_dormant_tradovate_pin_fails_before_venue_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A config pin must not bypass the global Tradovate dormancy gate."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir, bot_id="volume_profile_mnq",
+            signal_id="sig-dormant-tradovate", symbol="MNQ",
+        )
+
+        tradovate_venue = _FakeVenue()
+        tradovate_venue.name = "tradovate"
+        smart_router = _FakeMultiVenueRouter({"tradovate": tradovate_venue})
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"MNQ": {"tradovate": "MNQ"}},
+            per_bot={"volume_profile_mnq": {"venue": "tradovate"}},
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir, state_root=state_root,
+            smart_router=smart_router, journal=journal,
+            gate_chain=gates, routing_config=cfg,
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        assert tradovate_venue.calls == []
+        failed = _find_under(state_root / "failed", path.name)
+        assert failed is not None
+        assert any("dormant" in str(i).lower() for i in journal.intents())
+
+    def test_prop_account_alias_builds_prefixed_tradovate_venue(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        for key, value in {
+            "BLUSKY_TRADOVATE_ACCOUNT_ID": "1234567",
+            "BLUSKY_TRADOVATE_USERNAME": "blusky@example.com",
+            "BLUSKY_TRADOVATE_PASSWORD": "pw",
+            "BLUSKY_TRADOVATE_APP_ID": "EtaEngine",
+            "BLUSKY_TRADOVATE_APP_SECRET": "app-secret",
+            "BLUSKY_TRADOVATE_CID": "999",
+        }.items():
+            monkeypatch.setenv(key, value)
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"MNQ": {"tradovate": "MNQ"}},
+            per_bot={"volume_profile_mnq": {"venue": "tradovate", "account_alias": "blusky_50k"}},
+            prop_accounts={
+                "blusky_50k": {
+                    "venue": "tradovate",
+                    "env": "demo",
+                    "account_id_env": "BLUSKY_TRADOVATE_ACCOUNT_ID",
+                    "creds_env_prefix": "BLUSKY_",
+                },
+            },
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=_FakeMultiVenueRouter({}),
+            journal=_FakeJournal(),
+            gate_chain=_allow_gate_chain(),
+            routing_config=cfg,
+        )
+
+        account = cfg.prop_account_for("volume_profile_mnq")
+        assert account is not None
+        venue = router._resolve_prop_account_venue(account)
+
+        assert venue is not None
+        assert venue.name == "tradovate"
+        assert venue.account_id == 1234567
+        assert venue.api_key == "blusky@example.com"
+        assert venue.cid == "999"

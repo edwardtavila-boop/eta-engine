@@ -73,7 +73,8 @@ from eta_engine.venues.base import (  # noqa: E402
     Side,
     VenueBase,
 )
-from eta_engine.venues.router import SmartRouter  # noqa: E402
+from eta_engine.venues.router import DORMANT_BROKERS, SmartRouter  # noqa: E402
+from eta_engine.venues.tradovate import TradovateVenue  # noqa: E402
 
 logger = logging.getLogger("eta_engine.broker_router")
 
@@ -138,6 +139,10 @@ def _gate_bootstrap_enabled() -> bool:
 def _readiness_enforced() -> bool:
     """True iff broker routing must honor the strategy-readiness matrix."""
     return os.environ.get(_READINESS_ENFORCE_ENV, "").strip() == "1"
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
 def _load_build_default_chain() -> Callable[..., object]:
@@ -334,6 +339,10 @@ class RoutingConfig:
     #: Per-asset-class failover chains parsed from v2 ``failover`` block.
     #: Example: ``{"crypto": ("alpaca", "tastytrade")}``.
     failover_chains: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: Prop-fund account aliases for controlled Tradovate testing.
+    #: DORMANT by default; aliases are inert unless ETA_TRADOVATE_ENABLED=1.
+    #: Example: ``{"blusky_50k": {"venue": "tradovate", ...}}``.
+    prop_accounts: dict[str, dict[str, str]] = field(default_factory=dict)
     #: Detected schema version (1 or 2). v1 inputs surface as 1 even when
     #: the operator omits the ``version`` key — defensive default.
     version: int = 1
@@ -433,12 +442,31 @@ class RoutingConfig:
                 v.strip().lower() for v in chain if v.strip()
             )
 
+        prop_accounts_raw = raw.get("prop_accounts") or {}
+        if not isinstance(prop_accounts_raw, dict):
+            raise ValueError("routing config 'prop_accounts' must be a mapping")
+        prop_accounts: dict[str, dict[str, str]] = {}
+        for alias, mapping in prop_accounts_raw.items():
+            if not isinstance(mapping, dict):
+                raise ValueError(f"prop_accounts[{alias!r}] must be a mapping")
+            clean_alias = str(alias).strip().lower()
+            clean_mapping = {
+                str(k).strip(): str(v).strip()
+                for k, v in mapping.items()
+                if k is not None and v is not None
+            }
+            for lower_key in ("venue", "env", "bot_policy"):
+                if lower_key in clean_mapping:
+                    clean_mapping[lower_key] = clean_mapping[lower_key].lower()
+            prop_accounts[clean_alias] = clean_mapping
+
         return cls(
             default_venue=default_venue,
             symbol_overrides=symbol_overrides,
             per_bot=per_bot,
             asset_class_defaults=asset_class_defaults,
             failover_chains=failover_chains,
+            prop_accounts=prop_accounts,
             version=version,
         )
 
@@ -532,6 +560,23 @@ class RoutingConfig:
                 continue
             ordered.append(v)
         return tuple(ordered)
+
+    def prop_account_for(self, bot_id: str) -> dict[str, str] | None:
+        """Return the configured prop account for a bot, if any.
+
+        The returned mapping includes an ``alias`` key so downstream code
+        can journal the human-readable account target without reverse
+        lookups. Unknown aliases fail loud because a misspelled prop
+        account must not silently route to the default broker.
+        """
+        bot_cfg = self.per_bot.get(bot_id) or {}
+        alias = (bot_cfg.get("account_alias") or "").strip().lower()
+        if not alias:
+            return None
+        account = self.prop_accounts.get(alias)
+        if account is None:
+            raise ValueError(f"unknown prop account alias for bot={bot_id!r}: {alias!r}")
+        return {"alias": alias, **account}
 
     def map_symbol(self, raw_symbol: str, venue: str) -> str:
         """Translate raw -> venue-specific symbol via ``symbol_overrides``.
@@ -838,6 +883,7 @@ class BrokerRouter:
         self.routing_config = (
             routing_config if routing_config is not None else RoutingConfig.load()
         )
+        self._prop_venue_cache: dict[str, VenueBase] = {}
         self.order_hold_path = Path(order_hold_path) if order_hold_path else default_hold_path()
 
         self.processing_dir = self.state_root / "processing"
@@ -1150,13 +1196,24 @@ class BrokerRouter:
             venue_symbol = self.routing_config.map_symbol(
                 order.symbol, target_venue_name,
             )
+            prop_account = self.routing_config.prop_account_for(order.bot_id)
         except ValueError as exc:
             self._handle_routing_config_unsupported(order, target, str(exc))
+            return
+        if target_venue_name in DORMANT_BROKERS:
+            self._handle_dormant_broker(order, target, target_venue_name)
             return
 
         # 5. Pick the live venue adapter by name; fall back to choose_venue
         # for stand-ins that don't expose a name-based lookup.
-        venue = self._resolve_venue_adapter(target_venue_name, order)
+        if prop_account is not None:
+            try:
+                venue = self._resolve_prop_account_venue(prop_account)
+            except ValueError as exc:
+                self._handle_routing_error(order, target, str(exc))
+                return
+        else:
+            venue = self._resolve_venue_adapter(target_venue_name, order)
         if venue is None:
             try:
                 venue = self.smart_router.choose_venue(
@@ -1298,6 +1355,56 @@ class BrokerRouter:
             return venue
         return None
 
+    def _resolve_prop_account_venue(self, account: dict[str, str]) -> VenueBase | None:
+        """Build/cache an account-scoped venue after DORMANT gate clearance."""
+        alias = (account.get("alias") or "").strip().lower()
+        venue_name = (account.get("venue") or "").strip().lower()
+        if not alias:
+            raise ValueError("prop account is missing alias")
+        if venue_name != "tradovate":
+            raise ValueError(f"unsupported prop account venue for {alias}: {venue_name!r}")
+        cached = self._prop_venue_cache.get(alias)
+        if cached is not None:
+            return cached
+
+        account_id_env = (account.get("account_id_env") or "").strip()
+        if not account_id_env:
+            raise ValueError(f"prop account {alias} missing account_id_env")
+        account_id = (os.environ.get(account_id_env) or "").strip()
+        if not account_id:
+            raise ValueError(f"prop account {alias} missing account id env {account_id_env}")
+
+        prefix = (account.get("creds_env_prefix") or "").strip()
+
+        def _cred(name: str) -> str:
+            return (os.environ.get(f"{prefix}{name}") or "").strip()
+
+        required = (
+            "TRADOVATE_USERNAME",
+            "TRADOVATE_PASSWORD",
+            "TRADOVATE_APP_ID",
+            "TRADOVATE_APP_SECRET",
+            "TRADOVATE_CID",
+        )
+        # DORMANT context: never fall back to global credentials for prop aliases.
+        missing = [name for name in required if not _cred(name)]
+        if missing:
+            raise ValueError(f"prop account {alias} missing Tradovate credential envs: {', '.join(missing)}")
+
+        env_name = (account.get("env") or "demo").strip().lower()
+        demo = env_name != "live"
+        venue = TradovateVenue(
+            api_key=_cred("TRADOVATE_USERNAME"),
+            api_secret=_cred("TRADOVATE_PASSWORD"),
+            demo=demo,
+            app_id=_cred("TRADOVATE_APP_ID") or "EtaEngine",
+            cid=_cred("TRADOVATE_CID"),
+            app_secret=_cred("TRADOVATE_APP_SECRET"),
+            account_id=account_id,
+        )
+        self._prop_venue_cache[alias] = venue
+        return venue
+
     def _handle_routing_config_unsupported(
         self, order: PendingOrder, target: Path, reason: str,
     ) -> None:
@@ -1323,6 +1430,32 @@ class BrokerRouter:
                 "reason": "routing_config_unsupported_pair",
                 "detail": reason, "order": order.to_dict(),
             },
+        )
+
+    def _handle_dormant_broker(
+        self,
+        order: PendingOrder,
+        target: Path,
+        venue_name: str,
+    ) -> None:
+        """Fail closed when routing config points at a dormant broker."""
+        reason = (
+            f"broker_dormancy: venue={venue_name!r} is dormant; set "
+            "ETA_TRADOVATE_ENABLED=1 only for approved prop-fund testing"
+        )
+        self._counts["failed"] += 1
+        self._record_event(target.name, "broker_dormant", reason)
+        if not self.dry_run:
+            with contextlib.suppress(OSError):
+                self._atomic_move(target, self.failed_dir / target.name)
+            self._clear_retry_meta(target)
+        self._safe_journal(
+            actor=Actor.STRATEGY_ROUTER,
+            intent="pending_order_broker_dormant",
+            rationale=reason,
+            outcome=Outcome.FAILED,
+            links=[f"signal:{order.signal_id}", f"bot:{order.bot_id}", f"venue:{venue_name}"],
+            metadata={"reason": "broker_dormant", "detail": reason, "order": order.to_dict()},
         )
 
     def _handle_processing_error(self, target: Path, reason: str) -> None:

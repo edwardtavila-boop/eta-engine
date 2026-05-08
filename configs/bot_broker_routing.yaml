@@ -60,6 +60,27 @@ failover:
   # Futures: ibkr primary, tasty as the secondary FCM.
   futures: [ibkr, tastytrade]
 
+# Approved 2026-05-08 prop-test account aliases. These do not route
+# anything by themselves; a bot must explicitly set `venue: tradovate`
+# and `account_alias: <alias>`, and the live process must start with
+# ETA_TRADOVATE_ENABLED=1. Keep env=demo until Tradovate demo/sim smoke
+# passes for the specific prop account.
+prop_accounts:
+  blusky_50k:
+    venue: tradovate
+    env: demo
+    account_id_env: BLUSKY_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: BLUSKY_
+    bot_policy: explicit_allow
+    policy_source: https://blog.blusky.pro/blusky-blog/attention-prop-firm-traders
+  mffu_50k:
+    venue: tradovate
+    env: demo
+    account_id_env: MFFU_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: MFFU_
+    bot_policy: automation_allowed_with_limits
+    policy_source: https://help.myfundedfutures.com/en/articles/8444599-fair-play-and-prohibited-trading-practices
+
 default:
   venue: ibkr
   symbol_overrides:
@@ -74,8 +95,8 @@ default:
     AVAX: { alpaca: "AVAX/USD" }
     LINK: { alpaca: "LINK/USD" }
     DOGE: { tasty: DOGEUSDT, alpaca: "DOGE/USD" }
-    MNQ1: { ibkr: MNQ }
-    MNQ:  { ibkr: MNQ }
+    MNQ1: { ibkr: MNQ, tradovate: MNQ }
+    MNQ:  { ibkr: MNQ, tradovate: MNQ }
     ES:   { ibkr: ES }
     NQ:   { ibkr: NQ }
     RTY:  { ibkr: RTY }
@@ -111,6 +132,11 @@ bots:
   # account is funded + crypto-enabled at the broker.
   #
   # Futures bots stay on ibkr (DUQ319869 paper).
+  #
+  # Prop-test activation example (leave commented until the prop account
+  # credentials are present and ETA_TRADOVATE_ENABLED=1 is set in the
+  # dedicated prop-test process):
+  # volume_profile_mnq: { venue: tradovate, account_alias: blusky_50k }
 
   # ── Crypto bots (Alpaca paper, account PA3HBV3PNWDN) ───────────────
   btc_optimized:        { venue: alpaca }

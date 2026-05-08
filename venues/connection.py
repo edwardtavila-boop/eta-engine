@@ -31,13 +31,10 @@ import json
 import logging
 import os
 import socket
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
-
-_LOG = logging.getLogger(__name__)
 
 from eta_engine.core.secrets import (
     BYBIT_API_KEY,
@@ -67,7 +64,9 @@ from eta_engine.venues.tastytrade import TastytradeVenue
 from eta_engine.venues.tradovate import TradovateVenue
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Awaitable, Callable, Iterable
+
+_LOG = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = ROOT / "config.json"
@@ -192,6 +191,7 @@ def _build_tradovate(*, demo: bool) -> TradovateVenue:
         app_id=_secret(TRADOVATE_APP_ID) or "EtaEngine",
         cid=_secret(TRADOVATE_CID),
         app_secret=_secret(TRADOVATE_APP_SECRET),
+        account_id=os.environ.get("TRADOVATE_ACCOUNT_ID"),
     )
 
 
@@ -459,7 +459,7 @@ _IBG_DEFAULT_PORT = 4002
 _IBG_PROBE_TIMEOUT_S = 2.0
 
 
-class DeterministicBrokerReject(Exception):
+class DeterministicBrokerReject(Exception):  # noqa: N818
     """Raised by venue adapters to opt OUT of transient retries.
 
     Use this for rejects that will not succeed on retry: insufficient
@@ -538,7 +538,7 @@ def with_transient_retry(
 
     def _decorate(fn: Callable[..., Awaitable[_T]]) -> Callable[..., Awaitable[_T]]:
         @functools.wraps(fn)
-        async def _wrapped(*args: Any, **kwargs: Any) -> _T:
+        async def _wrapped(*args: object, **kwargs: object) -> _T:
             last_exc: BaseException | None = None
             for attempt in range(1, max(1, int(attempts)) + 1):
                 try:
@@ -630,7 +630,7 @@ class IbgConnectionMonitor:
     def __init__(
         self,
         *,
-        venue: Any | None = None,
+        venue: object | None = None,
         host: str = _IBG_DEFAULT_HOST,
         port: int = _IBG_DEFAULT_PORT,
         probe_timeout_s: float = _IBG_PROBE_TIMEOUT_S,

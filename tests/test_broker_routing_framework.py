@@ -50,6 +50,36 @@ bots:
   mnq_v7:        { venue: ibkr }
 """
 
+_PROP_TEST_YAML = """\
+version: 2
+
+defaults:
+  futures: ibkr
+  crypto: alpaca
+
+failover:
+  futures: [ibkr, tastytrade]
+
+default:
+  venue: ibkr
+  symbol_overrides:
+    MNQ:  { ibkr: MNQ, tradovate: MNQ }
+
+prop_accounts:
+  blusky_50k:
+    venue: tradovate
+    env: demo
+    account_id_env: BLUSKY_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: BLUSKY_
+    bot_policy: explicit_allow
+    policy_source: https://blog.blusky.pro/blusky-blog/attention-prop-firm-traders
+
+bots:
+  volume_profile_mnq:
+    venue: tradovate
+    account_alias: blusky_50k
+"""
+
 _V2_YAML = """\
 version: 2
 
@@ -110,6 +140,18 @@ class TestYamlSchema:
         # v1 fields still present (dual-schema).
         assert cfg.default_venue == "ibkr"
         assert cfg.per_bot["btc_optimized"]["venue"] == "alpaca"
+
+    def test_v2_yaml_loads_prop_account_aliases_for_tradovate_testing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        cfg = broker_router.RoutingConfig.load(_write(tmp_path, _PROP_TEST_YAML))
+        assert cfg.prop_accounts["blusky_50k"]["venue"] == "tradovate"
+        assert cfg.prop_accounts["blusky_50k"]["account_id_env"] == "BLUSKY_TRADOVATE_ACCOUNT_ID"
+        account = cfg.prop_account_for("volume_profile_mnq")
+        assert account is not None
+        assert account["alias"] == "blusky_50k"
+        assert account["creds_env_prefix"] == "BLUSKY_"
 
 
 # ---------------------------------------------------------------------------
