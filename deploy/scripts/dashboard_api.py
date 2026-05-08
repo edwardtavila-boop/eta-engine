@@ -2861,7 +2861,6 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     heartbeat_at = str(sup.get("heartbeat_ts") or sup.get("updated_at") or "")
     signal_at = str(sup.get("last_signal_ts") or sup.get("last_signal_at") or "")
     heartbeat_age_s = _age_seconds(heartbeat_at)
-    last_signal_age_s = _age_seconds(signal_at)
     open_pos_raw = sup.get("open_position") or {}
     open_pos = open_pos_raw if isinstance(open_pos_raw, dict) else {}
     position_opened_at = str(
@@ -2870,6 +2869,9 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         or open_pos.get("ts")
         or "",
     )
+    if not signal_at and position_opened_at:
+        signal_at = position_opened_at
+    last_signal_age_s = _age_seconds(signal_at)
     bracket_stop = _float_value(
         open_pos.get("bracket_stop") or open_pos.get("stop_price"),
     )

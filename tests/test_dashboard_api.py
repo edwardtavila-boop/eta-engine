@@ -1619,6 +1619,8 @@ class TestDashboardAPI:
         assert btc["position_state"]["target_exit_visibility"]["status"] == "watching"
         assert btc["position_state"]["target_exit_visibility"]["owner"] == "supervisor"
         assert btc["open_positions"] == 1
+        assert btc["last_signal_ts"] == "2026-04-28T11:58:30+00:00"
+        assert btc["last_activity_type"] == "signal"
         assert btc["bracket_stop"] == 66200.0
         assert btc["bracket_target"] == 68400.0
         assert btc["broker_bracket"] is False
