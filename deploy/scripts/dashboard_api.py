@@ -519,6 +519,26 @@ def _dashboard_diagnostics_payload() -> dict:
         or readiness_lane_counts.get("blocked_data")
         or 0
     )
+    transition_launch_blocked_raw = paper_live_transition.get("operator_queue_launch_blocked_count")
+    if transition_launch_blocked_raw is None:
+        transition_launch_blocked_raw = operator_queue.get("launch_blocked_count")
+    try:
+        transition_launch_blocked = int(transition_launch_blocked_raw or 0)
+    except (TypeError, ValueError):
+        transition_launch_blocked = 0
+    transition_first_launch_blocker = ""
+    transition_first_launch_next_action = ""
+    if transition_launch_blocked > 0:
+        transition_first_launch_blocker = str(
+            paper_live_transition.get("operator_queue_first_launch_blocker_op_id")
+            or paper_live_transition.get("operator_queue_first_blocker_op_id")
+            or ""
+        )
+        transition_first_launch_next_action = str(
+            paper_live_transition.get("operator_queue_first_launch_next_action")
+            or paper_live_transition.get("operator_queue_first_next_action")
+            or ""
+        )
 
     return {
         **_dashboard_contract(),
@@ -598,16 +618,8 @@ def _dashboard_diagnostics_payload() -> dict:
             "status": str(paper_live_transition.get("status") or "unknown"),
             "critical_ready": bool(paper_live_transition.get("critical_ready")),
             "paper_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
-            "first_launch_blocker_op_id": str(
-                paper_live_transition.get("operator_queue_first_launch_blocker_op_id")
-                or paper_live_transition.get("operator_queue_first_blocker_op_id")
-                or ""
-            ),
-            "first_launch_next_action": str(
-                paper_live_transition.get("operator_queue_first_launch_next_action")
-                or paper_live_transition.get("operator_queue_first_next_action")
-                or ""
-            ),
+            "first_launch_blocker_op_id": transition_first_launch_blocker,
+            "first_launch_next_action": transition_first_launch_next_action,
             "first_failed_gate": {
                 "name": str(first_failed_gate.get("name") or ""),
                 "detail": str(first_failed_gate.get("detail") or ""),

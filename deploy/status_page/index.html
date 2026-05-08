@@ -1742,10 +1742,17 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const paperStatus = String(paperLive?.status || 'unknown');
   const paperReady = !!paperLive?.critical_ready;
   const firstPaperGate = Array.isArray(paperLive?.gates) ? paperLive.gates.find((gate) => gate && gate.passed === false) : null;
-  const paperBlocker = paperLive?.operator_queue_first_launch_blocker_op_id || paperLive?.operator_queue_first_blocker_op_id || '';
-  const paperAction = paperLive?.operator_queue_first_launch_next_action || paperLive?.operator_queue_first_next_action || '';
+  const paperTransitionLaunchBlocked = Number(
+    paperLive?.operator_queue_launch_blocked_count ?? (paperLive?.operator_queue_first_launch_blocker_op_id ? 1 : 0)
+  );
+  const paperBlocker = paperTransitionLaunchBlocked > 0
+    ? (paperLive?.operator_queue_first_launch_blocker_op_id || paperLive?.operator_queue_first_blocker_op_id || '')
+    : '';
+  const paperAction = paperTransitionLaunchBlocked > 0
+    ? (paperLive?.operator_queue_first_launch_next_action || paperLive?.operator_queue_first_next_action || '')
+    : '';
   const paperReadyBots = Number(paperLive?.paper_ready_bots || 0);
-  const paperLaunchBlocked = paperStatus === 'blocked' || !!paperBlocker || opLaunchBlocked > 0;
+  const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0;
   let paperLabel = 'Unknown';
   let paperClass = 'yellow';
   if (paperLaunchBlocked) {

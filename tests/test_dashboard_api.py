@@ -881,6 +881,59 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
         assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "op19_gateway_runtime"
 
+    def test_dashboard_diagnostics_keeps_advisory_queue_separate_from_paper_launch(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        from eta_engine.scripts import jarvis_status
+
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "error": None,
+                "summary": {"BLOCKED": 1, "OBSERVED": 11, "UNKNOWN": 0},
+                "launch_blocked_count": 0,
+                "first_blocker_op_id": "OP-16",
+                "first_next_action": "continue research soak",
+                "top_blockers": [{"op_id": "OP-16", "title": "research candidate"}],
+                "top_launch_blockers": [],
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-08T17:35:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 12,
+                    "operator_queue_blocked_count": 1,
+                    "operator_queue_launch_blocked_count": 0,
+                    "operator_queue_first_blocker_op_id": "OP-16",
+                    "operator_queue_first_next_action": "continue research soak",
+                    "operator_queue_first_launch_blocker_op_id": None,
+                    "operator_queue_first_launch_next_action": None,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["operator_queue"]["blocked"] == 1
+        assert payload["operator_queue"]["launch_blocked"] == 0
+        assert payload["operator_queue"]["top_blocker_op_id"] == "OP-16"
+        assert payload["operator_queue"]["top_launch_blocker_op_id"] == ""
+        assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live_transition"]["critical_ready"] is True
+        assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == ""
+        assert payload["paper_live_transition"]["first_launch_next_action"] == ""
+
     def test_dashboard_diagnostics_includes_proxy_watchdog_rollup(
         self,
         app_client,

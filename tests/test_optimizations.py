@@ -240,6 +240,7 @@ class TestStatusPage:
         assert "open/no-fill" in html
         assert "actualRouterFills" in html
         assert "paperLaunchBlocked" in html
+        assert "paperTransitionLaunchBlocked > 0" in html
         assert "liveModes" in html
         assert "historical_reasons" in html or "history:" in html
 
