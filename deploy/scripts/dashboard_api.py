@@ -2737,6 +2737,78 @@ def jarvis_kaizen_latest() -> dict:
     }
 
 
+def _pct_distance(distance: float | None, mark_price: float | None) -> float | None:
+    if distance is None or mark_price in (None, 0):
+        return None
+    return round((distance / abs(mark_price)) * 100.0, 4)
+
+
+def _supervisor_exit_visibility(
+    *,
+    side: str,
+    mark_price: float | None,
+    bracket_stop: float | None,
+    bracket_target: float | None,
+    last_bar_high: float | None,
+    last_bar_low: float | None,
+    broker_bracket: bool,
+) -> dict:
+    side_upper = side.upper()
+    is_short = side_upper in {"SELL", "SHORT"}
+    target_distance = None
+    stop_distance = None
+    if mark_price is not None:
+        if bracket_target is not None:
+            target_distance = round(
+                mark_price - bracket_target if is_short else bracket_target - mark_price,
+                8,
+            )
+        if bracket_stop is not None:
+            stop_distance = round(
+                bracket_stop - mark_price if is_short else mark_price - bracket_stop,
+                8,
+            )
+
+    target_touched = False
+    if bracket_target is not None:
+        target_touched = (
+            last_bar_low is not None and last_bar_low <= bracket_target
+            if is_short
+            else last_bar_high is not None and last_bar_high >= bracket_target
+        )
+    stop_touched = False
+    if bracket_stop is not None:
+        stop_touched = (
+            last_bar_high is not None and last_bar_high >= bracket_stop
+            if is_short
+            else last_bar_low is not None and last_bar_low <= bracket_stop
+        )
+
+    if target_touched:
+        status = "target_touched_still_open"
+    elif stop_touched:
+        status = "stop_touched_still_open"
+    elif broker_bracket:
+        status = "broker_bracket_watch"
+    elif mark_price is None:
+        status = "mark_missing"
+    elif bracket_stop is None or bracket_target is None:
+        status = "bracket_missing"
+    else:
+        status = "watching"
+
+    return {
+        "status": status,
+        "owner": "broker" if broker_bracket else "supervisor",
+        "target_distance_points": target_distance,
+        "target_distance_pct": _pct_distance(target_distance, mark_price),
+        "stop_distance_points": stop_distance,
+        "stop_distance_pct": _pct_distance(stop_distance, mark_price),
+        "target_touched_latest_bar": target_touched,
+        "stop_touched_latest_bar": stop_touched,
+    }
+
+
 def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     """Convert a jarvis_supervisor_bot_accounts() row into /api/bot-fleet roster shape."""
     from datetime import UTC, datetime
@@ -2776,22 +2848,53 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     broker_bracket = bool(open_pos.get("broker_bracket"))
     bracket_src = str(open_pos.get("bracket_src") or open_pos.get("exit_src") or "")
     open_positions = 1 if open_pos else 0
-    position_state = {"state": "flat"}
+    side = str(open_pos.get("side") or "").upper()
+    qty = _float_value(open_pos.get("qty") or open_pos.get("quantity"))
+    entry_price = _float_value(open_pos.get("entry_price"))
+    mark_price = _float_value(open_pos.get("mark_price") or open_pos.get("last_price"))
+    last_bar_high = _float_value(_first_present(open_pos, ("last_bar_high", "bar_high", "high")))
+    if last_bar_high is None:
+        last_bar_high = _float_value(sup.get("last_bar_high"))
+    last_bar_low = _float_value(_first_present(open_pos, ("last_bar_low", "bar_low", "low")))
+    if last_bar_low is None:
+        last_bar_low = _float_value(sup.get("last_bar_low"))
+    last_bar_ts = (
+        open_pos.get("last_bar_ts")
+        or open_pos.get("mark_ts")
+        or sup.get("last_bar_ts")
+    )
+    target_exit_visibility = _supervisor_exit_visibility(
+        side=side,
+        mark_price=mark_price,
+        bracket_stop=bracket_stop,
+        bracket_target=bracket_target,
+        last_bar_high=last_bar_high,
+        last_bar_low=last_bar_low,
+        broker_bracket=broker_bracket,
+    ) if open_pos else {"status": "flat", "owner": "none"}
+    position_state = {"state": "flat", "open": False}
     if open_pos:
         position_state = {
             "state": "open",
-            "side": str(open_pos.get("side") or "").upper(),
-            "qty": _float_value(open_pos.get("qty") or open_pos.get("quantity")),
-            "entry_price": _float_value(open_pos.get("entry_price")),
-            "mark_price": _float_value(
-                open_pos.get("mark_price") or open_pos.get("last_price"),
-            ),
+            "open": True,
+            "side": side,
+            "qty": qty,
+            "entry_price": entry_price,
+            "mark_price": mark_price,
             "bracket_stop": bracket_stop,
             "bracket_target": bracket_target,
+            "target_distance_points": target_exit_visibility.get("target_distance_points"),
+            "target_distance_pct": target_exit_visibility.get("target_distance_pct"),
+            "stop_distance_points": target_exit_visibility.get("stop_distance_points"),
+            "stop_distance_pct": target_exit_visibility.get("stop_distance_pct"),
             "broker_bracket": broker_bracket,
             "bracket_src": bracket_src,
             "signal_id": str(open_pos.get("signal_id") or ""),
             "opened_at": open_pos.get("opened_at") or open_pos.get("ts"),
+            "last_bar_ts": last_bar_ts,
+            "last_bar_high": last_bar_high,
+            "last_bar_low": last_bar_low,
+            "target_exit_visibility": target_exit_visibility,
         }
     last_side: str | None = None
     if open_pos.get("side"):

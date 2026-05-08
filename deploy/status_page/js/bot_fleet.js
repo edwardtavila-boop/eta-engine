@@ -90,6 +90,14 @@ function positionState(bot) {
       mark_price: openPosition.mark_price ?? openPosition.last_price,
       bracket_stop: openPosition.bracket_stop ?? openPosition.stop_price,
       bracket_target: openPosition.bracket_target ?? openPosition.target_price,
+      target_distance_points: openPosition.target_distance_points,
+      target_distance_pct: openPosition.target_distance_pct,
+      stop_distance_points: openPosition.stop_distance_points,
+      stop_distance_pct: openPosition.stop_distance_pct,
+      target_exit_visibility: openPosition.target_exit_visibility,
+      last_bar_high: openPosition.last_bar_high,
+      last_bar_low: openPosition.last_bar_low,
+      last_bar_ts: openPosition.last_bar_ts,
       broker_bracket: openPosition.broker_bracket,
       bracket_src: openPosition.bracket_src ?? openPosition.exit_src,
     };
@@ -113,11 +121,13 @@ function renderPositionSummary(bot) {
   const entry = formatPositionValue(pos.entry_price, '@ ');
   const target = formatPositionValue(pos.bracket_target, 'T ');
   const stop = formatPositionValue(pos.bracket_stop, 'S ');
+  const targetDistance = formatPositionValue(pos.target_distance_points, 'to T ');
   const bracket = [target, stop].filter((x) => x !== '-').join(' / ');
   const cls = side === 'SELL' || side === 'SHORT' ? 'text-rose-300' : 'text-cyan-300';
   return `<div class="leading-tight">
     <div class="${cls} font-semibold">OPEN ${escapeHtml(side)} ${escapeHtml(qty)} ${escapeHtml(entry)}</div>
     <div class="text-[10px] text-zinc-500">${escapeHtml(bracket || 'bracket not reported')}</div>
+    ${targetDistance !== '-' ? `<div class="text-[10px] text-emerald-300">${escapeHtml(targetDistance)}</div>` : ''}
   </div>`;
 }
 
@@ -136,6 +146,15 @@ function renderPositionDetail(status) {
   const mark = formatPositionValue(pos.mark_price, '$');
   const target = formatPositionValue(pos.bracket_target, '$');
   const stop = formatPositionValue(pos.bracket_stop, '$');
+  const targetDistance = formatPositionValue(pos.target_distance_points);
+  const stopDistance = formatPositionValue(pos.stop_distance_points);
+  const targetPct = formatPositionValue(pos.target_distance_pct, '');
+  const stopPct = formatPositionValue(pos.stop_distance_pct, '');
+  const watcher = pos.target_exit_visibility && typeof pos.target_exit_visibility === 'object'
+    ? pos.target_exit_visibility
+    : {};
+  const watcherStatus = String(watcher.status || (pos.broker_bracket ? 'broker_bracket_watch' : 'watching'));
+  const watcherOwner = String(watcher.owner || (pos.broker_bracket ? 'broker' : 'supervisor'));
   const bracketSrc = String(pos.bracket_src || (pos.broker_bracket ? 'broker_bracket' : 'supervisor_local'));
   return `<div class="metric-card p-2 mb-3 border-cyan-500/30 bg-cyan-500/5">
     <div class="metric-label">Open Position</div>
@@ -145,7 +164,12 @@ function renderPositionDetail(status) {
       <div><span class="text-zinc-500">Target</span><br><span class="font-mono text-emerald-300">${escapeHtml(target)}</span></div>
       <div><span class="text-zinc-500">Stop</span><br><span class="font-mono text-rose-300">${escapeHtml(stop)}</span></div>
     </div>
+    <div class="grid grid-cols-2 gap-2 mt-2 text-[11px]">
+      <div><span class="text-zinc-500">Target Gap</span><br><span class="font-mono text-emerald-300">${escapeHtml(targetDistance)}${targetPct !== '-' ? ` (${escapeHtml(targetPct)}%)` : ''}</span></div>
+      <div><span class="text-zinc-500">Stop Cushion</span><br><span class="font-mono text-rose-300">${escapeHtml(stopDistance)}${stopPct !== '-' ? ` (${escapeHtml(stopPct)}%)` : ''}</span></div>
+    </div>
     <div class="text-[10px] text-zinc-500 mt-2">Exit owner: ${escapeHtml(bracketSrc)}${pos.broker_bracket ? ' (broker OCO)' : ' (supervisor target/stop watcher)'}</div>
+    <div class="text-[10px] text-zinc-500">Watcher: ${escapeHtml(watcherOwner)} / ${escapeHtml(watcherStatus)}</div>
   </div>`;
 }
 

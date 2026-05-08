@@ -695,6 +695,64 @@ def test_supervisor_writes_heartbeat_with_bots(tmp_path: Path) -> None:
     assert payload["bots"][0]["bot_id"] == "hb-test"
 
 
+def test_supervisor_open_position_heartbeat_includes_latest_mark(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    class OneBarFeed:
+        def get_bar(self, _symbol: str) -> dict:
+            return {
+                "ts": "2026-05-08T00:00:00+00:00",
+                "open": 100.0,
+                "high": 106.0,
+                "low": 99.0,
+                "close": 105.0,
+                "volume": 10,
+            }
+
+    cfg = SupervisorConfig()
+    cfg.state_dir = tmp_path / "state"
+    cfg.mode = "paper_live"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.feed = OneBarFeed()
+    monkeypatch.setattr(JarvisStrategySupervisor, "_IS_REAL_BAR_FN", lambda _bar: True)
+    monkeypatch.setattr(sup, "_maybe_exit", lambda _bot, _bar: None)
+    bot = BotInstance(
+        bot_id="btc_mark_test",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 0.05,
+            "entry_price": 100.0,
+            "bracket_stop": 95.0,
+            "bracket_target": 110.0,
+        },
+    )
+    sup.bots.append(bot)
+
+    sup._tick_bot(bot, 1)
+    sup._write_heartbeat(1)
+
+    payload = json.loads((cfg.state_dir / "heartbeat.json").read_text(encoding="utf-8"))
+    pos = payload["bots"][0]["open_position"]
+    assert pos["mark_price"] == 105.0
+    assert pos["last_price"] == 105.0
+    assert pos["last_bar_high"] == 106.0
+    assert pos["last_bar_low"] == 99.0
+    assert payload["bots"][0]["last_bar_close"] == 105.0
+
+
 def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import json
 

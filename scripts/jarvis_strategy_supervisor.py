@@ -302,6 +302,9 @@ class BotInstance:
     n_exits: int = 0
     realized_pnl: float = 0.0
     last_bar_ts: str = ""
+    last_bar_close: float | None = None
+    last_bar_high: float | None = None
+    last_bar_low: float | None = None
     last_signal_at: str = ""
     last_jarvis_verdict: str = ""
     # Diagnostic reason for last_jarvis_verdict == "NONE": one of
@@ -2737,6 +2740,30 @@ class JarvisStrategySupervisor:
                     "tick_bot %s raised: %s", bot.bot_id, exc,
                 )
 
+    @staticmethod
+    def _bar_float(bar: dict[str, Any], key: str) -> float | None:
+        try:
+            return float(bar[key])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _record_latest_bar_mark(self, bot: BotInstance, bar: dict[str, Any]) -> None:
+        close = self._bar_float(bar, "close")
+        high = self._bar_float(bar, "high")
+        low = self._bar_float(bar, "low")
+        bot.last_bar_close = close
+        bot.last_bar_high = high
+        bot.last_bar_low = low
+        if not isinstance(bot.open_position, dict) or close is None:
+            return
+        bot.open_position["mark_price"] = close
+        bot.open_position["last_price"] = close
+        bot.open_position["last_bar_ts"] = bot.last_bar_ts
+        if high is not None:
+            bot.open_position["last_bar_high"] = high
+        if low is not None:
+            bot.open_position["last_bar_low"] = low
+
     def _tick_bot(self, bot: BotInstance, tick_count: int) -> None:
         # 1. Get a fresh bar
         bar = self.feed.get_bar(bot.symbol)
@@ -2769,6 +2796,8 @@ class JarvisStrategySupervisor:
                     return
             except Exception as exc:  # noqa: BLE001 — never break the tick on a guard helper
                 logger.debug("_is_real_bar(%s) raised: %s", bot.symbol, exc)
+
+        self._record_latest_bar_mark(bot, bar)
 
         # ── Session-gate EoD flatten ───────────────────────────────
         # Runs BEFORE the open_position branch so a bot that entered

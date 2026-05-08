@@ -1539,6 +1539,8 @@ class TestDashboardAPI:
                         "mark_price": 67350.0,
                         "bracket_stop": 66200.0,
                         "bracket_target": 68400.0,
+                        "last_bar_high": 67400.0,
+                        "last_bar_low": 67100.0,
                         "broker_bracket": False,
                         "bracket_src": "supervisor_local",
                         "signal_id": "btc_hybrid_001",
@@ -1581,6 +1583,11 @@ class TestDashboardAPI:
         assert btc["position_state"]["state"] == "open"
         assert btc["position_state"]["side"] == "BUY"
         assert btc["position_state"]["qty"] == 0.05
+        assert btc["position_state"]["mark_price"] == 67350.0
+        assert btc["position_state"]["target_distance_points"] == 1050.0
+        assert btc["position_state"]["stop_distance_points"] == 1150.0
+        assert btc["position_state"]["target_exit_visibility"]["status"] == "watching"
+        assert btc["position_state"]["target_exit_visibility"]["owner"] == "supervisor"
         assert btc["open_positions"] == 1
         assert btc["bracket_stop"] == 66200.0
         assert btc["bracket_target"] == 68400.0
@@ -1649,6 +1656,8 @@ class TestDashboardAPI:
                             "mark_price": 67350.0,
                             "bracket_stop": 66200.0,
                             "bracket_target": 68400.0,
+                            "last_bar_high": 67400.0,
+                            "last_bar_low": 67100.0,
                             "broker_bracket": False,
                             "bracket_src": "supervisor_local",
                         },
@@ -1667,6 +1676,9 @@ class TestDashboardAPI:
         assert status["open_positions"] == 1
         assert status["position_state"]["state"] == "open"
         assert status["position_state"]["qty"] == 0.05
+        assert status["position_state"]["target_distance_points"] == 1050.0
+        assert status["position_state"]["stop_distance_points"] == 1150.0
+        assert status["position_state"]["target_exit_visibility"]["status"] == "watching"
         assert status["bracket_target"] == 68400.0
         assert status["bracket_stop"] == 66200.0
 
