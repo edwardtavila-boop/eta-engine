@@ -3021,7 +3021,7 @@ def _supervisor_exit_visibility(
     }
 
 
-def _target_exit_summary(rows: list[dict]) -> dict:
+def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | None = None) -> dict:
     """Summarize open-position target/stop supervision for operator cards."""
     open_count = 0
     watching_count = 0
@@ -3101,12 +3101,15 @@ def _target_exit_summary(rows: list[dict]) -> dict:
                 nearest_stop = candidate
 
     touched_count = target_touched_count + stop_touched_count
+    supervisor_local_count = max(0, open_count - broker_bracket_count)
     if open_count == 0:
         status = "flat"
     elif touched_count > 0:
         status = "alert"
     elif missing_bracket_count > 0:
         status = "missing_brackets"
+    elif broker_open_position_count == 0 and supervisor_local_count > 0:
+        status = "paper_watching"
     elif watching_count > 0 or supervisor_watch_count > 0 or broker_bracket_count > 0:
         status = "watching"
     else:
@@ -3121,16 +3124,27 @@ def _target_exit_summary(rows: list[dict]) -> dict:
             if nearest_target
             else "; nearest target n/a"
         )
-        summary_line = (
-            f"{open_count} open; {supervisor_watch_count} supervisor watcher(s); "
-            f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
-            f"{nearest_text}"
-        )
+        if broker_open_position_count is not None:
+            summary_line = (
+                f"{broker_open_position_count} broker open; "
+                f"{supervisor_local_count} supervisor paper-local open; "
+                f"{supervisor_watch_count} supervisor watcher(s); "
+                f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
+                f"{nearest_text}"
+            )
+        else:
+            summary_line = (
+                f"{open_count} open; {supervisor_watch_count} supervisor watcher(s); "
+                f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
+                f"{nearest_text}"
+            )
 
     return {
         "status": status,
         "summary_line": summary_line,
         "open_position_count": open_count,
+        "broker_open_position_count": broker_open_position_count,
+        "supervisor_local_position_count": supervisor_local_count,
         "watching_count": watching_count,
         "supervisor_watch_count": supervisor_watch_count,
         "broker_bracket_count": broker_bracket_count,
@@ -3536,7 +3550,6 @@ def bot_fleet_roster(
     )
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
-    target_exit_summary = _target_exit_summary(rows)
     try:
         live_broker_state = _live_broker_state_payload()
     except Exception as exc:  # noqa: BLE001
@@ -3550,6 +3563,15 @@ def bot_fleet_roster(
             "win_rate_30d": None,
             "server_ts": time.time(),
         }
+    broker_open_position_count = _float_value(live_broker_state.get("open_position_count"))
+    target_exit_summary = _target_exit_summary(
+        rows,
+        broker_open_position_count=(
+            int(broker_open_position_count)
+            if broker_open_position_count is not None
+            else None
+        ),
+    )
     broker_summary = _broker_summary_fields(live_broker_state)
     return {
         "bots":              rows,

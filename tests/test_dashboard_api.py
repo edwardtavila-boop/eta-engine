@@ -84,6 +84,38 @@ def app_client(tmp_path, monkeypatch):
 
 
 class TestDashboardAPI:
+    def test_target_exit_summary_splits_broker_flat_from_paper_watch(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_stop": 28297.25,
+                        "bracket_target": 29302.75,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 540.25,
+                            "target_distance_pct": 1.8783,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=0,
+        )
+
+        assert summary["status"] == "paper_watching"
+        assert summary["open_position_count"] == 1
+        assert summary["broker_open_position_count"] == 0
+        assert summary["supervisor_local_position_count"] == 1
+        assert "0 broker open" in summary["summary_line"]
+        assert "1 supervisor paper-local open" in summary["summary_line"]
+
     def test_health(self, app_client):
         r = app_client.get("/health")
         assert r.status_code == 200
@@ -1688,14 +1720,18 @@ class TestDashboardAPI:
         assert data["signal_cadence"]["signal_update_count"] == 2
         assert data["signal_cadence"]["unique_signal_seconds"] == 2
         exit_summary = data["target_exit_summary"]
-        assert exit_summary["status"] == "watching"
+        assert exit_summary["status"] == "paper_watching"
         assert exit_summary["open_position_count"] == 1
+        assert exit_summary["broker_open_position_count"] == 0
+        assert exit_summary["supervisor_local_position_count"] == 1
         assert exit_summary["supervisor_watch_count"] == 1
         assert exit_summary["broker_bracket_count"] == 0
         assert exit_summary["missing_bracket_count"] == 0
+        assert "0 broker open" in exit_summary["summary_line"]
+        assert "1 supervisor paper-local open" in exit_summary["summary_line"]
         assert exit_summary["nearest_target_bot"] == "btc_hybrid"
         assert exit_summary["nearest_target_distance_points"] == 1050.0
-        assert data["summary"]["target_exit_status"] == "watching"
+        assert data["summary"]["target_exit_status"] == "paper_watching"
         assert data["summary"]["open_position_count_visible"] == 1
         assert data["summary"]["supervisor_exit_watch_count"] == 1
         assert data["signal_cadence"]["max_same_second"] == 1

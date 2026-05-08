@@ -1317,6 +1317,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
   const exitStatus = String(exitWatch.status || 'unknown').toLowerCase();
   const exitLabels = {
     watching: 'Watching',
+    paper_watching: 'Paper Watch',
     alert: 'Alert',
     missing_brackets: 'Missing',
     flat: 'Flat',
@@ -1324,6 +1325,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
   };
   const exitClasses = {
     watching: 'green',
+    paper_watching: 'green',
     alert: 'red',
     missing_brackets: 'yellow',
     flat: 'dim',
@@ -1338,7 +1340,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
       : 'nearest target n/a';
     const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
     const fallback = [
-      `${Number(exitWatch.open_position_count || 0)} open`,
+      `${Number(exitWatch.broker_open_position_count ?? liveBroker.open_position_count ?? 0)} broker open`,
+      `${Number(exitWatch.supervisor_local_position_count || 0)} paper-local open`,
       `${Number(exitWatch.supervisor_watch_count || 0)} supervisor`,
       `${Number(exitWatch.broker_bracket_count || 0)} broker OCO`,
       `${Number(exitWatch.missing_bracket_count || 0)} missing`,
