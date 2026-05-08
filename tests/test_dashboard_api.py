@@ -2279,8 +2279,11 @@ class TestDashboardAPI:
         assert r.status_code == 200
         ibkr = r.json()["broker_gateway"]["ibkr"]
         assert ibkr["status"] == "down"
+        assert r.json()["broker_gateway"]["status"] == "down"
+        assert r.json()["summary"]["ibkr_gateway_status"] == "down"
         assert ibkr["process"]["running"] is False
         assert "gateway process not running" in ibkr["detail"]
+        assert "gateway process not running" in r.json()["summary"]["ibkr_gateway_detail"]
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -2686,7 +2689,10 @@ class TestDashboardAPI:
         data = r.json()
         ibkr = data["broker_gateway"]["ibkr"]
         assert ibkr["status"] == "down"
+        assert data["broker_gateway"]["status"] == "down"
+        assert data["summary"]["ibkr_gateway_status"] == "down"
         assert ibkr["healthy"] is False
+        assert data["broker_gateway"]["healthy"] is False
         assert ibkr["port"] == 4002
         assert ibkr["consecutive_failures"] == 72
         assert ibkr["detail"] == (
@@ -2696,6 +2702,8 @@ class TestDashboardAPI:
             "installer action required; "
             "recovery: auth_pending; operator action required"
         )
+        assert data["broker_gateway"]["detail"] == ibkr["detail"]
+        assert data["summary"]["ibkr_gateway_detail"] == ibkr["detail"]
         assert ibkr["crash"]["reason_code"] == "jvm_native_memory_oom"
         assert ibkr["process"]["running"] is True
         assert ibkr["config"]["jts_ini"]["configured"] is True

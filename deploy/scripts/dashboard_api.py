@@ -1173,43 +1173,53 @@ def _broker_gateway_snapshot() -> dict:
             detail = f"{detail}; recovery: {recovery['status']}" if detail else f"recovery: {recovery['status']}"
             if recovery.get("operator_action_required"):
                 detail = f"{detail}; operator action required"
-        return {
-            "ibkr": {
-                "status": "connected" if healthy else "down",
-                "healthy": healthy,
-                "checked_at": data.get("checked_at"),
-                "last_healthy_at": data.get("last_healthy_at"),
-                "consecutive_failures": int(data.get("consecutive_failures") or 0),
-                "host": details.get("host") or "127.0.0.1",
-                "port": int(details.get("port") or 4002),
-                "socket_ok": details.get("socket_ok") is True,
-                "handshake_ok": details.get("handshake_ok") is True,
-                "detail": detail,
-                "crash": crash,
-                "process": process,
-                "config": config,
-                "install": install,
-                "recovery": recovery,
-                "account_summary": account_summary,
-                "source_path": key,
-            },
+        ibkr = {
+            "status": "connected" if healthy else "down",
+            "healthy": healthy,
+            "checked_at": data.get("checked_at"),
+            "last_healthy_at": data.get("last_healthy_at"),
+            "consecutive_failures": int(data.get("consecutive_failures") or 0),
+            "host": details.get("host") or "127.0.0.1",
+            "port": int(details.get("port") or 4002),
+            "socket_ok": details.get("socket_ok") is True,
+            "handshake_ok": details.get("handshake_ok") is True,
+            "detail": detail,
+            "crash": crash,
+            "process": process,
+            "config": config,
+            "install": install,
+            "recovery": recovery,
+            "account_summary": account_summary,
+            "source_path": key,
         }
+        return {
+            "status": ibkr["status"],
+            "healthy": ibkr["healthy"],
+            "detail": ibkr["detail"],
+            "checked_at": ibkr["checked_at"],
+            "ibkr": ibkr,
+        }
+    ibkr = {
+        "status": "unknown",
+        "healthy": None,
+        "checked_at": None,
+        "last_healthy_at": None,
+        "consecutive_failures": 0,
+        "host": "127.0.0.1",
+        "port": 4002,
+        "socket_ok": None,
+        "handshake_ok": None,
+        "detail": "missing tws_watchdog.json",
+        "crash": None,
+        "process": None,
+        "source_path": None,
+    }
     return {
-        "ibkr": {
-            "status": "unknown",
-            "healthy": None,
-            "checked_at": None,
-            "last_healthy_at": None,
-            "consecutive_failures": 0,
-            "host": "127.0.0.1",
-            "port": 4002,
-            "socket_ok": None,
-            "handshake_ok": None,
-            "detail": "missing tws_watchdog.json",
-            "crash": None,
-            "process": None,
-            "source_path": None,
-        },
+        "status": ibkr["status"],
+        "healthy": ibkr["healthy"],
+        "detail": ibkr["detail"],
+        "checked_at": ibkr["checked_at"],
+        "ibkr": ibkr,
     }
 
 
@@ -3611,6 +3621,12 @@ def bot_fleet_roster(
         ),
     )
     broker_summary = _broker_summary_fields(live_broker_state)
+    broker_gateway = _broker_gateway_snapshot()
+    ibkr_gateway = (
+        broker_gateway.get("ibkr")
+        if isinstance(broker_gateway.get("ibkr"), dict)
+        else {}
+    )
     return {
         "bots":              rows,
         "confirmed_bots":    confirmed_bots,
@@ -3633,6 +3649,8 @@ def bot_fleet_roster(
             "target_exit_status": target_exit_summary["status"],
             "open_position_count_visible": target_exit_summary["open_position_count"],
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
+            "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
+            "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
             **broker_summary,
         },
         "latest_signal_ts":  signal_cadence["latest_signal_ts"],
@@ -3641,7 +3659,7 @@ def bot_fleet_roster(
         "server_ts":         now_ts,
         "live":              fills_stats,
         "live_broker_state": live_broker_state,
-        "broker_gateway":    _broker_gateway_snapshot(),
+        "broker_gateway":    broker_gateway,
         "broker_router":     _broker_router_snapshot(),
         "window_since_days": since_days,
         **truth,
