@@ -181,6 +181,8 @@ class TestStatusPage:
             'id="brokerRouterSub"',
             'id="paperLiveStatus"',
             'id="paperLiveSub"',
+            'id="exitWatchStatus"',
+            'id="exitWatchSub"',
             'id="operatorQueueStatus"',
             'id="operatorQueueSub"',
             'id="signalCadenceStatus"',
@@ -199,6 +201,7 @@ class TestStatusPage:
         # Live data fetch contract: dashboard pulls from /api/bot-fleet
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
+        assert "target_exit_summary" in html
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
         assert "const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';" in html
         assert "const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';" in html

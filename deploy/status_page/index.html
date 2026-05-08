@@ -130,6 +130,8 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .mini-bot-card strong{color:#f8fbff}
 .mini-bot-card .line{display:flex;justify-content:space-between;gap:.5rem;color:var(--dim);font-size:.72rem}
 .mini-bot-card .line span:last-child{color:#dbe7f3;text-align:right}
+.exit-watch-card{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(8,23,22,.84),rgba(3,8,14,.9))}
+.exit-watch-card .sub{line-height:1.35}
 .table-wrap{padding:0 2rem 2rem}
 table{border-spacing:0 5px;border-collapse:separate}
 td{background:rgba(255,255,255,.02);border-top:1px solid rgba(255,255,255,.035);border-bottom:1px solid rgba(255,255,255,.035)}
@@ -218,6 +220,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target/stop monitor</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
@@ -507,10 +510,12 @@ function buildSupervisorPositions(bots) {
       const watcher = state.target_exit_visibility || {};
       const targetGap = finiteNumber(state.target_distance_points);
       const stopCushion = finiteNumber(state.stop_distance_points);
+      const targetProgress = finiteNumber(watcher.target_progress_pct ?? state.target_progress_pct);
       const target = finiteNumber(state.bracket_target);
       const stop = finiteNumber(state.bracket_stop);
       const gapText = targetGap == null ? 'target gap n/a' : `target gap ${formatMoney(targetGap, 2)}`;
       const stopText = stopCushion == null ? 'stop cushion n/a' : `stop cushion ${formatMoney(stopCushion, 2)}`;
+      const progressText = targetProgress == null ? '' : `target progress ${formatPctText(targetProgress)}`;
       const targetText = target == null ? '' : `target ${formatMoney(target, 2)}`;
       const stopLevelText = stop == null ? '' : `stop ${formatMoney(stop, 2)}`;
       const watcherText = watcher.status ? `watcher ${watcher.status}` : 'watcher active';
@@ -524,7 +529,7 @@ function buildSupervisorPositions(bots) {
         value: null,
         pnl: bot.todays_pnl,
         pnlPct: null,
-        protection: [gapText, stopText, targetText, stopLevelText, watcherText].filter(Boolean).join(' | ')
+        protection: [gapText, progressText, stopText, targetText, stopLevelText, watcherText].filter(Boolean).join(' | ')
       };
     })
     .filter(Boolean);
@@ -1000,6 +1005,7 @@ function protectionForBot(bot) {
   const targetGap = finiteNumber(state.target_distance_points);
   const stopCushion = finiteNumber(state.stop_distance_points);
   const watcher = state.target_exit_visibility || {};
+  const targetProgress = finiteNumber(watcher.target_progress_pct ?? state.target_progress_pct);
   const brokerBracket = Boolean(bot.broker_bracket ?? state.broker_bracket);
   const src = String(bot.bracket_src || state.bracket_src || '').replace(/_/g, ' ');
   if (!open) {
@@ -1013,11 +1019,12 @@ function protectionForBot(bot) {
   const targetText = target == null ? 'target n/a' : `target ${formatMoney(target, 2)}`;
   const stopText = stop == null ? 'stop n/a' : `stop ${formatMoney(stop, 2)}`;
   const targetGapText = targetGap == null ? '' : `gap ${formatMoney(targetGap, 2)}`;
+  const targetProgressText = targetProgress == null ? '' : `progress ${formatPctText(targetProgress)}`;
   const stopCushionText = stopCushion == null ? '' : `cushion ${formatMoney(stopCushion, 2)}`;
   const watcherText = watcher.status ? `watcher ${watcher.status}` : '';
   return {
     text: route,
-    sub: [targetText, targetGapText, stopText, stopCushionText, watcherText].filter(Boolean).join(' | ')
+    sub: [targetText, targetGapText, targetProgressText, stopText, stopCushionText, watcherText].filter(Boolean).join(' | ')
   };
 }
 
@@ -1295,6 +1302,43 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
             ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
             : 'waiting for orders';
   renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter);
+
+  const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
+  const exitStatus = String(exitWatch.status || 'unknown').toLowerCase();
+  const exitLabels = {
+    watching: 'Watching',
+    alert: 'Alert',
+    missing_brackets: 'Missing',
+    flat: 'Flat',
+    unknown: 'Unknown'
+  };
+  const exitClasses = {
+    watching: 'green',
+    alert: 'red',
+    missing_brackets: 'yellow',
+    flat: 'dim',
+    unknown: 'yellow'
+  };
+  const exitStatusEl = document.getElementById('exitWatchStatus');
+  const exitSubEl = document.getElementById('exitWatchSub');
+  if (exitStatusEl && exitSubEl) {
+    const nearest = exitWatch.nearest_target || {};
+    const nearestText = nearest.bot
+      ? `nearest target ${nearest.bot} ${formatMoney(nearest.distance_points, 2)} pts (${formatPctText(nearest.distance_pct)})`
+      : 'nearest target n/a';
+    const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
+    const fallback = [
+      `${Number(exitWatch.open_position_count || 0)} open`,
+      `${Number(exitWatch.supervisor_watch_count || 0)} supervisor`,
+      `${Number(exitWatch.broker_bracket_count || 0)} broker OCO`,
+      `${Number(exitWatch.missing_bracket_count || 0)} missing`,
+      nearestText,
+      touched ? `${touched} touched` : ''
+    ].filter(Boolean).join('; ');
+    exitStatusEl.textContent = exitLabels[exitStatus] || exitStatus.toUpperCase();
+    exitStatusEl.className = 'stat ' + (exitClasses[exitStatus] || 'yellow');
+    exitSubEl.textContent = compactText(exitWatch.summary_line || fallback, 145);
+  }
 
   const opSummary = operatorQueue?.summary || {};
   const opBlocked = Number(opSummary.BLOCKED || 0);

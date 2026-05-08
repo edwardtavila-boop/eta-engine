@@ -2941,6 +2941,7 @@ def _pct_distance(distance: float | None, mark_price: float | None) -> float | N
 def _supervisor_exit_visibility(
     *,
     side: str,
+    entry_price: float | None,
     mark_price: float | None,
     bracket_stop: float | None,
     bracket_target: float | None,
@@ -2963,6 +2964,20 @@ def _supervisor_exit_visibility(
                 bracket_stop - mark_price if is_short else mark_price - bracket_stop,
                 8,
             )
+
+    target_progress_pct = None
+    if entry_price is not None and mark_price is not None and bracket_target is not None:
+        target_span = abs(bracket_target - entry_price)
+        if target_span > 0:
+            target_progress = entry_price - mark_price if is_short else mark_price - entry_price
+            target_progress_pct = round((target_progress / target_span) * 100.0, 2)
+
+    stop_cushion_pct = None
+    if entry_price is not None and mark_price is not None and bracket_stop is not None:
+        stop_span = abs(entry_price - bracket_stop)
+        if stop_span > 0:
+            stop_cushion = bracket_stop - mark_price if is_short else mark_price - bracket_stop
+            stop_cushion_pct = round((stop_cushion / stop_span) * 100.0, 2)
 
     target_touched = False
     if bracket_target is not None:
@@ -2997,10 +3012,147 @@ def _supervisor_exit_visibility(
         "owner": "broker" if broker_bracket else "supervisor",
         "target_distance_points": target_distance,
         "target_distance_pct": _pct_distance(target_distance, mark_price),
+        "target_progress_pct": target_progress_pct,
         "stop_distance_points": stop_distance,
         "stop_distance_pct": _pct_distance(stop_distance, mark_price),
+        "stop_cushion_pct": stop_cushion_pct,
         "target_touched_latest_bar": target_touched,
         "stop_touched_latest_bar": stop_touched,
+    }
+
+
+def _target_exit_summary(rows: list[dict]) -> dict:
+    """Summarize open-position target/stop supervision for operator cards."""
+    open_count = 0
+    watching_count = 0
+    supervisor_watch_count = 0
+    broker_bracket_count = 0
+    missing_bracket_count = 0
+    target_touched_count = 0
+    stop_touched_count = 0
+    nearest_target: dict | None = None
+    nearest_stop: dict | None = None
+
+    def _candidate(row: dict, distance: float, distance_pct: float | None) -> dict:
+        return {
+            "bot": str(row.get("name") or row.get("id") or row.get("bot_id") or ""),
+            "symbol": str(row.get("symbol") or ""),
+            "distance_points": distance,
+            "distance_pct": distance_pct,
+        }
+
+    for row in rows:
+        if not isinstance(row, dict) or not _row_has_open_exposure(row):
+            continue
+        open_count += 1
+        state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
+        visibility = (
+            state.get("target_exit_visibility")
+            if isinstance(state.get("target_exit_visibility"), dict)
+            else {}
+        )
+        status = str(visibility.get("status") or "").strip().lower()
+        owner = str(visibility.get("owner") or "").strip().lower()
+        broker_bracket = bool(row.get("broker_bracket") or state.get("broker_bracket") or owner == "broker")
+        if broker_bracket:
+            broker_bracket_count += 1
+        else:
+            supervisor_watch_count += 1
+        if status in {"watching", "broker_bracket_watch"}:
+            watching_count += 1
+        if status == "target_touched_still_open":
+            target_touched_count += 1
+        if status == "stop_touched_still_open":
+            stop_touched_count += 1
+
+        target_level = _float_value(state.get("bracket_target") or row.get("bracket_target"))
+        stop_level = _float_value(state.get("bracket_stop") or row.get("bracket_stop"))
+        if target_level is None or stop_level is None or status == "bracket_missing":
+            missing_bracket_count += 1
+
+        target_distance = _float_value(
+            visibility.get("target_distance_points")
+            if "target_distance_points" in visibility
+            else state.get("target_distance_points")
+        )
+        target_distance_pct = _float_value(
+            visibility.get("target_distance_pct")
+            if "target_distance_pct" in visibility
+            else state.get("target_distance_pct")
+        )
+        if target_distance is not None:
+            candidate = _candidate(row, target_distance, target_distance_pct)
+            if nearest_target is None or abs(target_distance) < abs(float(nearest_target["distance_points"])):
+                nearest_target = candidate
+
+        stop_distance = _float_value(
+            visibility.get("stop_distance_points")
+            if "stop_distance_points" in visibility
+            else state.get("stop_distance_points")
+        )
+        stop_distance_pct = _float_value(
+            visibility.get("stop_distance_pct")
+            if "stop_distance_pct" in visibility
+            else state.get("stop_distance_pct")
+        )
+        if stop_distance is not None:
+            candidate = _candidate(row, stop_distance, stop_distance_pct)
+            if nearest_stop is None or abs(stop_distance) < abs(float(nearest_stop["distance_points"])):
+                nearest_stop = candidate
+
+    touched_count = target_touched_count + stop_touched_count
+    if open_count == 0:
+        status = "flat"
+    elif touched_count > 0:
+        status = "alert"
+    elif missing_bracket_count > 0:
+        status = "missing_brackets"
+    elif watching_count > 0 or supervisor_watch_count > 0 or broker_bracket_count > 0:
+        status = "watching"
+    else:
+        status = "unknown"
+
+    if open_count == 0:
+        summary_line = "flat; no open positions need target/stop supervision"
+    else:
+        nearest_text = (
+            f"; nearest target {nearest_target['bot']} "
+            f"{float(nearest_target['distance_points']):.2f} pts"
+            if nearest_target
+            else "; nearest target n/a"
+        )
+        summary_line = (
+            f"{open_count} open; {supervisor_watch_count} supervisor watcher(s); "
+            f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
+            f"{nearest_text}"
+        )
+
+    return {
+        "status": status,
+        "summary_line": summary_line,
+        "open_position_count": open_count,
+        "watching_count": watching_count,
+        "supervisor_watch_count": supervisor_watch_count,
+        "broker_bracket_count": broker_bracket_count,
+        "missing_bracket_count": missing_bracket_count,
+        "target_touched_count": target_touched_count,
+        "stop_touched_count": stop_touched_count,
+        "nearest_target": nearest_target,
+        "nearest_stop": nearest_stop,
+        "nearest_target_bot": nearest_target.get("bot") if nearest_target else None,
+        "nearest_target_distance_points": (
+            nearest_target.get("distance_points") if nearest_target else None
+        ),
+        "nearest_target_distance_pct": (
+            nearest_target.get("distance_pct") if nearest_target else None
+        ),
+        "nearest_stop_bot": nearest_stop.get("bot") if nearest_stop else None,
+        "nearest_stop_distance_points": (
+            nearest_stop.get("distance_points") if nearest_stop else None
+        ),
+        "nearest_stop_distance_pct": (
+            nearest_stop.get("distance_pct") if nearest_stop else None
+        ),
     }
 
 
@@ -3060,6 +3212,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     )
     target_exit_visibility = _supervisor_exit_visibility(
         side=side,
+        entry_price=entry_price,
         mark_price=mark_price,
         bracket_stop=bracket_stop,
         bracket_target=bracket_target,
@@ -3080,8 +3233,10 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
             "bracket_target": bracket_target,
             "target_distance_points": target_exit_visibility.get("target_distance_points"),
             "target_distance_pct": target_exit_visibility.get("target_distance_pct"),
+            "target_progress_pct": target_exit_visibility.get("target_progress_pct"),
             "stop_distance_points": target_exit_visibility.get("stop_distance_points"),
             "stop_distance_pct": target_exit_visibility.get("stop_distance_pct"),
+            "stop_cushion_pct": target_exit_visibility.get("stop_cushion_pct"),
             "broker_bracket": broker_bracket,
             "bracket_src": bracket_src,
             "signal_id": str(open_pos.get("signal_id") or ""),
@@ -3381,6 +3536,7 @@ def bot_fleet_roster(
     )
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
+    target_exit_summary = _target_exit_summary(rows)
     try:
         live_broker_state = _live_broker_state_payload()
     except Exception as exc:  # noqa: BLE001
@@ -3414,10 +3570,14 @@ def bot_fleet_roster(
             "signal_update_count": signal_cadence["signal_update_count"],
             "unique_signal_seconds": signal_cadence["unique_signal_seconds"],
             "max_same_second": signal_cadence["max_same_second"],
+            "target_exit_status": target_exit_summary["status"],
+            "open_position_count_visible": target_exit_summary["open_position_count"],
+            "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
             **broker_summary,
         },
         "latest_signal_ts":  signal_cadence["latest_signal_ts"],
         "signal_cadence":    signal_cadence,
+        "target_exit_summary": target_exit_summary,
         "server_ts":         now_ts,
         "live":              fills_stats,
         "live_broker_state": live_broker_state,

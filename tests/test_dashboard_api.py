@@ -1671,6 +1671,10 @@ class TestDashboardAPI:
         assert btc["position_state"]["stop_distance_points"] == 1150.0
         assert btc["position_state"]["target_exit_visibility"]["status"] == "watching"
         assert btc["position_state"]["target_exit_visibility"]["owner"] == "supervisor"
+        assert btc["position_state"]["target_exit_visibility"]["target_progress_pct"] == 25.0
+        assert btc["position_state"]["target_exit_visibility"]["stop_cushion_pct"] == 143.75
+        assert btc["position_state"]["target_progress_pct"] == 25.0
+        assert btc["position_state"]["stop_cushion_pct"] == 143.75
         assert btc["open_positions"] == 1
         assert btc["last_signal_ts"] == "2026-04-28T11:58:30+00:00"
         assert btc["last_activity_type"] == "signal"
@@ -1683,6 +1687,17 @@ class TestDashboardAPI:
         assert data["signal_cadence"]["status"] == "staggered"
         assert data["signal_cadence"]["signal_update_count"] == 2
         assert data["signal_cadence"]["unique_signal_seconds"] == 2
+        exit_summary = data["target_exit_summary"]
+        assert exit_summary["status"] == "watching"
+        assert exit_summary["open_position_count"] == 1
+        assert exit_summary["supervisor_watch_count"] == 1
+        assert exit_summary["broker_bracket_count"] == 0
+        assert exit_summary["missing_bracket_count"] == 0
+        assert exit_summary["nearest_target_bot"] == "btc_hybrid"
+        assert exit_summary["nearest_target_distance_points"] == 1050.0
+        assert data["summary"]["target_exit_status"] == "watching"
+        assert data["summary"]["open_position_count_visible"] == 1
+        assert data["summary"]["supervisor_exit_watch_count"] == 1
         assert data["signal_cadence"]["max_same_second"] == 1
         assert data["summary"]["signal_cadence_status"] == "staggered"
 
