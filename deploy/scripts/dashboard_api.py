@@ -4271,6 +4271,10 @@ def _supervisor_equity_payload(
         "week_pnl": rounded_pnl,
         "month_pnl": rounded_pnl,
         "total_pnl": rounded_pnl,
+        "total_pnl_is_lifetime": False,
+        "total_pnl_source": "supervisor_session_fallback",
+        "lifetime_ledger_attached": False,
+        "lifetime_total_pnl": None,
     }
     truth = _truth_snapshot(rows, server_ts=now_ts)
     return {
@@ -4279,6 +4283,8 @@ def _supervisor_equity_payload(
         "series": series,
         "curve": series,
         "summary": summary,
+        "lifetime_ledger_attached": False,
+        "lifetime_total_pnl": None,
         "baseline_equity": baseline if normalize else None,
         "server_ts": now_ts,
         "data_ts": source_epoch,

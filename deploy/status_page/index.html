@@ -570,10 +570,36 @@ function brokerHasPnlTruth(liveBroker) {
     || finiteNumber(liveBroker?.total_unrealized_pnl) != null;
 }
 
-function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
+function fleetEquityLifetimeEvidence(fleetEquity) {
   const equitySummary = fleetEquity?.summary && typeof fleetEquity.summary === 'object'
     ? fleetEquity.summary
     : {};
+  const explicitLifetime = finiteNumber(fleetEquity?.lifetime_total_pnl ?? equitySummary.lifetime_total_pnl);
+  if (explicitLifetime != null) {
+    return {
+      value: explicitLifetime,
+      source: fleetEquity?.lifetime_total_pnl_source || equitySummary.lifetime_total_pnl_source || 'lifetime ledger'
+    };
+  }
+
+  const source = String(fleetEquity?.source || '').toLowerCase();
+  const range = String(fleetEquity?.range || '').toLowerCase();
+  const lifetimeAttached = Boolean(
+    fleetEquity?.lifetime_ledger_attached
+    || equitySummary.lifetime_ledger_attached
+    || equitySummary.total_pnl_is_lifetime === true
+    || equitySummary.total_pnl_source === 'lifetime_ledger'
+  );
+  const fallbackOnly = source === 'supervisor_heartbeat' || source === 'fills_intraday';
+  const value = finiteNumber(equitySummary.total_pnl);
+  if (value == null || (!lifetimeAttached && (fallbackOnly || range !== 'all'))) {
+    return {value: null, source: 'lifetime ledger not attached'};
+  }
+  return {value, source: `fleet equity: ${fleetEquity?.source || 'unknown'}`};
+}
+
+function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
+  const fleetEvidence = fleetEquityLifetimeEvidence(fleetEquity);
   const candidates = [
     {
       value: finiteNumber(summary?.lifetime_total_pnl),
@@ -587,13 +613,10 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
       value: finiteNumber(portfolioSummary?.lifetime_total_pnl),
       source: portfolioSummary?.lifetime_total_pnl_source || 'portfolio lifetime ledger'
     },
-    {
-      value: finiteNumber(equitySummary.total_pnl),
-      source: `fleet equity: ${fleetEquity?.source || 'unknown'}`
-    }
+    fleetEvidence
   ];
   const usable = candidates.find(item => item.value != null);
-  return usable || {value: null, source: 'waiting for lifetime ledger'};
+  return usable || {value: null, source: fleetEvidence.source || 'waiting for lifetime ledger'};
 }
 
 function formatQty(value) {

@@ -234,6 +234,11 @@ class TestStatusPage:
         assert "isRuntimeActiveBot" in html
         assert "readiness/staged rows" in html
         assert "lifetime ledger not attached; today shown above" in html
+        assert "function fleetEquityLifetimeEvidence" in html
+        assert "source === 'supervisor_heartbeat'" in html
+        assert "source === 'fills_intraday'" in html
+        assert "total_pnl_is_lifetime" in html
+        assert "value: finiteNumber(equitySummary.total_pnl)" not in html
         assert "waiting for realized-R closed trades" in html
         assert "close ledger present; realized R not attached yet" in html
         assert "open/no fill qty" in html

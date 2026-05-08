@@ -3701,6 +3701,12 @@ class TestDashboardAPI:
         assert data["source"] == "supervisor_heartbeat"
         assert data["summary"]["today_pnl"] == 1.5
         assert data["summary"]["current_equity"] == 10001.5
+        assert data["lifetime_ledger_attached"] is False
+        assert data["lifetime_total_pnl"] is None
+        assert data["summary"]["total_pnl_is_lifetime"] is False
+        assert data["summary"]["total_pnl_source"] == "supervisor_session_fallback"
+        assert data["summary"]["lifetime_ledger_attached"] is False
+        assert data["summary"]["lifetime_total_pnl"] is None
         assert len(data["series"]) == 2
         assert data["pnl"] == 1.5
         assert data["source_updated_at"] == now
