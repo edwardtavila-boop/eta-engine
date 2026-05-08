@@ -78,6 +78,7 @@ VARIANT_BOT_IDS: set[str] = {
     "mym_sweep_reclaim",  # added 2026-05-08: MYM rehab path for ym_sweep_reclaim.
     "mgc_sweep_reclaim",  # added 2026-05-08: MGC rehab path for gc_sweep_reclaim.
     "mcl_sweep_reclaim",  # added 2026-05-08: MCL rehab path for cl_sweep_reclaim.
+    "mes_sweep_reclaim_v2",  # added 2026-05-08: MES tier-1 rehab w/ tuned preset.
     "gap_fill_mnq", "gap_fill_btc",
     "cross_asset_mnq", "cross_asset_btc",
     "funding_rate_btc",

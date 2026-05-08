@@ -1824,7 +1824,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="mbt_sweep_reclaim",
         strategy_id="mbt_sweep_reclaim_v1",
         symbol="MBT1",
-        timeframe="1h",
+        timeframe="5m",
         scorer_name="btc",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1833,9 +1833,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=10,
         strategy_kind="confluence_scorecard",
         rationale=(
-            "NEW: CME Micro Bitcoin futures (0.1 BTC) using proven "
+            "CME Micro Bitcoin futures (0.1 BTC) using proven "
             "sweep_reclaim+scorecard architecture from BTC. "
-            "US-person compliant, RTH-only CME session gating."
+            "US-person compliant, RTH-only CME session gating. "
+            "TIMEFRAME 2026-05-08: switched from 1h to 5m per "
+            "docs/STRATEGY_REHAB_PLAN.md tier-2 — 1h showed only 13 "
+            "trades on full-history audit (post-resample), and the "
+            "underlying 5m source has 109k bars (10x more structure). "
+            "Liquidity sweeps are 5m-scale events; 1h aggregates "
+            "wash them out."
         ),
         extras={
             "promotion_status": "paper_soak",
@@ -1873,7 +1879,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         bot_id="met_sweep_reclaim",
         strategy_id="met_sweep_reclaim_v1",
         symbol="MET1",
-        timeframe="1h",
+        timeframe="5m",
         scorer_name="btc",
         confluence_threshold=0.0,
         block_regimes=frozenset(),
@@ -1882,9 +1888,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         min_trades_per_window=10,
         strategy_kind="confluence_scorecard",
         rationale=(
-            "NEW: CME Micro Ether futures (0.1 ETH) using proven "
+            "CME Micro Ether futures (0.1 ETH) using proven "
             "sweep_reclaim+scorecard architecture from ETH. "
-            "US-person compliant, RTH-only CME session gating."
+            "US-person compliant, RTH-only CME session gating. "
+            "TIMEFRAME 2026-05-08: switched from 1h to 5m per "
+            "docs/STRATEGY_REHAB_PLAN.md tier-2 — same rationale as "
+            "MBT (5m is the natural scale for liquidity-sweep events; "
+            "1h aggregation washes signals out)."
         ),
         extras={
             "promotion_status": "paper_soak",
@@ -2799,6 +2809,56 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "MCL",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # mes_sweep_reclaim_v2 — REHAB (Tier-1) candidate per
+    # docs/STRATEGY_REHAB_PLAN.md. The deactivated v1 used MNQ-derived
+    # sweep_preset on 1h; corrected-engine audit flipped it to -0.484
+    # net on n=5. The rehab thesis is that MES has tighter intraday
+    # structure than MNQ, so the level_lookback / atr_stop_mult / wick
+    # filters need to be MES-specific. Switching to 5m (where ES family
+    # signals concentrate) also opens up roughly 12x more bars.
+    StrategyAssignment(
+        bot_id="mes_sweep_reclaim_v2",
+        strategy_id="mes_sweep_reclaim_v2",
+        symbol="MES1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=120,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "EQUITY-INDEX MICRO REHAB: S&P 500 MICRO (MES) sweep_reclaim "
+            "tuned for MES's tighter intraday structure (vs MNQ's wider "
+            "Nasdaq vol). Per docs/STRATEGY_REHAB_PLAN.md tier-1: "
+            "level_lookback 48->24 (recent levels), min_wick_pct "
+            "0.30->0.25 (looser rejection), atr_stop_mult 2.0->1.5 "
+            "(MES less volatile in absolute pts). Switched to 5m "
+            "where ES family signals concentrate. v1 retired with "
+            "expR_net -0.484 on n=5; v2 thesis is the kernel works "
+            "but needs MES-shape calibration."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {"sweep_preset": "mes_v2",
+                "level_lookback": 24, "reclaim_window": 3,
+                "min_wick_pct": 0.25, "min_volume_z": 0.3,
+                "rr_target": 2.5, "atr_stop_mult": 1.5,
+                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MES",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },

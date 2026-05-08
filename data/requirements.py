@@ -634,6 +634,17 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MCL",),
     ),
+    # mes_sweep_reclaim_v2 — Tier-1 rehab with MES-specific preset on
+    # 5m timeframe.
+    BotRequirements(
+        bot_id="mes_sweep_reclaim_v2",
+        requirements=(
+            DataRequirement("bars", "MES1", "5m", critical=True),
+            DataRequirement("bars", "MES1", "1h", critical=True,
+                note="HTF context for scorecard"),
+        ),
+        sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MES",),
+    ),
 
     # Gap-fill — needs daily to detect overnight gap
     BotRequirements(
