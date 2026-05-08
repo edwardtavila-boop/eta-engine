@@ -74,7 +74,7 @@ import threading
 import uuid
 from collections import deque
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -1862,6 +1862,11 @@ class JarvisStrategySupervisor:
         self._strategy_readiness_mtime_ns: int | None = None
         self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
         self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
+        # Anti-churn guard: when a stale supervisor-local paper position is
+        # force-flattened, keep the same bot from immediately re-opening on the
+        # next tick against the same exhausted setup.
+        self._stale_flatten_cooldown_until: dict[str, datetime] = {}
+        self._stale_flatten_cooldown_logged: set[tuple[str, str]] = set()
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -2857,6 +2862,69 @@ class JarvisStrategySupervisor:
             logger.warning("AutopilotWatchdog policy unavailable; using default max_age_sec: %s", exc)
             return 7200.0
 
+    def _stale_flatten_cooldown_sec(self) -> float:
+        """Return the post-stale-flatten entry cooldown in seconds."""
+        return max(0.0, self._env_float("ETA_STALE_FLATTEN_COOLDOWN_S", 900.0))
+
+    def _record_stale_flatten_cooldown(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+    ) -> None:
+        cooldown_s = self._stale_flatten_cooldown_sec()
+        cooldowns = getattr(self, "_stale_flatten_cooldown_until", None)
+        if cooldowns is None:
+            cooldowns = {}
+            self._stale_flatten_cooldown_until = cooldowns
+        if cooldown_s <= 0:
+            cooldowns.pop(bot.bot_id, None)
+            return
+        until = now.astimezone(UTC) + timedelta(seconds=cooldown_s)
+        cooldowns[bot.bot_id] = until
+        bot.last_aggregation_reject_reason = f"stale_force_flatten_cooldown:{cooldown_s:.0f}s"
+        bot.last_aggregation_reject_at = now.astimezone(UTC).isoformat()
+
+    def _stale_flatten_cooldown_active(
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
+    ) -> bool:
+        cooldowns = getattr(self, "_stale_flatten_cooldown_until", None)
+        if cooldowns is None:
+            cooldowns = {}
+            self._stale_flatten_cooldown_until = cooldowns
+        until = cooldowns.get(bot.bot_id)
+        if until is None:
+            return False
+        now_utc = now.astimezone(UTC)
+        if now_utc >= until:
+            cooldowns.pop(bot.bot_id, None)
+            logged = getattr(self, "_stale_flatten_cooldown_logged", set())
+            self._stale_flatten_cooldown_logged = {
+                key for key in logged
+                if key[0] != bot.bot_id
+            }
+            return False
+        remaining_s = max(0.0, (until - now_utc).total_seconds())
+        reason = f"stale_force_flatten_cooldown:{remaining_s:.0f}s_remaining"
+        bot.last_aggregation_reject_reason = reason
+        bot.last_aggregation_reject_at = now_utc.isoformat()
+        log_key = (bot.bot_id, until.isoformat())
+        logged = getattr(self, "_stale_flatten_cooldown_logged", None)
+        if logged is None:
+            logged = set()
+            self._stale_flatten_cooldown_logged = logged
+        if log_key not in logged:
+            logger.info(
+                "STALE FORCE FLATTEN cooldown %s: blocking re-entry for %.0fs",
+                bot.bot_id,
+                remaining_s,
+            )
+            logged.add(log_key)
+        return True
+
     def _maybe_force_flatten_stale_position(
         self,
         bot: BotInstance,
@@ -2902,11 +2970,15 @@ class JarvisStrategySupervisor:
                 rec,
                 entry_snapshot=getattr(rec, "entry_snapshot", None),
             )
+            self._record_stale_flatten_cooldown(bot, now=now)
             return True
         # submit_exit may clear a stale local position when broker truth says
         # the venue is already flat. Treat that as handled so the same tick
         # does not immediately re-enter.
-        return bot.open_position is None
+        if bot.open_position is None:
+            self._record_stale_flatten_cooldown(bot, now=now)
+            return True
+        return False
 
     def _tick_bot(self, bot: BotInstance, tick_count: int) -> None:
         # 1. Get a fresh bar
@@ -3076,6 +3148,9 @@ class JarvisStrategySupervisor:
         # helper. Stale halts from a previous session are also cleared
         # by enforce_daily_loss_cap when the date rolls.
         if self._enforce_daily_loss_cap(bot, now=now):
+            return
+
+        if self._stale_flatten_cooldown_active(bot, now=now):
             return
 
         if not bot.entry_enabled:
@@ -3717,8 +3792,6 @@ class JarvisStrategySupervisor:
             if pos is None:
                 return
             self._maybe_apply_trailing_stop(bot, pos, bar)
-        if self._maybe_force_flatten_stale_position(bot, bar, now=datetime.now(UTC)):
-            return
         pos = bot.open_position
         if pos is None:
             return
@@ -3820,6 +3893,12 @@ class JarvisStrategySupervisor:
                 should_exit = True
                 exit_reason = "fallback_target_pct"
 
+        if not should_exit and self._maybe_force_flatten_stale_position(
+            bot,
+            bar,
+            now=datetime.now(UTC),
+        ):
+            return
         if not should_exit:
             return
         pos["exit_reason"] = exit_reason

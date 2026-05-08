@@ -159,7 +159,12 @@ def test_paper_exit_at_target_uses_intrabar_high(tmp_path: Path) -> None:
     # bypass __init__ to avoid loading the full bot registry/JARVIS.
     sup = JarvisStrategySupervisor.__new__(JarvisStrategySupervisor)
     sup._router = router
-    sup._propagate_close = lambda _bot, _rec, **_kwargs: None  # type: ignore[attr-defined]
+    captured = {}
+
+    def capture_close(_bot, rec, **_kwargs) -> None:
+        captured["rec"] = rec
+
+    sup._propagate_close = capture_close  # type: ignore[attr-defined]
     # Bar pierces target intrabar (high=110.5) but closes below
     # (close=110.3). Without Fix 3, cur_price=110.3 < target=110.4 →
     # no exit. With Fix 3, bar.high=110.5 >= target → exit fires.
@@ -171,6 +176,7 @@ def test_paper_exit_at_target_uses_intrabar_high(tmp_path: Path) -> None:
         "Fix 3: bar.high >= target should trigger paper_target exit "
         "even when close < target"
     )
+    assert captured["rec"].fill_price == 110.4
 
 
 # ─── Fix 4: Tick-grid rounding ────────────────────────────────────

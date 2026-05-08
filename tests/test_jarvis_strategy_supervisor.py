@@ -232,6 +232,77 @@ def test_supervisor_force_flattens_stale_supervisor_local_position(tmp_path: Pat
     assert bot.n_exits == 1
 
 
+def test_stale_force_flatten_blocks_immediate_reentry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts import daily_loss_killswitch
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    monkeypatch.setenv("ETA_STALE_FLATTEN_COOLDOWN_S", "900")
+    monkeypatch.setattr(
+        daily_loss_killswitch,
+        "is_killswitch_tripped",
+        lambda: (False, "clear"),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup.cfg.data_feed = "unit"
+    sup._propagate_close = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    monkeypatch.setattr(sup, "_strategy_readiness_allows_entry", lambda _bot: True)
+    monkeypatch.setattr(sup, "_enforce_daily_loss_cap", lambda _bot, now: False)
+    monkeypatch.setattr(sup, "_consult_sage_for_bot", lambda *args, **kwargs: None)
+
+    def fail_if_reentry_consults_jarvis(**_kwargs):
+        raise AssertionError("stale cooldown should block immediate re-entry")
+
+    monkeypatch.setattr(sup, "_consult_jarvis", fail_if_reentry_consults_jarvis)
+    bot = BotInstance(
+        bot_id="stale_reentry",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 1.0,
+            "entry_price": 100.0,
+            "entry_ts": (datetime.now(UTC) - timedelta(seconds=7300)).isoformat(),
+            "signal_id": "sig-stale-reentry",
+            "bracket_stop": 90.0,
+            "bracket_target": 130.0,
+        },
+    )
+    bar = {
+        "ts": datetime.now(UTC).isoformat(),
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "close": 101.0,
+        "volume": 10,
+    }
+
+    sup._maybe_exit(bot, bar)
+    assert bot.open_position is None
+
+    sup._maybe_enter(bot, bar)
+
+    assert bot.open_position is None
+    assert bot.last_aggregation_reject_reason.startswith("stale_force_flatten_cooldown:")
+    assert bot.last_aggregation_reject_at
+
+
 def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
