@@ -1581,6 +1581,7 @@ class TestDashboardAPI:
         assert btc["position_state"]["state"] == "open"
         assert btc["position_state"]["side"] == "BUY"
         assert btc["position_state"]["qty"] == 0.05
+        assert btc["open_positions"] == 1
         assert btc["bracket_stop"] == 66200.0
         assert btc["bracket_target"] == 68400.0
         assert btc["broker_bracket"] is False
@@ -1605,6 +1606,69 @@ class TestDashboardAPI:
             "auth_session",
             "source_freshness",
         }
+
+    def test_bot_fleet_drilldown_prefers_supervisor_open_position(self, app_client):
+        """Per-bot drilldown must not hide live supervisor positions behind legacy status."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        legacy_dir = state / "bots" / "btc_hybrid"
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        (legacy_dir / "status.json").write_text(
+            json.dumps({
+                "name": "btc_hybrid",
+                "symbol": "BTC",
+                "status": "idle",
+                "open_positions": 0,
+                "open_position": {},
+                "position_state": {"state": "flat"},
+            }),
+            encoding="utf-8",
+        )
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps({
+                "ts": "2026-05-08T00:00:00+00:00",
+                "mode": "paper_live",
+                "bots": [
+                    {
+                        "bot_id": "btc_hybrid",
+                        "symbol": "BTC",
+                        "strategy_kind": "hybrid",
+                        "direction": "long",
+                        "n_entries": 0,
+                        "n_exits": 0,
+                        "realized_pnl": 0.0,
+                        "open_position": {
+                            "side": "BUY",
+                            "qty": 0.05,
+                            "entry_price": 67000.0,
+                            "mark_price": 67350.0,
+                            "bracket_stop": 66200.0,
+                            "bracket_target": 68400.0,
+                            "broker_bracket": False,
+                            "bracket_src": "supervisor_local",
+                        },
+                        "last_bar_ts": "2026-05-08T00:00:00+00:00",
+                    },
+                ],
+            }),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet/btc_hybrid")
+
+        assert r.status_code == 200
+        status = r.json()["status"]
+        assert status["status"] == "running"
+        assert status["open_positions"] == 1
+        assert status["position_state"]["state"] == "open"
+        assert status["position_state"]["qty"] == 0.05
+        assert status["bracket_target"] == 68400.0
+        assert status["bracket_stop"] == 66200.0
 
     def test_supervisor_heartbeat_freshness_is_not_last_signal_freshness(self, app_client):
         """A quiet bot should stay live when the supervisor heartbeat is fresh."""

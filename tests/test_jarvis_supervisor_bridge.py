@@ -111,6 +111,7 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert mnq["launch_lane"] == "live_preflight"
     assert mnq["can_paper_trade"] is True
     assert mnq["can_live_trade"] is False
+    assert mnq["open_positions"] == 0
 
     btc = accounts[1]
     assert btc["id"] == "btc_hybrid"
@@ -119,6 +120,7 @@ def test_supervisor_bridge_lifts_bots_into_account_shape(tmp_path: Path) -> None
     assert btc["today"]["losses"] == 1           # realized_pnl < 0
     assert btc["today"]["pnl"] == -0.5
     assert btc["open_position"]["side"] == "BUY"
+    assert btc["open_positions"] == 1
 
 
 def test_supervisor_bridge_prefers_per_bot_mode_over_top_level(tmp_path: Path) -> None:

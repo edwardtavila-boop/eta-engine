@@ -106,7 +106,9 @@ def jarvis_supervisor_bot_accounts(
         last_verdict_reason = str(bot.get("last_jarvis_verdict_reason") or "")
         strategy_readiness = bot.get("strategy_readiness")
         readiness_payload = strategy_readiness if isinstance(strategy_readiness, dict) else {}
-        running = bool(bot.get("open_position")) or n_entries > 0
+        open_position = bot.get("open_position") if isinstance(bot.get("open_position"), dict) else {}
+        open_positions = 1 if open_position else 0
+        running = bool(open_position) or n_entries > 0
         status = "running" if running else "idle"
         last_bar_ts = str(bot.get("last_bar_ts") or "")
         accounts.append({
@@ -124,7 +126,8 @@ def jarvis_supervisor_bot_accounts(
                 "pnl": realized_pnl,
                 "max_drawdown": 0.0,
             },
-            "open_position": bot.get("open_position") or {},
+            "open_position": open_position,
+            "open_positions": open_positions,
             "source": "jarvis_strategy_supervisor",
             "updated_at": hb_ts,
             "heartbeat_ts": hb_ts,

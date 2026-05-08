@@ -2775,6 +2775,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     )
     broker_bracket = bool(open_pos.get("broker_bracket"))
     bracket_src = str(open_pos.get("bracket_src") or open_pos.get("exit_src") or "")
+    open_positions = 1 if open_pos else 0
     position_state = {"state": "flat"}
     if open_pos:
         position_state = {
@@ -2829,6 +2830,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "last_jarvis_verdict": str(sup.get("last_jarvis_verdict") or ""),
         "strategy_readiness":  strategy_readiness,
         "open_position":       open_pos,
+        "open_positions":      open_positions,
         "position_state":      position_state,
         "bracket_stop":        bracket_stop,
         "bracket_target":      bracket_target,
@@ -3092,7 +3094,24 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
     readiness_rows = _bot_strategy_readiness_rows_by_bot()
     supervisor_statuses = _supervisor_roster_rows(time.time(), bot=bot_id)
     supervisor_status = supervisor_statuses[0] if supervisor_statuses else None
-    readiness_keys = (
+    supervisor_overlay_keys = (
+        "status",
+        "todays_pnl",
+        "todays_pnl_source",
+        "last_signal_ts",
+        "last_signal_age_s",
+        "last_signal_side",
+        "last_activity_ts",
+        "last_activity_age_s",
+        "last_activity_side",
+        "last_activity_type",
+        "open_position",
+        "open_positions",
+        "position_state",
+        "bracket_stop",
+        "bracket_target",
+        "broker_bracket",
+        "bracket_src",
         "strategy_readiness",
         "launch_lane",
         "can_paper_trade",
@@ -3164,7 +3183,7 @@ def bot_fleet_drilldown(bot_id: str) -> dict:
         }
     status = read_json_safe(bot_dir / "status.json")
     if supervisor_status is not None:
-        for key in readiness_keys:
+        for key in supervisor_overlay_keys:
             if key in supervisor_status:
                 status[key] = supervisor_status[key]
         strategy_readiness = status.get("strategy_readiness")

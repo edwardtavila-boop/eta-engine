@@ -73,6 +73,82 @@ function formatBotStrategyReadiness(bot) {
   };
 }
 
+function positionState(bot) {
+  const state = bot?.position_state && typeof bot.position_state === 'object'
+    ? bot.position_state
+    : {};
+  const openPosition = bot?.open_position && typeof bot.open_position === 'object'
+    ? bot.open_position
+    : {};
+  if (String(state.state || '').toLowerCase() === 'open') return state;
+  if (Object.keys(openPosition).length) {
+    return {
+      state: 'open',
+      side: openPosition.side,
+      qty: openPosition.qty ?? openPosition.quantity,
+      entry_price: openPosition.entry_price,
+      mark_price: openPosition.mark_price ?? openPosition.last_price,
+      bracket_stop: openPosition.bracket_stop ?? openPosition.stop_price,
+      bracket_target: openPosition.bracket_target ?? openPosition.target_price,
+      broker_bracket: openPosition.broker_bracket,
+      bracket_src: openPosition.bracket_src ?? openPosition.exit_src,
+    };
+  }
+  return { state: 'flat' };
+}
+
+function formatPositionValue(value, prefix = '') {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${prefix}${formatNumber(n)}`;
+}
+
+function renderPositionSummary(bot) {
+  const pos = positionState(bot);
+  if (String(pos.state || '').toLowerCase() !== 'open') {
+    return '<span class="text-zinc-500">flat</span>';
+  }
+  const side = String(pos.side || '').toUpperCase() || 'OPEN';
+  const qty = formatPositionValue(pos.qty);
+  const entry = formatPositionValue(pos.entry_price, '@ ');
+  const target = formatPositionValue(pos.bracket_target, 'T ');
+  const stop = formatPositionValue(pos.bracket_stop, 'S ');
+  const bracket = [target, stop].filter((x) => x !== '-').join(' / ');
+  const cls = side === 'SELL' || side === 'SHORT' ? 'text-rose-300' : 'text-cyan-300';
+  return `<div class="leading-tight">
+    <div class="${cls} font-semibold">OPEN ${escapeHtml(side)} ${escapeHtml(qty)} ${escapeHtml(entry)}</div>
+    <div class="text-[10px] text-zinc-500">${escapeHtml(bracket || 'bracket not reported')}</div>
+  </div>`;
+}
+
+function renderPositionDetail(status) {
+  const pos = positionState(status);
+  if (String(pos.state || '').toLowerCase() !== 'open') {
+    return `<div class="metric-card p-2 mb-3">
+      <div class="metric-label">Open Position</div>
+      <div class="metric-value text-zinc-400">flat</div>
+      <div class="text-[11px] text-zinc-500">No active supervisor position for this bot.</div>
+    </div>`;
+  }
+  const side = String(pos.side || '').toUpperCase() || 'OPEN';
+  const qty = formatPositionValue(pos.qty);
+  const entry = formatPositionValue(pos.entry_price, '$');
+  const mark = formatPositionValue(pos.mark_price, '$');
+  const target = formatPositionValue(pos.bracket_target, '$');
+  const stop = formatPositionValue(pos.bracket_stop, '$');
+  const bracketSrc = String(pos.bracket_src || (pos.broker_bracket ? 'broker_bracket' : 'supervisor_local'));
+  return `<div class="metric-card p-2 mb-3 border-cyan-500/30 bg-cyan-500/5">
+    <div class="metric-label">Open Position</div>
+    <div class="metric-value text-cyan-300">${escapeHtml(side)} ${escapeHtml(qty)} @ ${escapeHtml(entry)}</div>
+    <div class="grid grid-cols-3 gap-2 mt-2 text-[11px]">
+      <div><span class="text-zinc-500">Mark</span><br><span class="font-mono">${escapeHtml(mark)}</span></div>
+      <div><span class="text-zinc-500">Target</span><br><span class="font-mono text-emerald-300">${escapeHtml(target)}</span></div>
+      <div><span class="text-zinc-500">Stop</span><br><span class="font-mono text-rose-300">${escapeHtml(stop)}</span></div>
+    </div>
+    <div class="text-[10px] text-zinc-500 mt-2">Exit owner: ${escapeHtml(bracketSrc)}${pos.broker_bracket ? ' (broker OCO)' : ' (supervisor target/stop watcher)'}</div>
+  </div>`;
+}
+
 // --- 1. Roster table ---
 class RosterPanel extends Panel {
   constructor() {
@@ -143,7 +219,7 @@ class RosterPanel extends Panel {
     const version = [data.dashboard_version, data.release_stage].filter(Boolean).join(' ');
     const liveLine = `server ${srvTs} | fills 1h ${live.fills_1h ?? 0} | fills 24h ${live.fills_24h ?? 0} | last fill ${formatTime(live.last_fill_ts)}`;
     this.body.innerHTML = `<div class="dashboard-freshness-line text-[10px] text-zinc-500 mb-1" data-quality="${escapeHtml(String(quality))}">${escapeHtml(version || 'v1 pre_beta')} | live roster | ${escapeHtml(liveLine)} | age ${dataAge ?? 'n/a'}s | confirmed ${Number(data.confirmed_bots || 0)} | window yesterday-&gt;now</div><table class="mobile-card-table w-full text-xs"><thead class="text-zinc-500">
-      <tr><th class="text-left">Bot</th><th class="text-left">Symbol</th><th class="text-left">Tier</th><th class="text-left">Venue</th><th class="text-left">Readiness</th><th class="text-left">Status</th><th class="text-right">Day PnL</th><th class="text-left">Last Trade</th><th class="text-left">Age</th><th class="text-right">R</th></tr>
+      <tr><th class="text-left">Bot</th><th class="text-left">Symbol</th><th class="text-left">Tier</th><th class="text-left">Venue</th><th class="text-left">Readiness</th><th class="text-left">Status</th><th class="text-left">Position</th><th class="text-right">Day PnL</th><th class="text-left">Last Trade</th><th class="text-left">Age</th><th class="text-right">R</th></tr>
       </thead><tbody>${bots.map(b => {
         const statusCls = b.status === 'running' ? 'text-emerald-400'
                         : b.status === 'paused' ? 'text-amber-400'
@@ -154,6 +230,7 @@ class RosterPanel extends Panel {
         const ageLabel = age > 0 ? `${Math.floor(age / 60)}m` : '-';
         const side = b.last_trade_side ? String(b.last_trade_side).toUpperCase() : '-';
         const readiness = formatBotStrategyReadiness(b);
+        const positionHtml = renderPositionSummary(b);
         const actionLine = readiness.nextAction
           ? `<div class="strategy-readiness-action">${escapeHtml(readiness.nextAction)}</div>`
           : `<div class="strategy-readiness-action">${escapeHtml(readiness.laneLabel)}</div>`;
@@ -164,6 +241,7 @@ class RosterPanel extends Panel {
           <td data-label="Venue">${escapeHtml(b.venue)}</td>
           <td data-label="Readiness"><span class="strategy-readiness-chip" data-readiness-state="${escapeHtml(readiness.state)}" title="${escapeHtml(readiness.nextAction || readiness.laneLabel)}">${escapeHtml(readiness.label)}</span>${actionLine}</td>
           <td data-label="Status" class="${statusCls}">${escapeHtml(b.status)}</td>
+          <td data-label="Position">${positionHtml}</td>
           <td data-label="Day PnL" class="text-right ${pnlCls}">${formatNumber(b.todays_pnl)}</td>
           <td data-label="Last Trade" class="text-zinc-300">${side} | ${formatTime(b.last_trade_ts)}</td>
           <td data-label="Age" class="text-zinc-500">${ageLabel}</td>
@@ -201,6 +279,7 @@ class DrilldownPanel extends Panel {
     const latestDurLabel = latestDur > 0 ? `${Math.floor(latestDur / 60)}m ${Math.floor(latestDur % 60)}s` : '—';
     const readiness = formatBotStrategyReadiness(status);
     const readinessAction = readiness.nextAction || readiness.laneLabel;
+    const positionDetail = renderPositionDetail(status);
     this.body.innerHTML = `
       <div class="strategy-readiness-detail mb-3" data-readiness-state="${escapeHtml(readiness.state)}">
         <div class="strategy-readiness-detail-title">Strategy Readiness</div>
@@ -210,6 +289,7 @@ class DrilldownPanel extends Panel {
         </div>
         <div class="strategy-readiness-action">Next: ${escapeHtml(readinessAction)}</div>
       </div>
+      ${positionDetail}
       <div class="grid grid-cols-4 gap-2 mb-3 text-xs">
         <div class="metric-card p-2"><div class="metric-label">Last Side</div><div class="metric-value">${escapeHtml(String(latest?.side || '—').toUpperCase())}</div></div>
         <div class="metric-card p-2"><div class="metric-label">Last Size</div><div class="metric-value">${latest?.qty ?? '—'}</div></div>
