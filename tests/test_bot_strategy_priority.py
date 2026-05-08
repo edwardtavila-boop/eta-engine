@@ -61,7 +61,16 @@ def test_priority_model_puts_futures_and_commodities_before_spot_crypto() -> Non
         "tradovate_when_enabled",
         "tastytrade",
     )
+    assert prioritized[0].edge_thesis.startswith("Index futures are the funded lead lane")
+    assert "volume_profile_value_area" in prioritized[0].primary_edges
+    assert "Broker OCO" in prioritized[0].exit_playbook
+    assert "MNQ/NQ" in prioritized[0].daily_focus
+    assert "event_aware_sweep_reclaim" in prioritized[1].primary_edges
+    assert "event-window" in prioritized[1].exit_playbook
+    assert "macro-timing" in prioritized[2].edge_thesis
+    assert "regulated crypto lane" in prioritized[3].edge_thesis
     assert prioritized[-1].preferred_broker_stack == ("alpaca", "ibkr_when_crypto_live_enabled")
+    assert "duplicate clusters" in prioritized[-1].risk_playbook
     assert snapshot["summary"]["priority_focus"] == "futures_and_commodities_first"
     assert snapshot["summary"]["broker_priority"] == [
         "ibkr",
@@ -101,3 +110,18 @@ def test_priority_model_promotes_strict_gate_mnq_leader_within_index_futures() -
         "mnq_futures_sage",
         "rsi_mr_mnq_v2",
     ]
+
+
+def test_priority_model_classifies_dated_futures_contract_symbols() -> None:
+    prioritized = mod.prioritize_readiness_rows([
+        _row("mnq_contract", "MNQM6"),
+        _row("met_contract", "METK6"),
+        _row("mcl_contract", "MCLM6"),
+    ])
+
+    by_bot = {row.bot_id: row for row in prioritized}
+    assert by_bot["mnq_contract"].priority_bucket == "equity_index_futures"
+    assert by_bot["mnq_contract"].edge_thesis.startswith("Index futures")
+    assert by_bot["met_contract"].priority_bucket == "cme_crypto_futures"
+    assert by_bot["met_contract"].asset_class == "futures"
+    assert by_bot["mcl_contract"].priority_bucket == "commodities"

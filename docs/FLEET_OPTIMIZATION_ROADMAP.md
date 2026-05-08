@@ -176,6 +176,25 @@ Broker focus follows the same logic: IBKR first, Tradovate DORMANT unless the
 dedicated prop-test process explicitly enables it, Tastytrade as futures
 fallback, and Alpaca last for spot crypto.
 
+### Asset-class edge doctrine (DeepSeek/Codex alignment)
+
+The target state is **not one generic strategy copied across tickers**. Each
+supervisor lane must specialize in the market structure that actually leads
+that asset class:
+
+| Asset-class lane | Edge thesis | Primary edges to perfect | Exit/risk doctrine |
+|---|---|---|---|
+| Equity-index futures | Funded lead lane; MNQ/NQ should exploit session structure, liquidity sweeps, value-area reversion, and leader-follower behavior. | `volume_profile_value_area`, `opening_range_breakout_sage_gate`, `anchor_sweep_reclaim`, `rsi_mean_reversion_v2` | Broker OCO on live entries, paper watcher tighten after SLA, scale around 1.5R, protect runners before max-hold, keep correlated MNQ/NQ exposure capped. |
+| Commodities | Inventory, rollover, and event imbalance; CL/NG/GC require asset-specific event and session filters. | `event_aware_sweep_reclaim`, `rollover_adjusted_value_reversion`, `energy_inventory_gap_filter`, `metals_session_impulse_filter` | ATR/tick brackets, hard event-window no-entry or flatten review, lower size until 5m data/rollover/event calendars are proven. |
+| Rates/FX futures | Macro-timing lane; 6E/ZN edge comes from regime, session, and scheduled catalyst alignment. | `macro_session_reclaim`, `fomc_nfp_standaside`, `trend_pullback_after_catalyst` | Wider time-based brackets, strict catalyst blackout, IBKR-only until venue parity and slippage are verified. |
+| CME crypto futures | Regulated crypto lane; MBT/MET should trade basis, RTH/overnight structure, and futures microstructure rather than spot/perp clones. | `funding_basis_divergence`, `rth_opening_range`, `overnight_gap_reversion`, `z_score_fade` | Micro-contract brackets with time stops; require 540d MBT/MET data before trusting small-sample Sharpe. |
+| Spot crypto | Secondary personal/paper lane; only distinct NY-session/regime-stable edges survive. | `ny_session_momentum_reclaim`, `funding_sentiment_filter`, `macro_regime_filter` | Reduce-only paper exits, duplicate-cluster retirement, no live expansion until missing macro/onchain features are real. |
+
+This doctrine is now emitted in the readiness snapshot per bot as
+`edge_thesis`, `primary_edges`, `exit_playbook`, `risk_playbook`, and
+`daily_focus`, so dashboard/JARVIS/operator surfaces can stop treating the
+fleet as a generic confluence table.
+
 ### Phase 1 — operational safety (DO THIS WEEK)
 
 1. ✅ **Demote `ng_sweep_reclaim`** to research_candidate. The elite-gate

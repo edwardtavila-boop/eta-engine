@@ -33,6 +33,11 @@ class PriorityMetadata:
     priority_bucket: str
     priority_rank: int
     preferred_broker_stack: tuple[str, ...]
+    edge_thesis: str
+    primary_edges: tuple[str, ...]
+    exit_playbook: str
+    risk_playbook: str
+    daily_focus: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +64,11 @@ class ReadinessRow:
     priority_rank: int = 999
     preferred_broker_stack: tuple[str, ...] = ()
     capital_priority: int = 999_999
+    edge_thesis: str = ""
+    primary_edges: tuple[str, ...] = ()
+    exit_playbook: str = ""
+    risk_playbook: str = ""
+    daily_focus: str = ""
 
 
 _EQUITY_INDEX_FUTURES = frozenset({"MNQ", "NQ", "MES", "ES", "M2K", "RTY", "MYM", "YM"})
@@ -66,6 +76,16 @@ _COMMODITY_FUTURES = frozenset({"MCL", "CL", "MGC", "GC", "NG", "SI", "HG"})
 _RATES_FX_FUTURES = frozenset({"6E", "M6E", "ZN", "ZB", "ZF", "ZT"})
 _CME_CRYPTO_FUTURES = frozenset({"MBT", "MET"})
 _SPOT_CRYPTO = frozenset({"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE"})
+_KNOWN_SYMBOL_ROOTS_BY_LENGTH = tuple(sorted(
+    _EQUITY_INDEX_FUTURES
+    | _COMMODITY_FUTURES
+    | _RATES_FX_FUTURES
+    | _CME_CRYPTO_FUTURES
+    | _SPOT_CRYPTO,
+    key=len,
+    reverse=True,
+))
+_FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
 
 _FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled", "tastytrade")
 _IBKR_FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled")
@@ -100,7 +120,17 @@ def _symbol_root(symbol: str) -> str:
             if candidate in _SPOT_CRYPTO:
                 cleaned = candidate
                 break
-    return cleaned.rstrip("0123456789") or cleaned
+    continuous_root = cleaned.rstrip("0123456789") or cleaned
+    if continuous_root in _KNOWN_SYMBOL_ROOTS_BY_LENGTH:
+        return continuous_root
+    for known_root in _KNOWN_SYMBOL_ROOTS_BY_LENGTH:
+        if len(cleaned) <= len(known_root):
+            continue
+        if cleaned.startswith(known_root):
+            suffix = cleaned[len(known_root):]
+            if len(suffix) in {2, 3} and suffix[0] in _FUTURES_MONTH_CODES and suffix[1:].isdigit():
+                return known_root
+    return continuous_root
 
 
 def _priority_metadata(symbol: str) -> PriorityMetadata:
@@ -111,6 +141,28 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
             priority_bucket="equity_index_futures",
             priority_rank=10,
             preferred_broker_stack=_FUTURES_BROKER_STACK,
+            edge_thesis=(
+                "Index futures are the funded lead lane: exploit session structure, "
+                "liquidity sweeps, value-area reversion, and NQ/MNQ leader-follower behavior."
+            ),
+            primary_edges=(
+                "volume_profile_value_area",
+                "opening_range_breakout_sage_gate",
+                "anchor_sweep_reclaim",
+                "rsi_mean_reversion_v2",
+            ),
+            exit_playbook=(
+                "Broker OCO on live entries; paper-local watcher must tighten after SLA, "
+                "scale around 1.5R, and protect runners before max-hold."
+            ),
+            risk_playbook=(
+                "Smallest funded contracts first, max correlated MNQ/NQ exposure, "
+                "stand aside during volatility/news spikes, and enforce stale-position SLAs."
+            ),
+            daily_focus=(
+                "Perfect MNQ/NQ execution quality before expanding size or adding "
+                "adjacent equity-index symbols."
+            ),
         )
     if root in _COMMODITY_FUTURES:
         return PriorityMetadata(
@@ -118,6 +170,25 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
             priority_bucket="commodities",
             priority_rank=20,
             preferred_broker_stack=_FUTURES_BROKER_STACK,
+            edge_thesis=(
+                "Commodities trade inventory, rollover, and session/event imbalance; "
+                "the edge must be asset-specific instead of generic confluence."
+            ),
+            primary_edges=(
+                "event_aware_sweep_reclaim",
+                "rollover_adjusted_value_reversion",
+                "energy_inventory_gap_filter",
+                "metals_session_impulse_filter",
+            ),
+            exit_playbook=(
+                "ATR/native tick brackets with hard event-window flatten or no-new-entry guards; "
+                "never let CL/NG paper trades drift through known report windows unchecked."
+            ),
+            risk_playbook=(
+                "Lower size until 5m commodity data, rollover adjustment, and event calendar "
+                "gates are verified; NG/CL jumps are blocker-class until proven clean."
+            ),
+            daily_focus="Separate CL/NG/GC behavior, validate data quality, and only graduate event-aware variants.",
         )
     if root in _RATES_FX_FUTURES:
         return PriorityMetadata(
@@ -125,6 +196,24 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
             priority_bucket="rates_fx",
             priority_rank=30,
             preferred_broker_stack=_IBKR_FUTURES_BROKER_STACK,
+            edge_thesis=(
+                "Rates and FX are macro-timing lanes: edge comes from regime, session, "
+                "and scheduled catalyst alignment, not high-frequency generic signals."
+            ),
+            primary_edges=(
+                "macro_session_reclaim",
+                "fomc_nfp_standaside",
+                "trend_pullback_after_catalyst",
+            ),
+            exit_playbook=(
+                "Wider time-based brackets, strict catalyst blackout, and forced review "
+                "before holding through major macro releases."
+            ),
+            risk_playbook=(
+                "IBKR-only until venue parity is verified; keep risk low because macro slippage "
+                "can invalidate clean backtest assumptions."
+            ),
+            daily_focus="Treat 6E/ZN as macro specialist lanes and require calendar-aware promotion evidence.",
         )
     if root in _CME_CRYPTO_FUTURES:
         return PriorityMetadata(
@@ -132,6 +221,25 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
             priority_bucket="cme_crypto_futures",
             priority_rank=40,
             preferred_broker_stack=_IBKR_FUTURES_BROKER_STACK,
+            edge_thesis=(
+                "CME crypto futures are the regulated crypto lane: prioritize basis, "
+                "RTH/overnight structure, and futures microstructure over spot-perp noise."
+            ),
+            primary_edges=(
+                "funding_basis_divergence",
+                "rth_opening_range",
+                "overnight_gap_reversion",
+                "z_score_fade",
+            ),
+            exit_playbook=(
+                "Micro contract brackets with time stops; require 540d MBT/MET data before "
+                "trusting small-sample Sharpe."
+            ),
+            risk_playbook=(
+                "Keep research/paper-only until data depth and CME-specific slippage pass; "
+                "do not substitute offshore perp assumptions."
+            ),
+            daily_focus="Build MBT/MET as regulated crypto futures specialists, not clones of spot crypto bots.",
         )
     if root in _SPOT_CRYPTO:
         return PriorityMetadata(
@@ -139,12 +247,35 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
             priority_bucket="spot_crypto",
             priority_rank=90,
             preferred_broker_stack=_SPOT_CRYPTO_BROKER_STACK,
+            edge_thesis=(
+                "Spot crypto is a secondary lane for personal/paper routing: only trade "
+                "regime-stable NY-session edges with real feature coverage."
+            ),
+            primary_edges=(
+                "ny_session_momentum_reclaim",
+                "funding_sentiment_filter",
+                "macro_regime_filter",
+            ),
+            exit_playbook=(
+                "Reduce-only paper exits with local target/stop watcher; disable duplicate "
+                "bots that produce identical trades."
+            ),
+            risk_playbook=(
+                "Alpaca paper first; no live spot expansion until duplicate clusters are retired "
+                "and missing macro/onchain features are real."
+            ),
+            daily_focus="Keep only distinct, feature-backed spot crypto edges and avoid cloning futures logic.",
         )
     return PriorityMetadata(
         asset_class="other",
         priority_bucket="other",
         priority_rank=80,
         preferred_broker_stack=("manual_review",),
+        edge_thesis="Unclassified symbol: hold outside promotion until a real asset-class playbook is assigned.",
+        primary_edges=("manual_review_required",),
+        exit_playbook="Manual review before any paper/live routing.",
+        risk_playbook="No capital allocation until symbol, venue, and data contract are classified.",
+        daily_focus="Classify or retire this lane.",
     )
 
 
@@ -186,6 +317,11 @@ def _with_priority(row: ReadinessRow) -> ReadinessRow:
         priority_rank=meta.priority_rank,
         preferred_broker_stack=meta.preferred_broker_stack,
         capital_priority=capital_priority,
+        edge_thesis=meta.edge_thesis,
+        primary_edges=meta.primary_edges,
+        exit_playbook=meta.exit_playbook,
+        risk_playbook=meta.risk_playbook,
+        daily_focus=meta.daily_focus,
     )
 
 
