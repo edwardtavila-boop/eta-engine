@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -82,6 +83,25 @@ _LAUNCH_SCOPE_STATUSES: frozenset[str] = frozenset({
 })
 
 
+def _supervisor_pinned_bot_ids(
+    runner_path: Path | None = None,
+) -> frozenset[str]:
+    """Return bot ids pinned by the Windows supervisor runner."""
+    path = runner_path or ROOT / "deploy" / "scripts" / "run_jarvis_strategy_supervisor_task.cmd"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return frozenset()
+    match = re.search(r'^set "ETA_SUPERVISOR_BOTS=([^"]*)"$', text, re.MULTILINE)
+    if match is None:
+        return frozenset()
+    return frozenset(
+        bot.strip()
+        for bot in match.group(1).split(",")
+        if bot.strip()
+    )
+
+
 def _promotion_status_for_scope(assignment: Any) -> str:  # noqa: ANN401
     extras = assignment.extras or {}
     if bool(extras.get("deactivated")):
@@ -92,12 +112,18 @@ def _promotion_status_for_scope(assignment: Any) -> str:  # noqa: ANN401
     return "promoted"
 
 
-def _assignment_in_scope(assignment: Any, scope: str) -> bool:  # noqa: ANN401
+def _assignment_in_scope(
+    assignment: Any,  # noqa: ANN401
+    scope: str,
+    supervisor_pins: frozenset[str] | None = None,
+) -> bool:
     if scope == "all":
         return True
     status = _promotion_status_for_scope(assignment)
     if scope == "launchable":
         return status in _LAUNCH_SCOPE_STATUSES
+    if scope == "supervisor_pinned":
+        return assignment.bot_id in (supervisor_pins or frozenset())
     if scope == "research":
         return status == "research_candidate"
     if scope == "diagnostic":
@@ -627,11 +653,12 @@ def main() -> int:
     )
     p.add_argument(
         "--scope",
-        choices=("launchable", "all", "research", "diagnostic"),
+        choices=("launchable", "supervisor_pinned", "all", "research", "diagnostic"),
         default="launchable",
         help=(
             "Assignment scope when --bots is omitted. Default launchable "
-            "checks paper/live candidates only; use all for full research audit."
+            "checks paper/live candidates only; supervisor_pinned checks the "
+            "runtime runner pin; use all for full research audit."
         ),
     )
     p.add_argument("--json", action="store_true",
@@ -644,16 +671,36 @@ def main() -> int:
         {b.strip() for b in args.bots.split(",") if b.strip()}
         if args.bots else None
     )
+    supervisor_pins = (
+        _supervisor_pinned_bot_ids()
+        if filt is None and args.scope == "supervisor_pinned"
+        else frozenset()
+    )
     targets = [
         a for a in ASSIGNMENTS
         if (
             a.bot_id in filt
             if filt is not None
-            else _assignment_in_scope(a, args.scope)
+            else _assignment_in_scope(a, args.scope, supervisor_pins)
         )
     ]
 
     results = [_audit_bot(a) for a in targets]
+    if supervisor_pins:
+        found = {a.bot_id for a in targets}
+        for missing_bot_id in sorted(supervisor_pins - found):
+            results.append({
+                "bot_id": missing_bot_id,
+                "strategy_id": "",
+                "strategy_kind": "",
+                "symbol": "",
+                "timeframe": "",
+                "promotion_status": "supervisor_pin_missing",
+                "status": "BLOCK",
+                "issues": ["supervisor-pinned bot not found in per_bot_registry"],
+                "warnings": [],
+                "evidence": {"supervisor_pinned": True},
+            })
     results.sort(key=lambda r: (
         {"READY": 0, "WARN": 1, "BLOCK": 2}[r["status"]],
         r["bot_id"],
@@ -663,6 +710,7 @@ def main() -> int:
         print(json.dumps({
             "timestamp": datetime.now(UTC).isoformat(),
             "scope": "explicit_bots" if filt is not None else args.scope,
+            "supervisor_pinned": sorted(supervisor_pins),
             "n_bots": len(results),
             "ready": [r for r in results if r["status"] == "READY"],
             "warn": [r for r in results if r["status"] == "WARN"],

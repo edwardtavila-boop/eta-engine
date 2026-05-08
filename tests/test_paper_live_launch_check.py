@@ -265,6 +265,38 @@ def test_default_launch_scope_excludes_research_and_diagnostic_lanes() -> None:
     assert mod._assignment_in_scope(deactivated, "launchable") is False
 
 
+def test_supervisor_pinned_scope_includes_research_candidates() -> None:
+    research = SimpleNamespace(
+        bot_id="mym_sweep_reclaim",
+        extras={"promotion_status": "research_candidate"},
+    )
+
+    assert mod._assignment_in_scope(
+        research,
+        "supervisor_pinned",
+        frozenset({"mym_sweep_reclaim"}),
+    ) is True
+    assert mod._assignment_in_scope(
+        research,
+        "supervisor_pinned",
+        frozenset({"volume_profile_mnq"}),
+    ) is False
+
+
+def test_supervisor_pinned_bot_parser_reads_runner_pin(tmp_path: Path) -> None:
+    runner = tmp_path / "runner.cmd"
+    runner.write_text(
+        '@echo off\nset "ETA_SUPERVISOR_BOTS=volume_profile_mnq, mym_sweep_reclaim,,mcl_sweep_reclaim"\n',
+        encoding="utf-8",
+    )
+
+    assert mod._supervisor_pinned_bot_ids(runner) == frozenset({
+        "volume_profile_mnq",
+        "mym_sweep_reclaim",
+        "mcl_sweep_reclaim",
+    })
+
+
 def test_missing_critical_support_feed_blocks(monkeypatch) -> None:
     assignment = SimpleNamespace(
         bot_id="nq_futures",
