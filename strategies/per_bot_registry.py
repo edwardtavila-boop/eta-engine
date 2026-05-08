@@ -748,18 +748,8 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
-            "deactivated": True,
-            "deactivated_on": "2026-05-07",
-            "deactivated_reason": (
-                "Strict-gate audit 2026-05-07: 34 trades, Sharpe -3.97, "
-                "expR_net -0.32, deflated Sharpe -3.14. Sample is small but "
-                "Sharpe < -3 is structural failure, not noise. The elite-gate "
-                "result that promoted this bot (63T OOS, +$1355 PnL, 31.7% WR) "
-                "was a single window outcome that did not generalize. "
-                "Confluence_scorecard sweep_reclaim on MNQ 5m is fighting the "
-                "wrong regime -- mnq_anchor_sweep (Sharpe 1.54, expR_net "
-                "+0.116) covers MNQ sweep mechanics. Audit: "
-                "eta_engine/reports/strict_gate_after_dispatch_fix_2026_05_07.json"
+        },
+    ),
             ),
         },
     ),

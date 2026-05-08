@@ -448,26 +448,25 @@ def sol_daily_sweep_preset() -> SweepReclaimConfig:
 
 
 def gc_sweep_preset() -> SweepReclaimConfig:
-    """Gold (GC) 1h — safe-haven asset, $25-40/h ATR on $2500 notional.
-    PAPER-SOAK TUNED: lookback 48→72 (3-day context for macro-pivot sweeps),
-    wick_pct 0.35→0.40 (tighter filter), rr_target 2.0→2.5."""
+    """Gold (GC) 1h — $100/pt, $25-40/h ATR, ~$250k notional/contract.
+    Tuned 2026-05-08: atr_stop 2.5→3.0 (wider for gold's macro swings),
+    rr_target 2.5→3.5 (bigger wins), max_trades 2→1 (selectivity)."""
     return SweepReclaimConfig(
         level_lookback=72, reclaim_window=3,
         min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=2.5, rr_target=2.5,
+        atr_period=14, atr_stop_mult=3.0, rr_target=3.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        max_trades_per_day=1, warmup_bars=72,
     )
 
 
 def cl_sweep_preset() -> SweepReclaimConfig:
-    """Crude oil (CL) 1h — $60-80/bbl, ATR $1.50-2.50/h on $6,500 notional.
-    Tight ATR stop (1.5x = $2-4), RR 2.5 to capture trend runs.
-    Oil sweeps at session opens and inventory reports — wider lookback."""
+    """Crude oil (CL) 1h — $1000/pt, $150-250/h ATR, ~$65k notional.
+    Tuned 2026-05-08: atr_stop 1.5→2.5 (oil whipsaws), rr_target 2.5→3.0."""
     return SweepReclaimConfig(
         level_lookback=48, reclaim_window=3,
         min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
+        atr_period=14, atr_stop_mult=2.5, rr_target=3.0,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
     )
@@ -488,13 +487,12 @@ def ng_sweep_preset() -> SweepReclaimConfig:
 
 
 def eur_sweep_preset() -> SweepReclaimConfig:
-    """Euro FX (6E) 1h — $1.05-1.15, ATR $0.005-0.01 on $125,000 notional.
-    Tightest ranges of all assets — wider lookback (72 bars = 3 days),
-    tighter stop (1.0x ATR = $5-10), moderate RR 2.0."""
+    """Euro FX (6E) 1h — $125k notional, $5-10/h ATR.
+    Tuned 2026-05-08: atr_stop 1.0→1.5 (FX ranges need room), rr_target 2.0→2.5."""
     return SweepReclaimConfig(
         level_lookback=72, reclaim_window=3,
         min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=1.0, rr_target=2.0,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=3, warmup_bars=72,
     )
