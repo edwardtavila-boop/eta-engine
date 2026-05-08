@@ -51,6 +51,13 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
     assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
     assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=" in text
+    # Cross-bot fleet position caps for spot crypto roots: the hard-coded
+    # DEFAULT_FALLBACK_CAP=10 fits $20k+ futures contracts but not spot
+    # crypto (SOL @ $200 × 10 = $2k, well under per-bot $10k budget).
+    # Set explicit caps that match per-bot budget at typical prices.
+    assert "ETA_FLEET_POSITION_CAP_SOL=" in text
+    assert "ETA_FLEET_POSITION_CAP_BTC=" in text
+    assert "ETA_FLEET_POSITION_CAP_ETH=" in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text
@@ -120,11 +127,10 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # was real; over-strict thresholds blocked it.
         "rsi_mr_mnq_v2",
         # ALPACA CRYPTO: SOL/USD via broker_router. Strict-gate
-        # audit (strict_gate_post_microtier.json): n=18, sharpe 7.69,
-        # expR_net +0.616, sh_def +0.13 (POSITIVE deflated Sharpe --
-        # second-highest in fleet after volume_profile_mnq),
-        # split=True, L=true. n<30 acceptance: positive sh_def at
-        # small n is the gold standard since deflated Sharpe heavily
+        # audit (strict_gate_20260508T031716Z.json): n=18, sharpe
+        # 7.69, expR_net +0.616, sh_def +0.09 (positive deflated
+        # Sharpe), split=True, L=true. n<30 acceptance: positive sh_def
+        # at small n is strong evidence since deflated Sharpe heavily
         # penalizes small samples; positive sign means real signal.
         "sol_optimized",
         # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
@@ -172,10 +178,10 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     # MYM1_1h.csv + MYM1_5m.csv as of 2026-05-08T08:50Z, so it is now
     # part of the active pin (assertion at the set-equality above).
     # sol_optimized was previously held off the pin under the n<30
-    # rule; the 2026-05-08 audit shows n=18 with sh_def +0.13 (POSITIVE
+    # rule; the 2026-05-08 audit shows n=18 with sh_def +0.09 (positive
     # deflated Sharpe), which is exceptional at small sample size since
     # the deflated correction heavily penalizes n<30. The positive sign
-    # is the gold standard for small-sample edge acceptance, and per-
+    # is strong small-sample edge evidence, and per-
     # trade quality (+0.616 expR_net) is the third-highest in the
     # audited fleet. Routes via broker_router to Alpaca paper.
     assert "mbt_sweep_reclaim" not in bots, (

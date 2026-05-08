@@ -512,6 +512,21 @@ def mes_sweep_preset() -> SweepReclaimConfig:
     )
 
 
+def mes_v2_sweep_preset() -> SweepReclaimConfig:
+    """MES 5m rehab preset.
+
+    This mirrors the registry's mes_sweep_reclaim_v2 overrides so lab,
+    launch, and live dispatch do not silently inherit BTC defaults.
+    """
+    return SweepReclaimConfig(
+        level_lookback=24, reclaim_window=3,
+        min_wick_pct=0.25, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=3, warmup_bars=72,
+    )
+
+
 def m2k_sweep_preset() -> SweepReclaimConfig:
     """Micro Russell (M2K) 1h — $5/pt on $1,000 notional, 1/10th RTY.
     Similar vol to MNQ, slightly wider ranges."""
@@ -521,6 +536,17 @@ def m2k_sweep_preset() -> SweepReclaimConfig:
         atr_period=14, atr_stop_mult=1.5, rr_target=2.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=8,
         max_trades_per_day=3, warmup_bars=50,
+    )
+
+
+def mym_sweep_preset() -> SweepReclaimConfig:
+    """MYM 1h rehab preset for micro Dow exposure."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=2.0, rr_target=2.5,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
     )
 
 
@@ -536,6 +562,39 @@ def ym_sweep_preset() -> SweepReclaimConfig:
     )
 
 
+def mgc_sweep_preset() -> SweepReclaimConfig:
+    """MGC 1h micro-gold rehab preset."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
+def mgc_v2_sweep_preset() -> SweepReclaimConfig:
+    """Failed MGC relaxed-wick rehab preset kept for audit reproducibility."""
+    return SweepReclaimConfig(
+        level_lookback=32, reclaim_window=3,
+        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
+def mcl_sweep_preset() -> SweepReclaimConfig:
+    """MCL 1h micro-crude rehab preset."""
+    return SweepReclaimConfig(
+        level_lookback=48, reclaim_window=3,
+        min_wick_pct=0.30, volume_z_lookback=24, min_volume_z=0.3,
+        atr_period=14, atr_stop_mult=2.0, rr_target=2.5,
+        risk_per_trade_pct=0.005, min_bars_between_trades=12,
+        max_trades_per_day=2, warmup_bars=72,
+    )
+
+
 def zn_sweep_preset() -> SweepReclaimConfig:
     """10-Year T-Note (ZN) 1h — $1,000/pt on $110,000 notional.
     Tightest ranges — wider lookback, tighter stop, higher RR."""
@@ -546,3 +605,25 @@ def zn_sweep_preset() -> SweepReclaimConfig:
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
     )
+
+
+SWEEP_PRESET_FACTORIES = {
+    "btc": btc_daily_sweep_preset,
+    "cl": cl_sweep_preset,
+    "eth": eth_daily_sweep_preset,
+    "eur": eur_sweep_preset,
+    "gc": gc_sweep_preset,
+    "m2k": m2k_sweep_preset,
+    "mcl": mcl_sweep_preset,
+    "mes": mes_sweep_preset,
+    "mes_v2": mes_v2_sweep_preset,
+    "mgc": mgc_sweep_preset,
+    "mgc_v2": mgc_v2_sweep_preset,
+    "mnq": mnq_intraday_sweep_preset,
+    "mym": mym_sweep_preset,
+    "ng": ng_sweep_preset,
+    "nq": nq_intraday_sweep_preset,
+    "sol": sol_daily_sweep_preset,
+    "ym": ym_sweep_preset,
+    "zn": zn_sweep_preset,
+}

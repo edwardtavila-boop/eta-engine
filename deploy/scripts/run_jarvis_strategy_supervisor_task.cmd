@@ -158,15 +158,13 @@ rem                    kernel was real; over-strict thresholds were
 rem                    blocking it.
 rem
 rem   sol_optimized -- NEW 2026-05-08 (ALPACA CRYPTO LANE).
-rem                    Strict-gate audit (strict_gate_post_microtier.json):
-rem                    n=18, sharpe 7.69, expR_net +0.616, sh_def +0.13
-rem                    (POSITIVE deflated Sharpe -- second-highest in
-rem                    entire fleet after volume_profile_mnq), split=True,
-rem                    L=true. Routes through broker_router to Alpaca
+rem                    Strict-gate audit (strict_gate_20260508T031716Z.json):
+rem                    n=18, sharpe 7.69, expR_net +0.616, sh_def +0.09
+rem                    (positive deflated Sharpe), split=True, L=true.
+rem                    Routes through broker_router to Alpaca
 rem                    paper. n<30 but sh_def's positive sign at small n
-rem                    is the gold standard for small-sample acceptance
-rem                    (deflated Sharpe heavily penalizes n<30, so a
-rem                    positive sh_def means real signal).
+rem                    is strong small-sample evidence because deflated
+rem                    Sharpe heavily penalizes n<30.
 set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim,mbt_funding_basis,rsi_mr_mnq_v2,sol_optimized"
 rem Exit-watch only: (none currently — mbt_funding_basis re-promoted to
 rem the active pin after baseline persistence in strategy_baselines.json
@@ -218,6 +216,15 @@ set "ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD=10000"
 set "ETA_LIVE_CRYPTO_FLEET_BUDGET_USD=50000"
 set "ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD=10000"
 set "ETA_LIVE_FUTURES_FLEET_BUDGET_USD=50000"
+rem Cross-bot fleet position caps (DEFAULT_ROOT_CAPS overrides). The
+rem hard-coded fallback is 10 units which is fine for $20k+ futures
+rem contracts but wrong for spot crypto where $200 SOL × 10 = $2k
+rem (way under per-bot $10k budget). Match the per-bot $ budget at
+rem typical price levels: SOL=50 units (~$10k @ $200), BTC=0.15
+rem units (~$12k @ $80k), ETH=2.5 units (~$10k @ $4000).
+set "ETA_FLEET_POSITION_CAP_SOL=50"
+set "ETA_FLEET_POSITION_CAP_BTC=0.15"
+set "ETA_FLEET_POSITION_CAP_ETH=2.5"
 
 set "PYTHON_EXE=%ETA_ENGINE%\.venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"

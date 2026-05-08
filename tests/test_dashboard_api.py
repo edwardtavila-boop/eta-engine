@@ -84,6 +84,84 @@ def app_client(tmp_path, monkeypatch):
 
 
 class TestDashboardAPI:
+    def test_kaizen_latest_prefers_active_loop_json(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "kaizen_latest.json").write_text(
+            json.dumps(
+                {
+                    "started_at": "2026-05-08T15:01:44+00:00",
+                    "applied": False,
+                    "n_bots": 3,
+                    "applied_count": 0,
+                    "held_count": 1,
+                    "action_counts": {"RETIRE": 1},
+                },
+            ),
+            encoding="utf-8",
+        )
+        legacy = state / "kaizen" / "tickets"
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / "old.md").write_text("# stale ticket", encoding="utf-8")
+
+        r = app_client.get("/api/jarvis/kaizen_latest")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["source"] == "kaizen_latest_json"
+        assert payload["summary"]["n_bots"] == 3
+        assert payload["summary"]["held_count"] == 1
+        assert payload["filename"] == "kaizen_latest.json"
+
+    def test_public_dashboard_uses_local_bot_fleet_truth(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {"ready": True, "open_positions": [], "open_position_count": 0},
+            },
+        )
+
+        state = tmp_path / "state"
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-04-28T12:00:00+00:00",
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "mnq_futures_sage",
+                            "symbol": "MNQ1",
+                            "strategy_kind": "orb",
+                            "n_entries": 1,
+                            "n_exits": 1,
+                            "realized_pnl": 0.0,
+                            "last_signal_at": "2026-04-28T11:59:00+00:00",
+                        },
+                    ],
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/public/dashboard")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["truth_status"] == "stale"
+        assert payload["confirmed_bots"] == 1
+        assert payload["bots"][0]["name"] == "mnq_futures_sage"
+
     def test_target_exit_summary_splits_broker_flat_from_paper_watch(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -1918,25 +1996,28 @@ class TestDashboardAPI:
         assert contributors[("ibkr", "MNQ")]["unrealized_pnl"] == 25.0
         assert contributors[("alpaca", "BTCUSD")]["unrealized_pnl"] == 15.0
 
-    @pytest.mark.xfail(
-        reason=(
-            "2026-05-08: dashboard_api was refactored across multiple commits "
-            "today (1eed29c, c787a1d, 106783d, 49535f6, 8e5e350...) and the "
-            "target_exit_summary 'paper_watching' branch no longer fires for "
-            "the test fixture state (broker_open_position_count==0, "
-            "supervisor_local_count==1). Either the count derivation changed "
-            "upstream or the elif ordering at dashboard_api.py:3270-3281 "
-            "needs reviewing. Test expectation hasn't been updated to match "
-            "the new behavior. Unblocking commits while the dashboard "
-            "team finishes the refactor."
-        ),
-        strict=False,
-    )
-    def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path):
+    def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path, monkeypatch):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
         import json
         import os
         from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {"ready": True, "open_positions": [], "open_position_count": 0},
+            },
+        )
 
         state = Path(os.environ["ETA_STATE_DIR"])
         # Ensure state/bots/ exists but is empty (no legacy bots)

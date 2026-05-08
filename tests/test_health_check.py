@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 from eta_engine.scripts import health_check
 
@@ -28,6 +29,34 @@ def _patch_baseline_components(monkeypatch) -> None:
     monkeypatch.setattr(health_check, "_check_quantum_freshness", _healthy_component("quantum_rebalance"))
     monkeypatch.setattr(health_check, "_check_hermes_connectivity", _healthy_component("hermes_bridge"))
     monkeypatch.setattr(health_check, "_check_repo_health", _healthy_component("repo_health"))
+
+
+def test_kaizen_health_prefers_active_loop_latest_json(tmp_path, monkeypatch) -> None:
+    state_dir = tmp_path / "state"
+    reports_dir = state_dir / "kaizen_reports"
+    reports_dir.mkdir(parents=True)
+    (reports_dir / "kaizen_20260508T150144Z.json").write_text("{}", encoding="utf-8")
+    (state_dir / "kaizen_latest.json").write_text(
+        json.dumps(
+            {
+                "started_at": datetime.now(UTC).isoformat(),
+                "applied": True,
+                "n_bots": 2,
+                "applied_count": 1,
+                "held_count": 1,
+            },
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(health_check, "_STATE_DIR", state_dir)
+
+    component = health_check._check_kaizen_state()
+
+    assert component.healthy is True
+    assert component.status == "healthy"
+    assert "active loop latest" in component.detail
+    assert "applied_count=1" in component.detail
+    assert "reports=1" in component.detail
 
 
 def test_main_honors_output_dir_cli_and_writes_report(tmp_path, monkeypatch, capsys) -> None:

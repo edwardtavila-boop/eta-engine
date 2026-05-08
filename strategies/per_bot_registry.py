@@ -343,13 +343,12 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sol_crypto edge preset, both calibrated for SOL's ~2x BTC "
             "volatility. Half-size warmup until Kaizen accumulates enough "
             "live trades to validate the edge. "
-            "Strict-gate audit 2026-05-08 (strict_gate_post_microtier.json): "
-            "n=18 trades, sharpe 7.69, expR_net +0.616, sh_def +0.13 "
-            "(POSITIVE deflated Sharpe -- second-highest in entire fleet "
-            "after volume_profile_mnq), split=True, L=true. Promoted to "
+            "Strict-gate audit 2026-05-08 (strict_gate_20260508T031716Z.json): "
+            "n=18 trades, sharpe 7.69, expR_net +0.616, sh_def +0.09 "
+            "(positive deflated Sharpe), split=True, L=true. Promoted to "
             "paper_soak with the same small-n acceptance applied to MYM "
             "(n=11, sh_def -0.12) since sol's per-trade quality and "
-            "deflated-Sharpe are both stronger than MYM's."
+            "positive deflated-Sharpe are both stronger than MYM's."
         ),
         extras={
             "edge_enabled": True,
@@ -2412,17 +2411,17 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # via TWS, 12,589 bars over 28mo; eliminated the 65
             # rollover-jump artifacts that drove the 2026-05-07 demote).
             # A strict-gate audit on the cleaned data was encouraging:
-            # n=24 trades, sharpe 5.31, expR_net +0.404, sh_def -0.24,
+            # n=22 trades, sharpe 6.97, expR_net +0.530, sh_def +0.10,
             # split=True, L=true. Cleaned audit numbers now persisted
-            # into docs/strategy_baselines.json (n=24, +0.404), so
+            # into docs/strategy_baselines.json (n=22, +0.530), so
             # promotion_status moves to paper_soak and the bot can
             # join the active supervisor pin.
             #
-            # Audit: eta_engine/reports/strict_gate_post_microtier.json
+            # Audit: eta_engine/reports/strict_gate_20260508T031716Z.json
             "promotion_status": "paper_soak",
             "demoted_on_2026_05_07": "elite-gate result unreproducible due to NG1 1h rollover-artifact data; demote stood until 2026-05-08 re-fetch.",
             "rehabilitated_on": "2026-05-08",
-            "rehabilitation_audit": "n=24 trades, sharpe 5.31, expR_net +0.404, split=True, L=true on clean rollover-adjusted NG1 1h",
+            "rehabilitation_audit": "n=22 trades, sharpe 6.97, expR_net +0.530, sh_def +0.10, split=True, L=true on clean rollover-adjusted NG1 1h",
             "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
             "elite_gate_results_PRIOR_CLAIM": "30T OOS over 365d, +$589 PnL, 36.7% WR, +248% decay, beats baseline by $12,171",
             "sub_strategy_kind": "sweep_reclaim",

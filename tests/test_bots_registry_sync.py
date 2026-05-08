@@ -204,6 +204,32 @@ def test_no_orphan_registry_rows() -> None:
     )
 
 
+def test_registry_sweep_presets_are_supported() -> None:
+    """Every registry sweep preset must resolve explicitly.
+
+    Unknown presets used to fall through to BTC defaults, which made
+    strict-gate and live-dispatch results look valid while using the
+    wrong asset template.
+    """
+    from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+    from eta_engine.strategies.sweep_reclaim_strategy import SWEEP_PRESET_FACTORIES
+
+    used: set[str] = set()
+    for assignment in ASSIGNMENTS:
+        sub_extras = assignment.extras.get("sub_strategy_extras")
+        if not isinstance(sub_extras, dict):
+            continue
+        preset = sub_extras.get("sweep_preset")
+        if isinstance(preset, str) and preset:
+            used.add(preset.lower())
+
+    missing = used - set(SWEEP_PRESET_FACTORIES)
+    assert not missing, (
+        "registry sweep_preset values without explicit factories: "
+        f"{sorted(missing)}"
+    )
+
+
 def test_known_bots_have_bot_py_files() -> None:
     """Smoke check that the most prominent bots actually exist."""
     dirs = _bot_dirs_present()

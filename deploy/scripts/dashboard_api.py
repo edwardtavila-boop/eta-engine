@@ -3080,7 +3080,43 @@ def jarvis_model_tier() -> dict:
 
 @app.get("/api/jarvis/kaizen_latest")
 def jarvis_kaizen_latest() -> dict:
-    """Latest kaizen ticket from state/kaizen/tickets/."""
+    """Latest kaizen result from the active loop, with legacy ticket fallback."""
+    latest_path = _state_dir() / "kaizen_latest.json"
+    if latest_path.exists():
+        try:
+            payload = json.loads(latest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "_warning": "invalid_latest_json",
+                "_path": str(latest_path),
+                "error": str(exc),
+            }
+        if isinstance(payload, dict):
+            started_at = str(payload.get("started_at") or "")
+            action_counts = payload.get("action_counts") if isinstance(payload.get("action_counts"), dict) else {}
+            title = (
+                f"Kaizen loop {started_at}".strip()
+                if started_at
+                else "Kaizen loop latest"
+            )
+            return {
+                **payload,
+                "title": title,
+                "filename": latest_path.name,
+                "source": "kaizen_latest_json",
+                "summary": {
+                    "applied": bool(payload.get("applied")),
+                    "applied_count": int(payload.get("applied_count") or 0),
+                    "held_count": int(payload.get("held_count") or 0),
+                    "n_bots": int(payload.get("n_bots") or 0),
+                    "action_counts": action_counts,
+                },
+            }
+        return {
+            "_warning": "invalid_latest_shape",
+            "_path": str(latest_path),
+        }
+
     tickets_dir = _state_dir() / "kaizen" / "tickets"
     if not tickets_dir.exists():
         return {"_warning": "no_data", "_path": str(tickets_dir)}
@@ -3094,6 +3130,7 @@ def jarvis_kaizen_latest() -> dict:
         "title": title,
         "filename": latest.name,
         "markdown": md,
+        "source": "legacy_ticket_markdown",
     }
 
 
@@ -3267,13 +3304,18 @@ def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | 
 
     touched_count = target_touched_count + stop_touched_count
     supervisor_local_count = max(0, open_count - broker_bracket_count)
+    effective_broker_open_count = (
+        int(broker_open_position_count)
+        if broker_open_position_count is not None
+        else 0
+    )
     if open_count == 0:
         status = "flat"
     elif touched_count > 0:
         status = "alert"
     elif missing_bracket_count > 0:
         status = "missing_brackets"
-    elif broker_open_position_count == 0 and supervisor_local_count > 0:
+    elif effective_broker_open_count == 0 and supervisor_local_count > 0:
         status = "paper_watching"
     elif watching_count > 0 or supervisor_watch_count > 0 or broker_bracket_count > 0:
         status = "watching"
@@ -3291,7 +3333,15 @@ def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | 
         )
         if broker_open_position_count is not None:
             summary_line = (
-                f"{broker_open_position_count} broker open; "
+                f"{effective_broker_open_count} broker open; "
+                f"{supervisor_local_count} supervisor paper-local open; "
+                f"{supervisor_watch_count} supervisor watcher(s); "
+                f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
+                f"{nearest_text}"
+            )
+        elif supervisor_local_count > 0:
+            summary_line = (
+                f"0 broker open; "
                 f"{supervisor_local_count} supervisor paper-local open; "
                 f"{supervisor_watch_count} supervisor watcher(s); "
                 f"{broker_bracket_count} broker bracket(s); {missing_bracket_count} missing bracket(s)"
@@ -3308,7 +3358,8 @@ def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | 
         "status": status,
         "summary_line": summary_line,
         "open_position_count": open_count,
-        "broker_open_position_count": broker_open_position_count,
+        "broker_open_position_count": effective_broker_open_count,
+        "broker_open_position_count_observed": broker_open_position_count is not None,
         "supervisor_local_position_count": supervisor_local_count,
         "watching_count": watching_count,
         "supervisor_watch_count": supervisor_watch_count,
@@ -6840,12 +6891,11 @@ async def public_dashboard() -> JSONResponse:
     """Bridge for old Command Center React app."""
     from fastapi.responses import JSONResponse
     try:
-        import httpx
-        async with httpx.AsyncClient() as c:
-            r = await c.get("http://127.0.0.1:8000/api/bot-fleet", timeout=5)
-            return JSONResponse(r.json())
-    except Exception:
-        return JSONResponse({"status": "offline", "bots": []})
+        response = Response()
+        payload = bot_fleet_roster(response=response)
+        return JSONResponse(payload)
+    except Exception as exc:
+        return JSONResponse({"status": "offline", "bots": [], "error": str(exc)})
 
 
 def _local_master_status_payload() -> dict[str, object]:
@@ -6877,7 +6927,9 @@ def _local_master_status_payload() -> dict[str, object]:
             return "GREEN"
         if status in {"held", "degraded"}:
             return "YELLOW"
-        return "RED" if status == "unknown" else "YELLOW"
+        if status in {"blocked", "failed", "error", "unknown"}:
+            return "RED"
+        return "YELLOW"
 
     def _vps_root_card_status(payload: dict[str, object]) -> str:
         status = str(payload.get("status") or "unknown").lower()

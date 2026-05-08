@@ -82,8 +82,38 @@ def _check_disk_space() -> HealthComponent:
 
 
 def _check_kaizen_state() -> HealthComponent:
+    latest_path = _STATE_DIR / "kaizen_latest.json"
+    reports_dir = _STATE_DIR / "kaizen_reports"
     state_path = _STATE_DIR / "kaizen" / "kaizen_engine_state.json"
     guard_path = _STATE_DIR / "kaizen" / "guard_state.json"
+
+    if latest_path.exists():
+        try:
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+            started_raw = str(latest.get("started_at") or "")
+            started_at = datetime.fromisoformat(started_raw.replace("Z", "+00:00")) if started_raw else None
+            age_hours = None
+            if started_at is not None:
+                if started_at.tzinfo is None:
+                    started_at = started_at.replace(tzinfo=UTC)
+                age_hours = (datetime.now(UTC) - started_at).total_seconds() / 3600.0
+            applied = bool(latest.get("applied"))
+            applied_count = int(latest.get("applied_count") or 0)
+            held_count = int(latest.get("held_count") or 0)
+            n_bots = int(latest.get("n_bots") or 0)
+            report_count = len(list(reports_dir.glob("kaizen_*.json"))) if reports_dir.exists() else 0
+            detail = (
+                f"active loop latest: bots={n_bots} applied={applied} "
+                f"applied_count={applied_count} held_count={held_count} "
+                f"reports={report_count}"
+            )
+            if age_hours is not None:
+                detail += f" age_h={age_hours:.1f}"
+            if age_hours is not None and age_hours > 48:
+                return HealthComponent("kaizen_engine", True, "stale", detail, 0.6)
+            return HealthComponent("kaizen_engine", True, "healthy", detail, 1.0)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            return HealthComponent("kaizen_engine", False, "critical", f"kaizen_latest.json invalid: {exc}", 0.0)
 
     if not state_path.exists():
         return HealthComponent("kaizen_engine", True, "booting", "no state file yet - engine may not have run", 0.5)

@@ -627,21 +627,17 @@ def _build_crypto_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN
         return lambda: CompressionBreakoutStrategy(cfg)
     if kind == "sweep_reclaim":
         from eta_engine.strategies.sweep_reclaim_strategy import (
+            SWEEP_PRESET_FACTORIES,
             SweepReclaimConfig,
             SweepReclaimStrategy,
-            btc_daily_sweep_preset,
-            eth_daily_sweep_preset,
-            mnq_intraday_sweep_preset,
-            nq_intraday_sweep_preset,
-            sol_daily_sweep_preset,
         )
-        preset_factories = {
-            "btc": btc_daily_sweep_preset, "eth": eth_daily_sweep_preset,
-            "sol": sol_daily_sweep_preset, "mnq": mnq_intraday_sweep_preset,
-            "nq": nq_intraday_sweep_preset,
-        }
         preset_name = (extras.get("sweep_preset") or "btc").lower()
-        base_cfg = preset_factories.get(preset_name, btc_daily_sweep_preset)()
+        if preset_name not in SWEEP_PRESET_FACTORIES:
+            supported = ", ".join(sorted(SWEEP_PRESET_FACTORIES))
+            raise ValueError(
+                f"unknown sweep_preset {preset_name!r}; supported: {supported}",
+            )
+        base_cfg = SWEEP_PRESET_FACTORIES[preset_name]()
         overrides = _merge_strategy_overrides(
             extras, "sweep", SweepReclaimConfig, include_direct_fields=True,
         )

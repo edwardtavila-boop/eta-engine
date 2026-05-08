@@ -115,13 +115,13 @@
     },
     {
       "strategy_id": "ng_sweep_reclaim_v1",
-      "n_trades": 24,
+      "n_trades": 22,
       "win_rate": 0.46,
-      "avg_r": 0.404,
+      "avg_r": 0.530,
       "r_stddev": 1.45,
       "_promoted_at": "2026-05-08",
       "_promotion_status": "paper_soak",
-      "_walk_forward_summary": "NG1/1h, 28-month window post-rollover-fix fetch (12,589 bars). Strict-gate audit (eta_engine/reports/strict_gate_post_microtier.json): n=24 trades, sharpe=5.31, expR_net=+0.404, sh_def=-0.24, split=True, L=true (legacy gate pass). Real edge revealed once the 65 rollover-jump artifacts were eliminated by TWS continuous-front-month back-fetch.",
+      "_walk_forward_summary": "NG1/1h, 28-month window post-rollover-fix fetch (12,589 bars). Strict-gate audit (eta_engine/reports/strict_gate_20260508T031716Z.json): n=22 trades, sharpe=6.97, expR_net=+0.530, sh_def=+0.10, split=True, L=true (legacy gate pass). Real edge revealed once the 65 rollover-jump artifacts were eliminated by TWS continuous-front-month back-fetch.",
       "_notes": "REHABILITATED 2026-05-08. Prior 2026-05-07 demote correctly attributed to data quality, not strategy. Re-promoted to paper_soak after clean-data audit. Re-baseline once 30+ live fills land. avg_r approximated from expR_net."
     },
     {
@@ -143,8 +143,8 @@
       "r_stddev": 1.50,
       "_promoted_at": "2026-05-08",
       "_promotion_status": "paper_soak",
-      "_walk_forward_summary": "SOL/1h, full-history audit (eta_engine/reports/strict_gate_post_microtier.json): n=18 trades, sharpe=7.69, expR_net=+0.616, sh_def=+0.13 (POSITIVE deflated Sharpe -- second-highest in entire fleet after volume_profile_mnq), split=True, L=true (legacy gate pass). Btc_optimized template applied to SOL with sol-specific sweep preset and sol_crypto edge config.",
-      "_notes": "ALPACA CRYPTO PIN 2026-05-08. Routes via broker_router to Alpaca paper. n=18 is below the strict 30-trade floor, but sh_def +0.13 means even after deflated-Sharpe correction (which heavily penalizes small samples) the signal stays positive -- the gold standard for small-n bots. Per-trade quality (+0.616 expR_net) is the third-highest in the audited fleet. Re-baseline once 30+ live fills land."
+      "_walk_forward_summary": "SOL/1h, full-history audit (eta_engine/reports/strict_gate_20260508T031716Z.json): n=18 trades, sharpe=7.69, expR_net=+0.616, sh_def=+0.09 (positive deflated Sharpe), split=True, L=true (legacy gate pass). Btc_optimized template applied to SOL with sol-specific sweep preset and sol_crypto edge config.",
+      "_notes": "ALPACA CRYPTO PIN 2026-05-08. Routes via broker_router to Alpaca paper. n=18 is below the strict 30-trade floor, but sh_def +0.09 means even after deflated-Sharpe correction (which heavily penalizes small samples) the signal stays positive. Per-trade quality (+0.616 expR_net) is one of the strongest in the tracked audit. Re-baseline once 30+ live fills land."
     },
     {
       "strategy_id": "rsi_mr_mnq_v2",
