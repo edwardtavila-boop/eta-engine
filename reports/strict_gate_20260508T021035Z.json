@@ -1,0 +1,30 @@
+[
+  {
+    "bot": "m2k_sweep_reclaim",
+    "symbol": "M2K1",
+    "trades": 23,
+    "sharpe": 4.66,
+    "expR": 0.0,
+    "expR_p5": -0.072,
+    "expR_net": 0.361,
+    "p_bonf": 1.0,
+    "split": false,
+    "sh_def": -0.52,
+    "L": true,
+    "S": false
+  },
+  {
+    "bot": "ym_sweep_reclaim",
+    "symbol": "YM1",
+    "trades": 11,
+    "sharpe": 8.62,
+    "expR": 0.0,
+    "expR_p5": 0.455,
+    "expR_net": 0.685,
+    "p_bonf": 1.0,
+    "split": true,
+    "sh_def": -0.16,
+    "L": true,
+    "S": false
+  }
+]
