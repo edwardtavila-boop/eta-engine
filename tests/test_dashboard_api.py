@@ -2613,6 +2613,41 @@ class TestDashboardAPI:
         assert payload["open_position_count"] == 1
         assert payload["open_positions"][0]["symbol"] == "ETHUSD"
 
+    def test_live_position_exposure_endpoint_prefers_fleet_merged_paper_watch(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "bot_fleet_roster",
+            lambda response, since_days=1: {
+                "live_broker_state": {
+                    "position_exposure": {
+                        "ready": True,
+                        "source": "live_broker_rest+trade_closes",
+                        "open_position_count": 0,
+                        "broker_open_position_count": 0,
+                        "supervisor_local_position_count": 2,
+                        "supervisor_watch_count": 2,
+                        "target_exit_visibility": {
+                            "status": "paper_watching",
+                            "detail": "0 broker open; 2 supervisor paper-local open; 2 supervisor watcher(s)",
+                        },
+                    },
+                },
+            },
+        )
+
+        r = app_client.get("/api/live/position_exposure")
+
+        assert r.status_code == 200
+        assert "no-store" in r.headers["Cache-Control"]
+        payload = r.json()
+        assert payload["open_position_count"] == 0
+        assert payload["broker_open_position_count"] == 0
+        assert payload["supervisor_local_position_count"] == 2
+        assert payload["supervisor_watch_count"] == 2
+        assert payload["target_exit_visibility"]["status"] == "paper_watching"
+
     def test_bot_fleet_enriches_supervisor_bots_from_readiness_snapshot(
         self,
         app_client,

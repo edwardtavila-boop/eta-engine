@@ -5538,10 +5538,18 @@ def live_broker_state(response: Response) -> dict:
 
 @app.get("/api/live/position_exposure")
 def live_position_exposure(response: Response) -> dict:
-    """Read-only broker open-position plus recent close evidence rollup."""
+    """Read-only broker exposure plus supervisor paper-watch close evidence."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    try:
+        roster = bot_fleet_roster(Response(), since_days=1)
+        live_state = roster.get("live_broker_state") if isinstance(roster, dict) else {}
+        embedded = live_state.get("position_exposure") if isinstance(live_state, dict) else None
+        if isinstance(embedded, dict):
+            return embedded
+    except Exception:
+        pass
     live_state = _live_broker_state_payload()
     embedded = live_state.get("position_exposure") if isinstance(live_state, dict) else None
     if isinstance(embedded, dict):
