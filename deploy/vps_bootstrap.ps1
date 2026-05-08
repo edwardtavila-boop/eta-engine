@@ -421,7 +421,17 @@ if (-not $SkipCodexOperator) {
 
 if (-not $SkipIbkrGateway) {
     Write-Host ""; Write-Host "=== IBKR Gateway Recovery ===" -ForegroundColor Green
+    $twsWatchdogScript = "$EtaEngineDir\deploy\scripts\register_tws_watchdog_task.ps1"
     $ibkrRecoveryScript = "$EtaEngineDir\deploy\scripts\register_ibgateway_reauth_task.ps1"
+
+    if (Test-Path $twsWatchdogScript) {
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $twsWatchdogScript -Start
+            Write-Host "  Registered: ETA-TWS-Watchdog (startup + every 60s, release-guard freshness)" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  register_tws_watchdog_task.ps1 not found - skipping" -ForegroundColor Yellow
+    }
 
     if (Test-Path $ibkrRecoveryScript) {
         if (-not $WhatIf) {
@@ -475,6 +485,7 @@ Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -Fore
 Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray
+Write-Host "  ETA-TWS-Watchdog                 -- startup + every 60s TWS health" -ForegroundColor Gray
 Write-Host "  ETA-IBGateway-Reauth             -- startup + every 5m" -ForegroundColor Gray
 Write-Host ""
 Write-Host "WinSW Services:" -ForegroundColor White

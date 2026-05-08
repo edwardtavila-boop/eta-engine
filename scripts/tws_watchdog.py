@@ -5,7 +5,7 @@ that a fresh ib_insync connection succeeds. If unhealthy for >N
 consecutive checks, emit a v3 event (→ Hermes Telegram) and write
 status to var/eta_engine/state/tws_watchdog.json.
 
-Designed to run on Windows Task Scheduler every 5 min. The watchdog
+Designed to run on Windows Task Scheduler every 60 seconds. The watchdog
 itself does NOT restart the gateway — TWS process management is
 out of scope. It surfaces the outage so the operator knows.
 
