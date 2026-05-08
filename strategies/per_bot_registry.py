@@ -750,9 +750,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "warmup_policy": {"promoted_on": "2026-05-02", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
         },
     ),
-            ),
-        },
-    ),
 
     # ═══════════════════════════════════════════════════════════════════
     # DIAMOND TIER — new supercharged extensions (2026-05-02)

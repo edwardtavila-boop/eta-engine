@@ -159,6 +159,23 @@ Walk-forward can evaluate this bot starting now. Re-run is the next step.
 
 ## Supercharge priority queue (rank-ordered, executable)
 
+### 2026-05-08 capital-priority overlay
+
+The readiness matrix and JARVIS/operator summaries now sort capital attention
+by the operator's funded path:
+
+1. Equity-index futures: `volume_profile_mnq`, `volume_profile_nq`,
+   `mnq_futures_sage`, `mnq_anchor_sweep`, `rsi_mr_mnq_v2`, `mym_sweep_reclaim`,
+   `m2k_sweep_reclaim`.
+2. Commodities: `mcl_sweep_reclaim`, `ng_sweep_reclaim`.
+3. Rates/FX futures: `eur_sweep_reclaim`.
+4. CME crypto futures: `mbt_funding_basis` and future MBT/MET candidates.
+5. Spot crypto: `sol_optimized` and any future Alpaca personal/crypto lanes.
+
+Broker focus follows the same logic: IBKR first, Tradovate DORMANT unless the
+dedicated prop-test process explicitly enables it, Tastytrade as futures
+fallback, and Alpaca last for spot crypto.
+
 ### Phase 1 — operational safety (DO THIS WEEK)
 
 1. ✅ **Demote `ng_sweep_reclaim`** to research_candidate. The elite-gate

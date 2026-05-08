@@ -193,10 +193,20 @@ def _readiness_top_actions(rows: list[dict[str, Any]], *, limit: int) -> list[di
         "non_edge": 5,
         "deactivated": 6,
     }
+
+    def action_sort_key(item: dict[str, Any]) -> tuple[int, int, int, str]:
+        lane = str(item.get("launch_lane") or "")
+        try:
+            capital_priority = int(item.get("capital_priority") or 999_999)
+        except (TypeError, ValueError):
+            capital_priority = 999_999
+        blocked_rank = 0 if lane == "blocked_data" else 1
+        return (blocked_rank, capital_priority, lane_rank.get(lane, 7), str(item.get("bot_id") or ""))
+
     top_actions: list[dict[str, object]] = []
     for row in sorted(
         (item for item in rows if item.get("next_action")),
-        key=lambda item: (lane_rank.get(str(item.get("launch_lane") or ""), 7), str(item.get("bot_id") or "")),
+        key=action_sort_key,
     ):
         if len(top_actions) >= max(0, limit):
             break
@@ -207,6 +217,9 @@ def _readiness_top_actions(rows: list[dict[str, Any]], *, limit: int) -> list[di
                 "launch_lane": row.get("launch_lane"),
                 "data_status": row.get("data_status"),
                 "promotion_status": row.get("promotion_status"),
+                "priority_bucket": row.get("priority_bucket"),
+                "capital_priority": row.get("capital_priority"),
+                "preferred_broker_stack": row.get("preferred_broker_stack"),
                 "can_paper_trade": bool(row.get("can_paper_trade")),
                 "can_live_trade": bool(row.get("can_live_trade")),
                 "next_action": row.get("next_action"),

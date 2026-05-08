@@ -42,12 +42,21 @@ Official policy evidence:
 
 ## Strategy Ranking For Prop Test
 
+Readiness snapshots now expose the capital-priority order directly:
+equity-index futures first, commodities second, rates/FX third, CME crypto
+futures fourth, and spot crypto last. Broker priority is IBKR first, then
+Tradovate only when explicitly enabled for the prop-test process, then
+Tastytrade, then Alpaca for spot-crypto paper/personal lanes.
+
 | Bot | Use | Reason |
 |---|---|---|
 | `volume_profile_mnq` | Primary prop lane | Only strict-gate pass from the audit, `sh_def +2.91`, `n=2916`, MNQ fits prop account structure |
 | `volume_profile_nq` | Later upscale | Strong audit, but NQ is too large for small personal capital and should wait for prop buffer |
+| `mnq_futures_sage` / `rsi_mr_mnq_v2` | Optimization lane | Equity-index futures remain the first research/Kaizen focus after `volume_profile_mnq` |
 | `mym_sweep_reclaim` | Watchlist | Interesting per-trade result but low sample and fractional-contract issue |
 | `mcl_sweep_reclaim` | Watchlist | Micro futures backup after more paper evidence |
+| `ng_sweep_reclaim` / `eur_sweep_reclaim` | Research watch | Commodity/FX lanes need clean 5m data, event filters, and rollover validation before promotion |
+| `mbt_funding_basis` | Later CME crypto-futures lane | Futures contract, not spot crypto, but still lower priority than index/commodity work |
 | `sol_optimized` | Non-prop diversifier | Alpaca/personal crypto lane, not a futures prop lane |
 
 Initial live prop capital goes to `volume_profile_mnq` only. Other strategies keep optimizing in paper/Kaizen until their live-fill evidence is strong enough.

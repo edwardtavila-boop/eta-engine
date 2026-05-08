@@ -90,6 +90,39 @@ def test_build_snapshot_can_refresh_supervisor_pinned_readiness(monkeypatch) -> 
     assert snapshot["bot_strategy_readiness"]["summary"]["can_paper_trade"] == 12
 
 
+def test_readiness_top_actions_follow_capital_priority() -> None:
+    actions = operator_queue_snapshot._readiness_top_actions(
+        [
+            {
+                "bot_id": "sol_optimized",
+                "strategy_id": "sol_optimized_v1",
+                "launch_lane": "paper_soak",
+                "next_action": "Run paper-soak and broker drift checks.",
+                "can_paper_trade": True,
+                "can_live_trade": False,
+                "priority_bucket": "spot_crypto",
+                "capital_priority": 9001,
+            },
+            {
+                "bot_id": "volume_profile_nq",
+                "strategy_id": "volume_profile_nq_v1",
+                "launch_lane": "paper_soak",
+                "next_action": "Run paper-soak and broker drift checks.",
+                "can_paper_trade": True,
+                "can_live_trade": False,
+                "priority_bucket": "equity_index_futures",
+                "preferred_broker_stack": ["ibkr", "tradovate_when_enabled", "tastytrade"],
+                "capital_priority": 1001,
+            },
+        ],
+        limit=2,
+    )
+
+    assert [row["bot_id"] for row in actions] == ["volume_profile_nq", "sol_optimized"]
+    assert actions[0]["priority_bucket"] == "equity_index_futures"
+    assert actions[0]["preferred_broker_stack"] == ["ibkr", "tradovate_when_enabled", "tastytrade"]
+
+
 def test_write_snapshot_uses_atomic_temp_then_target(tmp_path) -> None:
     target = tmp_path / "state" / "operator_queue_snapshot.json"
     snapshot = {

@@ -165,7 +165,7 @@ def _empty_bot_strategy_readiness_payload(
     return payload
 
 
-def _bot_strategy_action_priority(row: dict[str, object]) -> tuple[int, str]:
+def _bot_strategy_action_priority(row: dict[str, object]) -> tuple[int, int, int, str]:
     lane = str(row.get("launch_lane") or "")
     lane_rank = {
         "blocked_data": 0,
@@ -176,7 +176,12 @@ def _bot_strategy_action_priority(row: dict[str, object]) -> tuple[int, str]:
         "non_edge": 5,
         "deactivated": 6,
     }.get(lane, 7)
-    return (lane_rank, str(row.get("bot_id") or ""))
+    try:
+        capital_priority = int(row.get("capital_priority") or 999_999)
+    except (TypeError, ValueError):
+        capital_priority = 999_999
+    blocked_rank = 0 if lane == "blocked_data" else 1
+    return (blocked_rank, capital_priority, lane_rank, str(row.get("bot_id") or ""))
 
 
 def build_bot_strategy_readiness_summary(
@@ -225,6 +230,9 @@ def build_bot_strategy_readiness_summary(
                 "launch_lane": row.get("launch_lane"),
                 "data_status": row.get("data_status"),
                 "promotion_status": row.get("promotion_status"),
+                "priority_bucket": row.get("priority_bucket"),
+                "capital_priority": row.get("capital_priority"),
+                "preferred_broker_stack": row.get("preferred_broker_stack"),
                 "can_paper_trade": bool(row.get("can_paper_trade")),
                 "can_live_trade": bool(row.get("can_live_trade")),
                 "next_action": row.get("next_action"),

@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +23,16 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 if TYPE_CHECKING:
     from eta_engine.data.library import DataLibrary
     from eta_engine.strategies.per_bot_registry import StrategyAssignment
+
+
+@dataclass(frozen=True)
+class PriorityMetadata:
+    """Capital-priority metadata for readiness rows and operator surfaces."""
+
+    asset_class: str
+    priority_bucket: str
+    priority_rank: int
+    preferred_broker_stack: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -44,6 +54,160 @@ class ReadinessRow:
     missing_critical: tuple[str, ...]
     missing_optional: tuple[str, ...]
     next_action: str
+    asset_class: str = "unknown"
+    priority_bucket: str = "other"
+    priority_rank: int = 999
+    preferred_broker_stack: tuple[str, ...] = ()
+    capital_priority: int = 999_999
+
+
+_EQUITY_INDEX_FUTURES = frozenset({"MNQ", "NQ", "MES", "ES", "M2K", "RTY", "MYM", "YM"})
+_COMMODITY_FUTURES = frozenset({"MCL", "CL", "MGC", "GC", "NG", "SI", "HG"})
+_RATES_FX_FUTURES = frozenset({"6E", "M6E", "ZN", "ZB", "ZF", "ZT"})
+_CME_CRYPTO_FUTURES = frozenset({"MBT", "MET"})
+_SPOT_CRYPTO = frozenset({"BTC", "ETH", "SOL", "XRP", "AVAX", "LINK", "DOGE"})
+
+_FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled", "tastytrade")
+_IBKR_FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled")
+_SPOT_CRYPTO_BROKER_STACK = ("alpaca", "ibkr_when_crypto_live_enabled")
+
+_BUCKET_ORDER = (
+    "equity_index_futures",
+    "commodities",
+    "rates_fx",
+    "cme_crypto_futures",
+    "other",
+    "spot_crypto",
+)
+_BROKER_PRIORITY = ("ibkr", "tradovate_when_enabled", "tastytrade", "alpaca")
+_BOT_PRIORITY_TIEBREAK = {
+    "volume_profile_mnq": 0,
+    "volume_profile_nq": 1,
+    "mnq_futures_sage": 2,
+    "rsi_mr_mnq_v2": 3,
+}
+
+
+def _symbol_root(symbol: str) -> str:
+    """Normalize supervisor/front-month symbols into routing class roots."""
+    raw = str(symbol or "").strip().upper()
+    if "/" in raw:
+        raw = raw.split("/", 1)[0]
+    cleaned = "".join(ch for ch in raw if ch.isalnum())
+    for suffix in ("USDT", "USD"):
+        if cleaned.endswith(suffix):
+            candidate = cleaned[: -len(suffix)]
+            if candidate in _SPOT_CRYPTO:
+                cleaned = candidate
+                break
+    return cleaned.rstrip("0123456789") or cleaned
+
+
+def _priority_metadata(symbol: str) -> PriorityMetadata:
+    root = _symbol_root(symbol)
+    if root in _EQUITY_INDEX_FUTURES:
+        return PriorityMetadata(
+            asset_class="futures",
+            priority_bucket="equity_index_futures",
+            priority_rank=10,
+            preferred_broker_stack=_FUTURES_BROKER_STACK,
+        )
+    if root in _COMMODITY_FUTURES:
+        return PriorityMetadata(
+            asset_class="futures",
+            priority_bucket="commodities",
+            priority_rank=20,
+            preferred_broker_stack=_FUTURES_BROKER_STACK,
+        )
+    if root in _RATES_FX_FUTURES:
+        return PriorityMetadata(
+            asset_class="futures",
+            priority_bucket="rates_fx",
+            priority_rank=30,
+            preferred_broker_stack=_IBKR_FUTURES_BROKER_STACK,
+        )
+    if root in _CME_CRYPTO_FUTURES:
+        return PriorityMetadata(
+            asset_class="futures",
+            priority_bucket="cme_crypto_futures",
+            priority_rank=40,
+            preferred_broker_stack=_IBKR_FUTURES_BROKER_STACK,
+        )
+    if root in _SPOT_CRYPTO:
+        return PriorityMetadata(
+            asset_class="spot_crypto",
+            priority_bucket="spot_crypto",
+            priority_rank=90,
+            preferred_broker_stack=_SPOT_CRYPTO_BROKER_STACK,
+        )
+    return PriorityMetadata(
+        asset_class="other",
+        priority_bucket="other",
+        priority_rank=80,
+        preferred_broker_stack=("manual_review",),
+    )
+
+
+def _promotion_rank(row: ReadinessRow) -> int:
+    status_rank = {
+        "production": 0,
+        "production_candidate": 1,
+        "paper_soak": 2,
+        "research_candidate": 4,
+        "unbaselined": 5,
+        "shadow_benchmark": 6,
+        "non_edge_strategy": 7,
+        "deprecated": 8,
+        "deactivated": 9,
+    }
+    return status_rank.get(str(row.promotion_status or ""), 5)
+
+
+def _launch_lane_rank(row: ReadinessRow) -> int:
+    lane_rank = {
+        "live_preflight": 0,
+        "paper_soak": 1,
+        "research": 2,
+        "blocked_data": 3,
+        "shadow_only": 4,
+        "non_edge": 5,
+        "deactivated": 6,
+    }
+    return lane_rank.get(str(row.launch_lane or ""), 7)
+
+
+def _with_priority(row: ReadinessRow) -> ReadinessRow:
+    meta = _priority_metadata(row.symbol)
+    capital_priority = (meta.priority_rank * 100) + (_promotion_rank(row) * 10) + _launch_lane_rank(row)
+    return replace(
+        row,
+        asset_class=meta.asset_class,
+        priority_bucket=meta.priority_bucket,
+        priority_rank=meta.priority_rank,
+        preferred_broker_stack=meta.preferred_broker_stack,
+        capital_priority=capital_priority,
+    )
+
+
+def _readiness_sort_key(row: ReadinessRow) -> tuple[int, int, int, int, str]:
+    prioritized = _with_priority(row)
+    return (
+        prioritized.capital_priority,
+        _BOT_PRIORITY_TIEBREAK.get(prioritized.bot_id, 999),
+        prioritized.priority_rank,
+        _launch_lane_rank(prioritized),
+        prioritized.bot_id,
+    )
+
+
+def prioritize_readiness_rows(rows: list[ReadinessRow] | tuple[ReadinessRow, ...]) -> list[ReadinessRow]:
+    """Return rows in the project capital-priority order.
+
+    Futures/index work is the primary funded lane, commodities come next,
+    then rates/FX, CME crypto futures, and spot crypto stays last until the
+    operator funds and explicitly enables those live broker paths.
+    """
+    return sorted((_with_priority(row) for row in rows), key=_readiness_sort_key)
 
 
 def _requirement_label(req: Any) -> str:  # noqa: ANN401 - small duck-typed helper for DataRequirement-like rows.
@@ -172,14 +336,33 @@ def build_readiness_matrix(
             assignment = get_for_bot(bot_id)
             if assignment is not None:
                 assignments.append(assignment)
-    return [_row_for_assignment(assignment, library=lib) for assignment in assignments]
+    return prioritize_readiness_rows([_row_for_assignment(assignment, library=lib) for assignment in assignments])
 
 
 def supervisor_pinned_bot_ids() -> tuple[str, ...]:
     """Return the Windows supervisor runner pin in stable display order."""
     from eta_engine.scripts.paper_live_launch_check import _supervisor_pinned_bot_ids
+    from eta_engine.strategies.per_bot_registry import get_for_bot
 
-    return tuple(sorted(_supervisor_pinned_bot_ids()))
+    def sort_key(bot_id: str) -> tuple[int, int, str]:
+        assignment = get_for_bot(bot_id)
+        if assignment is None:
+            return (999_999, 999, bot_id)
+        meta = _priority_metadata(assignment.symbol)
+        promo = str(assignment.extras.get("promotion_status") or "")
+        promotion = {
+            "production": 0,
+            "production_candidate": 1,
+            "paper_soak": 2,
+            "research_candidate": 4,
+        }.get(promo, 5)
+        return (
+            (meta.priority_rank * 100) + (promotion * 10),
+            _BOT_PRIORITY_TIEBREAK.get(bot_id, 999),
+            bot_id,
+        )
+
+    return tuple(sorted(_supervisor_pinned_bot_ids(), key=sort_key))
 
 
 def build_snapshot(
@@ -190,9 +373,17 @@ def build_snapshot(
     supervisor_pinned: tuple[str, ...] = (),
 ) -> dict[str, object]:
     """Return a canonical snapshot payload for dashboards and automation."""
+    rows = prioritize_readiness_rows(rows)
     lane_counts: dict[str, int] = {}
+    bucket_counts: dict[str, int] = {}
     for row in rows:
         lane_counts[row.launch_lane] = lane_counts.get(row.launch_lane, 0) + 1
+        bucket_counts[row.priority_bucket] = bucket_counts.get(row.priority_bucket, 0) + 1
+    ordered_bucket_counts = {
+        bucket: bucket_counts[bucket]
+        for bucket in _BUCKET_ORDER
+        if bucket_counts.get(bucket)
+    }
     return {
         "schema_version": 1,
         "generated_at": generated_at or datetime.now(UTC).isoformat(),
@@ -205,6 +396,10 @@ def build_snapshot(
             "can_live_any": any(row.can_live_trade for row in rows),
             "can_paper_trade": sum(row.can_paper_trade for row in rows),
             "launch_lanes": dict(sorted(lane_counts.items())),
+            "priority_focus": "futures_and_commodities_first",
+            "priority_buckets": ordered_bucket_counts,
+            "broker_priority": list(_BROKER_PRIORITY),
+            "top_priority_bots": [row.bot_id for row in rows[: min(10, len(rows))]],
         },
         "rows": [asdict(row) for row in rows],
     }

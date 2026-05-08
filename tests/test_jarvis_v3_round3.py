@@ -421,6 +421,58 @@ class TestStatusCli:
         assert payload["rows_by_bot"]["nq_daily_drb"]["strategy_id"] == "nq_daily_drb_v1"
         assert payload["rows_by_bot"]["eth_compression"]["launch_lane"] == "paper_soak"
 
+    def test_bot_strategy_readiness_top_actions_follow_capital_priority(self, tmp_path: Path) -> None:
+        from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
+
+        target = tmp_path / "bot_strategy_readiness_latest.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-05-08T20:00:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 2, "launch_lanes": {"paper_soak": 2}},
+                    "rows": [
+                        {
+                            "bot_id": "sol_optimized",
+                            "strategy_id": "sol_optimized_v1",
+                            "launch_lane": "paper_soak",
+                            "next_action": "Run paper-soak and broker drift checks.",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "priority_bucket": "spot_crypto",
+                            "capital_priority": 9001,
+                        },
+                        {
+                            "bot_id": "volume_profile_nq",
+                            "strategy_id": "volume_profile_nq_v1",
+                            "launch_lane": "paper_soak",
+                            "next_action": "Run paper-soak and broker drift checks.",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "priority_bucket": "equity_index_futures",
+                            "preferred_broker_stack": ["ibkr", "tradovate_when_enabled", "tastytrade"],
+                            "capital_priority": 1001,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = build_bot_strategy_readiness_summary(path=target, limit=2)
+
+        assert [row["bot_id"] for row in payload["top_actions"]] == [
+            "volume_profile_nq",
+            "sol_optimized",
+        ]
+        assert payload["top_actions"][0]["priority_bucket"] == "equity_index_futures"
+        assert payload["top_actions"][0]["preferred_broker_stack"] == [
+            "ibkr",
+            "tradovate_when_enabled",
+            "tastytrade",
+        ]
+
     def test_bot_strategy_readiness_summary_fails_soft_when_missing(self, tmp_path: Path) -> None:
         from eta_engine.scripts.jarvis_status import build_bot_strategy_readiness_summary
 
