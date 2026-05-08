@@ -2830,6 +2830,84 @@ class JarvisStrategySupervisor:
         if low is not None:
             bot.open_position["last_bar_low"] = low
 
+    @staticmethod
+    def _parse_open_position_ts(value: object) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            try:
+                dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    @staticmethod
+    def _watchdog_max_age_sec() -> float:
+        """Return the same max-hold SLA used by AutopilotWatchdog."""
+        try:
+            from eta_engine.obs.autopilot_watchdog import WatchdogPolicy
+
+            policy = WatchdogPolicy().validate_ordering()
+            return float(policy.max_age_sec)
+        except Exception as exc:  # noqa: BLE001 -- fail safe with the documented default
+            logger.warning("AutopilotWatchdog policy unavailable; using default max_age_sec: %s", exc)
+            return 7200.0
+
+    def _maybe_force_flatten_stale_position(
+        self,
+        bot: BotInstance,
+        bar: dict[str, Any],
+        *,
+        now: datetime,
+    ) -> bool:
+        """Close supervisor-local positions that exceed the watchdog max age.
+
+        Broker-bracket positions are intentionally skipped here: flattening
+        those safely requires canceling the broker OCO children first. The
+        current live issue is supervisor-local paper positions, where this
+        path is the authoritative stop/target owner.
+        """
+        pos = bot.open_position
+        if not isinstance(pos, dict) or bool(pos.get("broker_bracket")):
+            return False
+        opened_at = self._parse_open_position_ts(
+            pos.get("last_ack_at")
+            or pos.get("opened_at")
+            or pos.get("entry_ts")
+            or pos.get("ts")
+        )
+        if opened_at is None:
+            return False
+        age_s = max(0.0, (now.astimezone(UTC) - opened_at).total_seconds())
+        max_age_s = self._watchdog_max_age_sec()
+        if age_s < max_age_s:
+            return False
+        pos["exit_reason"] = "stale_force_flatten"
+        pos["stale_force_flatten_age_s"] = round(age_s, 3)
+        logger.warning(
+            "STALE FORCE FLATTEN %s: age_s=%.0f max_age_s=%.0f side=%s",
+            bot.bot_id,
+            age_s,
+            max_age_s,
+            pos.get("side", "?"),
+        )
+        rec = self._router.submit_exit(bot=bot, bar=bar)
+        if rec is not None:
+            self._propagate_close(
+                bot,
+                rec,
+                entry_snapshot=getattr(rec, "entry_snapshot", None),
+            )
+            return True
+        # submit_exit may clear a stale local position when broker truth says
+        # the venue is already flat. Treat that as handled so the same tick
+        # does not immediately re-enter.
+        return bot.open_position is None
+
     def _tick_bot(self, bot: BotInstance, tick_count: int) -> None:
         # 1. Get a fresh bar
         bar = self.feed.get_bar(bot.symbol)
@@ -3639,6 +3717,11 @@ class JarvisStrategySupervisor:
             if pos is None:
                 return
             self._maybe_apply_trailing_stop(bot, pos, bar)
+        if self._maybe_force_flatten_stale_position(bot, bar, now=datetime.now(UTC)):
+            return
+        pos = bot.open_position
+        if pos is None:
+            return
         cur_price = float(bar["close"])
         entry_price = pos["entry_price"]
         sign = 1.0 if pos["side"] == "BUY" else -1.0

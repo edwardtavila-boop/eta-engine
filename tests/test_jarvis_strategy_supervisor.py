@@ -186,6 +186,52 @@ def test_router_submit_exit_computes_pnl(tmp_path: Path) -> None:
     assert bot.n_exits == 1
 
 
+def test_supervisor_force_flattens_stale_supervisor_local_position(tmp_path: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    sup._propagate_close = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    bot = BotInstance(
+        bot_id="stale_local",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 1.0,
+            "entry_price": 100.0,
+            "entry_ts": (datetime.now(UTC) - timedelta(seconds=7300)).isoformat(),
+            "signal_id": "sig-stale",
+            "bracket_stop": 90.0,
+            "bracket_target": 130.0,
+        },
+    )
+    bar = {
+        "ts": datetime.now(UTC).isoformat(),
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "close": 101.0,
+        "volume": 10,
+    }
+
+    sup._maybe_exit(bot, bar)
+
+    assert bot.open_position is None
+    assert bot.n_exits == 1
+
+
 def test_router_paper_live_direct_route_skips_pending_by_default(tmp_path: Path) -> None:
     from eta_engine.scripts.jarvis_strategy_supervisor import (
         BotInstance,
