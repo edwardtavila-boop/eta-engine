@@ -438,6 +438,16 @@ function formatMoney(value, digits = 2) {
   return prefix + Math.abs(n).toFixed(digits);
 }
 
+function formatMoneyOrUnavailable(value, digits = 2) {
+  const n = finiteNumber(value);
+  return n == null ? 'n/a' : formatMoney(n, digits);
+}
+
+function brokerHasPnlTruth(liveBroker) {
+  return finiteNumber(liveBroker?.today_realized_pnl) != null
+    || finiteNumber(liveBroker?.total_unrealized_pnl) != null;
+}
+
 function formatQty(value) {
   const n = finiteNumber(value);
   if (n == null) return 'n/a';
@@ -623,8 +633,8 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
     `<span class="truth-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
     `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> supervisor open</span>`,
     `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
-    `<span class="truth-chip"><strong>${formatMoney(totalRealized ?? 0)}</strong> realized today</span>`,
-    `<span class="truth-chip"><strong>${formatMoney(totalUnrealized ?? 0)}</strong> unrealized</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized today</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
     `<span class="truth-chip"><strong>${Number(exposure.recent_close_count || 0)}</strong> recent closes</span>`,
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].join('');
@@ -831,8 +841,8 @@ function allocationBuckets(bots, liveBroker) {
 function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
-  const realized = finiteNumber(liveBroker?.today_realized_pnl) || 0;
-  const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl) || 0;
+  const realized = finiteNumber(liveBroker?.today_realized_pnl);
+  const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const openExposure = brokerPositions.reduce((sum, p) => sum + Math.abs(finiteNumber(p.value) || 0), 0);
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
@@ -842,7 +852,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     orb.textContent = formatMoney(todaysPnl, 0);
     orb.className = 'orb-value ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : '');
   }
-  if (orbSub) orbSub.textContent = `${formatMoney(realized, 2)} realized | ${formatMoney(unrealized, 2)} unrealized`;
+  if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} unrealized`;
   if (narrative) {
     const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
     narrative.textContent = `${active} active display bots across ${bots.length} visible roster rows. ${truth}`;
@@ -1190,19 +1200,22 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   // renders something.
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
+  const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
   // so the panel reflects what actually moved on the broker today.
   let todaysPnl;
   let todayPnlSub;
-  if (liveBrokerReady) {
-    const realizedToday = Number(liveBroker.today_realized_pnl || 0);
-    const unrealized = Number(liveBroker.total_unrealized_pnl || 0);
+  if (liveBrokerPnlReady) {
+    const realizedToday = finiteNumber(liveBroker.today_realized_pnl) || 0;
+    const unrealized = finiteNumber(liveBroker.total_unrealized_pnl) || 0;
     todaysPnl = realizedToday + unrealized;
     todayPnlSub = `realized $${realizedToday.toFixed(2)} + unrealized $${unrealized.toFixed(2)} (broker)`;
   } else {
     todaysPnl = bots.reduce((s,b) => s + (b.todays_pnl || 0), 0);
-    todayPnlSub = bots.length + ' bots aggregated';
+    todayPnlSub = liveBrokerReady
+      ? 'broker PnL fields unavailable; using bot PnL fallback'
+      : bots.length + ' bots aggregated';
   }
   const pnlEl = document.getElementById('todayPnl');
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);

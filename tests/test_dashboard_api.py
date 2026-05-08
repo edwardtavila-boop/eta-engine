@@ -171,6 +171,30 @@ class TestDashboardAPI:
         assert r.status_code == 200
         assert r.headers["access-control-allow-origin"] == "https://ops.evolutionarytradingalgo.com"
 
+    def test_force_multiplier_status_is_public_ops_compatible(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        (state / "fm_health.json").write_text(
+            json.dumps(
+                {
+                    "all_ready": False,
+                    "pass_count": 2,
+                    "total_count": 3,
+                    "providers": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/fm/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["mode"] == "force_multiplier"
+        assert payload["status"] == "ok"
+        assert "providers" in payload
+        assert payload["health_snapshot"]["payload"]["pass_count"] == 2
+        assert "no-store" in r.headers["Cache-Control"]
+
     def test_heartbeat(self, app_client):
         r = app_client.get("/api/heartbeat")
         assert r.status_code == 200

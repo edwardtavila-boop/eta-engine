@@ -24,3 +24,12 @@ def test_vps_bootstrap_invokes_codex_operator_registrar() -> None:
     assert "register_codex_operator_task.ps1" in text
     assert "ETA-Codex-Overnight-Operator" in text
     assert "ETA-ThreeAI-Sync" in text
+
+
+def test_vps_bootstrap_registers_fm_status_server() -> None:
+    text = (ETA_ROOT / "deploy" / "vps_bootstrap.ps1").read_text(encoding="utf-8")
+
+    assert 'Name="FmStatusServer"' in text
+    assert 'Xml="FmStatusServer.xml"' in text
+    assert r"deploy\FmStatusServer.xml" in text
+    assert "127.0.0.1:8422" in text

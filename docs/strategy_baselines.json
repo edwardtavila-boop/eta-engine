@@ -67,7 +67,7 @@
       "_promoted_at": "2026-05-08",
       "_promotion_status": "research_candidate",
       "_walk_forward_summary": "MYM1/1h, 624d window. Strict-gate audit (eta_engine/reports/strict_gate_mym.json): n=11 trades, sharpe=8.62, expR_net=+0.672, sh_def=-0.12, split=True, L=true (legacy gate pass), S=false (strict gate fail on n<30). Per-trade quality is the highest in the entire fleet; sample-size limited.",
-      "_notes": "MICRO-TIER CANDIDATE 2026-05-08 per operator directive (switching to micros for limited starting capital). MYM ~$25k notional fits $10k per-bot budget, but it is intentionally not supervisor-pinned until canonical MYM1_1h.csv and MYM1_5m.csv are present under C:\\EvolutionaryTradingAlgo\\mnq_data\\history and paper_live_launch_check reports no data block. Re-baseline once 30+ real paper fills land. avg_r approximated from expR_net since strict-gate uses friction-net per-trade R."
+      "_notes": "MICRO-TIER PIN 2026-05-08 per operator directive (switching to micros for limited starting capital). MYM ~$25k notional fits $10k per-bot budget. Canonical MYM1_1h.csv (10510 bars) and MYM1_5m.csv (120805 bars) are present under C:\\EvolutionaryTradingAlgo\\mnq_data\\history on home and VPS; paper_live_launch_check reports WARN, not BLOCK, because this remains a research candidate. Re-baseline once 30+ real paper fills land. avg_r approximated from expR_net since strict-gate uses friction-net per-trade R."
     },
     {
       "strategy_id": "mcl_sweep_reclaim_v1",

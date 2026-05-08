@@ -671,6 +671,8 @@ def _op16_strategy_research_candidates() -> OpItem:
     )
     item.evidence = {
         "overall_severity": "amber",
+        "launch_blocker": False,
+        "launch_role": "strategy_optimization_backlog",
         "blocked_bots": [b["name"] for b in blockers],
         "blockers": blockers,
     }

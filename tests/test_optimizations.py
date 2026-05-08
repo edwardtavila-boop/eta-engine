@@ -359,6 +359,18 @@ class TestStatusPage:
         assert "supervisor_local_position_count" in html
         assert "paper-local watched" in html
 
+    def test_status_page_does_not_coerce_missing_broker_pnl_to_zero(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "function formatMoneyOrUnavailable" in html
+        assert "brokerHasPnlTruth" in html
+        assert "broker PnL fields unavailable" in html
+        assert "formatMoney(totalRealized ?? 0)" not in html
+        assert "formatMoney(totalUnrealized ?? 0)" not in html
+        assert "Number(liveBroker.today_realized_pnl || 0)" not in html
+        assert "Number(liveBroker.total_unrealized_pnl || 0)" not in html
+
     def test_status_page_surfaces_vps_root_reconciliation_card(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")

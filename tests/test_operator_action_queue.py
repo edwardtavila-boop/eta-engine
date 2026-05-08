@@ -389,6 +389,8 @@ class TestStrategyResearchCandidateProbe:
         assert item.verdict == VERDICT_BLOCKED
         assert "1 research candidate bot(s)" in item.detail
         assert item.evidence["overall_severity"] == "amber"
+        assert item.evidence["launch_blocker"] is False
+        assert item.evidence["launch_role"] == "strategy_optimization_backlog"
         assert item.evidence["blocked_bots"] == ["eth_perp"]
         assert item.evidence["blockers"][0]["next_commands"] == [
             "python -m eta_engine.scripts.paper_live_launch_check --bots eth_perp --json",

@@ -6875,3 +6875,45 @@ def bridge_status() -> dict[str, object]:
         "daily": data.get("daily", {}),
         "paper": data.get("paper", {}),
     }
+
+
+def _fm_health_snapshot() -> dict[str, object]:
+    """Read the cached Force Multiplier health artifact without probing CLIs."""
+    candidates = [
+        _state_dir() / "fm_health.json",
+        _LEGACY_STATE / "fm_health.json",  # HISTORICAL-PATH-OK read fallback only
+    ]
+    for path in candidates:
+        if path.exists():
+            payload = _read_json_file(path)
+            if payload:
+                return {
+                    "path": str(path),
+                    "payload": payload,
+                }
+    return {
+        "path": str(candidates[0]),
+        "payload": {},
+    }
+
+
+@app.get("/api/fm/status", response_model=None)
+def force_multiplier_public_status() -> JSONResponse:
+    """Public-ops compatibility route for Wave-19 Force Multiplier status."""
+    try:
+        from eta_engine.brain.multi_model import force_multiplier_status
+
+        payload = dict(force_multiplier_status())
+        payload["status"] = "ok"
+    except Exception as exc:  # noqa: BLE001 - public ops should fail soft
+        payload = {
+            "status": "degraded",
+            "mode": "force_multiplier",
+            "error": str(exc)[:200],
+        }
+    payload["generated_at"] = datetime.now(tz=UTC).isoformat()
+    payload["health_snapshot"] = _fm_health_snapshot()
+    return JSONResponse(
+        content=payload,
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )

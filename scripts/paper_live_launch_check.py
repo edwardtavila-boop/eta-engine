@@ -323,6 +323,7 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
         "zn_sweep_reclaim": "mnq",
         "eur_sweep_reclaim": "mnq",
         "mes_sweep_reclaim": "mnq",
+        "mes_sweep_reclaim_v2": "mnq",
         "m2k_sweep_reclaim": "mnq",
         "ym_sweep_reclaim": "mnq",
         "mbt_funding_basis": "btc_hybrid",

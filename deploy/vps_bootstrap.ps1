@@ -188,17 +188,19 @@ if (-not $SkipWinSW) {
     Write-Host ""; Write-Host "=== WinSW Windows Services ===" -ForegroundColor Green
 
     $services = @(
-        @{Name="FirmCore";                    Xml="FirmCore.xml"},
-        @{Name="FirmWatchdog";                Xml="FirmWatchdog.xml"},
-        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml"},
-        @{Name="FirmCommandCenterEdge";       Xml="FirmCommandCenterEdge.xml"},
-        @{Name="FirmCommandCenterTunnel";     Xml="FirmCommandCenterTunnel.xml"},
-        @{Name="ETAJarvisSupervisor";         Xml="ETAJarvisSupervisor.xml"}
+        @{Name="FirmCore";                    Xml="FirmCore.xml";                    XmlPath="$fccServicesDir\FirmCore.xml"},
+        @{Name="FirmWatchdog";                Xml="FirmWatchdog.xml";                XmlPath="$fccServicesDir\FirmWatchdog.xml"},
+        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml";           XmlPath="$fccServicesDir\FirmCommandCenter.xml"},
+        @{Name="FirmCommandCenterEdge";       Xml="FirmCommandCenterEdge.xml";       XmlPath="$fccServicesDir\FirmCommandCenterEdge.xml"},
+        @{Name="FirmCommandCenterTunnel";     Xml="FirmCommandCenterTunnel.xml";     XmlPath="$fccServicesDir\FirmCommandCenterTunnel.xml"},
+        @{Name="HermesJarvisTelegram";        Xml="HermesJarvisTelegram.xml";        XmlPath="$fccServicesDir\HermesJarvisTelegram.xml"},
+        @{Name="ETAJarvisSupervisor";         Xml="ETAJarvisSupervisor.xml";         XmlPath="$fccServicesDir\ETAJarvisSupervisor.xml"},
+        @{Name="FmStatusServer";              Xml="FmStatusServer.xml";              XmlPath="$EtaEngineDir\deploy\FmStatusServer.xml"}
     )
 
     if (Test-Path $winswExe) {
         foreach ($svc in $services) {
-            $xmlPath = "$fccServicesDir\$($svc.Xml)"
+            $xmlPath = $svc.XmlPath
             if (Test-Path $xmlPath) {
                 $svcDir = "$fccServicesDir\$($svc.Name)"
                 if (-not (Test-Path $svcDir)) { New-Item -ItemType Directory -Force -Path $svcDir | Out-Null }
@@ -496,6 +498,7 @@ Write-Host "  FirmCommandCenterEdge            -- Caddy reverse proxy" -Foregrou
 Write-Host "  FirmCommandCenterTunnel          -- Cloudflare tunnel" -ForegroundColor Gray
 Write-Host "  HermesJarvisTelegram             -- Telegram bridge" -ForegroundColor Gray
 Write-Host "  ETAJarvisSupervisor              -- strategy supervisor" -ForegroundColor Gray
+Write-Host "  FmStatusServer                   -- Force Multiplier status on 127.0.0.1:8422" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Secrets needed:" -ForegroundColor White
 Write-Host "  secrets/telegram_bot_token.txt    -- for Hermes Telegram push" -ForegroundColor Gray

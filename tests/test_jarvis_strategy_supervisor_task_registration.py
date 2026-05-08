@@ -111,6 +111,13 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # the energy-reflexivity edge that cl_sweep_reclaim couldn't
         # deliver. Pinned for paper-soak.
         "mcl_sweep_reclaim",
+        # MYM strict-gate audit (strict_gate_mym.json): n=11, sharpe
+        # 8.62, expR_net=+0.672, split=True. Per-trade quality is the
+        # highest in the entire fleet. Re-pinned 2026-05-08 once
+        # canonical MYM1_1h.csv (10510 bars) + MYM1_5m.csv (120805
+        # bars) synced to mnq_data/history on both VPS and home, so
+        # paper_live_launch_check now reports 0 BLOCK with mym in pin.
+        "mym_sweep_reclaim",
     }
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
@@ -123,10 +130,10 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         "notional; ATR sizing rounds to 0 contracts. Re-pin only with "
         "MYM variant or budget-cap exception."
     )
-    assert "mym_sweep_reclaim" not in bots, (
-        "mym_sweep_reclaim is a positive research candidate, but it must stay "
-        "off the supervisor pin until canonical MYM1 1h and 5m bars are present."
-    )
+    # mym_sweep_reclaim was previously held off the pin while canonical
+    # MYM1 bars were missing locally; both VPS and home have the canonical
+    # MYM1_1h.csv + MYM1_5m.csv as of 2026-05-08T08:50Z, so it is now
+    # part of the active pin (assertion at the set-equality above).
     assert "sol_optimized" not in bots, (
         "sol_optimized has only 17 trades in the audit; too small for live "
         "capital allocation."
