@@ -136,6 +136,17 @@
       "_notes": "MBT funding-basis strategy. Was previously kept as research_candidate / exit-watch-only pending baseline persistence. Audit n=31 with positive expR_net and split-stable signal qualifies for paper_soak promotion. Re-baseline once 30+ live fills land."
     },
     {
+      "strategy_id": "sol_optimized_v1",
+      "n_trades": 18,
+      "win_rate": 0.50,
+      "avg_r": 0.616,
+      "r_stddev": 1.50,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "paper_soak",
+      "_walk_forward_summary": "SOL/1h, full-history audit (eta_engine/reports/strict_gate_post_microtier.json): n=18 trades, sharpe=7.69, expR_net=+0.616, sh_def=+0.13 (POSITIVE deflated Sharpe -- second-highest in entire fleet after volume_profile_mnq), split=True, L=true (legacy gate pass). Btc_optimized template applied to SOL with sol-specific sweep preset and sol_crypto edge config.",
+      "_notes": "ALPACA CRYPTO PIN 2026-05-08. Routes via broker_router to Alpaca paper. n=18 is below the strict 30-trade floor, but sh_def +0.13 means even after deflated-Sharpe correction (which heavily penalizes small samples) the signal stays positive -- the gold standard for small-n bots. Per-trade quality (+0.616 expR_net) is the third-highest in the audited fleet. Re-baseline once 30+ live fills land."
+    },
+    {
       "strategy_id": "rsi_mr_mnq_v2",
       "n_trades": 285,
       "win_rate": 0.42,

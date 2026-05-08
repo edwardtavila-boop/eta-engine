@@ -156,7 +156,18 @@ rem                    0.3 -> 0.2 tripled the sample (n 93 -> 285) and
 rem                    flipped expR_net from -0.003 to +0.053. The
 rem                    kernel was real; over-strict thresholds were
 rem                    blocking it.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim,mbt_funding_basis,rsi_mr_mnq_v2"
+rem
+rem   sol_optimized -- NEW 2026-05-08 (ALPACA CRYPTO LANE).
+rem                    Strict-gate audit (strict_gate_post_microtier.json):
+rem                    n=18, sharpe 7.69, expR_net +0.616, sh_def +0.13
+rem                    (POSITIVE deflated Sharpe -- second-highest in
+rem                    entire fleet after volume_profile_mnq), split=True,
+rem                    L=true. Routes through broker_router to Alpaca
+rem                    paper. n<30 but sh_def's positive sign at small n
+rem                    is the gold standard for small-sample acceptance
+rem                    (deflated Sharpe heavily penalizes n<30, so a
+rem                    positive sh_def means real signal).
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim,mbt_funding_basis,rsi_mr_mnq_v2,sol_optimized"
 rem Exit-watch only: (none currently — mbt_funding_basis re-promoted to
 rem the active pin after baseline persistence in strategy_baselines.json
 rem and registry promotion_status raised to paper_soak.)

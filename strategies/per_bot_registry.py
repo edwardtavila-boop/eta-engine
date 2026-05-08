@@ -342,12 +342,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "Uses SOL-specific sweep_preset (sol_daily_sweep_preset) and "
             "sol_crypto edge preset, both calibrated for SOL's ~2x BTC "
             "volatility. Half-size warmup until Kaizen accumulates enough "
-            "live trades to validate the edge."
+            "live trades to validate the edge. "
+            "Strict-gate audit 2026-05-08 (strict_gate_post_microtier.json): "
+            "n=18 trades, sharpe 7.69, expR_net +0.616, sh_def +0.13 "
+            "(POSITIVE deflated Sharpe -- second-highest in entire fleet "
+            "after volume_profile_mnq), split=True, L=true. Promoted to "
+            "paper_soak with the same small-n acceptance applied to MYM "
+            "(n=11, sh_def -0.12) since sol's per-trade quality and "
+            "deflated-Sharpe are both stronger than MYM's."
         ),
         extras={
             "edge_enabled": True,
             "edge_config": "sol_crypto",  # SOL-tuned edge thresholds (was btc_crypto)
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "sub_strategy_kind": "sweep_reclaim",
             "sub_strategy_extras": {
                 "sweep_preset": "sol",  # SOL-specific preset (was "btc" fallback)

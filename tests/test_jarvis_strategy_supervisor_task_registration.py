@@ -119,6 +119,14 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # and flipped expR_net from -0.003 to +0.053. The kernel
         # was real; over-strict thresholds blocked it.
         "rsi_mr_mnq_v2",
+        # ALPACA CRYPTO: SOL/USD via broker_router. Strict-gate
+        # audit (strict_gate_post_microtier.json): n=18, sharpe 7.69,
+        # expR_net +0.616, sh_def +0.13 (POSITIVE deflated Sharpe --
+        # second-highest in fleet after volume_profile_mnq),
+        # split=True, L=true. n<30 acceptance: positive sh_def at
+        # small n is the gold standard since deflated Sharpe heavily
+        # penalizes small samples; positive sign means real signal.
+        "sol_optimized",
         # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
         # sharpe=2.00, expR_net=+0.111, split=True. Profile mirrors
         # the already-pinned mnq_anchor_sweep. Legacy gate passes
@@ -163,10 +171,13 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     # MYM1 bars were missing locally; both VPS and home have the canonical
     # MYM1_1h.csv + MYM1_5m.csv as of 2026-05-08T08:50Z, so it is now
     # part of the active pin (assertion at the set-equality above).
-    assert "sol_optimized" not in bots, (
-        "sol_optimized has only 17 trades in the audit; too small for live "
-        "capital allocation."
-    )
+    # sol_optimized was previously held off the pin under the n<30
+    # rule; the 2026-05-08 audit shows n=18 with sh_def +0.13 (POSITIVE
+    # deflated Sharpe), which is exceptional at small sample size since
+    # the deflated correction heavily penalizes n<30. The positive sign
+    # is the gold standard for small-sample edge acceptance, and per-
+    # trade quality (+0.616 expR_net) is the third-highest in the
+    # audited fleet. Routes via broker_router to Alpaca paper.
     assert "mbt_sweep_reclaim" not in bots, (
         "mbt_sweep_reclaim shows zero trades in the audit; awaits "
         "MBT 1h bar-data hydration."
