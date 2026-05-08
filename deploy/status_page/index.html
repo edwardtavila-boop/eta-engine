@@ -1214,6 +1214,16 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
       gatewayClass = 'green';
       const acct = (liveBroker.ibkr.managed_accounts || [])[0];
       gatewaySub = acct ? 'live REST · ' + acct : 'live REST probe ok';
+    } else if (ibkrGateway.status === 'connected') {
+      gatewayLabel = 'Connected';
+      gatewayClass = 'green';
+      const gatewayCrash = ibkrGateway.crash || ibkrGateway.gateway_crash || {};
+      gatewaySub = compactText(
+        gatewayCrash.summary
+        || ibkrGateway.detail
+        || liveBroker.ibkr.error
+        || 'gateway healthy; broker data probe timed out'
+      );
     } else {
       gatewayLabel = 'Down';
       gatewayClass = 'red';

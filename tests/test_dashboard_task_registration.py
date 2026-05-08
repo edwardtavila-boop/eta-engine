@@ -8,6 +8,7 @@ RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
+DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -151,3 +152,29 @@ def test_dashboard_proxy_watchdog_task_registration_avoids_legacy_paths() -> Non
     assert "crypto_data" not in text
     assert "TheFirm" not in text
     assert "The_Firm" not in text
+
+
+def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
+    text = DASHBOARD_SYNC_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Root = "C:\\EvolutionaryTradingAlgo"' in text
+    assert 'Branch = "codex/paper-live-runtime-hardening"' in text
+    assert 'TaskName = "ETA-Dashboard-API"' in text
+    assert 'ProbeUri = "http://127.0.0.1:8000/api/bot-fleet"' in text
+    assert "leaving superproject untouched and syncing eta_engine only" in text
+    assert 'Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)' in text
+    assert 'Get-ScheduledTask -TaskName $TaskName' in text
+    assert 'Start-ScheduledTask -TaskName $TaskName' in text
+    assert "target_exit_summary" in text
+
+
+def test_dashboard_sync_script_avoids_legacy_paths_and_root_pull() -> None:
+    text = DASHBOARD_SYNC_SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+    assert 'Invoke-Git -WorkingDirectory $RootFull -Arguments @("pull"' not in text
