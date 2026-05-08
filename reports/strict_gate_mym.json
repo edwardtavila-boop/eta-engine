@@ -1,0 +1,16 @@
+[
+  {
+    "bot": "mym_sweep_reclaim",
+    "symbol": "MYM1",
+    "trades": 11,
+    "sharpe": 8.62,
+    "expR": 0.0,
+    "expR_p5": 0.455,
+    "expR_net": 0.672,
+    "p_bonf": 1.0,
+    "split": true,
+    "sh_def": -0.12,
+    "L": true,
+    "S": false
+  }
+]

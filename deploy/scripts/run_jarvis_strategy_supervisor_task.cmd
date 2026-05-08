@@ -112,17 +112,27 @@ rem audit set (sh_def +2.86 on 2916 trades).
 rem
 rem MICRO-TIER ADDITION 2026-05-08 (operator directive: "switching to
 rem mym for now as micros are key due to starting off with limited
-rem funds"): mym_sweep_reclaim added to the pin per its strict-gate
-rem audit on 624d MYM1 1h data:
+rem funds"). Added per strict-gate audits on 1h history (MYM=624d,
+rem MGC=2yr post-fetch, MCL=2yr post-fetch):
+rem
 rem   mym_sweep_reclaim -- n=11, Sharpe=8.62, expR_net=+0.672, split=True
 rem                        Per-trade quality is the highest in the fleet.
-rem                        Sample is small (n<30) so it fails strict-gate,
-rem                        but legacy gate passes (L=true) and per-trade
-rem                        edge dwarfs every other pinned bot. Pin as
-rem                        research_candidate for paper-soak fills.
-rem MGC + MCL pending deeper data hydration; will pin after re-audit if
-rem they show similar profile (positive expR_net + split-stable).
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mym_sweep_reclaim"
+rem                        Sample small (n<30) so fails strict-gate, but
+rem                        legacy gate passes (L=true) and per-trade edge
+rem                        dwarfs every other pinned bot.
+rem   mcl_sweep_reclaim -- n=16, Sharpe=2.00, expR_net=+0.111, split=True
+rem                        Profile mirrors mnq_anchor_sweep (split-stable,
+rem                        positive net, similar Sharpe). Legacy gate
+rem                        passes. MCL micro friction (10x less than CL)
+rem                        unlocks the energy-reflexivity edge that
+rem                        cl_sweep_reclaim couldn't deliver at full size.
+rem
+rem   mgc_sweep_reclaim -- n=7, sh_def -1.61, split=False  -- NOT PINNED.
+rem                        Strategy fires once per ~70 days on 2yr of MGC1
+rem                        1h data; insufficient frequency. Same template
+rem                        on MNQ/MCL fires 2-3x more often. Leave for
+rem                        future template tuning or alternative timeframe.
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mym_sweep_reclaim,mcl_sweep_reclaim"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

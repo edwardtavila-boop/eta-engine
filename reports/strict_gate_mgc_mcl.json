@@ -1,0 +1,30 @@
+[
+  {
+    "bot": "mgc_sweep_reclaim",
+    "symbol": "MGC1",
+    "trades": 1,
+    "sharpe": 0.0,
+    "expR": 0.0,
+    "expR_p5": -1.0,
+    "expR_net": -1.008,
+    "p_bonf": 1.0,
+    "split": false,
+    "sh_def": 0.0,
+    "L": false,
+    "S": false
+  },
+  {
+    "bot": "mcl_sweep_reclaim",
+    "symbol": "MCL1",
+    "trades": 2,
+    "sharpe": 0.0,
+    "expR": 0.0,
+    "expR_p5": -1.0,
+    "expR_net": -1.015,
+    "p_bonf": 1.0,
+    "split": true,
+    "sh_def": 0.0,
+    "L": false,
+    "S": false
+  }
+]

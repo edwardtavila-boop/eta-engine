@@ -111,6 +111,13 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # other pinned bot; small sample fails strict-gate but legacy
         # gate passes (L=true). Pinned for paper-soak.
         "mym_sweep_reclaim",
+        # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
+        # sharpe=2.00, expR_net=+0.111, split=True. Profile mirrors
+        # the already-pinned mnq_anchor_sweep. Legacy gate passes
+        # (L=true). MCL micro friction (10x less than full CL) unlocks
+        # the energy-reflexivity edge that cl_sweep_reclaim couldn't
+        # deliver. Pinned for paper-soak.
+        "mcl_sweep_reclaim",
     }
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
