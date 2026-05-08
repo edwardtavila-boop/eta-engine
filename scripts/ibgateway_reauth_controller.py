@@ -181,9 +181,10 @@ def decide_reauth_action(
         )
 
     details = _json_dict(tws_status.get("details"))
+    socket_ok = _bool_value(details.get("socket_ok"))
     gateway_process = _json_dict(details.get("gateway_process"))
     process_running = _bool_value(gateway_process.get("running"))
-    if not process_running:
+    if not process_running and not socket_ok:
         return _base_decision(
             status="started_gateway",
             action="start_gateway",

@@ -185,6 +185,34 @@ def test_stuck_running_gateway_restarts_once_then_waits_for_ibkr_login(tmp_path:
     assert restarted == ["ETA-IBGateway-DailyRestart"]
 
 
+def test_wedged_api_listener_restarts_even_when_process_snapshot_missing(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    status = _unhealthy_status(process_running=False)
+    status["details"]["socket_ok"] = True
+    status["details"]["handshake_ok"] = False
+    status["details"]["handshake_detail"] = "attempt 1 clientId=55: TimeoutError()"
+    tws_status.write_text(json.dumps(status), encoding="utf-8")
+    restarted: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_restart_scheduled_task", lambda task_name: restarted.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+    )
+
+    assert result["status"] == "restart_requested"
+    assert result["action"] == "restart_gateway"
+    assert result["last_task_name"] == "ETA-IBGateway-DailyRestart"
+    assert restarted == ["ETA-IBGateway-DailyRestart"]
+
+
 def test_restart_scheduled_task_stops_stuck_task_before_starting(monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 
