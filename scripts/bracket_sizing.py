@@ -40,6 +40,15 @@ _CRYPTO_ROOTS = {"BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET"}
 _FUTURES_ROOTS = {
     "MNQ", "NQ", "ES", "MES", "NG", "CL", "GC", "ZN", "ZB",
     "6E", "M6E", "MGC", "MCL", "RTY", "M2K",
+    # Equity-index Dow (added 2026-05-07): YM and MYM were missing from
+    # the set, which silently fell through to the "other" asset class
+    # at $100 default budget instead of $500/$10000 futures budget.
+    # YM bots were thus capped at $100 cap which kills every entry.
+    "YM", "MYM",
+    # Rates micros (added 2026-05-07 as part of futures-roots audit):
+    "ZF", "ZT",
+    # Currency micros (M6E already there, M6B/M6A also exist):
+    "M6B", "M6A", "6B", "6A", "6J", "M6J",
 }
 
 
@@ -186,7 +195,43 @@ def _round_decimals_for(price: float) -> int:
 # ─── Per-class capital budgets ──────────────────────────────────
 
 
-def _budget_per_bot_usd(symbol: str) -> float:
+def _budget_per_bot_usd(symbol: str, *, bot_id: str | None = None) -> float:
+    """Return the per-bot capital cap in USD.
+
+    Lookup order:
+      1. Per-bot override in ``per_bot_registry.ASSIGNMENTS[bot].extras
+         ["per_bot_budget_usd"]`` -- lets high-notional contracts (YM,
+         GC, ES) declare a larger cap matching their margin requirement
+         WITHOUT lifting the cap for every bot trading the same asset
+         class. Falls through to env-var defaults if absent.
+      2. Asset-class env-var:
+            crypto  -> ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD  (default 100)
+            futures -> ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD (default 500)
+            other   -> ETA_LIVE_OTHER_BUDGET_PER_BOT_USD   (default 100)
+
+    The bot_id argument is optional so existing callers (which only
+    have ``symbol``) keep working; the per-bot override only fires
+    when the caller passes its bot_id explicitly.
+    """
+    if bot_id:
+        try:
+            from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
+            for a in ASSIGNMENTS:
+                if a.bot_id == bot_id:
+                    override = (a.extras or {}).get("per_bot_budget_usd")
+                    if override is not None:
+                        try:
+                            return float(override)
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                "bot %s has malformed per_bot_budget_usd=%r; "
+                                "falling back to asset-class default",
+                                bot_id, override,
+                            )
+                    break
+        except Exception:  # noqa: BLE001 -- never let registry lookup fail sizing
+            pass
+
     if _is_crypto(symbol):
         return float(os.getenv("ETA_LIVE_CRYPTO_BUDGET_PER_BOT_USD", "100.0"))
     if _is_futures(symbol):
@@ -275,19 +320,53 @@ def _point_value(symbol: str) -> float:
         return 1.0
 
 
+def _is_live_money_mode() -> bool:
+    """True when the supervisor is running with real money, not paper.
+
+    The paper-futures-floor logic below disables itself in live mode
+    so a sizing-cap clamp can't accidentally over-trade on a live
+    account. The check looks at:
+      1. ``ETA_SUPERVISOR_LIVE_MONEY=1`` (explicit live-money flag)
+      2. ``ETA_SUPERVISOR_MODE`` set to ``live`` / ``live_money``
+    Defaults to FALSE (paper) when neither is set -- safer to keep
+    the floor on by default than to silently strip it.
+    """
+    if os.getenv("ETA_SUPERVISOR_LIVE_MONEY", "").strip() in ("1", "true", "yes"):
+        return True
+    mode = os.getenv("ETA_SUPERVISOR_MODE", "").strip().lower()
+    return mode in {"live", "live_money", "real"}
+
+
+def _paper_floor_enabled() -> bool:
+    """True when the paper-futures min-1-lot floor should kick in.
+
+    Live money: floor OFF, hard. The bot drops to 0 contracts when
+    the cap rounds it below 1.
+
+    Paper / sim: floor ON unless explicitly disabled via
+    ``ETA_PAPER_FUTURES_FLOOR=0``. Lifts qty to 1 so paper-soak
+    actually trades full contracts even when the cap rounds below 1.
+    """
+    if _is_live_money_mode():
+        return False
+    return float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+
+
 def cap_qty_to_budget(
     *,
     symbol: str,
     entry_price: float,
     requested_qty: float,
     fleet_open_notional_usd: float = 0.0,
+    bot_id: str | None = None,
 ) -> tuple[float, str]:
     """Return ``(capped_qty, reason)``.
 
     Caps the requested qty so neither the per-bot nor the fleet budget
     is exceeded. ``reason`` is one of "ok", "per_bot_capped",
-    "fleet_capped", "fleet_exhausted". The supervisor logs the reason
-    so the operator can see when budgets are clamping signals.
+    "fleet_capped", "fleet_exhausted", "paper_futures_floor". The
+    supervisor logs the reason so the operator can see when budgets
+    are clamping signals.
 
     Notional math: ``qty * entry_price * point_value``. The point_value
     (contract multiplier) is the difference between "Dow at 49639" and
@@ -295,11 +374,22 @@ def cap_qty_to_budget(
     iterations of this function omitted ``point_value`` and reported
     notional in INDEX-POINT terms, which silently under-counted by 5x
     to 100x for full-sized futures (caught 2026-05-07).
+
+    ``bot_id`` (optional) lets the per-bot budget override fire. Without
+    it, only the asset-class env-var defaults apply -- which is fine
+    for crypto and the micro futures, but YM/GC/ES (whose 1-contract
+    notional dwarfs the $10k default) need their own bigger cap.
+
+    Live-money safety: ``ETA_SUPERVISOR_MODE=live`` or
+    ``ETA_SUPERVISOR_LIVE_MONEY=1`` disables the
+    ``paper_futures_floor`` automatic round-up. In live mode a bot
+    that wants 1 contract but only has $10k cap will return 0 and
+    skip the entry, NOT silently lift to 1 (50x over-risk).
     """
     if entry_price <= 0:
         return requested_qty, "ok"
 
-    per_bot_cap_usd = _budget_per_bot_usd(symbol)
+    per_bot_cap_usd = _budget_per_bot_usd(symbol, bot_id=bot_id)
     fleet_cap_usd = _fleet_budget_usd(symbol)
 
     point_value = _point_value(symbol)
@@ -313,12 +403,13 @@ def cap_qty_to_budget(
         # not a real fund constraint. If a single MNQ contract ($20-40k
         # notional) flips fleet_remaining negative, every other futures
         # bot would be locked out for the rest of the day. Floor to 1
-        # contract per request to keep the fleet trading. Live deployments
-        # set ETA_PAPER_FUTURES_FLOOR=0 to restore strict behavior.
+        # contract per request to keep the fleet trading. Live mode
+        # auto-disables this via _paper_floor_enabled() so a fleet-cap
+        # clamp can't accidentally over-trade on a live account.
         if (
             not _is_crypto(symbol)
             and abs(requested_qty) >= 1.0
-            and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+            and _paper_floor_enabled()
         ):
             return 1.0, "paper_futures_floor"
         return 0.0, "fleet_exhausted"
@@ -343,20 +434,19 @@ def cap_qty_to_budget(
     reason = "per_bot_capped" if per_bot_cap_usd <= fleet_remaining else "fleet_capped"
 
     # Paper-mode minimum-quantity floor for futures contracts.
-    # Default per-bot futures budget ($500) divided by MNQ notional
-    # ($20000/contract before point_value) rounds to 0 contracts —
-    # so EVERY futures entry approved by JARVIS got killed at the cap
-    # before any FillRecord could be written. Symptom in production:
-    # 82 APPROVED verdicts for bot.mnq, zero n_entries on all 8 MNQ
-    # bots. In paper mode the cap is a sanity guard, not a real fund
-    # constraint, so floor capped_qty to 1.0 when the operator clearly
-    # asked for at least 1 contract. The env var ETA_PAPER_FUTURES_FLOOR
-    # (default 1) lets live deployments disable this by setting it to 0.
+    # In paper mode the cap is a sanity guardrail, not a real fund
+    # constraint. ATR sizing on a $10k cap vs MNQ $14k notional rounds
+    # to 0 contracts, killing every entry; symptom in production was
+    # 82 APPROVED verdicts on bot.mnq with zero n_entries. Floor lifts
+    # capped_qty to 1.0 when the strategy asked for at least 1 contract
+    # AND we are in paper mode. ``_paper_floor_enabled()`` short-circuits
+    # to False on live money so the cap stays hard there -- no silent
+    # 50x over-risk if a live deploy forgets to flip an env var.
     if (
         not _is_crypto(symbol)
         and abs(requested_qty) >= 1.0
         and capped_qty < 1.0
-        and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
+        and _paper_floor_enabled()
     ):
         return 1.0, "paper_futures_floor"
 

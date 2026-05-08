@@ -159,6 +159,24 @@ CRYPTO_SPOT_TAKER_FEE_RT: float = 0.0010  # 10 bps RT (5 bps each side, retail C
 CRYPTO_SPOT_SYMBOLS: frozenset[str] = frozenset({"SOL", "XRP"})
 
 
+def _strip_front_month_suffix(s: str) -> str:
+    """Strip the trailing ``1`` that distinguishes the front-month
+    convention (``MNQ1`` for the active MNQ contract) from the bare
+    instrument root (``MNQ``).
+
+    Both forms appear in the codebase: the broker-side trade routing
+    uses ``MNQ1`` (continuous front-month) while bot configs and the
+    audit engine sometimes use just ``MNQ``. Without this normalization,
+    ``get_spec("MNQ")`` (no suffix) and ``get_spec("MNQ1")`` (suffixed)
+    can return different specs -- the latter hits the spec table, the
+    former hits the conservative default.
+    """
+    s = s.upper()
+    if s.endswith("1") and s[:-1] in _SPECS:
+        return s[:-1]
+    return s
+
+
 def get_spec(symbol: str) -> InstrumentSpec:
     """Return the spec for symbol or a conservative default.
 
@@ -171,8 +189,15 @@ def get_spec(symbol: str) -> InstrumentSpec:
     instead -- that helper resolves the ambiguity safely.
     """
     s = symbol.upper()
+    # First try direct lookup. Then try the suffixed form (e.g. "YM" ->
+    # check if "YM1" exists). This handles the asymmetry where some
+    # specs are keyed by front-month form ("YM1") and some by bare
+    # form ("MNQ", "BTC"), with callers passing either.
     if s in _SPECS:
         return _SPECS[s]
+    suffixed = f"{s}1"
+    if suffixed in _SPECS:
+        return _SPECS[suffixed]
     return InstrumentSpec(
         symbol=s, tick_size=0.25, point_value=1.0, commission_rt=4.0,
         half_spread_ticks=2.0, base_slip_ticks=3.0,

@@ -322,6 +322,111 @@ def test_cap_qty_micro_gold_fits_normal_budget() -> None:
         os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
 
 
+def test_paper_floor_disabled_in_live_mode() -> None:
+    """Live-money safety: when ``ETA_SUPERVISOR_MODE=live`` (or
+    ``ETA_SUPERVISOR_LIVE_MONEY=1``), ``paper_futures_floor`` does NOT
+    kick in -- a budget cap that rounds qty below 1 contract returns
+    0, NOT a silent up-round to 1 contract (which would be 50x over-
+    risk per trade if the strategy meant to size below 1).
+    """
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_SUPERVISOR_MODE"] = "live"
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "100000"
+    try:
+        # MNQ at $57k notional / $10k cap -> capped to 0 contracts.
+        # Paper mode would lift to 1; live mode must NOT.
+        qty, reason = cap_qty_to_budget(
+            symbol="MNQ1", entry_price=28500.0, requested_qty=1.0,
+        )
+        assert qty == 0.0, (
+            f"live mode must not lift sub-1-lot to 1; got qty={qty} reason={reason}"
+        )
+        assert reason == "per_bot_capped"
+    finally:
+        os.environ.pop("ETA_SUPERVISOR_MODE", None)
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+
+
+def test_paper_floor_enabled_via_explicit_live_money_flag() -> None:
+    """``ETA_SUPERVISOR_LIVE_MONEY=1`` is the explicit live flag -- when
+    set it must also disable the paper floor regardless of MODE."""
+    from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+    os.environ["ETA_SUPERVISOR_LIVE_MONEY"] = "1"
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    os.environ["ETA_LIVE_FUTURES_FLEET_BUDGET_USD"] = "100000"
+    try:
+        qty, reason = cap_qty_to_budget(
+            symbol="MNQ1", entry_price=28500.0, requested_qty=1.0,
+        )
+        assert qty == 0.0
+        assert reason == "per_bot_capped"
+    finally:
+        os.environ.pop("ETA_SUPERVISOR_LIVE_MONEY", None)
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+        os.environ.pop("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", None)
+
+
+def test_per_bot_budget_override_lifts_cap_for_high_notional_contracts() -> None:
+    """High-notional contracts (YM ~$248k, GC ~$470k, ES ~$300k) cannot
+    fit the default per-bot $10k cap. Per-bot ``per_bot_budget_usd``
+    override in registry extras lets a bot declare its own bigger cap
+    without lifting the cap fleet-wide.
+    """
+    from unittest.mock import patch
+
+    from eta_engine.scripts.bracket_sizing import _budget_per_bot_usd
+
+    fake_assignment = type(
+        "FakeAssignment", (),
+        {"bot_id": "ym_sweep_reclaim", "extras": {"per_bot_budget_usd": 50000.0}},
+    )
+    with patch(
+        "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+        [fake_assignment],
+    ):
+        # With override: $50k cap.
+        cap = _budget_per_bot_usd("YM1", bot_id="ym_sweep_reclaim")
+        assert cap == 50000.0
+
+        # Without bot_id: falls through to asset-class default.
+        os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+        try:
+            default_cap = _budget_per_bot_usd("YM1")
+            assert default_cap == 10000.0, (
+                f"asset-class default should apply when bot_id is None; got {default_cap}"
+            )
+        finally:
+            os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+
+
+def test_per_bot_budget_override_malformed_falls_back_to_default() -> None:
+    """A bad per_bot_budget_usd value (string, negative number, etc.)
+    must NOT bypass sizing -- fall back to the asset-class default
+    rather than letting a misconfigured registry entry do anything wild.
+    """
+    from unittest.mock import patch
+
+    from eta_engine.scripts.bracket_sizing import _budget_per_bot_usd
+
+    fake_assignment = type(
+        "FakeAssignment", (),
+        {"bot_id": "broken_bot", "extras": {"per_bot_budget_usd": "not-a-number"}},
+    )
+    os.environ["ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD"] = "10000"
+    try:
+        with patch(
+            "eta_engine.strategies.per_bot_registry.ASSIGNMENTS",
+            [fake_assignment],
+        ):
+            cap = _budget_per_bot_usd("YM1", bot_id="broken_bot")
+            # Falls back to asset-class default (NOT the malformed override).
+            assert cap == 10000.0
+    finally:
+        os.environ.pop("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", None)
+
+
 def test_cap_qty_crypto_spot_unchanged_by_multiplier_fix() -> None:
     """The point_value fix must NOT affect crypto spot trading where
     notional has always been correctly ``qty * price``. BTC, ETH, SOL
