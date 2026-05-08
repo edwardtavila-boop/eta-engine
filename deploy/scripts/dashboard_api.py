@@ -36,7 +36,7 @@ import time
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import portalocker
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
@@ -3706,6 +3706,7 @@ def bot_fleet_roster(
             row["registry_active"] = registry_active[row_bot_id]
             row["registry_deactivated"] = registry_active[row_bot_id] is False
 
+    hidden_disabled_count = sum(1 for row in rows if _is_hidden_bot_row(row))
     if not include_disabled:
         rows = [row for row in rows if not _is_hidden_bot_row(row)]
 
@@ -3754,6 +3755,11 @@ def bot_fleet_roster(
             target_exit_summary=target_exit_summary,
         )
     broker_summary = _broker_summary_fields(live_broker_state)
+    portfolio_summary = _portfolio_summary_payload(
+        rows,
+        live_broker_state,
+        hidden_disabled_count=hidden_disabled_count,
+    )
     broker_gateway = _broker_gateway_snapshot()
     ibkr_gateway = (
         broker_gateway.get("ibkr")
@@ -3784,10 +3790,12 @@ def bot_fleet_roster(
             "target_exit_status": target_exit_summary["status"],
             "open_position_count_visible": target_exit_summary["open_position_count"],
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
+            "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
             **broker_summary,
         },
+        "portfolio_summary": portfolio_summary,
         "latest_signal_ts":  signal_cadence["latest_signal_ts"],
         "signal_cadence":    signal_cadence,
         "target_exit_summary": target_exit_summary,
@@ -4719,6 +4727,128 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     if closed_outcomes_today is not None:
         out["broker_closed_outcomes_today"] = int(closed_outcomes_today)
     return out
+
+
+def _portfolio_sleeve_for_symbol(symbol: object) -> str:
+    """Group symbols into dashboard-ready portfolio sleeves."""
+    raw = str(symbol or "").upper().replace("/", "").replace("-", "").strip()
+    root = re.sub(r"(USD|USDT)$", "", raw)
+    root = re.sub(r"\d+$", "", root)
+    if root in {"BTC", "ETH", "SOL", "XRP", "ADA", "AVAX", "DOGE", "DOT", "LINK"}:
+        return "crypto"
+    if root in {"MBT", "MET"}:
+        return "crypto_futures"
+    if root in {"MNQ", "NQ", "ES", "MES", "M2K", "RTY", "MYM", "YM"}:
+        return "equity_index_futures"
+    if root in {"CL", "MCL", "NG", "GC", "MGC"}:
+        return "commodities"
+    if root in {"6E", "M6E", "ZN", "ZB", "ZF", "ZT"}:
+        return "rates_fx"
+    return "other"
+
+
+def _portfolio_summary_payload(
+    rows: list[dict],
+    live_broker_state: dict,
+    *,
+    hidden_disabled_count: int = 0,
+) -> dict:
+    """API-level allocation and PnL truth for premium dashboard graphs."""
+    rows = [row for row in rows if isinstance(row, dict)]
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    broker_summary = _broker_summary_fields(live_broker_state)
+    exposure = (
+        live_broker_state.get("position_exposure")
+        if isinstance(live_broker_state.get("position_exposure"), dict)
+        else {}
+    )
+
+    sleeve_map: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sleeve = _portfolio_sleeve_for_symbol(row.get("symbol"))
+        bucket = sleeve_map.setdefault(
+            sleeve,
+            {
+                "sleeve": sleeve,
+                "bot_count": 0,
+                "open_position_count": 0,
+                "paper_ready_count": 0,
+                "symbols": set(),
+                "today_bot_pnl": 0.0,
+            },
+        )
+        bucket["bot_count"] += 1
+        if bool(row.get("can_paper_trade")):
+            bucket["paper_ready_count"] += 1
+        if _float_value(row.get("open_positions")) and float(row.get("open_positions") or 0) > 0:
+            bucket["open_position_count"] += 1
+        if row.get("symbol"):
+            bucket["symbols"].add(str(row.get("symbol")))
+        pnl = _float_value(row.get("todays_pnl"))
+        if pnl is not None:
+            bucket["today_bot_pnl"] += pnl
+
+    allocation_sleeves = []
+    for bucket in sleeve_map.values():
+        allocation_sleeves.append({
+            **bucket,
+            "symbols": sorted(bucket["symbols"]),
+            "today_bot_pnl": round(float(bucket["today_bot_pnl"]), 2),
+        })
+    allocation_sleeves.sort(
+        key=lambda row: (-int(row["open_position_count"]), -int(row["bot_count"]), row["sleeve"]),
+    )
+
+    contributors: list[dict[str, Any]] = []
+    for pos in exposure.get("open_positions") or []:
+        if not isinstance(pos, dict):
+            continue
+        unrealized = _float_value(pos.get("unrealized_pnl"))
+        contributors.append({
+            "type": "open_position_unrealized",
+            "venue": str(pos.get("venue") or ""),
+            "symbol": str(pos.get("symbol") or ""),
+            "sleeve": _portfolio_sleeve_for_symbol(pos.get("symbol")),
+            "side": pos.get("side"),
+            "qty": _float_value(pos.get("qty")),
+            "market_value": _float_value(pos.get("market_value")),
+            "unrealized_pnl": round(unrealized, 2) if unrealized is not None else None,
+            "source": "live_broker_state.position_exposure",
+        })
+    for close in exposure.get("recent_closes") or []:
+        if not isinstance(close, dict):
+            continue
+        realized = _float_value(close.get("realized_pnl"))
+        if realized in (None, 0.0):
+            continue
+        contributors.append({
+            "type": "recent_close_realized",
+            "venue": "",
+            "bot_id": close.get("bot_id"),
+            "symbol": str(close.get("symbol") or ""),
+            "sleeve": _portfolio_sleeve_for_symbol(close.get("symbol")),
+            "realized_pnl": round(realized, 2),
+            "source": "live_broker_state.position_exposure",
+        })
+    contributors.sort(
+        key=lambda row: abs(
+            float(row.get("unrealized_pnl") or row.get("realized_pnl") or 0.0),
+        ),
+        reverse=True,
+    )
+
+    return {
+        "schema_version": 1,
+        "source": "live_broker_state" if broker_summary else "bot_rows",
+        "allocation_sleeves": allocation_sleeves,
+        "pnl_contributors": contributors[:12],
+        "hidden_disabled_count": int(hidden_disabled_count),
+        "broker_net_pnl": broker_summary.get("broker_net_pnl"),
+        "broker_today_realized_pnl": broker_summary.get("broker_today_realized_pnl"),
+        "broker_total_unrealized_pnl": broker_summary.get("broker_total_unrealized_pnl"),
+        "open_position_count": int(exposure.get("open_position_count") or 0),
+        "bot_count": len(rows),
+    }
 
 
 def _position_exposure_payload(

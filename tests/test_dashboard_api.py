@@ -1829,6 +1829,95 @@ class TestDashboardAPI:
         assert summary["pnl_summary_source"] == "live_broker_state"
         assert "total_pnl" not in summary
 
+    def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """Portfolio graphs should consume API truth, not browser-only math."""
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_supervisor_roster_rows",
+            lambda now_ts, bot=None: [
+                {
+                    "id": "mnq_futures_sage",
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "status": "running",
+                    "source": "jarvis_strategy_supervisor",
+                    "open_positions": 1,
+                    "todays_pnl": 0.0,
+                    "can_paper_trade": True,
+                    "confirmed": True,
+                },
+                {
+                    "id": "btc_optimized",
+                    "name": "btc_optimized",
+                    "symbol": "BTC",
+                    "status": "running",
+                    "source": "jarvis_strategy_supervisor",
+                    "open_positions": 1,
+                    "todays_pnl": 0.0,
+                    "can_paper_trade": True,
+                    "confirmed": True,
+                },
+            ],
+        )
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "today_actual_fills": 2,
+                "today_realized_pnl": 10.0,
+                "total_unrealized_pnl": 40.0,
+                "open_position_count": 2,
+                "alpaca": {
+                    "ready": True,
+                    "open_positions": [
+                        {
+                            "symbol": "BTCUSD",
+                            "qty": 0.1,
+                            "current_price": 100000.0,
+                            "market_value": 10000.0,
+                            "unrealized_pl": 15.0,
+                        }
+                    ],
+                },
+                "ibkr": {
+                    "ready": True,
+                    "open_positions": [
+                        {
+                            "symbol": "MNQ",
+                            "position": 1,
+                            "market_price": 29000.0,
+                            "market_value": 29000.0,
+                            "unrealized_pnl": 25.0,
+                            "secType": "FUT",
+                        }
+                    ],
+                },
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        portfolio = r.json()["portfolio_summary"]
+        assert portfolio["source"] == "live_broker_state"
+        assert portfolio["broker_net_pnl"] == 50.0
+        assert portfolio["hidden_disabled_count"] == 0
+        sleeves = {row["sleeve"]: row for row in portfolio["allocation_sleeves"]}
+        assert sleeves["equity_index_futures"]["open_position_count"] == 1
+        assert sleeves["crypto"]["open_position_count"] == 1
+        contributors = {
+            (row["venue"], row["symbol"]): row
+            for row in portfolio["pnl_contributors"]
+        }
+        assert contributors[("ibkr", "MNQ")]["unrealized_pnl"] == 25.0
+        assert contributors[("alpaca", "BTCUSD")]["unrealized_pnl"] == 15.0
+
     @pytest.mark.xfail(
         reason=(
             "2026-05-08: dashboard_api was refactored across multiple commits "
