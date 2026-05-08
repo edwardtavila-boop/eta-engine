@@ -1707,10 +1707,27 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter);
 
   const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
-  const exitStatus = String(exitWatch.status || 'unknown').toLowerCase();
+  const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
+    ? exitWatch.position_staleness
+    : {};
+  const forceFlattenDue = Number(stalePositions.force_flatten_due_count ?? summary.force_flatten_due_count ?? 0) || 0;
+  const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
+  const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
+  const oldestAge = Number(stalePositions.oldest_position?.age_s ?? stalePositions.max_age_s ?? 0) || 0;
+  const staleExitStatus = forceFlattenDue > 0
+    ? 'force_flatten_due'
+    : tightenStopDue > 0
+      ? 'tighten_stop_due'
+      : requireAckDue > 0
+        ? 'require_ack'
+        : '';
+  const exitStatus = staleExitStatus || String(exitWatch.status || 'unknown').toLowerCase();
   const exitLabels = {
     watching: 'Watching',
     paper_watching: 'Paper Watch',
+    require_ack: 'Ack Due',
+    tighten_stop_due: 'Tighten Stop',
+    force_flatten_due: 'Flatten Due',
     alert: 'Alert',
     missing_brackets: 'Missing',
     flat: 'Flat',
@@ -1719,6 +1736,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const exitClasses = {
     watching: 'green',
     paper_watching: 'green',
+    require_ack: 'yellow',
+    tighten_stop_due: 'yellow',
+    force_flatten_due: 'red',
     alert: 'red',
     missing_brackets: 'yellow',
     flat: 'dim',
@@ -1732,7 +1752,15 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       ? `nearest target ${nearest.bot} ${formatMoney(nearest.distance_points, 2)} pts (${formatPctText(nearest.distance_pct)})`
       : 'nearest target n/a';
     const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
+    const staleText = forceFlattenDue > 0
+      ? `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due; oldest ${formatAgeSeconds(oldestAge)}`
+      : tightenStopDue > 0
+        ? `${tightenStopDue} stop tighten due; oldest ${formatAgeSeconds(oldestAge)}`
+        : requireAckDue > 0
+          ? `${requireAckDue} operator ack due; oldest ${formatAgeSeconds(oldestAge)}`
+          : '';
     const fallback = [
+      staleText,
       `${Number(exitWatch.broker_open_position_count ?? liveBroker.open_position_count ?? 0)} broker open`,
       `${Number(exitWatch.supervisor_local_position_count || 0)} paper-local open`,
       `${Number(exitWatch.supervisor_watch_count || 0)} supervisor`,
@@ -1743,7 +1771,10 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     ].filter(Boolean).join('; ');
     exitStatusEl.textContent = exitLabels[exitStatus] || exitStatus.toUpperCase();
     exitStatusEl.className = 'stat ' + (exitClasses[exitStatus] || 'yellow');
-    exitSubEl.textContent = compactText(exitWatch.summary_line || fallback, 145);
+    exitSubEl.textContent = compactText(
+      staleText ? `${staleText}; ${exitWatch.summary_line || fallback}` : (exitWatch.summary_line || fallback),
+      145,
+    );
   }
 
   const opSummary = operatorQueue?.summary || {};
@@ -1822,13 +1853,6 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('opsProxySub').textContent = compactText(`${proxyAction}; ${proxyReason}; ${proxyAge}`);
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
-  const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
-    ? exitWatch.position_staleness
-    : {};
-  const forceFlattenDue = Number(stalePositions.force_flatten_due_count ?? summary.force_flatten_due_count ?? 0) || 0;
-  const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
-  const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
-  const oldestAge = Number(stalePositions.oldest_position?.age_s ?? stalePositions.max_age_s ?? 0) || 0;
   let risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
   let riskDetail = maxDD > 0
     ? `max drawdown ${formatMoney(maxDD, 0)}`
