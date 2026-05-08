@@ -887,6 +887,41 @@ class TestDashboardAPI:
         assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
         assert payload["systems"]["broker"]["source"] == "broker_router"
 
+    def test_master_status_keeps_advisory_queue_separate_from_launch_status(
+        self, app_client, tmp_path, monkeypatch
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 1}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-08T13:10:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 4,
+                    "operator_queue_blocked_count": 1,
+                    "operator_queue_launch_blocked_count": 0,
+                    "operator_queue_first_blocker_op_id": "OP-16",
+                    "operator_queue_first_launch_blocker_op_id": None,
+                    "gates": [],
+                }
+            )
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper"]["status"] == "ready_to_launch_paper_live"
+        assert payload["runtime"]["operator_queue_blocked_count"] == 1
+        assert payload["runtime"]["operator_queue_launch_blocked_count"] == 0
+        assert payload["systems"]["paper_live"]["status"] == "GREEN"
+
     def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path):
         plan = {
             "status": "ok",

@@ -6779,7 +6779,7 @@ def _local_master_status_payload() -> dict[str, object]:
     )
     paper_card_status = (
         "GREEN"
-        if paper_ready and blocked == 0 and launch_blocked == 0
+        if paper_ready and launch_blocked == 0
         else "RED"
         if launch_blocked
         else "YELLOW"

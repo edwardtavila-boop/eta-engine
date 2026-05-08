@@ -131,16 +131,6 @@ rem                        passes. MCL micro friction (10x less than CL)
 rem                        unlocks the energy-reflexivity edge that
 rem                        cl_sweep_reclaim couldn't deliver at full size.
 rem
-rem   ng_sweep_reclaim -- RE-PINNED 2026-05-08 after rollover-fix
-rem                       fetch (TWS continuous-front-month back-fetch
-rem                       cleared the 65 jump-bar artifacts that drove
-rem                       the prior demote). Strict-gate audit on
-rem                       cleaned data: n=24 trades, sharpe 5.31,
-rem                       expR_net +0.404, sh_def -0.24, split=True,
-rem                       L=true (legacy gate pass). Real edge on
-rem                       commodity (NatGas) sweep_reclaim now that
-rem                       the data is honest.
-rem
 rem   mgc_sweep_reclaim -- n=7, sh_def -1.61, split=False  -- NOT PINNED.
 rem                        Strategy fires once per ~70 days on 2yr of MGC1
 rem                        1h data; insufficient frequency. Same template

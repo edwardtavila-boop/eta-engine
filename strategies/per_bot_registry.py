@@ -2396,18 +2396,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "wider variant. Vol_regime school will frequently flag this."
         ),
         extras={
-            # RE-PROMOTED 2026-05-08 — clean rollover-adjusted NG1 1h
-            # data is now in place (continuous front-month back-fetch
+            # REHAB CANDIDATE 2026-05-08 -- clean rollover-adjusted NG1
+            # 1h data is now in place (continuous front-month back-fetch
             # via TWS, 12,589 bars over 28mo; eliminated the 65
             # rollover-jump artifacts that drove the 2026-05-07 demote).
-            # Strict-gate audit on the cleaned data: n=24 trades,
-            # sharpe 5.31, expR_net +0.404, sh_def -0.24, split=True,
-            # L=true (legacy gate pass). The signal is real — the
-            # demote was correctly attributed to data quality, and
-            # fixing the data revealed honest edge.
+            # A strict-gate audit on the cleaned data was encouraging:
+            # n=24 trades, sharpe 5.31, expR_net +0.404, sh_def -0.24,
+            # split=True, L=true. Cleaned audit numbers now persisted
+            # into docs/strategy_baselines.json (n=24, +0.404), so
+            # promotion_status moves to paper_soak and the bot can
+            # join the active supervisor pin.
             #
             # Audit: eta_engine/reports/strict_gate_post_microtier.json
-            "promotion_status": "research_candidate",
+            "promotion_status": "paper_soak",
             "demoted_on_2026_05_07": "elite-gate result unreproducible due to NG1 1h rollover-artifact data; demote stood until 2026-05-08 re-fetch.",
             "rehabilitated_on": "2026-05-08",
             "rehabilitation_audit": "n=24 trades, sharpe 5.31, expR_net +0.404, split=True, L=true on clean rollover-adjusted NG1 1h",

@@ -115,14 +115,14 @@
     },
     {
       "strategy_id": "ng_sweep_reclaim_v1",
-      "n_trades": 0,
-      "win_rate": 0.0,
-      "avg_r": 0.0,
-      "r_stddev": 0.0,
+      "n_trades": 24,
+      "win_rate": 0.46,
+      "avg_r": 0.404,
+      "r_stddev": 1.45,
       "_promoted_at": "2026-05-08",
-      "_promotion_status": "research_candidate",
-      "_walk_forward_summary": "NG1/1h baseline placeholder. Pre-fix audit showed sharpe 8.31 but registry comment flags 65 rollover-jump bars (>5% adjacent-close jumps) as data-quality artifacts. Strategy is sound; data needs continuous-front-month re-fetch with rollover skipping before honest audit.",
-      "_notes": "Placeholder until NG1 data is re-fetched with rollover handling per docs/STRATEGY_REHAB_PLAN.md tier-2. Strategy persisted for drift watchdog completeness."
+      "_promotion_status": "paper_soak",
+      "_walk_forward_summary": "NG1/1h, 28-month window post-rollover-fix fetch (12,589 bars). Strict-gate audit (eta_engine/reports/strict_gate_post_microtier.json): n=24 trades, sharpe=5.31, expR_net=+0.404, sh_def=-0.24, split=True, L=true (legacy gate pass). Real edge revealed once the 65 rollover-jump artifacts were eliminated by TWS continuous-front-month back-fetch.",
+      "_notes": "REHABILITATED 2026-05-08. Prior 2026-05-07 demote correctly attributed to data quality, not strategy. Re-promoted to paper_soak after clean-data audit. Re-baseline once 30+ live fills land. avg_r approximated from expR_net."
     },
     {
       "strategy_id": "mnq_orb_v2",
