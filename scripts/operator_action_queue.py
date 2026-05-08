@@ -666,7 +666,7 @@ def _op17_phase_advancement() -> OpItem:
 def _op18_vps_failover_readiness() -> OpItem:
     item = OpItem(
         op_id="OP-18",
-        title="Resolve current VPS failover red/amber blockers",
+        title="Resolve current VPS failover red blockers; review amber warnings",
         where="python -m eta_engine.scripts.vps_failover_summary --json",
     )
     try:
@@ -682,19 +682,26 @@ def _op18_vps_failover_readiness() -> OpItem:
     severity = str(summary.get("overall_severity", "unknown"))
     blockers = summary.get("blockers", [])
     counts = summary.get("counts", {})
-    if severity in {"red", "amber"}:
+    if severity == "red":
         item.verdict = VERDICT_BLOCKED
+        launch_blocker = True
+    elif severity == "amber":
+        item.verdict = VERDICT_OBSERVED
+        launch_blocker = False
     elif severity == "green":
         item.verdict = VERDICT_DONE
+        launch_blocker = False
     else:
         item.verdict = VERDICT_UNKNOWN
+        launch_blocker = False
 
     if blockers:
         first = blockers[0]
         next_commands = first.get("next_commands") or []
         command_hint = f"; next: {next_commands[0]}" if next_commands else ""
+        label = "blocker" if launch_blocker else "warning"
         item.detail = (
-            f"{severity.upper()} with {len(blockers)} blocker(s); "
+            f"{severity.upper()} failover {label} with {len(blockers)} item(s); "
             f"first={first.get('name')}: {first.get('summary')}{command_hint}"
         )
     else:
@@ -705,6 +712,7 @@ def _op18_vps_failover_readiness() -> OpItem:
         "blockers": blockers,
         "generated_at": summary.get("generated_at"),
         "exit_code": summary.get("exit_code"),
+        "launch_blocker": launch_blocker,
     }
     return item
 

@@ -612,7 +612,7 @@ class TestVpsFailoverProbeUnderSyntheticState:
         assert item.verdict == VERDICT_DONE
         assert item.evidence["overall_severity"] == "green"
 
-    def test_amber_summary_marks_blocked_with_next_command(self, monkeypatch) -> None:
+    def test_amber_summary_marks_observed_non_launch_warning(self, monkeypatch) -> None:
         from eta_engine.scripts import vps_failover_summary
         from eta_engine.scripts.operator_action_queue import _op18_vps_failover_readiness
 
@@ -636,9 +636,40 @@ class TestVpsFailoverProbeUnderSyntheticState:
 
         item = _op18_vps_failover_readiness()
 
-        assert item.verdict == VERDICT_BLOCKED
+        assert item.verdict == VERDICT_OBSERVED
+        assert item.evidence["launch_blocker"] is False
+        assert "AMBER failover warning" in item.detail
         assert "next: cp .env.example .env && chmod 600 .env" in item.detail
         assert item.evidence["blockers"][0]["name"] == "secrets_present"
+
+    def test_red_summary_marks_launch_blocker_with_next_command(self, monkeypatch) -> None:
+        from eta_engine.scripts import vps_failover_summary
+        from eta_engine.scripts.operator_action_queue import _op18_vps_failover_readiness
+
+        monkeypatch.setattr(
+            vps_failover_summary,
+            "build_summary",
+            lambda **_kwargs: {
+                "overall_severity": "red",
+                "counts": {"red": 1, "amber": 0, "green": 7, "skip": 0},
+                "blockers": [
+                    {
+                        "name": "deploy_files_present",
+                        "summary": "required deploy scripts missing",
+                        "next_commands": ["python -m eta_engine.scripts.vps_failover_summary --json"],
+                    }
+                ],
+                "generated_at": "2026-04-29T00:00:00+00:00",
+                "exit_code": 2,
+            },
+        )
+
+        item = _op18_vps_failover_readiness()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["launch_blocker"] is True
+        assert "RED failover blocker" in item.detail
+        assert "next: python -m eta_engine.scripts.vps_failover_summary --json" in item.detail
 
 
 class TestIbGateway1046RuntimeProbe:
