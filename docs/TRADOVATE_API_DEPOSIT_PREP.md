@@ -1,6 +1,6 @@
 # Tradovate API Deposit Prep
 
-**Status:** 2026-05-08. Use this while waiting to fund the personal
+**DORMANT / un-dormancy prep only. Status:** 2026-05-08. Use this while waiting to fund the personal
 Tradovate account that unlocks API access for BluSky prop testing.
 
 This runbook is intentionally conservative. It prepares the API path but

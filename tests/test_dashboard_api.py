@@ -194,6 +194,42 @@ class TestDashboardAPI:
         assert "0 broker open" in summary["summary_line"]
         assert "1 supervisor paper-local open" in summary["summary_line"]
 
+    def test_target_exit_summary_surfaces_stale_position_sla(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        server_dt = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "ng_sweep_reclaim",
+                    "symbol": "NG1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "opened_at": "2026-04-28T09:50:00+00:00",
+                        "bracket_stop": 2.72,
+                        "bracket_target": 2.94,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 0.08,
+                            "stop_distance_points": 0.015,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=0,
+            server_ts=server_dt.timestamp(),
+        )
+
+        stale = summary["position_staleness"]
+        assert stale["status"] == "force_flatten_due"
+        assert stale["force_flatten_due_count"] == 1
+        assert stale["oldest_position"]["bot"] == "ng_sweep_reclaim"
+        assert stale["oldest_position"]["age_s"] == 7800
+        assert stale["oldest_position"]["level"] == "FORCE_FLATTEN"
+        assert summary["stale_position_status"] == "force_flatten_due"
+
     def test_normalize_trade_close_preserves_zero_values_from_extra(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

@@ -1,4 +1,4 @@
-"""No-order readiness checklist for Tradovate prop-account cutover.
+"""No-order readiness checklist for DORMANT Tradovate prop-account cutover.
 
 This script is intentionally read-only. It checks whether ETA is ready
 for the day Tradovate API access is unlocked after funding/subscription,

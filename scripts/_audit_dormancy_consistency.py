@@ -91,9 +91,11 @@ ALLOWLIST: frozenset[str] = frozenset(
         # Tradovate-specific tooling whose entire purpose is the dormancy
         # un-dormancy procedure. These scripts exist to set up / authorize
         # / monitor Tradovate; they are inherently Tradovate-keyed.
+        "docs/TRADOVATE_API_DEPOSIT_PREP.md",
         "scripts/setup_tradovate_secrets.py",
         "scripts/authorize_tradovate.py",
         "scripts/_tradovate_session_drift.py",
+        "scripts/tradovate_prop_readiness.py",
         # connect_brokers exposes per-venue CLI flags (--tradovate-demo /
         # --tradovate-live) for completeness; using those flags while
         # dormant is the operator's call. Allowlist file-level since the

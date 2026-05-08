@@ -1586,6 +1586,141 @@ def _iso_age_s(value: object, *, server_ts: float) -> int | None:
     return max(0, int((datetime.fromtimestamp(server_ts, UTC) - dt).total_seconds()))
 
 
+def _watchdog_policy_thresholds() -> dict[str, float]:
+    """Return the same stale-position thresholds used by AutopilotWatchdog."""
+    try:
+        from eta_engine.obs.autopilot_watchdog import WatchdogPolicy  # noqa: PLC0415
+
+        policy = WatchdogPolicy()
+        policy.validate_ordering()
+        return {
+            "ack_ttl_sec": float(policy.ack_ttl_sec),
+            "tighten_after_sec": float(policy.tighten_after_sec),
+            "max_age_sec": float(policy.max_age_sec),
+        }
+    except Exception:  # noqa: BLE001 - dashboard must stay readable during partial deploys.
+        return {
+            "ack_ttl_sec": 1800.0,
+            "tighten_after_sec": 3600.0,
+            "max_age_sec": 7200.0,
+        }
+
+
+def _position_opened_age_s(row: dict, *, server_ts: float) -> int | None:
+    state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
+    open_pos = row.get("open_position") if isinstance(row.get("open_position"), dict) else {}
+    opened_at = (
+        state.get("opened_at")
+        or open_pos.get("entry_ts")
+        or open_pos.get("opened_at")
+        or open_pos.get("ts")
+    )
+    return _iso_age_s(opened_at, server_ts=server_ts)
+
+
+def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
+    """Read-only projection of the stale-position watchdog SLA for one row."""
+    thresholds = _watchdog_policy_thresholds()
+    age_s = _position_opened_age_s(row, server_ts=server_ts)
+    if age_s is None:
+        return {
+            "status": "unknown_age",
+            "level": None,
+            "age_s": None,
+            "seconds_to_next_action": None,
+            "next_action": "surface_position_opened_at",
+            "policy": thresholds,
+        }
+
+    ack_ttl = thresholds["ack_ttl_sec"]
+    tighten_after = thresholds["tighten_after_sec"]
+    max_age = thresholds["max_age_sec"]
+    if age_s >= max_age:
+        status = "force_flatten_due"
+        level = "FORCE_FLATTEN"
+        next_action = "force_flatten_position"
+        seconds_to_next_action = 0
+    elif age_s >= tighten_after:
+        status = "tighten_stop_due"
+        level = "TIGHTEN_STOP"
+        next_action = "tighten_stop_or_ack"
+        seconds_to_next_action = max(0, int(max_age - age_s))
+    elif age_s >= ack_ttl:
+        status = "require_ack"
+        level = "REQUIRE_ACK"
+        next_action = "operator_ack_or_review"
+        seconds_to_next_action = max(0, int(tighten_after - age_s))
+    else:
+        status = "fresh"
+        level = "ACTIVE"
+        next_action = "continue_watch"
+        seconds_to_next_action = max(0, int(ack_ttl - age_s))
+
+    return {
+        "status": status,
+        "level": level,
+        "age_s": int(age_s),
+        "seconds_to_next_action": seconds_to_next_action,
+        "next_action": next_action,
+        "policy": thresholds,
+    }
+
+
+def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
+    """Aggregate open-position stale/never-close risk for operator cards."""
+    thresholds = _watchdog_policy_thresholds()
+    open_items: list[dict] = []
+    unknown_age_count = 0
+    for row in rows:
+        if not isinstance(row, dict) or not _row_has_open_exposure(row):
+            continue
+        watchdog = _position_watchdog_snapshot(row, server_ts=server_ts)
+        if watchdog["age_s"] is None:
+            unknown_age_count += 1
+        open_items.append({
+            "bot": str(row.get("name") or row.get("id") or row.get("bot_id") or ""),
+            "symbol": str(row.get("symbol") or ""),
+            **watchdog,
+        })
+
+    force_flatten = [item for item in open_items if item.get("status") == "force_flatten_due"]
+    tighten = [item for item in open_items if item.get("status") == "tighten_stop_due"]
+    require_ack = [item for item in open_items if item.get("status") == "require_ack"]
+    if force_flatten:
+        status = "force_flatten_due"
+    elif tighten:
+        status = "tighten_stop_due"
+    elif require_ack:
+        status = "require_ack"
+    elif unknown_age_count:
+        status = "unknown_age"
+    elif open_items:
+        status = "fresh"
+    else:
+        status = "flat"
+
+    age_items = [item for item in open_items if item.get("age_s") is not None]
+    oldest = max(age_items, key=lambda item: int(item["age_s"])) if age_items else None
+    watched = sorted(
+        open_items,
+        key=lambda item: (
+            -1 if item.get("age_s") is None else -int(item["age_s"]),
+            str(item.get("bot") or ""),
+        ),
+    )
+    return {
+        "status": status,
+        "open_position_count": len(open_items),
+        "unknown_age_count": unknown_age_count,
+        "require_ack_count": len(require_ack),
+        "tighten_stop_due_count": len(tighten),
+        "force_flatten_due_count": len(force_flatten),
+        "oldest_position": oldest,
+        "watchlist": watched[:8],
+        "policy": thresholds,
+    }
+
+
 def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
     """Explain whether supervisor signal timestamps are staggered or clustered."""
     signal_buckets: defaultdict[str, list[str]] = defaultdict(list)
@@ -3239,8 +3374,14 @@ def _supervisor_exit_visibility(
     }
 
 
-def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | None = None) -> dict:
+def _target_exit_summary(
+    rows: list[dict],
+    *,
+    broker_open_position_count: int | None = None,
+    server_ts: float | None = None,
+) -> dict:
     """Summarize open-position target/stop supervision for operator cards."""
+    server_ts = time.time() if server_ts is None else server_ts
     open_count = 0
     watching_count = 0
     supervisor_watch_count = 0
@@ -3319,6 +3460,7 @@ def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | 
                 nearest_stop = candidate
 
     touched_count = target_touched_count + stop_touched_count
+    position_staleness = _position_staleness_summary(rows, server_ts=server_ts)
     supervisor_local_count = max(0, open_count - broker_bracket_count)
     effective_broker_open_count = (
         int(broker_open_position_count)
@@ -3383,6 +3525,8 @@ def _target_exit_summary(rows: list[dict], *, broker_open_position_count: int | 
         "missing_bracket_count": missing_bracket_count,
         "target_touched_count": target_touched_count,
         "stop_touched_count": stop_touched_count,
+        "stale_position_status": position_staleness["status"],
+        "position_staleness": position_staleness,
         "nearest_target": nearest_target,
         "nearest_stop": nearest_stop,
         "nearest_target_bot": nearest_target.get("bot") if nearest_target else None,
@@ -3432,6 +3576,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
     if not signal_at and position_opened_at:
         signal_at = position_opened_at
     last_signal_age_s = _age_seconds(signal_at)
+    position_age_s = _age_seconds(position_opened_at) if position_opened_at else None
     bracket_stop = _float_value(
         open_pos.get("bracket_stop") or open_pos.get("stop_price"),
     )
@@ -3473,6 +3618,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
             "open": True,
             "side": side,
             "qty": qty,
+            "age_s": position_age_s,
             "entry_price": entry_price,
             "mark_price": mark_price,
             "bracket_stop": bracket_stop,
@@ -3491,6 +3637,10 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
             "last_bar_high": last_bar_high,
             "last_bar_low": last_bar_low,
             "target_exit_visibility": target_exit_visibility,
+            "position_watchdog": _position_watchdog_snapshot(
+                {"position_state": {"opened_at": position_opened_at}, "open_positions": 1},
+                server_ts=now_ts,
+            ),
         }
     last_side: str | None = None
     if open_pos.get("side"):
@@ -3558,6 +3708,7 @@ def _sup_bot_to_roster_row(sup: dict, now_ts: float) -> dict:
         "open_position":       open_pos,
         "open_positions":      open_positions,
         "position_state":      position_state,
+        "position_age_s":      position_age_s,
         "bracket_stop":        bracket_stop,
         "bracket_target":      bracket_target,
         "broker_bracket":      broker_bracket,
@@ -3815,6 +3966,7 @@ def bot_fleet_roster(
             if broker_open_position_count is not None
             else None
         ),
+        server_ts=now_ts,
     )
     if isinstance(live_broker_state, dict):
         live_broker_state["position_exposure"] = _position_exposure_payload(
@@ -3855,6 +4007,8 @@ def bot_fleet_roster(
             "unique_signal_seconds": signal_cadence["unique_signal_seconds"],
             "max_same_second": signal_cadence["max_same_second"],
             "target_exit_status": target_exit_summary["status"],
+            "stale_position_status": target_exit_summary["stale_position_status"],
+            "force_flatten_due_count": target_exit_summary["position_staleness"]["force_flatten_due_count"],
             "open_position_count_visible": target_exit_summary["open_position_count"],
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
