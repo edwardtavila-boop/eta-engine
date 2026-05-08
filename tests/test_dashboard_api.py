@@ -1838,6 +1838,10 @@ class TestDashboardAPI:
         assert data["summary"]["target_exit_status"] == "paper_watching"
         assert data["summary"]["open_position_count_visible"] == 1
         assert data["summary"]["supervisor_exit_watch_count"] == 1
+        embedded_exposure = data["live_broker_state"]["position_exposure"]
+        assert embedded_exposure["target_exit_visibility"]["status"] == "paper_watching"
+        assert embedded_exposure["supervisor_local_position_count"] == 1
+        assert embedded_exposure["supervisor_watch_count"] == 1
         assert data["signal_cadence"]["max_same_second"] == 1
         assert data["summary"]["signal_cadence_status"] == "staggered"
 
@@ -2550,6 +2554,37 @@ class TestDashboardAPI:
         assert close["bot_id"] == "btc_optimized"
         assert close["realized_pnl"] == 50.0
         assert close["layers_updated"] == ["trade_memory", "edge_optimizer"]
+
+    def test_position_exposure_carries_supervisor_paper_watch_when_broker_flat(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        live_state = {
+            "alpaca": {"ready": True, "open_positions": []},
+            "ibkr": {"ready": True, "open_positions": []},
+        }
+        target_exit_summary = {
+            "status": "paper_watching",
+            "summary_line": "0 broker open; 1 supervisor paper-local open; 1 supervisor watcher(s)",
+            "open_position_count": 1,
+            "broker_open_position_count": 0,
+            "supervisor_local_position_count": 1,
+            "supervisor_watch_count": 1,
+            "nearest_target_bot": "mnq_anchor_sweep",
+        }
+
+        exposure = mod._position_exposure_payload(
+            live_state,
+            recent_closes=[],
+            target_exit_summary=target_exit_summary,
+        )
+
+        assert exposure["open_position_count"] == 0
+        assert exposure["broker_open_position_count"] == 0
+        assert exposure["supervisor_local_position_count"] == 1
+        assert exposure["supervisor_watch_count"] == 1
+        assert exposure["target_exit_visibility"]["status"] == "paper_watching"
+        assert "supervisor paper-local open" in exposure["target_exit_visibility"]["detail"]
+        assert exposure["target_exit_summary"]["nearest_target_bot"] == "mnq_anchor_sweep"
 
     def test_live_position_exposure_endpoint_returns_read_only_rollup(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

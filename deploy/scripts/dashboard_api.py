@@ -3631,6 +3631,11 @@ def bot_fleet_roster(
             else None
         ),
     )
+    if isinstance(live_broker_state, dict):
+        live_broker_state["position_exposure"] = _position_exposure_payload(
+            live_broker_state,
+            target_exit_summary=target_exit_summary,
+        )
     broker_summary = _broker_summary_fields(live_broker_state)
     broker_gateway = _broker_gateway_snapshot()
     ibkr_gateway = (
@@ -4603,9 +4608,11 @@ def _position_exposure_payload(
     live_broker_state: dict,
     *,
     recent_closes: list[dict] | None = None,
+    target_exit_summary: dict | None = None,
 ) -> dict:
     """Read-only open-position and close-evidence rollup for the dashboard."""
     live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    target_exit_summary = target_exit_summary if isinstance(target_exit_summary, dict) else {}
     alpaca = live_broker_state.get("alpaca") if isinstance(live_broker_state.get("alpaca"), dict) else {}
     ibkr = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
 
@@ -4628,11 +4635,19 @@ def _position_exposure_payload(
             normalized_closes.append(normalized)
 
     open_position_count = len(open_positions)
+    supervisor_local_count = int(target_exit_summary.get("supervisor_local_position_count") or 0)
+    supervisor_watch_count = int(target_exit_summary.get("supervisor_watch_count") or 0)
     if open_position_count:
         target_status = "open_positions_detected"
         target_detail = (
             "Broker open positions are visible; supervisor/router remain the "
             "authority for stop, target, and flatten actions."
+        )
+    elif supervisor_local_count:
+        target_status = str(target_exit_summary.get("status") or "paper_watching")
+        target_detail = str(
+            target_exit_summary.get("summary_line")
+            or "No broker open positions; supervisor is watching paper-local targets/stops."
         )
     elif alpaca or ibkr:
         target_status = "flat"
@@ -4646,10 +4661,14 @@ def _position_exposure_payload(
         "source": "live_broker_rest+trade_closes",
         "server_ts": time.time(),
         "open_position_count": open_position_count,
+        "broker_open_position_count": open_position_count,
+        "supervisor_local_position_count": supervisor_local_count,
+        "supervisor_watch_count": supervisor_watch_count,
         "symbols_open": sorted({p["symbol"] for p in open_positions if p.get("symbol")}),
         "open_positions": open_positions,
         "recent_closes": normalized_closes,
         "recent_close_count": len(normalized_closes),
+        "target_exit_summary": target_exit_summary,
         "target_exit_visibility": {
             "status": target_status,
             "detail": target_detail,
