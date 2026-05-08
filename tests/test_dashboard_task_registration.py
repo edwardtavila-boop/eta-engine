@@ -9,6 +9,7 @@ PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
+ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -187,3 +188,35 @@ def test_dashboard_sync_script_avoids_legacy_paths_and_root_pull() -> None:
     assert "TheFirm" not in text
     assert "The_Firm" not in text
     assert 'Invoke-Git -WorkingDirectory $RootFull -Arguments @("pull"' not in text
+
+
+def test_root_dirty_inspector_is_read_only_and_canonical() -> None:
+    text = ROOT_DIRTY_INSPECT_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Root = "C:\\EvolutionaryTradingAlgo"' in text
+    assert "read_only_inventory" in text
+    assert "deleted_tracked" in text
+    assert "modified_tracked" in text
+    assert "untracked" in text
+    assert "submodule_drift" in text
+    assert "source_or_governance" in text
+    assert "generated_market_or_research_artifact" in text
+    assert "Manual reconciliation required before cleanup" in text
+    assert "destructive_actions_performed = $false" in text
+    assert "cleanup_allowed = $false" in text
+
+
+def test_root_dirty_inspector_avoids_destructive_commands() -> None:
+    text = ROOT_DIRTY_INSPECT_SCRIPT.read_text(encoding="utf-8")
+
+    forbidden = (
+        "git reset",
+        "git clean",
+        "git checkout",
+        "Remove-Item",
+        "Move-Item",
+        "git add",
+        "git commit",
+    )
+    for token in forbidden:
+        assert token not in text
