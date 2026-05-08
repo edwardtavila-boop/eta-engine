@@ -243,6 +243,11 @@ class SupervisorConfig:
 
     # Comma-separated bot_ids; empty = all active in per_bot_registry
     bots_env: str = field(default_factory=lambda: os.getenv("ETA_SUPERVISOR_BOTS", ""))
+    # Comma-separated bot_ids to load for exit management only. These bots
+    # may restore/manage open positions, but may not open fresh entries.
+    exit_watch_bots_env: str = field(
+        default_factory=lambda: os.getenv("ETA_SUPERVISOR_EXIT_WATCH_BOTS", ""),
+    )
     # mock | yfinance | tradingview
     data_feed: str = field(default_factory=lambda: os.getenv("ETA_SUPERVISOR_FEED", "mock"))
     # paper_sim | paper_live | live
@@ -346,6 +351,8 @@ class BotInstance:
     # that do not run through ``load_bots``. ``Any`` typing avoids a
     # circular import with the wiring module.
     session_state: Any = None
+    entry_enabled: bool = True
+    entry_disabled_reason: str = ""
 
     def to_state(self, *, mode: str | None = None) -> dict:
         # Per-bot ``mode`` field is REQUIRED in the heartbeat so the
@@ -1852,6 +1859,9 @@ class JarvisStrategySupervisor:
         # Same shape, scoped to "halted by daily loss cap" so we log
         # once per (bot, session_date).
         self._daily_halt_logged: dict[tuple[str, str], bool] = {}
+        self._strategy_readiness_mtime_ns: int | None = None
+        self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
+        self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
 
     # ── Bot loading ──────────────────────────────────────────
 
@@ -1890,6 +1900,9 @@ class JarvisStrategySupervisor:
         pinned = {
             x.strip() for x in self.cfg.bots_env.split(",") if x.strip()
         }
+        exit_watch = {
+            x.strip() for x in self.cfg.exit_watch_bots_env.split(",") if x.strip()
+        }
 
         # Lazily import the session-gate wiring helpers. Importing
         # here (rather than at module top) keeps the supervisor's
@@ -1908,10 +1921,11 @@ class JarvisStrategySupervisor:
         events_calendar = self._get_events_calendar()
 
         for a in ASSIGNMENTS:
-            if pinned and a.bot_id not in pinned:
+            if pinned and a.bot_id not in pinned and a.bot_id not in exit_watch:
                 continue
             if not is_active(a):
                 continue
+            entry_enabled = a.bot_id not in exit_watch or a.bot_id in pinned
             symbol = getattr(a, "symbol", a.bot_id.upper())
             extras = getattr(a, "extras", {}) or {}
             daily_cap = extract_daily_loss_limit_pct(extras, default=2.5)
@@ -1927,10 +1941,14 @@ class JarvisStrategySupervisor:
                 cash=self.cfg.starting_cash_per_bot,
                 daily_loss_limit_pct=daily_cap,
                 session_state=session_state,
+                entry_enabled=entry_enabled,
+                entry_disabled_reason=(
+                    "exit_watch_only" if not entry_enabled else ""
+                ),
             ))
         logger.info(
-            "loaded %d bots (pinned filter: %s)",
-            len(self.bots), pinned or "ALL",
+            "loaded %d bots (pinned filter: %s; exit-watch: %s)",
+            len(self.bots), pinned or "ALL", exit_watch or "NONE",
         )
         return len(self.bots)
 
@@ -1964,6 +1982,54 @@ class JarvisStrategySupervisor:
             path, len(getattr(cal, "events", []) or []),
         )
         return cal
+
+    def _strategy_readiness_rows_for_entry_gate(self) -> dict[str, dict[str, Any]]:
+        """Return cached bot readiness rows for paper_live/live entry gating."""
+        path = workspace_roots.ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            return {}
+        if self._strategy_readiness_mtime_ns != mtime_ns:
+            _payload, rows = _load_bot_strategy_readiness_snapshot(path)
+            self._strategy_readiness_by_bot = rows
+            self._strategy_readiness_mtime_ns = mtime_ns
+        return self._strategy_readiness_by_bot
+
+    def _strategy_readiness_allows_entry(self, bot: BotInstance) -> bool:
+        """Fail closed for known research/non-approved bots in real order lanes."""
+        mode = str(self.cfg.mode or "").strip().lower()
+        if mode not in {"paper_live", "live"}:
+            return True
+        readiness = self._strategy_readiness_rows_for_entry_gate().get(bot.bot_id)
+        if not readiness:
+            return True
+
+        field = "can_live_trade" if mode == "live" else "can_paper_trade"
+        if bool(readiness.get(field)):
+            return True
+
+        lane = str(
+            readiness.get("launch_lane")
+            or readiness.get("promotion_status")
+            or "not_approved",
+        )
+        reason = f"strategy_readiness_block:{lane}"
+        bot.last_aggregation_reject_reason = reason
+        bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+        key = (bot.bot_id, reason)
+        if key not in self._strategy_readiness_block_logged:
+            logger.warning(
+                "STRATEGY READINESS block %s: mode=%s %s=false lane=%s "
+                "next_action=%s",
+                bot.bot_id,
+                mode,
+                field,
+                lane,
+                readiness.get("next_action") or "",
+            )
+            self._strategy_readiness_block_logged.add(key)
+        return False
 
     # ── JarvisFull bootstrap ─────────────────────────────────
 
@@ -2932,6 +2998,15 @@ class JarvisStrategySupervisor:
         # helper. Stale halts from a previous session are also cleared
         # by enforce_daily_loss_cap when the date rolls.
         if self._enforce_daily_loss_cap(bot, now=now):
+            return
+
+        if not bot.entry_enabled:
+            reason = bot.entry_disabled_reason or "entry_disabled"
+            bot.last_aggregation_reject_reason = reason
+            bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+            return
+
+        if not self._strategy_readiness_allows_entry(bot):
             return
 
         # Mock entry signal: per-call independent dice, ~1-in-5 fire rate.

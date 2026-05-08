@@ -818,6 +818,86 @@ def test_supervisor_heartbeat_embeds_strategy_readiness(tmp_path: Path, monkeypa
     assert bot["strategy_readiness"]["next_action"].startswith("Run per-bot promotion")
 
 
+def test_supervisor_blocks_paper_live_entries_when_strategy_readiness_disallows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import json
+
+    from eta_engine.scripts import jarvis_strategy_supervisor as mod
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    readiness = tmp_path / "bot_strategy_readiness_latest.json"
+    readiness.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generated_at": "2026-05-08T14:00:00+00:00",
+                "source": "bot_strategy_readiness",
+                "summary": {"can_paper_trade": 0, "launch_lanes": {"research": 1}},
+                "rows": [
+                    {
+                        "bot_id": "mbt_funding_basis",
+                        "strategy_id": "mbt_funding_basis_v1",
+                        "launch_lane": "research",
+                        "data_status": "ready",
+                        "promotion_status": "research_candidate",
+                        "can_paper_trade": False,
+                        "can_live_trade": False,
+                        "next_action": "Continue research retest before promotion.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod.workspace_roots, "ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", readiness)
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path / "state"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="mbt_funding_basis",
+        symbol="MBT1",
+        strategy_kind="mbt_funding_basis",
+        direction="long",
+        cash=5000.0,
+    )
+
+    assert sup._strategy_readiness_allows_entry(bot) is False  # noqa: SLF001
+    assert bot.last_aggregation_reject_reason == "strategy_readiness_block:research"
+    assert bot.last_aggregation_reject_at
+
+
+def test_supervisor_loads_exit_watch_bot_without_entry_permission(tmp_path: Path) -> None:
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.data_feed = "mock"
+    cfg.state_dir = tmp_path / "state"
+    cfg.bots_env = "volume_profile_mnq"
+    cfg.exit_watch_bots_env = "mbt_funding_basis"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+
+    sup.load_bots()
+
+    bots = {bot.bot_id: bot for bot in sup.bots}
+    assert set(bots) == {"volume_profile_mnq", "mbt_funding_basis"}
+    assert bots["volume_profile_mnq"].entry_enabled is True
+    assert bots["mbt_funding_basis"].entry_enabled is False
+    assert bots["mbt_funding_basis"].entry_disabled_reason == "exit_watch_only"
+
+
 def test_supervisor_heartbeat_per_bot_mode_inherits_cfg_mode(tmp_path: Path) -> None:
     """Regression: every per-bot heartbeat dict must carry ``mode`` field
     sourced from cfg.mode. Without this, the dashboard bridge falls back

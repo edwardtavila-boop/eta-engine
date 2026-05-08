@@ -136,7 +136,14 @@ rem                        Strategy fires once per ~70 days on 2yr of MGC1
 rem                        1h data; insufficient frequency. Same template
 rem                        on MNQ/MCL fires 2-3x more often. Leave for
 rem                        future template tuning or alternative timeframe.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim"
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim"
+rem Exit-watch only: MBT funding-basis has a live paper position from
+rem the prior pin, but readiness says research/baseline_missing and
+rem can_paper_trade=false. Keep the supervisor watching/restoring the
+rem open bracket until it closes, while the runtime entry gate blocks
+rem any fresh MBT entries. Re-add to ETA_SUPERVISOR_BOTS only after a
+rem persisted baseline + paper-soak promotion.
+set "ETA_SUPERVISOR_EXIT_WATCH_BOTS=mbt_funding_basis"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

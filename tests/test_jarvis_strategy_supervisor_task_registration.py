@@ -50,6 +50,7 @@ def test_supervisor_task_runner_sets_env_and_redirects_logs() -> None:
     assert "ETA_PAPER_LIVE_ORDER_ROUTE=broker_router" in text
     assert "ETA_PAPER_LIVE_ALLOWED_SYMBOLS=MNQ,MNQ1,NQ,NQ1" in text
     assert "ETA_RECONCILE_DIVERGENCE_ACK=1" in text
+    assert "ETA_SUPERVISOR_EXIT_WATCH_BOTS=mbt_funding_basis" in text
     assert "ETA_SUPERVISOR_STARTING_CASH=50000" in text
     assert "scripts\\jarvis_strategy_supervisor.py" in text
     assert "jarvis_strategy_supervisor.stdout.log" in text
@@ -96,8 +97,6 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # The deflated-Sharpe survivors:
         "volume_profile_mnq",  # STRICT-GATE PASS: sh_def +2.86 on 2916 trades
         "volume_profile_nq",   # sh_def +2.08 on 3073 trades (just below strict)
-        # Crypto-futures research-candidate (positive net + split-stable):
-        "mbt_funding_basis",
         # Commodity / FX sweep_reclaim (positive net on corrected engine):
         "m2k_sweep_reclaim",
         "eur_sweep_reclaim",
@@ -128,6 +127,11 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     }
     # Bots intentionally NOT in the pin -- documented in the bot lists above
     # and in the runner cmd's prelude comments.
+    assert "mbt_funding_basis" not in bots, (
+        "mbt_funding_basis is research/baseline_missing and must remain "
+        "exit-watch only until a persisted baseline plus paper-soak "
+        "promotion exists."
+    )
     # ng_sweep_reclaim was previously held off the pin while NG1 1h had
     # rollover-jump artifacts; the 2026-05-08 TWS continuous-front-month
     # back-fetch produced a clean 28-month series, the strict-gate audit
