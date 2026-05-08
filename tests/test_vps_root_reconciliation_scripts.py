@@ -10,7 +10,9 @@ def test_vps_root_inventory_classifies_local_backups_outside_source_risk() -> No
     text = INSPECT.read_text(encoding="utf-8")
 
     assert 'return "local_backup_artifact"' in text
+    assert 'return "local_diagnostic_artifact"' in text
     assert r"\.bak" in text
+    assert "scripts/_check_" in text
     assert "cleanup_allowed = $false" in text
     assert "destructive_actions_performed = $false" in text
 
@@ -19,7 +21,10 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     text = PLAN.read_text(encoding="utf-8")
 
     assert 'Get-Count -Node $untracked -Name "local_backup_artifact"' in text
+    assert 'Get-Count -Node $untracked -Name "local_diagnostic_artifact"' in text
     assert "local_backup_untracked" in text
+    assert "local_diagnostic_untracked" in text
     assert "Local backup untracked artifacts" in text
+    assert "Local diagnostic untracked artifacts" in text
     assert "cleanup_allowed = $false" in text
     assert "destructive_actions_performed = $false" in text

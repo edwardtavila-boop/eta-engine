@@ -115,6 +115,7 @@ $unknownDeleted = Get-Count -Node $deleted -Name "unknown"
 $generatedDeleted = Get-Count -Node $deleted -Name "generated_market_or_research_artifact"
 $generatedUntracked = Get-Count -Node $untracked -Name "generated_market_or_research_artifact"
 $localBackupUntracked = Get-Count -Node $untracked -Name "local_backup_artifact"
+$localDiagnosticUntracked = Get-Count -Node $untracked -Name "local_diagnostic_artifact"
 $sourceUntracked = Get-Count -Node $untracked -Name "source_or_governance"
 $submoduleDrift = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_drift"]) {
@@ -156,8 +157,8 @@ $steps = @(
         -Title "Separate generated market/research artifacts from source" `
         -Risk "medium" `
         -Decision "manual_review_required" `
-        -Action "Archive or ignore generated market/research artifacts and local backup artifacts only after source/governance files are safe." `
-        -Evidence (@("generated_deleted=$generatedDeleted", "generated_untracked=$generatedUntracked", "local_backup_untracked=$localBackupUntracked") + (Get-Sample -Node $untracked -Name "generated_market_or_research_artifact") + (Get-Sample -Node $untracked -Name "local_backup_artifact"))
+        -Action "Archive or ignore generated market/research artifacts, local backup artifacts, and local diagnostics only after source/governance files are safe." `
+        -Evidence (@("generated_deleted=$generatedDeleted", "generated_untracked=$generatedUntracked", "local_backup_untracked=$localBackupUntracked", "local_diagnostic_untracked=$localDiagnosticUntracked") + (Get-Sample -Node $untracked -Name "generated_market_or_research_artifact") + (Get-Sample -Node $untracked -Name "local_backup_artifact") + (Get-Sample -Node $untracked -Name "local_diagnostic_artifact"))
     New-PlanStep `
         -Id "verify-after-reconciliation" `
         -Title "Verify live ops after any approved reconciliation" `
@@ -183,6 +184,7 @@ $plan = [ordered]@{
         generated_deleted = $generatedDeleted
         generated_untracked = $generatedUntracked
         local_backup_untracked = $localBackupUntracked
+        local_diagnostic_untracked = $localDiagnosticUntracked
         source_or_governance_untracked = $sourceUntracked
         submodule_drift = $submoduleDrift
     }
@@ -207,6 +209,7 @@ $markdown = @(
     "- Generated tracked deletions: $generatedDeleted"
     "- Generated untracked artifacts: $generatedUntracked"
     "- Local backup untracked artifacts: $localBackupUntracked"
+    "- Local diagnostic untracked artifacts: $localDiagnosticUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
     ""
