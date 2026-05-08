@@ -24,61 +24,86 @@
 
 ---
 
-## Recommendation: Apex Trader Funding via Tradovate API (un-dormancy candidate)
+## Recommendation: BluSky Trading + Elite Trader Funding (bot-friendly props)
 
-| Criterion | Apex (via Tradovate) | Topstep (via Tradovate) | Personal $1-2k |
+> **Correction 2026-05-08 (operator-supplied research):** Apex Trader
+> Funding and Topstep both **prohibit full custom bot automation** on
+> funded accounts. The earlier Apex+Topstep recommendation was wrong
+> for ETA's use case — `broker_router routing: replicate` is a fully-
+> automated system, which violates Apex's TOS and risks account
+> closure on Topstep. The right pick targets prop firms whose TOS
+> EXPLICITLY ALLOWS bots, not just Tradovate API availability.
+
+### Prop firm bot-policy matrix (operator-supplied)
+
+| Prop firm | Tradovate API | Full custom bot (REST+WS) | Notes |
 |---|---|---|---|
-| Capital base | $25-300k accounts | $50-150k accounts | $1-2k cash |
-| API path | Tradovate REST + WS | Tradovate REST + WS | Brokers we already have |
-| Eta integration | `eta_engine/venues/tradovate.py` (399 lines, ALREADY EXISTS) | Same | IBKR live + Alpaca live |
-| Profit split | 30→90% scaling | 80% from start | 100% (your money) |
-| Eval cost | $50-200/mo while testing | $50-200/mo | $0 |
-| Daily loss rule | 3% of account | 3% of account | None (your discretion) |
-| Trailing DD rule | 5% trailing | 4% trailing | None |
-| Best for | Maximum capital leverage | Familiar UX | Full control, slow compound |
+| **BluSky Trading** | Yes | **Full support** | **Explicitly allows bots on funded accounts** |
+| **Elite Trader Funding** | Good | **Good** | **Bot-friendly post-evaluation** |
+| My Funded Futures | Strong | Semi | Allows automation with limits; no strict ban |
+| Tradeify | Good | Semi (via tools) | One of the more bot-tolerant |
+| Topstep | Yes | Limited | Tool-assisted OK; pure bots risky |
+| Apex Trader Funding | Available | **Restricted/Banned** | Prohibits full automation on funded accounts |
 
-**Pick: Apex Trader Funding, $50k account, Tradovate connection.** Why:
-- Lowest-risk path to ~25× capital leverage on the SAME audit-confirmed edge
-- The existing `eta_engine/venues/tradovate.py` adapter is already implemented; wiring it is hours of work, not days
-- Apex eval rules (3% daily, 5% trailing) are well within `volume_profile_mnq`'s audit drawdown profile
-- MNQ is Apex's most-traded product — perfect alignment with our top strategy
+### Pick #1: BluSky Trading — primary
 
-### Second prop firm: Topstep (don't put all eggs in one basket)
+**Why BluSky as the primary prop:**
+- **ONLY firm with EXPLICIT bot permission** — lowest TOS-violation
+  risk for full-auto ETA routing
+- Tradovate API support — reuses the 399-line
+  `eta_engine/venues/tradovate.py` adapter (un-dormancy candidate)
+- "Full custom bot (REST+WS)" matches exactly what
+  `broker_router routing: replicate` needs
+- Funded-account stability: TOS won't suddenly close the bot lane
 
-Operator directive 2026-05-08: add a SECOND prop firm so an Apex
-account closure / rule change / eval failure doesn't kill the
-live-money path. Tradovate stays under the dormancy_mandate Appendix A
-gate; the second prop reactivation lands in the same operator-
-authorized commit when credentials are wired.
+### Pick #2: Elite Trader Funding — secondary (don't put all eggs in one basket)
 
-**Pick: Topstep $50k Trading Combine (also via Tradovate API).** Why:
-- **Zero new code** — same 399-line `eta_engine/venues/tradovate.py`
-  adapter reused with a different `accountId` + OAuth credential set
-- **80% profit split from start** vs Apex's 30→90% scaling — Topstep
-  delivers larger early payouts on the same edge
-- **TIGHTER rules:** $1k daily loss (vs Apex $2,500), 4% trailing DD
-  (vs Apex 5%) — passing Topstep proves the strategy at higher rigor
-- **Operationally independent:** if Apex changes rules / freezes /
-  fails eval, Topstep account is intact (separate creds, separate
-  rules, separate UX); this is the diversification the operator asked
-  for
+Operator directive 2026-05-08: don't put all eggs in one basket — add
+a SECOND prop firm so a BluSky account closure / rule change / eval
+failure doesn't kill the live-money path.
+
+**Why Elite Trader Funding as #2:**
+- "Bot-friendly post-evaluation" — second-cleanest TOS for full
+  automation among Tradovate-API firms
+- Same Tradovate adapter reused with different `accountId` + creds —
+  near-zero additional code
+- Different account-management UX from BluSky (operationally
+  independent freeze/rule-change surfaces)
+- "Good" rating on both Tradovate-on-funded AND custom-bot — meets
+  ETA's full-automation requirement
+
+### Backup options if BluSky / Elite have eval-pass issues
+
+- **My Funded Futures** — "Strong" Tradovate, "Semi" bot tolerance,
+  "allows automation with limits, no strict ban". Read TOS specifics
+  before activation; safer than Apex/Topstep for bot lane.
+- **Tradeify** — "Good" Tradovate, "Semi (via tools)". Bot-tolerant.
+
+### Do NOT pick (corrected from earlier flawed recommendation)
+
+- ~~**Apex Trader Funding**~~ — Tradovate API works fine but TOS
+  PROHIBITS full automation on funded accounts. Live funded use of
+  ETA bots risks account closure for TOS violation.
+- ~~**Topstep**~~ — Tradovate API works fine but full bots are
+  "risky" per TOS. Tool-assisted only; pure-bot use is not safe.
 
 ### Dual-prop architecture summary
 
-| | Apex 50k Static | Topstep 50k Trading Combine |
+| | BluSky (primary) | Elite Trader Funding (secondary) |
 |---|---|---|
+| Bot policy | **Explicit allow** | **Bot-friendly post-eval** |
 | Adapter | `tradovate.py` (un-dormancy) | Same adapter, separate instance |
-| Account ID | `apex_50k_static_001` | `topstep_50k_combine_001` |
-| Daily loss | $2,500 (5%) | $1,000 (2%) — TIGHTER |
-| Trailing DD | $2,500 (5%) | $2,000 (4%) — TIGHTER |
-| Profit split (live) | 30→90% scaling | 80% from start |
+| Account ID | `blusky_50k_001` | `elite_50k_001` |
 | Routing mode | broker_router replicates | (parallel order on each) |
 
-**Implementation cost:** if Apex un-dormancy is 2-3 days, Topstep is
-+1 day on top (just credential + routing config). Both prop accounts
-get the SAME `volume_profile_mnq` signal; each account's daily-loss
-and trailing-DD circuit breakers are enforced INDEPENDENTLY by the
-supervisor's existing per-account guardrails.
+**Implementation cost:** Same as before — if first prop un-dormancy
+is 2-3 days, second prop is +1 day on top (just credential + routing
+config). Both prop accounts get the SAME `volume_profile_mnq` signal;
+each account's daily-loss and trailing-DD circuit breakers are
+enforced INDEPENDENTLY by the supervisor's existing per-account
+guardrails. Specific rule numbers (daily-loss $, trailing DD %)
+depend on account size + plan — confirm directly with each firm at
+sign-up.
 
 ---
 
@@ -98,18 +123,31 @@ Pick 1-2 strategies. Top candidates ranked by audit confidence + capital fit:
 
 ---
 
-## Apex eval rule mapping (vs strategy audit profile)
+## Eval rule mapping (BluSky / Elite vs strategy audit profile)
 
-| Apex Rule (50k Static account) | volume_profile_mnq audit | Status |
+Specific rule numbers (account sizes, daily-loss $, trailing DD %)
+vary by plan and change over time at each firm. The patterns below
+are typical for the bot-friendly Tradovate-API firms; CONFIRM
+specifics at sign-up.
+
+| Typical Rule (50k bot-friendly account) | volume_profile_mnq audit | Status |
 |---|---|---|
-| Max contracts (50k): 10 | Strategy sizes 1-2 typically | ✓ Well under |
-| Daily loss limit: $2,500 (5% of 50k) | Per-trade R ≈ $50-100 (1 contract MNQ) | ✓ 25-50 trades headroom |
-| Trailing threshold: 50k → 52,500 max DD | Audit max DD is fraction of equity | ✓ Strategy doesn't approach |
-| Min trading days: 7 | We'll have 7 days of paper-soak | ✓ Aligns |
-| End-of-day flat (no overnight): variable | Strategy is intraday | ✓ Compatible |
-| Rules account: scale to 90% split after 30 days profitable | — | Goal state |
+| Max contracts: ~10 at 50k tier | Strategy sizes 1-2 typically | ✓ Well under |
+| Daily loss limit: ~$1k–$2.5k (2-5% of 50k) | Per-trade R ≈ $50-100 (1 contract MNQ) | ✓ Many-trade headroom |
+| Trailing threshold: 5% trailing typical | Audit max DD is fraction of equity | ✓ Strategy doesn't approach |
+| Min trading days: 5-10 | We'll have 7+ days of paper-soak | ✓ Aligns |
+| End-of-day flat / overnight: varies | Strategy is intraday | ✓ Compatible |
+| Profit split (BluSky/Elite): typically 80%+ from start | — | Earner |
 
-**Risk: trailing drawdown is the operative cap.** It moves up as you profit but never down. If the strategy has a bad week early, the trailing threshold gets crossed and the eval is lost. Sizing should target ≤1 contract until the buffer accumulates.
+**Risk: trailing drawdown is the operative cap on most prop accounts.**
+It moves up as you profit but never down. If the strategy has a bad
+week early, the trailing threshold gets crossed and the eval is lost.
+Sizing should target ≤1 contract until the buffer accumulates.
+
+**Bot-policy risk:** even with bot-friendly TOS, prop firms can
+update their rules. Re-read each firm's current TOS at sign-up; if
+language tightens around automation, fall back to My Funded Futures
+(Semi tolerance) before considering the restricted firms.
 
 ---
 
@@ -126,8 +164,8 @@ Use this 7-day prep for either prop-eval or personal-money path:
 
 ### Days 6-7 (cutover prep)
 - [ ] **Choose lane:**
-  - **Prop:** Sign up Apex $50k Static, pass eval rules sim. Connect Tradovate API key.
-  - **Personal:** Open IBKR live account, fund $2k, get IBKR Pro market data subscription if not already.
+  - **Prop (preferred):** Sign up BluSky Trading $50k account (bot-friendly TOS) and Elite Trader Funding $50k as the dual-prop pair. Pass each firm's eval rules. Connect Tradovate API keys for each (separate `accountId` and OAuth credentials per firm).
+  - **Personal fallback:** Open IBKR live account, fund $2k, get IBKR Pro market data subscription if not already.
 - [ ] **Configure live env:**
   ```
   ETA_LIVE_MONEY=1
@@ -146,13 +184,15 @@ Use this 7-day prep for either prop-eval or personal-money path:
 
 ---
 
-## (b) Apex / Topstep eval-rule mapping → audit drawdown
+## (b) Eval-rule mapping → audit drawdown (BluSky / Elite)
 
-Already covered in the table above. Bottom line: **`volume_profile_mnq` audit profile fits well within Apex's 50k Static and Topstep's 50k. The trailing-DD is the binding constraint.**
+Already covered in the rule mapping table above. Bottom line:
+**`volume_profile_mnq` audit profile fits well within typical 50k
+bot-friendly accounts. The trailing-DD is the binding constraint.**
 
 Mitigate by:
 1. Start with 1-contract entries even if strategy wants more (override `extras["per_bot_budget_usd"]` temporarily)
-2. Never carry overnight (matches Apex Static rules)
+2. Avoid overnight if firm's plan requires end-of-day flat
 3. Pause for 1 day after any drawdown >50% of trailing buffer
 
 ---
@@ -190,7 +230,7 @@ Already implemented (399 lines):
    bots:
      volume_profile_mnq:
        venue: tradovate          # was: ibkr (paper)
-       account_alias: apex_50k    # human-readable alias
+       account_alias: blusky_50k  # human-readable alias (bot-friendly TOS)
    defaults:
      futures_live: tradovate      # all futures-class bots route here when live
    ```
@@ -201,7 +241,7 @@ Already implemented (399 lines):
    TRADOVATE_ENV=live                      # vs demo
    ```
 
-### Dual-prop multi-account routing (Apex + Topstep replication)
+### Dual-prop multi-account routing (BluSky + Elite replication)
 
 > **Reminder: Tradovate stays DORMANT.** The dual-prop replication
 > below is governed by the same dormancy_mandate Appendix A gate;
@@ -214,26 +254,29 @@ routing is a config + adapter-instance pattern, not a code rewrite:
 
 ```yaml
 # configs/bot_broker_routing.yaml — dual-prop replication block
+# Both props are bot-friendly TOS (operator research 2026-05-08).
 prop_accounts:
-  apex_50k_static:
+  blusky_50k:
     venue: tradovate
     env: live
-    account_id_env: APEX_TRADOVATE_ACCOUNT_ID
-    creds_env_prefix: APEX_         # APEX_TRADOVATE_USER_NAME, etc.
-    daily_loss_usd: 2500
-    trailing_dd_usd: 2500
-  topstep_50k_combine:
+    account_id_env: BLUSKY_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: BLUSKY_         # BLUSKY_TRADOVATE_USER_NAME, etc.
+    bot_policy: explicit_allow         # operator-verified at sign-up
+    daily_loss_usd: 2500               # confirm at sign-up — varies by plan
+    trailing_dd_usd: 2500              # confirm at sign-up — varies by plan
+  elite_50k:
     venue: tradovate
     env: live
-    account_id_env: TOPSTEP_TRADOVATE_ACCOUNT_ID
-    creds_env_prefix: TOPSTEP_
-    daily_loss_usd: 1000
-    trailing_dd_usd: 2000
+    account_id_env: ELITE_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: ELITE_
+    bot_policy: bot_friendly_post_eval # operator-verified at sign-up
+    daily_loss_usd: 2000               # confirm at sign-up — varies by plan
+    trailing_dd_usd: 2500              # confirm at sign-up — varies by plan
 
 bots:
   volume_profile_mnq:
     routing: replicate
-    accounts: [apex_50k_static, topstep_50k_combine]
+    accounts: [blusky_50k, elite_50k]
 ```
 
 **`routing: replicate`** — the new broker_router mode. Per signal:
@@ -246,10 +289,12 @@ bots:
    one account don't affect the other
 
 **Failure modes handled per-account by supervisor:**
-- Apex API down → Topstep keeps trading
-- Apex daily-loss tripped → Apex pauses 24h; Topstep continues
-- Apex eval failed (account closed) → Topstep continues; only one
+- BluSky API down → Elite keeps trading
+- BluSky daily-loss tripped → BluSky pauses 24h; Elite continues
+- BluSky eval failed (account closed) → Elite continues; only one
   capital base lost
+- Either firm changes TOS to restrict bots → switch to backup
+  (My Funded Futures or Tradeify); operator action, not auto
 - Tradovate platform-wide outage → BOTH affected (this is the
   shared-API risk; mitigated only by adding a Rithmic-based prop
   later as a third venue, see below)
@@ -272,14 +317,17 @@ The supervisor has:
 
 These work the SAME for Tradovate as they do for IBKR — the abstraction is at the `VenueBase` level. JARVIS's commands flow through the supervisor → broker_router → venue (whichever is configured). No JARVIS-side changes needed.
 
-### Effort estimate to first Apex live trade
+### Effort estimate to first bot-friendly-prop live trade
 
-- Operator action (1 hour): sign up Apex, get API creds
+- Operator action (1 hour): sign up BluSky, get Tradovate API creds
 - Code change (~2 hours): `bot_broker_routing.yaml` entry + secret wiring + smoke test in demo mode
-- Test (1 day): demo-mode end-to-end verification
+- Test (1 day): demo-mode end-to-end verification (and confirm BluSky's bot policy still in TOS at sign-up)
 - Live cutover (1 hour): flip env to live, paper trail audit
 
-Total: **2-3 days from "operator gets API keys" to "first Tradovate live fill"**, assuming 12-bot paper soak runs in parallel.
+Total for primary prop: **2-3 days from "operator gets API keys" to first
+Tradovate live fill** on BluSky, assuming 12-bot paper soak runs in
+parallel. Add **+1 day** for Elite Trader Funding as the second prop
+(just config + creds, same adapter codepath).
 
 ---
 
@@ -291,19 +339,21 @@ Total: **2-3 days from "operator gets API keys" to "first Tradovate live fill"**
 
 | If you want | Do this |
 |---|---|
-| Maximum capital leverage on one prop | Apex Static $50k + vol_prof_mnq |
-| **Don't put all eggs in one basket** | **Apex 50k + Topstep 50k (dual-prop replication)** |
+| Maximum capital leverage on one prop | BluSky $50k + vol_prof_mnq |
+| **Don't put all eggs in one basket** | **BluSky 50k + Elite Trader Funding 50k (dual-prop replication, both bot-friendly TOS)** |
 | Faster to "first live trade" | Personal $2k + IBKR live + vol_prof_mnq |
 | Diversification with crypto | Add sol_optimized on Alpaca live |
-| All four | Apex + Topstep for futures (dual replication), IBKR personal for backup, Alpaca for crypto |
+| All four | BluSky + Elite for futures (dual replication, bot-friendly TOS), IBKR personal for backup, Alpaca for crypto |
 
 **Recommended starting move (operator's "don't put all eggs in one basket"):**
-Sign up BOTH Apex $50k Static AND Topstep $50k Trading Combine today.
-Cost: ~$167 + $165 = **~$332/month** while in eval. Use the 7-day
-paper-soak window to pass both evals (10 min trading days each, MNQ
-on both). Day 8 = first real-money trades simultaneously on TWO
-independent prop-funded accounts running the same audit-confirmed
-edge.
+Sign up BOTH BluSky Trading $50k AND Elite Trader Funding $50k today.
+At sign-up, RE-CONFIRM each firm's current TOS still permits full
+automation (bot policies can change). Cost: typical ~$300-400/month
+combined while in eval. Use the 7-day paper-soak window to pass both
+evals (~5-10 min trading days each, MNQ on both). Day 8 = first
+real-money trades simultaneously on TWO independent prop-funded
+accounts running the same audit-confirmed edge — both with TOS
+explicitly permitting the automation.
 
 The dual-prop replication delivers:
 - **~2× capital exposure** on the same edge ($50k + $50k = $100k base)
