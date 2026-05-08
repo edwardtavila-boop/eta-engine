@@ -3596,6 +3596,17 @@ def bot_fleet_roster(
         1 for r in rows
         if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
+    mnq_rows = [r for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")]
+    def _is_readiness_only_runtime_inventory(row: dict) -> bool:
+        return (
+            str(row.get("status") or "").lower() == "readiness_only"
+            or str(row.get("mode") or "").lower() == "readiness_snapshot"
+        )
+    mnq_readiness_only = [
+        r for r in mnq_rows
+        if _is_readiness_only_runtime_inventory(r)
+    ]
+    mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_runtime_inventory(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
     try:
@@ -3633,11 +3644,13 @@ def bot_fleet_roster(
         "summary": {
             "bot_total": len(rows),
             "confirmed_bots": confirmed_bots,
-            "mnq_total": sum(1 for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")),
+            "mnq_total": len(mnq_runtime_rows),
+            "mnq_runtime_total": len(mnq_runtime_rows),
+            "mnq_inventory_total": len(mnq_rows),
+            "mnq_readiness_only": len(mnq_readiness_only),
             "mnq_running": sum(
-                1 for r in rows
-                if str(r.get("symbol") or "").upper().startswith("MNQ")
-                and str(r.get("status") or "").lower() == "running"
+                1 for r in mnq_runtime_rows
+                if str(r.get("status") or "").lower() == "running"
             ),
             "truth_status": truth["truth_status"],
             "truth_summary_line": truth["truth_summary_line"],

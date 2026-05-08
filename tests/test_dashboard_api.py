@@ -1595,6 +1595,69 @@ class TestDashboardAPI:
         assert drill_data["strategy_readiness"]["launch_lane"] == "live_preflight"
         assert "_warning" not in drill_data
 
+    def test_mnq_runtime_summary_excludes_readiness_only_inventory(self, app_client, tmp_path, monkeypatch):
+        """MNQ runtime headline should not imply snapshot-only rows are down bots."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        bot_dir = state / "bots" / "mnq_anchor_sweep"
+        bot_dir.mkdir(parents=True, exist_ok=True)
+        (bot_dir / "status.json").write_text(
+            json.dumps(
+                {
+                    "name": "mnq_anchor_sweep",
+                    "symbol": "MNQ1",
+                    "tier": "anchor_sweep",
+                    "venue": "paper-sim",
+                    "status": "running",
+                    "todays_pnl": 0.0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        readiness = tmp_path / "bot_strategy_readiness_latest.json"
+        readiness.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "2026-05-08T07:20:00+00:00",
+                    "source": "bot_strategy_readiness",
+                    "summary": {"total_bots": 1, "launch_lanes": {"paper_soak": 1}},
+                    "rows": [
+                        {
+                            "bot_id": "mnq_futures_optimized",
+                            "strategy_id": "mnq_futures_optimized_v1",
+                            "strategy_kind": "confluence_scorecard",
+                            "symbol": "MNQ1",
+                            "timeframe": "5m",
+                            "active": True,
+                            "promotion_status": "paper_ready",
+                            "baseline_status": "baseline_present",
+                            "data_status": "ready",
+                            "launch_lane": "paper_soak",
+                            "can_paper_trade": True,
+                            "can_live_trade": False,
+                            "next_action": "Await runtime supervisor lane before counting as running.",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH", str(readiness))
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        summary = r.json()["summary"]
+        assert summary["mnq_running"] == 1
+        assert summary["mnq_total"] == 1
+        assert summary["mnq_runtime_total"] == 1
+        assert summary["mnq_inventory_total"] == 2
+        assert summary["mnq_readiness_only"] == 1
+
     def test_bot_fleet_summary_carries_broker_net_without_fake_lifetime(
         self,
         app_client,
