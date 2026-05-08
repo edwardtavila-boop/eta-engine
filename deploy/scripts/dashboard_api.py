@@ -4956,22 +4956,67 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     return out
 
 
-def _portfolio_sleeve_for_symbol(symbol: object) -> str:
-    """Group symbols into dashboard-ready portfolio sleeves."""
+_PORTFOLIO_SLEEVE_ROOTS: dict[str, str] = {
+    "BTC": "crypto",
+    "ETH": "crypto",
+    "SOL": "crypto",
+    "XRP": "crypto",
+    "ADA": "crypto",
+    "AVAX": "crypto",
+    "DOGE": "crypto",
+    "DOT": "crypto",
+    "LINK": "crypto",
+    "MBT": "crypto_futures",
+    "MET": "crypto_futures",
+    "MNQ": "equity_index_futures",
+    "NQ": "equity_index_futures",
+    "ES": "equity_index_futures",
+    "MES": "equity_index_futures",
+    "M2K": "equity_index_futures",
+    "RTY": "equity_index_futures",
+    "MYM": "equity_index_futures",
+    "YM": "equity_index_futures",
+    "CL": "commodities",
+    "MCL": "commodities",
+    "NG": "commodities",
+    "GC": "commodities",
+    "MGC": "commodities",
+    "6E": "rates_fx",
+    "M6E": "rates_fx",
+    "ZN": "rates_fx",
+    "ZB": "rates_fx",
+    "ZF": "rates_fx",
+    "ZT": "rates_fx",
+}
+_PORTFOLIO_FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
+_PORTFOLIO_ROOTS_BY_LENGTH = tuple(
+    sorted(_PORTFOLIO_SLEEVE_ROOTS, key=len, reverse=True),
+)
+
+
+def _portfolio_symbol_root(symbol: object) -> str:
+    """Normalize display symbols and dated futures contracts to a tradable root."""
     raw = str(symbol or "").upper().replace("/", "").replace("-", "").strip()
     root = re.sub(r"(USD|USDT)$", "", raw)
-    root = re.sub(r"\d+$", "", root)
-    if root in {"BTC", "ETH", "SOL", "XRP", "ADA", "AVAX", "DOGE", "DOT", "LINK"}:
-        return "crypto"
-    if root in {"MBT", "MET"}:
-        return "crypto_futures"
-    if root in {"MNQ", "NQ", "ES", "MES", "M2K", "RTY", "MYM", "YM"}:
-        return "equity_index_futures"
-    if root in {"CL", "MCL", "NG", "GC", "MGC"}:
-        return "commodities"
-    if root in {"6E", "M6E", "ZN", "ZB", "ZF", "ZT"}:
-        return "rates_fx"
-    return "other"
+    if root in _PORTFOLIO_SLEEVE_ROOTS:
+        return root
+
+    continuous_root = re.sub(r"\d+$", "", root)
+    if continuous_root in _PORTFOLIO_SLEEVE_ROOTS:
+        return continuous_root
+
+    for known_root in _PORTFOLIO_ROOTS_BY_LENGTH:
+        if re.fullmatch(
+            rf"{re.escape(known_root)}[{_PORTFOLIO_FUTURES_MONTH_CODES}]\d{{1,2}}",
+            root,
+        ):
+            return known_root
+    return continuous_root or root
+
+
+def _portfolio_sleeve_for_symbol(symbol: object) -> str:
+    """Group symbols into dashboard-ready portfolio sleeves."""
+    return _PORTFOLIO_SLEEVE_ROOTS.get(_portfolio_symbol_root(symbol), "other")
 
 
 def _portfolio_summary_payload(
@@ -5026,16 +5071,33 @@ def _portfolio_summary_payload(
         key=lambda row: (-int(row["open_position_count"]), -int(row["bot_count"]), row["sleeve"]),
     )
 
+    active_symbol_roots = {
+        _portfolio_symbol_root(row.get("symbol"))
+        for row in rows
+        if row.get("symbol")
+    }
     contributors: list[dict[str, Any]] = []
+    unassigned_broker_symbols: set[str] = set()
     for pos in exposure.get("open_positions") or []:
         if not isinstance(pos, dict):
             continue
         unrealized = _float_value(pos.get("unrealized_pnl"))
+        symbol = str(pos.get("symbol") or "")
+        symbol_root = _portfolio_symbol_root(symbol)
+        ownership_status = (
+            "managed_symbol"
+            if symbol_root and symbol_root in active_symbol_roots
+            else "unassigned_broker_position"
+        )
+        if ownership_status == "unassigned_broker_position" and symbol:
+            unassigned_broker_symbols.add(symbol)
         contributors.append({
             "type": "open_position_unrealized",
             "venue": str(pos.get("venue") or ""),
-            "symbol": str(pos.get("symbol") or ""),
-            "sleeve": _portfolio_sleeve_for_symbol(pos.get("symbol")),
+            "symbol": symbol,
+            "symbol_root": symbol_root,
+            "sleeve": _portfolio_sleeve_for_symbol(symbol),
+            "ownership_status": ownership_status,
             "side": pos.get("side"),
             "qty": _float_value(pos.get("qty")),
             "market_value": _float_value(pos.get("market_value")),
@@ -5070,6 +5132,8 @@ def _portfolio_summary_payload(
         "allocation_sleeves": allocation_sleeves,
         "pnl_contributors": contributors[:12],
         "hidden_disabled_count": int(hidden_disabled_count),
+        "unassigned_broker_position_count": len(unassigned_broker_symbols),
+        "unassigned_broker_symbols": sorted(unassigned_broker_symbols),
         "broker_net_pnl": broker_summary.get("broker_net_pnl"),
         "broker_today_realized_pnl": broker_summary.get("broker_today_realized_pnl"),
         "broker_total_unrealized_pnl": broker_summary.get("broker_total_unrealized_pnl"),

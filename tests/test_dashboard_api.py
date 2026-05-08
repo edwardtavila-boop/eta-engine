@@ -2043,7 +2043,7 @@ class TestDashboardAPI:
                 "today_actual_fills": 2,
                 "today_realized_pnl": 10.0,
                 "total_unrealized_pnl": 40.0,
-                "open_position_count": 2,
+                "open_position_count": 3,
                 "alpaca": {
                     "ready": True,
                     "open_positions": [
@@ -2053,6 +2053,13 @@ class TestDashboardAPI:
                             "current_price": 100000.0,
                             "market_value": 10000.0,
                             "unrealized_pl": 15.0,
+                        },
+                        {
+                            "symbol": "ETHUSD",
+                            "qty": -0.2,
+                            "current_price": 2500.0,
+                            "market_value": -500.0,
+                            "unrealized_pl": -5.0,
                         }
                     ],
                 },
@@ -2060,7 +2067,7 @@ class TestDashboardAPI:
                     "ready": True,
                     "open_positions": [
                         {
-                            "symbol": "MNQ",
+                            "symbol": "MNQM6",
                             "position": 1,
                             "market_price": 29000.0,
                             "market_value": 29000.0,
@@ -2079,6 +2086,8 @@ class TestDashboardAPI:
         assert portfolio["source"] == "live_broker_state"
         assert portfolio["broker_net_pnl"] == 50.0
         assert portfolio["hidden_disabled_count"] == 0
+        assert portfolio["unassigned_broker_position_count"] == 1
+        assert portfolio["unassigned_broker_symbols"] == ["ETHUSD"]
         sleeves = {row["sleeve"]: row for row in portfolio["allocation_sleeves"]}
         assert sleeves["equity_index_futures"]["open_position_count"] == 1
         assert sleeves["crypto"]["open_position_count"] == 1
@@ -2086,8 +2095,21 @@ class TestDashboardAPI:
             (row["venue"], row["symbol"]): row
             for row in portfolio["pnl_contributors"]
         }
-        assert contributors[("ibkr", "MNQ")]["unrealized_pnl"] == 25.0
+        assert contributors[("ibkr", "MNQM6")]["sleeve"] == "equity_index_futures"
+        assert contributors[("ibkr", "MNQM6")]["ownership_status"] == "managed_symbol"
+        assert contributors[("ibkr", "MNQM6")]["unrealized_pnl"] == 25.0
         assert contributors[("alpaca", "BTCUSD")]["unrealized_pnl"] == 15.0
+        assert contributors[("alpaca", "ETHUSD")]["sleeve"] == "crypto"
+        assert contributors[("alpaca", "ETHUSD")]["ownership_status"] == "unassigned_broker_position"
+
+    def test_portfolio_symbol_roots_handle_dated_futures_contracts(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        assert mod._portfolio_sleeve_for_symbol("MNQM6") == "equity_index_futures"
+        assert mod._portfolio_sleeve_for_symbol("NQM6") == "equity_index_futures"
+        assert mod._portfolio_sleeve_for_symbol("MCLM6") == "commodities"
+        assert mod._portfolio_sleeve_for_symbol("METK6") == "crypto_futures"
+        assert mod._portfolio_sleeve_for_symbol("ETHUSD") == "crypto"
 
     def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path, monkeypatch):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
