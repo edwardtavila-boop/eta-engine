@@ -10,6 +10,9 @@ def test_vps_root_inventory_classifies_local_backups_outside_source_risk() -> No
 
     assert 'return "local_backup_artifact"' in text
     assert 'return "local_diagnostic_artifact"' in text
+    assert "Get-DirtyCompanionStatus" in text
+    assert "dirty_companion_repos" in text
+    assert "dirty_worktree_sample" in text
     assert r"\.bak" in text
     assert "scripts/_check_" in text
     assert "cleanup_allowed = $false" in text
@@ -23,6 +26,9 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     assert 'Get-Count -Node $untracked -Name "local_diagnostic_artifact"' in text
     assert "local_backup_untracked" in text
     assert "local_diagnostic_untracked" in text
+    assert "dirty_companion_repos" in text
+    assert "Dirty companion worktrees" in text
+    assert "dirty_worktree_sample" in text
     assert "Local backup untracked artifacts" in text
     assert "Local diagnostic untracked artifacts" in text
     assert "cleanup_allowed = $false" in text

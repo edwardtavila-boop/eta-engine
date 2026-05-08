@@ -121,19 +121,38 @@ $submoduleDrift = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_drift"]) {
     $submoduleDrift = [int]$counts.submodule_drift
 }
+$dirtyCompanionRepos = 0
+if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["dirty_companion_repos"]) {
+    $dirtyCompanionRepos = [int]$counts.dirty_companion_repos
+}
+$dirtyCompanionSample = @()
+if (
+    $null -ne $submodules -and
+    $null -ne $submodules.PSObject.Properties["dirty_worktree_sample"] -and
+    $null -ne $submodules.dirty_worktree_sample
+) {
+    $dirtyCompanionSample = @($submodules.dirty_worktree_sample | ForEach-Object {
+        if ($null -ne $_.PSObject.Properties["line"]) {
+            "$($_.path):$($_.meaning)"
+        }
+        else {
+            "$_"
+        }
+    })
+}
 
 $risk = "low"
 if ($sourceDeleted -gt 0 -or $unknownDeleted -gt 0) {
     $risk = "high"
 }
-elseif ($submoduleDrift -gt 0 -or $sourceUntracked -gt 0) {
+elseif ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0 -or $sourceUntracked -gt 0) {
     $risk = "medium"
 }
 
 $approvalGates = [ordered]@{
     cleanup = "blocked_until_manual_approval"
     branch_update = "blocked_until_source_review"
-    submodule_alignment = if ($submoduleDrift -gt 0) { "manual_review_required" } else { "clear" }
+    submodule_alignment = if ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0) { "manual_review_required" } else { "clear" }
     generated_artifact_cleanup = "blocked_until_source_safe"
     credential_rotation = "reserved_for_go_live"
 }
@@ -142,8 +161,8 @@ $recommendedAction = "Rerun the read-only inventory and live probes; no root cle
 if ($sourceDeleted -gt 0 -or $unknownDeleted -gt 0) {
     $recommendedAction = "Review tracked source/governance deletions before branch updates, cleanup, or root replacement."
 }
-elseif ($submoduleDrift -gt 0) {
-    $recommendedAction = "Commit or intentionally pin companion repos before updating the superproject root."
+elseif ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0) {
+    $recommendedAction = "Review dirty companion worktrees and commit, preserve, or intentionally pin them before updating the superproject root."
 }
 elseif ($sourceUntracked -gt 0) {
     $recommendedAction = "Classify source/governance untracked files before any generated-artifact cleanup."
@@ -169,8 +188,8 @@ $steps = @(
         -Title "Align companion repositories after source state is understood" `
         -Risk "medium" `
         -Decision "manual_review_required" `
-        -Action "Review submodule drift and choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime." `
-        -Evidence (@("submodule_drift=$submoduleDrift") + @($submodules.sample))
+        -Action "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime." `
+        -Evidence (@("submodule_drift=$submoduleDrift", "dirty_companion_repos=$dirtyCompanionRepos") + @($submodules.sample) + @($dirtyCompanionSample))
     New-PlanStep `
         -Id "classify-generated-artifacts" `
         -Title "Separate generated market/research artifacts from source" `
@@ -208,6 +227,7 @@ $plan = [ordered]@{
         local_diagnostic_untracked = $localDiagnosticUntracked
         source_or_governance_untracked = $sourceUntracked
         submodule_drift = $submoduleDrift
+        dirty_companion_repos = $dirtyCompanionRepos
     }
     steps = $steps
 }
@@ -234,6 +254,7 @@ $markdown = @(
     "- Local diagnostic untracked artifacts: $localDiagnosticUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
+    "- Dirty companion worktrees: $dirtyCompanionRepos"
     ""
     "## Approval gates"
     ""

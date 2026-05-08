@@ -1060,7 +1060,7 @@ class TestDashboardAPI:
             "risk_level": "high",
             "cleanup_allowed": False,
             "destructive_actions_performed": False,
-            "counts": {"status": 279, "submodule_drift": 6},
+            "counts": {"status": 279, "submodule_drift": 6, "dirty_companion_repos": 3},
             "summary": {
                 "source_or_governance_deleted": 124,
                 "unknown_deleted": 2,
@@ -1068,6 +1068,7 @@ class TestDashboardAPI:
                 "generated_untracked": 141,
                 "source_or_governance_untracked": 2,
                 "submodule_drift": 6,
+                "dirty_companion_repos": 3,
             },
             "steps": [
                 {
@@ -1089,6 +1090,7 @@ class TestDashboardAPI:
         assert payload["destructive_actions_performed"] is False
         assert payload["summary"]["source_or_governance_deleted"] == 124
         assert payload["counts"]["submodule_drift"] == 6
+        assert payload["summary"]["dirty_companion_repos"] == 3
         assert payload["recommended_action"] == "Keep root cleanup disabled until review is approved."
 
     def test_master_status_includes_vps_root_reconciliation_card(self, app_client, tmp_path):
@@ -1099,11 +1101,12 @@ class TestDashboardAPI:
                     "risk_level": "high",
                     "cleanup_allowed": False,
                     "destructive_actions_performed": False,
-                    "counts": {"status": 279, "submodule_drift": 6},
+                    "counts": {"status": 279, "submodule_drift": 6, "dirty_companion_repos": 3},
                     "summary": {
                         "source_or_governance_deleted": 124,
                         "unknown_deleted": 2,
                         "submodule_drift": 6,
+                        "dirty_companion_repos": 3,
                     },
                     "steps": [],
                 },
@@ -1118,6 +1121,7 @@ class TestDashboardAPI:
         assert payload["systems"]["vps_root"]["status"] == "YELLOW"
         assert payload["systems"]["vps_root"]["source"] == "vps_root_reconciliation"
         assert "source_deleted=124" in payload["systems"]["vps_root"]["detail"]
+        assert "dirty_companions=3" in payload["systems"]["vps_root"]["detail"]
 
     def test_runtime_and_bridge_status_use_local_master_payload(self, app_client, tmp_path):
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(

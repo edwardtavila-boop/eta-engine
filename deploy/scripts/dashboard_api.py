@@ -1318,6 +1318,9 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     unknown_deleted = _as_int(summary.get("unknown_deleted"))
     source_untracked = _as_int(summary.get("source_or_governance_untracked"))
     submodule_drift = _as_int(summary.get("submodule_drift") or counts.get("submodule_drift"))
+    dirty_companion_repos = _as_int(
+        summary.get("dirty_companion_repos") or counts.get("dirty_companion_repos")
+    )
     manual_review_required = (
         risk_level in {"high", "medium"}
         or not cleanup_allowed
@@ -1325,6 +1328,7 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
         or unknown_deleted > 0
         or source_untracked > 0
         or submodule_drift > 0
+        or dirty_companion_repos > 0
     )
     recommended_action = "review VPS root reconciliation plan before any root cleanup"
     if steps and isinstance(steps[0], dict):
@@ -6957,7 +6961,8 @@ def _local_master_status_payload() -> dict[str, object]:
         return (
             f"risk={payload.get('risk_level')}; cleanup_allowed={payload.get('cleanup_allowed')}; "
             f"source_deleted={summary.get('source_or_governance_deleted', 0)}; "
-            f"submodule_drift={summary.get('submodule_drift', 0)}"
+            f"submodule_drift={summary.get('submodule_drift', 0)}; "
+            f"dirty_companions={summary.get('dirty_companion_repos', 0)}"
         )
 
     paper_live = dict(paper)

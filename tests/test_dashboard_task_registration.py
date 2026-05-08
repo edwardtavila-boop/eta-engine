@@ -237,6 +237,8 @@ def test_root_dirty_inspector_is_read_only_and_canonical() -> None:
     assert "modified_tracked" in text
     assert "untracked" in text
     assert "submodule_drift" in text
+    assert "dirty_companion_repos" in text
+    assert "dirty_worktree_sample" in text
     assert "source_or_governance" in text
     assert "generated_market_or_research_artifact" in text
     assert "Manual reconciliation required before cleanup" in text
@@ -272,6 +274,8 @@ def test_root_reconciliation_planner_is_review_only() -> None:
     assert "restore-source-governance" in text
     assert "align-submodules" in text
     assert "classify-generated-artifacts" in text
+    assert "dirty_companion_repos" in text
+    assert "Dirty companion worktrees" in text
     assert "cleanup_allowed = $false" in text
     assert "destructive_actions_performed = $false" in text
 

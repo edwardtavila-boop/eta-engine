@@ -86,6 +86,46 @@ function New-CategorySummary {
     return $summary
 }
 
+function Get-CompanionStatusMeaning {
+    param([Parameter(Mandatory = $true)][string]$Status)
+    $s = "$Status"
+    if ($s -match "\?") {
+        return "submodule_has_untracked_content"
+    }
+    if ($s -cmatch "m") {
+        return "submodule_has_modified_worktree"
+    }
+    if ($s -cmatch "M") {
+        return "submodule_pointer_changed"
+    }
+    return "submodule_status_changed"
+}
+
+function Get-DirtyCompanionStatus {
+    param(
+        [AllowEmptyCollection()][string[]]$PorcelainLines = @(),
+        [Parameter(Mandatory = $true)][int]$Limit
+    )
+    $items = New-Object System.Collections.Generic.List[object]
+    foreach ($line in $PorcelainLines) {
+        if ($null -eq $line -or "$line".Length -lt 4) {
+            continue
+        }
+        $statusCode = "$line".Substring(0, 2)
+        $path = "$line".Substring(3).Trim().Trim('"')
+        if ((Get-PathCategory -Path $path) -ne "submodule_or_companion_repo") {
+            continue
+        }
+        [void]$items.Add([ordered]@{
+            path = $path
+            status = $statusCode.Trim()
+            meaning = Get-CompanionStatusMeaning -Status $statusCode
+            line = "$line"
+        })
+    }
+    return @($items | Select-Object -First $Limit)
+}
+
 $RootFull = Assert-CanonicalEtaPath -Path $Root
 $SampleLimit = [Math]::Max(1, $SampleLimit)
 
@@ -115,6 +155,7 @@ try {
     if ($modifiedSummary.Contains("unknown")) {
         $unknownCount += [int]$modifiedSummary["unknown"].count
     }
+    $dirtyCompanionStatus = @(Get-DirtyCompanionStatus -PorcelainLines $porcelain -Limit $SampleLimit)
 
     $riskLevel = "low"
     $recommendedAction = "Generated/runtime drift only; review before cleanup."
@@ -122,9 +163,9 @@ try {
         $riskLevel = "high"
         $recommendedAction = "Manual reconciliation required before cleanup: tracked source/governance deletions are present."
     }
-    elseif ($unknownCount -gt 0 -or $submoduleDrift.Count -gt 0) {
+    elseif ($unknownCount -gt 0 -or $submoduleDrift.Count -gt 0 -or $dirtyCompanionStatus.Count -gt 0) {
         $riskLevel = "medium"
-        $recommendedAction = "Review unknown paths and submodule drift before cleanup."
+        $recommendedAction = "Review unknown paths, dirty companion worktrees, and submodule drift before cleanup."
     }
 
     $result = [ordered]@{
@@ -141,6 +182,7 @@ try {
             modified_tracked = $modifiedTracked.Count
             untracked = $untracked.Count
             submodule_drift = $submoduleDrift.Count
+            dirty_companion_repos = $dirtyCompanionStatus.Count
         }
         deleted_tracked = $deletedSummary
         modified_tracked = $modifiedSummary
@@ -148,6 +190,8 @@ try {
         submodules = [ordered]@{
             drift_count = $submoduleDrift.Count
             sample = @($submoduleDrift | Select-Object -First $SampleLimit)
+            dirty_worktree_count = $dirtyCompanionStatus.Count
+            dirty_worktree_sample = @($dirtyCompanionStatus)
         }
         safety = [ordered]@{
             destructive_actions_performed = $false
