@@ -316,7 +316,10 @@ _DEFAULT_LOG   = _WORKSPACE_ROOT / "logs" / "eta_engine"
 # session has rolled over, a follow-up PR can delete the fallbacks.
 _LEGACY_STATE  = _REPO_ROOT / "state"  # HISTORICAL-PATH-OK
 _LEGACY_LOG    = _REPO_ROOT / "logs"
-_DEFAULT_RUNTIME_STATE = _WORKSPACE_ROOT / "firm_command_center" / "var" / "data" / "runtime_state.json"
+_DEFAULT_RUNTIME_STATE = _DEFAULT_STATE / "runtime_state.json"
+_LEGACY_RUNTIME_STATE = (
+    _WORKSPACE_ROOT / "firm_command_center" / "var" / "data" / "runtime_state.json"
+)  # HISTORICAL-PATH-OK
 _DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT = (
     _WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "bot_strategy_readiness_latest.json"
 )
@@ -791,7 +794,21 @@ def _log_dir() -> Path:
 
 def _runtime_state_path() -> Path:
     """Canonical runtime heartbeat path for ETA service-level truth."""
-    return Path(os.environ.get("ETA_RUNTIME_STATE_PATH", str(_DEFAULT_RUNTIME_STATE)))
+    override = os.environ.get("ETA_RUNTIME_STATE_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _state_dir() / _DEFAULT_RUNTIME_STATE.name
+
+
+def _runtime_state_candidates() -> list[Path]:
+    """Runtime-state read order with canonical path first and legacy as fallback only."""
+    primary = _runtime_state_path()
+    candidates = [primary]
+    if not os.environ.get("ETA_RUNTIME_STATE_PATH", "").strip():
+        legacy = _LEGACY_RUNTIME_STATE
+        if legacy != primary and not primary.exists() and legacy.exists():
+            candidates.append(legacy)
+    return candidates
 
 
 def _bot_strategy_readiness_snapshot_path() -> Path:
@@ -966,12 +983,18 @@ def _is_hidden_bot_row(row: dict) -> bool:
 
 def _read_runtime_state() -> dict:
     """Read runtime state without letting service diagnostics break the dashboard."""
-    path = _runtime_state_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return {"_warning": "missing_runtime_state", "_path": str(path)}
-    return data if isinstance(data, dict) else {"_warning": "invalid_runtime_state", "_path": str(path)}
+    primary = _runtime_state_path()
+    for path in _runtime_state_candidates():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+        except json.JSONDecodeError:
+            return {"_warning": "invalid_runtime_state", "_path": str(path)}
+        return data if isinstance(data, dict) else {"_warning": "invalid_runtime_state", "_path": str(path)}
+    return {"_warning": "missing_runtime_state", "_path": str(primary)}
 
 
 def _ibgateway_reauth_snapshot() -> dict | None:
@@ -1604,17 +1627,31 @@ def _truth_snapshot(rows: list[dict], *, server_ts: float) -> dict:
     if order_entry_hold_active:
         warnings.append(f"order_entry_hold: {order_entry_hold_reason}")
 
-    mode = str(runtime.get("mode") or "").strip()
-    detail = str(runtime.get("detail") or "").strip()
-    updated_at = str(runtime.get("updated_at") or "").strip()
-
     fresh_rows = [
         row for row in rows
         if row.get("heartbeat_age_s") is not None and float(row.get("heartbeat_age_s") or 0) <= 300
     ]
+    if runtime.get("_warning") and fresh_rows:
+        runtime = {
+            "mode": "running",
+            "detail": "fresh_supervisor_heartbeats",
+            "updated_at": str(
+                supervisor_liveness.get("main_heartbeat_ts")
+                or supervisor_liveness.get("keepalive_ts")
+                or ""
+            ),
+            "source": "derived_from_supervisor_heartbeats",
+            "bot_count": len(fresh_rows),
+            "runtime_state_path": str(_runtime_state_path()),
+        }
+
+    mode = str(runtime.get("mode") or "").strip()
+    detail = str(runtime.get("detail") or "").strip()
+    updated_at = str(runtime.get("updated_at") or "").strip()
+
     if runtime.get("_warning") and not fresh_rows:
         warnings.append(str(runtime["_warning"]))
-    if mode or detail:
+    if (mode or detail) and not fresh_rows:
         warnings.append(f"runtime reports {mode or 'unknown'} / {detail or 'no_detail'}")
     if not bots_dir.exists() and not fresh_rows:
         warnings.append(f"missing bot status directory: {bots_dir}")

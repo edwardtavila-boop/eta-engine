@@ -2295,6 +2295,50 @@ class TestDashboardAPI:
         assert "missing_runtime_state" not in truth["truth_warnings"]
         assert not any("missing bot status directory" in w for w in truth["truth_warnings"])
 
+    def test_runtime_state_defaults_to_canonical_state_dir(self, app_client):
+        """Runtime state should follow the active canonical state root."""
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+
+        assert mod._runtime_state_path() == state / "runtime_state.json"
+
+    def test_truth_snapshot_derives_runtime_from_fresh_supervisor_rows(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """Fresh supervisor rows should not expose a missing runtime file as headline state."""
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps({"ts": "2026-05-08T08:00:00+00:00"}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_read_runtime_state",
+            lambda: {"_warning": "missing_runtime_state", "_path": str(state / "runtime_state.json")},
+        )
+
+        truth = mod._truth_snapshot([{"heartbeat_age_s": 12}], server_ts=1778227200.0)
+
+        assert truth["truth_status"] == "live"
+        assert truth["runtime"]["source"] == "derived_from_supervisor_heartbeats"
+        assert truth["runtime_mode"] == "running"
+        assert truth["runtime_detail"] == "fresh_supervisor_heartbeats"
+        assert "missing_runtime_state" not in truth["truth_warnings"]
+        assert not any("runtime reports" in w for w in truth["truth_warnings"])
+
     def test_truth_snapshot_reports_state_warnings_when_no_live_rows(
         self,
         app_client,
