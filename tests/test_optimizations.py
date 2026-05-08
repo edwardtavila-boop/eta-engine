@@ -359,6 +359,19 @@ class TestStatusPage:
         assert "supervisor_local_position_count" in html
         assert "paper-local watched" in html
 
+    def test_status_page_surfaces_vps_root_reconciliation_card(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "VPS Root Review" in html
+        assert "vpsRootStatus" in html
+        assert "vpsRootSub" in html
+        assert "/api/vps/root-reconciliation" in html
+        assert "renderVpsRootReview" in html
+        assert "source_or_governance_deleted" in html
+        assert "cleanupAllowed" in html
+        assert "'locked'" in html
+
     def test_status_page_card_health_contract_is_wired(self):
         """Card-health JS+CSS contract still intact. The index.html-side
         ``id="top-card-health"`` anchor was dropped in 6a7b9af; the

@@ -132,6 +132,8 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .mini-bot-card .line span:last-child{color:#dbe7f3;text-align:right}
 .exit-watch-card{border-color:rgba(54,240,162,.28);background:linear-gradient(145deg,rgba(8,23,22,.84),rgba(3,8,14,.9))}
 .exit-watch-card .sub{line-height:1.35}
+.vps-root-card{border-color:rgba(255,209,102,.34);background:linear-gradient(145deg,rgba(36,27,10,.82),rgba(3,8,14,.9))}
+.vps-root-card .sub{line-height:1.35}
 .table-wrap{padding:0 2rem 2rem}
 table{border-spacing:0 5px;border-collapse:separate}
 td{background:rgba(255,255,255,.02);border-top:1px solid rgba(255,255,255,.035);border-bottom:1px solid rgba(255,255,255,.035)}
@@ -226,6 +228,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div></div>
   <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
+  <div class="card vps-root-card"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
   <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
 </div>
 
@@ -316,6 +319,7 @@ const STRATEGY_RESULTS_API = '/api/jarvis/strategy_supercharge_results';
 const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';
 const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';
 const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
+const VPS_ROOT_RECONCILIATION_API = '/api/vps/root-reconciliation';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
@@ -889,12 +893,13 @@ async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const [data, strategyResults, operatorQueue, paperLive, diagnostics] = await Promise.all([
+    const [data, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot] = await Promise.all([
       fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
-      fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), AUX_FETCH_TIMEOUT_MS)
+      fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), AUX_FETCH_TIMEOUT_MS)
     ]);
     if (!data) { showOffline(!hasRendered); return; }
     render(
@@ -903,6 +908,7 @@ async function fetchData() {
       operatorQueue ? operatorQueue.payload : {},
       paperLive ? paperLive.payload : {},
       diagnostics ? diagnostics.payload : {},
+      vpsRoot ? vpsRoot.payload : {},
       data.source
     );
     hasRendered = true;
@@ -919,7 +925,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -935,6 +941,8 @@ function showOffline(clearDashboard = true) {
   if (signalCadenceSub) signalCadenceSub.textContent = '';
   const opsProxySub = document.getElementById('opsProxySub');
   if (opsProxySub) opsProxySub.textContent = '';
+  const vpsRootSub = document.getElementById('vpsRootSub');
+  if (vpsRootSub) vpsRootSub.textContent = '';
 }
 
 function sourceLabel(source) {
@@ -1028,7 +1036,25 @@ function protectionForBot(bot) {
   };
 }
 
-function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataSource) {
+function renderVpsRootReview(vpsRoot) {
+  const statusEl = document.getElementById('vpsRootStatus');
+  const subEl = document.getElementById('vpsRootSub');
+  if (!statusEl || !subEl) return;
+  const status = String(vpsRoot?.status || 'missing').toLowerCase();
+  const risk = String(vpsRoot?.risk_level || 'unknown').toLowerCase();
+  const summary = vpsRoot?.summary || {};
+  const sourceDeleted = finiteNumber(summary.source_or_governance_deleted) ?? 0;
+  const submoduleDrift = finiteNumber(summary.submodule_drift) ?? 0;
+  const cleanupAllowed = vpsRoot?.cleanup_allowed === true;
+  const needsReview = status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0;
+  statusEl.textContent = status === 'missing' ? 'Missing' : needsReview ? 'Review' : 'Clear';
+  statusEl.className = 'stat ' + (needsReview || status === 'missing' ? 'yellow' : 'green');
+  subEl.textContent = status === 'missing'
+    ? 'plan artifact missing; run VPS root inventory'
+    : `risk ${risk}; source deleted ${sourceDeleted}; submodules ${submoduleDrift}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
+}
+
+function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, dataSource) {
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
   const hiddenCount = Math.max(0, allBots.length - bots.length);
@@ -1085,6 +1111,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
   renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl);
   renderContributionGraph(bots, liveBroker);
   renderAllocationPillsAndSections(bots, liveBroker);
+  renderVpsRootReview(vpsRoot || d.vps_root_reconciliation || {});
 
   // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
   // a real lifetime field, show it; otherwise mark the card as unavailable
