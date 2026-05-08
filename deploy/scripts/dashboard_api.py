@@ -1254,6 +1254,86 @@ def _read_json_file(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _vps_root_reconciliation_plan_path() -> Path:
+    """Review-only plan generated from the live VPS root dirty inventory."""
+    return _state_dir() / "vps_root_reconciliation_plan.json"
+
+
+def _vps_root_dirty_inventory_path() -> Path:
+    """Read-only root dirty inventory; never used to mutate the workspace."""
+    return _state_dir() / "vps_root_dirty_inventory.json"
+
+
+def _vps_root_reconciliation_payload() -> dict[str, object]:
+    """Expose the VPS root reconciliation artifacts without taking action."""
+    def _as_int(value: object) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    plan_path = _vps_root_reconciliation_plan_path()
+    inventory_path = _vps_root_dirty_inventory_path()
+    plan = _read_json_file(plan_path)
+    inventory = _read_json_file(inventory_path)
+    if not plan and not inventory:
+        return {
+            "status": "missing",
+            "source": "missing",
+            "plan_path": str(plan_path),
+            "inventory_path": str(inventory_path),
+            "risk_level": "unknown",
+            "cleanup_allowed": False,
+            "destructive_actions_performed": False,
+            "counts": {},
+            "summary": {},
+            "steps": [],
+            "recommended_action": "run inspect_vps_root_dirty.ps1 and plan_vps_root_reconciliation.ps1 on the VPS",
+        }
+
+    counts = plan.get("counts") if isinstance(plan.get("counts"), dict) else {}
+    summary = plan.get("summary") if isinstance(plan.get("summary"), dict) else {}
+    steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+    if not counts and isinstance(inventory.get("counts"), dict):
+        counts = inventory["counts"]
+    if not summary and isinstance(inventory.get("summary"), dict):
+        summary = inventory["summary"]
+
+    risk_level = str(plan.get("risk_level") or inventory.get("risk_level") or "unknown").lower()
+    cleanup_allowed = bool(plan.get("cleanup_allowed") is True)
+    destructive_actions_performed = bool(plan.get("destructive_actions_performed") is True)
+    source_deleted = _as_int(summary.get("source_or_governance_deleted"))
+    unknown_deleted = _as_int(summary.get("unknown_deleted"))
+    source_untracked = _as_int(summary.get("source_or_governance_untracked"))
+    submodule_drift = _as_int(summary.get("submodule_drift") or counts.get("submodule_drift"))
+    manual_review_required = (
+        risk_level in {"high", "medium"}
+        or not cleanup_allowed
+        or source_deleted > 0
+        or unknown_deleted > 0
+        or source_untracked > 0
+        or submodule_drift > 0
+    )
+    recommended_action = "review VPS root reconciliation plan before any root cleanup"
+    if steps and isinstance(steps[0], dict):
+        recommended_action = str(steps[0].get("action") or recommended_action)
+
+    return {
+        "status": "review_required" if manual_review_required else "ready_for_review",
+        "source": "vps_root_reconciliation_plan" if plan else "vps_root_dirty_inventory",
+        "plan_status": plan.get("status") or "missing",
+        "plan_path": str(plan_path),
+        "inventory_path": str(inventory_path),
+        "risk_level": risk_level,
+        "cleanup_allowed": cleanup_allowed,
+        "destructive_actions_performed": destructive_actions_performed,
+        "counts": counts,
+        "summary": summary,
+        "steps": steps,
+        "recommended_action": recommended_action,
+    }
+
+
 def _count_matching_files(path: Path, pattern: str) -> int:
     try:
         return sum(1 for item in path.glob(pattern) if item.is_file())
@@ -6653,6 +6733,7 @@ def _local_master_status_payload() -> dict[str, object]:
     gateway_detail = str(gateway_ibkr.get("detail") or broker_gateway.get("detail") or "")
     broker_router = _broker_router_snapshot()
     router_status = str(broker_router.get("status") or "unknown").lower()
+    vps_root_reconciliation = _vps_root_reconciliation_payload()
 
     def _gateway_card_status(status: str) -> str:
         if status == "connected":
@@ -6667,6 +6748,23 @@ def _local_master_status_payload() -> dict[str, object]:
         if status in {"held", "degraded"}:
             return "YELLOW"
         return "RED" if status == "unknown" else "YELLOW"
+
+    def _vps_root_card_status(payload: dict[str, object]) -> str:
+        status = str(payload.get("status") or "unknown").lower()
+        risk = str(payload.get("risk_level") or "unknown").lower()
+        if status == "missing":
+            return "YELLOW"
+        if status == "review_required" or risk in {"high", "medium"}:
+            return "YELLOW"
+        return "GREEN"
+
+    def _vps_root_card_detail(payload: dict[str, object]) -> str:
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        return (
+            f"risk={payload.get('risk_level')}; cleanup_allowed={payload.get('cleanup_allowed')}; "
+            f"source_deleted={summary.get('source_or_governance_deleted', 0)}; "
+            f"submodule_drift={summary.get('submodule_drift', 0)}"
+        )
 
     paper_live = dict(paper)
     paper_live.update(
@@ -6705,6 +6803,7 @@ def _local_master_status_payload() -> dict[str, object]:
             "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
         },
         "paper_live": paper_live,
+        "vps_root_reconciliation": vps_root_reconciliation,
         "systems": {
             "dashboard": {
                 "status": "GREEN",
@@ -6734,9 +6833,21 @@ def _local_master_status_payload() -> dict[str, object]:
                 "operator_queue_blocked_count": blocked,
                 "operator_queue_launch_blocked_count": launch_blocked,
             },
+            "vps_root": {
+                "status": _vps_root_card_status(vps_root_reconciliation),
+                "detail": _vps_root_card_detail(vps_root_reconciliation),
+                "source": "vps_root_reconciliation",
+                "checked_at": generated_at,
+            },
         },
         "daily": {},
     }
+
+
+@app.get("/api/vps/root-reconciliation", response_model=None)
+def vps_root_reconciliation() -> dict[str, object]:
+    """Read-only VPS root dirty-tree reconciliation plan for ops review."""
+    return _vps_root_reconciliation_payload()
 
 
 @app.get("/api/master/status", response_model=None)

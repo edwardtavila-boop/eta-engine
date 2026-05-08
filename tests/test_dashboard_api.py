@@ -863,6 +863,72 @@ class TestDashboardAPI:
         assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
         assert payload["systems"]["broker"]["source"] == "broker_router"
 
+    def test_vps_root_reconciliation_endpoint_surfaces_review_plan(self, app_client, tmp_path):
+        plan = {
+            "status": "ok",
+            "mode": "review_plan_only",
+            "risk_level": "high",
+            "cleanup_allowed": False,
+            "destructive_actions_performed": False,
+            "counts": {"status": 279, "submodule_drift": 6},
+            "summary": {
+                "source_or_governance_deleted": 124,
+                "unknown_deleted": 2,
+                "generated_deleted": 11,
+                "generated_untracked": 141,
+                "source_or_governance_untracked": 2,
+                "submodule_drift": 6,
+            },
+            "steps": [
+                {
+                    "id": "freeze-and-backup",
+                    "action": "Keep root cleanup disabled until review is approved.",
+                },
+            ],
+        }
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(json.dumps(plan))
+
+        r = app_client.get("/api/vps/root-reconciliation")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["status"] == "review_required"
+        assert payload["source"] == "vps_root_reconciliation_plan"
+        assert payload["risk_level"] == "high"
+        assert payload["cleanup_allowed"] is False
+        assert payload["destructive_actions_performed"] is False
+        assert payload["summary"]["source_or_governance_deleted"] == 124
+        assert payload["counts"]["submodule_drift"] == 6
+        assert payload["recommended_action"] == "Keep root cleanup disabled until review is approved."
+
+    def test_master_status_includes_vps_root_reconciliation_card(self, app_client, tmp_path):
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "risk_level": "high",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 279, "submodule_drift": 6},
+                    "summary": {
+                        "source_or_governance_deleted": 124,
+                        "unknown_deleted": 2,
+                        "submodule_drift": 6,
+                    },
+                    "steps": [],
+                },
+            ),
+        )
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["vps_root_reconciliation"]["status"] == "review_required"
+        assert payload["systems"]["vps_root"]["status"] == "YELLOW"
+        assert payload["systems"]["vps_root"]["source"] == "vps_root_reconciliation"
+        assert "source_deleted=124" in payload["systems"]["vps_root"]["detail"]
+
     def test_runtime_and_bridge_status_use_local_master_payload(self, app_client, tmp_path):
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
