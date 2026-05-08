@@ -36,6 +36,7 @@ def test_build_plan_refreshes_launch_data_then_republishes_and_verifies() -> Non
         "fear_greed_macro",
         "sol_onchain",
         "announce_data_library",
+        "bot_strategy_readiness_snapshot",
         "paper_live_launch_check",
     ]
     assert "eta_engine.scripts.fetch_index_futures_bars --symbol MNQ --timeframe 5m" in commands[0]
@@ -53,7 +54,8 @@ def test_build_plan_refreshes_launch_data_then_republishes_and_verifies() -> Non
     assert "eta_engine.scripts.fetch_fear_greed_alternative" in commands[12]
     assert "eta_engine.scripts.fetch_onchain_history --symbol SOL" in commands[13]
     assert "eta_engine.scripts.announce_data_library" in commands[14]
-    assert "eta_engine.scripts.paper_live_launch_check --json" in commands[15]
+    assert "eta_engine.scripts.bot_strategy_readiness --scope supervisor_pinned --snapshot" in commands[15]
+    assert "eta_engine.scripts.paper_live_launch_check --scope supervisor_pinned --json --snapshot" in commands[16]
     assert plan[12].required is False
     assert plan[13].required is False
 

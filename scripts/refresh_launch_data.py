@@ -169,7 +169,31 @@ def build_plan(
         plan.append(PlanStep("announce_data_library", [py, "-m", "eta_engine.scripts.announce_data_library"]))
     if not skip_verify:
         plan.append(
-            PlanStep("paper_live_launch_check", [py, "-m", "eta_engine.scripts.paper_live_launch_check", "--json"])
+            PlanStep(
+                "bot_strategy_readiness_snapshot",
+                [
+                    py,
+                    "-m",
+                    "eta_engine.scripts.bot_strategy_readiness",
+                    "--scope",
+                    "supervisor_pinned",
+                    "--snapshot",
+                ],
+            )
+        )
+        plan.append(
+            PlanStep(
+                "paper_live_launch_check",
+                [
+                    py,
+                    "-m",
+                    "eta_engine.scripts.paper_live_launch_check",
+                    "--scope",
+                    "supervisor_pinned",
+                    "--json",
+                    "--snapshot",
+                ],
+            )
         )
     return plan
 

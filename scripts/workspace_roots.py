@@ -40,6 +40,7 @@ ETA_OPERATOR_QUEUE_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "operator_queue_snaps
 ETA_OPERATOR_QUEUE_PREVIOUS_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "operator_queue_snapshot.previous.json"
 ETA_IBC_CUTOVER_READINESS_PATH = ETA_RUNTIME_STATE_DIR / "ibc_cutover_readiness.json"
 ETA_BOT_STRATEGY_READINESS_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "bot_strategy_readiness_latest.json"
+ETA_PAPER_LIVE_LAUNCH_CHECK_SNAPSHOT_PATH = ETA_RUNTIME_STATE_DIR / "paper_live_launch_check_latest.json"
 ETA_STRATEGY_SUPERCHARGE_SCORECARD_PATH = ETA_RUNTIME_STATE_DIR / "strategy_supercharge_scorecard_latest.json"
 ETA_STRATEGY_SUPERCHARGE_MANIFEST_PATH = ETA_RUNTIME_STATE_DIR / "strategy_supercharge_manifest_latest.json"
 ETA_STRATEGY_SUPERCHARGE_RESULTS_PATH = ETA_RUNTIME_STATE_DIR / "strategy_supercharge_results_latest.json"

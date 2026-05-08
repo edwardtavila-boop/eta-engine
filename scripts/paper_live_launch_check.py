@@ -53,6 +53,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
+from eta_engine.scripts import workspace_roots  # noqa: E402
+
 # Strategy kinds we know how to resolve at runtime
 _RESOLVABLE_KINDS: frozenset[str] = frozenset({
     "confluence", "orb", "drb", "grid",
@@ -645,7 +647,47 @@ def _print_table(results: list[dict]) -> None:
           f"{counts['BLOCK']} BLOCK (out of {len(results)} bots)")
 
 
-def main() -> int:
+def _build_payload(
+    *,
+    results: list[dict],
+    scope: str,
+    supervisor_pins: frozenset[str],
+) -> dict[str, object]:
+    """Return the canonical machine-readable launch-check payload."""
+    return {
+        "schema_version": 1,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "source": "paper_live_launch_check",
+        "scope": scope,
+        "supervisor_pinned": sorted(supervisor_pins),
+        "n_bots": len(results),
+        "summary": {
+            "ready": sum(1 for r in results if r["status"] == "READY"),
+            "warn": sum(1 for r in results if r["status"] == "WARN"),
+            "block": sum(1 for r in results if r["status"] == "BLOCK"),
+        },
+        "ready": [r for r in results if r["status"] == "READY"],
+        "warn": [r for r in results if r["status"] == "WARN"],
+        "block": [r for r in results if r["status"] == "BLOCK"],
+    }
+
+
+def write_snapshot(
+    payload: dict[str, object],
+    path: Path = workspace_roots.ETA_PAPER_LIVE_LAUNCH_CHECK_SNAPSHOT_PATH,
+) -> Path:
+    """Atomically write the launch-check payload and return the target path."""
+    workspace_roots.ensure_parent(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+    return path
+
+
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--bots", default=None,
@@ -663,7 +705,15 @@ def main() -> int:
     )
     p.add_argument("--json", action="store_true",
                    help="Emit JSON instead of a table")
-    args = p.parse_args()
+    p.add_argument("--snapshot", action="store_true", help="write canonical launch-check snapshot")
+    p.add_argument("--no-write", action="store_true", help="build snapshot without writing the artifact")
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=workspace_roots.ETA_PAPER_LIVE_LAUNCH_CHECK_SNAPSHOT_PATH,
+        help="snapshot output path",
+    )
+    args = p.parse_args(argv)
 
     from eta_engine.strategies.per_bot_registry import ASSIGNMENTS
 
@@ -705,22 +755,25 @@ def main() -> int:
         {"READY": 0, "WARN": 1, "BLOCK": 2}[r["status"]],
         r["bot_id"],
     ))
+    payload = _build_payload(
+        results=results,
+        scope="explicit_bots" if filt is not None else args.scope,
+        supervisor_pins=supervisor_pins,
+    )
+
+    if args.snapshot and not args.no_write:
+        write_snapshot(payload, args.out)
 
     if args.json:
-        print(json.dumps({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "scope": "explicit_bots" if filt is not None else args.scope,
-            "supervisor_pinned": sorted(supervisor_pins),
-            "n_bots": len(results),
-            "ready": [r for r in results if r["status"] == "READY"],
-            "warn": [r for r in results if r["status"] == "WARN"],
-            "block": [r for r in results if r["status"] == "BLOCK"],
-        }, indent=2))
+        print(json.dumps(payload, indent=2))
     else:
         print(f"[paper-live-check] {datetime.now(UTC).isoformat()}")
         print(f"[paper-live-check] scope={'explicit_bots' if filt is not None else args.scope}")
         print(f"[paper-live-check] auditing {len(results)} bots")
         _print_table(results)
+        if args.snapshot:
+            target = " (no-write)" if args.no_write else f" -> {args.out}"
+            print(f"[paper-live-check] snapshot{target}")
 
     n_blocked = sum(1 for r in results if r["status"] == "BLOCK")
     return n_blocked  # exit code = number of blockers

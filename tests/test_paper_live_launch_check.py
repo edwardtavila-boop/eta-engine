@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -295,6 +296,38 @@ def test_supervisor_pinned_bot_parser_reads_runner_pin(tmp_path: Path) -> None:
         "mym_sweep_reclaim",
         "mcl_sweep_reclaim",
     })
+
+
+def test_build_payload_summarizes_status_counts() -> None:
+    payload = mod._build_payload(
+        results=[
+            {"bot_id": "ready", "status": "READY"},
+            {"bot_id": "warn", "status": "WARN"},
+            {"bot_id": "block", "status": "BLOCK"},
+        ],
+        scope="supervisor_pinned",
+        supervisor_pins=frozenset({"ready", "warn", "block"}),
+    )
+
+    assert payload["schema_version"] == 1
+    assert payload["source"] == "paper_live_launch_check"
+    assert payload["scope"] == "supervisor_pinned"
+    assert payload["summary"] == {"ready": 1, "warn": 1, "block": 1}
+    assert payload["supervisor_pinned"] == ["block", "ready", "warn"]
+
+
+def test_write_snapshot_creates_canonical_payload(tmp_path: Path) -> None:
+    path = tmp_path / "state" / "paper_live_launch_check_latest.json"
+    payload = mod._build_payload(
+        results=[{"bot_id": "ready", "status": "READY"}],
+        scope="launchable",
+        supervisor_pins=frozenset(),
+    )
+
+    written = mod.write_snapshot(payload, path)
+
+    assert written == path
+    assert json.loads(path.read_text(encoding="utf-8"))["source"] == "paper_live_launch_check"
 
 
 def test_missing_critical_support_feed_blocks(monkeypatch) -> None:

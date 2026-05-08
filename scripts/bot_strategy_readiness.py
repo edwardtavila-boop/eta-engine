@@ -175,10 +175,19 @@ def build_readiness_matrix(
     return [_row_for_assignment(assignment, library=lib) for assignment in assignments]
 
 
+def supervisor_pinned_bot_ids() -> tuple[str, ...]:
+    """Return the Windows supervisor runner pin in stable display order."""
+    from eta_engine.scripts.paper_live_launch_check import _supervisor_pinned_bot_ids
+
+    return tuple(sorted(_supervisor_pinned_bot_ids()))
+
+
 def build_snapshot(
     rows: list[ReadinessRow],
     *,
     generated_at: str | None = None,
+    scope: str = "all",
+    supervisor_pinned: tuple[str, ...] = (),
 ) -> dict[str, object]:
     """Return a canonical snapshot payload for dashboards and automation."""
     lane_counts: dict[str, int] = {}
@@ -188,6 +197,8 @@ def build_snapshot(
         "schema_version": 1,
         "generated_at": generated_at or datetime.now(UTC).isoformat(),
         "source": "bot_strategy_readiness",
+        "scope": scope,
+        "supervisor_pinned": list(supervisor_pinned),
         "summary": {
             "total_bots": len(rows),
             "blocked_data": lane_counts.get("blocked_data", 0),
@@ -217,6 +228,12 @@ def write_snapshot(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="bot_strategy_readiness")
     parser.add_argument("--bot-id", action="append", default=[], help="bot id to include; repeatable")
+    parser.add_argument(
+        "--scope",
+        choices=("all", "supervisor_pinned"),
+        default="all",
+        help="assignment scope when --bot-id is omitted",
+    )
     parser.add_argument("--root", action="append", default=[], help="data library root; repeatable")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON rows")
     parser.add_argument("--snapshot", action="store_true", help="emit/write canonical snapshot payload")
@@ -230,9 +247,19 @@ def main(argv: list[str] | None = None) -> int:
 
         library = DataLibrary(roots=[Path(root) for root in args.root])
 
-    rows = build_readiness_matrix(library=library, bot_ids=args.bot_id or None)
+    supervisor_pinned: tuple[str, ...] = ()
+    bot_ids = args.bot_id or None
+    if bot_ids is None and args.scope == "supervisor_pinned":
+        supervisor_pinned = supervisor_pinned_bot_ids()
+        bot_ids = list(supervisor_pinned)
+
+    rows = build_readiness_matrix(library=library, bot_ids=bot_ids)
     if args.snapshot:
-        snapshot = build_snapshot(rows)
+        snapshot = build_snapshot(
+            rows,
+            scope="explicit_bots" if args.bot_id else args.scope,
+            supervisor_pinned=supervisor_pinned,
+        )
         written = None if args.no_write else write_snapshot(snapshot, args.out)
         if args.json:
             print(json.dumps(snapshot, indent=2, sort_keys=True, default=str))
