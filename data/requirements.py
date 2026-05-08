@@ -539,6 +539,14 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         sources_hint=("scripts/fetch_index_futures_bars.py",),
     ),
     BotRequirements(
+        bot_id="rsi_mr_mnq_v2",
+        requirements=(
+            DataRequirement("bars", "MNQ1", "5m", critical=True),
+            DataRequirement("bars", "MNQ1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_index_futures_bars.py",),
+    ),
+    BotRequirements(
         bot_id="rsi_mr_btc",
         requirements=(
             DataRequirement("bars", "BTC", "5m", critical=True),

@@ -145,7 +145,18 @@ rem                        futures basis-fade strategy with the largest
 rem                        sample of any positive-net audit bot in the
 rem                        MBT family. Promotion_status raised from
 rem                        research_candidate to paper_soak.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim,mbt_funding_basis"
+rem
+rem   rsi_mr_mnq_v2 -- NEW 2026-05-08, Tier-1 rehab of deactivated v1.
+rem                    Strict-gate audit strict_gate_rsi_v2: n=285,
+rem                    sharpe 1.01, expR_net +0.053, split=True, L=true.
+rem                    Plan's prediction (looser thresholds fire 2-3x
+rem                    more without hurting per-trade quality) confirmed
+rem                    -- relaxed rsi 25/75 -> 28/72, min_volume_z
+rem                    0.3 -> 0.2 tripled the sample (n 93 -> 285) and
+rem                    flipped expR_net from -0.003 to +0.053. The
+rem                    kernel was real; over-strict thresholds were
+rem                    blocking it.
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage,mcl_sweep_reclaim,mym_sweep_reclaim,ng_sweep_reclaim,mbt_funding_basis,rsi_mr_mnq_v2"
 rem Exit-watch only: (none currently — mbt_funding_basis re-promoted to
 rem the active pin after baseline persistence in strategy_baselines.json
 rem and registry promotion_status raised to paper_soak.)

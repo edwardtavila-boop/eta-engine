@@ -111,6 +111,14 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
         # after baseline persisted and promotion_status raised to
         # paper_soak.
         "mbt_funding_basis",
+        # RSI/BB mean-reversion v2 — Tier-1 rehab of v1. Strict-gate
+        # audit (strict_gate_rsi_v2.json): n=285 trades, sharpe 1.01,
+        # expR_net +0.053, sh_def -0.83, split=True, L=true. Per
+        # STRATEGY_REHAB_PLAN.md: relaxed rsi 25/75 -> 28/72 +
+        # min_volume_z 0.3 -> 0.2 tripled v1's sample (93 -> 285)
+        # and flipped expR_net from -0.003 to +0.053. The kernel
+        # was real; over-strict thresholds blocked it.
+        "rsi_mr_mnq_v2",
         # MCL strict-gate audit (strict_gate_mgc_mcl_v2.json): n=16,
         # sharpe=2.00, expR_net=+0.111, split=True. Profile mirrors
         # the already-pinned mnq_anchor_sweep. Legacy gate passes

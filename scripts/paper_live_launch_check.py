@@ -306,6 +306,7 @@ def _check_bot_dir_exists(bot_id: str) -> bool:
         "vwap_mr_mnq": "mnq",
         "vwap_mr_nq": "nq",
         "rsi_mr_mnq": "mnq",
+        "rsi_mr_mnq_v2": "mnq",
         "cross_asset_mnq": "mnq",
         "cross_asset_btc": "btc_hybrid",
         "nq_anchor_sweep": "nq",

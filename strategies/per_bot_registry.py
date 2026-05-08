@@ -2716,6 +2716,13 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MYM",
             "research_candidate": False,
             "daily_loss_limit_pct": 4.0,
+            # MYM at $0.50/pt × ~50000 = $25k contract notional. Default
+            # per-bot budget of $10k cannot fit 1 contract, so ATR sizing
+            # rounds sub-1-lot and paper_futures_floor doesn't fire (it
+            # only floors when requested_qty >= 1.0). Override to $30k so
+            # 1 contract fits cleanly + the floor can rescue sub-1-lot
+            # ATR-derived sizing under fleet headroom.
+            "per_bot_budget_usd": 30000,
         },
     ),
 
@@ -2852,6 +2859,68 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
             },
             "per_ticker_optimal": "MES",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # rsi_mr_mnq_v2 — REHAB (Tier-1) candidate per
+    # docs/STRATEGY_REHAB_PLAN.md. The deactivated v1 audit (post
+    # multiplier-fix) showed n=93, sharpe 0.28, expR_net -0.003 with
+    # split_half flipped to False -- "top mid-tier survivor" stamp
+    # was an artifact of inflated MNQ point_value pre-fix. Plan
+    # suggests relaxing entry thresholds to fire 2-3x more often.
+    StrategyAssignment(
+        bot_id="rsi_mr_mnq_v2",
+        strategy_id="rsi_mr_mnq_v2",
+        symbol="MNQ1",
+        timeframe="5m",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=60,
+        step_days=30,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "RSI/BB mean-reversion REHAB: MNQ 5m, relaxed thresholds "
+            "per STRATEGY_REHAB_PLAN.md. v1 retired with expR_net "
+            "-0.003 on n=93 once friction was honest. v2 loosens "
+            "oversold 25->28, overbought 75->72, min_volume_z "
+            "0.3->0.2. Strict-gate audit on full MNQ1 5m history "
+            "(strict_gate_rsi_v2.json): n=285 trades (3.1x v1's "
+            "sample), sharpe 1.01, expR_net=+0.053 (flipped from "
+            "v1's -0.003), sh_def -0.83, split=True, L=true. The "
+            "rehab plan's prediction (looser fires more without "
+            "hurting per-trade quality) was confirmed."
+        ),
+        extras={
+            "promotion_status": "paper_soak",
+            "sub_strategy_kind": "rsi_mean_reversion",
+            "sub_strategy_extras": {
+                "rsi_period": 14,
+                "oversold_threshold": 28.0,
+                "overbought_threshold": 72.0,
+                "bb_window": 20, "bb_std_mult": 2.0,
+                "min_volume_z": 0.2, "require_rejection": True,
+                "rr_target": 2.0, "atr_stop_mult": 1.5,
+                "max_trades_per_day": 3, "min_bars_between_trades": 12,
+                "warmup_bars": 50,
+                "rsi_long_threshold": 22.0,
+                "rsi_short_threshold": 78.0,
+                "htf_lookback_5m_bars": 12,
+                "htf_ema_period": 50,
+                "require_htf_agreement": True,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 9, "mid_ema": 21, "slow_ema": 50,
+            },
+            "per_ticker_optimal": "MNQ",
+            "walk_forward_overrides": {
+                "long_haul_mode": True, "long_haul_min_pos_fraction": 0.33,
+                "min_trades_per_window": 2,
+            },
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
         },

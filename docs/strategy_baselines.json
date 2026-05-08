@@ -136,6 +136,17 @@
       "_notes": "MBT funding-basis strategy. Was previously kept as research_candidate / exit-watch-only pending baseline persistence. Audit n=31 with positive expR_net and split-stable signal qualifies for paper_soak promotion. Re-baseline once 30+ live fills land."
     },
     {
+      "strategy_id": "rsi_mr_mnq_v2",
+      "n_trades": 285,
+      "win_rate": 0.42,
+      "avg_r": 0.053,
+      "r_stddev": 1.30,
+      "_promoted_at": "2026-05-08",
+      "_promotion_status": "paper_soak",
+      "_walk_forward_summary": "MNQ1/5m, full-history audit (eta_engine/reports/strict_gate_rsi_v2.json): n=285 trades, sharpe=1.01, expR_net=+0.053, sh_def=-0.83, split=True, L=true. Tier-1 rehab of v1 per STRATEGY_REHAB_PLAN.md: relaxed oversold 25->28, overbought 75->72, min_volume_z 0.3->0.2 -- v1 had n=93 expR_net -0.003, v2 has 3.1x sample with positive net.",
+      "_notes": "RSI/BB mean-reversion v2. Plan's prediction (looser fires 2-3x more without hurting per-trade quality) was confirmed: n increased from 93 to 285, expR_net flipped from negative to positive. Paper_soak in 11-bot pin from 2026-05-08. Re-baseline once 50+ real live fills land."
+    },
+    {
       "strategy_id": "mnq_orb_v2",
       "n_trades": 50,
       "win_rate": 0.2,

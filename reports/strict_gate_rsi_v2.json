@@ -1,0 +1,16 @@
+[
+  {
+    "bot": "rsi_mr_mnq_v2",
+    "symbol": "MNQ1",
+    "trades": 285,
+    "sharpe": 1.01,
+    "expR": 0.0,
+    "expR_p5": -0.053,
+    "expR_net": 0.053,
+    "p_bonf": 1.0,
+    "split": true,
+    "sh_def": -0.83,
+    "L": true,
+    "S": false
+  }
+]
