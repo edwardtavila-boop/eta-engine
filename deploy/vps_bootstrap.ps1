@@ -262,6 +262,7 @@ if (-not $SkipETATasks) {
     Write-Host ""; Write-Host "=== ETA Dashboard API + Bridge Tasks ===" -ForegroundColor Green
     $dashboardApiTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_api_task.ps1"
     $proxy8421TaskScript = "$EtaEngineDir\deploy\scripts\register_proxy8421_bridge_task.ps1"
+    $dashboardProxyWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_dashboard_proxy_watchdog_task.ps1"
     $paperLiveTransitionTaskScript = "$EtaEngineDir\deploy\scripts\register_paper_live_transition_check_task.ps1"
     $cloudflareTunnelTaskScript = "$EtaEngineDir\deploy\scripts\register_cloudflare_named_tunnel_task.ps1"
     $etaWatchdogTaskScript = "$EtaEngineDir\deploy\scripts\register_eta_watchdog_task.ps1"
@@ -282,6 +283,15 @@ if (-not $SkipETATasks) {
         }
     } else {
         Write-Host "  register_proxy8421_bridge_task.ps1 not found at $proxy8421TaskScript" -ForegroundColor Yellow
+    }
+
+    if (Test-Path $dashboardProxyWatchdogTaskScript) {
+        Write-Host "  Registering dashboard proxy watchdog task (repairs 127.0.0.1:8421)..." -ForegroundColor Gray
+        if (-not $WhatIf) {
+            & $pwshPath -ExecutionPolicy Bypass -File $dashboardProxyWatchdogTaskScript -Start -RestartExistingProcess
+        }
+    } else {
+        Write-Host "  register_dashboard_proxy_watchdog_task.ps1 not found at $dashboardProxyWatchdogTaskScript" -ForegroundColor Yellow
     }
 
     if (Test-Path $cloudflareTunnelTaskScript) {
@@ -462,6 +472,7 @@ Write-Host "  ETA-Jarvis-Live                  -- boot: logon trigger" -Foregrou
 Write-Host "  ETA-Avengers-Fleet               -- boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Dashboard                    -- boot: logon trigger" -ForegroundColor Gray
 Write-Host "  ETA-Cloudflare-Tunnel            -- boot/logon named tunnel" -ForegroundColor Gray
+Write-Host "  ETA-Dashboard-Proxy-Watchdog     -- boot/logon 8421 self-heal" -ForegroundColor Gray
 Write-Host "  ETA-PaperLiveTransitionCheck     -- boot/logon + every 5m" -ForegroundColor Gray
 Write-Host "  ETA-Watchdog                     -- boot/logon runtime watchdog" -ForegroundColor Gray
 Write-Host "  ETA-IBGateway-Reauth             -- startup + every 5m" -ForegroundColor Gray

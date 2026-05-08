@@ -7,6 +7,7 @@ SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_api_task.ps1"
 RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
+PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -116,6 +117,33 @@ def test_proxy8421_task_runner_is_canonical_and_logged() -> None:
 
 def test_proxy8421_task_runner_avoids_legacy_paths() -> None:
     text = PROXY_RUNNER.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+
+
+def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:
+    text = PROXY_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'TaskName = "ETA-Dashboard-Proxy-Watchdog"' in text
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert "dashboard_proxy_watchdog.py" in text
+    assert "eta_engine.scripts.dashboard_proxy_watchdog" in text
+    assert "ETA-Proxy-8421" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-ScheduledTaskTrigger -AtLogOn" in text
+    assert "RestartCount 999" in text
+    assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text
+    assert "Start-ScheduledTask -TaskName $TaskName" in text
+    assert "dashboard_proxy_watchdog" in text
+
+
+def test_dashboard_proxy_watchdog_task_registration_avoids_legacy_paths() -> None:
+    text = PROXY_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
 
     assert "OneDrive" not in text
     assert "LOCALAPPDATA" not in text
