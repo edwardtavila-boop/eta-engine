@@ -653,6 +653,14 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
         ),
         sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MES",),
     ),
+    BotRequirements(
+        bot_id="mgc_sweep_reclaim_v2",
+        requirements=(
+            DataRequirement("bars", "MGC1", "5m", critical=True),
+            DataRequirement("bars", "MGC1", "1h", critical=True),
+        ),
+        sources_hint=("scripts/fetch_tws_historical_bars.py --symbols MGC",),
+    ),
 
     # Gap-fill — needs daily to detect overnight gap
     BotRequirements(

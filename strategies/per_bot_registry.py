@@ -2926,6 +2926,68 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # mgc_sweep_reclaim_v2 — FAILED REHAB. Tier-1 rehab per
+    # STRATEGY_REHAB_PLAN.md (relax min_wick_pct 0.40->0.30 +
+    # level_lookback 48->32) was supposed to fire 2-3x more often
+    # without hurting per-trade quality. Strict-gate audit
+    # (eta_engine/reports/strict_gate_mgc_v2.json):
+    #   n=15  sh=-3.89  net=-0.304  sh_def=-2.52  split=False  __
+    # The relaxed wick MORE than doubled trade count (7 -> 15) but
+    # per-trade quality COLLAPSED from v1's +0.124 to -0.304. The
+    # strict 0.40 wick filter was load-bearing on gold's structure
+    # -- relaxing it admitted low-quality entries. v2 deactivated;
+    # v1 stays as research_candidate (small but positive edge).
+    # Future MGC paths to try: 4h timeframe, or different strategy
+    # entirely (momentum on monthly inventory cycle).
+    StrategyAssignment(
+        bot_id="mgc_sweep_reclaim_v2",
+        strategy_id="mgc_sweep_reclaim_v2",
+        symbol="MGC1",
+        timeframe="1h",
+        scorer_name="mnq",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=180,
+        step_days=60,
+        min_trades_per_window=5,
+        strategy_kind="confluence_scorecard",
+        rationale=(
+            "FAILED REHAB: relaxed wick 0.40->0.30 doubled sample "
+            "(7->15) but flipped per-trade R from +0.124 to -0.304. "
+            "Kept as deactivated registry entry to document the "
+            "failed variant -- the strict wick filter is load-bearing "
+            "on gold."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "sub_strategy_kind": "sweep_reclaim",
+            "sub_strategy_extras": {"sweep_preset": "mgc_v2",
+                "level_lookback": 32, "reclaim_window": 3,
+                "min_wick_pct": 0.30, "min_volume_z": 0.3,
+                "rr_target": 3.0, "atr_stop_mult": 3.0,
+                "max_trades_per_day": 2, "min_bars_between_trades": 12,
+                "warmup_bars": 72,
+            },
+            "scorecard_config": {
+                "min_score": 2, "a_plus_score": 3, "a_plus_size_mult": 1.3,
+                "fast_ema": 21, "mid_ema": 50, "slow_ema": 100,
+            },
+            "per_ticker_optimal": "MGC",
+            "research_candidate": True,
+            "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Strict-gate audit (strict_gate_mgc_v2.json): n=15, "
+                "sh=-3.89, expR_net=-0.304, sh_def=-2.52, split=False. "
+                "Relaxed wick filter admitted low-quality entries -- "
+                "per-trade quality collapsed vs v1's +0.124. Strict "
+                "0.40 wick is load-bearing on gold structure. v1 "
+                "stays research_candidate for monitoring."
+            ),
+        },
+    ),
+
 )
 
 

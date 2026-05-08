@@ -1,0 +1,16 @@
+[
+  {
+    "bot": "mgc_sweep_reclaim_v2",
+    "symbol": "MGC1",
+    "trades": 15,
+    "sharpe": -3.89,
+    "expR": 0.0,
+    "expR_p5": -0.644,
+    "expR_net": -0.304,
+    "p_bonf": 1.0,
+    "split": false,
+    "sh_def": -2.52,
+    "L": false,
+    "S": false
+  }
+]
