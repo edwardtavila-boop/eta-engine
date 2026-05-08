@@ -1462,7 +1462,17 @@ def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
     signal_buckets: defaultdict[str, list[str]] = defaultdict(list)
     latest_dt: datetime | None = None
     latest_ts = ""
+    latest_bar_dt: datetime | None = None
+    latest_bar_ts = ""
+    open_position_count = 0
     for row in rows:
+        if float(row.get("open_positions") or 0) > 0:
+            open_position_count += 1
+        bar_ts = row.get("last_bar_ts")
+        bar_dt = _parse_fill_dt(bar_ts)
+        if bar_dt is not None and (latest_bar_dt is None or bar_dt > latest_bar_dt):
+            latest_bar_dt = bar_dt
+            latest_bar_ts = str(bar_ts or "")
         signal_ts = row.get("last_signal_ts")
         signal_dt = _parse_fill_dt(signal_ts)
         if signal_dt is None:
@@ -1485,18 +1495,42 @@ def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
     }
     max_same_second = len(top_bots)
     same_second_ratio = round(max_same_second / signal_count, 3) if signal_count else 0.0
+    latest_signal_age_s = _iso_age_s(latest_ts, server_ts=server_ts) if latest_ts else None
+    latest_bar_age_s = _iso_age_s(latest_bar_ts, server_ts=server_ts) if latest_bar_ts else None
+    freshness_status = "unknown"
     if not signal_count:
         status = "no_signals"
         detail = "no signal timestamps in visible roster"
+        freshness_status = "no_signal_history"
     elif max_same_second >= max(3, int(signal_count * 0.5)):
         status = "clustered"
         detail = f"{max_same_second}/{signal_count} visible signals share one second"
+        freshness_status = "clustered"
     elif synchronized_seconds:
         status = "mixed"
         detail = f"{len(synchronized_seconds)} same-second cluster(s); cadence otherwise staggered"
+        freshness_status = "staggered"
     else:
         status = "staggered"
         detail = f"{signal_count} visible signals across {unique_seconds} timestamp second(s)"
+        freshness_status = "staggered"
+
+    if (
+        signal_count
+        and latest_signal_age_s is not None
+        and latest_signal_age_s > 3600
+        and latest_bar_age_s is not None
+        and latest_bar_age_s <= 300
+        and open_position_count > 0
+        and status in {"staggered", "mixed"}
+    ):
+        status = "watching"
+        freshness_status = "watching_fresh_bars"
+        detail = (
+            f"{detail}; latest entry signal is {int(latest_signal_age_s)}s old, "
+            f"but {open_position_count} paper position(s) are being watched "
+            f"on fresh bars ({int(latest_bar_age_s)}s)"
+        )
 
     return {
         "status": status,
@@ -1504,7 +1538,11 @@ def _signal_cadence_summary(rows: list[dict], *, server_ts: float) -> dict:
         "signal_update_count": signal_count,
         "unique_signal_seconds": unique_seconds,
         "latest_signal_ts": latest_ts or None,
-        "latest_signal_age_s": _iso_age_s(latest_ts, server_ts=server_ts) if latest_ts else None,
+        "latest_signal_age_s": latest_signal_age_s,
+        "latest_bar_ts": latest_bar_ts or None,
+        "latest_bar_age_s": latest_bar_age_s,
+        "freshness_status": freshness_status,
+        "open_position_count": open_position_count,
         "max_same_second": max_same_second,
         "same_second_ratio": same_second_ratio,
         "top_signal_second": top_second or None,

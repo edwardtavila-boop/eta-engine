@@ -1843,6 +1843,35 @@ class TestDashboardAPI:
         assert cadence["top_signal_second"] == "2026-04-28T12:01:15Z"
         assert cadence["synchronized_signal_seconds"] == 1
 
+    def test_signal_cadence_marks_watching_when_bars_are_fresh(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        server_dt = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        rows = [
+            {
+                "name": "mnq_futures_sage",
+                "last_signal_ts": "2026-04-28T09:30:00+00:00",
+                "last_signal_side": "BUY",
+                "last_bar_ts": "2026-04-28T11:59:40+00:00",
+                "open_positions": 1,
+            },
+            {
+                "name": "volume_profile_nq",
+                "last_signal_ts": "2026-04-28T10:10:00+00:00",
+                "last_signal_side": "BUY",
+                "last_bar_ts": "2026-04-28T11:59:45+00:00",
+                "open_positions": 1,
+            },
+        ]
+
+        cadence = mod._signal_cadence_summary(rows, server_ts=server_dt.timestamp())
+
+        assert cadence["status"] == "watching"
+        assert cadence["freshness_status"] == "watching_fresh_bars"
+        assert cadence["latest_bar_age_s"] == 15
+        assert cadence["open_position_count"] == 2
+        assert "paper position(s) are being watched" in cadence["detail"]
+
     def test_bot_fleet_hides_registry_deactivated_supervisor_rows(self, app_client):
         """Registry-retired bots should not leak through live supervisor heartbeats."""
         import json

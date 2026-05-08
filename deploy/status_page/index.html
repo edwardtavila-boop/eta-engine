@@ -1188,8 +1188,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, dataS
 
   const cadence = d.signal_cadence || summary.signal_cadence || {};
   const cadenceStatus = String(cadence.status || summary.signal_cadence_status || 'unknown').toLowerCase();
-  const cadenceLabels = {staggered: 'Staggered', mixed: 'Mixed', clustered: 'Clustered', no_signals: 'No Signals', unknown: 'Unknown'};
-  const cadenceClasses = {staggered: 'green', mixed: 'yellow', clustered: 'red', no_signals: 'dim', unknown: 'yellow'};
+  const cadenceLabels = {staggered: 'Staggered', watching: 'Watching', mixed: 'Mixed', clustered: 'Clustered', no_signals: 'No Signals', unknown: 'Unknown'};
+  const cadenceClasses = {staggered: 'green', watching: 'green', mixed: 'yellow', clustered: 'red', no_signals: 'dim', unknown: 'yellow'};
   const signalCount = Number(cadence.signal_update_count ?? summary.signal_update_count ?? signalUpdates);
   const uniqueSeconds = Number(cadence.unique_signal_seconds ?? summary.unique_signal_seconds ?? 0);
   const maxSameSecond = Number(cadence.max_same_second ?? summary.max_same_second ?? 0);
