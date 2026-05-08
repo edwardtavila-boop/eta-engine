@@ -825,6 +825,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             },
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Corrected-engine strict-gate audit 2026-05-08T031716Z "
+                "(post-multiplier-fix in ed7e3cc + hardening in 4e898ca): "
+                "trades=93 (was 137 pre-fix), Sharpe 0.28 (was 1.91), "
+                "expR_net -0.003 (was +0.124), split_half_sign_stable=False "
+                "(was True), sh_def -1.74. The 'top mid-tier survivor' "
+                "stamp was an artifact of the inflated MNQ point_value "
+                "lookup feeding rigor.py's friction-per-R calc -- with "
+                "honest friction the edge disappears. "
+                "Audit: eta_engine/reports/strict_gate_20260508T031716Z.json"
+            ),
         },
     ),
 
@@ -1224,6 +1237,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # 1h timeframe (less noisy than 5m) means it's safe to start at
             # full size; loss cap is the per-bot circuit breaker.
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Corrected-engine strict-gate audit 2026-05-08T031716Z: "
+                "trades=705 Sharpe=-0.15 expR_net=-0.139 "
+                "split_half_sign_stable=False sh_def=-2.14. "
+                "Pre-fix audit showed expR_net=-0.040; the corrected "
+                "rigor.py friction-per-R (which now uses correct point_value "
+                "of 1.0 for spot BTC instead of 5.0 from CME futures spec) "
+                "exposed how badly under-counted the friction was. Real "
+                "expR_net is ~3.5x more negative than the pre-fix audit "
+                "reported. NOT pin-worthy. Audit: "
+                "eta_engine/reports/strict_gate_20260508T031716Z.json"
+            ),
         },
     ),
 
@@ -2266,6 +2293,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "GC",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Corrected-engine strict-gate audit 2026-05-08T031716Z: "
+                "trades=16 Sharpe=-2.14 expR_net=-0.179 split_half_sign_stable=False "
+                "sh_def=-2.30. Pre-fix audit showed expR_net=+0.131 (small sample, "
+                "n=14); on the corrected friction calc the gold 1h sweep_reclaim "
+                "actually loses money at ~$0.18 per R. Re-pin only after "
+                "param tuning lifts trade count past 50 AND expR_net stays "
+                "positive on corrected engine. "
+                "Audit: eta_engine/reports/strict_gate_20260508T031716Z.json"
+            ),
         },
     ),
 
@@ -2306,6 +2345,16 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "CL",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Corrected-engine strict-gate audit 2026-05-08T031716Z: "
+                "trades=19 Sharpe=-0.22 expR_net=-0.052 split_half_sign_stable=False "
+                "sh_def=-1.95. Pre-fix audit showed expR_net=+0.032 (marginal); "
+                "corrected friction flips it negative. Re-pin only after "
+                "param tuning lifts trade count + corrected expR_net stays "
+                "positive. Audit: eta_engine/reports/strict_gate_20260508T031716Z.json"
+            ),
         },
     ),
 
@@ -2519,6 +2568,19 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "MES",
             "research_candidate": True,
             "daily_loss_limit_pct": 4.0,
+            "deactivated": True,
+            "deactivated_on": "2026-05-08",
+            "deactivated_reason": (
+                "Corrected-engine strict-gate audit 2026-05-08T031716Z: "
+                "trades=5 (was 34 pre-fix) Sharpe=-6.95 expR_net=-0.484 "
+                "sh_def=-2.15. The pre-fix Sharpe of 3.97 / expR_net +0.120 "
+                "was on a 34-trade sample; the corrected engine narrows "
+                "the trade set to 5 trades that all lost money. The "
+                "sweep_reclaim filters as configured don't fit MES 1h "
+                "structure. Re-pin only after sweep_preset for MES is "
+                "tuned to fire reasonably + the trades show positive net. "
+                "Audit: eta_engine/reports/strict_gate_20260508T031716Z.json"
+            ),
         },
     ),
 

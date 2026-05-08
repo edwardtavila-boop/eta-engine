@@ -81,27 +81,27 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     bots = set(match.group(1).split(","))
 
     assert bots == {
-        # The deflated-Sharpe survivors. Both confirmed positive sh_def
-        # in the post-fix strict-gate audit -- the volume_profile family
-        # is the cleanest live edge in the fleet.
-        "volume_profile_mnq",  # sh_def +1.98 on 4277 trades
-        "volume_profile_nq",   # sh_def +0.62 on 4375 trades
-        # Top mid-tier survivor.
-        "rsi_mr_mnq",
-        # Crypto-futures research-candidate.
+        # ROUND-4 RETIRE 2026-05-08 (corrected-engine audit
+        # strict_gate_20260508T031716Z): dropped from prior pin --
+        #   volume_profile_btc (sh_def -2.14 confirmed retire)
+        #   rsi_mr_mnq         (was +0.124, now -0.003, split flipped)
+        #   gc_sweep_reclaim   (flipped +0.131 -> -0.179)
+        #   cl_sweep_reclaim   (flipped +0.032 -> -0.052)
+        #   mes_sweep_reclaim  (only 5 valid trades, -0.484 net)
+        #
+        # Surviving 7-bot pin -- every bot has positive net expR on the
+        # corrected engine, and one (volume_profile_mnq) is the FIRST
+        # AND ONLY bot to ever pass the strict gate.
+        #
+        # The deflated-Sharpe survivors:
+        "volume_profile_mnq",  # STRICT-GATE PASS: sh_def +2.86 on 2916 trades
+        "volume_profile_nq",   # sh_def +2.08 on 3073 trades (just below strict)
+        # Crypto-futures research-candidate (positive net + split-stable):
         "mbt_funding_basis",
-        # Commodity sweep_reclaim family (all positive expR_net in audit).
-        # ym_sweep_reclaim removed 2026-05-07 18:05 EDT after observing
-        # YM @ ~$250k notional couldn't fit $10k per-bot budget;
-        # supervisor logged "budget cap produced qty=0" 3 times in 5
-        # minutes. Re-pin only with MYM variant or budget-cap exception.
-        "mes_sweep_reclaim",
+        # Commodity / FX sweep_reclaim (positive net on corrected engine):
         "m2k_sweep_reclaim",
         "eur_sweep_reclaim",
-        "gc_sweep_reclaim",
-        "cl_sweep_reclaim",
-        # Incumbents kept for monitoring / kaizen-recommended SCALE_UP.
-        "volume_profile_btc",
+        # Incumbents kept for kaizen monitoring (positive net):
         "mnq_anchor_sweep",
         "mnq_futures_sage",
     }
@@ -126,13 +126,17 @@ def test_supervisor_task_runner_pins_only_readiness_approved_paper_bots() -> Non
     )
     assert "met_sweep_reclaim" not in bots
     assert "mbt_overnight_gap" not in bots
-    # Round-1 + round-2 + round-3 retires must not appear:
+    # Round-1 + round-2 + round-3 + round-4 retires must not appear:
     for retired in (
+        # Round-1/2/3:
         "vwap_mr_mnq", "vwap_mr_nq", "funding_rate_btc", "mbt_zfade",
         "btc_optimized", "mnq_sweep_reclaim", "zn_sweep_reclaim",
         "btc_crypto_scalp", "btc_hybrid_sage", "cross_asset_mnq",
         "crypto_seed", "btc_ensemble_2of3", "vwap_mr_btc",
         "nq_futures_sage",
+        # Round-4 (corrected-engine audit 2026-05-08):
+        "volume_profile_btc", "rsi_mr_mnq", "gc_sweep_reclaim",
+        "cl_sweep_reclaim", "mes_sweep_reclaim",
     ):
         assert retired not in bots, f"retired bot '{retired}' must not be pinned"
 

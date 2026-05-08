@@ -362,22 +362,22 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
     """
     history = tmp_path / "history"
     history.mkdir()
-    # Seed every CRITICAL volume_profile_btc feed so they all show up in evidence:
-    # bars BTC 5m, 1h, D. (1m + funding + onchain are non-critical.)
-    # (Was btc_optimized until 2026-05-07; that bot was retired by the
-    # post-dispatch-fix strict-gate audit so audit_bot returns deactivated
-    # and the helper short-circuits with empty evidence. volume_profile_btc
-    # is the still-active BTC bot covering the same data requirements.)
-    for filename in ("BTC_5m.csv", "BTC_1h.csv", "BTC_D.csv"):
+    # Seed every CRITICAL volume_profile_mnq feed: bars MNQ1 5m, 1h, D.
+    # Reference-bot history: btc_optimized (retired 2026-05-07) ->
+    # volume_profile_btc (retired 2026-05-08, round-4) -> volume_profile_mnq
+    # (the only strict-gate survivor as of 2026-05-08 audit). The test
+    # validates the CRITICAL-feed evidence pipeline, not BTC vs MNQ
+    # specifically.
+    for filename in ("MNQ1_5m.csv", "MNQ1_1h.csv", "MNQ1_D.csv"):
         with (history / filename).open("w", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh)
             writer.writerow(["time", "open", "high", "low", "close", "volume"])
             writer.writerow([1_775_000_000, 100.0, 101.0, 99.0, 100.5, 10_000.0])
 
     findings = _ORIGINAL_CHECK_CRITICAL_DATA_REQUIREMENTS(
-        "volume_profile_btc",
-        primary_symbol="BTC",
-        primary_timeframe="1h",   # primary excluded from evidence
+        "volume_profile_mnq",
+        primary_symbol="MNQ1",
+        primary_timeframe="5m",   # primary excluded from evidence
         library=DataLibrary(roots=[history]),
     )
 
@@ -385,9 +385,8 @@ def test_critical_requirement_evidence_includes_resolution_metadata(tmp_path: Pa
         item["dataset_key"]: item["resolution"]
         for item in findings["evidence"]
     }
-    # Non-primary critical feeds get evidence + direct-mode resolution
-    # (each CSV matches its symbol/timeframe directly).
-    assert evidence_by_key["BTC/D/history"]["mode"] == "direct"
-    assert evidence_by_key["BTC/5m/history"]["mode"] == "direct"
-    # Primary (BTC/1h) is filtered out of evidence by design.
-    assert "BTC/1h/history" not in evidence_by_key
+    # Non-primary critical feeds get evidence + direct-mode resolution.
+    assert evidence_by_key["MNQ1/D/history"]["mode"] == "direct"
+    assert evidence_by_key["MNQ1/1h/history"]["mode"] == "direct"
+    # Primary (MNQ1/5m) is filtered out of evidence by design.
+    assert "MNQ1/5m/history" not in evidence_by_key

@@ -49,14 +49,16 @@ def tmp_action_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_is_active_true_when_sidecar_missing(tmp_overrides: Path) -> None:
     """Empty / missing sidecar → registry decides on its own.
 
-    Uses ``rsi_mr_mnq`` as a known-active reference. It is the top survivor
-    of the 2026-05-07 strict-gate audit (137 trades, Sharpe 1.91,
-    expR_net +0.124, split_half_sign_stable=True). Previous reference
-    ``btc_optimized`` was retired 2026-05-07 (Sharpe -2.82).
+    Uses ``volume_profile_mnq`` as a known-active reference. It is the
+    only bot to pass the strict gate on the corrected-engine audit
+    (2026-05-08T031716Z): 2916 trades, Sharpe 1.39, expR_net +0.088,
+    sh_def +2.86, split_half_sign_stable=True. Previous reference
+    ``rsi_mr_mnq`` was retired 2026-05-08 in the round-4 batch after
+    the corrected engine flipped its expR_net negative.
     """
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("rsi_mr_mnq") is True
+    assert is_bot_active("volume_profile_mnq") is True
     assert not tmp_overrides.exists()  # no sidecar created accidentally
 
 
@@ -64,7 +66,7 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
     """Bot in sidecar → drops out of is_active()."""
     tmp_overrides.write_text(
         json.dumps({"deactivated": {
-            "rsi_mr_mnq": {
+            "volume_profile_mnq": {
                 "applied_at": "2026-05-05T06:00:00+00:00",
                 "reason": "tier=DECAY mc=DEAD test fixture",
             },
@@ -74,7 +76,7 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
 
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("rsi_mr_mnq") is False
+    assert is_bot_active("volume_profile_mnq") is False
 
 
 def test_is_active_ignores_malformed_sidecar(tmp_overrides: Path) -> None:
@@ -84,19 +86,19 @@ def test_is_active_ignores_malformed_sidecar(tmp_overrides: Path) -> None:
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
     # Still active because the parse failed and we returned {}.
-    assert is_bot_active("rsi_mr_mnq") is True
+    assert is_bot_active("volume_profile_mnq") is True
 
 
 def test_is_active_ignores_wrong_schema(tmp_overrides: Path) -> None:
     """Sidecar with deactivated=<list> instead of dict → ignored safely."""
     tmp_overrides.write_text(
-        json.dumps({"deactivated": ["rsi_mr_mnq"]}),  # wrong shape
+        json.dumps({"deactivated": ["volume_profile_mnq"]}),  # wrong shape
         encoding="utf-8",
     )
 
     from eta_engine.strategies.per_bot_registry import is_bot_active
 
-    assert is_bot_active("rsi_mr_mnq") is True
+    assert is_bot_active("volume_profile_mnq") is True
 
 
 def test_registry_deactivation_takes_precedence_over_missing_sidecar(

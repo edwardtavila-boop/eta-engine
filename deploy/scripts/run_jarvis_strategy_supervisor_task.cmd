@@ -97,7 +97,19 @@ rem                       fired 3 entries in 5 min, all "skipped:
 rem                       budget cap produced qty=0". Re-pin only after
 rem                       (a) MYM (Micro Dow) variant added to registry,
 rem                       OR (b) per-bot budget lifted for YM specifically.
-set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,rsi_mr_mnq,mbt_funding_basis,mes_sweep_reclaim,m2k_sweep_reclaim,eur_sweep_reclaim,gc_sweep_reclaim,cl_sweep_reclaim,volume_profile_btc,mnq_anchor_sweep,mnq_futures_sage"
+rem ROUND-4 RETIRE 2026-05-08: corrected-engine audit on 20 bots flipped
+rem 5 of the prior 12 pinned bots to net-negative or sub-1-lot:
+rem   volume_profile_btc -- sh_def -2.14, expR_net -0.139 (5x worse than pre-fix)
+rem   rsi_mr_mnq         -- net -0.003 (was +0.124), split=False (was True)
+rem   gc_sweep_reclaim   -- expR_net flipped +0.131 -> -0.179
+rem   cl_sweep_reclaim   -- expR_net flipped +0.032 -> -0.052
+rem   mes_sweep_reclaim  -- only 5 valid trades (was 34); -0.484 net
+rem
+rem Active pin: 12 -> 7 bots. Smaller but every bot in this list has
+rem positive net expR on the corrected engine; 1 bot
+rem (volume_profile_mnq) is the only strict-gate survivor in the entire
+rem audit set (sh_def +2.86 on 2916 trades).
+set "ETA_SUPERVISOR_BOTS=volume_profile_mnq,volume_profile_nq,mbt_funding_basis,m2k_sweep_reclaim,eur_sweep_reclaim,mnq_anchor_sweep,mnq_futures_sage"
 rem broker_router: writes pending_order JSONs to ETA_BROKER_ROUTER_PENDING_DIR;
 rem the broker_router service consumes them and routes per bot_broker_routing.yaml
 rem (crypto bots -> alpaca, futures -> ibkr). Was direct_ibkr; switched 2026-05-05

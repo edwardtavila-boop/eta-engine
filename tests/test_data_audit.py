@@ -120,7 +120,7 @@ def test_audit_blocked_when_critical_missing(tmp_path: Path) -> None:
     # Deactivated bots short-circuit audit_bot() to a runnable=True empty
     # BotAudit -- the data audit doesn't care about retired bots --
     # so the reference must always point at a still-active bot.
-    a = audit_bot("volume_profile_btc", library=empty_lib)
+    a = audit_bot("volume_profile_mnq", library=empty_lib)
     assert a is not None
     assert not a.is_runnable
     assert a.critical_coverage_pct == pytest.approx(0.0)
