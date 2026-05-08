@@ -9,11 +9,14 @@ param(
     [string]$Branch = "codex/paper-live-runtime-hardening",
     [string]$TaskName = "ETA-Dashboard-API",
     [string]$ProbeUri = "http://127.0.0.1:8000/api/bot-fleet",
+    [string]$ProxyTaskName = "ETA-Proxy-8421",
+    [string]$ProxyProbeUri = "http://127.0.0.1:8421/api/bot-fleet",
     [int]$ProbeDelaySeconds = 8,
     [int]$ProbeAttempts = 4,
     [int]$ProbeTimeoutSeconds = 35,
     [int]$ProbeRetryDelaySeconds = 5,
-    [switch]$SkipGitPull
+    [switch]$SkipGitPull,
+    [switch]$SkipProxyRestart
 )
 
 $ErrorActionPreference = "Stop"
@@ -163,6 +166,42 @@ if (-not $probe) {
     throw "Dashboard probe failed after $probeAttempts attempt(s): $lastProbeError"
 }
 
+$proxyProbe = $null
+$lastProxyProbeError = $null
+$proxyProbeAttempt = 0
+if (-not $SkipProxyRestart) {
+    $proxyTask = Get-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
+    if (-not $proxyTask) {
+        throw "Missing $ProxyTaskName. Register it with: deploy\scripts\register_proxy8421_bridge_task.ps1 -Start"
+    }
+
+    if ($PSCmdlet.ShouldProcess($ProxyTaskName, "Restart ETA dashboard proxy bridge task")) {
+        Stop-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        Start-ScheduledTask -TaskName $ProxyTaskName
+    }
+
+    Start-Sleep -Seconds ([Math]::Min(3, [Math]::Max(0, $ProbeDelaySeconds)))
+    for ($attempt = 1; $attempt -le $probeAttempts; $attempt++) {
+        $proxyProbeAttempt = $attempt
+        try {
+            $proxyProbe = Invoke-RestMethod -Uri $ProxyProbeUri -TimeoutSec $probeTimeout
+            break
+        }
+        catch {
+            $lastProxyProbeError = $_.Exception.Message
+            Write-Warning "Dashboard proxy probe attempt $attempt of $probeAttempts failed: $lastProxyProbeError"
+            if ($attempt -lt $probeAttempts) {
+                Start-Sleep -Seconds $probeRetryDelay
+            }
+        }
+    }
+
+    if (-not $proxyProbe) {
+        throw "Dashboard proxy probe failed after $probeAttempts attempt(s): $lastProxyProbeError"
+    }
+}
+
 $botsCount = ($probe.bots | Measure-Object).Count
 $exitSummaryPresent = [bool]$probe.PSObject.Properties["target_exit_summary"]
 $head = ""
@@ -186,6 +225,9 @@ finally {
     probe_attempt = $probeAttempt
     probe_attempts = $probeAttempts
     probe_timeout_seconds = $probeTimeout
+    proxy_task = if ($SkipProxyRestart) { $null } else { $ProxyTaskName }
+    proxy_probe_uri = if ($SkipProxyRestart) { $null } else { $ProxyProbeUri }
+    proxy_probe_attempt = if ($SkipProxyRestart) { $null } else { $proxyProbeAttempt }
     bots = $botsCount
     target_exit_summary = $exitSummaryPresent
     target_exit_status = $probe.target_exit_summary.status

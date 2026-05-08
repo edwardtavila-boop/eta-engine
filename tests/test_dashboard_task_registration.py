@@ -200,13 +200,20 @@ def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
     assert 'Branch = "codex/paper-live-runtime-hardening"' in text
     assert 'TaskName = "ETA-Dashboard-API"' in text
     assert 'ProbeUri = "http://127.0.0.1:8000/api/bot-fleet"' in text
+    assert 'ProxyTaskName = "ETA-Proxy-8421"' in text
+    assert 'ProxyProbeUri = "http://127.0.0.1:8421/api/bot-fleet"' in text
     assert "ProbeAttempts = 4" in text
     assert "ProbeTimeoutSeconds = 35" in text
     assert "ProbeRetryDelaySeconds = 5" in text
+    assert "SkipProxyRestart" in text
     assert "leaving superproject untouched and syncing eta_engine only" in text
     assert 'Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)' in text
     assert 'Get-ScheduledTask -TaskName $TaskName' in text
     assert 'Start-ScheduledTask -TaskName $TaskName' in text
+    assert 'Get-ScheduledTask -TaskName $ProxyTaskName' in text
+    assert 'Start-ScheduledTask -TaskName $ProxyTaskName' in text
+    assert "Dashboard proxy probe failed after" in text
+    assert "proxy_probe_attempt" in text
     assert "Dashboard probe failed after" in text
     assert "probe_attempts" in text
     assert "probe_timeout_seconds" in text
