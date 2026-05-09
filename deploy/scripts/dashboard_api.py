@@ -1438,6 +1438,75 @@ def _order_entry_hold_snapshot(heartbeat: dict) -> dict:
     return {}
 
 
+_IBKR_ROUTER_SLEEVES = frozenset(
+    {
+        "equity_index_futures",
+        "commodities",
+        "rates_fx",
+        "crypto_futures",
+    }
+)
+
+
+def _router_active_order_summary(path: Path, *, lane: str) -> dict:
+    """Return a small, safe summary of an active router file."""
+    payload = _read_json_file(path)
+    bot_id = path.name[: -len(".pending_order.json")] if path.name.endswith(".pending_order.json") else path.stem
+    symbol = str(payload.get("symbol") or "")
+    venue = str(
+        payload.get("venue")
+        or payload.get("target_venue")
+        or payload.get("broker")
+        or ""
+    ).strip().lower()
+    symbol_root = _portfolio_symbol_root(symbol)
+    sleeve = _portfolio_sleeve_for_symbol(symbol)
+    requires_ibkr = venue == "ibkr" or (not venue and sleeve in _IBKR_ROUTER_SLEEVES)
+    return {
+        "lane": lane,
+        "path": str(path),
+        "bot_id": bot_id,
+        "signal_id": str(payload.get("signal_id") or ""),
+        "symbol": symbol,
+        "symbol_root": symbol_root,
+        "sleeve": sleeve,
+        "venue": venue or ("ibkr" if requires_ibkr else ""),
+        "requires_ibkr": requires_ibkr,
+    }
+
+
+def _active_ibkr_router_orders(pending_dir: Path, processing_dir: Path) -> list[dict]:
+    """Active pending/processing files that need the IBKR API surface."""
+    orders: list[dict] = []
+    for lane, directory in (("pending", pending_dir), ("processing", processing_dir)):
+        for path in _files_newest_first(directory, "*.pending_order.json", limit=50):
+            row = _router_active_order_summary(path, lane=lane)
+            if row.get("requires_ibkr"):
+                orders.append(row)
+    return orders
+
+
+def _broker_gateway_router_blocker(active_ibkr_orders: list[dict]) -> dict:
+    """Correlate active IBKR router work with Gateway health."""
+    gateway = _broker_gateway_snapshot()
+    ibkr = gateway.get("ibkr") if isinstance(gateway.get("ibkr"), dict) else {}
+    status = str(ibkr.get("status") or gateway.get("status") or "unknown").lower()
+    recovery = ibkr.get("recovery") if isinstance(ibkr.get("recovery"), dict) else {}
+    gateway_down = status == "down" or ibkr.get("healthy") is False
+    active = bool(active_ibkr_orders) and gateway_down
+    return {
+        "active": active,
+        "venue": "ibkr",
+        "gateway_status": status,
+        "gateway_detail": str(ibkr.get("detail") or gateway.get("detail") or ""),
+        "checked_at": ibkr.get("checked_at") or gateway.get("checked_at"),
+        "recovery_status": str(recovery.get("status") or ""),
+        "operator_action_required": bool(recovery.get("operator_action_required") is True),
+        "active_ibkr_order_count": len(active_ibkr_orders),
+        "active_ibkr_orders": active_ibkr_orders[:10],
+    }
+
+
 def _filled_summary_from_ib_statuses(raw: dict) -> tuple[float | None, float | None]:
     statuses = raw.get("ib_statuses")
     if not isinstance(statuses, list):
@@ -1565,9 +1634,15 @@ def _broker_router_snapshot() -> dict:
     hold_active = bool(hold.get("active"))
     if hold_active:
         degraded_reasons.append("order_entry_hold")
+    active_ibkr_orders = _active_ibkr_router_orders(pending_dir, processing_dir)
+    gateway_blocker = _broker_gateway_router_blocker(active_ibkr_orders)
+    if gateway_blocker.get("active"):
+        degraded_reasons.append("ibkr_gateway_down")
 
     if hold_active:
         status = "held"
+    elif gateway_blocker.get("active"):
+        status = "blocked"
     elif pending_count or processing_count:
         status = "processing"
     elif degraded_reasons:
@@ -1605,6 +1680,7 @@ def _broker_router_snapshot() -> dict:
         "degraded_reasons": degraded_reasons,
         "historical_reasons": historical_reasons,
         "order_entry_hold": hold,
+        "gateway_blocker": gateway_blocker,
         "fill_results_count": terminal_count,
         "result_status_counts": dict(sorted(result_status_counts.items())),
         "counts": counts,

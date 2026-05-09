@@ -3755,6 +3755,90 @@ class TestDashboardAPI:
         assert broker_router["latest_failure"]["attempts"] == 3
         assert broker_router["latest_failure"]["last_reject_reason"] == "venue=ibkr rejected order_id=sig-reject"
 
+    def test_bot_fleet_blocks_active_ibkr_router_work_when_gateway_down(self, app_client):
+        """Active IBKR router work is blocked, not merely processing, while Gateway auth is down."""
+        import json
+        import os
+        from pathlib import Path
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        router = state / "router"
+        processing_dir = router / "processing"
+        pending_dir = state / "pending_orders"
+        processing_dir.mkdir(parents=True, exist_ok=True)
+        pending_dir.mkdir(parents=True, exist_ok=True)
+
+        (processing_dir / "mcl_sweep_reclaim.pending_order.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-09T05:00:00+00:00",
+                    "signal_id": "mcl-live-entry",
+                    "side": "BUY",
+                    "qty": 1,
+                    "symbol": "MCL1",
+                    "limit_price": 95.25,
+                    "stop_price": 94.75,
+                    "target_price": 96.25,
+                },
+            ),
+            encoding="utf-8",
+        )
+        (router / "broker_router_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": "2026-05-09T05:00:02+00:00",
+                    "last_poll_ts": "2026-05-09T05:00:02+00:00",
+                    "pending_dir": str(pending_dir),
+                    "counts": {"submitted": 1, "rejected": 1, "failed": 0, "filled": 0},
+                    "recent_events": [{"kind": "rejected_retry", "detail": "gateway auth pending"}],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "healthy": False,
+                    "checked_at": "2026-05-09T05:00:05+00:00",
+                    "consecutive_failures": 12,
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": False,
+                        "handshake_ok": False,
+                        "handshake_detail": "auth pending",
+                        "gateway_process": {
+                            "running": True,
+                            "name": "java.exe",
+                            "manager": "IBC",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        (state / "ibgateway_reauth.json").write_text(
+            json.dumps(
+                {
+                    "status": "auth_pending",
+                    "operator_action_required": True,
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        broker_router = r.json()["broker_router"]
+        assert broker_router["status"] == "blocked"
+        assert "ibkr_gateway_down" in broker_router["degraded_reasons"]
+        assert broker_router["gateway_blocker"]["active"] is True
+        assert broker_router["gateway_blocker"]["venue"] == "ibkr"
+        assert broker_router["gateway_blocker"]["gateway_status"] == "down"
+        assert broker_router["gateway_blocker"]["recovery_status"] == "auth_pending"
+        assert broker_router["gateway_blocker"]["active_ibkr_order_count"] == 1
+
     def test_bot_fleet_derives_ibkr_parent_fill_from_raw_statuses(self, app_client):
         """Dashboard must not show 0 filled when raw IBKR parent status filled."""
         import json
