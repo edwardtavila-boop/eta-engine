@@ -2045,24 +2045,24 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   };
   const bracketStatusEl = document.getElementById('bracketAuditStatus');
   const bracketSubEl = document.getElementById('bracketAuditSub');
+  const auditAction = (
+    bracketAudit.next_action
+    || summary.broker_bracket_next_action
+    || bracketAudit.detail
+    || bracketAudit.reason
+    || ''
+  );
+  const actionChoices = brokerBracketActionLabels(bracketAudit, summary);
+  const actionChoiceText = actionChoices.length
+    ? `operator choice: ${actionChoices.join(' or ')}`
+    : '';
+  const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : auditAction;
   if (bracketStatusEl && bracketSubEl) {
     const bracketKey = bracketLabels[bracketSummary]
       ? bracketSummary
       : bracketReady
         ? 'READY_OPEN_EXPOSURE_BRACKETED'
         : 'UNKNOWN';
-    const auditAction = (
-      bracketAudit.next_action
-      || summary.broker_bracket_next_action
-      || bracketAudit.detail
-      || bracketAudit.reason
-      || ''
-    );
-    const actionChoices = brokerBracketActionLabels(bracketAudit, summary);
-    const actionChoiceText = actionChoices.length
-      ? `operator choice: ${actionChoices.join(' or ')}`
-      : '';
-    const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : auditAction;
     const primaryText = primaryUnprotected.symbol
       ? `${primaryUnprotected.symbol} ${String(primaryUnprotected.venue || '').toUpperCase()} ${primaryUnprotected.sec_type || ''}`.trim()
       : '';
@@ -2224,11 +2224,18 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     : '';
   const paperReadyBots = Number(paperLive?.paper_ready_bots || 0);
   const paperLaunchBlocked = paperStatus === 'blocked' || paperTransitionLaunchBlocked > 0 || opLaunchBlocked > 0;
+  const paperGateHeld = propDryRunBlocked && paperReady;
+  const paperBracketHold = actionChoices.length
+    ? `held by Bracket Audit: ${actionChoices.join(' or ')}`
+    : 'held by Bracket Audit';
   let paperLabel = 'Unknown';
   let paperClass = 'yellow';
   if (paperLaunchBlocked) {
     paperLabel = 'Blocked';
     paperClass = 'red';
+  } else if (paperGateHeld) {
+    paperLabel = 'Held';
+    paperClass = 'yellow';
   } else if (paperReady) {
     paperLabel = 'Ready';
     paperClass = 'green';
@@ -2243,7 +2250,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     paperClass = 'yellow';
   }
   const paperDetail = compactText(
-    firstPaperGate?.detail || paperAction || paperLive?.error || 'waiting for launch readiness'
+    paperGateHeld ? paperBracketHold : firstPaperGate?.detail || paperAction || paperLive?.error || 'waiting for launch readiness'
   );
   document.getElementById('paperLiveStatus').textContent = paperLabel;
   document.getElementById('paperLiveStatus').className = 'stat ' + paperClass;

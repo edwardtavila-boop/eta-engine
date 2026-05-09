@@ -447,6 +447,16 @@ class TestStatusPage:
         assert "actionChoices.length && propDryRunBlocked ? '' : auditAction" in html
         assert "bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : ''" not in html
 
+    def test_status_page_marks_paper_live_held_by_bracket_audit(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "const paperGateHeld = propDryRunBlocked && paperReady" in html
+        assert "paperLabel = 'Held'" in html
+        assert "paperClass = 'yellow'" in html
+        assert "held by Bracket Audit" in html
+        assert "paperGateHeld ? paperBracketHold : firstPaperGate?.detail" in html
+
     def test_status_page_surfaces_vps_root_reconciliation_card(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")
