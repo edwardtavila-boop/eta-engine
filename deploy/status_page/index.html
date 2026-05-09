@@ -826,6 +826,34 @@ function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory
   return lifetimeEvidence;
 }
 
+function brokerBracketActionLabels(bracketAudit, summary) {
+  const labels = [];
+  const seen = new Set();
+  const add = (label) => {
+    const text = String(label || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    labels.push(text);
+  };
+  const actions = Array.isArray(bracketAudit?.operator_actions)
+    ? bracketAudit.operator_actions
+    : [];
+  actions.forEach(action => add(action?.label));
+  const summaryLabels = Array.isArray(summary?.broker_bracket_operator_action_labels)
+    ? summary.broker_bracket_operator_action_labels
+    : [];
+  summaryLabels.forEach(add);
+  const fallbackById = {
+    verify_manual_broker_oco: 'Verify broker OCO coverage',
+    flatten_unprotected_paper_exposure: 'Flatten unprotected paper exposure'
+  };
+  const ids = Array.isArray(summary?.broker_bracket_operator_action_ids)
+    ? summary.broker_bracket_operator_action_ids
+    : [];
+  ids.forEach(id => add(fallbackById[id]));
+  return labels;
+}
+
 function formatQty(value) {
   const n = finiteNumber(value);
   if (n == null) return 'n/a';
@@ -2018,7 +2046,17 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : bracketReady
         ? 'READY_OPEN_EXPOSURE_BRACKETED'
         : 'UNKNOWN';
-    const auditAction = bracketAudit.next_action || bracketAudit.detail || bracketAudit.reason || '';
+    const auditAction = (
+      bracketAudit.next_action
+      || summary.broker_bracket_next_action
+      || bracketAudit.detail
+      || bracketAudit.reason
+      || ''
+    );
+    const actionChoices = brokerBracketActionLabels(bracketAudit, summary);
+    const actionChoiceText = actionChoices.length
+      ? `operator choice: ${actionChoices.join(' or ')}`
+      : '';
     const primaryText = primaryUnprotected.symbol
       ? `${primaryUnprotected.symbol} ${String(primaryUnprotected.venue || '').toUpperCase()} ${primaryUnprotected.sec_type || ''}`.trim()
       : '';
@@ -2029,6 +2067,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       bracketRequired > 0 ? `${bracketRequired} bracket-required` : '',
       auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
       bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : '',
+      actionChoiceText,
       auditAction
     ].filter(Boolean);
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';

@@ -211,6 +211,11 @@ class TestStatusPage:
         assert "unprotectedSymbolsText" in html
         assert "BLOCKED_UNBRACKETED_EXPOSURE" in html
         assert "missing broker OCO" in html
+        assert "brokerBracketActionLabels" in html
+        assert "broker_bracket_operator_action_labels" in html
+        assert "operator choice" in html
+        assert "Verify broker OCO coverage" in html
+        assert "Flatten unprotected paper exposure" in html
         assert "prop dry-run blocked" in html
         assert "position_staleness" in html
         assert "force_flatten_due_count" in html
