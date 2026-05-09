@@ -1346,6 +1346,9 @@ class TestDashboardAPI:
         assert payload["target_exit_summary"]["status"] == "missing_brackets"
         assert payload["target_exit_summary"]["broker_position_scope"] == "ibkr_cached"
         assert payload["target_exit_summary"]["missing_bracket_count"] == 1
+        assert payload["target_exit"]["status"] == "missing_brackets"
+        assert payload["target_exit"]["broker_position_scope"] == "ibkr_cached"
+        assert payload["target_exit"]["missing_bracket_count"] == 1
         assert payload["systems"]["target_exit"]["status"] == "YELLOW"
         assert "1 IBKR cached broker open" in payload["systems"]["target_exit"]["detail"]
         assert "1 missing bracket" in payload["systems"]["target_exit"]["detail"]

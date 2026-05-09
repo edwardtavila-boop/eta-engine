@@ -8046,6 +8046,9 @@ def _local_master_status_payload() -> dict[str, object]:
         },
         "paper_live": paper_live,
         "target_exit_summary": target_exit_summary,
+        # Compatibility alias for probes and consumers that expect the card name
+        # rather than the older summary key.
+        "target_exit": target_exit_summary,
         "broker_bracket_audit": broker_bracket_audit,
         "vps_root_reconciliation": vps_root_reconciliation,
         "systems": {
