@@ -224,14 +224,14 @@ def gc_momentum_preset() -> MomentumConfig:
 
 def cl_momentum_preset() -> MomentumConfig:
     """Crude oil (CL) 1h — momentum on inventory/supply shocks.
-    Tuned: wider stops (2.5→3.5), higher RR (3.0→3.5) like GC."""
+    Wider stops didn't help — reverting to tighter, higher frequency."""
     return MomentumConfig(
         roc_period=20, roc_threshold=0.3,
         adx_period=14, adx_threshold=20,
         ma_fast=21, ma_slow=50, volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=3.5, rr_target=3.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=8,
-        max_trades_per_day=3, warmup_bars=72,
+        atr_period=14, atr_stop_mult=2.5, rr_target=3.0,
+        risk_per_trade_pct=0.005, min_bars_between_trades=6,
+        max_trades_per_day=4, warmup_bars=72,
     )
 
 
