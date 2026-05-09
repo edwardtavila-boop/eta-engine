@@ -1260,13 +1260,16 @@ def _broker_gateway_snapshot() -> dict:
 
 def _append_detail_once(detail: object, extra: str) -> str:
     """Append an operator detail fragment without duplicating it."""
-    base = str(detail or "")
-    extra = str(extra or "")
+    base = str(detail or "").strip()
+    extra = str(extra or "").strip()
     if not extra:
         return base
     if extra in base:
         return base
-    return f"{base}; {extra}" if base else extra
+    if not base:
+        return extra
+    separator = " " if base.endswith((".", "!", "?")) else "; "
+    return f"{base}{separator}{extra}"
 
 
 def _live_ibkr_exposure_for_gateway(live_broker_state: dict | None) -> dict:
@@ -4193,6 +4196,7 @@ def bot_fleet_roster(
         else {}
     )
     close_history = _normalize_close_history_count_alias(close_history)
+    live_broker_state["close_history"] = close_history
     close_windows = (
         close_history.get("windows")
         if isinstance(close_history.get("windows"), dict)
@@ -5291,6 +5295,19 @@ def _normalize_close_history_count_alias(close_history: dict) -> dict:
         normalized["count"] = count
         normalized_windows[str(key)] = normalized
     out["windows"] = normalized_windows
+    default_window = str(out.get("default_window") or "mtd")
+    out["default_window"] = default_window
+    default_payload = normalized_windows.get(default_window)
+    if not isinstance(default_payload, dict):
+        default_payload = normalized_windows.get("mtd") if isinstance(normalized_windows.get("mtd"), dict) else {}
+        if default_payload:
+            out["default_window"] = "mtd"
+            default_window = "mtd"
+    out["default_label"] = (
+        out.get("default_label")
+        or (default_payload.get("label") if isinstance(default_payload, dict) else None)
+        or default_window.upper()
+    )
     return out
 
 
@@ -5317,6 +5334,7 @@ def _close_history_windows(
     out: dict[str, object] = {
         "source": "trade_close_ledger",
         "default_window": "mtd",
+        "default_label": "MTD",
         "windows": {},
     }
     for key, label, since, row_limit in windows:

@@ -165,6 +165,7 @@ def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
     assert report["primary_unprotected_position"]["sec_type"] == "FUT"
     assert report["unprotected_positions"][0]["broker_bracket_required"] is True
     assert "MNQM6 IBKR FUT missing broker-native OCO" in report["next_action"]
+    assert ".;" not in report["next_action"]
 
 
 def test_bracket_audit_derives_summary_from_bots(monkeypatch) -> None:

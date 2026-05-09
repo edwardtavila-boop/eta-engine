@@ -3331,6 +3331,7 @@ class TestDashboardAPI:
         assert audit["primary_unprotected_position"]["sec_type"] == "FUT"
         assert audit["unprotected_positions"][0]["broker_bracket_required"] is True
         assert "MNQM6 IBKR FUT" in audit["next_action"]
+        assert ".;" not in audit["next_action"]
         assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["summary"]["broker_bracket_audit_ready"] is False
 
@@ -3426,6 +3427,8 @@ class TestDashboardAPI:
         assert r.status_code == 200
         payload = r.json()
         assert payload["default_close_history_window"] == "mtd"
+        assert payload["close_history"]["default_label"] == "MTD"
+        assert payload["live_broker_state"]["close_history"]["default_label"] == "MTD"
         assert payload["close_history"]["windows"]["mtd"]["realized_pnl"] == 32579.18
         assert payload["close_history"]["windows"]["mtd"]["count"] == 320
         assert payload["history_window_pnl"]["wtd"]["pnl"] == 30123.45
@@ -3443,6 +3446,7 @@ class TestDashboardAPI:
         assert payload["close_history_row_count"] == 1
         assert payload["close_history_rows"][0]["bot_id"] == "mnq_anchor_sweep"
         assert payload["summary"]["close_history_window"] == "mtd"
+        assert payload["summary"]["close_history_label"] == "MTD"
         assert payload["summary"]["close_history_realized_pnl"] == 32579.18
         assert payload["summary"]["close_history_closed_outcome_count"] == 320
         assert payload["summary"]["close_history_win_rate"] == 0.5181

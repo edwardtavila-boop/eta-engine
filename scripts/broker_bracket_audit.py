@@ -237,11 +237,16 @@ def _position_descriptor(position: dict[str, Any]) -> str:
 
 
 def _append_detail_once(message: str, detail: str) -> str:
+    message = str(message or "").strip()
+    detail = str(detail or "").strip()
     if not detail:
         return message
     if not message:
         return detail
-    return message if detail in message else f"{message}; {detail}"
+    if detail in message:
+        return message
+    separator = " " if message.endswith((".", "!", "?")) else "; "
+    return f"{message}{separator}{detail}"
 
 
 def _adapter_support() -> dict[str, Any]:
