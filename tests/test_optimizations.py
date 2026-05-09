@@ -249,6 +249,13 @@ class TestStatusPage:
         assert "readiness/staged rows" in html
         assert "lifetime ledger not attached; today shown above" in html
         assert "function fleetEquityLifetimeEvidence" in html
+        assert "function closeEvidenceSummary" in html
+        assert "function pnlHistoryEvidence" in html
+        assert "Closed PnL History" in html
+        assert "lifetime ledger pending" in html
+        assert "recent close outcome" in html
+        assert "in close ledger" in html
+        assert '<details class="collapsible-section" id="opsTruthSection">' in html
         assert "source === 'supervisor_heartbeat'" in html
         assert "source === 'fills_intraday'" in html
         assert "total_pnl_is_lifetime" in html

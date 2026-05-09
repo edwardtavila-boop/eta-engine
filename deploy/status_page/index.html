@@ -362,7 +362,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 </details>
 
-<details class="collapsible-section" id="opsTruthSection" open>
+<details class="collapsible-section" id="opsTruthSection">
   <summary class="collapsible-summary">Open Positions, Exits, and Router Tape <small id="opsTruthSummaryLine">broker truth loading</small></summary>
 <div class="ops-truth-wrap">
   <div class="card">
@@ -647,7 +647,9 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
       source: summary?.lifetime_total_pnl_source || 'lifetime ledger'
     },
     {
-      value: finiteNumber(summary?.total_pnl),
+      value: summary?.total_pnl_is_lifetime === true || summary?.total_pnl_source === 'lifetime_ledger'
+        ? finiteNumber(summary?.total_pnl)
+        : null,
       source: summary?.total_pnl_source || 'summary total_pnl'
     },
     {
@@ -657,7 +659,67 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
     fleetEvidence
   ];
   const usable = candidates.find(item => item.value != null);
-  return usable || {value: null, source: fleetEvidence.source || 'waiting for lifetime ledger'};
+  return usable
+    ? {...usable, label: 'Lifetime PnL', isLifetime: true}
+    : {value: null, label: 'Lifetime PnL', isLifetime: false, source: fleetEvidence.source || 'waiting for lifetime ledger'};
+}
+
+function closeEvidenceSummary(liveBroker, portfolioSummary) {
+  const exposureCloses = Array.isArray(liveBroker?.position_exposure?.recent_closes)
+    ? liveBroker.position_exposure.recent_closes
+    : [];
+  const contributorCloses = Array.isArray(portfolioSummary?.pnl_contributors)
+    ? portfolioSummary.pnl_contributors
+        .filter(row => row && row.type === 'recent_close_realized')
+        .map(row => ({
+          bot_id: row.bot_id,
+          symbol: row.symbol,
+          realized_pnl: row.realized_pnl,
+          source: row.source || 'portfolio contributor close evidence'
+        }))
+    : [];
+  const rows = exposureCloses.length ? exposureCloses : contributorCloses;
+  const pnlValues = rows
+    .map(row => finiteNumber(row?.realized_pnl))
+    .filter(value => value != null);
+  const wins = pnlValues.filter(value => value > 0).length;
+  const losses = pnlValues.filter(value => value < 0).length;
+  const evaluated = wins + losses;
+  const rValues = rows
+    .map(row => finiteNumber(row?.realized_r ?? row?.r_multiple ?? row?.r))
+    .filter(value => value != null);
+  const realizedPnl = pnlValues.length
+    ? pnlValues.reduce((sum, value) => sum + value, 0)
+    : null;
+  return {
+    rows,
+    count: rows.length,
+    evaluated,
+    wins,
+    losses,
+    winRatePct: evaluated ? (wins / evaluated) * 100 : null,
+    realizedPnl,
+    realizedR: rValues.length ? rValues.reduce((sum, value) => sum + value, 0) : null,
+    source: exposureCloses.length ? 'recent close evidence' : contributorCloses.length ? 'portfolio contributor close evidence' : 'close history unavailable'
+  };
+}
+
+function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory) {
+  const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity);
+  if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
+  if (closeHistory?.realizedPnl != null) {
+    const closeText = `${closeHistory.count} recent close${closeHistory.count === 1 ? '' : 's'}`;
+    const winText = closeHistory.winRatePct == null
+      ? ''
+      : `; ${closeHistory.winRatePct.toFixed(1)}% WR`;
+    return {
+      value: closeHistory.realizedPnl,
+      label: 'Closed PnL History',
+      isLifetime: false,
+      source: `${closeText}${winText}; lifetime ledger pending`
+    };
+  }
+  return lifetimeEvidence;
 }
 
 function formatQty(value) {
@@ -1140,7 +1202,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     const readinessText = `${paperReady} paper-ready`;
     heroMetrics.innerHTML = [
       {label: 'Today Net', value: formatMoney(todaysPnl, 0), sub: 'realized + unrealized'},
-      {label: 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
+      {label: lifetimeEvidence?.label || 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
       {label: 'Open Exposure', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} broker position${brokerPositions.length === 1 ? '' : 's'}`},
       {label: 'Readiness', value: readinessText, sub: `${active} active now`}
     ].map(item => `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, 38))}</small></div>`).join('');
@@ -1516,7 +1578,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
-  const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity || {});
+  const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary);
+  const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory);
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
   // so the panel reflects what actually moved on the broker today.
@@ -1544,9 +1607,10 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   renderVpsRootReview(vpsRootPlan);
   renderVpsRootDetails(vpsRootPlan);
 
-  // Total PnL: never coerce a missing lifetime ledger to $0. If the API has
-  // a real lifetime field, show it; otherwise mark the card as unavailable
-  // and let the broker-backed Today PnL carry the live proof.
+  // Total/history PnL: never coerce a missing lifetime ledger to $0. If the API
+  // has a real lifetime field, show it; otherwise display the verified close
+  // ledger as Closed PnL History so history profits are visible without
+  // pretending they are a complete lifetime ledger.
   const totalPnl = lifetimeEvidence.value;
   const tpnlEl = document.getElementById('totalPnl');
   const totalPnlSub = document.getElementById('totalPnlSub');
@@ -1559,7 +1623,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       ? 'lifetime ledger not attached; today shown above'
       : 'lifetime ledger unavailable';
   } else {
-    if (totalPnlLabel) totalPnlLabel.textContent = 'Lifetime PnL';
+    if (totalPnlLabel) totalPnlLabel.textContent = lifetimeEvidence.label || 'Lifetime PnL';
     tpnlEl.textContent = '$' + totalPnl.toFixed(0);
     tpnlEl.className = 'stat ' + (totalPnl > 0 ? 'green' : totalPnl < 0 ? 'red' : 'dim');
     if (totalPnlSub) totalPnlSub.textContent = lifetimeEvidence.source || 'lifetime ledger';
@@ -1568,9 +1632,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   // Cumulative R: only trust close evidence that has an actual realized
   // outcome attached. Placeholder close rows with qty=null / pnl=null / R=0
   // are audit breadcrumbs, not performance outcomes.
-  const closeRows = Array.isArray(liveBroker?.position_exposure?.recent_closes)
-    ? liveBroker.position_exposure.recent_closes
-    : [];
+  const closeRows = closeHistory.rows;
   let rValues = closeRows
     .map(c => ({
       r: finiteNumber(c.realized_r),
@@ -1612,12 +1674,16 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const brokerOpen = Number(exposure.broker_open_position_count ?? liveBroker.open_position_count ?? 0);
     const supervisorOpen = Number(exposure.supervisor_local_position_count || 0);
     const supervisorWatch = Number(exposure.supervisor_watch_count || 0);
+    const displayTrades = liveFills > 0 ? liveFills : closeHistory.count;
     const openText = supervisorOpen > 0
       ? `${brokerOpen} broker open; ${supervisorOpen} paper-local watched`
       : `${brokerOpen} broker open`;
     const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
-    document.getElementById('totalTrades').textContent = liveFills;
-    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}`;
+    const closeHistoryText = closeHistory.count > 0
+      ? `; ${closeHistory.count} recent close${closeHistory.count === 1 ? '' : 's'} in close ledger`
+      : '';
+    document.getElementById('totalTrades').textContent = displayTrades;
+    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}${closeHistoryText}`;
   } else {
     document.getElementById('totalTrades').textContent = trades || fillBackedRows || 0;
     document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
@@ -1989,6 +2055,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     document.getElementById('winRate').textContent = brokerWrToday.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWrToday > 50 ? 'green' : brokerWrToday > 25 ? 'yellow' : 'red');
     document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}closed broker outcome${outcomeCount === 1 ? '' : 's'} today`;
+  } else if (closeHistory.winRatePct != null) {
+    const historyWr = closeHistory.winRatePct;
+    document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated} recent close outcome${closeHistory.evaluated === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
   } else {
     document.getElementById('winRate').textContent = '—';
     document.getElementById('winRate').className = 'stat dim';
@@ -1997,8 +2068,17 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : 'broker outcome history unavailable';
   }
 
+  const pnlHistoryLabel = document.getElementById('pnlHistoryLabel');
+  if (pnlHistoryLabel) {
+    pnlHistoryLabel.textContent = lifetimeEvidence?.isLifetime
+      ? 'lifetime curve'
+      : closeHistory.realizedPnl != null
+        ? `${closeHistory.count} close history`
+        : '7-day curve';
+  }
+
   // PnL chart — will draw once data flows
-  drawSelfContainedChart(bots, todaysPnl, totalPnl);
+  drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, closeHistory);
 
   // Table
   let html = '';
@@ -2068,7 +2148,7 @@ function renderStrategySuperchargeResults(data) {
   }).join('') || '<li class="green">No retunes queued.</li>';
 }
 
-function drawSelfContainedChart(bots, todaysPnl, totalPnl) {
+function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, closeHistory) {
   const canvas = document.getElementById('pnlChart');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -2083,8 +2163,14 @@ function drawSelfContainedChart(bots, todaysPnl, totalPnl) {
   ctx.fillStyle = '#6e7681';
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
-  const lifetimeText = totalPnl == null ? 'Lifetime: n/a' : 'Lifetime: $' + totalPnl.toFixed(0);
-  ctx.fillText(todaysPnl === 0 && totalPnl == null ? 'Waiting for first broker PnL...' : 'Today: $' + todaysPnl.toFixed(0) + ' | ' + lifetimeText, w/2, h/2);
+  const historyLabel = lifetimeEvidence?.isLifetime ? 'Lifetime' : totalPnl == null ? 'History' : 'Closed history';
+  const historyText = totalPnl == null
+    ? historyLabel + ': n/a'
+    : historyLabel + ': $' + totalPnl.toFixed(0);
+  const winText = closeHistory?.winRatePct == null
+    ? ''
+    : ' | WR: ' + closeHistory.winRatePct.toFixed(1) + '% (' + closeHistory.evaluated + ' closes)';
+  ctx.fillText(todaysPnl === 0 && totalPnl == null ? 'Waiting for first broker PnL...' : 'Today: $' + todaysPnl.toFixed(0) + ' | ' + historyText + winText, w/2, h/2);
 }
 
 function updateClock() {
