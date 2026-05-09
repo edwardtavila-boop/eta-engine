@@ -1246,6 +1246,88 @@ class TestDashboardAPI:
         assert "positions=0 open" in detail
         assert "live broker exposure: 1 IBKR open (MNQM6)" in detail
 
+    def test_master_status_surfaces_target_exit_missing_bracket_risk(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_broker_router_snapshot",
+            lambda: {"status": "ok", "active_blocker_count": 0},
+        )
+        monkeypatch.setattr(
+            mod,
+            "_supervisor_roster_rows",
+            lambda now_ts: [
+                {
+                    "id": "mnq_futures_sage",
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_target": 29362.75,
+                        "bracket_stop": 29323.75,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 27.25,
+                            "stop_distance_points": -11.75,
+                        },
+                    },
+                },
+            ],
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-09T05:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+        mod._IBKR_PROBE_CACHE["snapshot"] = {
+            "ready": True,
+            "open_position_count": 1,
+            "open_positions": [
+                {
+                    "symbol": "MNQM6",
+                    "secType": "FUT",
+                    "position": 3,
+                },
+            ],
+        }
+        mod._IBKR_PROBE_CACHE["ts"] = time.time()
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["target_exit_summary"]["status"] == "missing_brackets"
+        assert payload["target_exit_summary"]["missing_bracket_count"] == 1
+        assert payload["systems"]["target_exit"]["status"] == "YELLOW"
+        assert "1 missing bracket" in payload["systems"]["target_exit"]["detail"]
+        assert payload["systems"]["broker"]["status"] == "YELLOW"
+        assert payload["systems"]["broker"]["raw_status"] == "ok"
+        assert payload["systems"]["broker"]["target_exit_status"] == "missing_brackets"
+
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
         self, app_client, tmp_path, monkeypatch
     ):

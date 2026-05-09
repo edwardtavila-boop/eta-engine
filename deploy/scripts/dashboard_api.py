@@ -5574,6 +5574,82 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     return {}
 
 
+def _target_exit_summary_for_master_status() -> dict:
+    """Lightweight exit-protection rollup for master status cards.
+
+    This intentionally uses cached live broker state so the master status route
+    does not trigger another broker probe, but it still shows bracket risk after
+    the bot-fleet or live-broker path has observed open IBKR exposure.
+    """
+    now_ts = time.time()
+    try:
+        rows = _supervisor_roster_rows(now_ts)
+    except Exception as exc:  # noqa: BLE001 - status must fail soft.
+        return {
+            "status": "unknown",
+            "summary_line": f"target exit summary unavailable: {exc}",
+            "open_position_count": 0,
+            "broker_open_position_count": 0,
+            "broker_open_position_count_observed": False,
+            "broker_bracket_required_position_count": 0,
+            "missing_bracket_count": 0,
+            "position_staleness": {"status": "unknown", "force_flatten_due_count": 0},
+            "stale_position_status": "unknown",
+            "source": "supervisor_roster_error",
+        }
+
+    live_broker_state = _cached_live_broker_state_for_gateway_reconcile()
+    exposure = _live_ibkr_exposure_for_gateway(live_broker_state)
+    broker_open_count: int | None = None
+    broker_bracket_required_count: int | None = None
+    if exposure.get("observed"):
+        broker_open_count = int(exposure.get("open_position_count") or 0)
+        broker_bracket_required_count = _broker_bracket_required_position_count(live_broker_state)
+
+    summary = _target_exit_summary(
+        rows,
+        broker_open_position_count=broker_open_count,
+        broker_bracket_required_position_count=broker_bracket_required_count,
+        server_ts=now_ts,
+    )
+    summary["source"] = "supervisor_roster_cached_live_broker_state"
+    summary["broker_position_source"] = (
+        exposure.get("source") if exposure.get("observed") else "not_observed"
+    )
+    return summary
+
+
+def _target_exit_card_status(summary: dict) -> str:
+    """Map target-exit supervision truth to operator card color."""
+    status = str(summary.get("status") or "unknown").lower()
+    staleness = str(summary.get("stale_position_status") or "").lower()
+    position_staleness = (
+        summary.get("position_staleness")
+        if isinstance(summary.get("position_staleness"), dict)
+        else {}
+    )
+    force_flatten_due = int(position_staleness.get("force_flatten_due_count") or 0)
+    missing_brackets = int(summary.get("missing_bracket_count") or 0)
+    if status == "alert" or force_flatten_due > 0:
+        return "RED"
+    if (
+        status in {"missing_brackets", "unknown"}
+        or missing_brackets > 0
+        or staleness in {"ack_due", "tighten_stop_due", "tightened_watch"}
+    ):
+        return "YELLOW"
+    if status in {"flat", "paper_watching", "watching"}:
+        return "GREEN"
+    return "YELLOW"
+
+
+def _worst_card_status(*statuses: str) -> str:
+    """Return the highest-severity card status."""
+    severity = {"GREEN": 0, "YELLOW": 1, "RED": 2}
+    normalized = [str(status or "YELLOW").upper() for status in statuses]
+    return max(normalized, key=lambda status: severity.get(status, 1))
+
+
 def _position_exposure_payload(
     live_broker_state: dict,
     *,
@@ -7625,6 +7701,9 @@ def _local_master_status_payload() -> dict[str, object]:
     gateway_detail = str(gateway_ibkr.get("detail") or broker_gateway.get("detail") or "")
     broker_router = _broker_router_snapshot()
     router_status = str(broker_router.get("status") or "unknown").lower()
+    target_exit_summary = _target_exit_summary_for_master_status()
+    target_exit_status = str(target_exit_summary.get("status") or "unknown").lower()
+    target_exit_card_status = _target_exit_card_status(target_exit_summary)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
 
     def _gateway_card_status(status: str) -> str:
@@ -7686,6 +7765,17 @@ def _local_master_status_payload() -> dict[str, object]:
         if launch_blocked
         else "YELLOW"
     )
+    router_card_status = _router_card_status(router_status)
+    broker_card_status = _worst_card_status(router_card_status, target_exit_card_status)
+    broker_detail = router_status
+    if target_exit_card_status != "GREEN":
+        broker_detail = _append_detail_once(
+            broker_detail,
+            (
+                f"exit_watch={target_exit_status}; "
+                f"{int(target_exit_summary.get('missing_bracket_count') or 0)} missing bracket(s)"
+            ),
+        )
     return {
         "status": "live",
         "mode": "autonomous",
@@ -7705,6 +7795,7 @@ def _local_master_status_payload() -> dict[str, object]:
             "paper_ready_bots": int(paper.get("paper_ready_bots") or 0),
         },
         "paper_live": paper_live,
+        "target_exit_summary": target_exit_summary,
         "vps_root_reconciliation": vps_root_reconciliation,
         "systems": {
             "dashboard": {
@@ -7721,11 +7812,28 @@ def _local_master_status_payload() -> dict[str, object]:
                 "checked_at": gateway_ibkr.get("checked_at") or broker_gateway.get("checked_at"),
             },
             "broker": {
-                "status": _router_card_status(router_status),
-                "detail": router_status,
+                "status": broker_card_status,
+                "detail": broker_detail,
                 "source": "broker_router",
                 "raw_status": router_status,
+                "target_exit_status": target_exit_status,
+                "target_exit_card_status": target_exit_card_status,
                 "active_blocker_count": int(broker_router.get("active_blocker_count") or 0),
+            },
+            "target_exit": {
+                "status": target_exit_card_status,
+                "detail": str(target_exit_summary.get("summary_line") or target_exit_status),
+                "source": target_exit_summary.get("source") or "target_exit_summary",
+                "raw_status": target_exit_status,
+                "missing_bracket_count": int(target_exit_summary.get("missing_bracket_count") or 0),
+                "force_flatten_due_count": int(
+                    (
+                        target_exit_summary.get("position_staleness")
+                        if isinstance(target_exit_summary.get("position_staleness"), dict)
+                        else {}
+                    ).get("force_flatten_due_count")
+                    or 0
+                ),
             },
             "paper_live": {
                 "status": paper_card_status,
