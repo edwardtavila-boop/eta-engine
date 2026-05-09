@@ -232,6 +232,97 @@ def test_supervisor_force_flattens_stale_supervisor_local_position(tmp_path: Pat
     assert bot.n_exits == 1
 
 
+def test_supervisor_tightens_stale_supervisor_local_stop(tmp_path: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="stale_tighten",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 1.0,
+            "entry_price": 100.0,
+            "entry_ts": (datetime.now(UTC) - timedelta(seconds=3700)).isoformat(),
+            "signal_id": "sig-stale-tighten",
+            "bracket_stop": 90.0,
+            "bracket_target": 130.0,
+        },
+    )
+    bar = {
+        "ts": datetime.now(UTC).isoformat(),
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "close": 101.0,
+        "volume": 10,
+    }
+
+    sup._maybe_exit(bot, bar)
+
+    assert bot.open_position is not None
+    assert bot.n_exits == 0
+    assert bot.open_position["bracket_stop"] == 92.5
+    assert bot.open_position["stale_tighten_prev_stop"] == 90.0
+    assert bot.open_position["stale_tighten_factor"] == 0.75
+    assert bot.open_position["stale_tighten_age_s"] >= 3600.0
+
+
+def test_stale_tighten_never_loosens_existing_stop(tmp_path: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        JarvisStrategySupervisor,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_sim"
+    cfg.state_dir = tmp_path / "state"
+    cfg.broker_router_pending_dir = tmp_path / "pending"
+    sup = JarvisStrategySupervisor(cfg=cfg)
+    bot = BotInstance(
+        bot_id="stale_tighten_be",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+        open_position={
+            "side": "BUY",
+            "qty": 1.0,
+            "entry_price": 100.0,
+            "entry_ts": (datetime.now(UTC) - timedelta(seconds=3700)).isoformat(),
+            "signal_id": "sig-stale-tighten-be",
+            "bracket_stop": 101.0,
+            "bracket_target": 130.0,
+        },
+    )
+
+    sup._maybe_tighten_stale_position(
+        bot,
+        bot.open_position,
+        now=datetime.now(UTC),
+    )
+
+    assert bot.open_position is not None
+    assert bot.open_position["bracket_stop"] == 101.0
+    assert "stale_tighten_applied_at" not in bot.open_position
+
+
 def test_stale_force_flatten_blocks_immediate_reentry(
     tmp_path: Path,
     monkeypatch,

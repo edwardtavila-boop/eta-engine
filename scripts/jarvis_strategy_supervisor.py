@@ -2862,6 +2862,30 @@ class JarvisStrategySupervisor:
             logger.warning("AutopilotWatchdog policy unavailable; using default max_age_sec: %s", exc)
             return 7200.0
 
+    @staticmethod
+    def _watchdog_tighten_after_sec() -> float:
+        """Return the same stale-position tighten SLA used by AutopilotWatchdog."""
+        try:
+            from eta_engine.obs.autopilot_watchdog import WatchdogPolicy
+
+            policy = WatchdogPolicy().validate_ordering()
+            return float(policy.tighten_after_sec)
+        except Exception as exc:  # noqa: BLE001 -- fail safe with the documented default
+            logger.warning("AutopilotWatchdog policy unavailable; using default tighten_after_sec: %s", exc)
+            return 3600.0
+
+    @staticmethod
+    def _watchdog_tighten_factor() -> float:
+        """Return the stale-position stop-distance multiplier used by AutopilotWatchdog."""
+        try:
+            from eta_engine.obs.autopilot_watchdog import WatchdogPolicy
+
+            policy = WatchdogPolicy().validate_ordering()
+            return float(policy.tighten_factor)
+        except Exception as exc:  # noqa: BLE001 -- fail safe with the documented default
+            logger.warning("AutopilotWatchdog policy unavailable; using default tighten_factor: %s", exc)
+            return 0.75
+
     def _stale_flatten_cooldown_sec(self) -> float:
         """Return the post-stale-flatten entry cooldown in seconds."""
         return max(0.0, self._env_float("ETA_STALE_FLATTEN_COOLDOWN_S", 900.0))
@@ -2979,6 +3003,81 @@ class JarvisStrategySupervisor:
             self._record_stale_flatten_cooldown(bot, now=now)
             return True
         return False
+
+    def _maybe_tighten_stale_position(
+        self,
+        bot: BotInstance,
+        pos: dict[str, Any],
+        *,
+        now: datetime,
+    ) -> None:
+        """Tighten supervisor-local stops before stale positions reach force-flat.
+
+        The dashboard and AutopilotWatchdog have long surfaced the 1h
+        TIGHTEN_STOP phase. This makes the supervisor-local paper path honor
+        that same SLA by moving the stop 25% closer to entry once per
+        position, then persisting the new stop so restarts do not roll risk
+        backward.
+        """
+        if bool(pos.get("broker_bracket")) or pos.get("stale_tighten_applied_at"):
+            return
+        opened_at = self._parse_open_position_ts(
+            pos.get("last_ack_at")
+            or pos.get("opened_at")
+            or pos.get("entry_ts")
+            or pos.get("ts")
+        )
+        if opened_at is None:
+            return
+        age_s = max(0.0, (now.astimezone(UTC) - opened_at).total_seconds())
+        tighten_after_s = self._watchdog_tighten_after_sec()
+        max_age_s = self._watchdog_max_age_sec()
+        if age_s < tighten_after_s or age_s >= max_age_s:
+            return
+        factor = self._watchdog_tighten_factor()
+        if not 0.0 < factor < 1.0:
+            return
+        try:
+            entry = float(pos["entry_price"])
+            current_stop = float(pos["bracket_stop"])
+        except (TypeError, ValueError, KeyError):
+            return
+        side = str(pos.get("side", "")).upper()
+        if side == "BUY":
+            if current_stop >= entry:
+                return
+            new_stop = entry - (entry - current_stop) * factor
+            new_stop = _round_to_tick(new_stop, bot.symbol)
+            if new_stop <= current_stop:
+                return
+        elif side == "SELL":
+            if current_stop <= entry:
+                return
+            new_stop = entry + (current_stop - entry) * factor
+            new_stop = _round_to_tick(new_stop, bot.symbol)
+            if new_stop >= current_stop:
+                return
+        else:
+            return
+        prev_stop = pos.get("bracket_stop")
+        pos["bracket_stop"] = round(float(new_stop), 4)
+        pos["stale_tighten_applied_at"] = now.astimezone(UTC).isoformat()
+        pos["stale_tighten_age_s"] = round(age_s, 3)
+        pos["stale_tighten_prev_stop"] = prev_stop
+        pos["stale_tighten_factor"] = factor
+        with contextlib.suppress(Exception):
+            self._router._persist_open_position(bot)  # noqa: SLF001
+        logger.warning(
+            "STALE TIGHTEN %s: age_s=%.0f tighten_after_s=%.0f side=%s "
+            "prev_stop=%s new_stop=%.4f factor=%.2f",
+            bot.bot_id,
+            age_s,
+            tighten_after_s,
+            side,
+            prev_stop,
+            new_stop,
+            factor,
+        )
 
     def _tick_bot(self, bot: BotInstance, tick_count: int) -> None:
         # 1. Get a fresh bar
@@ -3837,6 +3936,11 @@ class JarvisStrategySupervisor:
             if pos is None:
                 return
             self._maybe_apply_trailing_stop(bot, pos, bar)
+            self._maybe_tighten_stale_position(
+                bot,
+                pos,
+                now=datetime.now(UTC),
+            )
         pos = bot.open_position
         if pos is None:
             return
