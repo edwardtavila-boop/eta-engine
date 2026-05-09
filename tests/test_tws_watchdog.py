@@ -126,6 +126,42 @@ def test_gateway_process_snapshot_detects_ibc_renamed_gateway_runtime(
     }
 
 
+def test_gateway_process_snapshot_detects_ibc_managed_java_runtime(
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import tws_watchdog
+
+    def fake_run(args, **_kwargs):
+        if args[0] == "tasklist":
+            return SimpleNamespace(
+                returncode=0,
+                stdout='INFO: No tasks are running which match the specified criteria.\n',
+            )
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                '{"ProcessId":6912,"Name":"java.exe",'
+                '"WorkingSetSize":242688000}'
+            ),
+        )
+
+    monkeypatch.setattr(tws_watchdog.os, "name", "nt")
+    monkeypatch.setattr(tws_watchdog.subprocess, "run", fake_run)
+
+    snapshot = tws_watchdog._gateway_process_snapshot(Path(r"C:\Jts\ibgateway\1046"))
+
+    assert snapshot == {
+        "running": True,
+        "pid": 6912,
+        "name": "java.exe",
+        "manager": "IBC",
+        "working_set_mb": 231.4,
+        "gateway_dir": r"C:\Jts\ibgateway\1046",
+    }
+
+
 def test_successful_handshake_does_not_open_raw_socket_probe(
     tmp_path: Path,
     monkeypatch,

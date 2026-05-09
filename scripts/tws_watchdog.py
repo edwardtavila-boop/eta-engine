@@ -46,6 +46,7 @@ _STATUS_PATH = Path(
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
 _DEFAULT_WATCHDOG_CLIENT_IDS = (9011, 9012, 9013, 9014)
 _GATEWAY_PROCESS_NAMES = ("ibgateway.exe", "ibgateway1.exe")
+_IBC_PROCESS_MARKERS = ("ibcalpha.ibc.IbcGateway", r"scripts\StartIBC.bat")
 _LAST_ACCOUNT_SNAPSHOT: dict | None = None
 
 
@@ -406,7 +407,76 @@ def _gateway_process_snapshot(gateway_dir: Path) -> dict | None:
             "working_set_mb": round(memory_kb / 1024, 1),
             "gateway_dir": str(gateway_dir),
         }
+    ibc_snapshot = _ibc_gateway_process_snapshot(gateway_dir)
+    if ibc_snapshot is not None:
+        return ibc_snapshot
     return not_running
+
+
+def _ibc_gateway_process_snapshot(gateway_dir: Path) -> dict | None:
+    """Return an IBC-managed Gateway JVM/cmd process, if the direct exe was renamed away."""
+    try:
+        gateway_text = str(gateway_dir)
+        markers_literal = ", ".join(json.dumps(marker.lower()) for marker in _IBC_PROCESS_MARKERS)
+        script = f"""
+$gatewayDir = {json.dumps(gateway_text)}
+try {{
+    $normalizedGateway = [System.IO.Path]::GetFullPath($gatewayDir).TrimEnd([char]92).ToLowerInvariant()
+}} catch {{
+    $normalizedGateway = $gatewayDir.ToLowerInvariant()
+}}
+$markers = @({markers_literal})
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {{
+        $cmd = [string]$_.CommandLine
+        if ([string]::IsNullOrWhiteSpace($cmd)) {{
+            $false
+        }} else {{
+            $lower = $cmd.ToLowerInvariant()
+            (($lower.Contains($markers[0]) -or $lower.Contains($markers[1])) -and $lower.Contains($normalizedGateway))
+        }}
+    }} |
+    Select-Object -First 1 ProcessId,Name,WorkingSetSize |
+    ConvertTo-Json -Compress
+"""
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    output = completed.stdout.strip()
+    if not output:
+        return None
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, list):
+        payload = payload[0] if payload else {}
+    if not isinstance(payload, dict) or not payload.get("ProcessId"):
+        return None
+    working_set = _float_or_none(payload.get("WorkingSetSize")) or 0.0
+    return {
+        "running": True,
+        "pid": int(payload["ProcessId"]),
+        "name": str(payload.get("Name") or "IBC-managed Gateway"),
+        "manager": "IBC",
+        "working_set_mb": round(working_set / (1024 * 1024), 1),
+        "gateway_dir": str(gateway_dir),
+    }
 
 
 def _load_status() -> dict:

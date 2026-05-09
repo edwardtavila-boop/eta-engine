@@ -405,8 +405,51 @@ function Resolve-TwsRootDir {
     return Split-Path -Parent $ResolvedGatewayDir
 }
 
+function Get-IbcManagedGatewayProcesses {
+    param(
+        [string]$GatewayInstallDir,
+        [string]$ConfigPath,
+        [string]$InstallRoot
+    )
+
+    $resolvedGateway = Normalize-PathString -Path $GatewayInstallDir
+    $resolvedConfig = if ($ConfigPath) {
+        [System.IO.Path]::GetFullPath($ConfigPath).TrimEnd("\").ToLowerInvariant()
+    } else {
+        ""
+    }
+    $resolvedInstallRoot = if ($InstallRoot) {
+        [System.IO.Path]::GetFullPath($InstallRoot).TrimEnd("\").ToLowerInvariant()
+    } else {
+        ""
+    }
+
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $cmd = [string]$_.CommandLine
+            if ([string]::IsNullOrWhiteSpace($cmd)) {
+                $false
+            } else {
+                $lower = $cmd.ToLowerInvariant()
+                $isIbcGateway = $lower.Contains("ibcalpha.ibc.ibcgateway") -or $lower.Contains("scripts\startibc.bat")
+                $isCanonicalLane = $lower.Contains($resolvedGateway) -or
+                    (-not [string]::IsNullOrWhiteSpace($resolvedConfig) -and $lower.Contains($resolvedConfig)) -or
+                    (-not [string]::IsNullOrWhiteSpace($resolvedInstallRoot) -and $lower.Contains($resolvedInstallRoot))
+                $isIbcGateway -and $isCanonicalLane
+            }
+        }
+}
+
 function Get-GatewayProcesses {
-    Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue
+    $directGateway = @(Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue)
+    $ibcManagedGateway = @(
+        Get-IbcManagedGatewayProcesses `
+            -GatewayInstallDir $GatewayDir `
+            -ConfigPath $IbcConfigPath `
+            -InstallRoot $IbcInstallRoot
+    )
+
+    return @($directGateway + $ibcManagedGateway)
 }
 
 function Get-ApiListener {

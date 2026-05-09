@@ -27,6 +27,9 @@ def test_ibgateway_starter_uses_canonical_logs_and_verified_direct_start() -> No
     assert "StartupTimeoutSeconds" in text
     assert "[int]$StartupTimeoutSeconds = 600" in text
     assert 'Get-Process -Name "ibgateway", "ibgateway1" -ErrorAction SilentlyContinue' in text
+    assert "function Get-IbcManagedGatewayProcesses" in text
+    assert "ibcalpha.ibc.ibcgateway" in text
+    assert "scripts\\startibc.bat" in text
     assert "function Get-ProcessIdValue" in text
     assert "Stop-Process -Id $procId -Force" in text
     assert "stopping existing gateway API listener owner" in text
