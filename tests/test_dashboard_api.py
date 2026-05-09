@@ -3747,7 +3747,7 @@ class TestDashboardAPI:
                             "symbol": "MNQM6",
                             "secType": "FUT",
                             "position": 3,
-                            "avg_cost": 29340.0,
+                            "avg_cost": 58680.0,
                             "market_price": 29335.0,
                             "market_value": 176010.0,
                             "unrealized_pnl": -33.79,

@@ -1654,6 +1654,25 @@ _IBKR_ROUTER_SLEEVES = frozenset(
 )
 _BROKER_BRACKET_REQUIRED_VENUES = frozenset({"ibkr", "tasty", "tastytrade"})
 _BROKER_BRACKET_REQUIRED_SEC_TYPES = frozenset({"FUT", "FOP"})
+_FUTURES_AVG_COST_MULTIPLIERS = {
+    "6E": 125000.0,
+    "CL": 1000.0,
+    "ES": 50.0,
+    "GC": 100.0,
+    "M2K": 5.0,
+    "MBT": 0.1,
+    "MCL": 100.0,
+    "MES": 5.0,
+    "MET": 0.1,
+    "MGC": 10.0,
+    "MNQ": 2.0,
+    "MYM": 0.5,
+    "NG": 10000.0,
+    "NQ": 20.0,
+    "RTY": 50.0,
+    "YM": 5.0,
+    "ZN": 1000.0,
+}
 
 
 def _router_active_order_summary(path: Path, *, lane: str) -> dict:
@@ -5454,27 +5473,81 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
             raw_side = "long"
         else:
             raw_side = "unknown"
+    sec_type = row.get("secType") or row.get("sec_type")
+    current_price = _float_value(
+        row.get("current_price") if venue == "alpaca" else row.get("market_price")
+    )
+    avg_entry_price = _normalize_live_avg_entry_price(
+        row,
+        venue=venue,
+        symbol=str(symbol),
+        sec_type=sec_type,
+        raw_avg_entry_price=_float_value(
+            row.get("avg_entry_price") if venue == "alpaca" else row.get("avg_cost")
+        ),
+        current_price=current_price,
+    )
     normalized = {
         "venue": venue,
         "symbol": str(symbol),
         "side": raw_side,
         "qty": qty,
-        "avg_entry_price": _float_value(
-            row.get("avg_entry_price") if venue == "alpaca" else row.get("avg_cost")
-        ),
-        "current_price": _float_value(
-            row.get("current_price") if venue == "alpaca" else row.get("market_price")
-        ),
+        "avg_entry_price": avg_entry_price,
+        "current_price": current_price,
         "market_value": _float_value(row.get("market_value")),
         "unrealized_pnl": _float_value(
             row.get("unrealized_pl") if venue == "alpaca" else row.get("unrealized_pnl")
         ),
         "unrealized_pct": _float_value(row.get("unrealized_plpc")),
-        "sec_type": row.get("secType") or row.get("sec_type"),
+        "sec_type": sec_type,
         "exchange": row.get("exchange"),
     }
     normalized["broker_bracket_required"] = _position_requires_broker_bracket(normalized)
     return normalized
+
+
+def _live_position_contract_multiplier(row: dict, symbol: str) -> float | None:
+    multiplier = _float_value(
+        row.get("multiplier")
+        or row.get("contract_multiplier")
+        or row.get("contractMultiplier")
+    )
+    if multiplier is not None and multiplier > 0:
+        return multiplier
+    symbol_key = symbol.strip().upper()
+    for root, value in sorted(
+        _FUTURES_AVG_COST_MULTIPLIERS.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if symbol_key.startswith(root):
+            return value
+    return None
+
+
+def _normalize_live_avg_entry_price(
+    row: dict,
+    *,
+    venue: str,
+    symbol: str,
+    sec_type: object,
+    raw_avg_entry_price: float | None,
+    current_price: float | None,
+) -> float | None:
+    """Normalize broker-reported futures average cost into price points."""
+    if raw_avg_entry_price is None:
+        return None
+    if venue not in _BROKER_BRACKET_REQUIRED_VENUES:
+        return raw_avg_entry_price
+    if str(sec_type or "").strip().upper() not in _BROKER_BRACKET_REQUIRED_SEC_TYPES:
+        return raw_avg_entry_price
+    multiplier = _live_position_contract_multiplier(row, symbol)
+    if multiplier is None or multiplier <= 0 or current_price is None:
+        return raw_avg_entry_price
+    candidate = raw_avg_entry_price / multiplier
+    if abs(candidate - current_price) < abs(raw_avg_entry_price - current_price):
+        return candidate
+    return raw_avg_entry_price
 
 
 def _position_requires_broker_bracket(position: dict) -> bool:
