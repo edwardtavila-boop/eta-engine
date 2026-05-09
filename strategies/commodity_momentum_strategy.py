@@ -170,34 +170,29 @@ class MomentumStrategy:
         trend_up = self._ma_fast > self._ma_slow
         trend_down = self._ma_fast < self._ma_slow
 
-        # ADX threshold (needs at least 14 bars of TR)
-        adx_strong = self._adx is not None and self._adx >= self.cfg.adx_threshold
-
         # Volume confirmation
         if len(self._volume_window) >= self.cfg.volume_z_lookback:
-            vols = self._volume_window
+            vols = list(self._volume_window)
             mean_v = sum(vols) / len(vols)
             std_v = _stdev(vols)
             if std_v > 0:
                 vol_z = (bar.volume - mean_v) / std_v
                 if vol_z < self.cfg.min_volume_z:
                     return None
-            else:
-                return None
 
         # Thrust: large range bar relative to ATR
         atr = self._current_atr()
-        bar_range = bar.high - bar.low
-        if bar_range < atr * 0.8:
+        bar_range_val = bar.high - bar.low
+        if bar_range_val < atr * 0.6:  # Lowered from 0.8
             return None  # No thrust
 
         # Bullish thrust
-        if roc_z > self.cfg.roc_threshold and trend_up and adx_strong:
+        if roc_z > self.cfg.roc_threshold and trend_up:
             if bar.close > bar.open:
                 return "BUY"
 
         # Bearish thrust
-        if roc_z < -self.cfg.roc_threshold and trend_down and adx_strong:
+        if roc_z < -self.cfg.roc_threshold and trend_down:
             if bar.close < bar.open:
                 return "SELL"
 
