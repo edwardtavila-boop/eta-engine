@@ -250,6 +250,8 @@ class TestStatusPage:
         assert "lifetime ledger not attached; today shown above" in html
         assert "function fleetEquityLifetimeEvidence" in html
         assert "function closeEvidenceSummary" in html
+        assert "function winRateSourceText" in html
+        assert "close-ledger outcomes" in html
         assert "function pnlHistoryEvidence" in html
         assert "Closed PnL History" in html
         assert "lifetime ledger pending" in html

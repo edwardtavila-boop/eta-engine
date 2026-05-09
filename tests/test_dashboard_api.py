@@ -3010,6 +3010,7 @@ class TestDashboardAPI:
             lambda **kwargs: {"ready": True, "per_bot": {}},
         )
         monkeypatch.setattr(mod, "_recent_live_fill_rows", lambda: [])
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=25: [])
 
         live = mod._live_broker_state_payload()
 
@@ -3019,6 +3020,79 @@ class TestDashboardAPI:
         assert live["open_position_count"] == 2
         assert live["ibkr"]["today_realized_pnl"] == 10133.83
         assert live["alpaca"]["today_realized_pnl"] == -15.03
+
+    def test_live_broker_state_uses_trade_close_ledger_for_win_rate_when_fills_lack_pnl(
+        self,
+        monkeypatch,
+    ):
+        from datetime import UTC, datetime
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC).isoformat()
+        close_rows = [
+            {
+                "ts": now,
+                "bot_id": "mnq_futures_sage",
+                "realized_r": 0.18,
+                "extra": {"symbol": "MNQ1", "realized_pnl": 166.0},
+            },
+            {
+                "ts": now,
+                "bot_id": "volume_profile_mnq",
+                "realized_r": 0.17,
+                "extra": {"symbol": "MNQ1", "realized_pnl": 150.0},
+            },
+            {
+                "ts": now,
+                "bot_id": "mcl_sweep_reclaim",
+                "realized_r": -0.73,
+                "extra": {"symbol": "MCL1", "realized_pnl": -105.0},
+            },
+        ]
+        monkeypatch.setattr(
+            mod,
+            "_alpaca_live_state_snapshot",
+            lambda **kwargs: {
+                "today_filled_orders": 0,
+                "today_realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "ready": True,
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_ibkr_live_state_snapshot",
+            lambda **kwargs: {
+                "today_executions": 0,
+                "today_realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "ready": True,
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_alpaca_per_bot_pnl_cached",
+            lambda **kwargs: {"ready": True, "per_bot": {}},
+        )
+        monkeypatch.setattr(mod, "_recent_live_fill_rows", lambda: [])
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=25: close_rows)
+
+        live = mod._live_broker_state_payload()
+        summary = mod._broker_summary_fields(live)
+
+        assert live["win_rate_30d"] == 0.6667
+        assert live["win_rate_30d_source"] == "trade_close_ledger_30d"
+        assert live["win_rate_today"] == 0.6667
+        assert live["win_rate_source"] == "trade_close_ledger_today"
+        assert live["closed_outcome_count_today"] == 3
+        assert live["recent_close_count_30d"] == 3
+        assert live["recent_close_realized_pnl_30d"] == 211.0
+        assert summary["broker_win_rate_30d"] == 0.6667
+        assert summary["broker_win_rate_30d_source"] == "trade_close_ledger_30d"
+        assert summary["broker_recent_close_realized_pnl_30d"] == 211.0
 
     def test_position_exposure_normalizes_broker_positions_and_recent_closes(self):
         import eta_engine.deploy.scripts.dashboard_api as mod

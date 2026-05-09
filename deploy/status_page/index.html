@@ -704,6 +704,14 @@ function closeEvidenceSummary(liveBroker, portfolioSummary) {
   };
 }
 
+function winRateSourceText(source, windowLabel) {
+  const raw = String(source || '').toLowerCase();
+  if (raw.includes('trade_close_ledger')) return `${windowLabel} close-ledger outcomes`;
+  if (raw.includes('live_fill_ledger')) return `${windowLabel} live fill-ledger outcomes`;
+  if (raw.includes('alpaca_filled_order_pairs')) return `${windowLabel} Alpaca filled-order outcomes`;
+  return `${windowLabel} closed-trade outcomes`;
+}
+
 function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory) {
   const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity);
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
@@ -2048,13 +2056,16 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   if (brokerWr != null && Number.isFinite(brokerWr)) {
     document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = '30d closed-trade outcomes (broker ledger)';
+    document.getElementById('winRateDetail').textContent = winRateSourceText(
+      liveBroker.win_rate_30d_source || liveBroker.win_rate_source,
+      '30d'
+    );
   } else if (brokerWrToday != null && Number.isFinite(brokerWrToday)) {
     const outcomeCount = Number(liveBroker.closed_outcome_count_today || liveBroker.evaluated_outcome_count_today || 0);
-    const wrSource = liveBroker.win_rate_source === 'alpaca_filled_order_pairs' ? 'Alpaca ' : '';
+    const wrSource = winRateSourceText(liveBroker.win_rate_source, 'today');
     document.getElementById('winRate').textContent = brokerWrToday.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWrToday > 50 ? 'green' : brokerWrToday > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}closed broker outcome${outcomeCount === 1 ? '' : 's'} today`;
+    document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}`;
   } else if (closeHistory.winRatePct != null) {
     const historyWr = closeHistory.winRatePct;
     document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';

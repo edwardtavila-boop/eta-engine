@@ -4964,6 +4964,46 @@ def _closed_outcomes_from_filled_orders(orders: list[dict]) -> dict:
     }
 
 
+def _closed_outcomes_from_trade_closes(
+    closes: list[dict],
+    *,
+    since: datetime | None = None,
+) -> dict:
+    """Derive realized W/L truth from the Jarvis trade-close ledger."""
+    outcomes: list[dict[str, object]] = []
+    wins = 0
+    losses = 0
+    realized_total = 0.0
+
+    for row in closes:
+        normalized = _normalize_trade_close(row)
+        if normalized is None:
+            continue
+        ts_dt = _parse_fill_dt(normalized.get("close_ts") or normalized.get("ts"))
+        if since is not None and (ts_dt is None or ts_dt < since):
+            continue
+        pnl = _float_value(normalized.get("realized_pnl"))
+        if pnl is None:
+            continue
+        if pnl > 0:
+            wins += 1
+        elif pnl < 0:
+            losses += 1
+        realized_total += pnl
+        outcomes.append(normalized)
+
+    evaluated = wins + losses
+    return {
+        "closed_outcome_count": len(outcomes),
+        "evaluated_outcome_count": evaluated,
+        "winning_outcomes": wins,
+        "losing_outcomes": losses,
+        "win_rate": round(wins / evaluated, 4) if evaluated else None,
+        "realized_pnl": round(realized_total, 2),
+        "recent_outcomes": outcomes[:20],
+    }
+
+
 def _broker_summary_fields(live_broker_state: dict) -> dict:
     """Broker-backed rollup fields for /api/bot-fleet.summary.
 
@@ -4980,6 +5020,10 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
     win_rate = _float_value(live_broker_state.get("win_rate_30d"))
     win_rate_today = _float_value(live_broker_state.get("win_rate_today"))
     closed_outcomes_today = _float_value(live_broker_state.get("closed_outcome_count_today"))
+    recent_close_count_30d = _float_value(live_broker_state.get("recent_close_count_30d"))
+    recent_close_realized_pnl_30d = _float_value(
+        live_broker_state.get("recent_close_realized_pnl_30d")
+    )
     out: dict[str, object] = {
         "pnl_summary_source": "live_broker_state",
     }
@@ -4995,11 +5039,16 @@ def _broker_summary_fields(live_broker_state: dict) -> dict:
         out["broker_open_position_count"] = int(open_positions)
     if win_rate is not None:
         out["broker_win_rate_30d"] = win_rate
+        out["broker_win_rate_30d_source"] = str(live_broker_state.get("win_rate_30d_source") or "")
     if win_rate_today is not None:
         out["broker_win_rate_today"] = win_rate_today
         out["broker_win_rate_source"] = str(live_broker_state.get("win_rate_source") or "")
     if closed_outcomes_today is not None:
         out["broker_closed_outcomes_today"] = int(closed_outcomes_today)
+    if recent_close_count_30d is not None:
+        out["broker_recent_close_count_30d"] = int(recent_close_count_30d)
+    if recent_close_realized_pnl_30d is not None:
+        out["broker_recent_close_realized_pnl_30d"] = round(recent_close_realized_pnl_30d, 2)
     return out
 
 
@@ -6063,9 +6112,26 @@ def _live_broker_state_payload() -> dict:
     win_rate_today = _float_value(alpaca.get("today_win_rate"))
     closed_outcome_count_today = int(alpaca.get("today_closed_outcome_count") or 0)
     evaluated_outcome_count_today = int(alpaca.get("today_evaluated_outcome_count") or 0)
+    recent_trade_closes = _recent_trade_closes(limit=200)
+    close_outcomes_today = _closed_outcomes_from_trade_closes(
+        recent_trade_closes,
+        since=today_start_utc,
+    )
+    close_outcomes_30d = _closed_outcomes_from_trade_closes(
+        recent_trade_closes,
+        since=datetime.now(UTC) - timedelta(days=30),
+    )
+    if win_rate_today is None and close_outcomes_today["win_rate"] is not None:
+        win_rate_today = _float_value(close_outcomes_today.get("win_rate"))
+        closed_outcome_count_today = int(close_outcomes_today.get("closed_outcome_count") or 0)
+        evaluated_outcome_count_today = int(close_outcomes_today.get("evaluated_outcome_count") or 0)
+        win_rate_source = "trade_close_ledger_today"
+    else:
+        win_rate_source = "alpaca_filled_order_pairs" if win_rate_today is not None else ""
     # 30d win-rate from blotter fills (best-effort; uses local ledger
     # because broker REST is too narrow for 30-day history without paging).
     win_rate_30d: float | None = None
+    win_rate_30d_source = ""
     try:
         wins = 0
         losses = 0
@@ -6083,8 +6149,12 @@ def _live_broker_state_payload() -> dict:
                 losses += 1
         if (wins + losses) > 0:
             win_rate_30d = round(wins / (wins + losses), 4)
+            win_rate_30d_source = "live_fill_ledger_30d"
     except Exception:  # noqa: BLE001
         win_rate_30d = None
+    if win_rate_30d is None and close_outcomes_30d["win_rate"] is not None:
+        win_rate_30d = _float_value(close_outcomes_30d.get("win_rate"))
+        win_rate_30d_source = "trade_close_ledger_30d"
     payload = {
         "server_ts": time.time(),
         "today_actual_fills": today_actual_fills,
@@ -6092,10 +6162,14 @@ def _live_broker_state_payload() -> dict:
         "total_unrealized_pnl": total_unrealized_pnl,
         "open_position_count": open_position_count,
         "win_rate_30d": win_rate_30d,
+        "win_rate_30d_source": win_rate_30d_source,
         "win_rate_today": win_rate_today,
         "closed_outcome_count_today": closed_outcome_count_today,
         "evaluated_outcome_count_today": evaluated_outcome_count_today,
-        "win_rate_source": "alpaca_filled_order_pairs" if win_rate_today is not None else "",
+        "win_rate_source": win_rate_source,
+        "recent_close_count_30d": int(close_outcomes_30d.get("closed_outcome_count") or 0),
+        "recent_close_evaluated_count_30d": int(close_outcomes_30d.get("evaluated_outcome_count") or 0),
+        "recent_close_realized_pnl_30d": _float_value(close_outcomes_30d.get("realized_pnl")),
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,
