@@ -4360,6 +4360,19 @@ def bot_fleet_roster(
         and not bool(broker_bracket_audit.get("ready_for_prop_dry_run"))
     )
     paper_live_transition = _paper_live_transition_payload(refresh=False)
+    paper_live_status = str(paper_live_transition.get("status") or "unknown")
+    paper_live_critical_ready = bool(paper_live_transition.get("critical_ready"))
+    paper_live_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_live_critical_ready
+    paper_live_effective_status = (
+        "held_by_bracket_audit" if paper_live_held_by_bracket_audit else paper_live_status
+    )
+    paper_live_effective_detail = ""
+    if paper_live_held_by_bracket_audit:
+        paper_live_effective_detail = (
+            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
+            if broker_bracket_action_labels
+            else "held by Bracket Audit"
+        )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
         vps_root_reconciliation.get("summary")
@@ -4486,8 +4499,11 @@ def bot_fleet_roster(
             "broker_bracket_primary_coverage_status": str(
                 broker_bracket_primary.get("coverage_status") or ""
             ),
-            "paper_live_status": str(paper_live_transition.get("status") or "unknown"),
-            "paper_live_critical_ready": bool(paper_live_transition.get("critical_ready")),
+            "paper_live_status": paper_live_status,
+            "paper_live_effective_status": paper_live_effective_status,
+            "paper_live_effective_detail": paper_live_effective_detail,
+            "paper_live_held_by_bracket_audit": paper_live_held_by_bracket_audit,
+            "paper_live_critical_ready": paper_live_critical_ready,
             "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
             "paper_live_launch_blocked_count": int(
                 paper_live_transition.get("operator_queue_launch_blocked_count") or 0
@@ -8262,11 +8278,19 @@ def _local_master_status_payload() -> dict[str, object]:
             "operator_queue_launch_blocked_count": launch_blocked,
         }
     )
+    paper_held_by_bracket_audit = broker_bracket_prop_dry_run_blocked and paper_ready and launch_blocked == 0
+    paper_live_effective_status = (
+        "held_by_bracket_audit"
+        if paper_held_by_bracket_audit
+        else str(paper.get("status") or "unknown")
+    )
     paper_card_status = (
-        "GREEN"
-        if paper_ready and launch_blocked == 0
-        else "RED"
+        "RED"
         if launch_blocked
+        else "YELLOW"
+        if paper_held_by_bracket_audit
+        else "GREEN"
+        if paper_ready
         else "YELLOW"
     )
     router_card_status = _router_card_status(router_status)
@@ -8371,9 +8395,11 @@ def _local_master_status_payload() -> dict[str, object]:
             },
             "paper_live": {
                 "status": paper_card_status,
-                "detail": str(paper.get("status") or "unknown"),
+                "detail": paper_live_effective_status,
                 "source": "paper_live_transition",
                 "critical_ready": paper_ready,
+                "effective_status": paper_live_effective_status,
+                "held_by_bracket_audit": paper_held_by_bracket_audit,
                 "operator_queue_blocked_count": blocked,
                 "operator_queue_launch_blocked_count": launch_blocked,
             },

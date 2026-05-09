@@ -1372,6 +1372,10 @@ class TestDashboardAPI:
             "Flatten unprotected paper exposure"
         )
         assert payload["systems"]["broker_bracket_audit"]["primary_symbol"] == "MNQM6"
+        assert payload["systems"]["paper_live"]["status"] == "YELLOW"
+        assert payload["systems"]["paper_live"]["detail"] == "held_by_bracket_audit"
+        assert payload["systems"]["paper_live"]["effective_status"] == "held_by_bracket_audit"
+        assert payload["systems"]["paper_live"]["held_by_bracket_audit"] is True
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
@@ -2391,8 +2395,24 @@ class TestDashboardAPI:
         assert summary["pnl_summary_source"] == "live_broker_state"
         assert "total_pnl" not in summary
 
-    def test_bot_fleet_embeds_paper_live_transition_summary(self, app_client, tmp_path):
+    def test_bot_fleet_embeds_paper_live_transition_summary(self, app_client, tmp_path, monkeypatch):
         """Bot-fleet consumers should see the same paper-live readiness as master status."""
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        mod._IBKR_PROBE_CACHE["snapshot"] = {"ready": True, "open_position_count": 0, "open_positions": []}
+        mod._IBKR_PROBE_CACHE["ts"] = time.time()
+        monkeypatch.setattr(
+            mod,
+            "_broker_bracket_audit_payload",
+            lambda **_: {
+                "summary": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": True,
+                "operator_action_required": False,
+                "position_summary": {},
+            },
+        )
         (tmp_path / "state" / "paper_live_transition_check.json").write_text(
             json.dumps(
                 {
@@ -2416,6 +2436,8 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
         assert payload["paper_live_transition"]["critical_ready"] is True
         assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_effective_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_held_by_bracket_audit"] is False
         assert payload["summary"]["paper_live_critical_ready"] is True
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
@@ -2577,7 +2599,6 @@ class TestDashboardAPI:
                 },
             },
         )
-
         r = app_client.get("/api/bot-fleet")
 
         assert r.status_code == 200
@@ -3475,7 +3496,6 @@ class TestDashboardAPI:
                 },
             },
         )
-
         r = app_client.get("/api/bot-fleet")
 
         assert r.status_code == 200
@@ -3553,6 +3573,17 @@ class TestDashboardAPI:
                 },
             },
         )
+        monkeypatch.setattr(
+            mod,
+            "_paper_live_transition_payload",
+            lambda *, refresh=False: {
+                "status": "ready_to_launch_paper_live",
+                "critical_ready": True,
+                "paper_ready_bots": 12,
+                "operator_queue_launch_blocked_count": 0,
+                "gates": [],
+            },
+        )
 
         r = app_client.get("/api/bot-fleet")
 
@@ -3585,6 +3616,11 @@ class TestDashboardAPI:
         assert payload["summary"]["broker_bracket_audit_ready"] is False
         assert payload["summary"]["broker_bracket_operator_action_required"] is True
         assert payload["summary"]["broker_bracket_prop_dry_run_blocked"] is True
+        assert payload["summary"]["paper_live_effective_status"] == "held_by_bracket_audit"
+        assert payload["summary"]["paper_live_held_by_bracket_audit"] is True
+        assert payload["summary"]["paper_live_effective_detail"] == (
+            "held by Bracket Audit: Verify broker OCO coverage or Flatten unprotected paper exposure"
+        )
         assert payload["summary"]["broker_bracket_missing_count"] == 1
         assert payload["summary"]["broker_bracket_unprotected_symbols"] == ["MNQM6"]
         assert payload["summary"]["broker_bracket_operator_action_count"] == 2
