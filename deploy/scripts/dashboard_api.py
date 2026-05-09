@@ -4355,6 +4355,10 @@ def bot_fleet_roster(
         else {}
     )
     broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
+    broker_bracket_prop_dry_run_blocked = (
+        bool(broker_bracket_audit.get("operator_action_required"))
+        and not bool(broker_bracket_audit.get("ready_for_prop_dry_run"))
+    )
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
@@ -4453,6 +4457,7 @@ def bot_fleet_roster(
             "broker_bracket_operator_action_required": bool(
                 broker_bracket_audit.get("operator_action_required"),
             ),
+            "broker_bracket_prop_dry_run_blocked": broker_bracket_prop_dry_run_blocked,
             "broker_bracket_missing_count": int(
                 broker_bracket_position_summary.get("missing_bracket_count") or 0
             ),
@@ -8168,6 +8173,41 @@ def _local_master_status_payload() -> dict[str, object]:
         broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE",
     )
     broker_bracket_audit_card_status = _broker_bracket_audit_card_status(broker_bracket_audit)
+    broker_bracket_position_summary = (
+        broker_bracket_audit.get("position_summary")
+        if isinstance(broker_bracket_audit.get("position_summary"), dict)
+        else {}
+    )
+    broker_bracket_primary = (
+        broker_bracket_audit.get("primary_unprotected_position")
+        if isinstance(broker_bracket_audit.get("primary_unprotected_position"), dict)
+        else {}
+    )
+    broker_bracket_actions = (
+        broker_bracket_audit.get("operator_actions")
+        if isinstance(broker_bracket_audit.get("operator_actions"), list)
+        else []
+    )
+    broker_bracket_action_labels = [
+        str(action.get("label") or "")
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("label")
+    ]
+    broker_bracket_order_actions = [
+        action
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("order_action") is True
+    ]
+    broker_bracket_primary_action = (
+        broker_bracket_actions[0]
+        if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict)
+        else {}
+    )
+    broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
+    broker_bracket_prop_dry_run_blocked = (
+        bool(broker_bracket_audit.get("operator_action_required"))
+        and not bool(broker_bracket_audit.get("ready_for_prop_dry_run"))
+    )
     vps_root_reconciliation = _vps_root_reconciliation_payload()
 
     def _gateway_card_status(status: str) -> str:
@@ -8311,17 +8351,23 @@ def _local_master_status_payload() -> dict[str, object]:
                 "operator_action_required": bool(
                     broker_bracket_audit.get("operator_action_required"),
                 ),
+                "prop_dry_run_blocked": broker_bracket_prop_dry_run_blocked,
                 "ready_for_prop_dry_run": bool(
                     broker_bracket_audit.get("ready_for_prop_dry_run"),
                 ),
                 "missing_bracket_count": int(
-                    (
-                        broker_bracket_audit.get("position_summary")
-                        if isinstance(broker_bracket_audit.get("position_summary"), dict)
-                        else {}
-                    ).get("missing_bracket_count")
-                    or 0
+                    broker_bracket_position_summary.get("missing_bracket_count") or 0
                 ),
+                "operator_action_count": len(broker_bracket_action_labels),
+                "operator_action_labels": broker_bracket_action_labels,
+                "order_action_count": len(broker_bracket_order_actions),
+                "primary_action_label": str(broker_bracket_primary_action.get("label") or ""),
+                "primary_action_detail": str(broker_bracket_primary_action.get("detail") or ""),
+                "order_action_label": str(broker_bracket_order_action.get("label") or ""),
+                "order_action_detail": str(broker_bracket_order_action.get("detail") or ""),
+                "primary_symbol": str(broker_bracket_primary.get("symbol") or ""),
+                "primary_venue": str(broker_bracket_primary.get("venue") or ""),
+                "primary_sec_type": str(broker_bracket_primary.get("sec_type") or ""),
             },
             "paper_live": {
                 "status": paper_card_status,

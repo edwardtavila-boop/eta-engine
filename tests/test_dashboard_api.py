@@ -1358,6 +1358,20 @@ class TestDashboardAPI:
         assert payload["systems"]["broker_bracket_audit"]["status"] == "YELLOW"
         assert payload["systems"]["broker_bracket_audit"]["raw_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["systems"]["broker_bracket_audit"]["operator_action_required"] is True
+        assert payload["systems"]["broker_bracket_audit"]["prop_dry_run_blocked"] is True
+        assert payload["systems"]["broker_bracket_audit"]["operator_action_count"] == 2
+        assert payload["systems"]["broker_bracket_audit"]["operator_action_labels"] == [
+            "Verify broker OCO coverage",
+            "Flatten unprotected paper exposure",
+        ]
+        assert payload["systems"]["broker_bracket_audit"]["order_action_count"] == 1
+        assert payload["systems"]["broker_bracket_audit"]["primary_action_label"] == (
+            "Verify broker OCO coverage"
+        )
+        assert payload["systems"]["broker_bracket_audit"]["order_action_label"] == (
+            "Flatten unprotected paper exposure"
+        )
+        assert payload["systems"]["broker_bracket_audit"]["primary_symbol"] == "MNQM6"
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
@@ -3570,6 +3584,7 @@ class TestDashboardAPI:
         assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["summary"]["broker_bracket_audit_ready"] is False
         assert payload["summary"]["broker_bracket_operator_action_required"] is True
+        assert payload["summary"]["broker_bracket_prop_dry_run_blocked"] is True
         assert payload["summary"]["broker_bracket_missing_count"] == 1
         assert payload["summary"]["broker_bracket_unprotected_symbols"] == ["MNQM6"]
         assert payload["summary"]["broker_bracket_operator_action_count"] == 2
