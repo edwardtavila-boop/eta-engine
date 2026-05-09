@@ -2011,6 +2011,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const bracketReady = Boolean(
     bracketAudit.ready_for_prop_dry_run ?? summary.broker_bracket_audit_ready
   );
+  const propDryRunBlocked = Boolean(
+    bracketAudit.prop_dry_run_blocked
+      ?? summary.broker_bracket_prop_dry_run_blocked
+      ?? (bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE')
+  );
   const missingOco = Number(
     bracketPosition.missing_bracket_count ?? bracketAudit.missing_bracket_count ?? 0
   ) || 0;
@@ -2057,18 +2062,19 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const actionChoiceText = actionChoices.length
       ? `operator choice: ${actionChoices.join(' or ')}`
       : '';
+    const conciseAuditAction = actionChoices.length && propDryRunBlocked ? '' : auditAction;
     const primaryText = primaryUnprotected.symbol
       ? `${primaryUnprotected.symbol} ${String(primaryUnprotected.venue || '').toUpperCase()} ${primaryUnprotected.sec_type || ''}`.trim()
       : '';
     const bracketSubParts = [
+      propDryRunBlocked ? 'prop dry-run blocked' : '',
       missingOco > 0 ? `${missingOco} missing broker OCO` : '',
       primaryText ? `${primaryText} unprotected` : '',
       unprotectedSymbolsText && !primaryText ? `${unprotectedSymbolsText} unprotected` : '',
       bracketRequired > 0 ? `${bracketRequired} bracket-required` : '',
       auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
-      bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : '',
       actionChoiceText,
-      auditAction
+      conciseAuditAction
     ].filter(Boolean);
     bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
     bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');

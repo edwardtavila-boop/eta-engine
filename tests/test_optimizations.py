@@ -437,6 +437,16 @@ class TestStatusPage:
         assert "Number(liveBroker.today_realized_pnl || 0)" not in html
         assert "Number(liveBroker.total_unrealized_pnl || 0)" not in html
 
+    def test_status_page_uses_explicit_bracket_blocker_truth(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "summary.broker_bracket_prop_dry_run_blocked" in html
+        assert "const propDryRunBlocked" in html
+        assert "propDryRunBlocked ? 'prop dry-run blocked' : ''" in html
+        assert "actionChoices.length && propDryRunBlocked ? '' : auditAction" in html
+        assert "bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : ''" not in html
+
     def test_status_page_surfaces_vps_root_reconciliation_card(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")
