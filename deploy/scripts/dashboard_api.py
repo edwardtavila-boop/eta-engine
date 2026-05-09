@@ -4224,6 +4224,16 @@ def bot_fleet_roster(
         broker_bracket_required_position_count=broker_bracket_required_position_count,
         server_ts=now_ts,
     )
+    position_staleness = (
+        target_exit_summary.get("position_staleness")
+        if isinstance(target_exit_summary.get("position_staleness"), dict)
+        else {}
+    )
+    oldest_stale_position = (
+        position_staleness.get("oldest_position")
+        if isinstance(position_staleness.get("oldest_position"), dict)
+        else {}
+    )
     if isinstance(live_broker_state, dict):
         live_broker_state["position_exposure"] = _position_exposure_payload(
             live_broker_state,
@@ -4356,7 +4366,16 @@ def bot_fleet_roster(
             "max_same_second": signal_cadence["max_same_second"],
             "target_exit_status": target_exit_summary["status"],
             "stale_position_status": target_exit_summary["stale_position_status"],
-            "force_flatten_due_count": target_exit_summary["position_staleness"]["force_flatten_due_count"],
+            "unknown_position_age_count": int(position_staleness.get("unknown_age_count") or 0),
+            "require_ack_count": int(position_staleness.get("require_ack_count") or 0),
+            "tighten_stop_due_count": int(position_staleness.get("tighten_stop_due_count") or 0),
+            "tightened_watch_count": int(position_staleness.get("tightened_watch_count") or 0),
+            "force_flatten_due_count": int(position_staleness.get("force_flatten_due_count") or 0),
+            "stale_position_oldest_bot": str(oldest_stale_position.get("bot") or ""),
+            "stale_position_oldest_symbol": str(oldest_stale_position.get("symbol") or ""),
+            "stale_position_oldest_age_s": oldest_stale_position.get("age_s"),
+            "stale_position_oldest_next_action": str(oldest_stale_position.get("next_action") or ""),
+            "stale_position_seconds_to_next_action": oldest_stale_position.get("seconds_to_next_action"),
             "open_position_count_visible": target_exit_summary["open_position_count"],
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
             "close_history_window": close_history_window["window"],

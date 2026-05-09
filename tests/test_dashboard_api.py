@@ -2739,6 +2739,80 @@ class TestDashboardAPI:
             "source_freshness",
         }
 
+    def test_bot_fleet_summary_exposes_stale_position_sla(self, app_client, monkeypatch):
+        """Top cards should distinguish tighten-stop warnings from force-flatten due."""
+        import json
+        import os
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        server_dt = datetime(2026, 4, 28, 12, 10, 0, tzinfo=UTC)
+        monkeypatch.setattr(mod.time, "time", lambda: server_dt.timestamp())
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {"ready": True, "open_positions": [], "open_position_count": 0},
+            },
+        )
+        state = Path(os.environ["ETA_STATE_DIR"])
+        sup_dir = state / "jarvis_intel" / "supervisor"
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        (sup_dir / "heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": server_dt.isoformat(),
+                    "mode": "paper_live",
+                    "bots": [
+                        {
+                            "bot_id": "btc_hybrid",
+                            "symbol": "BTC",
+                            "strategy_kind": "hybrid",
+                            "direction": "long",
+                            "n_entries": 1,
+                            "n_exits": 0,
+                            "realized_pnl": 0.0,
+                            "open_position": {
+                                "side": "BUY",
+                                "qty": 0.05,
+                                "entry_price": 67000.0,
+                                "entry_ts": "2026-04-28T11:00:00+00:00",
+                                "mark_price": 67350.0,
+                                "bracket_stop": 66200.0,
+                                "bracket_target": 68400.0,
+                                "broker_bracket": False,
+                                "bracket_src": "supervisor_local",
+                            },
+                            "last_bar_ts": server_dt.isoformat(),
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        summary = r.json()["summary"]
+        assert summary["stale_position_status"] == "tighten_stop_due"
+        assert summary["tighten_stop_due_count"] == 1
+        assert summary["force_flatten_due_count"] == 0
+        assert summary["require_ack_count"] == 0
+        assert summary["stale_position_oldest_bot"] == "btc_hybrid"
+        assert summary["stale_position_oldest_symbol"] == "BTC"
+        assert summary["stale_position_oldest_age_s"] == 4200
+        assert summary["stale_position_oldest_next_action"] == "tighten_stop_or_ack"
+        assert summary["stale_position_seconds_to_next_action"] == 3000
+
     def test_bot_fleet_keeps_bar_refreshes_out_of_signal_times(self, app_client):
         """Supervisor bar timestamps are freshness evidence, not trade signals."""
         import json
