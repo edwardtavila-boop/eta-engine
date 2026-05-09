@@ -4968,6 +4968,7 @@ def _closed_outcomes_from_trade_closes(
     closes: list[dict],
     *,
     since: datetime | None = None,
+    row_limit: int | None = 20,
 ) -> dict:
     """Derive realized W/L truth from the Jarvis trade-close ledger."""
     outcomes: list[dict[str, object]] = []
@@ -5000,8 +5001,51 @@ def _closed_outcomes_from_trade_closes(
         "losing_outcomes": losses,
         "win_rate": round(wins / evaluated, 4) if evaluated else None,
         "realized_pnl": round(realized_total, 2),
-        "recent_outcomes": outcomes[:20],
+        "recent_outcomes": outcomes[:row_limit] if row_limit is not None else outcomes,
     }
+
+
+def _close_history_windows(
+    closes: list[dict],
+    *,
+    now: datetime | None = None,
+) -> dict:
+    """Build operator-facing close-ledger windows for dashboard history controls."""
+    now = now or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+    year_start = today_start.replace(month=1, day=1)
+    windows = [
+        ("today", "Today", today_start, 120),
+        ("wtd", "WTD", week_start, 250),
+        ("mtd", "MTD", month_start, 500),
+        ("ytd", "YTD", year_start, 750),
+    ]
+    out: dict[str, object] = {
+        "source": "trade_close_ledger",
+        "default_window": "mtd",
+        "windows": {},
+    }
+    for key, label, since, row_limit in windows:
+        summary = _closed_outcomes_from_trade_closes(
+            closes,
+            since=since,
+            row_limit=row_limit,
+        )
+        summary.update(
+            {
+                "window": key,
+                "label": label,
+                "since": since.isoformat(),
+                "until": now.isoformat(),
+                "source": "trade_close_ledger",
+            },
+        )
+        out["windows"][key] = summary
+    return out
 
 
 def _broker_summary_fields(live_broker_state: dict) -> dict:
@@ -5242,6 +5286,7 @@ def _position_exposure_payload(
     live_broker_state: dict,
     *,
     recent_closes: list[dict] | None = None,
+    close_history: dict | None = None,
     target_exit_summary: dict | None = None,
 ) -> dict:
     """Read-only open-position and close-evidence rollup for the dashboard."""
@@ -5260,8 +5305,18 @@ def _position_exposure_payload(
         if normalized:
             open_positions.append(normalized)
 
+    if close_history is None:
+        close_history = _close_history_windows(_recent_trade_closes(limit=5000))
+    default_close_window = str(close_history.get("default_window") or "mtd")
+    close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    default_window_payload = (
+        close_windows.get(default_close_window)
+        if isinstance(close_windows.get(default_close_window), dict)
+        else {}
+    )
     if recent_closes is None:
-        recent_closes = _recent_trade_closes(limit=25)
+        default_window_rows = default_window_payload.get("recent_outcomes")
+        recent_closes = default_window_rows if isinstance(default_window_rows, list) else _recent_trade_closes(limit=25)
     normalized_closes: list[dict] = []
     for row in recent_closes:
         normalized = _normalize_trade_close(row)
@@ -5302,6 +5357,8 @@ def _position_exposure_payload(
         "open_positions": open_positions,
         "recent_closes": normalized_closes,
         "recent_close_count": len(normalized_closes),
+        "close_history": close_history,
+        "default_close_history_window": default_close_window,
         "target_exit_summary": target_exit_summary,
         "target_exit_visibility": {
             "status": target_status,
@@ -6112,7 +6169,8 @@ def _live_broker_state_payload() -> dict:
     win_rate_today = _float_value(alpaca.get("today_win_rate"))
     closed_outcome_count_today = int(alpaca.get("today_closed_outcome_count") or 0)
     evaluated_outcome_count_today = int(alpaca.get("today_evaluated_outcome_count") or 0)
-    recent_trade_closes = _recent_trade_closes(limit=200)
+    recent_trade_closes = _recent_trade_closes(limit=5000)
+    close_history = _close_history_windows(recent_trade_closes, now=datetime.now(UTC))
     close_outcomes_today = _closed_outcomes_from_trade_closes(
         recent_trade_closes,
         since=today_start_utc,
@@ -6170,12 +6228,13 @@ def _live_broker_state_payload() -> dict:
         "recent_close_count_30d": int(close_outcomes_30d.get("closed_outcome_count") or 0),
         "recent_close_evaluated_count_30d": int(close_outcomes_30d.get("evaluated_outcome_count") or 0),
         "recent_close_realized_pnl_30d": _float_value(close_outcomes_30d.get("realized_pnl")),
+        "close_history": close_history,
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,
         "source": "live_broker_rest",
     }
-    payload["position_exposure"] = _position_exposure_payload(payload)
+    payload["position_exposure"] = _position_exposure_payload(payload, close_history=close_history)
     return payload
 
 

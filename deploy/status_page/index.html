@@ -37,6 +37,10 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .controls button{padding:.5rem 1rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.75rem;cursor:pointer;transition:all .2s}
 .controls button:hover{border-color:var(--accent);color:#fff}
 .controls button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.range-controls{display:flex;gap:.35rem;flex-wrap:wrap;margin:.55rem 0 .4rem}
+.range-controls button{border:1px solid rgba(255,255,255,.10);border-radius:999px;background:rgba(255,255,255,.045);color:var(--dim);padding:.28rem .58rem;font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+.range-controls button.active,.range-controls button:hover{background:rgba(230,184,92,.16);border-color:rgba(230,184,92,.55);color:#fff4d6}
+.history-subline{font-size:.7rem;color:var(--dim);min-height:1rem}
 .status-bar{display:flex;gap:1.5rem;align-items:center;font-size:.75rem;padding:.75rem 2rem;color:var(--dim);flex-wrap:wrap}
 .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:.5rem}
 .status-dot.live{background:var(--green);animation:pulse 1.5s infinite}
@@ -290,7 +294,17 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
   <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
-  <div class="card"><h3>PnL History</h3><div class="stat dim" id="pnlHistoryLabel">7-day curve</div><div class="chart-card"><canvas id="pnlChart"></canvas></div></div>
+  <div class="card">
+    <h3>PnL History</h3>
+    <div class="range-controls" id="pnlWindowControls">
+      <button type="button" data-close-window="wtd">WTD</button>
+      <button type="button" data-close-window="mtd" class="active">MTD</button>
+      <button type="button" data-close-window="ytd">YTD</button>
+    </div>
+    <div class="stat dim" id="pnlHistoryLabel">MTD close history</div>
+    <div class="history-subline" id="pnlHistorySub">waiting for close ledger</div>
+    <div class="chart-card"><canvas id="pnlChart"></canvas></div>
+  </div>
 </div>
 
 <details class="collapsible-section vps-root-detail-wrap" id="vpsRootDetailsWrap">
@@ -423,6 +437,8 @@ const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
 let hasRendered = false;
 let loadInFlight = false;
+let selectedCloseHistoryWindow = 'mtd';
+let lastRenderArgs = null;
 
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, ch => ({
@@ -664,7 +680,40 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
     : {value: null, label: 'Lifetime PnL', isLifetime: false, source: fleetEvidence.source || 'waiting for lifetime ledger'};
 }
 
-function closeEvidenceSummary(liveBroker, portfolioSummary) {
+function closeHistoryWindowPayload(liveBroker, windowKey) {
+  const history = liveBroker?.position_exposure?.close_history || liveBroker?.close_history || {};
+  const windows = history?.windows && typeof history.windows === 'object' ? history.windows : {};
+  const preferred = windows[windowKey] ? windowKey : (history.default_window || 'mtd');
+  const fallback = windows[preferred] ? preferred : Object.keys(windows)[0];
+  return fallback ? {key: fallback, payload: windows[fallback], windows} : {key: windowKey, payload: null, windows};
+}
+
+function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selectedCloseHistoryWindow) {
+  const windowed = closeHistoryWindowPayload(liveBroker, windowKey);
+  if (windowed.payload) {
+    const payload = windowed.payload;
+    const rows = Array.isArray(payload.recent_outcomes) ? payload.recent_outcomes : [];
+    const winRate = finiteNumber(payload.win_rate);
+    return {
+      rows,
+      count: Number(payload.closed_outcome_count ?? rows.length),
+      evaluated: Number(payload.evaluated_outcome_count ?? 0),
+      wins: Number(payload.winning_outcomes ?? 0),
+      losses: Number(payload.losing_outcomes ?? 0),
+      winRatePct: winRate == null ? null : winRate * 100,
+      realizedPnl: finiteNumber(payload.realized_pnl),
+      realizedR: rows
+        .map(row => finiteNumber(row?.realized_r ?? row?.r_multiple ?? row?.r))
+        .filter(value => value != null)
+        .reduce((sum, value) => sum + value, 0),
+      source: `${payload.label || windowed.key.toUpperCase()} close ledger`,
+      window: windowed.key,
+      label: payload.label || windowed.key.toUpperCase(),
+      since: payload.since,
+      until: payload.until,
+      windows: windowed.windows
+    };
+  }
   const exposureCloses = Array.isArray(liveBroker?.position_exposure?.recent_closes)
     ? liveBroker.position_exposure.recent_closes
     : [];
@@ -700,6 +749,8 @@ function closeEvidenceSummary(liveBroker, portfolioSummary) {
     winRatePct: evaluated ? (wins / evaluated) * 100 : null,
     realizedPnl,
     realizedR: rValues.length ? rValues.reduce((sum, value) => sum + value, 0) : null,
+    window: 'recent',
+    label: 'Recent',
     source: exposureCloses.length ? 'recent close evidence' : contributorCloses.length ? 'portfolio contributor close evidence' : 'close history unavailable'
   };
 }
@@ -712,17 +763,58 @@ function winRateSourceText(source, windowLabel) {
   return `${windowLabel} closed-trade outcomes`;
 }
 
+function rerenderLastData() {
+  if (!lastRenderArgs) return;
+  render(
+    lastRenderArgs.d,
+    lastRenderArgs.strategyResults,
+    lastRenderArgs.operatorQueue,
+    lastRenderArgs.paperLive,
+    lastRenderArgs.diagnostics,
+    lastRenderArgs.vpsRoot,
+    lastRenderArgs.fleetEquity,
+    lastRenderArgs.dataSource
+  );
+}
+
+function setCloseHistoryWindow(windowKey) {
+  selectedCloseHistoryWindow = windowKey || 'mtd';
+  rerenderLastData();
+}
+
+function renderPnlWindowControls(closeHistory) {
+  const controls = document.getElementById('pnlWindowControls');
+  if (!controls) return;
+  const windows = closeHistory?.windows || {};
+  const ordered = [
+    ['wtd', 'WTD'],
+    ['mtd', 'MTD'],
+    ['ytd', 'YTD']
+  ];
+  controls.innerHTML = ordered.map(([key, label]) => {
+    const payload = windows[key] || {};
+    const count = Number(payload.closed_outcome_count ?? 0);
+    const active = closeHistory?.window === key ? ' active' : '';
+    const title = `${label}: ${count} close${count === 1 ? '' : 's'}`;
+    return `<button type="button" class="${active.trim()}" data-close-window="${key}" title="${esc(title)}">${label}</button>`;
+  }).join('');
+  for (const button of controls.querySelectorAll('button[data-close-window]')) {
+    button.addEventListener('click', () => setCloseHistoryWindow(button.dataset.closeWindow));
+  }
+}
+
 function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory) {
   const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity);
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
   if (closeHistory?.realizedPnl != null) {
-    const closeText = `${closeHistory.count} recent close${closeHistory.count === 1 ? '' : 's'}`;
+    const label = closeHistory.label || 'Close';
+    const closeText = `${closeHistory.count} ${label} close${closeHistory.count === 1 ? '' : 's'}`;
     const winText = closeHistory.winRatePct == null
       ? ''
       : `; ${closeHistory.winRatePct.toFixed(1)}% WR`;
     return {
       value: closeHistory.realizedPnl,
-      label: 'Closed PnL History',
+      label: `${label} Close History`,
       isLifetime: false,
       source: `${closeText}${winText}; lifetime ledger pending`
     };
@@ -866,13 +958,13 @@ function buildSupervisorPositions(bots) {
     .filter(Boolean);
 }
 
-function renderRecentCloses(closes) {
+function renderRecentCloses(closes, label = 'recent') {
   const rows = Array.isArray(closes) ? closes.slice(0, 6) : [];
   if (!rows.length) {
     return '<div class="empty-panel">No recent close evidence in the Jarvis trade-close ledger yet.</div>';
   }
   return `<div class="mt-3">
-    <div class="text-xs text-zinc-500 mb-1">recent close evidence</div>
+    <div class="text-xs text-zinc-500 mb-1">${esc(label)} close evidence</div>
     <div class="router-tape">${rows.map((c) => {
       const realized = finiteNumber(c.realized_pnl);
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
@@ -896,7 +988,7 @@ function renderRecentCloses(closes) {
   </div>`;
 }
 
-function renderOpsTruthSections(d, liveBroker, brokerRouter) {
+function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const exposure = liveBroker?.position_exposure || {};
   const target_exit_visibility = exposure.target_exit_visibility || {};
   const brokerPositions = buildBrokerPositions(liveBroker);
@@ -921,7 +1013,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
     `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
-    `<span class="truth-chip"><strong>${Number(exposure.recent_close_count || 0)}</strong> recent closes</span>`,
+    `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> ${esc(closeHistory?.label || 'recent')} closes</span>`,
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].join('');
 
@@ -950,7 +1042,10 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter) {
       </div>`;
     }).join('');
   }
-  positionsPanel.innerHTML = positionsHtml + renderRecentCloses(exposure.recent_closes);
+  positionsPanel.innerHTML = positionsHtml + renderRecentCloses(
+    closeHistory?.rows || exposure.recent_closes,
+    closeHistory?.label || 'recent'
+  );
 
   const counts = brokerRouter?.counts || {};
   const resultCounts = brokerRouter?.result_status_counts || {};
@@ -1548,6 +1643,7 @@ function renderVpsRootDetails(vpsRoot) {
 }
 
 function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource) {
+  lastRenderArgs = {d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, dataSource};
   const allBots = Array.isArray(d.bots) ? d.bots : [];
   const bots = allBots.filter(isDisplayableBot);
   const summary = d.summary || {};
@@ -1586,7 +1682,15 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
-  const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary);
+  const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow);
+  if (!availableCloseWindows.payload && liveBroker?.position_exposure?.close_history?.default_window) {
+    selectedCloseHistoryWindow = liveBroker.position_exposure.close_history.default_window;
+  }
+  const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary, selectedCloseHistoryWindow);
+  if (closeHistory.window && closeHistory.window !== selectedCloseHistoryWindow) {
+    selectedCloseHistoryWindow = closeHistory.window;
+  }
+  renderPnlWindowControls(closeHistory);
   const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory);
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
@@ -1852,7 +1956,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
           : (results || failed)
             ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
             : 'waiting for orders';
-  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter);
+  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, closeHistory);
 
   const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
   const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
@@ -2084,8 +2188,14 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     pnlHistoryLabel.textContent = lifetimeEvidence?.isLifetime
       ? 'lifetime curve'
       : closeHistory.realizedPnl != null
-        ? `${closeHistory.count} close history`
+        ? `${closeHistory.label || 'Close'} close history`
         : '7-day curve';
+  }
+  const pnlHistorySub = document.getElementById('pnlHistorySub');
+  if (pnlHistorySub) {
+    pnlHistorySub.textContent = closeHistory.realizedPnl != null
+      ? `${formatMoney(closeHistory.realizedPnl, 2)} realized; ${closeHistory.count} closes; ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
+      : (lifetimeEvidence?.source || 'waiting for close ledger');
   }
 
   // PnL chart — will draw once data flows
@@ -2174,7 +2284,11 @@ function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, clo
   ctx.fillStyle = '#6e7681';
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
-  const historyLabel = lifetimeEvidence?.isLifetime ? 'Lifetime' : totalPnl == null ? 'History' : 'Closed history';
+  const historyLabel = lifetimeEvidence?.isLifetime
+    ? 'Lifetime'
+    : totalPnl == null
+      ? 'History'
+      : (lifetimeEvidence?.label || 'Closed history');
   const historyText = totalPnl == null
     ? historyLabel + ': n/a'
     : historyLabel + ': $' + totalPnl.toFixed(0);

@@ -3090,9 +3090,48 @@ class TestDashboardAPI:
         assert live["closed_outcome_count_today"] == 3
         assert live["recent_close_count_30d"] == 3
         assert live["recent_close_realized_pnl_30d"] == 211.0
+        assert live["close_history"]["default_window"] == "mtd"
+        assert live["close_history"]["windows"]["mtd"]["realized_pnl"] == 211.0
+        assert live["position_exposure"]["default_close_history_window"] == "mtd"
+        assert live["position_exposure"]["close_history"]["windows"]["mtd"]["closed_outcome_count"] == 3
         assert summary["broker_win_rate_30d"] == 0.6667
         assert summary["broker_win_rate_30d_source"] == "trade_close_ledger_30d"
         assert summary["broker_recent_close_realized_pnl_30d"] == 211.0
+
+    def test_position_exposure_defaults_recent_closes_to_mtd_window(self, monkeypatch):
+        from datetime import UTC, datetime, timedelta
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        now = datetime.now(UTC)
+        current_month = now.isoformat()
+        previous_month = (now.replace(day=1) - timedelta(days=1)).isoformat()
+        rows = [
+            {
+                "ts": current_month,
+                "bot_id": "mnq_futures_sage",
+                "extra": {"symbol": "MNQ1", "realized_pnl": 166.0},
+            },
+            {
+                "ts": previous_month,
+                "bot_id": "old_bot",
+                "extra": {"symbol": "BTC", "realized_pnl": 999.0},
+            },
+        ]
+        monkeypatch.setattr(mod, "_recent_trade_closes", lambda limit=25: rows)
+
+        exposure = mod._position_exposure_payload(
+            {
+                "alpaca": {"ready": True, "open_positions": []},
+                "ibkr": {"ready": True, "open_positions": []},
+            },
+        )
+
+        assert exposure["default_close_history_window"] == "mtd"
+        assert exposure["close_history"]["windows"]["mtd"]["realized_pnl"] == 166.0
+        assert exposure["close_history"]["windows"]["ytd"]["realized_pnl"] >= 166.0
+        assert exposure["recent_close_count"] == 1
+        assert exposure["recent_closes"][0]["bot_id"] == "mnq_futures_sage"
 
     def test_position_exposure_normalizes_broker_positions_and_recent_closes(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
