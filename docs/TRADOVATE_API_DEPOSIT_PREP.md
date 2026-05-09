@@ -29,6 +29,8 @@ Run the no-order readiness check:
 cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit
 python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.closed_trade_ledger
+python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate
 ```
 
@@ -117,6 +119,8 @@ cd C:\EvolutionaryTradingAlgo
 $env:ETA_TRADOVATE_ENABLED = "1"
 python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover
 python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.closed_trade_ledger
+python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate
 ```
 

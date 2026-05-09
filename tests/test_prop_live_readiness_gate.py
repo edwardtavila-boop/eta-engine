@@ -67,6 +67,7 @@ def test_prop_live_gate_ready_when_every_surface_is_green() -> None:
 
 def test_prop_live_gate_blocks_dirty_router_and_missing_ledger() -> None:
     payloads = _ready_payloads()
+    payloads["fleet"]["broker_router"]["active_blocker_count"] = 1
     payloads["fleet"]["broker_router"]["failed_count"] = 37
     payloads["fleet"]["broker_router"]["quarantine_count"] = 15
     payloads["ledger"] = {}
@@ -77,6 +78,18 @@ def test_prop_live_gate_blocks_dirty_router_and_missing_ledger() -> None:
     assert gate.exit_code(report) == 1
     assert any(check["name"] == "router_cleanliness" and check["status"] == "BLOCKED" for check in report["checks"])
     assert any(check["name"] == "closed_trade_ledger" and check["status"] == "BLOCKED" for check in report["checks"])
+
+
+def test_prop_live_gate_allows_historical_router_residue_when_active_clean() -> None:
+    payloads = _ready_payloads()
+    payloads["fleet"]["broker_router"]["failed_count"] = 37
+    payloads["fleet"]["broker_router"]["quarantine_count"] = 15
+    payloads["fleet"]["broker_router"]["result_status_counts"]["REJECTED"] = 8
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    assert any(check["name"] == "router_cleanliness" and check["status"] == "PASS" for check in report["checks"])
 
 
 def test_prop_live_gate_blocks_runner_or_unbracketed_live_path() -> None:

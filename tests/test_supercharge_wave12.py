@@ -270,6 +270,13 @@ def test_close_trade_appends_to_trade_log(tmp_path: Path) -> None:
     assert "s3" in log_path.read_text(encoding="utf-8")
 
 
+def test_close_trade_default_path_is_canonical() -> None:
+    from eta_engine.brain.jarvis_v3 import feedback_loop
+    from eta_engine.scripts import workspace_roots
+
+    assert feedback_loop.DEFAULT_TRADE_LOG == workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
+
+
 def test_replay_trade_closes_into_memory(tmp_path: Path) -> None:
     import json
 

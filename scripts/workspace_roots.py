@@ -55,6 +55,8 @@ ETA_JARVIS_SUPERVISOR_HEARTBEAT_ERRORS_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / 
 ETA_JARVIS_SUPERVISOR_RECONCILE_PATH = ETA_JARVIS_SUPERVISOR_STATE_DIR / "reconcile_last.json"
 ETA_ORDER_ENTRY_HOLD_PATH = ETA_RUNTIME_STATE_DIR / "order_entry_hold.json"
 ETA_JARVIS_TRADE_CLOSES_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "trade_closes.jsonl"
+ETA_CLOSED_TRADE_LEDGER_PATH = ETA_RUNTIME_STATE_DIR / "closed_trade_ledger_latest.json"
+ETA_BROKER_BRACKET_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_audit_latest.json"
 ETA_DRIFT_WATCHDOG_LOG_PATH = ETA_RUNTIME_STATE_DIR / "drift_watchdog.jsonl"
 ETA_JARVIS_DRIFT_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_drift.jsonl"
 ETA_SHARED_BREAKER_STATE_PATH = ETA_RUNTIME_STATE_DIR / "breaker.json"
@@ -87,6 +89,9 @@ ETA_LEGACY_FM_HEALTH_SNAPSHOT_PATH = ETA_ENGINE_ROOT / "state" / "fm_health.json
 ETA_JARVIS_VERDICTS_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "verdicts.jsonl"
 ETA_LEGACY_JARVIS_VERDICTS_PATH = (
     ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "verdicts.jsonl"
+)
+ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH = (
+    ETA_ENGINE_ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
 )
 # Eval results: promptfoo writes a single JSON aggregate per run.
 ETA_EVAL_PROMPTFOO_RESULTS_PATH = (

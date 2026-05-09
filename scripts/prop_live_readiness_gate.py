@@ -27,7 +27,7 @@ from eta_engine.scripts.futures_prop_ladder import PRIMARY_BOT  # noqa: E402
 DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "prop_live_readiness_latest.json"
 DEFAULT_LADDER_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "futures_prop_ladder_latest.json"
 DEFAULT_PROP_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tradovate_prop_readiness.json"
-DEFAULT_LEDGER_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "closed_trade_ledger_latest.json"
+DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_MASTER_URL = "https://ops.evolutionarytradingalgo.com/api/master/status"
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
 
@@ -145,20 +145,30 @@ def _router_cleanliness_check(fleet: dict[str, Any]) -> dict[str, Any]:
     router = _as_dict(fleet.get("broker_router"))
     result_counts = _as_dict(router.get("result_status_counts"))
     active_blockers = _as_int(router.get("active_blocker_count"))
+    pending = _as_int(router.get("pending_count"))
+    processing = _as_int(router.get("processing_count"))
     failed = _as_int(router.get("failed_count"))
     quarantine = _as_int(router.get("quarantine_count"))
     rejected = _as_int(result_counts.get("REJECTED"))
-    if active_blockers == 0 and failed == 0 and quarantine == 0 and rejected == 0:
+    if active_blockers == 0 and pending == 0 and processing == 0:
         return _check(
             "router_cleanliness",
             "PASS",
-            "router has no active, failed, quarantined, or rejected order residue",
+            "router has no active blockers, pending orders, or processing orders",
+            active_blocker_count=active_blockers,
+            pending_count=pending,
+            processing_count=processing,
+            historical_failed_count=failed,
+            historical_quarantine_count=quarantine,
+            historical_rejected_count=rejected,
         )
     return _check(
         "router_cleanliness",
         "BLOCKED",
-        "router is not clean enough for prop dry-run",
+        "router has active work or blockers and is not clean enough for prop dry-run",
         active_blocker_count=active_blockers,
+        pending_count=pending,
+        processing_count=processing,
         failed_count=failed,
         quarantine_count=quarantine,
         rejected_count=rejected,
@@ -335,6 +345,15 @@ def _build_current_ladder(prop: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
+def _build_current_ledger() -> dict[str, Any]:
+    try:
+        from eta_engine.scripts.closed_trade_ledger import build_ledger_report  # noqa: PLC0415
+
+        return build_ledger_report()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def load_gate_inputs(
     *,
     prop_account: str = "blusky_50k",
@@ -346,12 +365,13 @@ def load_gate_inputs(
 ) -> dict[str, dict[str, Any]]:
     prop = _build_current_prop(prop_account) or _as_dict(_load_json(prop_path))
     ladder = _build_current_ladder(prop) or _as_dict(_load_json(ladder_path))
+    ledger = _build_current_ledger() or _as_dict(_load_json(ledger_path))
     return {
         "ladder": ladder,
         "prop": prop,
         "master": _as_dict(_fetch_json(master_url)),
         "fleet": _as_dict(_fetch_json(fleet_url)),
-        "ledger": _as_dict(_load_json(ledger_path)),
+        "ledger": ledger,
     }
 
 

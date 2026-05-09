@@ -59,6 +59,12 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
     )
+    assert workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "closed_trade_ledger_latest.json"
+    )
+    assert workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "broker_bracket_audit_latest.json"
+    )
     assert workspace_roots.ETA_DRIFT_WATCHDOG_LOG_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "drift_watchdog.jsonl"
     )
@@ -117,6 +123,9 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     )
     assert workspace_roots.ETA_LEGACY_JARVIS_VERDICTS_PATH == (
         ROOT / "eta_engine" / "state" / "jarvis_intel" / "verdicts.jsonl"
+    )
+    assert workspace_roots.ETA_LEGACY_JARVIS_TRADE_CLOSES_PATH == (
+        ROOT / "eta_engine" / "state" / "jarvis_intel" / "trade_closes.jsonl"
     )
     assert workspace_roots.ETA_EVAL_PROMPTFOO_RESULTS_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "eval" / "promptfoo_results.json"

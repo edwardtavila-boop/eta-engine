@@ -79,6 +79,8 @@ The prop-live gate is the hard latch:
 
 ```powershell
 cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.closed_trade_ledger
+python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate --json
 ```
 
@@ -166,6 +168,10 @@ Phase 4: Live watched cutover.
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit`.
 - Keep the futures ladder current:
   `python -m eta_engine.scripts.futures_prop_ladder`.
+- Keep the closed-trade ledger current:
+  `python -m eta_engine.scripts.closed_trade_ledger`.
+- Keep broker-native bracket/OCO proof current:
+  `python -m eta_engine.scripts.broker_bracket_audit`.
 - Treat the consolidated gate as the final go/no-go:
   `python -m eta_engine.scripts.prop_live_readiness_gate`.
 - After funding/API activation, require:

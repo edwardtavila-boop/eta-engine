@@ -44,18 +44,20 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from eta_engine.scripts import workspace_roots
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from eta_engine.brain.jarvis_v3.filter_bandit import FilterBandit
     from eta_engine.brain.jarvis_v3.memory_hierarchy import HierarchicalMemory
     from eta_engine.brain.jarvis_v3.meta_learner_full import MetaLearnerFull
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TRADE_LOG = ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl"
+DEFAULT_TRADE_LOG = workspace_roots.ETA_JARVIS_TRADE_CLOSES_PATH
 
 
 @dataclass
