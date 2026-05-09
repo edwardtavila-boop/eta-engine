@@ -2966,6 +2966,59 @@ class TestDashboardAPI:
         assert live_broker["today_actual_fills"] == 12
         assert live_broker["open_position_count"] == 3
 
+    def test_bot_fleet_exposes_close_history_windows_top_level(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        close_history = {
+            "source": "trade_close_ledger",
+            "default_window": "mtd",
+            "windows": {
+                "wtd": {
+                    "label": "WTD",
+                    "realized_pnl": 30123.45,
+                    "closed_outcome_count": 280,
+                    "evaluated_outcome_count": 278,
+                    "win_rate": 0.5216,
+                    "since": "2026-05-04T00:00:00+00:00",
+                    "until": "2026-05-09T03:00:00+00:00",
+                    "source": "trade_close_ledger",
+                },
+                "mtd": {
+                    "label": "MTD",
+                    "realized_pnl": 32579.18,
+                    "closed_outcome_count": 320,
+                    "evaluated_outcome_count": 318,
+                    "win_rate": 0.5181,
+                    "since": "2026-05-01T00:00:00+00:00",
+                    "until": "2026-05-09T03:00:00+00:00",
+                    "source": "trade_close_ledger",
+                },
+            },
+        }
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 41.3,
+                "total_unrealized_pnl": -40.13,
+                "open_position_count": 0,
+                "close_history": close_history,
+                "server_ts": 1778119427.0,
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["default_close_history_window"] == "mtd"
+        assert payload["close_history"]["windows"]["mtd"]["realized_pnl"] == 32579.18
+        assert payload["history_window_pnl"]["wtd"]["pnl"] == 30123.45
+        assert payload["history_window_pnl"]["mtd"]["closed_outcome_count"] == 320
+        assert payload["history_window_pnl"]["mtd"]["win_rate"] == 0.5181
+
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

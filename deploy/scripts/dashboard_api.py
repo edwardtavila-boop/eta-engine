@@ -4026,6 +4026,32 @@ def bot_fleet_roster(
             live_broker_state,
             target_exit_summary=target_exit_summary,
         )
+    close_history = (
+        live_broker_state.get("close_history")
+        if isinstance(live_broker_state.get("close_history"), dict)
+        else {}
+    )
+    close_windows = (
+        close_history.get("windows")
+        if isinstance(close_history.get("windows"), dict)
+        else {}
+    )
+    default_close_history_window = str(close_history.get("default_window") or "mtd")
+    history_window_pnl = {}
+    for window_key in ("today", "wtd", "mtd", "ytd"):
+        window = close_windows.get(window_key)
+        if not isinstance(window, dict):
+            continue
+        history_window_pnl[window_key] = {
+            "label": window.get("label") or window_key.upper(),
+            "pnl": _float_value(window.get("realized_pnl")),
+            "closed_outcome_count": int(window.get("closed_outcome_count") or 0),
+            "evaluated_outcome_count": int(window.get("evaluated_outcome_count") or 0),
+            "win_rate": _float_value(window.get("win_rate")),
+            "since": window.get("since"),
+            "until": window.get("until"),
+            "source": window.get("source") or close_history.get("source") or "trade_close_ledger",
+        }
     broker_summary = _broker_summary_fields(live_broker_state)
     portfolio_summary = _portfolio_summary_payload(
         rows,
@@ -4070,6 +4096,9 @@ def bot_fleet_roster(
             **broker_summary,
         },
         "portfolio_summary": portfolio_summary,
+        "close_history": close_history,
+        "default_close_history_window": default_close_history_window,
+        "history_window_pnl": history_window_pnl,
         "latest_signal_ts":  signal_cadence["latest_signal_ts"],
         "signal_cadence":    signal_cadence,
         "target_exit_summary": target_exit_summary,
