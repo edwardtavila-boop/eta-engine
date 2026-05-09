@@ -3657,6 +3657,7 @@ class TestDashboardAPI:
                             "symbol": "MNQM6",
                             "secType": "FUT",
                             "position": 3,
+                            "avg_cost": 29340.0,
                             "market_price": 29335.0,
                             "market_value": 176010.0,
                             "unrealized_pnl": -33.79,
@@ -3692,7 +3693,12 @@ class TestDashboardAPI:
         assert audit["primary_unprotected_position"]["symbol"] == "MNQM6"
         assert audit["primary_unprotected_position"]["venue"] == "ibkr"
         assert audit["primary_unprotected_position"]["sec_type"] == "FUT"
+        assert audit["primary_unprotected_position"]["avg_entry_price"] == 29340.0
+        assert audit["primary_unprotected_position"]["current_price"] == 29335.0
+        assert audit["primary_unprotected_position"]["unrealized_pct"] is None
         assert audit["unprotected_positions"][0]["broker_bracket_required"] is True
+        assert audit["unprotected_positions"][0]["avg_entry_price"] == 29340.0
+        assert audit["unprotected_positions"][0]["current_price"] == 29335.0
         assert audit["operator_action_required"] is True
         assert audit["operator_action"] == audit["next_action"]
         assert [action["id"] for action in audit["operator_actions"]] == [

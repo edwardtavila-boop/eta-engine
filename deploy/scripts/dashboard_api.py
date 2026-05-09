@@ -6002,8 +6002,13 @@ def _audit_open_position_payload(position: dict) -> dict:
         "qty": _float_value(position.get("qty")),
         "sec_type": position.get("sec_type") or position.get("secType"),
         "exchange": position.get("exchange"),
+        "avg_entry_price": _float_value(position.get("avg_entry_price")),
+        "current_price": _float_value(
+            position.get("current_price") or position.get("market_price")
+        ),
         "market_value": _float_value(position.get("market_value")),
         "unrealized_pnl": _float_value(position.get("unrealized_pnl")),
+        "unrealized_pct": _float_value(position.get("unrealized_pct")),
         "broker_bracket_required": bool(position.get("broker_bracket_required")),
         "coverage_status": "requires_manual_oco_verification",
     }
