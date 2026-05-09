@@ -4300,6 +4300,7 @@ def bot_fleet_roster(
         target_exit_summary=target_exit_summary,
         live_broker_state=live_broker_state,
     )
+    paper_live_transition = _paper_live_transition_payload(refresh=False)
     ibkr_gateway = (
         broker_gateway.get("ibkr")
         if isinstance(broker_gateway.get("ibkr"), dict)
@@ -4348,6 +4349,13 @@ def bot_fleet_roster(
             "broker_bracket_operator_action_required": bool(
                 broker_bracket_audit.get("operator_action_required"),
             ),
+            "paper_live_status": str(paper_live_transition.get("status") or "unknown"),
+            "paper_live_critical_ready": bool(paper_live_transition.get("critical_ready")),
+            "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
+            "paper_live_launch_blocked_count": int(
+                paper_live_transition.get("operator_queue_launch_blocked_count") or 0
+            ),
+            "paper_live_source_age_s": paper_live_transition.get("source_age_s"),
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
@@ -4372,6 +4380,7 @@ def bot_fleet_roster(
         "broker_gateway":    broker_gateway,
         "broker_router":     _broker_router_snapshot(),
         "broker_bracket_audit": broker_bracket_audit,
+        "paper_live_transition": paper_live_transition,
         "window_since_days": since_days,
         **truth,
     }

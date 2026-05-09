@@ -2377,6 +2377,35 @@ class TestDashboardAPI:
         assert summary["pnl_summary_source"] == "live_broker_state"
         assert "total_pnl" not in summary
 
+    def test_bot_fleet_embeds_paper_live_transition_summary(self, app_client, tmp_path):
+        """Bot-fleet consumers should see the same paper-live readiness as master status."""
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-09T08:00:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 12,
+                    "operator_queue_launch_blocked_count": 0,
+                    "operator_queue_first_launch_blocker_op_id": "",
+                    "operator_queue_first_launch_next_action": "",
+                    "gates": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["paper_live_transition"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live_transition"]["critical_ready"] is True
+        assert payload["summary"]["paper_live_status"] == "ready_to_launch_paper_live"
+        assert payload["summary"]["paper_live_critical_ready"] is True
+        assert payload["summary"]["paper_live_ready_bots"] == 12
+        assert payload["summary"]["paper_live_launch_blocked_count"] == 0
+
     def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
         self,
         app_client,
