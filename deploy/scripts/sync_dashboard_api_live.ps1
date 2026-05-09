@@ -112,11 +112,42 @@ finally {
     Pop-Location
 }
 
+if (-not $SkipGitPull) {
+    Invoke-Git -WorkingDirectory $EngineDir -Arguments @("fetch", "origin", $Branch)
+}
+
 Push-Location -LiteralPath $EngineDir
 try {
-    $enginePorcelain = (& git status --porcelain 2>$null)
-    if ($enginePorcelain) {
-        throw "eta_engine checkout is dirty; refusing to pull over local work."
+    $engineTrackedDirty = @(& git status --porcelain --untracked-files=no 2>$null)
+    if ($engineTrackedDirty.Count -gt 0) {
+        throw "eta_engine checkout has tracked local changes; refusing to pull over local work."
+    }
+    $engineUntracked = @(& git ls-files --others --exclude-standard 2>$null)
+    if (-not $SkipGitPull -and $engineUntracked.Count -gt 0) {
+        $incomingChanged = @(& git diff --name-only HEAD.."origin/$Branch" 2>$null)
+        $incomingSet = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        foreach ($path in $incomingChanged) {
+            $trimmed = "$path".Trim()
+            if ($trimmed) {
+                [void]$incomingSet.Add($trimmed)
+            }
+        }
+        $overlap = @()
+        foreach ($path in $engineUntracked) {
+            $trimmed = "$path".Trim()
+            if ($trimmed -and $incomingSet.Contains($trimmed)) {
+                $overlap += $trimmed
+            }
+        }
+        if ($overlap.Count -gt 0) {
+            throw "eta_engine checkout has untracked file(s) that overlap incoming changes: $($overlap -join ', ')"
+        }
+        Write-Warning (
+            "eta_engine checkout has $($engineUntracked.Count) non-overlapping untracked file(s); " +
+            "preserving them while syncing tracked dashboard code."
+        )
     }
 }
 finally {
@@ -124,7 +155,6 @@ finally {
 }
 
 if (-not $SkipGitPull) {
-    Invoke-Git -WorkingDirectory $EngineDir -Arguments @("fetch", "origin", $Branch)
     Invoke-Git -WorkingDirectory $EngineDir -Arguments @("checkout", $Branch)
     Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)
 }

@@ -211,6 +211,11 @@ def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
     assert "ProbeRetryDelaySeconds = 5" in text
     assert "SkipProxyRestart" in text
     assert "leaving superproject untouched and syncing eta_engine only" in text
+    assert "tracked local changes" in text
+    assert "non-overlapping untracked file(s)" in text
+    assert "overlap incoming changes" in text
+    assert 'git ls-files --others --exclude-standard' in text
+    assert 'git diff --name-only HEAD.."origin/$Branch"' in text
     assert 'Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)' in text
     assert 'Get-ScheduledTask -TaskName $TaskName' in text
     assert 'Start-ScheduledTask -TaskName $TaskName' in text
