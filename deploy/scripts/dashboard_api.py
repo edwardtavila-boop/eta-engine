@@ -1622,6 +1622,13 @@ def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
     """Read-only projection of the stale-position watchdog SLA for one row."""
     thresholds = _watchdog_policy_thresholds()
     age_s = _position_opened_age_s(row, server_ts=server_ts)
+    state = row.get("position_state") if isinstance(row.get("position_state"), dict) else {}
+    open_pos = row.get("open_position") if isinstance(row.get("open_position"), dict) else {}
+    stale_tightened_at = (
+        open_pos.get("stale_tighten_applied_at")
+        or state.get("stale_tighten_applied_at")
+    )
+    stale_tightened = _parse_fill_dt(stale_tightened_at) is not None
     if age_s is None:
         return {
             "status": "unknown_age",
@@ -1629,6 +1636,7 @@ def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
             "age_s": None,
             "seconds_to_next_action": None,
             "next_action": "surface_position_opened_at",
+            "stale_tighten_applied_at": stale_tightened_at or None,
             "policy": thresholds,
         }
 
@@ -1640,6 +1648,11 @@ def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
         level = "FORCE_FLATTEN"
         next_action = "force_flatten_position"
         seconds_to_next_action = 0
+    elif age_s >= tighten_after and stale_tightened:
+        status = "tightened_watch"
+        level = "TIGHTEN_STOP_APPLIED"
+        next_action = "continue_watch_until_force_flatten"
+        seconds_to_next_action = max(0, int(max_age - age_s))
     elif age_s >= tighten_after:
         status = "tighten_stop_due"
         level = "TIGHTEN_STOP"
@@ -1662,6 +1675,7 @@ def _position_watchdog_snapshot(row: dict, *, server_ts: float) -> dict:
         "age_s": int(age_s),
         "seconds_to_next_action": seconds_to_next_action,
         "next_action": next_action,
+        "stale_tighten_applied_at": stale_tightened_at or None,
         "policy": thresholds,
     }
 
@@ -1686,12 +1700,15 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
     force_flatten = [item for item in open_items if item.get("status") == "force_flatten_due"]
     tighten = [item for item in open_items if item.get("status") == "tighten_stop_due"]
     require_ack = [item for item in open_items if item.get("status") == "require_ack"]
+    tightened_watch = [item for item in open_items if item.get("status") == "tightened_watch"]
     if force_flatten:
         status = "force_flatten_due"
     elif tighten:
         status = "tighten_stop_due"
     elif require_ack:
         status = "require_ack"
+    elif tightened_watch:
+        status = "tightened_watch"
     elif unknown_age_count:
         status = "unknown_age"
     elif open_items:
@@ -1714,6 +1731,7 @@ def _position_staleness_summary(rows: list[dict], *, server_ts: float) -> dict:
         "unknown_age_count": unknown_age_count,
         "require_ack_count": len(require_ack),
         "tighten_stop_due_count": len(tighten),
+        "tightened_watch_count": len(tightened_watch),
         "force_flatten_due_count": len(force_flatten),
         "oldest_position": oldest,
         "watchlist": watched[:8],

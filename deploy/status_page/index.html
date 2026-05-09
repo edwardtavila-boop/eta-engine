@@ -1778,6 +1778,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const forceFlattenDue = Number(stalePositions.force_flatten_due_count ?? summary.force_flatten_due_count ?? 0) || 0;
   const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
   const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
+  const tightenedWatch = Number(stalePositions.tightened_watch_count ?? 0) || 0;
   const oldestPosition = stalePositions.oldest_position && typeof stalePositions.oldest_position === 'object'
     ? stalePositions.oldest_position
     : {};
@@ -1799,13 +1800,16 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       ? 'tighten_stop_due'
       : requireAckDue > 0
         ? 'require_ack'
-        : '';
+        : tightenedWatch > 0
+          ? 'tightened_watch'
+          : '';
   const exitStatus = staleExitStatus || String(exitWatch.status || 'unknown').toLowerCase();
   const exitLabels = {
     watching: 'Watching',
     paper_watching: 'Paper Watch',
     require_ack: 'Ack Due',
     tighten_stop_due: 'Tighten Stop',
+    tightened_watch: 'Tightened',
     force_flatten_due: 'Flatten Due',
     alert: 'Alert',
     missing_brackets: 'Missing',
@@ -1817,6 +1821,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     paper_watching: 'green',
     require_ack: 'yellow',
     tighten_stop_due: 'yellow',
+    tightened_watch: 'green',
     force_flatten_due: 'red',
     alert: 'red',
     missing_brackets: 'yellow',

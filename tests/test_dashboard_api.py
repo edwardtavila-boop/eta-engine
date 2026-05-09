@@ -230,6 +230,46 @@ class TestDashboardAPI:
         assert stale["oldest_position"]["level"] == "FORCE_FLATTEN"
         assert summary["stale_position_status"] == "force_flatten_due"
 
+    def test_target_exit_summary_marks_already_tightened_positions(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        server_dt = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "volume_profile_mnq",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "open_position": {
+                        "entry_ts": "2026-04-28T10:50:00+00:00",
+                        "stale_tighten_applied_at": "2026-04-28T11:50:00+00:00",
+                    },
+                    "position_state": {
+                        "state": "open",
+                        "opened_at": "2026-04-28T10:50:00+00:00",
+                        "bracket_stop": 29327.0,
+                        "bracket_target": 29359.5,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 24.0,
+                            "stop_distance_points": 8.5,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=0,
+            server_ts=server_dt.timestamp(),
+        )
+
+        stale = summary["position_staleness"]
+        assert stale["status"] == "tightened_watch"
+        assert stale["tighten_stop_due_count"] == 0
+        assert stale["tightened_watch_count"] == 1
+        assert stale["oldest_position"]["level"] == "TIGHTEN_STOP_APPLIED"
+        assert stale["oldest_position"]["next_action"] == "continue_watch_until_force_flatten"
+        assert summary["stale_position_status"] == "tightened_watch"
+
     def test_normalize_trade_close_preserves_zero_values_from_extra(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
