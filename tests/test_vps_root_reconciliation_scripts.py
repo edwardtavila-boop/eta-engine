@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSPECT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
 PLAN = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
+SYNC = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 
 
 def test_vps_root_inventory_classifies_local_backups_outside_source_risk() -> None:
@@ -41,3 +42,16 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     assert "blocked_until_source_review" in text
     assert 'credential_rotation = "reserved_for_go_live"' in text
     assert "Recommended action" in text
+
+
+def test_dashboard_sync_refreshes_read_only_root_review_artifacts() -> None:
+    text = SYNC.read_text(encoding="utf-8")
+
+    assert "SkipRootReviewRefresh" in text
+    assert "inspect_vps_root_dirty.ps1" in text
+    assert "plan_vps_root_reconciliation.ps1" in text
+    assert "vps_root_dirty_inventory.json" in text
+    assert "vps_root_reconciliation_plan.json" in text
+    assert "root_review_refresh" in text
+    assert "cleanup_allowed" in text
+    assert "destructive_actions_performed" in text

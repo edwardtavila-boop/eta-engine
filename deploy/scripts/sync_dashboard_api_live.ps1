@@ -16,6 +16,7 @@ param(
     [int]$ProbeTimeoutSeconds = 35,
     [int]$ProbeRetryDelaySeconds = 5,
     [switch]$SkipGitPull,
+    [switch]$SkipRootReviewRefresh,
     [switch]$SkipProxyRestart
 )
 
@@ -54,6 +55,11 @@ $RootFull = Assert-CanonicalEtaPath -Path $Root
 $EngineDir = Assert-CanonicalEtaPath -Path (Join-Path $RootFull "eta_engine")
 $DashboardApi = Join-Path $EngineDir "deploy\scripts\dashboard_api.py"
 $RegisterTaskScript = Join-Path $EngineDir "deploy\scripts\register_dashboard_api_task.ps1"
+$InspectRootScript = Join-Path $EngineDir "deploy\scripts\inspect_vps_root_dirty.ps1"
+$PlanRootScript = Join-Path $EngineDir "deploy\scripts\plan_vps_root_reconciliation.ps1"
+$RootStateDir = Join-Path $RootFull "var\eta_engine\state"
+$RootInventoryPath = Join-Path $RootStateDir "vps_root_dirty_inventory.json"
+$RootPlanPath = Join-Path $RootStateDir "vps_root_reconciliation_plan.json"
 $VenvPython = Join-Path $EngineDir ".venv\Scripts\python.exe"
 $Python = if (Test-Path -LiteralPath $VenvPython) { $VenvPython } else { "python.exe" }
 
@@ -121,6 +127,52 @@ if (-not $SkipGitPull) {
     Invoke-Git -WorkingDirectory $EngineDir -Arguments @("fetch", "origin", $Branch)
     Invoke-Git -WorkingDirectory $EngineDir -Arguments @("checkout", $Branch)
     Invoke-Git -WorkingDirectory $EngineDir -Arguments @("pull", "--ff-only", "origin", $Branch)
+}
+
+$rootReviewRefresh = [ordered]@{
+    skipped = [bool]$SkipRootReviewRefresh
+    inventory_status = ""
+    inventory_risk_level = ""
+    inventory_status_count = $null
+    plan_status = ""
+    plan_risk_level = ""
+    plan_submodule_drift = $null
+    plan_dirty_companion_repos = $null
+    cleanup_allowed = $false
+    destructive_actions_performed = $false
+    inventory_path = $RootInventoryPath
+    plan_path = $RootPlanPath
+    error = ""
+}
+if (-not $SkipRootReviewRefresh) {
+    try {
+        if (-not (Test-Path -LiteralPath $InspectRootScript)) {
+            throw "Missing root inventory script: $InspectRootScript"
+        }
+        if (-not (Test-Path -LiteralPath $PlanRootScript)) {
+            throw "Missing root reconciliation planner: $PlanRootScript"
+        }
+        if (-not (Test-Path -LiteralPath $RootStateDir)) {
+            New-Item -ItemType Directory -Path $RootStateDir -Force | Out-Null
+        }
+        $inventoryJson = @(& $InspectRootScript -Root $RootFull -OutputPath $RootInventoryPath)
+        $inventory = ($inventoryJson | Select-Object -Last 1) | ConvertFrom-Json
+        $planJson = @(& $PlanRootScript -Root $RootFull -InventoryPath $RootInventoryPath -OutputDir $RootStateDir)
+        $plan = ($planJson | Select-Object -Last 1) | ConvertFrom-Json
+        $rootReviewRefresh.inventory_status = "$($inventory.status)"
+        $rootReviewRefresh.inventory_risk_level = "$($inventory.risk_level)"
+        $rootReviewRefresh.inventory_status_count = $inventory.counts.status
+        $rootReviewRefresh.plan_status = "$($plan.status)"
+        $rootReviewRefresh.plan_risk_level = "$($plan.risk_level)"
+        $rootReviewRefresh.plan_submodule_drift = $plan.summary.submodule_drift
+        $rootReviewRefresh.plan_dirty_companion_repos = $plan.summary.dirty_companion_repos
+        $rootReviewRefresh.cleanup_allowed = [bool]$plan.cleanup_allowed
+        $rootReviewRefresh.destructive_actions_performed = [bool]$plan.destructive_actions_performed
+    }
+    catch {
+        $rootReviewRefresh.error = $_.Exception.Message
+        Write-Warning "Read-only VPS root review refresh failed: $($rootReviewRefresh.error)"
+    }
 }
 
 & $Python -m py_compile $DashboardApi
@@ -218,6 +270,7 @@ finally {
     root = $RootFull
     root_dirty = $rootDirty
     root_dirty_summary = $rootDirtySummary
+    root_review_refresh = $rootReviewRefresh
     engine_dir = $EngineDir
     engine_head = $head
     task = $TaskName
