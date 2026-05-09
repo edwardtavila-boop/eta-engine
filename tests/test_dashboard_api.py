@@ -22,6 +22,10 @@ def app_client(tmp_path, monkeypatch):
         "ETA_COMMAND_CENTER_DOCTOR_RECEIPT_PATH",
         str(tmp_path / "state" / "command_center_doctor_latest.json"),
     )
+    monkeypatch.setenv(
+        "ETA_COMMAND_CENTER_WATCHDOG_STATUS_PATH",
+        str(tmp_path / "state" / "command_center_watchdog_status_latest.json"),
+    )
     # Pin the BTC fleet dir so the dashboard doesn't accidentally see a
     # real fleet directory sitting in the dev package tree.
     monkeypatch.setenv(
@@ -1304,6 +1308,42 @@ class TestDashboardAPI:
             ),
             encoding="utf-8",
         )
+        status_path = tmp_path / "state" / "command_center_watchdog_status_latest.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "operator_action_plan": [
+                        {
+                            "role": "primary",
+                            "step": "reload_operator_service",
+                            "command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+                        },
+                        {
+                            "role": "follow_up",
+                            "step": "register_watchdog",
+                            "command": (
+                                "powershell -ExecutionPolicy Bypass -File "
+                                ".\\scripts\\register-command-center-watchdog.ps1 -RunNow"
+                            ),
+                        },
+                    ],
+                    "operator_action_count": 2,
+                    "operator_follow_up_actions": [
+                        {
+                            "step": "register_watchdog",
+                            "reason": "watchdog_missing",
+                        }
+                    ],
+                    "operator_follow_up_count": 1,
+                    "operator_next_can_launch_from_desktop": True,
+                    "operator_next_launch_context": "interactive_uac_launcher",
+                    "operator_next_instruction": "Run the launcher and approve the UAC prompt.",
+                    "watchdog_registered": False,
+                    "watchdog_state": "missing",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         r = app_client.get("/api/dashboard/diagnostics")
 
@@ -1319,6 +1359,14 @@ class TestDashboardAPI:
         assert watchdog["repair_required"] is True
         assert watchdog["requires_elevation"] is True
         assert watchdog["receipt_path"].endswith("command_center_doctor_latest.json")
+        assert watchdog["status_receipt_path"].endswith("command_center_watchdog_status_latest.json")
+        assert watchdog["action_count"] == 2
+        assert watchdog["follow_up_count"] == 1
+        assert watchdog["follow_up_actions"][0]["step"] == "register_watchdog"
+        assert watchdog["watchdog_registered"] is False
+        assert watchdog["watchdog_state"] == "missing"
+        assert watchdog["can_launch_from_desktop"] is True
+        assert watchdog["launch_context"] == "interactive_uac_launcher"
         assert payload["checks"]["command_center_watchdog_contract"] is True
 
     def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path, monkeypatch):

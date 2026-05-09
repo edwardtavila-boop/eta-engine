@@ -480,15 +480,27 @@ def _command_center_doctor_receipt_path() -> Path:
     return _WORKSPACE_ROOT / "var" / "ops" / "command_center_doctor_latest.json"
 
 
+def _command_center_watchdog_status_path() -> Path:
+    """Canonical root-level Command Center watchdog status receipt path."""
+    override = os.environ.get("ETA_COMMAND_CENTER_WATCHDOG_STATUS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _WORKSPACE_ROOT / "var" / "ops" / "command_center_watchdog_status_latest.json"
+
+
 def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     """Summarize the root CommandCenterDoctor receipt for dashboard diagnostics."""
     receipt_path = _command_center_doctor_receipt_path()
+    status_path = _command_center_watchdog_status_path()
     receipt = _read_json_file(receipt_path)
+    status_receipt = _read_json_file(status_path)
+    status_receipt = status_receipt if isinstance(status_receipt, dict) else {}
     if not receipt:
         return {
             "status": "missing_receipt",
             "fresh": False,
             "receipt_path": str(receipt_path),
+            "status_receipt_path": str(status_path),
             "checked_at": None,
             "age_s": None,
             "healthy": False,
@@ -497,6 +509,15 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
             "recommended_action": "run_doctor",
             "next_step": "run_watchdog_now",
             "next_command": None,
+            "action_plan": status_receipt.get("operator_action_plan")
+            if isinstance(status_receipt.get("operator_action_plan"), list)
+            else [],
+            "follow_up_actions": status_receipt.get("operator_follow_up_actions")
+            if isinstance(status_receipt.get("operator_follow_up_actions"), list)
+            else [],
+            "follow_up_count": int(status_receipt.get("operator_follow_up_count") or 0),
+            "watchdog_registered": status_receipt.get("watchdog_registered"),
+            "watchdog_state": status_receipt.get("watchdog_state"),
             "repair_required": True,
             "requires_elevation": True,
             "summary": "Command Center doctor receipt missing",
@@ -519,11 +540,22 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     summary = "Command Center watchdog is healthy." if healthy else (
         f"Command Center watchdog needs {recommended_action}: {reason}."
     )
+    action_plan = (
+        status_receipt.get("operator_action_plan")
+        if isinstance(status_receipt.get("operator_action_plan"), list)
+        else []
+    )
+    follow_up_actions = (
+        status_receipt.get("operator_follow_up_actions")
+        if isinstance(status_receipt.get("operator_follow_up_actions"), list)
+        else []
+    )
 
     return {
         "status": status,
         "fresh": fresh,
         "receipt_path": str(receipt_path),
+        "status_receipt_path": str(status_path),
         "checked_at": checked_at,
         "age_s": age_s,
         "healthy": healthy,
@@ -532,6 +564,15 @@ def _command_center_watchdog_payload(*, server_ts: float) -> dict:
         "recommended_action": recommended_action,
         "next_step": str(operator_action.get("step") or recommended_action),
         "next_command": operator_action.get("command"),
+        "action_plan": action_plan,
+        "action_count": int(status_receipt.get("operator_action_count") or len(action_plan)),
+        "follow_up_actions": follow_up_actions,
+        "follow_up_count": int(status_receipt.get("operator_follow_up_count") or len(follow_up_actions)),
+        "watchdog_registered": status_receipt.get("watchdog_registered"),
+        "watchdog_state": status_receipt.get("watchdog_state"),
+        "can_launch_from_desktop": status_receipt.get("operator_next_can_launch_from_desktop"),
+        "launch_context": status_receipt.get("operator_next_launch_context"),
+        "instruction": status_receipt.get("operator_next_instruction"),
         "repair_required": bool(receipt.get("repair_required")),
         "requires_elevation": bool(operator_action.get("requires_elevation")),
         "failure_summary": failure_summary,
