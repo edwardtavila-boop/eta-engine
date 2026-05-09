@@ -180,6 +180,8 @@ class TestStatusPage:
             'id="gatewayStatusSub"',
             'id="brokerRouterStatus"',
             'id="brokerRouterSub"',
+            'id="bracketAuditStatus"',
+            'id="bracketAuditSub"',
             'id="paperLiveStatus"',
             'id="paperLiveSub"',
             'id="exitWatchStatus"',
@@ -203,6 +205,10 @@ class TestStatusPage:
         assert "/api/bot-fleet" in html
         assert "const API = '/api/bot-fleet';" in html
         assert "target_exit_summary" in html
+        assert "broker_bracket_audit" in html
+        assert "BLOCKED_UNBRACKETED_EXPOSURE" in html
+        assert "missing broker OCO" in html
+        assert "prop dry-run blocked" in html
         assert "position_staleness" in html
         assert "force_flatten_due_count" in html
         assert "seconds_to_next_action" in html

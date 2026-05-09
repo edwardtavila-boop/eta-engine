@@ -287,6 +287,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
+  <div class="card"><h3>Bracket Audit</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">broker OCO coverage</div></div>
   <div class="card exit-watch-card"><h3>Exit Watch</h3><div class="stat" id="exitWatchStatus">-</div><div class="sub" id="exitWatchSub">target/stop monitor</div></div>
   <div class="card"><h3>Paper Live</h3><div class="stat" id="paperLiveStatus">—</div><div class="sub" id="paperLiveSub"></div></div>
   <div class="card"><h3>Operator Queue</h3><div class="stat" id="operatorQueueStatus">—</div><div class="sub" id="operatorQueueSub"></div></div>
@@ -1446,12 +1447,14 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','vpsRootStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
   const routerSub = document.getElementById('brokerRouterSub');
   if (routerSub) routerSub.textContent = '';
+  const bracketAuditSub = document.getElementById('bracketAuditSub');
+  if (bracketAuditSub) bracketAuditSub.textContent = '';
   const gatewaySub = document.getElementById('gatewayStatusSub');
   if (gatewaySub) gatewaySub.textContent = '';
   const paperLiveSub = document.getElementById('paperLiveSub');
@@ -1964,6 +1967,65 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
           : (results || failed)
             ? 'history: ' + results + ' results; ' + actualRouterFills + ' filled; ' + openNoFill + ' open/no-fill; ' + rejected + ' rejected; ' + failed + ' failed'
             : 'waiting for orders';
+
+  const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
+  const bracketPosition = bracketAudit.position_summary || {};
+  const bracketSummary = String(
+    bracketAudit.summary || summary.broker_bracket_audit_status || 'unknown'
+  ).toUpperCase();
+  const bracketReady = Boolean(
+    bracketAudit.ready_for_prop_dry_run ?? summary.broker_bracket_audit_ready
+  );
+  const missingOco = Number(
+    bracketPosition.missing_bracket_count ?? bracketAudit.missing_bracket_count ?? 0
+  ) || 0;
+  const bracketRequired = Number(
+    bracketPosition.broker_bracket_required_position_count
+      ?? bracketAudit.broker_bracket_required_position_count
+      ?? 0
+  ) || 0;
+  const auditBrokerOpen = Number(
+    bracketPosition.broker_open_position_count ?? bracketAudit.broker_open_position_count ?? 0
+  ) || 0;
+  const bracketLabels = {
+    READY_NO_OPEN_EXPOSURE: 'Ready',
+    READY_OPEN_EXPOSURE_BRACKETED: 'Ready',
+    BLOCKED_UNBRACKETED_EXPOSURE: 'Blocked',
+    BLOCKED_ADAPTER_SUPPORT: 'Adapter',
+    AUDIT_UNAVAILABLE: 'Review',
+    UNKNOWN: 'Review'
+  };
+  const bracketClasses = {
+    READY_NO_OPEN_EXPOSURE: 'green',
+    READY_OPEN_EXPOSURE_BRACKETED: 'green',
+    BLOCKED_UNBRACKETED_EXPOSURE: 'yellow',
+    BLOCKED_ADAPTER_SUPPORT: 'red',
+    AUDIT_UNAVAILABLE: 'yellow',
+    UNKNOWN: 'yellow'
+  };
+  const bracketStatusEl = document.getElementById('bracketAuditStatus');
+  const bracketSubEl = document.getElementById('bracketAuditSub');
+  if (bracketStatusEl && bracketSubEl) {
+    const bracketKey = bracketLabels[bracketSummary]
+      ? bracketSummary
+      : bracketReady
+        ? 'READY_OPEN_EXPOSURE_BRACKETED'
+        : 'UNKNOWN';
+    const auditAction = bracketAudit.next_action || bracketAudit.detail || bracketAudit.reason || '';
+    const bracketSubParts = [
+      missingOco > 0 ? `${missingOco} missing broker OCO` : '',
+      bracketRequired > 0 ? `${bracketRequired} bracket-required` : '',
+      auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
+      bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : '',
+      auditAction
+    ].filter(Boolean);
+    bracketStatusEl.textContent = bracketLabels[bracketKey] || 'Review';
+    bracketStatusEl.className = 'stat ' + (bracketClasses[bracketKey] || 'yellow');
+    bracketSubEl.textContent = compactText(
+      bracketSubParts.length ? bracketSubParts.join('; ') : 'broker OCO coverage verified',
+      145
+    );
+  }
   renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, closeHistory);
 
   const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
