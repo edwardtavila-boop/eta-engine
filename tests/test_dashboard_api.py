@@ -1554,10 +1554,15 @@ class TestDashboardAPI:
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(json.dumps(plan))
 
         r = app_client.get("/api/vps/root-reconciliation")
+        alias = app_client.get("/api/vps/root/reconciliation")
 
         assert r.status_code == 200
+        assert alias.status_code == 200
         payload = r.json()
+        alias_payload = alias.json()
         assert payload["status"] == "review_required"
+        assert alias_payload["status"] == payload["status"]
+        assert alias_payload["summary"] == payload["summary"]
         assert payload["source"] == "vps_root_reconciliation_plan"
         assert payload["risk_level"] == "high"
         assert payload["cleanup_allowed"] is False

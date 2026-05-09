@@ -8474,6 +8474,12 @@ def vps_root_reconciliation() -> dict[str, object]:
     return _vps_root_reconciliation_payload()
 
 
+@app.get("/api/vps/root/reconciliation", response_model=None)
+def vps_root_reconciliation_alias() -> dict[str, object]:
+    """Slash-separated alias for root reconciliation probes and bookmarks."""
+    return _vps_root_reconciliation_payload()
+
+
 @app.get("/api/master/status", response_model=None)
 def master_status() -> dict[str, object]:
     """Compatibility status endpoint for public ops and beta-app launch tabs."""
