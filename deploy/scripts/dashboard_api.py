@@ -8484,11 +8484,29 @@ def runtime_status() -> dict[str, object]:
     """Compatibility runtime detail bridge (paper_live/paper_sim)."""
     data = _local_master_status_payload()
     paper = data.get("paper", {})
+    paper_live = data.get("paper_live", {})
     runtime = data.get("runtime", {})
+    runtime_payload = dict(runtime) if isinstance(runtime, dict) else {}
+    if isinstance(paper_live, dict):
+        runtime_payload["paper_live_effective_status"] = paper_live.get("effective_status")
+        runtime_payload["paper_live_held_by_bracket_audit"] = bool(
+            paper_live.get("held_by_bracket_audit")
+        )
     return {
         "paper": paper,
-        "runtime": runtime,
+        "paper_live": paper_live,
+        "runtime": runtime_payload,
         "mode": paper.get("mode", "unknown") if isinstance(paper, dict) else "unknown",
+        "effective_status": (
+            paper_live.get("effective_status")
+            if isinstance(paper_live, dict)
+            else None
+        ),
+        "held_by_bracket_audit": bool(
+            paper_live.get("held_by_bracket_audit")
+            if isinstance(paper_live, dict)
+            else False
+        ),
     }
 
 @app.get("/api/bridge-status", response_model=None)
@@ -8498,6 +8516,7 @@ def bridge_status() -> dict[str, object]:
     return {
         "daily": data.get("daily", {}),
         "paper": data.get("paper", {}),
+        "paper_live": data.get("paper_live", {}),
     }
 
 

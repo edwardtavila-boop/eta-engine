@@ -1475,6 +1475,21 @@ class TestDashboardAPI:
         assert payload["paper_live"]["effective_detail"] == (
             "held by Bracket Audit: Verify broker OCO coverage or Flatten unprotected paper exposure"
         )
+        runtime = app_client.get("/api/runtime-status")
+        assert runtime.status_code == 200
+        runtime_payload = runtime.json()
+        assert runtime_payload["paper"]["status"] == "ready_to_launch_paper_live"
+        assert runtime_payload["paper_live"]["effective_status"] == "held_by_bracket_audit"
+        assert runtime_payload["paper_live"]["held_by_bracket_audit"] is True
+        assert runtime_payload["runtime"]["paper_live_effective_status"] == "held_by_bracket_audit"
+        assert runtime_payload["runtime"]["paper_live_held_by_bracket_audit"] is True
+        assert runtime_payload["effective_status"] == "held_by_bracket_audit"
+        assert runtime_payload["held_by_bracket_audit"] is True
+        bridge = app_client.get("/api/bridge-status")
+        assert bridge.status_code == 200
+        assert bridge.json()["paper"]["status"] == "ready_to_launch_paper_live"
+        assert bridge.json()["paper_live"]["effective_status"] == "held_by_bracket_audit"
+        assert bridge.json()["paper_live"]["held_by_bracket_audit"] is True
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
