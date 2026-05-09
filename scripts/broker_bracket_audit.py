@@ -37,6 +37,21 @@ def _as_int(value: Any) -> int:  # noqa: ANN401
         return 0
 
 
+def _as_float(value: Any) -> float | None:  # noqa: ANN401
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_bool(value: Any) -> bool:  # noqa: ANN401
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
 def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "eta-broker-bracket-audit"})
@@ -47,7 +62,7 @@ def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
+def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, Any]:
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
     if target_exit_summary:
         broker_open = _as_int(target_exit_summary.get("broker_open_position_count"))
@@ -110,6 +125,125 @@ def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _position_qty(position: dict[str, Any]) -> float | None:
+    for key in ("qty", "position", "quantity", "size"):
+        qty = _as_float(position.get(key))
+        if qty is not None:
+            return qty
+    return None
+
+
+def _position_requires_broker_bracket(position: dict[str, Any]) -> bool:
+    explicit = position.get("broker_bracket_required")
+    if explicit is not None:
+        return _as_bool(explicit)
+    if _as_bool(position.get("broker_bracket") or position.get("has_broker_bracket")):
+        return False
+    venue = str(position.get("venue") or "").strip().lower()
+    sec_type = str(position.get("sec_type") or position.get("secType") or "").strip().upper()
+    return venue in {"ibkr", "tasty", "tastytrade"} and sec_type in {"FUT", "FOP"}
+
+
+def _normalize_open_position(
+    raw_position: object,
+    *,
+    default_venue: str | None = None,
+) -> dict[str, Any]:
+    position = _as_dict(raw_position)
+    symbol = str(
+        position.get("symbol")
+        or position.get("localSymbol")
+        or position.get("contractSymbol")
+        or "",
+    ).strip()
+    if not symbol:
+        return {}
+    qty = _position_qty(position)
+    side = str(position.get("side") or "").strip().lower()
+    if not side and qty is not None:
+        side = "long" if qty > 0 else "short" if qty < 0 else ""
+    sec_type = position.get("sec_type") or position.get("secType") or position.get("security_type")
+    venue = str(position.get("venue") or position.get("broker") or default_venue or "").strip().lower()
+    normalized = {
+        "venue": venue,
+        "symbol": symbol,
+        "side": side,
+        "qty": abs(qty) if qty is not None else None,
+        "sec_type": sec_type,
+        "exchange": position.get("exchange"),
+        "market_value": _as_float(position.get("market_value")),
+        "unrealized_pnl": _as_float(position.get("unrealized_pnl")),
+    }
+    normalized["broker_bracket_required"] = _position_requires_broker_bracket({
+        **position,
+        **normalized,
+    })
+    normalized["coverage_status"] = "requires_manual_oco_verification"
+    return normalized
+
+
+def _candidate_open_positions(fleet: dict[str, Any]) -> list[dict[str, Any]]:
+    live_broker_state = _as_dict(fleet.get("live_broker_state"))
+    sources: list[tuple[list[Any], str | None]] = [
+        (_as_list(_as_dict(fleet.get("position_exposure")).get("open_positions")), None),
+        (
+            _as_list(_as_dict(live_broker_state.get("position_exposure")).get("open_positions")),
+            None,
+        ),
+        (_as_list(_as_dict(live_broker_state.get("ibkr")).get("open_positions")), "ibkr"),
+        (_as_list(_as_dict(live_broker_state.get("tastytrade")).get("open_positions")), "tastytrade"),
+        (_as_list(_as_dict(live_broker_state.get("tasty")).get("open_positions")), "tasty"),
+    ]
+    positions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, float | None]] = set()
+    for rows, default_venue in sources:
+        for raw_position in rows:
+            position = _normalize_open_position(raw_position, default_venue=default_venue)
+            if not position:
+                continue
+            key = (
+                str(position.get("venue") or ""),
+                str(position.get("symbol") or ""),
+                str(position.get("sec_type") or ""),
+                position.get("qty"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            positions.append(position)
+    return positions
+
+
+def _unprotected_positions(
+    fleet: dict[str, Any],
+    *,
+    missing_brackets: int,
+) -> list[dict[str, Any]]:
+    if missing_brackets <= 0:
+        return []
+    positions = [
+        position
+        for position in _candidate_open_positions(fleet)
+        if position.get("broker_bracket_required") is True
+    ]
+    return positions[:missing_brackets]
+
+
+def _position_descriptor(position: dict[str, Any]) -> str:
+    symbol = str(position.get("symbol") or "position").strip()
+    venue = str(position.get("venue") or "broker").strip().upper()
+    sec_type = str(position.get("sec_type") or "").strip().upper()
+    return " ".join(part for part in (symbol, venue, sec_type) if part)
+
+
+def _append_detail_once(message: str, detail: str) -> str:
+    if not detail:
+        return message
+    if not message:
+        return detail
+    return message if detail in message else f"{message}; {detail}"
+
+
 def _adapter_support() -> dict[str, Any]:
     support: dict[str, Any] = {
         "ibkr_futures_server_oco": False,
@@ -147,6 +281,19 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
     missing_brackets = position_summary["missing_bracket_count"]
     supervisor_local = position_summary["supervisor_local_position_count"]
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
+    unprotected_positions = _unprotected_positions(
+        fleet,
+        missing_brackets=missing_brackets,
+    )
+    if unprotected_positions:
+        position_summary = dict(position_summary)
+        position_summary["unprotected_symbols"] = sorted(
+            {
+                str(position.get("symbol") or "")
+                for position in unprotected_positions
+                if position.get("symbol")
+            },
+        )
     adapter_support = _adapter_support()
     adapter_ok = bool(adapter_support.get("ibkr_futures_server_oco")) and bool(
         adapter_support.get("tradovate_order_payload_brackets"),
@@ -172,6 +319,13 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
     else:
         next_action = "Broker-native bracket/OCO audit is clear."
 
+    if unprotected_positions:
+        descriptor = _position_descriptor(unprotected_positions[0])
+        next_action = _append_detail_once(
+            next_action,
+            f"{descriptor} missing broker-native OCO",
+        )
+
     return {
         "kind": "eta_broker_bracket_audit",
         "schema_version": 1,
@@ -180,6 +334,8 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
         "target_exit_status": target_exit_summary.get("status"),
         "stale_position_status": target_exit_summary.get("stale_position_status"),
         "position_summary": position_summary,
+        "unprotected_positions": unprotected_positions,
+        "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
         "adapter_support": adapter_support,
         "ready_for_prop_dry_run": summary in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"},
         "next_action": next_action,

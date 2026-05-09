@@ -113,6 +113,60 @@ def test_bracket_audit_preserves_bracket_required_counts(monkeypatch) -> None:
     assert "manual broker OCO" in report["next_action"]
 
 
+def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 2,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "position_exposure": {
+                    "open_positions": [
+                        {
+                            "venue": "ibkr",
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "market_value": 176010.07,
+                            "unrealized_pnl": -33.79,
+                            "broker_bracket_required": True,
+                        },
+                        {
+                            "venue": "alpaca",
+                            "symbol": "ETHUSD",
+                            "side": "short",
+                            "qty": 0.25,
+                            "broker_bracket_required": False,
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    assert report["position_summary"]["unprotected_symbols"] == ["MNQM6"]
+    assert report["primary_unprotected_position"]["symbol"] == "MNQM6"
+    assert report["primary_unprotected_position"]["venue"] == "ibkr"
+    assert report["primary_unprotected_position"]["sec_type"] == "FUT"
+    assert report["unprotected_positions"][0]["broker_bracket_required"] is True
+    assert "MNQM6 IBKR FUT missing broker-native OCO" in report["next_action"]
+
+
 def test_bracket_audit_derives_summary_from_bots(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,
