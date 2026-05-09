@@ -60,6 +60,8 @@ class StrategyId(StrEnum):
     REGISTRY_REGIME_GATED = "registry_regime_gated"
     REGISTRY_MTF_SCALP = "registry_mtf_scalp"
     REGISTRY_ANCHOR_SWEEP = "registry_anchor_sweep"
+    REGISTRY_COMMODITY_MOMENTUM = "registry_commodity_momentum"
+    REGISTRY_FX_RANGE = "registry_fx_range"
 
 
 # ---------------------------------------------------------------------------

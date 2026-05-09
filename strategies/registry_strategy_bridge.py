@@ -68,6 +68,8 @@ _KIND_TO_SID: dict[str, StrategyId] = {
     "regime_gated": StrategyId.REGISTRY_REGIME_GATED,
     "mtf_scalp": StrategyId.REGISTRY_MTF_SCALP,
     "anchor_sweep": StrategyId.REGISTRY_ANCHOR_SWEEP,
+    "commodity_momentum": StrategyId.REGISTRY_COMMODITY_MOMENTUM,
+    "fx_range": StrategyId.REGISTRY_FX_RANGE,
 }
 
 
