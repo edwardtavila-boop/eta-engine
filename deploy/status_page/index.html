@@ -1974,6 +1974,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const tightenStopDue = Number(stalePositions.tighten_stop_due_count ?? 0) || 0;
   const requireAckDue = Number(stalePositions.require_ack_count ?? 0) || 0;
   const tightenedWatch = Number(stalePositions.tightened_watch_count ?? 0) || 0;
+  const targetExitStatus = String(exitWatch.status || 'unknown').toLowerCase();
+  const missingBrackets = Number(exitWatch.missing_bracket_count || 0) || 0;
   const oldestPosition = stalePositions.oldest_position && typeof stalePositions.oldest_position === 'object'
     ? stalePositions.oldest_position
     : {};
@@ -1989,16 +1991,21 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     : secondsToNextAction != null && secondsToNextAction <= 0
       ? `review due now${nextActionName ? ' - ' + nextActionName : ''}${oldestName ? ' - ' + oldestName : ''}`
       : '';
-  const staleExitStatus = forceFlattenDue > 0
-    ? 'force_flatten_due'
-    : tightenStopDue > 0
-      ? 'tighten_stop_due'
-      : requireAckDue > 0
-        ? 'require_ack'
-        : tightenedWatch > 0
-          ? 'tightened_watch'
-          : '';
-  const exitStatus = staleExitStatus || String(exitWatch.status || 'unknown').toLowerCase();
+  let staleExitStatus = '';
+  if (forceFlattenDue > 0) {
+    staleExitStatus = 'force_flatten_due';
+  } else if (targetExitStatus === 'alert') {
+    staleExitStatus = 'alert';
+  } else if (targetExitStatus === 'missing_brackets' || missingBrackets > 0) {
+    staleExitStatus = 'missing_brackets';
+  } else if (tightenStopDue > 0) {
+    staleExitStatus = 'tighten_stop_due';
+  } else if (requireAckDue > 0) {
+    staleExitStatus = 'require_ack';
+  } else if (tightenedWatch > 0) {
+    staleExitStatus = 'tightened_watch';
+  }
+  const exitStatus = staleExitStatus || targetExitStatus;
   const exitLabels = {
     watching: 'Watching',
     paper_watching: 'Paper Watch',
@@ -2031,13 +2038,18 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       ? `nearest target ${nearest.bot} ${formatMoney(nearest.distance_points, 2)} pts (${formatPctText(nearest.distance_pct)})`
       : 'nearest target n/a';
     const touched = Number(exitWatch.target_touched_count || 0) + Number(exitWatch.stop_touched_count || 0);
+    const missingBracketText = missingBrackets > 0
+      ? `${missingBrackets} broker bracket missing; verify broker OCO or manage flatten manually`
+      : '';
     const staleText = forceFlattenDue > 0
       ? `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due; oldest ${oldestDescriptor}`
-      : tightenStopDue > 0
-        ? `${tightenStopDue} stop tighten due; oldest ${oldestDescriptor}`
-        : requireAckDue > 0
-          ? `${requireAckDue} operator ack due; oldest ${oldestDescriptor}`
-          : '';
+      : missingBracketText || (
+          tightenStopDue > 0
+            ? `${tightenStopDue} stop tighten due; oldest ${oldestDescriptor}`
+            : requireAckDue > 0
+              ? `${requireAckDue} operator ack due; oldest ${oldestDescriptor}`
+              : ''
+        );
     const fallback = [
       `${Number(exitWatch.broker_open_position_count ?? liveBroker.open_position_count ?? 0)} broker open`,
       `${Number(exitWatch.supervisor_local_position_count || 0)} paper-local open`,
@@ -2139,6 +2151,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   if (forceFlattenDue > 0) {
     risk = 'High';
     riskDetail = `${forceFlattenDue} position${forceFlattenDue === 1 ? '' : 's'} past max-hold; force flatten due`;
+  } else if (targetExitStatus === 'missing_brackets' || missingBrackets > 0) {
+    risk = risk === 'High' ? risk : 'Medium';
+    riskDetail = `${missingBrackets || 1} broker bracket missing; verify broker OCO or manage flatten manually`;
   } else if (tightenStopDue > 0 || requireAckDue > 0) {
     risk = risk === 'High' ? risk : 'Medium';
     const due = tightenStopDue > 0

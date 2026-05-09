@@ -214,6 +214,10 @@ class TestStatusPage:
         assert "Tighten Stop" in html
         assert "operator ack due" in html
         assert "operator ack due; oldest" in html
+        missing_priority_idx = html.index("targetExitStatus === 'missing_brackets'")
+        require_ack_idx = html.index("requireAckDue > 0")
+        assert missing_priority_idx < require_ack_idx
+        assert "broker bracket missing; verify broker OCO or manage flatten manually" in html
         assert "exit watch active; next review" in html
         assert "drawdown + exit-watch SLA" in html
         assert "paper_watching" in html
