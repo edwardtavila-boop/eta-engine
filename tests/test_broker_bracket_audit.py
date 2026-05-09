@@ -20,6 +20,8 @@ def test_bracket_audit_ready_when_flat(monkeypatch) -> None:
 
     assert report["summary"] == "READY_NO_OPEN_EXPOSURE"
     assert report["ready_for_prop_dry_run"] is True
+    assert report["operator_action_required"] is False
+    assert report["operator_actions"] == []
 
 
 def test_bracket_audit_blocks_unbracketed_open_exposure(monkeypatch) -> None:
@@ -45,6 +47,11 @@ def test_bracket_audit_blocks_unbracketed_open_exposure(monkeypatch) -> None:
 
     assert report["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
     assert report["ready_for_prop_dry_run"] is False
+    assert report["operator_action_required"] is True
+    assert [action["id"] for action in report["operator_actions"]] == [
+        "verify_manual_broker_oco",
+        "flatten_unprotected_paper_exposure",
+    ]
 
 
 def test_bracket_audit_prefers_target_exit_summary(monkeypatch) -> None:
@@ -164,6 +171,10 @@ def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
     assert report["primary_unprotected_position"]["venue"] == "ibkr"
     assert report["primary_unprotected_position"]["sec_type"] == "FUT"
     assert report["unprotected_positions"][0]["broker_bracket_required"] is True
+    assert report["operator_action"] == report["next_action"]
+    assert report["operator_actions"][0]["symbol"] == "MNQM6"
+    assert report["operator_actions"][0]["order_action"] is False
+    assert report["operator_actions"][1]["order_action"] is True
     assert "MNQM6 IBKR FUT missing broker-native OCO" in report["next_action"]
     assert ".;" not in report["next_action"]
 

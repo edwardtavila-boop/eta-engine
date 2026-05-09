@@ -249,6 +249,34 @@ def _append_detail_once(message: str, detail: str) -> str:
     return f"{message}{separator}{detail}"
 
 
+def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if summary != "BLOCKED_UNBRACKETED_EXPOSURE":
+        return []
+    primary = positions[0] if positions else {}
+    descriptor = _position_descriptor(primary) if primary else "current broker exposure"
+    symbol = str(primary.get("symbol") or "").strip() or None
+    return [
+        {
+            "id": "verify_manual_broker_oco",
+            "label": "Verify broker OCO coverage",
+            "manual": True,
+            "order_action": False,
+            "blocks_prop_dry_run": True,
+            "symbol": symbol,
+            "detail": f"Confirm {descriptor} has broker-native TP/SL OCO attached outside ETA.",
+        },
+        {
+            "id": "flatten_unprotected_paper_exposure",
+            "label": "Flatten unprotected paper exposure",
+            "manual": True,
+            "order_action": True,
+            "blocks_prop_dry_run": True,
+            "symbol": symbol,
+            "detail": f"Alternative: flatten {descriptor} before prop dry-run if no OCO exists.",
+        },
+    ]
+
+
 def _adapter_support() -> dict[str, Any]:
     support: dict[str, Any] = {
         "ibkr_futures_server_oco": False,
@@ -331,6 +359,7 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
             f"{descriptor} missing broker-native OCO",
         )
 
+    ready_for_prop_dry_run = summary in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"}
     return {
         "kind": "eta_broker_bracket_audit",
         "schema_version": 1,
@@ -342,7 +371,10 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
         "unprotected_positions": unprotected_positions,
         "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
         "adapter_support": adapter_support,
-        "ready_for_prop_dry_run": summary in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"},
+        "ready_for_prop_dry_run": ready_for_prop_dry_run,
+        "operator_action_required": not ready_for_prop_dry_run,
+        "operator_action": next_action,
+        "operator_actions": _operator_actions(summary, unprotected_positions),
         "next_action": next_action,
     }
 

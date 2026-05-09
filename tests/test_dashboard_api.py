@@ -1357,6 +1357,7 @@ class TestDashboardAPI:
         assert payload["systems"]["broker"]["target_exit_status"] == "missing_brackets"
         assert payload["systems"]["broker_bracket_audit"]["status"] == "YELLOW"
         assert payload["systems"]["broker_bracket_audit"]["raw_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert payload["systems"]["broker_bracket_audit"]["operator_action_required"] is True
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
@@ -3370,10 +3371,20 @@ class TestDashboardAPI:
         assert audit["primary_unprotected_position"]["venue"] == "ibkr"
         assert audit["primary_unprotected_position"]["sec_type"] == "FUT"
         assert audit["unprotected_positions"][0]["broker_bracket_required"] is True
+        assert audit["operator_action_required"] is True
+        assert audit["operator_action"] == audit["next_action"]
+        assert [action["id"] for action in audit["operator_actions"]] == [
+            "verify_manual_broker_oco",
+            "flatten_unprotected_paper_exposure",
+        ]
+        assert audit["operator_actions"][0]["symbol"] == "MNQM6"
+        assert audit["operator_actions"][0]["order_action"] is False
+        assert audit["operator_actions"][1]["order_action"] is True
         assert "MNQM6 IBKR FUT" in audit["next_action"]
         assert ".;" not in audit["next_action"]
         assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["summary"]["broker_bracket_audit_ready"] is False
+        assert payload["summary"]["broker_bracket_operator_action_required"] is True
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

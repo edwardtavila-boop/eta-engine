@@ -4345,6 +4345,9 @@ def bot_fleet_roster(
             "close_history_win_rate": close_history_window["win_rate"],
             "broker_bracket_audit_status": broker_bracket_audit.get("summary"),
             "broker_bracket_audit_ready": bool(broker_bracket_audit.get("ready_for_prop_dry_run")),
+            "broker_bracket_operator_action_required": bool(
+                broker_bracket_audit.get("operator_action_required"),
+            ),
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
@@ -5803,6 +5806,36 @@ def _position_audit_descriptor(position: dict) -> str:
     return " ".join(part for part in (symbol, venue, sec_type) if part)
 
 
+def _broker_bracket_operator_actions(report: dict, positions: list[dict]) -> list[dict]:
+    """Structured manual choices for a broker-native bracket blocker."""
+    summary = str(report.get("summary") or "").upper()
+    if summary != "BLOCKED_UNBRACKETED_EXPOSURE":
+        return []
+    primary = positions[0] if positions else {}
+    descriptor = _position_audit_descriptor(primary) if primary else "current broker exposure"
+    symbol = str(primary.get("symbol") or "").strip() or None
+    return [
+        {
+            "id": "verify_manual_broker_oco",
+            "label": "Verify broker OCO coverage",
+            "manual": True,
+            "order_action": False,
+            "blocks_prop_dry_run": True,
+            "symbol": symbol,
+            "detail": f"Confirm {descriptor} has broker-native TP/SL OCO attached outside ETA.",
+        },
+        {
+            "id": "flatten_unprotected_paper_exposure",
+            "label": "Flatten unprotected paper exposure",
+            "manual": True,
+            "order_action": True,
+            "blocks_prop_dry_run": True,
+            "symbol": symbol,
+            "detail": f"Alternative: flatten {descriptor} before prop dry-run if no OCO exists.",
+        },
+    ]
+
+
 def _enrich_broker_bracket_audit_with_positions(
     report: dict,
     *,
@@ -5815,6 +5848,9 @@ def _enrich_broker_bracket_audit_with_positions(
     if not positions:
         out.setdefault("unprotected_positions", [])
         out.setdefault("primary_unprotected_position", None)
+        out["operator_action_required"] = not bool(out.get("ready_for_prop_dry_run"))
+        out["operator_action"] = str(out.get("next_action") or "")
+        out.setdefault("operator_actions", _broker_bracket_operator_actions(out, []))
         return out
     position_summary = (
         dict(out.get("position_summary"))
@@ -5831,6 +5867,9 @@ def _enrich_broker_bracket_audit_with_positions(
         out.get("next_action"),
         f"{descriptor} missing broker-native OCO",
     )
+    out["operator_action_required"] = not bool(out.get("ready_for_prop_dry_run"))
+    out["operator_action"] = str(out.get("next_action") or "")
+    out["operator_actions"] = _broker_bracket_operator_actions(out, positions)
     return out
 
 
@@ -8094,6 +8133,9 @@ def _local_master_status_payload() -> dict[str, object]:
                 "detail": str(broker_bracket_audit.get("next_action") or broker_bracket_audit_status),
                 "source": "broker_bracket_audit",
                 "raw_status": broker_bracket_audit_status,
+                "operator_action_required": bool(
+                    broker_bracket_audit.get("operator_action_required"),
+                ),
                 "ready_for_prop_dry_run": bool(
                     broker_bracket_audit.get("ready_for_prop_dry_run"),
                 ),
