@@ -52,19 +52,23 @@ with open(str(LOG), "w", encoding="utf-8") as log:
         for a in eligible:
             bid = a.bot_id
             session_count = len(ledger["bot_sessions"].get(bid, []))
-            skip = session_count * DAYS
+            # 5m bots get 30d windows (8640 bars) to avoid hangs, 1h+ get 60d
+            tf = a.timeframe
+            bot_days = 30 if tf == "5m" else DAYS
+            bot_timeout = 600 if tf == "5m" else TIMEOUT
+            skip = session_count * bot_days
 
-            cmd = [PYTHON, "-u", SIM, "--bot", bid, "--days", str(DAYS), "--json"]
+            cmd = [PYTHON, "-u", SIM, "--bot", bid, "--days", str(bot_days), "--json"]
             if skip > 0:
                 cmd.extend(["--skip-days", str(skip)])
 
-            msg = f"[{bid}] running {DAYS}d (skip={skip}d)..."
+            msg = f"[{bid}] {bot_days}d (skip={skip}d)..."
             print(msg, end=" ", flush=True)
             log.write(f"{msg}\n")
             log.flush()
 
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=bot_timeout)
                 if proc.returncode == 0 and proc.stdout.strip():
                     data = json.loads(proc.stdout)
                     iso = data.get("in_sample", data)
