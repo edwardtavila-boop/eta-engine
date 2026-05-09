@@ -228,6 +228,58 @@ class TestDashboardAPI:
         assert "2 broker open" in summary["summary_line"]
         assert "2 missing bracket(s)" in summary["summary_line"]
 
+    def test_target_exit_summary_counts_only_bracket_required_broker_exposure(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "eth_sage_daily",
+                    "symbol": "ETH",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_stop": 2280.0,
+                        "bracket_target": 2350.0,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 25.0,
+                            "stop_distance_points": 10.0,
+                        },
+                    },
+                },
+                {
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_stop": 29323.75,
+                        "bracket_target": 29362.75,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 24.0,
+                            "stop_distance_points": 8.5,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=2,
+            broker_bracket_required_position_count=1,
+        )
+
+        assert summary["status"] == "missing_brackets"
+        assert summary["broker_open_position_count"] == 2
+        assert summary["broker_bracket_required_position_count"] == 1
+        assert summary["broker_supervisor_managed_position_count"] == 1
+        assert summary["broker_unbracketed_count"] == 1
+        assert summary["missing_bracket_count"] == 1
+        assert "2 broker open" in summary["summary_line"]
+        assert "1 broker bracket-required" in summary["summary_line"]
+        assert "1 missing bracket(s)" in summary["summary_line"]
+
     def test_target_exit_summary_surfaces_stale_position_sla(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
@@ -3352,10 +3404,14 @@ class TestDashboardAPI:
         assert alpaca_pos["symbol"] == "BTCUSD"
         assert alpaca_pos["qty"] == 0.04
         assert alpaca_pos["unrealized_pnl"] == 50.0
+        assert alpaca_pos["broker_bracket_required"] is False
         ibkr_pos = exposure["open_positions"][1]
         assert ibkr_pos["venue"] == "ibkr"
         assert ibkr_pos["side"] == "short"
         assert ibkr_pos["sec_type"] == "FUT"
+        assert ibkr_pos["broker_bracket_required"] is True
+        assert exposure["broker_bracket_required_position_count"] == 1
+        assert exposure["broker_supervisor_managed_position_count"] == 1
         close = exposure["recent_closes"][0]
         assert close["bot_id"] == "btc_optimized"
         assert close["realized_pnl"] == 50.0

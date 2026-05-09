@@ -1446,6 +1446,8 @@ _IBKR_ROUTER_SLEEVES = frozenset(
         "crypto_futures",
     }
 )
+_BROKER_BRACKET_REQUIRED_VENUES = frozenset({"ibkr", "tasty", "tastytrade"})
+_BROKER_BRACKET_REQUIRED_SEC_TYPES = frozenset({"FUT", "FOP"})
 
 
 def _router_active_order_summary(path: Path, *, lane: str) -> dict:
@@ -3507,6 +3509,7 @@ def _target_exit_summary(
     rows: list[dict],
     *,
     broker_open_position_count: int | None = None,
+    broker_bracket_required_position_count: int | None = None,
     server_ts: float | None = None,
 ) -> dict:
     """Summarize open-position target/stop supervision for operator cards."""
@@ -3596,7 +3599,18 @@ def _target_exit_summary(
         if broker_open_position_count is not None
         else 0
     )
-    broker_unbracketed_count = max(0, effective_broker_open_count - broker_bracket_count)
+    if broker_bracket_required_position_count is None:
+        broker_bracket_required_count = effective_broker_open_count
+    else:
+        broker_bracket_required_count = max(
+            0,
+            min(int(broker_bracket_required_position_count), effective_broker_open_count),
+        )
+    broker_supervisor_managed_count = max(
+        0,
+        effective_broker_open_count - broker_bracket_required_count,
+    )
+    broker_unbracketed_count = max(0, broker_bracket_required_count - broker_bracket_count)
     total_missing_bracket_count = missing_bracket_count + broker_unbracketed_count
     if open_count == 0:
         status = "flat"
@@ -3621,8 +3635,13 @@ def _target_exit_summary(
             else "; nearest target n/a"
         )
         if broker_open_position_count is not None:
+            required_text = (
+                f" ({broker_bracket_required_count} broker bracket-required)"
+                if broker_bracket_required_count != effective_broker_open_count
+                else ""
+            )
             summary_line = (
-                f"{effective_broker_open_count} broker open; "
+                f"{effective_broker_open_count} broker open{required_text}; "
                 f"{supervisor_local_count} supervisor paper-local open; "
                 f"{supervisor_watch_count} supervisor watcher(s); "
                 f"{broker_bracket_count} broker bracket(s); {total_missing_bracket_count} missing bracket(s)"
@@ -3649,6 +3668,8 @@ def _target_exit_summary(
         "open_position_count": open_count,
         "broker_open_position_count": effective_broker_open_count,
         "broker_open_position_count_observed": broker_open_position_count is not None,
+        "broker_bracket_required_position_count": broker_bracket_required_count,
+        "broker_supervisor_managed_position_count": broker_supervisor_managed_count,
         "supervisor_local_position_count": supervisor_local_count,
         "watching_count": watching_count,
         "supervisor_watch_count": supervisor_watch_count,
@@ -4092,6 +4113,7 @@ def bot_fleet_roster(
             "server_ts": time.time(),
         }
     broker_open_position_count = _float_value(live_broker_state.get("open_position_count"))
+    broker_bracket_required_position_count = _broker_bracket_required_position_count(live_broker_state)
     target_exit_summary = _target_exit_summary(
         rows,
         broker_open_position_count=(
@@ -4099,6 +4121,7 @@ def bot_fleet_roster(
             if broker_open_position_count is not None
             else None
         ),
+        broker_bracket_required_position_count=broker_bracket_required_position_count,
         server_ts=now_ts,
     )
     if isinstance(live_broker_state, dict):
@@ -4995,7 +5018,7 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
             raw_side = "long"
         else:
             raw_side = "unknown"
-    return {
+    normalized = {
         "venue": venue,
         "symbol": str(symbol),
         "side": raw_side,
@@ -5014,6 +5037,19 @@ def _normalize_live_position(row: dict, *, venue: str) -> dict | None:
         "sec_type": row.get("secType") or row.get("sec_type"),
         "exchange": row.get("exchange"),
     }
+    normalized["broker_bracket_required"] = _position_requires_broker_bracket(normalized)
+    return normalized
+
+
+def _position_requires_broker_bracket(position: dict) -> bool:
+    """True for broker-open instruments that should have broker-side OCO protection."""
+    venue = str(position.get("venue") or "").strip().lower()
+    if venue not in _BROKER_BRACKET_REQUIRED_VENUES:
+        return False
+    sec_type = str(position.get("sec_type") or position.get("secType") or "").strip().upper()
+    if sec_type in _BROKER_BRACKET_REQUIRED_SEC_TYPES:
+        return True
+    return _portfolio_sleeve_for_symbol(position.get("symbol")) in _IBKR_ROUTER_SLEEVES
 
 
 def _normalize_trade_close(row: dict) -> dict | None:
@@ -5434,6 +5470,36 @@ def _portfolio_summary_payload(
     }
 
 
+def _normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
+    """Normalize broker open positions across venues."""
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    open_positions: list[dict] = []
+    for venue in ("alpaca", "ibkr"):
+        venue_state = (
+            live_broker_state.get(venue)
+            if isinstance(live_broker_state.get(venue), dict)
+            else {}
+        )
+        for row in venue_state.get("open_positions") or []:
+            normalized = _normalize_live_position(row, venue=venue)
+            if normalized:
+                open_positions.append(normalized)
+    return open_positions
+
+
+def _broker_bracket_required_position_count(live_broker_state: dict) -> int | None:
+    """Count broker positions that should have broker-native brackets.
+
+    Returns ``None`` when the broker reported an open-position count but did
+    not include per-position detail; callers can then preserve legacy
+    fail-closed behavior.
+    """
+    positions = _normalized_live_open_positions(live_broker_state)
+    if not positions and (_float_value(live_broker_state.get("open_position_count")) or 0) > 0:
+        return None
+    return sum(1 for position in positions if position.get("broker_bracket_required") is True)
+
+
 def _position_exposure_payload(
     live_broker_state: dict,
     *,
@@ -5447,15 +5513,7 @@ def _position_exposure_payload(
     alpaca = live_broker_state.get("alpaca") if isinstance(live_broker_state.get("alpaca"), dict) else {}
     ibkr = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
 
-    open_positions: list[dict] = []
-    for row in alpaca.get("open_positions") or []:
-        normalized = _normalize_live_position(row, venue="alpaca")
-        if normalized:
-            open_positions.append(normalized)
-    for row in ibkr.get("open_positions") or []:
-        normalized = _normalize_live_position(row, venue="ibkr")
-        if normalized:
-            open_positions.append(normalized)
+    open_positions = _normalized_live_open_positions(live_broker_state)
 
     if close_history is None:
         close_history = _close_history_windows(_recent_trade_closes(limit=5000))
@@ -5476,6 +5534,9 @@ def _position_exposure_payload(
             normalized_closes.append(normalized)
 
     open_position_count = len(open_positions)
+    bracket_required_count = sum(
+        1 for position in open_positions if position.get("broker_bracket_required") is True
+    )
     supervisor_local_count = int(target_exit_summary.get("supervisor_local_position_count") or 0)
     supervisor_watch_count = int(target_exit_summary.get("supervisor_watch_count") or 0)
     if open_position_count:
@@ -5503,6 +5564,8 @@ def _position_exposure_payload(
         "server_ts": time.time(),
         "open_position_count": open_position_count,
         "broker_open_position_count": open_position_count,
+        "broker_bracket_required_position_count": bracket_required_count,
+        "broker_supervisor_managed_position_count": max(0, open_position_count - bracket_required_count),
         "supervisor_local_position_count": supervisor_local_count,
         "supervisor_watch_count": supervisor_watch_count,
         "symbols_open": sorted({p["symbol"] for p in open_positions if p.get("symbol")}),
