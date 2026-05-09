@@ -184,12 +184,12 @@ def test_failed_handshake_uses_raw_socket_probe_for_classification(
     assert "Inspect" in data["recovery_lane"]["operator_action"]
 
 
-def test_watchdog_client_ids_use_reserved_low_id_pool(monkeypatch) -> None:
+def test_watchdog_client_ids_use_reserved_diagnostic_id_pool(monkeypatch) -> None:
     from eta_engine.scripts import tws_watchdog
 
     monkeypatch.delenv("ETA_TWS_WATCHDOG_CLIENT_IDS", raising=False)
 
-    assert tws_watchdog._watchdog_client_ids() == (55, 99, 101, 102)
+    assert tws_watchdog._watchdog_client_ids() == (9011, 9012, 9013, 9014)
 
 
 def test_watchdog_client_ids_can_be_overridden(monkeypatch) -> None:

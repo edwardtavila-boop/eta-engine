@@ -14,6 +14,8 @@ def test_tws_watchdog_registrar_keeps_release_guard_fresh() -> None:
     assert 'TaskName = "ETA-TWS-Watchdog"' in text
     assert 'Root = "C:\\EvolutionaryTradingAlgo"' in text
     assert "-m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002" in text
+    assert "--handshake-attempts 1" in text
+    assert "--handshake-timeout 30" in text
     assert "-RepetitionInterval (New-TimeSpan -Seconds $IntervalSeconds)" in text
     assert "IntervalSeconds -lt 30 -or $IntervalSeconds -gt 120" in text
     assert "180-second paper-live release guard" in text

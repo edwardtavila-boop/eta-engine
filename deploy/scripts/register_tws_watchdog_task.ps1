@@ -45,7 +45,7 @@ if (-not (Test-Path -LiteralPath $WatchdogScript)) {
     throw "Missing TWS watchdog script: $WatchdogScript"
 }
 
-$arguments = "-m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+$arguments = "-m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002 --handshake-attempts 1 --handshake-timeout 30"
 
 if ($DryRun) {
     Write-Host "DRY RUN: would register task '$TaskName'"

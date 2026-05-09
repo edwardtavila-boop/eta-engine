@@ -44,7 +44,7 @@ _STATUS_PATH = Path(
     r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\tws_watchdog.json"
 )
 _DEFAULT_CRASH_LOG_DIR = Path(r"C:\Jts\ibgateway\1046")
-_DEFAULT_WATCHDOG_CLIENT_IDS = (55, 99, 101, 102)
+_DEFAULT_WATCHDOG_CLIENT_IDS = (9011, 9012, 9013, 9014)
 _GATEWAY_PROCESS_NAMES = ("ibgateway.exe", "ibgateway1.exe")
 _LAST_ACCOUNT_SNAPSHOT: dict | None = None
 
