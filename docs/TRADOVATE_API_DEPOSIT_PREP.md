@@ -60,6 +60,22 @@ lane and should block until all of these are true:
 - A schema-backed closed-trade ledger exists so win rate, PnL, and R are not
   stale.
 
+If `broker_bracket_audit` reports an open IBKR futures position that requires
+manual broker-OCO verification, clear it only after checking TWS/IB Gateway
+and confirming the position has a broker-native TP/SL OCO attached outside
+ETA:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.broker_bracket_audit --ack-manual-oco --symbol MNQM6 --venue ibkr --operator edward --expires-hours 24 --confirm
+python -m eta_engine.scripts.broker_bracket_audit
+python -m eta_engine.scripts.prop_live_readiness_gate
+```
+
+Do not use this acknowledgment as a substitute for actual broker-side
+protection. If the broker OCO is not visible, flatten manually or let the gate
+remain blocked.
+
 ## Deposit Day
 
 In Tradovate:

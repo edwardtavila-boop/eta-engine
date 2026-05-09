@@ -7,7 +7,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
 DEFAULT_OUT = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
+DEFAULT_MANUAL_ACK_PATH = workspace_roots.ETA_BROKER_BRACKET_MANUAL_ACK_PATH
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -60,6 +61,36 @@ def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
     except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def load_manual_oco_ack(path: Path = DEFAULT_MANUAL_ACK_PATH) -> dict[str, Any]:
+    """Load the operator's manual broker-OCO verification latch."""
+    return _load_json(path)
+
+
+def _parse_dt(raw: object) -> datetime | None:
+    if not raw:
+        return None
+    if isinstance(raw, datetime):
+        parsed = raw
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, Any]:
@@ -133,6 +164,14 @@ def _position_qty(position: dict[str, Any]) -> float | None:
     return None
 
 
+def _first_float(position: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = _as_float(position.get(key))
+        if value is not None:
+            return value
+    return None
+
+
 def _position_requires_broker_bracket(position: dict[str, Any]) -> bool:
     explicit = position.get("broker_bracket_required")
     if explicit is not None:
@@ -171,6 +210,15 @@ def _normalize_open_position(
         "qty": abs(qty) if qty is not None else None,
         "sec_type": sec_type,
         "exchange": position.get("exchange"),
+        "avg_entry_price": _first_float(
+            position,
+            ("avg_entry_price", "average_cost", "averageCost", "avgCost", "avg_price", "avgPrice"),
+        ),
+        "current_price": _first_float(
+            position,
+            ("current_price", "mark_price", "market_price", "last_price", "currentPrice"),
+        ),
+        "unrealized_pct": _first_float(position, ("unrealized_pct", "unrealized_percent")),
         "market_value": _as_float(position.get("market_value")),
         "unrealized_pnl": _as_float(position.get("unrealized_pnl")),
     }
@@ -212,6 +260,34 @@ def _candidate_open_positions(fleet: dict[str, Any]) -> list[dict[str, Any]]:
             seen.add(key)
             positions.append(position)
     return positions
+
+
+def _position_symbol(position: dict[str, Any]) -> str:
+    return str(position.get("symbol") or "").strip().upper()
+
+
+def _position_venue(position: dict[str, Any]) -> str:
+    return str(position.get("venue") or "").strip().lower()
+
+
+def _manual_ack_covers(
+    position: dict[str, Any],
+    manual_ack: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if not manual_ack or not _as_bool(manual_ack.get("verified")):
+        return False
+    ack_symbol = str(manual_ack.get("symbol") or "").strip().upper()
+    if not ack_symbol or ack_symbol != _position_symbol(position):
+        return False
+    ack_venue = str(manual_ack.get("venue") or "").strip().lower()
+    if ack_venue and ack_venue != _position_venue(position):
+        return False
+    expires_at = _parse_dt(manual_ack.get("expires_at_utc"))
+    if expires_at is None:
+        return False
+    return expires_at > (now or datetime.now(UTC))
 
 
 def _unprotected_positions(
@@ -306,18 +382,69 @@ def _adapter_support() -> dict[str, Any]:
     return support
 
 
-def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_bracket_audit(
+    *,
+    fleet: dict[str, Any] | None = None,
+    manual_ack: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     fleet = fleet or _fetch_json(DEFAULT_FLEET_URL)
+    manual_ack = manual_ack or {}
     position_summary = _derive_position_summary(fleet)
     open_count = position_summary["broker_open_position_count"]
     bracket_required = position_summary["broker_bracket_required_position_count"]
     missing_brackets = position_summary["missing_bracket_count"]
     supervisor_local = position_summary["supervisor_local_position_count"]
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
-    unprotected_positions = _unprotected_positions(
+    candidate_unprotected_positions = _unprotected_positions(
         fleet,
         missing_brackets=missing_brackets,
     )
+    manual_oco_verified_positions = [
+        position
+        for position in candidate_unprotected_positions
+        if _manual_ack_covers(position, manual_ack)
+    ]
+    if manual_oco_verified_positions:
+        verified_keys = {
+            (
+                _position_venue(position),
+                _position_symbol(position),
+                str(position.get("sec_type") or "").strip().upper(),
+                position.get("qty"),
+            )
+            for position in manual_oco_verified_positions
+        }
+        unprotected_positions = [
+            position
+            for position in candidate_unprotected_positions
+            if (
+                _position_venue(position),
+                _position_symbol(position),
+                str(position.get("sec_type") or "").strip().upper(),
+                position.get("qty"),
+            )
+            not in verified_keys
+        ]
+        missing_brackets = max(0, missing_brackets - len(manual_oco_verified_positions))
+    else:
+        unprotected_positions = candidate_unprotected_positions
+
+    if manual_oco_verified_positions or missing_brackets != position_summary["missing_bracket_count"]:
+        position_summary = dict(position_summary)
+        position_summary["missing_bracket_count"] = missing_brackets
+        position_summary["manual_oco_verified_count"] = len(manual_oco_verified_positions)
+        position_summary["manual_oco_verified_symbols"] = sorted(
+            {
+                str(position.get("symbol") or "")
+                for position in manual_oco_verified_positions
+                if position.get("symbol")
+            },
+        )
+    else:
+        position_summary = dict(position_summary)
+        position_summary["manual_oco_verified_count"] = 0
+        position_summary["manual_oco_verified_symbols"] = []
+
     if unprotected_positions:
         position_summary = dict(position_summary)
         position_summary["unprotected_symbols"] = sorted(
@@ -334,6 +461,8 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
 
     if open_count == 0 and supervisor_local == 0 and adapter_ok:
         summary = "READY_NO_OPEN_EXPOSURE"
+    elif manual_oco_verified_positions and missing_brackets == 0 and not unprotected_positions and adapter_ok:
+        summary = "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED"
     elif bracket_required > 0 and missing_brackets == 0 and supervisor_local == 0 and adapter_ok:
         summary = "READY_OPEN_EXPOSURE_BRACKETED"
     elif not adapter_ok:
@@ -349,6 +478,8 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
         )
     elif summary == "BLOCKED_UNBRACKETED_EXPOSURE":
         next_action = "Wait for or flatten current paper exposure before prop dry-run."
+    elif summary == "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED":
+        next_action = "Broker-native bracket/OCO audit is clear via manual OCO verification."
     else:
         next_action = "Broker-native bracket/OCO audit is clear."
 
@@ -359,7 +490,11 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
             f"{descriptor} missing broker-native OCO",
         )
 
-    ready_for_prop_dry_run = summary in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"}
+    ready_for_prop_dry_run = summary in {
+        "READY_NO_OPEN_EXPOSURE",
+        "READY_OPEN_EXPOSURE_BRACKETED",
+        "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED",
+    }
     return {
         "kind": "eta_broker_bracket_audit",
         "schema_version": 1,
@@ -368,6 +503,16 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
         "target_exit_status": target_exit_summary.get("status"),
         "stale_position_status": target_exit_summary.get("stale_position_status"),
         "position_summary": position_summary,
+        "manual_oco_ack": {
+            "present": bool(manual_ack),
+            "symbol": manual_ack.get("symbol"),
+            "venue": manual_ack.get("venue"),
+            "verified": _as_bool(manual_ack.get("verified")),
+            "operator": manual_ack.get("operator"),
+            "verified_at_utc": manual_ack.get("verified_at_utc"),
+            "expires_at_utc": manual_ack.get("expires_at_utc"),
+        },
+        "manual_oco_verified_positions": manual_oco_verified_positions,
         "unprotected_positions": unprotected_positions,
         "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
         "adapter_support": adapter_support,
@@ -387,16 +532,82 @@ def write_report(report: dict[str, Any], path: Path = DEFAULT_OUT) -> Path:
     return path
 
 
+def build_manual_oco_ack(
+    *,
+    symbol: str,
+    operator: str,
+    venue: str = "",
+    note: str = "",
+    expires_hours: float = 24.0,
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    return {
+        "kind": "eta_broker_bracket_manual_oco_ack",
+        "schema_version": 1,
+        "symbol": symbol.strip().upper(),
+        "venue": venue.strip().lower(),
+        "verified": True,
+        "operator": operator.strip(),
+        "verified_at_utc": now.isoformat(),
+        "expires_at_utc": (now + timedelta(hours=expires_hours)).isoformat(),
+        "note": note.strip(),
+    }
+
+
+def write_manual_oco_ack(
+    ack: dict[str, Any],
+    path: Path = DEFAULT_MANUAL_ACK_PATH,
+) -> Path:
+    workspace_roots.ensure_parent(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(ack, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only broker bracket/OCO coverage audit")
     parser.add_argument("--fleet-url", default=DEFAULT_FLEET_URL)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--manual-ack-path", type=Path, default=DEFAULT_MANUAL_ACK_PATH)
+    parser.add_argument("--ack-manual-oco", action="store_true")
+    parser.add_argument("--symbol", help="Broker symbol manually verified with broker-native OCO")
+    parser.add_argument("--venue", default="ibkr", help="Broker venue for the manual OCO verification")
+    parser.add_argument("--operator", help="Operator name recording the manual broker-OCO verification")
+    parser.add_argument("--note", default="", help="Optional evidence note for the manual OCO verification")
+    parser.add_argument("--expires-hours", type=float, default=24.0)
+    parser.add_argument("--confirm", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-write", action="store_true")
     args = parser.parse_args(argv)
 
+    if args.ack_manual_oco:
+        if not args.confirm:
+            parser.error("--ack-manual-oco requires --confirm after manually verifying broker OCO coverage")
+        if not args.symbol:
+            parser.error("--ack-manual-oco requires --symbol")
+        if not args.operator:
+            parser.error("--ack-manual-oco requires --operator")
+        if args.expires_hours <= 0:
+            parser.error("--expires-hours must be positive")
+        ack = build_manual_oco_ack(
+            symbol=args.symbol,
+            venue=args.venue,
+            operator=args.operator,
+            note=args.note,
+            expires_hours=args.expires_hours,
+        )
+        out_path = write_manual_oco_ack(ack, args.manual_ack_path)
+        if args.json:
+            print(json.dumps({"manual_oco_ack": ack, "path": str(out_path)}, indent=2, sort_keys=True))
+        else:
+            print(f"manual broker OCO ack recorded: {args.symbol.strip().upper()} ({args.venue.strip().lower()})")
+            print(f"expires: {ack['expires_at_utc']}")
+            print(f"wrote: {out_path}")
+        return 0
+
     fleet = _fetch_json(args.fleet_url)
-    report = build_bracket_audit(fleet=fleet)
+    report = build_bracket_audit(fleet=fleet, manual_ack=load_manual_oco_ack(args.manual_ack_path))
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))

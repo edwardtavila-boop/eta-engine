@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from eta_engine.scripts import broker_bracket_audit as audit
 
 
@@ -149,6 +151,9 @@ def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
                             "symbol": "MNQM6",
                             "secType": "FUT",
                             "position": 3,
+                            "avg_entry_price": 29340.0,
+                            "current_price": 29335.0,
+                            "unrealized_pct": -0.00017,
                             "market_value": 176010.07,
                             "unrealized_pnl": -33.79,
                             "broker_bracket_required": True,
@@ -170,13 +175,132 @@ def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
     assert report["primary_unprotected_position"]["symbol"] == "MNQM6"
     assert report["primary_unprotected_position"]["venue"] == "ibkr"
     assert report["primary_unprotected_position"]["sec_type"] == "FUT"
+    assert report["primary_unprotected_position"]["avg_entry_price"] == 29340.0
+    assert report["primary_unprotected_position"]["current_price"] == 29335.0
+    assert report["primary_unprotected_position"]["unrealized_pct"] == -0.00017
     assert report["unprotected_positions"][0]["broker_bracket_required"] is True
+    assert report["unprotected_positions"][0]["avg_entry_price"] == 29340.0
+    assert report["unprotected_positions"][0]["current_price"] == 29335.0
     assert report["operator_action"] == report["next_action"]
     assert report["operator_actions"][0]["symbol"] == "MNQM6"
     assert report["operator_actions"][0]["order_action"] is False
     assert report["operator_actions"][1]["order_action"] is True
     assert "MNQM6 IBKR FUT missing broker-native OCO" in report["next_action"]
     assert ".;" not in report["next_action"]
+
+
+def test_bracket_audit_accepts_current_manual_oco_ack(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 2,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "position_exposure": {
+                    "open_positions": [
+                        {
+                            "venue": "ibkr",
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "broker_bracket_required": True,
+                        },
+                    ],
+                },
+            },
+        },
+        manual_ack={
+            "schema_version": 1,
+            "kind": "eta_broker_bracket_manual_oco_ack",
+            "symbol": "MNQM6",
+            "venue": "ibkr",
+            "verified": True,
+            "operator": "edward",
+            "verified_at_utc": datetime.now(UTC).isoformat(),
+            "expires_at_utc": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            "note": "verified in TWS",
+        },
+    )
+
+    assert report["summary"] == "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED"
+    assert report["ready_for_prop_dry_run"] is True
+    assert report["operator_action_required"] is False
+    assert report["position_summary"]["missing_bracket_count"] == 0
+    assert report["position_summary"]["manual_oco_verified_count"] == 1
+    assert report["position_summary"]["manual_oco_verified_symbols"] == ["MNQM6"]
+    assert report["manual_oco_verified_positions"][0]["symbol"] == "MNQM6"
+    assert report["unprotected_positions"] == []
+    assert report["operator_actions"] == []
+
+
+def test_bracket_audit_rejects_expired_manual_oco_ack(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "position_exposure": {
+                    "open_positions": [
+                        {
+                            "venue": "ibkr",
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "broker_bracket_required": True,
+                        },
+                    ],
+                },
+            },
+        },
+        manual_ack={
+            "schema_version": 1,
+            "kind": "eta_broker_bracket_manual_oco_ack",
+            "symbol": "MNQM6",
+            "venue": "ibkr",
+            "verified": True,
+            "operator": "edward",
+            "verified_at_utc": "2000-01-01T00:00:00+00:00",
+            "expires_at_utc": "2000-01-02T00:00:00+00:00",
+        },
+    )
+
+    assert report["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+    assert report["ready_for_prop_dry_run"] is False
+    assert report["position_summary"]["missing_bracket_count"] == 1
+    assert report["position_summary"]["unprotected_symbols"] == ["MNQM6"]
+    assert report["manual_oco_verified_positions"] == []
+    assert report["primary_unprotected_position"]["symbol"] == "MNQM6"
 
 
 def test_bracket_audit_derives_summary_from_bots(monkeypatch) -> None:

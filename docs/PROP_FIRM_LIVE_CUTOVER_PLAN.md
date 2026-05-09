@@ -172,6 +172,11 @@ Phase 4: Live watched cutover.
   `python -m eta_engine.scripts.closed_trade_ledger`.
 - Keep broker-native bracket/OCO proof current:
   `python -m eta_engine.scripts.broker_bracket_audit`.
+- If the audit flags an open IBKR futures position that already has a
+  broker-native TP/SL OCO visible in TWS/IB Gateway, record the short-lived
+  manual proof latch:
+  `python -m eta_engine.scripts.broker_bracket_audit --ack-manual-oco --symbol MNQM6 --venue ibkr --operator edward --expires-hours 24 --confirm`.
+  Do not run this if the broker-side OCO is not actually visible.
 - Treat the consolidated gate as the final go/no-go:
   `python -m eta_engine.scripts.prop_live_readiness_gate`.
 - After funding/API activation, require:

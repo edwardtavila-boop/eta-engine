@@ -106,3 +106,28 @@ def test_prop_live_gate_blocks_runner_or_unbracketed_live_path() -> None:
     assert any(check["name"] == "primary_ladder" and check["status"] == "BLOCKED" for check in report["checks"])
     assert any(check["name"] == "broker_native_brackets" and check["status"] == "BLOCKED" for check in report["checks"])
     assert any(check["name"] == "live_bot_gate" and check["status"] == "BLOCKED" for check in report["checks"])
+
+
+def test_prop_live_gate_accepts_manual_oco_verified_bracket_audit() -> None:
+    payloads = _ready_payloads()
+    payloads["fleet"]["summary"]["broker_open_position_count"] = 1
+    payloads["fleet"]["summary"]["broker_bracket_count"] = 0
+    payloads["fleet"]["summary"]["supervisor_local_position_count"] = 1
+    payloads["broker_bracket_audit"] = {
+        "summary": "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED",
+        "ready_for_prop_dry_run": True,
+        "position_summary": {
+            "broker_open_position_count": 1,
+            "broker_bracket_count": 0,
+            "missing_bracket_count": 0,
+            "manual_oco_verified_count": 1,
+            "manual_oco_verified_symbols": ["MNQM6"],
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    bracket_check = next(check for check in report["checks"] if check["name"] == "broker_native_brackets")
+    assert bracket_check["status"] == "PASS"
+    assert "manual OCO verification" in bracket_check["detail"]

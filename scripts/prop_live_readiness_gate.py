@@ -28,6 +28,7 @@ DEFAULT_OUT = workspace_roots.ETA_RUNTIME_STATE_DIR / "prop_live_readiness_lates
 DEFAULT_LADDER_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "futures_prop_ladder_latest.json"
 DEFAULT_PROP_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tradovate_prop_readiness.json"
 DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
+DEFAULT_BRACKET_AUDIT_PATH = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MASTER_URL = "https://ops.evolutionarytradingalgo.com/api/master/status"
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
 
@@ -196,7 +197,40 @@ def _derived_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def _broker_native_brackets_check(fleet: dict[str, Any]) -> dict[str, Any]:
+def _broker_native_brackets_check(
+    fleet: dict[str, Any],
+    broker_bracket_audit: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    broker_bracket_audit = _as_dict(broker_bracket_audit)
+    audit_summary = str(broker_bracket_audit.get("summary") or "")
+    if broker_bracket_audit:
+        if bool(broker_bracket_audit.get("ready_for_prop_dry_run")):
+            detail = "broker-native bracket/OCO audit is clear"
+            if audit_summary == "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED":
+                detail = "broker-native bracket/OCO audit is clear via manual OCO verification"
+            return _check(
+                "broker_native_brackets",
+                "PASS",
+                detail,
+                audit_summary=audit_summary,
+                position_summary=_as_dict(broker_bracket_audit.get("position_summary")),
+            )
+        if audit_summary:
+            return _check(
+                "broker_native_brackets",
+                "BLOCKED",
+                str(
+                    broker_bracket_audit.get("next_action")
+                    or broker_bracket_audit.get("operator_action")
+                    or f"broker-native bracket/OCO audit is {audit_summary}",
+                ),
+                audit_summary=audit_summary,
+                position_summary=_as_dict(broker_bracket_audit.get("position_summary")),
+                primary_unprotected_position=_as_dict(
+                    broker_bracket_audit.get("primary_unprotected_position"),
+                ),
+            )
+
     summary = _as_dict(fleet.get("summary"))
     if not summary:
         summary = _derived_position_summary(fleet)
@@ -280,6 +314,7 @@ def build_gate_report(
     master: dict[str, Any] | None = None,
     fleet: dict[str, Any] | None = None,
     ledger: dict[str, Any] | None = None,
+    broker_bracket_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ladder = _as_dict(ladder)
     prop = _as_dict(prop)
@@ -292,7 +327,7 @@ def build_gate_report(
         _prop_readiness_check(prop),
         _broker_surfaces_check(master),
         _router_cleanliness_check(fleet),
-        _broker_native_brackets_check(fleet),
+        _broker_native_brackets_check(fleet, broker_bracket_audit),
         _closed_trade_ledger_check(ledger),
         _live_bot_gate_check(fleet),
     ]
@@ -354,24 +389,42 @@ def _build_current_ledger() -> dict[str, Any]:
         return {}
 
 
+def _build_current_broker_bracket_audit(fleet: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
+
+        return broker_bracket_audit.build_bracket_audit(
+            fleet=fleet,
+            manual_ack=broker_bracket_audit.load_manual_oco_ack(),
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def load_gate_inputs(
     *,
     prop_account: str = "blusky_50k",
     ladder_path: Path = DEFAULT_LADDER_PATH,
     prop_path: Path = DEFAULT_PROP_PATH,
     ledger_path: Path = DEFAULT_LEDGER_PATH,
+    bracket_audit_path: Path = DEFAULT_BRACKET_AUDIT_PATH,
     master_url: str = DEFAULT_MASTER_URL,
     fleet_url: str = DEFAULT_FLEET_URL,
 ) -> dict[str, dict[str, Any]]:
     prop = _build_current_prop(prop_account) or _as_dict(_load_json(prop_path))
     ladder = _build_current_ladder(prop) or _as_dict(_load_json(ladder_path))
     ledger = _build_current_ledger() or _as_dict(_load_json(ledger_path))
+    fleet = _as_dict(_fetch_json(fleet_url))
+    broker_bracket_audit = _build_current_broker_bracket_audit(fleet) or _as_dict(
+        _load_json(bracket_audit_path),
+    )
     return {
         "ladder": ladder,
         "prop": prop,
         "master": _as_dict(_fetch_json(master_url)),
-        "fleet": _as_dict(_fetch_json(fleet_url)),
+        "fleet": fleet,
         "ledger": ledger,
+        "broker_bracket_audit": broker_bracket_audit,
     }
 
 
@@ -397,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only prop-live go/no-go gate")
     parser.add_argument("--prop-account", default="blusky_50k", help="Configured prop account alias")
     parser.add_argument("--ledger-path", type=Path, default=DEFAULT_LEDGER_PATH)
+    parser.add_argument("--bracket-audit-path", type=Path, default=DEFAULT_BRACKET_AUDIT_PATH)
     parser.add_argument("--master-url", default=DEFAULT_MASTER_URL)
     parser.add_argument("--fleet-url", default=DEFAULT_FLEET_URL)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
@@ -407,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = load_gate_inputs(
         prop_account=args.prop_account,
         ledger_path=args.ledger_path,
+        bracket_audit_path=args.bracket_audit_path,
         master_url=args.master_url,
         fleet_url=args.fleet_url,
     )
