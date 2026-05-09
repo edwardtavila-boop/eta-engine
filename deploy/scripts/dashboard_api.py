@@ -4042,7 +4042,7 @@ def bot_fleet_roster(
     )
     default_close_history_window = str(close_history.get("default_window") or "mtd")
     history_window_pnl = {}
-    for window_key in ("today", "wtd", "mtd", "ytd"):
+    for window_key in ("today", "wtd", "mtd", "ytd", "all"):
         window = close_windows.get(window_key)
         if not isinstance(window, dict):
             continue
@@ -5062,6 +5062,7 @@ def _close_history_windows(
         ("wtd", "WTD", week_start, 250),
         ("mtd", "MTD", month_start, 500),
         ("ytd", "YTD", year_start, 750),
+        ("all", "All", None, 1000),
     ]
     out: dict[str, object] = {
         "source": "trade_close_ledger",
@@ -5075,13 +5076,13 @@ def _close_history_windows(
             row_limit=row_limit,
         )
         summary.update(
-            {
-                "window": key,
-                "label": label,
-                "since": since.isoformat(),
-                "until": now.isoformat(),
-                "source": "trade_close_ledger",
-            },
+                {
+                    "window": key,
+                    "label": label,
+                    "since": since.isoformat() if since is not None else None,
+                    "until": now.isoformat(),
+                    "source": "trade_close_ledger",
+                },
         )
         out["windows"][key] = summary
     return out

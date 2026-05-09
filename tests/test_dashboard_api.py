@@ -3026,6 +3026,16 @@ class TestDashboardAPI:
                     "until": "2026-05-09T03:00:00+00:00",
                     "source": "trade_close_ledger",
                 },
+                "all": {
+                    "label": "All",
+                    "realized_pnl": 32901.18,
+                    "closed_outcome_count": 340,
+                    "evaluated_outcome_count": 335,
+                    "win_rate": 0.5224,
+                    "since": None,
+                    "until": "2026-05-09T03:00:00+00:00",
+                    "source": "trade_close_ledger",
+                },
             },
         }
         monkeypatch.setattr(
@@ -3051,6 +3061,7 @@ class TestDashboardAPI:
         assert payload["history_window_pnl"]["wtd"]["pnl"] == 30123.45
         assert payload["history_window_pnl"]["mtd"]["closed_outcome_count"] == 320
         assert payload["history_window_pnl"]["mtd"]["win_rate"] == 0.5181
+        assert payload["history_window_pnl"]["all"]["pnl"] == 32901.18
 
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod

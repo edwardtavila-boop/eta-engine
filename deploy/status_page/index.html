@@ -279,7 +279,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Total Bots</h3><div class="stat green" id="totalBots">—</div></div>
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
-  <div class="card"><h3 id="totalPnlLabel">Lifetime PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">waiting for lifetime ledger</div></div>
+  <div class="card"><h3 id="totalPnlLabel">History PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">waiting for close ledger</div></div>
   <div class="card"><h3>Cumulative R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for realized-R outcomes</div></div>
   <div class="card"><h3>Actual Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
@@ -300,6 +300,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <button type="button" data-close-window="wtd">WTD</button>
       <button type="button" data-close-window="mtd" class="active">MTD</button>
       <button type="button" data-close-window="ytd">YTD</button>
+      <button type="button" data-close-window="all">All</button>
     </div>
     <div class="stat dim" id="pnlHistoryLabel">MTD close history</div>
     <div class="history-subline" id="pnlHistorySub">waiting for close ledger</div>
@@ -787,9 +788,11 @@ function renderPnlWindowControls(closeHistory) {
   if (!controls) return;
   const windows = closeHistory?.windows || {};
   const ordered = [
+    ['today', 'Today'],
     ['wtd', 'WTD'],
     ['mtd', 'MTD'],
-    ['ytd', 'YTD']
+    ['ytd', 'YTD'],
+    ['all', 'All']
   ];
   controls.innerHTML = ordered.map(([key, label]) => {
     const payload = windows[key] || {};
@@ -958,13 +961,16 @@ function buildSupervisorPositions(bots) {
     .filter(Boolean);
 }
 
-function renderRecentCloses(closes, label = 'recent') {
+function renderRecentCloses(closes, label = 'recent', totalCount = null) {
   const rows = Array.isArray(closes) ? closes.slice(0, 6) : [];
   if (!rows.length) {
     return '<div class="empty-panel">No recent close evidence in the Jarvis trade-close ledger yet.</div>';
   }
+  const total = Number(totalCount ?? closes.length ?? rows.length);
+  const shown = rows.length;
+  const scope = label || 'selected window';
   return `<div class="mt-3">
-    <div class="text-xs text-zinc-500 mb-1">${esc(label)} close evidence</div>
+    <div class="text-xs text-zinc-500 mb-1">${esc(scope)} close evidence (${shown} shown of ${total} closes)</div>
     <div class="router-tape">${rows.map((c) => {
       const realized = finiteNumber(c.realized_pnl);
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
@@ -1044,7 +1050,8 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   }
   positionsPanel.innerHTML = positionsHtml + renderRecentCloses(
     closeHistory?.rows || exposure.recent_closes,
-    closeHistory?.label || 'recent'
+    closeHistory?.label || 'recent',
+    closeHistory?.count ?? exposure.recent_close_count
   );
 
   const counts = brokerRouter?.counts || {};
@@ -1792,7 +1799,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : `${brokerOpen} broker open`;
     const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
     const closeHistoryText = closeHistory.count > 0
-      ? `; ${closeHistory.count} recent close${closeHistory.count === 1 ? '' : 's'} in close ledger`
+      ? `; ${closeHistory.count} ${closeHistory.label || 'selected'} close${closeHistory.count === 1 ? '' : 's'} in close ledger`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
     document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}${closeHistoryText}`;
@@ -2174,7 +2181,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const historyWr = closeHistory.winRatePct;
     document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated} recent close outcome${closeHistory.evaluated === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
+    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated} ${closeHistory.label || 'selected'} close outcome${closeHistory.evaluated === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
   } else {
     document.getElementById('winRate').textContent = '—';
     document.getElementById('winRate').className = 'stat dim';

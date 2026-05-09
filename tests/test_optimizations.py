@@ -253,13 +253,14 @@ class TestStatusPage:
         assert "function closeHistoryWindowPayload" in html
         assert "function renderPnlWindowControls" in html
         assert "data-close-window=\"mtd\"" in html
+        assert "data-close-window=\"all\"" in html
         assert "MTD close history" in html
         assert "function winRateSourceText" in html
         assert "close-ledger outcomes" in html
         assert "function pnlHistoryEvidence" in html
         assert "Closed PnL History" in html
         assert "lifetime ledger pending" in html
-        assert "recent close outcome" in html
+        assert "close outcome" in html
         assert "in close ledger" in html
         assert '<details class="collapsible-section" id="opsTruthSection">' in html
         assert "source === 'supervisor_heartbeat'" in html
