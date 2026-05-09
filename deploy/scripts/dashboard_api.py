@@ -3673,20 +3673,25 @@ def _target_exit_summary(
     )
     broker_unbracketed_count = max(0, broker_bracket_required_count - broker_bracket_count)
     total_missing_bracket_count = missing_bracket_count + broker_unbracketed_count
-    if open_count == 0:
-        status = "flat"
-    elif touched_count > 0:
+    if touched_count > 0:
         status = "alert"
     elif total_missing_bracket_count > 0:
         status = "missing_brackets"
+    elif open_count == 0 and effective_broker_open_count == 0:
+        status = "flat"
     elif effective_broker_open_count == 0 and supervisor_local_count > 0:
         status = "paper_watching"
-    elif watching_count > 0 or supervisor_watch_count > 0 or broker_bracket_count > 0:
+    elif (
+        watching_count > 0
+        or supervisor_watch_count > 0
+        or broker_bracket_count > 0
+        or effective_broker_open_count > 0
+    ):
         status = "watching"
     else:
         status = "unknown"
 
-    if open_count == 0:
+    if open_count == 0 and effective_broker_open_count == 0:
         summary_line = "flat; no open positions need target/stop supervision"
     else:
         nearest_text = (
