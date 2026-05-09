@@ -3532,6 +3532,16 @@ class TestDashboardAPI:
             "flatten_unprotected_paper_exposure",
         ]
         assert "MNQM6 IBKR FUT" in payload["summary"]["broker_bracket_next_action"]
+        assert payload["summary"]["broker_bracket_primary_symbol"] == "MNQM6"
+        assert payload["summary"]["broker_bracket_primary_venue"] == "ibkr"
+        assert payload["summary"]["broker_bracket_primary_sec_type"] == "FUT"
+        assert payload["summary"]["broker_bracket_primary_side"] == "long"
+        assert payload["summary"]["broker_bracket_primary_qty"] == 3.0
+        assert payload["summary"]["broker_bracket_primary_market_value"] == 176010.0
+        assert payload["summary"]["broker_bracket_primary_unrealized_pnl"] == -33.79
+        assert payload["summary"]["broker_bracket_primary_coverage_status"] == (
+            "requires_manual_oco_verification"
+        )
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

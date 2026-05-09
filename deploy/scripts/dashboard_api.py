@@ -4315,6 +4315,11 @@ def bot_fleet_roster(
         if isinstance(broker_bracket_audit.get("position_summary"), dict)
         else {}
     )
+    broker_bracket_primary = (
+        broker_bracket_audit.get("primary_unprotected_position")
+        if isinstance(broker_bracket_audit.get("primary_unprotected_position"), dict)
+        else {}
+    )
     broker_bracket_actions = (
         broker_bracket_audit.get("operator_actions")
         if isinstance(broker_bracket_audit.get("operator_actions"), list)
@@ -4400,6 +4405,16 @@ def bot_fleet_roster(
             "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
             "broker_bracket_operator_action_ids": broker_bracket_action_ids,
             "broker_bracket_next_action": str(broker_bracket_audit.get("next_action") or ""),
+            "broker_bracket_primary_symbol": str(broker_bracket_primary.get("symbol") or ""),
+            "broker_bracket_primary_venue": str(broker_bracket_primary.get("venue") or ""),
+            "broker_bracket_primary_sec_type": str(broker_bracket_primary.get("sec_type") or ""),
+            "broker_bracket_primary_side": str(broker_bracket_primary.get("side") or ""),
+            "broker_bracket_primary_qty": broker_bracket_primary.get("qty"),
+            "broker_bracket_primary_market_value": broker_bracket_primary.get("market_value"),
+            "broker_bracket_primary_unrealized_pnl": broker_bracket_primary.get("unrealized_pnl"),
+            "broker_bracket_primary_coverage_status": str(
+                broker_bracket_primary.get("coverage_status") or ""
+            ),
             "paper_live_status": str(paper_live_transition.get("status") or "unknown"),
             "paper_live_critical_ready": bool(paper_live_transition.get("critical_ready")),
             "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
