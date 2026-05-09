@@ -434,12 +434,14 @@ def _dashboard_proxy_watchdog_payload(*, server_ts: float) -> dict:
 
     if age_s is None:
         status = "unknown"
-    elif age_s > 180:
-        status = "stale"
     elif action == "restart_failed" or restart_ok is False:
         status = "failed"
     elif probe_healthy is False:
         status = "degraded"
+    elif age_s > 180 and probe_healthy is True:
+        status = "probe_ok_watchdog_stale"
+    elif age_s > 180:
+        status = "stale"
     elif probe_healthy is True:
         status = "ok"
     else:
@@ -648,7 +650,15 @@ def _dashboard_diagnostics_payload() -> dict:
             "paper_live_transition_contract": isinstance(paper_live_transition, dict)
             and "status" in paper_live_transition,
             "dashboard_proxy_watchdog_contract": dashboard_proxy_watchdog.get("status")
-            in {"ok", "missing", "stale", "failed", "degraded", "unknown"},
+            in {
+                "ok",
+                "missing",
+                "stale",
+                "probe_ok_watchdog_stale",
+                "failed",
+                "degraded",
+                "unknown",
+            },
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }

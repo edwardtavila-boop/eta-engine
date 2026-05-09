@@ -245,6 +245,9 @@ class TestStatusPage:
         assert "paper_watching" in html
         assert "paper-local open" in html
         assert "gateway healthy; broker data probe timed out" in html
+        assert "probe_ok_watchdog_stale" in html
+        assert "Proxy OK" in html
+        assert "watchdog stale" in html
         assert "https://jarvis.evolutionarytradingalgo.com/api/bot-fleet" in html
         assert "const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';" in html
         assert "const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';" in html

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -939,6 +939,7 @@ class TestDashboardAPI:
             "ok",
             "missing",
             "stale",
+            "probe_ok_watchdog_stale",
             "failed",
             "degraded",
             "unknown",
@@ -1161,6 +1162,42 @@ class TestDashboardAPI:
         assert watchdog["status_code"] == 200
         assert watchdog["heartbeat_path"].endswith("dashboard_proxy_watchdog_heartbeat.json")
         assert payload["checks"]["dashboard_proxy_watchdog_contract"] is True
+
+    def test_dashboard_diagnostics_distinguishes_proxy_probe_ok_from_stale_watchdog(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        stale_ts = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+        (tmp_path / "state" / "dashboard_proxy_watchdog_heartbeat.json").write_text(
+            json.dumps(
+                {
+                    "ts": stale_ts,
+                    "component": "dashboard_proxy_watchdog",
+                    "decision": {
+                        "checked_at": stale_ts,
+                        "action": "noop",
+                        "task_name": "ETA-Proxy-8421",
+                        "probe": {
+                            "healthy": True,
+                            "url": "http://127.0.0.1:8421/",
+                            "status_code": 200,
+                            "reason": "ok",
+                        },
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        watchdog = r.json()["dashboard_proxy_watchdog"]
+        assert watchdog["status"] == "probe_ok_watchdog_stale"
+        assert watchdog["fresh"] is False
+        assert watchdog["probe_healthy"] is True
+        assert watchdog["probe_reason"] == "ok"
 
     def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

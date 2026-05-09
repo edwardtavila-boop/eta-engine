@@ -2388,14 +2388,17 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
 
   const proxyWatchdog = diagnostics?.dashboard_proxy_watchdog || {};
   const proxyStatus = String(proxyWatchdog.status || 'unknown').toLowerCase();
-  const proxyLabels = {ok: 'Self-Healing', missing: 'Missing', stale: 'Stale', failed: 'Failed', degraded: 'Degraded', unknown: 'Unknown'};
-  const proxyClasses = {ok: 'green', missing: 'yellow', stale: 'yellow', failed: 'red', degraded: 'red', unknown: 'yellow'};
+  const proxyLabels = {ok: 'Self-Healing', probe_ok_watchdog_stale: 'Proxy OK', missing: 'Missing', stale: 'Stale', failed: 'Failed', degraded: 'Degraded', unknown: 'Unknown'};
+  const proxyClasses = {ok: 'green', probe_ok_watchdog_stale: 'yellow', missing: 'yellow', stale: 'yellow', failed: 'red', degraded: 'red', unknown: 'yellow'};
   const proxyReason = compactText(proxyWatchdog.probe_reason || proxyWatchdog.summary || 'watchdog not reporting');
   const proxyAction = proxyWatchdog.action ? String(proxyWatchdog.action).replace(/_/g, ' ') : 'unknown';
   const proxyAge = formatAgeSeconds(proxyWatchdog.checked_age_s ?? proxyWatchdog.heartbeat_age_s);
+  const proxyDetail = proxyStatus === 'probe_ok_watchdog_stale'
+    ? `watchdog stale; proxy probe ${proxyReason}; ${proxyAge}`
+    : `${proxyAction}; ${proxyReason}; ${proxyAge}`;
   document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
   document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
-  document.getElementById('opsProxySub').textContent = compactText(`${proxyAction}; ${proxyReason}; ${proxyAge}`);
+  document.getElementById('opsProxySub').textContent = compactText(proxyDetail);
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   let risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
