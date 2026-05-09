@@ -192,6 +192,8 @@ class TestStatusPage:
             'id="signalCadenceSub"',
             'id="opsProxyStatus"',
             'id="opsProxySub"',
+            'id="opsWatchdogStatus"',
+            'id="opsWatchdogSub"',
         ):
             assert anchor in html, f"missing dashboard anchor: {anchor}"
 
@@ -252,6 +254,8 @@ class TestStatusPage:
         assert "const OPERATOR_QUEUE_API = '/api/jarvis/operator_queue';" in html
         assert "const PAPER_LIVE_API = '/api/jarvis/paper_live_transition';" in html
         assert "const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';" in html
+        assert "command_center_watchdog" in html
+        assert "Ops Watchdog" in html
         assert "endpointCandidates(" in html
         assert "cache: 'no-store'" in html
         assert "FETCH_TIMEOUT_MS" in html

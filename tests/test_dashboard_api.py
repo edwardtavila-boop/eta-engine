@@ -18,6 +18,10 @@ def app_client(tmp_path, monkeypatch):
     """Point dashboard_api at a temp state dir + return a TestClient."""
     monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv("ETA_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv(
+        "ETA_COMMAND_CENTER_DOCTOR_RECEIPT_PATH",
+        str(tmp_path / "state" / "command_center_doctor_latest.json"),
+    )
     # Pin the BTC fleet dir so the dashboard doesn't accidentally see a
     # real fleet directory sitting in the dev package tree.
     monkeypatch.setenv(
@@ -945,6 +949,18 @@ class TestDashboardAPI:
             "unknown",
         }
         assert data["checks"]["dashboard_proxy_watchdog_contract"] is True
+        assert data["command_center_watchdog"]["status"] in {
+            "healthy",
+            "missing_receipt",
+            "stale_receipt",
+            "stale_service",
+            "service_unreachable",
+            "public_operator_drift",
+            "contract_failure",
+            "secret_surface",
+            "unknown",
+        }
+        assert data["checks"]["command_center_watchdog_contract"] is True
 
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")
@@ -1253,6 +1269,53 @@ class TestDashboardAPI:
         assert watchdog["fresh"] is False
         assert watchdog["probe_healthy"] is True
         assert watchdog["probe_reason"] == "ok"
+
+    def test_dashboard_diagnostics_includes_command_center_watchdog_rollup(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        receipt_path = tmp_path / "state" / "command_center_doctor_latest.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.command_center.doctor.v1",
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": False,
+                    "failure_class": "stale_service",
+                    "operator_contract_state": "stale_service",
+                    "recommended_action": "reload_operator_service",
+                    "repair_required": True,
+                    "operator_action": {
+                        "step": "reload_operator_service",
+                        "reason": "stale_service",
+                        "command": ".\\scripts\\reload-command-center-admin.cmd -PublicUrl https://ops.evolutionarytradingalgo.com",
+                        "requires_elevation": True,
+                    },
+                    "failure_summary": {
+                        "endpoint_failures": 1,
+                        "contract_findings": 1,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        watchdog = payload["command_center_watchdog"]
+        assert watchdog["status"] == "stale_service"
+        assert watchdog["fresh"] is True
+        assert watchdog["failure_class"] == "stale_service"
+        assert watchdog["operator_contract_state"] == "stale_service"
+        assert watchdog["next_step"] == "reload_operator_service"
+        assert watchdog["recommended_action"] == "reload_operator_service"
+        assert watchdog["repair_required"] is True
+        assert watchdog["requires_elevation"] is True
+        assert watchdog["receipt_path"].endswith("command_center_doctor_latest.json")
+        assert payload["checks"]["command_center_watchdog_contract"] is True
 
     def test_master_status_uses_local_payload_not_self_proxy(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

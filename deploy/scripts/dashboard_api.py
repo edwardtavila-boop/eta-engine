@@ -468,12 +468,80 @@ def _dashboard_proxy_watchdog_payload(*, server_ts: float) -> dict:
     }
 
 
+def _command_center_doctor_receipt_path() -> Path:
+    """Canonical root-level Command Center doctor receipt path."""
+    override = os.environ.get("ETA_COMMAND_CENTER_DOCTOR_RECEIPT_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _WORKSPACE_ROOT / "var" / "ops" / "command_center_doctor_latest.json"
+
+
+def _command_center_watchdog_payload(*, server_ts: float) -> dict:
+    """Summarize the root CommandCenterDoctor receipt for dashboard diagnostics."""
+    receipt_path = _command_center_doctor_receipt_path()
+    receipt = _read_json_file(receipt_path)
+    if not receipt:
+        return {
+            "status": "missing_receipt",
+            "fresh": False,
+            "receipt_path": str(receipt_path),
+            "checked_at": None,
+            "age_s": None,
+            "healthy": False,
+            "failure_class": "missing_receipt",
+            "operator_contract_state": "missing_receipt",
+            "recommended_action": "run_doctor",
+            "next_step": "run_watchdog_now",
+            "next_command": None,
+            "repair_required": True,
+            "requires_elevation": True,
+            "summary": "Command Center doctor receipt missing",
+        }
+
+    operator_action = receipt.get("operator_action") if isinstance(receipt.get("operator_action"), dict) else {}
+    failure_summary = receipt.get("failure_summary") if isinstance(receipt.get("failure_summary"), dict) else {}
+    checked_at = receipt.get("checked_at")
+    age_s = _iso_age_s(checked_at, server_ts=server_ts)
+    fresh = age_s is not None and age_s <= 900
+    healthy = bool(receipt.get("healthy")) and fresh
+    failure_class = str(receipt.get("failure_class") or "unknown")
+    contract_state = str(receipt.get("operator_contract_state") or failure_class)
+    recommended_action = str(receipt.get("recommended_action") or operator_action.get("step") or "unknown")
+    reason = str(operator_action.get("reason") or contract_state or failure_class)
+    status = "healthy" if healthy else ("stale_receipt" if not fresh else reason)
+    if status == "unknown" and failure_class != "unknown":
+        status = failure_class
+
+    summary = "Command Center watchdog is healthy." if healthy else (
+        f"Command Center watchdog needs {recommended_action}: {reason}."
+    )
+
+    return {
+        "status": status,
+        "fresh": fresh,
+        "receipt_path": str(receipt_path),
+        "checked_at": checked_at,
+        "age_s": age_s,
+        "healthy": healthy,
+        "failure_class": failure_class,
+        "operator_contract_state": contract_state,
+        "recommended_action": recommended_action,
+        "next_step": str(operator_action.get("step") or recommended_action),
+        "next_command": operator_action.get("command"),
+        "repair_required": bool(receipt.get("repair_required")),
+        "requires_elevation": bool(operator_action.get("requires_elevation")),
+        "failure_summary": failure_summary,
+        "summary": summary,
+    }
+
+
 def _dashboard_diagnostics_payload() -> dict:
     """Single source-of-truth rollup for Command Center self-diagnostics."""
     server_ts = time.time()
     generated_at = datetime.fromtimestamp(server_ts, UTC).isoformat()
     cards = _dashboard_card_health_payload()
     dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
+    command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
 
     try:
         roster = bot_fleet_roster(Response(), since_days=1)
@@ -663,6 +731,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "error": paper_live_transition.get("error"),
         },
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
+        "command_center_watchdog": command_center_watchdog,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -680,6 +749,18 @@ def _dashboard_diagnostics_payload() -> dict:
                 "probe_ok_watchdog_stale",
                 "failed",
                 "degraded",
+                "unknown",
+            },
+            "command_center_watchdog_contract": command_center_watchdog.get("status")
+            in {
+                "healthy",
+                "missing_receipt",
+                "stale_receipt",
+                "stale_service",
+                "service_unreachable",
+                "public_operator_drift",
+                "contract_failure",
+                "secret_surface",
                 "unknown",
             },
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,

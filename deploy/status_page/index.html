@@ -306,6 +306,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Risk Level</h3><div class="stat yellow" id="riskLevel">—</div><div class="risk-bar"><div class="risk-fill" id="riskBar" style="width:0%"></div></div><div class="sub" id="riskSub">drawdown + exit-watch SLA</div></div>
   <div class="card"><h3>Signal Cadence</h3><div class="stat" id="signalCadenceStatus">-</div><div class="sub" id="signalCadenceSub">waiting for signal timing</div></div>
   <div class="card"><h3>Ops Proxy</h3><div class="stat" id="opsProxyStatus">-</div><div class="sub" id="opsProxySub">8421 bridge self-heal</div></div>
+  <div class="card"><h3>Ops Watchdog</h3><div class="stat" id="opsWatchdogStatus">-</div><div class="sub" id="opsWatchdogSub">Command Center doctor</div></div>
   <div class="card vps-root-card" role="button" tabindex="0" onclick="focusVpsRootDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();focusVpsRootDetails();}"><h3>VPS Root Review</h3><div class="stat" id="vpsRootStatus">-</div><div class="sub" id="vpsRootSub">dirty-tree reconciliation</div></div>
   <div class="card">
     <h3>PnL History</h3>
@@ -1604,7 +1605,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','vpsRootStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -2399,6 +2400,38 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('opsProxyStatus').textContent = proxyLabels[proxyStatus] || proxyStatus.toUpperCase();
   document.getElementById('opsProxyStatus').className = 'stat ' + (proxyClasses[proxyStatus] || 'yellow');
   document.getElementById('opsProxySub').textContent = compactText(proxyDetail);
+
+  const commandWatchdog = diagnostics?.command_center_watchdog || {};
+  const commandWatchdogStatus = String(commandWatchdog.status || 'unknown').toLowerCase();
+  const commandWatchdogLabels = {
+    healthy: 'Healthy',
+    missing_receipt: 'Missing',
+    stale_receipt: 'Stale',
+    stale_service: 'Reload',
+    service_unreachable: 'Down',
+    public_operator_drift: 'Drift',
+    contract_failure: 'Review',
+    secret_surface: 'Blocked',
+    unknown: 'Unknown',
+  };
+  const commandWatchdogClasses = {
+    healthy: 'green',
+    missing_receipt: 'yellow',
+    stale_receipt: 'yellow',
+    stale_service: 'red',
+    service_unreachable: 'red',
+    public_operator_drift: 'red',
+    contract_failure: 'yellow',
+    secret_surface: 'red',
+    unknown: 'yellow',
+  };
+  const commandWatchdogStep = commandWatchdog.next_step || commandWatchdog.recommended_action || 'inspect';
+  const commandWatchdogAge = formatAgeSeconds(commandWatchdog.age_s);
+  const commandWatchdogDetail = commandWatchdog.summary
+    || `${String(commandWatchdogStep).replace(/_/g, ' ')}; ${commandWatchdog.failure_class || 'unknown'}; ${commandWatchdogAge}`;
+  document.getElementById('opsWatchdogStatus').textContent = commandWatchdogLabels[commandWatchdogStatus] || commandWatchdogStatus.toUpperCase();
+  document.getElementById('opsWatchdogStatus').className = 'stat ' + (commandWatchdogClasses[commandWatchdogStatus] || 'yellow');
+  document.getElementById('opsWatchdogSub').textContent = compactText(commandWatchdogDetail);
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   let risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';
