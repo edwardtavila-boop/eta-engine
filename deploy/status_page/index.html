@@ -41,6 +41,12 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .range-controls button{border:1px solid rgba(255,255,255,.10);border-radius:999px;background:rgba(255,255,255,.045);color:var(--dim);padding:.28rem .58rem;font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
 .range-controls button.active,.range-controls button:hover{background:rgba(230,184,92,.16);border-color:rgba(230,184,92,.55);color:#fff4d6}
 .history-subline{font-size:.7rem;color:var(--dim);min-height:1rem}
+.history-window-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:.45rem;margin:.65rem 0 .75rem}
+.history-window-tile{border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.028);color:var(--text);padding:.58rem .64rem;text-align:left;cursor:pointer}
+.history-window-tile:hover,.history-window-tile.active{border-color:rgba(230,184,92,.5);background:rgba(230,184,92,.105)}
+.history-window-tile span{display:block;color:var(--dim);font-size:.58rem;letter-spacing:.1em;text-transform:uppercase}
+.history-window-tile strong{display:block;margin-top:.16rem;font-size:.98rem;color:#f8fbff;font-variant-numeric:tabular-nums}
+.history-window-tile small{display:block;margin-top:.1rem;color:#8fa3b8;font-size:.64rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .status-bar{display:flex;gap:1.5rem;align-items:center;font-size:.75rem;padding:.75rem 2rem;color:var(--dim);flex-wrap:wrap}
 .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:.5rem}
 .status-dot.live{background:var(--green);animation:pulse 1.5s infinite}
@@ -302,6 +308,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <button type="button" data-close-window="mtd" class="active">MTD</button>
       <button type="button" data-close-window="ytd">YTD</button>
       <button type="button" data-close-window="all">All</button>
+    </div>
+    <div class="history-window-strip" id="pnlWindowStrip">
+      <button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD PnL</span><strong>--</strong><small>waiting for closes</small></button>
     </div>
     <div class="stat dim" id="pnlHistoryLabel">MTD closed outcomes</div>
     <div class="history-subline" id="pnlHistorySub">waiting for close ledger</div>
@@ -807,6 +816,42 @@ function renderPnlWindowControls(closeHistory) {
   }
 }
 
+function renderPnlWindowStrip(closeHistory) {
+  const strip = document.getElementById('pnlWindowStrip');
+  if (!strip) return;
+  const windows = closeHistory?.windows || {};
+  const ordered = [
+    ['wtd', 'WTD'],
+    ['mtd', 'MTD'],
+    ['ytd', 'YTD'],
+    ['all', 'All']
+  ];
+  const available = ordered.filter(([key]) => windows[key]);
+  if (!available.length) {
+    strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD PnL</span><strong>n/a</strong><small>waiting for close ledger</small></button>';
+  } else {
+    strip.innerHTML = available.map(([key, label]) => {
+      const payload = windows[key] || {};
+      const pnl = finiteNumber(payload.realized_pnl);
+      const winRate = finiteNumber(payload.win_rate);
+      const count = Number(payload.closed_outcome_count ?? payload.count ?? 0);
+      const active = closeHistory?.window === key ? ' active' : '';
+      const wrText = winRate == null ? 'WR n/a' : `${(winRate * 100).toFixed(1)}% WR`;
+      const value = pnl == null ? 'n/a' : formatMoney(pnl, 0);
+      return `
+        <button type="button" class="history-window-tile${active}" data-close-window="${esc(key)}" title="${esc(label)} selected-window realized PnL">
+          <span>${esc(label)} PnL</span>
+          <strong>${esc(value)}</strong>
+          <small>${esc(count)} close${count === 1 ? '' : 's'} | ${esc(wrText)}</small>
+        </button>
+      `;
+    }).join('');
+  }
+  for (const button of strip.querySelectorAll('button[data-close-window]')) {
+    button.addEventListener('click', () => setCloseHistoryWindow(button.dataset.closeWindow));
+  }
+}
+
 function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory) {
   const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity);
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
@@ -818,9 +863,9 @@ function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory
       : `; ${closeHistory.winRatePct.toFixed(1)}% WR`;
     return {
       value: closeHistory.realizedPnl,
-      label: `${label} Closed Outcomes`,
+      label: `${label} Closed PnL`,
       isLifetime: false,
-      source: `${closeText}${winText}; lifetime ledger pending`
+      source: `${closeText}${winText}; selected-window realized PnL; lifetime ledger pending`
     };
   }
   return lifetimeEvidence;
@@ -1730,6 +1775,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     selectedCloseHistoryWindow = closeHistory.window;
   }
   renderPnlWindowControls(closeHistory);
+  renderPnlWindowStrip(closeHistory);
   const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory);
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl

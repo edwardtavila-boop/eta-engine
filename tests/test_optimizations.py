@@ -275,10 +275,14 @@ class TestStatusPage:
         assert "data-close-window=\"mtd\"" in html
         assert "data-close-window=\"all\"" in html
         assert "MTD closed outcomes" in html
+        assert 'id="pnlWindowStrip"' in html
+        assert "function renderPnlWindowStrip" in html
+        assert "selected-window realized PnL" in html
+        assert "Closed PnL" in html
         assert "function winRateSourceText" in html
         assert "close-ledger outcomes" in html
         assert "function pnlHistoryEvidence" in html
-        assert "Closed Outcomes" in html
+        assert "Closed PnL" in html
         assert "lifetime ledger pending" in html
         assert "closed outcome" in html
         assert "closed outcomes in ledger" in html
