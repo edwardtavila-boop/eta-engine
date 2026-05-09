@@ -4301,6 +4301,12 @@ def bot_fleet_roster(
         live_broker_state=live_broker_state,
     )
     paper_live_transition = _paper_live_transition_payload(refresh=False)
+    vps_root_reconciliation = _vps_root_reconciliation_payload()
+    vps_root_summary = (
+        vps_root_reconciliation.get("summary")
+        if isinstance(vps_root_reconciliation.get("summary"), dict)
+        else {}
+    )
     ibkr_gateway = (
         broker_gateway.get("ibkr")
         if isinstance(broker_gateway.get("ibkr"), dict)
@@ -4356,6 +4362,19 @@ def bot_fleet_roster(
                 paper_live_transition.get("operator_queue_launch_blocked_count") or 0
             ),
             "paper_live_source_age_s": paper_live_transition.get("source_age_s"),
+            "vps_root_reconciliation_status": str(
+                vps_root_reconciliation.get("status") or "unknown"
+            ),
+            "vps_root_risk_level": str(vps_root_reconciliation.get("risk_level") or "unknown"),
+            "vps_root_cleanup_allowed": bool(vps_root_reconciliation.get("cleanup_allowed")),
+            "vps_root_artifact_stale": bool(vps_root_reconciliation.get("artifact_stale")),
+            "vps_root_source_deleted_count": int(
+                vps_root_summary.get("source_or_governance_deleted") or 0
+            ),
+            "vps_root_submodule_drift": int(vps_root_summary.get("submodule_drift") or 0),
+            "vps_root_dirty_companion_repos": int(
+                vps_root_summary.get("dirty_companion_repos") or 0
+            ),
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
@@ -4381,6 +4400,7 @@ def bot_fleet_roster(
         "broker_router":     _broker_router_snapshot(),
         "broker_bracket_audit": broker_bracket_audit,
         "paper_live_transition": paper_live_transition,
+        "vps_root_reconciliation": vps_root_reconciliation,
         "window_since_days": since_days,
         **truth,
     }

@@ -2406,6 +2406,42 @@ class TestDashboardAPI:
         assert payload["summary"]["paper_live_ready_bots"] == 12
         assert payload["summary"]["paper_live_launch_blocked_count"] == 0
 
+    def test_bot_fleet_embeds_vps_root_reconciliation_summary(self, app_client, tmp_path):
+        """Bot-fleet consumers need the root dirty-tree review state without another probe."""
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "risk_level": "medium",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 4, "submodule_drift": 5, "dirty_companion_repos": 3},
+                    "summary": {
+                        "source_or_governance_deleted": 0,
+                        "unknown_deleted": 0,
+                        "submodule_drift": 5,
+                        "dirty_companion_repos": 3,
+                    },
+                    "recommended_action": "Review dirty companion worktrees before root cleanup.",
+                    "steps": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["vps_root_reconciliation"]["status"] == "review_required"
+        assert payload["vps_root_reconciliation"]["risk_level"] == "medium"
+        assert payload["summary"]["vps_root_reconciliation_status"] == "review_required"
+        assert payload["summary"]["vps_root_risk_level"] == "medium"
+        assert payload["summary"]["vps_root_cleanup_allowed"] is False
+        assert payload["summary"]["vps_root_source_deleted_count"] == 0
+        assert payload["summary"]["vps_root_submodule_drift"] == 5
+        assert payload["summary"]["vps_root_dirty_companion_repos"] == 3
+
     def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
         self,
         app_client,
