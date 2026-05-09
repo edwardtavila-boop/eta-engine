@@ -251,6 +251,8 @@ class TestStatusPage:
         assert "function fleetEquityLifetimeEvidence" in html
         assert "function closeEvidenceSummary" in html
         assert "function closeHistoryWindowPayload" in html
+        assert "rootPayload?.close_history" in html
+        assert "closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d)" in html
         assert "function renderPnlWindowControls" in html
         assert "data-close-window=\"mtd\"" in html
         assert "data-close-window=\"all\"" in html

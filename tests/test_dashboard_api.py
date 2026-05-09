@@ -3021,10 +3021,20 @@ class TestDashboardAPI:
                     "realized_pnl": 32579.18,
                     "closed_outcome_count": 320,
                     "evaluated_outcome_count": 318,
+                    "winning_outcomes": 165,
+                    "losing_outcomes": 153,
                     "win_rate": 0.5181,
                     "since": "2026-05-01T00:00:00+00:00",
                     "until": "2026-05-09T03:00:00+00:00",
                     "source": "trade_close_ledger",
+                    "recent_outcomes": [
+                        {
+                            "ts": "2026-05-09T02:46:48+00:00",
+                            "bot_id": "mnq_anchor_sweep",
+                            "symbol": "MNQ1",
+                            "realized_pnl": -18.0,
+                        },
+                    ],
                 },
                 "all": {
                     "label": "All",
@@ -3062,6 +3072,16 @@ class TestDashboardAPI:
         assert payload["history_window_pnl"]["mtd"]["closed_outcome_count"] == 320
         assert payload["history_window_pnl"]["mtd"]["win_rate"] == 0.5181
         assert payload["history_window_pnl"]["all"]["pnl"] == 32901.18
+        assert payload["close_history_window"]["window"] == "mtd"
+        assert payload["close_history_window"]["realized_pnl"] == 32579.18
+        assert payload["close_history_window"]["closed_outcome_count"] == 320
+        assert payload["close_history_window"]["win_rate"] == 0.5181
+        assert payload["close_history_row_count"] == 1
+        assert payload["close_history_rows"][0]["bot_id"] == "mnq_anchor_sweep"
+        assert payload["summary"]["close_history_window"] == "mtd"
+        assert payload["summary"]["close_history_realized_pnl"] == 32579.18
+        assert payload["summary"]["close_history_closed_outcome_count"] == 320
+        assert payload["summary"]["close_history_win_rate"] == 0.5181
 
     def test_derive_ibkr_today_realized_pnl_prefers_futures_bucket(self):
         import eta_engine.deploy.scripts.dashboard_api as mod

@@ -681,16 +681,16 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
     : {value: null, label: 'Lifetime PnL', isLifetime: false, source: fleetEvidence.source || 'waiting for lifetime ledger'};
 }
 
-function closeHistoryWindowPayload(liveBroker, windowKey) {
-  const history = liveBroker?.position_exposure?.close_history || liveBroker?.close_history || {};
+function closeHistoryWindowPayload(liveBroker, windowKey, rootPayload = {}) {
+  const history = liveBroker?.position_exposure?.close_history || liveBroker?.close_history || rootPayload?.close_history || {};
   const windows = history?.windows && typeof history.windows === 'object' ? history.windows : {};
   const preferred = windows[windowKey] ? windowKey : (history.default_window || 'mtd');
   const fallback = windows[preferred] ? preferred : Object.keys(windows)[0];
   return fallback ? {key: fallback, payload: windows[fallback], windows} : {key: windowKey, payload: null, windows};
 }
 
-function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selectedCloseHistoryWindow) {
-  const windowed = closeHistoryWindowPayload(liveBroker, windowKey);
+function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selectedCloseHistoryWindow, rootPayload = {}) {
+  const windowed = closeHistoryWindowPayload(liveBroker, windowKey, rootPayload);
   if (windowed.payload) {
     const payload = windowed.payload;
     const rows = Array.isArray(payload.recent_outcomes) ? payload.recent_outcomes : [];
@@ -1689,11 +1689,12 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const liveBroker = d.live_broker_state || null;
   const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
-  const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow);
-  if (!availableCloseWindows.payload && liveBroker?.position_exposure?.close_history?.default_window) {
-    selectedCloseHistoryWindow = liveBroker.position_exposure.close_history.default_window;
+  const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
+  const rootCloseHistory = d.close_history || {};
+  if (!availableCloseWindows.payload && (liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window)) {
+    selectedCloseHistoryWindow = liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window;
   }
-  const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary, selectedCloseHistoryWindow);
+  const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary, selectedCloseHistoryWindow, d);
   if (closeHistory.window && closeHistory.window !== selectedCloseHistoryWindow) {
     selectedCloseHistoryWindow = closeHistory.window;
   }

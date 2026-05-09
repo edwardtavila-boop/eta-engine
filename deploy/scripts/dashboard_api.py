@@ -4056,6 +4056,33 @@ def bot_fleet_roster(
             "until": window.get("until"),
             "source": window.get("source") or close_history.get("source") or "trade_close_ledger",
         }
+    default_close_window_payload = (
+        close_windows.get(default_close_history_window)
+        if isinstance(close_windows.get(default_close_history_window), dict)
+        else {}
+    )
+    if not default_close_window_payload and isinstance(close_windows.get("mtd"), dict):
+        default_close_history_window = "mtd"
+        default_close_window_payload = close_windows["mtd"]
+    default_close_rows = (
+        default_close_window_payload.get("recent_outcomes")
+        if isinstance(default_close_window_payload.get("recent_outcomes"), list)
+        else []
+    )
+    close_history_window = {
+        "window": default_close_history_window,
+        "label": default_close_window_payload.get("label") or default_close_history_window.upper(),
+        "realized_pnl": _float_value(default_close_window_payload.get("realized_pnl")),
+        "closed_outcome_count": int(default_close_window_payload.get("closed_outcome_count") or 0),
+        "evaluated_outcome_count": int(default_close_window_payload.get("evaluated_outcome_count") or 0),
+        "winning_outcomes": int(default_close_window_payload.get("winning_outcomes") or 0),
+        "losing_outcomes": int(default_close_window_payload.get("losing_outcomes") or 0),
+        "win_rate": _float_value(default_close_window_payload.get("win_rate")),
+        "since": default_close_window_payload.get("since"),
+        "until": default_close_window_payload.get("until"),
+        "source": default_close_window_payload.get("source") or close_history.get("source") or "trade_close_ledger",
+        "recent_outcomes": default_close_rows,
+    }
     broker_summary = _broker_summary_fields(live_broker_state)
     portfolio_summary = _portfolio_summary_payload(
         rows,
@@ -4094,6 +4121,12 @@ def bot_fleet_roster(
             "force_flatten_due_count": target_exit_summary["position_staleness"]["force_flatten_due_count"],
             "open_position_count_visible": target_exit_summary["open_position_count"],
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
+            "close_history_window": close_history_window["window"],
+            "close_history_label": close_history_window["label"],
+            "close_history_realized_pnl": close_history_window["realized_pnl"],
+            "close_history_closed_outcome_count": close_history_window["closed_outcome_count"],
+            "close_history_evaluated_outcome_count": close_history_window["evaluated_outcome_count"],
+            "close_history_win_rate": close_history_window["win_rate"],
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
@@ -4101,6 +4134,9 @@ def bot_fleet_roster(
         },
         "portfolio_summary": portfolio_summary,
         "close_history": close_history,
+        "close_history_window": close_history_window,
+        "close_history_rows": default_close_rows,
+        "close_history_row_count": len(default_close_rows),
         "default_close_history_window": default_close_history_window,
         "history_window_pnl": history_window_pnl,
         "latest_signal_ts":  signal_cadence["latest_signal_ts"],
