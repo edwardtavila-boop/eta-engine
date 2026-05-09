@@ -1396,12 +1396,15 @@ function renderVpsRootReview(vpsRoot) {
   const sourceDeleted = finiteNumber(summary.source_or_governance_deleted) ?? 0;
   const submoduleDrift = finiteNumber(summary.submodule_drift) ?? 0;
   const cleanupAllowed = vpsRoot?.cleanup_allowed === true;
-  const needsReview = status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0;
-  statusEl.textContent = status === 'missing' ? 'Missing' : needsReview ? 'Review' : 'Clear';
+  const artifactStale = vpsRoot?.artifact_stale === true || status === 'stale' || status === 'stale_review_required';
+  const ageMinutes = finiteNumber(vpsRoot?.plan_age_s ?? vpsRoot?.inventory_age_s);
+  const ageText = ageMinutes == null ? 'age unknown' : `${Math.max(0, Math.round(ageMinutes / 60))}m old`;
+  const needsReview = artifactStale || status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0;
+  statusEl.textContent = status === 'missing' ? 'Missing' : artifactStale ? 'Stale Review' : needsReview ? 'Review' : 'Clear';
   statusEl.className = 'stat ' + (needsReview || status === 'missing' ? 'yellow' : 'green');
   subEl.textContent = status === 'missing'
     ? 'plan artifact missing; run VPS root inventory'
-    : `risk ${risk}; source deleted ${sourceDeleted}; submodules ${submoduleDrift}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
+    : `${artifactStale ? 'snapshot stale; ' : ''}${ageText}; risk ${risk}; source deleted ${sourceDeleted}; submodules ${submoduleDrift}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
 }
 
 function focusVpsRootDetails() {
@@ -1423,9 +1426,14 @@ function renderVpsRootDetails(vpsRoot) {
   const counts = payload.counts || {};
   const cleanupAllowed = payload.cleanup_allowed === true;
   const steps = Array.isArray(payload.steps) ? payload.steps : [];
+  const artifactStale = payload.artifact_stale === true || status === 'stale' || status === 'stale_review_required';
+  const snapshotAge = finiteNumber(payload.plan_age_s ?? payload.inventory_age_s);
+  const snapshotAgeText = snapshotAge == null ? 'unknown' : `${Math.max(0, Math.round(snapshotAge / 60))}m`;
 
   const statusText = status === 'missing'
     ? 'Missing plan'
+    : artifactStale
+      ? 'Snapshot stale'
     : cleanupAllowed
       ? 'Cleanup allowed'
       : 'Cleanup locked';
@@ -1436,6 +1444,7 @@ function renderVpsRootDetails(vpsRoot) {
   const metrics = [
     ['Risk', risk],
     ['Cleanup', cleanupAllowed ? 'allowed' : 'locked'],
+    ['Snapshot age', snapshotAgeText],
     ['Source deleted', finiteNumber(summary.source_or_governance_deleted) ?? 0],
     ['Unknown deleted', finiteNumber(summary.unknown_deleted) ?? 0],
     ['Submodule drift', finiteNumber(summary.submodule_drift ?? counts.submodule_drift) ?? 0],
@@ -1952,7 +1961,9 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     riskDetail = `${due}; oldest ${oldestDescriptor}`;
   } else if (secondsToNextAction != null && secondsToNextAction > 0 && oldestAge > 0) {
     if (secondsToNextAction <= 300) risk = risk === 'High' ? risk : 'Medium';
-    riskDetail = `exit watch active; ${nextActionText || 'next review pending'}`;
+    riskDetail = nextActionText
+      ? `exit watch active; ${nextActionText}`
+      : 'exit watch active; next review pending';
   }
   document.getElementById('riskLevel').textContent = risk;
   document.getElementById('riskLevel').className = 'stat ' + (risk === 'Low' ? 'green' : risk === 'Medium' ? 'yellow' : 'red');

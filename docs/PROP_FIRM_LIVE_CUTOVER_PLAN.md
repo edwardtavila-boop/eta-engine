@@ -1,6 +1,6 @@
 # Prop-Firm + Small-Capital Live Cutover Plan
 
-**Status:** 2026-05-08. Operator approved controlled Tradovate reactivation for prop-fund testing with winning strategies.
+**Status:** 2026-05-09. Operator approved controlled Tradovate reactivation for prop-fund testing with winning strategies.
 
 This document is the current un-dormancy path for prop-firm futures testing. It does not place trades by itself. Tradovate remains dormant by default unless the live process explicitly sets `ETA_TRADOVATE_ENABLED=1`.
 
@@ -50,16 +50,43 @@ Tastytrade, then Alpaca for spot-crypto paper/personal lanes.
 
 | Bot | Use | Reason |
 |---|---|---|
-| `volume_profile_mnq` | Primary prop lane | Only strict-gate pass from the audit, `sh_def +2.91`, `n=2916`, MNQ fits prop account structure |
-| `volume_profile_nq` | Later upscale | Strong audit, but NQ is too large for small personal capital and should wait for prop buffer |
-| `mnq_futures_sage` / `rsi_mr_mnq_v2` | Optimization lane | Equity-index futures remain the first research/Kaizen focus after `volume_profile_mnq` |
-| `mym_sweep_reclaim` | Watchlist | Interesting per-trade result but low sample and fractional-contract issue |
-| `mcl_sweep_reclaim` | Watchlist | Micro futures backup after more paper evidence |
+| `volume_profile_mnq` | Primary prop lane | Current strict-gate pass, `sh_def +2.86`, `n=2916`, MNQ fits prop account structure |
+| `volume_profile_nq` | Runner slot 1 | Near-strict Nasdaq upscale lane, `sh_def +2.08`, `n=3073`, but NQ waits for prop buffer |
+| `rsi_mr_mnq_v2` | Runner slot 2 | MNQ runner-up, split-stable but still watch-only until deflated Sharpe improves |
+| `mym_sweep_reclaim` | Runner slot 3 | Dow micro diversification candidate, strong per-trade result but only `n=11` |
+| `mes_sweep_reclaim_v2` / `mnq_anchor_sweep` | Reserve runners | S&P micro / additional MNQ research lanes; no prop route until strict evidence improves |
 | `ng_sweep_reclaim` / `eur_sweep_reclaim` | Research watch | Commodity/FX lanes need clean 5m data, event filters, and rollover validation before promotion |
 | `mbt_funding_basis` | Later CME crypto-futures lane | Futures contract, not spot crypto, but still lower priority than index/commodity work |
 | `sol_optimized` | Non-prop diversifier | Alpaca/personal crypto lane, not a futures prop lane |
 
 Initial live prop capital goes to `volume_profile_mnq` only. Other strategies keep optimizing in paper/Kaizen until their live-fill evidence is strong enough.
+
+## Automated Ladder And Hard Gate
+
+The futures ladder is the automated ranking surface:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.futures_prop_ladder --json
+```
+
+Current expected mode before funding/API unlock is
+`FULLY_AUTOMATED_PAPER_PROP_HELD`: the system keeps optimizing in paper,
+keeps `volume_profile_mnq` as the primary, and holds 2-3 runner-up slots for
+Nasdaq/S&P/Dow minis and micros.
+
+The prop-live gate is the hard latch:
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m eta_engine.scripts.prop_live_readiness_gate --json
+```
+
+It must report `READY_FOR_CONTROLLED_PROP_DRY_RUN` before any prop route edit.
+It intentionally blocks if any of these are dirty or missing: Tradovate
+cutover readiness, `volume_profile_mnq` live eligibility, router cleanliness,
+broker-native bracket/OCO proof, live fleet broker surfaces, or schema-backed
+closed-trade outcomes.
 
 ## Current Code Path
 
@@ -137,6 +164,10 @@ Phase 4: Live watched cutover.
   and first dry-run sequence.
 - Before funding, run:
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit`.
+- Keep the futures ladder current:
+  `python -m eta_engine.scripts.futures_prop_ladder`.
+- Treat the consolidated gate as the final go/no-go:
+  `python -m eta_engine.scripts.prop_live_readiness_gate`.
 - After funding/API activation, require:
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover`
   to report `READY_FOR_DRY_RUN` before editing any winning-bot route.

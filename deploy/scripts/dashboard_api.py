@@ -1284,16 +1284,33 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
         except (TypeError, ValueError):
             return 0
 
+    def _file_snapshot(path: Path, *, now_ts: float) -> dict[str, object]:
+        mtime = _safe_mtime(path)
+        if mtime is None:
+            return {"updated_at": None, "age_s": None}
+        return {
+            "updated_at": datetime.fromtimestamp(mtime, UTC).isoformat(),
+            "age_s": max(0, int(now_ts - mtime)),
+        }
+
     plan_path = _vps_root_reconciliation_plan_path()
     inventory_path = _vps_root_dirty_inventory_path()
     plan = _read_json_file(plan_path)
     inventory = _read_json_file(inventory_path)
+    now_ts = time.time()
+    plan_snapshot = _file_snapshot(plan_path, now_ts=now_ts)
+    inventory_snapshot = _file_snapshot(inventory_path, now_ts=now_ts)
     if not plan and not inventory:
         return {
             "status": "missing",
             "source": "missing",
             "plan_path": str(plan_path),
             "inventory_path": str(inventory_path),
+            "plan_updated_at": plan_snapshot["updated_at"],
+            "plan_age_s": plan_snapshot["age_s"],
+            "inventory_updated_at": inventory_snapshot["updated_at"],
+            "inventory_age_s": inventory_snapshot["age_s"],
+            "artifact_stale": False,
             "risk_level": "unknown",
             "cleanup_allowed": False,
             "destructive_actions_performed": False,
@@ -1334,12 +1351,24 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     if steps and isinstance(steps[0], dict):
         recommended_action = str(steps[0].get("action") or recommended_action)
 
+    source_age_s = plan_snapshot["age_s"] if plan else inventory_snapshot["age_s"]
+    artifact_stale = isinstance(source_age_s, int) and source_age_s > 7200
+    if artifact_stale:
+        status = "stale_review_required" if manual_review_required else "stale"
+    else:
+        status = "review_required" if manual_review_required else "ready_for_review"
+
     return {
-        "status": "review_required" if manual_review_required else "ready_for_review",
+        "status": status,
         "source": "vps_root_reconciliation_plan" if plan else "vps_root_dirty_inventory",
         "plan_status": plan.get("status") or "missing",
         "plan_path": str(plan_path),
         "inventory_path": str(inventory_path),
+        "plan_updated_at": plan_snapshot["updated_at"],
+        "plan_age_s": plan_snapshot["age_s"],
+        "inventory_updated_at": inventory_snapshot["updated_at"],
+        "inventory_age_s": inventory_snapshot["age_s"],
+        "artifact_stale": artifact_stale,
         "risk_level": risk_level,
         "cleanup_allowed": cleanup_allowed,
         "destructive_actions_performed": destructive_actions_performed,
@@ -7194,14 +7223,21 @@ def _local_master_status_payload() -> dict[str, object]:
         risk = str(payload.get("risk_level") or "unknown").lower()
         if status == "missing":
             return "YELLOW"
+        if status in {"stale", "stale_review_required"} or payload.get("artifact_stale") is True:
+            return "YELLOW"
         if status == "review_required" or risk in {"high", "medium"}:
             return "YELLOW"
         return "GREEN"
 
     def _vps_root_card_detail(payload: dict[str, object]) -> str:
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        age = payload.get("plan_age_s") or payload.get("inventory_age_s")
+        age_text = "unknown"
+        if isinstance(age, (int, float)):
+            age_text = f"{int(age // 60)}m"
         return (
             f"risk={payload.get('risk_level')}; cleanup_allowed={payload.get('cleanup_allowed')}; "
+            f"artifact_stale={payload.get('artifact_stale')}; snapshot_age={age_text}; "
             f"source_deleted={summary.get('source_or_governance_deleted', 0)}; "
             f"submodule_drift={summary.get('submodule_drift', 0)}; "
             f"dirty_companions={summary.get('dirty_companion_repos', 0)}"

@@ -93,6 +93,10 @@ def test_thresholds_in_valid_range() -> None:
         # for MNQ/NQ. Self-contained — wick-pierce + close-reclaim of
         # PDH/PDL/PMH/PML/ONH/ONL is the entire trigger.
         "anchor_sweep",
+        # Asset-class specialist strategies own their entry filters and do
+        # not read the generic confluence threshold.
+        "commodity_momentum",
+        "fx_range",
         # CME crypto micro futures (2026-05-07): MBT/MET strategies that
         # have their own internal triggers (basis-premium z-score, overnight
         # gap detection, opening-range breakout) — they don't read the
@@ -120,7 +124,7 @@ def test_window_step_consistent() -> None:
 
 
 def test_scorer_name_is_known() -> None:
-    valid = {"global", "mnq", "btc"}
+    valid = {"global", "mnq", "btc", "gc", "cl", "eur", "zn"}
     for a in ASSIGNMENTS:
         assert a.scorer_name in valid, (
             f"{a.bot_id} unknown scorer {a.scorer_name!r}; add to "

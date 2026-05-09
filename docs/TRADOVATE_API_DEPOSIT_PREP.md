@@ -1,6 +1,6 @@
 # Tradovate API Deposit Prep
 
-**DORMANT / un-dormancy prep only. Status:** 2026-05-08. Use this while waiting to fund the personal
+**DORMANT / un-dormancy prep only. Status:** 2026-05-09. Use this while waiting to fund the personal
 Tradovate account that unlocks API access for BluSky prop testing.
 
 This runbook is intentionally conservative. It prepares the API path but
@@ -28,6 +28,8 @@ Run the no-order readiness check:
 ```powershell
 cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit
+python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.prop_live_readiness_gate
 ```
 
 Expected pre-deposit summary:
@@ -41,6 +43,20 @@ winning_bot_route: SAFE_HELD
 ```
 
 If this command is `BLOCKED`, fix the blocked item before funding.
+
+The consolidated `prop_live_readiness_gate` is expected to stay `BLOCKED`
+before funding. It is the hard go/no-go latch for the full automated prop
+lane and should block until all of these are true:
+
+- `volume_profile_mnq` is the only primary futures prop candidate cleared by
+  the ladder.
+- Tradovate/BluSky cutover readiness is `READY_FOR_DRY_RUN`.
+- IBKR, broker-router, and paper-live surfaces are green.
+- Historical failed/quarantined/rejected router residue has been resolved or
+  archived.
+- Broker-native bracket/OCO proof exists for open exposure.
+- A schema-backed closed-trade ledger exists so win rate, PnL, and R are not
+  stale.
 
 ## Deposit Day
 
@@ -100,6 +116,8 @@ After the OAuth smoke succeeds:
 cd C:\EvolutionaryTradingAlgo
 $env:ETA_TRADOVATE_ENABLED = "1"
 python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover
+python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.prop_live_readiness_gate
 ```
 
 Required cutover summary:
@@ -115,6 +133,19 @@ winning_bot_route: SAFE_HELD
 `SAFE_HELD` on `winning_bot_route` is correct at this stage. It means the
 system is ready for a dry-run, but the winning bot has not been connected
 to Tradovate yet.
+
+The required consolidated gate result before the first prop dry run is:
+
+```text
+summary: READY_FOR_CONTROLLED_PROP_DRY_RUN
+primary_ladder: PASS
+prop_readiness: PASS
+broker_surfaces: PASS
+router_cleanliness: PASS
+broker_native_brackets: PASS
+closed_trade_ledger: PASS
+live_bot_gate: PASS
+```
 
 ## First Dry Run
 

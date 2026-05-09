@@ -1137,6 +1137,68 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     # MES, M2K, YM — small-notional siblings of ES, RTY, full-size
     # YM. All RTH-priority via composite feed (yfinance during regular
     # session, IBKR fallback for extended hours).
+    # Asset-class specialist overlays. These are active strategy variants
+    # that share the composite futures feed and dispatcher instead of
+    # owning separate bot.py directories.
+    BotRequirements(
+        bot_id="gc_momentum",
+        requirements=(
+            DataRequirement("bars", "GC1", "1h", critical=True),
+            DataRequirement("bars", "GC1", "D", critical=False,
+                note="daily trend and risk-off context"),
+            DataRequirement("correlation", "DXY", "1h", critical=False,
+                note="gold momentum needs dollar-regime context"),
+        ),
+        sources_hint=(
+            "yfinance GC=F via composite feed",
+            "IBKR COMEX",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="cl_momentum",
+        requirements=(
+            DataRequirement("bars", "CL1", "1h", critical=True),
+            DataRequirement("bars", "CL1", "D", critical=False,
+                note="daily energy-trend context"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+        ),
+        sources_hint=(
+            "yfinance CL=F via composite feed",
+            "IBKR NYMEX",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="eur_range",
+        requirements=(
+            DataRequirement("bars", "6E1", "1h", critical=True),
+            DataRequirement("correlation", "DXY", "1h", critical=True,
+                note="range specialist uses inverse-dollar confirmation"),
+        ),
+        sources_hint=(
+            "yfinance 6E=F via composite feed",
+            "IBKR CME FX",
+        ),
+    ),
+
+    BotRequirements(
+        bot_id="zn_range",
+        requirements=(
+            DataRequirement("bars", "ZN1", "1h", critical=True),
+            DataRequirement("bars", "ZN1", "D", critical=False,
+                note="rate-cycle range context"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+            DataRequirement("correlation", "ES1", "1h", critical=False),
+        ),
+        sources_hint=(
+            "yfinance ZN=F via composite feed",
+            "IBKR CBOT",
+        ),
+    ),
+
+    # Equity-index micros tier. MES, M2K, YM are small-notional siblings
+    # of ES, RTY, and full-size YM. All are RTH-priority via composite feed.
     BotRequirements(
         bot_id="mes_sweep_reclaim",
         requirements=(

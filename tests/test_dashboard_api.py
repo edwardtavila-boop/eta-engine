@@ -6,6 +6,7 @@ Predator dashboard.
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 
 import pytest
@@ -1168,6 +1169,37 @@ class TestDashboardAPI:
         assert payload["counts"]["submodule_drift"] == 6
         assert payload["summary"]["dirty_companion_repos"] == 3
         assert payload["recommended_action"] == "Keep root cleanup disabled until review is approved."
+        assert payload["plan_updated_at"] is not None
+        assert payload["plan_age_s"] is not None
+        assert payload["artifact_stale"] is False
+
+    def test_vps_root_reconciliation_marks_old_review_plan_stale(self, app_client, tmp_path):
+        plan_path = tmp_path / "state" / "vps_root_reconciliation_plan.json"
+        plan_path.write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "risk_level": "medium",
+                    "cleanup_allowed": False,
+                    "destructive_actions_performed": False,
+                    "counts": {"status": 3, "submodule_drift": 5, "dirty_companion_repos": 3},
+                    "summary": {"submodule_drift": 5, "dirty_companion_repos": 3},
+                    "steps": [],
+                },
+            ),
+        )
+        os.utime(plan_path, (1, 1))
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        payload = r.json()
+        vps_root = payload["vps_root_reconciliation"]
+        assert vps_root["status"] == "stale_review_required"
+        assert vps_root["artifact_stale"] is True
+        assert vps_root["plan_age_s"] > 7200
+        assert payload["systems"]["vps_root"]["status"] == "YELLOW"
+        assert "artifact_stale=True" in payload["systems"]["vps_root"]["detail"]
 
     def test_master_status_includes_vps_root_reconciliation_card(self, app_client, tmp_path):
         (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(

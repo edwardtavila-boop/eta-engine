@@ -835,17 +835,15 @@ def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
         return _build_orb_sage_gated_factory(extras)
     if kind == "commodity_momentum":
         from eta_engine.strategies.commodity_momentum_strategy import (
-            MomentumConfig,
             MomentumStrategy,
-            gc_momentum_preset,
             cl_momentum_preset,
+            gc_momentum_preset,
         )
         preset_name = (extras.get("momentum_preset") or "gc").lower()
         base_cfg = {"gc": gc_momentum_preset, "cl": cl_momentum_preset}.get(preset_name, gc_momentum_preset)()
         return lambda: MomentumStrategy(base_cfg)
     if kind == "fx_range":
         from eta_engine.strategies.fx_range_strategy import (
-            RangeConfig,
             RangeStrategy,
             eur_range_preset,
             zn_range_preset,
@@ -867,6 +865,12 @@ def _resolve_scorer(name: str):  # type: ignore[no-untyped-def]  # noqa: ANN202
         "global": score_confluence,
         "mnq": score_confluence_mnq,
         "btc": score_confluence_btc,
+        # Asset-class specialist lanes own their strategy filters; the
+        # research grid still needs a scorer hook for shared reporting.
+        "gc": score_confluence,
+        "cl": score_confluence,
+        "eur": score_confluence,
+        "zn": score_confluence,
     }[name]
 
 

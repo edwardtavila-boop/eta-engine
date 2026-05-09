@@ -109,6 +109,12 @@ VARIANT_BOT_IDS: set[str] = {
     "ng_sweep_reclaim",   # Natural Gas (NG=F)
     "zn_sweep_reclaim",   # 10Y Note (ZN=F)
     "eur_sweep_reclaim",  # EUR/USD futures (6E=F)
+    # Asset-class specialist variants. These share the registry dispatcher
+    # instead of owning bot.py directories.
+    "gc_momentum",   # Gold momentum specialist.
+    "cl_momentum",   # Crude momentum specialist.
+    "zn_range",      # 10Y Note range specialist.
+    "eur_range",     # EUR/USD futures range specialist.
     # Equity-index micros tier — same template, smaller notional per contract
     "mes_sweep_reclaim",  # S&P 500 micro (MES=F) — 10x less notional than ES
     "m2k_sweep_reclaim",  # Russell 2000 micro (M2K=F)
