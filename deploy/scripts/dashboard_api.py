@@ -542,6 +542,22 @@ def _dashboard_diagnostics_payload() -> dict:
             or ""
         )
 
+    paper_live_status = str(paper_live_transition.get("status") or "unknown")
+    paper_live_effective_status = str(
+        roster_summary.get("paper_live_effective_status")
+        or paper_live_transition.get("effective_status")
+        or paper_live_status
+    )
+    paper_live_effective_detail = str(
+        roster_summary.get("paper_live_effective_detail")
+        or paper_live_transition.get("effective_detail")
+        or ""
+    )
+    paper_live_held_by_bracket_audit = bool(
+        roster_summary.get("paper_live_held_by_bracket_audit")
+        or paper_live_transition.get("held_by_bracket_audit")
+    )
+
     return {
         **_dashboard_contract(),
         "source_of_truth": "dashboard_diagnostics",
@@ -626,7 +642,14 @@ def _dashboard_diagnostics_payload() -> dict:
             "error": operator_queue.get("error"),
         },
         "paper_live_transition": {
-            "status": str(paper_live_transition.get("status") or "unknown"),
+            "status": paper_live_status,
+            "effective_status": paper_live_effective_status,
+            "effective_detail": paper_live_effective_detail,
+            "held_by_bracket_audit": paper_live_held_by_bracket_audit,
+            "broker_bracket_missing_count": int(roster_summary.get("broker_bracket_missing_count") or 0),
+            "broker_bracket_primary_symbol": str(roster_summary.get("broker_bracket_primary_symbol") or ""),
+            "broker_bracket_primary_venue": str(roster_summary.get("broker_bracket_primary_venue") or ""),
+            "broker_bracket_primary_sec_type": str(roster_summary.get("broker_bracket_primary_sec_type") or ""),
             "critical_ready": bool(paper_live_transition.get("critical_ready")),
             "paper_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
             "first_launch_blocker_op_id": transition_first_launch_blocker,

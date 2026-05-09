@@ -1120,6 +1120,61 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == ""
         assert payload["paper_live_transition"]["first_launch_next_action"] == ""
 
+    def test_dashboard_diagnostics_surfaces_effective_bracket_audit_hold(
+        self,
+        app_client,
+        monkeypatch,
+        tmp_path,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "bot_fleet_roster",
+            lambda *_args, **_kwargs: {
+                "bots": [],
+                "confirmed_bots": 0,
+                "summary": {
+                    "bot_total": 12,
+                    "active_bots": 3,
+                    "truth_status": "live",
+                    "paper_live_effective_status": "held_by_bracket_audit",
+                    "paper_live_effective_detail": (
+                        "paper transition ready, but broker bracket audit blocks prop dry-run"
+                    ),
+                    "paper_live_held_by_bracket_audit": True,
+                    "broker_bracket_missing_count": 1,
+                    "broker_bracket_primary_symbol": "MNQM6",
+                    "broker_bracket_primary_venue": "ibkr",
+                    "broker_bracket_primary_sec_type": "FUT",
+                },
+            },
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-09T12:00:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 12,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        paper = r.json()["paper_live_transition"]
+        assert paper["status"] == "ready_to_launch_paper_live"
+        assert paper["effective_status"] == "held_by_bracket_audit"
+        assert paper["held_by_bracket_audit"] is True
+        assert paper["broker_bracket_missing_count"] == 1
+        assert paper["broker_bracket_primary_symbol"] == "MNQM6"
+        assert paper["broker_bracket_primary_venue"] == "ibkr"
+        assert paper["broker_bracket_primary_sec_type"] == "FUT"
+        assert paper["effective_detail"].startswith("paper transition ready")
+
     def test_dashboard_diagnostics_includes_proxy_watchdog_rollup(
         self,
         app_client,
