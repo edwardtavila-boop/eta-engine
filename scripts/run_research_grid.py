@@ -833,6 +833,26 @@ def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
         return _build_drb_factory(extras)
     if kind == "orb_sage_gated":
         return _build_orb_sage_gated_factory(extras)
+    if kind == "commodity_momentum":
+        from eta_engine.strategies.commodity_momentum_strategy import (
+            MomentumConfig,
+            MomentumStrategy,
+            gc_momentum_preset,
+            cl_momentum_preset,
+        )
+        preset_name = (extras.get("momentum_preset") or "gc").lower()
+        base_cfg = {"gc": gc_momentum_preset, "cl": cl_momentum_preset}.get(preset_name, gc_momentum_preset)()
+        return lambda: MomentumStrategy(base_cfg)
+    if kind == "fx_range":
+        from eta_engine.strategies.fx_range_strategy import (
+            RangeConfig,
+            RangeStrategy,
+            eur_range_preset,
+            zn_range_preset,
+        )
+        preset_name = (extras.get("range_preset") or "eur").lower()
+        base_cfg = {"eur": eur_range_preset, "zn": zn_range_preset}.get(preset_name, eur_range_preset)()
+        return lambda: RangeStrategy(base_cfg)
     return _build_crypto_strategy_factory(kind, extras)
 
 

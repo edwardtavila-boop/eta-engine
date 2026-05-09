@@ -178,19 +178,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "provides directional filtering that crypto_orb alone lacks."
         ),
         extras={
-            "promotion_status": "research_candidate",
-            "deactivated": True,
-            "deactivated_on": "2026-05-07",
-            "deactivated_reason": (
-                "Fleet audit 2026-05-07: dispatches to identical signal "
-                "generator as eth_sweep_reclaim and eth_perp — confirmed "
-                "by lab returning identical 569-trade metrics. The "
-                "'ELITE-GATE 2026-05-05 ALL GREEN' result is contradicted "
-                "by the lab. Either the elite-gate path uses a different "
-                "harness whose results are unreproducible, or the claim "
-                "is wrong. Demoted pending walk-forward + bootstrap CI "
-                "on canonical bars."
-            ),
+            "promotion_status": "paper_soak",
+            "sweep_preset": "eth",
+            "edge_enabled": True,
+            "edge_config": {
+                "enable_session_gate": False,
+                "is_crypto": True,
+                "enable_structural_stops": True,
+                "enable_vol_sizing": True,
+                "enable_exhaustion_gate": False,
+                "enable_absorption_gate": False,
+                "enable_drift_boost": False,
+            },
             "elite_gate_passed_PRIOR_CLAIM": "2026-05-05",
             "elite_gate_results_PRIOR_CLAIM": (
                 "370 trades, 52.7% WR, Sharpe 0.859, PF 1.114, "
