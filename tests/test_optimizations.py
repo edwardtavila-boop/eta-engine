@@ -220,6 +220,11 @@ class TestStatusPage:
         assert "function renderBracketActionStrip" in html
         assert "bracket blocker actions" in html
         assert "prop dry-run blocked" in html
+        assert "function bracketPrimaryExposureText" in html
+        assert "qty " in html
+        assert "market value" in html
+        assert "unrealized" in html
+        assert "primary unprotected" in html
         assert "position_staleness" in html
         assert "force_flatten_due_count" in html
         assert "seconds_to_next_action" in html

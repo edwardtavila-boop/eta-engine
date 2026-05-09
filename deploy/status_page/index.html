@@ -906,6 +906,24 @@ function brokerBracketActionLabels(bracketAudit, summary) {
   return labels;
 }
 
+function bracketPrimaryExposureText(primary) {
+  if (!primary || !primary.symbol) return '';
+  const side = String(primary.side || '').trim();
+  const qty = finiteNumber(primary.qty);
+  const marketValue = finiteNumber(primary.market_value);
+  const unrealized = finiteNumber(primary.unrealized_pnl);
+  const venue = String(primary.venue || '').toUpperCase();
+  const secType = String(primary.sec_type || '').toUpperCase();
+  const parts = [
+    `${primary.symbol} ${venue} ${secType}`.trim(),
+    side ? side : '',
+    qty == null ? '' : `qty ${formatQty(qty)}`,
+    marketValue == null ? '' : `market value ${formatMoney(marketValue, 0)}`,
+    unrealized == null ? '' : `unrealized ${formatMoney(unrealized, 2)}`
+  ].filter(Boolean);
+  return parts.join(' | ');
+}
+
 function renderBracketActionStrip(d) {
   const el = document.getElementById('bracketActionStrip');
   if (!el) return;
@@ -933,12 +951,12 @@ function renderBracketActionStrip(d) {
   const unprotectedSymbols = Array.isArray(summary.broker_bracket_unprotected_symbols)
     ? summary.broker_bracket_unprotected_symbols
     : [];
-  const primaryText = primary.symbol
-    ? `${primary.symbol} ${String(primary.venue || '').toUpperCase()} ${primary.sec_type || ''}`.trim()
-    : (unprotectedSymbols.join(', ') || 'unprotected exposure');
+  const primaryText = bracketPrimaryExposureText(primary)
+    || unprotectedSymbols.join(', ')
+    || 'unprotected exposure';
   const details = [
     missing > 0 ? `${missing} missing broker OCO` : '',
-    primaryText ? `${primaryText} needs coverage` : '',
+    primaryText ? `primary unprotected: ${primaryText}` : '',
     propDryRunBlocked ? 'paper-live launch held until operator verifies coverage or flattens' : ''
   ].filter(Boolean).join('; ');
   const actionList = actions.length ? actions : ['Verify broker OCO coverage'];
@@ -2164,9 +2182,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : bracketReady
         ? 'READY_OPEN_EXPOSURE_BRACKETED'
         : 'UNKNOWN';
-    const primaryText = primaryUnprotected.symbol
-      ? `${primaryUnprotected.symbol} ${String(primaryUnprotected.venue || '').toUpperCase()} ${primaryUnprotected.sec_type || ''}`.trim()
-      : '';
+    const primaryText = bracketPrimaryExposureText(primaryUnprotected);
     const bracketSubParts = [
       propDryRunBlocked ? 'prop dry-run blocked' : '',
       missingOco > 0 ? `${missingOco} missing broker OCO` : '',
