@@ -195,6 +195,39 @@ class TestDashboardAPI:
         assert "0 broker open" in summary["summary_line"]
         assert "1 supervisor paper-local open" in summary["summary_line"]
 
+    def test_target_exit_summary_counts_unbracketed_broker_exposure(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        summary = mod._target_exit_summary(
+            [
+                {
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_stop": 29323.75,
+                        "bracket_target": 29362.75,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 24.0,
+                            "stop_distance_points": 8.5,
+                        },
+                    },
+                },
+            ],
+            broker_open_position_count=2,
+        )
+
+        assert summary["status"] == "missing_brackets"
+        assert summary["broker_open_position_count"] == 2
+        assert summary["broker_bracket_count"] == 0
+        assert summary["broker_unbracketed_count"] == 2
+        assert summary["missing_bracket_count"] == 2
+        assert "2 broker open" in summary["summary_line"]
+        assert "2 missing bracket(s)" in summary["summary_line"]
+
     def test_target_exit_summary_surfaces_stale_position_sla(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

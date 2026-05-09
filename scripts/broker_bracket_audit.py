@@ -48,6 +48,18 @@ def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
 
 
 def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
+    target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
+    if target_exit_summary:
+        return {
+            "broker_open_position_count": _as_int(
+                target_exit_summary.get("broker_open_position_count"),
+            ),
+            "broker_bracket_count": _as_int(target_exit_summary.get("broker_bracket_count")),
+            "supervisor_local_position_count": _as_int(
+                target_exit_summary.get("supervisor_local_position_count"),
+            ),
+        }
+
     summary = _as_dict(fleet.get("summary"))
     if summary:
         return {
