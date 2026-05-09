@@ -21,6 +21,25 @@ from eta_engine.scripts import workspace_roots  # noqa: E402
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
 DEFAULT_OUT = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MANUAL_ACK_PATH = workspace_roots.ETA_BROKER_BRACKET_MANUAL_ACK_PATH
+FUTURES_MULTIPLIERS = {
+    "6E": 125000.0,
+    "CL": 1000.0,
+    "ES": 50.0,
+    "GC": 100.0,
+    "M2K": 5.0,
+    "MBT": 0.1,
+    "MCL": 100.0,
+    "MES": 5.0,
+    "MET": 0.1,
+    "MGC": 10.0,
+    "MNQ": 2.0,
+    "MYM": 0.5,
+    "NG": 10000.0,
+    "NQ": 20.0,
+    "RTY": 50.0,
+    "YM": 5.0,
+    "ZN": 1000.0,
+}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -172,6 +191,38 @@ def _first_float(position: dict[str, Any], keys: tuple[str, ...]) -> float | Non
     return None
 
 
+def _futures_multiplier(position: dict[str, Any], symbol: str) -> float | None:
+    multiplier = _as_float(position.get("multiplier") or position.get("contract_multiplier"))
+    if multiplier is not None and multiplier > 0:
+        return multiplier
+    symbol_key = symbol.strip().upper()
+    for root, value in sorted(FUTURES_MULTIPLIERS.items(), key=lambda item: len(item[0]), reverse=True):
+        if symbol_key.startswith(root):
+            return value
+    return None
+
+
+def _normalize_avg_entry_price(
+    position: dict[str, Any],
+    *,
+    symbol: str,
+    sec_type: object,
+    raw_avg_entry_price: float | None,
+    current_price: float | None,
+) -> float | None:
+    if raw_avg_entry_price is None:
+        return None
+    if str(sec_type or "").strip().upper() not in {"FUT", "FOP"}:
+        return raw_avg_entry_price
+    multiplier = _futures_multiplier(position, symbol)
+    if not multiplier or current_price is None:
+        return raw_avg_entry_price
+    candidate = raw_avg_entry_price / multiplier
+    if abs(candidate - current_price) < abs(raw_avg_entry_price - current_price):
+        return candidate
+    return raw_avg_entry_price
+
+
 def _position_requires_broker_bracket(position: dict[str, Any]) -> bool:
     explicit = position.get("broker_bracket_required")
     if explicit is not None:
@@ -203,6 +254,14 @@ def _normalize_open_position(
         side = "long" if qty > 0 else "short" if qty < 0 else ""
     sec_type = position.get("sec_type") or position.get("secType") or position.get("security_type")
     venue = str(position.get("venue") or position.get("broker") or default_venue or "").strip().lower()
+    current_price = _first_float(
+        position,
+        ("current_price", "mark_price", "market_price", "last_price", "currentPrice"),
+    )
+    raw_avg_entry_price = _first_float(
+        position,
+        ("avg_entry_price", "average_cost", "averageCost", "avgCost", "avg_price", "avgPrice"),
+    )
     normalized = {
         "venue": venue,
         "symbol": symbol,
@@ -210,14 +269,14 @@ def _normalize_open_position(
         "qty": abs(qty) if qty is not None else None,
         "sec_type": sec_type,
         "exchange": position.get("exchange"),
-        "avg_entry_price": _first_float(
+        "avg_entry_price": _normalize_avg_entry_price(
             position,
-            ("avg_entry_price", "average_cost", "averageCost", "avgCost", "avg_price", "avgPrice"),
+            symbol=symbol,
+            sec_type=sec_type,
+            raw_avg_entry_price=raw_avg_entry_price,
+            current_price=current_price,
         ),
-        "current_price": _first_float(
-            position,
-            ("current_price", "mark_price", "market_price", "last_price", "currentPrice"),
-        ),
+        "current_price": current_price,
         "unrealized_pct": _first_float(position, ("unrealized_pct", "unrealized_percent")),
         "market_value": _as_float(position.get("market_value")),
         "unrealized_pnl": _as_float(position.get("unrealized_pnl")),

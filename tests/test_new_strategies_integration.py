@@ -5,6 +5,7 @@ sys.path.insert(0, r"C:\EvolutionaryTradingAlgo")
 
 from eta_engine.scripts.run_research_grid import _build_strategy_factory
 from eta_engine.strategies.confluence_scorecard import ConfluenceScorecardConfig
+from eta_engine.strategies.models import StrategyId
 from eta_engine.strategies.per_bot_registry import bots, get_for_bot
 from eta_engine.strategies.registry_strategy_bridge import build_registry_dispatch, clear_strategy_cache
 
@@ -99,6 +100,27 @@ def test_bridge_builds_active_bots():
         assert len(registry) >= 1, f"{bot_id} registry empty"
         fn = list(registry.values())[0]
         assert callable(fn), f"{bot_id} callable not callable"
+
+
+def test_asset_specific_specialist_bots_build_through_bridge(monkeypatch) -> None:
+    """Commodity/FX research lanes must not disappear at dispatch time."""
+    from eta_engine.strategies import per_bot_registry
+
+    monkeypatch.setattr(per_bot_registry, "_load_kaizen_overrides", lambda: {})
+    clear_strategy_cache()
+
+    expected = {
+        "gc_momentum": StrategyId.REGISTRY_COMMODITY_MOMENTUM,
+        "cl_momentum": StrategyId.REGISTRY_COMMODITY_MOMENTUM,
+        "eur_range": StrategyId.REGISTRY_FX_RANGE,
+        "zn_range": StrategyId.REGISTRY_FX_RANGE,
+    }
+    for bot_id, strategy_id in expected.items():
+        result = build_registry_dispatch(bot_id)
+        assert result is not None, f"{bot_id} dispatch returned None"
+        eligibility, registry = result
+        assert strategy_id in registry
+        assert strategy_id in next(iter(eligibility.values()))
 
 
 def test_presets_instantiate():

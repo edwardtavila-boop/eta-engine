@@ -189,6 +189,49 @@ def test_bracket_audit_names_unprotected_broker_position(monkeypatch) -> None:
     assert ".;" not in report["next_action"]
 
 
+def test_bracket_audit_normalizes_ibkr_futures_average_cost_to_points(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "position_exposure": {
+                    "open_positions": [
+                        {
+                            "venue": "ibkr",
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "averageCost": 58681.28666665,
+                            "currentPrice": 29335.01171875,
+                            "broker_bracket_required": True,
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    assert round(report["primary_unprotected_position"]["avg_entry_price"], 2) == 29340.64
+    assert report["primary_unprotected_position"]["current_price"] == 29335.01171875
+
+
 def test_bracket_audit_accepts_current_manual_oco_ack(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,
