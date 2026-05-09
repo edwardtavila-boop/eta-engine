@@ -3450,6 +3450,14 @@ class TestDashboardAPI:
         assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["summary"]["broker_bracket_audit_ready"] is False
         assert payload["summary"]["broker_bracket_operator_action_required"] is True
+        assert payload["summary"]["broker_bracket_missing_count"] == 1
+        assert payload["summary"]["broker_bracket_unprotected_symbols"] == ["MNQM6"]
+        assert payload["summary"]["broker_bracket_operator_action_count"] == 2
+        assert payload["summary"]["broker_bracket_operator_action_ids"] == [
+            "verify_manual_broker_oco",
+            "flatten_unprotected_paper_exposure",
+        ]
+        assert "MNQM6 IBKR FUT" in payload["summary"]["broker_bracket_next_action"]
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

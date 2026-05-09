@@ -4300,6 +4300,21 @@ def bot_fleet_roster(
         target_exit_summary=target_exit_summary,
         live_broker_state=live_broker_state,
     )
+    broker_bracket_position_summary = (
+        broker_bracket_audit.get("position_summary")
+        if isinstance(broker_bracket_audit.get("position_summary"), dict)
+        else {}
+    )
+    broker_bracket_actions = (
+        broker_bracket_audit.get("operator_actions")
+        if isinstance(broker_bracket_audit.get("operator_actions"), list)
+        else []
+    )
+    broker_bracket_action_ids = [
+        str(action.get("id") or "")
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("id")
+    ]
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
@@ -4355,6 +4370,17 @@ def bot_fleet_roster(
             "broker_bracket_operator_action_required": bool(
                 broker_bracket_audit.get("operator_action_required"),
             ),
+            "broker_bracket_missing_count": int(
+                broker_bracket_position_summary.get("missing_bracket_count") or 0
+            ),
+            "broker_bracket_unprotected_symbols": (
+                broker_bracket_position_summary.get("unprotected_symbols")
+                if isinstance(broker_bracket_position_summary.get("unprotected_symbols"), list)
+                else []
+            ),
+            "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
+            "broker_bracket_operator_action_ids": broker_bracket_action_ids,
+            "broker_bracket_next_action": str(broker_bracket_audit.get("next_action") or ""),
             "paper_live_status": str(paper_live_transition.get("status") or "unknown"),
             "paper_live_critical_ready": bool(paper_live_transition.get("critical_ready")),
             "paper_live_ready_bots": int(paper_live_transition.get("paper_ready_bots") or 0),
