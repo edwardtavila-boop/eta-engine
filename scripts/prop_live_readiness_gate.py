@@ -134,6 +134,31 @@ def _broker_surfaces_check(master: dict[str, Any]) -> dict[str, Any]:
     statuses = {name: str(_as_dict(systems.get(name)).get("status") or "UNKNOWN") for name in required}
     if all(status == "GREEN" for status in statuses.values()):
         return _check("broker_surfaces", "PASS", "IBKR, broker router, and paper-live surfaces are green", **statuses)
+    broker = _as_dict(systems.get("broker"))
+    paper_live = _as_dict(systems.get("paper_live"))
+    bracket_hold = (
+        statuses.get("ibkr") == "GREEN"
+        and statuses.get("broker") == "YELLOW"
+        and statuses.get("paper_live") == "YELLOW"
+        and str(broker.get("raw_status") or "").lower() == "ok"
+        and str(broker.get("target_exit_status") or "") == "missing_brackets"
+        and _as_int(broker.get("active_blocker_count")) == 0
+        and bool(paper_live.get("critical_ready"))
+        and (
+            bool(paper_live.get("held_by_bracket_audit"))
+            or str(paper_live.get("effective_status") or "") == "held_by_bracket_audit"
+        )
+    )
+    if bracket_hold:
+        return _check(
+            "broker_surfaces",
+            "PASS",
+            "IBKR, broker router, and paper-live are operational; paper-live is held by bracket audit",
+            **statuses,
+            broker_raw_status=broker.get("raw_status"),
+            target_exit_status=broker.get("target_exit_status"),
+            paper_live_effective_status=paper_live.get("effective_status"),
+        )
     return _check(
         "broker_surfaces",
         "BLOCKED",
