@@ -4224,6 +4224,10 @@ def bot_fleet_roster(
         broker_bracket_required_position_count=broker_bracket_required_position_count,
         server_ts=now_ts,
     )
+    target_exit_summary["broker_position_scope"] = "all_broker_venues"
+    target_exit_summary["broker_position_scope_detail"] = (
+        "/api/bot-fleet counts all broker venues; /api/master/status uses cached IBKR exposure only."
+    )
     position_staleness = (
         target_exit_summary.get("position_staleness")
         if isinstance(target_exit_summary.get("position_staleness"), dict)
@@ -4418,6 +4422,12 @@ def bot_fleet_roster(
             "stale_position_oldest_next_action": str(oldest_stale_position.get("next_action") or ""),
             "stale_position_seconds_to_next_action": oldest_stale_position.get("seconds_to_next_action"),
             "open_position_count_visible": target_exit_summary["open_position_count"],
+            "target_exit_broker_position_scope": str(
+                target_exit_summary.get("broker_position_scope") or ""
+            ),
+            "target_exit_broker_position_scope_detail": str(
+                target_exit_summary.get("broker_position_scope_detail") or ""
+            ),
             "supervisor_exit_watch_count": target_exit_summary["supervisor_watch_count"],
             "close_history_window": close_history_window["window"],
             "close_history_label": close_history_window["label"],

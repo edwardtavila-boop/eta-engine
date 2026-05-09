@@ -3534,6 +3534,9 @@ class TestDashboardAPI:
         payload = r.json()
         audit = payload["broker_bracket_audit"]
         assert audit["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert payload["target_exit_summary"]["broker_position_scope"] == "all_broker_venues"
+        assert "all broker venues" in payload["target_exit_summary"]["broker_position_scope_detail"]
+        assert payload["summary"]["target_exit_broker_position_scope"] == "all_broker_venues"
         assert audit["position_summary"]["broker_bracket_required_position_count"] == 1
         assert audit["position_summary"]["missing_bracket_count"] == 1
         assert audit["position_summary"]["unprotected_symbols"] == ["MNQM6"]

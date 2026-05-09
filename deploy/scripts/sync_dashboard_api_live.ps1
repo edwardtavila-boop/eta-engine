@@ -232,6 +232,10 @@ finally {
     target_exit_summary = $exitSummaryPresent
     target_exit_status = $probe.target_exit_summary.status
     open_positions = $probe.target_exit_summary.open_position_count
+    supervisor_open_positions = $probe.target_exit_summary.supervisor_local_position_count
+    broker_open_positions = $probe.target_exit_summary.broker_open_position_count
+    broker_position_scope = $probe.target_exit_summary.broker_position_scope
+    missing_brackets = $probe.target_exit_summary.missing_bracket_count
     supervisor_exit_watch = $probe.target_exit_summary.supervisor_watch_count
     broker_router = $probe.broker_router.status
     signal_cadence = $probe.signal_cadence.status
