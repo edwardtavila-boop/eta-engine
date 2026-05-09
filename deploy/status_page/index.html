@@ -254,7 +254,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="panel-head">
       <div>
         <h3>Portfolio PnL Contribution</h3>
-        <div class="panel-kicker" id="contributionSub">Open exposure and realized close evidence</div>
+        <div class="panel-kicker" id="contributionSub">Open exposure and selected-window realized outcomes</div>
       </div>
       <div class="truth-chip" id="contributionSource">broker first</div>
     </div>
@@ -303,7 +303,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <button type="button" data-close-window="ytd">YTD</button>
       <button type="button" data-close-window="all">All</button>
     </div>
-    <div class="stat dim" id="pnlHistoryLabel">MTD close history</div>
+    <div class="stat dim" id="pnlHistoryLabel">MTD closed outcomes</div>
     <div class="history-subline" id="pnlHistorySub">waiting for close ledger</div>
     <div class="chart-card"><canvas id="pnlChart"></canvas></div>
   </div>
@@ -708,7 +708,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
         .map(row => finiteNumber(row?.realized_r ?? row?.r_multiple ?? row?.r))
         .filter(value => value != null)
         .reduce((sum, value) => sum + value, 0),
-      source: `${payload.label || windowed.key.toUpperCase()} close ledger`,
+      source: `${payload.label || windowed.key.toUpperCase()} closed-outcome ledger`,
       window: windowed.key,
       label: payload.label || windowed.key.toUpperCase(),
       since: payload.since,
@@ -726,7 +726,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
           bot_id: row.bot_id,
           symbol: row.symbol,
           realized_pnl: row.realized_pnl,
-          source: row.source || 'portfolio contributor close evidence'
+          source: row.source || 'portfolio contributor closed outcomes'
         }))
     : [];
   const rows = exposureCloses.length ? exposureCloses : contributorCloses;
@@ -752,8 +752,8 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
     realizedPnl,
     realizedR: rValues.length ? rValues.reduce((sum, value) => sum + value, 0) : null,
     window: 'recent',
-    label: 'Recent',
-    source: exposureCloses.length ? 'recent close evidence' : contributorCloses.length ? 'portfolio contributor close evidence' : 'close history unavailable'
+    label: 'Selected',
+    source: exposureCloses.length ? 'selected-window closed outcomes' : contributorCloses.length ? 'portfolio contributor closed outcomes' : 'close history unavailable'
   };
 }
 
@@ -812,13 +812,13 @@ function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
   if (closeHistory?.realizedPnl != null) {
     const label = closeHistory.label || 'Close';
-    const closeText = `${closeHistory.count} ${label} close${closeHistory.count === 1 ? '' : 's'}`;
+    const closeText = `${closeHistory.count} ${label} closed outcome${closeHistory.count === 1 ? '' : 's'}`;
     const winText = closeHistory.winRatePct == null
       ? ''
       : `; ${closeHistory.winRatePct.toFixed(1)}% WR`;
     return {
       value: closeHistory.realizedPnl,
-      label: `${label} Close History`,
+      label: `${label} Closed Outcomes`,
       isLifetime: false,
       source: `${closeText}${winText}; lifetime ledger pending`
     };
@@ -962,16 +962,16 @@ function buildSupervisorPositions(bots) {
     .filter(Boolean);
 }
 
-function renderRecentCloses(closes, label = 'recent', totalCount = null) {
+function renderRecentCloses(closes, label = 'selected window', totalCount = null) {
   const rows = Array.isArray(closes) ? closes.slice(0, 6) : [];
   if (!rows.length) {
-    return '<div class="empty-panel">No recent close evidence in the Jarvis trade-close ledger yet.</div>';
+    return '<div class="empty-panel">No selected-window closed outcomes in the Jarvis trade-close ledger yet.</div>';
   }
   const total = Number(totalCount ?? closes.length ?? rows.length);
   const shown = rows.length;
   const scope = label || 'selected window';
   return `<div class="mt-3">
-    <div class="text-xs text-zinc-500 mb-1">${esc(scope)} close evidence (${shown} shown of ${total} closes)</div>
+    <div class="text-xs text-zinc-500 mb-1">${esc(scope)} closed outcomes (${shown} shown of ${total} total)</div>
     <div class="router-tape">${rows.map((c) => {
       const realized = finiteNumber(c.realized_pnl);
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
@@ -1020,7 +1020,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
     `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
-    `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> ${esc(closeHistory?.label || 'recent')} closes</span>`,
+    `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> ${esc(closeHistory?.label || 'selected')} outcomes</span>`,
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].join('');
 
@@ -1051,7 +1051,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   }
   positionsPanel.innerHTML = positionsHtml + renderRecentCloses(
     closeHistory?.rows || exposure.recent_closes,
-    closeHistory?.label || 'recent',
+    closeHistory?.label || 'selected window',
     closeHistory?.count ?? exposure.recent_close_count
   );
 
@@ -1803,7 +1803,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
       : `${brokerOpen} broker open`;
     const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
     const closeHistoryText = closeHistory.count > 0
-      ? `; ${closeHistory.count} ${closeHistory.label || 'selected'} close${closeHistory.count === 1 ? '' : 's'} in close ledger`
+      ? `; ${closeHistory.count} ${closeHistory.label || 'selected'} closed outcomes in ledger`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
     document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}${closeHistoryText}`;
@@ -2273,13 +2273,13 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     pnlHistoryLabel.textContent = lifetimeEvidence?.isLifetime
       ? 'lifetime curve'
       : closeHistory.realizedPnl != null
-        ? `${closeHistory.label || 'Close'} close history`
+        ? `${closeHistory.label || 'Close'} closed outcomes`
         : '7-day curve';
   }
   const pnlHistorySub = document.getElementById('pnlHistorySub');
   if (pnlHistorySub) {
     pnlHistorySub.textContent = closeHistory.realizedPnl != null
-      ? `${formatMoney(closeHistory.realizedPnl, 2)} realized; ${closeHistory.count} closes; ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
+      ? `${formatMoney(closeHistory.realizedPnl, 2)} realized; ${closeHistory.count} closed outcomes; ${closeHistory.winRatePct == null ? 'WR n/a' : closeHistory.winRatePct.toFixed(1) + '% WR'}`
       : (lifetimeEvidence?.source || 'waiting for close ledger');
   }
 
@@ -2379,7 +2379,7 @@ function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, clo
     : historyLabel + ': $' + totalPnl.toFixed(0);
   const winText = closeHistory?.winRatePct == null
     ? ''
-    : ' | WR: ' + closeHistory.winRatePct.toFixed(1) + '% (' + closeHistory.evaluated + ' closes)';
+    : ' | WR: ' + closeHistory.winRatePct.toFixed(1) + '% (' + closeHistory.evaluated + ' evaluated)';
   ctx.fillText(todaysPnl === 0 && totalPnl == null ? 'Waiting for first broker PnL...' : 'Today: $' + todaysPnl.toFixed(0) + ' | ' + historyText + winText, w/2, h/2);
 }
 

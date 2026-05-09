@@ -266,14 +266,15 @@ class TestStatusPage:
         assert "function renderPnlWindowControls" in html
         assert "data-close-window=\"mtd\"" in html
         assert "data-close-window=\"all\"" in html
-        assert "MTD close history" in html
+        assert "MTD closed outcomes" in html
         assert "function winRateSourceText" in html
         assert "close-ledger outcomes" in html
         assert "function pnlHistoryEvidence" in html
-        assert "Closed PnL History" in html
+        assert "Closed Outcomes" in html
         assert "lifetime ledger pending" in html
-        assert "close outcome" in html
-        assert "in close ledger" in html
+        assert "closed outcome" in html
+        assert "closed outcomes in ledger" in html
+        assert "selected-window closed outcomes" in html
         assert '<details class="collapsible-section" id="opsTruthSection">' in html
         assert "source === 'supervisor_heartbeat'" in html
         assert "source === 'fills_intraday'" in html
@@ -409,7 +410,7 @@ class TestStatusPage:
         html = (root / "index.html").read_text(encoding="utf-8")
 
         assert "liveBroker?.position_exposure" in html
-        assert "recent close evidence" in html
+        assert "selected-window closed outcomes" in html
         assert "renderRecentCloses" in html
         assert "target_exit_visibility" in html
         assert "broker_open_position_count" in html
