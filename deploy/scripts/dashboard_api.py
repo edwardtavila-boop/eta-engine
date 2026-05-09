@@ -4372,9 +4372,22 @@ def bot_fleet_roster(
         if vps_root_steps and isinstance(vps_root_steps[0], dict)
         else {}
     )
+    vps_root_companion_step = next(
+        (
+            step
+            for step in vps_root_steps
+            if isinstance(step, dict) and step.get("id") == "align-submodules"
+        ),
+        {},
+    )
     vps_root_top_step_evidence = (
         vps_root_top_step.get("evidence")
         if isinstance(vps_root_top_step.get("evidence"), list)
+        else []
+    )
+    vps_root_companion_step_evidence = (
+        vps_root_companion_step.get("evidence")
+        if isinstance(vps_root_companion_step.get("evidence"), list)
         else []
     )
     ibkr_gateway = (
@@ -4499,6 +4512,15 @@ def bot_fleet_roster(
             "vps_root_top_step_action": str(vps_root_top_step.get("action") or ""),
             "vps_root_top_step_evidence_count": len(vps_root_top_step_evidence),
             "vps_root_top_step_evidence": vps_root_top_step_evidence,
+            "vps_root_companion_step_id": str(vps_root_companion_step.get("id") or ""),
+            "vps_root_companion_step_title": str(vps_root_companion_step.get("title") or ""),
+            "vps_root_companion_step_risk": str(vps_root_companion_step.get("risk") or ""),
+            "vps_root_companion_step_decision": str(
+                vps_root_companion_step.get("decision") or "",
+            ),
+            "vps_root_companion_step_action": str(vps_root_companion_step.get("action") or ""),
+            "vps_root_companion_step_evidence_count": len(vps_root_companion_step_evidence),
+            "vps_root_companion_step_evidence": vps_root_companion_step_evidence,
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),

@@ -2472,6 +2472,18 @@ class TestDashboardAPI:
             "submodule_drift=5",
             "dirty_companion_repos=3",
         ]
+        assert payload["summary"]["vps_root_companion_step_id"] == "align-submodules"
+        assert payload["summary"]["vps_root_companion_step_title"] == "Align companion repositories"
+        assert payload["summary"]["vps_root_companion_step_risk"] == "medium"
+        assert payload["summary"]["vps_root_companion_step_decision"] == "manual_review_required"
+        assert payload["summary"]["vps_root_companion_step_action"] == (
+            "Choose whether each companion repo follows root, live branch, or remains pinned."
+        )
+        assert payload["summary"]["vps_root_companion_step_evidence_count"] == 2
+        assert payload["summary"]["vps_root_companion_step_evidence"] == [
+            "submodule_drift=5",
+            "dirty_companion_repos=3",
+        ]
 
     def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
         self,
