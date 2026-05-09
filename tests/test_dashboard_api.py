@@ -3549,6 +3549,20 @@ class TestDashboardAPI:
             "verify_manual_broker_oco",
             "flatten_unprotected_paper_exposure",
         ]
+        assert payload["summary"]["broker_bracket_operator_action_labels"] == [
+            "Verify broker OCO coverage",
+            "Flatten unprotected paper exposure",
+        ]
+        assert payload["summary"]["broker_bracket_manual_action_count"] == 2
+        assert payload["summary"]["broker_bracket_order_action_count"] == 1
+        assert payload["summary"]["broker_bracket_primary_action_label"] == "Verify broker OCO coverage"
+        assert payload["summary"]["broker_bracket_primary_action_detail"] == (
+            "Confirm MNQM6 IBKR FUT has broker-native TP/SL OCO attached outside ETA."
+        )
+        assert payload["summary"]["broker_bracket_order_action_label"] == "Flatten unprotected paper exposure"
+        assert payload["summary"]["broker_bracket_order_action_detail"] == (
+            "Alternative: flatten MNQM6 IBKR FUT before prop dry-run if no OCO exists."
+        )
         assert "MNQM6 IBKR FUT" in payload["summary"]["broker_bracket_next_action"]
         assert payload["summary"]["broker_bracket_primary_symbol"] == "MNQM6"
         assert payload["summary"]["broker_bracket_primary_venue"] == "ibkr"

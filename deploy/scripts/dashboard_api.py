@@ -4330,6 +4330,27 @@ def bot_fleet_roster(
         for action in broker_bracket_actions
         if isinstance(action, dict) and action.get("id")
     ]
+    broker_bracket_action_labels = [
+        str(action.get("label") or "")
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("label")
+    ]
+    broker_bracket_manual_action_count = sum(
+        1
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("manual") is True
+    )
+    broker_bracket_order_actions = [
+        action
+        for action in broker_bracket_actions
+        if isinstance(action, dict) and action.get("order_action") is True
+    ]
+    broker_bracket_primary_action = (
+        broker_bracket_actions[0]
+        if broker_bracket_actions and isinstance(broker_bracket_actions[0], dict)
+        else {}
+    )
+    broker_bracket_order_action = broker_bracket_order_actions[0] if broker_bracket_order_actions else {}
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
     vps_root_summary = (
@@ -4414,6 +4435,13 @@ def bot_fleet_roster(
             ),
             "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
             "broker_bracket_operator_action_ids": broker_bracket_action_ids,
+            "broker_bracket_operator_action_labels": broker_bracket_action_labels,
+            "broker_bracket_manual_action_count": broker_bracket_manual_action_count,
+            "broker_bracket_order_action_count": len(broker_bracket_order_actions),
+            "broker_bracket_primary_action_label": str(broker_bracket_primary_action.get("label") or ""),
+            "broker_bracket_primary_action_detail": str(broker_bracket_primary_action.get("detail") or ""),
+            "broker_bracket_order_action_label": str(broker_bracket_order_action.get("label") or ""),
+            "broker_bracket_order_action_detail": str(broker_bracket_order_action.get("detail") or ""),
             "broker_bracket_next_action": str(broker_bracket_audit.get("next_action") or ""),
             "broker_bracket_primary_symbol": str(broker_bracket_primary.get("symbol") or ""),
             "broker_bracket_primary_venue": str(broker_bracket_primary.get("venue") or ""),
