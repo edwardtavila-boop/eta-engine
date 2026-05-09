@@ -285,6 +285,8 @@ class TestStatusPage:
         assert "MTD closed outcomes" in html
         assert "MTD Close History" in html
         assert "selected-window close history" in html
+        assert "broker position rows unavailable" in html
+        assert "broker-reported open positions without row detail" in html
         assert 'id="pnlWindowStrip"' in html
         assert "function renderPnlWindowStrip" in html
         assert "selected-window realized PnL" in html

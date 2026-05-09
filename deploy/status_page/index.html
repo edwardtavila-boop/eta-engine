@@ -1146,6 +1146,13 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const supervisorPositions = buildSupervisorPositions(d.bots || []);
   const positions = brokerPositions.concat(supervisorPositions);
+  const brokerOpenCountTruth = Number(
+    exposure.broker_open_position_count
+      ?? liveBroker?.open_position_count
+      ?? brokerPositions.length
+      ?? 0
+  ) || 0;
+  const brokerRowsUnavailable = Math.max(0, brokerOpenCountTruth - brokerPositions.length);
   const positionSummary = document.getElementById('positionSummary');
   const positionsPanel = document.getElementById('openPositionsPanel');
   const routerSummary = document.getElementById('routerTapeSummary');
@@ -1157,21 +1164,25 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const fillsToday = finiteNumber(liveBroker?.today_actual_fills);
   const opsTruthSummary = document.getElementById('opsTruthSummaryLine');
   if (opsTruthSummary) {
-    opsTruthSummary.textContent = `${brokerPositions.length} broker open, ${fillsToday ?? 0} fills today, ${formatMoneyOrUnavailable(totalUnrealized)} unrealized`;
+    const rowGapText = brokerRowsUnavailable > 0 ? `; ${brokerRowsUnavailable} broker position rows unavailable` : '';
+    opsTruthSummary.textContent = `${brokerOpenCountTruth} broker open, ${fillsToday ?? 0} fills today, ${formatMoneyOrUnavailable(totalUnrealized)} unrealized${rowGapText}`;
   }
   positionSummary.innerHTML = [
-    `<span class="truth-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
+    `<span class="truth-chip"><strong>${brokerOpenCountTruth}</strong> broker open</span>`,
     `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> supervisor open</span>`,
     `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized today</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
     `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> ${esc(closeHistory?.label || 'selected')} outcomes</span>`,
+    brokerRowsUnavailable > 0 ? `<span class="truth-chip"><strong>${brokerRowsUnavailable}</strong> broker rows missing</span>` : '',
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
-  ].join('');
+  ].filter(Boolean).join('');
   renderBracketActionStrip(d);
 
   let positionsHtml = '';
-  if (!positions.length) {
+  if (!positions.length && brokerOpenCountTruth > 0) {
+    positionsHtml = `<div class="empty-panel">Broker reports ${brokerOpenCountTruth} open position${brokerOpenCountTruth === 1 ? '' : 's'}, but broker position rows unavailable. Treat this as broker-reported open positions without row detail; check IBKR/Alpaca and Bracket Audit before assuming flat.</div>`;
+  } else if (!positions.length) {
     const detail = target_exit_visibility.detail || 'New futures entries must carry broker OCO brackets; crypto paper entries are watched by supervisor-local target/stop exits.';
     positionsHtml = `<div class="empty-panel">Flat right now. ${esc(detail)}</div>`;
   } else {
