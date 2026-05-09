@@ -50,11 +50,21 @@ def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
 def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
     target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
     if target_exit_summary:
+        broker_open = _as_int(target_exit_summary.get("broker_open_position_count"))
+        bracket_required = _as_int(
+            target_exit_summary.get("broker_bracket_required_position_count"),
+        )
+        bracket_count = _as_int(target_exit_summary.get("broker_bracket_count"))
+        missing_brackets = _as_int(target_exit_summary.get("missing_bracket_count"))
+        if bracket_required <= 0 and broker_open > 0:
+            bracket_required = broker_open
+        if missing_brackets <= 0 and bracket_required > bracket_count:
+            missing_brackets = bracket_required - bracket_count
         return {
-            "broker_open_position_count": _as_int(
-                target_exit_summary.get("broker_open_position_count"),
-            ),
-            "broker_bracket_count": _as_int(target_exit_summary.get("broker_bracket_count")),
+            "broker_open_position_count": broker_open,
+            "broker_bracket_required_position_count": bracket_required,
+            "broker_bracket_count": bracket_count,
+            "missing_bracket_count": missing_brackets,
             "supervisor_local_position_count": _as_int(
                 target_exit_summary.get("supervisor_local_position_count"),
             ),
@@ -62,9 +72,19 @@ def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
 
     summary = _as_dict(fleet.get("summary"))
     if summary:
+        broker_open = _as_int(summary.get("broker_open_position_count"))
+        bracket_required = _as_int(summary.get("broker_bracket_required_position_count"))
+        bracket_count = _as_int(summary.get("broker_bracket_count"))
+        if bracket_required <= 0 and broker_open > 0:
+            bracket_required = broker_open
         return {
-            "broker_open_position_count": _as_int(summary.get("broker_open_position_count")),
-            "broker_bracket_count": _as_int(summary.get("broker_bracket_count")),
+            "broker_open_position_count": broker_open,
+            "broker_bracket_required_position_count": bracket_required,
+            "broker_bracket_count": bracket_count,
+            "missing_bracket_count": max(
+                0,
+                _as_int(summary.get("missing_bracket_count")) or (bracket_required - bracket_count),
+            ),
             "supervisor_local_position_count": _as_int(summary.get("supervisor_local_position_count")),
         }
 
@@ -83,7 +103,9 @@ def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, int]:
             supervisor_local += positions
     return {
         "broker_open_position_count": open_count,
+        "broker_bracket_required_position_count": open_count,
         "broker_bracket_count": bracket_count,
+        "missing_bracket_count": max(0, open_count - bracket_count),
         "supervisor_local_position_count": supervisor_local,
     }
 
@@ -121,8 +143,10 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
     fleet = fleet or _fetch_json(DEFAULT_FLEET_URL)
     position_summary = _derive_position_summary(fleet)
     open_count = position_summary["broker_open_position_count"]
-    bracket_count = position_summary["broker_bracket_count"]
+    bracket_required = position_summary["broker_bracket_required_position_count"]
+    missing_brackets = position_summary["missing_bracket_count"]
     supervisor_local = position_summary["supervisor_local_position_count"]
+    target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
     adapter_support = _adapter_support()
     adapter_ok = bool(adapter_support.get("ibkr_futures_server_oco")) and bool(
         adapter_support.get("tradovate_order_payload_brackets"),
@@ -130,26 +154,35 @@ def build_bracket_audit(*, fleet: dict[str, Any] | None = None) -> dict[str, Any
 
     if open_count == 0 and supervisor_local == 0 and adapter_ok:
         summary = "READY_NO_OPEN_EXPOSURE"
-    elif open_count > 0 and bracket_count >= open_count and supervisor_local == 0 and adapter_ok:
+    elif bracket_required > 0 and missing_brackets == 0 and supervisor_local == 0 and adapter_ok:
         summary = "READY_OPEN_EXPOSURE_BRACKETED"
     elif not adapter_ok:
         summary = "BLOCKED_ADAPTER_SUPPORT"
     else:
         summary = "BLOCKED_UNBRACKETED_EXPOSURE"
 
+    if summary == "BLOCKED_UNBRACKETED_EXPOSURE" and missing_brackets > 0:
+        next_action = (
+            f"{missing_brackets} broker bracket-required position"
+            f"{'' if missing_brackets == 1 else 's'} missing broker-native OCO; "
+            "verify manual broker OCO coverage or flatten current paper exposure before prop dry-run."
+        )
+    elif summary == "BLOCKED_UNBRACKETED_EXPOSURE":
+        next_action = "Wait for or flatten current paper exposure before prop dry-run."
+    else:
+        next_action = "Broker-native bracket/OCO audit is clear."
+
     return {
         "kind": "eta_broker_bracket_audit",
         "schema_version": 1,
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "summary": summary,
+        "target_exit_status": target_exit_summary.get("status"),
+        "stale_position_status": target_exit_summary.get("stale_position_status"),
         "position_summary": position_summary,
         "adapter_support": adapter_support,
         "ready_for_prop_dry_run": summary in {"READY_NO_OPEN_EXPOSURE", "READY_OPEN_EXPOSURE_BRACKETED"},
-        "next_action": (
-            "Wait for or flatten current paper exposure before prop dry-run."
-            if summary == "BLOCKED_UNBRACKETED_EXPOSURE"
-            else "Broker-native bracket/OCO audit is clear."
-        ),
+        "next_action": next_action,
     }
 
 
