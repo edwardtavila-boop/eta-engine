@@ -2423,7 +2423,16 @@ class TestDashboardAPI:
                         "dirty_companion_repos": 3,
                     },
                     "recommended_action": "Review dirty companion worktrees before root cleanup.",
-                    "steps": [],
+                    "steps": [
+                        {
+                            "id": "align-submodules",
+                            "title": "Align companion repositories",
+                            "action": (
+                                "Choose whether each companion repo follows root, "
+                                "live branch, or remains pinned."
+                            ),
+                        }
+                    ],
                 }
             ),
             encoding="utf-8",
@@ -2441,6 +2450,15 @@ class TestDashboardAPI:
         assert payload["summary"]["vps_root_source_deleted_count"] == 0
         assert payload["summary"]["vps_root_submodule_drift"] == 5
         assert payload["summary"]["vps_root_dirty_companion_repos"] == 3
+        assert payload["summary"]["vps_root_recommended_action"] == (
+            "Review dirty companion worktrees before root cleanup."
+        )
+        assert payload["summary"]["vps_root_review_step_count"] == 1
+        assert payload["summary"]["vps_root_top_step_id"] == "align-submodules"
+        assert payload["summary"]["vps_root_top_step_title"] == "Align companion repositories"
+        assert payload["summary"]["vps_root_top_step_action"] == (
+            "Choose whether each companion repo follows root, live branch, or remains pinned."
+        )
 
     def test_bot_fleet_exposes_portfolio_summary_for_allocation_and_pnl_graphs(
         self,

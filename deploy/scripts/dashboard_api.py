@@ -4337,6 +4337,16 @@ def bot_fleet_roster(
         if isinstance(vps_root_reconciliation.get("summary"), dict)
         else {}
     )
+    vps_root_steps = (
+        vps_root_reconciliation.get("steps")
+        if isinstance(vps_root_reconciliation.get("steps"), list)
+        else []
+    )
+    vps_root_top_step = (
+        vps_root_steps[0]
+        if vps_root_steps and isinstance(vps_root_steps[0], dict)
+        else {}
+    )
     ibkr_gateway = (
         broker_gateway.get("ibkr")
         if isinstance(broker_gateway.get("ibkr"), dict)
@@ -4435,6 +4445,13 @@ def bot_fleet_roster(
             "vps_root_dirty_companion_repos": int(
                 vps_root_summary.get("dirty_companion_repos") or 0
             ),
+            "vps_root_recommended_action": str(
+                vps_root_reconciliation.get("recommended_action") or ""
+            ),
+            "vps_root_review_step_count": len(vps_root_steps),
+            "vps_root_top_step_id": str(vps_root_top_step.get("id") or ""),
+            "vps_root_top_step_title": str(vps_root_top_step.get("title") or ""),
+            "vps_root_top_step_action": str(vps_root_top_step.get("action") or ""),
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
