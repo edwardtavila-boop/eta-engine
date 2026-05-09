@@ -1327,6 +1327,9 @@ class TestDashboardAPI:
         assert payload["systems"]["broker"]["status"] == "YELLOW"
         assert payload["systems"]["broker"]["raw_status"] == "ok"
         assert payload["systems"]["broker"]["target_exit_status"] == "missing_brackets"
+        assert payload["systems"]["broker_bracket_audit"]["status"] == "YELLOW"
+        assert payload["systems"]["broker_bracket_audit"]["raw_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
         self, app_client, tmp_path, monkeypatch
@@ -3245,6 +3248,85 @@ class TestDashboardAPI:
         assert "live broker exposure: 1 IBKR open (MNQM6)" in detail
         assert payload["broker_gateway"]["ibkr"]["live_broker_open_position_count"] == 1
         assert payload["broker_gateway"]["ibkr"]["live_broker_open_symbols"] == ["MNQM6"]
+
+    def test_bot_fleet_exposes_broker_bracket_audit_from_target_exit_summary(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import broker_bracket_audit
+
+        monkeypatch.setattr(
+            broker_bracket_audit,
+            "_adapter_support",
+            lambda: {
+                "ibkr_futures_server_oco": True,
+                "alpaca_equity_server_bracket": True,
+                "tradovate_order_payload_brackets": True,
+            },
+        )
+        monkeypatch.setattr(
+            mod,
+            "_supervisor_roster_rows",
+            lambda now_ts, bot=None: [
+                {
+                    "id": "mnq_futures_sage",
+                    "name": "mnq_futures_sage",
+                    "symbol": "MNQ1",
+                    "open_positions": 1,
+                    "position_state": {
+                        "state": "open",
+                        "bracket_target": 29362.75,
+                        "bracket_stop": 29323.75,
+                        "target_exit_visibility": {
+                            "status": "watching",
+                            "owner": "supervisor",
+                            "target_distance_points": 27.25,
+                            "stop_distance_points": -11.75,
+                        },
+                    },
+                },
+            ],
+        )
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": -33.79,
+                "open_position_count": 1,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {
+                    "ready": True,
+                    "open_position_count": 1,
+                    "open_positions": [
+                        {
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "market_price": 29335.0,
+                            "market_value": 176010.0,
+                            "unrealized_pnl": -33.79,
+                        },
+                    ],
+                },
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        audit = payload["broker_bracket_audit"]
+        assert audit["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert audit["position_summary"]["broker_bracket_required_position_count"] == 1
+        assert audit["position_summary"]["missing_bracket_count"] == 1
+        assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert payload["summary"]["broker_bracket_audit_ready"] is False
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

@@ -4250,6 +4250,9 @@ def bot_fleet_roster(
         _broker_gateway_snapshot(),
         live_broker_state,
     )
+    broker_bracket_audit = _broker_bracket_audit_payload(
+        target_exit_summary=target_exit_summary,
+    )
     ibkr_gateway = (
         broker_gateway.get("ibkr")
         if isinstance(broker_gateway.get("ibkr"), dict)
@@ -4287,6 +4290,8 @@ def bot_fleet_roster(
             "close_history_closed_outcome_count": close_history_window["closed_outcome_count"],
             "close_history_evaluated_outcome_count": close_history_window["evaluated_outcome_count"],
             "close_history_win_rate": close_history_window["win_rate"],
+            "broker_bracket_audit_status": broker_bracket_audit.get("summary"),
+            "broker_bracket_audit_ready": bool(broker_bracket_audit.get("ready_for_prop_dry_run")),
             "portfolio_hidden_disabled_count": portfolio_summary["hidden_disabled_count"],
             "ibkr_gateway_status": ibkr_gateway.get("status") or broker_gateway.get("status"),
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
@@ -4307,6 +4312,7 @@ def bot_fleet_roster(
         "live_broker_state": live_broker_state,
         "broker_gateway":    broker_gateway,
         "broker_router":     _broker_router_snapshot(),
+        "broker_bracket_audit": broker_bracket_audit,
         "window_since_days": since_days,
         **truth,
     }
@@ -5640,6 +5646,46 @@ def _target_exit_card_status(summary: dict) -> str:
         return "YELLOW"
     if status in {"flat", "paper_watching", "watching"}:
         return "GREEN"
+    return "YELLOW"
+
+
+def _broker_bracket_audit_payload(*, target_exit_summary: dict | None = None) -> dict:
+    """Build the read-only broker bracket audit without writing artifacts."""
+    try:
+        from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
+
+        return broker_bracket_audit.build_bracket_audit(
+            fleet={"target_exit_summary": target_exit_summary or {}},
+        )
+    except Exception as exc:  # noqa: BLE001 - dashboard status must fail soft.
+        return {
+            "kind": "eta_broker_bracket_audit",
+            "schema_version": 1,
+            "summary": "AUDIT_UNAVAILABLE",
+            "ready_for_prop_dry_run": False,
+            "target_exit_status": (
+                target_exit_summary.get("status")
+                if isinstance(target_exit_summary, dict)
+                else None
+            ),
+            "position_summary": {
+                "broker_open_position_count": 0,
+                "broker_bracket_required_position_count": 0,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 0,
+            },
+            "next_action": f"broker bracket audit unavailable: {exc}",
+        }
+
+
+def _broker_bracket_audit_card_status(report: dict) -> str:
+    """Map prop/bracket audit truth to master-status card severity."""
+    summary = str(report.get("summary") or "AUDIT_UNAVAILABLE").upper()
+    if bool(report.get("ready_for_prop_dry_run")):
+        return "GREEN"
+    if summary == "BLOCKED_ADAPTER_SUPPORT":
+        return "RED"
     return "YELLOW"
 
 
@@ -7704,6 +7750,13 @@ def _local_master_status_payload() -> dict[str, object]:
     target_exit_summary = _target_exit_summary_for_master_status()
     target_exit_status = str(target_exit_summary.get("status") or "unknown").lower()
     target_exit_card_status = _target_exit_card_status(target_exit_summary)
+    broker_bracket_audit = _broker_bracket_audit_payload(
+        target_exit_summary=target_exit_summary,
+    )
+    broker_bracket_audit_status = str(
+        broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE",
+    )
+    broker_bracket_audit_card_status = _broker_bracket_audit_card_status(broker_bracket_audit)
     vps_root_reconciliation = _vps_root_reconciliation_payload()
 
     def _gateway_card_status(status: str) -> str:
@@ -7796,6 +7849,7 @@ def _local_master_status_payload() -> dict[str, object]:
         },
         "paper_live": paper_live,
         "target_exit_summary": target_exit_summary,
+        "broker_bracket_audit": broker_bracket_audit,
         "vps_root_reconciliation": vps_root_reconciliation,
         "systems": {
             "dashboard": {
@@ -7832,6 +7886,23 @@ def _local_master_status_payload() -> dict[str, object]:
                         if isinstance(target_exit_summary.get("position_staleness"), dict)
                         else {}
                     ).get("force_flatten_due_count")
+                    or 0
+                ),
+            },
+            "broker_bracket_audit": {
+                "status": broker_bracket_audit_card_status,
+                "detail": str(broker_bracket_audit.get("next_action") or broker_bracket_audit_status),
+                "source": "broker_bracket_audit",
+                "raw_status": broker_bracket_audit_status,
+                "ready_for_prop_dry_run": bool(
+                    broker_bracket_audit.get("ready_for_prop_dry_run"),
+                ),
+                "missing_bracket_count": int(
+                    (
+                        broker_bracket_audit.get("position_summary")
+                        if isinstance(broker_bracket_audit.get("position_summary"), dict)
+                        else {}
+                    ).get("missing_bracket_count")
                     or 0
                 ),
             },
