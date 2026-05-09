@@ -119,12 +119,14 @@ def _prop_readiness_check(prop: dict[str, Any]) -> dict[str, Any]:
     summary = str(prop.get("summary") or "UNKNOWN")
     if summary == "READY_FOR_DRY_RUN":
         return _check("prop_readiness", "PASS", "prop account credentials/auth are ready for dry-run")
+    secret_presence = _as_dict(prop.get("secret_presence"))
     return _check(
         "prop_readiness",
         "BLOCKED",
         f"prop readiness is {summary}, not READY_FOR_DRY_RUN",
         prop_account=prop.get("prop_account"),
         phase=prop.get("phase"),
+        missing_secrets=_as_list(secret_presence.get("missing")),
     )
 
 
@@ -313,18 +315,54 @@ def _live_bot_gate_check(fleet: dict[str, Any]) -> dict[str, Any]:
 
 
 def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
-    blocked = {str(check["name"]) for check in checks if check.get("status") == "BLOCKED"}
+    blocked_checks = {
+        str(check["name"]): check
+        for check in checks
+        if check.get("status") == "BLOCKED"
+    }
+    blocked = set(blocked_checks)
     actions: list[str] = []
     if "prop_readiness" in blocked:
-        actions.append(
-            "Keep Tradovate DORMANT until funding/API unlock and explicit code/docs reactivation.",
-        )
+        evidence = _as_dict(blocked_checks["prop_readiness"].get("evidence"))
+        prop_account = str(evidence.get("prop_account") or "blusky_50k")
+        missing = [str(item) for item in _as_list(evidence.get("missing_secrets")) if item]
+        if missing:
+            actions.append(
+                "Seed Tradovate API secrets after funding/API unlock: "
+                f"python -m eta_engine.scripts.setup_tradovate_secrets --prop-account {prop_account}; "
+                f"missing: {', '.join(missing)}.",
+            )
+        else:
+            actions.append(
+                "Keep Tradovate DORMANT until funding/API unlock and explicit code/docs reactivation.",
+            )
     if "primary_ladder" in blocked or "live_bot_gate" in blocked:
-        actions.append(f"Keep {PRIMARY_BOT} in paper until can_live_trade and the futures prop ladder both clear.")
+        live_evidence = _as_dict(blocked_checks.get("live_bot_gate", {}).get("evidence"))
+        primary_candidate = _as_dict(
+            _as_dict(blocked_checks.get("primary_ladder", {}).get("evidence")).get("primary_candidate"),
+        )
+        launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
+        blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]
+        detail = f"Keep {PRIMARY_BOT} in {launch_lane} until can_live_trade=true and the futures prop ladder clears"
+        if blockers:
+            detail = f"{detail}; current blocker(s): {'; '.join(blockers)}"
+        actions.append(f"{detail}.")
     if "router_cleanliness" in blocked:
         actions.append("Archive or resolve historical failed/quarantined/rejected router residue before prop dry-run.")
     if "broker_native_brackets" in blocked:
-        actions.append("Prove broker-native bracket/OCO coverage before any funded or prop dry-run exposure.")
+        evidence = _as_dict(blocked_checks["broker_native_brackets"].get("evidence"))
+        position = _as_dict(evidence.get("primary_unprotected_position"))
+        symbol = str(position.get("symbol") or "").strip().upper()
+        venue = str(position.get("venue") or "ibkr").strip().lower()
+        if symbol:
+            actions.append(
+                "After visually confirming broker-native TP/SL OCO in TWS/IB Gateway, record proof: "
+                "python -m eta_engine.scripts.broker_bracket_audit "
+                f"--ack-manual-oco --symbol {symbol} --venue {venue} --operator edward "
+                "--expires-hours 24 --confirm; otherwise flatten manually before prop dry-run.",
+            )
+        else:
+            actions.append("Prove broker-native bracket/OCO coverage before any funded or prop dry-run exposure.")
     if "closed_trade_ledger" in blocked:
         actions.append("Ship a schema-backed closed-trade ledger so Actual Trades, Win Rate, PnL, and R are not stale.")
     if not actions:

@@ -164,3 +164,43 @@ def test_prop_live_gate_does_not_double_count_bracket_hold_as_broker_surface_fai
     assert surface_check["status"] == "PASS"
     assert "held by bracket audit" in surface_check["detail"]
     assert bracket_check["status"] == "BLOCKED"
+
+
+def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
+    payloads = _ready_payloads()
+    payloads["prop"] = {
+        "summary": "BLOCKED",
+        "phase": "cutover",
+        "prop_account": "blusky_50k",
+        "secret_presence": {
+            "missing": [
+                "BLUSKY_TRADOVATE_ACCOUNT_ID",
+                "BLUSKY_TRADOVATE_APP_SECRET",
+            ],
+        },
+    }
+    payloads["ladder"]["summary"]["live_routing_allowed_count"] = 0
+    payloads["ladder"]["candidates"][0]["live_routing_allowed"] = False
+    payloads["ladder"]["candidates"][0]["launch_lane"] = "paper_soak"
+    payloads["ladder"]["candidates"][0]["blockers"] = ["bot row is not can_live_trade"]
+    payloads["fleet"]["bots"][0]["can_live_trade"] = False
+    payloads["fleet"]["bots"][0]["launch_lane"] = "paper_soak"
+    payloads["broker_bracket_audit"] = {
+        "summary": "BLOCKED_UNBRACKETED_EXPOSURE",
+        "ready_for_prop_dry_run": False,
+        "next_action": "MNQM6 missing broker-native OCO",
+        "primary_unprotected_position": {
+            "symbol": "MNQM6",
+            "venue": "ibkr",
+            "sec_type": "FUT",
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+    actions = "\n".join(report["next_actions"])
+
+    assert "setup_tradovate_secrets --prop-account blusky_50k" in actions
+    assert "BLUSKY_TRADOVATE_ACCOUNT_ID" in actions
+    assert "BLUSKY_TRADOVATE_APP_SECRET" in actions
+    assert "--ack-manual-oco --symbol MNQM6 --venue ibkr" in actions
+    assert "paper_soak" in actions
