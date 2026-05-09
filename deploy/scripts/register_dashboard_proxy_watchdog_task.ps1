@@ -11,6 +11,7 @@ param(
     [string]$Root = "C:\EvolutionaryTradingAlgo",
     [string]$PythonExe = "",
     [int]$IntervalSeconds = 60,
+    [int]$RecoveryIntervalMinutes = 5,
     [switch]$Start,
     [switch]$RestartExistingProcess
 )
@@ -73,6 +74,9 @@ if (-not (Test-Path -LiteralPath $WatchdogScript)) {
 if ($IntervalSeconds -lt 5) {
     throw "IntervalSeconds must be at least 5, got: $IntervalSeconds"
 }
+if ($RecoveryIntervalMinutes -lt 1) {
+    throw "RecoveryIntervalMinutes must be at least 1, got: $RecoveryIntervalMinutes"
+}
 
 & $Python -m py_compile $WatchdogScript
 New-Item -ItemType Directory -Force -Path $StateDir, $LogDir | Out-Null
@@ -91,7 +95,12 @@ if ($existing) {
 
 $arguments = "-m eta_engine.scripts.dashboard_proxy_watchdog --interval-s $IntervalSeconds"
 $action = New-ScheduledTaskAction -Execute $Python -Argument $arguments -WorkingDirectory $RootFull
-$triggers = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn))
+$recoveryTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $RecoveryIntervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+$triggers = @(
+    (New-ScheduledTaskTrigger -AtStartup),
+    (New-ScheduledTaskTrigger -AtLogOn),
+    $recoveryTrigger
+)
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -RestartCount 999 `
@@ -120,5 +129,5 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register dashboard proxy watchdog task")
     }
 
     Get-ScheduledTask -TaskName $TaskName |
-        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="PythonExe";Expression={$Python}},@{Name="IntervalSeconds";Expression={$IntervalSeconds}}
+        Select-Object TaskName,State,@{Name="UserId";Expression={$_.Principal.UserId}},@{Name="PythonExe";Expression={$Python}},@{Name="IntervalSeconds";Expression={$IntervalSeconds}},@{Name="RecoveryIntervalMinutes";Expression={$RecoveryIntervalMinutes}}
 }

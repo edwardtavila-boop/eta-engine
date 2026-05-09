@@ -176,6 +176,10 @@ def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:
     assert "ETA-Proxy-8421" in text
     assert "New-ScheduledTaskTrigger -AtStartup" in text
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
+    assert "RecoveryIntervalMinutes" in text
+    assert "New-ScheduledTaskTrigger -Once" in text
+    assert "RepetitionInterval (New-TimeSpan -Minutes $RecoveryIntervalMinutes)" in text
+    assert "RepetitionDuration (New-TimeSpan -Days 3650)" in text
     assert "RestartCount 999" in text
     assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text
     assert "Start-ScheduledTask -TaskName $TaskName" in text
