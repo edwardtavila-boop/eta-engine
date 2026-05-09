@@ -3325,6 +3325,12 @@ class TestDashboardAPI:
         assert audit["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert audit["position_summary"]["broker_bracket_required_position_count"] == 1
         assert audit["position_summary"]["missing_bracket_count"] == 1
+        assert audit["position_summary"]["unprotected_symbols"] == ["MNQM6"]
+        assert audit["primary_unprotected_position"]["symbol"] == "MNQM6"
+        assert audit["primary_unprotected_position"]["venue"] == "ibkr"
+        assert audit["primary_unprotected_position"]["sec_type"] == "FUT"
+        assert audit["unprotected_positions"][0]["broker_bracket_required"] is True
+        assert "MNQM6 IBKR FUT" in audit["next_action"]
         assert payload["summary"]["broker_bracket_audit_status"] == "BLOCKED_UNBRACKETED_EXPOSURE"
         assert payload["summary"]["broker_bracket_audit_ready"] is False
 

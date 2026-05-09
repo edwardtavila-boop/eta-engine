@@ -4255,6 +4255,7 @@ def bot_fleet_roster(
     )
     broker_bracket_audit = _broker_bracket_audit_payload(
         target_exit_summary=target_exit_summary,
+        live_broker_state=live_broker_state,
     )
     ibkr_gateway = (
         broker_gateway.get("ibkr")
@@ -5683,13 +5684,95 @@ def _target_exit_card_status(summary: dict) -> str:
     return "YELLOW"
 
 
-def _broker_bracket_audit_payload(*, target_exit_summary: dict | None = None) -> dict:
+def _audit_open_position_payload(position: dict) -> dict:
+    """Compact, read-only broker position descriptor for bracket audit cards."""
+    return {
+        "venue": str(position.get("venue") or ""),
+        "symbol": str(position.get("symbol") or ""),
+        "side": str(position.get("side") or ""),
+        "qty": _float_value(position.get("qty")),
+        "sec_type": position.get("sec_type") or position.get("secType"),
+        "exchange": position.get("exchange"),
+        "market_value": _float_value(position.get("market_value")),
+        "unrealized_pnl": _float_value(position.get("unrealized_pnl")),
+        "broker_bracket_required": bool(position.get("broker_bracket_required")),
+        "coverage_status": "requires_manual_oco_verification",
+    }
+
+
+def _broker_bracket_unprotected_positions(
+    live_broker_state: dict | None,
+    target_exit_summary: dict | None,
+) -> list[dict]:
+    """Best-effort list of broker positions driving a missing-OCO blocker."""
+    summary = target_exit_summary if isinstance(target_exit_summary, dict) else {}
+    missing_count = int(summary.get("missing_bracket_count") or 0)
+    if missing_count <= 0:
+        return []
+    positions = [
+        position
+        for position in _normalized_live_open_positions(live_broker_state or {})
+        if position.get("broker_bracket_required") is True
+    ]
+    if not positions:
+        return []
+    return [_audit_open_position_payload(position) for position in positions[:missing_count]]
+
+
+def _position_audit_descriptor(position: dict) -> str:
+    symbol = str(position.get("symbol") or "position").strip()
+    venue = str(position.get("venue") or "broker").strip().upper()
+    sec_type = str(position.get("sec_type") or "").strip().upper()
+    return " ".join(part for part in (symbol, venue, sec_type) if part)
+
+
+def _enrich_broker_bracket_audit_with_positions(
+    report: dict,
+    *,
+    live_broker_state: dict | None,
+    target_exit_summary: dict | None,
+) -> dict:
+    """Attach the exact broker exposure driving the bracket blocker when known."""
+    out = dict(report) if isinstance(report, dict) else {}
+    positions = _broker_bracket_unprotected_positions(live_broker_state, target_exit_summary)
+    if not positions:
+        out.setdefault("unprotected_positions", [])
+        out.setdefault("primary_unprotected_position", None)
+        return out
+    position_summary = (
+        dict(out.get("position_summary"))
+        if isinstance(out.get("position_summary"), dict)
+        else {}
+    )
+    symbols = sorted({str(position.get("symbol") or "") for position in positions if position.get("symbol")})
+    position_summary["unprotected_symbols"] = symbols
+    out["position_summary"] = position_summary
+    out["unprotected_positions"] = positions
+    out["primary_unprotected_position"] = positions[0]
+    descriptor = _position_audit_descriptor(positions[0])
+    out["next_action"] = _append_detail_once(
+        out.get("next_action"),
+        f"{descriptor} missing broker-native OCO",
+    )
+    return out
+
+
+def _broker_bracket_audit_payload(
+    *,
+    target_exit_summary: dict | None = None,
+    live_broker_state: dict | None = None,
+) -> dict:
     """Build the read-only broker bracket audit without writing artifacts."""
     try:
         from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
 
-        return broker_bracket_audit.build_bracket_audit(
+        report = broker_bracket_audit.build_bracket_audit(
             fleet={"target_exit_summary": target_exit_summary or {}},
+        )
+        return _enrich_broker_bracket_audit_with_positions(
+            report,
+            live_broker_state=live_broker_state,
+            target_exit_summary=target_exit_summary,
         )
     except Exception as exc:  # noqa: BLE001 - dashboard status must fail soft.
         return {
@@ -7773,9 +7856,10 @@ def _local_master_status_payload() -> dict[str, object]:
     blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
     runtime_mode = "paper_live" if paper_ready else "paper_sim"
     generated_at = datetime.now(UTC).isoformat()
+    cached_live_broker_state = _cached_live_broker_state_for_gateway_reconcile()
     broker_gateway = _reconcile_broker_gateway_with_live_state(
         _broker_gateway_snapshot(),
-        _cached_live_broker_state_for_gateway_reconcile(),
+        cached_live_broker_state,
     )
     gateway_ibkr = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
     gateway_status = str(gateway_ibkr.get("status") or broker_gateway.get("status") or "unknown").lower()
@@ -7787,6 +7871,7 @@ def _local_master_status_payload() -> dict[str, object]:
     target_exit_card_status = _target_exit_card_status(target_exit_summary)
     broker_bracket_audit = _broker_bracket_audit_payload(
         target_exit_summary=target_exit_summary,
+        live_broker_state=cached_live_broker_state,
     )
     broker_bracket_audit_status = str(
         broker_bracket_audit.get("summary") or "AUDIT_UNAVAILABLE",

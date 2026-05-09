@@ -1970,6 +1970,13 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
 
   const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
   const bracketPosition = bracketAudit.position_summary || {};
+  const primaryUnprotected = bracketAudit.primary_unprotected_position || {};
+  const unprotectedPositions = Array.isArray(bracketAudit.unprotected_positions)
+    ? bracketAudit.unprotected_positions
+    : [];
+  const unprotectedSymbolsText = (bracketPosition.unprotected_symbols || [])
+    .filter(Boolean)
+    .join(', ') || unprotectedPositions.map(position => position.symbol).filter(Boolean).join(', ');
   const bracketSummary = String(
     bracketAudit.summary || summary.broker_bracket_audit_status || 'unknown'
   ).toUpperCase();
@@ -2012,8 +2019,13 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
         ? 'READY_OPEN_EXPOSURE_BRACKETED'
         : 'UNKNOWN';
     const auditAction = bracketAudit.next_action || bracketAudit.detail || bracketAudit.reason || '';
+    const primaryText = primaryUnprotected.symbol
+      ? `${primaryUnprotected.symbol} ${String(primaryUnprotected.venue || '').toUpperCase()} ${primaryUnprotected.sec_type || ''}`.trim()
+      : '';
     const bracketSubParts = [
       missingOco > 0 ? `${missingOco} missing broker OCO` : '',
+      primaryText ? `${primaryText} unprotected` : '',
+      unprotectedSymbolsText && !primaryText ? `${unprotectedSymbolsText} unprotected` : '',
       bracketRequired > 0 ? `${bracketRequired} bracket-required` : '',
       auditBrokerOpen > 0 ? `${auditBrokerOpen} broker open` : '',
       bracketSummary === 'BLOCKED_UNBRACKETED_EXPOSURE' ? 'prop dry-run blocked' : '',

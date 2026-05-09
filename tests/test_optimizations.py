@@ -206,6 +206,9 @@ class TestStatusPage:
         assert "const API = '/api/bot-fleet';" in html
         assert "target_exit_summary" in html
         assert "broker_bracket_audit" in html
+        assert "primary_unprotected_position" in html
+        assert "unprotected_positions" in html
+        assert "unprotectedSymbolsText" in html
         assert "BLOCKED_UNBRACKETED_EXPOSURE" in html
         assert "missing broker OCO" in html
         assert "prop dry-run blocked" in html
