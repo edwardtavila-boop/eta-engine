@@ -1180,6 +1180,72 @@ class TestDashboardAPI:
         assert payload["systems"]["ibkr"]["source"] == "broker_gateway"
         assert payload["systems"]["broker"]["source"] == "broker_router"
 
+    def test_master_status_reconciles_cached_ibkr_live_positions(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        import time
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        monkeypatch.setattr(
+            mod,
+            "_operator_queue_payload",
+            lambda: {"summary": {"BLOCKED": 0}, "launch_blocked_count": 0},
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-05-07T23:40:00+00:00",
+                    "status": "ready_to_launch_paper_live",
+                    "critical_ready": True,
+                    "paper_ready_bots": 5,
+                    "operator_queue_blocked_count": 0,
+                    "operator_queue_launch_blocked_count": 0,
+                    "gates": [],
+                },
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": "2026-05-09T05:20:00+00:00",
+                    "healthy": True,
+                    "details": {
+                        "socket_ok": True,
+                        "handshake_ok": True,
+                        "handshake_detail": (
+                            "serverVersion=176; clientId=9011; attempt=1; "
+                            "positions=0 open; executions=0"
+                        ),
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        mod._IBKR_PROBE_CACHE["snapshot"] = {
+            "ready": True,
+            "open_position_count": 1,
+            "open_positions": [
+                {
+                    "symbol": "MNQM6",
+                    "secType": "FUT",
+                    "position": 3,
+                },
+            ],
+        }
+        mod._IBKR_PROBE_CACHE["ts"] = time.time()
+
+        r = app_client.get("/api/master/status")
+
+        assert r.status_code == 200
+        detail = r.json()["systems"]["ibkr"]["detail"]
+        assert "positions=0 open" in detail
+        assert "live broker exposure: 1 IBKR open (MNQM6)" in detail
+
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(
         self, app_client, tmp_path, monkeypatch
     ):
@@ -3026,6 +3092,77 @@ class TestDashboardAPI:
         assert ibkr["process"]["running"] is False
         assert "gateway process not running" in ibkr["detail"]
         assert "gateway process not running" in r.json()["summary"]["ibkr_gateway_detail"]
+
+    def test_bot_fleet_reconciles_gateway_detail_with_live_ibkr_positions(
+        self,
+        app_client,
+        monkeypatch,
+    ):
+        """Gateway health detail should not hide fresher live IBKR exposure."""
+        import json
+        import os
+        from datetime import UTC, datetime
+        from pathlib import Path
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        state = Path(os.environ["ETA_STATE_DIR"])
+        (state / "tws_watchdog.json").write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "healthy": True,
+                    "consecutive_failures": 0,
+                    "details": {
+                        "host": "127.0.0.1",
+                        "port": 4002,
+                        "socket_ok": True,
+                        "handshake_ok": True,
+                        "handshake_detail": (
+                            "serverVersion=176; clientId=9011; attempt=1; "
+                            "positions=0 open; executions=0"
+                        ),
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": -33.79,
+                "open_position_count": 1,
+                "win_rate_30d": None,
+                "alpaca": {"ready": True, "open_positions": [], "open_position_count": 0},
+                "ibkr": {
+                    "ready": True,
+                    "open_position_count": 1,
+                    "open_positions": [
+                        {
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "market_price": 29335.0,
+                            "market_value": 176010.0,
+                            "unrealized_pnl": -33.79,
+                        },
+                    ],
+                },
+            },
+        )
+
+        r = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        payload = r.json()
+        detail = payload["summary"]["ibkr_gateway_detail"]
+        assert "positions=0 open" in detail
+        assert "live broker exposure: 1 IBKR open (MNQM6)" in detail
+        assert payload["broker_gateway"]["ibkr"]["live_broker_open_position_count"] == 1
+        assert payload["broker_gateway"]["ibkr"]["live_broker_open_symbols"] == ["MNQM6"]
 
     def test_bot_fleet_embeds_live_broker_state(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

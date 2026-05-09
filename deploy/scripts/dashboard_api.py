@@ -1258,6 +1258,64 @@ def _broker_gateway_snapshot() -> dict:
     }
 
 
+def _append_detail_once(detail: object, extra: str) -> str:
+    """Append an operator detail fragment without duplicating it."""
+    base = str(detail or "")
+    extra = str(extra or "")
+    if not extra:
+        return base
+    if extra in base:
+        return base
+    return f"{base}; {extra}" if base else extra
+
+
+def _live_ibkr_exposure_for_gateway(live_broker_state: dict | None) -> dict:
+    """Summarize live IBKR positions for Gateway card reconciliation."""
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    ibkr = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
+    positions = [
+        position
+        for position in _normalized_live_open_positions({"ibkr": ibkr})
+        if str(position.get("venue") or "").lower() == "ibkr"
+    ]
+    raw_count = _float_value(ibkr.get("open_position_count"))
+    count = len(positions) if positions else int(raw_count or 0)
+    symbols = sorted({str(position.get("symbol") or "") for position in positions if position.get("symbol")})
+    return {
+        "observed": bool(ibkr),
+        "open_position_count": count,
+        "symbols": symbols,
+        "source": "live_broker_state",
+    }
+
+
+def _reconcile_broker_gateway_with_live_state(
+    broker_gateway: dict,
+    live_broker_state: dict | None,
+) -> dict:
+    """Keep Gateway health detail aligned with fresher live broker exposure."""
+    out = dict(broker_gateway) if isinstance(broker_gateway, dict) else {}
+    ibkr = out.get("ibkr") if isinstance(out.get("ibkr"), dict) else {}
+    ibkr = dict(ibkr)
+    exposure = _live_ibkr_exposure_for_gateway(live_broker_state)
+    if exposure.get("observed"):
+        count = int(exposure.get("open_position_count") or 0)
+        symbols = list(exposure.get("symbols") or [])
+        ibkr["live_broker_open_position_count"] = count
+        ibkr["live_broker_open_symbols"] = symbols
+        ibkr["live_broker_position_source"] = exposure.get("source")
+        if count > 0:
+            symbol_text = f" ({', '.join(symbols[:5])})" if symbols else ""
+            detail = _append_detail_once(
+                ibkr.get("detail") or out.get("detail"),
+                f"live broker exposure: {count} IBKR open{symbol_text}",
+            )
+            ibkr["detail"] = detail
+            out["detail"] = detail
+    out["ibkr"] = ibkr
+    return out
+
+
 def _read_json_file(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -4188,7 +4246,10 @@ def bot_fleet_roster(
         live_broker_state,
         hidden_disabled_count=hidden_disabled_count,
     )
-    broker_gateway = _broker_gateway_snapshot()
+    broker_gateway = _reconcile_broker_gateway_with_live_state(
+        _broker_gateway_snapshot(),
+        live_broker_state,
+    )
     ibkr_gateway = (
         broker_gateway.get("ibkr")
         if isinstance(broker_gateway.get("ibkr"), dict)
@@ -5498,6 +5559,19 @@ def _broker_bracket_required_position_count(live_broker_state: dict) -> int | No
     if not positions and (_float_value(live_broker_state.get("open_position_count")) or 0) > 0:
         return None
     return sum(1 for position in positions if position.get("broker_bracket_required") is True)
+
+
+def _cached_live_broker_state_for_gateway_reconcile() -> dict:
+    """Return cached IBKR live state for lightweight status-card reconciliation."""
+    with _IBKR_PROBE_LOCK:
+        cached = _IBKR_PROBE_CACHE.get("snapshot")
+        cached_ts = float(_IBKR_PROBE_CACHE.get("ts") or 0.0)
+        if (
+            isinstance(cached, dict)
+            and (time.time() - cached_ts) < (_IBKR_PROBE_CACHE_TTL_S * 2)
+        ):
+            return {"ibkr": dict(cached)}
+    return {}
 
 
 def _position_exposure_payload(
@@ -7542,7 +7616,10 @@ def _local_master_status_payload() -> dict[str, object]:
     blocked = int(operator_queue.get("summary", {}).get("BLOCKED") or 0)
     runtime_mode = "paper_live" if paper_ready else "paper_sim"
     generated_at = datetime.now(UTC).isoformat()
-    broker_gateway = _broker_gateway_snapshot()
+    broker_gateway = _reconcile_broker_gateway_with_live_state(
+        _broker_gateway_snapshot(),
+        _cached_live_broker_state_for_gateway_reconcile(),
+    )
     gateway_ibkr = broker_gateway.get("ibkr") if isinstance(broker_gateway.get("ibkr"), dict) else {}
     gateway_status = str(gateway_ibkr.get("status") or broker_gateway.get("status") or "unknown").lower()
     gateway_detail = str(gateway_ibkr.get("detail") or broker_gateway.get("detail") or "")
