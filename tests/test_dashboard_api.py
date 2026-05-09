@@ -913,6 +913,10 @@ class TestDashboardAPI:
         assert data["cards"]["summary"]["stale"] == 0
         assert data["bot_fleet"]["bot_total"] >= 0
         assert data["bot_fleet"]["confirmed_bots"] == 0
+        assert data["bot_fleet"]["active_bots"] == 0
+        assert data["bot_fleet"]["runtime_active_bots"] == 0
+        assert data["bot_fleet"]["running_bots"] == 0
+        assert data["bot_fleet"]["staged_bots"] == 0
         assert data["bot_fleet"]["truth_status"] in {"empty", "runtime_stopped", "stale", "live", "working"}
         if data["bot_fleet"]["bot_total"]:
             assert data["bot_fleet"]["truth_summary_line"]
@@ -967,6 +971,7 @@ class TestDashboardAPI:
         assert data["status"] == "ok"
         assert data["findings"] == []
         assert data["direct"]["bot_fleet"]["bot_total"] == data["diagnostics"]["bot_fleet"]["bot_total"]
+        assert data["direct"]["bot_fleet"]["active_bots"] == data["diagnostics"]["bot_fleet"]["active_bots"]
         assert (
             data["direct"]["equity"]["point_count"]
             == data["diagnostics"]["equity"]["point_count"]
@@ -2317,6 +2322,10 @@ class TestDashboardAPI:
         assert summary["mnq_runtime_total"] == 1
         assert summary["mnq_inventory_total"] == 2
         assert summary["mnq_readiness_only"] == 1
+        assert summary["active_bots"] == 1
+        assert summary["runtime_active_bots"] == 1
+        assert summary["running_bots"] == 1
+        assert summary["staged_bots"] == 1
 
     def test_bot_fleet_summary_carries_broker_net_without_fake_lifetime(
         self,
@@ -2632,6 +2641,14 @@ class TestDashboardAPI:
         assert embedded_exposure["supervisor_watch_count"] == 1
         assert data["signal_cadence"]["max_same_second"] == 1
         assert data["summary"]["signal_cadence_status"] == "staggered"
+        assert data["summary"]["active_bots"] == 2
+        assert data["summary"]["active_bot_count"] == 2
+        assert data["summary"]["runtime_active_bots"] == 2
+        assert data["summary"]["running_bots"] == 2
+        assert data["summary"]["staged_bots"] == 0
+        assert data["active_bots"] == 2
+        assert data["runtime_active_bots"] == 2
+        assert data["staged_bots"] == 0
 
         drill = app_client.get("/api/bot-fleet/mnq_futures_sage")
         assert drill.status_code == 200

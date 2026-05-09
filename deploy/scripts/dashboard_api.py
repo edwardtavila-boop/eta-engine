@@ -573,6 +573,15 @@ def _dashboard_diagnostics_payload() -> dict:
         "bot_fleet": {
             "bot_total": int(roster_summary.get("bot_total") or len(roster_bots)),
             "confirmed_bots": int(roster.get("confirmed_bots") or roster_summary.get("confirmed_bots") or 0),
+            "active_bots": int(roster_summary.get("active_bots") or roster.get("active_bots") or 0),
+            "runtime_active_bots": int(
+                roster_summary.get("runtime_active_bots")
+                or roster.get("runtime_active_bots")
+                or roster_summary.get("active_bots")
+                or 0
+            ),
+            "running_bots": int(roster_summary.get("running_bots") or 0),
+            "staged_bots": int(roster_summary.get("staged_bots") or roster.get("staged_bots") or 0),
             "truth_status": str(roster.get("truth_status") or roster_summary.get("truth_status") or "unknown"),
             "truth_summary_line": str(
                 roster.get("truth_summary_line")
@@ -709,9 +718,16 @@ def _dashboard_data_cross_check_payload() -> dict:
 
     direct_total = int(fleet_summary.get("bot_total") or len(fleet_rows))
     direct_confirmed = int(bot_fleet.get("confirmed_bots") or fleet_summary.get("confirmed_bots") or 0)
+    direct_active = int(
+        fleet_summary.get("active_bots")
+        or bot_fleet.get("active_bots")
+        or fleet_summary.get("runtime_active_bots")
+        or 0
+    )
     direct_truth = str(bot_fleet.get("truth_status") or fleet_summary.get("truth_status") or "")
     diag_total = int(diag_fleet.get("bot_total") or 0)
     diag_confirmed = int(diag_fleet.get("confirmed_bots") or 0)
+    diag_active = int(diag_fleet.get("active_bots") or diag_fleet.get("runtime_active_bots") or 0)
     diag_truth = str(diag_fleet.get("truth_status") or "")
     direct_points = len(equity_series)
     diag_points = int(diag_equity.get("point_count") or 0)
@@ -727,6 +743,8 @@ def _dashboard_data_cross_check_payload() -> dict:
         findings.append(
             f"bot_fleet confirmed mismatch: endpoint={direct_confirmed} diagnostics={diag_confirmed}"
         )
+    if direct_active != diag_active:
+        findings.append(f"bot_fleet active mismatch: endpoint={direct_active} diagnostics={diag_active}")
     if direct_truth and diag_truth and direct_truth != diag_truth:
         findings.append(f"bot_fleet truth_status mismatch: endpoint={direct_truth!r} diagnostics={diag_truth!r}")
     if direct_points != diag_points:
@@ -752,6 +770,7 @@ def _dashboard_data_cross_check_payload() -> dict:
             "bot_fleet": {
                 "bot_total": direct_total,
                 "confirmed_bots": direct_confirmed,
+                "active_bots": direct_active,
                 "truth_status": direct_truth,
                 "error": bot_fleet.get("_error"),
             },
@@ -991,6 +1010,18 @@ def _is_hidden_bot_row(row: dict) -> bool:
     # Readiness snapshots mark old/retired rows with active=false. Do not
     # hide a live supervisor row that somehow still has exposure attached.
     return readiness.get("active") is False and not _row_has_open_exposure(row)
+
+
+def _is_runtime_active_bot_row(row: dict) -> bool:
+    """Mirror the status-page active-bot rule for API summaries and probes."""
+    if not isinstance(row, dict):
+        return False
+    status = str(row.get("status") or "").strip().lower()
+    if not status or status in {"idle", "readiness_only", "unknown", "stale", "delayed"}:
+        return False
+    if status in {"running", "connected", "active", "live"}:
+        return True
+    return row.get("confirmed") is True or row.get("source") == "jarvis_strategy_supervisor"
 
 
 def _read_runtime_state() -> dict:
@@ -4152,6 +4183,9 @@ def bot_fleet_roster(
         1 for r in rows
         if r.get("source") == "jarvis_strategy_supervisor" or r.get("confirmed") is True
     )
+    active_bots = sum(1 for r in rows if _is_runtime_active_bot_row(r))
+    staged_bots = max(0, len(rows) - active_bots)
+    running_bots = sum(1 for r in rows if str(r.get("status") or "").lower() == "running")
     mnq_rows = [r for r in rows if str(r.get("symbol") or "").upper().startswith("MNQ")]
     def _is_readiness_only_runtime_inventory(row: dict) -> bool:
         return (
@@ -4277,6 +4311,12 @@ def bot_fleet_roster(
         "summary": {
             "bot_total": len(rows),
             "confirmed_bots": confirmed_bots,
+            "active_bots": active_bots,
+            "active_bot_count": active_bots,
+            "runtime_active_bots": active_bots,
+            "running_bots": running_bots,
+            "staged_bots": staged_bots,
+            "readiness_staged_bots": staged_bots,
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
             "mnq_inventory_total": len(mnq_rows),
@@ -4310,6 +4350,9 @@ def bot_fleet_roster(
             "ibkr_gateway_detail": ibkr_gateway.get("detail") or broker_gateway.get("detail"),
             **broker_summary,
         },
+        "active_bots":       active_bots,
+        "runtime_active_bots": active_bots,
+        "staged_bots":       staged_bots,
         "portfolio_summary": portfolio_summary,
         "close_history": close_history,
         "close_history_window": close_history_window,
