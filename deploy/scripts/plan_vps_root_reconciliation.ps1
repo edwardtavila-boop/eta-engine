@@ -149,11 +149,68 @@ elseif ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0 -or $sourceUntracke
     $risk = "medium"
 }
 
+$hasTrackedSourceRisk = $sourceDeleted -gt 0 -or $unknownDeleted -gt 0
+$hasCompanionRisk = $submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0
+$hasGeneratedOrLocalArtifactRisk = (
+    $generatedDeleted -gt 0 -or
+    $generatedUntracked -gt 0 -or
+    $localBackupUntracked -gt 0 -or
+    $localDiagnosticUntracked -gt 0
+)
+
+$freezeTitle = "Keep root cleanup frozen pending review"
+$freezeAction = "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a reconciliation plan."
+if ($hasTrackedSourceRisk) {
+    $freezeTitle = "Freeze root cleanup until source deletions are reviewed"
+    $freezeAction = "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a source restore plan."
+}
+elseif ($hasCompanionRisk) {
+    $freezeTitle = "Freeze root cleanup until companion repo drift is reviewed"
+    $freezeAction = "Keep root cleanup disabled; preserve dirty companion worktrees and current submodule pins until each companion repo is committed, intentionally pinned, or otherwise approved."
+}
+elseif ($sourceUntracked -gt 0) {
+    $freezeTitle = "Freeze root cleanup until untracked source files are classified"
+    $freezeAction = "Keep root cleanup disabled; classify source/governance untracked files before generated-artifact cleanup or branch updates."
+}
+elseif ($hasGeneratedOrLocalArtifactRisk) {
+    $freezeTitle = "Freeze root cleanup until generated artifacts are classified"
+    $freezeAction = "Keep root cleanup disabled; archive or ignore generated/local artifacts only after source and companion repo state is confirmed safe."
+}
+
+$sourceStepTitle = "Confirm no tracked source or governance deletions"
+$sourceStepRisk = "low"
+$sourceStepDecision = "clear"
+$sourceStepAction = "No tracked source/governance deletions were found in the current inventory; continue with companion repo and generated-artifact review."
+if ($hasTrackedSourceRisk) {
+    $sourceStepTitle = "Review tracked source and governance deletions first"
+    $sourceStepRisk = "high"
+    $sourceStepDecision = "manual_review_required"
+    $sourceStepAction = "Compare the deleted tracked source/governance files against the intended root branch before restoring or replacing the VPS root."
+}
+
+$submoduleStepDecision = if ($hasCompanionRisk) { "manual_review_required" } else { "clear" }
+$submoduleStepRisk = if ($hasCompanionRisk) { "medium" } else { "low" }
+$submoduleStepAction = if ($hasCompanionRisk) {
+    "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime."
+}
+else {
+    "No dirty companion worktrees or submodule drift were found in the current inventory."
+}
+
+$generatedStepDecision = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) { "manual_review_required" } else { "clear" }
+$generatedStepRisk = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) { "medium" } else { "low" }
+$generatedStepAction = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) {
+    "Archive or ignore generated market/research artifacts, local backup artifacts, and local diagnostics only after source/governance files are safe."
+}
+else {
+    "No generated/local artifact cleanup is queued by the current inventory."
+}
+
 $approvalGates = [ordered]@{
     cleanup = "blocked_until_manual_approval"
-    branch_update = "blocked_until_source_review"
+    branch_update = if ($hasTrackedSourceRisk -or $sourceUntracked -gt 0) { "blocked_until_source_review" } elseif ($hasCompanionRisk) { "blocked_until_companion_review" } else { "clear" }
     submodule_alignment = if ($submoduleDrift -gt 0 -or $dirtyCompanionRepos -gt 0) { "manual_review_required" } else { "clear" }
-    generated_artifact_cleanup = "blocked_until_source_safe"
+    generated_artifact_cleanup = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) { "blocked_until_source_safe" } else { "clear" }
     credential_rotation = "reserved_for_go_live"
 }
 
@@ -171,31 +228,31 @@ elseif ($sourceUntracked -gt 0) {
 $steps = @(
     New-PlanStep `
         -Id "freeze-and-backup" `
-        -Title "Freeze root cleanup until source deletions are reviewed" `
+        -Title $freezeTitle `
         -Risk $risk `
         -Decision "manual_review_required" `
-        -Action "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a source restore plan." `
+        -Action $freezeAction `
         -Evidence @("inventory=$InventoryFull", "status_count=$($counts.status)")
     New-PlanStep `
         -Id "restore-source-governance" `
-        -Title "Review tracked source and governance deletions first" `
-        -Risk "high" `
-        -Decision "manual_review_required" `
-        -Action "Compare the deleted tracked source/governance files against the intended root branch before restoring or replacing the VPS root." `
+        -Title $sourceStepTitle `
+        -Risk $sourceStepRisk `
+        -Decision $sourceStepDecision `
+        -Action $sourceStepAction `
         -Evidence (@("source_or_governance_deleted=$sourceDeleted") + (Get-Sample -Node $deleted -Name "source_or_governance"))
     New-PlanStep `
         -Id "align-submodules" `
         -Title "Align companion repositories after source state is understood" `
-        -Risk "medium" `
-        -Decision "manual_review_required" `
-        -Action "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime." `
+        -Risk $submoduleStepRisk `
+        -Decision $submoduleStepDecision `
+        -Action $submoduleStepAction `
         -Evidence (@("submodule_drift=$submoduleDrift", "dirty_companion_repos=$dirtyCompanionRepos") + @($submodules.sample) + @($dirtyCompanionSample))
     New-PlanStep `
         -Id "classify-generated-artifacts" `
         -Title "Separate generated market/research artifacts from source" `
-        -Risk "medium" `
-        -Decision "manual_review_required" `
-        -Action "Archive or ignore generated market/research artifacts, local backup artifacts, and local diagnostics only after source/governance files are safe." `
+        -Risk $generatedStepRisk `
+        -Decision $generatedStepDecision `
+        -Action $generatedStepAction `
         -Evidence (@("generated_deleted=$generatedDeleted", "generated_untracked=$generatedUntracked", "local_backup_untracked=$localBackupUntracked", "local_diagnostic_untracked=$localDiagnosticUntracked") + (Get-Sample -Node $untracked -Name "generated_market_or_research_artifact") + (Get-Sample -Node $untracked -Name "local_backup_artifact") + (Get-Sample -Node $untracked -Name "local_diagnostic_artifact"))
     New-PlanStep `
         -Id "verify-after-reconciliation" `

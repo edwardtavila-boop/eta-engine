@@ -29,12 +29,15 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     assert "dirty_companion_repos" in text
     assert "Dirty companion worktrees" in text
     assert "dirty_worktree_sample" in text
+    assert "Freeze root cleanup until companion repo drift is reviewed" in text
+    assert "Confirm no tracked source or governance deletions" in text
+    assert "blocked_until_companion_review" in text
     assert "Local backup untracked artifacts" in text
     assert "Local diagnostic untracked artifacts" in text
     assert "cleanup_allowed = $false" in text
     assert "destructive_actions_performed = $false" in text
     assert "approval_gates = $approvalGates" in text
     assert 'cleanup = "blocked_until_manual_approval"' in text
-    assert 'branch_update = "blocked_until_source_review"' in text
+    assert "blocked_until_source_review" in text
     assert 'credential_rotation = "reserved_for_go_live"' in text
     assert "Recommended action" in text

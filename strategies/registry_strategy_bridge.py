@@ -613,6 +613,22 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         )
         return MBTZFadeStrategy(cfg)
 
+    if kind == "commodity_momentum":
+        from eta_engine.strategies.commodity_momentum_strategy import (
+            MomentumConfig, MomentumStrategy, gc_momentum_preset, cl_momentum_preset,
+        )
+        preset = extras.get("momentum_preset", "gc")
+        cfg = {"gc": gc_momentum_preset, "cl": cl_momentum_preset}.get(preset, gc_momentum_preset)()
+        return MomentumStrategy(cfg)
+
+    if kind == "fx_range":
+        from eta_engine.strategies.fx_range_strategy import (
+            RangeConfig, RangeStrategy, eur_range_preset, zn_range_preset,
+        )
+        preset = extras.get("range_preset", "eur")
+        cfg = {"eur": eur_range_preset, "zn": zn_range_preset}.get(preset, eur_range_preset)()
+        return RangeStrategy(cfg)
+
     return None
 
 

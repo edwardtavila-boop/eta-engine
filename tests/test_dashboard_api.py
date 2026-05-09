@@ -1173,6 +1173,42 @@ class TestDashboardAPI:
         assert payload["plan_age_s"] is not None
         assert payload["artifact_stale"] is False
 
+    def test_vps_root_reconciliation_prefers_plan_recommended_action(self, app_client, tmp_path):
+        plan = {
+            "status": "ok",
+            "mode": "review_plan_only",
+            "risk_level": "medium",
+            "cleanup_allowed": False,
+            "destructive_actions_performed": False,
+            "recommended_action": (
+                "Review dirty companion worktrees and commit, preserve, or intentionally pin "
+                "them before updating the superproject root."
+            ),
+            "counts": {"status": 4, "submodule_drift": 6, "dirty_companion_repos": 4},
+            "summary": {
+                "source_or_governance_deleted": 0,
+                "unknown_deleted": 0,
+                "submodule_drift": 6,
+                "dirty_companion_repos": 4,
+            },
+            "steps": [
+                {
+                    "id": "freeze-and-backup",
+                    "action": "Keep root cleanup disabled until source restore is approved.",
+                },
+            ],
+        }
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(json.dumps(plan))
+
+        r = app_client.get("/api/vps/root-reconciliation")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["status"] == "review_required"
+        assert payload["summary"]["source_or_governance_deleted"] == 0
+        assert payload["summary"]["submodule_drift"] == 6
+        assert payload["recommended_action"] == plan["recommended_action"]
+
     def test_vps_root_reconciliation_marks_old_review_plan_stale(self, app_client, tmp_path):
         plan_path = tmp_path / "state" / "vps_root_reconciliation_plan.json"
         plan_path.write_text(

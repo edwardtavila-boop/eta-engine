@@ -1347,8 +1347,14 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
         or submodule_drift > 0
         or dirty_companion_repos > 0
     )
-    recommended_action = "review VPS root reconciliation plan before any root cleanup"
-    if steps and isinstance(steps[0], dict):
+    recommended_action = str(
+        plan.get("recommended_action") or "review VPS root reconciliation plan before any root cleanup"
+    )
+    if (
+        recommended_action == "review VPS root reconciliation plan before any root cleanup"
+        and steps
+        and isinstance(steps[0], dict)
+    ):
         recommended_action = str(steps[0].get("action") or recommended_action)
 
     source_age_s = plan_snapshot["age_s"] if plan else inventory_snapshot["age_s"]
