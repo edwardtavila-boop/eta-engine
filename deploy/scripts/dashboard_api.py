@@ -335,6 +335,10 @@ _DEFAULT_CORS_ORIGINS = (
 STATE_DIR = Path(os.environ.get("ETA_STATE_DIR", os.environ.get("ETA_STATE_DIR", str(_DEFAULT_STATE))))
 LOG_DIR   = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str(_DEFAULT_LOG))))
 _START_TS = time.time()
+API_BUILD_CAPABILITIES = (
+    "command_center_watchdog",
+    "ibkr_futures_avg_cost_normalized",
+)
 
 
 def _dashboard_cors_origins() -> list[str]:
@@ -635,6 +639,7 @@ def _dashboard_diagnostics_payload() -> dict:
             "name": "eta-command-center-v1",
             "dashboard_version": DASHBOARD_VERSION,
             "release_stage": DASHBOARD_RELEASE_STAGE,
+            "capabilities": list(API_BUILD_CAPABILITIES),
             "pid": os.getpid(),
             "python": sys.version.split()[0],
             "started_at": datetime.fromtimestamp(_START_TS, UTC).isoformat(),

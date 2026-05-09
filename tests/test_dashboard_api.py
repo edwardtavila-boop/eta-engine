@@ -910,6 +910,10 @@ class TestDashboardAPI:
         assert data["dashboard_version"] == "v1"
         assert data["release_stage"] == "pre_beta"
         assert data["source_of_truth"] == "dashboard_diagnostics"
+        assert set(data["api_build"]["capabilities"]) >= {
+            "command_center_watchdog",
+            "ibkr_futures_avg_cost_normalized",
+        }
         assert data["service"]["status"] == "ok"
         assert data["service"]["uptime_s"] >= 0
         assert data["paths"]["state_dir"].endswith("state")
