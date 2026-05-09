@@ -3421,13 +3421,18 @@ class TestDashboardAPI:
         payload = r.json()
         assert payload["default_close_history_window"] == "mtd"
         assert payload["close_history"]["windows"]["mtd"]["realized_pnl"] == 32579.18
+        assert payload["close_history"]["windows"]["mtd"]["count"] == 320
         assert payload["history_window_pnl"]["wtd"]["pnl"] == 30123.45
+        assert payload["history_window_pnl"]["wtd"]["count"] == 280
         assert payload["history_window_pnl"]["mtd"]["closed_outcome_count"] == 320
+        assert payload["history_window_pnl"]["mtd"]["count"] == 320
         assert payload["history_window_pnl"]["mtd"]["win_rate"] == 0.5181
         assert payload["history_window_pnl"]["all"]["pnl"] == 32901.18
+        assert payload["history_window_pnl"]["all"]["count"] == 340
         assert payload["close_history_window"]["window"] == "mtd"
         assert payload["close_history_window"]["realized_pnl"] == 32579.18
         assert payload["close_history_window"]["closed_outcome_count"] == 320
+        assert payload["close_history_window"]["count"] == 320
         assert payload["close_history_window"]["win_rate"] == 0.5181
         assert payload["close_history_row_count"] == 1
         assert payload["close_history_rows"][0]["bot_id"] == "mnq_anchor_sweep"

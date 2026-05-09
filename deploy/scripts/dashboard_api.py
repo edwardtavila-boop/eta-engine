@@ -4192,6 +4192,7 @@ def bot_fleet_roster(
         if isinstance(live_broker_state.get("close_history"), dict)
         else {}
     )
+    close_history = _normalize_close_history_count_alias(close_history)
     close_windows = (
         close_history.get("windows")
         if isinstance(close_history.get("windows"), dict)
@@ -4206,6 +4207,7 @@ def bot_fleet_roster(
         history_window_pnl[window_key] = {
             "label": window.get("label") or window_key.upper(),
             "pnl": _float_value(window.get("realized_pnl")),
+            "count": _close_window_count(window),
             "closed_outcome_count": int(window.get("closed_outcome_count") or 0),
             "evaluated_outcome_count": int(window.get("evaluated_outcome_count") or 0),
             "win_rate": _float_value(window.get("win_rate")),
@@ -4230,6 +4232,7 @@ def bot_fleet_roster(
         "window": default_close_history_window,
         "label": default_close_window_payload.get("label") or default_close_history_window.upper(),
         "realized_pnl": _float_value(default_close_window_payload.get("realized_pnl")),
+        "count": _close_window_count(default_close_window_payload),
         "closed_outcome_count": int(default_close_window_payload.get("closed_outcome_count") or 0),
         "evaluated_outcome_count": int(default_close_window_payload.get("evaluated_outcome_count") or 0),
         "winning_outcomes": int(default_close_window_payload.get("winning_outcomes") or 0),
@@ -5248,8 +5251,10 @@ def _closed_outcomes_from_trade_closes(
         outcomes.append(normalized)
 
     evaluated = wins + losses
+    count = len(outcomes)
     return {
-        "closed_outcome_count": len(outcomes),
+        "closed_outcome_count": count,
+        "count": count,
         "evaluated_outcome_count": evaluated,
         "winning_outcomes": wins,
         "losing_outcomes": losses,
@@ -5257,6 +5262,35 @@ def _closed_outcomes_from_trade_closes(
         "realized_pnl": round(realized_total, 2),
         "recent_outcomes": outcomes[:row_limit] if row_limit is not None else outcomes,
     }
+
+
+def _close_window_count(window: dict) -> int:
+    """Closed-outcome count alias used by dashboards and lightweight probes."""
+    count = _float_value(window.get("count"))
+    if count is None:
+        count = _float_value(window.get("closed_outcome_count"))
+    if count is None and isinstance(window.get("recent_outcomes"), list):
+        count = len(window["recent_outcomes"])
+    return int(count or 0)
+
+
+def _normalize_close_history_count_alias(close_history: dict) -> dict:
+    """Return close-history payload with stable ``count`` aliases per window."""
+    if not isinstance(close_history, dict):
+        return {}
+    out = dict(close_history)
+    windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
+    normalized_windows: dict[str, dict] = {}
+    for key, window in windows.items():
+        if not isinstance(window, dict):
+            continue
+        normalized = dict(window)
+        count = _close_window_count(normalized)
+        normalized["closed_outcome_count"] = int(normalized.get("closed_outcome_count") or count)
+        normalized["count"] = count
+        normalized_windows[str(key)] = normalized
+    out["windows"] = normalized_windows
+    return out
 
 
 def _close_history_windows(
@@ -5713,6 +5747,7 @@ def _position_exposure_payload(
 
     if close_history is None:
         close_history = _close_history_windows(_recent_trade_closes(limit=5000))
+    close_history = _normalize_close_history_count_alias(close_history)
     default_close_window = str(close_history.get("default_window") or "mtd")
     close_windows = close_history.get("windows") if isinstance(close_history.get("windows"), dict) else {}
     default_window_payload = (
