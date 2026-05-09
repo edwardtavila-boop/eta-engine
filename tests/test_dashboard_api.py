@@ -1468,6 +1468,13 @@ class TestDashboardAPI:
         assert payload["systems"]["paper_live"]["detail"] == "held_by_bracket_audit"
         assert payload["systems"]["paper_live"]["effective_status"] == "held_by_bracket_audit"
         assert payload["systems"]["paper_live"]["held_by_bracket_audit"] is True
+        assert payload["paper_live"]["raw_status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["status"] == "ready_to_launch_paper_live"
+        assert payload["paper_live"]["effective_status"] == "held_by_bracket_audit"
+        assert payload["paper_live"]["held_by_bracket_audit"] is True
+        assert payload["paper_live"]["effective_detail"] == (
+            "held by Bracket Audit: Verify broker OCO coverage or Flatten unprotected paper exposure"
+        )
         assert payload["broker_bracket_audit"]["position_summary"]["broker_bracket_required_position_count"] == 1
 
     def test_master_status_keeps_advisory_queue_separate_from_launch_status(

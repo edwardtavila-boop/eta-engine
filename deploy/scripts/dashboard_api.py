@@ -8322,6 +8322,21 @@ def _local_master_status_payload() -> dict[str, object]:
         if paper_held_by_bracket_audit
         else str(paper.get("status") or "unknown")
     )
+    paper_live_effective_detail = ""
+    if paper_held_by_bracket_audit:
+        paper_live_effective_detail = (
+            f"held by Bracket Audit: {' or '.join(broker_bracket_action_labels)}"
+            if broker_bracket_action_labels
+            else "held by Bracket Audit"
+        )
+    paper_live.update(
+        {
+            "raw_status": str(paper.get("status") or "unknown"),
+            "effective_status": paper_live_effective_status,
+            "effective_detail": paper_live_effective_detail,
+            "held_by_bracket_audit": paper_held_by_bracket_audit,
+        }
+    )
     paper_card_status = (
         "RED"
         if launch_blocked
@@ -8437,6 +8452,7 @@ def _local_master_status_payload() -> dict[str, object]:
                 "source": "paper_live_transition",
                 "critical_ready": paper_ready,
                 "effective_status": paper_live_effective_status,
+                "effective_detail": paper_live_effective_detail,
                 "held_by_bracket_audit": paper_held_by_bracket_audit,
                 "operator_queue_blocked_count": blocked,
                 "operator_queue_launch_blocked_count": launch_blocked,
