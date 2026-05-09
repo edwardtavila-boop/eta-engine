@@ -5680,6 +5680,17 @@ def _target_exit_summary_for_master_status() -> dict:
     summary["broker_position_source"] = (
         exposure.get("source") if exposure.get("observed") else "not_observed"
     )
+    if exposure.get("observed"):
+        summary["broker_position_scope"] = "ibkr_cached"
+        summary["broker_position_scope_detail"] = (
+            "Master status uses cached IBKR exposure only; /api/bot-fleet carries all broker venues."
+        )
+        broker_count = int(summary.get("broker_open_position_count") or 0)
+        generic_phrase = f"{broker_count} broker open"
+        scoped_phrase = f"{broker_count} IBKR cached broker open"
+        line = str(summary.get("summary_line") or "")
+        if broker_count > 0 and generic_phrase in line:
+            summary["summary_line"] = line.replace(generic_phrase, scoped_phrase, 1)
     return summary
 
 
