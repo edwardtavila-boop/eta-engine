@@ -216,6 +216,9 @@ class TestStatusPage:
         assert "operator choice" in html
         assert "Verify broker OCO coverage" in html
         assert "Flatten unprotected paper exposure" in html
+        assert 'id="bracketActionStrip"' in html
+        assert "function renderBracketActionStrip" in html
+        assert "bracket blocker actions" in html
         assert "prop dry-run blocked" in html
         assert "position_staleness" in html
         assert "force_flatten_due_count" in html
@@ -275,6 +278,8 @@ class TestStatusPage:
         assert "data-close-window=\"mtd\"" in html
         assert "data-close-window=\"all\"" in html
         assert "MTD closed outcomes" in html
+        assert "MTD Close History" in html
+        assert "selected-window close history" in html
         assert 'id="pnlWindowStrip"' in html
         assert "function renderPnlWindowStrip" in html
         assert "selected-window realized PnL" in html

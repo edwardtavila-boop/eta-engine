@@ -72,6 +72,12 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .truth-summary{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
 .truth-chip{border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:.35rem .65rem;background:rgba(255,255,255,.025);font-size:.72rem;color:var(--dim)}
 .truth-chip strong{color:var(--text);margin-right:.25rem}
+.bracket-action-strip{display:none;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.5rem;margin:.55rem 0 .75rem}
+.bracket-action-strip.active{display:grid}
+.bracket-action-card{border:1px solid rgba(255,209,102,.28);border-radius:14px;background:linear-gradient(145deg,rgba(255,209,102,.09),rgba(255,255,255,.025));padding:.68rem .72rem}
+.bracket-action-card span{display:block;color:#ffd166;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase}
+.bracket-action-card strong{display:block;margin-top:.18rem;color:#fff6d8;font-size:.9rem}
+.bracket-action-card small{display:block;margin-top:.16rem;color:#9fb1c5;font-size:.66rem;line-height:1.25}
 .position-list,.router-tape{display:grid;gap:.65rem}
 .position-card,.tape-row{border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(255,255,255,.02);padding:.75rem}
 .position-head,.tape-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.35rem}
@@ -393,8 +399,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card">
     <h3>Open Positions &amp; Exit Protection</h3>
     <div class="truth-summary" id="positionSummary"></div>
+    <div class="bracket-action-strip" id="bracketActionStrip"></div>
     <div class="position-list" id="openPositionsPanel">
-      <div class="empty-panel">Waiting for broker position truth...</div>
+      <div class="empty-panel">Waiting for MTD Close History and broker position truth...</div>
     </div>
   </div>
   <div class="card">
@@ -899,6 +906,52 @@ function brokerBracketActionLabels(bracketAudit, summary) {
   return labels;
 }
 
+function renderBracketActionStrip(d) {
+  const el = document.getElementById('bracketActionStrip');
+  if (!el) return;
+  const summary = d.summary || {};
+  const bracketAudit = d.broker_bracket_audit || summary.broker_bracket_audit || {};
+  const bracketPosition = bracketAudit.position_summary || {};
+  const primary = bracketAudit.primary_unprotected_position || {};
+  const missing = Number(
+    bracketPosition.missing_bracket_count
+      ?? bracketAudit.missing_bracket_count
+      ?? summary.broker_bracket_missing_count
+      ?? 0
+  ) || 0;
+  const propDryRunBlocked = Boolean(
+    bracketAudit.prop_dry_run_blocked
+      ?? summary.broker_bracket_prop_dry_run_blocked
+      ?? missing > 0
+  );
+  const actions = brokerBracketActionLabels(bracketAudit, summary);
+  if (!propDryRunBlocked && missing <= 0 && !actions.length) {
+    el.className = 'bracket-action-strip';
+    el.innerHTML = '';
+    return;
+  }
+  const unprotectedSymbols = Array.isArray(summary.broker_bracket_unprotected_symbols)
+    ? summary.broker_bracket_unprotected_symbols
+    : [];
+  const primaryText = primary.symbol
+    ? `${primary.symbol} ${String(primary.venue || '').toUpperCase()} ${primary.sec_type || ''}`.trim()
+    : (unprotectedSymbols.join(', ') || 'unprotected exposure');
+  const details = [
+    missing > 0 ? `${missing} missing broker OCO` : '',
+    primaryText ? `${primaryText} needs coverage` : '',
+    propDryRunBlocked ? 'paper-live launch held until operator verifies coverage or flattens' : ''
+  ].filter(Boolean).join('; ');
+  const actionList = actions.length ? actions : ['Verify broker OCO coverage'];
+  el.className = 'bracket-action-strip active';
+  el.innerHTML = actionList.map((label, index) => `
+    <div class="bracket-action-card">
+      <span>${index === 0 ? 'bracket blocker actions' : 'operator option'}</span>
+      <strong>${esc(label)}</strong>
+      <small>${esc(details || 'Broker bracket coverage is under review.')}</small>
+    </div>
+  `).join('');
+}
+
 function formatQty(value) {
   const n = finiteNumber(value);
   if (n == null) return 'n/a';
@@ -1043,8 +1096,9 @@ function renderRecentCloses(closes, label = 'selected window', totalCount = null
   const total = Number(totalCount ?? closes.length ?? rows.length);
   const shown = rows.length;
   const scope = label || 'selected window';
+  const historyTitle = `${scope} Close History`;
   return `<div class="mt-3">
-    <div class="text-xs text-zinc-500 mb-1">${esc(scope)} closed outcomes (${shown} shown of ${total} total)</div>
+    <div class="text-xs text-zinc-500 mb-1">${esc(historyTitle)} - selected-window close history (${shown} shown of ${total} total)</div>
     <div class="router-tape">${rows.map((c) => {
       const realized = finiteNumber(c.realized_pnl);
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
@@ -1096,6 +1150,7 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
     `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> ${esc(closeHistory?.label || 'selected')} outcomes</span>`,
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].join('');
+  renderBracketActionStrip(d);
 
   let positionsHtml = '';
   if (!positions.length) {
