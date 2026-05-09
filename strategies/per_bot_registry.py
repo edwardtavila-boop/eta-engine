@@ -2981,6 +2981,106 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # ================================================================
+    # ASSET-SPECIFIC EDGES (2026-05-08) — momentum for commodities, range for FX
+    # ================================================================
+
+    # gc_momentum — commodity momentum on Gold 1h
+    StrategyAssignment(
+        bot_id="gc_momentum",
+        strategy_id="gc_momentum_v1",
+        symbol="GC1",
+        timeframe="1h",
+        scorer_name="gc",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=5,
+        strategy_kind="commodity_momentum",
+        rationale=(
+            "Momentum trend-following on Gold 1h. ROC+ADX+MA thrust entries. "
+            "Wide 3.5x ATR stops, 3.0 RR."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "momentum_preset": "gc",
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # cl_momentum — commodity momentum on Crude Oil 1h
+    StrategyAssignment(
+        bot_id="cl_momentum",
+        strategy_id="cl_momentum_v1",
+        symbol="CL1",
+        timeframe="1h",
+        scorer_name="cl",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=5,
+        strategy_kind="commodity_momentum",
+        rationale=(
+            "Momentum trend-following on Oil 1h. Thrust bars on inventory "
+            "reports and supply shocks. Wide 2.5x ATR stops, 3.0 RR."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "momentum_preset": "cl",
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # eur_range — FX range mean-reversion on Euro 1h
+    StrategyAssignment(
+        bot_id="eur_range",
+        strategy_id="eur_range_v1",
+        symbol="6E1",
+        timeframe="1h",
+        scorer_name="eur",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=5,
+        strategy_kind="fx_range",
+        rationale=(
+            "Range mean-reversion on Euro FX 1h. BB(20,2) + RSI(14) extremes "
+            "with volume confirmation."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "range_preset": "eur",
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
+    # zn_range — range mean-reversion on 10Y Treasury 1h
+    StrategyAssignment(
+        bot_id="zn_range",
+        strategy_id="zn_range_v1",
+        symbol="ZN",
+        timeframe="1h",
+        scorer_name="zn",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=5,
+        strategy_kind="fx_range",
+        rationale=(
+            "Range mean-reversion on 10Y Treasury 1h. Wider BB(20,2.5) for "
+            "rates volatility. Tighter 1.0x stops, 2.5 RR."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "range_preset": "zn",
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
 )
 
 
