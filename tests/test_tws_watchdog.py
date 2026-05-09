@@ -157,6 +157,31 @@ def test_successful_handshake_does_not_open_raw_socket_probe(
     assert data["recovery_lane"]["operator_action"] == ""
 
 
+def test_skip_account_snapshot_passes_fast_handshake_mode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    captured: dict[str, object] = {}
+    status_path = tmp_path / "tws_watchdog.json"
+    monkeypatch.setattr(tws_watchdog, "_STATUS_PATH", status_path)
+
+    def fake_handshake(*_args, **kwargs):
+        captured.update(kwargs)
+        return True, "serverVersion=176; clientId=9011; attempt=1"
+
+    monkeypatch.setattr(tws_watchdog, "_check_ib_handshake", fake_handshake)
+    monkeypatch.setattr(tws_watchdog, "_check_socket", lambda *_args, **_kwargs: False)
+
+    rc = tws_watchdog.main(["--skip-account-snapshot"])
+
+    assert rc == 0
+    assert captured["capture_account_snapshot"] is False
+    data = json.loads(status_path.read_text(encoding="utf-8"))
+    assert data["healthy"] is True
+
+
 def test_failed_handshake_uses_raw_socket_probe_for_classification(
     tmp_path: Path,
     monkeypatch,

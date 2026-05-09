@@ -273,6 +273,7 @@ def _check_ib_handshake(
     *,
     attempts: int = 2,
     timeout: float | None = None,
+    capture_account_snapshot: bool = True,
 ) -> tuple[bool, str]:
     """Confirm we can complete an IB API handshake (not just TCP).
     Returns (ok, detail)."""
@@ -297,8 +298,9 @@ def _check_ib_handshake(
                 )
                 server_version = ib.client.serverVersion() if ib.isConnected() else 0
                 if ib.isConnected():
-                    with contextlib.suppress(Exception):
-                        _LAST_ACCOUNT_SNAPSHOT = _snapshot_from_ib(ib)
+                    if capture_account_snapshot:
+                        with contextlib.suppress(Exception):
+                            _LAST_ACCOUNT_SNAPSHOT = _snapshot_from_ib(ib)
                     summary = (
                         _LAST_ACCOUNT_SNAPSHOT.get("summary")
                         if isinstance(_LAST_ACCOUNT_SNAPSHOT, dict)
@@ -467,6 +469,14 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("ETA_TWS_GATEWAY_DIR", str(_DEFAULT_CRASH_LOG_DIR)),
         help="IB Gateway installation directory used for process diagnostics.",
     )
+    p.add_argument(
+        "--skip-account-snapshot",
+        action="store_true",
+        help=(
+            "Skip optional account/position reads after handshake so scheduled "
+            "freshness checks cannot block on telemetry."
+        ),
+    )
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -482,6 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         args.port,
         attempts=args.handshake_attempts,
         timeout=args.handshake_timeout,
+        capture_account_snapshot=not args.skip_account_snapshot,
     )
     socket_ok = True if handshake_ok else _check_socket(args.host, args.port)
 
