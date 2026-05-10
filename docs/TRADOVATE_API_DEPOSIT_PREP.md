@@ -32,6 +32,7 @@ python -m eta_engine.scripts.futures_prop_ladder
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate
+python -m eta_engine.scripts.prop_operator_checklist
 ```
 
 Expected pre-deposit summary:
@@ -59,6 +60,11 @@ lane and should block until all of these are true:
 - Broker-native bracket/OCO proof exists for open exposure.
 - A schema-backed closed-trade ledger exists so win rate, PnL, and R are not
   stale.
+
+Use `prop_operator_checklist` when you want the short operator version of
+what remains. It writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_operator_checklist_latest.json`
+and prints the exact commands for the remaining manual steps.
 
 If `broker_bracket_audit` reports an open IBKR futures position that requires
 manual broker-OCO verification, clear it only after checking TWS/IB Gateway
@@ -138,6 +144,7 @@ python -m eta_engine.scripts.futures_prop_ladder
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate
+python -m eta_engine.scripts.prop_operator_checklist
 ```
 
 Required cutover summary:

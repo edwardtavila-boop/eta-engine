@@ -851,6 +851,11 @@ def _build_strategy_factory(  # type: ignore[no-untyped-def]  # noqa: ANN202
         preset_name = (extras.get("range_preset") or "eur").lower()
         base_cfg = {"eur": eur_range_preset, "zn": zn_range_preset}.get(preset_name, eur_range_preset)()
         return lambda: RangeStrategy(base_cfg)
+    if kind == "oil_macro":
+        from eta_engine.strategies.oil_macro_strategy import (
+            OilMacroConfig, OilMacroStrategy, cl_macro_fade_preset,
+        )
+        return lambda: OilMacroStrategy(cl_macro_fade_preset())
     return _build_crypto_strategy_factory(kind, extras)
 
 

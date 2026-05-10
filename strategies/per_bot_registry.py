@@ -2980,6 +2980,31 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
         },
     ),
 
+    # cl_macro — Oil macro fade strategy for turbulent headline-driven markets
+    StrategyAssignment(
+        bot_id="cl_macro",
+        strategy_id="cl_macro_v1",
+        symbol="CL1",
+        timeframe="1h",
+        scorer_name="cl",
+        confluence_threshold=0.0,
+        block_regimes=frozenset(),
+        window_days=365,
+        step_days=90,
+        min_trades_per_window=5,
+        strategy_kind="oil_macro",
+        rationale=(
+            "Oil macro fade for 2026 tariff/OPEC/war volatility. "
+            "Fades 2x ATR spike bars with wide 3x stops, 3.5 RR. "
+            "Oil trends on headlines — fading the extreme captures "
+            "mean-reversion after panic/greed spikes."
+        ),
+        extras={
+            "promotion_status": "research_candidate",
+            "daily_loss_limit_pct": 4.0,
+        },
+    ),
+
     # ================================================================
     # ASSET-SPECIFIC EDGES (2026-05-08) — momentum for commodities, range for FX
     # ================================================================

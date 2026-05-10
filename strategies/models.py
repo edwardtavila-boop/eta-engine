@@ -62,6 +62,7 @@ class StrategyId(StrEnum):
     REGISTRY_ANCHOR_SWEEP = "registry_anchor_sweep"
     REGISTRY_COMMODITY_MOMENTUM = "registry_commodity_momentum"
     REGISTRY_FX_RANGE = "registry_fx_range"
+    REGISTRY_OIL_MACRO = "registry_oil_macro"
 
 
 # ---------------------------------------------------------------------------

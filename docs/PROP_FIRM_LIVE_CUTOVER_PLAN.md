@@ -82,6 +82,7 @@ cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate --json
+python -m eta_engine.scripts.prop_operator_checklist
 ```
 
 It must report `READY_FOR_CONTROLLED_PROP_DRY_RUN` before any prop route edit.
@@ -179,6 +180,8 @@ Phase 4: Live watched cutover.
   Do not run this if the broker-side OCO is not actually visible.
 - Treat the consolidated gate as the final go/no-go:
   `python -m eta_engine.scripts.prop_live_readiness_gate`.
+- Use the compact operator checklist for the exact remaining manual commands:
+  `python -m eta_engine.scripts.prop_operator_checklist`.
 - After funding/API activation, require:
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover`
   to report `READY_FOR_DRY_RUN` before editing any winning-bot route.

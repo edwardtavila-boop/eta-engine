@@ -70,6 +70,7 @@ _KIND_TO_SID: dict[str, StrategyId] = {
     "anchor_sweep": StrategyId.REGISTRY_ANCHOR_SWEEP,
     "commodity_momentum": StrategyId.REGISTRY_COMMODITY_MOMENTUM,
     "fx_range": StrategyId.REGISTRY_FX_RANGE,
+    "oil_macro": StrategyId.REGISTRY_OIL_MACRO,
 }
 
 
@@ -630,6 +631,13 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
         preset = extras.get("range_preset", "eur")
         cfg = {"eur": eur_range_preset, "zn": zn_range_preset}.get(preset, eur_range_preset)()
         return RangeStrategy(cfg)
+
+    if kind == "oil_macro":
+        from eta_engine.strategies.oil_macro_strategy import (
+            OilMacroConfig, OilMacroStrategy, cl_macro_fade_preset,
+        )
+        cfg = cl_macro_fade_preset()
+        return OilMacroStrategy(cfg)
 
     return None
 
