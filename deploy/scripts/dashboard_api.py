@@ -337,6 +337,7 @@ LOG_DIR   = Path(os.environ.get("ETA_LOG_DIR", os.environ.get("ETA_LOG_DIR", str
 _START_TS = time.time()
 API_BUILD_CAPABILITIES = (
     "command_center_watchdog",
+    "eta_readiness_snapshot",
     "ibkr_futures_avg_cost_normalized",
 )
 
@@ -488,6 +489,160 @@ def _command_center_watchdog_status_path() -> Path:
     return _WORKSPACE_ROOT / "var" / "ops" / "command_center_watchdog_status_latest.json"
 
 
+def _eta_readiness_snapshot_status_path() -> Path:
+    """Canonical root-level ETA readiness snapshot receipt path."""
+    override = os.environ.get("ETA_READINESS_SNAPSHOT_STATUS_PATH", "").strip()
+    if override:
+        return Path(override)
+    return _WORKSPACE_ROOT / "var" / "ops" / "eta_readiness_snapshot_latest.json"
+
+
+def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
+    """Summarize the root readiness receipt for dashboard diagnostics."""
+    status_path = _eta_readiness_snapshot_status_path()
+    receipt = _read_json_file(status_path)
+    if not receipt:
+        return {
+            "status": "missing_receipt",
+            "fresh": False,
+            "healthy": False,
+            "status_path": str(status_path),
+            "checked_at": None,
+            "age_s": None,
+            "summary": "ETA readiness snapshot receipt missing",
+            "check_count": 0,
+            "blocked_count": 0,
+            "ok_count": 0,
+            "primary_blocker": "",
+            "primary_action": "Run .\\scripts\\eta-readiness-snapshot.ps1",
+            "next_actions": ["Run .\\scripts\\eta-readiness-snapshot.ps1"],
+            "closed_trade_count": 0,
+            "total_realized_pnl": None,
+            "win_rate_pct": None,
+            "cumulative_r": None,
+            "broker_missing_bracket_count": 0,
+            "prop_primary_bot": "",
+            "promotion_summary": "",
+            "required_evidence": [],
+        }
+
+    checked_at = receipt.get("checked_at_utc") or receipt.get("checked_at")
+    age_s = _iso_age_s(checked_at, server_ts=server_ts)
+    fresh = age_s is not None and age_s <= 900
+    raw_summary = str(receipt.get("summary") or "UNKNOWN")
+    checks = receipt.get("checks") if isinstance(receipt.get("checks"), list) else []
+    pass_statuses = {"OK", "PASS", "READY", "READY_NO_OPEN_EXPOSURE"}
+    blocked_checks = [
+        check
+        for check in checks
+        if isinstance(check, dict) and str(check.get("status") or "").upper() not in pass_statuses
+    ]
+    ok_count = len(checks) - len(blocked_checks)
+
+    by_name = {
+        str(check.get("name") or ""): check
+        for check in checks
+        if isinstance(check, dict) and check.get("name")
+    }
+    closed_payload = (
+        by_name.get("closed_trade_ledger", {}).get("payload")
+        if isinstance(by_name.get("closed_trade_ledger", {}).get("payload"), dict)
+        else {}
+    )
+    bracket_payload = (
+        by_name.get("broker_bracket_audit", {}).get("payload")
+        if isinstance(by_name.get("broker_bracket_audit", {}).get("payload"), dict)
+        else {}
+    )
+    prop_payload = (
+        by_name.get("prop_live_readiness_gate", {}).get("payload")
+        if isinstance(by_name.get("prop_live_readiness_gate", {}).get("payload"), dict)
+        else {}
+    )
+    promotion_payload = (
+        by_name.get("prop_strategy_promotion_audit", {}).get("payload")
+        if isinstance(by_name.get("prop_strategy_promotion_audit", {}).get("payload"), dict)
+        else {}
+    )
+    position_summary = (
+        bracket_payload.get("position_summary")
+        if isinstance(bracket_payload.get("position_summary"), dict)
+        else {}
+    )
+    promotion_primary = (
+        promotion_payload.get("primary")
+        if isinstance(promotion_payload.get("primary"), dict)
+        else {}
+    )
+
+    next_actions: list[str] = []
+    raw_next_actions = prop_payload.get("next_actions")
+    if isinstance(raw_next_actions, list):
+        next_actions.extend(str(action) for action in raw_next_actions if action)
+    bracket_action = str(
+        bracket_payload.get("next_action")
+        or bracket_payload.get("operator_action")
+        or ""
+    ).strip()
+    if bracket_action and bracket_action not in next_actions:
+        next_actions.append(bracket_action)
+    raw_required_evidence = promotion_payload.get("required_evidence")
+    required_evidence = [
+        str(item) for item in raw_required_evidence if item
+    ] if isinstance(raw_required_evidence, list) else []
+    for item in required_evidence:
+        if item not in next_actions:
+            next_actions.append(item)
+
+    primary_blocker = ""
+    if blocked_checks:
+        primary_blocker = str(blocked_checks[0].get("name") or "")
+    primary_action = next_actions[0] if next_actions else (
+        "Clear blocked readiness checks." if blocked_checks else "No action required."
+    )
+    if not fresh:
+        status = "stale_receipt"
+    elif raw_summary.upper() == "READY" and not blocked_checks:
+        status = "ready"
+    elif raw_summary.upper().startswith("BLOCKED") or blocked_checks:
+        status = "blocked"
+    else:
+        status = "unknown"
+
+    return {
+        "status": status,
+        "fresh": fresh,
+        "healthy": status == "ready",
+        "status_path": str(status_path),
+        "checked_at": checked_at,
+        "age_s": age_s,
+        "summary": raw_summary,
+        "check_count": len(checks),
+        "blocked_count": len(blocked_checks),
+        "ok_count": ok_count,
+        "primary_blocker": primary_blocker,
+        "primary_action": primary_action,
+        "next_actions": next_actions[:5],
+        "closed_trade_count": int(closed_payload.get("closed_trade_count") or 0),
+        "total_realized_pnl": closed_payload.get("total_realized_pnl"),
+        "win_rate_pct": closed_payload.get("win_rate_pct"),
+        "cumulative_r": closed_payload.get("cumulative_r"),
+        "broker_missing_bracket_count": int(position_summary.get("missing_bracket_count") or 0),
+        "broker_open_position_count": int(position_summary.get("broker_open_position_count") or 0),
+        "prop_primary_bot": str(
+            prop_payload.get("primary_bot")
+            or promotion_payload.get("primary_bot")
+            or promotion_primary.get("bot_id")
+            or ""
+        ),
+        "promotion_summary": str(promotion_payload.get("summary") or ""),
+        "ready_for_prop_dry_run_review": bool(
+            promotion_payload.get("ready_for_prop_dry_run_review")
+        ),
+        "required_evidence": required_evidence[:5],
+    }
+
+
 def _command_center_watchdog_payload(*, server_ts: float) -> dict:
     """Summarize the root CommandCenterDoctor receipt for dashboard diagnostics."""
     receipt_path = _command_center_doctor_receipt_path()
@@ -587,6 +742,7 @@ def _dashboard_diagnostics_payload() -> dict:
     cards = _dashboard_card_health_payload()
     dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
     command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
+    eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=server_ts)
 
     try:
         roster = bot_fleet_roster(Response(), since_days=1)
@@ -778,6 +934,7 @@ def _dashboard_diagnostics_payload() -> dict:
         },
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "command_center_watchdog": command_center_watchdog,
+        "eta_readiness_snapshot": eta_readiness_snapshot,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -807,6 +964,14 @@ def _dashboard_diagnostics_payload() -> dict:
                 "public_operator_drift",
                 "contract_failure",
                 "secret_surface",
+                "unknown",
+            },
+            "eta_readiness_snapshot_contract": eta_readiness_snapshot.get("status")
+            in {
+                "ready",
+                "blocked",
+                "missing_receipt",
+                "stale_receipt",
                 "unknown",
             },
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,

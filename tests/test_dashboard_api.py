@@ -26,6 +26,10 @@ def app_client(tmp_path, monkeypatch):
         "ETA_COMMAND_CENTER_WATCHDOG_STATUS_PATH",
         str(tmp_path / "state" / "command_center_watchdog_status_latest.json"),
     )
+    monkeypatch.setenv(
+        "ETA_READINESS_SNAPSHOT_STATUS_PATH",
+        str(tmp_path / "state" / "eta_readiness_snapshot_latest.json"),
+    )
     # Pin the BTC fleet dir so the dashboard doesn't accidentally see a
     # real fleet directory sitting in the dev package tree.
     monkeypatch.setenv(
@@ -916,6 +920,7 @@ class TestDashboardAPI:
         assert data["source_of_truth"] == "dashboard_diagnostics"
         assert set(data["api_build"]["capabilities"]) >= {
             "command_center_watchdog",
+            "eta_readiness_snapshot",
             "ibkr_futures_avg_cost_normalized",
         }
         assert data["service"]["status"] == "ok"
@@ -969,6 +974,14 @@ class TestDashboardAPI:
             "unknown",
         }
         assert data["checks"]["command_center_watchdog_contract"] is True
+        assert data["eta_readiness_snapshot"]["status"] in {
+            "ready",
+            "blocked",
+            "missing_receipt",
+            "stale_receipt",
+            "unknown",
+        }
+        assert data["checks"]["eta_readiness_snapshot_contract"] is True
 
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")
@@ -1277,6 +1290,97 @@ class TestDashboardAPI:
         assert watchdog["fresh"] is False
         assert watchdog["probe_healthy"] is True
         assert watchdog["probe_reason"] == "ok"
+
+    def test_dashboard_diagnostics_includes_eta_readiness_snapshot_rollup(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED",
+                    "checks": [
+                        {
+                            "name": "closed_trade_ledger",
+                            "status": "OK",
+                            "exit_code": 0,
+                            "payload": {
+                                "closed_trade_count": 43511,
+                                "total_realized_pnl": 27173899.25,
+                                "win_rate_pct": 28.94,
+                                "cumulative_r": 13608.10,
+                            },
+                        },
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": (
+                                    "Verify manual broker OCO coverage or flatten current paper exposure."
+                                ),
+                                "position_summary": {
+                                    "missing_bracket_count": 1,
+                                    "broker_open_position_count": 1,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_live_readiness_gate",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "next_actions": [
+                                    "Keep volume_profile_mnq in paper_soak until can_live_trade=true."
+                                ],
+                            },
+                        },
+                        {
+                            "name": "prop_strategy_promotion_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "summary": "BLOCKED_PAPER_SOAK",
+                                "ready_for_prop_dry_run_review": False,
+                                "required_evidence": [
+                                    "clear broker_native_brackets to PASS",
+                                ],
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        snapshot = payload["eta_readiness_snapshot"]
+        assert snapshot["status"] == "blocked"
+        assert snapshot["fresh"] is True
+        assert snapshot["healthy"] is False
+        assert snapshot["check_count"] == 4
+        assert snapshot["blocked_count"] == 3
+        assert snapshot["ok_count"] == 1
+        assert snapshot["primary_blocker"] == "broker_bracket_audit"
+        assert snapshot["closed_trade_count"] == 43511
+        assert snapshot["total_realized_pnl"] == 27173899.25
+        assert snapshot["win_rate_pct"] == 28.94
+        assert snapshot["broker_missing_bracket_count"] == 1
+        assert snapshot["broker_open_position_count"] == 1
+        assert snapshot["prop_primary_bot"] == "volume_profile_mnq"
+        assert snapshot["promotion_summary"] == "BLOCKED_PAPER_SOAK"
+        assert snapshot["ready_for_prop_dry_run_review"] is False
+        assert snapshot["required_evidence"] == ["clear broker_native_brackets to PASS"]
+        assert snapshot["primary_action"].startswith("Keep volume_profile_mnq")
+        assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
     def test_dashboard_diagnostics_includes_command_center_watchdog_rollup(
         self,
