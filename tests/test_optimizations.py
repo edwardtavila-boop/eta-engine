@@ -282,6 +282,7 @@ class TestStatusPage:
         assert "readiness/staged rows" in html
         assert "lifetime ledger not attached; today shown above" in html
         assert "function fleetEquityLifetimeEvidence" in html
+        assert "function readinessSnapshotPerformanceEvidence" in html
         assert "function closeEvidenceSummary" in html
         assert "function closeHistoryWindowPayload" in html
         assert "rootPayload?.close_history" in html
@@ -303,6 +304,7 @@ class TestStatusPage:
         assert "function pnlHistoryEvidence" in html
         assert "Closed PnL" in html
         assert "lifetime ledger pending" in html
+        assert "readiness ledger:" in html
         assert "closed outcome" in html
         assert "closed outcomes in ledger" in html
         assert "selected-window closed outcomes" in html
@@ -310,6 +312,7 @@ class TestStatusPage:
         assert "source === 'supervisor_heartbeat'" in html
         assert "source === 'fills_intraday'" in html
         assert "total_pnl_is_lifetime" in html
+        assert "readinessPerformance.winRatePct" in html
         assert "value: finiteNumber(equitySummary.total_pnl)" not in html
         assert "function botSleeveLabel" in html
         assert "priority_bucket" in html

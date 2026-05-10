@@ -674,8 +674,27 @@ function fleetEquityLifetimeEvidence(fleetEquity) {
   return {value, source: `fleet equity: ${fleetEquity?.source || 'unknown'}`};
 }
 
-function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
+function readinessSnapshotPerformanceEvidence(diagnostics) {
+  const snapshot = diagnostics?.eta_readiness_snapshot && typeof diagnostics.eta_readiness_snapshot === 'object'
+    ? diagnostics.eta_readiness_snapshot
+    : {};
+  const fresh = snapshot.fresh !== false;
+  const count = Number(snapshot.closed_trade_count || 0);
+  const source = count > 0
+    ? `readiness ledger: ${count} closed outcome${count === 1 ? '' : 's'}`
+    : 'readiness ledger';
+  return {
+    value: fresh ? finiteNumber(snapshot.total_realized_pnl) : null,
+    winRatePct: fresh ? finiteNumber(snapshot.win_rate_pct) : null,
+    count,
+    status: String(snapshot.status || '').toLowerCase(),
+    source
+  };
+}
+
+function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics = {}) {
   const fleetEvidence = fleetEquityLifetimeEvidence(fleetEquity);
+  const readinessEvidence = readinessSnapshotPerformanceEvidence(diagnostics);
   const candidates = [
     {
       value: finiteNumber(summary?.lifetime_total_pnl),
@@ -690,6 +709,10 @@ function lifetimePnlEvidence(summary, portfolioSummary, fleetEquity) {
     {
       value: finiteNumber(portfolioSummary?.lifetime_total_pnl),
       source: portfolioSummary?.lifetime_total_pnl_source || 'portfolio lifetime ledger'
+    },
+    {
+      value: readinessEvidence.value,
+      source: readinessEvidence.source
     },
     fleetEvidence
   ];
@@ -860,8 +883,8 @@ function renderPnlWindowStrip(closeHistory) {
   }
 }
 
-function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory) {
-  const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity);
+function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory, diagnostics = {}) {
+  const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics);
   if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
   if (closeHistory?.realizedPnl != null) {
     const label = closeHistory.label || 'Close';
@@ -1861,7 +1884,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   }
   renderPnlWindowControls(closeHistory);
   renderPnlWindowStrip(closeHistory);
-  const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory);
+  const readinessPerformance = readinessSnapshotPerformanceEvidence(diagnostics || {});
+  const lifetimeEvidence = pnlHistoryEvidence(summary, portfolioSummary, fleetEquity || {}, closeHistory, diagnostics || {});
 
   // Today PnL — prefer broker today_realized_pnl + total_unrealized_pnl
   // so the panel reflects what actually moved on the broker today.
@@ -2488,6 +2512,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
     document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated} ${closeHistory.label || 'selected'} close outcome${closeHistory.evaluated === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
+  } else if (readinessPerformance.winRatePct != null) {
+    const readinessWr = readinessPerformance.winRatePct;
+    document.getElementById('winRate').textContent = readinessWr.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (readinessWr > 50 ? 'green' : readinessWr > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = `${readinessPerformance.count} readiness ledger closed outcome${readinessPerformance.count === 1 ? '' : 's'}`;
   } else {
     document.getElementById('winRate').textContent = '—';
     document.getElementById('winRate').className = 'stat dim';
