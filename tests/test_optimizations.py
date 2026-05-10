@@ -283,6 +283,8 @@ class TestStatusPage:
         assert "lifetime ledger not attached; today shown above" in html
         assert "function fleetEquityLifetimeEvidence" in html
         assert "function readinessSnapshotPerformanceEvidence" in html
+        assert "broker bracket gap" in html
+        assert "Snapshot Stale" in html
         assert "function closeEvidenceSummary" in html
         assert "function closeHistoryWindowPayload" in html
         assert "rootPayload?.close_history" in html

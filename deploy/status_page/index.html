@@ -1450,7 +1450,7 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
   });
 }
 
-function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive) {
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive, diagnostics) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
@@ -1491,12 +1491,30 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   }
   if (heroMetrics) {
     const lifetimeValue = lifetimeEvidence?.value;
-    const readinessText = `${paperReady} paper-ready`;
+    const readinessSnapshot = diagnostics?.eta_readiness_snapshot && typeof diagnostics.eta_readiness_snapshot === 'object'
+      ? diagnostics.eta_readiness_snapshot
+      : {};
+    const readinessStatus = String(readinessSnapshot.status || '').toLowerCase();
+    const readinessText = readinessStatus === 'blocked'
+      ? 'Blocked'
+      : readinessStatus === 'ready'
+        ? 'Ready'
+        : readinessStatus === 'stale_receipt'
+          ? 'Snapshot Stale'
+          : `${paperReady} paper-ready`;
+    const bracketCount = Number(readinessSnapshot.broker_missing_bracket_count || 0);
+    const readinessSub = readinessStatus === 'blocked'
+      ? (bracketCount > 0
+        ? `${bracketCount} broker bracket gap; ${readinessSnapshot.prop_primary_bot || 'prop bot'} gated`
+        : readinessSnapshot.primary_action || readinessSnapshot.promotion_summary || 'readiness gates blocked')
+      : readinessStatus === 'ready'
+        ? `${paperReady} paper-ready; ${active} active now`
+        : `${active} active now`;
     heroMetrics.innerHTML = [
       {label: 'Today Net', value: formatMoney(todaysPnl, 0), sub: 'realized + unrealized'},
       {label: lifetimeEvidence?.label || 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
       {label: 'Open Exposure', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} broker position${brokerPositions.length === 1 ? '' : 's'}`},
-      {label: 'Readiness', value: readinessText, sub: `${active} active now`}
+      {label: 'Readiness', value: readinessText, sub: readinessSub}
     ].map(item => `<div class="hero-metric"><span>${esc(item.label)}</span><strong>${esc(item.value)}</strong><small>${esc(compactText(item.sub, 38))}</small></div>`).join('');
   }
 }
@@ -1906,7 +1924,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
-  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive || {});
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, lifetimeEvidence, paperLive || {}, diagnostics || {});
   renderContributionGraph(bots, liveBroker, portfolioSummary);
   renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
