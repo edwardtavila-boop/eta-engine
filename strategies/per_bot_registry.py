@@ -630,9 +630,7 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "push this into profit. Original: +8.29 OOS Sharpe."
         ),
         extras={
-            "edge_enabled": True,
-            "edge_config": "mnq_futures",
-            "promotion_status": "production_candidate",
+            "promotion_status": "paper_soak",
             "sage_min_conviction": 0.55,
             "sage_min_alignment": 0.50,
             "sage_lookback_bars": 200,
@@ -646,17 +644,15 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
                 "range_minutes": 15,
                 "require_retest": True,
                 "retest_atr_band": 1.0,
-                "retest_max_bars": 5,
+                "retest_max_bars": 3,
                 "retest_require_close_bounce": True,
                 "runaway_atr_mult": 2.5,
-                "rr_target": 3.0,
-                "atr_stop_mult": 2.0,
+                "volume_mult": 1.5,
+                "rr_target": 3.5,
+                "atr_stop_mult": 2.5,
                 "ema_bias_period": 200,
                 "max_trades_per_day": 1,
             },
-            # 2026-05-07: scale-out + VIX filter knobs (commit 1fec044).
-            # _build_orb_sage_gated_factory reads these as top-level keys
-            # in extras and wires them into SageGatedORBConfig.
             "enable_scale_out": True,
             "rr_partial": 1.5,
             "partial_qty_frac": 0.5,
@@ -666,23 +662,6 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "per_ticker_optimal": "NQ",
             "warmup_policy": {"promoted_on": "2026-05-03", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
-            "deactivated": True,
-            "deactivated_on": "2026-05-07",
-            "deactivated_reason": (
-                "Two independent methodologies agree this bot has no edge:\n"
-                "  - VPS kaizen daily run (real closed trades, n=60): "
-                "tier=DECAY mc=MIXED expR=-0.0431; auto-deactivated to "
-                "kaizen_overrides.json sidecar.\n"
-                "  - Strict-gate audit 2026-05-07 (backtest, n=1179): "
-                "Sharpe 0.42, expR_net +0.026, sh_def -0.99. Marginal "
-                "positive on backtest, negative on real fills.\n"
-                "Real-fill verdict wins because it reflects actual broker "
-                "frictions, slippage, and execution timing rather than "
-                "the audit's mid-bar fill assumption. Code-level retire "
-                "added so the local supervisor matches the VPS kaizen "
-                "decision (sidecar files don't propagate across machines). "
-                "Audit data: eta_engine/reports/strict_gate_20260507T194017Z.json"
-            ),
         },
     ),
 
