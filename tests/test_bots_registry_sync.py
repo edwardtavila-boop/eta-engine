@@ -113,6 +113,7 @@ VARIANT_BOT_IDS: set[str] = {
     # instead of owning bot.py directories.
     "gc_momentum",   # Gold momentum specialist.
     "cl_momentum",   # Crude momentum specialist.
+    "cl_macro",      # Crude oil macro-fade specialist.
     "zn_range",      # 10Y Note range specialist.
     "eur_range",     # EUR/USD futures range specialist.
     # Equity-index micros tier — same template, smaller notional per contract

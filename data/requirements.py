@@ -1170,6 +1170,23 @@ REQUIREMENTS: tuple[BotRequirements, ...] = (
     ),
 
     BotRequirements(
+        bot_id="cl_macro",
+        requirements=(
+            DataRequirement("bars", "CL1", "1h", critical=True),
+            DataRequirement("bars", "CL1", "D", critical=False,
+                note="daily oil inventory and macro shock context"),
+            DataRequirement("correlation", "DXY", "1h", critical=False),
+            DataRequirement("macro", "OPEC", None, critical=False,
+                note="headline and production-cut risk context"),
+        ),
+        sources_hint=(
+            "yfinance CL=F via composite feed",
+            "IBKR NYMEX",
+            "operator headline notes / future news feed",
+        ),
+    ),
+
+    BotRequirements(
         bot_id="eur_range",
         requirements=(
             DataRequirement("bars", "6E1", "1h", critical=True),

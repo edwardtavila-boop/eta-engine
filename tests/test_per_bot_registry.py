@@ -97,6 +97,7 @@ def test_thresholds_in_valid_range() -> None:
         # not read the generic confluence threshold.
         "commodity_momentum",
         "fx_range",
+        "oil_macro",
         # CME crypto micro futures (2026-05-07): MBT/MET strategies that
         # have their own internal triggers (basis-premium z-score, overnight
         # gap detection, opening-range breakout) — they don't read the

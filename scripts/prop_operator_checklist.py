@@ -46,7 +46,7 @@ def _seed_tradovate_step(check: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": "seed_tradovate_api_secrets",
         "status": "blocked",
-        "title": "Seed Tradovate API credentials after funding/API unlock",
+        "title": "Seed DORMANT Tradovate API credentials after funding/API unlock",
         "manual": True,
         "order_action": False,
         "command": f"python -m eta_engine.scripts.setup_tradovate_secrets --prop-account {prop_account}",
