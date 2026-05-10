@@ -59,6 +59,9 @@ ETA_CLOSED_TRADE_LEDGER_PATH = ETA_RUNTIME_STATE_DIR / "closed_trade_ledger_late
 ETA_BROKER_BRACKET_AUDIT_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_audit_latest.json"
 ETA_BROKER_BRACKET_MANUAL_ACK_PATH = ETA_RUNTIME_STATE_DIR / "broker_bracket_manual_oco_ack.json"
 ETA_PROP_OPERATOR_CHECKLIST_PATH = ETA_RUNTIME_STATE_DIR / "prop_operator_checklist_latest.json"
+ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH = (
+    ETA_RUNTIME_STATE_DIR / "prop_strategy_promotion_audit_latest.json"
+)
 ETA_DRIFT_WATCHDOG_LOG_PATH = ETA_RUNTIME_STATE_DIR / "drift_watchdog.jsonl"
 ETA_JARVIS_DRIFT_JOURNAL_PATH = ETA_RUNTIME_STATE_DIR / "jarvis_drift.jsonl"
 ETA_SHARED_BREAKER_STATE_PATH = ETA_RUNTIME_STATE_DIR / "breaker.json"

@@ -68,6 +68,7 @@ The futures ladder is the automated ranking surface:
 ```powershell
 cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.futures_prop_ladder --json
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 ```
 
 Current expected mode before funding/API unlock is
@@ -81,6 +82,7 @@ The prop-live gate is the hard latch:
 cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
+python -m eta_engine.scripts.prop_strategy_promotion_audit --json
 python -m eta_engine.scripts.prop_live_readiness_gate --json
 python -m eta_engine.scripts.prop_operator_checklist
 ```
@@ -169,6 +171,9 @@ Phase 4: Live watched cutover.
   `python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit`.
 - Keep the futures ladder current:
   `python -m eta_engine.scripts.futures_prop_ladder`.
+- Keep the primary promotion audit current when checking why
+  `volume_profile_mnq` is still held:
+  `python -m eta_engine.scripts.prop_strategy_promotion_audit`.
 - Keep the closed-trade ledger current:
   `python -m eta_engine.scripts.closed_trade_ledger`.
 - Keep broker-native bracket/OCO proof current:

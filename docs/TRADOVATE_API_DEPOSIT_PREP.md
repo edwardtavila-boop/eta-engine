@@ -29,6 +29,7 @@ Run the no-order readiness check:
 cd C:\EvolutionaryTradingAlgo
 python -m eta_engine.scripts.tradovate_prop_readiness --phase predeposit
 python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.prop_strategy_promotion_audit
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate
@@ -65,6 +66,12 @@ Use `prop_operator_checklist` when you want the short operator version of
 what remains. It writes
 `C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_operator_checklist_latest.json`
 and prints the exact commands for the remaining manual steps.
+
+Use `prop_strategy_promotion_audit` when the question is specifically why
+`volume_profile_mnq` is still in paper soak. It writes
+`C:\EvolutionaryTradingAlgo\var\eta_engine\state\prop_strategy_promotion_audit_latest.json`
+and lists the remaining evidence before the primary bot can move toward a
+controlled prop dry-run review.
 
 If `broker_bracket_audit` reports an open IBKR futures position that requires
 manual broker-OCO verification, clear it only after checking TWS/IB Gateway
@@ -141,6 +148,7 @@ cd C:\EvolutionaryTradingAlgo
 $env:ETA_TRADOVATE_ENABLED = "1"
 python -m eta_engine.scripts.tradovate_prop_readiness --phase cutover
 python -m eta_engine.scripts.futures_prop_ladder
+python -m eta_engine.scripts.prop_strategy_promotion_audit
 python -m eta_engine.scripts.closed_trade_ledger
 python -m eta_engine.scripts.broker_bracket_audit
 python -m eta_engine.scripts.prop_live_readiness_gate

@@ -71,6 +71,9 @@ def test_workspace_roots_point_inside_canonical_repo() -> None:
     assert workspace_roots.ETA_PROP_OPERATOR_CHECKLIST_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "prop_operator_checklist_latest.json"
     )
+    assert workspace_roots.ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH == (
+        ROOT / "var" / "eta_engine" / "state" / "prop_strategy_promotion_audit_latest.json"
+    )
     assert workspace_roots.ETA_DRIFT_WATCHDOG_LOG_PATH == (
         ROOT / "var" / "eta_engine" / "state" / "drift_watchdog.jsonl"
     )

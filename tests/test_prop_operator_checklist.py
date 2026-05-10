@@ -74,6 +74,9 @@ def test_prop_operator_checklist_turns_gate_blockers_into_operator_steps() -> No
     assert steps["verify_manual_oco_or_flatten"]["alternative_order_action"] is True
     assert steps["hold_primary_paper_soak"]["bot_id"] == "volume_profile_mnq"
     assert steps["hold_primary_paper_soak"]["launch_lane"] == "paper_soak"
+    assert steps["hold_primary_paper_soak"]["promotion_audit_command"] == (
+        "python -m eta_engine.scripts.prop_strategy_promotion_audit --json"
+    )
 
 
 def test_prop_operator_checklist_ready_has_no_blocking_steps() -> None:

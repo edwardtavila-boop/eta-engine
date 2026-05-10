@@ -98,7 +98,9 @@ def _paper_soak_step(gate_report: dict[str, Any], check: dict[str, Any]) -> dict
         "order_action": False,
         "bot_id": primary_bot,
         "launch_lane": launch_lane,
-        "command": "python -m eta_engine.scripts.futures_prop_ladder --json",
+        "command": "python -m eta_engine.scripts.prop_strategy_promotion_audit --json",
+        "promotion_audit_command": "python -m eta_engine.scripts.prop_strategy_promotion_audit --json",
+        "ladder_command": "python -m eta_engine.scripts.futures_prop_ladder --json",
         "verification_command": "python -m eta_engine.scripts.prop_live_readiness_gate --json",
         "detail": check.get("detail"),
     }
