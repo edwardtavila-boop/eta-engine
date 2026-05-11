@@ -369,6 +369,7 @@ def _live_bot_gate_check(
         launch_lane = str(readiness.get("launch_lane") or "")
         data_status = str(readiness.get("data_status") or "")
         promotion_status = str(readiness.get("promotion_status") or "")
+        provenance_present = "deactivation_source" in readiness or "deactivation_reason" in readiness
         deactivation_source = str(readiness.get("deactivation_source") or "")
         deactivation_reason = str(readiness.get("deactivation_reason") or "")
         hidden_state = (
@@ -387,6 +388,7 @@ def _live_bot_gate_check(
                 live_readiness_launch_lane=launch_lane,
                 live_readiness_data_status=data_status,
                 live_readiness_promotion_status=promotion_status,
+                live_readiness_has_deactivation_provenance=provenance_present,
                 live_readiness_deactivation_source=deactivation_source,
                 live_readiness_deactivation_reason=deactivation_reason,
                 live_readiness_next_action=(
@@ -405,6 +407,7 @@ def _live_bot_gate_check(
             live_readiness_launch_lane=launch_lane,
             live_readiness_data_status=data_status,
             live_readiness_promotion_status=promotion_status,
+            live_readiness_has_deactivation_provenance=provenance_present,
             live_readiness_deactivation_source=deactivation_source,
             live_readiness_deactivation_reason=deactivation_reason,
             live_readiness_next_action=(
@@ -461,16 +464,24 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         live_active = live_evidence.get("live_readiness_active")
         live_lane = str(live_evidence.get("live_readiness_launch_lane") or "")
         if live_active is False or live_lane.lower() == "deactivated":
-            state = str(live_evidence.get("live_readiness_promotion_status") or live_lane or "unknown")
-            source = str(live_evidence.get("live_readiness_deactivation_source") or "").strip()
-            source_suffix = f" via {source}" if source else ""
-            next_action = str(live_evidence.get("live_readiness_next_action") or "").strip()
-            suffix = f" Live readiness action: {next_action}" if next_action else ""
-            actions.append(
-                f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
-                f"paper-soak registry before any prop dry-run; live readiness currently reports "
-                f"{state}{source_suffix}.{suffix}",
-            )
+            provenance_present = live_evidence.get("live_readiness_has_deactivation_provenance")
+            if provenance_present is False:
+                actions.append(
+                    "Refresh the VPS eta_engine code and regenerate bot_strategy_readiness_latest.json; "
+                    f"the live readiness row for {PRIMARY_BOT} lacks deactivation provenance fields, "
+                    "so the current deactivated state cannot be traced to registry_extras versus kaizen_sidecar yet.",
+                )
+            else:
+                state = str(live_evidence.get("live_readiness_promotion_status") or live_lane or "unknown")
+                source = str(live_evidence.get("live_readiness_deactivation_source") or "").strip()
+                source_suffix = f" via {source}" if source else ""
+                next_action = str(live_evidence.get("live_readiness_next_action") or "").strip()
+                suffix = f" Live readiness action: {next_action}" if next_action else ""
+                actions.append(
+                    f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
+                    f"paper-soak registry before any prop dry-run; live readiness currently reports "
+                    f"{state}{source_suffix}.{suffix}",
+                )
         else:
             launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
             blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]

@@ -154,11 +154,38 @@ def test_prop_live_gate_reports_live_readiness_deactivation_drift() -> None:
     assert "deactivated on the live readiness surface" in live_check["detail"]
     assert live_check["evidence"]["live_readiness_active"] is False
     assert live_check["evidence"]["live_readiness_launch_lane"] == "deactivated"
+    assert live_check["evidence"]["live_readiness_has_deactivation_provenance"] is True
     assert live_check["evidence"]["live_readiness_deactivation_source"] == "kaizen_sidecar"
     assert live_check["evidence"]["visible_related_bots"] == ["volume_profile_nq"]
     assert "Reconcile the VPS bot_strategy_readiness artifact" in actions
     assert "via kaizen_sidecar" in actions
     assert "No action: bot is explicitly deactivated." in actions
+
+
+def test_prop_live_gate_flags_stale_live_readiness_schema() -> None:
+    payloads = _ready_payloads()
+    payloads["fleet"]["bots"] = [{"id": "volume_profile_nq", "can_live_trade": False}]
+    payloads["live_readiness"] = {
+        "found": True,
+        "bot_id": "volume_profile_mnq",
+        "readiness_next_action": "No action: bot is explicitly deactivated.",
+        "row": {
+            "bot_id": "volume_profile_mnq",
+            "active": False,
+            "launch_lane": "deactivated",
+            "data_status": "deactivated",
+            "promotion_status": "deactivated",
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+    live_check = next(check for check in report["checks"] if check["name"] == "live_bot_gate")
+    actions = "\n".join(report["next_actions"])
+
+    assert live_check["evidence"]["live_readiness_has_deactivation_provenance"] is False
+    assert "Refresh the VPS eta_engine code" in actions
+    assert "registry_extras versus kaizen_sidecar" in actions
+    assert "Live readiness action: No action" not in actions
 
 
 def test_prop_live_gate_accepts_manual_oco_verified_bracket_audit() -> None:
