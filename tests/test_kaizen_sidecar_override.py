@@ -79,6 +79,36 @@ def test_is_active_false_when_listed_in_sidecar(tmp_overrides: Path) -> None:
     assert is_bot_active("volume_profile_mnq") is False
 
 
+def test_readiness_row_exposes_kaizen_sidecar_deactivation(tmp_overrides: Path) -> None:
+    """Readiness must say why a pinned bot disappeared from live surfaces."""
+    tmp_overrides.write_text(
+        json.dumps({"deactivated": {
+            "volume_profile_mnq": {
+                "applied_at": "2026-05-11T20:50:00+00:00",
+                "reason": "test fixture drift",
+                "tier": "DECAY",
+                "mc_verdict": "DEAD",
+            },
+        }}),
+        encoding="utf-8",
+    )
+
+    from eta_engine.data.library import DataLibrary
+    from eta_engine.scripts.bot_strategy_readiness import build_readiness_matrix
+
+    rows = build_readiness_matrix(
+        library=DataLibrary(roots=[tmp_overrides.parent / "empty"]),
+        bot_ids=["volume_profile_mnq"],
+    )
+    row = rows[0]
+
+    assert row.active is False
+    assert row.launch_lane == "deactivated"
+    assert row.deactivation_source == "kaizen_sidecar"
+    assert "test fixture drift" in row.deactivation_reason
+    assert "python -m eta_engine.scripts.kaizen_reactivate volume_profile_mnq" in row.next_action
+
+
 def test_is_active_ignores_malformed_sidecar(tmp_overrides: Path) -> None:
     """Garbage sidecar → fail-safe to registry-only behavior."""
     tmp_overrides.write_text("{ this isn't valid JSON", encoding="utf-8")

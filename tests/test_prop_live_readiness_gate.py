@@ -140,6 +140,8 @@ def test_prop_live_gate_reports_live_readiness_deactivation_drift() -> None:
             "launch_lane": "deactivated",
             "data_status": "deactivated",
             "promotion_status": "deactivated",
+            "deactivation_source": "kaizen_sidecar",
+            "deactivation_reason": "DECAY; DEAD",
         },
     }
 
@@ -152,8 +154,10 @@ def test_prop_live_gate_reports_live_readiness_deactivation_drift() -> None:
     assert "deactivated on the live readiness surface" in live_check["detail"]
     assert live_check["evidence"]["live_readiness_active"] is False
     assert live_check["evidence"]["live_readiness_launch_lane"] == "deactivated"
+    assert live_check["evidence"]["live_readiness_deactivation_source"] == "kaizen_sidecar"
     assert live_check["evidence"]["visible_related_bots"] == ["volume_profile_nq"]
     assert "Reconcile the VPS bot_strategy_readiness artifact" in actions
+    assert "via kaizen_sidecar" in actions
     assert "No action: bot is explicitly deactivated." in actions
 
 

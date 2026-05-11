@@ -369,6 +369,8 @@ def _live_bot_gate_check(
         launch_lane = str(readiness.get("launch_lane") or "")
         data_status = str(readiness.get("data_status") or "")
         promotion_status = str(readiness.get("promotion_status") or "")
+        deactivation_source = str(readiness.get("deactivation_source") or "")
+        deactivation_reason = str(readiness.get("deactivation_reason") or "")
         hidden_state = (
             not live_active
             or launch_lane.lower() == "deactivated"
@@ -385,6 +387,8 @@ def _live_bot_gate_check(
                 live_readiness_launch_lane=launch_lane,
                 live_readiness_data_status=data_status,
                 live_readiness_promotion_status=promotion_status,
+                live_readiness_deactivation_source=deactivation_source,
+                live_readiness_deactivation_reason=deactivation_reason,
                 live_readiness_next_action=(
                     live_readiness.get("readiness_next_action")
                     or readiness.get("next_action")
@@ -401,6 +405,8 @@ def _live_bot_gate_check(
             live_readiness_launch_lane=launch_lane,
             live_readiness_data_status=data_status,
             live_readiness_promotion_status=promotion_status,
+            live_readiness_deactivation_source=deactivation_source,
+            live_readiness_deactivation_reason=deactivation_reason,
             live_readiness_next_action=(
                 live_readiness.get("readiness_next_action")
                 or readiness.get("next_action")
@@ -456,11 +462,14 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         live_lane = str(live_evidence.get("live_readiness_launch_lane") or "")
         if live_active is False or live_lane.lower() == "deactivated":
             state = str(live_evidence.get("live_readiness_promotion_status") or live_lane or "unknown")
+            source = str(live_evidence.get("live_readiness_deactivation_source") or "").strip()
+            source_suffix = f" via {source}" if source else ""
             next_action = str(live_evidence.get("live_readiness_next_action") or "").strip()
             suffix = f" Live readiness action: {next_action}" if next_action else ""
             actions.append(
                 f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
-                f"paper-soak registry before any prop dry-run; live readiness currently reports {state}.{suffix}",
+                f"paper-soak registry before any prop dry-run; live readiness currently reports "
+                f"{state}{source_suffix}.{suffix}",
             )
         else:
             launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")

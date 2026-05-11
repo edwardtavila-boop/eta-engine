@@ -69,6 +69,8 @@ class ReadinessRow:
     exit_playbook: str = ""
     risk_playbook: str = ""
     daily_focus: str = ""
+    deactivation_source: str = ""
+    deactivation_reason: str = ""
 
 
 _EQUITY_INDEX_FUTURES = frozenset({"MNQ", "NQ", "MES", "ES", "M2K", "RTY", "MYM", "YM"})
@@ -373,6 +375,29 @@ def _promotion_status(assignment: StrategyAssignment, *, active: bool) -> str:
     return "production" if baseline is not None else "unbaselined"
 
 
+def _deactivation_context(assignment: StrategyAssignment) -> tuple[str, str]:
+    if bool(assignment.extras.get("deactivated", False)):
+        reason = str(
+            assignment.extras.get("deactivated_reason")
+            or assignment.extras.get("deactivation_reason")
+            or "",
+        )
+        return "registry_extras", reason
+    try:
+        from eta_engine.strategies.per_bot_registry import kaizen_deactivation_record
+    except ImportError:
+        return "unknown", ""
+    record = kaizen_deactivation_record(assignment.bot_id)
+    if not record:
+        return "unknown", ""
+    reason_parts = [
+        str(record.get(key) or "")
+        for key in ("reason", "tier", "mc_verdict", "applied_at")
+        if record.get(key)
+    ]
+    return "kaizen_sidecar", "; ".join(reason_parts)
+
+
 def _row_for_assignment(assignment: StrategyAssignment, *, library: DataLibrary) -> ReadinessRow:
     from eta_engine.data.audit import audit_bot
     from eta_engine.strategies.per_bot_registry import is_active
@@ -382,6 +407,14 @@ def _row_for_assignment(assignment: StrategyAssignment, *, library: DataLibrary)
     baseline_status = _baseline_status(assignment.bot_id, assignment.strategy_id)
 
     if not active:
+        deactivation_source, deactivation_reason = _deactivation_context(assignment)
+        if deactivation_source == "kaizen_sidecar":
+            next_action = (
+                "Review the kaizen sidecar deactivation; if the operator approves "
+                f"reactivation, run: python -m eta_engine.scripts.kaizen_reactivate {assignment.bot_id}"
+            )
+        else:
+            next_action = "No action: bot is explicitly deactivated."
         return ReadinessRow(
             bot_id=assignment.bot_id,
             strategy_id=assignment.strategy_id,
@@ -397,7 +430,9 @@ def _row_for_assignment(assignment: StrategyAssignment, *, library: DataLibrary)
             can_live_trade=False,
             missing_critical=(),
             missing_optional=(),
-            next_action="No action: bot is explicitly deactivated.",
+            next_action=next_action,
+            deactivation_source=deactivation_source,
+            deactivation_reason=deactivation_reason,
         )
 
     audit = audit_bot(assignment.bot_id, library=library)

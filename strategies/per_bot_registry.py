@@ -3265,6 +3265,12 @@ def _load_kaizen_overrides() -> dict[str, dict]:
     return deact if isinstance(deact, dict) else {}
 
 
+def kaizen_deactivation_record(bot_id: str) -> dict:
+    """Return the reversible kaizen sidecar deactivation record for a bot."""
+    record = _load_kaizen_overrides().get(bot_id)
+    return record if isinstance(record, dict) else {}
+
+
 def is_active(assignment: StrategyAssignment) -> bool:
     if bool(assignment.extras.get("deactivated", False)):
         return False
@@ -3274,7 +3280,7 @@ def is_active(assignment: StrategyAssignment) -> bool:
     # 2-run confirmation gate. Operator can re-enable by removing
     # the entry (or running `python -m eta_engine.scripts.kaizen_reactivate
     # <bot_id>`).
-    return assignment.bot_id not in _load_kaizen_overrides()
+    return not kaizen_deactivation_record(assignment.bot_id)
 
 
 def is_bot_active(bot_id: str) -> bool:
