@@ -55,9 +55,10 @@ Why only these two checks
 -------------------------
 R1 (broker-equity drift) is scaffolded-only in v0.1.59; wiring the
 reconciler into preflight is blocked on broker adapter ``get_balance``
-implementations, which are venue-specific and v0.2.x scope. R4 (CME
-calendar session-day) is an in-process invariant -- there's nothing
-external to probe at preflight time.
+implementations, which are venue-specific and v0.2.x scope; lands when
+broker adapter balance parity is available. R4 (CME calendar session-day)
+is an in-process invariant -- there's nothing external to probe at
+preflight time.
 
 Design notes
 ------------
@@ -237,8 +238,9 @@ def main() -> None:
                 "Scaffolded in v0.1.59 but not surfaced at preflight. "
                 "Wiring the reconciler here is blocked on broker "
                 "adapter get_balance implementations (venue-specific, "
-                "v0.2.x scope). When wired, a 5th closure-surface "
-                "row lands here."
+                "v0.2.x scope; lands when broker adapter get_balance "
+                "parity is available). When wired, a 5th closure-"
+                "surface row lands here."
             ),
             "R4_session_day_calendar": (
                 "In-process invariant -- nothing external to probe "

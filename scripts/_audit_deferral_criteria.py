@@ -154,10 +154,13 @@ def scan(root: Path) -> list[Hit]:
         "var/",
         "state/",
     )
-    self_path = "scripts/_audit_deferral_criteria.py"
+    self_paths = {
+        "scripts/_audit_deferral_criteria.py",
+        "feeds/_audit_deferral_criteria.py",
+    }
     for p in root.rglob("*.py"):
         rel = p.relative_to(root).as_posix()
-        if rel == self_path:
+        if rel in self_paths:
             continue
         if rel.startswith("scripts/_bump_roadmap_v"):
             continue

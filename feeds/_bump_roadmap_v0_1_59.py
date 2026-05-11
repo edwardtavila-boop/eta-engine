@@ -5,7 +5,8 @@ from the D-series Red Team (v0.1.58 ``docs/red_team_d2_d3_review.md``
 R1..R4) that were originally deferred as "accepted residual risks" for
 v0.2.x. Three are closed in code + tests in this bundle; one (R1) is
 scaffolded with enforcement intentionally deferred to v0.2.x because
-the blocking dependency is broker-adapter wiring.
+the blocking dependency is broker-adapter wiring; lands when IBKR and
+Tastytrade balance adapters expose audited account-equity snapshots.
 
 Why this bundle exists
 ----------------------
@@ -82,7 +83,8 @@ R1 scaffold -- Broker-MTM equity reconciler (enforcement deferred)
   * Intentionally deferred: wiring each broker adapter's
     ``get_balance()`` / account-value endpoint to the reconciler
     (IBKR returns an empty dict today; Tastytrade/Tradovate wiring
-    is venue-specific). Tracked for v0.2.x.
+    is venue-specific). Tracked for v0.2.x; lands when broker
+    account-equity adapters are audited.
 
 Coverage delta
 --------------
@@ -141,7 +143,9 @@ def main() -> None:
             "APEX EVAL RESIDUAL-RISK CLOSURE -- re-litigation of the "
             "four HIGH residual findings (R1..R4) from the v0.1.58 "
             "D-series Red Team. Three closed in code + tests (R2/R3/R4); "
-            "one scaffolded with enforcement deferred to v0.2.x (R1)."
+            "one scaffolded with enforcement deferred to v0.2.x "
+            "(R1; lands when broker balance adapters expose audited "
+            "account-equity snapshots)."
         ),
         "theme": (
             "v0.1.58 shipped eval-ready on the BLOCKERs but the "
@@ -159,7 +163,8 @@ def main() -> None:
             "eta_engine/core/broker_equity_reconciler.py (R1: "
             "scaffold -- BrokerEquityReconciler compares logical vs "
             "broker equity with USD/pct tolerances; enforcement "
-            "deferred to v0.2.x pending broker-adapter wiring)",
+            "deferred to v0.2.x pending broker-adapter wiring; "
+            "lands when account-equity adapters are audited)",
         ],
         "modules_modified": [
             "eta_engine/core/consistency_guard.py "
@@ -319,7 +324,9 @@ def main() -> None:
                 "Rationale: until the broker adapter is wired, every "
                 "tick would classify as no_broker_data; flipping that "
                 "to an actionable signal requires a venue integration "
-                "decision that is v0.2.x scope. Shipping the "
+                "decision that is v0.2.x scope; lands when broker "
+                "balance adapters produce audited account-equity "
+                "snapshots. Shipping the "
                 "observation layer now means v0.2.x is a wiring "
                 "diff, not a wiring + policy diff."
             ),
@@ -391,8 +398,9 @@ def main() -> None:
                     "immutable audit log + reset acknowledgment, "
                     "R4 CME-calendar-aware session-day. R1 "
                     "BrokerEquityReconciler scaffolded with "
-                    "enforcement deferred to v0.2.x (broker-adapter "
-                    "wiring). D-series is now defense-in-depth "
+                    "enforcement deferred to v0.2.x (lands when "
+                    "broker-adapter account-equity wiring is audited). "
+                    "D-series is now defense-in-depth "
                     "hardened with respect to all four HIGH "
                     "residuals from the original Red Team."
                 ),

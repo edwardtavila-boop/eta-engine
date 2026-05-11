@@ -66,7 +66,8 @@ docs/red_team_d2_d3_review.md (EDIT)
   * Executive summary updated with v0.1.63 outcome line.
   * R1 section expanded with v0.1.63 runtime wiring details +
     tests + rationale for staying observation-only (KillVerdict
-    synthesis deferred to v0.2.x pending live-paper empirics).
+    synthesis deferred to v0.2.x pending live-paper empirics; lands when
+    drift tolerance calibration is backed by paper/live samples).
 
 Scope discipline
 ----------------
@@ -127,7 +128,9 @@ def main() -> None:
             "R1 END-TO-END RUNTIME WIRING -- close the last mile on "
             "R1 by wiring BrokerEquityPoller + BrokerEquityReconciler "
             "into ApexRuntime's run()/finally/_tick paths. Observation-"
-            "only; KillVerdict synthesis stays a v0.2.x scope call."
+            "only; KillVerdict synthesis stays a v0.2.x scope call; "
+            "lands when drift tolerance calibration is backed by "
+            "paper/live samples."
         ),
         "theme": (
             "v0.1.59 shipped the drift detector; v0.1.62 formalised "
@@ -198,7 +201,8 @@ def main() -> None:
                 "sustained drift to a verdict requires tolerance "
                 "calibration from live-paper empirics (commissions, "
                 "slippage, funding, carry) rather than the synthetic "
-                "harness we ship today. v0.2.x scope."
+                "harness we ship today. v0.2.x scope; lands when "
+                "paper/live tolerance samples define the threshold."
             ),
             "classification_in_tick_log": (
                 "Every tick's classification lands in "
@@ -229,7 +233,8 @@ def main() -> None:
                 "The tracker still consumes logical equity. Whether "
                 "to FEED the tracker with broker_mtm - sum(open_pnl) "
                 "once the drift check is live is a venue-integration "
-                "choice deferred to v0.2.x."
+                "choice deferred to v0.2.x; lands when venue parity "
+                "confirms broker MTM can replace logical equity safely."
             ),
         },
         "r1_closure_state": {
@@ -245,7 +250,8 @@ def main() -> None:
                 "CLOSED (observation-only) -- ApexRuntime wires and "
                 "drives the reconciler; alert on transition; full "
                 "classification in tick log. KillVerdict synthesis "
-                "deferred to v0.2.x by design, not by omission."
+                "deferred to v0.2.x by design, not by omission; "
+                "lands when paper/live drift tolerance calibration is complete."
             ),
         },
         "tests_passing_before": prev_tests,
