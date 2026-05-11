@@ -147,6 +147,17 @@ def _cfg_factory(tmp_path: Path, **overrides) -> mod.RuntimeConfig:
     return cfg
 
 
+def test_default_alert_dispatcher_follows_runtime_log_path(tmp_path: Path) -> None:
+    cfg = _cfg_factory(tmp_path)
+    runtime = mod.ApexRuntime(
+        cfg,
+        bindings=_fake_bindings(),
+        kill_switch_latch=KillSwitchLatch(tmp_path / "state" / "latch.json"),
+    )
+
+    assert runtime.dispatcher.log_path == tmp_path / "alerts_log.jsonl"
+
+
 # --------------------------------------------------------------------------- #
 # select_active_bots
 # --------------------------------------------------------------------------- #

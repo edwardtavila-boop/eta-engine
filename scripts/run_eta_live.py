@@ -100,7 +100,7 @@ from eta_engine.core.market_quality import format_market_context_summary
 from eta_engine.core.runtime_log_rotator import RuntimeLogRotator
 from eta_engine.obs.alert_dispatcher import AlertDispatcher
 from eta_engine.obs.heartbeat import HeartbeatMonitor
-from eta_engine.scripts.workspace_roots import ETA_RUNTIME_ALERTS_LOG_PATH, ETA_RUNTIME_LOG_PATH
+from eta_engine.scripts.workspace_roots import ETA_RUNTIME_LOG_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -218,6 +218,11 @@ class RuntimeConfig:
     # private-portal can pass per-user selections through without
     # touching argparse internals.
     risk_profile_name: str | None = None
+
+
+def _runtime_alert_log_path(cfg: RuntimeConfig) -> Path:
+    """Keep runtime alerts beside the selected runtime log."""
+    return cfg.log_path.with_name("alerts_log.jsonl")
 
 
 def _load_yaml(p: Path) -> dict[str, Any]:
@@ -689,7 +694,7 @@ class ApexRuntime:
         self._last_consistency_status: ConsistencyStatus | None = None
         self.dispatcher = dispatcher or AlertDispatcher(
             cfg.alerts or {},
-            log_path=ETA_RUNTIME_ALERTS_LOG_PATH,
+            log_path=_runtime_alert_log_path(cfg),
         )
         self.heartbeat = heartbeat or HeartbeatMonitor()
         self.bindings = bindings if bindings is not None else BOT_BINDINGS
