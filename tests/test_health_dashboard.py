@@ -191,6 +191,30 @@ def test_build_dashboard_green_when_all_fresh(isolated_logs: Path) -> None:
     assert d["overall"] in {"GREEN", "PASS"}
 
 
+def test_build_dashboard_surfaces_ibkr_setup_blocked(isolated_logs: Path) -> None:
+    now = datetime.now(UTC).isoformat()
+    action = "Seed IBC credentials before starting Gateway."
+    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
+        "ts": now,
+        "setup_status": "BLOCKED",
+        "setup_error_code": "ibc_credentials_missing",
+        "operator_action": action,
+        "all_realtime": False,
+        "all_depth_ok": False,
+        "results": [],
+        "depth_results": [],
+    }])
+
+    d = hd.build_dashboard()
+
+    sub = d["sections"]["ibkr_subscriptions"]
+    assert sub["status"] == "BLOCKED"
+    assert sub["setup_error_code"] == "ibc_credentials_missing"
+    assert sub["operator_action"] == action
+    assert d["overall"] == "BLOCKED"
+    assert action in hd.render_text(d)
+
+
 def test_build_dashboard_overall_worst_when_critical(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
     _write_jsonl(hd.SOURCES["disk_space"], [{

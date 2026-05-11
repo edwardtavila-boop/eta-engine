@@ -151,7 +151,7 @@ def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
 def _verdict_emoji(level: str) -> str:
     return {"GREEN": "[OK]", "PASS": "[OK]", "FRESH": "[OK]",
             "YELLOW": "[??]", "WARN": "[??]",
-            "RED": "[!!]", "FAIL": "[!!]", "STALE": "[!!]",
+            "RED": "[!!]", "FAIL": "[!!]", "STALE": "[!!]", "BLOCKED": "[!!]",
             "CRITICAL": "[XX]", "ERROR": "[XX]",
             "MISSING": "[--]", "NEVER_RUN": "[--]"}.get(level, "[?]")
 
@@ -184,11 +184,21 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     # 2. IBKR subscription audit
     sub = _last_jsonl_record(SOURCES["ibkr_sub_status"])
     if sub:
+        if sub.get("setup_status") == "BLOCKED":
+            sub_status = "BLOCKED"
+        else:
+            all_depth_ok = sub.get("all_depth_ok")
+            sub_status = "PASS" if sub.get("all_realtime") and all_depth_ok is not False else "FAIL"
         out["sections"]["ibkr_subscriptions"] = {
-            "status": "PASS" if sub.get("all_realtime") else "FAIL",
+            "status": sub_status,
             "ts": sub.get("ts"),
-            "results": [{"exchange": r["exchange"], "verdict": r.get("verdict")}
-                        for r in sub.get("results", [])],
+            "setup_status": sub.get("setup_status"),
+            "setup_error_code": sub.get("setup_error_code"),
+            "operator_action": sub.get("operator_action"),
+            "results": [{"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
+                        for r in sub.get("results", []) if isinstance(r, dict)],
+            "depth_results": [{"exchange": r.get("exchange", "?"), "verdict": r.get("verdict")}
+                              for r in sub.get("depth_results", []) if isinstance(r, dict)],
         }
     else:
         out["sections"]["ibkr_subscriptions"] = {"status": "NEVER_RUN", "ts": None}
@@ -297,7 +307,7 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     # Overall verdict (worst across sections)
     rank = {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0,
             "YELLOW": 1, "WARN": 1,
-            "RED": 2, "FAIL": 2, "STALE": 2,
+            "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2,
             "CRITICAL": 3, "ERROR": 3,
             "MISSING": 1, "NEVER_RUN": 1, "PARSE_ERROR": 2}
     worst_rank = -1
@@ -325,11 +335,18 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
                        f"tier={s['supercharge'].get('tier', '?')} "
                        f"verdicts={s['supercharge'].get('n_verdicts', 0)}/{s['supercharge'].get('n_bots', 0)} "
                        f"sage_agree={s['supercharge'].get('sage_agree', 0)}"))
+    ibkr_sub = s["ibkr_subscriptions"]
+    ibkr_detail = ibkr_sub.get("operator_action")
+    if not ibkr_detail:
+        tick_detail = ", ".join(f"{r['exchange']}:{r.get('verdict', '?')}"
+                                for r in ibkr_sub.get("results", []))
+        depth_detail = ", ".join(f"{r['exchange']} depth:{r.get('verdict', '?')}"
+                                 for r in ibkr_sub.get("depth_results", []))
+        ibkr_detail = " | ".join(part for part in (tick_detail, depth_detail) if part) or "n/a"
     lines.append(_row("ibkr subscriptions",
-                       s["ibkr_subscriptions"].get("status", "?"),
-                       _age_str(s["ibkr_subscriptions"].get("ts")),
-                       ", ".join(f"{r['exchange']}:{r.get('verdict', '?')}"
-                                 for r in s["ibkr_subscriptions"].get("results", [])) or "n/a"))
+                       ibkr_sub.get("status", "?"),
+                       _age_str(ibkr_sub.get("ts")),
+                       ibkr_detail))
     lines.append(_row("capture health",
                        s["capture_health"].get("status", "?"),
                        _age_str(s["capture_health"].get("ts")),
@@ -386,7 +403,7 @@ def main() -> int:
     # Exit-code mapping for cron / shell:
     return {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0,
             "YELLOW": 1, "WARN": 1, "MISSING": 1, "NEVER_RUN": 1,
-            "RED": 2, "FAIL": 2, "STALE": 2, "PARSE_ERROR": 2,
+            "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2, "PARSE_ERROR": 2,
             "CRITICAL": 3, "ERROR": 3}.get(d["overall"], 1)
 
 

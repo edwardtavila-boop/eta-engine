@@ -58,6 +58,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import socket
 import sys
 import time
@@ -70,6 +71,8 @@ sys.path.insert(0, str(ROOT.parent))
 LOG_DIR = ROOT.parent / "logs" / "eta_engine"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 STATUS_LOG = LOG_DIR / "ibkr_subscription_status.jsonl"
+IBC_PASSWORD_FILE = ROOT.parent / "var" / "eta_engine" / "state" / "ibkr_pw.txt"
+IBC_CREDENTIAL_JSON = ROOT / "secrets" / "ibkr_credentials.json"
 
 
 # Representative probe symbol per exchange.  These are the most-liquid
@@ -101,6 +104,133 @@ DATA_TYPE_LABEL = {
     3: ("DELAYED",         "FAIL",  "15-min delayed -- subscription INACTIVE for this exchange"),
     4: ("DELAYED-FROZEN",  "FAIL",  "delayed AND frozen -- subscription INACTIVE + outside RTH"),
 }
+
+
+def _read_first_line(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (IndexError, OSError, UnicodeDecodeError):
+        return ""
+
+
+def _read_json_map(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _is_secret_sentinel(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    token = value.strip()
+    if not token:
+        return True
+    upper = token.upper()
+    return (
+        any(marker in upper for marker in ("REPLACE", "PLACEHOLDER", "TODO", "CHANGEME"))
+        or "REAL_IBKR_PASSWORD" in upper
+        or (token.startswith("<") and token.endswith(">") and "PASSWORD" in upper)
+    )
+
+
+def _usable_secret(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    token = value.strip()
+    if _is_secret_sentinel(token):
+        return ""
+    return token
+
+
+def _first_usable_secret(candidates: list[tuple[str, object]]) -> tuple[str | None, bool]:
+    saw_placeholder = False
+    for source, value in candidates:
+        if _is_secret_sentinel(value):
+            saw_placeholder = True
+            continue
+        if _usable_secret(value):
+            return source, saw_placeholder
+    return None, saw_placeholder
+
+
+def _ibc_credential_status(
+    env: dict[str, str] | None = None,
+    *,
+    password_file: Path = IBC_PASSWORD_FILE,
+    credential_json: Path = IBC_CREDENTIAL_JSON,
+) -> dict[str, object]:
+    """Return non-secret IBC credential readiness for dashboard/setup gates."""
+    env_map = env if env is not None else os.environ
+    credential_payload = _read_json_map(credential_json)
+    file_password = _read_first_line(password_file)
+    password_file_placeholder = bool(password_file.exists() and _is_secret_sentinel(file_password))
+
+    login_source, _ = _first_usable_secret([
+        ("env", env_map.get("ETA_IBC_LOGIN_ID")),
+        ("env", env_map.get("IBKR_USERNAME")),
+        ("env", env_map.get("IBKR_LOGIN_ID")),
+        ("credential_json", credential_payload.get("username")),
+        ("credential_json", credential_payload.get("user")),
+        ("credential_json", credential_payload.get("login")),
+        ("credential_json", credential_payload.get("ib_login_id")),
+        ("credential_json", credential_payload.get("user_id")),
+    ])
+    password_source, password_placeholder_seen = _first_usable_secret([
+        ("env", env_map.get("ETA_IBC_PASSWORD")),
+        ("env", env_map.get("IBKR_PASSWORD")),
+        ("password_file", file_password),
+        ("credential_json", credential_payload.get("password")),
+        ("credential_json", credential_payload.get("pass")),
+        ("credential_json", credential_payload.get("ib_password")),
+    ])
+
+    login_present = login_source is not None
+    password_present = password_source is not None
+    ready = login_present and password_present
+    if ready:
+        status = "READY"
+        operator_action = None
+    elif not login_present:
+        status = "MISSING_LOGIN"
+        operator_action = (
+            "Seed ETA_IBC_LOGIN_ID/IBKR_USERNAME or add a username to "
+            "eta_engine/secrets/ibkr_credentials.json."
+        )
+    elif password_placeholder_seen or password_file_placeholder:
+        status = "PLACEHOLDER_PASSWORD"
+        operator_action = (
+            "Seed ETA_IBC_PASSWORD with set_ibc_credentials.ps1 -PromptForPassword "
+            "or replace the protected password file with the real IBKR paper password."
+        )
+    else:
+        status = "MISSING_PASSWORD"
+        operator_action = (
+            "Seed ETA_IBC_PASSWORD with set_ibc_credentials.ps1 -PromptForPassword "
+            "or create the protected IBC password file."
+        )
+
+    return {
+        "ready": ready,
+        "status": status,
+        "login_present": login_present,
+        "password_present": password_present,
+        "login_source": login_source,
+        "password_source": password_source,
+        "password_file_exists": password_file.exists(),
+        "password_file_placeholder": password_file_placeholder,
+        "credential_json_exists": credential_json.exists(),
+        "operator_action": operator_action,
+    }
+
+
+def _write_status_digest(digest: dict) -> None:
+    try:
+        with STATUS_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(digest, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
 
 
 def _tws_port() -> int | None:
@@ -378,23 +508,68 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     log = logging.getLogger("verify_ibkr_subs")
+    credential_status = _ibc_credential_status()
 
     # Port auto-detect
     port = args.port or _tws_port()
     if port is None:
-        msg = "TWS Gateway unreachable on 4002/7497/4001 -- start TWS or pass --port"
+        if credential_status.get("ready"):
+            msg = "TWS Gateway unreachable on 4002/7497/4001 -- start TWS or pass --port"
+            setup_error_code = "gateway_unreachable"
+            operator_action = "Start IB Gateway or run ETA-IBGateway-RunNow."
+        else:
+            msg = (
+                "TWS Gateway unreachable and IBC credentials are not seeded or still "
+                "placeholder -- seed credentials before starting Gateway."
+            )
+            setup_error_code = "ibc_credentials_missing"
+            operator_action = credential_status.get("operator_action")
+        digest = {
+            "ts": datetime.now(UTC).isoformat(),
+            "host": args.host,
+            "port": None,
+            "client_id": args.client_id,
+            "setup_status": "BLOCKED",
+            "setup_error_code": setup_error_code,
+            "error": msg,
+            "credential_status": credential_status,
+            "operator_action": operator_action,
+            "results": [],
+            "depth_results": [],
+            "all_realtime": False,
+            "all_depth_ok": False,
+        }
+        _write_status_digest(digest)
         if args.json:
-            print(json.dumps({"error": msg, "exit_code": 2}))
+            print(json.dumps(digest | {"exit_code": 2}))
         else:
             log.error(msg)
+            if operator_action:
+                log.error("operator_action: %s", operator_action)
         return 2
 
     try:
         from ib_insync import IB
     except ImportError:
         msg = "ib_insync not installed -- pip install ib_insync"
+        digest = {
+            "ts": datetime.now(UTC).isoformat(),
+            "host": args.host,
+            "port": port,
+            "client_id": args.client_id,
+            "setup_status": "BLOCKED",
+            "setup_error_code": "missing_ib_insync",
+            "error": msg,
+            "credential_status": credential_status,
+            "operator_action": "Install ib_insync in the ETA runtime environment.",
+            "results": [],
+            "depth_results": [],
+            "all_realtime": False,
+            "all_depth_ok": False,
+        }
+        _write_status_digest(digest)
         if args.json:
-            print(json.dumps({"error": msg, "exit_code": 2}))
+            print(json.dumps(digest | {"exit_code": 2}))
         else:
             log.error(msg)
         return 2
@@ -404,8 +579,24 @@ def main() -> int:
         ib.connect(args.host, port, clientId=args.client_id, timeout=10)
     except Exception as e:
         msg = f"TWS connect failed at {args.host}:{port} clientId={args.client_id} -- {e}"
+        digest = {
+            "ts": datetime.now(UTC).isoformat(),
+            "host": args.host,
+            "port": port,
+            "client_id": args.client_id,
+            "setup_status": "BLOCKED",
+            "setup_error_code": "gateway_connect_failed",
+            "error": msg,
+            "credential_status": credential_status,
+            "operator_action": "Verify IB Gateway is running and API access is enabled.",
+            "results": [],
+            "depth_results": [],
+            "all_realtime": False,
+            "all_depth_ok": False,
+        }
+        _write_status_digest(digest)
         if args.json:
-            print(json.dumps({"error": msg, "exit_code": 2}))
+            print(json.dumps(digest | {"exit_code": 2}))
         else:
             log.error(msg)
         return 2
@@ -441,16 +632,15 @@ def main() -> int:
     digest = {
         "ts": datetime.now(UTC).isoformat(),
         "host": args.host, "port": port, "client_id": args.client_id,
+        "setup_status": "OK",
+        "setup_error_code": None,
+        "credential_status": credential_status,
         "results": results,
         "depth_results": depth_results,
         "all_realtime": all_realtime,
         "all_depth_ok": all_depth_ok,
     }
-    try:
-        with STATUS_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(digest, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
+    _write_status_digest(digest)
 
     if args.json:
         print(json.dumps(digest, indent=2))
