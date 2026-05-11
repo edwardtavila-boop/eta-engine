@@ -299,6 +299,28 @@ def test_I6_check_staleness_returns_STALE_when_old_snap() -> None:
     assert out["reason"] == "stale_no_recent_snapshot"
 
 
+def test_spread_regime_handles_none_spread_field() -> None:
+    """Real depth feeds occasionally publish snapshots where ``spread``
+    is explicitly None (one side of the book momentarily empty).
+    ``dict.get(key, default)`` returns the default ONLY when the key
+    is absent, NOT when the value is None — so a present-but-None
+    field used to crash float() with TypeError.
+
+    Regression for the bug uncovered by the L2-BacktestDaily cron on
+    the VPS at 2026-05-11 18:13 UTC (deploy day): treat None as 0.0
+    so the regime filter never crashes on a malformed snapshot.
+    """
+    cfg = srf.SpreadRegimeConfig()
+    state = srf.SpreadRegimeState()
+    base = datetime(2026, 5, 11, 14, 30, 0, tzinfo=UTC)
+    # spread=None should not raise
+    snap = _snap([10], [10], spread=0.25)
+    snap["spread"] = None
+    out = srf.update_spread_regime(snap, cfg, state, now=base)
+    assert out["current_spread"] == 0.0  # coerced from None
+    assert out["paused"] is False
+
+
 def test_I6_long_pause_sets_warning_flag() -> None:
     cfg = srf.SpreadRegimeConfig(pause_at_multiple=4.0, resume_at_multiple=2.0,
                                   max_pause_seconds=10.0)

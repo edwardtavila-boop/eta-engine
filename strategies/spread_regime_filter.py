@@ -100,7 +100,13 @@ def update_spread_regime(snapshot: dict, config: SpreadRegimeConfig,
     Strategies should refuse to enter when verdict in {"PAUSE","STALE"}.
     """
     now = now or datetime.now(UTC)
-    spread = float(snapshot.get("spread", 0.0))
+    # Defensive: depth snapshots from real feeds sometimes carry
+    # spread=None when bid or ask is missing.  dict.get's default
+    # fires only when the KEY is absent, not when the value is None,
+    # so a present-but-None field would slip through and crash
+    # float() — coerce to 0.0 explicitly.
+    spread_raw = snapshot.get("spread")
+    spread = float(spread_raw) if spread_raw is not None else 0.0
 
     # Cap at lookback_minutes worth of snaps at the configured cadence
     max_len = max(1, int(config.lookback_minutes * 60 / max(config.snapshot_interval_seconds, 0.001)))

@@ -439,7 +439,11 @@ def _realized_atr_points(snapshots: list[dict], lookback: int = 20,
     """
     if len(snapshots) < lookback:
         return default
-    mids = [float(s.get("mid", 0.0)) for s in snapshots[-lookback:]]
+    # Defensive None handling: real depth feeds occasionally publish
+    # snapshots with mid=None (one side empty during auction).  Treat
+    # None as 0 so the existing "any m == 0 → return default" guard
+    # rejects them instead of crashing float().
+    mids = [float(s.get("mid") or 0.0) for s in snapshots[-lookback:]]
     if not mids or any(m == 0 for m in mids):
         return default
     rng = max(mids) - min(mids)
@@ -467,12 +471,13 @@ def _simulate_exit_pessimistic(entry_signal, future_snaps: list[dict],
     exit_price = entry_signal.entry_price
     exit_ts = entry_signal.snapshot_ts
     for snap in future_snaps[:max_bars]:
-        mid = float(snap.get("mid", 0.0))
+        # Defensive None handling — see _realized_atr_points docstring.
+        mid = float(snap.get("mid") or 0.0)
         # We use the snap's spread to bracket the high/low of this tick
         # window (mid ± spread/2 is a rough proxy when no OHLC is in
         # the depth schema).  This is a coarse approximation but better
         # than treating mid as the only price visited in the window.
-        spread = float(snap.get("spread", 0.0))
+        spread = float(snap.get("spread") or 0.0)
         snap_high = mid + spread / 2
         snap_low = mid - spread / 2
         snap_ts = str(snap.get("ts", ""))

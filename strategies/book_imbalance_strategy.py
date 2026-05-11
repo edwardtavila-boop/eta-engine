@@ -332,7 +332,11 @@ def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
 
     # Spread filter (I5) — tick_size now per-symbol, not hardcoded MNQ
     tick = config.tick_size if config.tick_size is not None else get_tick_size(symbol)
-    spread = snapshot.get("spread", 0.0)
+    # Defensive: depth snapshots from real feeds may publish spread=None
+    # when one side of the book is momentarily empty.  dict.get default
+    # fires only on absent keys, not None values — coerce explicitly.
+    spread_raw = snapshot.get("spread")
+    spread = float(spread_raw) if spread_raw is not None else 0.0
     if spread < config.spread_min_ticks * tick:
         return None
     if spread > config.spread_max_ticks * tick:
@@ -355,7 +359,9 @@ def evaluate_snapshot(snapshot: dict, config: BookImbalanceConfig,
         return None
 
     state.last_snapshot = snapshot
-    mid = float(snapshot.get("mid", 0.0))
+    # Same None-vs-default pattern as spread (above).
+    mid_raw = snapshot.get("mid")
+    mid = float(mid_raw) if mid_raw is not None else 0.0
 
     # Stop-floor sanity (B6 prerequisite) — refuse to emit when ATR is
     # so small the stop collapses below min_stop_ticks * tick.
