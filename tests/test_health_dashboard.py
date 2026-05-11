@@ -159,6 +159,39 @@ def test_render_text_groups_broker_credential_aliases(
     assert "x3" in text
 
 
+def test_render_text_prioritizes_actionable_alert_groups(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC)
+    _write_jsonl(hd.SOURCES["alerts"], [
+        {
+            "ts": (now - timedelta(minutes=10)).timestamp(),
+            "level": "INFO",
+            "source": "runtime_start",
+            "payload": {"active_bots": ["mnq"], "live": False},
+        },
+        {
+            "ts": (now - timedelta(minutes=9)).timestamp(),
+            "level": "INFO",
+            "source": "runtime_stop",
+            "payload": {"bars": 2},
+        },
+        {
+            "ts": (now - timedelta(minutes=2)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "credentials missing",
+        },
+    ])
+
+    text = hd.render_text(hd.build_dashboard())
+
+    assert "broker ibkr YELLOW: credentials missing" in text
+    assert "runtime_start" not in text
+    assert "runtime_stop" not in text
+
+
 def test_render_text_groups_duplicate_recent_alerts(isolated_logs: Path) -> None:
     now = datetime.now(UTC)
     _write_jsonl(hd.SOURCES["alerts"], [

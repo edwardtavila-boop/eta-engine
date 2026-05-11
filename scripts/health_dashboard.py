@@ -242,7 +242,13 @@ def _recent_alert_groups(alerts: list[dict], *, limit: int = 10) -> list[dict]:
     def sort_key(group: dict) -> datetime:
         return _parse_ts(group.get("latest_ts")) or datetime.min.replace(tzinfo=UTC)
 
-    return sorted(groups.values(), key=sort_key)[-limit:]
+    sorted_groups = sorted(groups.values(), key=sort_key)
+    actionable = [
+        group
+        for group in sorted_groups
+        if str(group["level"]).upper() not in {"INFO", "GREEN", "PASS", "FRESH"}
+    ]
+    return (actionable or sorted_groups)[-limit:]
 
 
 def build_dashboard(*, alert_hours: int = 24) -> dict:
