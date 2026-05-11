@@ -342,6 +342,22 @@ API_BUILD_CAPABILITIES = (
 )
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+# The Kaizen loop runs every 15 minutes. Keep a small grace window so normal
+# scheduler drift does not hide an otherwise current blocked-readiness receipt.
+_ETA_READINESS_SNAPSHOT_MAX_AGE_S = _positive_int_env(
+    "ETA_READINESS_SNAPSHOT_MAX_AGE_S",
+    20 * 60,
+)
+
+
 def _dashboard_cors_origins() -> list[str]:
     """Return public dashboard origins plus optional comma-separated overrides."""
     configured = os.environ.get("ETA_DASHBOARD_CORS_ORIGINS", "")
@@ -533,7 +549,7 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
 
     checked_at = receipt.get("checked_at_utc") or receipt.get("checked_at")
     age_s = _iso_age_s(checked_at, server_ts=server_ts)
-    fresh = age_s is not None and age_s <= 900
+    fresh = age_s is not None and age_s <= _ETA_READINESS_SNAPSHOT_MAX_AGE_S
     raw_summary = str(receipt.get("summary") or "UNKNOWN")
     checks = receipt.get("checks") if isinstance(receipt.get("checks"), list) else []
     pass_statuses = {"OK", "PASS", "READY", "READY_NO_OPEN_EXPOSURE"}

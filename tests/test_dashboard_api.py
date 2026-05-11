@@ -1382,6 +1382,51 @@ class TestDashboardAPI:
         assert snapshot["primary_action"].startswith("Keep volume_profile_mnq")
         assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
+    def test_dashboard_diagnostics_allows_readiness_scheduler_grace(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": (datetime.now(UTC) - timedelta(seconds=1000)).isoformat(),
+                    "summary": "BLOCKED",
+                    "checks": [
+                        {
+                            "name": "closed_trade_ledger",
+                            "status": "OK",
+                            "exit_code": 0,
+                            "payload": {"closed_trade_count": 1},
+                        },
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": "Verify broker OCO coverage.",
+                                "position_summary": {
+                                    "missing_bracket_count": 1,
+                                    "broker_open_position_count": 1,
+                                },
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["status"] == "blocked"
+        assert snapshot["fresh"] is True
+        assert snapshot["age_s"] >= 1000
+        assert snapshot["primary_action"] == "Verify broker OCO coverage."
+
     def test_dashboard_diagnostics_promotes_public_fallback_readiness_action(
         self,
         app_client,
