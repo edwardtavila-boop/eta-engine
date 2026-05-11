@@ -358,7 +358,16 @@ def _position_venue(position: dict[str, Any]) -> str:
     return str(position.get("venue") or "").strip().lower()
 
 
-def _manual_ack_covers(
+def _manual_ack_entries(manual_ack: dict[str, Any]) -> list[dict[str, Any]]:
+    if not manual_ack:
+        return []
+    entries = _as_list(manual_ack.get("acks"))
+    if entries:
+        return [_as_dict(entry) for entry in entries if _as_dict(entry)]
+    return [manual_ack]
+
+
+def _single_manual_ack_covers(
     position: dict[str, Any],
     manual_ack: dict[str, Any],
     *,
@@ -376,6 +385,18 @@ def _manual_ack_covers(
     if expires_at is None:
         return False
     return expires_at > (now or datetime.now(UTC))
+
+
+def _manual_ack_covers(
+    position: dict[str, Any],
+    manual_ack: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    return any(
+        _single_manual_ack_covers(position, entry, now=now)
+        for entry in _manual_ack_entries(manual_ack)
+    )
 
 
 def _unprotected_positions(
@@ -429,7 +450,17 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
     if summary != "BLOCKED_UNBRACKETED_EXPOSURE":
         return []
     primary = positions[0] if positions else {}
-    descriptor = _position_descriptor(primary) if primary else "current broker exposure"
+    symbols = sorted(
+        {
+            str(position.get("symbol") or "").strip().upper()
+            for position in positions
+            if str(position.get("symbol") or "").strip()
+        },
+    )
+    descriptor = ", ".join(symbols) if symbols else (
+        _position_descriptor(primary) if primary else "current broker exposure"
+    )
+    oco_verb = "have" if len(symbols) != 1 else "has"
     symbol = str(primary.get("symbol") or "").strip() or None
     return [
         {
@@ -439,7 +470,8 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
             "order_action": False,
             "blocks_prop_dry_run": True,
             "symbol": symbol,
-            "detail": f"Confirm {descriptor} has broker-native TP/SL OCO attached outside ETA.",
+            "symbols": symbols,
+            "detail": f"Confirm {descriptor} {oco_verb} broker-native TP/SL OCO attached outside ETA.",
         },
         {
             "id": "flatten_unprotected_paper_exposure",
@@ -448,6 +480,7 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
             "order_action": True,
             "blocks_prop_dry_run": True,
             "symbol": symbol,
+            "symbols": symbols,
             "detail": f"Alternative: flatten {descriptor} before prop dry-run if no OCO exists.",
         },
     ]
@@ -613,13 +646,22 @@ def build_bracket_audit(
         "fleet_truth_present": fleet_truth_present,
         "position_summary": position_summary,
         "manual_oco_ack": {
-            "present": bool(manual_ack),
+            "present": bool(_manual_ack_entries(manual_ack)),
             "symbol": manual_ack.get("symbol"),
             "venue": manual_ack.get("venue"),
-            "verified": _as_bool(manual_ack.get("verified")),
+            "verified": _as_bool(manual_ack.get("verified"))
+            or any(_as_bool(entry.get("verified")) for entry in _manual_ack_entries(manual_ack)),
             "operator": manual_ack.get("operator"),
             "verified_at_utc": manual_ack.get("verified_at_utc"),
             "expires_at_utc": manual_ack.get("expires_at_utc"),
+            "ack_count": len(_manual_ack_entries(manual_ack)),
+            "symbols": sorted(
+                {
+                    str(entry.get("symbol") or "").strip().upper()
+                    for entry in _manual_ack_entries(manual_ack)
+                    if str(entry.get("symbol") or "").strip()
+                },
+            ),
         },
         "manual_oco_verified_positions": manual_oco_verified_positions,
         "unprotected_positions": unprotected_positions,
@@ -663,6 +705,43 @@ def build_manual_oco_ack(
     }
 
 
+def build_manual_oco_ack_ledger(
+    *,
+    symbols: list[str],
+    operator: str,
+    venue: str = "",
+    note: str = "",
+    expires_hours: float = 24.0,
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    clean_symbols = list(
+        dict.fromkeys(symbol.strip().upper() for symbol in symbols if symbol.strip()),
+    )
+    return {
+        "kind": "eta_broker_bracket_manual_oco_ack_ledger",
+        "schema_version": 2,
+        "verified": True,
+        "operator": operator.strip(),
+        "verified_at_utc": now.isoformat(),
+        "expires_at_utc": (now + timedelta(hours=expires_hours)).isoformat(),
+        "note": note.strip(),
+        "acks": [
+            {
+                "kind": "eta_broker_bracket_manual_oco_ack",
+                "schema_version": 1,
+                "symbol": symbol,
+                "venue": venue.strip().lower(),
+                "verified": True,
+                "operator": operator.strip(),
+                "verified_at_utc": now.isoformat(),
+                "expires_at_utc": (now + timedelta(hours=expires_hours)).isoformat(),
+                "note": note.strip(),
+            }
+            for symbol in clean_symbols
+        ],
+    }
+
+
 def write_manual_oco_ack(
     ack: dict[str, Any],
     path: Path = DEFAULT_MANUAL_ACK_PATH,
@@ -681,6 +760,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manual-ack-path", type=Path, default=DEFAULT_MANUAL_ACK_PATH)
     parser.add_argument("--ack-manual-oco", action="store_true")
     parser.add_argument("--symbol", help="Broker symbol manually verified with broker-native OCO")
+    parser.add_argument("--symbols", help="Comma-separated broker symbols manually verified with broker-native OCO")
     parser.add_argument("--venue", default="ibkr", help="Broker venue for the manual OCO verification")
     parser.add_argument("--operator", help="Operator name recording the manual broker-OCO verification")
     parser.add_argument("--note", default="", help="Optional evidence note for the manual OCO verification")
@@ -693,24 +773,39 @@ def main(argv: list[str] | None = None) -> int:
     if args.ack_manual_oco:
         if not args.confirm:
             parser.error("--ack-manual-oco requires --confirm after manually verifying broker OCO coverage")
-        if not args.symbol:
-            parser.error("--ack-manual-oco requires --symbol")
+        symbols = []
+        if args.symbol:
+            symbols.append(str(args.symbol))
+        if args.symbols:
+            symbols.extend(str(symbol) for symbol in str(args.symbols).split(","))
+        symbols = [symbol.strip().upper() for symbol in symbols if symbol.strip()]
+        if not symbols:
+            parser.error("--ack-manual-oco requires --symbol or --symbols")
         if not args.operator:
             parser.error("--ack-manual-oco requires --operator")
         if args.expires_hours <= 0:
             parser.error("--expires-hours must be positive")
-        ack = build_manual_oco_ack(
-            symbol=args.symbol,
-            venue=args.venue,
-            operator=args.operator,
-            note=args.note,
-            expires_hours=args.expires_hours,
-        )
+        if len(symbols) == 1:
+            ack = build_manual_oco_ack(
+                symbol=symbols[0],
+                venue=args.venue,
+                operator=args.operator,
+                note=args.note,
+                expires_hours=args.expires_hours,
+            )
+        else:
+            ack = build_manual_oco_ack_ledger(
+                symbols=symbols,
+                venue=args.venue,
+                operator=args.operator,
+                note=args.note,
+                expires_hours=args.expires_hours,
+            )
         out_path = write_manual_oco_ack(ack, args.manual_ack_path)
         if args.json:
             print(json.dumps({"manual_oco_ack": ack, "path": str(out_path)}, indent=2, sort_keys=True))
         else:
-            print(f"manual broker OCO ack recorded: {args.symbol.strip().upper()} ({args.venue.strip().lower()})")
+            print(f"manual broker OCO ack recorded: {', '.join(symbols)} ({args.venue.strip().lower()})")
             print(f"expires: {ack['expires_at_utc']}")
             print(f"wrote: {out_path}")
         return 0
