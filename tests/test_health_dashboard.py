@@ -101,6 +101,55 @@ def test_alert_render_helpers_summarize_runtime_payload() -> None:
     assert hd._alert_message(alert) == "active_bots=['mnq'] live=False"
 
 
+def test_alert_message_uses_title_when_body_is_placeholder() -> None:
+    alert = {
+        "title": "broker ibkr YELLOW",
+        "body": "x",
+    }
+
+    assert hd._alert_message(alert) == "broker ibkr YELLOW"
+
+
+def test_render_text_groups_duplicate_recent_alerts(isolated_logs: Path) -> None:
+    now = datetime.now(UTC)
+    _write_jsonl(hd.SOURCES["alerts"], [
+        {
+            "ts": (now - timedelta(minutes=5)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "x",
+        },
+        {
+            "ts": (now - timedelta(minutes=4)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "x",
+        },
+        {
+            "ts": (now - timedelta(minutes=3)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "x",
+        },
+        {
+            "ts": (now - timedelta(minutes=2)).timestamp(),
+            "level": "CRITICAL",
+            "source": "broker-session-monitor",
+            "title": "broker tastytrade RED",
+            "body": "500",
+        },
+    ])
+
+    text = hd.render_text(hd.build_dashboard())
+
+    assert text.count("broker ibkr YELLOW") == 1
+    assert "x3" in text
+    assert "broker tastytrade RED" in text
+
+
 # ── _last_jsonl_record ────────────────────────────────────────────
 
 

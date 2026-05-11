@@ -173,6 +173,14 @@ def _alert_source(alert: dict) -> str:
 
 
 def _alert_message(alert: dict) -> str:
+    title = alert.get("title")
+    body = alert.get("body")
+    if title and body:
+        body_text = str(body).strip()
+        title_text = str(title).strip()
+        if body_text.lower() in {"x", "n/a", "na", "none", "-"}:
+            return title_text
+        return f"{title_text}: {body_text}"
     for key in ("message", "body", "reason", "title"):
         value = alert.get(key)
         if value:
@@ -202,6 +210,33 @@ def _alert_message(alert: dict) -> str:
     if alert.get("event"):
         return str(alert["event"])
     return "no alert detail"
+
+
+def _recent_alert_groups(alerts: list[dict], *, limit: int = 10) -> list[dict]:
+    """Compact repeated alert rows so the dashboard shows signal, not spam."""
+    groups: dict[tuple[str, str, str], dict] = {}
+    for alert in alerts:
+        level = _alert_level(alert)
+        source = _alert_source(alert)
+        message = _alert_message(alert)
+        key = (level, source, message)
+        group = groups.setdefault(
+            key,
+            {
+                "level": level,
+                "source": source,
+                "message": message,
+                "count": 0,
+                "latest_ts": None,
+            },
+        )
+        group["count"] += 1
+        group["latest_ts"] = alert.get("timestamp_utc") or alert.get("ts")
+
+    def sort_key(group: dict) -> datetime:
+        return _parse_ts(group.get("latest_ts")) or datetime.min.replace(tzinfo=UTC)
+
+    return sorted(groups.values(), key=sort_key)[-limit:]
 
 
 def build_dashboard(*, alert_hours: int = 24) -> dict:
@@ -502,12 +537,13 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
     if not d["recent_alerts"]:
         lines.append("  (none)")
     else:
-        for a in d["recent_alerts"][-10:]:
-            lvl = _alert_level(a)
-            src = _alert_source(a)[:26]
-            msg = _alert_message(a)[:60]
-            ts_age = _age_str(a.get("timestamp_utc") or a.get("ts"))
-            lines.append(f"  {_verdict_emoji(lvl)} {lvl:<8s} [{src:<26s}] {ts_age:<6s} {msg}")
+        for a in _recent_alert_groups(d["recent_alerts"], limit=10):
+            lvl = a["level"]
+            src = a["source"][:26]
+            msg = a["message"][:60]
+            ts_age = _age_str(a.get("latest_ts"))
+            count = f" x{a['count']}" if a["count"] > 1 else ""
+            lines.append(f"  {_verdict_emoji(lvl)} {lvl:<8s} [{src:<26s}] {ts_age:<6s} {msg}{count}")
     lines.append("")
     return "\n".join(lines)
 
