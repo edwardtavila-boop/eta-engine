@@ -15,20 +15,46 @@
 # Run on VPS after subscriptions are active and capture data is flowing.
 # Idempotent: re-running re-registers each task without errors.
 
+param(
+    [string]$PythonPath = "",
+    [string]$WorkspaceRoot = "C:\EvolutionaryTradingAlgo",
+    [string]$TaskUser = "",
+    [switch]$StartNow
+)
+
 $ErrorActionPreference = "Stop"
 
-$pythonPath = "C:\Program Files\Python312\python.exe"
-$workspaceRoot = "C:\EvolutionaryTradingAlgo"
-$user = "fxut9145410\trader"
+if (-not $PythonPath) {
+    $PythonPath = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "Machine")
+}
+if (-not $PythonPath) {
+    $PythonPath = [Environment]::GetEnvironmentVariable("ETA_PYTHON_EXE", "User")
+}
+if (-not $PythonPath) {
+    $PythonPath = "C:\Program Files\Python312\python.exe"
+}
 
-if (-not (Test-Path $pythonPath)) {
-    throw "Python not found at $pythonPath"
+if (-not $TaskUser) {
+    $TaskUser = [Environment]::GetEnvironmentVariable("ETA_TASK_USER", "Machine")
+}
+if (-not $TaskUser) {
+    $TaskUser = [Environment]::GetEnvironmentVariable("ETA_TASK_USER", "User")
+}
+if (-not $TaskUser) {
+    $TaskUser = "$env:USERDOMAIN\$env:USERNAME"
+}
+
+if (-not (Test-Path $PythonPath)) {
+    throw "Python not found at $PythonPath"
+}
+if (-not (Test-Path $WorkspaceRoot)) {
+    throw "Workspace root not found at $WorkspaceRoot"
 }
 
 Write-Host "--- Registering L2 supercharge cron tasks ---"
-Write-Host "  python : $pythonPath"
-Write-Host "  cwd    : $workspaceRoot"
-Write-Host "  user   : $user"
+Write-Host "  python : $PythonPath"
+Write-Host "  cwd    : $WorkspaceRoot"
+Write-Host "  user   : $TaskUser"
 Write-Host ""
 
 $settings = New-ScheduledTaskSettingsSet `
@@ -62,17 +88,21 @@ foreach ($t in $dailyTasks) {
         Unregister-ScheduledTask -TaskName $t.Name -Confirm:$false
     }
     $action = New-ScheduledTaskAction `
-        -Execute $pythonPath `
+        -Execute $PythonPath `
         -Argument $t.Args `
-        -WorkingDirectory $workspaceRoot
+        -WorkingDirectory $WorkspaceRoot
     Register-ScheduledTask -TaskName $t.Name `
         -Action $action `
         -Trigger $dailyTrigger `
         -Settings $settings `
-        -User $user `
+        -User $TaskUser `
         -RunLevel Limited `
         -Description $t.Desc | Out-Null
     Write-Host "  registered (daily 11:00 UTC)"
+    if ($StartNow) {
+        Start-ScheduledTask -TaskName $t.Name
+        Write-Host "  started"
+    }
 }
 
 # Weekly tasks: Sunday 06:00 ET (11:00 UTC)
@@ -95,17 +125,21 @@ foreach ($t in $weeklyTasks) {
         Unregister-ScheduledTask -TaskName $t.Name -Confirm:$false
     }
     $action = New-ScheduledTaskAction `
-        -Execute $pythonPath `
+        -Execute $PythonPath `
         -Argument $t.Args `
-        -WorkingDirectory $workspaceRoot
+        -WorkingDirectory $WorkspaceRoot
     Register-ScheduledTask -TaskName $t.Name `
         -Action $action `
         -Trigger $weeklyTrigger `
         -Settings $settings `
-        -User $user `
+        -User $TaskUser `
         -RunLevel Limited `
         -Description $t.Desc | Out-Null
     Write-Host "  registered (weekly Sun 11:00 UTC)"
+    if ($StartNow) {
+        Start-ScheduledTask -TaskName $t.Name
+        Write-Host "  started"
+    }
 }
 
 Write-Host ""
