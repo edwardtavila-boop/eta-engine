@@ -166,8 +166,10 @@ class TestStatusPage:
             'id="totalPnl"',
             'id="totalPnlSub"',
             'id="totalTrades"',
+            'id="totalTradesLabel"',
             'id="winRate"',
             'id="cumulativeR"',
+            'id="cumulativeRLabel"',
             'id="cumulativeRSub"',
             'id="activeBots"',
             'id="activeBotsSub"',
@@ -290,10 +292,12 @@ class TestStatusPage:
         assert "rootPayload?.close_history" in html
         assert "closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d)" in html
         assert "function renderPnlWindowControls" in html
+        assert "data-close-window=\"today\"" in html
         assert "data-close-window=\"mtd\"" in html
         assert "data-close-window=\"all\"" in html
         assert "MTD closed outcomes" in html
-        assert "MTD Close History" in html
+        assert "selected-window Close History" in html
+        assert "const historyTitle = `${scope} Close History`" in html
         assert "selected-window close history" in html
         assert "broker position rows unavailable" in html
         assert "broker-reported open positions without row detail" in html
@@ -310,7 +314,7 @@ class TestStatusPage:
         assert "closed outcome" in html
         assert "closed outcomes in ledger" in html
         assert "selected-window closed outcomes" in html
-        assert '<details class="collapsible-section" id="opsTruthSection">' in html
+        assert '<details class="collapsible-section ops-priority-section" id="opsTruthSection" open>' in html
         assert "source === 'supervisor_heartbeat'" in html
         assert "source === 'fills_intraday'" in html
         assert "total_pnl_is_lifetime" in html
@@ -325,10 +329,16 @@ class TestStatusPage:
         assert "daily_focus" in html
         assert "CME Crypto Futures" in html
         assert "Spot Crypto" in html
+        assert 'id="allocationOrbRing"' in html
+        assert 'id="allocationSectionWrap" hidden' in html
+        assert "function visibleAllocationBuckets" in html
+        assert "function allocationRingGradient" in html
         assert "edge-chip-row" in html
         assert "allocation-doctrine" in html
-        assert "waiting for realized-R closed trades" in html
-        assert "close ledger present; realized R not attached yet" in html
+        assert "waiting for selected-window realized-R outcomes" in html
+        assert "dollar-like R value" in html
+        assert "function plausibleRealizedR" in html
+        assert "MAX_REASONABLE_R_MULTIPLE" in html
         assert "open/no fill qty" in html
         assert "open/no-fill" in html
         assert "actualRouterFills" in html

@@ -117,12 +117,14 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background:lin
 .hero-chip,.allocation-pill{border:1px solid rgba(255,255,255,.10);border-radius:999px;padding:.4rem .72rem;background:rgba(255,255,255,.045);font-size:.74rem;color:#b8c7d8}
 .hero-chip strong,.allocation-pill strong{color:#f7fbff}
 .portfolio-orb{min-height:100%;padding:1.4rem;display:grid;place-items:center;text-align:center}
-.orb-ring{width:min(250px,70vw);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:conic-gradient(from 220deg,var(--green),var(--blue),var(--accent),var(--green));padding:1px;box-shadow:0 0 60px rgba(100,215,255,.18)}
+.orb-ring{width:min(250px,70vw);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--allocation-ring,conic-gradient(from 220deg,var(--green),var(--blue),var(--accent),var(--green)));padding:1px;box-shadow:0 0 60px rgba(100,215,255,.18)}
 .orb-inner{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 25%,rgba(255,255,255,.12),transparent 30%),linear-gradient(145deg,#091421,#03060a);display:grid;place-items:center;padding:1.4rem}
 .orb-label{font-size:.66rem;text-transform:uppercase;letter-spacing:1.8px;color:#8fa3b8}
 .orb-value{font-size:2.1rem;font-weight:800;color:#fff;margin:.25rem 0}
 .orb-sub{font-size:.78rem;color:#9fb1c5}
-.portfolio-analytics{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(290px,.8fr);gap:1rem;padding:.5rem 2rem 1.25rem}
+.orb-allocation-pills{justify-content:center;margin-top:.85rem;max-width:280px}
+.allocation-pill .allocation-dot{display:inline-block;width:.5rem;height:.5rem;border-radius:999px;margin-right:.35rem;box-shadow:0 0 12px currentColor;vertical-align:-.05rem}
+.portfolio-analytics{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;padding:.5rem 2rem 1.25rem}
 .wide-card{min-height:265px}
 .panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
 .panel-kicker{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px}
@@ -191,7 +193,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .hero-metric span{display:block;color:var(--dim);font-size:.62rem;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-metric strong{display:block;margin-top:.2rem;color:#f8fbff;font-size:1rem;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-metric small{display:block;margin-top:.12rem;color:#8fa3b8;font-size:.66rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.portfolio-analytics{grid-template-columns:minmax(0,1.35fr) minmax(240px,.65fr);padding:.4rem 2rem .85rem}
+.portfolio-analytics{grid-template-columns:minmax(0,1fr);padding:.4rem 2rem .85rem}
 .wide-card{min-height:unset}
 .grid{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.62rem;padding:.7rem 2rem .9rem}
 .card{padding:.9rem;border-radius:15px}
@@ -199,6 +201,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .card .stat{font-size:1.28rem;line-height:1.05}
 .card .sub{font-size:.66rem;line-height:1.28}
 .collapsible-section{margin:0 2rem 1rem;border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(8,14,22,.78),rgba(3,8,14,.88));box-shadow:0 14px 44px rgba(0,0,0,.18);overflow:hidden}
+.ops-priority-section{border-color:rgba(100,215,255,.24);box-shadow:0 18px 54px rgba(0,0,0,.22),0 0 0 1px rgba(100,215,255,.04)}
 .collapsible-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.82rem 1rem;color:#f7fbff;font-weight:800}
 .collapsible-summary::-webkit-details-marker{display:none}
 .collapsible-summary:after{content:"+";display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:var(--accent);flex:0 0 auto}
@@ -249,17 +252,41 @@ tr:hover td{background:rgba(100,215,255,.055)}
     </div>
   </div>
   <div class="premium-panel portfolio-orb">
-    <div class="orb-ring">
+    <div class="orb-ring" id="allocationOrbRing" aria-label="Broker net and allocation ring">
       <div class="orb-inner">
         <div>
-          <div class="orb-label">Broker Net Today</div>
+          <div class="orb-label">Broker Net + Allocation</div>
           <div class="orb-value" id="portfolioNetOrb">--</div>
           <div class="orb-sub" id="portfolioNetOrbSub">realized + unrealized</div>
         </div>
       </div>
     </div>
+    <div class="allocation-pills orb-allocation-pills" id="allocationPills">
+      <span class="allocation-pill">Loading sleeves...</span>
+    </div>
   </div>
 </section>
+
+<details class="collapsible-section ops-priority-section" id="opsTruthSection" open>
+  <summary class="collapsible-summary">Open Positions, Exits, and Router Tape <small id="opsTruthSummaryLine">broker truth loading</small></summary>
+<div class="ops-truth-wrap">
+  <div class="card">
+    <h3>Open Positions &amp; Exit Protection</h3>
+    <div class="truth-summary" id="positionSummary"></div>
+    <div class="bracket-action-strip" id="bracketActionStrip"></div>
+    <div class="position-list" id="openPositionsPanel">
+      <div class="empty-panel">Waiting for selected-window Close History and broker position truth...</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Broker Router Tape</h3>
+    <div class="truth-summary" id="routerTapeSummary"></div>
+    <div class="router-tape" id="routerTapePanel">
+      <div class="empty-panel">Waiting for router executions...</div>
+    </div>
+  </div>
+</div>
+</details>
 
 <section class="portfolio-analytics">
   <div class="card wide-card">
@@ -274,17 +301,6 @@ tr:hover td{background:rgba(100,215,255,.055)}
       <div class="empty-panel">Waiting for contribution data...</div>
     </div>
   </div>
-  <div class="card">
-    <div class="panel-head">
-      <div>
-        <h3>Portfolio Allocation</h3>
-        <div class="panel-kicker">Grouped by asset sleeve</div>
-      </div>
-    </div>
-    <div class="allocation-pills" id="allocationPills">
-      <span class="allocation-pill">Loading sleeves...</span>
-    </div>
-  </div>
 </section>
 
 <div class="grid">
@@ -292,8 +308,8 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">History PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">waiting for close ledger</div></div>
-  <div class="card"><h3>Cumulative R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for realized-R outcomes</div></div>
-  <div class="card"><h3>Actual Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
+  <div class="card"><h3 id="cumulativeRLabel">Selected R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for selected-window realized-R outcomes</div></div>
+  <div class="card"><h3 id="totalTradesLabel">Selected Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
@@ -311,6 +327,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card">
     <h3>PnL History</h3>
     <div class="range-controls" id="pnlWindowControls">
+      <button type="button" data-close-window="today">Today</button>
       <button type="button" data-close-window="wtd">WTD</button>
       <button type="button" data-close-window="mtd" class="active">MTD</button>
       <button type="button" data-close-window="ytd">YTD</button>
@@ -394,28 +411,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </div>
 </details>
 
-<details class="collapsible-section" id="opsTruthSection">
-  <summary class="collapsible-summary">Open Positions, Exits, and Router Tape <small id="opsTruthSummaryLine">broker truth loading</small></summary>
-<div class="ops-truth-wrap">
-  <div class="card">
-    <h3>Open Positions &amp; Exit Protection</h3>
-    <div class="truth-summary" id="positionSummary"></div>
-    <div class="bracket-action-strip" id="bracketActionStrip"></div>
-    <div class="position-list" id="openPositionsPanel">
-      <div class="empty-panel">Waiting for MTD Close History and broker position truth...</div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>Broker Router Tape</h3>
-    <div class="truth-summary" id="routerTapeSummary"></div>
-    <div class="router-tape" id="routerTapePanel">
-      <div class="empty-panel">Waiting for router executions...</div>
-    </div>
-  </div>
-</div>
-</details>
-
-<details class="collapsible-section" id="allocationSectionWrap">
+<details class="collapsible-section" id="allocationSectionWrap" hidden>
   <summary class="collapsible-summary">Portfolio Sleeve Details <small id="allocationSectionSummary">grouped allocation rows</small></summary>
 <section class="allocation-sections" id="allocationSections">
   <div class="allocation-group">
@@ -458,6 +454,24 @@ let hasRendered = false;
 let loadInFlight = false;
 let selectedCloseHistoryWindow = 'mtd';
 let lastRenderArgs = null;
+const CLOSE_HISTORY_WINDOWS = [
+  ['today', 'Today'],
+  ['wtd', 'WTD'],
+  ['mtd', 'MTD'],
+  ['ytd', 'YTD'],
+  ['all', 'All']
+];
+const MAX_REASONABLE_R_MULTIPLE = 10;
+const ALLOCATION_COLORS = [
+  '#64d7ff',
+  '#e6b85c',
+  '#36f0a2',
+  '#ff9f7a',
+  '#c792ea',
+  '#ffd166',
+  '#ff5b6e',
+  '#8fa3b8'
+];
 
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, ch => ({
@@ -478,6 +492,30 @@ function finiteNumber(value) {
   if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function plausibleRealizedR(value, maxAbs = MAX_REASONABLE_R_MULTIPLE) {
+  const n = finiteNumber(value);
+  if (n == null) return null;
+  return Math.abs(n) <= maxAbs ? n : null;
+}
+
+function closeOutcomeRValue(row) {
+  return plausibleRealizedR(row?.realized_r ?? row?.r_multiple ?? row?.r);
+}
+
+function closeHistoryRStats(rows, payload = {}) {
+  const count = Math.max(Number(payload?.closed_outcome_count ?? rows.length ?? 0), rows.length);
+  const aggregateMax = Math.max(MAX_REASONABLE_R_MULTIPLE, count * MAX_REASONABLE_R_MULTIPLE);
+  const aggregateR = plausibleRealizedR(payload?.realized_r ?? payload?.cumulative_r, aggregateMax);
+  const rowValues = rows.map(closeOutcomeRValue).filter(value => value != null);
+  const rowTotal = rowValues.length ? rowValues.reduce((sum, value) => sum + value, 0) : null;
+  const suppressed = Math.max(0, rows.length - rowValues.length);
+  return {
+    value: aggregateR != null ? aggregateR : rowTotal,
+    count: aggregateR != null ? Number(payload?.r_outcome_count ?? rowValues.length) : rowValues.length,
+    suppressed
+  };
 }
 
 function formatAgeSeconds(value) {
@@ -736,6 +774,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
     const payload = windowed.payload;
     const rows = Array.isArray(payload.recent_outcomes) ? payload.recent_outcomes : [];
     const winRate = finiteNumber(payload.win_rate);
+    const rStats = closeHistoryRStats(rows, payload);
     return {
       rows,
       count: Number(payload.closed_outcome_count ?? rows.length),
@@ -744,10 +783,9 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
       losses: Number(payload.losing_outcomes ?? 0),
       winRatePct: winRate == null ? null : winRate * 100,
       realizedPnl: finiteNumber(payload.realized_pnl),
-      realizedR: rows
-        .map(row => finiteNumber(row?.realized_r ?? row?.r_multiple ?? row?.r))
-        .filter(value => value != null)
-        .reduce((sum, value) => sum + value, 0),
+      realizedR: rStats.value,
+      realizedRCount: rStats.count,
+      suppressedRCount: rStats.suppressed,
       source: `${payload.label || windowed.key.toUpperCase()} closed-outcome ledger`,
       window: windowed.key,
       label: payload.label || windowed.key.toUpperCase(),
@@ -777,7 +815,7 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
   const losses = pnlValues.filter(value => value < 0).length;
   const evaluated = wins + losses;
   const rValues = rows
-    .map(row => finiteNumber(row?.realized_r ?? row?.r_multiple ?? row?.r))
+    .map(closeOutcomeRValue)
     .filter(value => value != null);
   const realizedPnl = pnlValues.length
     ? pnlValues.reduce((sum, value) => sum + value, 0)
@@ -791,6 +829,8 @@ function closeEvidenceSummary(liveBroker, portfolioSummary, windowKey = selected
     winRatePct: evaluated ? (wins / evaluated) * 100 : null,
     realizedPnl,
     realizedR: rValues.length ? rValues.reduce((sum, value) => sum + value, 0) : null,
+    realizedRCount: rValues.length,
+    suppressedRCount: Math.max(0, rows.length - rValues.length),
     window: 'recent',
     label: 'Selected',
     source: exposureCloses.length ? 'selected-window closed outcomes' : contributorCloses.length ? 'portfolio contributor closed outcomes' : 'close history unavailable'
@@ -828,14 +868,7 @@ function renderPnlWindowControls(closeHistory) {
   const controls = document.getElementById('pnlWindowControls');
   if (!controls) return;
   const windows = closeHistory?.windows || {};
-  const ordered = [
-    ['today', 'Today'],
-    ['wtd', 'WTD'],
-    ['mtd', 'MTD'],
-    ['ytd', 'YTD'],
-    ['all', 'All']
-  ];
-  controls.innerHTML = ordered.map(([key, label]) => {
+  controls.innerHTML = CLOSE_HISTORY_WINDOWS.map(([key, label]) => {
     const payload = windows[key] || {};
     const count = Number(payload.closed_outcome_count ?? 0);
     const active = closeHistory?.window === key ? ' active' : '';
@@ -851,13 +884,7 @@ function renderPnlWindowStrip(closeHistory) {
   const strip = document.getElementById('pnlWindowStrip');
   if (!strip) return;
   const windows = closeHistory?.windows || {};
-  const ordered = [
-    ['wtd', 'WTD'],
-    ['mtd', 'MTD'],
-    ['ytd', 'YTD'],
-    ['all', 'All']
-  ];
-  const available = ordered.filter(([key]) => windows[key]);
+  const available = CLOSE_HISTORY_WINDOWS.filter(([key]) => windows[key]);
   if (!available.length) {
     strip.innerHTML = '<button type="button" class="history-window-tile active" data-close-window="mtd"><span>MTD PnL</span><strong>n/a</strong><small>waiting for close ledger</small></button>';
   } else {
@@ -885,7 +912,6 @@ function renderPnlWindowStrip(closeHistory) {
 
 function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory, diagnostics = {}) {
   const lifetimeEvidence = lifetimePnlEvidence(summary, portfolioSummary, fleetEquity, diagnostics);
-  if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
   if (closeHistory?.realizedPnl != null) {
     const label = closeHistory.label || 'Close';
     const closeText = `${closeHistory.count} ${label} closed outcome${closeHistory.count === 1 ? '' : 's'}`;
@@ -899,6 +925,7 @@ function pnlHistoryEvidence(summary, portfolioSummary, fleetEquity, closeHistory
       source: `${closeText}${winText}; selected-window realized PnL; lifetime ledger pending`
     };
   }
+  if (lifetimeEvidence.value != null && lifetimeEvidence.isLifetime) return lifetimeEvidence;
   return lifetimeEvidence;
 }
 
@@ -1519,22 +1546,69 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   }
 }
 
+function sleeveColor(name, index) {
+  const normalized = String(name || '').toLowerCase();
+  if (normalized.includes('equity') || normalized.includes('index')) return '#64d7ff';
+  if (normalized.includes('metal') || normalized.includes('energy') || normalized.includes('commodity')) return '#e6b85c';
+  if (normalized.includes('crypto')) return '#36f0a2';
+  if (normalized.includes('rate') || normalized.includes('fx')) return '#c792ea';
+  if (normalized.includes('research')) return '#8fa3b8';
+  return ALLOCATION_COLORS[index % ALLOCATION_COLORS.length];
+}
+
+function allocationWeight(bucket, totalExposure, totalBots) {
+  if (totalExposure > 0) return ((bucket.exposure || 0) / totalExposure) * 100;
+  return ((bucket.bots?.length || 0) / Math.max(1, totalBots)) * 100;
+}
+
+function visibleAllocationBuckets(buckets, totalExposure, totalBots) {
+  return buckets
+    .map((bucket, index) => ({
+      ...bucket,
+      weight: allocationWeight(bucket, totalExposure, totalBots),
+      color: sleeveColor(bucket.name, index)
+    }))
+    .filter(bucket => bucket.weight > 0.05 || bucket.open > 0)
+    .sort((a, b) => b.weight - a.weight);
+}
+
+function allocationRingGradient(buckets) {
+  if (!buckets.length) {
+    return 'conic-gradient(from 220deg, var(--green), var(--blue), var(--accent), var(--green))';
+  }
+  let cursor = 0;
+  const parts = [];
+  for (const bucket of buckets) {
+    const start = cursor;
+    const end = Math.min(100, cursor + Math.max(0, bucket.weight || 0));
+    if (end <= start) continue;
+    parts.push(`${bucket.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`);
+    cursor = end;
+  }
+  if (cursor < 100 && parts.length) {
+    parts.push(`${buckets[buckets.length - 1].color} ${cursor.toFixed(2)}% 100%`);
+  }
+  return `conic-gradient(from 220deg, ${parts.join(', ')})`;
+}
+
 function renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary) {
   const buckets = allocationBuckets(bots, liveBroker, portfolioSummary);
   const totalExposure = buckets.reduce((sum, b) => sum + (b.exposure || 0), 0);
   const totalBots = Math.max(1, bots.length);
+  const visibleBuckets = visibleAllocationBuckets(buckets, totalExposure, totalBots);
   const pills = document.getElementById('allocationPills');
+  const ring = document.getElementById('allocationOrbRing');
   const sections = document.getElementById('allocationSections');
   const allocationSummary = document.getElementById('allocationSectionSummary');
   if (allocationSummary) {
     allocationSummary.textContent = `${buckets.length} sleeves, ${formatMoney(totalExposure, 0)} exposure, ${bots.length} visible bots`;
   }
+  if (ring) {
+    ring.style.setProperty('--allocation-ring', allocationRingGradient(visibleBuckets));
+  }
   if (pills) {
-    pills.innerHTML = buckets.map(bucket => {
-      const weight = totalExposure > 0
-        ? (bucket.exposure / totalExposure) * 100
-        : (bucket.bots.length / totalBots) * 100;
-      return `<span class="allocation-pill"><strong>${esc(bucket.name)}</strong> ${weight.toFixed(0)}%</span>`;
+    pills.innerHTML = visibleBuckets.map(bucket => {
+      return `<span class="allocation-pill"><span class="allocation-dot" style="background:${esc(bucket.color)};color:${esc(bucket.color)}"></span><strong>${esc(bucket.name)}</strong> ${bucket.weight.toFixed(0)}%</span>`;
     }).join('') || '<span class="allocation-pill">No active allocation rows</span>';
   }
   if (!sections) return;
@@ -1953,64 +2027,64 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     if (totalPnlSub) totalPnlSub.textContent = lifetimeEvidence.source || 'lifetime ledger';
   }
 
-  // Cumulative R: only trust close evidence that has an actual realized
-  // outcome attached. Placeholder close rows with qty=null / pnl=null / R=0
-  // are audit breadcrumbs, not performance outcomes.
-  const closeRows = closeHistory.rows;
-  let rValues = closeRows
-    .map(c => ({
-      r: finiteNumber(c.realized_r),
-      pnl: finiteNumber(c.realized_pnl),
-      qty: finiteNumber(c.qty)
-    }))
-    .filter(c => c.r != null && (Math.abs(c.r) > 1e-9 || c.pnl != null || c.qty != null))
-    .map(c => c.r);
-  if (!rValues.length && !closeRows.length) {
-    rValues = bots
-      .filter(b => b.last_trade_ts && finiteNumber(b.last_trade_qty) != null)
-      .map(b => finiteNumber(b.last_trade_r))
-      .filter(v => v != null);
-  }
-  const cumR = rValues.length ? rValues.reduce((s, v) => s + v, 0) : null;
+  // Selected-window R: bind this to the same close-history window as PnL,
+  // trades, and win rate. Dollar-like R values are suppressed instead of
+  // being displayed as fake giant R totals.
+  const closeRows = closeHistory.rows || [];
+  const selectedWindowLabel = closeHistory.label || selectedCloseHistoryWindow.toUpperCase();
+  const selectedWindowCount = Number(closeHistory.count || 0);
+  const rLabel = document.getElementById('cumulativeRLabel');
+  if (rLabel) rLabel.textContent = `${selectedWindowLabel} R`;
+  const cumR = finiteNumber(closeHistory.realizedR);
   const rEl = document.getElementById('cumulativeR');
   const rSub = document.getElementById('cumulativeRSub');
   if (cumR == null) {
     rEl.textContent = '—';
     rEl.className = 'stat dim';
     if (rSub) rSub.textContent = closeRows.length
-      ? 'close ledger present; realized R not attached yet'
-      : 'waiting for realized-R closed trades';
+      ? `${selectedWindowLabel} close ledger present; realized R unavailable or dollar-like values hidden`
+      : `waiting for ${selectedWindowLabel} realized-R outcomes`;
   } else {
     rEl.textContent = cumR >= 0 ? '+' + cumR.toFixed(2) + 'R' : cumR.toFixed(2) + 'R';
     rEl.className = 'stat ' + (cumR > 0 ? 'green' : cumR < 0 ? 'red' : 'dim');
-    if (rSub) rSub.textContent = 'R-tagged closed trades';
+    if (rSub) {
+      const rCount = Number(closeHistory.realizedRCount || 0);
+      const hiddenText = Number(closeHistory.suppressedRCount || 0) > 0
+        ? `; ${closeHistory.suppressedRCount} dollar-like R value${Number(closeHistory.suppressedRCount) === 1 ? '' : 's'} hidden`
+        : '';
+      rSub.textContent = `${rCount || selectedWindowCount} R-tagged ${selectedWindowLabel} closed outcome${(rCount || selectedWindowCount) === 1 ? '' : 's'}${hiddenText}`;
+    }
   }
 
-  // Actual trades — prefer broker today_actual_fills (Alpaca filled
-  // orders + IBKR executions) over the supervisor's signal-emit count.
-  // Falls back to per-bot total_trades / fill-backed rows otherwise.
+  // Actual trades: use the selected close-history window so this card
+  // stays in lockstep with PnL History and Win Rate. Broker fills today
+  // remain visible as context, but do not override the selected window.
   const trades = bots.reduce((s,b) => s + (Number(b.total_trades) || 0), 0);
   const fillBackedRows = bots.filter(b => b.last_trade_ts).length;
   const signalUpdates = bots.filter(b => !b.last_trade_ts && b.last_signal_ts).length;
+  const tradesLabel = document.getElementById('totalTradesLabel');
+  if (tradesLabel) tradesLabel.textContent = `${selectedWindowLabel} Trades`;
   if (liveBrokerReady) {
     const liveFills = Number(liveBroker.today_actual_fills || 0);
     const exposure = liveBroker.position_exposure || {};
     const brokerOpen = Number(exposure.broker_open_position_count ?? liveBroker.open_position_count ?? 0);
     const supervisorOpen = Number(exposure.supervisor_local_position_count || 0);
     const supervisorWatch = Number(exposure.supervisor_watch_count || 0);
-    const displayTrades = liveFills > 0 ? liveFills : closeHistory.count;
+    const displayTrades = selectedWindowCount || (closeHistory.window === 'today' ? liveFills : 0);
     const openText = supervisorOpen > 0
       ? `${brokerOpen} broker open; ${supervisorOpen} paper-local watched`
       : `${brokerOpen} broker open`;
     const watchText = supervisorWatch > 0 ? `; ${supervisorWatch} target/stop watchers` : '';
-    const closeHistoryText = closeHistory.count > 0
-      ? `; ${closeHistory.count} ${closeHistory.label || 'selected'} closed outcomes in ledger`
+    const closeHistoryText = selectedWindowCount > 0
+      ? `${selectedWindowCount} ${selectedWindowLabel} closed outcomes in ledger`
       : '';
     document.getElementById('totalTrades').textContent = displayTrades;
-    document.getElementById('totalTradesSub').textContent = `${liveFills} broker fills today; ${openText}${watchText}${closeHistoryText}`;
+    document.getElementById('totalTradesSub').textContent = `${closeHistoryText || 'no selected-window closes yet'}; ${liveFills} broker fills today; ${openText}${watchText}`;
   } else {
-    document.getElementById('totalTrades').textContent = trades || fillBackedRows || 0;
-    document.getElementById('totalTradesSub').textContent = trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
+    document.getElementById('totalTrades').textContent = selectedWindowCount || trades || fillBackedRows || 0;
+    document.getElementById('totalTradesSub').textContent = selectedWindowCount
+      ? `${selectedWindowCount} ${selectedWindowLabel} selected-window close outcomes`
+      : trades ? 'closed trades' : fillBackedRows ? 'bots with fill evidence' : signalUpdates ? '0 fills; ' + signalUpdates + ' signal updates' : 'waiting for fills';
   }
 
   // Verdicts — APPROVED/CONDITIONAL count as approved; NONE/DEFERRED are not.
@@ -2503,8 +2577,8 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('riskBar').style.width = forceFlattenDue > 0 ? '95%' : Math.min(80, maxDD / 50) + '%';
   document.getElementById('riskSub').textContent = compactText(riskDetail);
 
-  // Win rate — use the broker-backed 30d closed-trade outcome rate when
-  // available. JARVIS verdict counts are policy signals, not realized PnL
+  // Win rate: prefer the selected close-history window so it changes with
+  // PnL History. JARVIS verdict counts are policy signals, not realized PnL
   // outcomes, so they must not paint this card red as if they were losses.
   const brokerWr = liveBroker && liveBroker.win_rate_30d != null
     ? Number(liveBroker.win_rate_30d) * 100
@@ -2512,24 +2586,21 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const brokerWrToday = liveBroker && liveBroker.win_rate_today != null
     ? Number(liveBroker.win_rate_today) * 100
     : null;
-  if (brokerWr != null && Number.isFinite(brokerWr)) {
-    document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
-    document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = winRateSourceText(
-      liveBroker.win_rate_30d_source || liveBroker.win_rate_source,
-      '30d'
-    );
-  } else if (brokerWrToday != null && Number.isFinite(brokerWrToday)) {
+  if (closeHistory.winRatePct != null) {
+    const historyWr = closeHistory.winRatePct;
+    document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated || selectedWindowCount} ${selectedWindowLabel} selected-window outcome${(closeHistory.evaluated || selectedWindowCount) === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
+  } else if (closeHistory.window === 'today' && brokerWrToday != null && Number.isFinite(brokerWrToday)) {
     const outcomeCount = Number(liveBroker.closed_outcome_count_today || liveBroker.evaluated_outcome_count_today || 0);
     const wrSource = winRateSourceText(liveBroker.win_rate_source, 'today');
     document.getElementById('winRate').textContent = brokerWrToday.toFixed(1) + '%';
     document.getElementById('winRate').className = 'stat ' + (brokerWrToday > 50 ? 'green' : brokerWrToday > 25 ? 'yellow' : 'red');
     document.getElementById('winRateDetail').textContent = `${outcomeCount} ${wrSource}`;
-  } else if (closeHistory.winRatePct != null) {
-    const historyWr = closeHistory.winRatePct;
-    document.getElementById('winRate').textContent = historyWr.toFixed(1) + '%';
-    document.getElementById('winRate').className = 'stat ' + (historyWr > 50 ? 'green' : historyWr > 25 ? 'yellow' : 'red');
-    document.getElementById('winRateDetail').textContent = `${closeHistory.evaluated} ${closeHistory.label || 'selected'} close outcome${closeHistory.evaluated === 1 ? '' : 's'}: ${closeHistory.wins}W / ${closeHistory.losses}L`;
+  } else if (brokerWr != null && Number.isFinite(brokerWr)) {
+    document.getElementById('winRate').textContent = brokerWr.toFixed(1) + '%';
+    document.getElementById('winRate').className = 'stat ' + (brokerWr > 50 ? 'green' : brokerWr > 25 ? 'yellow' : 'red');
+    document.getElementById('winRateDetail').textContent = `${selectedWindowLabel} WR unavailable; 30d fallback from ${winRateSourceText(liveBroker.win_rate_30d_source || liveBroker.win_rate_source, '30d')}`;
   } else if (readinessPerformance.winRatePct != null) {
     const readinessWr = readinessPerformance.winRatePct;
     document.getElementById('winRate').textContent = readinessWr.toFixed(1) + '%';
