@@ -150,6 +150,20 @@ def jarvis_supervisor_bot_accounts(
             "can_live_trade": bool(readiness_payload.get("can_live_trade")),
             "readiness_next_action": readiness_payload.get("next_action"),
         })
+
+    # JARVIS Supercharge live trace tail — last 3 consult reasoning lines
+    # surface in the heartbeat so the operator can see JARVIS thinking in
+    # real time without tailing var/eta_engine/state/jarvis_trace.jsonl.
+    # Best-effort: if trace_emitter is missing, the trace file is empty,
+    # or the file has been rotated, just skip — never break the bridge.
+    try:
+        from eta_engine.brain.jarvis_v3 import trace_emitter
+        trace_tail = trace_emitter.tail(n=3)
+        if trace_tail and accounts:
+            accounts[0]["jarvis_trace_tail"] = trace_tail
+    except Exception:  # noqa: BLE001 — heartbeat must never crash on observability
+        pass
+
     return accounts
 
 

@@ -367,6 +367,40 @@ def run_loop(
             })
     school_edges.sort(key=lambda r: -float(r.get("expectancy") or 0))
 
+    # JARVIS Supercharge overnight maintenance —
+    # 1. Decay hot_learner session weights back toward 1.0 so a bad
+    #    trading day doesn't poison the next session's school weights.
+    # 2. Run the wiring audit to detect Sage/conductor modules that
+    #    haven't fired in the last 7 days (dark-module alert).
+    # Both are best-effort: failures log a warning and don't block the
+    # rest of the kaizen pass.
+    try:
+        from eta_engine.brain.jarvis_v3 import hot_learner
+        hot_learner.decay_overnight()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("hot_learner.decay_overnight failed: %s", exc)
+
+    wiring_statuses: list[Any] = []
+    try:
+        from eta_engine.scripts import jarvis_wiring_audit
+        wiring_statuses = jarvis_wiring_audit.audit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("jarvis_wiring_audit.audit failed: %s", exc)
+
+    dark_modules = [
+        s for s in wiring_statuses
+        if getattr(s, "expected_to_fire", False)
+        and getattr(s, "dark_for_days", 0) >= 7
+    ]
+    wiring_summary = {
+        "n_dark_modules": len(dark_modules),
+        "dark_modules": [getattr(s, "module", "") for s in dark_modules],
+        "n_total_expected_to_fire": sum(
+            1 for s in wiring_statuses if getattr(s, "expected_to_fire", False)
+        ),
+        "n_total_modules": len(wiring_statuses),
+    }
+
     report = {
         "started_at": started_at,
         "since_iso": since_iso,
@@ -390,6 +424,7 @@ def run_loop(
             "verdict_counts": mc.get("verdict_counts"),
             "bootstraps_per_bot": mc.get("bootstraps_per_bot"),
         },
+        "wiring": wiring_summary,
     }
 
     # Persist
