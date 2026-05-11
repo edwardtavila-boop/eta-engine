@@ -81,16 +81,39 @@ ROOT = Path(__file__).resolve().parents[1]
 # multi-instrument fleet grows.  All values verified vs CME / NYMEX
 # / COMEX product specs as of 2026-05.
 TICK_SIZE_BY_SYMBOL: dict[str, float] = {
+    # CME equity-index futures
     "MNQ":  0.25,    # CME Micro E-mini Nasdaq-100
     "NQ":   0.25,    # CME E-mini Nasdaq-100
     "MES":  0.25,    # CME Micro E-mini S&P 500
     "ES":   0.25,    # CME E-mini S&P 500
+    "M2K":  0.10,    # CME Micro E-mini Russell 2000
+    "RTY":  0.10,    # CME E-mini Russell 2000
+    "MYM":  1.0,     # CBOT Micro E-mini Dow
+    "YM":   1.0,     # CBOT E-mini Dow
+    # COMEX metals
     "MGC":  0.10,    # COMEX Micro Gold
     "GC":   0.10,    # COMEX Gold
+    "SIL":  0.005,   # COMEX Micro Silver
+    "SI":   0.005,   # COMEX Silver
+    "HG":   0.0005,  # COMEX Copper
+    # NYMEX energy
     "MCL":  0.01,    # NYMEX Micro Crude Oil
     "CL":   0.01,    # NYMEX Crude Oil
+    "QM":   0.025,   # NYMEX E-mini Crude
+    "NG":   0.001,   # NYMEX Natural Gas
+    "RB":   0.0001,  # NYMEX RBOB Gasoline
+    "HO":   0.0001,  # NYMEX Heating Oil
+    # CBOT interest rates
+    "ZN":   0.015625, # CBOT 10-yr T-Note
+    "ZB":   0.03125, # CBOT 30-yr T-Bond
+    # CME crypto
+    "MBT":  5.0,     # CME Micro Bitcoin
+    "BTC":  5.0,     # CME Bitcoin
+    "MET":  0.50,    # CME Micro Ether
+    # CME FX
     "M6E":  0.0001,  # CME Micro Euro FX
     "6E":   0.00005, # CME Euro FX
+    "M6B":  0.0001,  # CME Micro GBP/USD
     "6B":   0.0001,  # CME British Pound
     "6J":   0.0000005,  # CME Japanese Yen
 }

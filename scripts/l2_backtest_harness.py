@@ -88,16 +88,44 @@ CONFIG_SEARCH_LOG = LOG_DIR / "l2_harness_config_search.jsonl"
 #              ATR computation is unavailable or has too few snaps).
 # Verified vs CME / NYMEX / COMEX product specs as of 2026-05.
 SYMBOL_SPECS: dict[str, dict[str, float]] = {
+    # CME equity-index futures
     "MNQ":  {"point_value": 2.0,    "tick_size": 0.25,    "default_atr": 2.0},   # CME Micro Nasdaq
     "NQ":   {"point_value": 20.0,   "tick_size": 0.25,    "default_atr": 2.0},   # CME E-mini Nasdaq
     "MES":  {"point_value": 5.0,    "tick_size": 0.25,    "default_atr": 1.5},   # CME Micro S&P
     "ES":   {"point_value": 50.0,   "tick_size": 0.25,    "default_atr": 1.5},   # CME E-mini S&P
+    "M2K":  {"point_value": 5.0,    "tick_size": 0.10,    "default_atr": 1.0},   # CME Micro Russell 2000
+    "RTY":  {"point_value": 50.0,   "tick_size": 0.10,    "default_atr": 1.0},   # CME E-mini Russell 2000
+    "MYM":  {"point_value": 0.50,   "tick_size": 1.0,     "default_atr": 25.0},  # CBOT Micro Dow
+    "YM":   {"point_value": 5.0,    "tick_size": 1.0,     "default_atr": 25.0},  # CBOT E-mini Dow
+    # COMEX metals
     "MGC":  {"point_value": 10.0,   "tick_size": 0.10,    "default_atr": 0.8},   # COMEX Micro Gold
     "GC":   {"point_value": 100.0,  "tick_size": 0.10,    "default_atr": 0.8},   # COMEX Gold
+    "SIL":  {"point_value": 5000.0, "tick_size": 0.005,   "default_atr": 0.10},  # COMEX Micro Silver
+    "SI":   {"point_value": 5000.0, "tick_size": 0.005,   "default_atr": 0.10},  # COMEX Silver
+    "HG":   {"point_value": 25000.0, "tick_size": 0.0005, "default_atr": 0.010}, # COMEX Copper
+    # NYMEX energy
     "MCL":  {"point_value": 100.0,  "tick_size": 0.01,    "default_atr": 0.15},  # NYMEX Micro Crude
     "CL":   {"point_value": 1000.0, "tick_size": 0.01,    "default_atr": 0.15},  # NYMEX Crude
+    "QM":   {"point_value": 500.0,  "tick_size": 0.025,   "default_atr": 0.15},  # NYMEX E-mini Crude
+    "NG":   {"point_value": 10000.0, "tick_size": 0.001,  "default_atr": 0.020}, # NYMEX Natural Gas
+    "RB":   {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005}, # NYMEX RBOB Gasoline
+    "HO":   {"point_value": 42000.0, "tick_size": 0.0001, "default_atr": 0.005}, # NYMEX Heating Oil
+    # CME FX
     "M6E":  {"point_value": 12.50,  "tick_size": 0.0001,  "default_atr": 0.0010},
     "6E":   {"point_value": 125000.0, "tick_size": 0.00005, "default_atr": 0.0010},
+    "M6B":  {"point_value": 6.25,   "tick_size": 0.0001,  "default_atr": 0.0015},  # CME Micro GBP/USD
+    "6B":   {"point_value": 62500.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    "M6J":  {"point_value": 1.25,   "tick_size": 0.0000005, "default_atr": 0.0000050},
+    "6J":   {"point_value": 12500.0, "tick_size": 0.0000005, "default_atr": 0.0000050},
+    "6A":   {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    "6C":   {"point_value": 100000.0, "tick_size": 0.0001, "default_atr": 0.0015},
+    # CME interest-rate
+    "ZN":   {"point_value": 1000.0, "tick_size": 0.015625, "default_atr": 0.10},  # CBOT 10-yr T-Note
+    "ZB":   {"point_value": 1000.0, "tick_size": 0.03125, "default_atr": 0.25},   # CBOT 30-yr T-Bond
+    # CME crypto
+    "MBT":  {"point_value": 0.10,   "tick_size": 5.0,     "default_atr": 200.0},  # CME Micro Bitcoin
+    "BTC":  {"point_value": 5.0,    "tick_size": 5.0,     "default_atr": 200.0},  # CME Bitcoin
+    "MET":  {"point_value": 0.10,   "tick_size": 0.50,    "default_atr": 15.0},   # CME Micro Ether
 }
 # Round-trip commission per contract in USD.  Approximate IBKR Pro
 # rates incl exchange/clearing/regulatory fees.  Conservative.
