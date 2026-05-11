@@ -210,3 +210,94 @@ Stop-ScheduledTask -TaskName "ETA-CaptureDepth"
 ```
 
 Files already written are unaffected — captures are append-only JSONL.
+
+---
+
+## Step 5 — Disk-space monitoring (auto)
+
+Cloud routine `eta: disk space monitor` runs every 6h and alerts at:
+- **YELLOW** ≤ 30 GB free (~6 days runway at 5 GB/day)
+- **RED**    ≤ 10 GB free (~2 days)
+- **CRITICAL** ≤ 2 GB (capture writes will fail any moment)
+
+Locally:
+```powershell
+python -m eta_engine.scripts.disk_space_monitor
+```
+
+---
+
+## Step 6 — Hot-data rotation (weekly)
+
+Cloud routine `eta: capture rotation` runs every Sunday 03:00 UTC:
+- Compresses raw `.jsonl` files older than 14 days to `.jsonl.gz`
+  (8-15× smaller, lossless)
+- Cold-archives `.jsonl.gz` files older than 90 days to
+  `mnq_data/<kind>/cold/YYYY/MM/`
+- Both stages are dry-run-by-default; the cron explicitly passes
+  `--apply` so the rotation actually happens.
+
+To run by hand (dry-run):
+```powershell
+python -m eta_engine.scripts.capture_rotation
+```
+
+To run by hand (apply):
+```powershell
+python -m eta_engine.scripts.capture_rotation --apply --keep-days 14 --cold-days 90
+```
+
+---
+
+## Troubleshooting
+
+### Capture daemon won't start
+
+1. **TWS not running** — `verify_ibkr_subscriptions` returns "TWS unreachable"
+   - Start TWS Gateway (paper port 4002 or live 4001)
+   - If first launch after reboot: TWS may need ~30s to fully bind ports
+2. **Subscription not active** — verifier returns DELAYED for an exchange
+   - Log into IBKR account mgmt → Settings → Market Data Subscriptions
+   - Enable the missing exchange (~$1.50-15/month per exchange)
+   - Wait ~5min for activation, re-run verifier
+3. **Client ID conflict** — IBKR returns `Already connected`
+   - Capture scripts default to client_id=31 (ticks) and 32 (depth)
+   - Live supervisor uses 50/51, bar_accumulator uses 99
+   - Verifier uses 33
+   - If still conflicting, pass `--client-id 35` or higher
+
+### Files written but capture_health_monitor reports STALE
+
+- TWS Gateway connection may have dropped silently mid-session
+- Check the Windows Task Scheduler "Last Run Result" for the daemon task
+- Restart with: `Start-ScheduledTask -TaskName "ETA-CaptureTicks"`
+
+### Disk fills despite rotation
+
+- Increase compression frequency: change cron to daily (`0 3 * * *`)
+- Reduce hot window: `--keep-days 7`
+- Move cold archives to S3/external drive — see future Phase 2 doc
+
+### Tests on the workstation (not VPS)
+
+```powershell
+cd C:\EvolutionaryTradingAlgo
+python -m pytest eta_engine/tests/test_capture_health_monitor.py `
+                 eta_engine/tests/test_disk_space_monitor.py `
+                 eta_engine/tests/test_capture_rotation.py -v
+```
+
+Expected: **34 passed**.
+
+---
+
+## Cloud routine cheatsheet (what's watching)
+
+| Routine | Cron UTC | Purpose | Alert on |
+|---------|----------|---------|----------|
+| eta: IBKR subscription audit | `0 13 * * *` | force-realtime check on CME/NYMEX/COMEX/CBOT | exchange downgraded to delayed |
+| eta: capture health monitor | `0 14 * * *` | tick + depth files exist + mtime fresh + sub audit current | daemon crashed / missing day |
+| eta: disk space monitor | `0 */6 * * *` | partition free-space at ticks/depth/logs paths | YELLOW ≤30GB / RED ≤10GB / CRITICAL ≤2GB |
+| eta: capture rotation | `0 3 * * 0` (Sun 03:00 UTC) | gzip >14d, cold-archive >90d | nothing (silent rotation; logs to capture_rotation.jsonl) |
+
+All four write to `logs/eta_engine/alerts_log.jsonl` (single observability surface).
