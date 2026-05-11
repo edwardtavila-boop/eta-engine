@@ -675,6 +675,50 @@ class TestVpsFailoverProbeUnderSyntheticState:
 
 
 class TestIbGateway1046RuntimeProbe:
+    def test_gateway_runtime_prioritizes_missing_ibc_credentials(self, monkeypatch, tmp_path) -> None:
+        from eta_engine.scripts import operator_action_queue
+
+        gateway_dir = tmp_path / "1037"
+        gateway_dir.mkdir()
+        (gateway_dir / "ibgateway1.exe").write_text("", encoding="utf-8")
+        states = {
+            "ibgateway_install.json": {},
+            "ibgateway_repair.json": {
+                "gateway_dir": str(gateway_dir),
+                "single_source": {
+                    "gateway_task_canonical": True,
+                    "task_states": {"ETA-IBGateway": "Ready"},
+                },
+            },
+            "ibgateway_reauth.json": {
+                "status": "missing_ibc_credentials",
+                "operator_action": "Seed IBC credentials with set_ibc_credentials.ps1 -PromptForPassword.",
+                "operator_action_required": True,
+                "credential_status": {
+                    "ready": False,
+                    "has_user_id": True,
+                    "has_password": False,
+                    "password_file_placeholder": True,
+                },
+            },
+            "tws_watchdog.json": {"healthy": False, "details": {"handshake_ok": False}},
+        }
+        monkeypatch.setattr(operator_action_queue, "_read_runtime_state", lambda name: states.get(name, {}))
+        monkeypatch.setattr(
+            operator_action_queue,
+            "_gateway_exe_present",
+            lambda path=None: path == gateway_dir,
+        )
+
+        item = operator_action_queue._op19_ibgateway_1046_runtime()
+
+        assert item.verdict == VERDICT_BLOCKED
+        assert item.evidence["gateway_exe_present"] is True
+        assert item.evidence["overall_severity"] == "red"
+        assert "IBC credentials" in item.detail
+        next_commands = item.evidence["blockers"][0]["next_commands"]
+        assert "set_ibc_credentials.ps1 -PromptForPassword" in next_commands[0]
+
     def test_missing_gateway_install_is_red_blocker_with_guarded_install_command(self, monkeypatch) -> None:
         from eta_engine.scripts import operator_action_queue
 

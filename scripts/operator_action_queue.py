@@ -746,14 +746,17 @@ def _op18_vps_failover_readiness() -> OpItem:
 def _op19_ibgateway_1046_runtime() -> OpItem:
     item = OpItem(
         op_id="OP-19",
-        title="Install/configure canonical IB Gateway 10.46 and recover TWS API 4002",
+        title="Install/configure canonical IB Gateway and recover TWS API 4002",
         where="python -m eta_engine.scripts.ibkr_surface_status --skip-client-portal",
     )
     install = _read_runtime_state("ibgateway_install.json")
     repair = _read_runtime_state("ibgateway_repair.json")
     reauth = _read_runtime_state("ibgateway_reauth.json")
     tws = _read_runtime_state("tws_watchdog.json")
+    repair_gateway_dir = repair.get("gateway_dir")
     gateway_exe = _gateway_exe_present()
+    if not gateway_exe and isinstance(repair_gateway_dir, str) and repair_gateway_dir.strip():
+        gateway_exe = _gateway_exe_present(Path(repair_gateway_dir))
     single_source = repair.get("single_source") if isinstance(repair.get("single_source"), dict) else {}
     task_states = single_source.get("task_states") if isinstance(single_source.get("task_states"), dict) else {}
     task_canonical = bool(single_source.get("gateway_task_canonical"))
@@ -761,13 +764,29 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
     eta_gateway_task_result = str(repair_tasks.get("ETA-IBGateway") or "").strip()
     tws_healthy = tws.get("healthy") is True
     handshake_ok = (tws.get("details") or {}).get("handshake_ok") is True
+    credential_status = reauth.get("credential_status") if isinstance(reauth.get("credential_status"), dict) else {}
+    missing_ibc_credentials = (
+        reauth.get("status") == "missing_ibc_credentials"
+        or (credential_status and credential_status.get("ready") is False and reauth.get("operator_action_required"))
+    )
 
     next_commands: list[str]
     if gateway_exe and task_canonical and tws_healthy and handshake_ok:
         item.verdict = VERDICT_DONE
-        item.detail = "IB Gateway 10.46, recovery tasks, and TWS API 4002 handshake are healthy."
+        item.detail = "IB Gateway, recovery tasks, and TWS API 4002 handshake are healthy."
         next_commands = ["python -m eta_engine.scripts.ibkr_surface_status --skip-client-portal"]
         severity = "green"
+    elif missing_ibc_credentials:
+        item.verdict = VERDICT_BLOCKED
+        item.detail = str(
+            reauth.get("operator_action")
+            or "IBC credentials are missing or still placeholder; seed them before Gateway auto-recovery."
+        )
+        next_commands = [
+            r".\eta_engine\deploy\scripts\set_ibc_credentials.ps1 -PromptForPassword",
+            "python -m eta_engine.scripts.ibgateway_reauth_controller --execute",
+        ]
+        severity = "red"
     elif not gateway_exe:
         signature = install.get("authenticode_status") or "unknown"
         sha = install.get("installer_sha256") or "missing"
@@ -835,6 +854,7 @@ def _op19_ibgateway_1046_runtime() -> OpItem:
         "install": install,
         "repair": repair,
         "reauth": reauth,
+        "credential_status": credential_status,
         "tws_watchdog": tws,
         "allow_unsigned_requires_source_confirmation": True,
         "blockers": [

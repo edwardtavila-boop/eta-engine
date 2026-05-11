@@ -50,14 +50,14 @@ _DEFAULT_REPAIR_COMMAND = (
 
 def _read_text(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8-sig")
     except OSError:
         return ""
 
 
 def _read_first_line(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8").splitlines()[0].strip()
+        return path.read_text(encoding="utf-8-sig").splitlines()[0].strip()
     except (IndexError, OSError):
         return ""
 
