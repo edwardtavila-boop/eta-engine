@@ -6,6 +6,7 @@ Kaizen propose -> Guard admit -> Parameter apply -> Hermes notify.
 No live money. No broker connection. Pure integration test with mock data.
 """
 
+import asyncio
 import contextlib
 import json
 import sys
@@ -92,7 +93,7 @@ class TestEndToEndPipeline:
             assert guard_status.max_daily > 0
 
             # 3. Verify Hermes was notified
-            bridge.flush_store_and_forward()
+            asyncio.run(bridge.flush_store_and_forward())
 
             # 4. Verify state persisted
             state_file = tmp / "kaizen_engine_state.json"

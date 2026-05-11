@@ -19,6 +19,7 @@ Covers the three P0 audit items:
 """
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,11 @@ class _StubVenue:
 
     async def place_order(self, _req):  # noqa: ANN001
         return None
+
+
+def _close_coro(value) -> None:  # noqa: ANN001
+    if inspect.iscoroutine(value):
+        value.close()
 
 
 # --------------------------------------------------------------------- #
@@ -77,14 +83,19 @@ def test_open_position_not_set_when_broker_rejects(
     )
 
     monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: _StubVenue())
-    monkeypatch.setattr(
-        supervisor,
-        "_run_on_live_ibkr_loop",
-        lambda *_a, **_kw: OrderResult(
+
+    def _reject(_coro, **_kw):
+        _close_coro(_coro)
+        return OrderResult(
             order_id="sig-rej",
             status=OrderStatus.REJECTED,
             raw={"ibkr_order_id": 1, "reason": "test reject"},
-        ),
+        )
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        _reject,
     )
 
     rec = router.submit_entry(
@@ -129,7 +140,8 @@ def test_open_position_cleared_when_broker_raises(
 
     monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: _StubVenue())
 
-    def _raise(*_a, **_kw):
+    def _raise(_coro, **_kw):
+        _close_coro(_coro)
         raise RuntimeError("simulated TWS connection error")
 
     monkeypatch.setattr(supervisor, "_run_on_live_ibkr_loop", _raise)
@@ -182,9 +194,14 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
         status=OrderStatus.REJECTED,
         raw={"ibkr_order_id": 0, "reason": "test"},
     )
+
+    def _reject_counter(_coro, **_kw):
+        _close_coro(_coro)
+        return reject_result
+
     monkeypatch.setattr(
         supervisor, "_run_on_live_ibkr_loop",
-        lambda *_a, **_kw: reject_result,
+        _reject_counter,
     )
 
     bar = {"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0}
@@ -203,9 +220,14 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
         status=OrderStatus.OPEN,
         raw={"ibkr_order_id": 99, "reason": ""},
     )
+
+    def _open_counter(_coro, **_kw):
+        _close_coro(_coro)
+        return open_result
+
     monkeypatch.setattr(
         supervisor, "_run_on_live_ibkr_loop",
-        lambda *_a, **_kw: open_result,
+        _open_counter,
     )
     rec = router.submit_entry(
         bot=bot, signal_id="sig-ok", side="BUY", bar=bar, size_mult=1.0,
@@ -282,11 +304,15 @@ def test_propagate_close_receives_correct_entry_price(
         captured["entry_price"] = ctx.entry_price
         captured["entry_side"] = ctx.side
         # Return a no-op report so observe() runs.
+        class _Bias:
+            value = "neutral"
+
         class _V:
-            class bias:
-                value = "neutral"
+            bias = _Bias()
+
         class _R:
             per_school = {"trend": _V()}
+
         return _R()
 
     monkeypatch.setattr(

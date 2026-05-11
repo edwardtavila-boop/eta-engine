@@ -8,7 +8,7 @@ Why this exists
 ---------------
 The same product trades on multiple venues:
   - MNQ on IBKR (CME)
-  - MNQ on Tradovate (CME)
+  - MNQ on Tradovate (CME; DORMANT unless explicitly reactivated)
   - BTC futures on CME vs ICE vs offshore venues
   - Index spreads (MNQ vs NQ vs MES)
 
