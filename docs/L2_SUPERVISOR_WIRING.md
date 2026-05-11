@@ -1,6 +1,8 @@
 # L2 Supervisor Wiring — Minimal Operator Diff
 
-The L2 supercharge infrastructure is fully built and tested. The only remaining code change to make it active in live trading is a 3-call integration into the live order supervisor.
+**Status (2026-05-11):** Wiring landed in `eta_engine/scripts/jarvis_strategy_supervisor.py`. Pre-trade gate, signal log emission, and per-tick state persistence are now part of the supervisor module. Fill log emission (step 4 below) is still operator-implemented because the current synchronous order path has no separate execution callback.
+
+The L2 supercharge infrastructure is fully built and tested. The remaining operator step is the **fill handler hook** (step 4) which depends on whichever execution callback layer the operator wires in (ib_insync `executionEvent` or an equivalent reconciliation poll).
 
 This is **intentionally additive** — no existing supervisor logic changes, only two hook calls (block on gate, log signal/fill) bracket the existing place_order path.
 
