@@ -59,19 +59,18 @@ def _load_json(path: Path) -> Any:  # noqa: ANN401
         return None
 
 
-def _fetch_json(url: str, timeout_s: float = 10.0) -> Any:  # noqa: ANN401
+def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> Any:  # noqa: ANN401
     if not url:
         return None
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": "eta-prop-live-readiness-gate"})
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            raw = response.read().decode("utf-8")
-    except (OSError, urllib.error.URLError, TimeoutError):
-        return None
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return None
+    for _attempt in range(max(1, attempts)):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "eta-prop-live-readiness-gate"})
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
+                raw = response.read().decode("utf-8")
+            return json.loads(raw)
+        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def _check(name: str, status: str, detail: str, **evidence: Any) -> dict[str, Any]:  # noqa: ANN401

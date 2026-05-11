@@ -236,3 +236,29 @@ def test_prop_live_gate_next_actions_respect_dormant_tradovate_policy() -> None:
     assert "--ack-manual-oco --symbol MCLM6 --venue ibkr" in actions
     assert "--ack-manual-oco --symbol NQM6 --venue ibkr" in actions
     assert "paper_soak" in actions
+
+
+def test_prop_live_gate_fetch_json_retries_transient_live_failure(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class _Response:
+        def __enter__(self) -> object:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return False
+
+        @staticmethod
+        def read() -> bytes:
+            return b'{"truth_status":"live"}'
+
+    def _flaky_urlopen(_request, *, timeout):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise gate.urllib.error.URLError("temporary timeout")
+        return _Response()
+
+    monkeypatch.setattr(gate.urllib.request, "urlopen", _flaky_urlopen)
+
+    assert gate._fetch_json("https://ops.example.invalid/api/bot-fleet") == {"truth_status": "live"}  # noqa: SLF001
+    assert calls["count"] == 2

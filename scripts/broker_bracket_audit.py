@@ -72,14 +72,16 @@ def _as_bool(value: Any) -> bool:  # noqa: ANN401
     return bool(value)
 
 
-def _fetch_json(url: str, timeout_s: float = 10.0) -> dict[str, Any]:
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": "eta-broker-bracket-audit"})
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            payload = json.loads(response.read().decode("utf-8"))
-    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[str, Any]:
+    for _attempt in range(max(1, attempts)):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "eta-broker-bracket-audit"})
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
+                payload = json.loads(response.read().decode("utf-8"))
+            return payload if isinstance(payload, dict) else {}
+        except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def _load_json(path: Path) -> dict[str, Any]:

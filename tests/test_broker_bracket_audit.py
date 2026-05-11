@@ -48,6 +48,34 @@ def test_bracket_audit_blocks_when_fleet_position_truth_is_unavailable(monkeypat
     assert "/api/bot-fleet" in report["next_action"]
 
 
+def test_bracket_audit_fetch_json_retries_transient_live_failure(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class _Response:
+        def __enter__(self) -> object:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return False
+
+        @staticmethod
+        def read() -> bytes:
+            return b'{"summary":{"broker_open_position_count":0}}'
+
+    def _flaky_urlopen(_request, *, timeout):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise audit.urllib.error.URLError("temporary timeout")
+        return _Response()
+
+    monkeypatch.setattr(audit.urllib.request, "urlopen", _flaky_urlopen)
+
+    payload = audit._fetch_json("https://ops.example.invalid/api/bot-fleet")  # noqa: SLF001
+
+    assert payload == {"summary": {"broker_open_position_count": 0}}
+    assert calls["count"] == 2
+
+
 def test_bracket_audit_blocks_unbracketed_open_exposure(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,
