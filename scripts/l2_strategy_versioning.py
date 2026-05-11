@@ -160,9 +160,8 @@ def version_for_date(strategy: str, when: datetime,
     versions = reg.versions.get(strategy, [])
     when_iso = when.isoformat()
     for v in versions:
-        if v.effective_from <= when_iso:
-            if v.effective_to is None or when_iso < v.effective_to:
-                return v
+        if v.effective_from <= when_iso and (v.effective_to is None or when_iso < v.effective_to):
+            return v
     return None
 
 

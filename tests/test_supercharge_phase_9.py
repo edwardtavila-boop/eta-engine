@@ -26,7 +26,6 @@ from eta_engine.scripts import l2_strategy_versioning as ver
 from eta_engine.scripts import l2_universe_audit as ua
 from eta_engine.strategies import l2_per_symbol_ensemble as pse
 
-
 # ────────────────────────────────────────────────────────────────────
 # l2_risk_metrics
 # ────────────────────────────────────────────────────────────────────
