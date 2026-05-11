@@ -108,6 +108,55 @@ def test_prop_live_gate_blocks_runner_or_unbracketed_live_path() -> None:
     assert any(check["name"] == "live_bot_gate" and check["status"] == "BLOCKED" for check in report["checks"])
 
 
+def test_prop_live_gate_accepts_primary_bot_id_alias() -> None:
+    payloads = _ready_payloads()
+    payloads["fleet"]["bots"][0].pop("id")
+    payloads["fleet"]["bots"][0]["bot_id"] = "volume_profile_mnq"
+
+    report = gate.build_gate_report(**payloads)
+
+    assert report["summary"] == "READY_FOR_CONTROLLED_PROP_DRY_RUN"
+    live_check = next(check for check in report["checks"] if check["name"] == "live_bot_gate")
+    assert live_check["status"] == "PASS"
+
+
+def test_prop_live_gate_reports_live_readiness_deactivation_drift() -> None:
+    payloads = _ready_payloads()
+    payloads["fleet"]["bots"] = [
+        {
+            "id": "volume_profile_nq",
+            "can_live_trade": False,
+            "launch_lane": "paper_soak",
+            "status": "readiness_only",
+        },
+    ]
+    payloads["live_readiness"] = {
+        "found": True,
+        "bot_id": "volume_profile_mnq",
+        "readiness_next_action": "No action: bot is explicitly deactivated.",
+        "row": {
+            "bot_id": "volume_profile_mnq",
+            "active": False,
+            "launch_lane": "deactivated",
+            "data_status": "deactivated",
+            "promotion_status": "deactivated",
+        },
+    }
+
+    report = gate.build_gate_report(**payloads)
+    live_check = next(check for check in report["checks"] if check["name"] == "live_bot_gate")
+    actions = "\n".join(report["next_actions"])
+
+    assert report["summary"] == "BLOCKED"
+    assert live_check["status"] == "BLOCKED"
+    assert "deactivated on the live readiness surface" in live_check["detail"]
+    assert live_check["evidence"]["live_readiness_active"] is False
+    assert live_check["evidence"]["live_readiness_launch_lane"] == "deactivated"
+    assert live_check["evidence"]["visible_related_bots"] == ["volume_profile_nq"]
+    assert "Reconcile the VPS bot_strategy_readiness artifact" in actions
+    assert "No action: bot is explicitly deactivated." in actions
+
+
 def test_prop_live_gate_accepts_manual_oco_verified_bracket_audit() -> None:
     payloads = _ready_payloads()
     payloads["fleet"]["summary"]["broker_open_position_count"] = 1

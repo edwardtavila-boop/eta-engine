@@ -31,6 +31,10 @@ DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_BRACKET_AUDIT_PATH = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MASTER_URL = "https://ops.evolutionarytradingalgo.com/api/master/status"
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
+DEFAULT_LIVE_READINESS_URL = (
+    "https://ops.evolutionarytradingalgo.com/api/jarvis/"
+    f"bot_strategy_readiness/{PRIMARY_BOT}"
+)
 ACTIVE_FUTURES_BROKERS = ("ibkr", "tastytrade")
 DORMANT_PROP_VENUE_POLICY = "tradovate_dormant"
 
@@ -311,9 +315,42 @@ def _closed_trade_ledger_check(ledger: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _live_bot_gate_check(fleet: dict[str, Any]) -> dict[str, Any]:
+def _bot_identity_values(bot: dict[str, Any]) -> set[str]:
+    values: set[str] = set()
+    for key in ("id", "bot_id", "name", "strategy_id"):
+        value = str(bot.get(key) or "").strip()
+        if value:
+            values.add(value)
+    return values
+
+
+def _visible_related_bot_ids(bots: list[dict[str, Any]]) -> list[str]:
+    family_prefix = PRIMARY_BOT.rsplit("_", 1)[0]
+    related: list[str] = []
+    for bot in bots:
+        for value in sorted(_bot_identity_values(bot)):
+            if value == PRIMARY_BOT:
+                continue
+            if value.startswith(family_prefix) and value not in related:
+                related.append(value)
+    return related
+
+
+def _live_readiness_row(live_readiness: dict[str, Any]) -> dict[str, Any]:
+    row = _as_dict(live_readiness.get("row"))
+    if row:
+        return row
+    if str(live_readiness.get("bot_id") or "") == PRIMARY_BOT:
+        return live_readiness
+    return {}
+
+
+def _live_bot_gate_check(
+    fleet: dict[str, Any],
+    live_readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     bots = [_as_dict(bot) for bot in _as_list(fleet.get("bots"))]
-    primary = next((bot for bot in bots if bot.get("id") == PRIMARY_BOT), {})
+    primary = next((bot for bot in bots if PRIMARY_BOT in _bot_identity_values(bot)), {})
     if primary and bool(primary.get("can_live_trade")):
         return _check("live_bot_gate", "PASS", f"{PRIMARY_BOT} is marked can_live_trade on the live fleet surface")
     if primary:
@@ -324,7 +361,61 @@ def _live_bot_gate_check(fleet: dict[str, Any]) -> dict[str, Any]:
             launch_lane=primary.get("launch_lane"),
             bot_status=primary.get("status"),
         )
-    return _check("live_bot_gate", "BLOCKED", f"{PRIMARY_BOT} is missing from the live fleet surface")
+
+    live_readiness = _as_dict(live_readiness)
+    readiness = _live_readiness_row(live_readiness)
+    if readiness:
+        live_active = bool(readiness.get("active"))
+        launch_lane = str(readiness.get("launch_lane") or "")
+        data_status = str(readiness.get("data_status") or "")
+        promotion_status = str(readiness.get("promotion_status") or "")
+        hidden_state = (
+            not live_active
+            or launch_lane.lower() == "deactivated"
+            or data_status.lower() == "deactivated"
+            or promotion_status.lower() == "deactivated"
+        )
+        if hidden_state:
+            return _check(
+                "live_bot_gate",
+                "BLOCKED",
+                f"{PRIMARY_BOT} is deactivated on the live readiness surface and hidden from /api/bot-fleet",
+                live_readiness_found=True,
+                live_readiness_active=live_active,
+                live_readiness_launch_lane=launch_lane,
+                live_readiness_data_status=data_status,
+                live_readiness_promotion_status=promotion_status,
+                live_readiness_next_action=(
+                    live_readiness.get("readiness_next_action")
+                    or readiness.get("next_action")
+                    or ""
+                ),
+                visible_related_bots=_visible_related_bot_ids(bots),
+            )
+        return _check(
+            "live_bot_gate",
+            "BLOCKED",
+            f"{PRIMARY_BOT} is active in live readiness but missing from /api/bot-fleet",
+            live_readiness_found=True,
+            live_readiness_active=live_active,
+            live_readiness_launch_lane=launch_lane,
+            live_readiness_data_status=data_status,
+            live_readiness_promotion_status=promotion_status,
+            live_readiness_next_action=(
+                live_readiness.get("readiness_next_action")
+                or readiness.get("next_action")
+                or ""
+            ),
+            visible_related_bots=_visible_related_bot_ids(bots),
+        )
+
+    return _check(
+        "live_bot_gate",
+        "BLOCKED",
+        f"{PRIMARY_BOT} is missing from the live fleet and live readiness surfaces",
+        live_readiness_found=bool(live_readiness.get("found")),
+        visible_related_bots=_visible_related_bot_ids(bots),
+    )
 
 
 def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
@@ -361,12 +452,26 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         primary_candidate = _as_dict(
             _as_dict(blocked_checks.get("primary_ladder", {}).get("evidence")).get("primary_candidate"),
         )
-        launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
-        blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]
-        detail = f"Keep {PRIMARY_BOT} in {launch_lane} until can_live_trade=true and the futures prop ladder clears"
-        if blockers:
-            detail = f"{detail}; current blocker(s): {'; '.join(blockers)}"
-        actions.append(f"{detail}.")
+        live_active = live_evidence.get("live_readiness_active")
+        live_lane = str(live_evidence.get("live_readiness_launch_lane") or "")
+        if live_active is False or live_lane.lower() == "deactivated":
+            state = str(live_evidence.get("live_readiness_promotion_status") or live_lane or "unknown")
+            next_action = str(live_evidence.get("live_readiness_next_action") or "").strip()
+            suffix = f" Live readiness action: {next_action}" if next_action else ""
+            actions.append(
+                f"Reconcile the VPS bot_strategy_readiness artifact so {PRIMARY_BOT} matches the canonical "
+                f"paper-soak registry before any prop dry-run; live readiness currently reports {state}.{suffix}",
+            )
+        else:
+            launch_lane = str(live_evidence.get("launch_lane") or primary_candidate.get("launch_lane") or "paper")
+            blockers = [str(item) for item in _as_list(primary_candidate.get("blockers")) if item]
+            detail = (
+                f"Keep {PRIMARY_BOT} in {launch_lane} until can_live_trade=true "
+                "and the futures prop ladder clears"
+            )
+            if blockers:
+                detail = f"{detail}; current blocker(s): {'; '.join(blockers)}"
+            actions.append(f"{detail}.")
     if "router_cleanliness" in blocked:
         actions.append("Archive or resolve historical failed/quarantined/rejected router residue before prop dry-run.")
     if "broker_native_brackets" in blocked:
@@ -421,6 +526,7 @@ def build_gate_report(
     fleet: dict[str, Any] | None = None,
     ledger: dict[str, Any] | None = None,
     broker_bracket_audit: dict[str, Any] | None = None,
+    live_readiness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ladder = _as_dict(ladder)
     prop = _as_dict(prop)
@@ -435,7 +541,7 @@ def build_gate_report(
         _router_cleanliness_check(fleet),
         _broker_native_brackets_check(fleet, broker_bracket_audit),
         _closed_trade_ledger_check(ledger),
-        _live_bot_gate_check(fleet),
+        _live_bot_gate_check(fleet, live_readiness),
     ]
     summary = (
         "BLOCKED"
@@ -516,6 +622,7 @@ def load_gate_inputs(
     bracket_audit_path: Path = DEFAULT_BRACKET_AUDIT_PATH,
     master_url: str = DEFAULT_MASTER_URL,
     fleet_url: str = DEFAULT_FLEET_URL,
+    live_readiness_url: str = DEFAULT_LIVE_READINESS_URL,
 ) -> dict[str, dict[str, Any]]:
     prop = _build_current_prop(prop_account) or _as_dict(_load_json(prop_path))
     ladder = _build_current_ladder(prop) or _as_dict(_load_json(ladder_path))
@@ -531,6 +638,7 @@ def load_gate_inputs(
         "fleet": fleet,
         "ledger": ledger,
         "broker_bracket_audit": broker_bracket_audit,
+        "live_readiness": _as_dict(_fetch_json(live_readiness_url)),
     }
 
 
@@ -559,6 +667,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bracket-audit-path", type=Path, default=DEFAULT_BRACKET_AUDIT_PATH)
     parser.add_argument("--master-url", default=DEFAULT_MASTER_URL)
     parser.add_argument("--fleet-url", default=DEFAULT_FLEET_URL)
+    parser.add_argument("--live-readiness-url", default=DEFAULT_LIVE_READINESS_URL)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--no-write", action="store_true")
@@ -570,6 +679,7 @@ def main(argv: list[str] | None = None) -> int:
         bracket_audit_path=args.bracket_audit_path,
         master_url=args.master_url,
         fleet_url=args.fleet_url,
+        live_readiness_url=args.live_readiness_url,
     )
     report = build_gate_report(**inputs)
     out_path = None if args.no_write else write_report(report, args.out)
