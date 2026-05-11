@@ -166,6 +166,26 @@ def test_prop_live_gate_does_not_double_count_bracket_hold_as_broker_surface_fai
     assert bracket_check["status"] == "BLOCKED"
 
 
+def test_prop_live_gate_blocks_missing_fleet_truth_in_bracket_audit() -> None:
+    payloads = _ready_payloads()
+    payloads["broker_bracket_audit"] = {
+        "summary": "BLOCKED_FLEET_TRUTH_UNAVAILABLE",
+        "ready_for_prop_dry_run": False,
+        "next_action": "Bot-fleet position truth is unavailable",
+        "position_summary": {},
+    }
+
+    report = gate.build_gate_report(**payloads)
+    actions = "\n".join(report["next_actions"])
+
+    assert report["summary"] == "BLOCKED"
+    bracket_check = next(check for check in report["checks"] if check["name"] == "broker_native_brackets")
+    assert bracket_check["status"] == "BLOCKED"
+    assert bracket_check["evidence"]["audit_summary"] == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    assert "/api/bot-fleet" in actions
+    assert "do not infer flat exposure" in actions
+
+
 def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
     payloads = _ready_payloads()
     payloads["prop"] = {

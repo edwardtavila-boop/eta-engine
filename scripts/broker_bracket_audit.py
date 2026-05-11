@@ -175,6 +175,35 @@ def _derive_position_summary(fleet: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fleet_has_position_truth(fleet: dict[str, Any]) -> bool:
+    if not fleet:
+        return False
+    target_exit_summary = _as_dict(fleet.get("target_exit_summary"))
+    if target_exit_summary:
+        return True
+    summary = _as_dict(fleet.get("summary"))
+    position_keys = {
+        "broker_open_position_count",
+        "broker_bracket_required_position_count",
+        "broker_bracket_count",
+        "missing_bracket_count",
+        "supervisor_local_position_count",
+    }
+    if summary and any(key in summary for key in position_keys):
+        return True
+    if "bots" in fleet:
+        return True
+    if _as_list(_as_dict(fleet.get("position_exposure")).get("open_positions")):
+        return True
+    live_broker_state = _as_dict(fleet.get("live_broker_state"))
+    if _as_list(_as_dict(live_broker_state.get("position_exposure")).get("open_positions")):
+        return True
+    for venue in ("ibkr", "tastytrade", "tasty"):
+        if _as_list(_as_dict(live_broker_state.get(venue)).get("open_positions")):
+            return True
+    return False
+
+
 def _position_qty(position: dict[str, Any]) -> float | None:
     for key in ("qty", "position", "quantity", "size"):
         qty = _as_float(position.get(key))
@@ -385,6 +414,18 @@ def _append_detail_once(message: str, detail: str) -> str:
 
 
 def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
+        return [
+            {
+                "id": "restore_bot_fleet_position_truth",
+                "label": "Restore bot-fleet position truth",
+                "manual": False,
+                "order_action": False,
+                "blocks_prop_dry_run": True,
+                "symbol": None,
+                "detail": "Restore /api/bot-fleet position truth before treating broker exposure as flat.",
+            },
+        ]
     if summary != "BLOCKED_UNBRACKETED_EXPOSURE":
         return []
     primary = positions[0] if positions else {}
@@ -446,8 +487,9 @@ def build_bracket_audit(
     fleet: dict[str, Any] | None = None,
     manual_ack: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    fleet = fleet or _fetch_json(DEFAULT_FLEET_URL)
+    fleet = _fetch_json(DEFAULT_FLEET_URL) if fleet is None else fleet or {}
     manual_ack = manual_ack or {}
+    fleet_truth_present = _fleet_has_position_truth(fleet)
     position_summary = _derive_position_summary(fleet)
     open_count = position_summary["broker_open_position_count"]
     bracket_required = position_summary["broker_bracket_required_position_count"]
@@ -518,7 +560,9 @@ def build_bracket_audit(
         adapter_support.get("tradovate_order_payload_brackets"),
     )
 
-    if open_count == 0 and supervisor_local == 0 and adapter_ok:
+    if not fleet_truth_present:
+        summary = "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    elif open_count == 0 and supervisor_local == 0 and adapter_ok:
         summary = "READY_NO_OPEN_EXPOSURE"
     elif manual_oco_verified_positions and missing_brackets == 0 and not unprotected_positions and adapter_ok:
         summary = "READY_OPEN_EXPOSURE_MANUAL_OCO_VERIFIED"
@@ -529,7 +573,12 @@ def build_bracket_audit(
     else:
         summary = "BLOCKED_UNBRACKETED_EXPOSURE"
 
-    if summary == "BLOCKED_UNBRACKETED_EXPOSURE" and missing_brackets > 0:
+    if summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
+        next_action = (
+            "Bot-fleet position truth is unavailable; restore /api/bot-fleet before "
+            "treating broker exposure as flat."
+        )
+    elif summary == "BLOCKED_UNBRACKETED_EXPOSURE" and missing_brackets > 0:
         next_action = (
             f"{missing_brackets} broker bracket-required position"
             f"{'' if missing_brackets == 1 else 's'} missing broker-native OCO; "
@@ -561,6 +610,7 @@ def build_bracket_audit(
         "summary": summary,
         "target_exit_status": target_exit_summary.get("status"),
         "stale_position_status": target_exit_summary.get("stale_position_status"),
+        "fleet_truth_present": fleet_truth_present,
         "position_summary": position_summary,
         "manual_oco_ack": {
             "present": bool(manual_ack),

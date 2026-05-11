@@ -351,6 +351,7 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         actions.append("Archive or resolve historical failed/quarantined/rejected router residue before prop dry-run.")
     if "broker_native_brackets" in blocked:
         evidence = _as_dict(blocked_checks["broker_native_brackets"].get("evidence"))
+        audit_summary = str(evidence.get("audit_summary") or "")
         position = _as_dict(evidence.get("primary_unprotected_position"))
         position_summary = _as_dict(evidence.get("position_summary"))
         symbol = str(position.get("symbol") or "").strip().upper()
@@ -362,7 +363,12 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         ]
         if symbol and symbol not in unprotected_symbols:
             unprotected_symbols.insert(0, symbol)
-        if unprotected_symbols:
+        if audit_summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
+            actions.append(
+                "Restore live /api/bot-fleet position truth and rerun the broker bracket audit; "
+                "do not infer flat exposure from missing dashboard data.",
+            )
+        elif unprotected_symbols:
             ack_commands = [
                 (
                     "python -m eta_engine.scripts.broker_bracket_audit "

@@ -26,6 +26,28 @@ def test_bracket_audit_ready_when_flat(monkeypatch) -> None:
     assert report["operator_actions"] == []
 
 
+def test_bracket_audit_blocks_when_fleet_position_truth_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(fleet={})
+
+    assert report["summary"] == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    assert report["fleet_truth_present"] is False
+    assert report["ready_for_prop_dry_run"] is False
+    assert report["operator_action_required"] is True
+    assert report["operator_actions"][0]["id"] == "restore_bot_fleet_position_truth"
+    assert report["operator_actions"][0]["order_action"] is False
+    assert "/api/bot-fleet" in report["next_action"]
+
+
 def test_bracket_audit_blocks_unbracketed_open_exposure(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,
