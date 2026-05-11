@@ -730,9 +730,279 @@ def run_book_imbalance(symbol: str, days: int, *,
     return result
 
 
+def _replay_microprice(snaps: list[dict], cfg, symbol: str,
+                        *, apply_regime_filter: bool = True,
+                        atr_lookback: int = 20) -> tuple[list, list[L2Trade], int]:
+    """Replay microprice_drift through the depth stream.  Uses the
+    last snap's mid as the trade_price proxy (until real tick stream
+    is wired alongside)."""
+    from eta_engine.strategies.microprice_drift_strategy import (
+        MicropriceState,
+        evaluate_snapshot,
+        update_trade_price,
+    )
+    from eta_engine.strategies.spread_regime_filter import (
+        SpreadRegimeConfig,
+        SpreadRegimeState,
+        update_spread_regime,
+    )
+    spec = get_spec(symbol)
+    state = MicropriceState()
+    regime_cfg = SpreadRegimeConfig()
+    regime_state = SpreadRegimeState()
+    rolling: deque = deque(maxlen=atr_lookback)
+    signals: list = []
+    trades: list[L2Trade] = []
+    n_skipped_regime = 0
+    for i, snap in enumerate(snaps):
+        rolling.append(snap)
+        # Use prior mid as trade-print proxy
+        if i > 0:
+            update_trade_price(state, float(snaps[i - 1].get("mid", 0.0)))
+        regime = update_spread_regime(snap, regime_cfg, regime_state) if apply_regime_filter else None
+        if regime is not None and regime["verdict"] in {"PAUSE", "STALE"}:
+            n_skipped_regime += 1
+            continue
+        atr = _realized_atr_points(list(rolling), lookback=atr_lookback,
+                                    default=spec["default_atr"])
+        sig = evaluate_snapshot(snap, cfg, state, atr=atr, symbol=symbol)
+        if sig is not None:
+            signals.append(sig)
+            future = snaps[i + 1:]
+            trades.append(_simulate_exit_pessimistic(
+                sig, future,
+                point_value=spec["point_value"],
+                tick_size=spec["tick_size"],
+            ))
+    return signals, trades, n_skipped_regime
+
+
+def _replay_aggressor_flow_from_l1_bars(bars: list[dict], cfg,
+                                          symbol: str) -> tuple[list, list[L2Trade], int]:
+    """Replay aggressor_flow over L1 bars produced by bar_builder_l1.
+
+    Uses point_value/tick_size from SYMBOL_SPECS.  Note: aggressor flow
+    is bar-based, not snap-based; trades are simulated against the next
+    N bars using a coarse close-only proxy because depth snaps may not
+    align with bar boundaries.  The spread_regime_filter does not apply
+    here (no per-snap regime classification on bar data)."""
+    from eta_engine.strategies.aggressor_flow_strategy import (
+        AggressorFlowState,
+        evaluate_bar,
+    )
+    spec = get_spec(symbol)
+    state = AggressorFlowState()
+    signals: list = []
+    trades: list[L2Trade] = []
+    # ATR from bars (high-low range over a 20-bar lookback)
+    for i, bar in enumerate(bars):
+        recent = bars[max(0, i - 20):i + 1]
+        if len(recent) >= 2:
+            atr = sum(float(b.get("high", 0)) - float(b.get("low", 0))
+                       for b in recent) / len(recent)
+        else:
+            atr = spec["default_atr"]
+        sig = evaluate_bar(bar, cfg, state, atr=max(atr, spec["default_atr"] * 0.25),
+                            symbol=symbol)
+        if sig is not None:
+            signals.append(sig)
+            # Build a snap-shaped exit-window from subsequent bars
+            future_snaps = [{
+                "mid": float(b.get("close", 0)),
+                "spread": (float(b.get("high", 0)) - float(b.get("low", 0))) / 4,
+                "ts": b.get("timestamp_utc", ""),
+            } for b in bars[i + 1:]]
+            trades.append(_simulate_exit_pessimistic(
+                sig, future_snaps,
+                point_value=spec["point_value"],
+                tick_size=spec["tick_size"],
+            ))
+    return signals, trades, 0  # no regime filter applied
+
+
+def run_microprice_drift(symbol: str, days: int, *,
+                          drift_threshold_ticks: float = 2.0,
+                          consecutive_snaps: int = 3,
+                          atr_stop_mult: float = 1.5,
+                          rr_target: float = 2.0,
+                          walk_forward: bool = True,
+                          min_n_for_sharpe: int = 30,
+                          apply_regime_filter: bool = True,
+                          log_config_search_flag: bool = True) -> L2BacktestResult:
+    """Replay depth history through microprice_drift_strategy."""
+    from eta_engine.strategies.microprice_drift_strategy import MicropriceConfig
+    cfg = MicropriceConfig(
+        drift_threshold_ticks=drift_threshold_ticks,
+        consecutive_snaps=consecutive_snaps,
+        atr_stop_mult=atr_stop_mult,
+        rr_target=rr_target,
+    )
+    spec = get_spec(symbol)
+    n_configs_searched = count_prior_configs_searched(
+        "microprice_drift", symbol) if log_config_search_flag else 1
+    start = datetime.now(UTC) - timedelta(days=max(days - 1, 0))
+    snaps = _iter_depth_snapshots(symbol, start, days)
+
+    walk_summary: dict | None = None
+    if walk_forward and len(snaps) >= 100:
+        split_idx = int(len(snaps) * 0.70)
+        train_snaps = snaps[:split_idx]
+        test_snaps = snaps[split_idx:]
+        _, train_trades, train_skipped = _replay_microprice(
+            train_snaps, cfg, symbol,
+            apply_regime_filter=apply_regime_filter)
+        _, test_trades, test_skipped = _replay_microprice(
+            test_snaps, cfg, symbol,
+            apply_regime_filter=apply_regime_filter)
+        train_res = _summarize(
+            "microprice_drift", symbol, days,
+            n_snapshots=len(train_snaps), trades=train_trades,
+            n_signals=len(train_trades), n_skipped_regime=train_skipped,
+            point_value=spec["point_value"], walk_forward=None,
+            min_n_for_sharpe=min_n_for_sharpe)
+        test_res = _summarize(
+            "microprice_drift", symbol, days,
+            n_snapshots=len(test_snaps), trades=test_trades,
+            n_signals=len(test_trades), n_skipped_regime=test_skipped,
+            point_value=spec["point_value"], walk_forward=None,
+            min_n_for_sharpe=min_n_for_sharpe)
+        walk_summary = {
+            "split": "70/30 chronological",
+            "train": {"n_snaps": train_res.n_snapshots,
+                       "n_trades": train_res.n_trades,
+                       "win_rate": train_res.win_rate,
+                       "sharpe_proxy": train_res.sharpe_proxy,
+                       "sharpe_proxy_valid": train_res.sharpe_proxy_valid,
+                       "total_pnl_dollars_net": train_res.total_pnl_dollars_net},
+            "test": {"n_snaps": test_res.n_snapshots,
+                      "n_trades": test_res.n_trades,
+                      "win_rate": test_res.win_rate,
+                      "sharpe_proxy": test_res.sharpe_proxy,
+                      "sharpe_proxy_valid": test_res.sharpe_proxy_valid,
+                      "total_pnl_dollars_net": test_res.total_pnl_dollars_net},
+            "promotion_gate": {
+                "rule": "OOS sharpe_proxy_valid AND OOS sharpe >= 0.5 AND OOS n_trades >= min_n",
+                "passes": (test_res.sharpe_proxy_valid
+                            and test_res.sharpe_proxy >= 0.5
+                            and test_res.n_trades >= min_n_for_sharpe),
+            },
+        }
+
+    signals, trades, n_skipped = _replay_microprice(
+        snaps, cfg, symbol, apply_regime_filter=apply_regime_filter)
+    result = _summarize("microprice_drift", symbol, days,
+                         n_snapshots=len(snaps), trades=trades,
+                         n_signals=len(signals),
+                         n_skipped_regime=n_skipped,
+                         point_value=spec["point_value"],
+                         walk_forward=walk_summary,
+                         min_n_for_sharpe=min_n_for_sharpe,
+                         n_configs_searched=n_configs_searched)
+    if log_config_search_flag:
+        log_config_search(
+            strategy="microprice_drift", symbol=symbol, days=days,
+            config={"drift_threshold_ticks": drift_threshold_ticks,
+                     "consecutive_snaps": consecutive_snaps,
+                     "atr_stop_mult": atr_stop_mult,
+                     "rr_target": rr_target},
+            n_trades=result.n_trades,
+            sharpe_proxy=result.sharpe_proxy,
+            sharpe_proxy_valid=result.sharpe_proxy_valid,
+            win_rate=result.win_rate,
+            total_pnl_dollars_net=result.total_pnl_dollars_net,
+        )
+    return result
+
+
+def _load_l1_bars(symbol: str, timeframe: str = "5m") -> list[dict]:
+    """Load L1 bars produced by bar_builder_l1.  Returns empty list
+    when the file doesn't exist (graceful pre-data behavior)."""
+    import csv
+    bars_path = ROOT.parent / "mnq_data" / "history_l1" / f"{symbol}_{timeframe}_l1.csv"
+    if not bars_path.exists():
+        return []
+    bars: list[dict] = []
+    try:
+        with bars_path.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Cast numeric fields
+                bars.append({
+                    "timestamp_utc": row.get("timestamp_utc", ""),
+                    "epoch_s": float(row.get("epoch_s", 0)),
+                    "open": float(row.get("open", 0)),
+                    "high": float(row.get("high", 0)),
+                    "low": float(row.get("low", 0)),
+                    "close": float(row.get("close", 0)),
+                    "volume_total": float(row.get("volume_total", 0)),
+                    "volume_buy": float(row.get("volume_buy", 0)),
+                    "volume_sell": float(row.get("volume_sell", 0)),
+                    "n_trades": int(row.get("n_trades", 0)),
+                })
+    except OSError:
+        return []
+    return bars
+
+
+def run_aggressor_flow(symbol: str, days: int, *,
+                        window_bars: int = 10,
+                        entry_threshold: float = 0.35,
+                        consecutive_bars: int = 2,
+                        atr_stop_mult: float = 1.0,
+                        rr_target: float = 2.0,
+                        timeframe: str = "5m",
+                        log_config_search_flag: bool = True) -> L2BacktestResult:
+    """Replay aggressor_flow over L1 bars.  Walk-forward is not
+    applicable here because bar data comes pre-segmented; the harness
+    just runs full-window."""
+    from eta_engine.strategies.aggressor_flow_strategy import AggressorFlowConfig
+    cfg = AggressorFlowConfig(
+        window_bars=window_bars,
+        entry_threshold=entry_threshold,
+        consecutive_bars=consecutive_bars,
+        atr_stop_mult=atr_stop_mult,
+        rr_target=rr_target,
+    )
+    spec = get_spec(symbol)
+    bars = _load_l1_bars(symbol, timeframe)
+    # Filter to last `days` worth of bars by timestamp
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).timestamp()
+    bars = [b for b in bars if b.get("epoch_s", 0) >= cutoff]
+    n_configs_searched = count_prior_configs_searched(
+        "aggressor_flow", symbol) if log_config_search_flag else 1
+    signals, trades, n_skipped = _replay_aggressor_flow_from_l1_bars(
+        bars, cfg, symbol)
+    result = _summarize("aggressor_flow", symbol, days,
+                         n_snapshots=len(bars),  # bars in this case
+                         trades=trades,
+                         n_signals=len(signals),
+                         n_skipped_regime=n_skipped,
+                         point_value=spec["point_value"],
+                         walk_forward=None,
+                         n_configs_searched=n_configs_searched)
+    if log_config_search_flag:
+        log_config_search(
+            strategy="aggressor_flow", symbol=symbol, days=days,
+            config={"window_bars": window_bars,
+                     "entry_threshold": entry_threshold,
+                     "consecutive_bars": consecutive_bars,
+                     "atr_stop_mult": atr_stop_mult,
+                     "rr_target": rr_target,
+                     "timeframe": timeframe},
+            n_trades=result.n_trades,
+            sharpe_proxy=result.sharpe_proxy,
+            sharpe_proxy_valid=result.sharpe_proxy_valid,
+            win_rate=result.win_rate,
+            total_pnl_dollars_net=result.total_pnl_dollars_net,
+        )
+    return result
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--strategy", choices=["book_imbalance"], default="book_imbalance")
+    ap.add_argument("--strategy",
+                    choices=["book_imbalance", "microprice_drift", "aggressor_flow"],
+                    default="book_imbalance")
     ap.add_argument("--symbol", default="MNQ")
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--entry-threshold", type=float, default=1.75)
@@ -749,21 +1019,38 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    if args.strategy != "book_imbalance":
-        print(f"unknown strategy: {args.strategy}")
-        return 2
-
-    result = run_book_imbalance(
-        args.symbol, args.days,
-        entry_threshold=args.entry_threshold,
-        consecutive_snaps=args.consecutive_snaps,
-        n_levels=args.n_levels,
-        atr_stop_mult=args.atr_stop_mult,
-        rr_target=args.rr_target,
-        walk_forward=not args.no_walk_forward,
-        min_n_for_sharpe=args.min_n,
-        apply_regime_filter=not args.no_regime_filter,
-    )
+    if args.strategy == "microprice_drift":
+        result = run_microprice_drift(
+            args.symbol, args.days,
+            drift_threshold_ticks=args.entry_threshold * 2,  # different scale
+            consecutive_snaps=args.consecutive_snaps,
+            atr_stop_mult=args.atr_stop_mult,
+            rr_target=args.rr_target,
+            walk_forward=not args.no_walk_forward,
+            min_n_for_sharpe=args.min_n,
+            apply_regime_filter=not args.no_regime_filter,
+        )
+    elif args.strategy == "aggressor_flow":
+        result = run_aggressor_flow(
+            args.symbol, args.days,
+            window_bars=10,
+            entry_threshold=args.entry_threshold * 0.2,  # ratio scale
+            consecutive_bars=args.consecutive_snaps,
+            atr_stop_mult=args.atr_stop_mult,
+            rr_target=args.rr_target,
+        )
+    else:  # book_imbalance (default)
+        result = run_book_imbalance(
+            args.symbol, args.days,
+            entry_threshold=args.entry_threshold,
+            consecutive_snaps=args.consecutive_snaps,
+            n_levels=args.n_levels,
+            atr_stop_mult=args.atr_stop_mult,
+            rr_target=args.rr_target,
+            walk_forward=not args.no_walk_forward,
+            min_n_for_sharpe=args.min_n,
+            apply_regime_filter=not args.no_regime_filter,
+        )
 
     # Persist to L2 backtest log
     digest = {

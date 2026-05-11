@@ -243,6 +243,37 @@ def test_build_dashboard_surfaces_ibkr_setup_blocked(isolated_logs: Path) -> Non
     assert action in hd.render_text(d)
 
 
+def test_build_dashboard_marks_capture_blocked_by_ibkr_setup(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    action = "Seed IBC credentials before starting Gateway."
+    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
+        "ts": now,
+        "setup_status": "BLOCKED",
+        "setup_error_code": "ibc_credentials_missing",
+        "operator_action": action,
+        "all_realtime": False,
+        "all_depth_ok": False,
+    }])
+    _write_jsonl(hd.SOURCES["capture_health"], [{
+        "ts": now,
+        "verdict": "RED",
+        "n_symbols": 2,
+        "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
+    }])
+
+    d = hd.build_dashboard()
+    cap = d["sections"]["capture_health"]
+
+    assert cap["status"] == "BLOCKED"
+    assert cap["raw_status"] == "RED"
+    assert cap["blocked_by"] == "ibkr_subscriptions"
+    text = hd.render_text(d)
+    assert "blocked by ibkr_subscriptions" in text
+    assert action in text
+
+
 def test_build_dashboard_overall_worst_when_critical(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
     _write_jsonl(hd.SOURCES["disk_space"], [{

@@ -250,11 +250,26 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     # 3. Capture health
     cap = _last_jsonl_record(SOURCES["capture_health"])
     if cap:
+        cap_status = cap.get("verdict", "?")
+        cap_issues = cap.get("issues", [])
+        ibkr_sub = out["sections"].get("ibkr_subscriptions", {})
+        blocked_by: str | None = None
+        blocked_reason: str | None = None
+        if (
+            ibkr_sub.get("status") == "BLOCKED"
+            and str(cap_status).upper() in {"RED", "FAIL", "STALE"}
+        ):
+            blocked_by = "ibkr_subscriptions"
+            blocked_reason = ibkr_sub.get("operator_action") or ibkr_sub.get("setup_error_code")
+            cap_status = "BLOCKED"
         out["sections"]["capture_health"] = {
-            "status": cap.get("verdict", "?"),
+            "status": cap_status,
+            "raw_status": cap.get("verdict", "?"),
             "ts": cap.get("ts"),
             "n_symbols": cap.get("n_symbols", 0),
-            "issues": cap.get("issues", []),
+            "issues": cap_issues,
+            "blocked_by": blocked_by,
+            "blocked_reason": blocked_reason,
         }
     else:
         out["sections"]["capture_health"] = {"status": "NEVER_RUN", "ts": None}
@@ -391,11 +406,21 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
                        ibkr_sub.get("status", "?"),
                        _age_str(ibkr_sub.get("ts")),
                        ibkr_detail))
+    cap_health = s["capture_health"]
+    cap_detail = (
+        f"{cap_health.get('n_symbols', 0)} symbols, "
+        f"{len(cap_health.get('issues', []))} issues"
+    )
+    if cap_health.get("blocked_by"):
+        cap_detail = (
+            f"blocked by {cap_health.get('blocked_by')}; "
+            f"{len(cap_health.get('issues', []))} downstream issue(s); "
+            f"{cap_health.get('blocked_reason') or 'clear upstream readiness first'}"
+        )
     lines.append(_row("capture health",
-                       s["capture_health"].get("status", "?"),
-                       _age_str(s["capture_health"].get("ts")),
-                       f"{s['capture_health'].get('n_symbols', 0)} symbols, "
-                       f"{len(s['capture_health'].get('issues', []))} issues"))
+                       cap_health.get("status", "?"),
+                       _age_str(cap_health.get("ts")),
+                       cap_detail))
     lines.append(_row("disk space",
                        s["disk_space"].get("status", "?"),
                        _age_str(s["disk_space"].get("ts")),
