@@ -132,13 +132,57 @@ _ASSET_CLASS = {
     "MCL": "commodity", "NG": "commodity",
     "6E": "fx", "EUR": "fx", "ZN": "fx",
     "BTC": "crypto", "ETH": "crypto", "SOL": "crypto",
-    "MBT": "crypto", "MET": "crypto",
+    "XRP": "crypto", "MBT": "crypto", "MET": "crypto",
 }
+
+
+_FUTURES_MONTH_CODES = frozenset("FGHJKMNQUVXZ")
+_QUOTE_SUFFIXES = ("USDT", "USD", "PERP")
+_KNOWN_ROOTS = tuple(sorted(_ASSET_CLASS, key=len, reverse=True))
+
+
+def normalize_symbol(symbol: str) -> str:
+    """Normalize live broker/feed symbols to the configured asset root.
+
+    Broker and dashboard payloads mix continuous contracts (``MNQ1``),
+    futures month codes (``MNQM6``), slash-prefixed symbols (``/MNQ``), and
+    crypto quote pairs (``ETHUSD``). Without normalization those live symbols
+    fall back to equity defaults instead of their asset-specific settings.
+    """
+    sym = symbol.upper().strip()
+    if sym.startswith("/"):
+        sym = sym[1:]
+    sym = sym.replace(" ", "").replace("-", "").replace("_", "")
+    if sym.endswith("=F"):
+        sym = sym[:-2]
+
+    if sym in _ASSET_CLASS:
+        return sym
+
+    for suffix in _QUOTE_SUFFIXES:
+        base = sym[: -len(suffix)]
+        if sym.endswith(suffix) and base in _ASSET_CLASS:
+            return base
+
+    for root in _KNOWN_ROOTS:
+        if not sym.startswith(root):
+            continue
+        tail = sym[len(root):]
+        if tail == "1":
+            return root
+        if (
+            len(tail) in (2, 3)
+            and tail[0] in _FUTURES_MONTH_CODES
+            and tail[1:].isdigit()
+        ):
+            return root
+
+    return sym
 
 
 def get_schools_for_symbol(symbol: str) -> frozenset:
     """Return the right sage schools for this symbol."""
-    sym = symbol.upper().rstrip("1")
+    sym = normalize_symbol(symbol)
     cls = _ASSET_CLASS.get(sym, "equity")
     return {
         "equity": _EQUITY_SCHOOLS,
@@ -150,18 +194,18 @@ def get_schools_for_symbol(symbol: str) -> frozenset:
 
 def get_intermarket_for_symbol(symbol: str) -> list[str]:
     """Return the right intermarket tickers for alpha sniper."""
-    sym = symbol.upper().rstrip("1")
+    sym = normalize_symbol(symbol)
     return _INTERMARKET_PAIRS.get(sym, [])
 
 
 def get_edge_preset_for_symbol(symbol: str) -> dict:
     """Return the right edge layer config for this symbol."""
-    sym = symbol.upper().rstrip("1")
+    sym = normalize_symbol(symbol)
     cls = _ASSET_CLASS.get(sym, "equity")
     return dict(_EDGE_PRESETS[cls])
 
 
 def get_asset_class(symbol: str) -> str:
     """Return the asset class for a symbol."""
-    sym = symbol.upper().rstrip("1")
+    sym = normalize_symbol(symbol)
     return _ASSET_CLASS.get(sym, "equity")

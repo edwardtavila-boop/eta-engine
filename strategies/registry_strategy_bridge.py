@@ -255,12 +255,9 @@ def _build_callable_for_assignment(
     if symbol and strategy is not None:
         try:
             from eta_engine.feeds.asset_specific_config import (
-                get_schools_for_symbol,
                 get_intermarket_for_symbol,
-                get_edge_preset_for_symbol,
-                get_asset_class,
+                get_schools_for_symbol,
             )
-            asset_cls = get_asset_class(symbol)
             # Enrich alpha_sniper with ticker-relevant intermarket pairs
             if hasattr(strategy, '_sub') and hasattr(strategy, 'cfg'):
                 # Check if this is an AlphaSniper wrapper
@@ -650,24 +647,32 @@ def _build_strategy_fallback(kind: str, extras: dict) -> object | None:
 
     if kind == "commodity_momentum":
         from eta_engine.strategies.commodity_momentum_strategy import (
-            MomentumConfig, MomentumStrategy, gc_momentum_preset, cl_momentum_preset,
+            MomentumStrategy,
+            cl_momentum_preset,
+            gc_momentum_preset,
         )
+
         preset = extras.get("momentum_preset", "gc")
         cfg = {"gc": gc_momentum_preset, "cl": cl_momentum_preset}.get(preset, gc_momentum_preset)()
         return MomentumStrategy(cfg)
 
     if kind == "fx_range":
         from eta_engine.strategies.fx_range_strategy import (
-            RangeConfig, RangeStrategy, eur_range_preset, zn_range_preset,
+            RangeStrategy,
+            eur_range_preset,
+            zn_range_preset,
         )
+
         preset = extras.get("range_preset", "eur")
         cfg = {"eur": eur_range_preset, "zn": zn_range_preset}.get(preset, eur_range_preset)()
         return RangeStrategy(cfg)
 
     if kind == "oil_macro":
         from eta_engine.strategies.oil_macro_strategy import (
-            OilMacroConfig, OilMacroStrategy, cl_macro_fade_preset,
+            OilMacroStrategy,
+            cl_macro_fade_preset,
         )
+
         cfg = cl_macro_fade_preset()
         return OilMacroStrategy(cfg)
 
