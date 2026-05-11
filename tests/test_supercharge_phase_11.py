@@ -3,6 +3,8 @@
 - l2_supervisor_state_persister (closes the reconciliation loop)
 - l2_seed_news_calendar (2026 H1+H2 FOMC/NFP/CPI/ECB/witching seed)
 - Integration: persister output is readable by l2_reconciliation
+- Supervisor wiring: FILLED status path triggers record_fill with
+  entry-leg fill details (slip, commission, fill price)
 """
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
@@ -11,11 +13,15 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from eta_engine.scripts import l2_reconciliation as recon
 from eta_engine.scripts import l2_seed_news_calendar as seed
 from eta_engine.scripts import l2_supervisor_state_persister as persister
 from eta_engine.scripts.l2_news_blackout import is_in_blackout
+
+if TYPE_CHECKING:
+    import pytest
 
 # ────────────────────────────────────────────────────────────────────
 # l2_supervisor_state_persister — basic write/read
@@ -364,3 +370,148 @@ def test_seeded_calendar_filters_by_symbol(tmp_path: Path) -> None:
     assert is_in_blackout("MNQ", when=when, _path=target).in_blackout
     # MGC is NOT in ECB_SYMBOLS
     assert not is_in_blackout("MGC", when=when, _path=target).in_blackout
+
+
+# ────────────────────────────────────────────────────────────────────
+# Supervisor wiring: FILLED path triggers record_fill
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_supervisor_filled_path_triggers_record_fill(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the broker returns OrderStatus.FILLED with avg_price + qty,
+    the supervisor's new wiring calls record_fill with exit_reason=ENTRY,
+    capturing the entry-leg slip for the audit pipeline.
+
+    Why this matters: without this path, the fill audit pipeline sees
+    zero real fills until the operator wires a separate IBKR execution
+    callback.  This synchronous capture is the MVP — bracket exits still
+    need the async callback to round out the picture.
+    """
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    captured: list[dict] = []
+
+    def _capture_fill(**kwargs) -> None:
+        captured.append(kwargs)
+
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check",
+                         lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal",
+                         lambda *_args: None)
+    monkeypatch.setattr(supervisor.l2hooks, "record_fill", _capture_fill)
+
+    class _Venue:
+        def place_order(self, _request):
+            return object()
+
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: _Venue())
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_a, **_kw: OrderResult(
+            order_id="sig-filled",
+            status=OrderStatus.FILLED,
+            filled_qty=1.0,
+            avg_price=28251.25,
+            fees=0.75,
+            raw={"ibkr_order_id": 9001},
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="filled-bot", symbol="MNQ1", strategy_kind="x",
+        direction="long", cash=500_000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot, signal_id="sig-filled", side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0,
+             "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    # The supervisor's new wiring must have triggered exactly one fill
+    # capture with ENTRY semantics and the broker's avg_price.
+    assert len(captured) == 1
+    call = captured[0]
+    assert call["exit_reason"] == "ENTRY"
+    assert call["side"] == "LONG"  # mapped from BUY
+    assert call["actual_fill_price"] == 28251.25
+    assert call["qty_filled"] == 1
+    assert call["commission_usd"] == 0.75
+    assert call["signal_id"] == "sig-filled"
+    # intended_price should match the bracket reference used to place
+    # the order (the bar close after tick-rounding)
+    assert call["intended_price"] > 0
+
+
+def test_supervisor_open_path_does_not_trigger_record_fill(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """OrderStatus.OPEN (not yet filled) must NOT call record_fill —
+    we only capture terminal events.  Otherwise the audit log would be
+    polluted with un-filled order acks."""
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    fill_calls: list[dict] = []
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check",
+                         lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal",
+                         lambda *_args: None)
+    monkeypatch.setattr(supervisor.l2hooks, "record_fill",
+                         lambda **kw: fill_calls.append(kw))
+
+    class _Venue:
+        def place_order(self, _request):
+            return object()
+
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: _Venue())
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_a, **_kw: OrderResult(
+            order_id="sig-open",
+            status=OrderStatus.OPEN,
+            raw={"ibkr_order_id": 9002},
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="open-bot", symbol="MNQ1", strategy_kind="x",
+        direction="long", cash=500_000.0,
+    )
+
+    router.submit_entry(
+        bot=bot, signal_id="sig-open", side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0,
+             "open": 28245.0},
+        size_mult=1.0,
+    )
+    assert fill_calls == []

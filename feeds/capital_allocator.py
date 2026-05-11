@@ -1,9 +1,9 @@
-"""Capital Allocation Engine — 40/40/20 pool system with performance-weighted sizing.
+"""Capital Allocation Engine — futures-first pool system with performance-weighted sizing.
 
 Pools:
-  SPOT (40%):    BTC, ETH, SOL bots via Alpaca
-  FUTURES (40%): MNQ, NQ, MES, GC, CL, NG, ZN, EUR via IBKR
-  LEVERAGED (20%): MBT, MET via IBKR (CME micro crypto futures)
+  FUTURES (100%): MNQ, NQ, MES, GC, CL, NG, ZN, EUR, MBT, MET via IBKR
+  SPOT (0%):       BTC, ETH, SOL bots via Alpaca until capital expands
+  LEVERAGED (0%):  retired sleeve; CME micro crypto futures live in FUTURES
 
 Within each pool, capital is allocated by multi-session performance:
   - Positive PnL across sessions → weighted higher
@@ -41,8 +41,10 @@ SPOT_SYMBOLS = {"BTC", "ETH", "SOL", "ADA", "AVAX", "LINK", "DOGE"}
 FUTURES_SYMBOLS = {"MNQ", "MNQ1", "NQ", "NQ1", "MES", "M2K", "GC", "CL", "NG", "ZN", "6E", "EUR"}
 LEVERAGED_SYMBOLS = {"MBT", "MET"}
 
-# Pool allocations
-POOL_SPLIT = {"spot": 0.40, "futures": 0.40, "leveraged": 0.20}
+# Pool allocations — PROD FUND FOCUS
+# Primary: futures/commodities on IBKR ($50k prop fund account)
+# Secondary: spot crypto on Alpaca (smaller allocation)
+POOL_SPLIT = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}  # leveraged now in futures pool
 
 # Minimum sessions required for allocation
 MIN_SESSIONS = 2
@@ -54,9 +56,9 @@ ALLOCATION_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\capital
 def classify_pool(bot_id: str) -> str:
     """Classify a bot into spot, futures, or leveraged pool by its ID."""
     bid_lower = bot_id.lower()
-    # Leveraged crypto futures (MBT/MET on CME)
+    # Micro crypto futures (MBT/MET on CME) — part of futures pool
     if any(x in bid_lower for x in ("mbt_", "met_")):
-        return "leveraged"
+        return "futures"
     # Spot crypto (BTC/ETH/SOL)
     if any(x in bid_lower for x in ("btc_", "eth_", "sol_")):
         # Exclude eth_sweep_reclaim which is futures-like on ETH

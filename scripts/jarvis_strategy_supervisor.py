@@ -1132,6 +1132,31 @@ class ExecutionRouter:
                     # L2 supercharge: persist signal for fill audit +
                     # calibration. Always fail-OPEN on hook exception.
                     l2hooks.record_signal(bot, rec, _result)
+                    # L2 supercharge: capture the ENTRY-leg fill from
+                    # the synchronous result so the slip audit + Brier
+                    # calibration pipelines see real numbers instead of
+                    # waiting on a separate execution callback we don't
+                    # have here.  Bracket EXITS (TARGET/STOP) still
+                    # require a separate IBKR fill handler — see
+                    # docs/L2_SUPERVISOR_WIRING.md step 4.
+                    if (
+                        _result.status.value == "FILLED"
+                        and float(getattr(_result, "filled_qty", 0) or 0) > 0
+                    ):
+                        l2hooks.record_fill(
+                            signal_id=rec.signal_id,
+                            broker_exec_id=str(
+                                _result.raw.get("ibkr_order_id", "")
+                                or _result.order_id,
+                            ),
+                            exit_reason="ENTRY",
+                            side="LONG" if rec.side.upper() == "BUY" else "SHORT",
+                            actual_fill_price=float(_result.avg_price or _ref),
+                            qty_filled=int(abs(float(_result.filled_qty or 0))),
+                            commission_usd=float(getattr(_result, "fees", 0) or 0),
+                            intended_price=float(_ref),
+                            tick_size=0.25,  # MNQ default; per-symbol lookup TBD
+                        )
                 elif _result.status.value not in _ok_statuses:
                     _rollback_recorded_entry(
                         f"broker_result={_result.status.value}; reason={_reason}",

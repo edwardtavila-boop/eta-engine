@@ -651,6 +651,89 @@ def test_router_paper_live_direct_order_carries_reference_price(
     assert venue.request.target_price is not None
 
 
+def test_router_paper_live_filled_entry_records_l2_fill(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from eta_engine.scripts import jarvis_strategy_supervisor as supervisor
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+    from eta_engine.venues.base import OrderResult, OrderStatus
+
+    class CapturingVenue:
+        def __init__(self) -> None:
+            self.request = None
+
+        def place_order(self, request):
+            self.request = request
+            return object()
+
+    venue = CapturingVenue()
+    fill_calls = []
+    monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
+    monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal", lambda *_args: None)
+    monkeypatch.setattr(
+        supervisor.l2hooks,
+        "record_fill",
+        lambda **kwargs: fill_calls.append(kwargs),
+    )
+    monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
+    monkeypatch.setattr(
+        supervisor,
+        "_run_on_live_ibkr_loop",
+        lambda *_args, **_kwargs: OrderResult(
+            order_id="fallback-order-id",
+            status=OrderStatus.FILLED,
+            filled_qty=1.0,
+            avg_price=28254.5,
+            fees=1.23,
+            raw={"ibkr_order_id": 77},
+        ),
+    )
+
+    cfg = SupervisorConfig()
+    cfg.mode = "paper_live"
+    cfg.paper_live_order_route = "direct_ibkr"
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path)
+    bot = BotInstance(
+        bot_id="paperlive_filled",
+        symbol="MNQ1",
+        strategy_kind="x",
+        direction="long",
+        cash=500000.0,
+    )
+
+    rec = router.submit_entry(
+        bot=bot,
+        signal_id="sig-filled",
+        side="BUY",
+        bar={"close": 28250.0, "high": 28260.0, "low": 28240.0, "open": 28245.0},
+        size_mult=1.0,
+    )
+
+    assert rec is not None
+    assert fill_calls == [
+        {
+            "signal_id": "sig-filled",
+            "broker_exec_id": "77",
+            "exit_reason": "ENTRY",
+            "side": "LONG",
+            "actual_fill_price": 28254.5,
+            "qty_filled": 1,
+            "commission_usd": 1.23,
+            "intended_price": rec.fill_price,
+            "tick_size": 0.25,
+        },
+    ]
+    assert bot.open_position is not None
+    assert bot.open_position["broker_bracket"] is True
+
+
 def test_router_paper_live_futures_floor_reaches_broker_with_small_cash(
     tmp_path: Path, monkeypatch,
 ) -> None:
