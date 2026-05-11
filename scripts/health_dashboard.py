@@ -163,6 +163,12 @@ def _row(label: str, status: str, age: str, detail: str) -> str:
 
 
 def _alert_level(alert: dict) -> str:
+    if alert.get("event") == "consistency_status" and isinstance(alert.get("payload"), dict):
+        status = str(alert["payload"].get("status", "")).upper()
+        if status == "VIOLATION":
+            return "RED"
+        if status == "WARNING":
+            return "WARN"
     level = alert.get("level") or alert.get("severity") or "UNKNOWN"
     return str(level).upper()
 
@@ -193,6 +199,8 @@ def _alert_message(alert: dict) -> str:
             return str(value)
     payload = alert.get("payload")
     if isinstance(payload, dict):
+        if alert.get("event") == "consistency_status" and payload.get("status"):
+            return f"30% consistency {str(payload['status']).upper()}"
         for key in ("reason", "action", "status"):
             value = payload.get(key)
             if value:

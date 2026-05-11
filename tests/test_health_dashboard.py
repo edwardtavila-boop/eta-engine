@@ -101,6 +101,24 @@ def test_alert_render_helpers_summarize_runtime_payload() -> None:
     assert hd._alert_message(alert) == "active_bots=['mnq'] live=False"
 
 
+def test_alert_helpers_classify_consistency_status_payload() -> None:
+    violation = {
+        "event": "consistency_status",
+        "level": "unknown",
+        "payload": {"status": "VIOLATION", "largest_day_ratio": 0.91},
+    }
+    warning = {
+        "event": "consistency_status",
+        "level": "unknown",
+        "payload": {"status": "WARNING", "largest_day_ratio": 0.28},
+    }
+
+    assert hd._alert_level(violation) == "RED"
+    assert hd._alert_message(violation) == "30% consistency VIOLATION"
+    assert hd._alert_level(warning) == "WARN"
+    assert hd._alert_message(warning) == "30% consistency WARNING"
+
+
 def test_alert_message_uses_title_when_body_is_placeholder() -> None:
     alert = {
         "title": "broker ibkr YELLOW",
