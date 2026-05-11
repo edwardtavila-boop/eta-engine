@@ -352,14 +352,28 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
     if "broker_native_brackets" in blocked:
         evidence = _as_dict(blocked_checks["broker_native_brackets"].get("evidence"))
         position = _as_dict(evidence.get("primary_unprotected_position"))
+        position_summary = _as_dict(evidence.get("position_summary"))
         symbol = str(position.get("symbol") or "").strip().upper()
         venue = str(position.get("venue") or "ibkr").strip().lower()
-        if symbol:
+        unprotected_symbols = [
+            str(item).strip().upper()
+            for item in _as_list(position_summary.get("unprotected_symbols"))
+            if str(item).strip()
+        ]
+        if symbol and symbol not in unprotected_symbols:
+            unprotected_symbols.insert(0, symbol)
+        if unprotected_symbols:
+            ack_commands = [
+                (
+                    "python -m eta_engine.scripts.broker_bracket_audit "
+                    f"--ack-manual-oco --symbol {item} --venue {venue} --operator edward "
+                    "--expires-hours 24 --confirm"
+                )
+                for item in unprotected_symbols
+            ]
             actions.append(
                 "After visually confirming broker-native TP/SL OCO in TWS/IB Gateway, record proof: "
-                "python -m eta_engine.scripts.broker_bracket_audit "
-                f"--ack-manual-oco --symbol {symbol} --venue {venue} --operator edward "
-                "--expires-hours 24 --confirm; otherwise flatten manually before prop dry-run.",
+                f"{'; '.join(ack_commands)}; otherwise flatten manually before prop dry-run.",
             )
         else:
             actions.append("Prove broker-native bracket/OCO coverage before any funded or prop dry-run exposure.")

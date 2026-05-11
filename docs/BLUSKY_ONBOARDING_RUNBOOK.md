@@ -43,26 +43,137 @@ to a business day after purchase. The welcome email contains:
 
 ---
 
-## Step 2: Register Tradovate developer app (5 min)
+## Step 2: Obtain CID + APP_SECRET (BluSky-aware path)
 
-The Tradovate API needs an "app" registration to issue OAuth2 tokens.
-This is FREE and takes 2 minutes. Independent of BluSky — your dev app
-works for all your Tradovate sub-accounts.
+> **DORMANCY:** Step 2 enumerates ways to acquire Tradovate API
+> credentials. None of the sub-paths below activate Tradovate by
+> itself — `DORMANT_BROKERS` still lists Tradovate. Activation
+> happens only at Step 5 (paired code+docs commit).
 
-1. Log into Tradovate web UI: https://trader.tradovate.com (use the
-   credentials BluSky provided).
-2. Top-right menu → **Apps** (or **Settings** → **API Access**)
-3. Click **New App**:
-   - **App Name:** `EtaEngine` (or whatever you like — must match
-     `TRADOVATE_APP_ID` in our env)
+> **2026-05-08 discovery — the prior version of this step assumed
+> self-service app registration was visible inside the BluSky-issued
+> sub-account UI. It is not.** A walk-through of trader.tradovate.com
+> while logged in as `BSKELAUNCHEDWARD15586` (BluSky Launch 50K eval,
+> $50,000 demo equity) confirmed the following:
+>
+> - Settings → **Accounts** — eval-account properties, risk settings only.
+> - Settings → **Subscriptions** — Market Data products only (CME
+>   Bundle Top of Book $12/mo, Depth of Market $48/mo, etc.). A search
+>   for `API` returns only the `API3/USD` crypto symbol, not API Access.
+> - Settings → **Your Profile** — `Customer Applications` panel shows
+>   only **Demo** (with `Open Live Account` upsell). This is the gate.
+> - Settings → **Security & Privacy** — 2FA, Privacy Mode, Trusted
+>   Devices. No OAuth/authorized-apps section.
+> - Settings → **Add-Ons** — TradingView, Order Flow+, Market Replay,
+>   Extended Tick Data History, Point and Figure, Relative Volume,
+>   Tick Stream. **No API Access add-on.**
+>
+> Tradovate's public docs state API registration requires a **LIVE
+> account with ≥ $1,000 equity** plus an **API Access subscription**.
+> The BluSky-issued sub-account runs in Tradovate **demo** during the
+> eval phase, which is why none of the self-service registration UI
+> is exposed today.
+
+The Tradovate API still needs an "app" registration to issue OAuth2
+tokens. Below are the three known paths to obtain the **CID + APP_SECRET**
+that Steps 3-4 require. Run them in the order listed.
+
+### Path A — Ask BluSky support (start here, ~1 business day)
+
+Most prop firms hold a B2B arrangement with Tradovate that exposes a
+documented API-access procedure for funded traders. Send the BluSky
+support address (in the welcome email) the following:
+
+> **Subject:** API access for BluSky Launch 50K eval — automated
+> trading via Tradovate
+>
+> Hi BluSky team,
+>
+> I'm Edward Avila, just purchased the **Launch 50K Tradovate eval**
+> on 2026-05-08 (sub-account **BSKELAUNCHEDWARD15586**). I plan to
+> run a fully automated strategy via the Tradovate REST/WebSocket
+> API — which your TOS confirms is allowed on Launch plans.
+>
+> The Tradovate trader UI for my Demo eval sub-account doesn't
+> expose the standard "Apps" / API registration page (since
+> Tradovate's docs require a Live retail account with $1k equity
+> for self-service registration).
+>
+> Two questions:
+> 1. Do you provide CID + APP_SECRET credentials directly to
+>    funded traders, or
+> 2. Should I register the dev app on a separate personal
+>    Tradovate Live account and use those credentials to
+>    authenticate against my BluSky sub-account?
+>
+> Either path is fine — just want to know your standard procedure
+> so I follow your TOS correctly.
+>
+> Thanks,
+> Edward Avila
+
+While waiting on the reply the supervisor keeps running on IBKR
+paper + Alpaca paper exactly as today; nothing changes on the
+runtime side.
+
+### Path B — Personal Tradovate Live account ($1k of your own capital)
+
+> **DORMANCY:** acquiring CID + APP_SECRET via a personal Live
+> account does not move Tradovate out of `DORMANT_BROKERS` either.
+> Per `dormancy_mandate.md` Appendix A, only the Step 5 paired
+> code+docs commit does that. Capturing credentials here is purely
+> preparation.
+
+Tradovate dev apps are registered to **users**, not to specific
+trading accounts, and OAuth2's CID + APP_SECRET identify the **app**
+while the username + password identify the **user being authenticated**.
+A single registered app can OAuth-authenticate any Tradovate user,
+including BluSky-issued sub-accounts.
+
+So once BluSky confirms third-party apps are TOS-compliant for
+funded traders (Path A response), Path B becomes the fastest road:
+
+1. Open a personal Tradovate Live retail account at
+   https://trader.tradovate.com (separate from the BluSky-issued
+   sub-account login).
+2. Deposit **$1,000** of your own capital. This is a brokerage
+   deposit, not a fee — it stays in your personal account and is
+   withdrawable.
+3. Subscribe to API Access on the personal account (the docs imply
+   it's a paid subscription line item that's only visible once the
+   equity threshold is met).
+4. Register the dev app inside the personal account UI:
+   - **App Name:** `EtaEngine` (must match `TRADOVATE_APP_ID` in env)
    - **App Version:** `1.0`
    - **Description:** "ETA automated trading"
-4. Click **Create**. You will see two values:
-   - **CID** (Client ID — numeric, e.g. `8`)
-   - **App Secret** (a long alphanumeric string)
-5. Copy both into your password manager. **You can never view the
-   App Secret again** after closing the page (Tradovate hashes it
-   server-side).
+5. Capture **CID** (numeric) and **App Secret** (one-time-visible
+   long alphanumeric string) into the password manager.
+6. In Step 3 below, pair these credentials with the **BluSky-issued
+   username + password** — the resulting token is scoped to the
+   BluSky sub-account.
+
+**Risk:** Tradovate's `$1k LIVE account` wording is ambiguous about
+whether the requirement applies to the **app registrant** (one-time
+barrier, fine) or to the **user being authenticated** (would block
+the BluSky demo sub-account). Standard OAuth2 reading is the former,
+but Tradovate is both broker and API platform and may enforce the
+latter. **Step 4 (`authorize_tradovate.py --demo`) is the moment of
+truth** — if it returns `Authorization: OK`, Path B works; if it
+returns "API access not enabled for this account," Path B is dead
+and the operator escalates back to Path A or falls back to Path C.
+
+### Path C — Wait until eval pass → funded (5-7 weeks per phase)
+
+The funded phase runs on Tradovate **live**, and live accounts with
+the funded balance should auto-expose the API registration UI.
+**Catch-22 warning:** reaching funded requires passing the eval and
+the buffer, both of which require placing trades. Without API
+access during the eval phase, the only way to pass is to mirror
+supervisor signals into the trader UI by hand — which defeats the
+automation thesis and exposes the eval DD to manual-execution
+errors.
+
+Path C is only acceptable as a fallback if Paths A and B both fail.
 
 ---
 
@@ -248,17 +359,31 @@ only). Add Elite when BluSky shows positive trajectory.
 > activates Tradovate by itself — Step 5 (paired code+docs commit)
 > is the activation gate.
 
-**Right now, while waiting for BluSky email:**
-- [ ] Read this runbook end-to-end
-- [ ] Pull up Tradovate web UI in a browser tab (https://trader.tradovate.com)
-      — bookmark it for Step 2
+**Done as of 2026-05-08:**
+- [x] BluSky welcome email received; credentials saved
+- [x] Logged into trader.tradovate.com as `BSKELAUNCHEDWARD15586`
+      (eval sub-account, $50,000 demo equity confirmed)
+- [x] Walked every Settings tab to confirm API registration UI is
+      gated behind a `LIVE` account upgrade
 
-**When BluSky email arrives:**
-- [ ] Step 1: save credentials to password manager
-- [ ] Step 2: register Tradovate dev app (5 min)
-- [ ] Step 3: run `setup_tradovate_secrets.py` (1 min)
-- [ ] Step 4: verify with `authorize_tradovate.py --demo` (5 min)
-- [ ] Step 5: staged commit (engineer pairs code+docs)
+**Next operator action — send the Path A email to BluSky support:**
+- [ ] Step 2 Path A: paste the support-email draft above into a
+      reply to the BluSky welcome thread (or their listed support
+      address) and wait ~1 business day for the API-access answer
+
+**On BluSky reply confirming third-party apps are TOS-OK:**
+- [ ] Step 2 Path B: open a personal Tradovate Live account, fund
+      with $1,000, subscribe to API Access, register the `EtaEngine`
+      app, capture **CID + APP_SECRET** into password manager
+- [ ] Step 3: `setup_tradovate_secrets.py` — pair personal-account
+      CID + APP_SECRET with the BluSky-issued username + password
+- [ ] Step 4: `authorize_tradovate.py --demo` — verify OAuth flow
+      against the BluSky sub-account; success here proves Path B
+      works
+- [ ] Step 5: paired code+docs un-dormancy commit
 - [ ] Step 6: monitor first 10 live fills
 
-Total time once email arrives: **~30 minutes to first live order.**
+Total time once Path A reply arrives: **~30 minutes plus the time
+to open + fund the personal Tradovate Live account.** The supervisor
+keeps running on IBKR + Alpaca paper throughout; nothing changes on
+the runtime side until Step 5 lands.

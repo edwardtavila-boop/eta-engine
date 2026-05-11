@@ -3,10 +3,14 @@
   <name>FmStatusServer</name>
   <description>ETA Force Multiplier Status Server</description>
   <executable>C:\EvolutionaryTradingAlgo\eta_engine\.venv\Scripts\python.exe</executable>
-  <arguments>C:\EvolutionaryTradingAlgo\eta_engine\deploy\fm_status_server.py</arguments>
+  <arguments>-m uvicorn eta_engine.deploy.fm_status_server:app --host 127.0.0.1 --port 8422 --proxy-headers --forwarded-allow-ips=127.0.0.1</arguments>
   <workingdirectory>C:\EvolutionaryTradingAlgo</workingdirectory>
-  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\firm\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src"/>
+  <env name="PYTHONPATH" value="C:\EvolutionaryTradingAlgo;C:\EvolutionaryTradingAlgo\eta_engine;C:\EvolutionaryTradingAlgo\mnq_bot\src"/>
+  <env name="PYTHONUTF8" value="1"/>
+  <env name="PYTHONDONTWRITEBYTECODE" value="1"/>
+  <env name="ETA_FM_HEALTH_SNAPSHOT_PATH" value="C:\EvolutionaryTradingAlgo\var\eta_engine\state\fm_health.json"/>
   <logpath>C:\EvolutionaryTradingAlgo\var\logs</logpath>
   <log mode="roll"/>
   <onfailure action="restart" delay="10 sec"/>
+  <restartDelay>10 sec</restartDelay>
 </service>

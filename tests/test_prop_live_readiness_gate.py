@@ -189,6 +189,9 @@ def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
         "summary": "BLOCKED_UNBRACKETED_EXPOSURE",
         "ready_for_prop_dry_run": False,
         "next_action": "MNQM6 missing broker-native OCO",
+        "position_summary": {
+            "unprotected_symbols": ["MNQM6", "MCLM6", "NQM6"],
+        },
         "primary_unprotected_position": {
             "symbol": "MNQM6",
             "venue": "ibkr",
@@ -203,4 +206,6 @@ def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
     assert "BLUSKY_TRADOVATE_ACCOUNT_ID" in actions
     assert "BLUSKY_TRADOVATE_APP_SECRET" in actions
     assert "--ack-manual-oco --symbol MNQM6 --venue ibkr" in actions
+    assert "--ack-manual-oco --symbol MCLM6 --venue ibkr" in actions
+    assert "--ack-manual-oco --symbol NQM6 --venue ibkr" in actions
     assert "paper_soak" in actions
