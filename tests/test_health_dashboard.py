@@ -274,6 +274,36 @@ def test_build_dashboard_marks_capture_blocked_by_ibkr_setup(
     assert action in text
 
 
+def test_build_dashboard_surfaces_capture_rotation_notes(isolated_logs: Path) -> None:
+    now = datetime.now(UTC).isoformat()
+    _write_jsonl(hd.SOURCES["capture_rotation"], [{
+        "ts": now,
+        "apply": False,
+        "ticks": {
+            "kind": "ticks",
+            "n_compressed": 0,
+            "n_cold_archived": 0,
+            "note": "dir missing",
+        },
+        "depth": {
+            "kind": "depth",
+            "n_compressed": 0,
+            "n_cold_archived": 0,
+            "note": "dir missing",
+        },
+        "totals": {"n_compressed": 0, "n_cold_archived": 0},
+    }])
+
+    d = hd.build_dashboard()
+
+    rotation = d["sections"]["capture_rotation"]
+    assert rotation["status"] == "DRY-RUN"
+    assert rotation["notes"] == ["ticks: dir missing", "depth: dir missing"]
+    text = hd.render_text(d)
+    assert "ticks: dir missing" in text
+    assert "depth: dir missing" in text
+
+
 def test_build_dashboard_overall_worst_when_critical(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
     _write_jsonl(hd.SOURCES["disk_space"], [{

@@ -307,6 +307,11 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
                     + ticks.get("n_would_cold_archived", 0)
                     + depth.get("n_would_compress", 0)
                     + depth.get("n_would_cold_archived", 0))
+        notes = []
+        for label, rec in (("ticks", ticks), ("depth", depth)):
+            note = rec.get("note") if isinstance(rec, dict) else None
+            if note:
+                notes.append(f"{label}: {note}")
         if applied:
             status = "GREEN"
         elif pending > 0:
@@ -320,6 +325,7 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
             "n_compressed": rot.get("totals", {}).get("n_compressed", 0),
             "n_cold_archived": rot.get("totals", {}).get("n_cold_archived", 0),
             "n_pending": pending if not applied else 0,
+            "notes": notes,
         }
     else:
         out["sections"]["capture_rotation"] = {"status": "NEVER_RUN", "ts": None}
@@ -425,11 +431,19 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
                        s["disk_space"].get("status", "?"),
                        _age_str(s["disk_space"].get("ts")),
                        s["disk_space"].get("summary", "n/a")))
+    rotation = s["capture_rotation"]
+    rotation_detail = (
+        f"compressed={rotation.get('n_compressed', 0)} "
+        f"cold={rotation.get('n_cold_archived', 0)}"
+    )
+    if rotation.get("n_pending", 0):
+        rotation_detail += f" pending={rotation.get('n_pending', 0)}"
+    if rotation.get("notes"):
+        rotation_detail += "; " + "; ".join(rotation.get("notes", []))
     lines.append(_row("capture rotation",
-                       s["capture_rotation"].get("status", "?"),
-                       _age_str(s["capture_rotation"].get("ts")),
-                       f"compressed={s['capture_rotation'].get('n_compressed', 0)} "
-                       f"cold={s['capture_rotation'].get('n_cold_archived', 0)}"))
+                       rotation.get("status", "?"),
+                       _age_str(rotation.get("ts")),
+                       rotation_detail))
     fv = s["fleet_verdicts"]
     lines.append(_row("fleet verdicts",
                        fv.get("status", "?"),
