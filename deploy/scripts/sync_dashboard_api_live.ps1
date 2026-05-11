@@ -6,7 +6,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$Root = "C:\EvolutionaryTradingAlgo",
-    [string]$Branch = "codex/paper-live-runtime-hardening",
+    [string]$Branch = "main",
     [string]$TaskName = "ETA-Dashboard-API",
     [string]$ProbeUri = "http://127.0.0.1:8000/api/bot-fleet",
     [string]$ProxyTaskName = "ETA-Proxy-8421",

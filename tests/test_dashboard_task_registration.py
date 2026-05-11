@@ -201,7 +201,8 @@ def test_dashboard_sync_script_is_child_only_and_canonical() -> None:
     text = DASHBOARD_SYNC_SCRIPT.read_text(encoding="utf-8")
 
     assert 'Root = "C:\\EvolutionaryTradingAlgo"' in text
-    assert 'Branch = "codex/paper-live-runtime-hardening"' in text
+    assert 'Branch = "main"' in text
+    assert "paper-live-runtime-hardening" not in text
     assert 'TaskName = "ETA-Dashboard-API"' in text
     assert 'ProbeUri = "http://127.0.0.1:8000/api/bot-fleet"' in text
     assert 'ProxyTaskName = "ETA-Proxy-8421"' in text
