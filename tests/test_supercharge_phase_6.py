@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from eta_engine.scripts import (
     depth_anomaly_detector as anom,
@@ -25,10 +24,6 @@ from eta_engine.scripts import (
 from eta_engine.strategies import (
     l2_portfolio_limits as plim,
 )
-
-if TYPE_CHECKING:
-    import pytest
-
 
 # ────────────────────────────────────────────────────────────────────
 # depth_anomaly_detector

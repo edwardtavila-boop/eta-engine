@@ -283,7 +283,7 @@ def main() -> int:
     print(f"  starting equity      : ${report.starting_equity_usd:,.2f}")
     print(f"  historical trades    : {report.n_historical_trades_used}")
     print()
-    print(f"  End equity (p10/median/p90):")
+    print("  End equity (p10/median/p90):")
     print(f"    p10    : ${report.p10_end_equity_usd:,.2f}"
           if report.p10_end_equity_usd is not None else "    p10    : n/a")
     print(f"    median : ${report.median_end_equity_usd:,.2f}"
@@ -291,7 +291,7 @@ def main() -> int:
     print(f"    p90    : ${report.p90_end_equity_usd:,.2f}"
           if report.p90_end_equity_usd is not None else "    p90    : n/a")
     print()
-    print(f"  Max drawdown (median/p90/p99):")
+    print("  Max drawdown (median/p90/p99):")
     print(f"    median : {report.median_max_drawdown_pct}%")
     print(f"    p90    : {report.p90_max_drawdown_pct}%")
     print(f"    p99    : {report.p99_max_drawdown_pct}%")
