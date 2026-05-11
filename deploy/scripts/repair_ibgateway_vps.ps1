@@ -11,6 +11,7 @@ param(
     [int]$ParallelGCThreads = 2,
     [int]$ConcGCThreads = 1,
     [int]$ApiPort = 4002,
+    [string]$IbcPasswordFile = "C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt",
     [switch]$ApplyVmOptions,
     [switch]$ApplyJtsIni,
     [switch]$RepairTasks,
@@ -618,6 +619,9 @@ if ($RepairTasks) {
     $baseArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$Starter`" -GatewayDir `"$GatewayDir`" -LoginProfile `"$LoginProfile`" -ApiPort $ApiPort"
     if ($UseIbc) {
         $baseArgs += " -UseIbc"
+        if (-not [string]::IsNullOrWhiteSpace($IbcPasswordFile)) {
+            $baseArgs += " -IbcPasswordFile `"$IbcPasswordFile`""
+        }
     }
     $result.backups."ETA-IBGateway" = Backup-Task -TaskName "ETA-IBGateway" -Stamp $stamp
     $result.backups."ETA-IBGateway-RunNow" = Backup-Task -TaskName "ETA-IBGateway-RunNow" -Stamp $stamp
@@ -656,20 +660,24 @@ $runNowAction = [string]$result.single_source.task_actions."ETA-IBGateway-RunNow
 $dailyRestartAction = [string]$result.single_source.task_actions."ETA-IBGateway-DailyRestart"
 $etaGatewayState = [string]$result.single_source.task_states."ETA-IBGateway"
 $ibcFlagExpected = if ($UseIbc) { $true } else { $false }
+$ibcPasswordFileExpected = if ($UseIbc -and -not [string]::IsNullOrWhiteSpace($IbcPasswordFile)) { $true } else { $false }
 $runNowIsCanonical = (
     $runNowAction.Contains("start_ibgateway.ps1") -and
     $runNowAction.Contains($GatewayDir) -and
-    ($runNowAction.Contains("-UseIbc") -eq $ibcFlagExpected)
+    ($runNowAction.Contains("-UseIbc") -eq $ibcFlagExpected) -and
+    ($runNowAction.Contains("-IbcPasswordFile") -eq $ibcPasswordFileExpected)
 )
 $dailyRestartIsCanonical = (
     $dailyRestartAction.Contains("start_ibgateway.ps1") -and
     $dailyRestartAction.Contains($GatewayDir) -and
-    ($dailyRestartAction.Contains("-UseIbc") -eq $ibcFlagExpected)
+    ($dailyRestartAction.Contains("-UseIbc") -eq $ibcFlagExpected) -and
+    ($dailyRestartAction.Contains("-IbcPasswordFile") -eq $ibcPasswordFileExpected)
 )
 $etaGatewayIsCanonical = (
     $etaGatewayAction.Contains("start_ibgateway.ps1") -and
     $etaGatewayAction.Contains($GatewayDir) -and
     ($etaGatewayAction.Contains("-UseIbc") -eq $ibcFlagExpected) -and
+    ($etaGatewayAction.Contains("-IbcPasswordFile") -eq $ibcPasswordFileExpected) -and
     (-not (
         $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway.exe"), [System.StringComparison]::OrdinalIgnoreCase) -or
         $etaGatewayAction.StartsWith((Join-Path $GatewayDir "ibgateway1.exe"), [System.StringComparison]::OrdinalIgnoreCase)
@@ -699,7 +707,7 @@ $result.single_source.port_listeners = @(Get-PortListenerSnapshot)
 
 if ($RestartGateway) {
     try {
-        & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart
+        & $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile -ApiPort $ApiPort -UseIbc:$UseIbc -IbcPasswordFile $IbcPasswordFile -ForceRestart
         $result.restarted = $true
     } catch {
         $result.restart_error = $_.Exception.Message

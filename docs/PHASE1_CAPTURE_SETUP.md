@@ -29,11 +29,11 @@ TWS Gateway lives).
 - Task: `ETA-IBGateway-Autostart` (passes `-IbcPasswordFile`)
 
 ### VPS (`fxut9145410\trader` user) — already production
-- Pattern: **machine-scope env vars** (live source) + password file (sentinel only, no-op)
+- Pattern: **machine-scope env vars** (live source) + password file fallback
 - Env vars set in machine scope: `ETA_IBC_LOGIN_ID`, `ETA_IBC_PASSWORD`, `IBKR_USERNAME`, `IBKR_PASSWORD`
-- Sentinel file at canonical path with locked ACL (`trader : Read, Synchronize`) for emergency recovery — content is `REPLACE_WITH_REAL_IBKR_PASSWORD` until operator overwrites
-- Task: `ETA-IBGateway` (does NOT pass `-IbcPasswordFile`, env vars win by default)
-- **Precedence rule** (`start_ibgateway.ps1:313-323`): if `-IbcPasswordFile` is wired up AND the file is non-empty, the FILE WINS over env vars. Don't enable `-IbcPasswordFile` on VPS until the sentinel is overwritten with a real password — otherwise login breaks.
+- Sentinel file at canonical path with locked ACL (`trader : Read, Synchronize`) for emergency recovery — placeholder values are ignored before IBC launch so they cannot trigger IBKR invalid-login attempts.
+- Task: `ETA-IBGateway` passes `-IbcPasswordFile`; real password-file content can override env vars, but sentinel content is treated as missing.
+- **Precedence rule** (`start_ibgateway.ps1`): explicit password -> real password file -> env vars -> `.env` -> credential JSON. Placeholder/sentinel values are ignored.
 
 **Local one-time operator action — write the password to the protected file:**
 

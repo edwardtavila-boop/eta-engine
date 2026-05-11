@@ -88,6 +88,9 @@ def test_ibgateway_starter_supports_ibc_managed_launch() -> None:
     assert '"AcceptIncomingConnectionAction=$AcceptIncomingConnectionAction"' in text
     assert "OverrideTwsApiPort=$ApiPort" in text
     assert "IBC launch requires IBKR credentials" in text
+    assert "Test-IbcSecretSentinel" in text
+    assert "REAL_IBKR_PASSWORD" in text
+    assert "Get-UsableIbcSecret" in text
 
 
 def test_ibgateway_repair_profile_is_low_memory_and_backed_up() -> None:
@@ -150,11 +153,12 @@ def test_ibgateway_repair_can_switch_tasks_to_ibc_launcher() -> None:
     assert "-TaskRunAsPassword $TaskPassword" in text
     assert 'if ($UseIbc) {' in text
     assert '$baseArgs += " -UseIbc"' in text
+    assert '$baseArgs += " -IbcPasswordFile `"$IbcPasswordFile`""' in text
     assert '$result.single_source.legacy_tasks."ETA-IBGateway" = Enable-TaskIfPresent -TaskName "ETA-IBGateway"' in text
     assert '$etaGatewayState -ne "Disabled"' in text
     assert (
         '& $Starter -GatewayDir $GatewayDir -LoginProfile $LoginProfile '
-        '-ApiPort $ApiPort -UseIbc:$UseIbc -ForceRestart' in text
+        '-ApiPort $ApiPort -UseIbc:$UseIbc -IbcPasswordFile $IbcPasswordFile -ForceRestart' in text
     )
 
 

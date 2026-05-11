@@ -188,6 +188,36 @@ function Read-FirstLineValue {
     }
 }
 
+function Test-IbcSecretSentinel {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $true
+    }
+
+    $text = $Value.Trim()
+    return (
+        $text -match "^(REPLACE|PLACEHOLDER|TODO|CHANGEME)" -or
+        $text -match "REAL_IBKR_PASSWORD" -or
+        $text -match "^<.*password.*>$"
+    )
+}
+
+function Get-UsableIbcSecret {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    $text = ([string]$Value).Trim()
+    if (Test-IbcSecretSentinel -Value $text) {
+        return ""
+    }
+
+    return $text
+}
+
 function Get-FirstNonEmptyValue {
     param([object[]]$Candidates)
 
@@ -195,9 +225,9 @@ function Get-FirstNonEmptyValue {
         if ($null -eq $candidate) {
             continue
         }
-        $text = [string]$candidate
+        $text = Get-UsableIbcSecret -Value $candidate
         if (-not [string]::IsNullOrWhiteSpace($text)) {
-            return $text.Trim()
+            return $text
         }
     }
 
