@@ -312,8 +312,19 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
             note = rec.get("note") if isinstance(rec, dict) else None
             if note:
                 notes.append(f"{label}: {note}")
+        blocked_by = None
+        blocked_reason = None
+        capture_section = out["sections"].get("capture_health", {})
+        missing_capture_dirs = any("dir missing" in note for note in notes)
         if applied:
             status = "GREEN"
+        elif (
+            missing_capture_dirs
+            and capture_section.get("status") == "BLOCKED"
+        ):
+            status = "BLOCKED"
+            blocked_by = "capture_health"
+            blocked_reason = "clear upstream capture health first"
         elif pending > 0:
             status = "YELLOW"
         else:
@@ -326,6 +337,8 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
             "n_cold_archived": rot.get("totals", {}).get("n_cold_archived", 0),
             "n_pending": pending if not applied else 0,
             "notes": notes,
+            "blocked_by": blocked_by,
+            "blocked_reason": blocked_reason,
         }
     else:
         out["sections"]["capture_rotation"] = {"status": "NEVER_RUN", "ts": None}
@@ -462,6 +475,10 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
         rotation_detail += f" pending={rotation.get('n_pending', 0)}"
     if rotation.get("notes"):
         rotation_detail += "; " + "; ".join(rotation.get("notes", []))
+    if rotation.get("blocked_by"):
+        rotation_detail += f"; blocked by {rotation.get('blocked_by')}"
+        if rotation.get("blocked_reason"):
+            rotation_detail += f"; {rotation.get('blocked_reason')}"
     lines.append(_row("capture rotation",
                        rotation.get("status", "?"),
                        _age_str(rotation.get("ts")),

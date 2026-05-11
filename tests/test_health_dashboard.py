@@ -304,6 +304,44 @@ def test_build_dashboard_surfaces_capture_rotation_notes(isolated_logs: Path) ->
     assert "depth: dir missing" in text
 
 
+def test_build_dashboard_marks_capture_rotation_blocked_by_capture_health(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    action = "Seed IBC credentials before starting Gateway."
+    _write_jsonl(hd.SOURCES["ibkr_sub_status"], [{
+        "ts": now,
+        "setup_status": "BLOCKED",
+        "setup_error_code": "ibc_credentials_missing",
+        "operator_action": action,
+        "all_realtime": False,
+        "all_depth_ok": False,
+    }])
+    _write_jsonl(hd.SOURCES["capture_health"], [{
+        "ts": now,
+        "verdict": "RED",
+        "n_symbols": 2,
+        "issues": ["ticks MNQ: MISSING", "depth MNQ: MISSING"],
+    }])
+    _write_jsonl(hd.SOURCES["capture_rotation"], [{
+        "ts": now,
+        "apply": False,
+        "ticks": {"kind": "ticks", "note": "dir missing"},
+        "depth": {"kind": "depth", "note": "dir missing"},
+        "totals": {"n_compressed": 0, "n_cold_archived": 0},
+    }])
+
+    d = hd.build_dashboard()
+
+    rotation = d["sections"]["capture_rotation"]
+    assert rotation["status"] == "BLOCKED"
+    assert rotation["blocked_by"] == "capture_health"
+    assert rotation["blocked_reason"] == "clear upstream capture health first"
+    text = hd.render_text(d)
+    assert "blocked by capture_health" in text
+    assert "ticks: dir missing" in text
+
+
 def test_build_dashboard_marks_jarvis_idle_when_no_green_candidates(
     isolated_logs: Path,
 ) -> None:
