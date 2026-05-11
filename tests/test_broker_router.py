@@ -1769,7 +1769,7 @@ class TestRoutingConfig:
     def test_default_used_when_bot_not_listed(self, tmp_path: Path) -> None:
         path = _write_routing_yaml(tmp_path)
         cfg = broker_router.RoutingConfig.load(path)
-        assert cfg.venue_for("never_seen_bot") == "ibkr"
+        assert cfg.venue_for("never_seen_bot", symbol="MNQ") == "ibkr"
 
     def test_map_symbol_basic(self, tmp_path: Path) -> None:
         path = _write_routing_yaml(tmp_path)
