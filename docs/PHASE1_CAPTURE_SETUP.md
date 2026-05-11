@@ -11,14 +11,54 @@ TWS Gateway lives).
 
 ## Prerequisites
 
-1. **TWS Gateway running** on the VPS at port 4002 (paper) or 4001 (live)
-2. **IBKR Pro market-data subscriptions ACTIVE** for every exchange you trade — verify with the audit script (Step 0 below)
+1. **TWS Gateway running** on the VPS at port 4002 (paper) or 4001 (live) — see Step 0a below for unattended auto-launch via IBC
+2. **IBKR Pro market-data subscriptions ACTIVE** for every exchange you trade — verify with the audit script (Step 0b below)
 3. Python 3.11+ with `ib_insync` installed (`pip install ib_insync`)
 4. Free disk space — expect ~50-200 MB/symbol/day for ticks, ~500 MB/symbol/day for depth (5-level @ 1Hz)
 
 ---
 
-## Step 0 — Verify subscriptions are realtime (5 min, run ONCE manually first)
+## Step 0a — Unattended Gateway launch via IBC (already wired)
+
+**Status:** IBC 3.23.0 is installed at `C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc\3.23.0\`.
+Scheduled Task `ETA-IBGateway-Autostart` is registered to fire at user logon.
+
+**One-time operator action — write the password to the protected file:**
+
+```powershell
+# Write your IBKR paper password to the access-locked file
+# (the file already exists with ACL = ETA\edwar Read-only)
+"<your_paper_password>" | Out-File `
+    -FilePath "C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt" `
+    -Encoding utf8 -NoNewline
+
+# Then trigger the scheduled task immediately (don't wait for next logon)
+Start-ScheduledTask -TaskName "ETA-IBGateway-Autostart"
+```
+
+The task will:
+1. Launch IBC, which launches IB Gateway, which auto-logs in using `username=apexpredatoribkr` from `eta_engine/secrets/ibkr_credentials.json` + the password from `var/eta_engine/state/ibkr_pw.txt`
+2. Open API port 4002 once login succeeds
+3. Restart up to 5 times if the Gateway dies (configured in the task settings)
+4. Re-fire automatically at every user logon (survives reboots)
+
+**Verify Gateway is up:**
+
+```powershell
+python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',4002)); print('OPEN')"
+# Should print: OPEN
+```
+
+**Manual launch (without IBC, if you want to use the GUI instead):**
+Just open `ibgateway.exe` from `C:\Jts\ibgateway\1037\` and complete the login dialog by hand.
+
+---
+
+## Step 0b — Verify subscriptions are realtime (5 min, run ONCE manually first)
+
+---
+
+## Step 0c — Verify subscriptions are realtime (5 min, run ONCE manually first)
 
 ```powershell
 cd C:\EvolutionaryTradingAlgo
