@@ -110,6 +110,55 @@ def test_alert_message_uses_title_when_body_is_placeholder() -> None:
     assert hd._alert_message(alert) == "broker ibkr YELLOW"
 
 
+def test_alert_message_normalizes_broker_credential_aliases() -> None:
+    variants = ["creds", "creds missing", "missing creds"]
+
+    rendered = {
+        hd._alert_message({
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": variant,
+        })
+        for variant in variants
+    }
+
+    assert rendered == {"broker ibkr YELLOW: credentials missing"}
+
+
+def test_render_text_groups_broker_credential_aliases(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC)
+    _write_jsonl(hd.SOURCES["alerts"], [
+        {
+            "ts": (now - timedelta(minutes=5)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "creds",
+        },
+        {
+            "ts": (now - timedelta(minutes=4)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "creds missing",
+        },
+        {
+            "ts": (now - timedelta(minutes=3)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "missing creds",
+        },
+    ])
+
+    text = hd.render_text(hd.build_dashboard())
+
+    assert text.count("credentials missing") == 1
+    assert "x3" in text
+
+
 def test_render_text_groups_duplicate_recent_alerts(isolated_logs: Path) -> None:
     now = datetime.now(UTC)
     _write_jsonl(hd.SOURCES["alerts"], [

@@ -178,6 +178,12 @@ def _alert_message(alert: dict) -> str:
     if title and body:
         body_text = str(body).strip()
         title_text = str(title).strip()
+        source_text = str(alert.get("source") or "").strip().lower()
+        if (
+            source_text == "broker-session-monitor"
+            and body_text.lower() in {"creds", "creds missing", "missing creds"}
+        ):
+            return f"{title_text}: credentials missing"
         if body_text.lower() in {"x", "n/a", "na", "none", "-"}:
             return title_text
         return f"{title_text}: {body_text}"
