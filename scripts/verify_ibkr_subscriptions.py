@@ -120,7 +120,15 @@ def _tws_port() -> int | None:
 def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
                         timeout: float = 5.0, log: logging.Logger | None = None) -> dict:
     """Issue a reqMktData on one contract, wait for first mktDataType
-    callback, then cancel.  Returns a result dict."""
+    callback, then cancel.  Returns a result dict.
+
+    Bug fix 2026-05-11: now ALSO listens for IBKR Error 354
+    ("Requested market data is not subscribed").  The prior version
+    silently reported PASS because mktDataType=1 was the requested
+    value and the ticker object echoed it back even when the actual
+    subscription was missing.  Result: silent false-PASS for any
+    exchange where the subscription isn't active.
+    """
     log = log or logging.getLogger(__name__)
     from ib_insync import ContFuture  # noqa: PLC0415  # local import -- only when running
 
@@ -141,6 +149,8 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
     # Force realtime request; IBKR will silently downgrade if the sub
     # isn't active on this exchange -- we read the response back.
     captured_type: list[int] = []
+    captured_errors: list[dict] = []
+    target_conid = getattr(contract, "conId", None)
 
     def _on_market_data_type(msg) -> None:  # noqa: ANN001
         # mktDataTypeEvent fires with attribute marketDataType
@@ -149,46 +159,203 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
         except Exception:
             pass
 
+    captured_ticks: list[dict] = []  # actual price/size data received
+
+    def _on_error(reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG001, N803
+        # IBKR error codes that mean "subscription not active":
+        #   354 = Requested market data is not subscribed
+        #   10168 = Same, with delayed-disabled note
+        #   10089 / 10090 / 10091 = depth subscription required
+        #   200 = No security definition has been found
+        #   162 = Historical Market Data Service error
+        if errorCode in (354, 10089, 10090, 10091, 10168, 200, 162):
+            captured_errors.append({
+                "code": int(errorCode),
+                "message": str(errorString)[:200],
+                "req_id": int(reqId) if reqId is not None else -1,
+            })
+
+    def _on_pending_ticks(tickers) -> None:  # noqa: ANN001
+        # ib_insync.pendingTickersEvent fires when actual tick data
+        # arrives — bid/ask/last update.  This is the ONLY definitive
+        # proof that the subscription is active.  mktDataType=1 alone
+        # is not enough because IBKR sends type=1 on request-accepted
+        # then errors out 100ms later when the sub is missing.
+        try:
+            for t in tickers:
+                if getattr(t, "contract", None) is None:
+                    continue
+                if target_conid and getattr(t.contract, "conId", None) != target_conid:
+                    continue
+                bid = getattr(t, "bid", None)
+                ask = getattr(t, "ask", None)
+                last = getattr(t, "last", None)
+                if (bid not in (None, -1) or ask not in (None, -1)
+                        or last not in (None, -1)):
+                    captured_ticks.append({"bid": bid, "ask": ask, "last": last})
+                    return
+        except Exception:
+            pass
+
     try:
         ib.reqMarketDataType(1)  # type: ignore[attr-defined]
-        # Subscribe to mktDataType events (best-effort -- ib_insync naming)
         try:
             ib.mktDataTypeEvent += _on_market_data_type  # type: ignore[attr-defined]
         except Exception:
             pass
+        try:
+            ib.errorEvent += _on_error  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            ib.pendingTickersEvent += _on_pending_ticks  # type: ignore[attr-defined]
+        except Exception:
+            pass
         ticker = ib.reqMktData(contract, "", False, False)  # type: ignore[attr-defined]
         deadline = time.time() + timeout
+        # Wait for EITHER:
+        #   - real tick data to arrive (PASS)
+        #   - subscription error to fire (FAIL)
+        # Do NOT exit early on mktDataType callback alone — it's a
+        # request-accepted echo, not proof the subscription works.
         while time.time() < deadline:
             ib.sleep(0.25)  # type: ignore[attr-defined]
-            # If we got at least one mktDataType callback, that's our answer.
-            if captured_type:
+            if captured_errors:
                 break
-            # Some setups don't emit the callback; infer from ticker.marketDataType
-            mdt = getattr(ticker, "marketDataType", None)
-            if mdt is not None:
-                captured_type.append(int(mdt))
+            if captured_ticks:
                 break
+        # If we never got ticks AND never got errors but did get
+        # mktDataType, also check the ticker for live values
+        if not captured_ticks and not captured_errors:
+            bid = getattr(ticker, "bid", None)
+            ask = getattr(ticker, "ask", None)
+            last = getattr(ticker, "last", None)
+            if (bid not in (None, -1) or ask not in (None, -1)
+                    or last not in (None, -1)):
+                captured_ticks.append({"bid": bid, "ask": ask, "last": last})
         try:
             ib.cancelMktData(contract)  # type: ignore[attr-defined]
         except Exception:
             pass
+        for ev_name in ("errorEvent", "mktDataTypeEvent", "pendingTickersEvent"):
+            try:
+                ev = getattr(ib, ev_name)
+                handler = {"errorEvent": _on_error,
+                            "mktDataTypeEvent": _on_market_data_type,
+                            "pendingTickersEvent": _on_pending_ticks}[ev_name]
+                ev -= handler
+            except Exception:
+                pass
     except Exception as e:
         return {"exchange": exchange, "symbol": spec["symbol"],
                 "data_type": None, "verdict": "ERROR",
                 "reason": f"reqMktData failed: {e}"}
 
-    if not captured_type:
+    # Subscription error wins — even if mktDataType=1 was echoed back,
+    # an Error 354/10168 means the underlying tick stream will never arrive.
+    if captured_errors:
+        err = captured_errors[0]
         return {"exchange": exchange, "symbol": spec["symbol"],
-                "data_type": None, "verdict": "TIMEOUT",
-                "reason": f"no mktDataType callback within {timeout}s -- exchange may be closed"}
+                "data_type": None, "verdict": "FAIL",
+                "reason": f"Error {err['code']}: {err['message'][:80]}",
+                "purpose": spec["purpose"],
+                "ibkr_errors": captured_errors}
 
-    dt = captured_type[0]
+    if not captured_ticks:
+        return {"exchange": exchange, "symbol": spec["symbol"],
+                "data_type": captured_type[0] if captured_type else None,
+                "verdict": "TIMEOUT",
+                "reason": f"no real tick data within {timeout}s -- subscription may be missing or market closed"}
+
+    # Real ticks arrived → subscription is genuinely active
+    dt = captured_type[0] if captured_type else 1
     label, verdict, note = DATA_TYPE_LABEL.get(
         dt, (f"UNKNOWN({dt})", "ERROR", "unrecognized data type code"))
+    sample = captured_ticks[0]
     return {"exchange": exchange, "symbol": spec["symbol"],
             "data_type": dt, "data_type_label": label,
-            "verdict": verdict, "reason": note,
-            "purpose": spec["purpose"]}
+            "verdict": verdict,
+            "reason": f"{note} (last={sample.get('last')}, bid={sample.get('bid')}, ask={sample.get('ask')})",
+            "purpose": spec["purpose"],
+            "target_conid": target_conid,
+            "sample_tick": sample}
+
+
+def _probe_depth_of_book(ib: object, symbol: str, exchange: str,
+                          *, timeout: float = 5.0,
+                          log: logging.Logger | None = None) -> dict:
+    """Probe whether reqMktDepth works for the given symbol — this is
+    a SEPARATE subscription from real-time tick data.
+
+    Returns dict with verdict ∈ {PASS, FAIL, TIMEOUT, ERROR}."""
+    log = log or logging.getLogger(__name__)
+    from ib_insync import ContFuture  # noqa: PLC0415
+
+    try:
+        contract = ContFuture(symbol, exchange)
+        qualified = ib.qualifyContracts(contract)  # type: ignore[attr-defined]
+        if not qualified:
+            return {"exchange": exchange, "symbol": symbol,
+                    "verdict": "ERROR",
+                    "reason": "qualifyContracts returned empty"}
+        contract = qualified[0]
+    except Exception as e:
+        return {"exchange": exchange, "symbol": symbol,
+                "verdict": "ERROR", "reason": f"qualify failed: {e}"}
+
+    captured_errors: list[dict] = []
+    n_updates = [0]
+
+    def _on_depth_error(reqId, errorCode, errorString, contract_arg=None) -> None:  # noqa: ANN001, ARG001, N803
+        if errorCode in (309, 354, 10089, 10090, 10091, 322, 200):
+            captured_errors.append({
+                "code": int(errorCode),
+                "message": str(errorString)[:200],
+            })
+
+    try:
+        try:
+            ib.errorEvent += _on_depth_error  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        ticker = ib.reqMktDepth(contract, numRows=5, isSmartDepth=False)  # type: ignore[attr-defined]
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            ib.sleep(0.25)  # type: ignore[attr-defined]
+            if captured_errors:
+                break
+            bids = getattr(ticker, "domBids", None)
+            asks = getattr(ticker, "domAsks", None)
+            if bids and asks and (len(bids) > 0 or len(asks) > 0):
+                n_updates[0] = len(bids) + len(asks)
+                break
+        try:
+            ib.cancelMktDepth(contract)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            ib.errorEvent -= _on_depth_error  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    except Exception as e:
+        return {"exchange": exchange, "symbol": symbol,
+                "verdict": "ERROR", "reason": f"reqMktDepth failed: {e}"}
+
+    if captured_errors:
+        err = captured_errors[0]
+        return {"exchange": exchange, "symbol": symbol,
+                "verdict": "FAIL",
+                "reason": f"Error {err['code']}: {err['message']}",
+                "ibkr_errors": captured_errors}
+
+    if n_updates[0] == 0:
+        return {"exchange": exchange, "symbol": symbol,
+                "verdict": "TIMEOUT",
+                "reason": f"no depth updates in {timeout}s -- subscription may be inactive or market closed"}
+
+    return {"exchange": exchange, "symbol": symbol,
+            "verdict": "PASS", "n_levels_seen": n_updates[0],
+            "reason": "depth-of-book streaming"}
 
 
 def main() -> int:
@@ -254,17 +421,30 @@ def main() -> int:
         r = _probe_one_exchange(ib, exch, spec, timeout=args.probe_timeout, log=log)
         results.append(r)
 
+    # Phase 1 capture daemons need DEPTH-OF-BOOK subscriptions which are
+    # SEPARATE from real-time tick.  Probe MNQ depth specifically because
+    # that's what the L2 strategy stack depends on.
+    depth_results: list[dict] = []
+    if not args.json:
+        log.info("probing CME depth-of-book via MNQ@CME (reqMktDepth)...")
+    depth_results.append(_probe_depth_of_book(
+        ib, "MNQ", "CME", timeout=args.probe_timeout, log=log))
+
     try:
         ib.disconnect()
     except Exception:
         pass
 
     # Persist to status log
+    all_realtime = all(r.get("verdict") == "PASS" for r in results)
+    all_depth_ok = all(r.get("verdict") == "PASS" for r in depth_results)
     digest = {
         "ts": datetime.now(UTC).isoformat(),
         "host": args.host, "port": port, "client_id": args.client_id,
         "results": results,
-        "all_realtime": all(r.get("verdict") == "PASS" for r in results),
+        "depth_results": depth_results,
+        "all_realtime": all_realtime,
+        "all_depth_ok": all_depth_ok,
     }
     try:
         with STATUS_LOG.open("a", encoding="utf-8") as f:
@@ -290,11 +470,11 @@ def main() -> int:
                   f"{mark} {verdict:<5s}  {r.get('reason', '')[:50]}")
         print()
         if digest["all_realtime"]:
-            print("  >>> ALL REALTIME -- IBKR Pro subscriptions active across probed exchanges.")
+            print("  >>> ALL REALTIME -- IBKR Pro tick subscriptions active across probed exchanges.")
         else:
             failed = [r["exchange"] for r in results if r.get("verdict") in {"FAIL", "ERROR"}]
             warned = [r["exchange"] for r in results if r.get("verdict") == "WARN"]
-            print("  >>> ATTENTION REQUIRED")
+            print("  >>> ATTENTION REQUIRED (tick subscriptions)")
             if failed:
                 print(f"      FAIL  : {', '.join(failed)} -- subscription likely INACTIVE")
             if warned:
@@ -303,8 +483,25 @@ def main() -> int:
             print("              Settings -> User Settings -> Market Data Subscriptions")
         print()
 
-    # Exit code 0 if all PASS, 1 otherwise
-    return 0 if digest["all_realtime"] else 1
+        # Depth-of-book section (separate paid subscription per exchange)
+        print("-" * 78)
+        print("  Depth-of-book (reqMktDepth) -- required by Phase 1 capture_depth_snapshots")
+        print("-" * 78)
+        for r in depth_results:
+            verdict = r.get("verdict", "ERROR")
+            mark = {"PASS": "[OK]", "FAIL": "[!!]", "ERROR": "[!!]",
+                    "TIMEOUT": "[--]"}.get(verdict, "[?]")
+            print(f"  {r['exchange']:<8s}  {r['symbol']:<6s}  "
+                  f"{mark} {verdict:<8s}  {r.get('reason', '')[:50]}")
+        if not all_depth_ok:
+            print()
+            print("      L2 capture daemons WILL NOT WRITE DATA without depth subscription.")
+            print("      Action: enable 'CME Real-Time Depth-of-Book (NP, L2)' in IBKR")
+            print("              Account Management for $11/month per exchange.")
+        print()
+
+    # Exit code 0 if all PASS (both tick AND depth), 1 otherwise
+    return 0 if (all_realtime and all_depth_ok) else 1
 
 
 if __name__ == "__main__":
