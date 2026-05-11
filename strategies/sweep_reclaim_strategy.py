@@ -100,6 +100,20 @@ class SweepReclaimConfig:
     allow_long: bool = True
     allow_short: bool = True
 
+    # ── Phase 3 L2 overlay (v2 upgrade) ──────────────────────────
+    # When enabled, the strategy calls confirm_sweep_with_l2 before
+    # firing.  If the gate returns passed=False (thin book at the
+    # swept level), the signal is dropped.  Pre-data this is a no-op
+    # via the no_l2_yet pass-through.  Post-data (when
+    # mark_captures_expected() is called) the gate fails CLOSED on
+    # missing data — operator must wire mark_captures_expected at
+    # session start.
+    enable_l2_overlay: bool = True
+    l2_min_stop_qty: int = 50          # min visible contra-side qty
+    l2_hidden_qty_floor: int | None = None  # iceberg estimate; None = off
+    l2_window_seconds: int = 60         # how far back to search for pre-touch
+    l2_symbol: str = "MNQ"             # symbol for depth-file lookup
+
 
 class SweepReclaimStrategy:
     """Mechanical Wyckoff spring / upthrust translation."""
@@ -314,6 +328,32 @@ class SweepReclaimStrategy:
             stop = max(structure_stop, atr_stop)
             stop_dist_actual = stop - entry
             target = entry - self.cfg.rr_target * stop_dist_actual
+
+        # ── Phase 3 v2: L2 overlay confirmation ────────────────────
+        # Consult confirm_sweep_with_l2 to verify the swept level had
+        # real stop liquidity sitting behind it.  When captures aren't
+        # running yet, the gate's no_l2_yet pass-through preserves
+        # legacy behavior.
+        if self.cfg.enable_l2_overlay:
+            try:
+                from eta_engine.strategies.l2_overlay import confirm_sweep_with_l2
+                l2_side = "LONG" if side == "BUY" else "SHORT"
+                gate = confirm_sweep_with_l2(
+                    symbol=self.cfg.l2_symbol,
+                    swept_level=swept_level,
+                    touch_dt=bar.timestamp,
+                    side=l2_side,
+                    min_stop_qty=self.cfg.l2_min_stop_qty,
+                    window_seconds=self.cfg.l2_window_seconds,
+                    hidden_qty_floor=self.cfg.l2_hidden_qty_floor,
+                )
+                if not gate.passed:
+                    self._n_volume_quality_rejects += 1  # repurpose counter
+                    return None
+            except (ImportError, Exception):
+                # Defensive: if overlay can't be loaded, fall back to
+                # legacy behavior rather than crashing.
+                pass
 
         from eta_engine.backtest.engine import _Open
 

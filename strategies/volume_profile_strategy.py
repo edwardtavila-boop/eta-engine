@@ -75,6 +75,16 @@ class VolumeProfileStrategyConfig:
     allow_long: bool = True
     allow_short: bool = True
 
+    # ── Phase 3 L2 overlay (v2 upgrade) ──────────────────────────
+    # When enabled, consults confirm_poc_pull_with_l2 to verify the
+    # entry-side of the book has heavier queue weight than the
+    # opposite side at entry time — confirms order flow is actually
+    # pulling toward POC.  Pre-data: no-op via no_l2_yet pass-through.
+    enable_l2_overlay: bool = True
+    l2_min_imbalance_ratio: float = 1.5
+    l2_max_snapshot_staleness_seconds: float = 30.0
+    l2_symbol: str = "MNQ"
+
 
 class VolumeProfileStrategy:
 
@@ -340,6 +350,26 @@ class VolumeProfileStrategy:
                 if poc < entry
                 else entry - self.cfg.rr_target * stop_dist_actual
             )
+
+        # ── Phase 3 v2: L2 overlay confirmation ────────────────────
+        # Confirm POC pull with L2 imbalance.  When captures aren't
+        # running, the no_l2_yet pass-through preserves legacy.
+        if self.cfg.enable_l2_overlay:
+            try:
+                from eta_engine.strategies.l2_overlay import confirm_poc_pull_with_l2
+                l2_side = "LONG" if side == "BUY" else "SHORT"
+                gate = confirm_poc_pull_with_l2(
+                    symbol=self.cfg.l2_symbol,
+                    entry_dt=bar.timestamp,
+                    entry_side=l2_side,
+                    min_imbalance_ratio=self.cfg.l2_min_imbalance_ratio,
+                    max_snapshot_staleness_seconds=self.cfg.l2_max_snapshot_staleness_seconds,
+                )
+                if not gate.passed:
+                    self._n_vol_reject += 1  # repurpose existing counter
+                    return None
+            except (ImportError, Exception):
+                pass  # defensive
 
         from eta_engine.backtest.engine import _Open
 

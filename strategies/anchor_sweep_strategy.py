@@ -93,6 +93,16 @@ class AnchorSweepConfig:
     allow_long: bool = True
     allow_short: bool = True
 
+    # ── Phase 3 L2 overlay (v2 upgrade) ──────────────────────────
+    # When enabled, confirms the swept anchor had real liquidity
+    # within ATR distance before the touch.  Pre-data: no-op via
+    # no_l2_yet pass-through.
+    enable_l2_overlay: bool = True
+    l2_min_qty: int = 30
+    l2_min_qty_within_pts: float = 5.0
+    l2_max_snapshot_staleness_seconds: float = 60.0
+    l2_symbol: str = "MNQ"
+
 
 @dataclass
 class _AnchorState:
@@ -488,6 +498,26 @@ class AnchorSweepStrategy:
         implied_rr = abs(target - entry) / max(stop_dist_actual, 1e-9)
         if implied_rr > max_rr:
             target = entry + max_rr * stop_dist_actual if side == "BUY" else entry - max_rr * stop_dist_actual
+
+        # ── Phase 3 v2: L2 overlay confirmation ────────────────────
+        # Confirm the swept anchor had real liquidity nearby.  When
+        # captures aren't running, no_l2_yet pass-through preserves
+        # legacy behavior.
+        if self.cfg.enable_l2_overlay:
+            try:
+                from eta_engine.strategies.l2_overlay import confirm_anchor_touch_with_l2
+                gate = confirm_anchor_touch_with_l2(
+                    symbol=self.cfg.l2_symbol,
+                    anchor_price=swept_level,
+                    touch_dt=bar.timestamp,
+                    min_qty_within_pts=self.cfg.l2_min_qty_within_pts,
+                    min_qty=self.cfg.l2_min_qty,
+                    max_snapshot_staleness_seconds=self.cfg.l2_max_snapshot_staleness_seconds,
+                )
+                if not gate.passed:
+                    return None
+            except (ImportError, Exception):
+                pass  # defensive
 
         from eta_engine.backtest.engine import _Open
 

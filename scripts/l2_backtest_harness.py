@@ -59,6 +59,8 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import math
+import random
 import sys
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -73,6 +75,10 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 TICKS_DIR = ROOT.parent / "mnq_data" / "ticks"
 DEPTH_DIR = ROOT.parent / "mnq_data" / "depth"
 L2_BACKTEST_LOG = LOG_DIR / "l2_backtest_runs.jsonl"
+# D-fix 2026-05-11: every (threshold, k, …) config tried gets appended to
+# this log so we can compute Deflated Sharpe (Bailey/Lopez de Prado)
+# retrospectively and detect multi-config overfitting.
+CONFIG_SEARCH_LOG = LOG_DIR / "l2_harness_config_search.jsonl"
 
 
 # B4: Symbol → (point_value_usd, tick_size, default_atr_pts) lookup.
@@ -151,7 +157,203 @@ class L2BacktestResult:
     commission_per_rt_usd: float = COMMISSION_PER_RT_USD
     n_skipped_regime_pause: int = 0  # signals dropped by spread_regime
     walk_forward: dict | None = None  # train/test split summary
+    # D-fix 2026-05-11: bootstrap CIs on win_rate + sharpe_proxy (1000
+    # resamples) provide honest uncertainty bounds.  None when n_trades<5.
+    win_rate_ci_95: tuple[float, float] | None = None
+    sharpe_ci_95: tuple[float, float] | None = None
+    bootstrap_n_resamples: int = 1000
+    # D-fix: deflated sharpe correction for multi-config selection.
+    # When >1 config has been tried against the same data window,
+    # the operator's MAX-selected sharpe overstates true edge.
+    deflated_sharpe: float | None = None
+    n_configs_searched: int = 1
     trades: list[L2Trade] = field(default_factory=list)
+
+
+def bootstrap_ci(values: list[float], *, n_resamples: int = 1000,
+                 confidence: float = 0.95,
+                 seed: int | None = None) -> tuple[float, float] | None:
+    """Bootstrap confidence interval on the mean of ``values``.
+
+    Returns (lower, upper) bounds at the given confidence level, or
+    None when len(values) < 5 (sample too small for meaningful CI).
+
+    Pure-Python implementation — no numpy dependency.  Uses 1000
+    resamples by default (quant-review recommendation).
+    """
+    if len(values) < 5:
+        return None
+    rng = random.Random(seed)
+    n = len(values)
+    means: list[float] = []
+    for _ in range(n_resamples):
+        sample = [values[rng.randrange(n)] for _ in range(n)]
+        means.append(sum(sample) / n)
+    means.sort()
+    alpha = (1.0 - confidence) / 2.0
+    lo_idx = int(alpha * n_resamples)
+    hi_idx = int((1.0 - alpha) * n_resamples) - 1
+    lo_idx = max(0, min(n_resamples - 1, lo_idx))
+    hi_idx = max(0, min(n_resamples - 1, hi_idx))
+    return (round(means[lo_idx], 4), round(means[hi_idx], 4))
+
+
+def bootstrap_sharpe_ci(per_trade_returns: list[float],
+                        *, n_resamples: int = 1000,
+                        confidence: float = 0.95,
+                        seed: int | None = None) -> tuple[float, float] | None:
+    """Bootstrap CI on the sharpe_proxy (m/std) of the per-trade R
+    series.  Same resampling scheme as bootstrap_ci but computes
+    sharpe per resample, not just mean."""
+    if len(per_trade_returns) < 5:
+        return None
+    rng = random.Random(seed)
+    n = len(per_trade_returns)
+    sharpes: list[float] = []
+    for _ in range(n_resamples):
+        sample = [per_trade_returns[rng.randrange(n)] for _ in range(n)]
+        m = sum(sample) / n
+        var = sum((x - m) ** 2 for x in sample) / max(n - 1, 1)
+        std = var ** 0.5
+        sharpes.append(m / std if std > 0 else 0.0)
+    sharpes.sort()
+    alpha = (1.0 - confidence) / 2.0
+    lo_idx = int(alpha * n_resamples)
+    hi_idx = int((1.0 - alpha) * n_resamples) - 1
+    lo_idx = max(0, min(n_resamples - 1, lo_idx))
+    hi_idx = max(0, min(n_resamples - 1, hi_idx))
+    return (round(sharpes[lo_idx], 4), round(sharpes[hi_idx], 4))
+
+
+def deflated_sharpe_ratio(observed_sharpe: float, n_trials: int,
+                          n_trades: int) -> float:
+    """Bailey/Lopez de Prado deflated Sharpe correction.
+
+    When the operator selects the BEST sharpe across N tried
+    configurations, the observed sharpe overstates true edge.
+    Deflated SR adjusts for selection bias.
+
+    Reference: Bailey & Lopez de Prado, "The Deflated Sharpe Ratio:
+    Correcting for Selection Bias, Backtest Overfitting, and
+    Non-Normality" (2014).
+
+    Simplified formula (assumes near-normal returns, no skew/kurt
+    correction): DSR = SR_observed * sqrt(1 - sigma_SR^2 * Z(1-1/N))
+
+    Where Z(1-1/N) is the inverse normal CDF at quantile (1 - 1/N).
+
+    For practical use this returns a CONSERVATIVE estimate.  When
+    n_trials=1, returns observed_sharpe unchanged.
+    """
+    if n_trials <= 1 or n_trades < 5:
+        return observed_sharpe
+    # Approx inverse normal CDF at p = 1 - 1/N using Beasley-Springer-Moro
+    # approximation (good for our range; no scipy dependency).
+    p = 1.0 - 1.0 / n_trials
+    z = _norm_ppf(p)
+    # Variance of the sharpe estimator under the null (zero edge):
+    # sigma_SR^2 ≈ (1 + 0.5 * SR^2) / (T - 1) for T trades
+    sigma_sr_sq = (1.0 + 0.5 * observed_sharpe ** 2) / max(n_trades - 1, 1)
+    # Conservative deflation: subtract z * sigma_sr from observed
+    deflation = z * math.sqrt(sigma_sr_sq)
+    return round(observed_sharpe - deflation, 4)
+
+
+def _norm_ppf(p: float) -> float:
+    """Beasley-Springer-Moro inverse normal CDF.  Returns z such that
+    P(Z <= z) = p for standard normal Z.  No scipy dependency."""
+    # Coefficients for Beasley-Springer-Moro algorithm
+    a = [-39.69683028665376, 220.9460984245205, -275.9285104469687,
+         138.3577518672690, -30.66479806614716, 2.506628277459239]
+    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866,
+         66.80131188771972, -13.28068155288572]
+    c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
+         -2.549732539343734, 4.374664141464968, 2.938163982698783]
+    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996,
+         3.754408661907416]
+    p_low = 0.02425
+    p_high = 1 - p_low
+    if p < p_low:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    if p <= p_high:
+        q = p - 0.5
+        r = q * q
+        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / \
+               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+    q = math.sqrt(-2 * math.log(1 - p))
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+
+
+def log_config_search(*, strategy: str, symbol: str, days: int,
+                       config: dict, n_trades: int, sharpe_proxy: float,
+                       sharpe_proxy_valid: bool,
+                       win_rate: float,
+                       total_pnl_dollars_net: float) -> None:
+    """Append a one-line record to CONFIG_SEARCH_LOG.  Called once per
+    harness invocation.  Retrospective analysis (e.g. deflated sharpe
+    across N configs tried) reads this log.
+    """
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        "strategy": strategy,
+        "symbol": symbol,
+        "days": days,
+        "config": config,
+        "n_trades": n_trades,
+        "sharpe_proxy": sharpe_proxy,
+        "sharpe_proxy_valid": sharpe_proxy_valid,
+        "win_rate": win_rate,
+        "total_pnl_dollars_net": total_pnl_dollars_net,
+    }
+    try:
+        with CONFIG_SEARCH_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, separators=(",", ":")) + "\n")
+    except OSError as e:
+        print(f"WARN: could not append config_search to {CONFIG_SEARCH_LOG}: {e}",
+              file=sys.stderr)
+
+
+def count_prior_configs_searched(strategy: str, symbol: str,
+                                   *, since_days: int = 30) -> int:
+    """Count how many DISTINCT (config, days) tuples have been tried
+    against this strategy/symbol in the last ``since_days`` days.
+    Returns 1 when log is empty (no prior search).  Used by deflated
+    sharpe to correct for multi-config selection bias."""
+    if not CONFIG_SEARCH_LOG.exists():
+        return 1
+    cutoff = datetime.now(UTC) - timedelta(days=since_days)
+    seen: set[str] = set()
+    try:
+        with CONFIG_SEARCH_LOG.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("strategy") != strategy or rec.get("symbol") != symbol:
+                    continue
+                ts = rec.get("ts")
+                if not ts:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if dt < cutoff:
+                    continue
+                cfg = rec.get("config", {})
+                # Key by sorted config items + days for de-dup
+                key = json.dumps(cfg, sort_keys=True) + f"|days={rec.get('days')}"
+                seen.add(key)
+    except OSError:
+        return 1
+    return max(1, len(seen))
 
 
 def _open_jsonl_maybe_gz(path: Path):
@@ -312,7 +514,9 @@ def _summarize(strategy: str, symbol: str, days: int,
                 n_signals: int, n_skipped_regime: int,
                 point_value: float,
                 walk_forward: dict | None,
-                min_n_for_sharpe: int = 30) -> L2BacktestResult:
+                min_n_for_sharpe: int = 30,
+                n_configs_searched: int = 1,
+                bootstrap_seed: int | None = 42) -> L2BacktestResult:
     n_trades = len(trades)
     n_wins = sum(1 for t in trades if t.pnl_points > 0)
     win_rate = n_wins / n_trades if n_trades else 0.0
@@ -320,6 +524,7 @@ def _summarize(strategy: str, symbol: str, days: int,
     total_dollars = sum(t.pnl_dollars for t in trades)
     total_net = sum(t.pnl_dollars_net for t in trades)
     avg = total_pts / n_trades if n_trades else 0.0
+    per_trade_returns = [t.pnl_points for t in trades]
     if n_trades >= 2:
         # Sharpe-proxy on per-trade R returns (not annualized)
         m = avg
@@ -328,6 +533,14 @@ def _summarize(strategy: str, symbol: str, days: int,
         sharpe = m / std if std > 0 else 0.0
     else:
         sharpe = 0.0
+    # D-fix: bootstrap CIs on win_rate + sharpe_proxy.
+    # win_rate is a Bernoulli mean — bootstrap on the 0/1 series.
+    win_indicators = [1.0 if t.pnl_points > 0 else 0.0 for t in trades]
+    win_rate_ci = bootstrap_ci(win_indicators, seed=bootstrap_seed) if n_trades >= 5 else None
+    sharpe_ci = bootstrap_sharpe_ci(per_trade_returns, seed=bootstrap_seed) if n_trades >= 5 else None
+    # D-fix: deflated sharpe correction when multiple configs have been tried
+    dsr = deflated_sharpe_ratio(sharpe, n_configs_searched, n_trades) \
+            if n_trades >= 5 and n_configs_searched > 1 else None
     return L2BacktestResult(
         strategy=strategy, symbol=symbol, days=days,
         n_snapshots=n_snapshots, n_signals=n_signals,
@@ -337,6 +550,10 @@ def _summarize(strategy: str, symbol: str, days: int,
         total_pnl_dollars_net=round(total_net, 2),
         avg_pnl_per_trade=round(avg, 4),
         sharpe_proxy=round(sharpe, 3),
+        win_rate_ci_95=win_rate_ci,
+        sharpe_ci_95=sharpe_ci,
+        deflated_sharpe=dsr,
+        n_configs_searched=n_configs_searched,
         sharpe_proxy_valid=(n_trades >= min_n_for_sharpe),
         min_n_for_sharpe=min_n_for_sharpe,
         point_value_usd=point_value,
@@ -396,13 +613,17 @@ def run_book_imbalance(symbol: str, days: int, *,
                        rr_target: float,
                        walk_forward: bool = True,
                        min_n_for_sharpe: int = 30,
-                       apply_regime_filter: bool = True) -> L2BacktestResult:
+                       apply_regime_filter: bool = True,
+                       log_config_search_flag: bool = True) -> L2BacktestResult:
     """Replay depth history through book_imbalance_strategy.
 
     I9: walk_forward=True splits snapshots 70/30 (chronological);
         first 70% replays for in-sample, last 30% for OOS.  The
         operator can promote ONLY when OOS sharpe_proxy_valid AND
         OOS sharpe >= 0.5 AND OOS n_trades >= min_n_for_sharpe.
+
+    D-fix: every config gets logged to CONFIG_SEARCH_LOG so deflated
+    sharpe can be computed retrospectively across many invocations.
     """
     from eta_engine.strategies.book_imbalance_strategy import BookImbalanceConfig
     cfg = BookImbalanceConfig(
@@ -412,6 +633,9 @@ def run_book_imbalance(symbol: str, days: int, *,
         atr_stop_mult=atr_stop_mult,
         rr_target=rr_target,
     )
+    # D-fix: count prior config invocations against same strategy/symbol
+    n_configs_searched = count_prior_configs_searched(
+        "book_imbalance", symbol) if log_config_search_flag else 1
     spec = get_spec(symbol)
     # Scan dates [now - (days-1), ..., now] inclusive of today.
     # Bug fix 2026-05-11: prior version started at `now - days` and
@@ -478,13 +702,32 @@ def run_book_imbalance(symbol: str, days: int, *,
         snaps, cfg, symbol,
         apply_regime_filter=apply_regime_filter)
 
-    return _summarize("book_imbalance", symbol, days,
-                      n_snapshots=len(snaps), trades=trades,
-                      n_signals=len(signals),
-                      n_skipped_regime=n_skipped_regime,
-                      point_value=spec["point_value"],
-                      walk_forward=walk_summary,
-                      min_n_for_sharpe=min_n_for_sharpe)
+    result = _summarize("book_imbalance", symbol, days,
+                         n_snapshots=len(snaps), trades=trades,
+                         n_signals=len(signals),
+                         n_skipped_regime=n_skipped_regime,
+                         point_value=spec["point_value"],
+                         walk_forward=walk_summary,
+                         min_n_for_sharpe=min_n_for_sharpe,
+                         n_configs_searched=n_configs_searched)
+    # D-fix: append this config to the audit log so the NEXT invocation
+    # against the same strategy+symbol counts it for deflation
+    if log_config_search_flag:
+        log_config_search(
+            strategy="book_imbalance", symbol=symbol, days=days,
+            config={"entry_threshold": entry_threshold,
+                     "consecutive_snaps": consecutive_snaps,
+                     "n_levels": n_levels,
+                     "atr_stop_mult": atr_stop_mult,
+                     "rr_target": rr_target,
+                     "apply_regime_filter": apply_regime_filter},
+            n_trades=result.n_trades,
+            sharpe_proxy=result.sharpe_proxy,
+            sharpe_proxy_valid=result.sharpe_proxy_valid,
+            win_rate=result.win_rate,
+            total_pnl_dollars_net=result.total_pnl_dollars_net,
+        )
+    return result
 
 
 def main() -> int:
@@ -578,7 +821,17 @@ def main() -> int:
         sharpe_label = f"{result.sharpe_proxy:+.3f}"
         if not result.sharpe_proxy_valid:
             sharpe_label += f"  [INSUFFICIENT_SAMPLE: n_trades<{result.min_n_for_sharpe}]"
+        if result.sharpe_ci_95:
+            sharpe_label += f"  95% CI=[{result.sharpe_ci_95[0]:+.3f}, {result.sharpe_ci_95[1]:+.3f}]"
         print(f"  sharpe-proxy      : {sharpe_label}")
+        if result.win_rate_ci_95:
+            print(f"  win_rate 95% CI   : [{result.win_rate_ci_95[0]:.3f}, {result.win_rate_ci_95[1]:.3f}]")
+        if result.deflated_sharpe is not None:
+            print(f"  deflated sharpe   : {result.deflated_sharpe:+.3f}  "
+                  f"(after correcting for n_configs_searched={result.n_configs_searched})")
+        elif result.n_configs_searched > 1:
+            print(f"  configs searched  : {result.n_configs_searched}  "
+                  f"(deflation skipped: insufficient sample)")
         if result.walk_forward:
             wf = result.walk_forward
             print(f"  walk-forward      : {wf['split']}")
