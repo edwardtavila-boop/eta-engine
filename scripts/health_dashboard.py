@@ -251,6 +251,19 @@ def _recent_alert_groups(alerts: list[dict], *, limit: int = 10) -> list[dict]:
         return _parse_ts(group.get("latest_ts")) or datetime.min.replace(tzinfo=UTC)
 
     sorted_groups = sorted(groups.values(), key=sort_key)
+    specific_prefixes = {
+        (group["level"], group["source"], str(group["message"]).split(": ", 1)[0])
+        for group in sorted_groups
+        if ": " in str(group["message"])
+    }
+    sorted_groups = [
+        group
+        for group in sorted_groups
+        if (
+            ": " in str(group["message"])
+            or (group["level"], group["source"], group["message"]) not in specific_prefixes
+        )
+    ]
     actionable = [
         group
         for group in sorted_groups

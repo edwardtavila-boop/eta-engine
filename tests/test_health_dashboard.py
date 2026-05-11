@@ -177,6 +177,45 @@ def test_render_text_groups_broker_credential_aliases(
     assert "x3" in text
 
 
+def test_render_text_drops_generic_alert_when_specific_detail_exists(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC)
+    _write_jsonl(hd.SOURCES["alerts"], [
+        {
+            "ts": (now - timedelta(minutes=5)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "x",
+        },
+        {
+            "ts": (now - timedelta(minutes=4)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker ibkr YELLOW",
+            "body": "credentials missing",
+        },
+        {
+            "ts": (now - timedelta(minutes=3)).timestamp(),
+            "level": "WARN",
+            "source": "broker-session-monitor",
+            "title": "broker tastytrade YELLOW",
+            "body": "x",
+        },
+    ])
+
+    d = hd.build_dashboard()
+    groups = hd._recent_alert_groups(d["recent_alerts"])
+    messages = [group["message"] for group in groups]
+    text = hd.render_text(d)
+
+    assert "broker ibkr YELLOW: credentials missing" in text
+    assert "broker tastytrade YELLOW" in text
+    assert "broker ibkr YELLOW" not in messages
+    assert "broker ibkr YELLOW: credentials missing" in messages
+
+
 def test_render_text_prioritizes_actionable_alert_groups(
     isolated_logs: Path,
 ) -> None:
