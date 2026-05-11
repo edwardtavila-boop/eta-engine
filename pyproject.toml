@@ -126,6 +126,9 @@ select = ["E", "W", "F", "I", "N", "UP", "ANN", "B", "SIM", "TCH"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'asyncio\\.get_event_loop_policy' is deprecated and slated for removal in Python 3\\.16:DeprecationWarning:eventkit\\.util",
+]
 markers = [
     "slow: deselect with '-m \"not slow\"' -- run-time-heavy tests (cross-regime sim, multi-bar walk-forward, etc.)",
 ]
