@@ -67,10 +67,38 @@ def test_verdict_emoji_known() -> None:
     assert hd._verdict_emoji("GREEN") == "[OK]"
     assert hd._verdict_emoji("RED") == "[!!]"
     assert hd._verdict_emoji("CRITICAL") == "[XX]"
+    assert hd._verdict_emoji("info") == "[OK]"
 
 
 def test_verdict_emoji_unknown() -> None:
     assert hd._verdict_emoji("NEW_LEVEL") == "[?]"
+
+
+def test_alert_render_helpers_handle_event_payload_shape() -> None:
+    alert = {
+        "event": "kill_switch_latched",
+        "level": "critical",
+        "payload": {
+            "verdict": {
+                "action": "PAUSE_NEW_ENTRIES",
+                "reason": "paper loss guard",
+            },
+        },
+    }
+
+    assert hd._alert_level(alert) == "CRITICAL"
+    assert hd._alert_source(alert) == "kill_switch_latched"
+    assert hd._alert_message(alert) == "PAUSE_NEW_ENTRIES: paper loss guard"
+
+
+def test_alert_render_helpers_summarize_runtime_payload() -> None:
+    alert = {
+        "event": "runtime_start",
+        "level": "info",
+        "payload": {"active_bots": ["mnq"], "live": False},
+    }
+
+    assert hd._alert_message(alert) == "active_bots=['mnq'] live=False"
 
 
 # ── _last_jsonl_record ────────────────────────────────────────────

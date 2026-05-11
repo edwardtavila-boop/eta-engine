@@ -149,8 +149,10 @@ def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
 
 
 def _verdict_emoji(level: str) -> str:
+    level = str(level).upper()
     return {"GREEN": "[OK]", "PASS": "[OK]", "FRESH": "[OK]",
-            "YELLOW": "[??]", "WARN": "[??]",
+            "YELLOW": "[??]", "WARN": "[??]", "WARNING": "[??]",
+            "INFO": "[OK]",
             "RED": "[!!]", "FAIL": "[!!]", "STALE": "[!!]", "BLOCKED": "[!!]",
             "CRITICAL": "[XX]", "ERROR": "[XX]",
             "MISSING": "[--]", "NEVER_RUN": "[--]"}.get(level, "[?]")
@@ -158,6 +160,48 @@ def _verdict_emoji(level: str) -> str:
 
 def _row(label: str, status: str, age: str, detail: str) -> str:
     return f"  {_verdict_emoji(status)} {status:<10s}  {label:<22s}  age={age:<6s}  {detail}"
+
+
+def _alert_level(alert: dict) -> str:
+    level = alert.get("level") or alert.get("severity") or "UNKNOWN"
+    return str(level).upper()
+
+
+def _alert_source(alert: dict) -> str:
+    source = alert.get("source") or alert.get("event") or alert.get("title") or "unknown"
+    return str(source)
+
+
+def _alert_message(alert: dict) -> str:
+    for key in ("message", "body", "reason", "title"):
+        value = alert.get(key)
+        if value:
+            return str(value)
+    payload = alert.get("payload")
+    if isinstance(payload, dict):
+        for key in ("reason", "action", "status"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+        verdict = payload.get("verdict")
+        if isinstance(verdict, dict):
+            action = verdict.get("action")
+            reason = verdict.get("reason")
+            if action and reason:
+                return f"{action}: {reason}"
+            if reason:
+                return str(reason)
+            if action:
+                return str(action)
+        payload_parts = []
+        for key in ("active_bots", "live", "bars", "scope"):
+            if key in payload:
+                payload_parts.append(f"{key}={payload[key]}")
+        if payload_parts:
+            return " ".join(payload_parts)
+    if alert.get("event"):
+        return str(alert["event"])
+    return "no alert detail"
 
 
 def build_dashboard(*, alert_hours: int = 24) -> dict:
@@ -378,9 +422,9 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
         lines.append("  (none)")
     else:
         for a in d["recent_alerts"][-10:]:
-            lvl = a.get("level", "?")
-            src = a.get("source", "?")
-            msg = a.get("message", "")[:60]
+            lvl = _alert_level(a)
+            src = _alert_source(a)[:26]
+            msg = _alert_message(a)[:60]
             ts_age = _age_str(a.get("timestamp_utc") or a.get("ts"))
             lines.append(f"  {_verdict_emoji(lvl)} {lvl:<8s} [{src:<26s}] {ts_age:<6s} {msg}")
     lines.append("")
