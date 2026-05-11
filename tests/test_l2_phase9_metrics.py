@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from eta_engine.scripts import l2_commission_tier_optimizer as tiers
+from eta_engine.scripts import l2_ensemble_validator as validator
 from eta_engine.scripts import l2_risk_metrics as risk
 from eta_engine.scripts import l2_strategy_correlation as corr
+from eta_engine.scripts import l2_strategy_versioning as versions
 from eta_engine.scripts import l2_universe_audit as universe
 from eta_engine.strategies import l2_per_symbol_ensemble as pse
 
@@ -130,3 +133,58 @@ def test_per_symbol_ensemble_prefers_symbol_specific_weight() -> None:
     assert signal is not None
     assert signal.side == "LONG"
     assert signal.constituent_signals[0]["weight_source"] == "per_symbol"
+
+
+def test_ensemble_validator_reports_underperforming_weighted_proxy(tmp_path) -> None:
+    now = datetime.now(UTC).isoformat()
+    backtest_path = tmp_path / "l2_backtest_runs.jsonl"
+    _jsonl(backtest_path, [
+        {"ts": now, "strategy": "book_imbalance", "sharpe_proxy_valid": True, "sharpe_proxy": 1.0},
+        {"ts": now, "strategy": "microprice_drift", "sharpe_proxy_valid": True, "sharpe_proxy": 0.2},
+    ])
+
+    report = validator.validate_ensemble(_backtest_path=backtest_path)
+
+    assert report.n_constituents == 2
+    assert report.best_constituent == "book_imbalance"
+    assert report.verdict == "UNDERPERFORM"
+
+
+def test_strategy_versioning_closes_previous_version_and_filters_records(tmp_path) -> None:
+    path = tmp_path / "versions.json"
+    first = datetime(2026, 5, 1, tzinfo=UTC)
+    second = datetime(2026, 5, 10, tzinfo=UTC)
+
+    versions.register_version(
+        "book_imbalance",
+        "v1",
+        {"threshold": 1.5},
+        effective_from=first,
+        _path=path,
+    )
+    versions.register_version(
+        "book_imbalance",
+        "v2",
+        {"threshold": 2.0},
+        effective_from=second,
+        _path=path,
+    )
+
+    assert versions.active_version("book_imbalance", _path=path).version == "v2"
+    assert versions.version_for_date("book_imbalance", first + timedelta(days=1), _path=path).version == "v1"
+    records = [
+        {"ts": (first + timedelta(days=1)).isoformat(), "value": "old"},
+        {"ts": (second + timedelta(days=1)).isoformat(), "value": "new"},
+    ]
+
+    assert versions.filter_records_to_version(records, "book_imbalance", "v2", _path=path) == [records[1]]
+
+
+def test_l2_cron_registration_includes_phase9_jobs() -> None:
+    cron = (Path(__file__).resolve().parents[1] / "deploy" / "scripts" / "register_l2_cron_tasks.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ETA-L2-RiskMetrics" in cron
+    assert "ETA-L2-EnsembleValidatorWeekly" in cron
+    assert "ETA-L2-CommissionTierWeekly" in cron
