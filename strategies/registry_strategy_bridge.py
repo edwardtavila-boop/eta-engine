@@ -248,6 +248,38 @@ def _build_callable_for_assignment(
         except Exception:
             pass
 
+    # Asset-specific enrichment: auto-apply the right sage schools,
+    # alpha sniper pairs, and edge layers based on the bot's symbol.
+    # This ensures MNQ gets technical schools, GC gets macro schools, etc.
+    symbol = str(assignment.symbol) if assignment else ""
+    if symbol and strategy is not None:
+        try:
+            from eta_engine.feeds.asset_specific_config import (
+                get_schools_for_symbol,
+                get_intermarket_for_symbol,
+                get_edge_preset_for_symbol,
+                get_asset_class,
+            )
+            asset_cls = get_asset_class(symbol)
+            # Enrich alpha_sniper with ticker-relevant intermarket pairs
+            if hasattr(strategy, '_sub') and hasattr(strategy, 'cfg'):
+                # Check if this is an AlphaSniper wrapper
+                from eta_engine.strategies.alpha_sniper import AlphaSniper, AlphaSniperConfig
+                if isinstance(strategy, AlphaSniper):
+                    # Replace intermarket pairs with asset-specific ones
+                    pairs = get_intermarket_for_symbol(symbol)
+                    if pairs:
+                        strategy.cfg._intermarket_symbols = pairs[:3]
+                # Update Sage config if present
+                if hasattr(strategy, '_sub') and hasattr(strategy._sub, 'cfg'):
+                    inner = strategy._sub
+                    if hasattr(inner.cfg, 'enabled_schools'):
+                        schools = get_schools_for_symbol(symbol)
+                        if schools:
+                            inner.cfg.enabled_schools = schools
+        except Exception:
+            pass
+
     return _wrap_strategy(strategy)
 
 
