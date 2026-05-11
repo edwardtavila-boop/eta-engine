@@ -150,7 +150,7 @@ def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
 
 def _verdict_emoji(level: str) -> str:
     level = str(level).upper()
-    return {"GREEN": "[OK]", "PASS": "[OK]", "FRESH": "[OK]",
+    return {"GREEN": "[OK]", "PASS": "[OK]", "FRESH": "[OK]", "IDLE": "[OK]",
             "YELLOW": "[??]", "WARN": "[??]", "WARNING": "[??]",
             "INFO": "[OK]",
             "RED": "[!!]", "FAIL": "[!!]", "STALE": "[!!]", "BLOCKED": "[!!]",
@@ -362,7 +362,29 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
         except (OSError, json.JSONDecodeError):
             out["sections"]["jarvis_recent"] = {"status": "PARSE_ERROR"}
     else:
-        out["sections"]["jarvis_recent"] = {"status": "NEVER_RUN", "n_recent": 0}
+        phase4 = last_run.get("phase4", {}) if isinstance(last_run, dict) else {}
+        phase3 = last_run.get("phase3", {}) if isinstance(last_run, dict) else {}
+        if isinstance(phase4, dict) and "n_arbitrated" in phase4:
+            agreements = phase3.get("n_agreements")
+            if agreements is None and isinstance(phase3.get("agreements"), list):
+                agreements = len(phase3.get("agreements", []))
+            n_agreements = int(agreements or 0)
+            if n_agreements == 0:
+                status = "IDLE"
+                reason = "no sage-approved GREEN bots to arbitrate"
+            else:
+                status = "YELLOW"
+                reason = "sage agreements exist but no Jarvis recommendations were logged"
+            out["sections"]["jarvis_recent"] = {
+                "status": status,
+                "ts": last_run.get("ts"),
+                "n_recent": 0,
+                "n_arbitrated": phase4.get("n_arbitrated", 0),
+                "n_sage_agreements": n_agreements,
+                "reason": reason,
+            }
+        else:
+            out["sections"]["jarvis_recent"] = {"status": "NEVER_RUN", "n_recent": 0}
 
     # 8. Recent alerts
     alerts = _read_recent_alerts(SOURCES["alerts"], alert_hours)
@@ -370,7 +392,7 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     out["recent_alerts_count"] = len(alerts)
 
     # Overall verdict (worst across sections)
-    rank = {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0,
+    rank = {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0, "IDLE": 0,
             "YELLOW": 1, "WARN": 1,
             "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2,
             "CRITICAL": 3, "ERROR": 3,
@@ -451,10 +473,13 @@ def render_text(d: dict, *, alert_hours: int = 24) -> str:
                        f"GREEN={fv.get('n_green', 0)} YELLOW={fv.get('n_yellow', 0)} "
                        f"RED={fv.get('n_red', 0)} (total {fv.get('n_total', 0)})"))
     jr = s["jarvis_recent"]
+    jarvis_detail = f"recent={jr.get('n_recent', 0)}"
+    if jr.get("reason"):
+        jarvis_detail += f"; {jr.get('reason')}"
     lines.append(_row("jarvis arbitration",
                        jr.get("status", "?"),
-                       "—",
-                       f"recent={jr.get('n_recent', 0)}"))
+                       _age_str(jr.get("ts")),
+                       jarvis_detail))
     lines.append("")
     lines.append(f"-- recent alerts (last {alert_hours}h, {d['recent_alerts_count']} total) --")
     if not d["recent_alerts"]:
@@ -484,7 +509,7 @@ def main() -> int:
         print(render_text(d, alert_hours=args.alert_hours))
 
     # Exit-code mapping for cron / shell:
-    return {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0,
+    return {"GREEN": 0, "PASS": 0, "FRESH": 0, "DRY-RUN": 0, "IDLE": 0,
             "YELLOW": 1, "WARN": 1, "MISSING": 1, "NEVER_RUN": 1,
             "RED": 2, "FAIL": 2, "STALE": 2, "BLOCKED": 2, "PARSE_ERROR": 2,
             "CRITICAL": 3, "ERROR": 3}.get(d["overall"], 1)

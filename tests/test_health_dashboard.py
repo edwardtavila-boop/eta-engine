@@ -304,6 +304,46 @@ def test_build_dashboard_surfaces_capture_rotation_notes(isolated_logs: Path) ->
     assert "depth: dir missing" in text
 
 
+def test_build_dashboard_marks_jarvis_idle_when_no_green_candidates(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    _write_jsonl(hd.SOURCES["supercharge_runs"], [{
+        "ts": now,
+        "tier": "sweep",
+        "phase2": {"n_bots": 25, "n_verdicts": 0},
+        "phase3": {"n_consulted": 0, "n_agreements": 0, "n_dissents": 0},
+        "phase4": {"n_arbitrated": 0},
+    }])
+
+    d = hd.build_dashboard()
+
+    jarvis = d["sections"]["jarvis_recent"]
+    assert jarvis["status"] == "IDLE"
+    assert jarvis["reason"] == "no sage-approved GREEN bots to arbitrate"
+    text = hd.render_text(d)
+    assert "no sage-approved GREEN bots to arbitrate" in text
+
+
+def test_build_dashboard_warns_when_jarvis_expected_but_missing(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    _write_jsonl(hd.SOURCES["supercharge_runs"], [{
+        "ts": now,
+        "tier": "sweep",
+        "phase2": {"n_bots": 25, "n_verdicts": 3},
+        "phase3": {"n_consulted": 3, "n_agreements": 2, "n_dissents": 1},
+        "phase4": {"n_arbitrated": 0},
+    }])
+
+    d = hd.build_dashboard()
+
+    jarvis = d["sections"]["jarvis_recent"]
+    assert jarvis["status"] == "YELLOW"
+    assert jarvis["reason"] == "sage agreements exist but no Jarvis recommendations were logged"
+
+
 def test_build_dashboard_overall_worst_when_critical(isolated_logs: Path) -> None:
     now = datetime.now(UTC).isoformat()
     _write_jsonl(hd.SOURCES["disk_space"], [{
