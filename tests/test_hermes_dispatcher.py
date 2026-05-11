@@ -74,6 +74,7 @@ def test_dispatch_class_loss_freeze_is_critical() -> None:
 
     def _capture_run(coro):
         captured["coro"] = coro
+        coro.close()
 
     with patch("threading.Thread", side_effect=_capture), \
          patch("asyncio.run", side_effect=_capture_run):
