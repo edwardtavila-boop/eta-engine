@@ -127,6 +127,7 @@ def test_alert_level_classifies_kill_switch_latched_as_critical() -> None:
     }
 
     assert hd._alert_level(alert) == "CRITICAL"
+    assert hd._alert_message(alert) == "apex cushion 200 <= preempt 400"
 
 
 def test_alert_message_normalizes_consistency_circuit_trip_detail() -> None:

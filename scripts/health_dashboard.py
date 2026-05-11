@@ -163,6 +163,8 @@ def _row(label: str, status: str, age: str, detail: str) -> str:
 
 
 def _alert_level(alert: dict) -> str:
+    if alert.get("event") == "kill_switch_latched":
+        return "CRITICAL"
     if alert.get("event") == "consistency_status" and isinstance(alert.get("payload"), dict):
         status = str(alert["payload"].get("status", "")).upper()
         if status == "VIOLATION":
