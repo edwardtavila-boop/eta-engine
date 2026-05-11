@@ -89,7 +89,11 @@ if str(ROOT.parent) not in sys.path:
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from eta_engine.scripts import l2_supervisor_hooks as l2hooks  # noqa: E402
 from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts.l2_supervisor_state_persister import (  # noqa: E402
+    persist_open_positions,
+)
 from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
     load_order_entry_hold,
 )
@@ -1082,6 +1086,14 @@ class ExecutionRouter:
                     # own idempotency key now.
                     client_order_id=rec.signal_id,
                 )
+                # L2 supercharge: circuit breaker
+                # (disk RED/CRITICAL or capture RED or stale-digest blocks).
+                # pre_trade_check fails OPEN on its own exceptions so a
+                # hook bug can never freeze trading; an explicit False
+                # is a deliberate gate-down.
+                if not l2hooks.pre_trade_check(bot, rec):
+                    _rollback_recorded_entry("blocked_by_l2_trading_gate")
+                    return None
                 _result = _run_on_live_ibkr_loop(_venue.place_order(_req), timeout=30.0)
                 _reason = (
                     _result.raw.get("reason")
@@ -1117,6 +1129,9 @@ class ExecutionRouter:
                     # Successful broker acknowledgement — reset the
                     # consecutive-reject backpressure counter.
                     bot.consecutive_broker_rejects = 0
+                    # L2 supercharge: persist signal for fill audit +
+                    # calibration. Always fail-OPEN on hook exception.
+                    l2hooks.record_signal(bot, rec, _result)
                 elif _result.status.value not in _ok_statuses:
                     _rollback_recorded_entry(
                         f"broker_result={_result.status.value}; reason={_reason}",
@@ -2810,6 +2825,28 @@ class JarvisStrategySupervisor:
                 logger.exception(
                     "tick_bot %s raised: %s", bot.bot_id, exc,
                 )
+        # L2 supercharge: persist supervisor's open-positions belief to
+        # disk so l2_reconciliation (cron) can compare against broker
+        # truth.  Atomic write via os.replace — readers see one of two
+        # whole snapshots, never a half-written file.  Failure here is
+        # logged and ignored (the trading loop must never depend on
+        # state-persistence working).
+        try:
+            persist_open_positions(
+                [
+                    {
+                        "bot_id": bot.bot_id,
+                        "symbol": bot.symbol,
+                        "side": str(bot.open_position.get("side", "?")).upper(),
+                        "qty": int(abs(float(bot.open_position.get("qty", 0) or 0))),
+                    }
+                    for bot in self.bots
+                    if isinstance(bot.open_position, dict)
+                    and bot.open_position.get("qty")
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001 -- never break the loop
+            logger.debug("persist_open_positions tick failure: %s", exc)
 
     @staticmethod
     def _bar_float(bar: dict[str, Any], key: str) -> float | None:

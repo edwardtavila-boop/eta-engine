@@ -610,6 +610,8 @@ def test_router_paper_live_direct_order_carries_reference_price(
     monkeypatch.setenv("ETA_PAPER_LIVE_ALLOWED_SYMBOLS", "MNQ,MNQ1")
     monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "100000")
     monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "100000")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal", lambda *_args: None)
     monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
     monkeypatch.setattr(
         supervisor,
@@ -673,6 +675,8 @@ def test_router_paper_live_futures_floor_reaches_broker_with_small_cash(
     monkeypatch.setenv("ETA_LIVE_FUTURES_BUDGET_PER_BOT_USD", "500")
     monkeypatch.setenv("ETA_LIVE_FUTURES_FLEET_BUDGET_USD", "5000")
     monkeypatch.setenv("ETA_PAPER_FUTURES_FLOOR", "1")
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal", lambda *_args: None)
     monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: venue)
     monkeypatch.setattr(
         supervisor,

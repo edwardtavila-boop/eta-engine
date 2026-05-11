@@ -187,6 +187,8 @@ def test_consecutive_broker_rejects_counter_increments_and_resets(
     )
 
     monkeypatch.setattr(supervisor, "_get_live_ibkr_venue", lambda: _StubVenue())
+    monkeypatch.setattr(supervisor.l2hooks, "pre_trade_check", lambda *_args: True)
+    monkeypatch.setattr(supervisor.l2hooks, "record_signal", lambda *_args: None)
 
     # First two rejects bump the counter.
     reject_result = OrderResult(
