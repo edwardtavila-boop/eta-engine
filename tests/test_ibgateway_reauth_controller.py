@@ -74,6 +74,44 @@ def test_process_down_starts_existing_trader_owned_run_now_task(tmp_path: Path, 
     assert state["recovery_lane"]["restart_task"] == "ETA-IBGateway-DailyRestart"
 
 
+def test_ibc_recovery_task_without_credentials_requires_operator_action(tmp_path: Path, monkeypatch) -> None:
+    from eta_engine.scripts import ibgateway_reauth_controller as controller
+
+    tws_status = tmp_path / "tws_watchdog.json"
+    state_path = tmp_path / "ibgateway_reauth.json"
+    password_file = tmp_path / "ibkr_pw.txt"
+    credential_json = tmp_path / "ibkr_credentials.json"
+    dotenv = tmp_path / ".env"
+    tws_status.write_text(json.dumps(_unhealthy_status(process_running=False)), encoding="utf-8")
+    password_file.write_text("REAL_IBKR_PASSWORD_HERE\n", encoding="utf-8")
+    credential_json.write_text(json.dumps({"username": "paper_user"}), encoding="utf-8")
+    started: list[str] = []
+    monkeypatch.setattr(controller, "_scheduled_task_exists", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_is_runnable", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_scheduled_task_uses_ibc", lambda _task_name: True)
+    monkeypatch.setattr(controller, "_start_scheduled_task", lambda task_name: started.append(task_name) or 0)
+
+    result = controller.run_controller(
+        tws_status_path=tws_status,
+        state_path=state_path,
+        execute=True,
+        now=datetime(2026, 5, 5, 13, 40, tzinfo=UTC),
+        check_ibc_credentials=True,
+        ibc_password_file=password_file,
+        ibc_credential_json_path=credential_json,
+        dotenv_path=dotenv,
+    )
+
+    assert result["status"] == "missing_ibc_credentials"
+    assert result["action"] == "none"
+    assert result["operator_action_required"] is True
+    assert result["credential_status"]["has_user_id"] is True
+    assert result["credential_status"]["has_password"] is False
+    assert result["credential_status"]["password_file_placeholder"] is True
+    assert "set_ibc_credentials.ps1 -PromptForPassword" in result["operator_action"]
+    assert started == []
+
+
 def test_process_down_falls_back_to_gateway_task_when_run_now_missing(tmp_path: Path, monkeypatch) -> None:
     from eta_engine.scripts import ibgateway_reauth_controller as controller
 

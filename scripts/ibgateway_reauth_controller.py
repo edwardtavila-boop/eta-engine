@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,9 @@ RUN_NOW_TASK_NAME = "ETA-IBGateway-RunNow"
 RESTART_TASK_NAME = "ETA-IBGateway-DailyRestart"
 DEFAULT_TWS_STATUS_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
 DEFAULT_REAUTH_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"
+DEFAULT_IBC_PASSWORD_FILE = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibkr_pw.txt"
+DEFAULT_IBKR_CREDENTIAL_JSON_PATH = workspace_roots.ETA_ENGINE_ROOT / "secrets" / "ibkr_credentials.json"
+DEFAULT_DOTENV_PATH = workspace_roots.ETA_ENGINE_ROOT / ".env"
 _DEFAULT_TWS_STATUS_PATH = DEFAULT_TWS_STATUS_PATH
 _DEFAULT_STATE_PATH = DEFAULT_REAUTH_STATE_PATH
 _DEFAULT_GATEWAY_TASK = GATEWAY_TASK_NAME
@@ -44,13 +48,121 @@ _DEFAULT_REPAIR_COMMAND = (
 )
 
 
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _read_first_line(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (IndexError, OSError):
+        return ""
+
+
+def _looks_like_secret_placeholder(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return True
+    upper = text.upper()
+    return (
+        upper.startswith(("REPLACE", "PLACEHOLDER", "TODO", "CHANGEME"))
+        or ("REAL_IBKR_" + "PASSWORD") in upper
+        or (text.startswith("<") and "password" in text.lower() and text.endswith(">"))
+    )
+
+
+def _usable_secret(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if _looks_like_secret_placeholder(text) else text
+
+
+def _read_dotenv(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for raw in _read_text(path).splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key and key not in result:
+            result[key] = value.strip().strip("'").strip('"')
+    return result
+
+
+def _first_present(values: list[object]) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _first_usable_secret(values: list[object]) -> str:
+    for value in values:
+        text = _usable_secret(value)
+        if text:
+            return text
+    return ""
+
+
+def ibc_credential_status(
+    *,
+    password_file: Path = DEFAULT_IBC_PASSWORD_FILE,
+    credential_json_path: Path = DEFAULT_IBKR_CREDENTIAL_JSON_PATH,
+    dotenv_path: Path = DEFAULT_DOTENV_PATH,
+) -> JsonDict:
+    dotenv = _read_dotenv(dotenv_path)
+    json_creds = _read_json(credential_json_path)
+    password_from_file = _read_first_line(password_file)
+    user_id = _first_present(
+        [
+            os.environ.get("ETA_IBC_LOGIN_ID"),
+            dotenv.get("ETA_IBC_LOGIN_ID"),
+            json_creds.get("username"),
+            json_creds.get("user"),
+            json_creds.get("login"),
+            json_creds.get("ib_login_id"),
+            json_creds.get("user_id"),
+        ],
+    )
+    password = _first_usable_secret(
+        [
+            password_from_file,
+            os.environ.get("ETA_IBC_PASSWORD"),
+            dotenv.get("ETA_IBC_PASSWORD"),
+            json_creds.get("password"),
+            json_creds.get("pass"),
+            json_creds.get("ib_password"),
+        ],
+    )
+    password_file_present = password_file.exists()
+    password_file_placeholder = password_file_present and _looks_like_secret_placeholder(password_from_file)
+    return {
+        "ready": bool(user_id and password),
+        "has_user_id": bool(user_id),
+        "has_password": bool(password),
+        "password_file": str(password_file),
+        "password_file_present": password_file_present,
+        "password_file_placeholder": password_file_placeholder,
+        "credential_json_path": str(credential_json_path),
+        "credential_json_present": credential_json_path.exists(),
+        "dotenv_path": str(dotenv_path),
+        "dotenv_present": dotenv_path.exists(),
+    }
+
+
 def _json_dict(value: object) -> JsonDict:
     return value if isinstance(value, dict) else {}
 
 
 def _read_json(path: Path) -> JsonDict:
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return _json_dict(loaded)
@@ -277,6 +389,40 @@ def _scheduled_task_state(task_name: str) -> str:
     return completed.stdout.strip() or "unknown"
 
 
+def _scheduled_task_action_text(task_name: str) -> str:
+    escaped = task_name.replace("'", "''")
+    try:
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                (
+                    "$task = Get-ScheduledTask "
+                    f"-TaskName '{escaped}' -ErrorAction SilentlyContinue; "
+                    "if ($null -eq $task) { exit 44 }; "
+                    "($task.Actions | ForEach-Object { ($_.Execute + ' ' + $_.Arguments).Trim() }) -join ' || '"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Unable to query scheduled task action for %s: %s", task_name, exc)
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
+
+
+def _scheduled_task_uses_ibc(task_name: str) -> bool:
+    return "-UseIbc" in _scheduled_task_action_text(task_name)
+
+
 def _run_task_command(verb: str, task_name: str) -> int:
     completed = subprocess.run(
         [
@@ -392,6 +538,10 @@ def run_controller(
     failure_threshold: int = _DEFAULT_FAILURE_THRESHOLD,
     cooldown_minutes: int = _DEFAULT_COOLDOWN_MINUTES,
     max_restart_attempts: int = _DEFAULT_MAX_RESTART_ATTEMPTS,
+    check_ibc_credentials: bool = False,
+    ibc_password_file: Path = DEFAULT_IBC_PASSWORD_FILE,
+    ibc_credential_json_path: Path = DEFAULT_IBKR_CREDENTIAL_JSON_PATH,
+    dotenv_path: Path = DEFAULT_DOTENV_PATH,
 ) -> JsonDict:
     """Run one controller tick and persist the operator-facing state."""
     effective_now = now or datetime.now(UTC)
@@ -474,6 +624,29 @@ def run_controller(
             )
             _write_json(state_path, state)
             return state
+        if check_ibc_credentials and _scheduled_task_uses_ibc(task_name):
+            credential_state = ibc_credential_status(
+                password_file=ibc_password_file,
+                credential_json_path=ibc_credential_json_path,
+                dotenv_path=dotenv_path,
+            )
+            state["credential_status"] = credential_state
+            if not credential_state.get("ready"):
+                state.update(
+                    {
+                        "status": "missing_ibc_credentials",
+                        "action": "none",
+                        "reason": "IBC recovery task is configured, but usable login/password credentials are missing.",
+                        "operator_action_required": True,
+                        "operator_action": (
+                            "Seed IBC credentials with "
+                            r".\eta_engine\deploy\scripts\set_ibc_credentials.ps1 -PromptForPassword, "
+                            "then rerun ibgateway_reauth_controller --execute."
+                        ),
+                    },
+                )
+                _write_json(state_path, state)
+                return state
     if execute and task_name:
         if action == "restart_gateway":
             returncode = _restart_scheduled_task(task_name)
@@ -502,6 +675,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--failure-threshold", type=int, default=_DEFAULT_FAILURE_THRESHOLD)
     parser.add_argument("--cooldown-minutes", type=int, default=_DEFAULT_COOLDOWN_MINUTES)
     parser.add_argument("--max-restart-attempts", type=int, default=_DEFAULT_MAX_RESTART_ATTEMPTS)
+    parser.add_argument(
+        "--skip-ibc-credential-check",
+        action="store_true",
+        help="Do not preflight IBC login/password presence before starting an IBC scheduled task.",
+    )
     return parser
 
 
@@ -518,6 +696,7 @@ def main(argv: list[str] | None = None) -> int:
         failure_threshold=args.failure_threshold,
         cooldown_minutes=args.cooldown_minutes,
         max_restart_attempts=args.max_restart_attempts,
+        check_ibc_credentials=not args.skip_ibc_credential_check,
     )
     print(json.dumps(state, indent=2, sort_keys=True))
     return 0
