@@ -18,6 +18,7 @@ def _blocked_gate_report() -> dict[str, object]:
                 "evidence": {
                     "prop_account": "blusky_50k",
                     "phase": "cutover",
+                    "venue_policy": "tradovate_dormant",
                     "missing_secrets": [
                         "BLUSKY_TRADOVATE_ACCOUNT_ID",
                         "BLUSKY_TRADOVATE_APP_SECRET",
@@ -47,9 +48,9 @@ def _blocked_gate_report() -> dict[str, object]:
             },
         ],
         "next_actions": [
-            "Seed Tradovate API secrets after funding/API unlock.",
-            "Keep volume_profile_mnq in paper_soak.",
             "Record proof after confirming OCO.",
+            "Keep volume_profile_mnq in paper_soak.",
+            "Tradovate remains DORMANT.",
         ],
     }
 
@@ -60,14 +61,18 @@ def test_prop_operator_checklist_turns_gate_blockers_into_operator_steps() -> No
     assert report["summary"] == "BLOCKED"
     assert report["can_start_prop_dry_run"] is False
     assert report["blocking_step_count"] == 3
+    assert [step["id"] for step in report["checklist"]] == [
+        "verify_manual_oco_or_flatten",
+        "hold_primary_paper_soak",
+        "hold_tradovate_dormant",
+    ]
     steps = {step["id"]: step for step in report["checklist"]}
-    assert steps["seed_tradovate_api_secrets"]["command"] == (
-        "python -m eta_engine.scripts.setup_tradovate_secrets --prop-account blusky_50k"
-    )
-    assert steps["seed_tradovate_api_secrets"]["missing_secrets"] == [
+    assert steps["hold_tradovate_dormant"]["command"] == "no-op: Tradovate stays dormant until explicit reactivation"
+    assert steps["hold_tradovate_dormant"]["missing_secrets"] == [
         "BLUSKY_TRADOVATE_ACCOUNT_ID",
         "BLUSKY_TRADOVATE_APP_SECRET",
     ]
+    assert steps["hold_tradovate_dormant"]["order_action"] is False
     assert steps["verify_manual_oco_or_flatten"]["command"] == (
         "python -m eta_engine.scripts.broker_bracket_audit "
         "--ack-manual-oco --symbol MNQM6 --venue ibkr --operator edward "

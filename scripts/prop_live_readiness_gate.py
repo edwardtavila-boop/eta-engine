@@ -336,24 +336,25 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
     }
     blocked = set(blocked_checks)
     actions: list[str] = []
+    prop_actions: list[str] = []
     if "prop_readiness" in blocked:
         evidence = _as_dict(blocked_checks["prop_readiness"].get("evidence"))
         missing = [str(item) for item in _as_list(evidence.get("missing_secrets")) if item]
         if evidence.get("venue_policy") == DORMANT_PROP_VENUE_POLICY:
             active = ", ".join(ACTIVE_FUTURES_BROKERS).upper()
             missing_suffix = f" Current missing dormant venue secrets: {', '.join(missing)}." if missing else ""
-            actions.append(
+            prop_actions.append(
                 "Tradovate remains DORMANT by broker policy; do not seed or route "
                 f"Tradovate credentials until explicit code/docs reactivation. Active futures brokers: {active}."
                 f"{missing_suffix}",
             )
         elif missing:
-            actions.append(
+            prop_actions.append(
                 "Seed the active broker/prop API secrets after funding/API unlock; "
                 f"missing: {', '.join(missing)}.",
             )
         else:
-            actions.append(
+            prop_actions.append(
                 "Keep Tradovate DORMANT until funding/API unlock and explicit code/docs reactivation.",
             )
     if "primary_ladder" in blocked or "live_bot_gate" in blocked:
@@ -384,7 +385,8 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
         if symbol and symbol not in unprotected_symbols:
             unprotected_symbols.insert(0, symbol)
         if audit_summary == "BLOCKED_FLEET_TRUTH_UNAVAILABLE":
-            actions.append(
+            actions.insert(
+                0,
                 "Restore live /api/bot-fleet position truth and rerun the broker bracket audit; "
                 "do not infer flat exposure from missing dashboard data.",
             )
@@ -397,14 +399,16 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
                 )
                 for item in unprotected_symbols
             ]
-            actions.append(
+            actions.insert(
+                0,
                 "After visually confirming broker-native TP/SL OCO in TWS/IB Gateway, record proof: "
                 f"{'; '.join(ack_commands)}; otherwise flatten manually before prop dry-run.",
             )
         else:
-            actions.append("Prove broker-native bracket/OCO coverage before any funded or prop dry-run exposure.")
+            actions.insert(0, "Prove broker-native bracket/OCO coverage before any funded or prop dry-run exposure.")
     if "closed_trade_ledger" in blocked:
         actions.append("Ship a schema-backed closed-trade ledger so Actual Trades, Win Rate, PnL, and R are not stale.")
+    actions.extend(prop_actions)
     if not actions:
         actions.append(f"Run the controlled no-live-money DORMANT-lane prop dry run for {PRIMARY_BOT} only.")
     return actions

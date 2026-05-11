@@ -39,20 +39,29 @@ def _blocked(check: dict[str, Any]) -> bool:
     return str(check.get("status") or "").upper() == "BLOCKED"
 
 
-def _seed_tradovate_step(check: dict[str, Any]) -> dict[str, Any]:
+def _prop_readiness_step(check: dict[str, Any]) -> dict[str, Any]:
     evidence = _as_dict(check.get("evidence"))
-    prop_account = str(evidence.get("prop_account") or "blusky_50k")
     missing = [str(item) for item in _as_list(evidence.get("missing_secrets")) if item]
+    if evidence.get("venue_policy") == "tradovate_dormant":
+        return {
+            "id": "hold_tradovate_dormant",
+            "status": "blocked",
+            "title": "Keep Tradovate DORMANT until explicit reactivation",
+            "manual": False,
+            "order_action": False,
+            "command": "no-op: Tradovate stays dormant until explicit reactivation",
+            "verification_command": "python -m eta_engine.scripts.prop_live_readiness_gate --json",
+            "missing_secrets": missing,
+            "detail": check.get("detail"),
+        }
     return {
-        "id": "seed_tradovate_api_secrets",
+        "id": "seed_active_prop_api_secrets",
         "status": "blocked",
-        "title": "Seed DORMANT Tradovate API credentials after funding/API unlock",
+        "title": "Seed active broker/prop API credentials after funding/API unlock",
         "manual": True,
         "order_action": False,
-        "command": f"python -m eta_engine.scripts.setup_tradovate_secrets --prop-account {prop_account}",
-        "verification_command": (
-            f"python -m eta_engine.scripts.setup_tradovate_secrets --prop-account {prop_account} --check"
-        ),
+        "command": "follow the active broker-specific secret setup runbook",
+        "verification_command": "python -m eta_engine.scripts.prop_live_readiness_gate --json",
         "missing_secrets": missing,
         "detail": check.get("detail"),
     }
@@ -135,12 +144,12 @@ def build_checklist_report(*, gate_report: dict[str, Any]) -> dict[str, Any]:
     bracket_check = checks.get("broker_native_brackets", {})
     live_bot_check = checks.get("live_bot_gate", {})
 
-    if _blocked(prop_check):
-        checklist.append(_seed_tradovate_step(prop_check))
     if _blocked(bracket_check):
         checklist.append(_manual_oco_step(bracket_check))
     if _blocked(live_bot_check) or _blocked(checks.get("primary_ladder", {})):
         checklist.append(_paper_soak_step(gate_report, live_bot_check or checks.get("primary_ladder", {})))
+    if _blocked(prop_check):
+        checklist.append(_prop_readiness_step(prop_check))
 
     summary = str(gate_report.get("summary") or "UNKNOWN")
     can_start = summary == "READY_FOR_CONTROLLED_PROP_DRY_RUN" and not checklist

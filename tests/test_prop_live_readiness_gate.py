@@ -220,9 +220,12 @@ def test_prop_live_gate_next_actions_respect_dormant_tradovate_policy() -> None:
     }
 
     report = gate.build_gate_report(**payloads)
-    actions = "\n".join(report["next_actions"])
+    actions_list = report["next_actions"]
+    actions = "\n".join(actions_list)
     prop_check = next(check for check in report["checks"] if check["name"] == "prop_readiness")
 
+    assert actions_list[0].startswith("After visually confirming broker-native TP/SL OCO")
+    assert actions_list[-1].startswith("Tradovate remains DORMANT")
     assert "setup_tradovate_secrets --prop-account blusky_50k" not in actions
     assert "Tradovate remains DORMANT" in actions
     assert "explicit code/docs reactivation" in actions
