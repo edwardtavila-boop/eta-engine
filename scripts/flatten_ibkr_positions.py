@@ -6,15 +6,28 @@ or live account currently connected on ``127.0.0.1:4002``. Unlike
 because the supervisor still claims them. It is intended for emergency exits,
 profit realization, and manual flatten events.
 """
+# ruff: noqa: E402, I001
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import json
 import logging
 from dataclasses import asdict, dataclass
 from typing import Any
+
+
+def _ensure_main_thread_event_loop() -> None:
+    """ib_insync/eventkit expects an event loop at import time on Python 3.14."""
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+_ensure_main_thread_event_loop()
 
 from ib_insync import IB, MarketOrder
 
@@ -43,7 +56,7 @@ def _action_for_position(position: float) -> str:
     raise ValueError("cannot derive flatten action for zero position")
 
 
-def _patch_contract_exchange(contract: Any) -> None:
+def _patch_contract_exchange(contract: Any) -> None:  # noqa: ANN401
     if getattr(contract, "secType", "") != "FUT":
         return
     if getattr(contract, "exchange", ""):
@@ -136,13 +149,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     ns = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    results = flatten_ibkr_positions(
-        host=ns.host,
-        port=ns.port,
-        client_id=ns.client_id,
-        confirm=ns.confirm,
-        global_cancel=not ns.no_global_cancel,
-    )
+    try:
+        results = flatten_ibkr_positions(
+            host=ns.host,
+            port=ns.port,
+            client_id=ns.client_id,
+            confirm=ns.confirm,
+            global_cancel=not ns.no_global_cancel,
+        )
+    except OSError as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "connection_failed",
+                    "host": ns.host,
+                    "port": ns.port,
+                    "client_id": ns.client_id,
+                    "order_action_attempted": bool(ns.confirm),
+                    "detail": str(exc),
+                    "next_action": "Open IBKR Gateway/TWS paper API on this host and retry dry-run inspection.",
+                },
+                indent=2,
+            ),
+        )
+        return 2
     print(json.dumps([asdict(row) for row in results], indent=2))
     if ns.confirm and any(row.status not in {"Submitted", "PreSubmitted", "Filled"} for row in results):
         return 1

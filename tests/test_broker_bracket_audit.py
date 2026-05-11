@@ -76,6 +76,45 @@ def test_bracket_audit_fetch_json_retries_transient_live_failure(monkeypatch) ->
     assert calls["count"] == 2
 
 
+def test_bracket_audit_loads_local_bot_fleet_fallback_when_primary_fetch_empty(monkeypatch) -> None:
+    calls: list[tuple[str, float]] = []
+
+    def _fake_fetch(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[str, object]:
+        calls.append((url, timeout_s))
+        if url == audit.DEFAULT_FLEET_URL:
+            return {}
+        return {"target_exit_summary": {"broker_open_position_count": 0}}
+
+    monkeypatch.setattr(audit, "_fetch_json", _fake_fetch)
+
+    payload = audit.load_fleet_payload()
+
+    assert payload == {"target_exit_summary": {"broker_open_position_count": 0}}
+    assert calls == [
+        (audit.DEFAULT_FLEET_URL, 10.0),
+        ("http://127.0.0.1:8420/api/bot-fleet", 20.0),
+    ]
+
+
+def test_bracket_audit_operator_action_uses_singular_for_unknown_exposure() -> None:
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+        },
+    )
+
+    assert (
+        report["operator_actions"][0]["detail"]
+        == "Confirm current broker exposure has broker-native TP/SL OCO attached outside ETA."
+    )
+
+
 def test_bracket_audit_blocks_unbracketed_open_exposure(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,

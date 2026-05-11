@@ -19,6 +19,7 @@ if str(_PARENT) not in sys.path:
 from eta_engine.scripts import workspace_roots  # noqa: E402
 
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
+DEFAULT_LOCAL_FLEET_URL = "http://127.0.0.1:8420/api/bot-fleet"
 DEFAULT_OUT = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MANUAL_ACK_PATH = workspace_roots.ETA_BROKER_BRACKET_MANUAL_ACK_PATH
 FUTURES_MULTIPLIERS = {
@@ -82,6 +83,19 @@ def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[st
         except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
             continue
     return {}
+
+
+def load_fleet_payload(url: str = DEFAULT_FLEET_URL) -> dict[str, Any]:
+    """Load bot-fleet truth, falling back to local Command Center when public ops is slow."""
+    primary = _fetch_json(url, timeout_s=10.0)
+    if _fleet_has_position_truth(primary):
+        return primary
+    if url == DEFAULT_LOCAL_FLEET_URL:
+        return primary
+    local = _fetch_json(DEFAULT_LOCAL_FLEET_URL, timeout_s=20.0)
+    if _fleet_has_position_truth(local):
+        return local
+    return primary or local
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -462,7 +476,7 @@ def _operator_actions(summary: str, positions: list[dict[str, Any]]) -> list[dic
     descriptor = ", ".join(symbols) if symbols else (
         _position_descriptor(primary) if primary else "current broker exposure"
     )
-    oco_verb = "have" if len(symbols) != 1 else "has"
+    oco_verb = "have" if len(symbols) > 1 else "has"
     symbol = str(primary.get("symbol") or "").strip() or None
     return [
         {
@@ -522,7 +536,7 @@ def build_bracket_audit(
     fleet: dict[str, Any] | None = None,
     manual_ack: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    fleet = _fetch_json(DEFAULT_FLEET_URL) if fleet is None else fleet or {}
+    fleet = load_fleet_payload() if fleet is None else fleet or {}
     manual_ack = manual_ack or {}
     fleet_truth_present = _fleet_has_position_truth(fleet)
     position_summary = _derive_position_summary(fleet)
@@ -812,7 +826,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote: {out_path}")
         return 0
 
-    fleet = _fetch_json(args.fleet_url)
+    fleet = load_fleet_payload(args.fleet_url)
     report = build_bracket_audit(fleet=fleet, manual_ack=load_manual_oco_ack(args.manual_ack_path))
     out_path = None if args.no_write else write_report(report, args.out)
     if args.json:
