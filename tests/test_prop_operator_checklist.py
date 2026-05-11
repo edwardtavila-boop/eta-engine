@@ -29,6 +29,9 @@ def _blocked_gate_report() -> dict[str, object]:
                 "status": "BLOCKED",
                 "detail": "MNQM6 missing broker-native OCO",
                 "evidence": {
+                    "position_summary": {
+                        "unprotected_symbols": ["MNQM6", "MCLM6", "NQM6"],
+                    },
                     "primary_unprotected_position": {
                         "symbol": "MNQM6",
                         "venue": "ibkr",
@@ -70,6 +73,24 @@ def test_prop_operator_checklist_turns_gate_blockers_into_operator_steps() -> No
         "--ack-manual-oco --symbol MNQM6 --venue ibkr --operator edward "
         "--expires-hours 24 --confirm"
     )
+    assert steps["verify_manual_oco_or_flatten"]["unprotected_symbols"] == ["MNQM6", "MCLM6", "NQM6"]
+    assert steps["verify_manual_oco_or_flatten"]["ack_manual_oco_commands"] == [
+        (
+            "python -m eta_engine.scripts.broker_bracket_audit "
+            "--ack-manual-oco --symbol MNQM6 --venue ibkr --operator edward "
+            "--expires-hours 24 --confirm"
+        ),
+        (
+            "python -m eta_engine.scripts.broker_bracket_audit "
+            "--ack-manual-oco --symbol MCLM6 --venue ibkr --operator edward "
+            "--expires-hours 24 --confirm"
+        ),
+        (
+            "python -m eta_engine.scripts.broker_bracket_audit "
+            "--ack-manual-oco --symbol NQM6 --venue ibkr --operator edward "
+            "--expires-hours 24 --confirm"
+        ),
+    ]
     assert steps["verify_manual_oco_or_flatten"]["order_action"] is False
     assert steps["verify_manual_oco_or_flatten"]["alternative_order_action"] is True
     assert steps["hold_primary_paper_soak"]["bot_id"] == "volume_profile_mnq"

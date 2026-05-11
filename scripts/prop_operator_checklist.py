@@ -63,6 +63,30 @@ def _manual_oco_step(check: dict[str, Any]) -> dict[str, Any]:
     position = _as_dict(evidence.get("primary_unprotected_position"))
     symbol = str(position.get("symbol") or "MNQM6").strip().upper()
     venue = str(position.get("venue") or "ibkr").strip().lower()
+    position_summary = _as_dict(evidence.get("position_summary"))
+    unprotected_symbols = [
+        str(item).strip().upper()
+        for item in _as_list(position_summary.get("unprotected_symbols"))
+        if str(item).strip()
+    ]
+    if symbol and symbol not in unprotected_symbols:
+        unprotected_symbols.insert(0, symbol)
+    ack_commands = [
+        (
+            "python -m eta_engine.scripts.broker_bracket_audit "
+            f"--ack-manual-oco --symbol {item} --venue {venue} --operator edward "
+            "--expires-hours 24 --confirm"
+        )
+        for item in unprotected_symbols
+    ]
+    if not ack_commands:
+        ack_commands = [
+            (
+                "python -m eta_engine.scripts.broker_bracket_audit "
+                f"--ack-manual-oco --symbol {symbol} --venue {venue} --operator edward "
+                "--expires-hours 24 --confirm"
+            ),
+        ]
     return {
         "id": "verify_manual_oco_or_flatten",
         "status": "blocked",
@@ -72,11 +96,9 @@ def _manual_oco_step(check: dict[str, Any]) -> dict[str, Any]:
         "alternative_order_action": True,
         "symbol": symbol,
         "venue": venue,
-        "command": (
-            "python -m eta_engine.scripts.broker_bracket_audit "
-            f"--ack-manual-oco --symbol {symbol} --venue {venue} --operator edward "
-            "--expires-hours 24 --confirm"
-        ),
+        "unprotected_symbols": unprotected_symbols,
+        "ack_manual_oco_commands": ack_commands,
+        "command": ack_commands[0],
         "verification_command": "python -m eta_engine.scripts.broker_bracket_audit --json",
         "detail": check.get("detail"),
     }

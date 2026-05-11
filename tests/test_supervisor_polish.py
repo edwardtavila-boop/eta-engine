@@ -824,6 +824,7 @@ def test_maybe_enter_uses_sage_bias_to_pick_side(tmp_path, monkeypatch) -> None:
     )
 
     monkeypatch.setenv("ETA_SAGE_DRIVEN_SIDE", "1")
+    monkeypatch.setenv("ETA_KILLSWITCH_DISABLED", "1")
 
     cfg = SupervisorConfig()
     cfg.state_dir = tmp_path / "state"
