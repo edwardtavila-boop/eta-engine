@@ -210,6 +210,12 @@ def _alert_message(alert: dict) -> str:
             action = verdict.get("action")
             reason = verdict.get("reason")
             if action and reason:
+                reason_text = str(reason)
+                if (
+                    alert.get("event") == "circuit_trip"
+                    and reason_text.startswith("apex 30% consistency VIOLATION")
+                ):
+                    return f"{action}: apex 30% consistency VIOLATION"
                 return f"{action}: {reason}"
             if reason:
                 return str(reason)

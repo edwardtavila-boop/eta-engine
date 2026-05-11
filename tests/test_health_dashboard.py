@@ -119,6 +119,37 @@ def test_alert_helpers_classify_consistency_status_payload() -> None:
     assert hd._alert_message(warning) == "30% consistency WARNING"
 
 
+def test_alert_level_classifies_kill_switch_latched_as_critical() -> None:
+    alert = {
+        "event": "kill_switch_latched",
+        "level": "unknown",
+        "payload": {"reason": "apex cushion 200 <= preempt 400"},
+    }
+
+    assert hd._alert_level(alert) == "CRITICAL"
+
+
+def test_alert_message_normalizes_consistency_circuit_trip_detail() -> None:
+    alert = {
+        "event": "circuit_trip",
+        "level": "WARN",
+        "payload": {
+            "verdict": {
+                "action": "PAUSE_NEW_ENTRIES",
+                "reason": (
+                    "apex 30% consistency VIOLATION: largest day "
+                    "250.0 exceeds max 75.0"
+                ),
+            },
+        },
+    }
+
+    assert (
+        hd._alert_message(alert)
+        == "PAUSE_NEW_ENTRIES: apex 30% consistency VIOLATION"
+    )
+
+
 def test_alert_message_uses_title_when_body_is_placeholder() -> None:
     alert = {
         "title": "broker ibkr YELLOW",
@@ -214,6 +245,42 @@ def test_render_text_drops_generic_alert_when_specific_detail_exists(
     assert "broker tastytrade YELLOW" in text
     assert "broker ibkr YELLOW" not in messages
     assert "broker ibkr YELLOW: credentials missing" in messages
+
+
+def test_render_text_groups_consistency_circuit_trip_variants(
+    isolated_logs: Path,
+) -> None:
+    now = datetime.now(UTC)
+    _write_jsonl(hd.SOURCES["alerts"], [
+        {
+            "ts": (now - timedelta(minutes=6)).timestamp(),
+            "level": "WARN",
+            "event": "circuit_trip",
+            "payload": {
+                "verdict": {
+                    "action": "PAUSE_NEW_ENTRIES",
+                    "reason": "apex 30% consistency VIOLATION: largest day 250",
+                },
+            },
+        },
+        {
+            "ts": (now - timedelta(minutes=5)).timestamp(),
+            "level": "WARN",
+            "event": "circuit_trip",
+            "payload": {
+                "verdict": {
+                    "action": "PAUSE_NEW_ENTRIES",
+                    "reason": "apex 30% consistency VIOLATION: largest day 1000",
+                },
+            },
+        },
+    ])
+
+    groups = hd._recent_alert_groups(hd.build_dashboard()["recent_alerts"])
+    messages = [group["message"] for group in groups]
+
+    assert messages == ["PAUSE_NEW_ENTRIES: apex 30% consistency VIOLATION"]
+    assert groups[0]["count"] == 2
 
 
 def test_render_text_prioritizes_actionable_alert_groups(
