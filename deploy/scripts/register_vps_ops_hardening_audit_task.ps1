@@ -4,6 +4,7 @@
 [CmdletBinding()]
 param(
     [switch]$DryRun,
+    [switch]$CurrentUser,
     [switch]$Start
 )
 
@@ -42,7 +43,11 @@ if ($DryRun) {
     Write-Host "  Artifact    : $Artifact"
     Write-Host "  State dir   : $StateDir"
     Write-Host "  Log dir     : $LogDir"
-    Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
+    if ($CurrentUser) {
+        Write-Host "  Principal   : $env:USERDOMAIN\$env:USERNAME (Interactive, Limited)"
+    } else {
+        Write-Host "  Principal   : NT AUTHORITY\SYSTEM (Highest)"
+    }
     Write-Host "  Triggers    : AtStartup + AtLogOn + every 5 minutes"
     Write-Host "  Order action: never submits, cancels, flattens, or promotes"
     exit 0
@@ -70,8 +75,15 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 2) `
     -MultipleInstances IgnoreNew
-$principal = New-ScheduledTaskPrincipal `
-    -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+if ($CurrentUser) {
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
+    $principalLabel = "$env:USERDOMAIN\$env:USERNAME, Interactive/Limited"
+} else {
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $principalLabel = "SYSTEM, Highest"
+}
 
 Register-ScheduledTask `
     -TaskName $TaskName `
@@ -83,7 +95,7 @@ if ($Start) {
     Start-ScheduledTask -TaskName $TaskName
 }
 
-Write-Host "OK: Registered '$TaskName' as SYSTEM, AtStartup+AtLogOn+every-5m."
+Write-Host "OK: Registered '$TaskName' as $principalLabel, AtStartup+AtLogOn+every-5m."
 Write-Host "    Runner:   $Runner"
 Write-Host "    Artifact: $Artifact"
 Write-Host "    Logs:     $LogDir"

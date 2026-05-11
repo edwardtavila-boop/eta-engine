@@ -18,7 +18,7 @@ real-time (1), frozen (2), delayed (3), or delayed-frozen (4) data.
 
 A realtime account on the right exchange gets type 1.  Anything
 else means the operator's IBKR Pro subscription is missing or not
-yet activated for that exchange — the live supervisor would be
+yet activated for that exchange -- the live supervisor would be
 trading on 15-minute stale prices on those symbols.
 
 Output
@@ -26,11 +26,11 @@ Output
 * Pretty table to stdout: exchange | symbol probed | data type | verdict
 * JSONL append to logs/eta_engine/ibkr_subscription_status.jsonl
 * Exit code:
-    0 — all probed exchanges return realtime
-    1 — one or more exchanges return delayed / frozen / errored
-    2 — connection / setup error (no probe completed)
+    0 -- all probed exchanges return realtime
+    1 -- one or more exchanges return delayed / frozen / errored
+    2 -- connection / setup error (no probe completed)
 
-The verifier is read-only — no orders, no order requests, no
+The verifier is read-only -- no orders, no order requests, no
 historical-data calls.  Single-shot probe per exchange, ~1-2
 seconds per probe, total runtime under 30 seconds.
 
@@ -39,7 +39,7 @@ Run
 ::
 
     # default exchange set: CME (MNQ), NYMEX (CL), COMEX (GC),
-    # CBOT (ZN), ICE (none — IBKR routes 6E via CME)
+    # CBOT (ZN), ICE (none -- IBKR routes 6E via CME)
     python -m eta_engine.scripts.verify_ibkr_subscriptions
 
     # custom port (live gateway)
@@ -97,9 +97,9 @@ OPTIONAL_PROBES: dict[str, dict[str, str]] = {
 # IBKR mktDataType callback values:
 DATA_TYPE_LABEL = {
     1: ("REALTIME",        "PASS",  "live tick stream"),
-    2: ("FROZEN",          "WARN",  "frozen at last close — outside RTH or no subscription"),
-    3: ("DELAYED",         "FAIL",  "15-min delayed — subscription INACTIVE for this exchange"),
-    4: ("DELAYED-FROZEN",  "FAIL",  "delayed AND frozen — subscription INACTIVE + outside RTH"),
+    2: ("FROZEN",          "WARN",  "frozen at last close -- outside RTH or no subscription"),
+    3: ("DELAYED",         "FAIL",  "15-min delayed -- subscription INACTIVE for this exchange"),
+    4: ("DELAYED-FROZEN",  "FAIL",  "delayed AND frozen -- subscription INACTIVE + outside RTH"),
 }
 
 
@@ -122,10 +122,10 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
     """Issue a reqMktData on one contract, wait for first mktDataType
     callback, then cancel.  Returns a result dict."""
     log = log or logging.getLogger(__name__)
-    from ib_insync import ContFuture  # noqa: PLC0415  # local import — only when running
+    from ib_insync import ContFuture  # noqa: PLC0415  # local import -- only when running
 
     try:
-        # Use ContFuture (continuous front month) — cheapest probe contract.
+        # Use ContFuture (continuous front month) -- cheapest probe contract.
         contract = ContFuture(spec["symbol"], spec["exchange"])
         qualified = ib.qualifyContracts(contract)  # type: ignore[attr-defined]
         if not qualified:
@@ -139,7 +139,7 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
                 "reason": f"contract qualify failed: {e}"}
 
     # Force realtime request; IBKR will silently downgrade if the sub
-    # isn't active on this exchange — we read the response back.
+    # isn't active on this exchange -- we read the response back.
     captured_type: list[int] = []
 
     def _on_market_data_type(msg) -> None:  # noqa: ANN001
@@ -151,7 +151,7 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
 
     try:
         ib.reqMarketDataType(1)  # type: ignore[attr-defined]
-        # Subscribe to mktDataType events (best-effort — ib_insync naming)
+        # Subscribe to mktDataType events (best-effort -- ib_insync naming)
         try:
             ib.mktDataTypeEvent += _on_market_data_type  # type: ignore[attr-defined]
         except Exception:
@@ -180,7 +180,7 @@ def _probe_one_exchange(ib: object, exchange: str, spec: dict[str, str],
     if not captured_type:
         return {"exchange": exchange, "symbol": spec["symbol"],
                 "data_type": None, "verdict": "TIMEOUT",
-                "reason": f"no mktDataType callback within {timeout}s — exchange may be closed"}
+                "reason": f"no mktDataType callback within {timeout}s -- exchange may be closed"}
 
     dt = captured_type[0]
     label, verdict, note = DATA_TYPE_LABEL.get(
@@ -197,7 +197,7 @@ def main() -> int:
                     help="TWS API port (auto-detect from 4002/7497/4001)")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--client-id", type=int, default=33,
-                    help="ib_insync client ID (default 33 — separate from supervisor)")
+                    help="ib_insync client ID (default 33 -- separate from supervisor)")
     ap.add_argument("--include-ice", action="store_true",
                     help="Also probe ICE/NYBOT (e.g. DX dollar index)")
     ap.add_argument("--probe-timeout", type=float, default=5.0,
@@ -215,7 +215,7 @@ def main() -> int:
     # Port auto-detect
     port = args.port or _tws_port()
     if port is None:
-        msg = "TWS Gateway unreachable on 4002/7497/4001 — start TWS or pass --port"
+        msg = "TWS Gateway unreachable on 4002/7497/4001 -- start TWS or pass --port"
         if args.json:
             print(json.dumps({"error": msg, "exit_code": 2}))
         else:
@@ -225,7 +225,7 @@ def main() -> int:
     try:
         from ib_insync import IB
     except ImportError:
-        msg = "ib_insync not installed — pip install ib_insync"
+        msg = "ib_insync not installed -- pip install ib_insync"
         if args.json:
             print(json.dumps({"error": msg, "exit_code": 2}))
         else:
@@ -236,7 +236,7 @@ def main() -> int:
     try:
         ib.connect(args.host, port, clientId=args.client_id, timeout=10)
     except Exception as e:
-        msg = f"TWS connect failed at {args.host}:{port} clientId={args.client_id} — {e}"
+        msg = f"TWS connect failed at {args.host}:{port} clientId={args.client_id} -- {e}"
         if args.json:
             print(json.dumps({"error": msg, "exit_code": 2}))
         else:
@@ -290,7 +290,7 @@ def main() -> int:
                   f"{mark} {verdict:<5s}  {r.get('reason', '')[:50]}")
         print()
         if digest["all_realtime"]:
-            print("  >>> ALL REALTIME — IBKR Pro subscriptions active across probed exchanges.")
+            print("  >>> ALL REALTIME -- IBKR Pro subscriptions active across probed exchanges.")
         else:
             failed = [r["exchange"] for r in results if r.get("verdict") in {"FAIL", "ERROR"}]
             warned = [r["exchange"] for r in results if r.get("verdict") == "WARN"]

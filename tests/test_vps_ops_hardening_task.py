@@ -33,6 +33,8 @@ def test_vps_ops_hardening_registrar_is_canonical_read_only_and_low_overhead() -
     assert "-RepetitionInterval (New-TimeSpan -Minutes 5)" in text
     assert "-ExecutionTimeLimit (New-TimeSpan -Minutes 2)" in text
     assert '-UserId "NT AUTHORITY\\SYSTEM"' in text
+    assert "[switch]$CurrentUser" in text
+    assert "-LogonType Interactive -RunLevel Limited" in text
     assert "never submits, cancels, flattens, or promotes" in text
 
 

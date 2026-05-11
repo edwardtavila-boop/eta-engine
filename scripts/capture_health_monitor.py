@@ -2,7 +2,7 @@
 EVOLUTIONARY TRADING ALGO  //  scripts.capture_health_monitor
 =============================================================
 Verifies the Phase-1 tick + depth capture daemons are alive and
-producing data.  Read-only audit — runs daily via cloud cron.
+producing data.  Read-only audit -- runs daily via cloud cron.
 
 Why this exists
 ---------------
@@ -17,7 +17,7 @@ history loss.  This monitor checks:
    5 minutes (depth snapshots are 1Hz so the file should be very
    fresh during market hours).
 3. Yesterday's files are non-trivially sized (>10KB for ticks,
-   >1MB for depth) — sanity check that capture wasn't bare-token.
+   >1MB for depth) -- sanity check that capture wasn't bare-token.
 4. Subscription verifier (``verify_ibkr_subscriptions.py``) ran in
    the last 24h and reported all-realtime.
 
@@ -180,7 +180,7 @@ def main() -> int:
     if sub_audit.get("status") == "NEVER_RUN":
         issues.append("sub audit never run")
     if sub_audit.get("status") == "FRESH" and not sub_audit.get("all_realtime"):
-        issues.append("sub audit FAIL — at least one exchange not realtime")
+        issues.append("sub audit FAIL -- at least one exchange not realtime")
 
     verdict = "GREEN" if not issues else (
         "RED" if any("MISSING" in i for i in issues) else "YELLOW")
