@@ -20,10 +20,22 @@ TWS Gateway lives).
 
 ## Step 0a — Unattended Gateway launch via IBC (already wired)
 
-**Status:** IBC 3.23.0 is installed at `C:\EvolutionaryTradingAlgo\var\eta_engine\tools\ibc\3.23.0\`.
-Scheduled Task `ETA-IBGateway-Autostart` is registered to fire at user logon.
+**Two distinct auth patterns exist; do not confuse them:**
 
-**One-time operator action — write the password to the protected file:**
+### Local workstation (`ETA\edwar` user)
+- Pattern: **password file**
+- Path: `C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt`
+- ACL: `ETA\edwar : Read, Synchronize` only
+- Task: `ETA-IBGateway-Autostart` (passes `-IbcPasswordFile`)
+
+### VPS (`fxut9145410\trader` user) — already production
+- Pattern: **machine-scope env vars** (live source) + password file (sentinel only, no-op)
+- Env vars set in machine scope: `ETA_IBC_LOGIN_ID`, `ETA_IBC_PASSWORD`, `IBKR_USERNAME`, `IBKR_PASSWORD`
+- Sentinel file at canonical path with locked ACL (`trader : Read, Synchronize`) for emergency recovery — content is `REPLACE_WITH_REAL_IBKR_PASSWORD` until operator overwrites
+- Task: `ETA-IBGateway` (does NOT pass `-IbcPasswordFile`, env vars win by default)
+- **Precedence rule** (`start_ibgateway.ps1:313-323`): if `-IbcPasswordFile` is wired up AND the file is non-empty, the FILE WINS over env vars. Don't enable `-IbcPasswordFile` on VPS until the sentinel is overwritten with a real password — otherwise login breaks.
+
+**Local one-time operator action — write the password to the protected file:**
 
 ```powershell
 # Write your IBKR paper password to the access-locked file
@@ -34,6 +46,17 @@ Scheduled Task `ETA-IBGateway-Autostart` is registered to fire at user logon.
 
 # Then trigger the scheduled task immediately (don't wait for next logon)
 Start-ScheduledTask -TaskName "ETA-IBGateway-Autostart"
+```
+
+**VPS — only run this if you suspect env vars have been cleared:**
+
+```powershell
+# On VPS (ssh forex-vps)
+"<your_paper_password>" | Out-File `
+    -FilePath "C:\EvolutionaryTradingAlgo\var\eta_engine\state\ibkr_pw.txt" `
+    -Encoding utf8 -NoNewline
+# Then add -IbcPasswordFile to ETA-IBGateway task action (currently absent)
+# and re-run Start-ScheduledTask -TaskName ETA-IBGateway
 ```
 
 The task will:
@@ -55,10 +78,6 @@ Just open `ibgateway.exe` from `C:\Jts\ibgateway\1037\` and complete the login d
 ---
 
 ## Step 0b — Verify subscriptions are realtime (5 min, run ONCE manually first)
-
----
-
-## Step 0c — Verify subscriptions are realtime (5 min, run ONCE manually first)
 
 ```powershell
 cd C:\EvolutionaryTradingAlgo

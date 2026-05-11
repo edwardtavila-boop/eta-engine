@@ -80,25 +80,34 @@ def _load_json(path: Path) -> dict | None:
         return None
 
 
+def _parse_ts(ts: str | float | int | None) -> datetime | None:
+    """Parse a timestamp value to a UTC datetime.  Tolerates ISO-8601
+    string, unix epoch number, or None.  Returns None on failure.
+
+    Centralized helper extracted from _age_str + _read_recent_alerts
+    duplication (D4 fix 2026-05-11)."""
+    if ts is None:
+        return None
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(ts), UTC)
+        except (OSError, OverflowError, ValueError):
+            return None
+    return None
+
+
 def _age_str(ts_iso: str | float | int | None) -> str:
     """Render the age of an ISO-string OR unix-epoch timestamp as 's/m/h/d'.
 
     Tolerates both shapes because older alert writers emit float epoch_s
     in the `ts` field while newer ones emit ISO-8601 in `timestamp_utc`."""
-    if ts_iso is None:
-        return "?"
-    dt: datetime | None = None
-    if isinstance(ts_iso, str):
-        try:
-            dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
-        except ValueError:
-            return "?"
-    elif isinstance(ts_iso, (int, float)):
-        try:
-            dt = datetime.fromtimestamp(float(ts_iso), UTC)
-        except (OSError, OverflowError, ValueError):
-            return "?"
-    else:
+    dt = _parse_ts(ts_iso)
+    if dt is None:
         return "?"
     age = datetime.now(UTC) - dt
     total = age.total_seconds()
@@ -114,9 +123,9 @@ def _age_str(ts_iso: str | float | int | None) -> str:
 def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
     """Read alerts.jsonl and return records from the last N hours.
 
-    Tolerates mixed-shape records — older alert writers used unix-epoch
-    floats in the `ts` field; newer ones use ISO-8601 in `timestamp_utc`.
-    Both decode cleanly here."""
+    Tolerates mixed-shape records via the centralized _parse_ts
+    helper — older alert writers used unix-epoch floats in the `ts`
+    field; newer ones use ISO-8601 in `timestamp_utc`."""
     if not path.exists():
         return []
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
@@ -129,20 +138,7 @@ def _read_recent_alerts(path: Path, hours: int) -> list[dict]:
                     continue
                 try:
                     rec = json.loads(line)
-                    ts = rec.get("timestamp_utc") or rec.get("ts")
-                    if ts is None:
-                        continue
-                    dt: datetime | None = None
-                    if isinstance(ts, str):
-                        try:
-                            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                        except ValueError:
-                            dt = None
-                    elif isinstance(ts, (int, float)):
-                        try:
-                            dt = datetime.fromtimestamp(float(ts), UTC)
-                        except (OSError, OverflowError, ValueError):
-                            dt = None
+                    dt = _parse_ts(rec.get("timestamp_utc") or rec.get("ts"))
                     if dt is not None and dt >= cutoff:
                         out.append(rec)
                 except (json.JSONDecodeError, ValueError, TypeError):
@@ -227,11 +223,34 @@ def build_dashboard(*, alert_hours: int = 24) -> dict:
     # 5. Rotation
     rot = _last_jsonl_record(SOURCES["capture_rotation"])
     if rot:
+        # D3: DRY-RUN with pending work is a YELLOW alert — operator
+        # forgot to schedule the --apply variant; disk will fill silently.
+        # GREEN only when --apply ran successfully.  DRY-RUN with zero
+        # pending work is harmless (no rotation needed yet).
+        applied = bool(rot.get("apply"))
+        ticks = rot.get("ticks", {})
+        depth = rot.get("depth", {})
+        # In APPLY mode, n_compressed/n_cold_archived count completed
+        # work.  In DRY-RUN mode, the new n_would_compress /
+        # n_would_cold_archived fields count pending work (was missing
+        # entirely in v1 of this digest).
+        pending = (ticks.get("n_would_compress", 0)
+                    + ticks.get("n_would_cold_archived", 0)
+                    + depth.get("n_would_compress", 0)
+                    + depth.get("n_would_cold_archived", 0))
+        if applied:
+            status = "GREEN"
+        elif pending > 0:
+            status = "YELLOW"
+        else:
+            status = "DRY-RUN"
         out["sections"]["capture_rotation"] = {
-            "status": "GREEN" if rot.get("apply") else "DRY-RUN",
+            "status": status,
             "ts": rot.get("ts"),
+            "applied": applied,
             "n_compressed": rot.get("totals", {}).get("n_compressed", 0),
             "n_cold_archived": rot.get("totals", {}).get("n_cold_archived", 0),
+            "n_pending": pending if not applied else 0,
         }
     else:
         out["sections"]["capture_rotation"] = {"status": "NEVER_RUN", "ts": None}

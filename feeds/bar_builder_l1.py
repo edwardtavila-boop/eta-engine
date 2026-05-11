@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import logging
 import sys
@@ -245,8 +246,10 @@ def rebuild_one_symbol(symbol: str, tf: str, *, log: logging.Logger | None = Non
     all_ticks: list[TickRecord] = []
     for fp in files:
         if fp.suffix == ".gz":
-            # Phase-2 scaffolding handles raw + gzipped tick files
-            import gzip
+            # Phase-2 scaffolding handles raw + gzipped tick files.
+            # Decompress to a temp file (sibling of fp) so _read_ticks
+            # can use the same fast path.  D7: gzip is now a top-level
+            # import; this used to live in the function body.
             tmp = fp.with_suffix("")  # foo.jsonl.gz → foo.jsonl
             try:
                 with gzip.open(fp, "rb") as f_in, tmp.open("wb") as f_out:

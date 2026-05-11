@@ -70,13 +70,35 @@ def _date_from_filename(p: Path) -> date | None:
 
 
 def _gzip_in_place(src: Path) -> Path:
-    """Gzip src to src + '.gz', verifying the output is non-zero before
-    returning the new path.  Caller decides whether to remove src."""
+    """Gzip src to src + '.gz', writing through a .tmp suffix and only
+    renaming on success.  This avoids leaving partial .gz files on
+    disk when a write fails mid-stream (disk full, permission error)
+    — partial .gz files would otherwise be picked up by readers as
+    valid compressed files and raise BadGzipFile on read.
+
+    D2 fix (2026-05-11): prior version wrote directly to .gz; if
+    shutil.copyfileobj raised mid-write the partial .gz remained
+    alongside the original .jsonl, which then became a landmine
+    for the l2_overlay reader on the next session."""
     dst = src.with_suffix(src.suffix + ".gz")  # foo.jsonl → foo.jsonl.gz
-    with src.open("rb") as f_in, gzip.open(dst, "wb", compresslevel=6) as f_out:
-        shutil.copyfileobj(f_in, f_out, length=64 * 1024)
-    if not dst.exists() or dst.stat().st_size == 0:
-        raise OSError(f"gzip wrote empty file: {dst}")
+    tmp = dst.with_suffix(dst.suffix + ".tmp")  # foo.jsonl.gz.tmp
+    try:
+        with src.open("rb") as f_in, gzip.open(tmp, "wb", compresslevel=6) as f_out:
+            shutil.copyfileobj(f_in, f_out, length=64 * 1024)
+        if not tmp.exists() or tmp.stat().st_size == 0:
+            raise OSError(f"gzip wrote empty file: {tmp}")
+        # Atomic rename — either dst exists with full contents or
+        # nothing changed.  os.replace handles overwrite on Windows.
+        tmp.replace(dst)
+    except OSError:
+        # Best-effort cleanup of the partial .tmp so it doesn't
+        # accumulate; ignore unlink failures (will be cleaned next run).
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise
     return dst
 
 
@@ -91,6 +113,9 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
     actions: list[dict] = []
     n_compressed = 0
     n_cold = 0
+    n_would_compress = 0   # D3: count pending work for dashboard
+    n_would_cold = 0
+    n_unparsed = 0         # files that didn't match the date pattern
     cold_root = d / "cold"
 
     for p in sorted(d.iterdir()):
@@ -102,6 +127,7 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
             continue
         file_date = _date_from_filename(p)
         if file_date is None:
+            n_unparsed += 1
             continue
         age_days = (today - file_date).days
         action = {"file": p.name, "age_days": age_days, "size_bytes": p.stat().st_size,
@@ -121,6 +147,7 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
                     action["outcome"] = f"compress-error:{e}"
             else:
                 action["outcome"] = "would-compress"
+                n_would_compress += 1
         elif p.suffix == ".gz" and age_days > cold_days:
             # Move to cold/YYYY/MM/
             dest = cold_root / f"{file_date.year:04d}" / f"{file_date.month:02d}" / p.name
@@ -135,12 +162,16 @@ def _process_kind(d: Path, kind: str, today: date, keep_days: int,
                     action["outcome"] = f"cold-error:{e}"
             else:
                 action["outcome"] = "would-cold-archive"
+                n_would_cold += 1
 
         actions.append(action)
 
     return {
         "kind": kind, "dir": str(d),
         "n_compressed": n_compressed, "n_cold_archived": n_cold,
+        "n_would_compress": n_would_compress,
+        "n_would_cold_archived": n_would_cold,
+        "n_unparsed": n_unparsed,
         "n_files_total": len(actions),
         "actions": actions,
     }
@@ -180,8 +211,9 @@ def main() -> int:
     try:
         with ROTATION_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"capture_rotation WARN: could not append digest to "
+              f"{ROTATION_LOG}: {e}", file=sys.stderr)
 
     if args.json:
         out = dict(digest)

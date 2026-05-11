@@ -140,8 +140,12 @@ def _emit_alert(level: str, message: str, payload: dict) -> None:
     try:
         with ALERT_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
+    except OSError as e:
+        # D6: surface to stderr — silent swallow meant disk-full
+        # incidents went un-recorded when the alert log itself
+        # couldn't be written.
+        print(f"capture_health_monitor WARN: could not append alert to "
+              f"{ALERT_LOG}: {e}", file=sys.stderr)
 
 
 def main() -> int:
@@ -198,8 +202,9 @@ def main() -> int:
     try:
         with HEALTH_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(digest, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"capture_health_monitor WARN: could not append digest to "
+              f"{HEALTH_LOG}: {e}", file=sys.stderr)
 
     if verdict != "GREEN":
         _emit_alert(verdict, f"capture health {verdict}: {len(issues)} issue(s)", digest)
