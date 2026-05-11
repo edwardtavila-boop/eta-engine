@@ -186,7 +186,7 @@ def test_prop_live_gate_blocks_missing_fleet_truth_in_bracket_audit() -> None:
     assert "do not infer flat exposure" in actions
 
 
-def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
+def test_prop_live_gate_next_actions_respect_dormant_tradovate_policy() -> None:
     payloads = _ready_payloads()
     payloads["prop"] = {
         "summary": "BLOCKED",
@@ -221,10 +221,14 @@ def test_prop_live_gate_next_actions_include_exact_operator_commands() -> None:
 
     report = gate.build_gate_report(**payloads)
     actions = "\n".join(report["next_actions"])
+    prop_check = next(check for check in report["checks"] if check["name"] == "prop_readiness")
 
-    assert "setup_tradovate_secrets --prop-account blusky_50k" in actions
+    assert "setup_tradovate_secrets --prop-account blusky_50k" not in actions
+    assert "Tradovate remains DORMANT" in actions
+    assert "explicit code/docs reactivation" in actions
     assert "BLUSKY_TRADOVATE_ACCOUNT_ID" in actions
     assert "BLUSKY_TRADOVATE_APP_SECRET" in actions
+    assert prop_check["evidence"]["venue_policy"] == "tradovate_dormant"
     assert "--ack-manual-oco --symbol MNQM6 --venue ibkr" in actions
     assert "--ack-manual-oco --symbol MCLM6 --venue ibkr" in actions
     assert "--ack-manual-oco --symbol NQM6 --venue ibkr" in actions

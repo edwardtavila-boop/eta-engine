@@ -31,6 +31,8 @@ DEFAULT_LEDGER_PATH = workspace_roots.ETA_CLOSED_TRADE_LEDGER_PATH
 DEFAULT_BRACKET_AUDIT_PATH = workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH
 DEFAULT_MASTER_URL = "https://ops.evolutionarytradingalgo.com/api/master/status"
 DEFAULT_FLEET_URL = "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
+ACTIVE_FUTURES_BROKERS = ("ibkr", "tastytrade")
+DORMANT_PROP_VENUE_POLICY = "tradovate_dormant"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -79,6 +81,11 @@ def _check(name: str, status: str, detail: str, **evidence: Any) -> dict[str, An
     return payload
 
 
+def _has_tradovate_secret_gap(missing_secrets: list[Any]) -> bool:
+    # Tradovate is DORMANT by policy; this only classifies stale prop-secret gaps.
+    return any("TRADOVATE" in str(secret).upper() for secret in missing_secrets)
+
+
 def _primary_candidate(ladder: dict[str, Any]) -> dict[str, Any]:
     for candidate in _as_list(ladder.get("candidates")):
         candidate_dict = _as_dict(candidate)
@@ -120,13 +127,20 @@ def _prop_readiness_check(prop: dict[str, Any]) -> dict[str, Any]:
     if summary == "READY_FOR_DRY_RUN":
         return _check("prop_readiness", "PASS", "prop account credentials/auth are ready for dry-run")
     secret_presence = _as_dict(prop.get("secret_presence"))
+    missing_secrets = _as_list(secret_presence.get("missing"))
+    evidence: dict[str, Any] = {
+        "prop_account": prop.get("prop_account"),
+        "phase": prop.get("phase"),
+        "missing_secrets": missing_secrets,
+    }
+    if _has_tradovate_secret_gap(missing_secrets):
+        evidence["venue_policy"] = DORMANT_PROP_VENUE_POLICY
+        evidence["active_futures_brokers"] = list(ACTIVE_FUTURES_BROKERS)
     return _check(
         "prop_readiness",
         "BLOCKED",
         f"prop readiness is {summary}, not READY_FOR_DRY_RUN",
-        prop_account=prop.get("prop_account"),
-        phase=prop.get("phase"),
-        missing_secrets=_as_list(secret_presence.get("missing")),
+        **evidence,
     )
 
 
@@ -324,12 +338,18 @@ def _next_actions(checks: list[dict[str, Any]]) -> list[str]:
     actions: list[str] = []
     if "prop_readiness" in blocked:
         evidence = _as_dict(blocked_checks["prop_readiness"].get("evidence"))
-        prop_account = str(evidence.get("prop_account") or "blusky_50k")
         missing = [str(item) for item in _as_list(evidence.get("missing_secrets")) if item]
-        if missing:
+        if evidence.get("venue_policy") == DORMANT_PROP_VENUE_POLICY:
+            active = ", ".join(ACTIVE_FUTURES_BROKERS).upper()
+            missing_suffix = f" Current missing dormant venue secrets: {', '.join(missing)}." if missing else ""
             actions.append(
-                "Seed Tradovate API secrets after funding/API unlock: "
-                f"python -m eta_engine.scripts.setup_tradovate_secrets --prop-account {prop_account}; "
+                "Tradovate remains DORMANT by broker policy; do not seed or route "
+                f"Tradovate credentials until explicit code/docs reactivation. Active futures brokers: {active}."
+                f"{missing_suffix}",
+            )
+        elif missing:
+            actions.append(
+                "Seed the active broker/prop API secrets after funding/API unlock; "
                 f"missing: {', '.join(missing)}.",
             )
         else:
