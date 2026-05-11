@@ -4752,12 +4752,42 @@ class JarvisStrategySupervisor:
             )
             report = consult_sage(ctx, parallel=False, use_cache=False)
             tracker = default_tracker()
+            # Build per-school attribution in parallel with the existing
+            # tracker.observe() loop so hot_learner gets the same signal
+            # in a numeric form: +1 = school voted for the side that
+            # actually traded, -1 = school voted against it, 0 = neutral.
+            # The hot_learner uses (attribution × r_outcome) to nudge each
+            # school's session weight in [0.5, 1.5].
+            hot_attribution: dict[str, float] = {}
             for school_name, verdict in report.per_school.items():
                 tracker.observe(
                     school=school_name,
                     school_bias=verdict.bias.value,
                     entry_side=entry_dir,
                     realized_r=rec.realized_r or 0.0,
+                )
+                bias_str = str(verdict.bias.value).lower()
+                if bias_str == entry_dir:
+                    hot_attribution[school_name] = 1.0
+                elif bias_str in {"long", "short"} and bias_str != entry_dir:
+                    hot_attribution[school_name] = -1.0
+                else:
+                    hot_attribution[school_name] = 0.0
+            # Hot learner — within-session per-school weight adaptation.
+            # Independent of edge_tracker (which feeds daily kaizen);
+            # this updates the *live* weight modifiers Sage will see on
+            # the very next consult for the same asset class.
+            try:
+                from eta_engine.brain.jarvis_v3 import jarvis_conductor as _jc
+                _jc.observe_close(
+                    asset_class=_classify_symbol(bot.symbol) or "default",
+                    school_attribution=hot_attribution,
+                    r_outcome=float(rec.realized_r or 0.0),
+                )
+            except Exception as exc:  # noqa: BLE001 — observability only
+                logger.debug(
+                    "hot_learner.observe_close failed for %s: %s",
+                    bot.bot_id, exc,
                 )
         except Exception as exc:  # noqa: BLE001 — observability only
             logger.debug(

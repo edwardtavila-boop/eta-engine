@@ -423,6 +423,29 @@ class JarvisFull:
                 layer_errors.append(f"clash_detect: {exc}")
         final_size = max(0.0, min(2.0, final_size))
 
+        # 7b. JARVIS Supercharge conductor — Streams 1-5 entry point.
+        # Runs after the existing Wave-12→17 size pipeline so it sees the
+        # composite final_size as input and either modulates (portfolio
+        # brain, hot_learner weights) or vetoes (fleet_kill, drawdown
+        # response). Trace emitter writes one JSON line per consult to
+        # var/eta_engine/state/jarvis_trace.jsonl — the operator can
+        # finally tail JARVIS thinking in real time.
+        # Conductor wraps each stream call in try/except; on any failure
+        # it falls back to the upstream final_size (legacy behavior). It
+        # NEVER overrules JarvisAdmin — JarvisAdmin's rules sit upstream
+        # in JarvisIntelligence.consult().
+        conductor_block_reason: str | None = None
+        try:
+            from eta_engine.brain.jarvis_v3 import jarvis_conductor as _jc
+            _cond = _jc.orchestrate(req=req, base_size=final_size)
+            conductor_block_reason = _cond.block_reason
+            # Conductor returns a value clamped to [0, 1.5]; honor it.
+            final_size = float(_cond.final_size)
+            if conductor_block_reason:
+                layer_errors.append(f"conductor_block: {conductor_block_reason}")
+        except Exception as exc:  # noqa: BLE001 — never let conductor break legacy consult
+            layer_errors.append(f"conductor: {exc}")
+
         # 7. Narratives (Wave-18: LLM-augmented with template fallback)
         narrative_terse = ""
         narrative_standard = ""

@@ -1,0 +1,207 @@
+"""JARVIS Conductor — wires Streams 1-5 into the consult flow.
+
+Calls each stream in order, wraps each in try/except so any stream
+failure falls back to legacy behavior. Does NOT overrule JarvisAdmin.
+
+The conductor sits at the end of `JarvisFull.consult()` (after the
+existing Wave-12→17 size pipeline has produced ``final_size``) and:
+
+  1. enriches context (multi-TF + nearby events + session)            — Stream 4
+  2. asks portfolio_brain for a size_modifier or block_reason          — Stream 1
+  3. reads hot_learner's current per-school weights for the asset      — Stream 3
+  4. applies ``portfolio_modifier`` to base_size and clamps to [0,1.5]
+  5. emits one structured trace line                                   — Stream 2
+  6. returns a ConductorResult the caller folds into the verdict
+
+The companion observer (``observe_close``) runs from
+``jarvis_strategy_supervisor._propagate_close()`` so closed trades
+update hot_learner's weights for the next consult.
+
+Every stream call is best-effort. If any one fails, the conductor
+logs a warning and continues with the legacy fallback (base_size).
+"""
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+logger = logging.getLogger("eta_engine.jarvis_conductor")
+
+EXPECTED_HOOKS = ("orchestrate", "observe_close")
+
+
+@dataclass
+class ConductorResult:
+    """Outcome of a single conductor pass."""
+
+    final_size: float
+    block_reason: str | None
+    consult_id: str
+    school_weights: dict[str, float]
+    portfolio_modifier: float
+    enriched_context: Any = None
+    elapsed_ms: float = 0.0
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def orchestrate(
+    *,
+    req: Any,  # noqa: ANN401 — req is JarvisAdmin.ActionRequest, structurally typed
+    base_size: float,
+    trace_path: Path | None = None,
+) -> ConductorResult:
+    """Run the 5-stream pipeline; never raise.
+
+    Parameters
+    ----------
+    req : Any
+        The action request being evaluated. Must expose ``bot_id``,
+        ``asset_class``, optionally ``symbol`` and ``action``.
+    base_size : float
+        The size_multiplier computed by the existing Wave-12→17
+        pipeline (composite × coach × budget × quantum × OOD × premortem
+        × dissent × clashes, clamped to [0,2]).
+    trace_path : Path | None
+        Override trace destination. Default uses
+        ``trace_emitter.DEFAULT_TRACE_PATH``.
+
+    Returns
+    -------
+    ConductorResult
+        ``final_size`` is the conductor-adjusted size in [0, 1.5].
+        ``block_reason`` is non-None when the portfolio brain vetoes
+        the consult. ``consult_id`` is always set so the caller can
+        cross-reference the trace line.
+    """
+    t0 = time.perf_counter()
+    # Stream 2: identifier (cheap, never raises)
+    try:
+        from eta_engine.brain.jarvis_v3 import trace_emitter
+        consult_id = trace_emitter.new_consult_id()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trace_emitter.new_consult_id failed: %s", exc)
+        consult_id = ""
+
+    asset_class = str(getattr(req, "asset_class", "") or "default")
+    symbol = str(getattr(req, "symbol", "") or "")
+
+    # Stream 4: enrich context
+    enriched = None
+    try:
+        from eta_engine.brain.jarvis_v3 import context_enricher
+        enriched = context_enricher.enrich(symbol=symbol, asset_class=asset_class)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("context_enricher.enrich failed: %s", exc)
+
+    # Stream 1: portfolio assess
+    portfolio_modifier = 1.0
+    block_reason: str | None = None
+    portfolio_notes: tuple[str, ...] = ()
+    try:
+        from eta_engine.brain.jarvis_v3 import portfolio_brain
+        ctx = portfolio_brain.snapshot()
+        verdict = portfolio_brain.assess(req, ctx)
+        portfolio_modifier = float(verdict.size_modifier)
+        block_reason = verdict.block_reason
+        portfolio_notes = tuple(verdict.notes or ())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio_brain failed: %s", exc)
+
+    # Stream 3: hot learner per-school weights
+    school_weights: dict[str, float] = {}
+    try:
+        from eta_engine.brain.jarvis_v3 import hot_learner
+        school_weights = dict(hot_learner.current_weights(asset_class))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("hot_learner.current_weights failed: %s", exc)
+
+    # Compose final size
+    final_size = (
+        0.0 if block_reason
+        else max(0.0, min(1.5, float(base_size) * portfolio_modifier))
+    )
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    result = ConductorResult(
+        final_size=final_size,
+        block_reason=block_reason,
+        consult_id=consult_id,
+        school_weights=school_weights,
+        portfolio_modifier=portfolio_modifier,
+        enriched_context=enriched,
+        elapsed_ms=elapsed_ms,
+        notes=portfolio_notes,
+    )
+
+    # Stream 2: emit trace (best-effort; never raises)
+    try:
+        from eta_engine.brain.jarvis_v3 import trace_emitter
+        rec = trace_emitter.TraceRecord(
+            ts=datetime.now(UTC).isoformat(),
+            bot_id=str(getattr(req, "bot_id", "")),
+            consult_id=consult_id,
+            action=str(getattr(req, "action", "")),
+            verdict={
+                "base_size": float(base_size),
+                "final_size": final_size,
+                "block_reason": block_reason,
+            },
+            schools={k: {"hot_weight": v} for k, v in school_weights.items()},
+            portfolio={
+                "size_modifier": portfolio_modifier,
+                "block_reason": block_reason,
+                "notes": list(portfolio_notes),
+            },
+            context=_summarize_enriched(enriched),
+            hot_learn={"weights": school_weights},
+            final_size=final_size,
+            block_reason=block_reason,
+            elapsed_ms=elapsed_ms,
+        )
+        trace_emitter.emit(rec, path=trace_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trace_emitter.emit failed: %s", exc)
+
+    return result
+
+
+def observe_close(
+    *,
+    asset_class: str,
+    school_attribution: dict[str, float],
+    r_outcome: float,
+) -> None:
+    """Forward a closed trade to hot_learner; never raise."""
+    try:
+        from eta_engine.brain.jarvis_v3 import hot_learner
+        hot_learner.observe_close(
+            asset=asset_class or "default",
+            school_attribution=school_attribution,
+            r_outcome=r_outcome,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("hot_learner.observe_close failed: %s", exc)
+
+
+def _summarize_enriched(ec: Any) -> dict:  # noqa: ANN401 — ec is a duck-typed EnrichedContext from context_enricher
+    """Compact context view for the trace stream (full ctx is too large)."""
+    if ec is None:
+        return {}
+    try:
+        return {
+            "session": getattr(ec, "session", ""),
+            "time_of_day_risk": float(getattr(ec, "time_of_day_risk", 0.0)),
+            "multi_tf_agreement": float(getattr(ec, "multi_tf_agreement", 0.0)),
+            "nearby_event_kinds": [
+                getattr(e, "kind", "") for e in getattr(ec, "nearby_events", ()) or ()
+            ],
+        }
+    except Exception:  # noqa: BLE001
+        return {}
