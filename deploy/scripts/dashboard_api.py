@@ -521,6 +521,11 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
             "win_rate_pct": None,
             "cumulative_r": None,
             "broker_missing_bracket_count": 0,
+            "broker_open_position_count": 0,
+            "public_fallback_reason": "",
+            "public_fallback_active": False,
+            "public_fallback_primary_action": "",
+            "public_fallback_blocked_count": 0,
             "prop_primary_bot": "",
             "promotion_summary": "",
             "required_evidence": [],
@@ -574,8 +579,63 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         if isinstance(promotion_payload.get("primary"), dict)
         else {}
     )
+    public_fallback_checks = (
+        receipt.get("public_fallback_checks")
+        if isinstance(receipt.get("public_fallback_checks"), list)
+        else []
+    )
+    public_fallback_by_name = {
+        str(check.get("name") or ""): check
+        for check in public_fallback_checks
+        if isinstance(check, dict) and check.get("name")
+    }
+    fallback_bracket_payload = (
+        public_fallback_by_name.get("broker_bracket_audit_public_fallback", {}).get("payload")
+        if isinstance(
+            public_fallback_by_name.get("broker_bracket_audit_public_fallback", {}).get("payload"),
+            dict,
+        )
+        else {}
+    )
+    fallback_prop_payload = (
+        public_fallback_by_name.get("prop_live_readiness_gate_public_fallback", {}).get("payload")
+        if isinstance(
+            public_fallback_by_name.get("prop_live_readiness_gate_public_fallback", {}).get("payload"),
+            dict,
+        )
+        else {}
+    )
+    fallback_position_summary = (
+        fallback_bracket_payload.get("position_summary")
+        if isinstance(fallback_bracket_payload.get("position_summary"), dict)
+        else {}
+    )
+    public_fallback_blocked_checks = [
+        check
+        for check in public_fallback_checks
+        if isinstance(check, dict) and str(check.get("status") or "").upper() not in pass_statuses
+    ]
+    local_fleet_truth_unavailable = (
+        str(bracket_payload.get("summary") or "").upper() == "BLOCKED_FLEET_TRUTH_UNAVAILABLE"
+    )
+    public_fallback_active = bool(
+        receipt.get("public_fallback_reason")
+        and public_fallback_checks
+        and local_fleet_truth_unavailable
+    )
 
     next_actions: list[str] = []
+    public_fallback_next_actions: list[str] = []
+    fallback_bracket_action = str(
+        fallback_bracket_payload.get("next_action")
+        or fallback_bracket_payload.get("operator_action")
+        or ""
+    ).strip()
+    if fallback_bracket_action:
+        public_fallback_next_actions.append(fallback_bracket_action)
+    fallback_prop_actions = fallback_prop_payload.get("next_actions")
+    if isinstance(fallback_prop_actions, list):
+        public_fallback_next_actions.extend(str(action) for action in fallback_prop_actions if action)
     raw_next_actions = prop_payload.get("next_actions")
     if isinstance(raw_next_actions, list):
         next_actions.extend(str(action) for action in raw_next_actions if action)
@@ -593,12 +653,23 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
     for item in required_evidence:
         if item not in next_actions:
             next_actions.append(item)
+    if public_fallback_active:
+        for item in reversed(public_fallback_next_actions):
+            if item and item not in next_actions:
+                next_actions.insert(0, item)
 
     primary_blocker = ""
-    if blocked_checks:
+    if public_fallback_active and public_fallback_blocked_checks:
+        primary_blocker = str(public_fallback_blocked_checks[0].get("name") or "")
+    elif blocked_checks:
         primary_blocker = str(blocked_checks[0].get("name") or "")
     primary_action = next_actions[0] if next_actions else (
         "Clear blocked readiness checks." if blocked_checks else "No action required."
+    )
+    effective_position_summary = (
+        fallback_position_summary
+        if public_fallback_active and fallback_position_summary
+        else position_summary
     )
     if not fresh:
         status = "stale_receipt"
@@ -627,8 +698,18 @@ def _eta_readiness_snapshot_payload(*, server_ts: float) -> dict:
         "total_realized_pnl": closed_payload.get("total_realized_pnl"),
         "win_rate_pct": closed_payload.get("win_rate_pct"),
         "cumulative_r": closed_payload.get("cumulative_r"),
-        "broker_missing_bracket_count": int(position_summary.get("missing_bracket_count") or 0),
-        "broker_open_position_count": int(position_summary.get("broker_open_position_count") or 0),
+        "broker_missing_bracket_count": int(
+            effective_position_summary.get("missing_bracket_count") or 0
+        ),
+        "broker_open_position_count": int(
+            effective_position_summary.get("broker_open_position_count") or 0
+        ),
+        "public_fallback_reason": str(receipt.get("public_fallback_reason") or ""),
+        "public_fallback_active": public_fallback_active,
+        "public_fallback_primary_action": public_fallback_next_actions[0]
+        if public_fallback_next_actions
+        else "",
+        "public_fallback_blocked_count": len(public_fallback_blocked_checks),
         "prop_primary_bot": str(
             prop_payload.get("primary_bot")
             or promotion_payload.get("primary_bot")

@@ -1382,6 +1382,108 @@ class TestDashboardAPI:
         assert snapshot["primary_action"].startswith("Keep volume_profile_mnq")
         assert payload["checks"]["eta_readiness_snapshot_contract"] is True
 
+    def test_dashboard_diagnostics_promotes_public_fallback_readiness_action(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "eta_readiness_snapshot_latest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "eta.readiness_snapshot.v1",
+                    "checked_at_utc": datetime.now(UTC).isoformat(),
+                    "summary": "BLOCKED",
+                    "public_fallback_reason": "local_fleet_truth_unavailable",
+                    "public_fallback_checks": [
+                        {
+                            "name": "broker_bracket_audit_public_fallback",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_action": (
+                                    "5 broker bracket-required positions missing broker-native OCO."
+                                ),
+                                "position_summary": {
+                                    "missing_bracket_count": 5,
+                                    "broker_open_position_count": 6,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_live_readiness_gate_public_fallback",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "next_actions": [
+                                    "Keep volume_profile_mnq in paper_soak until bracket audit clears."
+                                ],
+                            },
+                        },
+                    ],
+                    "checks": [
+                        {
+                            "name": "closed_trade_ledger",
+                            "status": "OK",
+                            "exit_code": 0,
+                            "payload": {
+                                "closed_trade_count": 43511,
+                                "total_realized_pnl": 27173899.25,
+                                "win_rate_pct": 28.94,
+                            },
+                        },
+                        {
+                            "name": "broker_bracket_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "summary": "BLOCKED_FLEET_TRUTH_UNAVAILABLE",
+                                "position_summary": {
+                                    "missing_bracket_count": 0,
+                                    "broker_open_position_count": 0,
+                                },
+                            },
+                        },
+                        {
+                            "name": "prop_live_readiness_gate",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "next_actions": [
+                                    "Restore live /api/bot-fleet position truth."
+                                ],
+                            },
+                        },
+                        {
+                            "name": "prop_strategy_promotion_audit",
+                            "status": "BLOCKED",
+                            "exit_code": 1,
+                            "payload": {
+                                "primary_bot": "volume_profile_mnq",
+                                "summary": "BLOCKED_PAPER_SOAK",
+                                "ready_for_prop_dry_run_review": False,
+                            },
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        snapshot = r.json()["eta_readiness_snapshot"]
+        assert snapshot["status"] == "blocked"
+        assert snapshot["public_fallback_active"] is True
+        assert snapshot["public_fallback_reason"] == "local_fleet_truth_unavailable"
+        assert snapshot["public_fallback_blocked_count"] == 2
+        assert snapshot["primary_blocker"] == "broker_bracket_audit_public_fallback"
+        assert snapshot["primary_action"].startswith("5 broker bracket-required")
+        assert snapshot["next_actions"][0].startswith("5 broker bracket-required")
+        assert snapshot["broker_missing_bracket_count"] == 5
+        assert snapshot["broker_open_position_count"] == 6
+
     def test_dashboard_diagnostics_includes_command_center_watchdog_rollup(
         self,
         app_client,
