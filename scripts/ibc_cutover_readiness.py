@@ -38,6 +38,15 @@ _IBC_INSTALL_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibc_install.j
 _IBG_REPAIR_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_repair.json"
 _PAPER_LIVE_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "paper_live_transition_check.json"
 _TWS_WATCHDOG_STATE_PATH = workspace_roots.ETA_RUNTIME_STATE_DIR / "tws_watchdog.json"
+_PLACEHOLDER_MARKERS = (
+    "replace",
+    "placeholder",
+    "todo",
+    "changeme",
+    "change me",
+    "set me",
+    "real_ibkr_password",
+)
 
 
 def _utc_now_iso() -> str:
@@ -66,6 +75,23 @@ def _read_key_value_map(path: Path) -> dict[str, str]:
     except OSError:
         return {}
     return result
+
+
+def _is_secret_sentinel(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    token = value.strip()
+    if not token:
+        return True
+    upper = token.upper()
+    return (
+        any(marker.upper() in upper for marker in _PLACEHOLDER_MARKERS)
+        or (token.startswith("<") and token.endswith(">") and "PASSWORD" in upper)
+    )
+
+
+def _usable_secret(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and not _is_secret_sentinel(value)
 
 
 def _read_registry_env(name: str, hive: object, subkey: str) -> bool:
@@ -100,17 +126,11 @@ def _registry_sources(name: str) -> list[str]:
 
 
 def _json_login_present(payload: dict[str, Any]) -> bool:
-    for key in ("username", "user", "login", "ib_login_id", "user_id"):
-        if str(payload.get(key, "")).strip():
-            return True
-    return False
+    return any(_usable_secret(payload.get(key)) for key in ("username", "user", "login", "ib_login_id", "user_id"))
 
 
 def _json_password_present(payload: dict[str, Any]) -> bool:
-    for key in ("password", "pass", "ib_password"):
-        if str(payload.get(key, "")).strip():
-            return True
-    return False
+    return any(_usable_secret(payload.get(key)) for key in ("password", "pass", "ib_password"))
 
 
 def _collect_credential_sources() -> dict[str, Any]:
@@ -121,33 +141,33 @@ def _collect_credential_sources() -> dict[str, Any]:
     login_sources = _registry_sources("ETA_IBC_LOGIN_ID")
     login_sources.extend(_registry_sources("IBKR_USERNAME"))
     login_sources.extend(_registry_sources("IBKR_LOGIN_ID"))
-    if str(dot_env.get("ETA_IBC_LOGIN_ID", "")).strip():
+    if _usable_secret(dot_env.get("ETA_IBC_LOGIN_ID")):
         login_sources.append("eta_env:ETA_IBC_LOGIN_ID")
-    if str(dot_env.get("IBKR_USERNAME", "")).strip():
+    if _usable_secret(dot_env.get("IBKR_USERNAME")):
         login_sources.append("eta_env:IBKR_USERNAME")
-    if str(dot_env.get("IBKR_LOGIN_ID", "")).strip():
+    if _usable_secret(dot_env.get("IBKR_LOGIN_ID")):
         login_sources.append("eta_env:IBKR_LOGIN_ID")
     if _json_login_present(json_creds):
         login_sources.append("json:ibkr_credentials")
-    if str(ibc_private.get("IbLoginId", "")).strip():
+    if _usable_secret(ibc_private.get("IbLoginId")):
         login_sources.append("ibc_private_config:IbLoginId")
 
     password_sources = _registry_sources("ETA_IBC_PASSWORD")
     password_sources.extend(_registry_sources("IBKR_PASSWORD"))
-    if str(dot_env.get("ETA_IBC_PASSWORD", "")).strip():
+    if _usable_secret(dot_env.get("ETA_IBC_PASSWORD")):
         password_sources.append("eta_env:ETA_IBC_PASSWORD")
-    if str(dot_env.get("IBKR_PASSWORD", "")).strip():
+    if _usable_secret(dot_env.get("IBKR_PASSWORD")):
         password_sources.append("eta_env:IBKR_PASSWORD")
     if _json_password_present(json_creds):
         password_sources.append("json:ibkr_credentials")
-    if str(ibc_private.get("IbPassword", "")).strip():
+    if _usable_secret(ibc_private.get("IbPassword")):
         password_sources.append("ibc_private_config:IbPassword")
     for path in _IBC_PASSWORD_FILES:
         try:
             line = path.read_text(encoding="utf-8").splitlines()[0].strip() if path.exists() else ""
         except (OSError, IndexError):
             line = ""
-        if line:
+        if _usable_secret(line):
             password_sources.append(f"password_file:{path}")
 
     return {
@@ -202,6 +222,13 @@ def build_readiness() -> dict[str, Any]:
             "Install IBC first: powershell -ExecutionPolicy Bypass -File "
             "C:\\EvolutionaryTradingAlgo\\eta_engine\\deploy\\scripts\\install_ibc.ps1 -Install"
         )
+    elif not unattended_ready:
+        status = "staged_waiting_for_credentials"
+        operator_action_required = True
+        operator_action = (
+            "Seed the missing IBC password source, then run: powershell -ExecutionPolicy Bypass -File "
+            "C:\\EvolutionaryTradingAlgo\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword"
+        )
     elif not tws_healthy or not direct_lane_ready:
         status = "direct_lane_not_ready_for_cutover"
         operator_action_required = True
@@ -221,14 +248,6 @@ def build_readiness() -> dict[str, Any]:
             "C:\\EvolutionaryTradingAlgo\\eta_engine\\deploy\\scripts\\repair_ibgateway_vps.ps1 "
             "-RepairTasks -EnforceSingleSource -UseIbc"
         )
-    else:
-        status = "staged_waiting_for_credentials"
-        operator_action_required = True
-        operator_action = (
-            "Seed the missing IBC password source, then run: powershell -ExecutionPolicy Bypass -File "
-            "C:\\EvolutionaryTradingAlgo\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword"
-        )
-
     return {
         "schema_version": 1,
         "generated_at": _utc_now_iso(),
@@ -278,8 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = build_readiness()
     if not args.no_write:
         write_readiness(payload, args.out)
-    if args.json or True:
-        print(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     return 2 if args.strict and payload["operator_action_required"] else 0
 
 

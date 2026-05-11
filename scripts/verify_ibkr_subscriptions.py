@@ -73,6 +73,12 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 STATUS_LOG = LOG_DIR / "ibkr_subscription_status.jsonl"
 IBC_PASSWORD_FILE = ROOT.parent / "var" / "eta_engine" / "state" / "ibkr_pw.txt"
 IBC_CREDENTIAL_JSON = ROOT / "secrets" / "ibkr_credentials.json"
+IBC_PRIVATE_CONFIG = ROOT.parent / "var" / "eta_engine" / "ibc" / "private" / "config.ini"
+IBC_PRIVATE_PASSWORD_FILES = (
+    ROOT.parent / "var" / "eta_engine" / "ibc" / "private" / "password.txt",
+    ROOT.parent / "var" / "eta_engine" / "ibc" / "private" / "ibkr_password.txt",
+    ROOT / "secrets" / "ibkr_password.txt",
+)
 
 
 # Representative probe symbol per exchange.  These are the most-liquid
@@ -121,6 +127,23 @@ def _read_json_map(path: Path) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _read_key_value_map(path: Path | None) -> dict[str, str]:
+    if path is None or not path.exists():
+        return {}
+    result: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+
 def _is_secret_sentinel(value: object) -> bool:
     if not isinstance(value, str):
         return False
@@ -160,17 +183,26 @@ def _ibc_credential_status(
     *,
     password_file: Path = IBC_PASSWORD_FILE,
     credential_json: Path = IBC_CREDENTIAL_JSON,
+    ibc_private_config: Path | None = IBC_PRIVATE_CONFIG,
+    ibc_password_files: tuple[Path, ...] = IBC_PRIVATE_PASSWORD_FILES,
 ) -> dict[str, object]:
     """Return non-secret IBC credential readiness for dashboard/setup gates."""
     env_map = env if env is not None else os.environ
     credential_payload = _read_json_map(credential_json)
+    private_config = _read_key_value_map(ibc_private_config)
     file_password = _read_first_line(password_file)
+    private_file_passwords = [(path, _read_first_line(path)) for path in ibc_password_files]
     password_file_placeholder = bool(password_file.exists() and _is_secret_sentinel(file_password))
+    private_password_placeholder = any(
+        path.exists() and _is_secret_sentinel(value)
+        for path, value in private_file_passwords
+    )
 
     login_source, _ = _first_usable_secret([
         ("env", env_map.get("ETA_IBC_LOGIN_ID")),
         ("env", env_map.get("IBKR_USERNAME")),
         ("env", env_map.get("IBKR_LOGIN_ID")),
+        ("ibc_private_config", private_config.get("IbLoginId")),
         ("credential_json", credential_payload.get("username")),
         ("credential_json", credential_payload.get("user")),
         ("credential_json", credential_payload.get("login")),
@@ -180,6 +212,8 @@ def _ibc_credential_status(
     password_source, password_placeholder_seen = _first_usable_secret([
         ("env", env_map.get("ETA_IBC_PASSWORD")),
         ("env", env_map.get("IBKR_PASSWORD")),
+        ("ibc_private_config", private_config.get("IbPassword")),
+        *[("ibc_password_file", value) for _, value in private_file_passwords],
         ("password_file", file_password),
         ("credential_json", credential_payload.get("password")),
         ("credential_json", credential_payload.get("pass")),
@@ -198,7 +232,7 @@ def _ibc_credential_status(
             "Seed ETA_IBC_LOGIN_ID/IBKR_USERNAME or add a username to "
             "eta_engine/secrets/ibkr_credentials.json."
         )
-    elif password_placeholder_seen or password_file_placeholder:
+    elif password_placeholder_seen or password_file_placeholder or private_password_placeholder:
         status = "PLACEHOLDER_PASSWORD"
         operator_action = (
             "Seed ETA_IBC_PASSWORD with set_ibc_credentials.ps1 -PromptForPassword "
@@ -221,6 +255,9 @@ def _ibc_credential_status(
         "password_file_exists": password_file.exists(),
         "password_file_placeholder": password_file_placeholder,
         "credential_json_exists": credential_json.exists(),
+        "ibc_private_config_exists": bool(ibc_private_config and ibc_private_config.exists()),
+        "ibc_private_password_file_exists": any(path.exists() for path, _ in private_file_passwords),
+        "ibc_private_password_placeholder": private_password_placeholder,
         "operator_action": operator_action,
     }
 
