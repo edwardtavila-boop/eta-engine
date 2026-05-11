@@ -78,6 +78,12 @@ $dailyTasks = @(
     @{ Name = "ETA-L2-RegistryAdapter"
         Args = "-m eta_engine.strategies.l2_registry_adapter"
         Desc = "L2: sync promotion verdicts to verdict_cache.json" }
+    @{ Name = "ETA-L2-DriftMonitor"
+        Args = "-m eta_engine.scripts.l2_drift_monitor"
+        Desc = "L2: rolling-window performance drift detector" }
+    @{ Name = "ETA-L2-RiskMetrics"
+        Args = "-m eta_engine.scripts.l2_risk_metrics --days 30"
+        Desc = "L2: Sortino + Calmar + daily P&L rollup" }
 )
 
 foreach ($t in $dailyTasks) {
@@ -115,6 +121,24 @@ $weeklyTasks = @(
     @{ Name = "ETA-L2-FillAuditWeekly"
         Args = "-m eta_engine.scripts.l2_fill_audit --days 7"
         Desc = "L2: weekly realized-vs-predicted slip audit per session" }
+    @{ Name = "ETA-L2-SlipRetrainWeekly"
+        Args = "-m eta_engine.scripts.l2_slippage_predictor --train --days 60"
+        Desc = "L2: weekly slip-prediction model retrain on last 60d fills" }
+    @{ Name = "ETA-L2-FillLatencyWeekly"
+        Args = "-m eta_engine.scripts.l2_fill_latency --days 7"
+        Desc = "L2: weekly signal-to-fill latency vs decay window" }
+    @{ Name = "ETA-L2-CorrelationWeekly"
+        Args = "-m eta_engine.scripts.l2_strategy_correlation --days 60"
+        Desc = "L2: weekly cross-strategy correlation tracker" }
+    @{ Name = "ETA-L2-EnsembleValidatorWeekly"
+        Args = "-m eta_engine.scripts.l2_ensemble_validator --days 30"
+        Desc = "L2: weekly check that ensemble beats best individual" }
+    @{ Name = "ETA-L2-UniverseAuditWeekly"
+        Args = "-m eta_engine.scripts.l2_universe_audit --days 90"
+        Desc = "L2: weekly survivorship-bias check on backtest universe" }
+    @{ Name = "ETA-L2-CommissionTierWeekly"
+        Args = "-m eta_engine.scripts.l2_commission_tier_optimizer --days 30"
+        Desc = "L2: weekly IBKR commission tier projection" }
 )
 
 foreach ($t in $weeklyTasks) {
