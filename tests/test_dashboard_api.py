@@ -1683,6 +1683,7 @@ class TestDashboardAPI:
             "Flatten unprotected paper exposure"
         )
         assert payload["systems"]["broker_bracket_audit"]["primary_symbol"] == "MNQM6"
+        assert payload["systems"]["broker_bracket_audit"]["unprotected_symbols"] == ["MNQM6"]
         assert payload["systems"]["paper_live"]["status"] == "YELLOW"
         assert payload["systems"]["paper_live"]["detail"] == "held_by_bracket_audit"
         assert payload["systems"]["paper_live"]["effective_status"] == "held_by_bracket_audit"

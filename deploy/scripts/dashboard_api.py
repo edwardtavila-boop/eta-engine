@@ -4663,6 +4663,11 @@ def bot_fleet_roster(
         if isinstance(broker_bracket_audit.get("position_summary"), dict)
         else {}
     )
+    broker_bracket_unprotected_symbols = (
+        broker_bracket_position_summary.get("unprotected_symbols")
+        if isinstance(broker_bracket_position_summary.get("unprotected_symbols"), list)
+        else []
+    )
     broker_bracket_primary = (
         broker_bracket_audit.get("primary_unprotected_position")
         if isinstance(broker_bracket_audit.get("primary_unprotected_position"), dict)
@@ -4818,11 +4823,7 @@ def bot_fleet_roster(
             "broker_bracket_missing_count": int(
                 broker_bracket_position_summary.get("missing_bracket_count") or 0
             ),
-            "broker_bracket_unprotected_symbols": (
-                broker_bracket_position_summary.get("unprotected_symbols")
-                if isinstance(broker_bracket_position_summary.get("unprotected_symbols"), list)
-                else []
-            ),
+            "broker_bracket_unprotected_symbols": broker_bracket_unprotected_symbols,
             "broker_bracket_operator_action_count": len(broker_bracket_action_ids),
             "broker_bracket_operator_action_ids": broker_bracket_action_ids,
             "broker_bracket_operator_action_labels": broker_bracket_action_labels,
@@ -8597,6 +8598,11 @@ def _local_master_status_payload() -> dict[str, object]:
         if isinstance(broker_bracket_audit.get("position_summary"), dict)
         else {}
     )
+    broker_bracket_unprotected_symbols = (
+        broker_bracket_position_summary.get("unprotected_symbols")
+        if isinstance(broker_bracket_position_summary.get("unprotected_symbols"), list)
+        else []
+    )
     broker_bracket_primary = (
         broker_bracket_audit.get("primary_unprotected_position")
         if isinstance(broker_bracket_audit.get("primary_unprotected_position"), dict)
@@ -8799,6 +8805,13 @@ def _local_master_status_payload() -> dict[str, object]:
                 ),
                 "missing_bracket_count": int(
                     broker_bracket_position_summary.get("missing_bracket_count") or 0
+                ),
+                "unprotected_symbols": broker_bracket_unprotected_symbols,
+                "broker_bracket_required_position_count": int(
+                    broker_bracket_position_summary.get("broker_bracket_required_position_count") or 0
+                ),
+                "broker_open_position_count": int(
+                    broker_bracket_position_summary.get("broker_open_position_count") or 0
                 ),
                 "operator_action_count": len(broker_bracket_action_labels),
                 "operator_action_labels": broker_bracket_action_labels,
