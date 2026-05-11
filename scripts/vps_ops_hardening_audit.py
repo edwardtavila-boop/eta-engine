@@ -46,6 +46,7 @@ ENDPOINTS = (
         "name": "local_command_center_master",
         "url": "http://127.0.0.1:8420/api/master/status",
         "critical": False,
+        "timeout_s": 15.0,
     },
     {
         "name": "public_ops_bot_fleet",
@@ -162,11 +163,11 @@ $results | ConvertTo-Json -Depth 4
     return ports
 
 
-def _probe_endpoint(url: str, *, timeout_s: float = 4.0) -> dict[str, Any]:
+def _probe_endpoint(url: str, *, timeout_s: float = 8.0) -> dict[str, Any]:
     request = urllib.request.Request(url, headers={"User-Agent": "eta-vps-ops-hardening"})
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
-            body = response.read(200_000).decode("utf-8", errors="replace")
+            body = response.read(65_536).decode("utf-8", errors="replace")
             payload: Any
             try:
                 payload = json.loads(body)
@@ -185,7 +186,10 @@ def collect_endpoint_status() -> dict[str, dict[str, Any]]:
     """Probe local and public read-only health endpoints."""
     return {
         str(endpoint["name"]): {
-            **_probe_endpoint(str(endpoint["url"])),
+            **_probe_endpoint(
+                str(endpoint["url"]),
+                timeout_s=float(endpoint.get("timeout_s", 8.0)),
+            ),
             "url": str(endpoint["url"]),
             "critical": bool(endpoint["critical"]),
         }
