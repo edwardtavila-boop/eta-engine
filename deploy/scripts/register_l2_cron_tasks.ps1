@@ -151,6 +151,9 @@ $weeklyTasks = @(
     @{ Name = "ETA-Diamond-SanitizerWeekly"
         Args = "-m eta_engine.scripts.diamond_data_sanitizer --apply-backward"
         Desc = "Diamond: weekly backward sanitization of trade_closes.jsonl (quarantines USD scale-bug records)" }
+    @{ Name = "ETA-Diamond-RegimeStratifyWeekly"
+        Args = "-m eta_engine.scripts.diamond_regime_stratify"
+        Desc = "Diamond: weekly regime/session stratification (STRONG/WEAK/NULL per bucket)" }
 )
 
 foreach ($t in $weeklyTasks) {

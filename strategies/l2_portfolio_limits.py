@@ -114,6 +114,92 @@ DEFAULT_MAX_COMBINED_UNITS_PER_GROUP: dict[str, float] = {
 }
 
 
+#: Cross-bot dedup rule — when both bots in a pair fire signals on the
+#: same day, only the FIRST one is allowed through.  This is the
+#: runtime expression of the operator's diamond-memo commitment that
+#: the byte-identical MNQ/NQ sage_corb configs represent ONE bet, not
+#: two diamonds.  Format: {bot_id: [bot_ids_to_suppress_when_this_fires]}
+DEFAULT_SAME_DAY_SUPPRESSORS: dict[str, list[str]] = {
+    "mnq_futures_sage": ["nq_futures_sage"],
+    "nq_futures_sage":  ["mnq_futures_sage"],
+}
+
+
+@dataclass
+class CrossBotDecision:
+    """Verdict on whether a bot may fire given today's prior fills."""
+    suppressed: bool
+    reason: str
+    suppressor_bot_id: str | None = None
+    suppressor_signal_ts: str | None = None
+
+
+def check_cross_bot_dedup(
+    bot_id: str,
+    *,
+    when: datetime | None = None,
+    suppressors: dict[str, list[str]] | None = None,
+    _fill_path: Path | None = None,
+) -> CrossBotDecision:
+    """Return suppressed=True when another bot in the dedup pair
+    already filed an ENTRY today.
+
+    Reads the broker_fills log to find today's entries grouped by
+    bot_id; if any bot listed as a suppressor for `bot_id` has an
+    entry on today's date, we block.
+
+    Defensive: if the log is missing/unreadable, returns allowed
+    (suppressed=False) — observability failure should never block
+    a trade for the wrong reason.  Caller logs the decision.
+    """
+    suppressor_map = (suppressors if suppressors is not None
+                       else DEFAULT_SAME_DAY_SUPPRESSORS)
+    # Find which bots' fills would suppress this one.  The map is
+    # bidirectional: if A suppresses B, B also suppresses A (the
+    # operator's "one bet" rule).
+    blockers: set[str] = set()
+    for trigger_bot, suppressed_bots in suppressor_map.items():
+        if bot_id in suppressed_bots:
+            blockers.add(trigger_bot)
+    if not blockers:
+        return CrossBotDecision(suppressed=False, reason="no_dedup_pair")
+
+    when = when or datetime.now(UTC)
+    today_str = when.strftime("%Y-%m-%d")
+    path = _fill_path if _fill_path is not None else BROKER_FILL_LOG
+    if not path.exists():
+        return CrossBotDecision(
+            suppressed=False, reason="no_broker_fills_log")
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if str(rec.get("exit_reason", "")).upper() != "ENTRY":
+                    continue
+                other = str(rec.get("bot_id", ""))
+                if other not in blockers:
+                    continue
+                ts = rec.get("ts", "")
+                if not ts.startswith(today_str):
+                    continue
+                return CrossBotDecision(
+                    suppressed=True,
+                    reason=f"same_day_dedup:{other}_fired_first",
+                    suppressor_bot_id=other,
+                    suppressor_signal_ts=ts,
+                )
+    except OSError:
+        return CrossBotDecision(
+            suppressed=False, reason="fill_log_read_error")
+    return CrossBotDecision(suppressed=False, reason="no_same_day_blocker")
+
+
 def _resolve_underlying_group(symbol: str) -> tuple[str | None, float]:
     """Return (group_name, mnq_equivalent_units) for a symbol, or
     (None, 0) if the symbol doesn't belong to any tracked group.

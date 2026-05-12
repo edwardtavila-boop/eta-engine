@@ -232,12 +232,27 @@ class SweepReclaimStrategy:
         return winner
 
     def _volume_z_score(self, bar: BarData) -> float:
-        """Z-score of bar volume vs recent window. 0 if insufficient data."""
+        """Z-score of bar volume vs PRIOR window.  Excludes the
+        current bar from the mean/std calculation so the z-score
+        is unbiased (the prior version included the current bar,
+        which understates z when the bar's volume is anomalously
+        high — a conservative-but-incorrect bias).
+
+        Audit 2026-05-12: this was the only finding from the
+        eur_sweep_reclaim look-ahead forensic.  Not catastrophic —
+        the bias was toward FEWER signals, not more — but unbiased
+        is better than biased even on the safe side.
+        """
+        # The caller appended the current bar's volume before calling
+        # us (line 262 in maybe_enter).  Pop it out for the calc, then
+        # restore so the next bar's prior window is correct.
         if len(self._volume_window) < self.cfg.volume_z_lookback:
             return 0.0
-        vols = list(self._volume_window)
-        mean = sum(vols) / len(vols)
-        var = sum((v - mean) ** 2 for v in vols) / len(vols)
+        prior_vols = list(self._volume_window)[:-1]  # exclude current bar
+        if len(prior_vols) < self.cfg.volume_z_lookback - 1:
+            return 0.0
+        mean = sum(prior_vols) / len(prior_vols)
+        var = sum((v - mean) ** 2 for v in prior_vols) / len(prior_vols)
         std = var ** 0.5
         if std <= 0.0:
             return 0.0

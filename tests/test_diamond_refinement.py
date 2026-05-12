@@ -671,3 +671,171 @@ def test_cpcv_runner_phi_approximation_sanity() -> None:
     assert _phi(2.0) > 0.97
     assert _phi(-2.0) < 0.03
     assert _phi(10.0) > 0.999
+
+
+# ────────────────────────────────────────────────────────────────────
+# Regime stratification runner
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_regime_stratify_returns_one_report_per_diamond() -> None:
+    from eta_engine.scripts.diamond_regime_stratify import run
+
+    summary = run()
+    assert summary["n_diamonds"] == len(DIAMOND_BOTS)
+    assert len(summary["reports"]) == len(DIAMOND_BOTS)
+    bot_ids = {r["bot_id"] for r in summary["reports"]}
+    assert bot_ids == DIAMOND_BOTS
+
+
+def test_regime_stratify_classifies_buckets() -> None:
+    """Bucket verdict logic: STRONG vs WEAK vs NULL vs SPARSE."""
+    from eta_engine.scripts.diamond_regime_stratify import (
+        BucketStats,
+        _classify,
+    )
+
+    # n<10 → SPARSE regardless
+    b = BucketStats(bucket_key="x", regime="r", session="s",
+                     n_trades=5, cumulative_r=2.0, mean_r=0.4,
+                     win_rate_pct=80.0)
+    _classify(b)
+    assert b.verdict == "SPARSE"
+
+    # n>=20 + CI lower > 0.10 → STRONG
+    b = BucketStats(bucket_key="x", regime="r", session="s",
+                     n_trades=30, cumulative_r=10.0, mean_r=0.33,
+                     win_rate_pct=70.0,
+                     bootstrap_ci_lower=0.20, bootstrap_ci_upper=0.50)
+    _classify(b)
+    assert b.verdict == "STRONG"
+
+    # n>=10 + CI lower > 0 but < 0.10 → WEAK
+    b = BucketStats(bucket_key="x", regime="r", session="s",
+                     n_trades=15, cumulative_r=3.0, mean_r=0.20,
+                     win_rate_pct=60.0,
+                     bootstrap_ci_lower=0.05, bootstrap_ci_upper=0.40)
+    _classify(b)
+    assert b.verdict == "WEAK"
+
+    # n>=10 + CI lower <= 0 → NULL
+    b = BucketStats(bucket_key="x", regime="r", session="s",
+                     n_trades=15, cumulative_r=0.5, mean_r=0.03,
+                     win_rate_pct=50.0,
+                     bootstrap_ci_lower=-0.10, bootstrap_ci_upper=0.20)
+    _classify(b)
+    assert b.verdict == "NULL"
+
+
+def test_regime_stratify_bootstrap_ci_with_known_data() -> None:
+    """Bootstrap CI primitive must converge to expected on a known
+    sample (clean positive series).  The runner uses the same
+    bootstrap as the audit but inlined here for isolation."""
+    from eta_engine.scripts.diamond_regime_stratify import _bootstrap_ci_mean
+
+    samples = [0.5] * 50  # constant +0.5R
+    lo, hi = _bootstrap_ci_mean(samples, n_resamples=200)
+    assert abs(lo - 0.5) < 0.01
+    assert abs(hi - 0.5) < 0.01
+
+
+# ────────────────────────────────────────────────────────────────────
+# Cross-bot dedup (MNQ/NQ same-day suppression)
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_dedup_blocks_nq_when_mnq_fired_today(tmp_path: Path) -> None:
+    """If mnq_futures_sage already has an ENTRY today, nq_futures_sage
+    must be suppressed for the rest of the day — operator's diamond
+    memo commitment that the byte-identical configs are ONE bet."""
+    from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
+
+    fills = tmp_path / "fills.jsonl"
+    fills.write_text(json.dumps({
+        "ts": datetime.now(UTC).isoformat(),
+        "signal_id": "mnq-001",
+        "bot_id": "mnq_futures_sage",
+        "symbol": "MNQ",
+        "side": "LONG",
+        "qty_filled": 1,
+        "exit_reason": "ENTRY",
+    }) + "\n", encoding="utf-8")
+
+    decision = check_cross_bot_dedup(
+        "nq_futures_sage", _fill_path=fills)
+    assert decision.suppressed is True
+    assert decision.suppressor_bot_id == "mnq_futures_sage"
+    assert "same_day_dedup" in decision.reason
+
+
+def test_dedup_allows_nq_on_clean_day(tmp_path: Path) -> None:
+    """When no MNQ entry today, NQ is allowed."""
+    from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
+
+    fills = tmp_path / "fills.jsonl"
+    fills.write_text("", encoding="utf-8")
+    decision = check_cross_bot_dedup(
+        "nq_futures_sage", _fill_path=fills)
+    assert decision.suppressed is False
+
+
+def test_dedup_allows_unrelated_bot(tmp_path: Path) -> None:
+    """A bot not in any dedup pair (e.g., eur_sweep_reclaim) should
+    always pass."""
+    from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
+
+    fills = tmp_path / "fills.jsonl"
+    fills.write_text(json.dumps({
+        "ts": datetime.now(UTC).isoformat(),
+        "signal_id": "mnq-001",
+        "bot_id": "mnq_futures_sage",
+        "symbol": "MNQ",
+        "exit_reason": "ENTRY",
+        "qty_filled": 1,
+    }) + "\n", encoding="utf-8")
+
+    decision = check_cross_bot_dedup(
+        "eur_sweep_reclaim", _fill_path=fills)
+    assert decision.suppressed is False
+    assert decision.reason == "no_dedup_pair"
+
+
+def test_dedup_yesterday_entry_does_not_suppress_today(tmp_path: Path) -> None:
+    """An MNQ entry from a PRIOR day must NOT suppress today's NQ —
+    suppression is same-day only."""
+    from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
+
+    fills = tmp_path / "fills.jsonl"
+    yesterday = datetime.now(UTC).replace(year=2025, month=1, day=1)
+    fills.write_text(json.dumps({
+        "ts": yesterday.isoformat(),
+        "signal_id": "mnq-old",
+        "bot_id": "mnq_futures_sage",
+        "symbol": "MNQ",
+        "exit_reason": "ENTRY",
+        "qty_filled": 1,
+    }) + "\n", encoding="utf-8")
+
+    decision = check_cross_bot_dedup(
+        "nq_futures_sage", _fill_path=fills)
+    assert decision.suppressed is False
+
+
+def test_dedup_only_counts_entries_not_exits(tmp_path: Path) -> None:
+    """A TARGET / STOP exit on MNQ today should NOT suppress NQ — only
+    new ENTRIES count toward the dedup."""
+    from eta_engine.strategies.l2_portfolio_limits import check_cross_bot_dedup
+
+    fills = tmp_path / "fills.jsonl"
+    fills.write_text(json.dumps({
+        "ts": datetime.now(UTC).isoformat(),
+        "signal_id": "mnq-old",
+        "bot_id": "mnq_futures_sage",
+        "symbol": "MNQ",
+        "exit_reason": "TARGET",  # exit, not entry
+        "qty_filled": 1,
+    }) + "\n", encoding="utf-8")
+
+    decision = check_cross_bot_dedup(
+        "nq_futures_sage", _fill_path=fills)
+    assert decision.suppressed is False
