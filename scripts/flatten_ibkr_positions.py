@@ -66,6 +66,35 @@ def _patch_contract_exchange(contract: Any) -> None:  # noqa: ANN401
         contract.exchange = mapping[1]
 
 
+def _position_matches_filter(
+    contract: Any,  # noqa: ANN401
+    symbols: set[str] | None,
+    locals_: set[str] | None,
+) -> bool:
+    """Decide whether a position should be acted on given the operator's
+    --symbols / --local-symbols filters.
+
+    Filters are matched case-insensitively against either the IBKR
+    contract symbol (e.g. ``MNQ``) or the localSymbol (e.g. ``MNQM6``).
+    When BOTH filters are None, every position matches — original
+    "flatten everything" behaviour is preserved.
+
+    When AT LEAST one filter is set, a position matches if it
+    satisfies ANY of the provided filters (union, not intersection).
+    """
+    if not symbols and not locals_:
+        return True
+    sym = str(getattr(contract, "symbol", "") or "").upper()
+    loc = str(getattr(contract, "localSymbol", "") or "").upper()
+    # Normalize filter inputs too so callers using lowercase
+    # work the same as the CLI which uppercases in main().
+    sym_filter = {s.upper() for s in symbols} if symbols else None
+    loc_filter = {s.upper() for s in locals_} if locals_ else None
+    if sym_filter and sym in sym_filter:
+        return True
+    return bool(loc_filter and loc in loc_filter)
+
+
 def flatten_ibkr_positions(
     *,
     host: str,
@@ -73,7 +102,12 @@ def flatten_ibkr_positions(
     client_id: int,
     confirm: bool,
     global_cancel: bool,
+    symbols: set[str] | None = None,
+    local_symbols: set[str] | None = None,
 ) -> list[FlattenResult]:
+    """Flatten broker positions.  Selective via ``symbols`` (root
+    contract, e.g. ``MNQ``) or ``local_symbols`` (front-month tag,
+    e.g. ``MNQM6``).  Pass both as None to flatten everything."""
     ib = IB()
     results: list[FlattenResult] = []
     try:
@@ -88,6 +122,8 @@ def flatten_ibkr_positions(
             if abs(qty) < 1e-9:
                 continue
             contract = broker_position.contract
+            if not _position_matches_filter(contract, symbols, local_symbols):
+                continue
             action = _action_for_position(qty)
             abs_qty = abs(qty)
             _patch_contract_exchange(contract)
@@ -142,6 +178,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip reqGlobalCancel() before flattening positions.",
     )
+    parser.add_argument(
+        "--symbols",
+        default="",
+        help=(
+            "Comma-separated root symbols to flatten (e.g. MNQ,MCL).  "
+            "Case-insensitive.  Default empty = flatten ALL positions."
+        ),
+    )
+    parser.add_argument(
+        "--local-symbols",
+        default="",
+        help=(
+            "Comma-separated localSymbols / front-month tags "
+            "(e.g. MNQM6,MCLM6).  Case-insensitive.  Use this when "
+            "you want to flatten one specific expiry but not others."
+        ),
+    )
     return parser
 
 
@@ -149,6 +202,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     ns = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    sym_set: set[str] | None = None
+    if ns.symbols:
+        sym_set = {s.strip().upper() for s in ns.symbols.split(",") if s.strip()}
+    local_set: set[str] | None = None
+    if ns.local_symbols:
+        local_set = {
+            s.strip().upper() for s in ns.local_symbols.split(",") if s.strip()
+        }
+
     try:
         results = flatten_ibkr_positions(
             host=ns.host,
@@ -156,6 +219,8 @@ def main(argv: list[str] | None = None) -> int:
             client_id=ns.client_id,
             confirm=ns.confirm,
             global_cancel=not ns.no_global_cancel,
+            symbols=sym_set,
+            local_symbols=local_set,
         )
     except OSError as exc:
         print(
