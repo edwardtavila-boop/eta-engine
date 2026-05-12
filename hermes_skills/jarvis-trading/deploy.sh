@@ -30,23 +30,38 @@ for arg in "$@"; do
     esac
 done
 
-# Resolve source (the directory containing this script) and destination.
+# Resolve source (the directory containing this script).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HERMES_SKILLS_ROOT="${HOME}/.hermes/skills"
+
+# Hermes-desktop puts skills under one of two layouts depending on the
+# installer version:
+#   * older / minimal:  $HOME/.hermes/skills/
+#   * current bundled:  $HOME/.hermes/hermes-agent/skills/
+# Probe both, prefer whichever the operator actually has.
+HERMES_SKILLS_ROOT=""
+for candidate in "${HOME}/.hermes/hermes-agent/skills" "${HOME}/.hermes/skills"; do
+    if [ -d "${candidate}" ]; then
+        HERMES_SKILLS_ROOT="${candidate}"
+        break
+    fi
+done
+
+if [ -z "${HERMES_SKILLS_ROOT}" ]; then
+    echo "ERROR: Hermes skills directory not found." >&2
+    echo "Looked at:" >&2
+    echo "  ${HOME}/.hermes/hermes-agent/skills" >&2
+    echo "  ${HOME}/.hermes/skills" >&2
+    echo "Hermes not installed - run hermes-desktop first to bootstrap ~/.hermes/." >&2
+    echo "After installing Hermes Agent, re-run this script." >&2
+    exit 1
+fi
+
 DEST_DIR="${HERMES_SKILLS_ROOT}/jarvis-trading"
 
 echo "jarvis-trading deploy"
 echo "  source:      ${SCRIPT_DIR}"
 echo "  destination: ${DEST_DIR}"
 echo ""
-
-# Diagnose: Hermes skills root must exist.
-if [ ! -d "${HERMES_SKILLS_ROOT}" ]; then
-    echo "ERROR: Hermes skills directory not found at ${HERMES_SKILLS_ROOT}" >&2
-    echo "Hermes not installed - run hermes-desktop first to bootstrap ~/.hermes/." >&2
-    echo "After installing Hermes Agent, re-run this script." >&2
-    exit 1
-fi
 
 # Token warning (non-fatal).
 if [ -z "${JARVIS_MCP_TOKEN:-}" ]; then

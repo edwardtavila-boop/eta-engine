@@ -21,23 +21,35 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Resolve source (the directory containing this script) and destination.
+# Resolve source (the directory containing this script).
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HermesSkillsRoot = Join-Path $env:USERPROFILE '.hermes\skills'
+
+# Hermes-desktop puts skills under one of two layouts depending on the
+# installer version:
+#   * older / minimal:  ~/.hermes/skills/
+#   * current bundled:  ~/.hermes/hermes-agent/skills/
+# Probe both, prefer whichever the operator actually has.
+$candidatePaths = @(
+    (Join-Path $env:USERPROFILE '.hermes\hermes-agent\skills'),
+    (Join-Path $env:USERPROFILE '.hermes\skills')
+)
+$HermesSkillsRoot = $candidatePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $HermesSkillsRoot) {
+    Write-Host "ERROR: Hermes skills directory not found." -ForegroundColor Red
+    Write-Host "Looked at:" -ForegroundColor Red
+    foreach ($p in $candidatePaths) { Write-Host "  $p" -ForegroundColor Red }
+    Write-Host "Hermes not installed - run hermes-desktop first to bootstrap ~/.hermes/." -ForegroundColor Red
+    Write-Host "After installing Hermes Agent, re-run this script." -ForegroundColor Red
+    exit 1
+}
+
 $DestDir = Join-Path $HermesSkillsRoot 'jarvis-trading'
 
 Write-Host "jarvis-trading deploy"
 Write-Host "  source:      $ScriptDir"
 Write-Host "  destination: $DestDir"
 Write-Host ""
-
-# Diagnose: Hermes skills root must exist.
-if (-not (Test-Path $HermesSkillsRoot)) {
-    Write-Host "ERROR: Hermes skills directory not found at $HermesSkillsRoot" -ForegroundColor Red
-    Write-Host "Hermes not installed - run hermes-desktop first to bootstrap ~/.hermes/." -ForegroundColor Red
-    Write-Host "After installing Hermes Agent, re-run this script." -ForegroundColor Red
-    exit 1
-}
 
 # Token warning (non-fatal).
 if (-not $env:JARVIS_MCP_TOKEN) {
