@@ -70,6 +70,11 @@ class TraceRecord:
     final_size: float = 0.0
     block_reason: str | None = None
     elapsed_ms: float = 0.0
+    # Hermes Bridge Phase B: per-call-site outcome of any Hermes Agent
+    # interactions during this consult. Empty dict when Hermes is
+    # unreachable / backoff active / no site fired. Mirrors the field on
+    # ConductorResult so the trace stream captures the full picture.
+    hermes_calls: dict = field(default_factory=dict)
 
 
 def new_consult_id() -> str:

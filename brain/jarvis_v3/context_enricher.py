@@ -52,6 +52,13 @@ class EnrichedContext:
     session: str = ""
     time_of_day_risk: float = 0.0
     multi_tf_agreement: float = 0.0
+    # Hermes Bridge Site B: snippets pulled from Hermes Agent's web_search
+    # tool when a severity-3 calendar event is within 30 min. Empty tuple
+    # when Hermes is unreachable, no severity-3 event nearby, or the
+    # request hit the 2s timeout. Sage policies can read this to colour
+    # the bias narrative ("CPI just printed hotter, vendor breakeven
+    # repriced") without each policy having to call out to Hermes itself.
+    news_snippets: tuple[str, ...] = ()
 
 
 def _detect_session(now: datetime) -> str:
@@ -216,10 +223,38 @@ def enrich(
     # can branch on it without an interface change.
     _ = asset_class
 
+    # Hermes Bridge Site B — only fires when a severity-3 event is within
+    # 30 min. 2s budget; failure path yields empty tuple. We send a single
+    # web_search for the nearest high-severity event so the consult sees
+    # at most one network call regardless of how many events cluster.
+    news_snippets: tuple[str, ...] = ()
+    try:
+        high_sev_soon = [
+            e for e in evs
+            if int(getattr(e, "severity", 0) or 0) >= 3
+        ]
+        if high_sev_soon:
+            from eta_engine.brain.jarvis_v3 import hermes_client
+            ev = high_sev_soon[0]
+            query = f"latest news {getattr(ev, 'kind', '')}".strip()
+            if query:
+                hres = hermes_client.web_search(
+                    query=query, n=3, timeout_s=2.0,
+                )
+                if hres.ok and isinstance(hres.data, list):
+                    news_snippets = tuple(
+                        str(s.get("snippet", ""))[:200]
+                        for s in hres.data
+                        if isinstance(s, dict) and s.get("snippet")
+                    )
+    except Exception as exc:  # noqa: BLE001 — never break enrich() over a network call
+        logger.debug("hermes_web_search failed: %s", exc)
+
     return EnrichedContext(
         multi_tf=multi_tf,
         nearby_events=tuple(evs),
         session=session,
         time_of_day_risk=risk,
         multi_tf_agreement=agreement,
+        news_snippets=news_snippets,
     )

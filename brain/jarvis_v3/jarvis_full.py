@@ -471,6 +471,41 @@ class JarvisFull:
             except Exception:
                 pass
 
+        # 7c. Hermes Bridge Site A — LLM-augmented narrative for high-stakes
+        # verdicts. Triggered when consolidated confidence > 0.75 OR the
+        # conductor short-circuited with a block_reason. 1s budget; on any
+        # failure (Hermes unreachable, backoff, timeout, malformed response)
+        # the existing narrative_standard from the legacy path remains in
+        # effect. The hermes_calls dict captures the call outcome for the
+        # trace stream so the operator can see whether Hermes augmented this
+        # consult or fell back silently.
+        hermes_calls: dict[str, dict] = {}
+        try:
+            confidence = float(getattr(consolidated, "confidence", 0.0) or 0.0)
+            should_consult_hermes = (
+                confidence > 0.75 or conductor_block_reason is not None
+            )
+            if should_consult_hermes:
+                from eta_engine.brain.jarvis_v3 import hermes_client
+                hres = hermes_client.narrative(
+                    verdict={
+                        "confidence": confidence,
+                        "block_reason": conductor_block_reason,
+                        "narrative_terse": narrative_terse,
+                        "final_size": final_size,
+                    },
+                    timeout_s=1.0,
+                )
+                hermes_calls["narrative"] = {
+                    "ok": bool(hres.ok),
+                    "elapsed_ms": float(hres.elapsed_ms),
+                    "error": hres.error,
+                }
+                if hres.ok and isinstance(hres.data, str) and hres.data.strip():
+                    narrative_standard = hres.data
+        except Exception as exc:  # noqa: BLE001 — never let Hermes break the consult
+            layer_errors.append(f"hermes_narrative: {exc}")
+
         # 8. Build final verdict
         verdict = FullJarvisVerdict(
             consolidated=consolidated,

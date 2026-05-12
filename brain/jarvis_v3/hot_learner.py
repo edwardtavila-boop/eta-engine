@@ -193,19 +193,68 @@ def current_weights(asset: str) -> dict[str, float]:
 
 
 def decay_overnight() -> None:
-    """Pull every weight toward 1.0 and reset per-session counters.
+    """Decay every weight toward yesterday's snapshot (or 1.0) and reset
+    per-session counters.
 
-    Formula: new = DECAY_RATIO * old + (1 - DECAY_RATIO) * 1.0
-    Side effects: clears `n_closes_today` and `obs_count_by_school`, updates
-    `last_decay_ts`. Persists the result.
+    Hermes Bridge Site C: before applying the decay, try to recall
+    yesterday's persisted weights from Hermes Agent's memory provider.
+    If a snapshot is found, weights decay toward THAT instead of 1.0 —
+    so a school that's been reliably contributing across days keeps a
+    modest persistent boost instead of getting reset every midnight.
+    When Hermes is unreachable / backoff-active / the key doesn't exist
+    yet, the legacy mean-revert-to-1.0 behavior is preserved exactly.
+
+    After decay, today's weights are persisted (best-effort) so tomorrow
+    has something to recall.
+
+    Formula: new = DECAY_RATIO * old + (1 - DECAY_RATIO) * target
+    where target = 1.0 by default, or schools[school] from Hermes memory
+    if recall succeeded.
+
+    Side effects: clears ``n_closes_today`` and ``obs_count_by_school``,
+    updates ``last_decay_ts``, persists local state, attempts to persist
+    each asset's weights to Hermes memory under key ``hot_weights_<asset>``.
     """
     state = _load()
+
+    # Site C — recall yesterday's snapshot per-asset (best-effort)
+    target_by_asset: dict[str, dict[str, float]] = {}
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_client
+        for asset in state.weight_mods:
+            recall = hermes_client.memory_recall(
+                key=f"hot_weights_{asset}", timeout_s=1.0,
+            )
+            if recall.ok and isinstance(recall.data, dict):
+                target_by_asset[asset] = {
+                    str(k): float(v)
+                    for k, v in recall.data.items()
+                    if isinstance(v, (int, float))
+                }
+    except Exception:  # noqa: BLE001 — Hermes-down → fall through to 1.0 target
+        target_by_asset = {}
+
+    # Apply decay toward target (yesterday's snapshot or 1.0)
     for asset, schools in state.weight_mods.items():
+        anchor = target_by_asset.get(asset, {})
         for school, weight in list(schools.items()):
-            new = DECAY_RATIO * weight + (1.0 - DECAY_RATIO) * 1.0
+            tgt = anchor.get(school, 1.0)
+            new = DECAY_RATIO * weight + (1.0 - DECAY_RATIO) * tgt
             schools[school] = _clamp(new, CAP_LOW, CAP_HIGH)
         state.weight_mods[asset] = schools
     state.n_closes_today = 0
     state.obs_count_by_school = {}
     state.last_decay_ts = datetime.now(UTC).isoformat()
     _save(state)
+
+    # Site C — persist today's snapshot for tomorrow's recall (best-effort)
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_client
+        for asset, schools in state.weight_mods.items():
+            hermes_client.memory_persist(
+                key=f"hot_weights_{asset}",
+                value=dict(schools),
+                timeout_s=1.0,
+            )
+    except Exception:  # noqa: BLE001 — Hermes-down → next decay will use 1.0
+        pass

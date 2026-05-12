@@ -48,6 +48,14 @@ class ConductorResult:
     enriched_context: Any = None
     elapsed_ms: float = 0.0
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # Per-stream Hermes Agent call outcomes captured during this consult:
+    # keys are the call site name ("narrative", "web_search",
+    # "memory_persist", "memory_recall"); each value is a dict with at
+    # least ``ok`` (bool), ``elapsed_ms`` (float), and ``error`` (str | None).
+    # Populated by Phase B hot-path wiring; trace_emitter writes it out
+    # so the operator dashboard / wiring audit can spot when JARVIS is
+    # silently bypassing Hermes (e.g. backoff is suppressing all calls).
+    hermes_calls: dict = field(default_factory=dict)
 
 
 def orchestrate(
