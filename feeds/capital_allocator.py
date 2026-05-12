@@ -82,13 +82,22 @@ DIAMOND_BOTS: set[str] = {
     "m2k_sweep_reclaim",  # n=1151 cum_r=+533R  wr=70%  *PROMOTED 2026-05-12* (canonical-data kaizen)
     "eur_sweep_reclaim",  # n= 280 cum_r=+129R  wr=70%  (4/4 sessions positive)
     "mgc_sweep_reclaim",  # n= 158 cum_r= +30R  wr=58%  (wave-3+5 chisel)
-    # ── Tier 2 (wave-14: conquer all 3 verticals) ───────────────
-    "met_sweep_reclaim",     # n= 208 cum_r=+136R wr=69%  *wave-14* highest avg_R in fleet (CRYPTO_FUTURES)
-    "mes_sweep_reclaim_v2",  # n= 416 cum_r=+136R wr=63%  *wave-14* (FUTURES_INDEX)
-    "eur_range",             # n= 124 cum_r= +64R wr=71%  *wave-14* second EUR strategy (CURRENCY)
-    "ng_sweep_reclaim",      # n= 243 cum_r= +91R wr=65%  *wave-14* (COMMODITY_NG)
-    "volume_profile_btc",    # n= 339 cum_r=+121R wr=66%  *wave-14* (CRYPTO)
-    "mes_sweep_reclaim",     # n= 197 cum_r= +56R wr=61%  *wave-14* (FUTURES_INDEX, paired with v2)
+    # ── Tier 2 (wave-14: conquer all 3 verticals via IBKR FUTURES) ──
+    # Wave-16 mandate (2026-05-12): the diamond fleet is IBKR-FUTURES-ONLY.
+    # Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0); Tradovate dormant.
+    # Crypto exposure comes from CME micro crypto futures (MET/MBT) routed
+    # through IBKR — NOT from BTC/ETH/SOL spot via Alpaca.
+    "met_sweep_reclaim",     # n= 208 cum_r=+136R wr=69%  *wave-14* (CME MET futures via IBKR — highest avg_R in fleet)
+    "mes_sweep_reclaim_v2",  # n= 416 cum_r=+136R wr=63%  *wave-14* (CME MICRO S&P FUTURES via IBKR)
+    "eur_range",             # n= 124 cum_r= +64R wr=71%  *wave-14* (CME 6E EUROFX FUTURES via IBKR)
+    "ng_sweep_reclaim",      # n= 243 cum_r= +91R wr=65%  *wave-14* (CME NG NAT GAS FUTURES via IBKR)
+    "mes_sweep_reclaim",     # n= 197 cum_r= +56R wr=61%  *wave-14* (CME MICRO S&P FUTURES via IBKR, paired with v2)
+    # NOT promoted (wave-16 IBKR-futures-only mandate):
+    #   volume_profile_btc — Alpaca SPOT BTC; cellared per POOL_SPLIT.
+    #     Strong R-edge (+121R/n=339) but the wrong broker for the
+    #     prop-fund routing layer. If/when the operator re-activates
+    #     spot crypto (currently POOL_SPLIT["spot"]=0.0), this bot
+    #     can be reconsidered.
     # ── Tier 3: small-sample but positive ───────────────────────
     "cl_macro",  # n=   2 cum_r= +2.4R wr=100% (sample too small)
     "gc_momentum",  # n=   8 cum_r= +0.24R wr=50% (R-positive; USD-CRITICAL is a sizing artifact)
@@ -126,6 +135,25 @@ def classify_pool(bot_id: str) -> str:
         return "spot"
     # Everything else is futures
     return "futures"
+
+
+def is_ibkr_futures_eligible(bot_id: str) -> bool:
+    """Return True if this bot's strategy can route through IBKR futures.
+
+    Wave-16 operator mandate (2026-05-12): the prop-fund routing layer is
+    IBKR-futures-only.  Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0);
+    Tradovate dormant.  Crypto exposure comes from CME micro crypto
+    futures (MET/MBT) routed through IBKR — NOT from BTC/ETH/SOL spot
+    via Alpaca.
+
+    The PROP_READY badge in diamond_leaderboard requires this gate so
+    a high-scoring spot bot doesn't earn real-capital routing through
+    a broker the operator has cellared.
+
+    Returns True when classify_pool(bot_id) in ("futures", "leveraged").
+    Spot bots return False even if their R-edge is excellent.
+    """
+    return classify_pool(bot_id) in ("futures", "leveraged")
 
 
 def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> PortfolioAllocation:

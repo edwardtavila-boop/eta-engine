@@ -311,7 +311,19 @@ def _build_entry(
 
 def _evaluate_prop_ready(entries: list[LeaderboardEntry]) -> None:
     """Set the prop_ready flag on the top-N entries that pass the
-    eligibility gate."""
+    eligibility gate.
+
+    Wave-16 mandate: PROP_READY is IBKR-futures-only.  Spot bots
+    (BTC/ETH/SOL via Alpaca) are auto-DQ'd via
+    is_ibkr_futures_eligible() — a high-scoring spot bot must not
+    earn real-capital routing through a broker the operator has
+    cellared (POOL_SPLIT["spot"]=0.0).
+    """
+    sys.path.insert(0, str(WORKSPACE_ROOT))
+    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+        is_ibkr_futures_eligible,
+    )
+
     # Sort by composite descending for ranking
     entries.sort(key=lambda e: -e.composite_score)
     for i, e in enumerate(entries, start=1):
@@ -335,6 +347,11 @@ def _evaluate_prop_ready(entries: list[LeaderboardEntry]) -> None:
             disqual.append("watchdog CRITICAL")
         if e.sources.get("sizing_verdict") == "SIZING_BREACHED":
             disqual.append("sizing BREACHED")
+        # Wave-16: IBKR-futures-only mandate — spot bots can't go prop
+        if not is_ibkr_futures_eligible(e.bot_id):
+            disqual.append(
+                "not IBKR-futures eligible (Alpaca spot is cellared)",
+            )
         e.prop_ready_disqualified_for = disqual
         if not disqual:
             eligible.append(e)

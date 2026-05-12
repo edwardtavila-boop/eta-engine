@@ -85,15 +85,15 @@ RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
     # Conservative threshold: -$800 ≈ 2.5σ below the +0.46R/trade baseline
     # over a typical 50-trade 30-day window. Tighten after live observation.
     "m2k_sweep_reclaim": -800.0,
-    # ── Wave-14 fleet expansion thresholds ──────────────────────
+    # ── Wave-14 fleet expansion thresholds (IBKR FUTURES ONLY) ──
     # Set conservatively at ~3x typical-stopout USD for each contract.
     # These get tightened once 30 calendar days of live data accumulate.
-    "met_sweep_reclaim":    -500.0,   # MET ($0.10/pt ETH) — small-tick crypto
-    "mes_sweep_reclaim_v2": -1000.0,  # MES ($5/pt) — micro index
+    # Wave-16: volume_profile_btc removed (Alpaca spot, cellared).
+    "met_sweep_reclaim":    -500.0,   # MET ($0.10/pt ETH) — CME micro crypto
+    "mes_sweep_reclaim_v2": -1000.0,  # MES ($5/pt) — CME micro index
     "mes_sweep_reclaim":    -1000.0,  # MES same contract, different tuning
     "eur_range":            -300.0,   # 6E ($125k notional) — tight like eur_sweep
     "ng_sweep_reclaim":     -800.0,   # NG ($10k/contract) — wide stops needed for vol
-    "volume_profile_btc":   -1500.0,  # BTC spot — wide range
 }
 
 #: R-multiple retirement thresholds — complementary to USD basis.
@@ -125,15 +125,15 @@ RETIREMENT_THRESHOLDS_R: dict[str, float] = {
     "gc_momentum": -3.0,  # small sample, generous
     "cl_macro": -2.0,
     "m2k_sweep_reclaim": -20.0,  # strongest evidence in fleet (was)
-    # ── Wave-14 expansion R-floors ──────────────────────────────
+    # ── Wave-14 expansion R-floors (IBKR FUTURES ONLY) ──────────
     # Computed as ~ -0.25 * cum_r baseline (gives operator
     # ~25% drawdown room before the floor trips).
+    # Wave-16: volume_profile_btc removed (Alpaca spot, cellared).
     "met_sweep_reclaim":    -10.0,  # +136R baseline → -10R floor
     "mes_sweep_reclaim_v2": -10.0,  # +136R baseline → -10R floor
     "mes_sweep_reclaim":    -5.0,   # +56R baseline → -5R floor
     "eur_range":            -5.0,   # +64R baseline → -5R floor
     "ng_sweep_reclaim":     -8.0,   # +91R baseline → -8R floor
-    "volume_profile_btc":   -10.0,  # +121R baseline → -10R floor
 }
 
 

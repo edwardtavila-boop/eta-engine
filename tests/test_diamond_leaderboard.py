@@ -150,14 +150,65 @@ def test_sizing_breached_disqualifies() -> None:
     entries = [
         _entry("breached", n=200, avg_r=0.5, composite=10.0,
                 sizing_verdict="SIZING_BREACHED"),
-        _entry("clean", n=200, avg_r=0.3, composite=5.0),
+        _entry("clean_eur_range", n=200, avg_r=0.3, composite=5.0),
     ]
     lb._evaluate_prop_ready(entries)
     by_id = {e.bot_id: e for e in entries}
     assert not by_id["breached"].prop_ready
     assert any("sizing BREACHED" in d for d in
                by_id["breached"].prop_ready_disqualified_for)
-    assert by_id["clean"].prop_ready
+    assert by_id["clean_eur_range"].prop_ready
+
+
+def test_spot_bot_disqualified_from_prop_ready_wave16() -> None:
+    """Wave-16 mandate: PROP_READY is IBKR-futures-only.  A high-scoring
+    spot bot (BTC/ETH/SOL via Alpaca) must NOT earn the badge —
+    Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0) and the prop-fund
+    routing layer should never auto-route real capital to a broker the
+    operator has cellared.
+
+    Regression case: pre-wave-16 the leaderboard would award PROP_READY
+    to volume_profile_btc (ranked #4 with composite +6.06 — would
+    have been #3 if the operator had filtered eur_sweep_reclaim). The
+    fix uses is_ibkr_futures_eligible() to gate at the eligibility
+    layer."""
+    from eta_engine.scripts import diamond_leaderboard as lb
+
+    entries = [
+        _entry("volume_profile_btc", n=339, avg_r=0.36, composite=10.0),  # spot
+        _entry("met_sweep_reclaim", n=200, avg_r=0.6, composite=8.0),     # CME crypto futures
+        _entry("eur_sweep_reclaim", n=200, avg_r=0.4, composite=6.0),     # CME currency futures
+    ]
+    lb._evaluate_prop_ready(entries)
+    by_id = {e.bot_id: e for e in entries}
+    # volume_profile_btc has highest composite but is DQ'd as Alpaca spot
+    assert not by_id["volume_profile_btc"].prop_ready
+    assert any(
+        "not IBKR-futures eligible" in d
+        for d in by_id["volume_profile_btc"].prop_ready_disqualified_for
+    )
+    # The two IBKR-futures bots get PROP_READY
+    assert by_id["met_sweep_reclaim"].prop_ready
+    assert by_id["eur_sweep_reclaim"].prop_ready
+
+
+def test_ibkr_futures_eligible_helper() -> None:
+    """Sanity check on the upstream helper: futures bots pass, spot bots fail."""
+    from eta_engine.feeds.capital_allocator import is_ibkr_futures_eligible
+
+    # IBKR futures
+    assert is_ibkr_futures_eligible("met_sweep_reclaim")    # CME micro ether
+    assert is_ibkr_futures_eligible("mbt_sweep_reclaim")    # CME micro bitcoin
+    assert is_ibkr_futures_eligible("m2k_sweep_reclaim")    # CME micro russell
+    assert is_ibkr_futures_eligible("eur_sweep_reclaim")    # CME 6E
+    assert is_ibkr_futures_eligible("ng_sweep_reclaim")     # CME NG
+    assert is_ibkr_futures_eligible("mnq_futures_sage")     # CME micro NQ
+    # Alpaca spot — NOT eligible
+    assert not is_ibkr_futures_eligible("volume_profile_btc")
+    assert not is_ibkr_futures_eligible("vwap_mr_btc")
+    assert not is_ibkr_futures_eligible("funding_rate_btc")
+    assert not is_ibkr_futures_eligible("btc_compression")
+    assert not is_ibkr_futures_eligible("eth_sage_daily")
 
 
 def test_no_eligible_means_no_prop_ready() -> None:

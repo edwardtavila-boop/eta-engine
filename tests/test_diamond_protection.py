@@ -47,7 +47,7 @@ from eta_engine.strategies.per_bot_registry import (
 
 EXPECTED_DIAMONDS = frozenset(
     {
-        # Original 8
+        # Original 8 (all IBKR futures)
         "mnq_futures_sage",
         "nq_futures_sage",
         "cl_momentum",
@@ -58,13 +58,13 @@ EXPECTED_DIAMONDS = frozenset(
         "cl_macro",
         # 9th (canonical-data kaizen, m2k promotion)
         "m2k_sweep_reclaim",
-        # 10th-15th (wave-14 fleet expansion)
-        "met_sweep_reclaim",
-        "mes_sweep_reclaim_v2",
-        "eur_range",
-        "ng_sweep_reclaim",
-        "volume_profile_btc",
-        "mes_sweep_reclaim",
+        # 10th-14th (wave-14 fleet expansion, IBKR futures only —
+        # wave-16 demoted volume_profile_btc as Alpaca spot is cellared)
+        "met_sweep_reclaim",       # CME micro ether futures
+        "mes_sweep_reclaim_v2",    # CME micro S&P futures
+        "eur_range",               # CME 6E EUROFX futures
+        "ng_sweep_reclaim",        # CME NG nat gas futures
+        "mes_sweep_reclaim",       # CME micro S&P futures (paired with v2)
     }
 )
 
@@ -77,7 +77,7 @@ EXPECTED_DIAMONDS = frozenset(
 def test_diamond_set_count_matches_expected() -> None:
     """The fleet count is fragile to silent additions/removals; pin it
     to the EXPECTED_DIAMONDS frozenset and update both together."""
-    assert len(DIAMOND_BOTS) == len(EXPECTED_DIAMONDS) == 15
+    assert len(DIAMOND_BOTS) == len(EXPECTED_DIAMONDS) == 14
 
 
 def test_diamond_set_matches_operator_decision_2026_05_12() -> None:
@@ -179,7 +179,7 @@ def test_kaizen_loop_imports_diamond_bots() -> None:
     )
 
     assert isinstance(_DIAMONDS_FROM_ALLOCATOR, (set, frozenset))
-    assert len(_DIAMONDS_FROM_ALLOCATOR) == 15
+    assert len(_DIAMONDS_FROM_ALLOCATOR) == 14
 
 
 def test_kaizen_loop_source_contains_diamond_skip_branch() -> None:

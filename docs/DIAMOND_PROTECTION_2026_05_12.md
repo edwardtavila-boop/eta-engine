@@ -1,6 +1,8 @@
 # Diamond Protection — Truth Surface (2026-05-12)
 
-**Status:** 15 diamond bots locked (8 initial + m2k_sweep_reclaim + 6 wave-14 expansion bots covering futures + commodities + crypto verticals). Three-layer protection live. Top 3 by composite score earn PROP_READY designation. Operator-only retirement. Falsification criteria pre-committed per bot.
+**Status:** 14 diamond bots locked (8 initial + m2k + 5 wave-14 expansion bots, all IBKR-futures-routable). Three-layer protection live. Top 3 by composite score earn PROP_READY designation. Operator-only retirement. Falsification criteria pre-committed per bot.
+
+**Wave-16 mandate (2026-05-12):** PROP_READY routing is **IBKR-futures-only**. Alpaca spot is cellared (POOL_SPLIT["spot"]=0.0); Tradovate dormant. Crypto exposure comes from CME micro crypto futures (MET, MBT) routed through IBKR — NOT from BTC/ETH/SOL spot via Alpaca. The `is_ibkr_futures_eligible()` helper in `capital_allocator` enforces this at the leaderboard eligibility layer.
 
 > "Diamonds can only IMPROVE, never disappear" — the runtime gives
 > diamonds the benefit of the doubt; the operator retains the kill switch.
@@ -24,8 +26,15 @@
 | `mes_sweep_reclaim_v2` | MES1 | **wave-14 (FUT_INDEX)** | +136R (n=416, 63% WR) | — | sweep_reclaim |
 | `eur_range` | 6E1 | **wave-14 (FX)** | +64R (n=124, 71% WR) | — | range_revert |
 | `ng_sweep_reclaim` | NG1 | **wave-14 (COMMODITY_NG)** | +91R (n=243, 65% WR) | — | sweep_reclaim |
-| `volume_profile_btc` | BTC | **wave-14 (CRYPTO)** | +121R (n=339, 66% WR) | — | volume_profile |
 | `mes_sweep_reclaim` | MES1 | **wave-14 (FUT_INDEX, paired with v2)** | +56R (n=197, 61% WR) | — | sweep_reclaim |
+
+**Wave-16 demoted (NOT in DIAMOND_BOTS):**
+| `volume_profile_btc` | BTC SPOT | **DEMOTED (Alpaca cellared)** | +121R (n=339, 66% WR) | — | volume_profile |
+
+`volume_profile_btc` has strong R-edge (+121R / 66% WR / n=339) but routes through Alpaca SPOT, which the operator has cellared per the IBKR-futures-only mandate. If/when `POOL_SPLIT["spot"]` is reactivated, this bot can be re-promoted with a single line in `capital_allocator.DIAMOND_BOTS`.
+
+**Crypto-futures expansion blocker (high-priority kaizen target):**
+The MBT family (`mbt_sweep_reclaim`, `mbt_overnight_gap`, `mbt_rth_orb`, `mbt_funding_basis`) trades actively (n=58-129 per bot) but **all `realized_r` values write as 0**. The R-multiple writer is broken for the MBT path. Fixing this writer unlocks 4 candidate Bitcoin-futures diamonds for the IBKR-futures fleet — the natural BTC counterpart to MET. This is the single highest-leverage data-fix in the queue.
 
 **Coverage:** the wave-14 expansion brings the fleet to 15 diamonds
 covering all 3 verticals — futures (MES, M2K, MNQ, NQ), commodities
