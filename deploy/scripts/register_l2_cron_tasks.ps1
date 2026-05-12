@@ -84,6 +84,9 @@ $dailyTasks = @(
     @{ Name = "ETA-L2-RiskMetrics"
         Args = "-m eta_engine.scripts.l2_risk_metrics --days 30"
         Desc = "L2: Sortino + Calmar + daily P&L rollup" }
+    @{ Name = "ETA-Diamond-WatchdogDaily"
+        Args = "-m eta_engine.scripts.diamond_falsification_watchdog"
+        Desc = "Diamond: daily falsification watchdog (buffer-to-retirement metric)" }
 )
 
 foreach ($t in $dailyTasks) {
@@ -139,6 +142,9 @@ $weeklyTasks = @(
     @{ Name = "ETA-L2-CommissionTierWeekly"
         Args = "-m eta_engine.scripts.l2_commission_tier_optimizer --days 30"
         Desc = "L2: weekly IBKR commission tier projection" }
+    @{ Name = "ETA-Diamond-AuthenticityWeekly"
+        Args = "-m eta_engine.scripts.diamond_authenticity_audit"
+        Desc = "Diamond: weekly authenticity audit (GENUINE/LAB/CZ verdict per diamond)" }
 )
 
 foreach ($t in $weeklyTasks) {

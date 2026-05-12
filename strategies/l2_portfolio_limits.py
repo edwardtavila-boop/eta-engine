@@ -61,6 +61,92 @@ DEFAULT_MAX_CONCURRENT_PER_SYMBOL = 2  # one long + one short net hedge OK
 DEFAULT_MAX_TOTAL_ABSOLUTE_CONTRACTS = 5
 
 
+# ── Combined-notional sizing rule (2026-05-12 diamond memo) ───────
+#
+# Several of the 8 diamond bots share an underlying instrument across
+# different mechanics or sizing tiers (MNQ + NQ are the same NASDAQ
+# direction at different tick values; MCL + CL + cl_macro all share
+# crude oil; MGC + GC share gold).  A single-symbol concurrency cap is
+# insufficient — the supervisor must treat correlated symbols as ONE
+# bet so the portfolio isn't unintentionally 3x exposed on crude.
+#
+# Each group below collapses to a single underlying for the purpose of
+# `max_combined_underlying_contracts`.  Contracts within a group are
+# weighted by their notional-multiplier ratio so a full-size NQ
+# (10x MNQ tick value) counts as 10 MNQ-equivalents.
+UNDERLYING_GROUPS: dict[str, dict[str, float]] = {
+    # NASDAQ group: 1 unit = 1 MNQ contract.  NQ multiplier is 10x.
+    "NASDAQ": {"MNQ": 1.0, "NQ": 10.0,
+                "MNQ1": 1.0, "NQ1": 10.0,
+                "MNQM6": 1.0, "NQM6": 10.0, "MNQU6": 1.0, "NQU6": 10.0},
+    # Crude group: 1 unit = 1 MCL.  CL is 10x.
+    "CRUDE": {"MCL": 1.0, "CL": 10.0,
+                "MCL1": 1.0, "CL1": 10.0,
+                "MCLM6": 1.0, "CLM6": 10.0, "MCLN6": 1.0, "CLN6": 10.0},
+    # Gold group: 1 unit = 1 MGC.  GC is 10x.
+    "GOLD": {"MGC": 1.0, "GC": 10.0,
+              "MGC1": 1.0, "GC1": 10.0,
+              "MGCM6": 1.0, "GCM6": 10.0, "MGCQ6": 1.0, "GCQ6": 10.0},
+    # S&P group: 1 unit = 1 MES.  ES is 5x.
+    "SP": {"MES": 1.0, "ES": 5.0,
+            "MES1": 1.0, "ES1": 5.0,
+            "MESM6": 1.0, "ESM6": 5.0},
+    # Dow group: 1 unit = 1 MYM.  YM is 5x.
+    "DOW": {"MYM": 1.0, "YM": 5.0,
+             "MYM1": 1.0, "YM1": 5.0,
+             "MYMM6": 1.0, "YMM6": 5.0},
+    # Russell group
+    "RUSSELL": {"M2K": 1.0, "RTY": 5.0,
+                 "M2K1": 1.0, "RTY1": 5.0,
+                 "M2KM6": 1.0, "RTYM6": 5.0},
+    # 10y note / 30y bond don't need a group (single bot each)
+}
+
+#: Per-group MNQ-equivalent caps.  Operator commitment from the
+#: diamond decision memo (var/eta_engine/decisions/diamond_set_2026_05_12.md).
+DEFAULT_MAX_COMBINED_UNITS_PER_GROUP: dict[str, float] = {
+    "NASDAQ": 1.0,   # 1 NASDAQ direction at a time across MNQ + NQ
+    "CRUDE":  2.0,   # max 2 MCL-equivalent contracts across cl_momentum + mcl + cl_macro
+    "GOLD":   1.0,   # max 1 MGC-equivalent across mgc + gc
+    "SP":     2.0,
+    "DOW":    2.0,
+    "RUSSELL": 2.0,
+}
+
+
+def _resolve_underlying_group(symbol: str) -> tuple[str | None, float]:
+    """Return (group_name, mnq_equivalent_units) for a symbol, or
+    (None, 0) if the symbol doesn't belong to any tracked group.
+
+    Used by check_portfolio_limits to enforce the combined-notional
+    cap across correlated symbols (MNQ + NQ count as the same NASDAQ
+    bet, etc.).
+    """
+    sym_upper = symbol.upper().strip()
+    for group, members in UNDERLYING_GROUPS.items():
+        if sym_upper in members:
+            return group, members[sym_upper]
+    return None, 0.0
+
+
+def _group_existing_units(
+    positions: dict[tuple[str, str], int],
+    group_name: str,
+    side: str | None = None,
+) -> float:
+    """Sum the MNQ-equivalent units currently open on a group, optionally
+    filtered by side (LONG/SHORT).  Used by the combined-notional cap."""
+    members = UNDERLYING_GROUPS.get(group_name, {})
+    total = 0.0
+    for (sym, sd), qty in positions.items():
+        if sym.upper() not in members:
+            continue
+        if side is not None and sd.upper() != side.upper():
+            continue
+        total += members[sym.upper()] * abs(qty)
+    return total
+
+
 @dataclass
 class PortfolioDecision:
     blocked: bool
@@ -148,6 +234,7 @@ def check_portfolio_limits(symbol: str, side: str, qty: int,
                              max_same_side_per_symbol: int = DEFAULT_MAX_SAME_SIDE_PER_SYMBOL,
                              max_concurrent_per_symbol: int = DEFAULT_MAX_CONCURRENT_PER_SYMBOL,
                              max_total_absolute_contracts: int = DEFAULT_MAX_TOTAL_ABSOLUTE_CONTRACTS,
+                             max_combined_units_per_group: dict[str, float] | None = None,
                              _fill_path: Path | None = None,
                              _log_path: Path | None = None) -> PortfolioDecision:
     """Check whether a new entry would exceed portfolio-level limits.
@@ -207,6 +294,35 @@ def check_portfolio_limits(symbol: str, side: str, qty: int,
             detail={"existing_on_symbol": total_on_symbol,
                      "limit": max_concurrent_per_symbol}),
             _log_path)
+
+    # Combined-notional check across correlated underlyings (2026-05-12
+    # diamond memo).  MNQ + NQ count as one NASDAQ bet, MCL + CL +
+    # cl_macro count as one crude bet, MGC + GC count as one gold bet.
+    group_caps = (max_combined_units_per_group
+                  if max_combined_units_per_group is not None
+                  else DEFAULT_MAX_COMBINED_UNITS_PER_GROUP)
+    group_name, units_for_this_order = _resolve_underlying_group(symbol)
+    if group_name is not None and group_name in group_caps:
+        existing_units = _group_existing_units(
+            positions, group_name, side=canonical_side)
+        cap = group_caps[group_name]
+        if existing_units + units_for_this_order * qty > cap:
+            return _log_decision(PortfolioDecision(
+                blocked=True,
+                reason=(
+                    f"combined_underlying_exceeded:{group_name}_"
+                    f"{existing_units + units_for_this_order * qty:.1f}>"
+                    f"{cap:.1f}_units"
+                ),
+                open_positions={f"{s}:{sd}": v for (s, sd), v in positions.items()},
+                detail={
+                    "group": group_name,
+                    "existing_units_in_group": round(existing_units, 2),
+                    "units_for_this_order": round(units_for_this_order * qty, 2),
+                    "cap_units": cap,
+                    "side": canonical_side,
+                }),
+                _log_path)
 
     # All limits OK
     return PortfolioDecision(
