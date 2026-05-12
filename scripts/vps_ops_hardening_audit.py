@@ -42,6 +42,7 @@ DASHBOARD_DURABLE_TASKS = (
     "ETA-Proxy-8421",
     "ETA-Dashboard-Proxy-Watchdog",
     "ETA-OperatorQueueHeartbeat",
+    "ETA-PaperLiveTransitionCheck",
 )
 IBGATEWAY_TASKS = (
     "ETA-IBGateway",

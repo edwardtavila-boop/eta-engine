@@ -240,7 +240,8 @@ def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks()
     assert "register_dashboard_proxy_watchdog_task.ps1" in text
     assert "register_vps_ops_hardening_audit_task.ps1" in text
     assert "register_operator_queue_heartbeat_task.ps1" in text
-    assert "operator queue heartbeat tasks only" in text
+    assert "register_paper_live_transition_check_task.ps1" in text
+    assert "paper-live cache tasks only" in text
     assert "vps_ops_hardening_audit --json-out" in text
     assert "never places, cancels, flattens, or promotes orders" in text
     assert "set_ibc_credentials" not in text
