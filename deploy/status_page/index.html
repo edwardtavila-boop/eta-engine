@@ -1841,18 +1841,23 @@ function renderVpsRootReview(vpsRoot) {
   const status = String(vpsRoot?.status || 'missing').toLowerCase();
   const risk = String(vpsRoot?.risk_level || 'unknown').toLowerCase();
   const summary = vpsRoot?.summary || {};
+  const counts = vpsRoot?.counts || {};
   const sourceDeleted = finiteNumber(summary.source_or_governance_deleted) ?? 0;
   const submoduleDrift = finiteNumber(summary.submodule_drift) ?? 0;
+  const dirtyRepos = finiteNumber(summary.dirty_companion_repos ?? counts.dirty_companion_repos) ?? 0;
+  const generatedArtifacts = finiteNumber(summary.generated_untracked ?? counts.generated_untracked) ?? 0;
+  const statusRows = finiteNumber(counts.status) ?? 0;
+  const dormantSubmodules = finiteNumber(summary.submodule_uninitialized ?? counts.submodule_uninitialized) ?? 0;
   const cleanupAllowed = vpsRoot?.cleanup_allowed === true;
   const artifactStale = vpsRoot?.artifact_stale === true || status === 'stale' || status === 'stale_review_required';
   const ageMinutes = finiteNumber(vpsRoot?.plan_age_s ?? vpsRoot?.inventory_age_s);
   const ageText = ageMinutes == null ? 'age unknown' : `${Math.max(0, Math.round(ageMinutes / 60))}m old`;
-  const needsReview = artifactStale || status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0;
+  const needsReview = artifactStale || status === 'review_required' || risk === 'high' || risk === 'medium' || sourceDeleted > 0 || submoduleDrift > 0 || dirtyRepos > 0 || generatedArtifacts > 0 || statusRows > 0;
   statusEl.textContent = status === 'missing' ? 'Missing' : artifactStale ? 'Stale Review' : needsReview ? 'Review' : 'Clear';
   statusEl.className = 'stat ' + (needsReview || status === 'missing' ? 'yellow' : 'green');
   subEl.textContent = status === 'missing'
     ? 'plan artifact missing; run VPS root inventory'
-    : `${artifactStale ? 'snapshot stale; ' : ''}${ageText}; risk ${risk}; source deleted ${sourceDeleted}; submodules ${submoduleDrift}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
+    : `${artifactStale ? 'snapshot stale; ' : ''}${ageText}; risk ${risk}; source ${sourceDeleted}; drift ${submoduleDrift}; dirty repos ${dirtyRepos}; lab artifacts ${generatedArtifacts}; dormant ${dormantSubmodules}; cleanup ${cleanupAllowed ? 'allowed' : 'locked'}`;
 }
 
 function focusVpsRootDetails() {
@@ -1877,11 +1882,20 @@ function renderVpsRootDetails(vpsRoot) {
   const artifactStale = payload.artifact_stale === true || status === 'stale' || status === 'stale_review_required';
   const snapshotAge = finiteNumber(payload.plan_age_s ?? payload.inventory_age_s);
   const snapshotAgeText = snapshotAge == null ? 'unknown' : `${Math.max(0, Math.round(snapshotAge / 60))}m`;
+  const dirtyRepos = finiteNumber(summary.dirty_companion_repos ?? counts.dirty_companion_repos) ?? 0;
+  const generatedArtifacts = finiteNumber(summary.generated_untracked ?? counts.generated_untracked) ?? 0;
+  const statusRows = finiteNumber(counts.status) ?? 0;
+  const submoduleDrift = finiteNumber(summary.submodule_drift ?? counts.submodule_drift) ?? 0;
+  const sourceDeleted = finiteNumber(summary.source_or_governance_deleted) ?? 0;
+  const dormantSubmodules = finiteNumber(summary.submodule_uninitialized ?? counts.submodule_uninitialized) ?? 0;
+  const rootClean = !artifactStale && risk === 'low' && sourceDeleted === 0 && submoduleDrift === 0 && dirtyRepos === 0 && generatedArtifacts === 0 && statusRows === 0;
 
   const statusText = status === 'missing'
     ? 'Missing plan'
     : artifactStale
       ? 'Snapshot stale'
+    : rootClean
+      ? 'Root clean'
     : cleanupAllowed
       ? 'Cleanup allowed'
       : 'Cleanup locked';
@@ -1893,11 +1907,13 @@ function renderVpsRootDetails(vpsRoot) {
     ['Risk', risk],
     ['Cleanup', cleanupAllowed ? 'allowed' : 'locked'],
     ['Snapshot age', snapshotAgeText],
-    ['Source deleted', finiteNumber(summary.source_or_governance_deleted) ?? 0],
+    ['Source deleted', sourceDeleted],
     ['Unknown deleted', finiteNumber(summary.unknown_deleted) ?? 0],
-    ['Submodule drift', finiteNumber(summary.submodule_drift ?? counts.submodule_drift) ?? 0],
-    ['Generated untracked', finiteNumber(summary.generated_untracked) ?? 0],
-    ['Status rows', finiteNumber(counts.status) ?? 0],
+    ['Submodule drift', submoduleDrift],
+    ['Dirty repos', dirtyRepos],
+    ['Lab artifacts', generatedArtifacts],
+    ['Status rows', statusRows],
+    ['Dormant submodules', dormantSubmodules],
     ['Review steps', steps.length]
   ];
   summaryEl.innerHTML = metrics.map(([label, value]) => `

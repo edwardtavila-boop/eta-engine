@@ -511,6 +511,11 @@ class TestStatusPage:
         assert "scrollIntoView" in html
         assert "source_or_governance_deleted" in html
         assert "generated_untracked" in html
+        assert "dirty_companion_repos" in html
+        assert "submodule_uninitialized" in html
+        assert "Root clean" in html
+        assert "Lab artifacts" in html
+        assert "Dormant submodules" in html
         assert "steps.length" in html
         assert "cleanupAllowed" in html
         assert "'locked'" in html

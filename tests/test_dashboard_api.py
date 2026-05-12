@@ -1942,6 +1942,70 @@ class TestDashboardAPI:
         assert payload["plan_age_s"] is not None
         assert payload["artifact_stale"] is False
 
+    def test_vps_root_reconciliation_clean_root_is_clear_with_cleanup_locked(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        plan = {
+            "status": "ok",
+            "mode": "review_plan_only",
+            "risk_level": "low",
+            "cleanup_allowed": False,
+            "destructive_actions_performed": False,
+            "recommended_action": (
+                "Rerun the read-only inventory and live probes; "
+                "no root cleanup is authorized by this plan."
+            ),
+            "counts": {
+                "status": 0,
+                "submodule_drift": 0,
+                "submodule_uninitialized": 4,
+                "dirty_companion_repos": 0,
+            },
+            "summary": {
+                "source_or_governance_deleted": 0,
+                "unknown_deleted": 0,
+                "generated_untracked": 0,
+                "source_or_governance_untracked": 0,
+                "submodule_drift": 0,
+                "submodule_uninitialized": 4,
+                "dirty_companion_repos": 0,
+            },
+            "steps": [
+                {
+                    "id": "freeze-and-backup",
+                    "title": "Root cleanup remains locked; no dirty work detected",
+                    "risk": "low",
+                    "decision": "clear",
+                    "action": "No root cleanup is needed.",
+                    "evidence": ["status_count=0"],
+                },
+            ],
+        }
+        (tmp_path / "state" / "vps_root_reconciliation_plan.json").write_text(
+            json.dumps(plan),
+        )
+
+        r = app_client.get("/api/master/status")
+        bot_fleet = app_client.get("/api/bot-fleet")
+
+        assert r.status_code == 200
+        assert bot_fleet.status_code == 200
+        payload = r.json()
+        assert payload["vps_root_reconciliation"]["status"] == "ready_for_review"
+        assert payload["vps_root_reconciliation"]["cleanup_allowed"] is False
+        assert payload["vps_root_reconciliation"]["summary"]["submodule_uninitialized"] == 4
+        assert payload["systems"]["vps_root"]["status"] == "GREEN"
+        assert "generated_untracked=0" in payload["systems"]["vps_root"]["detail"]
+        assert "status_rows=0" in payload["systems"]["vps_root"]["detail"]
+        assert "dormant_submodules=4" in payload["systems"]["vps_root"]["detail"]
+        bot_payload = bot_fleet.json()
+        assert bot_payload["summary"]["vps_root_reconciliation_status"] == "ready_for_review"
+        assert bot_payload["summary"]["vps_root_status_rows"] == 0
+        assert bot_payload["summary"]["vps_root_generated_untracked"] == 0
+        assert bot_payload["summary"]["vps_root_submodule_uninitialized"] == 4
+
     def test_vps_root_reconciliation_prefers_plan_recommended_action(self, app_client, tmp_path):
         plan = {
             "status": "ok",

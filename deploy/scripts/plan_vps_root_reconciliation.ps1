@@ -161,9 +161,15 @@ $hasGeneratedOrLocalArtifactRisk = (
     $localBackupUntracked -gt 0 -or
     $localDiagnosticUntracked -gt 0
 )
+$hasRootReconciliationRisk = (
+    $hasTrackedSourceRisk -or
+    $hasCompanionRisk -or
+    $sourceUntracked -gt 0 -or
+    $hasGeneratedOrLocalArtifactRisk
+)
 
-$freezeTitle = "Keep root cleanup frozen pending review"
-$freezeAction = "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a reconciliation plan."
+$freezeTitle = "Root cleanup remains locked; no dirty work detected"
+$freezeAction = "No root cleanup is needed; keep destructive cleanup disabled and continue read-only inventory and live probes."
 if ($hasTrackedSourceRisk) {
     $freezeTitle = "Freeze root cleanup until source deletions are reviewed"
     $freezeAction = "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a source restore plan."
@@ -180,6 +186,8 @@ elseif ($hasGeneratedOrLocalArtifactRisk) {
     $freezeTitle = "Freeze root cleanup until generated artifacts are classified"
     $freezeAction = "Keep root cleanup disabled; archive or ignore generated/local artifacts only after source and companion repo state is confirmed safe."
 }
+$freezeStepDecision = if ($hasRootReconciliationRisk) { "manual_review_required" } else { "clear" }
+$freezeStepRisk = if ($hasRootReconciliationRisk) { $risk } else { "low" }
 
 $sourceStepTitle = "Confirm no tracked source or governance deletions"
 $sourceStepRisk = "low"
@@ -238,8 +246,8 @@ $steps = @(
     New-PlanStep `
         -Id "freeze-and-backup" `
         -Title $freezeTitle `
-        -Risk $risk `
-        -Decision "manual_review_required" `
+        -Risk $freezeStepRisk `
+        -Decision $freezeStepDecision `
         -Action $freezeAction `
         -Evidence @("inventory=$InventoryFull", "status_count=$($counts.status)")
     New-PlanStep `
@@ -321,6 +329,7 @@ $markdown = @(
     "- Local diagnostic untracked artifacts: $localDiagnosticUntracked"
     "- Source/governance untracked files: $sourceUntracked"
     "- Submodule drift entries: $submoduleDrift"
+    "- Optional dormant submodules: $submoduleUninitialized"
     "- Dirty companion worktrees: $dirtyCompanionRepos"
     ""
     "## Approval gates"

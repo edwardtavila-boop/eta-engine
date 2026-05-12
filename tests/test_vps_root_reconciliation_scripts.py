@@ -45,6 +45,8 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     assert "destructive_actions_performed = $false" in text
     assert "approval_gates = $approvalGates" in text
     assert 'cleanup = "blocked_until_manual_approval"' in text
+    assert "Root cleanup remains locked; no dirty work detected" in text
+    assert "$freezeStepDecision" in text
     assert "blocked_until_source_review" in text
     assert 'credential_rotation = "reserved_for_go_live"' in text
     assert "Recommended action" in text

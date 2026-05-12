@@ -1849,16 +1849,21 @@ def _vps_root_reconciliation_payload() -> dict[str, object]:
     unknown_deleted = _as_int(summary.get("unknown_deleted"))
     source_untracked = _as_int(summary.get("source_or_governance_untracked"))
     submodule_drift = _as_int(summary.get("submodule_drift") or counts.get("submodule_drift"))
+    status_rows = _as_int(counts.get("status"))
+    generated_untracked = _as_int(
+        summary.get("generated_untracked") or counts.get("generated_untracked")
+    )
     dirty_companion_repos = _as_int(
         summary.get("dirty_companion_repos") or counts.get("dirty_companion_repos")
     )
     manual_review_required = (
         risk_level in {"high", "medium"}
-        or not cleanup_allowed
         or source_deleted > 0
         or unknown_deleted > 0
         or source_untracked > 0
         or submodule_drift > 0
+        or status_rows > 0
+        or generated_untracked > 0
         or dirty_companion_repos > 0
     )
     recommended_action = str(
@@ -4825,6 +4830,11 @@ def bot_fleet_roster(
         if isinstance(vps_root_reconciliation.get("summary"), dict)
         else {}
     )
+    vps_root_counts = (
+        vps_root_reconciliation.get("counts")
+        if isinstance(vps_root_reconciliation.get("counts"), dict)
+        else {}
+    )
     vps_root_steps = (
         vps_root_reconciliation.get("steps")
         if isinstance(vps_root_reconciliation.get("steps"), list)
@@ -4960,9 +4970,26 @@ def bot_fleet_roster(
             "vps_root_source_deleted_count": int(
                 vps_root_summary.get("source_or_governance_deleted") or 0
             ),
-            "vps_root_submodule_drift": int(vps_root_summary.get("submodule_drift") or 0),
+            "vps_root_submodule_drift": int(
+                vps_root_summary.get("submodule_drift")
+                or vps_root_counts.get("submodule_drift")
+                or 0
+            ),
+            "vps_root_submodule_uninitialized": int(
+                vps_root_summary.get("submodule_uninitialized")
+                or vps_root_counts.get("submodule_uninitialized")
+                or 0
+            ),
+            "vps_root_generated_untracked": int(
+                vps_root_summary.get("generated_untracked")
+                or vps_root_counts.get("generated_untracked")
+                or 0
+            ),
+            "vps_root_status_rows": int(vps_root_counts.get("status") or 0),
             "vps_root_dirty_companion_repos": int(
-                vps_root_summary.get("dirty_companion_repos") or 0
+                vps_root_summary.get("dirty_companion_repos")
+                or vps_root_counts.get("dirty_companion_repos")
+                or 0
             ),
             "vps_root_recommended_action": str(
                 vps_root_reconciliation.get("recommended_action") or ""
@@ -8761,6 +8788,7 @@ def _local_master_status_payload() -> dict[str, object]:
 
     def _vps_root_card_detail(payload: dict[str, object]) -> str:
         summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
         age = payload.get("plan_age_s") or payload.get("inventory_age_s")
         age_text = "unknown"
         if isinstance(age, (int, float)):
@@ -8770,7 +8798,11 @@ def _local_master_status_payload() -> dict[str, object]:
             f"artifact_stale={payload.get('artifact_stale')}; snapshot_age={age_text}; "
             f"source_deleted={summary.get('source_or_governance_deleted', 0)}; "
             f"submodule_drift={summary.get('submodule_drift', 0)}; "
-            f"dirty_companions={summary.get('dirty_companion_repos', 0)}"
+            f"dirty_companions={summary.get('dirty_companion_repos', 0)}; "
+            f"generated_untracked={summary.get('generated_untracked', 0)}; "
+            f"status_rows={counts.get('status', 0)}; "
+            "dormant_submodules="
+            f"{summary.get('submodule_uninitialized', counts.get('submodule_uninitialized', 0))}"
         )
 
     paper_live = dict(paper)
