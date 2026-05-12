@@ -10,12 +10,10 @@ Asset-specific presets below.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections import deque
-
     from eta_engine.backtest.engine import _Open
     from eta_engine.backtest.models import BacktestConfig
     from eta_engine.core.data_pipeline import BarData
@@ -65,6 +63,15 @@ class MomentumStrategy:
         self._bars_since_last_trade: int = 999
         self._trades_today: int = 0
         self._bars_seen: int = 0
+        # ADX state (Wilder smoothing).  Implemented 2026-05-12 — the
+        # rationale string promised "ROC+ADX+MA thrust" but the prior
+        # version declared adx_threshold without ever computing ADX.
+        # Dead code → real filter.
+        self._plus_dm_window: list[float] = []
+        self._minus_dm_window: list[float] = []
+        self._dx_window: list[float] = []
+        self._prev_high: float | None = None
+        self._prev_low: float | None = None
 
     def maybe_enter(
         self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig,
@@ -139,7 +146,7 @@ class MomentumStrategy:
         if len(self._volume_window) > self.cfg.volume_z_lookback:
             self._volume_window.pop(0)
 
-        # True Range
+        # True Range + directional movement (DM) for ADX
         if hist:
             prev_close = hist[-1].close
             tr = max(bar.high - bar.low, abs(bar.high - prev_close), abs(bar.low - prev_close))
@@ -149,15 +156,63 @@ class MomentumStrategy:
         if len(self._tr_window) > self.cfg.atr_period:
             self._tr_window.pop(0)
 
+        # Wilder ADX (2026-05-12 implementation — was dead code prior).
+        # +DM = max(high - prev_high, 0) when up-move > down-move else 0
+        # -DM = max(prev_low - low, 0) when down-move > up-move else 0
+        # DI+ = 100 * SMA(+DM) / SMA(TR); DI- = 100 * SMA(-DM) / SMA(TR)
+        # DX = 100 * |DI+ - DI-| / (DI+ + DI-)
+        # ADX = SMA(DX) over adx_period
+        if self._prev_high is not None and self._prev_low is not None:
+            up_move = bar.high - self._prev_high
+            down_move = self._prev_low - bar.low
+            plus_dm = up_move if (up_move > down_move and up_move > 0) else 0.0
+            minus_dm = down_move if (down_move > up_move and down_move > 0) else 0.0
+            self._plus_dm_window.append(plus_dm)
+            self._minus_dm_window.append(minus_dm)
+            if len(self._plus_dm_window) > self.cfg.adx_period:
+                self._plus_dm_window.pop(0)
+            if len(self._minus_dm_window) > self.cfg.adx_period:
+                self._minus_dm_window.pop(0)
+            # Compute DX whenever we have a full window of TRs (uses
+            # the SAME SMA of TR as our ATR calc — Wilder's ATR proxy).
+            if (len(self._plus_dm_window) >= self.cfg.adx_period
+                    and len(self._tr_window) >= self.cfg.adx_period):
+                sum_plus_dm = sum(self._plus_dm_window)
+                sum_minus_dm = sum(self._minus_dm_window)
+                sum_tr = sum(self._tr_window)
+                if sum_tr > 0:
+                    di_plus = 100.0 * sum_plus_dm / sum_tr
+                    di_minus = 100.0 * sum_minus_dm / sum_tr
+                    di_total = di_plus + di_minus
+                    if di_total > 0:
+                        dx = 100.0 * abs(di_plus - di_minus) / di_total
+                        self._dx_window.append(dx)
+                        if len(self._dx_window) > self.cfg.adx_period:
+                            self._dx_window.pop(0)
+                        if len(self._dx_window) >= self.cfg.adx_period:
+                            self._adx = sum(self._dx_window) / len(self._dx_window)
+        self._prev_high = bar.high
+        self._prev_low = bar.low
+
     def _current_atr(self) -> float:
         if len(self._tr_window) < self.cfg.atr_period:
-            return bar_range(1.0, 0.01)  # fallback
+            return max(self._tr_window[-1], 0.01) if self._tr_window else 1.0
         return sum(self._tr_window) / len(self._tr_window)
 
     def _detect_momentum_thrust(self, bar: BarData) -> str | None:
         """Detect momentum thrust bar. Returns 'BUY', 'SELL', or None."""
         if len(self._roc_values) < 5 or self._ma_fast is None or self._ma_slow is None:
             return None
+
+        # ADX trending-regime gate (2026-05-12 — was advertised in
+        # rationale but never enforced before this commit).  In a
+        # chop regime (ADX < threshold), momentum strategies pay
+        # round-trip slip on every false breakout — exactly the
+        # failure mode gc_momentum exhibited in mid-2026 gold.
+        if self._adx is None:
+            return None  # Need ADX warmup before any entry
+        if self._adx < self.cfg.adx_threshold:
+            return None  # Chop regime — momentum is wrong tool
 
         # Recent ROC must be positive for BUY, negative for SELL
         recent_roc = sum(self._roc_values[-5:]) / 5
@@ -187,14 +242,12 @@ class MomentumStrategy:
             return None  # No thrust
 
         # Bullish thrust
-        if roc_z > self.cfg.roc_threshold and trend_up:
-            if bar.close > bar.open:
-                return "BUY"
+        if roc_z > self.cfg.roc_threshold and trend_up and bar.close > bar.open:
+            return "BUY"
 
         # Bearish thrust
-        if roc_z < -self.cfg.roc_threshold and trend_down:
-            if bar.close < bar.open:
-                return "SELL"
+        if roc_z < -self.cfg.roc_threshold and trend_down and bar.close < bar.open:
+            return "SELL"
 
         return None
 

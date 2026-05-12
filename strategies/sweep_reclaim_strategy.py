@@ -601,11 +601,33 @@ def ym_sweep_preset() -> SweepReclaimConfig:
 
 
 def mgc_sweep_preset() -> SweepReclaimConfig:
-    """MGC 1h micro-gold rehab preset."""
+    """MGC 1h micro-gold preset.
+
+    2026-05-12 refinement (quant audit synthesis):
+      - atr_stop_mult 3.0 → 2.5
+      - rr_target    3.0 → 3.5
+      - min_volume_z 0.3 → 0.5 (NY-open hour focus)
+
+    Rationale: mgc_sweep CPCV showed n=157, mean OOS sharpe +0.190
+    with 96% positive splits — a real but small edge.  Per-trade R
+    is positive but USD P&L is negative (PF=0.726) → friction
+    dominated.  Range-bound mid-2026 gold means:
+      - Tighter stop captures the mean-reversion edge before
+        whipsaw eats it (3x ATR was permissive)
+      - Wider target captures further reversion (sweeps in chop
+        often go 3.5R+ before flopping)
+      - Higher volume z gate filters London-session thin chop
+        and concentrates on NY-open execution windows
+    Falsifier: PF crosses 1.0 across the next 60 trades.  Red team:
+    multiple-testing across 3 simultaneous knob tweaks — treat the
+    +0.19 mean as the prior; require +0.30 OOS sharpe before claiming
+    improvement is real.  min_wick_pct stays 0.40 — v2's relaxed 0.30
+    wick demonstrated this is load-bearing.
+    """
     return SweepReclaimConfig(
         level_lookback=48, reclaim_window=3,
-        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.3,
-        atr_period=14, atr_stop_mult=3.0, rr_target=3.0,
+        min_wick_pct=0.40, volume_z_lookback=24, min_volume_z=0.5,
+        atr_period=14, atr_stop_mult=2.5, rr_target=3.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
     )

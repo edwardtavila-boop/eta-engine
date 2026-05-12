@@ -8,13 +8,48 @@ a 2+ ATR spike, assuming headlines fade and price returns to range.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from eta_engine.backtest.engine import _Open
     from eta_engine.backtest.models import BacktestConfig
     from eta_engine.core.data_pipeline import BarData
+
+
+# ── Session windows for cl_macro entries (2026-05-12 refinement) ──
+#
+# Oil spikes don't happen uniformly across the day.  The dominant
+# catalysts are:
+#   - EIA crude inventory release: Wednesday 10:30 ET (14:30 UTC)
+#   - Asia open: 18:00-21:00 ET (23:00-02:00 UTC) — overnight headlines
+#   - NY morning: 08:00-11:00 ET (12:00-15:00 UTC) — Mideast headlines
+# Pre-market thin-liquidity hours (21:00-02:00 ET) produce wicks that
+# trigger the spike detector but fill at garbage prices.  The session
+# gate rejects entries outside the catalyst windows.
+#
+# Hours are UTC.  Each tuple is (start, end_exclusive) in hours.
+DEFAULT_ALLOWED_HOURS_UTC: tuple[tuple[int, int], ...] = (
+    (12, 16),   # NY morning (08:00-12:00 ET)
+    (14, 16),   # EIA window (Wednesdays only — extra-tight band)
+    (23, 24),   # Asia open part 1
+    (0, 3),     # Asia open part 2 (wraps midnight UTC)
+)
+
+
+def _hour_in_windows(hour_utc: int,
+                       windows: tuple[tuple[int, int], ...]) -> bool:
+    for lo, hi in windows:
+        if lo <= hi:
+            if lo <= hour_utc < hi:
+                return True
+        else:
+            # Window wraps midnight (lo > hi); shouldn't happen in our
+            # config but handle defensively.
+            if hour_utc >= lo or hour_utc < hi:
+                return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -30,6 +65,13 @@ class OilMacroConfig:
     min_bars_between_trades: int = 12
     max_trades_per_day: int = 3
     warmup_bars: int = 72
+    # 2026-05-12 refinements
+    min_atr_usd: float = 0.20       # Reject signals when ATR<this (dead-tape gate)
+    allowed_hours_utc: tuple[tuple[int, int], ...] = field(
+        default_factory=lambda: DEFAULT_ALLOWED_HOURS_UTC)
+    enforce_session_gate: bool = True
+    panic_day_count_window: int = 30  # Track 2x-ATR bar count over N days
+    panic_day_min_per_30d: int = 4    # Falsification trigger threshold
 
 
 class OilMacroStrategy:
@@ -43,6 +85,12 @@ class OilMacroStrategy:
         self._bars_since_last_trade: int = 999
         self._trades_today: int = 0
         self._bars_seen: int = 0
+        # Panic-day counter (2026-05-12 — moves operator's falsification
+        # criterion from prose into code).  Tracks dates on which at
+        # least one bar's range exceeded spike_atr_mult * ATR.
+        self._panic_dates: deque[str] = deque(
+            maxlen=self.cfg.panic_day_count_window)
+        self._last_panic_date: str | None = None
 
     def maybe_enter(self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig) -> _Open | None:
         self._bars_seen += 1
@@ -58,8 +106,37 @@ class OilMacroStrategy:
         atr = self._atr()
         bar_range_val = bar.high - bar.low
 
+        # ATR floor (2026-05-12): reject signals during dead-tape
+        # windows where ATR is unrealistically small.  Without this
+        # gate the warmup-period ATR=1.0 fallback meant any 2-tick
+        # bar fired a "spike" — false signals at quiet hours.
+        if atr < self.cfg.min_atr_usd:
+            return None
+
         # Must be a spike (2x ATR range)
         if bar_range_val < atr * self.cfg.spike_atr_mult:
+            return None
+
+        # Track panic days (one date can produce multiple panic bars
+        # but we count the DATE once for the operator's falsification
+        # criterion).
+        bar_dt = self._bar_datetime(bar)
+        if bar_dt is not None:
+            date_key = bar_dt.strftime("%Y-%m-%d")
+            if date_key != self._last_panic_date:
+                self._panic_dates.append(date_key)
+                self._last_panic_date = date_key
+
+        # Session gate (2026-05-12): oil spikes outside the catalyst
+        # windows (NY morning, EIA Wed, Asia open) tend to be illiquid
+        # wicks that fill at garbage prices.  Default-on; operator
+        # disables via enforce_session_gate=False if backtesting full
+        # 24h coverage.
+        if (
+            self.cfg.enforce_session_gate
+            and bar_dt is not None
+            and not _hour_in_windows(bar_dt.hour, self.cfg.allowed_hours_utc)
+        ):
             return None
 
         # Volume confirmation
@@ -115,6 +192,33 @@ class OilMacroStrategy:
         if len(self._tr_window) < self.cfg.atr_period:
             return 1.0
         return sum(self._tr_window) / len(self._tr_window)
+
+    def _bar_datetime(self, bar: BarData) -> datetime | None:
+        """Best-effort timestamp extraction.  BarData carries `ts` as
+        either ISO string or epoch float across the codebase; handle
+        both."""
+        ts = getattr(bar, "ts", None) or getattr(bar, "timestamp_utc", None)
+        if ts is None:
+            return None
+        try:
+            if isinstance(ts, str):
+                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if isinstance(ts, (int, float)):
+                return datetime.fromtimestamp(float(ts), UTC)
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    def panic_days_in_window(self) -> int:
+        """Number of distinct dates with at least one panic bar over
+        the configured rolling window.  Operator's falsification
+        criterion fires when this drops below panic_day_min_per_30d."""
+        return len(set(self._panic_dates))
+
+    def falsification_triggered(self) -> bool:
+        """True when panic days < operator's pre-committed floor.
+        The dashboard / watchdog reads this on the live instance."""
+        return self.panic_days_in_window() < self.cfg.panic_day_min_per_30d
 
     def _volume_ok(self, bar: BarData) -> bool:
         vols = list(self._volume_window)
