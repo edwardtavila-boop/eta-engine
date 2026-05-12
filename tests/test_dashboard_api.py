@@ -1143,6 +1143,60 @@ class TestDashboardAPI:
         assert data["operator_queue"]["cache_stale"] is False
         assert data["checks"]["operator_queue_contract"] is True
 
+    def test_dashboard_diagnostics_falls_back_when_operator_queue_cache_is_stale(
+        self,
+        app_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        from eta_engine.scripts import jarvis_status
+
+        (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                    "status": "blocked",
+                    "launch_blocked_count": 1,
+                    "operator_queue": {
+                        "source": "jarvis_status.operator_queue",
+                        "summary": {"BLOCKED": 1, "OBSERVED": 0, "UNKNOWN": 0},
+                        "launch_blocked_count": 1,
+                        "top_blockers": [{"op_id": "OP-18", "title": "stale install blocker"}],
+                        "top_launch_blockers": [
+                            {"op_id": "OP-18", "detail": "stale install blocker"}
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            jarvis_status,
+            "build_operator_queue_summary",
+            lambda **_kwargs: {
+                "source": "operator_action_queue",
+                "summary": {"BLOCKED": 3, "OBSERVED": 11, "UNKNOWN": 0},
+                "launch_blocked_count": 1,
+                "top_blockers": [{"op_id": "OP-19", "title": "IB Gateway API blocked"}],
+                "top_launch_blockers": [
+                    {
+                        "op_id": "OP-19",
+                        "detail": "Seed IBC credentials and recover TWS API 4002.",
+                    }
+                ],
+            },
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        queue = r.json()["operator_queue"]
+        assert queue["source"] == "operator_action_queue"
+        assert queue["cache_status"] == "stale_fallback"
+        assert queue["cache_stale"] is False
+        assert queue["stale_cache_age_s"] >= 3600
+        assert queue["top_launch_blocker_op_id"] == "OP-19"
+
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")
 

@@ -1020,8 +1020,11 @@ def _dashboard_diagnostics_payload() -> dict:
                 or ""
             ),
             "source": str(operator_queue.get("source") or "unknown"),
+            "cache_status": str(operator_queue.get("cache_status") or ""),
             "cache_age_s": operator_queue.get("cache_age_s"),
             "cache_stale": bool(operator_queue.get("cache_stale")),
+            "stale_cache_age_s": operator_queue.get("stale_cache_age_s"),
+            "stale_cache_path": operator_queue.get("stale_cache_path"),
             "error": operator_queue.get("error"),
         },
         "paper_live_transition": {
@@ -2840,22 +2843,45 @@ def _operator_queue_cache_payload(*, server_ts: float | None = None) -> dict | N
 
 def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | None = None) -> dict:
     """Return JARVIS/operator blockers without letting status probes break the dashboard."""
+    stale_cached: dict | None = None
     if prefer_cache:
         cached = _operator_queue_cache_payload(server_ts=server_ts)
         if cached is not None:
-            return cached
+            if not cached.get("cache_stale"):
+                return cached
+            stale_cached = cached
     try:
         from eta_engine.scripts.jarvis_status import build_operator_queue_summary
 
         payload = build_operator_queue_summary()
     except Exception as exc:  # noqa: BLE001 -- dashboard should render degraded state
+        if stale_cached is not None:
+            fallback = dict(stale_cached)
+            fallback["cache_status"] = "stale_fallback_error"
+            fallback["cache_stale"] = True
+            fallback["error"] = str(exc)
+            return fallback
         return {
             "source": "jarvis_status",
             "error": str(exc),
             "summary": {},
             "top_blockers": [],
         }
-    return payload if isinstance(payload, dict) else {
+    if isinstance(payload, dict):
+        if stale_cached is not None:
+            payload = dict(payload)
+            payload["cache_status"] = "stale_fallback"
+            payload["cache_stale"] = False
+            payload["stale_cache_age_s"] = stale_cached.get("cache_age_s")
+            payload["stale_cache_path"] = stale_cached.get("cache_path")
+        return payload
+    if stale_cached is not None:
+        fallback = dict(stale_cached)
+        fallback["cache_status"] = "stale_fallback_error"
+        fallback["cache_stale"] = True
+        fallback["error"] = "operator queue summary returned a non-object payload"
+        return fallback
+    return {
         "source": "jarvis_status",
         "error": "operator queue summary returned a non-object payload",
         "summary": {},
