@@ -1998,6 +1998,78 @@ class TestLifecycleRoutingConfig:
         assert failed is not None
         assert any("dormant" in str(i).lower() for i in journal.intents())
 
+    def test_prop_account_risk_blocks_before_venue_resolution(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Prop accounts must prove DD headroom before any venue path."""
+        pending_dir = tmp_path / "pending"
+        state_root = tmp_path / "state"
+        path = _write_pending(
+            pending_dir,
+            bot_id="volume_profile_mnq",
+            signal_id="sig-prop-risk",
+            symbol="MNQ",
+            qty=1,
+            limit_price=25_000,
+            stop_price=24_900,
+            target_price=25_100,
+        )
+
+        tradovate_venue = _FakeVenue()
+        tradovate_venue.name = "tradovate"
+        smart_router = _FakeMultiVenueRouter({"tradovate": tradovate_venue})
+        journal = _FakeJournal()
+        gates = _allow_gate_chain()
+        _stub_fetch_positions(monkeypatch, {})
+
+        cfg = broker_router.RoutingConfig(
+            default_venue="ibkr",
+            symbol_overrides={"MNQ": {"tradovate": "MNQ"}},
+            per_bot={
+                "volume_profile_mnq": {
+                    "venue": "tradovate",
+                    "account_alias": "blusky_50k",
+                },
+            },
+            prop_accounts={
+                "blusky_50k": {
+                    "venue": "tradovate",
+                    "env": "demo",
+                    "account_id_env": "BLUSKY_TRADOVATE_ACCOUNT_ID",
+                    "creds_env_prefix": "BLUSKY_",
+                    "starting_balance_usd": "50000",
+                    "current_equity_usd": "50100",
+                    "peak_equity_usd": "52400",
+                    "trailing_drawdown_usd": "2500",
+                    "daily_loss_limit_usd": "1500",
+                    "daily_loss_used_usd": "0",
+                    "liquidation_buffer_usd": "500",
+                    "max_order_risk_usd": "250",
+                },
+            },
+        )
+        router = broker_router.BrokerRouter(
+            pending_dir=pending_dir,
+            state_root=state_root,
+            smart_router=smart_router,
+            journal=journal,
+            gate_chain=gates,
+            routing_config=cfg,
+        )
+        asyncio.run(router._process_pending_file(path))
+
+        assert tradovate_venue.calls == []
+        assert smart_router.lookups == []
+        blocked = _find_under(state_root / "blocked", path.name)
+        assert blocked is not None
+        block_meta = json.loads(
+            (state_root / "blocked" / "sig-prop-risk_block.json").read_text(
+                encoding="utf-8",
+            ),
+        )
+        assert block_meta["denied_gate"] == "prop_risk_governor"
+        assert block_meta["reason"] == "prop_risk_exceeds_headroom"
+
     def test_prop_account_alias_builds_prefixed_tradovate_venue(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:

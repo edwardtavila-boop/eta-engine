@@ -107,10 +107,48 @@ def _scrub_args(args: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in args.items() if k not in {"_auth", "_confirm_phrase"}}
 
 
+# Audit log rotation threshold. When the active log exceeds this size,
+# the file is gzip-compressed to a sibling with a UTC stamp and the
+# active path starts fresh. Keeps disk usage bounded on long-lived VPS
+# Hermes instances. 10 MB ≈ ~30k tool calls — plenty of history.
+_AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _rotate_audit_log_if_needed() -> None:
+    """Gzip the audit log to a stamped sibling if it has grown too large.
+
+    Best-effort: any OSError swallowed so the next append falls back to
+    appending onto whatever file currently exists.
+    """
+    try:
+        if not _AUDIT_LOG_PATH.exists():
+            return
+        if _AUDIT_LOG_PATH.stat().st_size < _AUDIT_LOG_MAX_BYTES:
+            return
+        import gzip
+        import shutil
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        rotated = _AUDIT_LOG_PATH.with_name(
+            f"{_AUDIT_LOG_PATH.stem}_{stamp}.jsonl.gz",
+        )
+        with _AUDIT_LOG_PATH.open("rb") as src, gzip.open(rotated, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        _AUDIT_LOG_PATH.unlink()
+        logger.info("hermes audit-log rotated to %s", rotated.name)
+    except OSError as exc:
+        logger.warning("hermes audit-log rotation failed: %s", exc)
+
+
 def _append_audit(record: dict[str, Any]) -> None:
-    """Append one JSONL line to the hermes audit log. Never raises."""
+    """Append one JSONL line to the hermes audit log. Never raises.
+
+    Triggers size-based gzip rotation lazily on each append — the check
+    is a fast ``stat()`` followed by a numeric compare, so the steady-state
+    overhead is one syscall per tool call.
+    """
     try:
         _AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_audit_log_if_needed()
         with _AUDIT_LOG_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, default=str) + "\n")
     except OSError as exc:  # log-and-drop — never break the consult path
@@ -266,8 +304,18 @@ def _write_override(bot_id: str, reason: str) -> dict[str, Any]:
 
 
 def list_tools() -> list[dict[str, Any]]:
-    """Return the 11 declared tools as plain dicts (SDK-agnostic)."""
-    auth_field = {"_auth": {"type": "string", "description": "JARVIS_MCP_TOKEN"}}
+    """Return the 11 declared tools as plain dicts (SDK-agnostic).
+
+    NOTE (2026-05-12): the ``_auth`` argument is no longer advertised in
+    tool inputSchemas. Stdio MCP clients (Hermes Agent, Claude Desktop)
+    that spawn this process inherit ``JARVIS_MCP_TOKEN`` via the spawn
+    env and authentication uses that token without needing an arg.
+    Advertising ``_auth`` caused LLMs to over-eagerly demand the token
+    from operators in chat ("I need a valid JARVIS_MCP_TOKEN..."). The
+    handler still accepts ``_auth`` if a caller passes it — see
+    ``dispatch_tool_call`` for the precise auth precedence.
+    """
+    auth_field: dict[str, Any] = {}  # see note above
     return [
         {
             "name": "jarvis_fleet_status",

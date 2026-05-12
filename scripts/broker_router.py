@@ -58,6 +58,7 @@ from eta_engine.obs.decision_journal import (  # noqa: E402
     Outcome,
     default_journal,
 )
+from eta_engine.scripts.prop_risk_governor import prop_order_risk_denial  # noqa: E402
 from eta_engine.scripts.runtime_order_hold import (  # noqa: E402
     OrderEntryHold,
     default_hold_path,
@@ -1201,6 +1202,17 @@ class BrokerRouter:
         except ValueError as exc:
             self._handle_routing_config_unsupported(order, target, str(exc))
             return
+        if prop_account is not None:
+            denied = prop_order_risk_denial(order, prop_account)
+            if denied is not None:
+                self._handle_blocked(
+                    order,
+                    target,
+                    denied,
+                    [denied],
+                    ["-prop_risk_governor"],
+                )
+                return
         if target_venue_name in DORMANT_BROKERS:
             self._handle_dormant_broker(order, target, target_venue_name)
             return

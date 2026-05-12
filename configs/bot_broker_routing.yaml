@@ -65,6 +65,12 @@ failover:
 # and `account_alias: <alias>`, and the live process must start with
 # ETA_TRADOVATE_ENABLED=1. Keep env=demo until Tradovate demo/sim smoke
 # passes for the specific prop account.
+#
+# Prop-account survival rule: new entries fail closed unless live equity
+# telemetry is present and the proposed bracket fits inside daily loss,
+# trailing drawdown, open-risk, and liquidation-buffer headroom. Keep
+# max_order_risk_usd conservative until the 7-day paper soak proves the
+# strategy can survive overnight unattended windows.
 prop_accounts:
   blusky_50k:
     venue: tradovate
@@ -72,6 +78,15 @@ prop_accounts:
     account_id_env: BLUSKY_TRADOVATE_ACCOUNT_ID
     creds_env_prefix: BLUSKY_
     bot_policy: explicit_allow
+    starting_balance_usd: 50000
+    current_equity_env: BLUSKY_CURRENT_EQUITY_USD
+    peak_equity_env: BLUSKY_PEAK_EQUITY_USD
+    daily_loss_used_env: BLUSKY_DAILY_LOSS_USED_USD
+    open_risk_env: BLUSKY_OPEN_RISK_USD
+    trailing_drawdown_usd: 2500
+    daily_loss_limit_usd: 1500
+    liquidation_buffer_usd: 500
+    max_order_risk_usd: 250
     policy_source: https://blog.blusky.pro/blusky-blog/attention-prop-firm-traders
   mffu_50k:
     venue: tradovate
@@ -79,6 +94,15 @@ prop_accounts:
     account_id_env: MFFU_TRADOVATE_ACCOUNT_ID
     creds_env_prefix: MFFU_
     bot_policy: automation_allowed_with_limits
+    starting_balance_usd: 50000
+    current_equity_env: MFFU_CURRENT_EQUITY_USD
+    peak_equity_env: MFFU_PEAK_EQUITY_USD
+    daily_loss_used_env: MFFU_DAILY_LOSS_USED_USD
+    open_risk_env: MFFU_OPEN_RISK_USD
+    trailing_drawdown_usd: 2500
+    daily_loss_limit_usd: 1500
+    liquidation_buffer_usd: 500
+    max_order_risk_usd: 250
     policy_source: https://help.myfundedfutures.com/en/articles/8444599-fair-play-and-prohibited-trading-practices
 
 default:
