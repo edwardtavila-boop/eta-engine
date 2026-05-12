@@ -112,13 +112,28 @@ def compute_microprice(snapshot: dict) -> tuple[float | None, float | None, str]
         return None, None, "EMPTY_BIDS"
     if not asks:
         return None, None, "EMPTY_ASKS"
-    best_bid = float(bids[0].get("price", 0))
-    best_ask = float(asks[0].get("price", 0))
-    bid_qty = float(bids[0].get("size", 0))
-    ask_qty = float(asks[0].get("size", 0))
-    total_qty = bid_qty + ask_qty
-    if total_qty <= 0:
+    # Defensive None coercion: real depth feeds may publish bid/ask
+    # entries with price=None or size=None during momentary book
+    # crossings or auction transitions.  Coerce with ``or 0`` so
+    # the downstream "total_qty <= 0 -> BOTH_EMPTY" guard catches
+    # malformed level-1 entries instead of crashing float().
+    best_bid = float(bids[0].get("price") or 0)
+    best_ask = float(asks[0].get("price") or 0)
+    bid_qty = float(bids[0].get("size") or 0)
+    ask_qty = float(asks[0].get("size") or 0)
+    if best_bid <= 0 and best_ask <= 0:
         return None, None, "BOTH_EMPTY"
+    if best_bid <= 0:
+        return None, None, "EMPTY_BIDS"
+    if best_ask <= 0:
+        return None, None, "EMPTY_ASKS"
+    if bid_qty <= 0 and ask_qty <= 0:
+        return None, None, "BOTH_EMPTY"
+    if bid_qty <= 0:
+        return None, None, "EMPTY_BIDS"
+    if ask_qty <= 0:
+        return None, None, "EMPTY_ASKS"
+    total_qty = bid_qty + ask_qty
     micro = (best_bid * ask_qty + best_ask * bid_qty) / total_qty
     mid = (best_bid + best_ask) / 2
     return micro, mid, "OK"

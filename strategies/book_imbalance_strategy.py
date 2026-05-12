@@ -208,8 +208,12 @@ def _compute_imbalance_with_classification(
     "no signal" from "anomalous book — bail out hard"."""
     bids = snapshot.get("bids", [])[:n_levels]
     asks = snapshot.get("asks", [])[:n_levels]
-    bid_qty = sum(int(lv.get("size", 0)) for lv in bids)
-    ask_qty = sum(int(lv.get("size", 0)) for lv in asks)
+    # Defensive None coercion: a level dict may publish size=None when
+    # the price exists but qty is being repopulated.  dict.get default
+    # fires only on absent keys; coerce with ``or 0`` to keep int()
+    # safe and let the EMPTY_BIDS / EMPTY_ASKS classifier handle it.
+    bid_qty = sum(int(lv.get("size") or 0) for lv in bids)
+    ask_qty = sum(int(lv.get("size") or 0) for lv in asks)
     if bid_qty == 0 and ask_qty == 0:
         return 1.0, bid_qty, ask_qty, "BOTH_EMPTY"
     if bid_qty == 0:

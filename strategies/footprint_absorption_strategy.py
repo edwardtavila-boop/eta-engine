@@ -168,22 +168,38 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         if gap < config.cooldown_seconds:
             return None
 
+    # Defensive: caller may have passed None for any of the diagnostic
+    # fields (e.g. one side of the book momentarily empty when the
+    # print arrived).  Coerce to safe numerics rather than crash.
+    print_size = float(latest.get("size") or 0.0)
+    if print_size <= 0:
+        return None
+    opp_qty_before = float(latest.get("opposite_qty_before") or 0.0)
+    opp_qty_after = float(latest.get("opposite_qty_after") or 0.0)
+    mid_before = float(latest.get("mid_before") or 0.0)
+    mid_after = float(latest.get("mid_after") or 0.0)
+    if mid_before <= 0 or mid_after <= 0:
+        # Without a valid mid we cannot test the price-band condition
+        # — fail-CLOSED (no signal) rather than fire on garbage.
+        return None
+
     # Compute z-score of latest print's size vs prior prints
-    history_sizes = [p["size"] for p in list(state.recent_prints)[-config.prints_lookback:-1]]
-    z = _z_score(latest["size"], history_sizes)
+    history_sizes = [float(p.get("size") or 0.0)
+                      for p in list(state.recent_prints)[-config.prints_lookback:-1]]
+    z = _z_score(print_size, history_sizes)
     if z < config.prints_size_z_min:
         return None
 
     # Check absorption: opposite-side visible qty did NOT drop much
-    qty_before = max(latest["opposite_qty_before"], 1)
-    qty_drop = qty_before - latest["opposite_qty_after"]
-    drop_fraction = qty_drop / max(latest["size"], 1)
+    qty_before = max(opp_qty_before, 1.0)
+    qty_drop = qty_before - opp_qty_after
+    drop_fraction = qty_drop / max(print_size, 1.0)
     if drop_fraction > config.absorption_ratio:
         # Book DID drop — not absorbed, just aggressed normally
         return None
 
     # Check price band: real absorption doesn't move price
-    price_move = abs(latest["mid_after"] - latest["mid_before"])
+    price_move = abs(mid_after - mid_before)
     band = config.absorb_price_band_ticks * config.tick_size
     if price_move > band:
         return None
@@ -195,8 +211,8 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         return None
 
     # Build signal — direction is OPPOSITE of aggressor (absorbed by hidden)
-    mid = latest["mid_after"]
-    aggressor = latest["side"]
+    mid = mid_after
+    aggressor = str(latest.get("side") or "").upper()
     if aggressor == "BUY":
         # Buy was absorbed by hidden seller → expect down move
         side = "SHORT"
@@ -221,7 +237,7 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         stop=round(stop, 4),
         target=round(target, 4),
         confidence=round(min(1.0, z / 5.0), 2),  # confidence scales with z-score
-        rationale=(f"footprint absorption: {aggressor}-print size={latest['size']:.0f} "
+        rationale=(f"footprint absorption: {aggressor}-print size={print_size:.0f} "
                    f"(z={z:.2f}) absorbed (opp_qty_drop={drop_fraction*100:.0f}% < "
                    f"{config.absorption_ratio*100:.0f}%, "
                    f"price_move={price_move:.4f} <= {band:.4f})"),
@@ -229,7 +245,7 @@ def evaluate_footprint(state: FootprintAbsorptionState,
         signal_id=signal_id,
         qty_contracts=1,  # hard-capped paper default
         symbol=symbol,
-        print_size=latest["size"],
+        print_size=print_size,
         print_z_score=round(z, 2),
         opposite_qty_drop_pct=round(drop_fraction * 100, 1),
     )

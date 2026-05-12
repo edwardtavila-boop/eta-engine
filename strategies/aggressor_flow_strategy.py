@@ -110,9 +110,16 @@ def compute_imbalance_ratio(bars: list[dict]) -> tuple[float, float, float]:
     """Return (ratio, sum_buy, sum_sell) over the bar window.
 
     ratio = (buy - sell) / total.  Range [-1.0, +1.0].
-    Returns (0, 0, 0) when total volume is zero (no signal)."""
-    sum_buy = sum(float(b.get("volume_buy", 0)) for b in bars)
-    sum_sell = sum(float(b.get("volume_sell", 0)) for b in bars)
+    Returns (0, 0, 0) when total volume is zero (no signal).
+
+    Defensive: bar_builder_l1 occasionally publishes bars where
+    volume_buy or volume_sell is explicitly None (one side of the
+    bar had zero qualifying prints).  ``dict.get(key, default)``
+    returns the default ONLY when the key is absent, so a present-
+    but-None value would crash float() — coerce with ``or 0.0``.
+    """
+    sum_buy = sum(float(b.get("volume_buy") or 0.0) for b in bars)
+    sum_sell = sum(float(b.get("volume_sell") or 0.0) for b in bars)
     total = sum_buy + sum_sell
     if total <= 0:
         return 0.0, sum_buy, sum_sell
@@ -166,8 +173,9 @@ def evaluate_bar(bar: dict, config: AggressorFlowConfig,
         state.consecutive_short_count = 0
         return None
 
-    bar_close = float(bar.get("close", 0.0))
-    bar_open = float(bar.get("open", 0.0))
+    # Defensive None coercion — see compute_imbalance_ratio docstring.
+    bar_close = float(bar.get("close") or 0.0)
+    bar_open = float(bar.get("open") or 0.0)
     bar_direction = "UP" if bar_close > bar_open else ("DOWN" if bar_close < bar_open else "FLAT")
 
     # LONG side
