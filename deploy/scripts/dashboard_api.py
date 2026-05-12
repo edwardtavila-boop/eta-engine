@@ -6840,6 +6840,46 @@ def _broker_bracket_audit_card_status(report: dict) -> str:
     return "YELLOW"
 
 
+def _broker_bracket_audit_endpoint_payload() -> dict:
+    """Read-only broker bracket audit payload for direct operator probes."""
+    now_ts = time.time()
+    live_broker_state = _live_broker_state_payload()
+    broker_oco_evidence = _broker_oco_evidence_payload(live_broker_state)
+    if isinstance(live_broker_state, dict):
+        live_broker_state = dict(live_broker_state)
+        live_broker_state["broker_oco_evidence"] = broker_oco_evidence
+
+    try:
+        rows = _supervisor_roster_rows(now_ts)
+    except Exception:  # noqa: BLE001 - direct broker safety endpoint must fail soft.
+        rows = []
+
+    broker_open_count: int | None = None
+    if isinstance(live_broker_state, dict):
+        observed_count = _float_value(live_broker_state.get("open_position_count"))
+        if observed_count is not None:
+            broker_open_count = int(observed_count)
+    target_exit_summary = _target_exit_summary(
+        rows,
+        broker_open_position_count=broker_open_count,
+        broker_bracket_required_position_count=_broker_bracket_required_position_count(
+            live_broker_state,
+        ),
+        broker_open_order_verified_bracket_count=int(
+            broker_oco_evidence.get("verified_count") or 0,
+        ),
+        server_ts=now_ts,
+    )
+    payload = _broker_bracket_audit_payload(
+        target_exit_summary=target_exit_summary,
+        live_broker_state=live_broker_state,
+    )
+    payload["source"] = "dashboard_api_direct_broker_bracket_audit"
+    payload["target_exit_summary"] = target_exit_summary
+    payload["broker_oco_evidence"] = broker_oco_evidence
+    return payload
+
+
 def _worst_card_status(*statuses: str) -> str:
     """Return the highest-severity card status."""
     severity = {"GREEN": 0, "YELLOW": 1, "RED": 2}
@@ -7919,6 +7959,16 @@ def live_position_exposure(response: Response) -> dict:
     if isinstance(embedded, dict):
         return embedded
     return _position_exposure_payload(live_state)
+
+
+@app.get("/api/jarvis/broker_bracket_audit")
+@app.get("/api/live/broker_bracket_audit")
+def broker_bracket_audit_status(response: Response) -> dict:
+    """Direct read-only broker-native OCO/bracket coverage audit."""
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return _broker_bracket_audit_endpoint_payload()
 
 
 @app.get("/api/live/per_bot_alpaca")

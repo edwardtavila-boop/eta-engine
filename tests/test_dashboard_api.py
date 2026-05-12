@@ -240,6 +240,57 @@ class TestDashboardAPI:
         assert "2 broker open" in summary["summary_line"]
         assert "2 missing bracket(s)" in summary["summary_line"]
 
+    def test_broker_bracket_audit_endpoint_reports_missing_oco(self, app_client, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+        from eta_engine.scripts import broker_bracket_audit
+
+        monkeypatch.setattr(
+            broker_bracket_audit,
+            "_adapter_support",
+            lambda: {
+                "ibkr_futures_server_oco": True,
+                "tradovate_order_payload_brackets": True,
+            },
+        )
+        monkeypatch.setattr(mod, "_supervisor_roster_rows", lambda _now_ts: [])
+        monkeypatch.setattr(
+            mod,
+            "_live_broker_state_payload",
+            lambda: {
+                "ready": True,
+                "open_position_count": 1,
+                "ibkr": {
+                    "ready": True,
+                    "open_position_count": 1,
+                    "open_positions": [
+                        {
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "avg_cost": 58662.59,
+                            "market_price": 29399.0,
+                            "market_value": 176394.0,
+                            "unrealized_pnl": -250.0,
+                        },
+                    ],
+                    "open_orders": [],
+                },
+            },
+        )
+
+        r = app_client.get("/api/jarvis/broker_bracket_audit")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["source"] == "dashboard_api_direct_broker_bracket_audit"
+        assert payload["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+        assert payload["ready_for_prop_dry_run"] is False
+        assert payload["operator_action_required"] is True
+        assert payload["position_summary"]["missing_bracket_count"] == 1
+        assert payload["primary_unprotected_position"]["symbol"] == "MNQM6"
+        assert payload["operator_actions"][0]["label"] == "Verify broker OCO coverage"
+        assert payload["target_exit_summary"]["missing_bracket_count"] == 1
+
     def test_target_exit_summary_counts_only_bracket_required_broker_exposure(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 
