@@ -313,6 +313,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">Non-DENIED verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
+  <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis/Hermes bridge</div></div>
   <div class="card"><h3>IBKR Gateway</h3><div class="stat" id="gatewayStatus">—</div><div class="sub" id="gatewayStatusSub"></div></div>
   <div class="card"><h3>Broker Router</h3><div class="stat" id="brokerRouterStatus">-</div><div class="sub" id="brokerRouterSub"></div></div>
   <div class="card"><h3>Bracket Audit</h3><div class="stat" id="bracketAuditStatus">-</div><div class="sub" id="bracketAuditSub">broker OCO coverage</div></div>
@@ -450,6 +451,8 @@ const FLEET_EQUITY_API = '/api/fleet-equity?range=all&normalize=1&since_days=7';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
+const DASHBOARD_DIAGNOSTICS_TIMEOUT_MS = 7000;
+const VPS_ROOT_RECONCILIATION_TIMEOUT_MS = 5000;
 let hasRendered = false;
 let loadInFlight = false;
 let selectedCloseHistoryWindow = 'mtd';
@@ -1779,8 +1782,8 @@ async function fetchData() {
       fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
-      fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), AUX_FETCH_TIMEOUT_MS),
-      fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), AUX_FETCH_TIMEOUT_MS),
+      fetchJson(endpointCandidates(DASHBOARD_DIAGNOSTICS_API), DASHBOARD_DIAGNOSTICS_TIMEOUT_MS),
+      fetchJson(endpointCandidates(VPS_ROOT_RECONCILIATION_API), VPS_ROOT_RECONCILIATION_TIMEOUT_MS),
       fetchJson(endpointCandidates(FLEET_EQUITY_API), AUX_FETCH_TIMEOUT_MS)
     ]);
     if (!data) { showOffline(!hasRendered); return; }
@@ -1808,7 +1811,7 @@ function showOffline(clearDashboard = true) {
     updateClock();
     return;
   }
-  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
+  ['totalBots','activeBots','todayPnl','totalPnl','cumulativeR','totalTrades','winRate','approvedCount','jarvisMode','adminAiStatus','gatewayStatus','brokerRouterStatus','bracketAuditStatus','paperLiveStatus','operatorQueueStatus','signalCadenceStatus','opsProxyStatus','opsWatchdogStatus','vpsRootStatus','riskLevel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = '—';
   });
@@ -1818,6 +1821,8 @@ function showOffline(clearDashboard = true) {
   if (bracketAuditSub) bracketAuditSub.textContent = '';
   const gatewaySub = document.getElementById('gatewayStatusSub');
   if (gatewaySub) gatewaySub.textContent = '';
+  const adminAiSub = document.getElementById('adminAiSub');
+  if (adminAiSub) adminAiSub.textContent = '';
   const paperLiveSub = document.getElementById('paperLiveSub');
   if (paperLiveSub) paperLiveSub.textContent = '';
   const operatorQueueSub = document.getElementById('operatorQueueSub');
@@ -2663,6 +2668,41 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('opsWatchdogStatus').textContent = commandWatchdogLabels[commandWatchdogStatus] || commandWatchdogStatus.toUpperCase();
   document.getElementById('opsWatchdogStatus').className = 'stat ' + (commandWatchdogClasses[commandWatchdogStatus] || 'yellow');
   document.getElementById('opsWatchdogSub').textContent = compactText(commandWatchdogDetail);
+
+  const opsHardening = diagnostics?.vps_ops_hardening || {};
+  const adminAi = opsHardening?.jarvis_hermes_admin_ai || {};
+  const adminStatus = String(adminAi.status || opsHardening.summary?.admin_ai_status || 'unknown').toLowerCase();
+  const adminReady = adminAi.ready === true || opsHardening.summary?.admin_ai_ready === true;
+  const adminLabels = {
+    pass: 'Ready',
+    ready: 'Ready',
+    warn: 'Review',
+    blocked: 'Blocked',
+    missing: 'Missing',
+    unreadable: 'Review',
+    invalid: 'Review',
+    unknown: 'Unknown',
+  };
+  const adminClasses = {
+    pass: 'green',
+    ready: 'green',
+    warn: 'yellow',
+    blocked: 'red',
+    missing: 'yellow',
+    unreadable: 'yellow',
+    invalid: 'yellow',
+    unknown: 'yellow',
+  };
+  const adminActions = Array.isArray(adminAi.next_actions) ? adminAi.next_actions : [];
+  const hardeningAge = formatAgeSeconds(opsHardening.age_s);
+  const adminDetail = adminActions[0]
+    || (adminReady ? 'Jarvis/Hermes admin bridge audit passed' : 'waiting for VPS hardening audit');
+  document.getElementById('adminAiStatus').textContent = adminLabels[adminStatus] || adminStatus.toUpperCase();
+  document.getElementById('adminAiStatus').className = 'stat ' + (adminClasses[adminStatus] || 'yellow');
+  document.getElementById('adminAiSub').textContent = compactText(
+    `${opsHardening.status || 'unknown'}; ${adminDetail}; ${hardeningAge}`,
+    145,
+  );
 
   const maxDD = Math.max(...bots.map(b => b.max_dd || 0), 0);
   let risk = maxDD > 1000 ? 'High' : maxDD > 100 ? 'Medium' : 'Low';

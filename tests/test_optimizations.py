@@ -258,10 +258,15 @@ class TestStatusPage:
         assert "const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';" in html
         assert "command_center_watchdog" in html
         assert "Ops Watchdog" in html
+        assert "Admin AI" in html
+        assert "adminAiStatus" in html
+        assert "vps_ops_hardening" in html
         assert "endpointCandidates(" in html
         assert "cache: 'no-store'" in html
         assert "FETCH_TIMEOUT_MS" in html
         assert "AUX_FETCH_TIMEOUT_MS" in html
+        assert "DASHBOARD_DIAGNOSTICS_TIMEOUT_MS" in html
+        assert "VPS_ROOT_RECONCILIATION_TIMEOUT_MS" in html
         assert "AbortController" in html
         assert "Promise.any" in html
         assert "loadInFlight" in html
@@ -587,6 +592,8 @@ class TestStatusPage:
         assert "api_build" in supercharge
         assert "bot_fleet" in supercharge
         assert "equity" in supercharge
+        assert "vps_ops" in supercharge
+        assert "admin_ai" in supercharge
         assert "/api/fleet-equity" in supercharge
         assert "eta-command-center-diagnostics" in supercharge
 

@@ -785,6 +785,8 @@ function initCommandCenterDiagnostics() {
     const cards = latest.cards?.summary || {};
     const botFleet = latest.bot_fleet || {};
     const equity = latest.equity || {};
+    const opsHardening = latest.vps_ops_hardening || {};
+    const adminAi = opsHardening.jarvis_hermes_admin_ai || {};
     const service = latest.service || {};
     const paths = latest.paths || {};
     body.innerHTML = [
@@ -793,6 +795,8 @@ function initCommandCenterDiagnostics() {
       row('cards', `${cards.total || 0} total / ${cards.dead || 0} dead / ${cards.stale || 0} stale`),
       row('bot_fleet', `${botFleet.confirmed_bots || 0}/${botFleet.bot_total || 0} confirmed - ${botFleet.truth_status || 'unknown'}`),
       row('equity', `${equity.source || 'unknown'} points:${equity.point_count || 0} age:${equity.source_age_s ?? 'n/a'}s`),
+      row('vps_ops', `${opsHardening.status || 'unknown'} age:${opsHardening.age_s ?? 'n/a'}s`),
+      row('admin_ai', `${adminAi.status || 'unknown'} ready:${adminAi.ready === true ? 'yes' : 'no'}`),
       row('state_dir', paths.state_dir || 'unknown'),
       row('generated', latest.generated_at || 'unknown'),
     ].join('');
@@ -817,6 +821,7 @@ function initCommandCenterDiagnostics() {
         api_build: payload.api_build,
         bot_fleet: botFleet,
         equity,
+        vps_ops_hardening: payload.vps_ops_hardening,
         checks,
       },
     }));

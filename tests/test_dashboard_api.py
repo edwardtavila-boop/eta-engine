@@ -1053,6 +1053,58 @@ class TestDashboardAPI:
             "unknown",
         }
         assert data["checks"]["eta_readiness_snapshot_contract"] is True
+        assert "vps_ops_hardening" in data
+        assert data["checks"]["vps_ops_hardening_contract"] is True
+
+    def test_dashboard_diagnostics_includes_vps_ops_admin_ai(self, app_client, tmp_path):
+        state = tmp_path / "state"
+        generated_at = datetime.now(UTC).isoformat()
+        (state / "vps_ops_hardening_latest.json").write_text(
+            json.dumps(
+                {
+                    "generated_at_utc": generated_at,
+                    "summary": {
+                        "status": "YELLOW_SAFETY_BLOCKED",
+                        "runtime_ready": True,
+                        "dashboard_durable": False,
+                        "trading_gate_ready": False,
+                        "admin_ai_ready": False,
+                        "admin_ai_status": "WARN",
+                        "promotion_allowed": False,
+                        "order_action_allowed": False,
+                    },
+                    "safety_gates": {
+                        "jarvis_hermes_admin_ai": {
+                            "status": "WARN",
+                            "ready": False,
+                            "warned": 1,
+                            "blocked": 0,
+                            "next_actions": ["Review bridge_plan_tasks: T17 wave pending"],
+                        }
+                    },
+                    "next_actions": ["Keep paper soak blocked until gates pass"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        hardening = data["vps_ops_hardening"]
+        assert hardening["status"] == "YELLOW_SAFETY_BLOCKED"
+        assert hardening["ready"] is False
+        assert hardening["summary"]["admin_ai_status"] == "WARN"
+        assert hardening["summary"]["promotion_allowed"] is False
+        assert hardening["summary"]["order_action_allowed"] is False
+        assert hardening["jarvis_hermes_admin_ai"]["status"] == "WARN"
+        assert hardening["jarvis_hermes_admin_ai"]["ready"] is False
+        assert hardening["jarvis_hermes_admin_ai"]["next_actions"] == [
+            "Review bridge_plan_tasks: T17 wave pending"
+        ]
+        assert hardening["age_s"] is not None
+        assert data["checks"]["vps_ops_hardening_contract"] is True
 
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")

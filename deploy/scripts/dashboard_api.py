@@ -840,6 +840,7 @@ def _dashboard_diagnostics_payload() -> dict:
     dashboard_proxy_watchdog = _dashboard_proxy_watchdog_payload(server_ts=server_ts)
     command_center_watchdog = _command_center_watchdog_payload(server_ts=server_ts)
     eta_readiness_snapshot = _eta_readiness_snapshot_payload(server_ts=server_ts)
+    vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
 
     try:
         roster = bot_fleet_roster(Response(), since_days=1)
@@ -1032,6 +1033,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
         "command_center_watchdog": command_center_watchdog,
         "eta_readiness_snapshot": eta_readiness_snapshot,
+        "vps_ops_hardening": vps_ops_hardening,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -1069,6 +1071,23 @@ def _dashboard_diagnostics_payload() -> dict:
                 "blocked",
                 "missing_receipt",
                 "stale_receipt",
+                "unknown",
+            },
+            "vps_ops_hardening_contract": vps_ops_hardening.get("status")
+            in {
+                "PASS",
+                "WARN",
+                "BLOCKED",
+                "GREEN_READY_FOR_SOAK",
+                "RED_RUNTIME_DEGRADED",
+                "YELLOW_RESTART_REQUIRED",
+                "YELLOW_DURABILITY_GAP",
+                "YELLOW_SAFETY_BLOCKED",
+                "YELLOW_ADMIN_AI_BLOCKED",
+                "YELLOW_ADMIN_AI_PENDING",
+                "missing",
+                "unreadable",
+                "invalid",
                 "unknown",
             },
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
@@ -1270,6 +1289,108 @@ def _bot_strategy_readiness_snapshot_path() -> Path:
     if explicit:
         return Path(explicit)
     return _state_dir() / _DEFAULT_BOT_STRATEGY_READINESS_SNAPSHOT.name
+
+
+def _vps_ops_hardening_audit_path() -> Path:
+    """Latest read-only VPS hardening audit surfaced into diagnostics."""
+    explicit = os.environ.get("ETA_VPS_OPS_HARDENING_AUDIT_PATH")
+    if explicit:
+        return Path(explicit)
+    return _state_dir() / "vps_ops_hardening_latest.json"
+
+
+def _iso_age_s(value: object, *, server_ts: float) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return max(0.0, server_ts - parsed.timestamp())
+
+
+def _vps_ops_hardening_payload(*, server_ts: float) -> dict:
+    """Fail-soft summary of VPS hardening gates for the dashboard."""
+    path = _vps_ops_hardening_audit_path()
+    if not path.exists():
+        return {
+            "status": "missing",
+            "ready": False,
+            "path": str(path),
+            "summary": {},
+            "jarvis_hermes_admin_ai": {"status": "missing", "ready": False, "next_actions": []},
+            "next_actions": ["Run eta_engine.scripts.vps_ops_hardening_audit --json-out"],
+            "age_s": None,
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "status": "unreadable",
+            "ready": False,
+            "path": str(path),
+            "summary": {},
+            "jarvis_hermes_admin_ai": {
+                "status": "unreadable",
+                "ready": False,
+                "next_actions": [str(exc)],
+            },
+            "next_actions": [f"Refresh unreadable VPS hardening audit: {exc}"],
+            "age_s": None,
+        }
+    if not isinstance(payload, dict):
+        return {
+            "status": "invalid",
+            "ready": False,
+            "path": str(path),
+            "summary": {},
+            "jarvis_hermes_admin_ai": {"status": "invalid", "ready": False, "next_actions": []},
+            "next_actions": ["Refresh invalid VPS hardening audit JSON"],
+            "age_s": None,
+        }
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    gates = payload.get("safety_gates") if isinstance(payload.get("safety_gates"), dict) else {}
+    admin_gate = gates.get("jarvis_hermes_admin_ai")
+    if not isinstance(admin_gate, dict):
+        admin_gate = {
+            "status": str(summary.get("admin_ai_status") or "unknown"),
+            "ready": bool(summary.get("admin_ai_ready")),
+            "next_actions": [],
+        }
+    generated_at = payload.get("generated_at_utc") or payload.get("generated_at")
+    return {
+        "status": str(summary.get("status") or payload.get("status") or "unknown"),
+        "ready": bool(
+            summary.get("runtime_ready")
+            and summary.get("dashboard_durable")
+            and summary.get("trading_gate_ready")
+            and summary.get("admin_ai_ready")
+        ),
+        "path": str(path),
+        "generated_at": generated_at,
+        "age_s": _iso_age_s(generated_at, server_ts=server_ts),
+        "summary": {
+            "runtime_ready": bool(summary.get("runtime_ready")),
+            "dashboard_durable": bool(summary.get("dashboard_durable")),
+            "trading_gate_ready": bool(summary.get("trading_gate_ready")),
+            "admin_ai_ready": bool(summary.get("admin_ai_ready")),
+            "admin_ai_status": str(summary.get("admin_ai_status") or "unknown"),
+            "promotion_allowed": bool(summary.get("promotion_allowed")),
+            "order_action_allowed": bool(summary.get("order_action_allowed")),
+        },
+        "jarvis_hermes_admin_ai": {
+            "status": str(admin_gate.get("status") or "unknown"),
+            "ready": bool(admin_gate.get("ready")),
+            "blocked": int(admin_gate.get("blocked") or 0),
+            "warned": int(admin_gate.get("warned") or 0),
+            "next_actions": admin_gate.get("next_actions")
+            if isinstance(admin_gate.get("next_actions"), list)
+            else [],
+        },
+        "next_actions": payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else [],
+    }
 
 
 def _bot_strategy_readiness_rows_by_bot() -> dict[str, dict]:
