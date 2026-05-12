@@ -186,6 +186,124 @@ def _call_trace_tail(n: int) -> list[dict[str, Any]]:
     return trace_emitter.tail(n=n)
 
 
+# Stream → file mapping for jarvis_subscribe_events. New streams can be
+# added here without changing the tool surface. Keys are the user-facing
+# stream names accepted by the tool; values are absolute Paths.
+_EVENT_STREAMS: dict[str, Path] = {
+    "trace": _STATE_ROOT / "jarvis_trace.jsonl",
+    "dashboard": _STATE_ROOT / "dashboard_events.jsonl",
+    "decisions": _STATE_ROOT / "decision_journal.jsonl",
+    "kaizen": _STATE_ROOT / "kaizen_actions.jsonl",
+    "hermes": _AUDIT_LOG_PATH,  # what THIS server writes
+    "jarvis_v3": _STATE_ROOT / "jarvis_v3_events.jsonl",
+    "uptime": _STATE_ROOT / "uptime_events.jsonl",
+}
+
+
+def _call_subscribe_events(
+    stream: str, offset: int, limit: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Read new event records from a JSONL stream past a byte offset.
+
+    Routes ``stream="trace"`` through trace_emitter.read_since (which
+    knows about rotation). All other streams use a thin inline reader
+    that skips malformed lines and stops at the last newline boundary.
+    Unknown stream names return ``([], offset)`` so the cursor is preserved.
+    """
+    path = _EVENT_STREAMS.get(stream)
+    if path is None:
+        return [], offset
+    if stream == "trace":
+        from eta_engine.brain.jarvis_v3 import trace_emitter
+        return trace_emitter.read_since(offset=offset, limit=limit, path=path)
+
+    # Inline reader for non-rotating streams. Same partial-line guard
+    # as trace_emitter.read_since but without the rotation reset path.
+    try:
+        if not path.exists():
+            return [], 0
+        file_size = path.stat().st_size
+        if offset < 0:
+            offset = 0
+        if offset > file_size:  # stream truncated or replaced
+            offset = 0
+        if offset == file_size:
+            return [], file_size
+        with path.open("rb") as fh:
+            fh.seek(offset)
+            data = fh.read(4 * 1024 * 1024)
+        if not data:
+            return [], offset
+        if data.endswith(b"\n"):
+            usable = data
+        else:
+            last_nl = data.rfind(b"\n")
+            if last_nl < 0:
+                return [], offset
+            usable = data[: last_nl + 1]
+        advance_to = offset
+        records: list[dict[str, Any]] = []
+        for line in usable.splitlines(keepends=True):
+            advance_to += len(line)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line.decode("utf-8", errors="replace")))
+            except json.JSONDecodeError:
+                continue
+            if len(records) >= limit:
+                break
+        return records, advance_to
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("subscribe_events read failed (stream=%s): %s", stream, exc)
+        return [], offset
+
+
+def _apply_event_filters(
+    records: list[dict[str, Any]], filters: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Lightweight filter pass — kept tiny so it can't error on malformed data.
+
+    Supported filter keys:
+      * ``bot_id`` — exact match on the record's ``bot_id`` field.
+      * ``action`` — exact match on the record's ``action`` field.
+      * ``min_severity`` — keep records with ``severity >= N``.
+      * ``contains`` — substring match on JSON-dumped record (case-insensitive).
+    Unknown filter keys are ignored.
+    """
+    if not filters:
+        return records
+    out: list[dict[str, Any]] = []
+    bot_id = filters.get("bot_id")
+    action = filters.get("action")
+    min_sev = filters.get("min_severity")
+    contains = filters.get("contains")
+    contains_lc = str(contains).lower() if contains else None
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        if bot_id and rec.get("bot_id") != bot_id:
+            continue
+        if action and rec.get("action") != action:
+            continue
+        if min_sev is not None:
+            try:
+                if int(rec.get("severity", 0)) < int(min_sev):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        if contains_lc:
+            try:
+                blob = json.dumps(rec, default=str).lower()
+            except (TypeError, ValueError):
+                continue
+            if contains_lc not in blob:
+                continue
+        out.append(rec)
+    return out
+
+
 def _call_wiring_audit() -> list[Any]:
     from eta_engine.scripts import jarvis_wiring_audit
     return jarvis_wiring_audit.audit()
@@ -436,6 +554,38 @@ def list_tools() -> list[dict[str, Any]]:
                 "required": ["consult_id"],
             },
         },
+        {
+            "name": "jarvis_subscribe_events",
+            "description": (
+                "Poll a JARVIS event stream past a byte offset and return any "
+                "new records. Cursor-based — pass next_offset from the previous "
+                "response on every tick. Streams: trace (consult records), "
+                "dashboard, decisions, kaizen, hermes (audit), jarvis_v3, uptime."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "stream": {
+                        "type": "string",
+                        "default": "trace",
+                        "enum": [
+                            "trace", "dashboard", "decisions", "kaizen",
+                            "hermes", "jarvis_v3", "uptime",
+                        ],
+                    },
+                    "since_offset": {"type": "integer", "default": 0},
+                    "limit": {"type": "integer", "default": 50},
+                    "filters": {
+                        "type": "object",
+                        "description": (
+                            "Optional. Keys: bot_id (str), action (str), "
+                            "min_severity (int), contains (substring, case-insensitive)."
+                        ),
+                    },
+                },
+            },
+        },
     ]
 
 
@@ -626,6 +776,58 @@ def _tool_kill_switch(args: dict[str, Any]) -> dict[str, Any]:
     return {"status": "APPLIED", "killed_at": killed_at, "scope": "all"}
 
 
+def _tool_subscribe_events(args: dict[str, Any]) -> dict[str, Any]:
+    """Poll one of the JARVIS event streams from ``since_offset`` onward.
+
+    Returns ``{events, next_offset, stream, file_size, exhausted}``.
+
+    * ``next_offset`` is the byte position the caller should pass back
+      on the next poll. If ``events`` is empty and ``exhausted`` is True,
+      there is nothing new yet and the caller should sleep before polling
+      again. Hermes's skill wraps this in a 1–3s polling loop.
+    * ``file_size`` lets the caller detect catch-up state (when
+      ``next_offset == file_size`` the stream is fully consumed at this moment).
+    """
+    stream = str(args.get("stream", "trace") or "trace")
+    if stream not in _EVENT_STREAMS:
+        return {
+            "events": [],
+            "next_offset": 0,
+            "stream": stream,
+            "file_size": 0,
+            "exhausted": True,
+            "error": f"unknown_stream:{stream}",
+        }
+    try:
+        since_offset = int(args.get("since_offset", 0) or 0)
+    except (TypeError, ValueError):
+        since_offset = 0
+    try:
+        limit = int(args.get("limit", 50) or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    filters = args.get("filters") or {}
+    if not isinstance(filters, dict):
+        filters = {}
+
+    records, next_offset = _call_subscribe_events(stream, since_offset, limit)
+    if filters:
+        records = _apply_event_filters(records, filters)
+
+    file_path = _EVENT_STREAMS[stream]
+    try:
+        file_size = file_path.stat().st_size if file_path.exists() else 0
+    except OSError:
+        file_size = next_offset
+    return {
+        "events": records,
+        "next_offset": next_offset,
+        "stream": stream,
+        "file_size": file_size,
+        "exhausted": next_offset >= file_size,
+    }
+
+
 def _tool_explain_verdict(args: dict[str, Any]) -> dict[str, Any]:
     consult_id = str(args.get("consult_id", ""))
     if not consult_id:
@@ -655,6 +857,7 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "jarvis_retire_strategy": _tool_retire_strategy,
     "jarvis_kill_switch": _tool_kill_switch,
     "jarvis_explain_verdict": _tool_explain_verdict,
+    "jarvis_subscribe_events": _tool_subscribe_events,
 }
 
 

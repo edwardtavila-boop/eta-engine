@@ -190,3 +190,96 @@ def tail(n: int = 20, path: Path | None = None) -> list[dict]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("trace_emitter.tail failed: %s", exc)
         return []
+
+
+def read_since(
+    offset: int,
+    limit: int = 100,
+    path: Path | None = None,
+) -> tuple[list[dict], int]:
+    """Read records appended after a byte offset, returning new records + next offset.
+
+    Powers Hermes Agent's "subscribe to events" polling loop without
+    requiring a real push channel. The client passes back the previous
+    ``next_offset`` on every tick; the server returns whatever is newer.
+
+    Behaviour:
+      * ``offset < 0``: clamped to 0.
+      * ``offset >= file_size``: caller is already caught up — returns
+        ``([], file_size)``. No-op, cheap.
+      * Active file rotated since last poll (``offset > file_size``):
+        reset to 0 and return whatever's in the new (smaller) file.
+        Caller loses no data because the rotated copy is preserved on
+        disk as ``jarvis_trace_<stamp>.jsonl.gz``.
+      * Partial trailing line (write race): the partial line stays in
+        the buffer; the new offset stops at the last newline so the
+        next poll picks it up cleanly.
+      * Missing file: ``([], 0)`` — equivalent to "stream not started".
+      * Malformed JSON line: skipped, but the offset still advances
+        past it (we don't want to spin on a corrupted record).
+
+    NEVER raises. On unexpected error, logs and returns ``([], offset)``
+    so the caller's cursor is preserved.
+    """
+    target = _resolve_path(path)
+    if limit <= 0:
+        limit = 100
+    if offset < 0:
+        offset = 0
+    try:
+        if not target.exists():
+            return [], 0
+        file_size = target.stat().st_size
+
+        # File rotated away under us: rotated file is gzipped to a
+        # sibling, active file restarted from zero. Reset cursor.
+        # (offset > file_size only happens when active file shrank.)
+        if offset > file_size:
+            offset = 0
+
+        # Caught up - no new data.
+        if offset == file_size:
+            return [], file_size
+
+        with target.open("rb") as fh:
+            fh.seek(offset)
+            # Read up to ~4 MB at a time so a giant trace doesn't OOM
+            # a poll. The remainder will come on the next call.
+            chunk_cap = 4 * 1024 * 1024
+            data = fh.read(chunk_cap)
+
+        if not data:
+            return [], offset
+
+        # Split on byte newlines so the cursor can advance only through
+        # records actually returned. This prevents limit=2 from skipping
+        # events 3..N in the same chunk.
+        if data.endswith(b"\n"):
+            usable = data
+        else:
+            last_nl = data.rfind(b"\n")
+            if last_nl < 0:
+                # Whole chunk is a partial line - caller will retry.
+                return [], offset
+            usable = data[: last_nl + 1]
+
+        advance_to = offset
+        records: list[dict] = []
+        for line in usable.splitlines(keepends=True):
+            advance_to += len(line)
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                records.append(json.loads(stripped.decode("utf-8", errors="replace")))
+            except json.JSONDecodeError:
+                # Skip malformed line - best-effort, cursor still advances.
+                continue
+            if len(records) >= limit:
+                break
+
+        return records, advance_to
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trace_emitter.read_since failed: %s", exc)
+        return [], offset

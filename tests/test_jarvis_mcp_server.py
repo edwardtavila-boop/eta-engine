@@ -474,12 +474,16 @@ def test_handler_exception_returns_envelope_not_raise(
 
 
 # ---------------------------------------------------------------------------
-# 12. Tool registry has all 11 tools
+# 12. Tool registry has all 12 tools
 # ---------------------------------------------------------------------------
 
 
-def test_tool_registry_has_all_11_tools() -> None:
-    """list_tools() exposes exactly the documented 11 tool names."""
+def test_tool_registry_has_all_12_tools() -> None:
+    """list_tools() exposes exactly the documented 12 tool names.
+
+    Bumped 11 → 12 on 2026-05-12 when jarvis_subscribe_events was added
+    (Track 1: real-time event stream for Hermes Agent).
+    """
     from eta_engine.mcp_servers import jarvis_mcp_server
 
     expected = {
@@ -494,7 +498,117 @@ def test_tool_registry_has_all_11_tools() -> None:
         "jarvis_retire_strategy",
         "jarvis_kill_switch",
         "jarvis_explain_verdict",
+        "jarvis_subscribe_events",
     }
     declared = {t["name"] for t in jarvis_mcp_server.list_tools()}
     assert declared == expected, f"missing={expected - declared} extras={declared - expected}"
-    assert len(declared) == 11
+    assert len(declared) == 12
+
+
+# ---------------------------------------------------------------------------
+# 13. jarvis_subscribe_events (Track 1: real-time event stream)
+# ---------------------------------------------------------------------------
+
+
+def test_subscribe_events_polls_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two-poll cursor pattern: first sees existing, second sees only new."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_trace = tmp_path / "jarvis_trace.jsonl"
+    streams = {**jarvis_mcp_server._EVENT_STREAMS, "trace": fake_trace}
+    monkeypatch.setattr(jarvis_mcp_server, "_EVENT_STREAMS", streams)
+
+    with fake_trace.open("w", encoding="utf-8") as fh:
+        fh.write('{"consult_id":"a","bot_id":"bot1"}\n')
+        fh.write('{"consult_id":"b","bot_id":"bot2"}\n')
+
+    r1 = jarvis_mcp_server._tool_subscribe_events(
+        {"stream": "trace", "since_offset": 0},
+    )
+    assert [e["consult_id"] for e in r1["events"]] == ["a", "b"]
+    assert r1["exhausted"] is True
+    assert r1["next_offset"] == r1["file_size"]
+
+    # Append a third record after first poll.
+    with fake_trace.open("a", encoding="utf-8") as fh:
+        fh.write('{"consult_id":"c","bot_id":"bot1"}\n')
+
+    r2 = jarvis_mcp_server._tool_subscribe_events(
+        {"stream": "trace", "since_offset": r1["next_offset"]},
+    )
+    assert [e["consult_id"] for e in r2["events"]] == ["c"]
+
+
+def test_subscribe_events_applies_bot_id_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """filters.bot_id keeps only matching records; cursor still advances past all."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_trace = tmp_path / "jarvis_trace.jsonl"
+    streams = {**jarvis_mcp_server._EVENT_STREAMS, "trace": fake_trace}
+    monkeypatch.setattr(jarvis_mcp_server, "_EVENT_STREAMS", streams)
+
+    with fake_trace.open("w", encoding="utf-8") as fh:
+        fh.write('{"consult_id":"a","bot_id":"alpha"}\n')
+        fh.write('{"consult_id":"b","bot_id":"beta"}\n')
+        fh.write('{"consult_id":"c","bot_id":"alpha"}\n')
+
+    out = jarvis_mcp_server._tool_subscribe_events(
+        {
+            "stream": "trace",
+            "since_offset": 0,
+            "filters": {"bot_id": "alpha"},
+        },
+    )
+    assert [e["consult_id"] for e in out["events"]] == ["a", "c"]
+
+
+def test_subscribe_events_limit_does_not_skip_inline_stream_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-trace streams keep the cursor after the last returned record."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    fake_dashboard = tmp_path / "dashboard_events.jsonl"
+    streams = {**jarvis_mcp_server._EVENT_STREAMS, "dashboard": fake_dashboard}
+    monkeypatch.setattr(jarvis_mcp_server, "_EVENT_STREAMS", streams)
+
+    with fake_dashboard.open("w", encoding="utf-8") as fh:
+        fh.write('{"event":"a"}\n')
+        fh.write('{"event":"b"}\n')
+        fh.write('{"event":"c"}\n')
+
+    first = jarvis_mcp_server._tool_subscribe_events(
+        {"stream": "dashboard", "since_offset": 0, "limit": 2},
+    )
+    assert [e["event"] for e in first["events"]] == ["a", "b"]
+    assert first["next_offset"] < first["file_size"]
+
+    second = jarvis_mcp_server._tool_subscribe_events(
+        {
+            "stream": "dashboard",
+            "since_offset": first["next_offset"],
+            "limit": 10,
+        },
+    )
+    assert [e["event"] for e in second["events"]] == ["c"]
+    assert second["next_offset"] == second["file_size"]
+
+
+def test_subscribe_events_unknown_stream_returns_error_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown stream name returns an error field but does not raise."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    monkeypatch.setattr(jarvis_mcp_server, "_EVENT_STREAMS", {"trace": tmp_path / "t.jsonl"})
+
+    out = jarvis_mcp_server._tool_subscribe_events(
+        {"stream": "not_a_real_stream", "since_offset": 0},
+    )
+    assert out["events"] == []
+    assert "error" in out
+    assert "unknown_stream" in out["error"]

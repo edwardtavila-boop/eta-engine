@@ -165,3 +165,127 @@ def test_record_default_factory() -> None:
     assert rec.final_size == 0.0
     assert rec.block_reason is None
     assert rec.elapsed_ms == 0.0
+
+
+# ---------------------------------------------------------------------------
+# read_since() — cursor-based subscribe path used by jarvis_subscribe_events
+# ---------------------------------------------------------------------------
+
+
+def test_read_since_returns_empty_when_caught_up(tmp_path: Path) -> None:
+    """offset == file_size → ([], file_size). No-op poll, no records returned."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    for i in range(3):
+        trace_emitter.emit(
+            trace_emitter.TraceRecord(consult_id=f"c{i}", bot_id=f"b{i}"),
+            path=path,
+        )
+    file_size = path.stat().st_size
+    records, next_offset = trace_emitter.read_since(offset=file_size, path=path)
+    assert records == []
+    assert next_offset == file_size
+
+
+def test_read_since_returns_new_records_after_offset(tmp_path: Path) -> None:
+    """Cursor pattern: poll, emit, poll again — second poll sees only new records."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    # First batch
+    trace_emitter.emit(trace_emitter.TraceRecord(consult_id="c0"), path=path)
+    trace_emitter.emit(trace_emitter.TraceRecord(consult_id="c1"), path=path)
+
+    # First poll from offset=0 sees both
+    records, offset_after_first = trace_emitter.read_since(offset=0, path=path)
+    ids_first = [r["consult_id"] for r in records]
+    assert ids_first == ["c0", "c1"]
+    assert offset_after_first == path.stat().st_size
+
+    # Second batch added after the first poll
+    trace_emitter.emit(trace_emitter.TraceRecord(consult_id="c2"), path=path)
+    trace_emitter.emit(trace_emitter.TraceRecord(consult_id="c3"), path=path)
+
+    # Second poll only sees the new ones
+    records, offset_after_second = trace_emitter.read_since(
+        offset=offset_after_first, path=path,
+    )
+    ids_second = [r["consult_id"] for r in records]
+    assert ids_second == ["c2", "c3"]
+    assert offset_after_second == path.stat().st_size
+
+
+def test_read_since_handles_missing_file(tmp_path: Path) -> None:
+    """Missing file → ([], 0). Doesn't raise."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    records, offset = trace_emitter.read_since(
+        offset=42, path=tmp_path / "does_not_exist.jsonl",
+    )
+    assert records == []
+    assert offset == 0
+
+
+def test_read_since_handles_partial_trailing_line(tmp_path: Path) -> None:
+    """Partial line (no trailing newline) is not consumed; cursor stops at last newline."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    # Write one complete line plus an incomplete fragment.
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write('{"consult_id":"complete"}\n')
+        fh.write('{"consult_id":"partial')  # missing closing brace + newline
+
+    records, next_offset = trace_emitter.read_since(offset=0, path=path)
+    assert len(records) == 1
+    assert records[0]["consult_id"] == "complete"
+    # Cursor must NOT advance past the partial fragment.
+    assert next_offset < path.stat().st_size
+
+
+def test_read_since_resets_when_file_rotated(tmp_path: Path) -> None:
+    """offset > file_size (file was rotated/truncated) → reset to 0, return what's there."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    trace_emitter.emit(trace_emitter.TraceRecord(consult_id="fresh"), path=path)
+    fake_old_offset = path.stat().st_size + 99999  # caller's stale cursor from before rotation
+
+    records, next_offset = trace_emitter.read_since(offset=fake_old_offset, path=path)
+    assert len(records) == 1
+    assert records[0]["consult_id"] == "fresh"
+    assert next_offset == path.stat().st_size
+
+
+def test_read_since_skips_malformed_but_advances(tmp_path: Path) -> None:
+    """Garbage line is skipped from the returned list but doesn't stall the cursor."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write("not-json garbage\n")
+        fh.write('{"consult_id":"good"}\n')
+
+    records, next_offset = trace_emitter.read_since(offset=0, path=path)
+    assert len(records) == 1
+    assert records[0]["consult_id"] == "good"
+    assert next_offset == path.stat().st_size
+
+
+def test_read_since_respects_limit(tmp_path: Path) -> None:
+    """limit caps one poll without skipping unreturned records."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    for i in range(5):
+        trace_emitter.emit(trace_emitter.TraceRecord(consult_id=f"c{i}"), path=path)
+
+    records, next_offset = trace_emitter.read_since(offset=0, limit=2, path=path)
+    assert [r["consult_id"] for r in records] == ["c0", "c1"]
+
+    more_records, final_offset = trace_emitter.read_since(
+        offset=next_offset, limit=10, path=path,
+    )
+    assert [r["consult_id"] for r in more_records] == ["c2", "c3", "c4"]
+    assert final_offset == path.stat().st_size
