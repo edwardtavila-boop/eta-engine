@@ -1,0 +1,55 @@
+# Hermes Agent — VPS production config.
+# Pinned to DeepSeek; exposes the JARVIS MCP server; opens a local API
+# on 127.0.0.1:8642 so the operator's Hermes-desktop GUI can connect
+# over an SSH tunnel.
+
+model:
+  default: "deepseek-chat"
+  provider: "custom"
+  base_url: "https://api.deepseek.com/v1"
+  # Inline key so the api_key resolution path doesn't depend on .env
+  # being readable by the spawned subprocess. Token also lives in
+  # DEEPSEEK_API_KEY env var as a fallback.
+  api_key: "${env:DEEPSEEK_API_KEY}"
+
+# Auxiliary client (tool-call summaries, vision, compression).
+# Use main provider so we never auto-detect to Anthropic via env scan.
+auxiliary:
+  provider: "main"
+  model: "deepseek-chat"
+
+# Local API server — desktop reaches it over SSH tunnel localhost:8642.
+platforms:
+  api_server:
+    enabled: true
+    extra:
+      port: 8642
+      host: "127.0.0.1"
+
+# JARVIS MCP server. Reads canonical state at
+# C:\EvolutionaryTradingAlgo\var\eta_engine\state\ which is where the
+# live trading supervisor writes — this is the WHOLE POINT of running
+# Hermes on the VPS (vs the operator desktop's stale copy).
+mcp_servers:
+  jarvis:
+    transport: stdio
+    command: python
+    args:
+      - "-m"
+      - "eta_engine.mcp_servers.jarvis_mcp_server"
+    env:
+      JARVIS_MCP_TOKEN: "${env:JARVIS_MCP_TOKEN}"
+      PYTHONPATH: 'C:\EvolutionaryTradingAlgo'
+    enabled: true
+
+# Scheduled tasks — Hermes's built-in cron. The morning_briefing fires
+# at 06:30 UTC (30 min after ETA-Kaizen-Loop) and pings the operator's
+# Telegram with the day's fleet summary.
+scheduled_tasks:
+  - name: morning_briefing
+    cron: "30 6 * * *"
+    delivery: telegram
+    prompt: |
+      Run jarvis_fleet_status and jarvis_wiring_audit. Render a 5-line
+      morning briefing: today's expected risk, dark modules, top 3
+      elite bots by Sharpe, any held RETIRE candidates.

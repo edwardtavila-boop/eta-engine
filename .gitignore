@@ -117,3 +117,6 @@ command_center/
 
 secrets/
 common/
+
+# Hermes deploy secrets (sidecar to hermes_run.bat)
+deploy/hermes_secrets.bat
