@@ -151,7 +151,7 @@ def test_emit_alert_writes_line(isolated_dirs: dict) -> None:
 
 
 def test_main_green_when_all_fresh(isolated_dirs: dict, monkeypatch: pytest.MonkeyPatch) -> None:
-    today = date.today()
+    today = datetime.now(UTC).date()
     for sym in ["MNQ", "NQ"]:
         for d, size in [(isolated_dirs["ticks"], 50_000), (isolated_dirs["depth"], 2_000_000)]:
             for offset_day in [0, -1]:
@@ -174,7 +174,7 @@ def test_main_red_when_today_missing(isolated_dirs: dict, monkeypatch: pytest.Mo
 
 
 def test_main_yellow_when_only_stale(isolated_dirs: dict, monkeypatch: pytest.MonkeyPatch) -> None:
-    today = date.today()
+    today = datetime.now(UTC).date()
     for d, size in [(isolated_dirs["ticks"], 50_000), (isolated_dirs["depth"], 2_000_000)]:
         # Today's file STALE (1h old vs 30min threshold for ticks, 5min for depth)
         _write_capture(d / f"MNQ_{today.strftime('%Y%m%d')}.jsonl", size, mtime_offset_seconds=-7200)

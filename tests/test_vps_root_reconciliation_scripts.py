@@ -14,6 +14,10 @@ def test_vps_root_inventory_classifies_local_backups_outside_source_risk() -> No
     assert "Get-DirtyCompanionStatus" in text
     assert "dirty_companion_repos" in text
     assert "dirty_worktree_sample" in text
+    assert "submodule_uninitialized" in text
+    assert "uninitialized_count" in text
+    assert 'Where-Object { $_ -match "^-" }' in text
+    assert 'Where-Object { $_ -match "^\\+" }' in text
     assert r"\.bak" in text
     assert "scripts/_check_" in text
     assert "cleanup_allowed = $false" in text
@@ -28,6 +32,8 @@ def test_vps_root_plan_surfaces_backup_artifacts_separately() -> None:
     assert "local_backup_untracked" in text
     assert "local_diagnostic_untracked" in text
     assert "dirty_companion_repos" in text
+    assert "submodule_uninitialized" in text
+    assert "optional dormant submodules are uninitialized" in text
     assert "Dirty companion worktrees" in text
     assert "dirty_worktree_sample" in text
     assert "Freeze root cleanup until companion repo drift is reviewed" in text

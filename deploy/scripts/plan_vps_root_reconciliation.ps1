@@ -121,6 +121,10 @@ $submoduleDrift = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_drift"]) {
     $submoduleDrift = [int]$counts.submodule_drift
 }
+$submoduleUninitialized = 0
+if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["submodule_uninitialized"]) {
+    $submoduleUninitialized = [int]$counts.submodule_uninitialized
+}
 $dirtyCompanionRepos = 0
 if ($null -ne $counts -and $null -ne $counts.PSObject.Properties["dirty_companion_repos"]) {
     $dirtyCompanionRepos = [int]$counts.dirty_companion_repos
@@ -194,7 +198,12 @@ $submoduleStepAction = if ($hasCompanionRisk) {
     "Review dirty companion worktrees and submodule drift; choose whether each companion repo should follow the root branch, its own live branch, or remain pinned for VPS runtime."
 }
 else {
-    "No dirty companion worktrees or submodule drift were found in the current inventory."
+    if ($submoduleUninitialized -gt 0) {
+        "No dirty companion worktrees or submodule pointer drift were found; optional dormant submodules are uninitialized and can remain pinned for VPS runtime."
+    }
+    else {
+        "No dirty companion worktrees or submodule drift were found in the current inventory."
+    }
 }
 
 $generatedStepDecision = if ($hasGeneratedOrLocalArtifactRisk -or $sourceUntracked -gt 0) { "manual_review_required" } else { "clear" }
@@ -246,7 +255,7 @@ $steps = @(
         -Risk $submoduleStepRisk `
         -Decision $submoduleStepDecision `
         -Action $submoduleStepAction `
-        -Evidence (@("submodule_drift=$submoduleDrift", "dirty_companion_repos=$dirtyCompanionRepos") + @($submodules.sample) + @($dirtyCompanionSample))
+        -Evidence (@("submodule_drift=$submoduleDrift", "submodule_uninitialized=$submoduleUninitialized", "dirty_companion_repos=$dirtyCompanionRepos") + @($submodules.sample) + @($dirtyCompanionSample))
     New-PlanStep `
         -Id "classify-generated-artifacts" `
         -Title "Separate generated market/research artifacts from source" `
@@ -284,6 +293,7 @@ $plan = [ordered]@{
         local_diagnostic_untracked = $localDiagnosticUntracked
         source_or_governance_untracked = $sourceUntracked
         submodule_drift = $submoduleDrift
+        submodule_uninitialized = $submoduleUninitialized
         dirty_companion_repos = $dirtyCompanionRepos
     }
     steps = $steps

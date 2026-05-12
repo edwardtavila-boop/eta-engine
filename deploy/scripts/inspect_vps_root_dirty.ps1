@@ -138,7 +138,8 @@ try {
     $modifiedTracked = Invoke-GitLines -Arguments @("diff", "--name-only", "--diff-filter=M")
     $untracked = Invoke-GitLines -Arguments @("ls-files", "--others", "--exclude-standard")
     $submodules = Invoke-GitLines -Arguments @("submodule", "status")
-    $submoduleDrift = @($submodules | Where-Object { $_ -match "^[+-]" })
+    $submoduleDrift = @($submodules | Where-Object { $_ -match "^\+" })
+    $submoduleUninitialized = @($submodules | Where-Object { $_ -match "^-" })
 
     $deletedSummary = New-CategorySummary -Paths $deletedTracked -Limit $SampleLimit
     $modifiedSummary = New-CategorySummary -Paths $modifiedTracked -Limit $SampleLimit
@@ -167,6 +168,9 @@ try {
         $riskLevel = "medium"
         $recommendedAction = "Review unknown paths, dirty companion worktrees, and submodule drift before cleanup."
     }
+    elseif ($submoduleUninitialized.Count -gt 0) {
+        $recommendedAction = "Root working tree is clean; optional submodules are uninitialized and can remain pinned for VPS runtime."
+    }
 
     $result = [ordered]@{
         status = "ok"
@@ -182,6 +186,7 @@ try {
             modified_tracked = $modifiedTracked.Count
             untracked = $untracked.Count
             submodule_drift = $submoduleDrift.Count
+            submodule_uninitialized = $submoduleUninitialized.Count
             dirty_companion_repos = $dirtyCompanionStatus.Count
         }
         deleted_tracked = $deletedSummary
@@ -190,6 +195,8 @@ try {
         submodules = [ordered]@{
             drift_count = $submoduleDrift.Count
             sample = @($submoduleDrift | Select-Object -First $SampleLimit)
+            uninitialized_count = $submoduleUninitialized.Count
+            uninitialized_sample = @($submoduleUninitialized | Select-Object -First $SampleLimit)
             dirty_worktree_count = $dirtyCompanionStatus.Count
             dirty_worktree_sample = @($dirtyCompanionStatus)
         }
