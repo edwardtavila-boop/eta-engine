@@ -274,3 +274,93 @@ def test_recommend_realized_r_overrides_legacy_when_both_present(
     recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
     assert recs[0]["avg_r"] == 0.5  # realized_r, not r=-99
 
+
+def test_read_trade_closes_unions_canonical_and_legacy(
+    tmp_path: Path, monkeypatch: object,
+) -> None:
+    """Regression: when called with no override path, the reader must
+    consult BOTH ``DEFAULT_TRADE_CLOSES_PATH`` (canonical) and
+    ``_LEGACY_TRADE_CLOSES_PATH`` (the eta_engine/state archive that
+    holds 99%+ of historical trades on production installs).
+
+    Pre-fix behavior: kelly_optimizer read only the canonical path and
+    reported ``insufficient_data`` for every diamond bot, because all
+    their history lived in the legacy archive. After fix: both paths
+    are read and deduped on (signal_id, bot_id, ts, realized_r).
+    """
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer as ko
+
+    canonical = tmp_path / "canonical.jsonl"
+    legacy = tmp_path / "legacy.jsonl"
+    # 10 canonical rows + 15 legacy rows = 25 total, exceeds MIN_OBS
+    _write_trades(canonical, [
+        {"bot_id": "merged_bot", "signal_id": f"can_{i}",
+         "realized_r": 0.4, "ts": _recent_iso(i)}
+        for i in range(10)
+    ])
+    _write_trades(legacy, [
+        {"bot_id": "merged_bot", "signal_id": f"leg_{i}",
+         "realized_r": -0.2, "ts": _recent_iso(i + 20)}
+        for i in range(15)
+    ])
+    monkeypatch.setattr(ko, "DEFAULT_TRADE_CLOSES_PATH", canonical)  # type: ignore[attr-defined]
+    monkeypatch.setattr(ko, "_LEGACY_TRADE_CLOSES_PATH", legacy)  # type: ignore[attr-defined]
+
+    # Call with NO override path → must read both
+    recs = ko.recommend_sizing(lookback_days=365)
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["bot_id"] == "merged_bot"
+    assert rec["n_trades"] == 25  # 10 + 15 deduped (no signal-id overlap)
+    assert rec["insufficient_data"] is False
+    # Mean of (10 × 0.4 + 15 × -0.2) / 25 = (4 - 3) / 25 = 0.04
+    assert abs(rec["avg_r"] - 0.04) < 0.001
+
+
+def test_read_trade_closes_dedupes_dual_source(
+    tmp_path: Path, monkeypatch: object,
+) -> None:
+    """Records present in BOTH sources (same signal_id, bot_id, ts,
+    realized_r) must be deduped — counted once, not twice."""
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer as ko
+
+    canonical = tmp_path / "canonical.jsonl"
+    legacy = tmp_path / "legacy.jsonl"
+    # 25 trades, identical content in both files
+    shared = [
+        {"bot_id": "dedup_bot", "signal_id": f"shared_{i}",
+         "realized_r": 0.3, "ts": _recent_iso(i)}
+        for i in range(25)
+    ]
+    _write_trades(canonical, shared)
+    _write_trades(legacy, shared)
+    monkeypatch.setattr(ko, "DEFAULT_TRADE_CLOSES_PATH", canonical)  # type: ignore[attr-defined]
+    monkeypatch.setattr(ko, "_LEGACY_TRADE_CLOSES_PATH", legacy)  # type: ignore[attr-defined]
+
+    recs = ko.recommend_sizing(lookback_days=365)
+    assert len(recs) == 1
+    # Dedupe = 25 not 50
+    assert recs[0]["n_trades"] == 25, (
+        "duplicate rows across canonical + legacy must dedupe to one count, "
+        f"got {recs[0]['n_trades']}"
+    )
+
+
+def test_read_trade_closes_override_is_single_source(tmp_path: Path) -> None:
+    """When the caller supplies an explicit ``trade_closes_path=``, the
+    reader behaves as a single-source reader (tests use this to feed
+    curated tmp_path data without accidentally reading the production
+    canonical/legacy archives)."""
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
+    override = tmp_path / "only_this.jsonl"
+    _write_trades(override, [
+        {"bot_id": "iso", "realized_r": 0.5, "ts": _recent_iso(i)}
+        for i in range(25)
+    ])
+
+    recs = kelly_optimizer.recommend_sizing(trade_closes_path=override)
+    assert len(recs) == 1
+    assert recs[0]["bot_id"] == "iso"
+    assert recs[0]["n_trades"] == 25
+

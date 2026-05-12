@@ -53,7 +53,20 @@ logger = logging.getLogger("eta_engine.brain.jarvis_v3.kelly_optimizer")
 
 _WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
 _STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
+_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
+# Primary canonical writer path.  Kept as a module-level export for
+# back-compat — tests and external callers can override via the
+# ``trade_closes_path=`` parameter on ``recommend_sizing``.
 DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+# Legacy archive path.  Despite the "legacy" name, this is where 99% of
+# historical trade-close records actually live (22.8 MB / 43,450 rows
+# vs the canonical's 180 KB / 422 rows as of 2026-05-12).  The closed
+# trade ledger reads from BOTH and dedupes; kelly_optimizer must do
+# the same or it silently sees only the recent shim and reports
+# ``insufficient_data`` for bots that actually have thousands of trades.
+_LEGACY_TRADE_CLOSES_PATH = (
+    _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+)
 
 MIN_OBS = 20  # bots with fewer than 20 closed trades over the lookback window get insufficient_data
 SIZE_MOD_LOW, SIZE_MOD_HIGH = 0.0, 1.0
@@ -83,13 +96,12 @@ class SizingRecommendation:
 # ---------------------------------------------------------------------------
 
 
-def _read_trade_closes(
-    path: Path | None = None,
-    since_dt: datetime | None = None,
+def _read_single_jsonl(
+    target: Path,
+    since_dt: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Read trade_closes.jsonl, filtered to records newer than since_dt."""
+    """Read one trade_closes.jsonl file with optional since-filter."""
     import json
-    target = path or DEFAULT_TRADE_CLOSES_PATH
     if not target.exists():
         return []
     out: list[dict[str, Any]] = []
@@ -115,8 +127,62 @@ def _read_trade_closes(
                         continue
                 out.append(rec)
     except OSError as exc:
-        logger.warning("kelly_optimizer._read_trade_closes failed: %s", exc)
+        logger.warning(
+            "kelly_optimizer._read_single_jsonl failed (%s): %s", target, exc,
+        )
     return out
+
+
+def _read_trade_closes(
+    path: Path | None = None,
+    since_dt: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Read trade-close records from BOTH the canonical and legacy paths,
+    deduping on (signal_id, bot_id, ts, realized_r). This mirrors the
+    ``closed_trade_ledger.load_close_records`` pattern.
+
+    Pre-fix behavior: this function read only the canonical path
+    (``var/eta_engine/state/jarvis_intel/trade_closes.jsonl``), which on
+    most installations is a thin recent shim. The bulk of historical
+    trade data lives in the so-called "legacy" archive at
+    ``eta_engine/state/jarvis_intel/trade_closes.jsonl``. The kelly  # HISTORICAL-PATH-OK
+    optimizer silently reported ``insufficient_data`` for the entire
+    diamond fleet because the recent shim only held ~400 trades while
+    the archive held 43,450+.
+
+    If ``path`` is provided, it overrides the canonical path but the
+    legacy path is still consulted (with dedupe) unless ``path`` is the
+    explicit legacy path. This means tests that pass a tmp_path get
+    behavior they expect.
+    """
+    if path is not None:
+        # Caller-supplied path: behave as the legacy single-source reader.
+        # Tests rely on this exact semantics (tmp_path with curated rows).
+        return _read_single_jsonl(path, since_dt)
+
+    primary = _read_single_jsonl(DEFAULT_TRADE_CLOSES_PATH, since_dt)
+    legacy = _read_single_jsonl(_LEGACY_TRADE_CLOSES_PATH, since_dt)
+
+    # Dedupe on (signal_id, bot_id, ts, realized_r) — same key the
+    # closed_trade_ledger uses. Primary wins when there's a collision.
+    def _key(r: dict[str, Any]) -> str:
+        return "|".join([
+            str(r.get("signal_id") or ""),
+            str(r.get("bot_id") or ""),
+            str(r.get("ts") or ""),
+            str(r.get("realized_r") or ""),
+        ])
+
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for source in (primary, legacy):
+        for r in source:
+            k = _key(r)
+            if k in seen:
+                continue
+            seen.add(k)
+            merged.append(r)
+    return merged
 
 
 # ---------------------------------------------------------------------------

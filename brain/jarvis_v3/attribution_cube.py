@@ -42,8 +42,16 @@ logger = logging.getLogger("eta_engine.brain.jarvis_v3.attribution_cube")
 
 _WORKSPACE = Path(r"C:\EvolutionaryTradingAlgo")
 _STATE_ROOT = _WORKSPACE / "var" / "eta_engine" / "state"
+_LEGACY_STATE_ROOT = _WORKSPACE / "eta_engine" / "state"
 DEFAULT_TRACE_PATH = _STATE_ROOT / "jarvis_trace.jsonl"
 DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+# Bulk historical trade archive — see kelly_optimizer.py for the same
+# dual-source rationale. closed_trade_ledger.py reads both and dedupes;
+# attribution_cube must do the same or the analytics silently miss
+# the bulk of historical data.
+_LEGACY_TRADE_CLOSES_PATH = (
+    _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
+)
 
 EXPECTED_HOOKS = ("query",)
 
@@ -121,6 +129,41 @@ def _parse_iso(s: Any) -> datetime | None:  # noqa: ANN401
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _read_trade_closes_all_sources(
+    override_path: Path | None,
+    since_dt: datetime | None,
+) -> list[dict[str, Any]]:
+    """Read trade-close records from BOTH canonical and legacy paths,
+    deduping on (signal_id, bot_id, ts, realized_r). When ``override_path``
+    is supplied (tests with tmp_path), behave as a single-source reader
+    so callers get exactly what they wrote.
+    """
+    if override_path is not None:
+        return _read_jsonl(override_path, since_dt)
+
+    primary = _read_jsonl(DEFAULT_TRADE_CLOSES_PATH, since_dt)
+    legacy = _read_jsonl(_LEGACY_TRADE_CLOSES_PATH, since_dt)
+
+    def _key(r: dict[str, Any]) -> str:
+        return "|".join([
+            str(r.get("signal_id") or ""),
+            str(r.get("bot_id") or ""),
+            str(r.get("ts") or ""),
+            str(r.get("realized_r") or ""),
+        ])
+
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for source in (primary, legacy):
+        for r in source:
+            k = _key(r)
+            if k in seen:
+                continue
+            seen.add(k)
+            merged.append(r)
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +255,7 @@ def query(
         except (TypeError, ValueError):
             since_dt = None
 
-    trades = _read_jsonl(trade_closes_path or DEFAULT_TRADE_CLOSES_PATH, since_dt)
+    trades = _read_trade_closes_all_sources(trade_closes_path, since_dt)
 
     # Optional filter passes
     if "asset" in filter and filter["asset"]:
@@ -265,8 +308,14 @@ def query(
         key_tuple = tuple(_key_for(rec, d) for d in slice_by)
         b = buckets[key_tuple]
         b["n_trades"] += 1
+        # Canonical field is `realized_r` (per jarvis_intel/trade_closes.jsonl
+        # schema). Older trade closes used `r` or `r_value`; preserve back-compat
+        # by falling through.
+        raw_r = rec.get("realized_r")
+        if raw_r is None:
+            raw_r = rec.get("r", rec.get("r_value", 0.0))
         try:
-            r = float(rec.get("r", rec.get("r_value", 0.0)))
+            r = float(raw_r)
         except (TypeError, ValueError):
             r = 0.0
         b["total_r"] += r
