@@ -2,11 +2,11 @@
 
 Periodic check that the IBKR Gateway is reachable on port 4002 and
 that a fresh ib_insync connection succeeds. If unhealthy for >N
-consecutive checks, emit a v3 event (→ Hermes Telegram) and write
+consecutive checks, emit a v3 event (to Hermes Telegram) and write
 status to var/eta_engine/state/tws_watchdog.json.
 
 Designed to run on Windows Task Scheduler every 60 seconds. The watchdog
-itself does NOT restart the gateway — TWS process management is
+itself does NOT restart the gateway - TWS process management is
 out of scope. It surfaces the outage so the operator knows.
 
 Status JSON format:
@@ -574,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         consecutive_failures = prior_failures + 1
         logger.warning(
-            "TWS UNHEALTHY socket=%s handshake=%s (%s) — fail #%d",
+            "TWS UNHEALTHY socket=%s handshake=%s (%s) - fail #%d",
             socket_ok, handshake_ok, handshake_detail, consecutive_failures,
         )
 
@@ -602,8 +602,8 @@ def main(argv: list[str] | None = None) -> int:
         status["details"]["account_snapshot"] = _LAST_ACCOUNT_SNAPSHOT
     _save_status(status)
 
-    # Alert when we cross the threshold (only on the EDGE — N-th failure
-    # in a row — not every subsequent failure, otherwise we'd spam).
+    # Alert when we cross the threshold (only on the EDGE - N-th failure
+    # in a row - not every subsequent failure, otherwise we'd spam).
     if not healthy and consecutive_failures == args.alert_after:
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
@@ -626,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             logger.debug("v3 event emit failed: %s", exc)
     elif healthy and prior_failures >= args.alert_after:
-        # Recovery edge — let the operator know the gateway came back.
+        # Recovery edge - let the operator know the gateway came back.
         try:
             from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
             emit_event(

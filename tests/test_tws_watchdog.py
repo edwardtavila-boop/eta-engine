@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+
+
+def test_watchdog_help_text_is_windows_console_safe() -> None:
+    from eta_engine.scripts import tws_watchdog
+
+    help_text = argparse.ArgumentParser(description=tws_watchdog.__doc__).format_help()
+
+    help_text.encode("cp1252")
 
 
 def test_unhealthy_watchdog_status_includes_latest_ibgateway_jvm_oom(
@@ -392,7 +401,7 @@ def test_handshake_uses_readonly_ib_connection(monkeypatch) -> None:
             self.client = SimpleNamespace(serverVersion=lambda: 176)
             self._connected = False
 
-        def connect(self, host, port, *, clientId, timeout, readonly=False):  # noqa: N803 — mocks ib_insync API
+        def connect(self, host, port, *, clientId, timeout, readonly=False):  # noqa: N803 - mocks ib_insync API
             captured.update(
                 {
                     "host": host,
@@ -404,7 +413,7 @@ def test_handshake_uses_readonly_ib_connection(monkeypatch) -> None:
             )
             self._connected = True
 
-        def isConnected(self):  # noqa: N802 — mocks ib_insync API
+        def isConnected(self):  # noqa: N802 - mocks ib_insync API
             return self._connected
 
         def disconnect(self):
