@@ -843,7 +843,7 @@ def _dashboard_diagnostics_payload() -> dict:
     vps_ops_hardening = _vps_ops_hardening_payload(server_ts=server_ts)
 
     try:
-        roster = bot_fleet_roster(Response(), since_days=1)
+        roster = bot_fleet_roster(Response(), since_days=1, live_broker_probe=False)
     except Exception as exc:  # noqa: BLE001 -- diagnostics should fail soft.
         roster = {"bots": [], "confirmed_bots": 0, "summary": {}, "_error": str(exc)}
 
@@ -852,7 +852,7 @@ def _dashboard_diagnostics_payload() -> dict:
     except Exception as exc:  # noqa: BLE001 -- diagnostics should fail soft.
         equity = {"series": [], "summary": {}, "source": "error", "_error": str(exc)}
 
-    operator_queue = _operator_queue_payload()
+    operator_queue = _operator_queue_payload(prefer_cache=True, server_ts=server_ts)
     paper_live_transition = _paper_live_transition_payload(refresh=False)
     readiness = _bot_strategy_readiness_payload()
     roster_bots = roster.get("bots") if isinstance(roster.get("bots"), list) else []
@@ -974,6 +974,7 @@ def _dashboard_diagnostics_payload() -> dict:
                 or roster_summary.get("truth_summary_line")
                 or "",
             ),
+            "live_broker_probe_mode": str(roster_summary.get("live_broker_probe_mode") or "unknown"),
             "source_of_truth": str(roster.get("source_of_truth") or _state_dir()),
             "error": roster.get("_error"),
         },
@@ -1007,6 +1008,9 @@ def _dashboard_diagnostics_payload() -> dict:
                 or first_launch_blocker.get("title")
                 or ""
             ),
+            "source": str(operator_queue.get("source") or "unknown"),
+            "cache_age_s": operator_queue.get("cache_age_s"),
+            "cache_stale": bool(operator_queue.get("cache_stale")),
             "error": operator_queue.get("error"),
         },
         "paper_live_transition": {
@@ -2790,8 +2794,44 @@ def _read_json(name: str) -> dict:
         raise HTTPException(status_code=500, detail=f"parse error: {e}") from e
 
 
-def _operator_queue_payload() -> dict:
+def _operator_queue_cache_payload(*, server_ts: float | None = None) -> dict | None:
+    """Return cached operator-queue truth for fast diagnostics when present."""
+    path = _state_dir() / "operator_queue_snapshot.json"
+    if not path.exists():
+        return None
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(snapshot, dict):
+        return None
+    queue = snapshot.get("operator_queue")
+    if not isinstance(queue, dict):
+        return None
+    payload = dict(queue)
+    generated_at = snapshot.get("generated_at")
+    age_s = _iso_age_s(generated_at, server_ts=server_ts or time.time())
+    payload["source"] = "operator_queue_snapshot_cache"
+    payload["cache_status"] = "hit"
+    payload["cache_path"] = str(path)
+    payload["snapshot_status"] = str(snapshot.get("status") or "unknown")
+    payload["snapshot_generated_at"] = generated_at
+    payload["cache_age_s"] = age_s
+    payload["cache_stale"] = age_s is None or age_s > 900
+    payload.setdefault("summary", {})
+    payload.setdefault("top_blockers", [])
+    payload.setdefault("top_launch_blockers", [])
+    if "launch_blocked_count" not in payload:
+        payload["launch_blocked_count"] = int(snapshot.get("launch_blocked_count") or 0)
+    return payload
+
+
+def _operator_queue_payload(*, prefer_cache: bool = False, server_ts: float | None = None) -> dict:
     """Return JARVIS/operator blockers without letting status probes break the dashboard."""
+    if prefer_cache:
+        cached = _operator_queue_cache_payload(server_ts=server_ts)
+        if cached is not None:
+            return cached
     try:
         from eta_engine.scripts.jarvis_status import build_operator_queue_summary
 
@@ -4586,6 +4626,7 @@ def bot_fleet_roster(
     bot: str | None = None,
     since_days: int = 1,
     include_disabled: bool = False,
+    live_broker_probe: bool = True,
 ) -> dict:
     """Roster: scan state/bots/<name>/status.json for each bot."""
     from datetime import UTC, datetime
@@ -4785,19 +4826,22 @@ def bot_fleet_roster(
     mnq_runtime_rows = [r for r in mnq_rows if not _is_readiness_only_runtime_inventory(r)]
     truth = _truth_snapshot(rows, server_ts=now_ts)
     signal_cadence = _signal_cadence_summary(rows, server_ts=now_ts)
-    try:
-        live_broker_state = _live_broker_state_payload()
-    except Exception as exc:  # noqa: BLE001
-        live_broker_state = {
-            "ready": False,
-            "error": f"live_broker_state_failed: {exc}",
-            "today_actual_fills": 0,
-            "today_realized_pnl": 0.0,
-            "total_unrealized_pnl": 0.0,
-            "open_position_count": 0,
-            "win_rate_30d": None,
-            "server_ts": time.time(),
-        }
+    if live_broker_probe:
+        try:
+            live_broker_state = _live_broker_state_payload()
+        except Exception as exc:  # noqa: BLE001
+            live_broker_state = {
+                "ready": False,
+                "error": f"live_broker_state_failed: {exc}",
+                "today_actual_fills": 0,
+                "today_realized_pnl": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "open_position_count": 0,
+                "win_rate_30d": None,
+                "server_ts": time.time(),
+            }
+    else:
+        live_broker_state = _cached_live_broker_state_for_diagnostics()
     broker_open_position_count = _float_value(live_broker_state.get("open_position_count"))
     broker_bracket_required_position_count = _broker_bracket_required_position_count(live_broker_state)
     broker_oco_evidence = _broker_oco_evidence_payload(live_broker_state)
@@ -5026,6 +5070,7 @@ def bot_fleet_roster(
             "running_bots": running_bots,
             "staged_bots": staged_bots,
             "readiness_staged_bots": staged_bots,
+            "live_broker_probe_mode": "live" if live_broker_probe else "cached_diagnostics",
             "mnq_total": len(mnq_runtime_rows),
             "mnq_runtime_total": len(mnq_runtime_rows),
             "mnq_inventory_total": len(mnq_rows),
@@ -6707,6 +6752,47 @@ def _cached_live_broker_state_for_gateway_reconcile() -> dict:
         ):
             return {"ibkr": dict(cached)}
     return {}
+
+
+def _cached_live_broker_state_for_diagnostics() -> dict:
+    """Fast broker state for diagnostics; never opens a broker connection."""
+    state = _cached_live_broker_state_for_gateway_reconcile()
+    ibkr = state.get("ibkr") if isinstance(state.get("ibkr"), dict) else {}
+    open_position_count = int(_float_value(ibkr.get("open_position_count")) or 0)
+    unrealized = round(float(_float_value(ibkr.get("unrealized_pnl")) or 0.0), 2)
+    today_realized = round(float(_float_value(ibkr.get("today_realized_pnl")) or 0.0), 2)
+    today_fills = int(_float_value(ibkr.get("today_executions")) or 0)
+    trade_closes = _recent_trade_closes(limit=5000)
+    focus_trade_closes = [row for row in trade_closes if not _trade_close_is_cellar(row)]
+    close_history = _close_history_windows(focus_trade_closes, now=datetime.now(UTC))
+    return {
+        **state,
+        "ready": bool(ibkr) and "error" not in ibkr,
+        "source": "cached_live_broker_state_for_diagnostics",
+        "probe_skipped": True,
+        "server_ts": time.time(),
+        "today_actual_fills": today_fills,
+        "today_realized_pnl": today_realized,
+        "total_unrealized_pnl": unrealized,
+        "open_position_count": open_position_count,
+        "all_venue_today_actual_fills": today_fills,
+        "all_venue_today_realized_pnl": today_realized,
+        "all_venue_total_unrealized_pnl": unrealized,
+        "all_venue_open_position_count": open_position_count,
+        "cellar_today_actual_fills": 0,
+        "cellar_today_realized_pnl": 0.0,
+        "cellar_total_unrealized_pnl": 0.0,
+        "cellar_open_position_count": 0,
+        "win_rate_30d": None,
+        "win_rate_30d_source": "",
+        "win_rate_today": None,
+        "closed_outcome_count_today": 0,
+        "evaluated_outcome_count_today": 0,
+        "win_rate_source": "",
+        "close_history": close_history,
+        "all_venue_close_history": close_history,
+        "focus_policy": _dashboard_focus_policy_payload(),
+    }
 
 
 def _target_exit_summary_for_master_status() -> dict:

@@ -1106,6 +1106,43 @@ class TestDashboardAPI:
         assert hardening["age_s"] is not None
         assert data["checks"]["vps_ops_hardening_contract"] is True
 
+    def test_dashboard_diagnostics_uses_fast_cached_truth(self, app_client, tmp_path, monkeypatch):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        def fail_live_broker_probe() -> dict:
+            raise AssertionError("diagnostics must not open a live broker probe")
+
+        monkeypatch.setattr(mod, "_live_broker_state_payload", fail_live_broker_probe)
+        (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "launch_blocked_count": 1,
+                    "operator_queue": {
+                        "source": "jarvis_status.operator_queue",
+                        "summary": {"BLOCKED": 1, "OBSERVED": 0, "UNKNOWN": 0},
+                        "top_blockers": [{"op_id": "OP-19", "title": "IBKR API blocked"}],
+                        "top_launch_blockers": [
+                            {"op_id": "OP-19", "detail": "IBKR API 4002 down"}
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["bot_fleet"]["live_broker_probe_mode"] == "cached_diagnostics"
+        assert data["operator_queue"]["source"] == "operator_queue_snapshot_cache"
+        assert data["operator_queue"]["blocked"] == 1
+        assert data["operator_queue"]["launch_blocked"] == 1
+        assert data["operator_queue"]["cache_stale"] is False
+        assert data["checks"]["operator_queue_contract"] is True
+
     def test_dashboard_cross_check_is_route_backed(self, app_client):
         r = app_client.get("/api/dashboard/cross-check")
 
