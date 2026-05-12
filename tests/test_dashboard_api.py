@@ -1093,6 +1093,7 @@ class TestDashboardAPI:
         assert r.status_code == 200
         data = r.json()
         hardening = data["vps_ops_hardening"]
+        assert data["hardening"] == hardening
         assert hardening["status"] == "YELLOW_SAFETY_BLOCKED"
         assert hardening["ready"] is False
         assert hardening["summary"]["admin_ai_status"] == "WARN"
@@ -1105,6 +1106,7 @@ class TestDashboardAPI:
         ]
         assert hardening["age_s"] is not None
         assert data["checks"]["vps_ops_hardening_contract"] is True
+        assert data["checks"]["hardening_contract"] is True
 
     def test_dashboard_diagnostics_uses_fast_cached_truth(self, app_client, tmp_path, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

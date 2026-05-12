@@ -340,6 +340,22 @@ API_BUILD_CAPABILITIES = (
     "eta_readiness_snapshot",
     "ibkr_futures_avg_cost_normalized",
 )
+_VPS_OPS_HARDENING_STATUSES = {
+    "PASS",
+    "WARN",
+    "BLOCKED",
+    "GREEN_READY_FOR_SOAK",
+    "RED_RUNTIME_DEGRADED",
+    "YELLOW_RESTART_REQUIRED",
+    "YELLOW_DURABILITY_GAP",
+    "YELLOW_SAFETY_BLOCKED",
+    "YELLOW_ADMIN_AI_BLOCKED",
+    "YELLOW_ADMIN_AI_PENDING",
+    "missing",
+    "unreadable",
+    "invalid",
+    "unknown",
+}
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -1053,6 +1069,7 @@ def _dashboard_diagnostics_payload() -> dict:
         "command_center_watchdog": command_center_watchdog,
         "eta_readiness_snapshot": eta_readiness_snapshot,
         "vps_ops_hardening": vps_ops_hardening,
+        "hardening": vps_ops_hardening,
         "checks": {
             "api_contract": True,
             "card_contract": int(card_summary.get("dead") or 0) == 0 and int(card_summary.get("stale") or 0) == 0,
@@ -1093,22 +1110,9 @@ def _dashboard_diagnostics_payload() -> dict:
                 "unknown",
             },
             "vps_ops_hardening_contract": vps_ops_hardening.get("status")
-            in {
-                "PASS",
-                "WARN",
-                "BLOCKED",
-                "GREEN_READY_FOR_SOAK",
-                "RED_RUNTIME_DEGRADED",
-                "YELLOW_RESTART_REQUIRED",
-                "YELLOW_DURABILITY_GAP",
-                "YELLOW_SAFETY_BLOCKED",
-                "YELLOW_ADMIN_AI_BLOCKED",
-                "YELLOW_ADMIN_AI_PENDING",
-                "missing",
-                "unreadable",
-                "invalid",
-                "unknown",
-            },
+            in _VPS_OPS_HARDENING_STATUSES,
+            "hardening_contract": vps_ops_hardening.get("status")
+            in _VPS_OPS_HARDENING_STATUSES,
             "auth_contract": "auth_session" in DASHBOARD_REQUIRED_DATA,
         },
     }
