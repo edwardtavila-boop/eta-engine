@@ -550,13 +550,14 @@ def _check_install_script_syntax() -> CheckResult:
             details=_vps_bash_validation_details(reason="bash_not_on_path"),
         )
     launcher_failures: list[dict[str, str]] = []
-    script_arg = str(script).replace("\\", "/")
+    script_arg = "deploy/install_vps.sh"
     for bash in bash_candidates:
         try:
             result = subprocess.run(  # noqa: S603 -- localhost bash, fixed args
                 [bash, "-n", script_arg],
                 check=False,
                 capture_output=True,
+                cwd=ROOT,
                 text=True,
                 timeout=10,
             )

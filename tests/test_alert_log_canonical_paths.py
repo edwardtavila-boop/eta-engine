@@ -6,6 +6,7 @@ import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+from eta_engine.feeds import vps_failover_drill as feeds_vps_failover_drill
 from eta_engine.scripts import (
     _backup_state,
     _kill_switch_drift,
@@ -336,6 +337,41 @@ def test_vps_failover_no_bash_reports_vps_validation_commands(monkeypatch) -> No
     assert result.details["reason"] == "bash_not_on_path"
     assert "bash -n deploy/install_vps.sh" in result.details["vps_commands"][0]
     assert "vps_failover_drill --no-backup-test --json" in result.details["vps_commands"][1]
+
+
+def test_vps_failover_uses_repo_relative_install_script_for_git_bash(monkeypatch) -> None:
+    modules = (vps_failover_drill, feeds_vps_failover_drill)
+
+    for module in modules:
+        calls = []
+        monkeypatch.setattr(
+            module,
+            "_bash_candidates",
+            lambda: ["C:/Program Files/Git/bin/bash.exe"],
+        )
+
+        def fake_run(args, _calls=calls, **kwargs):
+            _calls.append((args, kwargs))
+            script_arg = args[-1]
+            if ":" in script_arg or "\\" in script_arg:
+                return SimpleNamespace(
+                    returncode=127,
+                    stdout="",
+                    stderr=f"/bin/bash: {script_arg}: No such file or directory",
+                )
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+        result = module._check_install_script_syntax()
+
+        assert result.severity == "green"
+        assert calls[-1][0] == [
+            "C:/Program Files/Git/bin/bash.exe",
+            "-n",
+            "deploy/install_vps.sh",
+        ]
+        assert calls[-1][1]["cwd"] == module.ROOT
 
 
 def test_vps_failover_wsl_launcher_gap_is_amber(monkeypatch) -> None:
