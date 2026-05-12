@@ -334,6 +334,26 @@ def _critical_endpoint_failures(endpoints: dict[str, dict[str, Any]]) -> list[st
     return failures
 
 
+def _dashboard_schema_drift(endpoints: dict[str, dict[str, Any]]) -> list[str]:
+    """Detect live dashboard processes still serving pre-alias diagnostics."""
+    drifted: list[str] = []
+    for name in ("local_dashboard_api_diagnostics", "local_dashboard_proxy_diagnostics"):
+        endpoint = _as_dict(endpoints.get(name))
+        if not bool(endpoint.get("ok")):
+            continue
+        payload = _as_dict(endpoint.get("payload"))
+        if not payload:
+            continue
+        checks = _as_dict(payload.get("checks"))
+        if (
+            "hardening" not in payload
+            or payload.get("hardening") != payload.get("vps_ops_hardening")
+            or checks.get("hardening_contract") is not True
+        ):
+            drifted.append(name)
+    return drifted
+
+
 def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]:
     raw_summary = broker_bracket_audit.get("summary")
     summary = _as_dict(raw_summary)
@@ -478,6 +498,7 @@ def build_report(
     missing_ports = _missing_ports(ports)
     missing_dashboard_tasks = _missing_dashboard_tasks(tasks)
     endpoint_failures = _critical_endpoint_failures(endpoints)
+    dashboard_schema_drift = _dashboard_schema_drift(endpoints)
     drifted_configs = _config_drift(service_config)
     broker_gate = _broker_gate_summary(broker_bracket_audit)
     promotion_gate = _promotion_gate_summary(promotion_audit)
@@ -505,6 +526,11 @@ def build_report(
             "(registers "
             + ", ".join(missing_dashboard_tasks)
             + ")"
+        )
+    if dashboard_schema_drift:
+        next_actions.append(
+            "Reload dashboard API/proxy so live diagnostics schema includes the hardening alias: "
+            + ", ".join(dashboard_schema_drift)
         )
     if drifted_configs:
         next_actions.append(
@@ -554,7 +580,7 @@ def build_report(
 
     if not runtime_ready:
         status = "RED_RUNTIME_DEGRADED"
-    elif drifted_configs:
+    elif drifted_configs or (dashboard_schema_drift and trading_gate_ready):
         status = "YELLOW_RESTART_REQUIRED"
     elif not dashboard_durable and trading_gate_ready:
         status = "YELLOW_DURABILITY_GAP"
@@ -575,6 +601,7 @@ def build_report(
             "status": status,
             "runtime_ready": runtime_ready,
             "dashboard_durable": dashboard_durable,
+            "dashboard_schema_current": not dashboard_schema_drift,
             "trading_gate_ready": trading_gate_ready,
             "admin_ai_ready": admin_ai_gate["ready"],
             "admin_ai_status": admin_ai_gate["status"],
@@ -595,6 +622,7 @@ def build_report(
             },
             "endpoints": {
                 "critical_failures": endpoint_failures,
+                "schema_drift": dashboard_schema_drift,
                 "observed": endpoints,
             },
             "tasks": {

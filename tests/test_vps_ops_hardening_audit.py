@@ -30,6 +30,28 @@ def _healthy_endpoints() -> dict[str, dict[str, object]]:
     }
 
 
+def _stale_dashboard_schema_endpoints() -> dict[str, dict[str, object]]:
+    endpoints = _healthy_endpoints()
+    stale_payload = {
+        "vps_ops_hardening": {
+            "status": "YELLOW_SAFETY_BLOCKED",
+            "summary": {"runtime_ready": True},
+        },
+        "checks": {"vps_ops_hardening_contract": True},
+    }
+    endpoints["local_dashboard_api_diagnostics"] = {
+        "ok": True,
+        "status_code": 200,
+        "payload": stale_payload,
+    }
+    endpoints["local_dashboard_proxy_diagnostics"] = {
+        "ok": True,
+        "status_code": 200,
+        "payload": stale_payload,
+    }
+    return endpoints
+
+
 def _healthy_tasks() -> dict[str, dict[str, object]]:
     return {
         name: {"task_name": name, "state": "Ready", "last_task_result": 0}
@@ -123,6 +145,30 @@ def test_service_config_drift_requires_restart_before_green() -> None:
     assert report["summary"]["runtime_ready"] is True
     assert report["summary"]["promotion_allowed"] is False
     assert any("elevated" in action.lower() for action in report["next_actions"])
+
+
+def test_stale_dashboard_diagnostics_schema_requires_reload_before_green() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_stale_dashboard_schema_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "YELLOW_RESTART_REQUIRED"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["dashboard_schema_current"] is False
+    assert report["summary"]["promotion_allowed"] is False
+    assert "local_dashboard_api_diagnostics" in report["runtime"]["endpoints"]["schema_drift"]
+    assert "local_dashboard_proxy_diagnostics" in report["runtime"]["endpoints"]["schema_drift"]
+    assert any("diagnostics schema" in action for action in report["next_actions"])
 
 
 def test_reads_existing_string_summary_artifact_shapes() -> None:
