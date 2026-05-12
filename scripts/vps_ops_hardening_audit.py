@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eta_engine.scripts import workspace_roots  # noqa: E402
+from eta_engine.scripts import jarvis_hermes_admin_audit, workspace_roots  # noqa: E402
 
 DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
 CRITICAL_SERVICES = (
@@ -419,6 +419,37 @@ def _ibgateway_summary(
     }
 
 
+def _jarvis_hermes_admin_summary(
+    admin_audit: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Summarize the read-only Jarvis/Hermes admin-AI readiness audit."""
+    if admin_audit is None:
+        return {
+            "status": "NOT_COLLECTED",
+            "ready": True,
+            "admin_ai_ready": True,
+            "blocked": 0,
+            "warnings": 0,
+            "next_actions": [],
+        }
+    status = str(admin_audit.get("status") or "UNKNOWN")
+    summary = _as_dict(admin_audit.get("summary"))
+    next_actions = [str(action) for action in _as_list(admin_audit.get("next_actions"))]
+    ready = status == "PASS" and bool(summary.get("admin_ai_ready"))
+    return {
+        "status": status,
+        "ready": ready,
+        "admin_ai_ready": ready,
+        "blocked": int(summary.get("blocked") or 0),
+        "warnings": int(summary.get("warnings") or 0),
+        "checks": int(summary.get("checks") or 0),
+        "pass": int(summary.get("pass") or 0),
+        "order_action_allowed": False,
+        "live_money_gate_bypassed": False,
+        "next_actions": next_actions,
+    }
+
+
 def _config_drift(service_config: dict[str, dict[str, Any]]) -> list[str]:
     return [
         name
@@ -437,6 +468,7 @@ def build_report(
     service_config: dict[str, dict[str, Any]],
     tasks: dict[str, dict[str, Any]] | None = None,
     ibgateway_reauth: dict[str, Any] | None = None,
+    jarvis_hermes_admin: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the deterministic hardening report from collected inputs."""
     tasks = tasks or {}
@@ -448,6 +480,7 @@ def build_report(
     broker_gate = _broker_gate_summary(broker_bracket_audit)
     promotion_gate = _promotion_gate_summary(promotion_audit)
     ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
+    admin_ai_gate = _jarvis_hermes_admin_summary(jarvis_hermes_admin)
     runtime_ready = not service_down and not missing_ports and not endpoint_failures
     dashboard_durable = not missing_dashboard_tasks
     trading_gate_ready = bool(
@@ -506,6 +539,16 @@ def build_report(
         next_actions.append(
             "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
         )
+    if not admin_ai_gate["ready"]:
+        admin_actions = admin_ai_gate["next_actions"]
+        if admin_actions:
+            next_actions.append(
+                "Review Jarvis/Hermes admin-AI readiness: " + str(admin_actions[0])
+            )
+        else:
+            next_actions.append(
+                "Review Jarvis/Hermes admin-AI readiness before fully unlocking VPS admin AI"
+            )
 
     if not runtime_ready:
         status = "RED_RUNTIME_DEGRADED"
@@ -515,6 +558,10 @@ def build_report(
         status = "YELLOW_DURABILITY_GAP"
     elif not trading_gate_ready:
         status = "YELLOW_SAFETY_BLOCKED"
+    elif admin_ai_gate["status"] == "BLOCKED":
+        status = "YELLOW_ADMIN_AI_BLOCKED"
+    elif admin_ai_gate["status"] == "WARN":
+        status = "YELLOW_ADMIN_AI_PENDING"
     else:
         status = "GREEN_READY_FOR_SOAK"
 
@@ -527,6 +574,8 @@ def build_report(
             "runtime_ready": runtime_ready,
             "dashboard_durable": dashboard_durable,
             "trading_gate_ready": trading_gate_ready,
+            "admin_ai_ready": admin_ai_gate["ready"],
+            "admin_ai_status": admin_ai_gate["status"],
             "promotion_allowed": promotion_allowed,
             "order_action_allowed": False,
         },
@@ -559,10 +608,20 @@ def build_report(
         "safety_gates": {
             "broker_brackets": broker_gate,
             "promotion": promotion_gate,
+            "jarvis_hermes_admin_ai": admin_ai_gate,
         },
         "service_config": service_config,
         "next_actions": list(dict.fromkeys(next_actions)),
     }
+
+
+def collect_jarvis_hermes_admin_status() -> dict[str, Any]:
+    """Collect the current Jarvis/Hermes admin-AI audit without side effects."""
+    return jarvis_hermes_admin_audit.run_audit(
+        workspace_roots.WORKSPACE_ROOT,
+        expected_task_count=17,
+        probe_port=True,
+    )
 
 
 def collect_live_report() -> dict[str, Any]:
@@ -576,6 +635,7 @@ def collect_live_report() -> dict[str, Any]:
         service_config=collect_service_config_status(),
         tasks=collect_task_status(),
         ibgateway_reauth=_read_json(workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"),
+        jarvis_hermes_admin=collect_jarvis_hermes_admin_status(),
     )
 
 
@@ -585,6 +645,7 @@ def _print_human(report: dict[str, Any]) -> None:
     print(f"Runtime ready: {summary.get('runtime_ready')}")
     print(f"Dashboard durable: {summary.get('dashboard_durable')}")
     print(f"Trading gate ready: {summary.get('trading_gate_ready')}")
+    print(f"Admin AI ready: {summary.get('admin_ai_ready')} ({summary.get('admin_ai_status')})")
     print(f"Promotion allowed: {summary.get('promotion_allowed')}")
     print("Order action allowed: False")
     actions = _as_list(report.get("next_actions"))

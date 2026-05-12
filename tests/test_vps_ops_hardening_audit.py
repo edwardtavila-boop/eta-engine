@@ -217,3 +217,72 @@ def test_missing_ibc_credentials_blocks_trading_gate_without_red_runtime() -> No
     assert report["broker_runtime"]["ibgateway"]["status"] == "missing_ibc_credentials"
     assert report["broker_runtime"]["ibgateway"]["port_listening"] is False
     assert any("set_ibc_credentials.ps1" in action for action in report["next_actions"])
+
+
+def test_admin_ai_warn_blocks_green_without_marking_runtime_red() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        jarvis_hermes_admin={
+            "status": "WARN",
+            "summary": {
+                "admin_ai_ready": False,
+                "checks": 8,
+                "pass": 7,
+                "warnings": 1,
+                "blocked": 0,
+            },
+            "next_actions": ["Review bridge_plan_tasks: T17 wave is not fully represented yet"],
+        },
+    )
+
+    assert report["summary"]["status"] == "YELLOW_ADMIN_AI_PENDING"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is True
+    assert report["summary"]["admin_ai_ready"] is False
+    assert report["summary"]["promotion_allowed"] is False
+    assert report["safety_gates"]["jarvis_hermes_admin_ai"]["status"] == "WARN"
+    assert any("T17 wave" in action for action in report["next_actions"])
+
+
+def test_admin_ai_blocked_surfaces_safety_gate_without_allowing_orders() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+        jarvis_hermes_admin={
+            "status": "BLOCKED",
+            "summary": {
+                "admin_ai_ready": False,
+                "checks": 8,
+                "pass": 6,
+                "warnings": 0,
+                "blocked": 2,
+            },
+            "next_actions": ["Fix mcp_destructive_safety: missing confirm marker"],
+        },
+    )
+
+    assert report["summary"]["status"] == "YELLOW_ADMIN_AI_BLOCKED"
+    assert report["summary"]["admin_ai_status"] == "BLOCKED"
+    assert report["summary"]["promotion_allowed"] is False
+    assert report["summary"]["order_action_allowed"] is False
+    assert report["safety_gates"]["jarvis_hermes_admin_ai"]["blocked"] == 2
+    assert any("missing confirm marker" in action for action in report["next_actions"])
