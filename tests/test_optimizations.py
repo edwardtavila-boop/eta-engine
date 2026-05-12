@@ -300,7 +300,7 @@ class TestStatusPage:
         assert "const historyTitle = `${scope} Close History`" in html
         assert "selected-window close history" in html
         assert "broker position rows unavailable" in html
-        assert "broker-reported open positions without row detail" in html
+        assert "broker-reported open futures exposure without row detail" in html
         assert 'id="pnlWindowStrip"' in html
         assert "function renderPnlWindowStrip" in html
         assert "selected-window realized PnL" in html
@@ -462,6 +462,17 @@ class TestStatusPage:
         assert "broker_open_position_count" in html
         assert "supervisor_local_position_count" in html
         assert "paper-local watched" in html
+
+    def test_status_page_prefers_fresh_public_fleet_and_cellars_spot(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "fetchBestFleetData" in html
+        assert "payloadFleetScore" in html
+        assert "isCellarBot" in html
+        assert "cellarCount" in html
+        assert "Alpaca/spot paused" in html
+        assert "Futures Focus Net" in html
 
     def test_status_page_does_not_coerce_missing_broker_pnl_to_zero(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"

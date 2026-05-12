@@ -2349,17 +2349,23 @@ class TestDashboardAPI:
     # Broker readiness + BTC fleet endpoints
     # ------------------------------------------------------------------ #
 
-    def test_brokers_endpoint_returns_all_three_readiness_reports(self, app_client):
+    def test_brokers_endpoint_returns_futures_focus_readiness_reports(self, app_client):
         r = app_client.get("/api/brokers")
         assert r.status_code == 200
         j = r.json()
-        # Alpaca was added 2026-05-05 as the active crypto-paper venue.
+        # Alpaca remains importable, but is paused in the cellar while the
+        # operator focuses on regulated futures, CME crypto futures, and
+        # commodities.
         assert set(j["brokers"].keys()) == {"ibkr", "tastytrade", "alpaca"}
         # All three adapters must at least be importable -- they all carry
         # `adapter_available=True` in their readiness output.
         assert j["brokers"]["ibkr"]["adapter_available"] is True
         assert j["brokers"]["tastytrade"]["adapter_available"] is True
         assert j["brokers"]["alpaca"]["adapter_available"] is True
+        assert j["brokers"]["alpaca"]["policy_status"] == "paused_cellar"
+        assert "alpaca" in j["paused_brokers"]
+        assert "alpaca" not in j["active_brokers"]
+        assert j["pending_brokers"] == ["tradovate"]
         # active_brokers is a sorted list of ready names (may be empty
         # in a test env with no creds, which is fine).
         assert isinstance(j["active_brokers"], list)
@@ -2701,13 +2707,13 @@ class TestDashboardAPI:
         from pathlib import Path
 
         state = Path(os.environ["ETA_STATE_DIR"])
-        bot_dir = state / "bots" / "sol_optimized"
+        bot_dir = state / "bots" / "mcl_sweep_reclaim"
         bot_dir.mkdir(parents=True, exist_ok=True)
         (bot_dir / "status.json").write_text(
             json.dumps(
                 {
-                    "name": "sol_optimized",
-                    "symbol": "SOL",
+                    "name": "mcl_sweep_reclaim",
+                    "symbol": "MCL1",
                     "tier": "confluence_scorecard",
                     "venue": "paper-sim",
                     "status": "running",
@@ -2726,11 +2732,11 @@ class TestDashboardAPI:
                     "summary": {"total_bots": 1, "launch_lanes": {"paper_soak": 1}},
                     "rows": [
                         {
-                            "bot_id": "sol_optimized",
-                            "strategy_id": "sol_optimized_v1",
+                            "bot_id": "mcl_sweep_reclaim",
+                            "strategy_id": "mcl_sweep_reclaim_v1",
                             "strategy_kind": "confluence_scorecard",
-                            "symbol": "SOL",
-                            "timeframe": "1h",
+                            "symbol": "MCL1",
+                            "timeframe": "5m",
                             "active": True,
                             "promotion_status": "paper_ready",
                             "baseline_status": "baseline_present",
@@ -2749,14 +2755,14 @@ class TestDashboardAPI:
 
         r = app_client.get("/api/bot-fleet")
         assert r.status_code == 200
-        eth = next(b for b in r.json()["bots"] if b["name"] == "sol_optimized")
-        assert eth["strategy_readiness"]["strategy_id"] == "sol_optimized_v1"
-        assert eth["launch_lane"] == "paper_soak"
-        assert eth["can_paper_trade"] is True
-        assert eth["can_live_trade"] is False
-        assert eth["readiness_next_action"] == "Run paper-soak and broker drift checks before live routing."
+        bot_row = next(b for b in r.json()["bots"] if b["name"] == "mcl_sweep_reclaim")
+        assert bot_row["strategy_readiness"]["strategy_id"] == "mcl_sweep_reclaim_v1"
+        assert bot_row["launch_lane"] == "paper_soak"
+        assert bot_row["can_paper_trade"] is True
+        assert bot_row["can_live_trade"] is False
+        assert bot_row["readiness_next_action"] == "Run paper-soak and broker drift checks before live routing."
 
-        drill = app_client.get("/api/bot-fleet/sol_optimized")
+        drill = app_client.get("/api/bot-fleet/mcl_sweep_reclaim")
         assert drill.status_code == 200
         drill_data = drill.json()
         assert drill_data["status"]["strategy_readiness"]["launch_lane"] == "paper_soak"
@@ -3133,10 +3139,19 @@ class TestDashboardAPI:
             lambda: {
                 "today_actual_fills": 2,
                 "today_realized_pnl": 10.0,
-                "total_unrealized_pnl": 40.0,
-                "open_position_count": 3,
+                "total_unrealized_pnl": 25.0,
+                "open_position_count": 1,
+                "all_venue_today_actual_fills": 2,
+                "all_venue_today_realized_pnl": 10.0,
+                "all_venue_total_unrealized_pnl": 40.0,
+                "all_venue_open_position_count": 3,
+                "cellar_today_actual_fills": 0,
+                "cellar_today_realized_pnl": 0.0,
+                "cellar_total_unrealized_pnl": 10.0,
+                "cellar_open_position_count": 2,
                 "alpaca": {
                     "ready": True,
+                    "policy_status": "paused_cellar",
                     "open_positions": [
                         {
                             "symbol": "BTCUSD",
@@ -3174,13 +3189,19 @@ class TestDashboardAPI:
         assert r.status_code == 200
         portfolio = r.json()["portfolio_summary"]
         assert portfolio["source"] == "live_broker_state"
-        assert portfolio["broker_net_pnl"] == 50.0
+        assert portfolio["focus_policy"]["mode"] == "futures_focus"
+        assert portfolio["focus_policy"]["paused_venues"] == ["alpaca"]
+        assert portfolio["broker_net_pnl"] == 35.0
         assert portfolio["hidden_disabled_count"] == 0
-        assert portfolio["unassigned_broker_position_count"] == 1
-        assert portfolio["unassigned_broker_symbols"] == ["ETHUSD"]
+        assert portfolio["unassigned_broker_position_count"] == 0
+        assert portfolio["unassigned_broker_symbols"] == []
+        assert portfolio["focus_open_position_count"] == 1
+        assert portfolio["cellar_summary"]["hidden_bot_count"] == 1
+        assert portfolio["cellar_summary"]["hidden_position_count"] == 2
+        assert portfolio["cellar_summary"]["hidden_symbols"] == ["BTC", "BTCUSD", "ETHUSD"]
         sleeves = {row["sleeve"]: row for row in portfolio["allocation_sleeves"]}
         assert sleeves["equity_index_futures"]["open_position_count"] == 1
-        assert sleeves["crypto"]["open_position_count"] == 1
+        assert "crypto" not in sleeves
         contributors = {
             (row["venue"], row["symbol"]): row
             for row in portfolio["pnl_contributors"]
@@ -3188,9 +3209,8 @@ class TestDashboardAPI:
         assert contributors[("ibkr", "MNQM6")]["sleeve"] == "equity_index_futures"
         assert contributors[("ibkr", "MNQM6")]["ownership_status"] == "managed_symbol"
         assert contributors[("ibkr", "MNQM6")]["unrealized_pnl"] == 25.0
-        assert contributors[("alpaca", "BTCUSD")]["unrealized_pnl"] == 15.0
-        assert contributors[("alpaca", "ETHUSD")]["sleeve"] == "crypto"
-        assert contributors[("alpaca", "ETHUSD")]["ownership_status"] == "unassigned_broker_position"
+        assert ("alpaca", "BTCUSD") not in contributors
+        assert ("alpaca", "ETHUSD") not in contributors
 
     def test_portfolio_symbol_roots_handle_dated_futures_contracts(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
@@ -3604,8 +3624,8 @@ class TestDashboardAPI:
                     "last_bar_ts": "2026-05-08T03:39:30+00:00",
                 },
                 {
-                    "bot_id": "sol_optimized",
-                    "symbol": "SOL",
+                    "bot_id": "mnq_futures_sage",
+                    "symbol": "MNQ1",
                     "strategy_kind": "confluence_scorecard",
                     "direction": "long",
                     "n_entries": 1,
@@ -3624,14 +3644,14 @@ class TestDashboardAPI:
 
         assert visible.status_code == 200
         names = {row["name"] for row in visible.json()["bots"]}
-        assert "sol_optimized" in names
+        assert "mnq_futures_sage" in names
         assert "rsi_mr_mnq" not in names
 
         debug = app_client.get("/api/bot-fleet?include_disabled=true")
         rows = {row["name"]: row for row in debug.json()["bots"]}
         assert rows["rsi_mr_mnq"]["registry_deactivated"] is True
         assert rows["rsi_mr_mnq"]["registry_active"] is False
-        assert rows["sol_optimized"]["registry_active"] is True
+        assert rows["mnq_futures_sage"]["registry_active"] is True
 
     def test_bot_fleet_drilldown_prefers_supervisor_open_position(self, app_client):
         """Per-bot drilldown must not hide live supervisor positions behind legacy status."""
@@ -4162,9 +4182,9 @@ class TestDashboardAPI:
         payload = r.json()
         audit = payload["broker_bracket_audit"]
         assert audit["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
-        assert payload["target_exit_summary"]["broker_position_scope"] == "all_broker_venues"
-        assert "all broker venues" in payload["target_exit_summary"]["broker_position_scope_detail"]
-        assert payload["summary"]["target_exit_broker_position_scope"] == "all_broker_venues"
+        assert payload["target_exit_summary"]["broker_position_scope"] == "futures_focus"
+        assert "futures-focus venues" in payload["target_exit_summary"]["broker_position_scope_detail"]
+        assert payload["summary"]["target_exit_broker_position_scope"] == "futures_focus"
         assert audit["position_summary"]["broker_bracket_required_position_count"] == 1
         assert audit["position_summary"]["missing_bracket_count"] == 1
         assert audit["position_summary"]["unprotected_symbols"] == ["MNQM6"]
@@ -4430,12 +4450,22 @@ class TestDashboardAPI:
 
         live = mod._live_broker_state_payload()
 
-        assert live["today_actual_fills"] == 20
-        assert live["today_realized_pnl"] == 10118.8
-        assert live["total_unrealized_pnl"] == -5.34
-        assert live["open_position_count"] == 2
+        assert live["focus_policy"]["mode"] == "futures_focus"
+        assert live["today_actual_fills"] == 18
+        assert live["today_realized_pnl"] == 10133.83
+        assert live["total_unrealized_pnl"] == 0.0
+        assert live["open_position_count"] == 0
+        assert live["all_venue_today_actual_fills"] == 20
+        assert live["all_venue_today_realized_pnl"] == 10118.8
+        assert live["all_venue_total_unrealized_pnl"] == -5.34
+        assert live["all_venue_open_position_count"] == 2
+        assert live["cellar_today_actual_fills"] == 2
+        assert live["cellar_today_realized_pnl"] == -15.03
+        assert live["cellar_total_unrealized_pnl"] == -5.34
+        assert live["cellar_open_position_count"] == 2
         assert live["ibkr"]["today_realized_pnl"] == 10133.83
         assert live["alpaca"]["today_realized_pnl"] == -15.03
+        assert live["alpaca"]["policy_status"] == "paused_cellar"
 
     def test_live_broker_state_uses_trade_close_ledger_for_win_rate_when_fills_lack_pnl(
         self,
@@ -4607,23 +4637,28 @@ class TestDashboardAPI:
         exposure = mod._position_exposure_payload(live_state, recent_closes=recent_closes)
 
         assert exposure["ready"] is True
-        assert exposure["open_position_count"] == 2
-        assert exposure["symbols_open"] == ["BTCUSD", "MNQM6"]
+        assert exposure["position_scope"] == "futures_focus"
+        assert exposure["open_position_count"] == 1
+        assert exposure["symbols_open"] == ["MNQM6"]
+        assert exposure["cellar_open_position_count"] == 1
+        assert exposure["cellar_symbols_open"] == ["BTCUSD"]
         assert exposure["target_exit_visibility"]["status"] == "open_positions_detected"
-        alpaca_pos = exposure["open_positions"][0]
+        alpaca_pos = exposure["cellar_open_positions"][0]
         assert alpaca_pos["venue"] == "alpaca"
         assert alpaca_pos["symbol"] == "BTCUSD"
         assert alpaca_pos["qty"] == 0.04
         assert alpaca_pos["unrealized_pnl"] == 50.0
         assert alpaca_pos["broker_bracket_required"] is False
-        ibkr_pos = exposure["open_positions"][1]
+        ibkr_pos = exposure["open_positions"][0]
         assert ibkr_pos["venue"] == "ibkr"
         assert ibkr_pos["side"] == "short"
         assert ibkr_pos["sec_type"] == "FUT"
         assert ibkr_pos["broker_bracket_required"] is True
         assert exposure["broker_bracket_required_position_count"] == 1
-        assert exposure["broker_supervisor_managed_position_count"] == 1
-        close = exposure["recent_closes"][0]
+        assert exposure["broker_supervisor_managed_position_count"] == 0
+        assert exposure["recent_closes"] == []
+        assert exposure["cellar_recent_close_count"] == 1
+        close = exposure["cellar_recent_closes"][0]
         assert close["bot_id"] == "btc_optimized"
         assert close["realized_pnl"] == 50.0
         assert close["layers_updated"] == ["trade_memory", "edge_optimizer"]
@@ -4683,8 +4718,10 @@ class TestDashboardAPI:
         payload = r.json()
         assert payload["ready"] is True
         assert payload["source"] == "live_broker_rest+trade_closes"
-        assert payload["open_position_count"] == 1
-        assert payload["open_positions"][0]["symbol"] == "ETHUSD"
+        assert payload["open_position_count"] == 0
+        assert payload["open_positions"] == []
+        assert payload["cellar_open_position_count"] == 1
+        assert payload["cellar_open_positions"][0]["symbol"] == "ETHUSD"
 
     def test_live_position_exposure_endpoint_prefers_fleet_merged_paper_watch(self, app_client, monkeypatch):
         import eta_engine.deploy.scripts.dashboard_api as mod

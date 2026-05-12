@@ -91,7 +91,7 @@ _FUTURES_MONTH_CODES = "FGHJKMNQUVXZ"
 
 _FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled", "tastytrade")
 _IBKR_FUTURES_BROKER_STACK = ("ibkr", "tradovate_when_enabled")
-_SPOT_CRYPTO_BROKER_STACK = ("alpaca", "ibkr_when_crypto_live_enabled")
+_SPOT_CRYPTO_BROKER_STACK = ("paused_cellar",)
 
 _BUCKET_ORDER = (
     "equity_index_futures",
@@ -99,9 +99,10 @@ _BUCKET_ORDER = (
     "rates_fx",
     "cme_crypto_futures",
     "other",
-    "spot_crypto",
+    "cellar_spot_crypto",
 )
-_BROKER_PRIORITY = ("ibkr", "tradovate_when_enabled", "tastytrade", "alpaca")
+_BROKER_PRIORITY = ("ibkr", "tradovate_when_enabled", "tastytrade")
+_CELLAR_BUCKETS = ("cellar_spot_crypto",)
 _BOT_PRIORITY_TIEBREAK = {
     "volume_profile_mnq": 0,
     "volume_profile_nq": 1,
@@ -245,28 +246,27 @@ def _priority_metadata(symbol: str) -> PriorityMetadata:
         )
     if root in _SPOT_CRYPTO:
         return PriorityMetadata(
-            asset_class="spot_crypto",
-            priority_bucket="spot_crypto",
-            priority_rank=90,
+            asset_class="paused_spot_crypto",
+            priority_bucket="cellar_spot_crypto",
+            priority_rank=900,
             preferred_broker_stack=_SPOT_CRYPTO_BROKER_STACK,
             edge_thesis=(
-                "Spot crypto is a secondary lane for personal/paper routing: only trade "
-                "regime-stable NY-session edges with real feature coverage."
+                "Spot crypto is paused in the cellar while capital focus moves to "
+                "regulated futures, CME crypto futures, and commodities."
             ),
             primary_edges=(
-                "ny_session_momentum_reclaim",
-                "funding_sentiment_filter",
-                "macro_regime_filter",
+                "cellar_paused",
+                "manual_reactivation_required",
             ),
             exit_playbook=(
-                "Reduce-only paper exits with local target/stop watcher; disable duplicate "
-                "bots that produce identical trades."
+                "Do not stage new Alpaca/spot entries. Existing paper exposure remains "
+                "read-only evidence until the operator manually closes or reactivates the lane."
             ),
             risk_playbook=(
-                "Alpaca paper first; no live spot expansion until duplicate clusters are retired "
-                "and missing macro/onchain features are real."
+                "Alpaca/spot paused by operator policy; no paper/live promotion until "
+                "the focus policy is deliberately changed."
             ),
-            daily_focus="Keep only distinct, feature-backed spot crypto edges and avoid cloning futures logic.",
+            daily_focus="Keep spot crypto hidden in the cellar; prioritize IBKR/Tastytrade futures readiness.",
         )
     return PriorityMetadata(
         asset_class="other",
@@ -312,6 +312,29 @@ def _launch_lane_rank(row: ReadinessRow) -> int:
 def _with_priority(row: ReadinessRow) -> ReadinessRow:
     meta = _priority_metadata(row.symbol)
     capital_priority = (meta.priority_rank * 100) + (_promotion_rank(row) * 10) + _launch_lane_rank(row)
+    if meta.priority_bucket in _CELLAR_BUCKETS:
+        return replace(
+            row,
+            active=False,
+            data_status="paused_cellar",
+            launch_lane="cellar",
+            can_paper_trade=False,
+            can_live_trade=False,
+            priority_bucket=meta.priority_bucket,
+            asset_class=meta.asset_class,
+            priority_rank=meta.priority_rank,
+            preferred_broker_stack=meta.preferred_broker_stack,
+            capital_priority=capital_priority,
+            edge_thesis=meta.edge_thesis,
+            primary_edges=meta.primary_edges,
+            exit_playbook=meta.exit_playbook,
+            risk_playbook=meta.risk_playbook,
+            daily_focus=meta.daily_focus,
+            deactivation_source=row.deactivation_source or "operator_policy",
+            deactivation_reason=row.deactivation_reason
+            or "Alpaca/spot strategies paused; futures, CME crypto futures, and commodities are the focus.",
+            next_action="No new Alpaca/spot entries: lane is paused in the cellar until operator reactivation.",
+        )
     return replace(
         row,
         asset_class=meta.asset_class,
@@ -570,6 +593,7 @@ def build_snapshot(
             "priority_focus": "futures_and_commodities_first",
             "priority_buckets": ordered_bucket_counts,
             "broker_priority": list(_BROKER_PRIORITY),
+            "cellar_buckets": list(_CELLAR_BUCKETS),
             "top_priority_bots": [row.bot_id for row in rows[: min(10, len(rows))]],
         },
         "rows": [asdict(row) for row in rows],

@@ -29,7 +29,7 @@ def _row(
     )
 
 
-def test_priority_model_puts_futures_and_commodities_before_spot_crypto() -> None:
+def test_priority_model_puts_futures_and_commodities_before_cellared_spot_crypto() -> None:
     rows = [
         _row("sol_optimized", "SOL"),
         _row("mbt_funding_basis", "MBT1"),
@@ -55,7 +55,9 @@ def test_priority_model_puts_futures_and_commodities_before_spot_crypto() -> Non
     ]
     assert prioritized[0].priority_bucket == "equity_index_futures"
     assert prioritized[1].priority_bucket == "commodities"
-    assert prioritized[-1].priority_bucket == "spot_crypto"
+    assert prioritized[-1].priority_bucket == "cellar_spot_crypto"
+    assert prioritized[-1].launch_lane == "cellar"
+    assert prioritized[-1].can_paper_trade is False
     assert prioritized[0].preferred_broker_stack == (
         "ibkr",
         "tradovate_when_enabled",
@@ -69,21 +71,21 @@ def test_priority_model_puts_futures_and_commodities_before_spot_crypto() -> Non
     assert "event-window" in prioritized[1].exit_playbook
     assert "macro-timing" in prioritized[2].edge_thesis
     assert "regulated crypto lane" in prioritized[3].edge_thesis
-    assert prioritized[-1].preferred_broker_stack == ("alpaca", "ibkr_when_crypto_live_enabled")
-    assert "duplicate clusters" in prioritized[-1].risk_playbook
+    assert prioritized[-1].preferred_broker_stack == ("paused_cellar",)
+    assert "Alpaca/spot paused" in prioritized[-1].risk_playbook
     assert snapshot["summary"]["priority_focus"] == "futures_and_commodities_first"
     assert snapshot["summary"]["broker_priority"] == [
         "ibkr",
         "tradovate_when_enabled",
         "tastytrade",
-        "alpaca",
     ]
+    assert snapshot["summary"]["cellar_buckets"] == ["cellar_spot_crypto"]
     assert snapshot["summary"]["priority_buckets"] == {
         "commodities": 1,
         "cme_crypto_futures": 1,
         "equity_index_futures": 1,
         "rates_fx": 1,
-        "spot_crypto": 1,
+        "cellar_spot_crypto": 1,
     }
     assert snapshot["summary"]["top_priority_bots"] == [
         "volume_profile_nq",

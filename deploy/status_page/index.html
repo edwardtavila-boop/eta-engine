@@ -255,7 +255,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="orb-ring" id="allocationOrbRing" aria-label="Broker net and allocation ring">
       <div class="orb-inner">
         <div>
-          <div class="orb-label">Broker Net + Allocation</div>
+          <div class="orb-label">Futures Focus Net</div>
           <div class="orb-value" id="portfolioNetOrb">--</div>
           <div class="orb-sub" id="portfolioNetOrbSub">realized + unrealized</div>
         </div>
@@ -304,7 +304,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 </section>
 
 <div class="grid">
-  <div class="card"><h3>Total Bots</h3><div class="stat green" id="totalBots">—</div></div>
+  <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">—</div></div>
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">History PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">waiting for close ledger</div></div>
@@ -541,6 +541,7 @@ const FALSY_FLAG_VALUES = new Set(['false', '0', 'no', 'n']);
 const SLEEVE_LABELS = {
   crypto: 'Crypto',
   digital_assets: 'Crypto',
+  cellar_spot_crypto: 'Cellar: Spot Paused',
   equity_index_futures: 'Equity Index Futures',
   index_futures: 'Equity Index Futures',
   cme_crypto_futures: 'CME Crypto Futures',
@@ -553,6 +554,10 @@ const SLEEVE_LABELS = {
   research_other: 'Research and Other',
   research_and_other: 'Research and Other'
 };
+const SPOT_CRYPTO_ROOTS = new Set(['BTC', 'ETH', 'SOL', 'XRP', 'AVAX', 'LINK', 'DOGE']);
+const CME_CRYPTO_FUTURE_ROOTS = new Set(['MBT', 'MET']);
+const CELLAR_SLEEVE_KEYS = new Set(['crypto', 'spot_crypto', 'cellar_spot_crypto', 'paused_spot_crypto']);
+const PAUSED_CELLAR_VENUES = new Set(['alpaca']);
 
 function normalizeFlag(value) {
   if (value === true || value === false) return value;
@@ -592,6 +597,45 @@ function firstText(value) {
   return String(value || '').trim();
 }
 
+function normalizedSymbolRoot(symbol) {
+  const raw = String(symbol || '').toUpperCase().replace(/[\/\-\s]/g, '');
+  if (!raw) return '';
+  for (const suffix of ['USDT', 'USD']) {
+    const candidate = raw.endsWith(suffix) ? raw.slice(0, -suffix.length) : '';
+    if (SPOT_CRYPTO_ROOTS.has(candidate)) return candidate;
+  }
+  const continuous = raw.replace(/\d+$/g, '');
+  if (SPOT_CRYPTO_ROOTS.has(continuous) || CME_CRYPTO_FUTURE_ROOTS.has(continuous)) return continuous;
+  for (const root of Array.from(CME_CRYPTO_FUTURE_ROOTS).concat(Array.from(SPOT_CRYPTO_ROOTS))) {
+    if (raw.startsWith(root)) return root;
+  }
+  return continuous || raw;
+}
+
+function isSpotCryptoSymbol(symbol) {
+  const root = normalizedSymbolRoot(symbol);
+  return SPOT_CRYPTO_ROOTS.has(root) && !CME_CRYPTO_FUTURE_ROOTS.has(root);
+}
+
+function isCellarSleeve(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return CELLAR_SLEEVE_KEYS.has(key);
+}
+
+function isCellarBot(bot) {
+  const readiness = strategyReadiness(bot);
+  return isCellarSleeve(readiness.priority_bucket || readiness.asset_class)
+    || isSpotCryptoSymbol(bot?.symbol)
+    || PAUSED_CELLAR_VENUES.has(String(bot?.venue || bot?.broker || '').trim().toLowerCase());
+}
+
+function isCellarPosition(position) {
+  const venue = String(position?.venue || position?.broker || '').trim().toLowerCase();
+  return PAUSED_CELLAR_VENUES.has(venue)
+    || String(position?.broker || '').toLowerCase().includes('alpaca')
+    || isSpotCryptoSymbol(position?.symbol);
+}
+
 function botSleeveLabel(bot) {
   const readiness = strategyReadiness(bot);
   return sleeveLabel(readiness.priority_bucket || readiness.asset_class || assetBucket(bot?.symbol));
@@ -606,6 +650,7 @@ function botDailyFocus(bot) {
 }
 
 function isDisplayableBot(bot) {
+  if (isCellarBot(bot)) return false;
   const readiness = strategyReadiness(bot);
   const hasExposure = hasOpenBotExposure(bot);
   const values = [
@@ -648,7 +693,7 @@ function isDisplayableBot(bot) {
 function assetBucket(symbol) {
   const s = String(symbol || '').toUpperCase();
   if (['MBT','MET'].some(x => s.startsWith(x))) return 'CME Crypto Futures';
-  if (['BTC','ETH','SOL','XRP'].some(x => s.startsWith(x))) return 'Spot Crypto';
+  if (isSpotCryptoSymbol(s)) return 'Cellar: Spot Paused';
   if (['MNQ','NQ','MES','ES','M2K','RTY','YM'].some(x => s.startsWith(x))) return 'Equity Index Futures';
   if (['GC','MGC','SI','CL','MCL','NG'].some(x => s.startsWith(x))) return 'Metals and Energy';
   if (['ZN','ZB','ZT','ZF','6E','EUR','DX'].some(x => s.startsWith(x))) return 'Rates and FX';
@@ -1068,7 +1113,7 @@ function normalizeAvgCost(symbol, avgCost, marketPrice) {
 function buildBrokerPositions(liveBroker) {
   const exposurePositions = liveBroker?.position_exposure?.open_positions || [];
   if (Array.isArray(exposurePositions) && exposurePositions.length) {
-    return exposurePositions.map((p) => {
+    return exposurePositions.filter(p => !isCellarPosition(p)).map((p) => {
       const venue = String(p.venue || '').toLowerCase();
       const qty = finiteNumber(p.qty);
       return {
@@ -1090,6 +1135,7 @@ function buildBrokerPositions(liveBroker) {
   const positions = [];
   const alpacaPositions = liveBroker?.alpaca?.open_positions || [];
   for (const p of alpacaPositions) {
+    if (isCellarPosition({...p, venue: 'alpaca'})) continue;
     positions.push({
       broker: 'Alpaca paper',
       symbol: p.symbol || 'crypto',
@@ -1105,6 +1151,7 @@ function buildBrokerPositions(liveBroker) {
   }
   const ibkrPositions = liveBroker?.ibkr?.open_positions || [];
   for (const p of ibkrPositions) {
+    if (isCellarPosition({...p, venue: 'ibkr'})) continue;
     const qty = finiteNumber(p.position);
     positions.push({
       broker: 'IBKR paper',
@@ -1232,9 +1279,9 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
 
   let positionsHtml = '';
   if (!positions.length && brokerOpenCountTruth > 0) {
-    positionsHtml = `<div class="empty-panel">Broker reports ${brokerOpenCountTruth} open position${brokerOpenCountTruth === 1 ? '' : 's'}, but broker position rows unavailable. Treat this as broker-reported open positions without row detail; check IBKR/Alpaca and Bracket Audit before assuming flat.</div>`;
+    positionsHtml = `<div class="empty-panel">Broker reports ${brokerOpenCountTruth} focus open position${brokerOpenCountTruth === 1 ? '' : 's'}, but broker position rows unavailable. Treat this as broker-reported open futures exposure without row detail; check IBKR/Tastytrade and Bracket Audit before assuming flat.</div>`;
   } else if (!positions.length) {
-    const detail = target_exit_visibility.detail || 'New futures entries must carry broker OCO brackets; crypto paper entries are watched by supervisor-local target/stop exits.';
+    const detail = target_exit_visibility.detail || 'New futures entries must carry broker OCO brackets; Alpaca/spot is paused in the cellar.';
     positionsHtml = `<div class="empty-panel">Flat right now. ${esc(detail)}</div>`;
   } else {
     positionsHtml = positions.map((p) => {
@@ -1447,19 +1494,23 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
     ? portfolioSummary.allocation_sleeves
     : [];
   for (const sleeve of apiSleeves) {
-    const bucket = ensure(sleeveLabel(sleeve.sleeve || sleeve.name || sleeve.bucket));
+    const sleeveKey = sleeve.sleeve || sleeve.name || sleeve.bucket;
+    if (isCellarSleeve(sleeveKey)) continue;
+    const bucket = ensure(sleeveLabel(sleeveKey));
     bucket.exposure += Math.abs(finiteNumber(sleeve.exposure ?? sleeve.market_value ?? sleeve.notional) || 0);
     bucket.pnl += finiteNumber(sleeve.unrealized_pnl ?? sleeve.realized_pnl ?? sleeve.pnl) || 0;
     bucket.open += Number(sleeve.open_position_count || sleeve.open || 0);
   }
   const positions = buildBrokerPositions(liveBroker);
   for (const p of positions) {
+    if (isCellarPosition(p)) continue;
     const bucket = ensure(assetBucket(p.symbol));
     bucket.exposure += Math.abs(finiteNumber(p.value) || 0);
     bucket.pnl += finiteNumber(p.pnl) || 0;
     bucket.open += 1;
   }
   for (const bot of bots) {
+    if (isCellarBot(bot)) continue;
     const bucket = ensure(botSleeveLabel(bot));
     bucket.bots.push(bot);
     const edge = botPrimaryEdge(bot);
@@ -1482,6 +1533,13 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
   const unrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
+  const cellarSummary = portfolioSummary?.cellar_summary && typeof portfolioSummary.cellar_summary === 'object'
+    ? portfolioSummary.cellar_summary
+    : {};
+  const cellarCount = Math.max(
+    0,
+    Number(cellarSummary.hidden_bot_count || 0) + Number(cellarSummary.hidden_position_count || 0)
+  );
   const openExposure = brokerPositions.reduce((sum, p) => sum + Math.abs(finiteNumber(p.value) || 0), 0);
   const portfolioNet = finiteNumber(portfolioSummary?.broker_net_pnl);
   const portfolioExposure = finiteNumber(portfolioSummary?.total_exposure ?? portfolioSummary?.broker_open_exposure);
@@ -1504,14 +1562,16 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   if (narrative) {
     const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
     const sleeveText = portfolioSleeves ? `${portfolioSleeves} allocation sleeves` : 'allocation sleeves loading';
-    narrative.textContent = `${active} active display bots across ${bots.length} visible roster rows and ${sleeveText}. ${truth}`;
+    const cellarText = cellarCount > 0 ? ` ${cellarCount} Alpaca/spot paused in the cellar.` : '';
+    narrative.textContent = `${active} active futures-focus bots across ${bots.length} visible roster rows and ${sleeveText}.${cellarText} ${truth}`;
   }
   if (chips) {
     chips.innerHTML = [
-      `<span class="hero-chip"><strong>${bots.length}</strong> visible bots</span>`,
+      `<span class="hero-chip"><strong>${bots.length}</strong> focus bots</span>`,
       `<span class="hero-chip"><strong>${active}</strong> active</span>`,
       `<span class="hero-chip"><strong>${brokerPositions.length}</strong> broker open</span>`,
       `<span class="hero-chip"><strong>${formatMoney(portfolioExposure ?? openExposure, 0)}</strong> exposure</span>`,
+      cellarCount > 0 ? `<span class="hero-chip"><strong>${cellarCount}</strong> Alpaca/spot paused</span>` : '',
       unassignedBrokerPositions > 0 ? `<span class="hero-chip"><strong>${unassignedBrokerPositions}</strong> unassigned broker</span>` : '',
       hiddenCount > 0 ? `<span class="hero-chip"><strong>${hiddenCount}</strong> disabled hidden</span>` : '',
     ].filter(Boolean).join('');
@@ -1538,7 +1598,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
         ? `${paperReady} paper-ready; ${active} active now`
         : `${active} active now`;
     heroMetrics.innerHTML = [
-      {label: 'Today Net', value: formatMoney(todaysPnl, 0), sub: 'realized + unrealized'},
+      {label: 'Futures Net', value: formatMoney(todaysPnl, 0), sub: 'realized + unrealized'},
       {label: lifetimeEvidence?.label || 'Lifetime PnL', value: lifetimeValue == null ? 'n/a' : formatMoney(lifetimeValue, 0), sub: lifetimeEvidence?.source || 'lifetime ledger'},
       {label: 'Open Exposure', value: formatMoney(portfolioExposure ?? openExposure, 0), sub: `${brokerPositions.length} broker position${brokerPositions.length === 1 ? '' : 's'}`},
       {label: 'Readiness', value: readinessText, sub: readinessSub}
@@ -1682,12 +1742,40 @@ async function fetchJson(urls, timeoutMs = FETCH_TIMEOUT_MS) {
   }
 }
 
+function payloadFleetScore(result, index = 0) {
+  const payload = result?.payload || {};
+  if (!payload || typeof payload !== 'object') return -1000;
+  const truthStatus = String(payload.truth_status || payload.summary?.truth_status || 'unknown').toLowerCase();
+  const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
+  const bots = Array.isArray(payload.bots) ? payload.bots : [];
+  const focusBots = bots.filter(bot => !isCellarBot(bot));
+  const active = focusBots.filter(isRuntimeActiveBot).length;
+  const freshHeartbeats = Number(payload.summary?.fresh_heartbeat_count ?? payload.fresh_heartbeat_count ?? 0);
+  let score = stale ? -100 : 100;
+  if (truthStatus === 'working' || truthStatus === 'live') score += 50;
+  score += Math.min(40, active * 5);
+  score += Math.min(20, freshHeartbeats);
+  score += Math.min(10, focusBots.length);
+  return score - (index * 0.01);
+}
+
+async function fetchBestFleetData() {
+  const urls = [API, API_ALT];
+  const settled = await Promise.allSettled(urls.map(url => fetchJsonOnce(url, FETCH_TIMEOUT_MS)));
+  const candidates = settled
+    .map((entry, index) => entry.status === 'fulfilled' ? {...entry.value, index} : null)
+    .filter(Boolean);
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => payloadFleetScore(b, b.index) - payloadFleetScore(a, a.index));
+  return candidates[0];
+}
+
 async function fetchData() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
     const [data, strategyResults, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity] = await Promise.all([
-      fetchJson([API, API_ALT], FETCH_TIMEOUT_MS),
+      fetchBestFleetData(),
       fetchJson(endpointCandidates(STRATEGY_RESULTS_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(OPERATOR_QUEUE_API), AUX_FETCH_TIMEOUT_MS),
       fetchJson(endpointCandidates(PAPER_LIVE_API), AUX_FETCH_TIMEOUT_MS),
@@ -1947,8 +2035,15 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const bots = allBots.filter(isDisplayableBot);
   const summary = d.summary || {};
   const portfolioSummary = d.portfolio_summary || summary.portfolio_summary || {};
+  const cellarSummary = portfolioSummary?.cellar_summary && typeof portfolioSummary.cellar_summary === 'object'
+    ? portfolioSummary.cellar_summary
+    : {};
+  const cellarCount = Math.max(
+    allBots.filter(isCellarBot).length,
+    Number(cellarSummary.hidden_bot_count || 0) + Number(cellarSummary.hidden_position_count || 0)
+  );
   const hiddenFromPayload = finiteNumber(portfolioSummary.hidden_disabled_count);
-  const hiddenCount = Math.max(0, allBots.length - bots.length, hiddenFromPayload || 0);
+  const hiddenCount = Math.max(0, allBots.length - bots.length, hiddenFromPayload || 0, cellarCount);
   const confirmed = d.confirmed_bots || 0;
   const truthStatus = String(d.truth_status || 'unknown').toLowerCase();
   const stale = ['stale', 'empty', 'runtime_stopped'].includes(truthStatus);
@@ -1970,7 +2065,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   document.getElementById('activeBots').className = 'stat ' + (active > 0 ? 'green' : 'blue');
   const activeSub = document.getElementById('activeBotsSub');
   if (activeSub) activeSub.textContent = hiddenCount > 0
-    ? `${staged} staged; ${hiddenCount} disabled hidden`
+    ? `${staged} staged; ${cellarCount} Alpaca/spot paused; ${hiddenCount} hidden`
     : staged > 0 ? staged + ' readiness/staged rows' : 'runtime-active bots';
 
   // Live broker truth (Alpaca + IBKR REST). When present, this is the
@@ -1979,7 +2074,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   // aggregates when the broker probe is unavailable so the panel still
   // renders something.
   const liveBroker = d.live_broker_state || null;
-  const liveBrokerReady = liveBroker && (liveBroker.alpaca?.ready || liveBroker.ibkr?.ready);
+  const liveBrokerReady = liveBroker && (liveBroker.ready || liveBroker.ibkr?.ready || liveBroker.tastytrade?.ready);
   const liveBrokerPnlReady = liveBrokerReady && brokerHasPnlTruth(liveBroker);
   const availableCloseWindows = closeHistoryWindowPayload(liveBroker, selectedCloseHistoryWindow, d);
   const rootCloseHistory = d.close_history || {};
@@ -2003,7 +2098,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
     const realizedToday = finiteNumber(liveBroker.today_realized_pnl) || 0;
     const unrealized = finiteNumber(liveBroker.total_unrealized_pnl) || 0;
     todaysPnl = realizedToday + unrealized;
-    todayPnlSub = `realized $${realizedToday.toFixed(2)} + unrealized $${unrealized.toFixed(2)} (broker)`;
+    todayPnlSub = `${formatMoney(realizedToday, 2)} realized + ${formatMoney(unrealized, 2)} unrealized (futures-focus broker)`;
   } else {
     todaysPnl = bots.reduce((s,b) => s + (b.todays_pnl || 0), 0);
     todayPnlSub = liveBrokerReady
@@ -2194,7 +2289,11 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   const perBot = liveBroker && liveBroker.per_bot_alpaca;
   const perBotCard = document.getElementById('perBotAlpacaCard');
   const perBotSection = document.getElementById('perBotAlpacaSection');
-  if (perBot && perBot.per_bot && perBotCard) {
+  const alpacaSpotPaused = true;
+  if (alpacaSpotPaused && perBotCard) {
+    perBotCard.style.display = 'none';
+    if (perBotSection) perBotSection.style.display = 'none';
+  } else if (perBot && perBot.per_bot && perBotCard) {
     const tbody = document.getElementById('perBotAlpacaTbody');
     if (tbody) {
       const rows = [];
@@ -2677,7 +2776,7 @@ function render(d, strategyResults, operatorQueue, paperLive, diagnostics, vpsRo
   }
   const botRosterSummary = document.getElementById('botRosterSummary');
   if (botRosterSummary) {
-    botRosterSummary.textContent = `${bots.length} visible, ${active} active, ${hiddenCount} hidden disabled/removed`;
+    botRosterSummary.textContent = `${bots.length} focus visible, ${active} active, ${hiddenCount} hidden/cellared`;
   }
   document.getElementById('botTable').innerHTML = html || '<tr><td colspan="12" class="loading">No visible active/staged bots after disabled and removed filters.</td></tr>';
   renderStrategySuperchargeResults(strategyResults || {});

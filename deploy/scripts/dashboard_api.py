@@ -3339,7 +3339,7 @@ def dashboard_payload(response: Response) -> dict:
     payload["bot_strategy_readiness"] = _bot_strategy_readiness_payload()
     payload["strategy_supercharge_manifest"] = _strategy_supercharge_manifest_payload()
     payload["strategy_supercharge_results"] = _strategy_supercharge_results_payload()
-    # Additive: live broker reality (Alpaca + IBKR) so the panel can show
+    # Additive: live broker reality (futures focus plus Alpaca/spot cellar) so the panel can show
     # broker-side fills/PnL alongside supervisor-journal counts. Wraps in
     # try/except — a degraded broker must never tank the whole payload
     # since /api/dashboard is the front page bootstrap.
@@ -4695,9 +4695,9 @@ def bot_fleet_roster(
         ),
         server_ts=now_ts,
     )
-    target_exit_summary["broker_position_scope"] = "all_broker_venues"
+    target_exit_summary["broker_position_scope"] = "futures_focus"
     target_exit_summary["broker_position_scope_detail"] = (
-        "/api/bot-fleet counts all broker venues; /api/master/status uses cached IBKR exposure only."
+        "/api/bot-fleet main cards count active futures-focus venues; Alpaca/spot is retained under cellar evidence."
     )
     position_staleness = (
         target_exit_summary.get("position_staleness")
@@ -6262,6 +6262,69 @@ def _portfolio_sleeve_for_symbol(symbol: object) -> str:
     return _PORTFOLIO_SLEEVE_ROOTS.get(_portfolio_symbol_root(symbol), "other")
 
 
+_FOCUS_PORTFOLIO_SLEEVES = frozenset({
+    "equity_index_futures",
+    "commodities",
+    "rates_fx",
+    "crypto_futures",
+})
+_CELLAR_PORTFOLIO_SLEEVES = frozenset({"crypto"})
+_ACTIVE_FOCUS_BROKERS = ("ibkr", "tastytrade")
+_PENDING_FOCUS_BROKERS = ("tradovate",)
+_PAUSED_CELLAR_BROKERS = ("alpaca",)
+
+
+def _dashboard_focus_policy_payload() -> dict[str, object]:
+    """Current operator focus policy for dashboard/API consumers."""
+    return {
+        "mode": "futures_focus",
+        "active_venues": list(_ACTIVE_FOCUS_BROKERS),
+        "pending_venues": list(_PENDING_FOCUS_BROKERS),
+        "paused_venues": list(_PAUSED_CELLAR_BROKERS),
+        "focus_sleeves": sorted(_FOCUS_PORTFOLIO_SLEEVES),
+        "cellar_sleeves": sorted(_CELLAR_PORTFOLIO_SLEEVES),
+        "note": (
+            "Alpaca and spot strategies are paused in the cellar; main dashboard "
+            "cards focus on regulated futures, CME crypto futures, and commodities."
+        ),
+    }
+
+
+def _portfolio_symbol_is_cellar(symbol: object) -> bool:
+    """True when a symbol belongs to the paused spot/Alpaca cellar."""
+    return _portfolio_sleeve_for_symbol(symbol) in _CELLAR_PORTFOLIO_SLEEVES
+
+
+def _portfolio_position_is_cellar(position: dict) -> bool:
+    """True when a broker position should be hidden from focus cards."""
+    venue = str(position.get("venue") or "").strip().lower()
+    return venue in _PAUSED_CELLAR_BROKERS or _portfolio_symbol_is_cellar(position.get("symbol"))
+
+
+def _mark_position_policy(position: dict) -> dict:
+    """Attach focus/cellar policy metadata to a normalized position row."""
+    out = dict(position)
+    if _portfolio_position_is_cellar(out):
+        out["policy_status"] = "paused_cellar"
+        out["policy_reason"] = "Alpaca/spot paused by operator focus policy."
+    else:
+        out["policy_status"] = "focus"
+        out["policy_reason"] = "Regulated futures focus lane."
+    return out
+
+
+def _trade_close_symbol(row: dict) -> object:
+    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+    return _first_present(extra, ("symbol", "local_symbol", "contract_symbol")) or _first_present(
+        row,
+        ("symbol", "local_symbol", "contract_symbol"),
+    )
+
+
+def _trade_close_is_cellar(row: dict) -> bool:
+    return _portfolio_symbol_is_cellar(_trade_close_symbol(row))
+
+
 def _portfolio_summary_payload(
     rows: list[dict],
     live_broker_state: dict,
@@ -6277,9 +6340,16 @@ def _portfolio_summary_payload(
         if isinstance(live_broker_state.get("position_exposure"), dict)
         else {}
     )
+    focus_rows = [row for row in rows if not _portfolio_symbol_is_cellar(row.get("symbol"))]
+    cellar_rows = [row for row in rows if _portfolio_symbol_is_cellar(row.get("symbol"))]
+    cellar_symbols: set[str] = {
+        str(row.get("symbol"))
+        for row in cellar_rows
+        if row.get("symbol")
+    }
 
     sleeve_map: dict[str, dict[str, Any]] = {}
-    for row in rows:
+    for row in focus_rows:
         sleeve = _portfolio_sleeve_for_symbol(row.get("symbol"))
         bucket = sleeve_map.setdefault(
             sleeve,
@@ -6316,7 +6386,7 @@ def _portfolio_summary_payload(
 
     active_symbol_roots = {
         _portfolio_symbol_root(row.get("symbol"))
-        for row in rows
+        for row in focus_rows
         if row.get("symbol")
     }
     contributors: list[dict[str, Any]] = []
@@ -6347,6 +6417,14 @@ def _portfolio_summary_payload(
             "unrealized_pnl": round(unrealized, 2) if unrealized is not None else None,
             "source": "live_broker_state.position_exposure",
         })
+    cellar_positions = [
+        pos for pos in (exposure.get("cellar_open_positions") or [])
+        if isinstance(pos, dict)
+    ]
+    for pos in cellar_positions:
+        symbol = str(pos.get("symbol") or "")
+        if symbol:
+            cellar_symbols.add(symbol)
     for close in exposure.get("recent_closes") or []:
         if not isinstance(close, dict):
             continue
@@ -6368,10 +6446,21 @@ def _portfolio_summary_payload(
         ),
         reverse=True,
     )
+    focus_exposure = sum(
+        abs(_float_value(pos.get("market_value")) or 0.0)
+        for pos in exposure.get("open_positions") or []
+        if isinstance(pos, dict)
+    )
+    focus_unrealized = sum(
+        _float_value(pos.get("unrealized_pnl")) or 0.0
+        for pos in exposure.get("open_positions") or []
+        if isinstance(pos, dict)
+    )
 
     return {
         "schema_version": 1,
         "source": "live_broker_state" if broker_summary else "bot_rows",
+        "focus_policy": _dashboard_focus_policy_payload(),
         "allocation_sleeves": allocation_sleeves,
         "pnl_contributors": contributors[:12],
         "hidden_disabled_count": int(hidden_disabled_count),
@@ -6381,12 +6470,32 @@ def _portfolio_summary_payload(
         "broker_today_realized_pnl": broker_summary.get("broker_today_realized_pnl"),
         "broker_total_unrealized_pnl": broker_summary.get("broker_total_unrealized_pnl"),
         "open_position_count": int(exposure.get("open_position_count") or 0),
-        "bot_count": len(rows),
+        "focus_open_position_count": int(exposure.get("open_position_count") or 0),
+        "all_venue_open_position_count": int(
+            live_broker_state.get("all_venue_open_position_count")
+            or exposure.get("all_venue_open_position_count")
+            or exposure.get("open_position_count")
+            or 0
+        ),
+        "total_exposure": round(float(focus_exposure), 2),
+        "focus_total_exposure": round(float(focus_exposure), 2),
+        "focus_unrealized_pnl": round(float(focus_unrealized), 2),
+        "bot_count": len(focus_rows),
+        "all_bot_count": len(rows),
+        "cellar_summary": {
+            "policy_status": "paused_cellar",
+            "hidden_bot_count": len(cellar_rows),
+            "hidden_position_count": len(cellar_positions),
+            "hidden_symbols": sorted(cellar_symbols),
+            "paused_venues": list(_PAUSED_CELLAR_BROKERS),
+            "paused_sleeves": sorted(_CELLAR_PORTFOLIO_SLEEVES),
+            "note": "Alpaca/spot rows are hidden from main focus cards but retained as paused evidence.",
+        },
     }
 
 
-def _normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
-    """Normalize broker open positions across venues."""
+def _all_normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
+    """Normalize all broker open positions across venues with policy metadata."""
     live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
     open_positions: list[dict] = []
     for venue in ("alpaca", "ibkr"):
@@ -6398,8 +6507,26 @@ def _normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
         for row in venue_state.get("open_positions") or []:
             normalized = _normalize_live_position(row, venue=venue)
             if normalized:
-                open_positions.append(normalized)
+                open_positions.append(_mark_position_policy(normalized))
     return open_positions
+
+
+def _normalized_live_open_positions(live_broker_state: dict) -> list[dict]:
+    """Normalize focus-lane broker open positions across venues."""
+    return [
+        position
+        for position in _all_normalized_live_open_positions(live_broker_state)
+        if not _portfolio_position_is_cellar(position)
+    ]
+
+
+def _cellar_live_open_positions(live_broker_state: dict) -> list[dict]:
+    """Normalize paused Alpaca/spot positions for cellar evidence."""
+    return [
+        position
+        for position in _all_normalized_live_open_positions(live_broker_state)
+        if _portfolio_position_is_cellar(position)
+    ]
 
 
 def _broker_bracket_required_position_count(live_broker_state: dict) -> int | None:
@@ -6512,7 +6639,7 @@ def _target_exit_summary_for_master_status() -> dict:
     if exposure.get("observed"):
         summary["broker_position_scope"] = "ibkr_cached"
         summary["broker_position_scope_detail"] = (
-            "Master status uses cached IBKR exposure only; /api/bot-fleet carries all broker venues."
+            "Master status uses cached IBKR exposure only; /api/bot-fleet carries futures-focus venues plus cellar evidence."
         )
         broker_count = int(summary.get("broker_open_position_count") or 0)
         generic_phrase = f"{broker_count} broker open"
@@ -6734,6 +6861,7 @@ def _position_exposure_payload(
     ibkr = live_broker_state.get("ibkr") if isinstance(live_broker_state.get("ibkr"), dict) else {}
 
     open_positions = _normalized_live_open_positions(live_broker_state)
+    cellar_open_positions = _cellar_live_open_positions(live_broker_state)
 
     if close_history is None:
         close_history = _close_history_windows(_recent_trade_closes(limit=5000))
@@ -6749,10 +6877,16 @@ def _position_exposure_payload(
         default_window_rows = default_window_payload.get("recent_outcomes")
         recent_closes = default_window_rows if isinstance(default_window_rows, list) else _recent_trade_closes(limit=25)
     normalized_closes: list[dict] = []
+    cellar_closes: list[dict] = []
     for row in recent_closes:
         normalized = _normalize_trade_close(row)
         if normalized:
-            normalized_closes.append(normalized)
+            if _trade_close_is_cellar(row) or _portfolio_symbol_is_cellar(normalized.get("symbol")):
+                normalized["policy_status"] = "paused_cellar"
+                cellar_closes.append(normalized)
+            else:
+                normalized["policy_status"] = "focus"
+                normalized_closes.append(normalized)
 
     open_position_count = len(open_positions)
     bracket_required_count = sum(
@@ -6782,17 +6916,25 @@ def _position_exposure_payload(
     return {
         "ready": "error" not in live_broker_state,
         "source": "live_broker_rest+trade_closes",
+        "position_scope": "futures_focus",
+        "focus_policy": _dashboard_focus_policy_payload(),
         "server_ts": time.time(),
         "open_position_count": open_position_count,
         "broker_open_position_count": open_position_count,
+        "all_venue_open_position_count": open_position_count + len(cellar_open_positions),
+        "cellar_open_position_count": len(cellar_open_positions),
         "broker_bracket_required_position_count": bracket_required_count,
         "broker_supervisor_managed_position_count": max(0, open_position_count - bracket_required_count),
         "supervisor_local_position_count": supervisor_local_count,
         "supervisor_watch_count": supervisor_watch_count,
         "symbols_open": sorted({p["symbol"] for p in open_positions if p.get("symbol")}),
+        "cellar_symbols_open": sorted({p["symbol"] for p in cellar_open_positions if p.get("symbol")}),
         "open_positions": open_positions,
+        "cellar_open_positions": cellar_open_positions,
         "recent_closes": normalized_closes,
         "recent_close_count": len(normalized_closes),
+        "cellar_recent_closes": cellar_closes,
+        "cellar_recent_close_count": len(cellar_closes),
         "close_history": close_history,
         "default_close_history_window": default_close_window,
         "target_exit_summary": target_exit_summary,
@@ -7614,7 +7756,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
 
 
 def _live_broker_state_payload() -> dict:
-    """Aggregate Alpaca + IBKR live state for the dashboard.
+    """Aggregate focus broker live state plus Alpaca/spot cellar evidence.
 
     Surfaces ``today_actual_fills``, ``today_realized_pnl``,
     ``total_unrealized_pnl`` derived from the brokers' own books — NOT
@@ -7624,6 +7766,8 @@ def _live_broker_state_payload() -> dict:
     today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
+    alpaca["policy_status"] = "paused_cellar"
+    alpaca["policy_reason"] = "Alpaca/spot paused by operator focus policy."
     ibkr = _ibkr_live_state_snapshot(today_start_utc=today_start_utc)
     # Per-bot Alpaca breakdown (added 2026-05-06). Wrapped to fail-soft.
     try:
@@ -7634,29 +7778,32 @@ def _live_broker_state_payload() -> dict:
             "error": f"per_bot_payload_failed: {exc}",
             "per_bot": {},
         }
-    today_actual_fills = (
-        int(alpaca.get("today_filled_orders") or 0)
-        + int(ibkr.get("today_executions") or 0)
-    )
-    today_realized_pnl = round(
-        float(alpaca.get("today_realized_pnl") or 0.0)
-        + float(ibkr.get("today_realized_pnl") or 0.0),
-        2,
-    )
-    total_unrealized_pnl = round(
-        float(alpaca.get("unrealized_pnl") or 0.0)
-        + float(ibkr.get("unrealized_pnl") or 0.0),
-        2,
-    )
-    open_position_count = (
-        int(alpaca.get("open_position_count") or 0)
-        + int(ibkr.get("open_position_count") or 0)
-    )
-    win_rate_today = _float_value(alpaca.get("today_win_rate"))
-    closed_outcome_count_today = int(alpaca.get("today_closed_outcome_count") or 0)
-    evaluated_outcome_count_today = int(alpaca.get("today_evaluated_outcome_count") or 0)
-    recent_trade_closes = _recent_trade_closes(limit=5000)
+    cellar_today_actual_fills = int(alpaca.get("today_filled_orders") or 0)
+    cellar_today_realized_pnl = round(float(alpaca.get("today_realized_pnl") or 0.0), 2)
+    cellar_total_unrealized_pnl = round(float(alpaca.get("unrealized_pnl") or 0.0), 2)
+    cellar_open_position_count = int(alpaca.get("open_position_count") or 0)
+    today_actual_fills = int(ibkr.get("today_executions") or 0)
+    today_realized_pnl = round(float(ibkr.get("today_realized_pnl") or 0.0), 2)
+    total_unrealized_pnl = round(float(ibkr.get("unrealized_pnl") or 0.0), 2)
+    open_position_count = int(ibkr.get("open_position_count") or 0)
+    all_venue_today_actual_fills = today_actual_fills + cellar_today_actual_fills
+    all_venue_today_realized_pnl = round(today_realized_pnl + cellar_today_realized_pnl, 2)
+    all_venue_total_unrealized_pnl = round(total_unrealized_pnl + cellar_total_unrealized_pnl, 2)
+    all_venue_open_position_count = open_position_count + cellar_open_position_count
+    win_rate_today = None
+    closed_outcome_count_today = 0
+    evaluated_outcome_count_today = 0
+    all_trade_closes = _recent_trade_closes(limit=5000)
+    recent_trade_closes = [
+        row for row in all_trade_closes
+        if not _trade_close_is_cellar(row)
+    ]
+    cellar_trade_closes = [
+        row for row in all_trade_closes
+        if _trade_close_is_cellar(row)
+    ]
     close_history = _close_history_windows(recent_trade_closes, now=datetime.now(UTC))
+    all_venue_close_history = _close_history_windows(all_trade_closes, now=datetime.now(UTC))
     close_outcomes_today = _closed_outcomes_from_trade_closes(
         recent_trade_closes,
         since=today_start_utc,
@@ -7671,7 +7818,7 @@ def _live_broker_state_payload() -> dict:
         evaluated_outcome_count_today = int(close_outcomes_today.get("evaluated_outcome_count") or 0)
         win_rate_source = "trade_close_ledger_today"
     else:
-        win_rate_source = "alpaca_filled_order_pairs" if win_rate_today is not None else ""
+        win_rate_source = ""
     # 30d win-rate from blotter fills (best-effort; uses local ledger
     # because broker REST is too narrow for 30-day history without paging).
     win_rate_30d: float | None = None
@@ -7681,6 +7828,8 @@ def _live_broker_state_payload() -> dict:
         losses = 0
         cutoff = datetime.now(UTC) - timedelta(days=30)
         for row in _recent_live_fill_rows():
+            if _trade_close_is_cellar(row):
+                continue
             ts_dt = _parse_fill_dt(row.get("ts"))
             if ts_dt is None or ts_dt < cutoff:
                 continue
@@ -7701,10 +7850,19 @@ def _live_broker_state_payload() -> dict:
         win_rate_30d_source = "trade_close_ledger_30d"
     payload = {
         "server_ts": time.time(),
+        "focus_policy": _dashboard_focus_policy_payload(),
         "today_actual_fills": today_actual_fills,
         "today_realized_pnl": today_realized_pnl,
         "total_unrealized_pnl": total_unrealized_pnl,
         "open_position_count": open_position_count,
+        "all_venue_today_actual_fills": all_venue_today_actual_fills,
+        "all_venue_today_realized_pnl": all_venue_today_realized_pnl,
+        "all_venue_total_unrealized_pnl": all_venue_total_unrealized_pnl,
+        "all_venue_open_position_count": all_venue_open_position_count,
+        "cellar_today_actual_fills": cellar_today_actual_fills,
+        "cellar_today_realized_pnl": cellar_today_realized_pnl,
+        "cellar_total_unrealized_pnl": cellar_total_unrealized_pnl,
+        "cellar_open_position_count": cellar_open_position_count,
         "win_rate_30d": win_rate_30d,
         "win_rate_30d_source": win_rate_30d_source,
         "win_rate_today": win_rate_today,
@@ -7714,7 +7872,9 @@ def _live_broker_state_payload() -> dict:
         "recent_close_count_30d": int(close_outcomes_30d.get("closed_outcome_count") or 0),
         "recent_close_evaluated_count_30d": int(close_outcomes_30d.get("evaluated_outcome_count") or 0),
         "recent_close_realized_pnl_30d": _float_value(close_outcomes_30d.get("realized_pnl")),
+        "cellar_recent_close_count": len(cellar_trade_closes),
         "close_history": close_history,
+        "all_venue_close_history": all_venue_close_history,
         "alpaca": alpaca,
         "ibkr": ibkr,
         "per_bot_alpaca": per_bot_alpaca,
@@ -8260,14 +8420,13 @@ def list_tasks() -> dict:
 
 @app.get("/api/brokers")
 def broker_readiness() -> dict:
-    """Return the paper-broker readiness snapshot for IBKR + Tastytrade + Alpaca.
+    """Return the paper-broker readiness snapshot for focus venues plus cellar.
 
     Consumed by the 'Broker Paper' dashboard card to answer:
     "which venues can actually place orders right now?"
 
-    Alpaca was added 2026-05-05 as the active crypto-paper venue while
-    Tastytrade cert sandbox crypto enablement is pending operator action
-    (api.support@tastytrade.com).
+    Alpaca remains adapter-visible, but the operator paused Alpaca/spot
+    strategies; active readiness now means IBKR/Tastytrade futures focus.
     """
     try:
         from eta_engine.venues.alpaca import alpaca_paper_readiness
@@ -8290,11 +8449,18 @@ def broker_readiness() -> dict:
         alpaca = alpaca_paper_readiness()
     except Exception as exc:  # noqa: BLE001
         alpaca = {"adapter_available": False, "ready": False, "error": str(exc)}
+    alpaca["policy_status"] = "paused_cellar"
+    alpaca["policy_reason"] = "Alpaca/spot strategies paused by operator focus policy."
     brokers = {"ibkr": ibkr, "tastytrade": tasty, "alpaca": alpaca}
     return {
         "brokers": brokers,
+        "focus_policy": _dashboard_focus_policy_payload(),
+        "paused_brokers": list(_PAUSED_CELLAR_BROKERS),
+        "pending_brokers": list(_PENDING_FOCUS_BROKERS),
         "active_brokers": sorted(
-            name for name, report in brokers.items() if report.get("ready")
+            name
+            for name, report in brokers.items()
+            if name in _ACTIVE_FOCUS_BROKERS and report.get("ready")
         ),
     }
 
@@ -8601,23 +8767,25 @@ def all_systems_status() -> dict:
         "alpaca": alpaca_ready,
     }
     ready_names = sorted(name for name, ok in ready_set.items() if ok)
-    # GREEN requires the two coverage-critical lanes: a futures venue
-    # (IBKR) AND a crypto venue (Alpaca, since Tastytrade cert crypto is
-    # pending support enablement). A single venue is YELLOW.
-    if ibkr_ready and alpaca_ready:
+    # GREEN requires the active futures venue pair. Alpaca/spot is paused
+    # in the cellar and must not make the systems card look healthier.
+    if ibkr_ready and tasty_ready:
         out["brokers"] = {
             "status": "GREEN",
-            "detail": f"ready: {','.join(ready_names)}",
+            "detail": f"futures-focus ready: {','.join(name for name in ready_names if name != 'alpaca')}",
         }
-    elif ready_names:
+    elif ibkr_ready or tasty_ready:
         out["brokers"] = {
             "status": "YELLOW",
-            "detail": f"only {','.join(ready_names)} ready",
+            "detail": (
+                "partial futures-focus readiness: "
+                f"{','.join(name for name in ready_names if name != 'alpaca') or 'none'}; alpaca paused"
+            ),
         }
     else:
         out["brokers"] = {
             "status": "RED",
-            "detail": "no brokers ready",
+            "detail": "no active futures-focus brokers ready; alpaca paused",
         }
 
     # BTC fleet: count active lanes
