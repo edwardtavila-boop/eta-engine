@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 from eta_engine.scripts import jarvis_hermes_admin_audit, workspace_roots  # noqa: E402
 
 DEFAULT_OUT = workspace_roots.ETA_VPS_OPS_HARDENING_AUDIT_PATH
+CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT = 8
 CRITICAL_SERVICES = (
     "FirmCommandCenter",
     "FirmCommandCenterEdge",
@@ -649,7 +650,7 @@ def collect_jarvis_hermes_admin_status() -> dict[str, Any]:
     """Collect the current Jarvis/Hermes admin-AI audit without side effects."""
     return jarvis_hermes_admin_audit.run_audit(
         workspace_roots.WORKSPACE_ROOT,
-        expected_task_count=17,
+        expected_task_count=CURRENT_JARVIS_HERMES_BRIDGE_TASK_COUNT,
         probe_port=True,
     )
 

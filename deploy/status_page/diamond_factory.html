@@ -1,73 +1,90 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="15">
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="20">
 <title>ETA Diamond Factory</title>
 <style>
+:root{--bg:#020408;--surface:#0a0f1a;--border:#1a2030;--text:#e0e6f0;--muted:#5a6078;--gold:#c5a059;--green:#4ade80;--red:#f87171;--blue:#60a5fa;--cyan:#22d3ee;--purple:#a78bfa}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0e17;color:#c0caf5;font:13px/1.5 'Segoe UI',monospace;padding:16px}
-.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1a1f2e;padding-bottom:12px;margin-bottom:12px}
-.header h1{font-size:20px;background:linear-gradient(90deg,#7aa2f7,#9ece6a);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.live-dot{width:10px;height:10px;background:#9ece6a;border-radius:50%;display:inline-block;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-.metric{background:#1a1f2e;padding:12px;border-radius:8px;text-align:center;border:1px solid #242b3d}
-.metric .val{font-size:24px;font-weight:700}
-.metric .lbl{font-size:10px;color:#565f89;text-transform:uppercase;letter-spacing:1px}
-.green{color:#9ece6a}.red{color:#f7768e}.gold{color:#e0af68}.blue{color:#7aa2f7}.cyan{color:#7dcfff}
-.progress-bar{height:4px;background:#1a1f2e;border-radius:2px;margin:10px 0;overflow:hidden}
-.progress-fill{height:100%;background:linear-gradient(90deg,#7aa2f7,#9ece6a);transition:width 1s}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th{background:#111520;padding:8px;text-align:left;color:#7aa2f7;font-size:11px;position:sticky;top:0}
-td{padding:7px 8px;border-bottom:1px solid #1a1f2e;font-size:12px}
-tr.running{background:#1a1f2e}tr.diamond td{background:#13241a}tr.losing td{background:#24131a}
-tr.timeout td{color:#565f89}tr.failed td{color:#f7768e}
-.pool-tag{font-size:10px;padding:2px 6px;border-radius:3px;background:#1a1f2e}
-.footer{font-size:10px;color:#565f89;margin-top:12px;text-align:right}
-.spark{display:inline-block;width:60px;height:16px;vertical-align:middle}
+body{background:var(--bg);color:var(--text);font:13px/1.6 'Segoe UI',system-ui;padding:20px 24px;max-width:1100px;margin:0 auto}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.header h1{font-size:20px;font-weight:700;letter-spacing:-0.3px}
+.header h1 span:first-child{color:var(--muted)}.header h1 span:last-child{color:var(--gold)}
+.live-dot{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.live-dot::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;box-shadow:0 0 8px rgba(74,222,128,0.4)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.2)}}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;position:relative;overflow:hidden}
+.metric::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:0.3}
+.metric .val{font-size:26px;font-weight:700;letter-spacing:-1px;line-height:1.1}
+.metric .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+.green{color:var(--green)}.red{color:var(--red)}.gold{color:var(--gold)}.blue{color:var(--blue)}.cyan{color:var(--cyan)}
+.progress-wrap{margin-bottom:16px}
+.progress-bar{height:3px;background:var(--surface);border-radius:4px;overflow:hidden;margin-bottom:6px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan),var(--green));border-radius:4px;transition:width 0.5s ease}
+.progress-label{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th{background:var(--surface);padding:10px 12px;text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)}
+td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:12px;transition:background 0.2s}
+tr:hover td{background:rgba(255,255,255,0.02)}
+tr.diamond td{background:rgba(197,160,89,0.04)}
+tr.diamond td:first-child{color:var(--gold);font-weight:600}
+tr.losing td{background:rgba(248,113,113,0.03)}
+tr.timeout td{color:var(--muted)}
+.pool-tag{display:inline-block;font-size:9px;padding:2px 8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--muted);text-transform:uppercase}
+.diamond-icon{color:var(--gold);margin-right:4px}
+.footer{font-size:10px;color:var(--muted);margin-top:16px;text-align:right;border-top:1px solid var(--border);padding-top:12px}
+.focus-ring{display:inline-block;width:12px;height:12px;border-radius:50%;border:3px solid var(--gold);margin-right:6px;animation:ringPulse 3s ease-in-out infinite;box-shadow:0 0 12px rgba(197,160,89,0.3),inset 0 0 4px rgba(197,160,89,0.2)}
+@keyframes ringPulse{0%,100%{border-color:var(--gold);box-shadow:0 0 12px rgba(197,160,89,0.3)}50%{border-color:#e8c97a;box-shadow:0 0 20px rgba(197,160,89,0.5)}}
 </style></head><body>
+
 <div class=header>
-  <h1>DIAMOND FACTORY</h1>
-  <span><span class=live-dot></span> <span class=cyan id=elapsed>0:00</span></span>
+  <div><h1><span>ETA</span> <span>Diamond Factory</span></h1></div>
+  <div class=live-dot>LIVE</div>
 </div>
+
 <div class=metrics id=metrics></div>
-<div class=progress-bar><div class=progress-fill id=progress></div></div>
+
+<div class=progress-wrap>
+  <div class=progress-bar><div class=progress-fill id=progress></div></div>
+  <div class=progress-label><span id=doneLabel>0/0</span><span id=timeLabel>--</span></div>
+</div>
+
 <table><thead><tr>
-  <th>Bot</th><th>Pool</th><th>T</th><th>PnL</th><th>WR</th><th>RTH</th><th>OVN</th><th>Status</th>
+  <th>Bot</th><th>Pool</th><th>Trades</th><th>PnL</th><th>Win Rate</th><th>Session</th><th>Status</th>
 </tr></thead><tbody id=tbody></tbody></table>
-<div class=footer>ETA Diamond Factory | Auto-refresh 15s | <span id=ts></span></div>
+
+<div class=footer>
+  <span class=focus-ring></span>Futures Focus | <span id=ts></span> | Auto-refresh 20s
+</div>
+
 <script>
 async function load(){
   try{
-    // Parse soak log via API
     const r=await fetch('/api/soak/status');const d=await r.json();
-    const bots=d.bots||[];const summary=d.summary||{};
-    
-    // Metrics
+    const bots=d.bots||[];const s=d.summary||{};
     document.getElementById('metrics').innerHTML=
-      '<div class=metric><div class="val gold">'+(summary.sessions||0)+'</div><div class=lbl>Sessions</div></div>'+
-      '<div class=metric><div class="val blue">'+(summary.done||0)+'/'+(summary.total||0)+'</div><div class=lbl>Completed</div></div>'+
-      '<div class=metric><div class="val '+(summary.fleet_pnl>0?'green':'red')+'">$'+(summary.fleet_pnl||0).toLocaleString()+'</div><div class=lbl>Fleet PnL</div></div>'+
-      '<div class=metric><div class="val cyan">'+(summary.diamonds||0)+'</div><div class=lbl>Diamonds</div></div>';
-    
-    // Progress bar
-    const pct=summary.total>0?(summary.done/summary.total*100):0;
+      '<div class=metric><div class="val gold">'+(s.sessions||0)+'</div><div class=lbl>Sessions</div></div>'+
+      '<div class=metric><div class="val blue">'+(s.done||0)+'/'+(s.total||0)+'</div><div class=lbl>Completed</div></div>'+
+      '<div class=metric><div class="val '+(s.fleet_pnl>0?'green':'red')+'">$'+(s.fleet_pnl||0).toLocaleString()+'</div><div class=lbl>Fleet PnL</div></div>'+
+      '<div class=metric><div class="val cyan">'+(s.diamonds||0)+'</div><div class=lbl>Diamonds</div></div>';
+    const pct=s.total>0?(s.done/s.total*100):0;
     document.getElementById('progress').style.width=pct+'%';
-    document.getElementById('elapsed').textContent=(summary.elapsed||'0:00');
-    
-    // Table
+    document.getElementById('doneLabel').textContent=(s.done||0)+'/'+(s.total||0)+' bots';
+    document.getElementById('timeLabel').textContent=s.elapsed||'--';
     let rows='';
     for(const b of bots){
       const pnl=b.pnl_total||0;
       const cls=pnl>500?'diamond':pnl>0?'running':pnl<0?'losing':'timeout';
-      const status=pnl>500?'\u{1F48E} DIAMOND':pnl>0?'\u{1F7E2} ACTIVE':pnl<0?'\u{1F534} LOSS':'\u{1F535} PENDING';
-      const poolTag='<span class=pool-tag>'+(b.pool||'?')+'</span>';
-      rows+='<tr class='+cls+'><td>'+b.bot_id+'</td><td>'+poolTag+'</td>'+
+      const status=pnl>500?'DIAMOND':pnl>0?'Active':pnl<0?'Loss':'Pending';
+      const icon=pnl>500?' \u{1F48E} ':'';
+      rows+='<tr class='+cls+'>'+
+        '<td>'+icon+b.bot_id+'</td><td><span class=pool-tag>'+(b.pool||'futures')+'</span></td>'+
         '<td>'+(b.trades||0)+'</td><td class="'+(pnl>0?'green':'red')+'">$'+pnl.toLocaleString()+'</td>'+
-        '<td>'+(b.win_rate||0).toFixed(0)+'%</td><td>'+(b.rth_trades||0)+'</td><td>'+(b.overnight_trades||0)+'</td>'+
+        '<td>'+(b.win_rate||0).toFixed(0)+'%</td><td>'+(b.sessions||0)+'</td>'+
         '<td>'+status+'</td></tr>';
     }
     document.getElementById('tbody').innerHTML=rows;
     document.getElementById('ts').textContent=new Date().toLocaleTimeString();
-  }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan=8>Connecting to diamond factory...</td></tr>';}
+  }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan=7>Connecting...</td></tr>';}
 }
-load();setInterval(load,15000);
+load();setInterval(load,20000);
 </script></body></html>

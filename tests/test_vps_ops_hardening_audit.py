@@ -334,3 +334,32 @@ def test_admin_ai_blocked_surfaces_safety_gate_without_allowing_orders() -> None
     assert report["summary"]["order_action_allowed"] is False
     assert report["safety_gates"]["jarvis_hermes_admin_ai"]["blocked"] == 2
     assert any("missing confirm marker" in action for action in report["next_actions"])
+
+
+def test_collect_admin_ai_uses_current_bridge_task_set(monkeypatch) -> None:
+    """The live hardening audit should track the current bridge plan, not stale T17 wording."""
+    captured: dict[str, object] = {}
+
+    def fake_run_audit(workspace_root, *, expected_task_count: int, probe_port: bool) -> dict:
+        captured["workspace_root"] = workspace_root
+        captured["expected_task_count"] = expected_task_count
+        captured["probe_port"] = probe_port
+        return {
+            "status": "PASS",
+            "summary": {
+                "admin_ai_ready": True,
+                "checks": 8,
+                "pass": 8,
+                "warnings": 0,
+                "blocked": 0,
+            },
+            "next_actions": [],
+        }
+
+    monkeypatch.setattr(audit.jarvis_hermes_admin_audit, "run_audit", fake_run_audit)
+
+    report = audit.collect_jarvis_hermes_admin_status()
+
+    assert report["status"] == "PASS"
+    assert captured["expected_task_count"] == 8
+    assert captured["probe_port"] is True
