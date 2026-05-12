@@ -1,6 +1,6 @@
 """Diamond protection invariants — three layers must hold.
 
-The 8 diamond bots have proven multi-session profitability and are
+The 9 diamond bots have proven multi-session profitability and are
 protected from auto-deactivation.  Three orthogonal layers enforce
 the protection so a single mistake in any one of them does not
 silently kill a diamond:
@@ -40,7 +40,7 @@ from eta_engine.strategies.per_bot_registry import (
 )
 
 # ────────────────────────────────────────────────────────────────────
-# The 8 expected diamonds (operator decision 2026-05-12)
+# The 9 expected diamonds (operator decision 2026-05-12)
 # ────────────────────────────────────────────────────────────────────
 
 EXPECTED_DIAMONDS = frozenset({
@@ -49,6 +49,7 @@ EXPECTED_DIAMONDS = frozenset({
     "cl_momentum",
     "mcl_sweep_reclaim",
     "mgc_sweep_reclaim",
+    "m2k_sweep_reclaim",
     "eur_sweep_reclaim",
     "gc_momentum",
     "cl_macro",
@@ -60,8 +61,8 @@ EXPECTED_DIAMONDS = frozenset({
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_diamond_set_has_exactly_eight_bots() -> None:
-    assert len(DIAMOND_BOTS) == 8
+def test_diamond_set_has_exactly_nine_bots() -> None:
+    assert len(DIAMOND_BOTS) == 9
 
 
 def test_diamond_set_matches_operator_decision_2026_05_12() -> None:
@@ -154,7 +155,7 @@ def test_kaizen_loop_imports_diamond_bots() -> None:
         DIAMOND_BOTS as _DIAMONDS_FROM_ALLOCATOR,
     )
     assert isinstance(_DIAMONDS_FROM_ALLOCATOR, (set, frozenset))
-    assert len(_DIAMONDS_FROM_ALLOCATOR) == 8
+    assert len(_DIAMONDS_FROM_ALLOCATOR) == 9
 
 
 def test_kaizen_loop_source_contains_diamond_skip_branch() -> None:

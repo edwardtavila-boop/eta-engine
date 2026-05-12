@@ -1,6 +1,6 @@
 # Diamond Protection — Truth Surface (2026-05-12)
 
-**Status:** 8 diamond bots locked. Three-layer protection live. Operator-only
+**Status:** 9 diamond bots locked (8 initial + m2k_sweep_reclaim promoted 2026-05-12). Three-layer protection live. Operator-only
 retirement. Falsification criteria pre-committed per bot.
 
 > "Diamonds can only IMPROVE, never disappear" — the runtime gives
@@ -8,7 +8,7 @@ retirement. Falsification criteria pre-committed per bot.
 
 ---
 
-## The 8 Diamonds
+## The 9 Diamonds
 
 | Bot | Symbol | Tier | Lifetime P&L (paper) | Sessions | Strategy kind |
 |---|---|---|---|---|---|
@@ -20,8 +20,11 @@ retirement. Falsification criteria pre-committed per bot.
 | `eur_sweep_reclaim` | 6E1 | **FRAGILE** | +$417 | 13 | sweep_reclaim |
 | `gc_momentum` | GC1 | **FRAGILE** | +$142 | 7 | commodity_momentum |
 | `cl_macro` | CL1 | confirmed edge | +$1,248 | 7 | oil_macro (2x ATR spike fade) |
+| `m2k_sweep_reclaim` | M2K1 | **PROMOTED 2026-05-12** | +533R (n=1151, 70% WR) | — | sweep_reclaim |
 
-**Total paper P&L:** +$20,866 across the 8 diamonds.
+**Total paper P&L:** +$20,866 across the original 8 diamonds. m2k carries
+the new R-multiple baseline (+533R / n=1151 / 70% WR) per the canonical
+dual-source trade-history archive — the strongest evidence in the fleet.
 
 ---
 
@@ -37,7 +40,8 @@ kill a proven bot.
 ```python
 DIAMOND_BOTS = {"mnq_futures_sage", "nq_futures_sage", "cl_momentum",
                 "mcl_sweep_reclaim", "mgc_sweep_reclaim",
-                "eur_sweep_reclaim", "gc_momentum", "cl_macro"}
+                "eur_sweep_reclaim", "gc_momentum", "cl_macro",
+                "m2k_sweep_reclaim"}  # promoted 2026-05-12
 DIAMOND_MIN_CAPITAL = 2000.0
 ```
 
@@ -78,7 +82,7 @@ a code-review trail.
 
 ## Correlation matrix — sizing risk
 
-5 of 8 diamonds share underlying instruments (CL/MCL and GC/MGC are
+5 of 9 diamonds share underlying instruments (CL/MCL and GC/MGC are
 size-different but same-underlying):
 
 | Pair | Correlation expectation | Sizing implication |
@@ -113,6 +117,12 @@ these is hit retires it.
 - Retire if 30-day rolling P&L < -$1,500
 - Retire if 30-day n_trades < 5 (signal-cadence cliff)
 - Retire if 60-day deflated Sharpe < 0
+
+### `m2k_sweep_reclaim`
+- Retire if 30-day rolling P&L < -$800
+- Retire if 30-day WR < 45% after at least 50 trades
+- Retire if 90-day deflated Sharpe < 0
+- Review if the R-multiple edge falls below +0.20R/trade over the next 50 trades
 
 ### `cl_momentum`
 - Retire if 30-day rolling P&L < -$1,500
@@ -156,7 +166,7 @@ with:
 4. Red Team dissent
 5. Operator sign-off line
 
-The 4 L2 shadow strategies already have memos from 2026-05-11. The 8
+The 4 L2 shadow strategies already have memos from 2026-05-11. The 9
 diamonds get memos in this batch.
 
 ---

@@ -250,6 +250,100 @@ def tail(n: int = 20, path: Path | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def capture_v2_extras(
+    *,
+    bot_id: str,
+    asset_class: str,
+    portfolio_ctx: Any = None,  # noqa: ANN401 — PortfolioContext dataclass
+    hot_weights: dict | None = None,
+    school_inputs: dict | None = None,
+    rng_master_seed: int | None = None,
+) -> dict[str, Any]:
+    """Build the v2-schema field dict from a consult's runtime state.
+
+    Designed to be called by ``jarvis_conductor.orchestrate`` (or any
+    other emit site that wants v2 records) inside its emit-site
+    try/except. Returns a dict ready to unpack into ``TraceRecord(**...)``:
+
+        {
+            "schema_version": 2,
+            "school_inputs": dict,
+            "portfolio_inputs": dict,
+            "hot_weights_snapshot": dict,
+            "overrides_snapshot": dict,
+            "rng_master_seed": int | None,
+        }
+
+    Every field defaults to its safe empty value if the capture step
+    fails. NEVER raises — a partial capture is preferable to a missing
+    trace record.
+
+    Args:
+      bot_id: the consult's bot_id (used to look up active overrides).
+      asset_class: the consult's asset (used for school_weight overrides).
+      portfolio_ctx: a ``portfolio_brain.PortfolioContext`` dataclass.
+        Falls back to empty dict on capture failure. Either dataclass
+        instance or dict shape both supported.
+      hot_weights: pre-extracted hot_learner.current_weights() result.
+        Already a dict; just copied.
+      school_inputs: optional per-school raw vote dict. Empty when the
+        emit site can't easily capture per-school (the conductor case);
+        populate when refactoring upstream code that has access.
+      rng_master_seed: deterministic master seed for replay. ``None``
+        when no stochastic schools fired.
+    """
+    out: dict[str, Any] = {
+        "schema_version": 2,
+        "school_inputs": dict(school_inputs) if school_inputs else {},
+        "portfolio_inputs": {},
+        "hot_weights_snapshot": dict(hot_weights) if hot_weights else {},
+        "overrides_snapshot": {},
+        "rng_master_seed": rng_master_seed,
+    }
+
+    # ── portfolio_inputs ──
+    try:
+        if portfolio_ctx is not None:
+            if isinstance(portfolio_ctx, dict):
+                out["portfolio_inputs"] = dict(portfolio_ctx)
+            else:
+                # Dataclass or namedtuple — pull the public attrs
+                fields = (
+                    "fleet_long_notional_by_asset",
+                    "fleet_short_notional_by_asset",
+                    "recent_entries_by_asset",
+                    "open_correlated_exposure",
+                    "portfolio_drawdown_today_r",
+                    "fleet_kill_active",
+                )
+                snap: dict[str, Any] = {}
+                for f in fields:
+                    if hasattr(portfolio_ctx, f):
+                        val = getattr(portfolio_ctx, f)
+                        # Don't deep-copy mappings; shallow is enough for replay
+                        snap[f] = dict(val) if isinstance(val, dict) else val
+                out["portfolio_inputs"] = snap
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("capture_v2_extras: portfolio_inputs failed: %s", exc)
+
+    # ── overrides_snapshot (bot-specific + asset-specific slice) ──
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_overrides
+        size_mod = hermes_overrides.get_size_modifier(bot_id) if bot_id else None
+        school_overlay = (
+            hermes_overrides.get_school_weights(asset_class)
+            if asset_class else {}
+        )
+        out["overrides_snapshot"] = {
+            "size_modifier": size_mod,
+            "school_weights": school_overlay,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("capture_v2_extras: overrides_snapshot failed: %s", exc)
+
+    return out
+
+
 def is_v2_record(rec: dict | TraceRecord) -> bool:
     """True iff ``rec`` declares ``schema_version >= 2``.
 

@@ -46,17 +46,30 @@ LEVERAGED_SYMBOLS = {"MBT", "MET"}
 # Secondary: spot crypto on Alpaca (smaller allocation)
 POOL_SPLIT = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}  # leveraged now in futures pool
 
-# DIAMOND BOTS — protected from auto-kill, always get minimum capital
-# These are proven profitable across multiple market regimes
+# DIAMOND BOTS — protected from auto-kill, always get minimum capital.
+#
+# Stats are R-multiple basis (dimension-free, immune to position-sizing
+# bugs that have plagued the USD ledger). Source: canonical dual-source
+# trade-closes archive (eta_engine/state/jarvis_intel/trade_closes.jsonl  # HISTORICAL-PATH-OK
+# + var/eta_engine/state/jarvis_intel/trade_closes.jsonl, deduped).
+# Snapshot 2026-05-12.
 DIAMOND_BOTS: set[str] = {
-    "mnq_futures_sage",   # +$11,246 across 14 sessions (ROBUST)
-    "nq_futures_sage",    # +$2,557 across 7 sessions (ROBUST)
-    "cl_momentum",        # +$2,206 across 13 sessions (ROBUST)
-    "mcl_sweep_reclaim",  # +$2,197 across 13 sessions (ROBUST)
-    "mgc_sweep_reclaim",  # +$853 across 13 sessions (ROBUST)
-    "eur_sweep_reclaim",  # +$417 across 13 sessions (FRAGILE)
-    "gc_momentum",        # +$142 across 7 sessions (FRAGILE)
-    "cl_macro",           # +$1,248 across 7 sessions (confirmed edge)
+    # ── Tier 1: large-sample sage learners ──────────────────────
+    "mnq_futures_sage",   # n=1267 cum_r=+0.82R wr=55%  (marginal-but-large)
+    "nq_futures_sage",    # n=1249 cum_r=+0.85R wr=57%  (marginal-but-large)
+    # ── Tier 2: confirmed-strong sweep reclaim ──────────────────
+    "m2k_sweep_reclaim",  # n=1151 cum_r=+533R  wr=70%  *PROMOTED 2026-05-12* (canonical-data kaizen)
+    "eur_sweep_reclaim",  # n= 280 cum_r=+129R  wr=70%  (4/4 sessions positive)
+    "mgc_sweep_reclaim",  # n= 158 cum_r= +30R  wr=58%  (wave-3+5 chisel)
+    # ── Tier 3: small-sample but positive ───────────────────────
+    "cl_macro",           # n=   2 cum_r= +2.4R wr=100% (sample too small)
+    "gc_momentum",        # n=   8 cum_r= +0.24R wr=50% (R-positive; USD-CRITICAL is a sizing artifact)
+    # ── Tier 4: small-sample structurally negative ──────────────
+    # These two are net-negative in R-multiples too. Kept under
+    # protection because n is too small (4-8) for retirement to be
+    # statistically justified. Watch for the n>=20 inflection point.
+    "cl_momentum",        # n=   4 cum_r= -1.71R wr=25% (under-baked)
+    "mcl_sweep_reclaim",  # n=   8 cum_r= -0.22R wr=50% (flat)
 }
 
 # Minimum capital allocation for diamond bots (always active)

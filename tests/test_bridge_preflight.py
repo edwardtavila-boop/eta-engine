@@ -135,6 +135,7 @@ def test_run_all_catches_check_exceptions(monkeypatch) -> None:
     monkeypatch.setattr(bridge_preflight, "check_memory_backup_recent", explode)
     monkeypatch.setattr(bridge_preflight, "check_disk_headroom", explode)
     monkeypatch.setattr(bridge_preflight, "check_kelly_recommendations_present", explode)
+    monkeypatch.setattr(bridge_preflight, "check_status_server", explode)
     monkeypatch.setattr(bridge_preflight, "check_health_check_passes", explode)
 
     results = bridge_preflight.run_all()
@@ -161,7 +162,10 @@ def test_main_exits_nonzero_when_not_ready(tmp_path: Path, monkeypatch, capsys) 
 
     rc = bridge_preflight.main([
         "--host", "127.0.0.1", "--port", "1",
-        "--skip", "tunnel_uptime,scheduled_tasks,audit_log,memory_backup,disk_headroom,kelly_ready",
+        "--skip", (
+            "tunnel_uptime,scheduled_tasks,audit_log,memory_backup,"
+            "disk_headroom,kelly_ready,status_server"
+        ),
     ])
     captured = capsys.readouterr()
     assert "NOT_READY" in captured.out
@@ -176,7 +180,8 @@ def test_main_json_mode_emits_parseable_payload(monkeypatch, capsys) -> None:
 
     skip_checks = (
         "tunnel,gateway,llm_latency,credential_literal,write_back,scheduled_tasks,"
-        "tunnel_uptime,audit_log,memory_backup,disk_headroom,kelly_ready,health_9_layers"
+        "tunnel_uptime,audit_log,memory_backup,disk_headroom,kelly_ready,"
+        "status_server,health_9_layers"
     )
     rc = bridge_preflight.main([
         "--host", "127.0.0.1", "--port", "1",

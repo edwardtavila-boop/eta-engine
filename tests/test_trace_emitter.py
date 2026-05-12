@@ -278,6 +278,145 @@ def test_read_since_skips_malformed_but_advances(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_capture_v2_extras_returns_all_v2_fields() -> None:
+    """capture_v2_extras() output dict has every schema v2 field."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="test_bot",
+        asset_class="MNQ",
+        portfolio_ctx=None,
+        hot_weights={"momentum": 1.1},
+        school_inputs={"momentum": {"score": 0.5}},
+        rng_master_seed=42,
+    )
+    assert set(extras.keys()) == {
+        "schema_version",
+        "school_inputs",
+        "portfolio_inputs",
+        "hot_weights_snapshot",
+        "overrides_snapshot",
+        "rng_master_seed",
+    }
+    assert extras["schema_version"] == 2
+    assert extras["hot_weights_snapshot"] == {"momentum": 1.1}
+    assert extras["school_inputs"] == {"momentum": {"score": 0.5}}
+    assert extras["rng_master_seed"] == 42
+
+
+def test_capture_v2_extras_with_dataclass_portfolio_ctx() -> None:
+    """A PortfolioContext dataclass gets unpacked into the snapshot dict."""
+    from eta_engine.brain.jarvis_v3 import portfolio_brain, trace_emitter
+
+    ctx = portfolio_brain.PortfolioContext(
+        fleet_long_notional_by_asset={"MNQ": 50000},
+        fleet_short_notional_by_asset={},
+        recent_entries_by_asset={"MNQ": 3},
+        open_correlated_exposure=0.4,
+        portfolio_drawdown_today_r=-1.5,
+        fleet_kill_active=False,
+    )
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="b", asset_class="MNQ", portfolio_ctx=ctx,
+    )
+    pi = extras["portfolio_inputs"]
+    assert pi["portfolio_drawdown_today_r"] == -1.5
+    assert pi["fleet_long_notional_by_asset"] == {"MNQ": 50000}
+    assert pi["fleet_kill_active"] is False
+
+
+def test_capture_v2_extras_handles_dict_portfolio_ctx() -> None:
+    """A pre-built dict is accepted as portfolio_ctx (test fixtures)."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    ctx_dict = {"fleet_kill_active": True, "portfolio_drawdown_today_r": -2.0}
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="b", asset_class="MNQ", portfolio_ctx=ctx_dict,
+    )
+    assert extras["portfolio_inputs"]["fleet_kill_active"] is True
+    assert extras["portfolio_inputs"]["portfolio_drawdown_today_r"] == -2.0
+
+
+def test_capture_v2_extras_captures_overrides_snapshot(tmp_path, monkeypatch) -> None:
+    """Live overrides for the bot AND asset appear in the snapshot."""
+    from eta_engine.brain.jarvis_v3 import hermes_overrides, trace_emitter
+
+    overrides_path = tmp_path / "ho.json"
+    monkeypatch.setattr(hermes_overrides, "DEFAULT_OVERRIDES_PATH", overrides_path)
+    # Pin both a size_modifier and a school weight
+    hermes_overrides.apply_size_modifier(
+        bot_id="test_bot", modifier=0.6, reason="test",
+        ttl_minutes=10, path=overrides_path,
+    )
+    hermes_overrides.apply_school_weight(
+        asset="MNQ", school="momentum", weight=1.3, reason="test",
+        ttl_minutes=10, path=overrides_path,
+    )
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="test_bot", asset_class="MNQ",
+    )
+    snap = extras["overrides_snapshot"]
+    assert snap["size_modifier"] == 0.6
+    assert snap["school_weights"] == {"momentum": 1.3}
+
+
+def test_capture_v2_extras_never_raises_on_missing_ctx() -> None:
+    """portfolio_ctx=None → portfolio_inputs empty, no exception."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="b", asset_class="MNQ", portfolio_ctx=None,
+    )
+    assert extras["portfolio_inputs"] == {}
+
+
+def test_capture_v2_extras_never_raises_on_broken_ctx() -> None:
+    """portfolio_ctx that raises on attribute access → partial capture, no exception."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    class Hostile:
+        def __getattribute__(self, name: str) -> object:
+            raise RuntimeError(f"refuses to expose {name}")
+
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="b", asset_class="MNQ", portfolio_ctx=Hostile(),
+    )
+    # No exception; portfolio_inputs ends up empty
+    assert extras["portfolio_inputs"] == {}
+
+
+def test_v2_record_emitted_with_extras_round_trips(tmp_path) -> None:
+    """A TraceRecord built from capture_v2_extras() round-trips through emit/tail."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    extras = trace_emitter.capture_v2_extras(
+        bot_id="round_trip_bot",
+        asset_class="MNQ",
+        hot_weights={"momentum": 1.05},
+        rng_master_seed=7,
+    )
+    rec = trace_emitter.TraceRecord(
+        ts="2026-05-12T22:30:00+00:00",
+        bot_id="round_trip_bot",
+        consult_id="rt001",
+        action="ENTER",
+        **extras,
+    )
+    path = tmp_path / "trace.jsonl"
+    trace_emitter.emit(rec, path=path)
+    loaded = trace_emitter.tail(n=1, path=path)
+    assert len(loaded) == 1
+    assert loaded[0]["schema_version"] == 2
+    assert loaded[0]["hot_weights_snapshot"] == {"momentum": 1.05}
+    assert loaded[0]["rng_master_seed"] == 7
+    # is_v2_record dispatches correctly
+    assert trace_emitter.is_v2_record(loaded[0]) is True
+    # extract_replay_inputs returns the snapshot
+    ri = trace_emitter.extract_replay_inputs(loaded[0])
+    assert ri is not None
+    assert ri["hot_weights_snapshot"] == {"momentum": 1.05}
+
+
 def test_v1_record_has_schema_version_1_by_default() -> None:
     """Legacy emitters that don't touch the v2 fields produce v1 records."""
     from eta_engine.brain.jarvis_v3 import trace_emitter

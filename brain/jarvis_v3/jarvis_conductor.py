@@ -111,9 +111,11 @@ def orchestrate(
     portfolio_modifier = 1.0
     block_reason: str | None = None
     portfolio_notes: tuple[str, ...] = ()
+    portfolio_ctx_for_trace: Any = None  # captured for v2 schema emit below
     try:
         from eta_engine.brain.jarvis_v3 import portfolio_brain
         ctx = portfolio_brain.snapshot()
+        portfolio_ctx_for_trace = ctx
         verdict = portfolio_brain.assess(req, ctx)
         portfolio_modifier = float(verdict.size_modifier)
         block_reason = verdict.block_reason
@@ -148,12 +150,24 @@ def orchestrate(
         notes=portfolio_notes,
     )
 
-    # Stream 2: emit trace (best-effort; never raises)
+    # Stream 2: emit trace (best-effort; never raises). Schema v2:
+    # capture replay-input snapshot fields so T6 (causal_attribution)
+    # and T7 (consult_replay) can operate on this record. The
+    # capture_v2_extras() helper handles every never-raise concern.
     try:
         from eta_engine.brain.jarvis_v3 import trace_emitter
+        bot_id_str = str(getattr(req, "bot_id", ""))
+        v2_extras = trace_emitter.capture_v2_extras(
+            bot_id=bot_id_str,
+            asset_class=asset_class,
+            portfolio_ctx=portfolio_ctx_for_trace,
+            hot_weights=school_weights,
+            school_inputs={},  # conductor doesn't have per-school raw votes
+            rng_master_seed=None,
+        )
         rec = trace_emitter.TraceRecord(
             ts=datetime.now(UTC).isoformat(),
-            bot_id=str(getattr(req, "bot_id", "")),
+            bot_id=bot_id_str,
             consult_id=consult_id,
             action=str(getattr(req, "action", "")),
             verdict={
@@ -172,6 +186,7 @@ def orchestrate(
             final_size=final_size,
             block_reason=block_reason,
             elapsed_ms=elapsed_ms,
+            **v2_extras,
         )
         trace_emitter.emit(rec, path=trace_path)
     except Exception as exc:  # noqa: BLE001

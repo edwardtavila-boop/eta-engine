@@ -79,6 +79,11 @@ RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
     "eur_sweep_reclaim":   -300.0,  # FRAGILE
     "gc_momentum":         -200.0,  # FRAGILE
     "cl_macro":           -1000.0,
+    # Promoted 2026-05-12 from canonical-data kaizen analysis.
+    # m2k_sweep_reclaim: n=1151 cum_r=+533R wr=70% across all 4 sessions.
+    # Conservative threshold: -$800 ≈ 2.5σ below the +0.46R/trade baseline
+    # over a typical 50-trade 30-day window. Tighten after live observation.
+    "m2k_sweep_reclaim":  -800.0,
 }
 
 
