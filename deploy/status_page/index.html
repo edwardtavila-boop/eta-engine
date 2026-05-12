@@ -1889,7 +1889,7 @@ function brokerVenueFocusSummary(focusPolicy = {}, liveBroker = null) {
     parts.push('Tradovate queued');
   }
   if (paused.includes('alpaca')) {
-    parts.push('Alpaca backburner');
+    parts.push('Alpaca/spot paused');
   }
   return parts.join(' | ');
 }
@@ -1906,7 +1906,7 @@ function brokerVenueChipMarkup(focusPolicy = {}, liveBroker = null) {
     chips.push('<span class="hero-chip"><strong>Tradovate</strong> queued</span>');
   }
   if (paused.includes('alpaca')) {
-    chips.push('<span class="hero-chip"><strong>Alpaca</strong> backburner</span>');
+    chips.push('<span class="hero-chip"><strong>Alpaca/spot</strong> paused</span>');
   }
   return chips;
 }

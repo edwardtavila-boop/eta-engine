@@ -2623,7 +2623,82 @@ class JarvisStrategySupervisor:
             (self.cfg.state_dir / "reconcile_last.json").write_text(
                 json.dumps(findings, indent=2, default=str), encoding="utf-8",
             )
+
+        # Drop phantom open_positions. ``_load_persisted_open_positions``
+        # restores ``bot.open_position`` from disk unconditionally; if a
+        # TP/SL filled (or the operator flattened) while the supervisor
+        # was down, the disk state is a phantom — no broker-side
+        # counterpart, but it still counts toward
+        # ``_fleet_open_notional_for_symbol``. Every subsequent
+        # ``_maybe_enter`` from a same-class bot then returns
+        # ``fleet_exhausted`` and live execution stays blocked until the
+        # operator deletes the persisted JSON by hand. Cleaning here
+        # makes the broker-truth wins rule symmetric: it already wins
+        # over the cross-bot tracker via ``resync_from_broker`` above;
+        # this extends it to per-bot ``open_position`` state.
+        phantom_findings = self._clean_phantom_open_positions()
+        findings["phantoms_cleared"] = phantom_findings["cleared"]
+        findings["phantoms_kept"] = phantom_findings["kept"]
+        findings["phantoms_unreachable"] = phantom_findings["unreachable"]
+
         return findings
+
+    def _clean_phantom_open_positions(self) -> dict[str, list[str]]:
+        """Drop persisted ``open_position`` entries the broker says are flat.
+
+        Three outcomes per bot:
+
+        * broker returns ``0.0`` — phantom; clear ``bot.open_position``
+          and delete the persisted JSON.
+        * broker returns matching qty — keep.
+        * broker unreachable (``None`` or raises) — keep; the next
+          reconcile pass revisits. We never make state worse by acting
+          on missing broker truth.
+
+        Returns ``{"cleared": [bot_ids], "kept": [bot_ids],
+        "unreachable": [bot_ids]}``.
+        """
+        cleared: list[str] = []
+        kept: list[str] = []
+        unreachable: list[str] = []
+        for bot in self.bots:
+            pos = getattr(bot, "open_position", None)
+            if not pos:
+                continue
+            try:
+                broker_qty = self._router._get_broker_position_qty(bot)  # noqa: SLF001
+            except Exception as exc:  # noqa: BLE001 — must not block reconcile
+                logger.warning(
+                    "phantom-clean: _get_broker_position_qty(%s) raised %s; "
+                    "leaving open_position as-is",
+                    bot.bot_id, exc,
+                )
+                unreachable.append(bot.bot_id)
+                continue
+            if broker_qty is None:
+                unreachable.append(bot.bot_id)
+                continue
+            if abs(float(broker_qty)) < 1e-6:
+                logger.critical(
+                    "PHANTOM open_position cleared for %s: persisted "
+                    "side=%s qty=%s entry=%s but broker reports flat",
+                    bot.bot_id,
+                    pos.get("side"),
+                    pos.get("qty"),
+                    pos.get("entry_price"),
+                )
+                bot.open_position = None
+                self._router._clear_persisted_open_position(bot)  # noqa: SLF001
+                cleared.append(bot.bot_id)
+            else:
+                kept.append(bot.bot_id)
+        if cleared:
+            logger.info(
+                "phantom-clean summary: cleared=%d kept=%d unreachable=%d "
+                "(cleared_bots=%s)",
+                len(cleared), len(kept), len(unreachable), cleared,
+            )
+        return {"cleared": cleared, "kept": kept, "unreachable": unreachable}
 
     # ── Main loop ───────────────────────────────────────────
 
