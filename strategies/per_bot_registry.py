@@ -3298,6 +3298,28 @@ def kaizen_deactivation_record(bot_id: str) -> dict:
 
 
 def is_active(assignment: StrategyAssignment) -> bool:
+    # DIAMOND PROTECTION (2026-05-12): diamond bots are ALWAYS active
+    # regardless of source-level `deactivated: True` markers OR the
+    # kaizen sidecar override file.  Diamonds have proven multi-
+    # session profitability; any auto-disable signal targeting a
+    # diamond is treated as advisory — the operator must remove the
+    # diamond from DIAMOND_BOTS explicitly to retire it.
+    #
+    # This is the third and final layer of diamond protection:
+    #   layer 1 = capital_allocator.DIAMOND_BOTS gets min $2k
+    #   layer 2 = kaizen_loop.run_loop() skips auto-deactivate
+    #   layer 3 = is_active() refuses to honor a deactivation marker
+    try:
+        from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+            DIAMOND_BOTS,
+        )
+        if assignment.bot_id in DIAMOND_BOTS:
+            return True
+    except ImportError:
+        # capital_allocator imports cleanly in all supported runtimes;
+        # if it ever doesn't, fall through to the normal path so we
+        # don't accidentally activate a non-diamond.
+        pass
     if bool(assignment.extras.get("deactivated", False)):
         return False
     # Kaizen-loop sidecar override: a bot listed under

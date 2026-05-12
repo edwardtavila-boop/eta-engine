@@ -315,12 +315,34 @@ def run_loop(
     # the same RETIRE recommendation already exists in the action log
     # from a prior run. Single-run RETIRE recommendations are noted but
     # not applied — protects against one-day anomalies.
+    #
+    # DIAMOND PROTECTION (2026-05-12): bots in DIAMOND_BOTS are NEVER
+    # auto-deactivated by this loop, regardless of how many consecutive
+    # RETIRE recommendations accumulate.  Diamonds have proven multi-
+    # session profitability; if they degrade, the operator decides
+    # manually after reviewing the bot's decision memo.  The protection
+    # is layered with capital_allocator.DIAMOND_MIN_CAPITAL so even a
+    # struggling diamond keeps its $2k floor.
+    from eta_engine.feeds.capital_allocator import DIAMOND_BOTS  # noqa: PLC0415
+
     prior_retires = _previous_retire_targets()
     applied_count = 0
     held_count = 0
+    protected_count = 0
     if apply_actions:
         for a in actions:
             if a["action"] != "RETIRE":
+                continue
+            if a["bot_id"] in DIAMOND_BOTS:
+                # Diamond — log the would-be RETIRE but never apply.
+                a["status"] = "PROTECTED_DIAMOND"
+                a["diamond_protection_note"] = (
+                    "Auto-deactivation skipped; diamond bots require "
+                    "manual operator review.  See "
+                    "var/eta_engine/decisions/<bot_id>_*.md for "
+                    "falsification criteria."
+                )
+                protected_count += 1
                 continue
             if a["bot_id"] not in prior_retires:
                 a["status"] = "HELD_PENDING_CONFIRMATION"
@@ -482,6 +504,7 @@ def run_loop(
         "action_counts": dict(action_counts),
         "applied_count": applied_count,
         "held_count": held_count,
+        "diamond_protected_count": protected_count,
         "actions": actions,
         "per_bot": per_bot,
         "school_edges_top": school_edges[:10],
@@ -527,7 +550,8 @@ def _print_summary(report: dict[str, Any]) -> None:
     if report["applied"]:
         print(
             f" applied this run: {report['applied_count']} retired, "
-            f"{report['held_count']} held pending confirmation",
+            f"{report['held_count']} held pending confirmation, "
+            f"{report.get('diamond_protected_count', 0)} diamond-protected",
         )
     print()
 
