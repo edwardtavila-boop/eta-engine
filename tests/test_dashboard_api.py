@@ -1317,6 +1317,70 @@ class TestDashboardAPI:
         assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == ""
         assert payload["paper_live_transition"]["first_launch_next_action"] == ""
 
+    def test_dashboard_diagnostics_prefers_fresh_operator_queue_over_stale_paper_cache(
+        self,
+        app_client,
+        tmp_path,
+    ):
+        (tmp_path / "state" / "operator_queue_snapshot.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "status": "blocked",
+                    "launch_blocked_count": 1,
+                    "operator_queue": {
+                        "source": "jarvis_status.operator_queue",
+                        "summary": {"BLOCKED": 3, "OBSERVED": 11, "UNKNOWN": 0},
+                        "launch_blocked_count": 1,
+                        "top_blockers": [{"op_id": "OP-19", "title": "IB Gateway API blocked"}],
+                        "top_launch_blockers": [
+                            {
+                                "op_id": "OP-19",
+                                "title": "IB Gateway API blocked",
+                                "detail": "Seed IBC credentials and recover TWS API 4002.",
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "state" / "paper_live_transition_check.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                    "status": "blocked",
+                    "critical_ready": False,
+                    "paper_ready_bots": 11,
+                    "operator_queue_launch_blocked_count": 1,
+                    "operator_queue_first_launch_blocker_op_id": "OP-18",
+                    "operator_queue_first_launch_next_action": "python -m eta_engine.scripts.runtime_log_smoke --json",
+                    "gates": [
+                        {
+                            "name": "tws_api_4002",
+                            "passed": False,
+                            "detail": "TWS API 4002 is down.",
+                            "next_action": "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = app_client.get("/api/dashboard/diagnostics")
+
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["operator_queue"]["top_launch_blocker_op_id"] == "OP-19"
+        assert payload["operator_queue"]["cache_stale"] is False
+        assert payload["paper_live_transition"]["cache_stale"] is True
+        assert payload["paper_live_transition"]["first_launch_blocker_op_id"] == "OP-19"
+        assert payload["paper_live_transition"]["first_launch_next_action"] == (
+            "Seed IBC credentials and recover TWS API 4002."
+        )
+        assert payload["paper_live_transition"]["first_failed_gate"]["name"] == "tws_api_4002"
+
     def test_dashboard_diagnostics_surfaces_effective_bracket_audit_hold(
         self,
         app_client,

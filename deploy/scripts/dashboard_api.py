@@ -356,6 +356,10 @@ _ETA_READINESS_SNAPSHOT_MAX_AGE_S = _positive_int_env(
     "ETA_READINESS_SNAPSHOT_MAX_AGE_S",
     20 * 60,
 )
+_PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S = _positive_int_env(
+    "ETA_PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S",
+    15 * 60,
+)
 
 
 def _dashboard_cors_origins() -> list[str]:
@@ -908,6 +912,13 @@ def _dashboard_diagnostics_payload() -> dict:
             or paper_live_transition.get("operator_queue_first_next_action")
             or ""
         )
+        if paper_live_transition.get("cache_stale") and not operator_queue.get("cache_stale"):
+            transition_first_launch_blocker = str(first_launch_blocker.get("op_id") or "")
+            transition_first_launch_next_action = str(
+                first_launch_blocker.get("detail")
+                or first_launch_blocker.get("title")
+                or transition_first_launch_next_action
+            )
 
     paper_live_status = str(paper_live_transition.get("status") or "unknown")
     paper_live_effective_status = str(
@@ -1032,6 +1043,7 @@ def _dashboard_diagnostics_payload() -> dict:
                 "next_action": str(first_failed_gate.get("next_action") or ""),
             },
             "source_age_s": paper_live_transition.get("source_age_s"),
+            "cache_stale": bool(paper_live_transition.get("cache_stale")),
             "error": paper_live_transition.get("error"),
         },
         "dashboard_proxy_watchdog": dashboard_proxy_watchdog,
@@ -2858,6 +2870,7 @@ def _paper_live_transition_cache_payload() -> dict:
         return {
             "source": "paper_live_transition_check_cache",
             "cache_status": "missing",
+            "cache_stale": True,
             "cache_path": str(path),
             "error": "paper-live transition cache missing; run python -m eta_engine.scripts.paper_live_transition_check",
             "status": "unreadable",
@@ -2875,6 +2888,7 @@ def _paper_live_transition_cache_payload() -> dict:
         return {
             "source": "paper_live_transition_check_cache",
             "cache_status": "unreadable",
+            "cache_stale": True,
             "cache_path": str(path),
             "error": str(exc),
             "status": "unreadable",
@@ -2890,6 +2904,7 @@ def _paper_live_transition_cache_payload() -> dict:
         return {
             "source": "paper_live_transition_check_cache",
             "cache_status": "unreadable",
+            "cache_stale": True,
             "cache_path": str(path),
             "error": "paper-live transition cache returned a non-object payload",
             "status": "unreadable",
@@ -2911,6 +2926,7 @@ def _paper_live_transition_cache_payload() -> dict:
     payload.setdefault("source", "paper_live_transition_check_cache")
     payload["cache_status"] = "hit"
     payload["cache_path"] = str(path)
+    payload["cache_stale"] = source_age_s is None or source_age_s > _PAPER_LIVE_TRANSITION_CACHE_MAX_AGE_S
     if source_age_s is not None:
         payload["source_age_s"] = round(source_age_s, 3)
     return payload
