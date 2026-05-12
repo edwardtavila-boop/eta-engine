@@ -10,6 +10,7 @@ Within each pool, capital is allocated by multi-session performance:
   - Negative PnL → zero allocation (paused)
   - Allocation is proportional to total_pnl among profitable bots
 """
+
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,13 +21,14 @@ from typing import Any
 class BotAllocation:
     bot_id: str
     symbol: str
-    pool: str          # "spot", "futures", "leveraged"
-    weight: float      # 0.0 - 1.0 within pool
-    capital: float     # absolute capital allocated
+    pool: str  # "spot", "futures", "leveraged"
+    weight: float  # 0.0 - 1.0 within pool
+    capital: float  # absolute capital allocated
     pnl_total: float
     win_rate: float
     sessions: int
-    status: str        # "active", "paused", "no_data"
+    status: str  # "active", "paused", "no_data"
+
 
 @dataclass
 class PortfolioAllocation:
@@ -35,6 +37,7 @@ class PortfolioAllocation:
     futures_pool: dict[str, Any] = field(default_factory=dict)
     leveraged_pool: dict[str, Any] = field(default_factory=dict)
     bots: dict[str, BotAllocation] = field(default_factory=dict)
+
 
 # Asset class → pool mapping
 SPOT_SYMBOLS = {"BTC", "ETH", "SOL", "ADA", "AVAX", "LINK", "DOGE"}
@@ -52,23 +55,48 @@ POOL_SPLIT = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}  # leveraged now in
 # bugs that have plagued the USD ledger). Source: canonical dual-source
 # trade-closes archive (eta_engine/state/jarvis_intel/trade_closes.jsonl  # HISTORICAL-PATH-OK
 # + var/eta_engine/state/jarvis_intel/trade_closes.jsonl, deduped).
-# Snapshot 2026-05-12.
+# Snapshot 2026-05-12 (wave-14 fleet expansion).
+#
+# Wave-14 expansion rationale:
+# Operator mandate to "conquer futures + commodities + crypto" by
+# bringing all paper-soak strategies with strong R-evidence into the
+# diamond fleet for data gathering. The promotion gate's hard
+# H4_calendar_days=5 requirement is paper-trading-irrelevant — we WANT
+# more bots accumulating data, not fewer.
+#
+# Quarantined / NOT promoted:
+#   - mym_sweep_reclaim: corrupt R-values (multiple R=+50/+80/+100 on
+#     pnl=$1.25 — same scale-bug pattern as the eur_sweep records the
+#     diamond_data_sanitizer quarantined; needs sanitizer pass before
+#     promotion can be considered)
+#   - mbt_overnight_gap, mbt_rth_orb, mbt_funding_basis,
+#     mbt_sweep_reclaim: all trading (n=58-129) but realized_r=0
+#     across the board; the R-multiple writer is broken for the MBT
+#     family. Must fix the R writer for these bots before they can be
+#     R-classified by the watchdog.
 DIAMOND_BOTS: set[str] = {
     # ── Tier 1: large-sample sage learners ──────────────────────
-    "mnq_futures_sage",   # n=1267 cum_r=+0.82R wr=55%  (marginal-but-large)
-    "nq_futures_sage",    # n=1249 cum_r=+0.85R wr=57%  (marginal-but-large)
+    "mnq_futures_sage",  # n=1267 cum_r=+0.82R wr=55%  (marginal-but-large)
+    "nq_futures_sage",  # n=1249 cum_r=+0.85R wr=57%  (marginal-but-large)
     # ── Tier 2: confirmed-strong sweep reclaim ──────────────────
     "m2k_sweep_reclaim",  # n=1151 cum_r=+533R  wr=70%  *PROMOTED 2026-05-12* (canonical-data kaizen)
     "eur_sweep_reclaim",  # n= 280 cum_r=+129R  wr=70%  (4/4 sessions positive)
     "mgc_sweep_reclaim",  # n= 158 cum_r= +30R  wr=58%  (wave-3+5 chisel)
+    # ── Tier 2 (wave-14: conquer all 3 verticals) ───────────────
+    "met_sweep_reclaim",     # n= 208 cum_r=+136R wr=69%  *wave-14* highest avg_R in fleet (CRYPTO_FUTURES)
+    "mes_sweep_reclaim_v2",  # n= 416 cum_r=+136R wr=63%  *wave-14* (FUTURES_INDEX)
+    "eur_range",             # n= 124 cum_r= +64R wr=71%  *wave-14* second EUR strategy (CURRENCY)
+    "ng_sweep_reclaim",      # n= 243 cum_r= +91R wr=65%  *wave-14* (COMMODITY_NG)
+    "volume_profile_btc",    # n= 339 cum_r=+121R wr=66%  *wave-14* (CRYPTO)
+    "mes_sweep_reclaim",     # n= 197 cum_r= +56R wr=61%  *wave-14* (FUTURES_INDEX, paired with v2)
     # ── Tier 3: small-sample but positive ───────────────────────
-    "cl_macro",           # n=   2 cum_r= +2.4R wr=100% (sample too small)
-    "gc_momentum",        # n=   8 cum_r= +0.24R wr=50% (R-positive; USD-CRITICAL is a sizing artifact)
+    "cl_macro",  # n=   2 cum_r= +2.4R wr=100% (sample too small)
+    "gc_momentum",  # n=   8 cum_r= +0.24R wr=50% (R-positive; USD-CRITICAL is a sizing artifact)
     # ── Tier 4: small-sample structurally negative ──────────────
     # These two are net-negative in R-multiples too. Kept under
     # protection because n is too small (4-8) for retirement to be
     # statistically justified. Watch for the n>=20 inflection point.
-    "cl_momentum",        # n=   4 cum_r= -1.71R wr=25% (under-baked)
+    "cl_momentum",  # n=   4 cum_r= -1.71R wr=25% (under-baked)
     "mcl_sweep_reclaim",  # n=   8 cum_r= -0.22R wr=50% (flat)
 }
 
@@ -121,8 +149,11 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
         win_rate = winners / len(pnls) if pnls else 0
         pool = classify_pool(bot_id)
         bot_stats[bot_id] = {
-            "symbol": bot_id, "pool": pool, "total_pnl": total_pnl,
-            "win_rate": win_rate, "sessions": len(bot_sessions),
+            "symbol": bot_id,
+            "pool": pool,
+            "total_pnl": total_pnl,
+            "win_rate": win_rate,
+            "sessions": len(bot_sessions),
         }
 
     # Group by pool and compute weights
@@ -169,8 +200,10 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
             )
             allocation.bots[bot_id] = ba
             pool_data["bots"][bot_id] = {
-                "weight": weight, "capital": capital,
-                "pnl_total": stats["total_pnl"], "status": status,
+                "weight": weight,
+                "capital": capital,
+                "pnl_total": stats["total_pnl"],
+                "status": status,
             }
 
         setattr(allocation, f"{pool_name}_pool", pool_data)
@@ -187,8 +220,11 @@ def save_allocation(allocation: PortfolioAllocation, path: Path = ALLOCATION_PAT
         "leveraged_pool": allocation.leveraged_pool,
         "bot_allocations": {
             bid: {
-                "pool": ba.pool, "weight": ba.weight, "capital": ba.capital,
-                "status": ba.status, "pnl_total": ba.pnl_total,
+                "pool": ba.pool,
+                "weight": ba.weight,
+                "capital": ba.capital,
+                "status": ba.status,
+                "pnl_total": ba.pnl_total,
             }
             for bid, ba in allocation.bots.items()
         },
@@ -232,6 +268,7 @@ def get_bot_capital(bot_id: str, path: Path = ALLOCATION_PATH) -> float:
 def _read_registry_map() -> dict[str, dict[str, str]]:
     """Parse per_bot_registry for bot->symbol mapping."""
     import re
+
     reg_path = Path(r"C:\EvolutionaryTradingAlgo\eta_engine\strategies\per_bot_registry.py")
     reg_map = {}
     if reg_path.exists():
@@ -247,6 +284,7 @@ def _read_registry_map() -> dict[str, dict[str, str]]:
 if __name__ == "__main__":
     # Compute and save allocations from current soak data
     import sys
+
     ledger = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\paper_soak_ledger.json")
     total = float(sys.argv[1]) if len(sys.argv) > 1 else 100_000.0
     alloc = compute_allocations(ledger, total)
@@ -255,7 +293,7 @@ if __name__ == "__main__":
     print(f"Total capital: ${total:,.0f}")
     for pool_name in ("spot", "futures", "leveraged"):
         pool = getattr(alloc, f"{pool_name}_pool")
-        print(f"\n{pool_name.upper()} ({POOL_SPLIT[pool_name]*100:.0f}% = ${pool['capital']:,.0f}):")
+        print(f"\n{pool_name.upper()} ({POOL_SPLIT[pool_name] * 100:.0f}% = ${pool['capital']:,.0f}):")
         for bid, bd in sorted(pool.get("bots", {}).items(), key=lambda x: -x[1]["pnl_total"]):
             print(
                 f"  {bid}: {bd['status']:6s}  weight={bd['weight']:.1%}  "

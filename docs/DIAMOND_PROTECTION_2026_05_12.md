@@ -1,7 +1,6 @@
 # Diamond Protection — Truth Surface (2026-05-12)
 
-**Status:** 9 diamond bots locked (8 initial + m2k_sweep_reclaim promoted 2026-05-12). Three-layer protection live. Operator-only
-retirement. Falsification criteria pre-committed per bot.
+**Status:** 15 diamond bots locked (8 initial + m2k_sweep_reclaim + 6 wave-14 expansion bots covering futures + commodities + crypto verticals). Three-layer protection live. Top 3 by composite score earn PROP_READY designation. Operator-only retirement. Falsification criteria pre-committed per bot.
 
 > "Diamonds can only IMPROVE, never disappear" — the runtime gives
 > diamonds the benefit of the doubt; the operator retains the kill switch.
@@ -21,10 +20,21 @@ retirement. Falsification criteria pre-committed per bot.
 | `gc_momentum` | GC1 | **FRAGILE** | +$142 | 7 | commodity_momentum |
 | `cl_macro` | CL1 | confirmed edge | +$1,248 | 7 | oil_macro (2x ATR spike fade) |
 | `m2k_sweep_reclaim` | M2K1 | **PROMOTED 2026-05-12** | +533R (n=1151, 70% WR) | — | sweep_reclaim |
+| `met_sweep_reclaim` | MET1 | **wave-14 (CRYPTO_FUT)** | +136R (n=208, 69% WR) | — | sweep_reclaim |
+| `mes_sweep_reclaim_v2` | MES1 | **wave-14 (FUT_INDEX)** | +136R (n=416, 63% WR) | — | sweep_reclaim |
+| `eur_range` | 6E1 | **wave-14 (FX)** | +64R (n=124, 71% WR) | — | range_revert |
+| `ng_sweep_reclaim` | NG1 | **wave-14 (COMMODITY_NG)** | +91R (n=243, 65% WR) | — | sweep_reclaim |
+| `volume_profile_btc` | BTC | **wave-14 (CRYPTO)** | +121R (n=339, 66% WR) | — | volume_profile |
+| `mes_sweep_reclaim` | MES1 | **wave-14 (FUT_INDEX, paired with v2)** | +56R (n=197, 61% WR) | — | sweep_reclaim |
 
-**Total paper P&L:** +$20,866 across the original 8 diamonds. m2k carries
-the new R-multiple baseline (+533R / n=1151 / 70% WR) per the canonical
-dual-source trade-history archive — the strongest evidence in the fleet.
+**Coverage:** the wave-14 expansion brings the fleet to 15 diamonds
+covering all 3 verticals — futures (MES, M2K, MNQ, NQ), commodities
+(CL, GC, MGC, MCL, NG), crypto (MET, BTC, MBT-pending). Paper-soak
+data accumulation is the primary goal; the top 3 by composite score
+(see `diamond_leaderboard.py`) earn PROP_READY designation for the
+prop-fund routing layer.
+
+**Total R-edge across the 15 diamonds:** +1,300R+ paper baseline.
 
 ---
 

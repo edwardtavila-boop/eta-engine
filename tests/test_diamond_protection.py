@@ -18,6 +18,7 @@ These tests are the contract.  Any change that breaks one of them
 must be a deliberate code change — not a config drift, not a
 sidecar override, not a CI bot's RETIRE recommendation.
 """
+
 # ruff: noqa: N802, PLR2004
 from __future__ import annotations
 
@@ -40,20 +41,32 @@ from eta_engine.strategies.per_bot_registry import (
 )
 
 # ────────────────────────────────────────────────────────────────────
-# The 9 expected diamonds (operator decision 2026-05-12)
+# The 15 expected diamonds (operator decision 2026-05-12 wave-14
+# fleet expansion: conquer futures + commodities + crypto verticals)
 # ────────────────────────────────────────────────────────────────────
 
-EXPECTED_DIAMONDS = frozenset({
-    "mnq_futures_sage",
-    "nq_futures_sage",
-    "cl_momentum",
-    "mcl_sweep_reclaim",
-    "mgc_sweep_reclaim",
-    "m2k_sweep_reclaim",
-    "eur_sweep_reclaim",
-    "gc_momentum",
-    "cl_macro",
-})
+EXPECTED_DIAMONDS = frozenset(
+    {
+        # Original 8
+        "mnq_futures_sage",
+        "nq_futures_sage",
+        "cl_momentum",
+        "mcl_sweep_reclaim",
+        "mgc_sweep_reclaim",
+        "eur_sweep_reclaim",
+        "gc_momentum",
+        "cl_macro",
+        # 9th (canonical-data kaizen, m2k promotion)
+        "m2k_sweep_reclaim",
+        # 10th-15th (wave-14 fleet expansion)
+        "met_sweep_reclaim",
+        "mes_sweep_reclaim_v2",
+        "eur_range",
+        "ng_sweep_reclaim",
+        "volume_profile_btc",
+        "mes_sweep_reclaim",
+    }
+)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -61,8 +74,10 @@ EXPECTED_DIAMONDS = frozenset({
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_diamond_set_has_exactly_nine_bots() -> None:
-    assert len(DIAMOND_BOTS) == 9
+def test_diamond_set_count_matches_expected() -> None:
+    """The fleet count is fragile to silent additions/removals; pin it
+    to the EXPECTED_DIAMONDS frozenset and update both together."""
+    assert len(DIAMOND_BOTS) == len(EXPECTED_DIAMONDS) == 15
 
 
 def test_diamond_set_matches_operator_decision_2026_05_12() -> None:
@@ -96,22 +111,26 @@ def test_diamond_min_capital_is_at_least_2000() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_capital_allocator_diamond_path_assigns_min_capital(
-        tmp_path: Path) -> None:
+def test_capital_allocator_diamond_path_assigns_min_capital(tmp_path: Path) -> None:
     """A diamond bot with ZERO sessions and ZERO P&L still receives
     >= DIAMOND_MIN_CAPITAL and status=active."""
     from eta_engine.feeds.capital_allocator import compute_allocations
 
     # Build a ledger where a diamond has 2 sessions both flat ($0 P&L).
     ledger_path = tmp_path / "ledger.json"
-    ledger_path.write_text(json.dumps({
-        "bot_sessions": {
-            "cl_momentum": [
-                {"pnl": 0.0},
-                {"pnl": 0.0},
-            ],
-        },
-    }), encoding="utf-8")
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "bot_sessions": {
+                    "cl_momentum": [
+                        {"pnl": 0.0},
+                        {"pnl": 0.0},
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     alloc = compute_allocations(ledger_path, total_capital=100_000.0)
     diamond_alloc = alloc.bots.get("cl_momentum")
@@ -120,22 +139,26 @@ def test_capital_allocator_diamond_path_assigns_min_capital(
     assert diamond_alloc.status == "active"
 
 
-def test_capital_allocator_non_diamond_unprofitable_is_paused(
-        tmp_path: Path) -> None:
+def test_capital_allocator_non_diamond_unprofitable_is_paused(tmp_path: Path) -> None:
     """Sanity check: protection is targeted.  A non-diamond bot with
     zero P&L is paused (status='paused'), confirming that the diamond
     branch is what saves diamonds."""
     from eta_engine.feeds.capital_allocator import compute_allocations
 
     ledger_path = tmp_path / "ledger.json"
-    ledger_path.write_text(json.dumps({
-        "bot_sessions": {
-            "not_a_diamond_xyz": [
-                {"pnl": 0.0},
-                {"pnl": 0.0},
-            ],
-        },
-    }), encoding="utf-8")
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "bot_sessions": {
+                    "not_a_diamond_xyz": [
+                        {"pnl": 0.0},
+                        {"pnl": 0.0},
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     alloc = compute_allocations(ledger_path, total_capital=100_000.0)
     bot_alloc = alloc.bots.get("not_a_diamond_xyz")
     if bot_alloc is not None:
@@ -154,8 +177,9 @@ def test_kaizen_loop_imports_diamond_bots() -> None:
     from eta_engine.feeds.capital_allocator import (
         DIAMOND_BOTS as _DIAMONDS_FROM_ALLOCATOR,
     )
+
     assert isinstance(_DIAMONDS_FROM_ALLOCATOR, (set, frozenset))
-    assert len(_DIAMONDS_FROM_ALLOCATOR) == 9
+    assert len(_DIAMONDS_FROM_ALLOCATOR) == 15
 
 
 def test_kaizen_loop_source_contains_diamond_skip_branch() -> None:
@@ -180,9 +204,7 @@ def test_is_active_returns_true_for_every_diamond() -> None:
     for bot_id in DIAMOND_BOTS:
         assignment = get_for_bot(bot_id)
         assert assignment is not None, f"diamond missing from registry: {bot_id}"
-        assert is_active(assignment) is True, (
-            f"diamond {bot_id} reports is_active()=False — protection broken"
-        )
+        assert is_active(assignment) is True, f"diamond {bot_id} reports is_active()=False — protection broken"
 
 
 def test_is_active_ignores_deactivated_marker_on_diamond() -> None:
@@ -232,24 +254,27 @@ def test_is_active_still_disables_non_diamond_with_deactivated_marker() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_no_diamond_is_currently_in_kaizen_overrides(
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_no_diamond_is_currently_in_kaizen_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Even if a stale kaizen override sneaks in for a diamond,
     is_active() ignores it.  This test seeds a fake override file
     and confirms the diamond stays active."""
     from eta_engine.strategies import per_bot_registry
 
     fake_override = tmp_path / "kaizen_overrides.json"
-    fake_override.write_text(json.dumps({
-        "deactivated": {
-            "mnq_futures_sage": {
-                "applied_at": "2026-05-12T00:00:00+00:00",
-                "reason": "synthetic test seed — protection should ignore",
-            },
-        },
-    }), encoding="utf-8")
-    monkeypatch.setattr(
-        per_bot_registry, "_KAIZEN_OVERRIDES_PATH", fake_override)
+    fake_override.write_text(
+        json.dumps(
+            {
+                "deactivated": {
+                    "mnq_futures_sage": {
+                        "applied_at": "2026-05-12T00:00:00+00:00",
+                        "reason": "synthetic test seed — protection should ignore",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(per_bot_registry, "_KAIZEN_OVERRIDES_PATH", fake_override)
     assignment = get_for_bot("mnq_futures_sage")
     assert assignment is not None
     assert is_active(assignment) is True
@@ -268,9 +293,7 @@ def test_diamond_protection_includes_at_least_5_robust_bots() -> None:
         "mgc_sweep_reclaim",
     }
     # At least all 5 ROBUST must be in DIAMOND_BOTS.
-    assert robust_diamonds.issubset(DIAMOND_BOTS), (
-        f"ROBUST diamonds missing: {robust_diamonds - DIAMOND_BOTS}"
-    )
+    assert robust_diamonds.issubset(DIAMOND_BOTS), f"ROBUST diamonds missing: {robust_diamonds - DIAMOND_BOTS}"
 
 
 def test_diamond_correlation_groups_documented() -> None:
@@ -291,8 +314,7 @@ def test_diamond_correlation_groups_documented() -> None:
 
 def test_diamond_protection_doc_exists() -> None:
     """Operator-facing truth surface must exist."""
-    doc = (Path(__file__).resolve().parents[1] / "docs"
-           / "DIAMOND_PROTECTION_2026_05_12.md")
+    doc = Path(__file__).resolve().parents[1] / "docs" / "DIAMOND_PROTECTION_2026_05_12.md"
     assert doc.exists()
     text = doc.read_text(encoding="utf-8")
     # Doc must enumerate all 8 diamonds

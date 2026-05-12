@@ -44,6 +44,7 @@ Run
 
     python -m eta_engine.scripts.diamond_falsification_watchdog
 """
+
 from __future__ import annotations
 
 # ruff: noqa: PLR2004
@@ -71,19 +72,28 @@ ALERTS_LOG = LOG_DIR / "alerts_log.jsonl"
 #: triggers operator review (NOT auto-deactivate — see DIAMOND_PROTECTION
 #: doc layer 2+3).
 RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
-    "mnq_futures_sage":   -5000.0,
-    "nq_futures_sage":    -1500.0,
-    "cl_momentum":        -1500.0,
-    "mcl_sweep_reclaim":  -1500.0,
-    "mgc_sweep_reclaim":   -600.0,
-    "eur_sweep_reclaim":   -300.0,  # FRAGILE
-    "gc_momentum":         -200.0,  # FRAGILE
-    "cl_macro":           -1000.0,
+    "mnq_futures_sage": -5000.0,
+    "nq_futures_sage": -1500.0,
+    "cl_momentum": -1500.0,
+    "mcl_sweep_reclaim": -1500.0,
+    "mgc_sweep_reclaim": -600.0,
+    "eur_sweep_reclaim": -300.0,  # FRAGILE
+    "gc_momentum": -200.0,  # FRAGILE
+    "cl_macro": -1000.0,
     # Promoted 2026-05-12 from canonical-data kaizen analysis.
     # m2k_sweep_reclaim: n=1151 cum_r=+533R wr=70% across all 4 sessions.
     # Conservative threshold: -$800 ≈ 2.5σ below the +0.46R/trade baseline
     # over a typical 50-trade 30-day window. Tighten after live observation.
-    "m2k_sweep_reclaim":  -800.0,
+    "m2k_sweep_reclaim": -800.0,
+    # ── Wave-14 fleet expansion thresholds ──────────────────────
+    # Set conservatively at ~3x typical-stopout USD for each contract.
+    # These get tightened once 30 calendar days of live data accumulate.
+    "met_sweep_reclaim":    -500.0,   # MET ($0.10/pt ETH) — small-tick crypto
+    "mes_sweep_reclaim_v2": -1000.0,  # MES ($5/pt) — micro index
+    "mes_sweep_reclaim":    -1000.0,  # MES same contract, different tuning
+    "eur_range":            -300.0,   # 6E ($125k notional) — tight like eur_sweep
+    "ng_sweep_reclaim":     -800.0,   # NG ($10k/contract) — wide stops needed for vol
+    "volume_profile_btc":   -1500.0,  # BTC spot — wide range
 }
 
 #: R-multiple retirement thresholds — complementary to USD basis.
@@ -106,15 +116,24 @@ RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
 #:   - Marginal-large-sample (e.g. mnq/nq sage):    -1R
 #:   - Small-sample bots (n<20):                    -3R
 RETIREMENT_THRESHOLDS_R: dict[str, float] = {
-    "mnq_futures_sage":  -1.0,   # marginal edge; tight R-floor
-    "nq_futures_sage":   -1.0,
-    "cl_momentum":       -5.0,   # small-sample bleeders
+    "mnq_futures_sage": -1.0,  # marginal edge; tight R-floor
+    "nq_futures_sage": -1.0,
+    "cl_momentum": -5.0,  # small-sample bleeders
     "mcl_sweep_reclaim": -3.0,
     "mgc_sweep_reclaim": -5.0,
     "eur_sweep_reclaim": -10.0,  # strong proven diamond
-    "gc_momentum":       -3.0,   # small sample, generous
-    "cl_macro":          -2.0,
-    "m2k_sweep_reclaim": -20.0,  # strongest evidence in fleet
+    "gc_momentum": -3.0,  # small sample, generous
+    "cl_macro": -2.0,
+    "m2k_sweep_reclaim": -20.0,  # strongest evidence in fleet (was)
+    # ── Wave-14 expansion R-floors ──────────────────────────────
+    # Computed as ~ -0.25 * cum_r baseline (gives operator
+    # ~25% drawdown room before the floor trips).
+    "met_sweep_reclaim":    -10.0,  # +136R baseline → -10R floor
+    "mes_sweep_reclaim_v2": -10.0,  # +136R baseline → -10R floor
+    "mes_sweep_reclaim":    -5.0,   # +56R baseline → -5R floor
+    "eur_range":            -5.0,   # +64R baseline → -5R floor
+    "ng_sweep_reclaim":     -8.0,   # +91R baseline → -8R floor
+    "volume_profile_btc":   -10.0,  # +121R baseline → -10R floor
 }
 
 
@@ -192,17 +211,21 @@ def _worst_of(usd_cls: str, r_cls: str) -> str:
 def _classify(status: DiamondStatus) -> None:
     """Compute the USD, R, and worst-of-both classifications."""
     status.classification_usd = _classify_buffer(
-        status.buffer_usd, status.retirement_threshold,
+        status.buffer_usd,
+        status.retirement_threshold,
     )
     status.classification_r = _classify_buffer(
-        status.buffer_r, status.retirement_threshold_r,
+        status.buffer_r,
+        status.retirement_threshold_r,
     )
     status.classification = _worst_of(
-        status.classification_usd, status.classification_r,
+        status.classification_usd,
+        status.classification_r,
     )
     if status.buffer_usd is not None and status.retirement_threshold:
         status.buffer_pct_of_threshold = round(
-            status.buffer_usd / abs(status.retirement_threshold) * 100.0, 1,
+            status.buffer_usd / abs(status.retirement_threshold) * 100.0,
+            1,
         )
 
 
@@ -246,20 +269,16 @@ def _evaluate(bot_id: str, ledger: dict | None) -> DiamondStatus:
     # whose strategy edge was actually fine but whose dollar tracking
     # tripped on a data quality issue (eur_sweep_reclaim post-sanitizer).
     n_trades = int(rec.get("closed_trade_count") or 0)
-    scale_bug_suspected = (
-        n_trades > 0
-        and s.pnl_lifetime is not None
-        and abs(s.pnl_lifetime) / max(n_trades, 1) > 5_000
-    )
+    scale_bug_suspected = n_trades > 0 and s.pnl_lifetime is not None and abs(s.pnl_lifetime) / max(n_trades, 1) > 5_000
     if scale_bug_suspected:
         s.notes.append(
-            "SCALE_BUG_SUSPECTED — avg per-trade exceeds $5,000; "
-            "USD verdict reserved; R-basis verdict still computed",
+            "SCALE_BUG_SUSPECTED — avg per-trade exceeds $5,000; USD verdict reserved; R-basis verdict still computed",
         )
         # Don't compute USD buffer when scale-bugged; R basis carries us.
     elif s.pnl_recent_window is not None and s.retirement_threshold is not None:
         s.buffer_usd = round(
-            s.pnl_recent_window - s.retirement_threshold, 2,
+            s.pnl_recent_window - s.retirement_threshold,
+            2,
         )
 
     # R-buffer always computed when R-threshold + cumulative_r are present.
@@ -287,17 +306,22 @@ def run_watchdog() -> dict:
     }
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
-        OUT_LATEST.write_text(
-            json.dumps(report, indent=2, default=str), encoding="utf-8")
+        OUT_LATEST.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     except OSError as exc:
         print(f"WARN: latest write failed: {exc}", file=sys.stderr)
     try:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         with OUT_LOG.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "ts": report["ts"],
-                "classification_counts": counts,
-            }, separators=(",", ":")) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": report["ts"],
+                        "classification_counts": counts,
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
     except OSError as exc:
         print(f"WARN: log append failed: {exc}", file=sys.stderr)
     # Fire alerts pipeline for CRITICAL classifications so the operator
@@ -323,32 +347,38 @@ def _fire_alerts_for_critical(statuses: list[DiamondStatus]) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         with ALERTS_LOG.open("a", encoding="utf-8") as f:
             for s in critical:
-                f.write(json.dumps({
-                    "timestamp_utc": datetime.now(UTC).isoformat(),
-                    "ts": datetime.now(UTC).isoformat(),
-                    "severity": "RED",
-                    "source": "diamond_falsification_watchdog",
-                    "alert_id": f"diamond_critical_{s.bot_id}",
-                    "bot_id": s.bot_id,
-                    "headline": (
-                        f"DIAMOND CRITICAL: {s.bot_id} P&L "
-                        f"${s.pnl_recent_window or 0:+.2f} below "
-                        f"floor ${s.retirement_threshold or 0:.0f} "
-                        f"(buffer ${s.buffer_usd or 0:+.2f})"
-                    ),
-                    "buffer_usd": s.buffer_usd,
-                    "buffer_pct_of_threshold": s.buffer_pct_of_threshold,
-                    "retirement_threshold": s.retirement_threshold,
-                    "pnl_recent_window": s.pnl_recent_window,
-                    "next_action": (
-                        "Operator review required.  Per "
-                        "var/eta_engine/decisions/diamond_set_2026_05_12.md, "
-                        "options are (1) retire — remove bot from "
-                        "DIAMOND_BOTS and commit, (2) override — write "
-                        "exception memo explaining why the floor is "
-                        "unrepresentative."
-                    ),
-                }, separators=(",", ":")) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "timestamp_utc": datetime.now(UTC).isoformat(),
+                            "ts": datetime.now(UTC).isoformat(),
+                            "severity": "RED",
+                            "source": "diamond_falsification_watchdog",
+                            "alert_id": f"diamond_critical_{s.bot_id}",
+                            "bot_id": s.bot_id,
+                            "headline": (
+                                f"DIAMOND CRITICAL: {s.bot_id} P&L "
+                                f"${s.pnl_recent_window or 0:+.2f} below "
+                                f"floor ${s.retirement_threshold or 0:.0f} "
+                                f"(buffer ${s.buffer_usd or 0:+.2f})"
+                            ),
+                            "buffer_usd": s.buffer_usd,
+                            "buffer_pct_of_threshold": s.buffer_pct_of_threshold,
+                            "retirement_threshold": s.retirement_threshold,
+                            "pnl_recent_window": s.pnl_recent_window,
+                            "next_action": (
+                                "Operator review required.  Per "
+                                "var/eta_engine/decisions/diamond_set_2026_05_12.md, "
+                                "options are (1) retire — remove bot from "
+                                "DIAMOND_BOTS and commit, (2) override — write "
+                                "exception memo explaining why the floor is "
+                                "unrepresentative."
+                            ),
+                        },
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
     except OSError as exc:
         print(f"WARN: alert write failed: {exc}", file=sys.stderr)
 
@@ -357,8 +387,10 @@ def _print(report: dict) -> None:
     print("=" * 130)
     print(f" DIAMOND FALSIFICATION WATCHDOG — {report['ts']}")
     print("=" * 130)
-    print(" Classification roll-up (worst-of-USD+R): " + ", ".join(
-        f"{k}={v}" for k, v in report["classification_counts"].items()))
+    print(
+        " Classification roll-up (worst-of-USD+R): "
+        + ", ".join(f"{k}={v}" for k, v in report["classification_counts"].items())
+    )
     print()
     print(
         f" {'bot':25s} {'class':9s} | "
