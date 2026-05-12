@@ -34,6 +34,7 @@ def test_check_memory_backup_warns_when_missing(tmp_path: Path, monkeypatch) -> 
     from eta_engine.scripts import bridge_preflight
 
     monkeypatch.setattr(bridge_preflight, "STATE_ROOT", tmp_path)
+    monkeypatch.setattr(bridge_preflight.sys, "platform", "linux")
     status, _, _ = bridge_preflight.check_memory_backup_recent()
     assert status == "WARN"
 

@@ -206,3 +206,71 @@ def test_recommend_handles_bad_args(tmp_path: Path) -> None:
         trade_closes_path=path,
     )
     assert len(recs) == 1
+
+
+def test_recommend_reads_realized_r_canonical_field(tmp_path: Path) -> None:
+    """Regression: kelly_optimizer must read ``realized_r`` (the canonical
+    field name in ``jarvis_intel/trade_closes.jsonl``) — not just the legacy
+    ``r`` / ``r_value`` aliases.
+
+    Pre-fix behavior: every bot reported avg_r=0.000 because the optimizer
+    looked for ``r`` / ``r_value`` but the writer emits ``realized_r``. This
+    silently corrupted every Kelly recommendation for months until a Zeus
+    snapshot surfaced the avg_r=0 anomaly.
+    """
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
+    path = tmp_path / "tc.jsonl"
+    # 25 trades using ONLY the realized_r field (no r, no r_value)
+    trades = [
+        {"bot_id": "real_bot", "realized_r": 1.0, "ts": _recent_iso(i)}
+        if i % 2 == 0
+        else {"bot_id": "real_bot", "realized_r": -0.5, "ts": _recent_iso(i)}
+        for i in range(25)
+    ]
+    _write_trades(path, trades)
+
+    recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["bot_id"] == "real_bot"
+    assert rec["insufficient_data"] is False
+    # Mean of alternating +1.0 / -0.5 over 25 trades = ~+0.26 (13 wins, 12 losses)
+    assert rec["avg_r"] > 0.2, f"avg_r={rec['avg_r']} should reflect realized_r values, not default 0"
+
+
+def test_recommend_legacy_r_alias_still_works(tmp_path: Path) -> None:
+    """Back-compat: bots writing the legacy ``r`` field continue to work."""
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
+    path = tmp_path / "tc.jsonl"
+    trades = [
+        {"bot_id": "legacy_bot", "r": 0.3, "ts": _recent_iso(i)}
+        for i in range(25)
+    ]
+    _write_trades(path, trades)
+
+    recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
+    assert len(recs) == 1
+    assert recs[0]["avg_r"] == 0.3
+    assert recs[0]["insufficient_data"] is False
+
+
+def test_recommend_realized_r_overrides_legacy_when_both_present(
+    tmp_path: Path,
+) -> None:
+    """When both ``realized_r`` and ``r`` are present, the canonical
+    ``realized_r`` wins (writer-side mismatch shouldn't silently use
+    the wrong number)."""
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer
+
+    path = tmp_path / "tc.jsonl"
+    trades = [
+        {"bot_id": "dual", "realized_r": 0.5, "r": -99.0, "ts": _recent_iso(i)}
+        for i in range(25)
+    ]
+    _write_trades(path, trades)
+
+    recs = kelly_optimizer.recommend_sizing(trade_closes_path=path)
+    assert recs[0]["avg_r"] == 0.5  # realized_r, not r=-99
+

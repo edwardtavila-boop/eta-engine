@@ -201,8 +201,13 @@ def recommend_sizing(
         bid = t.get("bot_id")
         if not bid:
             continue
+        # Canonical field is `realized_r` (see jarvis_intel/trade_closes.jsonl);
+        # `r` and `r_value` are legacy aliases preserved for back-compat.
+        raw_r = t.get("realized_r")
+        if raw_r is None:
+            raw_r = t.get("r", t.get("r_value", 0.0))
         try:
-            r = float(t.get("r", t.get("r_value", 0.0)))
+            r = float(raw_r)
         except (TypeError, ValueError):
             continue
         by_bot[str(bid)].append(r)

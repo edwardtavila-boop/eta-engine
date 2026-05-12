@@ -72,7 +72,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 .supercharge-list li{border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:.65rem;background:rgba(255,255,255,.02);font-size:.75rem}
 .supercharge-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
 .supercharge-note{color:var(--dim);font-size:.7rem;margin-top:.25rem}
-.ops-truth-wrap{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(300px,.92fr);gap:.8rem;padding:0 2rem 1rem}
+.ops-truth-wrap{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(300px,.92fr);gap:.8rem;padding:0 2rem 1rem;align-items:start}
 .truth-summary{display:flex;gap:.38rem;flex-wrap:wrap;margin-bottom:.72rem}
 .truth-chip{border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:.28rem .55rem;background:rgba(255,255,255,.025);font-size:.67rem;color:var(--dim)}
 .truth-chip strong{color:var(--text);margin-right:.25rem}
@@ -220,16 +220,19 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .collapsible-section>.card{background:transparent;border:0;box-shadow:none}
 .collapsible-section>.table-wrap{overflow-x:auto}
 .collapsible-section.vps-root-detail-wrap{padding:0}
-.ops-truth-wrap{padding:0;grid-template-columns:minmax(0,1fr) minmax(300px,.85fr)}
+.ops-truth-wrap{padding:0;grid-template-columns:minmax(0,1fr) minmax(300px,.85fr);align-items:start}
 .close-history-block{margin-top:.72rem}
 .close-history-heading{display:flex;align-items:center;justify-content:space-between;gap:.55rem;margin-bottom:.42rem}
 .close-history-heading strong{color:#f7fbff;font-size:.82rem}
 .close-history-heading span{color:#8fa3b8;font-size:.66rem}
 .close-history-list{display:grid;gap:.45rem}
-.close-row{border:1px solid rgba(255,255,255,.055);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012));padding:.6rem .68rem;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.close-row{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.055);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012));padding:.6rem .68rem .6rem .8rem;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.close-row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(100,215,255,.85),rgba(100,215,255,.08));opacity:.55}
 .close-row:hover{transform:translateY(-1px);box-shadow:0 12px 26px rgba(0,0,0,.18)}
 .close-row.win{border-color:rgba(54,240,162,.18)}
 .close-row.loss{border-color:rgba(255,91,110,.18)}
+.close-row.win::before{background:linear-gradient(180deg,rgba(54,240,162,.92),rgba(54,240,162,.12));opacity:.9}
+.close-row.loss::before{background:linear-gradient(180deg,rgba(255,91,110,.92),rgba(255,91,110,.12));opacity:.9}
 .close-row-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;margin-bottom:.3rem}
 .close-row-title{display:flex;align-items:center;gap:.45rem;min-width:0;flex-wrap:wrap}
 .close-row-title strong{font-size:.82rem;color:#f8fbff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -240,6 +243,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 .close-row-meta{display:flex;flex-wrap:wrap;gap:.3rem .56rem;color:#8fa3b8;font-size:.67rem}
 .close-row-meta strong{color:#dce7f3;font-weight:600}
 .allocation-sections{padding:0}
+@media(min-width:1180px){.close-history-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
 @media(max-width:980px){.collapsible-section{margin-left:1rem;margin-right:1rem}.grid{grid-template-columns:repeat(auto-fit,minmax(136px,1fr));padding-left:1rem;padding-right:1rem}.portfolio-command{grid-template-columns:1fr}.portfolio-analytics{grid-template-columns:1fr}}
 @media(max-width:860px){.header{padding:.95rem 1rem;flex-direction:column;align-items:flex-start;gap:.75rem}.controls{width:100%;justify-content:stretch;gap:.55rem}.controls button{flex:1 1 0}.status-bar{padding:.72rem 1rem .42rem;flex-direction:column;align-items:flex-start;gap:.35rem}.ops-truth-wrap{grid-template-columns:1fr}.panel-head{flex-direction:column;align-items:flex-start}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.contribution-row{grid-template-columns:1fr;gap:.45rem}}
@@ -339,9 +343,26 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
   <div class="card"><h3 id="totalPnlLabel">Closed PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">window closes pending</div></div>
-  <div class="card"><h3 id="cumulativeRLabel">Window R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for realized-R outcomes</div></div>
+  <div class="card"><h3 id="cumulativeRLabel">Window R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for selected-window realized-R outcomes</div></div>
   <div class="card"><h3 id="totalTradesLabel">Window Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
+  <div class="card pnl-window-card">
+    <h3>Closed PnL Window</h3>
+    <div class="range-controls" id="pnlWindowControls">
+      <button type="button" data-close-window="today">Today</button>
+      <button type="button" data-close-window="wtd">WTD</button>
+      <button type="button" class="active" data-close-window="mtd">MTD</button>
+      <button type="button" data-close-window="ytd">YTD</button>
+      <button type="button" data-close-window="all">All</button>
+    </div>
+    <div class="history-window-strip" id="pnlWindowStrip">
+      <button type="button" class="history-window-tile active" data-close-window="mtd">
+        <span>MTD PnL</span><strong>n/a</strong><small>MTD closed outcomes pending</small>
+      </button>
+    </div>
+    <div class="history-subline"><span id="pnlHistoryLabel">selected-window Close History</span> <span id="pnlHistorySub">MTD closed outcomes; selected-window close history</span></div>
+    <canvas id="pnlChart"></canvas>
+  </div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">APPROVED + CONDITIONAL verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis/Hermes bridge</div></div>
@@ -1175,7 +1196,8 @@ function buildSupervisorPositions(bots) {
 }
 
 function renderRecentCloses(closes, label = 'selected window', totalCount = null) {
-  const rows = Array.isArray(closes) ? closes.slice(0, 6) : [];
+  const maxRows = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 4 : 6;
+  const rows = Array.isArray(closes) ? closes.slice(0, maxRows) : [];
   if (!rows.length) {
     return '<div class="empty-panel">No closed outcomes have landed in this focus window yet.</div>';
   }
@@ -1543,6 +1565,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} unrealized`;
   if (narrative) {
     const truth = d.truth_summary_line || summary.truth_summary_line || 'waiting for truth summary';
+    const compactTruth = compactText(String(truth).replace(/^Live ETA truth:\s*/i, 'ETA truth: '), 92);
     const sleeveText = portfolioSleeves
       ? `${portfolioSleeves} sleeve${portfolioSleeves === 1 ? '' : 's'}`
       : 'sleeves loading';
@@ -1555,7 +1578,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
       active > 0 ? `${active} active now.` : 'Flat right now.',
       venueFocusText ? `${venueFocusText}.` : '',
       cellarText,
-      truth
+      compactTruth
     ].filter(Boolean).join(' ');
   }
   if (chips) {
