@@ -145,6 +145,12 @@ $weeklyTasks = @(
     @{ Name = "ETA-Diamond-AuthenticityWeekly"
         Args = "-m eta_engine.scripts.diamond_authenticity_audit"
         Desc = "Diamond: weekly authenticity audit (GENUINE/LAB/CZ verdict per diamond)" }
+    @{ Name = "ETA-Diamond-CPCVWeekly"
+        Args = "-m eta_engine.scripts.diamond_cpcv_runner"
+        Desc = "Diamond: weekly CPCV (ROBUST/FRAGILE verdict via out-of-sample sharpe distribution)" }
+    @{ Name = "ETA-Diamond-SanitizerWeekly"
+        Args = "-m eta_engine.scripts.diamond_data_sanitizer --apply-backward"
+        Desc = "Diamond: weekly backward sanitization of trade_closes.jsonl (quarantines USD scale-bug records)" }
 )
 
 foreach ($t in $weeklyTasks) {

@@ -535,3 +535,139 @@ def test_daily_summary_escalates_red_on_critical_diamond(
     assert summary.diamond_watchdog["classification_counts"]["CRITICAL"] == 2
     assert summary.overall_verdict == "RED"
     assert any("DIAMOND CRITICAL" in h for h in summary.headlines)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Data sanitizer — quarantines records with implausible USD magnitudes
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_sanitizer_detects_obvious_scale_bug() -> None:
+    """A 1-contract paper trade with $189k realized P&L is implausible
+    and must be flagged as corrupt."""
+    from eta_engine.scripts.diamond_data_sanitizer import _record_is_corrupt
+
+    rec = {
+        "bot_id": "eur_sweep_reclaim",
+        "extra": {"realized_pnl": -189243.75, "qty": 1.0, "symbol": "6E1"},
+    }
+    corrupt, mag = _record_is_corrupt(rec)
+    assert corrupt is True
+    assert mag is not None
+    assert mag > 100_000
+
+
+def test_sanitizer_clean_record_not_flagged() -> None:
+    """Realistic per-trade P&L on a paper contract must NOT be flagged.
+    cl_momentum with -$2,630 / 1 contract is well within realistic
+    range for full crude."""
+    from eta_engine.scripts.diamond_data_sanitizer import _record_is_corrupt
+
+    rec = {
+        "bot_id": "cl_momentum",
+        "extra": {"realized_pnl": -2630.0, "qty": 1.0, "symbol": "CL1"},
+    }
+    corrupt, _ = _record_is_corrupt(rec)
+    assert corrupt is False
+
+
+def test_sanitizer_quarantine_preserves_original() -> None:
+    """Quarantining a record must preserve the original P&L for
+    forensics + reversibility; the active realized_pnl becomes 0."""
+    from eta_engine.scripts.diamond_data_sanitizer import _quarantine_record
+
+    rec = {
+        "bot_id": "eur_sweep_reclaim",
+        "ts": "2026-05-10T03:50:58.762993+00:00",
+        "extra": {"realized_pnl": -189243.75, "qty": 1.0, "symbol": "6E1"},
+    }
+    q = _quarantine_record(rec)
+    assert q["_sanitizer_quarantined"] is True
+    assert q["extra"]["quarantined_usd"] is True
+    assert q["extra"]["quarantined_original_realized_pnl"] == -189243.75
+    assert q["extra"]["realized_pnl"] == 0.0
+    assert "quarantined_at" in q["extra"]
+    assert "quarantined_reason" in q["extra"]
+
+
+def test_sanitizer_idempotent() -> None:
+    """Re-quarantining an already-quarantined record must be a no-op."""
+    from eta_engine.scripts.diamond_data_sanitizer import _quarantine_record
+
+    rec = {
+        "bot_id": "x",
+        "extra": {
+            "realized_pnl": 0.0,
+            "quarantined_usd": True,
+            "quarantined_original_realized_pnl": -189243.75,
+            "quarantined_at": "2026-05-12T00:00:00+00:00",
+        },
+    }
+    before = json.dumps(rec, sort_keys=True)
+    _quarantine_record(rec)
+    after = json.dumps(rec, sort_keys=True)
+    assert before == after
+
+
+def test_sanitizer_forward_passthrough_for_clean_record() -> None:
+    """sanitize_forward() must return the record unchanged when
+    the P&L is realistic + return was_quarantined=False."""
+    from eta_engine.scripts.diamond_data_sanitizer import sanitize_forward
+
+    rec = {
+        "bot_id": "cl_momentum",
+        "extra": {"realized_pnl": -2630.0, "qty": 1.0},
+    }
+    sanitized, was_q = sanitize_forward(rec)
+    assert was_q is False
+    assert sanitized["extra"]["realized_pnl"] == -2630.0
+
+
+def test_sanitizer_forward_quarantines_corrupt_record() -> None:
+    from eta_engine.scripts.diamond_data_sanitizer import sanitize_forward
+
+    rec = {
+        "bot_id": "eur_sweep_reclaim",
+        "extra": {"realized_pnl": -189243.75, "qty": 1.0},
+    }
+    sanitized, was_q = sanitize_forward(rec)
+    assert was_q is True
+    assert sanitized["extra"]["realized_pnl"] == 0.0
+    assert sanitized["extra"]["quarantined_original_realized_pnl"] == -189243.75
+
+
+# ────────────────────────────────────────────────────────────────────
+# CPCV per-diamond runner
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_cpcv_runner_returns_one_report_per_diamond() -> None:
+    from eta_engine.scripts.diamond_cpcv_runner import run
+
+    summary = run()
+    assert summary["n_diamonds"] == len(DIAMOND_BOTS)
+    assert len(summary["reports"]) == len(DIAMOND_BOTS)
+    bot_ids = {r["bot_id"] for r in summary["reports"]}
+    assert bot_ids == DIAMOND_BOTS
+
+
+def test_cpcv_runner_marks_small_samples_not_ready() -> None:
+    """A bot with < 20 trade-closes must verdict NOT_CPCV_READY rather
+    than running CPCV with insufficient data."""
+    from eta_engine.scripts.diamond_cpcv_runner import _assess_bot
+
+    # cl_macro has n=2 in the ledger; should be NOT_CPCV_READY
+    rep = _assess_bot("cl_macro")
+    assert rep.verdict == "NOT_CPCV_READY"
+    assert rep.n_trades < 20
+
+
+def test_cpcv_runner_phi_approximation_sanity() -> None:
+    """Phi (standard normal CDF) approximation must satisfy
+    boundary conditions."""
+    from eta_engine.scripts.diamond_cpcv_runner import _phi
+
+    assert abs(_phi(0.0) - 0.5) < 0.001
+    assert _phi(2.0) > 0.97
+    assert _phi(-2.0) < 0.03
+    assert _phi(10.0) > 0.999
