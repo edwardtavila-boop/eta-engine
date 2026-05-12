@@ -9,6 +9,7 @@ set "REGISTER_DASHBOARD=%SCRIPTS%\register_dashboard_api_task.ps1"
 set "REGISTER_PROXY=%SCRIPTS%\register_proxy8421_bridge_task.ps1"
 set "REGISTER_WATCHDOG=%SCRIPTS%\register_dashboard_proxy_watchdog_task.ps1"
 set "REGISTER_AUDIT=%SCRIPTS%\register_vps_ops_hardening_audit_task.ps1"
+set "REGISTER_OPERATOR_QUEUE=%SCRIPTS%\register_operator_queue_heartbeat_task.ps1"
 
 if not exist "%ETA_ENGINE%" (
     echo Missing canonical ETA engine path:
@@ -36,11 +37,16 @@ if not exist "%REGISTER_AUDIT%" (
     echo   %REGISTER_AUDIT%
     exit /b 3
 )
+if not exist "%REGISTER_OPERATOR_QUEUE%" (
+    echo Missing operator queue heartbeat registrar:
+    echo   %REGISTER_OPERATOR_QUEUE%
+    exit /b 3
+)
 
 net session >nul 2>&1
 if errorlevel 1 (
     echo Requesting Administrator approval to repair ETA dashboard durability.
-    echo This registers dashboard self-heal tasks only; it never places, cancels, flattens, or promotes orders.
+    echo This registers dashboard self-heal and operator queue heartbeat tasks only; it never places, cancels, flattens, or promotes orders.
     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -WorkingDirectory '%ETA_ROOT%' -Verb RunAs -WindowStyle Normal"
     exit /b 0
 )
@@ -61,6 +67,10 @@ if errorlevel 1 goto fail
 
 echo === Register read-only VPS ops hardening audit task ===
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_AUDIT%" -Start
+if errorlevel 1 goto fail
+
+echo === Register read-only operator queue heartbeat task ===
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%REGISTER_OPERATOR_QUEUE%" -Start
 if errorlevel 1 goto fail
 
 echo === Refresh read-only VPS ops hardening audit ===

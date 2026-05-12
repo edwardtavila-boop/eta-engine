@@ -190,6 +190,7 @@ def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
     assert report["summary"]["dashboard_durable"] is False
     assert report["summary"]["promotion_allowed"] is False
     assert "ETA-Dashboard-API" in report["runtime"]["tasks"]["missing_dashboard_durable"]
+    assert "ETA-OperatorQueueHeartbeat" in report["runtime"]["tasks"]["missing_dashboard_durable"]
     assert any("repair_dashboard_durability_admin.cmd" in action for action in report["next_actions"])
 
 
