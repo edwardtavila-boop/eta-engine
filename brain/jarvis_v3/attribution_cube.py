@@ -28,6 +28,7 @@ Public interface
 
 NEVER raises. Empty / missing inputs → empty result.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,23 +50,21 @@ DEFAULT_TRADE_CLOSES_PATH = _STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 # dual-source rationale. closed_trade_ledger.py reads both and dedupes;
 # attribution_cube must do the same or the analytics silently miss
 # the bulk of historical data.
-_LEGACY_TRADE_CLOSES_PATH = (
-    _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
-)
+_LEGACY_TRADE_CLOSES_PATH = _LEGACY_STATE_ROOT / "jarvis_intel" / "trade_closes.jsonl"
 
 EXPECTED_HOOKS = ("query",)
 
-VALID_SLICE_DIMS = ("school", "asset", "hour", "verdict", "bot")
+VALID_SLICE_DIMS = ("school", "asset", "hour", "verdict", "bot", "direction")
 
 
 @dataclass(frozen=True)
 class CubeRow:
-    key: dict[str, Any]      # the slice values (e.g. {"school":"momentum","asset":"MNQ"})
+    key: dict[str, Any]  # the slice values (e.g. {"school":"momentum","asset":"MNQ"})
     n_trades: int
     n_consults: int
     total_r: float
     avg_r: float
-    win_rate: float          # fraction of trades with r>0
+    win_rate: float  # fraction of trades with r>0
     max_r: float
     min_r: float
 
@@ -147,12 +146,14 @@ def _read_trade_closes_all_sources(
     legacy = _read_jsonl(_LEGACY_TRADE_CLOSES_PATH, since_dt)
 
     def _key(r: dict[str, Any]) -> str:
-        return "|".join([
-            str(r.get("signal_id") or ""),
-            str(r.get("bot_id") or ""),
-            str(r.get("ts") or ""),
-            str(r.get("realized_r") or ""),
-        ])
+        return "|".join(
+            [
+                str(r.get("signal_id") or ""),
+                str(r.get("bot_id") or ""),
+                str(r.get("ts") or ""),
+                str(r.get("realized_r") or ""),
+            ]
+        )
 
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
@@ -192,6 +193,32 @@ def _key_for(rec: dict[str, Any], dim: str) -> str:
         return str(ts.astimezone(UTC).hour) if ts else "?"
     if dim == "bot":
         return str(rec.get("bot_id", "?"))
+    if dim == "direction":
+        # Wave-11: derive direction from extra.side, NOT the legacy
+        # `direction` field (which was 100% "long" on 43,450 historical
+        # records due to the supervisor BotInstance.direction default).
+        # See scripts/diamond_direction_stratify.py:derive_direction for
+        # the canonical helper — this is the same logic inlined to avoid
+        # cross-package import of a scripts/ symbol into brain/jarvis_v3.
+        extra = rec.get("extra") or {}
+        side = None
+        if isinstance(extra, dict):
+            side = extra.get("side")
+        if side is None:
+            side = rec.get("side")
+        if isinstance(side, str):
+            s = side.strip().upper()
+            if s == "BUY":
+                return "long"
+            if s == "SELL":
+                return "short"
+        # Fall back to direction field (post-wave-10 records are correct)
+        d = rec.get("direction")
+        if isinstance(d, str):
+            d_norm = d.strip().lower()
+            if d_norm in ("long", "short"):
+                return d_norm
+        return "?"
     return "?"
 
 
@@ -206,7 +233,8 @@ def _expand_record_per_school(rec: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _normalize_records_for_slicing(
-    records: list[dict[str, Any]], slice_by: list[str],
+    records: list[dict[str, Any]],
+    slice_by: list[str],
 ) -> list[dict[str, Any]]:
     if "school" in slice_by:
         out: list[dict[str, Any]] = []
@@ -260,10 +288,7 @@ def query(
     # Optional filter passes
     if "asset" in filter and filter["asset"]:
         asset_norm = str(filter["asset"]).upper()
-        trades = [
-            t for t in trades
-            if str(t.get("asset_class") or t.get("asset") or "").upper() == asset_norm
-        ]
+        trades = [t for t in trades if str(t.get("asset_class") or t.get("asset") or "").upper() == asset_norm]
     if "bot_id" in filter and filter["bot_id"]:
         bot_norm = str(filter["bot_id"])
         trades = [t for t in trades if str(t.get("bot_id", "")) == bot_norm]
@@ -295,15 +320,17 @@ def query(
         rows_norm = [r for r in rows_norm if r.get("_school") == school_norm]
 
     # Aggregate
-    buckets: dict[tuple, dict[str, Any]] = defaultdict(lambda: {
-        "n_trades": 0,
-        "n_consults": 0,
-        "total_r": 0.0,
-        "wins": 0,
-        "max_r": float("-inf"),
-        "min_r": float("inf"),
-        "consult_ids": set(),
-    })
+    buckets: dict[tuple, dict[str, Any]] = defaultdict(
+        lambda: {
+            "n_trades": 0,
+            "n_consults": 0,
+            "total_r": 0.0,
+            "wins": 0,
+            "max_r": float("-inf"),
+            "min_r": float("inf"),
+            "consult_ids": set(),
+        }
+    )
     for rec in rows_norm:
         key_tuple = tuple(_key_for(rec, d) for d in slice_by)
         b = buckets[key_tuple]
@@ -332,16 +359,18 @@ def query(
     cube_rows: list[CubeRow] = []
     for key_tuple, b in buckets.items():
         n_trades = b["n_trades"]
-        cube_rows.append(CubeRow(
-            key={d: key_tuple[i] for i, d in enumerate(slice_by)},
-            n_trades=n_trades,
-            n_consults=len(b["consult_ids"]),
-            total_r=round(b["total_r"], 4),
-            avg_r=round(b["total_r"] / n_trades, 4) if n_trades else 0.0,
-            win_rate=round(b["wins"] / n_trades, 4) if n_trades else 0.0,
-            max_r=round(b["max_r"], 4) if n_trades else 0.0,
-            min_r=round(b["min_r"], 4) if n_trades else 0.0,
-        ))
+        cube_rows.append(
+            CubeRow(
+                key={d: key_tuple[i] for i, d in enumerate(slice_by)},
+                n_trades=n_trades,
+                n_consults=len(b["consult_ids"]),
+                total_r=round(b["total_r"], 4),
+                avg_r=round(b["total_r"] / n_trades, 4) if n_trades else 0.0,
+                win_rate=round(b["wins"] / n_trades, 4) if n_trades else 0.0,
+                max_r=round(b["max_r"], 4) if n_trades else 0.0,
+                min_r=round(b["min_r"], 4) if n_trades else 0.0,
+            )
+        )
 
     # Stable sort: descending total_r so the operator sees winners first
     cube_rows.sort(key=lambda r: r.total_r, reverse=True)

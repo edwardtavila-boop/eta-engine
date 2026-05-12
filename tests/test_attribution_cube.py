@@ -1,4 +1,5 @@
 """Tests for attribution_cube — T12 multi-dim performance attribution."""
+
 from __future__ import annotations
 
 import json
@@ -28,14 +29,18 @@ def test_query_slices_by_bot(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "a", "asset_class": "MNQ", "r": -0.5, "ts": "2026-05-12T15:00:00Z"},
-        {"bot_id": "b", "asset_class": "BTC", "r": 2.0, "ts": "2026-05-12T16:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "a", "asset_class": "MNQ", "r": -0.5, "ts": "2026-05-12T15:00:00Z"},
+            {"bot_id": "b", "asset_class": "BTC", "r": 2.0, "ts": "2026-05-12T16:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["bot"], trade_closes_path=trades_path,
+        slice_by=["bot"],
+        trade_closes_path=trades_path,
     )
     by_key = {tuple(r.key.items()): r for r in result.rows}
     assert (("bot", "a"),) in by_key
@@ -54,14 +59,18 @@ def test_query_slices_by_asset(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "b", "asset_class": "MNQ", "r": 0.5, "ts": "2026-05-12T15:00:00Z"},
-        {"bot_id": "c", "asset_class": "BTC", "r": -2.0, "ts": "2026-05-12T16:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "b", "asset_class": "MNQ", "r": 0.5, "ts": "2026-05-12T15:00:00Z"},
+            {"bot_id": "c", "asset_class": "BTC", "r": -2.0, "ts": "2026-05-12T16:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["asset"], trade_closes_path=trades_path,
+        slice_by=["asset"],
+        trade_closes_path=trades_path,
     )
     by_key = {r.key["asset"]: r for r in result.rows}
     assert by_key["MNQ"].total_r == 1.5
@@ -73,13 +82,17 @@ def test_query_filters_by_asset(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "b", "asset_class": "BTC", "r": 100.0, "ts": "2026-05-12T15:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "b", "asset_class": "BTC", "r": 100.0, "ts": "2026-05-12T15:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["bot"], filter={"asset": "MNQ"},
+        slice_by=["bot"],
+        filter={"asset": "MNQ"},
         trade_closes_path=trades_path,
     )
     bots = {r.key["bot"] for r in result.rows}
@@ -91,11 +104,14 @@ def test_query_filters_by_hour_window(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T09:00:00Z"},
-        {"bot_id": "a", "asset_class": "MNQ", "r": 2.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "a", "asset_class": "MNQ", "r": 3.0, "ts": "2026-05-12T20:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T09:00:00Z"},
+            {"bot_id": "a", "asset_class": "MNQ", "r": 2.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "a", "asset_class": "MNQ", "r": 3.0, "ts": "2026-05-12T20:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
         slice_by=["bot"],
@@ -113,18 +129,22 @@ def test_query_school_expansion(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {
-            "bot_id": "a",
-            "asset_class": "MNQ",
-            "r": 1.0,
-            "ts": "2026-05-12T14:00:00Z",
-            "schools": {"momentum": {"score": 0.5}, "mean_revert": {"score": -0.2}},
-        },
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {
+                "bot_id": "a",
+                "asset_class": "MNQ",
+                "r": 1.0,
+                "ts": "2026-05-12T14:00:00Z",
+                "schools": {"momentum": {"score": 0.5}, "mean_revert": {"score": -0.2}},
+            },
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["school"], trade_closes_path=trades_path,
+        slice_by=["school"],
+        trade_closes_path=trades_path,
     )
     schools = {r.key["school"] for r in result.rows}
     assert schools == {"momentum", "mean_revert"}
@@ -140,13 +160,17 @@ def test_query_multi_dim_slice(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "a", "asset_class": "BTC", "r": 2.0, "ts": "2026-05-12T15:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "a", "asset_class": "BTC", "r": 2.0, "ts": "2026-05-12T15:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["bot", "asset"], trade_closes_path=trades_path,
+        slice_by=["bot", "asset"],
+        trade_closes_path=trades_path,
     )
     composite_keys = {(r.key["bot"], r.key["asset"]) for r in result.rows}
     assert composite_keys == {("a", "MNQ"), ("a", "BTC")}
@@ -157,9 +181,12 @@ def test_query_rejects_unknown_slice_dims(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "a", "asset_class": "MNQ", "r": 1.0, "ts": "2026-05-12T14:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
         slice_by=["bot", "not_a_real_dim"],
@@ -173,14 +200,18 @@ def test_query_rows_sorted_descending_by_total_r(tmp_path: Path) -> None:
     from eta_engine.brain.jarvis_v3 import attribution_cube
 
     trades_path = tmp_path / "trade_closes.jsonl"
-    _write_trades(trades_path, [
-        {"bot_id": "loser", "asset_class": "MNQ", "r": -5.0, "ts": "2026-05-12T14:00:00Z"},
-        {"bot_id": "winner", "asset_class": "MNQ", "r": 10.0, "ts": "2026-05-12T15:00:00Z"},
-        {"bot_id": "meh", "asset_class": "MNQ", "r": 0.0, "ts": "2026-05-12T16:00:00Z"},
-    ])
+    _write_trades(
+        trades_path,
+        [
+            {"bot_id": "loser", "asset_class": "MNQ", "r": -5.0, "ts": "2026-05-12T14:00:00Z"},
+            {"bot_id": "winner", "asset_class": "MNQ", "r": 10.0, "ts": "2026-05-12T15:00:00Z"},
+            {"bot_id": "meh", "asset_class": "MNQ", "r": 0.0, "ts": "2026-05-12T16:00:00Z"},
+        ],
+    )
 
     result = attribution_cube.query(
-        slice_by=["bot"], trade_closes_path=trades_path,
+        slice_by=["bot"],
+        trade_closes_path=trades_path,
     )
     bots_in_order = [r.key["bot"] for r in result.rows]
     assert bots_in_order == ["winner", "meh", "loser"]
@@ -198,3 +229,124 @@ def test_query_to_dict_serializable() -> None:
     assert "asof" in d
     # JSON round-trip
     json.dumps(d)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Wave-11: direction as a slice dimension
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_query_slices_by_direction_from_extra_side(tmp_path: Path) -> None:
+    """direction dim derives from extra.side (BUY -> long, SELL -> short)
+    — NOT from the historically-broken `direction` field that was always
+    "long" on pre-wave-10 records."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    trades = [
+        # 3 BUY trades = long
+        {"bot_id": "x", "ts": "2026-05-12T14:00:00+00:00",
+         "realized_r": 1.0, "direction": "long",
+         "extra": {"side": "BUY"}},
+        {"bot_id": "x", "ts": "2026-05-12T15:00:00+00:00",
+         "realized_r": 0.5, "direction": "long",
+         "extra": {"side": "BUY"}},
+        {"bot_id": "x", "ts": "2026-05-12T16:00:00+00:00",
+         "realized_r": -0.3, "direction": "long",
+         "extra": {"side": "BUY"}},
+        # 2 SELL trades = short (note: direction field STILL says "long" —
+        # the wave-10 writer bug — but the cube must override)
+        {"bot_id": "x", "ts": "2026-05-12T17:00:00+00:00",
+         "realized_r": 0.7, "direction": "long",
+         "extra": {"side": "SELL"}},
+        {"bot_id": "x", "ts": "2026-05-12T18:00:00+00:00",
+         "realized_r": -0.2, "direction": "long",
+         "extra": {"side": "SELL"}},
+    ]
+    _write_trades(path, trades)
+
+    result = attribution_cube.query(
+        slice_by=["direction"], trade_closes_path=path,
+    )
+    rows_by_dir = {r.key["direction"]: r for r in result.rows}
+    assert "long" in rows_by_dir, (
+        "BUY records did not map to 'long' — wave-11 direction "
+        "derivation broken in attribution_cube._key_for"
+    )
+    assert "short" in rows_by_dir, (
+        "SELL records did not map to 'short' — pre-wave-11 attribution "
+        "would have lumped them under 'long' from the broken direction field"
+    )
+    assert rows_by_dir["long"].n_trades == 3
+    assert rows_by_dir["short"].n_trades == 2
+    # +1.0 + 0.5 - 0.3 = +1.2
+    assert abs(rows_by_dir["long"].total_r - 1.2) < 0.001
+    # +0.7 - 0.2 = +0.5
+    assert abs(rows_by_dir["short"].total_r - 0.5) < 0.001
+
+
+def test_query_direction_falls_back_to_direction_field_when_no_side(
+    tmp_path: Path,
+) -> None:
+    """Post-wave-10 records may have no extra.side but a correct
+    direction field. The cube must honour it."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    trades = [
+        {"bot_id": "x", "ts": "2026-05-12T14:00:00+00:00",
+         "realized_r": 1.0, "direction": "short", "extra": {}},
+        {"bot_id": "x", "ts": "2026-05-12T15:00:00+00:00",
+         "realized_r": 0.5, "direction": "short", "extra": {}},
+    ]
+    _write_trades(path, trades)
+
+    result = attribution_cube.query(
+        slice_by=["direction"], trade_closes_path=path,
+    )
+    rows_by_dir = {r.key["direction"]: r for r in result.rows}
+    assert "short" in rows_by_dir
+    assert rows_by_dir["short"].n_trades == 2
+
+
+def test_query_direction_in_valid_slice_dims() -> None:
+    """direction is in VALID_SLICE_DIMS (smoke test guarding against
+    accidental removal during refactors)."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    assert "direction" in attribution_cube.VALID_SLICE_DIMS
+
+
+def test_query_multi_dim_with_direction(tmp_path: Path) -> None:
+    """direction composes with other dims: e.g. bot × direction
+    surfaces per-bot per-side R-attribution."""
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+
+    path = tmp_path / "tc.jsonl"
+    trades = [
+        # m2k longs
+        {"bot_id": "m2k", "ts": "2026-05-12T14:00:00+00:00",
+         "realized_r": 0.5, "extra": {"side": "BUY"}},
+        {"bot_id": "m2k", "ts": "2026-05-12T15:00:00+00:00",
+         "realized_r": 0.5, "extra": {"side": "BUY"}},
+        # m2k shorts
+        {"bot_id": "m2k", "ts": "2026-05-12T16:00:00+00:00",
+         "realized_r": 0.4, "extra": {"side": "SELL"}},
+        # eur longs
+        {"bot_id": "eur", "ts": "2026-05-12T17:00:00+00:00",
+         "realized_r": 0.3, "extra": {"side": "BUY"}},
+    ]
+    _write_trades(path, trades)
+
+    result = attribution_cube.query(
+        slice_by=["bot", "direction"], trade_closes_path=path,
+    )
+    rows_by_key = {
+        (r.key["bot"], r.key["direction"]): r for r in result.rows
+    }
+    assert ("m2k", "long") in rows_by_key
+    assert ("m2k", "short") in rows_by_key
+    assert ("eur", "long") in rows_by_key
+    assert rows_by_key[("m2k", "long")].n_trades == 2
+    assert rows_by_key[("m2k", "short")].n_trades == 1
+    assert rows_by_key[("eur", "long")].n_trades == 1
