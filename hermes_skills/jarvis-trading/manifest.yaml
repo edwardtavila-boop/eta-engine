@@ -1,0 +1,45 @@
+name: jarvis-trading
+version: 1.0.0
+description: Bridge to the Evolutionary Trading Algo (JARVIS) — fleet status, kaizen runs, strategy lifecycle, kill switch, live consult trace.
+
+mcp_servers:
+  - name: jarvis
+    transport: stdio
+    command: python
+    args:
+      - "-m"
+      - "eta_engine.mcp_servers.jarvis_mcp_server"
+    env:
+      JARVIS_MCP_TOKEN: "${env:JARVIS_MCP_TOKEN}"
+      PYTHONPATH: "C:\\EvolutionaryTradingAlgo"
+
+toolsets:
+  - name: trading_core
+    description: Read-only JARVIS introspection — fleet status, traces, wiring audit, learner weights, calendar, verdict explanations.
+    tools:
+      - jarvis_fleet_status
+      - jarvis_trace_tail
+      - jarvis_wiring_audit
+      - jarvis_hot_weights
+      - jarvis_upcoming_events
+      - jarvis_explain_verdict
+
+  - name: trading_actions
+    description: Destructive JARVIS actions — kaizen runs, deploy/retire strategies, kill switch, portfolio assessment. Token-gated; kill switch additionally requires the exact "kill all" phrase from the operator.
+    tools:
+      - jarvis_kaizen_run
+      - jarvis_deploy_strategy
+      - jarvis_retire_strategy
+      - jarvis_kill_switch
+      - jarvis_portfolio_assess
+
+scheduled_tasks:
+  - name: morning_briefing
+    # 06:30 daily — runs 30 minutes after the 06:00 ETA-Kaizen-Loop so the
+    # briefing reads a fresh kaizen_latest.json.
+    cron: "30 6 * * *"
+    delivery: telegram
+    prompt: |
+      Run jarvis_fleet_status and jarvis_wiring_audit. Render a 5-line
+      morning briefing: today's expected risk, dark modules, top 3
+      elite bots by Sharpe, any held RETIRE candidates.

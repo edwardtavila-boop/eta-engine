@@ -46,7 +46,7 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +68,13 @@ _ACTION_LOG = Path(
 # ``python -m eta_engine.scripts.kaizen_reactivate <bot_id>``.
 _OVERRIDES_PATH = Path(
     r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\kaizen_overrides.json",
+)
+# JARVIS<->Hermes audit log (written by Half 1's MCP server). Read here
+# in the morning kaizen pass to surface 24h Hermes activity in the
+# operator report. Module-level so tests can monkeypatch to redirect
+# the read at a tmp_path fixture.
+_HERMES_AUDIT_LOG_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\hermes_actions.jsonl",
 )
 
 
@@ -401,6 +408,69 @@ def run_loop(
         "n_total_modules": len(wiring_statuses),
     }
 
+    # Hermes integration health summary. Reads
+    # var/eta_engine/state/hermes_actions.jsonl over the last 24h
+    # window and reports per-tool call counts + auth-failure totals.
+    # All best-effort: if the audit log is missing or unreadable, the
+    # section has zeros — never blocks the kaizen pass. Half 2's
+    # hermes_client module is probed for live availability + backoff
+    # state; absence of that module is a no-op (Half 2 ships separately).
+    hermes_health: dict[str, Any] = {
+        "hermes_available": False,
+        "calls_today": 0,
+        "calls_by_tool": {},
+        "auth_failures_today": 0,
+        "backoff_active": False,
+    }
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_client  # type: ignore[import-not-found]
+        hermes_health["hermes_available"] = hermes_client.health()
+        # Backoff state is module-level inside hermes_client; expose
+        # via a helper if it's defined, else fall back to False.
+        hermes_health["backoff_active"] = getattr(
+            hermes_client, "_backoff_active_for_kaizen", lambda: False,
+        )()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("hermes_health: hermes_client probe failed: %s", exc)
+
+    try:
+        audit_path = _HERMES_AUDIT_LOG_PATH
+        if audit_path.exists():
+            cutoff = datetime.now(UTC) - timedelta(hours=24)
+            by_tool: dict[str, int] = defaultdict(int)
+            auth_failures = 0
+            total = 0
+            with audit_path.open(encoding="utf-8") as fh:
+                for raw_line in fh:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = rec.get("ts", "")
+                    try:
+                        # Accept both ``...Z`` and ``...+00:00`` suffixes —
+                        # production writer uses Z, datetime.fromisoformat
+                        # only accepts the explicit offset on <3.11.
+                        rec_ts = datetime.fromisoformat(
+                            ts.replace("Z", "+00:00"),
+                        )
+                    except (ValueError, AttributeError):
+                        continue
+                    if rec_ts < cutoff:
+                        continue
+                    total += 1
+                    by_tool[str(rec.get("tool") or "unknown")] += 1
+                    if rec.get("auth") == "failed":
+                        auth_failures += 1
+            hermes_health["calls_today"] = total
+            hermes_health["calls_by_tool"] = dict(by_tool)
+            hermes_health["auth_failures_today"] = auth_failures
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("hermes_health: audit-log read failed: %s", exc)
+
     report = {
         "started_at": started_at,
         "since_iso": since_iso,
@@ -425,6 +495,7 @@ def run_loop(
             "bootstraps_per_bot": mc.get("bootstraps_per_bot"),
         },
         "wiring": wiring_summary,
+        "hermes_health": hermes_health,
     }
 
     # Persist

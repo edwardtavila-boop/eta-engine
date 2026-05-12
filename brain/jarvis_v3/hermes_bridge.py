@@ -1,3 +1,10 @@
+"""Legacy Telegram alert client. Predates Nous Hermes Agent integration
+(2026-05-11). For new code, prefer the JARVIS MCP server path
+(eta_engine.mcp_servers.jarvis_mcp_server) — the operator now chats
+with Hermes Agent and tools propagate naturally. This module remains
+the backstop for unreachable-Hermes alerting and existing
+firm_command_center slash-command flows.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -6,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -16,6 +24,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+# Rate-limit gate for ``send_hermes_backoff_alert``. Captures the
+# monotonic-clock timestamp of the last activation-side alert so a
+# sustained Hermes outage doesn't spam Telegram. ``recovered=True``
+# alerts bypass the gate (see the helper below for the full contract).
+_LAST_BACKOFF_ALERT_AT: float = 0.0
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HEALTH_FILE = ROOT / "docs" / "jarvis_live_health.json"
@@ -68,6 +82,40 @@ async def send_alert(title: str, message: str, level: str = "INFO") -> bool:
     prefix = icon.get(level, "\u2139\ufe0f")
     text = f"{prefix} *{title}*\n{message}"
     return await send_message(text)
+
+
+async def send_hermes_backoff_alert(*, recovered: bool = False) -> bool:
+    """Send one Telegram alert when Hermes backoff activates / recovers.
+
+    Rate-limited to one activation-side alert per 10 minutes so a
+    sustained Hermes outage doesn't spam the operator. Recovery alerts
+    (``recovered=True``) always send \u2014 the operator needs to see the
+    all-clear regardless of when the previous outage alert went out.
+
+    Returns ``True`` if a Telegram message was attempted (its delivery
+    outcome is forwarded from ``send_alert``), ``False`` when the
+    rate-limit gate suppressed the call.
+    """
+    global _LAST_BACKOFF_ALERT_AT
+    now = time.monotonic()
+    if not recovered and (now - _LAST_BACKOFF_ALERT_AT) < 600.0:
+        return False
+    _LAST_BACKOFF_ALERT_AT = now
+    if recovered:
+        title = "Hermes Agent recovered"
+        message = (
+            "Hermes is responding again; JARVIS hot-path Hermes calls "
+            "re-enabled."
+        )
+        level = "INFO"
+    else:
+        title = "Hermes Agent unreachable"
+        message = (
+            "3+ consecutive Hermes calls failed. JARVIS falling back to "
+            "legacy paths for ~5 min."
+        )
+        level = "WARN"
+    return await send_alert(title, message, level=level)
 
 
 async def send_verdict(verdict_dict: dict) -> bool:
