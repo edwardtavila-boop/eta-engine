@@ -207,3 +207,71 @@ def test_get_size_modifier_handles_corrupt_sidecar(tmp_path: Path) -> None:
     path = tmp_path / "hermes_overrides.json"
     path.write_text("this is not json {{{{", encoding="utf-8")
     assert hermes_overrides.get_size_modifier("anything", path=path) is None
+
+
+# ---------------------------------------------------------------------------
+# Hardening: write surfaces must NEVER raise on weird inputs
+# ---------------------------------------------------------------------------
+
+
+def test_apply_size_modifier_never_raises_when_save_blows_up(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Write to a parent path that can't be created → WRITE_FAILED, no raise."""
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+
+    # Force _save to raise something non-OSError to test the top-level guard.
+    def kaboom(*args, **kwargs):
+        raise RuntimeError("simulated catastrophic save failure")
+
+    monkeypatch.setattr(hermes_overrides, "_save", kaboom)
+
+    res = hermes_overrides.apply_size_modifier(
+        bot_id="test_bot", modifier=0.5, reason="r",
+        ttl_minutes=10, path=tmp_path / "overrides.json",
+    )
+    assert res["status"] == "WRITE_FAILED"
+    assert "unhandled_exception" in res["reason"]
+
+
+def test_apply_school_weight_never_raises_on_weird_input() -> None:
+    """Pass a non-string asset that breaks str() processing → no exception."""
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+
+    class BrokenStr:
+        def __str__(self) -> str:
+            raise ValueError("operator passed a hostile object")
+
+    # If the function tries to call str() on a hostile object, the guard
+    # should catch it. (In normal usage operators pass strings; this is
+    # defense-in-depth.)
+    res = hermes_overrides.apply_school_weight(
+        asset="MNQ", school="momentum", weight=1.1,
+        reason=BrokenStr(),  # type: ignore[arg-type]
+        ttl_minutes=10,
+    )
+    # Status is WRITE_FAILED OR APPLIED depending on whether str() actually
+    # got called during the body. The contract we care about: NO RAISE.
+    assert "status" in res
+
+
+def test_clear_override_never_raises_when_save_blows_up(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """Catastrophic save failure during clear → WRITE_FAILED, no exception."""
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+
+    path = tmp_path / "overrides.json"
+    # Seed a real entry so we hit the actual clear path.
+    hermes_overrides.apply_size_modifier(
+        bot_id="b1", modifier=0.7, reason="r",
+        ttl_minutes=10, path=path,
+    )
+
+    def kaboom(*args, **kwargs):
+        raise RuntimeError("simulated save crash")
+
+    monkeypatch.setattr(hermes_overrides, "_save", kaboom)
+
+    res = hermes_overrides.clear_override(bot_id="b1", path=path)
+    assert res["status"] == "WRITE_FAILED"

@@ -24,8 +24,8 @@ Triggered when a single bot OR a single school accumulates 5+ consecutive losing
 
 ## When to invoke
 
-* **Auto-trigger**: poll `jarvis_subscribe_events(stream=trace)` looking for `block_reason=None AND verdict.final_verdict in ("EXIT","STOP_LOSS")` clustered around one bot_id. Threshold: 5 consecutive losses in 24h.
-* **Manual**: operator says "what's wrong with vwap_mr_mnq", "vp_mnq stopped working", "anomaly in BTC bots", etc.
+* **Manual today**: operator says "what's wrong with vwap_mr_mnq", "vp_mnq stopped working", "anomaly in BTC bots", etc. Hermes recognizes trigger phrases and activates.
+* **Auto-trigger (aspirational — not yet wired)**: the `auto_trigger:` frontmatter declares the intended condition. A future conductor (T14 inter-agent bus or a dedicated streak-watcher) will poll `jarvis_subscribe_events(stream=trace)` for `block_reason=None AND verdict.final_verdict in ("EXIT","STOP_LOSS")` clustered around one bot_id, threshold 5 consecutive losses in 24h. Until that lands, manual invocation only.
 
 ## Two-phase investigation
 

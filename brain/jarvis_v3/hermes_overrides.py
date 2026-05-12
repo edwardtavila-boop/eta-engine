@@ -190,35 +190,49 @@ def apply_size_modifier(
     clamped modifier). On write failure logs and returns the record dict
     anyway — caller treats absence in subsequent ``get_*`` as the failure
     signal.
+
+    NEVER raises. Unexpected exceptions are caught at the top level and
+    turn into ``{"status": "WRITE_FAILED", ...}`` envelopes so the MCP
+    dispatch surface always sees a clean dict.
     """
-    if not bot_id:
-        return {"status": "REJECTED", "reason": "missing_bot_id"}
     try:
-        mod = float(modifier)
-    except (TypeError, ValueError):
-        return {"status": "REJECTED", "reason": "modifier_not_numeric"}
-    mod = _clamp(mod, _SIZE_MOD_LOW, _SIZE_MOD_HIGH)
-    if ttl_minutes <= 0:
-        ttl_minutes = _DEFAULT_TTL_MINUTES
+        if not bot_id:
+            return {"status": "REJECTED", "reason": "missing_bot_id"}
+        try:
+            mod = float(modifier)
+        except (TypeError, ValueError):
+            return {"status": "REJECTED", "reason": "modifier_not_numeric"}
+        mod = _clamp(mod, _SIZE_MOD_LOW, _SIZE_MOD_HIGH)
+        if ttl_minutes <= 0:
+            ttl_minutes = _DEFAULT_TTL_MINUTES
 
-    now = _now()
-    expires = now + timedelta(minutes=ttl_minutes)
-    entry = {
-        "modifier": mod,
-        "reason": str(reason),
-        "applied_at": _iso(now),
-        "expires_at": _iso(expires),
-        "source": str(source),
-    }
+        now = _now()
+        expires = now + timedelta(minutes=ttl_minutes)
+        entry = {
+            "modifier": mod,
+            "reason": str(reason),
+            "applied_at": _iso(now),
+            "expires_at": _iso(expires),
+            "source": str(source),
+        }
 
-    data = _load(path)
-    data["size_modifiers"][bot_id] = entry
-    ok = _save(data, path)
-    return {
-        "status": "APPLIED" if ok else "WRITE_FAILED",
-        "bot_id": bot_id,
-        **entry,
-    }
+        data = _load(path)
+        data["size_modifiers"][bot_id] = entry
+        ok = _save(data, path)
+        return {
+            "status": "APPLIED" if ok else "WRITE_FAILED",
+            "bot_id": bot_id,
+            **entry,
+        }
+    except Exception as exc:  # noqa: BLE001 — write surface must never raise
+        logger.warning(
+            "hermes_overrides.apply_size_modifier dropped: %s", exc,
+        )
+        return {
+            "status": "WRITE_FAILED",
+            "bot_id": str(bot_id),
+            "reason": f"unhandled_exception: {exc}",
+        }
 
 
 def get_size_modifier(
@@ -261,40 +275,54 @@ def apply_school_weight(
     """Pin ``weight`` for ``(asset, school)`` until ``ttl_minutes`` elapse.
 
     Stored shape mirrors hot_learner's nested dict: ``school_weights[asset][school]``.
+
+    NEVER raises. Same contract as ``apply_size_modifier``: unhandled
+    exceptions become ``WRITE_FAILED`` envelopes.
     """
-    if not asset or not school:
-        return {"status": "REJECTED", "reason": "missing_asset_or_school"}
     try:
-        w = float(weight)
-    except (TypeError, ValueError):
-        return {"status": "REJECTED", "reason": "weight_not_numeric"}
-    w = _clamp(w, _SCHOOL_WEIGHT_LOW, _SCHOOL_WEIGHT_HIGH)
-    if ttl_minutes <= 0:
-        ttl_minutes = _DEFAULT_TTL_MINUTES
+        if not asset or not school:
+            return {"status": "REJECTED", "reason": "missing_asset_or_school"}
+        try:
+            w = float(weight)
+        except (TypeError, ValueError):
+            return {"status": "REJECTED", "reason": "weight_not_numeric"}
+        w = _clamp(w, _SCHOOL_WEIGHT_LOW, _SCHOOL_WEIGHT_HIGH)
+        if ttl_minutes <= 0:
+            ttl_minutes = _DEFAULT_TTL_MINUTES
 
-    now = _now()
-    expires = now + timedelta(minutes=ttl_minutes)
-    entry = {
-        "weight": w,
-        "reason": str(reason),
-        "applied_at": _iso(now),
-        "expires_at": _iso(expires),
-        "source": str(source),
-    }
+        now = _now()
+        expires = now + timedelta(minutes=ttl_minutes)
+        entry = {
+            "weight": w,
+            "reason": str(reason),
+            "applied_at": _iso(now),
+            "expires_at": _iso(expires),
+            "source": str(source),
+        }
 
-    data = _load(path)
-    asset_bucket = data["school_weights"].setdefault(asset, {})
-    if not isinstance(asset_bucket, dict):
-        asset_bucket = {}
-        data["school_weights"][asset] = asset_bucket
-    asset_bucket[school] = entry
-    ok = _save(data, path)
-    return {
-        "status": "APPLIED" if ok else "WRITE_FAILED",
-        "asset": asset,
-        "school": school,
-        **entry,
-    }
+        data = _load(path)
+        asset_bucket = data["school_weights"].setdefault(asset, {})
+        if not isinstance(asset_bucket, dict):
+            asset_bucket = {}
+            data["school_weights"][asset] = asset_bucket
+        asset_bucket[school] = entry
+        ok = _save(data, path)
+        return {
+            "status": "APPLIED" if ok else "WRITE_FAILED",
+            "asset": asset,
+            "school": school,
+            **entry,
+        }
+    except Exception as exc:  # noqa: BLE001 — write surface must never raise
+        logger.warning(
+            "hermes_overrides.apply_school_weight dropped: %s", exc,
+        )
+        return {
+            "status": "WRITE_FAILED",
+            "asset": str(asset),
+            "school": str(school),
+            "reason": f"unhandled_exception: {exc}",
+        }
 
 
 def get_school_weights(
@@ -380,33 +408,43 @@ def clear_override(
       * ``asset`` + ``school`` — clears school_weights[asset][school]
 
     Returns ``{"status": "REMOVED"|"NOT_FOUND"|"REJECTED", ...}``.
+
+    NEVER raises. Top-level guard catches unexpected exceptions and turns
+    them into a ``WRITE_FAILED`` envelope.
     """
-    if bot_id and not asset and not school:
-        data = _load(path)
-        sizes = data.get("size_modifiers", {})
-        if bot_id not in sizes:
-            return {"status": "NOT_FOUND", "kind": "size_modifier", "bot_id": bot_id}
-        sizes.pop(bot_id, None)
-        _save(data, path)
-        return {"status": "REMOVED", "kind": "size_modifier", "bot_id": bot_id}
-    if asset and school and not bot_id:
-        data = _load(path)
-        bucket = data.get("school_weights", {}).get(asset, {})
-        if school not in bucket:
+    try:
+        if bot_id and not asset and not school:
+            data = _load(path)
+            sizes = data.get("size_modifiers", {})
+            if bot_id not in sizes:
+                return {"status": "NOT_FOUND", "kind": "size_modifier", "bot_id": bot_id}
+            sizes.pop(bot_id, None)
+            _save(data, path)
+            return {"status": "REMOVED", "kind": "size_modifier", "bot_id": bot_id}
+        if asset and school and not bot_id:
+            data = _load(path)
+            bucket = data.get("school_weights", {}).get(asset, {})
+            if school not in bucket:
+                return {
+                    "status": "NOT_FOUND",
+                    "kind": "school_weight",
+                    "asset": asset,
+                    "school": school,
+                }
+            bucket.pop(school, None)
+            if not bucket:
+                data["school_weights"].pop(asset, None)
+            _save(data, path)
             return {
-                "status": "NOT_FOUND",
+                "status": "REMOVED",
                 "kind": "school_weight",
                 "asset": asset,
                 "school": school,
             }
-        bucket.pop(school, None)
-        if not bucket:
-            data["school_weights"].pop(asset, None)
-        _save(data, path)
+    except Exception as exc:  # noqa: BLE001 — write surface must never raise
+        logger.warning("hermes_overrides.clear_override dropped: %s", exc)
         return {
-            "status": "REMOVED",
-            "kind": "school_weight",
-            "asset": asset,
-            "school": school,
+            "status": "WRITE_FAILED",
+            "reason": f"unhandled_exception: {exc}",
         }
     return {"status": "REJECTED", "reason": "ambiguous_arguments"}

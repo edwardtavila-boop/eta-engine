@@ -478,6 +478,91 @@ def test_handler_exception_returns_envelope_not_raise(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Audit-log rotation hardening
+# ---------------------------------------------------------------------------
+
+
+def test_audit_log_rotates_when_threshold_exceeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the audit log crosses the rotation threshold the file is gzipped
+    to a stamped sibling and a fresh active file is started.
+
+    Hardening contract: rotation happens BEFORE the next append, so the
+    write that triggers rotation sees an empty active file and the rotated
+    copy preserves all prior history. No data loss.
+    """
+    import gzip
+
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    audit_log = tmp_path / "hermes_actions.jsonl"
+    monkeypatch.setattr(jarvis_mcp_server, "_AUDIT_LOG_PATH", audit_log)
+    # Shrink threshold so we can exercise rotation in-test without writing 10MB.
+    monkeypatch.setattr(jarvis_mcp_server, "_AUDIT_LOG_MAX_BYTES", 200)
+    monkeypatch.setenv("JARVIS_MCP_TOKEN", "test-token")
+
+    # Write enough entries to cross 200B. Each json.dumps row is ~80B,
+    # so 5 rows ≈ 400B → guaranteed rotation by the 5th append.
+    for i in range(8):
+        jarvis_mcp_server._append_audit({
+            "tool": "smoke",
+            "i": i,
+            "padding": "x" * 40,
+        })
+
+    # Rotated file(s) present
+    rotated = list(tmp_path.glob("hermes_actions_*.jsonl.gz"))
+    assert len(rotated) >= 1, f"expected rotated .gz file(s), got: {list(tmp_path.iterdir())}"
+
+    # Each rotated file is valid gzip and contains valid JSON lines
+    for r in rotated:
+        with gzip.open(r, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    json.loads(line)  # must parse
+
+    # Active file is smaller than threshold (it was reset after rotation)
+    if audit_log.exists():
+        assert audit_log.stat().st_size <= jarvis_mcp_server._AUDIT_LOG_MAX_BYTES
+
+
+def test_audit_log_rotation_failure_does_not_break_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even if rotation itself fails (gzip import error, disk error, etc),
+    the next append still writes successfully.
+
+    Contract: audit logging is best-effort; rotation is best-effort on
+    top of that. A consult MUST NOT fail because the audit log got too big.
+    """
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    audit_log = tmp_path / "hermes_actions.jsonl"
+    monkeypatch.setattr(jarvis_mcp_server, "_AUDIT_LOG_PATH", audit_log)
+    monkeypatch.setattr(jarvis_mcp_server, "_AUDIT_LOG_MAX_BYTES", 100)
+    monkeypatch.setenv("JARVIS_MCP_TOKEN", "test-token")
+
+    # Seed an over-threshold log
+    audit_log.write_text("x" * 500 + "\n", encoding="utf-8")
+
+    # Sabotage the rotation helper so it raises OSError
+    def explode():
+        raise OSError("simulated disk-full during gzip rotation")
+
+    monkeypatch.setattr(jarvis_mcp_server, "_rotate_audit_log_if_needed", explode)
+
+    # Append should still succeed — _append_audit catches the rotation crash
+    # via its outer OSError handler.
+    jarvis_mcp_server._append_audit({"tool": "smoke", "after_rot_fail": True})
+
+    # The post-failure append should have landed somewhere
+    final_contents = audit_log.read_text(encoding="utf-8")
+    assert "after_rot_fail" in final_contents
+
+
 def test_tool_registry_has_all_16_tools() -> None:
     """list_tools() exposes exactly the documented 16 tool names.
 

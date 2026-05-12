@@ -145,10 +145,26 @@ def _append_audit(record: dict[str, Any]) -> None:
     Triggers size-based gzip rotation lazily on each append — the check
     is a fast ``stat()`` followed by a numeric compare, so the steady-state
     overhead is one syscall per tool call.
+
+    Hardening: rotation is wrapped in its own broad-exception guard so a
+    rotation failure (corrupt file, gzip error, disk full mid-gzip) cannot
+    suppress the append that triggered it. The append itself is still
+    wrapped in an OSError guard so any write-time error is dropped rather
+    than propagated.
     """
     try:
         _AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning("hermes audit-log mkdir failed: %s", exc)
+        return
+
+    # Rotation is best-effort and MUST NOT block the append. Catch anything.
+    try:
         _rotate_audit_log_if_needed()
+    except Exception as exc:  # noqa: BLE001 — rotation can't sabotage append
+        logger.warning("hermes audit-log rotation failed (continuing): %s", exc)
+
+    try:
         with _AUDIT_LOG_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, default=str) + "\n")
     except OSError as exc:  # log-and-drop — never break the consult path

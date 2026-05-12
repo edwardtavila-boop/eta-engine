@@ -21,8 +21,8 @@ Triggered automatically (or by operator on demand) when fleet drawdown exceeds 3
 
 ## When to invoke
 
-* **Auto-trigger** (preferred): the conductor's auto_trigger watcher polls `jarvis_subscribe_events(stream=trace)` and fires this skill when `portfolio_drawdown_today_r <= -3.0` in any recent record. Rate-limited to one fire per 30 minutes.
-* **Manual**: operator types "drawdown response", "we're bleeding", "fleet is down 3R", etc.
+* **Manual today**: operator types "drawdown response", "we're bleeding", "fleet is down 3R", etc. Hermes recognizes the trigger phrases above and activates this skill.
+* **Auto-trigger (aspirational — not yet wired)**: the `auto_trigger:` block in this frontmatter declares the intended condition for a future conductor that polls `jarvis_subscribe_events(stream=trace)` and fires this skill when `portfolio_drawdown_today_r <= -3.0`. Conductor is planned under the inter-agent-bus track (T14 in the future-tracks menu). Until then, the operator (or a separate scheduled task they wire up) must invoke this skill manually.
 
 ## Tool chain (MUST execute in this order)
 

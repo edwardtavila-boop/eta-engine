@@ -21,8 +21,9 @@ Fires 30 minutes before a high-severity econ event (FOMC, CPI, NFP, GDP, OPEX). 
 
 ## When to invoke
 
-* **Auto-trigger**: conductor polls `jarvis_upcoming_events(horizon_min=30)` every 5 minutes. If a severity ≥2 event is within 30 minutes AND not already alerted this session, fire this skill.
+* **Scheduled (live today)**: the `pre_event_scanner` cron job (in `~/.hermes/config.yaml scheduled_tasks`) runs every 15 minutes and calls `jarvis_upcoming_events(horizon_min=30)`. When a severity ≥ 2 event is within 30 minutes, the scheduled task activates THIS skill and delivers the brief. When nothing's pending the task returns "quiet" and Hermes suppresses delivery.
 * **Manual**: "FOMC prep", "CPI is in 30 minutes", "what's coming up", etc.
+* **Auto-trigger (aspirational future)**: the `auto_trigger:` frontmatter declares the intended condition for a future event-driven conductor that would fire on the event stream rather than on a fixed 15-min poll. Lower priority because the scheduled task already gives near-real-time coverage.
 
 ## Tool chain
 
