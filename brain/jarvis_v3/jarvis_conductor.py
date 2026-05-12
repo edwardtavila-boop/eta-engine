@@ -33,7 +33,51 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("eta_engine.jarvis_conductor")
 
-EXPECTED_HOOKS = ("orchestrate", "observe_close")
+EXPECTED_HOOKS = ("orchestrate", "observe_close", "build_school_inputs_from_sage")
+
+
+def build_school_inputs_from_sage(sage_report: Any) -> dict[str, dict[str, Any]]:  # noqa: ANN401
+    """Translate a SageReport into the T6/T7 school_inputs dict.
+
+    Each school's signed score = +conviction (aligned with entry side),
+    -conviction (misaligned), or 0 (neutral). T6's surrogate cascade
+    treats this signed score as the school's RAW vote so flipping a
+    school's score sign answers "what if this school had said the
+    opposite?".
+
+    Returns an empty dict if ``sage_report`` is None, malformed, or has
+    no per_school dict. NEVER raises.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    if sage_report is None:
+        return out
+    per_school = getattr(sage_report, "per_school", None)
+    if not isinstance(per_school, dict):
+        return out
+    for school_name, verdict in per_school.items():
+        try:
+            bias_val = getattr(verdict, "bias", None)
+            bias_str = bias_val.value if hasattr(bias_val, "value") else str(bias_val or "")
+            conviction = float(getattr(verdict, "conviction", 0.0))
+            aligned = bool(getattr(verdict, "aligned_with_entry", False))
+            rationale = str(getattr(verdict, "rationale", "") or "")
+            # Signed score: +conviction aligned, -conviction misaligned, 0 neutral.
+            if bias_str.lower() == "neutral":
+                score = 0.0
+            elif aligned:
+                score = conviction
+            else:
+                score = -conviction
+            out[str(school_name)] = {
+                "score": round(score, 4),
+                "conviction": round(conviction, 4),
+                "bias": bias_str,
+                "rationale": rationale[:200],
+                "rng_seed": None,
+            }
+        except Exception:  # noqa: BLE001 — per-school capture is best-effort
+            continue
+    return out
 
 
 @dataclass
@@ -63,6 +107,7 @@ def orchestrate(
     req: Any,  # noqa: ANN401 — req is JarvisAdmin.ActionRequest, structurally typed
     base_size: float,
     trace_path: Path | None = None,
+    school_inputs: dict[str, dict[str, Any]] | None = None,
 ) -> ConductorResult:
     """Run the 5-stream pipeline; never raise.
 
@@ -78,6 +123,17 @@ def orchestrate(
     trace_path : Path | None
         Override trace destination. Default uses
         ``trace_emitter.DEFAULT_TRACE_PATH``.
+    school_inputs : dict | None
+        Optional per-school RAW vote snapshot. When the caller (typically
+        ``JarvisFull.consult``) has a populated ``sage_report.per_school``,
+        passing it here unlocks full T6 causal attribution + T7 replay
+        on this consult's trace record. Shape:
+        ``{school_name: {"score": float, "conviction": float,
+                         "bias": str, "rationale": str, "rng_seed": int|None}}``
+        ``score`` is signed by aligned_with_entry (+conviction for aligned,
+        -conviction for misaligned, 0 for neutral) so the T6 surrogate
+        cascade can attribute marginal effects directly.
+        ``None`` falls back to an empty dict — backward-compatible.
 
     Returns
     -------
@@ -162,7 +218,10 @@ def orchestrate(
             asset_class=asset_class,
             portfolio_ctx=portfolio_ctx_for_trace,
             hot_weights=school_weights,
-            school_inputs={},  # conductor doesn't have per-school raw votes
+            # Caller (JarvisFull.consult) supplies per-school RAW votes
+            # built from sage_report.per_school. Empty dict when sage was
+            # unavailable for this consult.
+            school_inputs=school_inputs or {},
             rng_master_seed=None,
         )
         rec = trace_emitter.TraceRecord(

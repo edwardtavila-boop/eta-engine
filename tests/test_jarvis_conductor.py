@@ -196,3 +196,140 @@ def test_consult_id_unique_across_calls(monkeypatch, tmp_path):
         r = jc.orchestrate(req=_FakeReq(), base_size=1.0, trace_path=trace_path)
         ids.add(r.consult_id)
     assert len(ids) == 10
+
+
+# ---------------------------------------------------------------------------
+# build_school_inputs_from_sage — schema v2 per-school RAW vote translator
+# ---------------------------------------------------------------------------
+
+
+def test_build_school_inputs_returns_empty_for_none() -> None:
+    """No sage_report → empty dict (back-compat for consults where sage didn't fire)."""
+    assert jc.build_school_inputs_from_sage(None) == {}
+
+
+def test_build_school_inputs_returns_empty_for_malformed_report() -> None:
+    """Object without per_school attribute → empty dict, no exception."""
+    class Garbage:
+        pass
+
+    assert jc.build_school_inputs_from_sage(Garbage()) == {}
+
+
+def test_build_school_inputs_signs_score_by_alignment() -> None:
+    """Aligned=+conviction, misaligned=-conviction, neutral=0."""
+    from eta_engine.brain.jarvis_v3.sage import base as sage_base
+
+    aligned_long = sage_base.SchoolVerdict(
+        school="momentum", bias=sage_base.Bias.LONG,
+        conviction=0.8, aligned_with_entry=True,
+        rationale="trend up",
+    )
+    misaligned_short = sage_base.SchoolVerdict(
+        school="mean_revert", bias=sage_base.Bias.SHORT,
+        conviction=0.6, aligned_with_entry=False,
+        rationale="overbought",
+    )
+    neutral = sage_base.SchoolVerdict(
+        school="risk", bias=sage_base.Bias.NEUTRAL,
+        conviction=0.0, aligned_with_entry=False,
+    )
+
+    report = sage_base.SageReport(
+        per_school={
+            "momentum": aligned_long,
+            "mean_revert": misaligned_short,
+            "risk": neutral,
+        },
+        composite_bias=sage_base.Bias.LONG,
+        conviction=0.5,
+        schools_consulted=3,
+        schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=1,
+        schools_neutral=1,
+    )
+    result = jc.build_school_inputs_from_sage(report)
+    assert result["momentum"]["score"] == 0.8
+    assert result["mean_revert"]["score"] == -0.6
+    assert result["risk"]["score"] == 0.0
+    assert result["momentum"]["bias"] == "long"
+    assert result["mean_revert"]["bias"] == "short"
+    assert result["risk"]["bias"] == "neutral"
+
+
+def test_build_school_inputs_preserves_rationale_truncated() -> None:
+    """Rationale is preserved (truncated to 200 chars) for operator inspection."""
+    from eta_engine.brain.jarvis_v3.sage import base as sage_base
+
+    long_text = "x" * 500
+    verdict = sage_base.SchoolVerdict(
+        school="s", bias=sage_base.Bias.LONG, conviction=0.5,
+        aligned_with_entry=True, rationale=long_text,
+    )
+    report = sage_base.SageReport(
+        per_school={"s": verdict},
+        composite_bias=sage_base.Bias.LONG, conviction=0.5,
+        schools_consulted=1, schools_aligned_with_entry=1,
+        schools_disagreeing_with_entry=0, schools_neutral=0,
+    )
+    out = jc.build_school_inputs_from_sage(report)
+    assert len(out["s"]["rationale"]) <= 200
+
+
+def test_build_school_inputs_never_raises_on_hostile_verdict() -> None:
+    """A SchoolVerdict-like object whose attributes raise → that school is
+    skipped silently; other schools still produce inputs."""
+    from eta_engine.brain.jarvis_v3.sage import base as sage_base
+
+    class HostileVerdict:
+        @property
+        def bias(self):
+            raise RuntimeError("won't expose bias")
+
+    good = sage_base.SchoolVerdict(
+        school="good", bias=sage_base.Bias.LONG, conviction=0.7,
+        aligned_with_entry=True,
+    )
+
+    class FakeReport:
+        per_school = {"hostile": HostileVerdict(), "good": good}
+
+    out = jc.build_school_inputs_from_sage(FakeReport())
+    # Only the good school survived
+    assert "good" in out
+    assert "hostile" not in out
+
+
+def test_orchestrate_with_school_inputs_emits_them_to_trace(monkeypatch, tmp_path) -> None:
+    """When orchestrate receives school_inputs, the emitted v2 record includes them."""
+    monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)
+    trace_path = tmp_path / "trace.jsonl"
+
+    school_inputs = {
+        "momentum": {"score": 0.7, "conviction": 0.7, "bias": "long",
+                     "rationale": "trend up", "rng_seed": None},
+        "mean_revert": {"score": -0.3, "conviction": 0.3, "bias": "short",
+                        "rationale": "overbought", "rng_seed": None},
+    }
+    jc.orchestrate(
+        req=_FakeReq(), base_size=1.0,
+        trace_path=trace_path, school_inputs=school_inputs,
+    )
+    records = te.tail(n=1, path=trace_path)
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["schema_version"] == 2
+    assert rec["school_inputs"]["momentum"]["score"] == 0.7
+    assert rec["school_inputs"]["mean_revert"]["score"] == -0.3
+
+
+def test_orchestrate_without_school_inputs_emits_empty(monkeypatch, tmp_path) -> None:
+    """Backward-compat: calling orchestrate without school_inputs still works."""
+    monkeypatch.setattr(portfolio_brain, "snapshot", _healthy_ctx)
+    trace_path = tmp_path / "trace.jsonl"
+
+    jc.orchestrate(req=_FakeReq(), base_size=1.0, trace_path=trace_path)
+    records = te.tail(n=1, path=trace_path)
+    # School_inputs is empty but the record is still v2
+    assert records[0]["schema_version"] == 2
+    assert records[0]["school_inputs"] == {}

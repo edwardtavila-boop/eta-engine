@@ -196,7 +196,7 @@ python -m pytest eta_engine/tests/test_per_bot_registry.py -q
 python -m pytest eta_engine/tests/test_capital_allocator.py -q
 
 # 2. Programmatic check — every diamond reports is_active()=True
-python -c "from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active; from eta_engine.feeds.capital_allocator import DIAMOND_BOTS; bad = [a.bot_id for a in ASSIGNMENTS if a.bot_id in DIAMOND_BOTS and not is_active(a)]; print('inactive diamonds:', bad or 'NONE — all 8 active')"
+python -c "from eta_engine.strategies.per_bot_registry import ASSIGNMENTS, is_active; from eta_engine.feeds.capital_allocator import DIAMOND_BOTS; bad = [a.bot_id for a in ASSIGNMENTS if a.bot_id in DIAMOND_BOTS and not is_active(a)]; print('inactive diamonds:', bad or 'NONE — all 9 active')"
 
 # 3. Kaizen dry-run — verify diamond skip
 python -m eta_engine.scripts.kaizen_loop --since 2026-04-01T00:00:00
@@ -208,10 +208,56 @@ python -m eta_engine.feeds.capital_allocator --print-allocations
 
 ---
 
+## Promotion gate (wave-6 kaizen, 2026-05-12)
+
+Future promotions must clear a formal gate before being added to
+`DIAMOND_BOTS`:
+
+```powershell
+python -m eta_engine.scripts.diamond_promotion_gate --include-existing
+# Output: var/eta_engine/state/diamond_promotion_gate_latest.json
+```
+
+**Hard gates (all 5 must pass — any fail = REJECT):**
+
+| Gate | Threshold | Rationale |
+|---|---|---|
+| H1_n_trades | n >= 100 | Sample size for stable stats |
+| H2_avg_r | avg_r >= +0.20 | Per-trade edge worth burning capital on |
+| H3_win_rate | wr >= 45% | Mechanic not entirely lopsided |
+| H4_calendar_days | days >= 5 | Regime / day-of-week diversity |
+| H5_sessions_positive | sessions+ >= 2 | Not single-session-concentrated |
+
+**Soft gates (all 5 must pass for PROMOTE; any fail = NEEDS_MORE_DATA):**
+
+| Gate | Threshold | Rationale |
+|---|---|---|
+| S1_n_trades_high | n >= 500 | High-confidence sample |
+| S2_avg_r_strong | avg_r >= +0.40 | Clearly-strong edge |
+| S3_calendar_days_two_weeks | days >= 14 | Two trading weeks min |
+| S4_sessions_breadth | sessions+ >= 3 | Regime breadth |
+| S5_no_single_day_dominance | max_day_share < 50% | No single day dominates |
+
+**Verdict semantics:** PROMOTE / NEEDS_MORE_DATA / REJECT.
+
+The gate is **promotion-only** and never demotes. Demotion belongs to
+`diamond_falsification_watchdog` (per-bot 30-day USD retirement thresholds).
+
+**Historical note (2026-05-12):** built AFTER the m2k_sweep_reclaim
+promotion to formalize the process. Several existing diamonds verdict
+REJECT under today's gate (eur_sweep fails H4 with 4 days; mgc_sweep
+fails H2 with avg_r=+0.19; mnq/nq sage fail H2 with avg_r≈+0.0007).
+They are GRANDFATHERED — never demoted by this gate.
+
+---
+
 ## Cross-references
 
 - `eta_engine/feeds/capital_allocator.py` — `DIAMOND_BOTS` + `DIAMOND_MIN_CAPITAL`
 - `eta_engine/scripts/kaizen_loop.py` — `run_loop()` diamond-skip
+- `eta_engine/scripts/diamond_promotion_gate.py` — formal promotion gate
+- `eta_engine/scripts/diamond_falsification_watchdog.py` — retirement thresholds
 - `eta_engine/strategies/per_bot_registry.py` — `is_active()` veto layer
 - `eta_engine/tests/test_diamond_protection.py` — invariants (created in this commit)
+- `eta_engine/tests/test_diamond_promotion_gate.py` — gate semantics
 - `var/eta_engine/decisions/{bot_id}_2026_05_12.md` — per-diamond memos

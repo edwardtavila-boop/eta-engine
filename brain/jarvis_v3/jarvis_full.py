@@ -437,7 +437,17 @@ class JarvisFull:
         conductor_block_reason: str | None = None
         try:
             from eta_engine.brain.jarvis_v3 import jarvis_conductor as _jc
-            _cond = _jc.orchestrate(req=req, base_size=final_size)
+            # Schema v2 enrichment: translate sage_report.per_school into
+            # the conductor's school_inputs param so the emitted trace
+            # record carries per-school RAW votes (signed by alignment).
+            # T6 causal attribution operates directly on these signed
+            # scores. Empty dict when sage was unavailable.
+            _school_inputs = _jc.build_school_inputs_from_sage(sage_report)
+            _cond = _jc.orchestrate(
+                req=req,
+                base_size=final_size,
+                school_inputs=_school_inputs,
+            )
             conductor_block_reason = _cond.block_reason
             # Conductor returns a value clamped to [0, 1.5]; honor it.
             final_size = float(_cond.final_size)
