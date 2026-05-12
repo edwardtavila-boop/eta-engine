@@ -64,6 +64,7 @@ LOG_DIR = WORKSPACE_ROOT / "logs" / "eta_engine"
 CLOSED_LEDGER = STATE_DIR / "closed_trade_ledger_latest.json"
 OUT_LATEST = STATE_DIR / "diamond_watchdog_latest.json"
 OUT_LOG = LOG_DIR / "diamond_watchdog.jsonl"
+ALERTS_LOG = LOG_DIR / "alerts_log.jsonl"
 
 #: Pre-committed retirement thresholds from the operator's 2026-05-12
 #: decision memo.  Each is the 30-day rolling P&L floor; falling below
@@ -199,7 +200,57 @@ def run_watchdog() -> dict:
             }, separators=(",", ":")) + "\n")
     except OSError as exc:
         print(f"WARN: log append failed: {exc}", file=sys.stderr)
+    # Fire alerts pipeline for CRITICAL classifications so the operator
+    # dashboard surfaces them in the 24h alerts panel.
+    _fire_alerts_for_critical(statuses)
     return report
+
+
+def _fire_alerts_for_critical(statuses: list[DiamondStatus]) -> None:
+    """Append one alert per CRITICAL diamond to the shared alerts log.
+
+    The dashboard's daily summary counts alerts_log.jsonl entries in the
+    last 24h, so writing here surfaces the diamond on the morning report
+    even if the operator hasn't run the watchdog directly.
+
+    Best-effort: any I/O failure logs to stderr and continues — the
+    primary watchdog report is the authoritative record.
+    """
+    try:
+        critical = [s for s in statuses if s.classification == "CRITICAL"]
+        if not critical:
+            return
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with ALERTS_LOG.open("a", encoding="utf-8") as f:
+            for s in critical:
+                f.write(json.dumps({
+                    "timestamp_utc": datetime.now(UTC).isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
+                    "severity": "RED",
+                    "source": "diamond_falsification_watchdog",
+                    "alert_id": f"diamond_critical_{s.bot_id}",
+                    "bot_id": s.bot_id,
+                    "headline": (
+                        f"DIAMOND CRITICAL: {s.bot_id} P&L "
+                        f"${s.pnl_recent_window or 0:+.2f} below "
+                        f"floor ${s.retirement_threshold or 0:.0f} "
+                        f"(buffer ${s.buffer_usd or 0:+.2f})"
+                    ),
+                    "buffer_usd": s.buffer_usd,
+                    "buffer_pct_of_threshold": s.buffer_pct_of_threshold,
+                    "retirement_threshold": s.retirement_threshold,
+                    "pnl_recent_window": s.pnl_recent_window,
+                    "next_action": (
+                        "Operator review required.  Per "
+                        "var/eta_engine/decisions/diamond_set_2026_05_12.md, "
+                        "options are (1) retire — remove bot from "
+                        "DIAMOND_BOTS and commit, (2) override — write "
+                        "exception memo explaining why the floor is "
+                        "unrepresentative."
+                    ),
+                }, separators=(",", ":")) + "\n")
+    except OSError as exc:
+        print(f"WARN: alert write failed: {exc}", file=sys.stderr)
 
 
 def _print(report: dict) -> None:

@@ -84,6 +84,7 @@ class SourceMetrics:
     n_trades: int | None = None
     total_pnl_usd: float | None = None
     win_rate_pct: float | None = None
+    cumulative_r: float | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -93,11 +94,13 @@ class BotAuthenticityReport:
     sources: list[SourceMetrics] = field(default_factory=list)
     consensus_n: int | None = None
     consensus_pnl: float | None = None
+    consensus_r: float | None = None
     sources_disagree: bool = False
     disagreement_detail: list[str] = field(default_factory=list)
     bootstrap_ci_lower: float | None = None
     bootstrap_ci_upper: float | None = None
     mc_p_value: float | None = None
+    metric_basis: str = "USD"  # "USD" or "R"
     verdict: str = "INCONCLUSIVE"
     justification: str = ""
 
@@ -121,10 +124,11 @@ def _read_closed_ledger(bot_id: str) -> SourceMetrics:
         m.n_trades = int(rec.get("closed_trade_count") or 0)
         m.total_pnl_usd = float(rec.get("total_realized_pnl") or 0)
         m.win_rate_pct = float(rec.get("win_rate_pct") or 0)
+        m.cumulative_r = float(rec.get("cumulative_r") or 0)
         # Scale-bug detector: realistic per-trade P&L on paper futures
         # rarely exceeds $5,000 per contract per trade.  Higher = scale
         # bug (forex notional, missing divisor, etc.) and we should
-        # not trust the source.
+        # not trust the USD column — R-multiples remain clean.
         if m.n_trades and abs(m.total_pnl_usd) / max(m.n_trades, 1) > 5_000:
             m.notes.append(
                 f"SCALE_BUG_SUSPECTED: avg_per_trade=${m.total_pnl_usd / m.n_trades:.0f}",
@@ -259,11 +263,12 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
                 f"{s.source}: " + "; ".join(s.notes),
             )
 
-    # Pick the "consensus" source — prefer closed_trade_ledger (per-trade
-    # granularity), fall back to others.  Skip sources flagged for scale.
+    # Pick the "consensus" source.  We accept SCALE_BUG sources here
+    # because their R-multiples can still be clean — the audit just
+    # switches metric basis to R for those bots.
     consensus_source = None
     for s in sources:
-        if s.n_trades is not None and not any("SCALE_BUG" in n for n in s.notes):
+        if s.n_trades is not None and s.n_trades > 0:
             consensus_source = s
             break
     if consensus_source is None:
@@ -272,6 +277,20 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
         return rep
     rep.consensus_n = consensus_source.n_trades
     rep.consensus_pnl = consensus_source.total_pnl_usd
+    rep.consensus_r = consensus_source.cumulative_r
+
+    # Decide metric basis: prefer R when USD is missing (==0 over
+    # many trades = paper-sim) OR scale-buggy.
+    usd_is_broken = any("SCALE_BUG" in n for n in consensus_source.notes)
+    usd_is_missing = (
+        rep.consensus_n >= MIN_N_FOR_STATS
+        and (rep.consensus_pnl or 0) == 0
+        and (rep.consensus_r or 0) != 0
+    )
+    use_r_basis = usd_is_broken or usd_is_missing or (
+        (rep.consensus_pnl or 0) == 0 and (rep.consensus_r or 0) != 0
+    )
+    rep.metric_basis = "R" if use_r_basis else "USD"
 
     # Sample size gate.
     if (rep.consensus_n or 0) < MIN_N_FOR_STATS:
@@ -281,26 +300,22 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
             "stable inference; small sample looks diamond-like under "
             "any lighting)."
         )
-        if rep.sources_disagree:
+        if rep.sources_disagree and not use_r_basis:
             rep.verdict = "CUBIC_ZIRCONIA"
             rep.justification = (
                 f"sources disagree AND n={rep.consensus_n} too small to arbitrate"
             )
         return rep
 
-    # We have enough trades for stats — but we lack per-trade samples
-    # from the ledger.  Approximate from total_pnl + n_trades + win_rate.
-    # This is a coarse model; it understates volatility but catches
-    # gross fakes.
-    avg_pnl = (rep.consensus_pnl or 0) / max(rep.consensus_n or 1, 1)
+    # Build per-trade sample.  R-basis uses cumulative_r/n; USD-basis
+    # uses total_pnl/n.  Synth wins/losses around the mean using WR.
+    metric_total = (rep.consensus_r if use_r_basis
+                     else rep.consensus_pnl) or 0
+    avg_per_trade = metric_total / max(rep.consensus_n or 1, 1)
     wr = (consensus_source.win_rate_pct or 0) / 100.0
-    # Build a synthetic per-trade sample: wr * +abs_avg, (1-wr) * -abs_avg
     n_wins = int(round(wr * rep.consensus_n))
     n_losses = rep.consensus_n - n_wins
-    # Without per-trade granularity, assume wins are +K and losses -L
-    # where K, L satisfy mean(wins)+mean(losses)*ratio = avg.  Use a
-    # simple equal-magnitude proxy.
-    samples = [avg_pnl * 2] * n_wins + [-avg_pnl * 2] * n_losses
+    samples = [avg_per_trade * 2] * n_wins + [-avg_per_trade * 2] * n_losses
     if not samples:
         rep.verdict = "INCONCLUSIVE"
         rep.justification = "synth sample empty"
@@ -311,25 +326,36 @@ def _assess(bot_id: str) -> BotAuthenticityReport:
     rep.bootstrap_ci_upper = round(hi, 4)
     rep.mc_p_value = round(p, 4)
 
-    if rep.sources_disagree:
+    unit = "R" if use_r_basis else "$"
+    if rep.sources_disagree and not use_r_basis:
+        # Disagreement on USD when we're not on R-basis means a real
+        # data plumbing issue.  R-basis already insulates against
+        # USD-only scale bugs.
         rep.verdict = "CUBIC_ZIRCONIA"
         rep.justification = "sources disagree; " + " | ".join(rep.disagreement_detail)
     elif lo > 0 and p < 0.05:
         rep.verdict = "GENUINE"
         rep.justification = (
-            f"bootstrap 95% CI on per-trade mean = [{lo:+.2f}, {hi:+.2f}] "
-            f"(lower > 0); MC p={p:.3f} < 0.05; n={rep.consensus_n}"
+            f"basis={rep.metric_basis}; bootstrap 95% CI on per-trade mean = "
+            f"[{lo:+.4f}{unit}, {hi:+.4f}{unit}] (lower > 0); MC p={p:.3f} < 0.05; "
+            f"n={rep.consensus_n}"
         )
     elif lo > 0:
         rep.verdict = "LAB_GROWN"
         rep.justification = (
-            f"CI lower > 0 ({lo:+.2f}) but MC p={p:.3f} weak; n={rep.consensus_n}"
+            f"basis={rep.metric_basis}; CI lower > 0 ({lo:+.4f}{unit}) "
+            f"but MC p={p:.3f} weak; n={rep.consensus_n}"
         )
     else:
-        rep.verdict = "LAB_GROWN" if (rep.consensus_pnl or 0) >= 0 else "CUBIC_ZIRCONIA"
+        positive_total = (
+            (rep.consensus_r or 0) >= 0 if use_r_basis
+            else (rep.consensus_pnl or 0) >= 0
+        )
+        rep.verdict = "LAB_GROWN" if positive_total else "CUBIC_ZIRCONIA"
         rep.justification = (
-            f"CI lower {lo:+.2f} <= 0 — edge not statistically separable "
-            f"from zero; MC p={p:.3f}; n={rep.consensus_n}"
+            f"basis={rep.metric_basis}; CI lower {lo:+.4f}{unit} <= 0 — "
+            f"edge not statistically separable from zero; MC p={p:.3f}; "
+            f"n={rep.consensus_n}"
         )
     return rep
 

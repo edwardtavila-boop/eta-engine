@@ -82,6 +82,10 @@ class DailySummary:
     heartbeat_n_total: int
     strategies: list[StrategyLine] = field(default_factory=list)
     headlines: list[str] = field(default_factory=list)
+    # Diamond status — populated when the watchdog has run recently.
+    # See diamond_falsification_watchdog.py + diamond_authenticity_audit.py.
+    diamond_watchdog: dict | None = None
+    diamond_authenticity: dict | None = None
 
 
 def _last_jsonl_record(path: Path) -> dict | None:
@@ -248,9 +252,55 @@ def build_summary() -> DailySummary:
             pass
 
     # Overall verdict
-    if n_red > 0:
+    # ── Diamond status (watchdog + authenticity audit) ─────────────
+    # Read the latest watchdog + authenticity audit snapshots if they
+    # exist.  When CRITICAL diamonds are present, escalate the daily
+    # verdict to RED and prepend a headline so the operator sees it.
+    diamond_watchdog: dict | None = None
+    diamond_authenticity: dict | None = None
+    state_dir = ROOT.parent / "var" / "eta_engine" / "state"
+    wd_path = state_dir / "diamond_watchdog_latest.json"
+    au_path = state_dir / "diamond_authenticity_latest.json"
+    if wd_path.exists():
+        try:
+            diamond_watchdog = json.loads(wd_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            diamond_watchdog = None
+    if au_path.exists():
+        try:
+            diamond_authenticity = json.loads(au_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            diamond_authenticity = None
+
+    n_diamond_critical = 0
+    n_diamond_warn = 0
+    n_diamond_cz = 0
+    if diamond_watchdog:
+        wc = diamond_watchdog.get("classification_counts", {})
+        n_diamond_critical = int(wc.get("CRITICAL", 0))
+        n_diamond_warn = int(wc.get("WARN", 0))
+        if n_diamond_critical:
+            headlines.insert(0, (
+                f"DIAMOND CRITICAL: {n_diamond_critical} bot(s) below "
+                "30d retirement floor — operator review required"
+            ))
+        if n_diamond_warn:
+            headlines.append(
+                f"diamond WARN: {n_diamond_warn} bot(s) within 20% of floor",
+            )
+    if diamond_authenticity:
+        ac = diamond_authenticity.get("verdict_counts", {})
+        n_diamond_cz = int(ac.get("CUBIC_ZIRCONIA", 0))
+        if n_diamond_cz:
+            headlines.append(
+                f"diamond CZ: {n_diamond_cz} bot(s) failed authenticity "
+                "(no statistical edge)",
+            )
+
+    if n_red > 0 or n_diamond_critical > 0:
         overall = "RED"
-    elif n_yellow > 0 or n_alerts > 5 or capture_status not in ("GREEN", "NEVER"):
+    elif (n_yellow > 0 or n_alerts > 5 or capture_status not in ("GREEN", "NEVER")
+            or n_diamond_warn > 0 or n_diamond_cz > 0):
         overall = "YELLOW"
     elif n_alive < n_total:
         overall = "YELLOW"
@@ -268,6 +318,8 @@ def build_summary() -> DailySummary:
         heartbeat_n_total=n_total,
         strategies=strategies,
         headlines=headlines,
+        diamond_watchdog=diamond_watchdog,
+        diamond_authenticity=diamond_authenticity,
     )
 
 
