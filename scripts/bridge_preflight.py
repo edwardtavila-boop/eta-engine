@@ -444,6 +444,32 @@ def check_kelly_recommendations_present(host: str, port: int, api_key: str | Non
     return "PASS", f"{n_rich} bots with sufficient Kelly data", {"n_rich": n_rich}
 
 
+def check_status_server(status_port: int = 8643) -> tuple[str, str, dict]:
+    """Operator's direct contact-point status server is reachable.
+
+    Verifies the sidecar is up AND that ``/health`` returns 200 AND that
+    ``/contact`` returns a parseable JSON contact card. If the status
+    server is down the operator loses the "is everything alive?" page —
+    not catastrophic for trading, but a real degradation.
+    """
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{status_port}/health")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status != 200:
+                return "WARN", f"/health returned {resp.status}", {}
+    except (urllib.error.URLError, OSError) as exc:
+        return "WARN", f"status server unreachable on 127.0.0.1:{status_port}: {exc}", {}
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{status_port}/contact")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            card = json.loads(body)
+            n_tools = int(card.get("available_tools_count", 0))
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as exc:
+        return "WARN", f"status server /contact malformed: {exc}", {}
+    return "PASS", f"status server live, {n_tools} tools advertised", {"n_tools": n_tools}
+
+
 def check_health_check_passes(host: str, port: int) -> tuple[str, str, dict]:
     """Run the existing 9-layer health check and confirm all PASS."""
     try:
@@ -483,6 +509,7 @@ def run_all(
         ("memory_backup",       "warning",  check_memory_backup_recent),
         ("disk_headroom",       "warning",  check_disk_headroom),
         ("kelly_ready",         "warning",  lambda: check_kelly_recommendations_present(host, port, api_key)),
+        ("status_server",       "warning",  check_status_server),
         ("health_9_layers",     "critical", lambda: check_health_check_passes(host, port)),
     ]
     for name, sev, fn in spec:

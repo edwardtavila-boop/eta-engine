@@ -705,33 +705,49 @@ def ym_sweep_preset() -> SweepReclaimConfig:
 def mgc_sweep_preset() -> SweepReclaimConfig:
     """MGC 1h micro-gold preset.
 
-    2026-05-12 refinements:
-      Wave-3 (chisel):
+    2026-05-12 kaizen iterations:
+      Wave-3 (chisel-cut):
         - atr_stop_mult 3.0 → 2.5
         - rr_target    3.0 → 3.5
         - min_volume_z 0.3 → 0.5 (NY-open hour focus)
       Wave-4 (rehaul):
         - reclaim_confirm_bars: 1 → 2 (cut false signals in chop)
         - vol_adjusted_sizing: True (gold vol regime-shifts; size down on spikes)
-        - excluded_hours_utc: 20-23 UTC ("close" session, 15-18 ET)
-          per stratification: n=11, CI lower -0.169 → NULL edge.
-          The wave-4 session filter drops bars in this window so
-          mgc only fires when its edge is statistically supported.
+      Wave-5 (kaizen revert based on canonical data):
+        - excluded_hours_utc reverted from (20,21,22,23) → () empty.
+          The wave-4 close-session exclusion was based on stale
+          stratification ("n=11, CI lower -0.169 → NULL edge").  Re-running
+          the analysis against the canonical trade-closes ledger
+          (eta_engine/state/jarvis_intel/trade_closes.jsonl, NOT the
+          var/eta_engine/state mirror the audit tools were reading)
+          showed two separate problems with the wave-4 decision:
+          a) The "CI lower negative" interpretation conflated "CI brackets
+             zero with small n" with "edge is null".  The point estimate
+             on close session was actually +0.41 avg R / 63.6% WR (n=11),
+             the BEST stratum — not a drag on the average.
+          b) The exclusion targeted UTC hours 20-23 but mgc's "close"
+             session label corresponds to UTC hour 0 (gold post-close
+             window).  The wave-4 filter was excluding hours where mgc
+             never traded → no-op for mgc, harmful if ever broadened.
 
-    Rationale chain:
-      CPCV: n=157 mean OOS sharpe +0.190 (96% splits positive)
-      Stratification: overnight WEAK (CI+0.014), close NULL (CI-0.169)
-      → close session is dragging the average; overnight carries the edge
-      → drop close session, keep overnight, expect mean sharpe to lift
+    Canonical baseline (pre-wave-4, post wave-3):
+      n=155, cum_r=+29.50R, avg_r=+0.1903, wr=57.4%
+        overnight (UTC 1-6): n=144, +0.1734 avg R, 56.9% WR
+        close    (UTC 0):    n= 11, +0.4119 avg R, 63.6% WR
+      Direction: 100% long (no shorts ever fired — known asymmetry,
+      tracked separately as a strategy-research follow-up).
 
-    Falsifier: mean OOS sharpe should rise from +0.19 to >0.30 over
-    the next 60 trades.  If it doesn't, the session filter was overfit
-    to the past 158 trades and the operator should revisit.
+    Falsifier: post-wave-5 trades over the next 30 days should keep
+    the close-session edge intact (avg R close > +0.20, WR > 55%).
+    If close-session edge collapses, revisit the wave-4 hypothesis
+    with the updated data — but with the correct UTC hour band this
+    time (close = UTC 0, not UTC 20-23).
 
-    Red team: ~50% of mgc's trade volume came from the dropped session.
-    The session filter cuts trade frequency in half → less statistical
-    power for future CPCV.  Tradeoff: better per-trade edge, slower
-    sample accumulation.
+    Red team: reclaim_confirm_bars=2 + vol_adjusted_sizing are the
+    only wave-4 features still active.  Both are untested in live
+    (the n=155 baseline above is PRE-wave-4).  If post-wave-5 sharpe
+    falls below the baseline +0.19, the most likely culprit is the
+    reclaim_confirm_bars=2 over-filtering signals.  Revert to 1 if so.
     """
     return SweepReclaimConfig(
         level_lookback=48, reclaim_window=3,
@@ -741,7 +757,8 @@ def mgc_sweep_preset() -> SweepReclaimConfig:
         max_trades_per_day=2, warmup_bars=72,
         reclaim_confirm_bars=2,
         vol_adjusted_sizing=True,
-        excluded_hours_utc=(20, 21, 22, 23),  # close session per stratification
+        # excluded_hours_utc deliberately empty — see docstring "Wave-5"
+        excluded_hours_utc=(),
     )
 
 

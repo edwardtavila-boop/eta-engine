@@ -203,16 +203,19 @@ def test_reclaim_confirm_bars_default_is_one_legacy() -> None:
 
 
 def test_mgc_preset_opts_into_two_bar_confirm() -> None:
-    """mgc_sweep_preset (wave-4 rehaul) uses 2-bar confirmation
-    after the friction-rehab found close-session edge was NULL."""
+    """mgc_sweep_preset (wave-4 + wave-5) uses 2-bar confirmation
+    and vol-adjusted sizing.  The wave-4 close-session exclusion was
+    reverted in wave-5 after canonical-data analysis showed the
+    excluded UTC hours (20-23) never actually contained mgc trades
+    AND the close-session edge was misclassified as null."""
     from eta_engine.strategies.sweep_reclaim_strategy import mgc_sweep_preset
 
     cfg = mgc_sweep_preset()
+    # Wave-4 mechanics that survived wave-5
     assert cfg.reclaim_confirm_bars == 2
     assert cfg.vol_adjusted_sizing is True
-    # Close session (UTC 20-23) excluded per stratification
-    assert 20 in cfg.excluded_hours_utc
-    assert 23 in cfg.excluded_hours_utc
+    # Wave-5 reverted the dead-code session exclusion
+    assert cfg.excluded_hours_utc == ()
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -277,21 +280,22 @@ def test_default_session_filter_empty() -> None:
 
 
 def test_mgc_preset_is_real_rehaul() -> None:
-    """The mgc_sweep_preset wave-4 changes are not a curve-fit;
-    they're justified by the stratification report.  Verify the
-    full rehaul package is intact."""
+    """The mgc_sweep_preset wave-3/4/5 changes are not a curve-fit.
+    Each wave has a written rationale and a falsifier in the docstring.
+    Verify the post-wave-5 surface is intact."""
     from eta_engine.strategies.sweep_reclaim_strategy import mgc_sweep_preset
 
     cfg = mgc_sweep_preset()
-    # Wave-3 refinements
+    # Wave-3 refinements (chisel-cut)
     assert cfg.atr_stop_mult == 2.5
     assert cfg.rr_target == 3.5
     assert cfg.min_volume_z == 0.5
     assert cfg.min_wick_pct == 0.40
-    # Wave-4 rehaul
+    # Wave-4 features that survived wave-5
     assert cfg.reclaim_confirm_bars == 2
     assert cfg.vol_adjusted_sizing is True
-    assert cfg.excluded_hours_utc == (20, 21, 22, 23)
+    # Wave-5 reverted the bogus close-session exclusion
+    assert cfg.excluded_hours_utc == ()
 
 
 def test_mcl_preset_NOT_rehauled() -> None:

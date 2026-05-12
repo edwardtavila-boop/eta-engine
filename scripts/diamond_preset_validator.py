@@ -107,7 +107,7 @@ def _check_mgc_sweep() -> PresetCheck:
     else:
         chk.asserts.append("min_volume_z=0.5 (chisel)")
 
-    # Wave-4 rehaul features
+    # Wave-4 rehaul features that survived wave-5
     if cfg.reclaim_confirm_bars != 2:
         chk.failures.append(
             f"reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 2")
@@ -117,28 +117,33 @@ def _check_mgc_sweep() -> PresetCheck:
         chk.failures.append("vol_adjusted_sizing OFF — rehaul expects ON")
     else:
         chk.asserts.append("vol_adjusted_sizing=True (rehaul)")
-    expected_hours = {20, 21, 22, 23}
-    if set(cfg.excluded_hours_utc) != expected_hours:
+    # Wave-5: excluded_hours_utc reverted to empty after canonical
+    # data showed close session is the BEST stratum, not NULL edge.
+    # See mgc_sweep_preset docstring for rationale chain.
+    if cfg.excluded_hours_utc != ():
         chk.failures.append(
-            f"excluded_hours_utc {cfg.excluded_hours_utc} != "
-            f"{tuple(sorted(expected_hours))}",
+            f"excluded_hours_utc {cfg.excluded_hours_utc} != () — "
+            "wave-5 reverted this; see preset docstring",
         )
     else:
-        chk.asserts.append(
-            f"excluded_hours_utc={tuple(sorted(expected_hours))} (rehaul)")
+        chk.asserts.append("excluded_hours_utc=() (wave-5 revert)")
 
-    # Functional smoke: session filter actually rejects an excluded bar
-    strat = SweepReclaimStrategy(cfg)
+    # Functional smoke: session filter feature still works for OTHER bots
+    # that might need it later (we only reverted mgc's specific value).
+    import dataclasses
+    test_cfg = dataclasses.replace(mgc_sweep_preset(), excluded_hours_utc=(22,))
+    strat = SweepReclaimStrategy(test_cfg)
     excluded_bar = _MockBar(
         open=100.0, high=100.5, low=99.5, close=100.2, volume=1000.0,
-        ts="2026-05-12T22:00:00+00:00",  # UTC 22 = excluded
+        ts="2026-05-12T22:00:00+00:00",  # UTC 22 = excluded by override
     )
     out = strat.maybe_enter(excluded_bar, [], 100_000.0, None)
     if out is not None or strat._n_session_filter_rejects != 1:
         chk.failures.append(
-            "session filter did NOT reject UTC-22 bar — runtime broken")
+            "session-filter feature broken — UTC-22 not rejected when "
+            "excluded_hours_utc=(22,)")
     else:
-        chk.asserts.append("session filter rejects UTC-22 bar (runtime)")
+        chk.asserts.append("session-filter feature still wired (runtime)")
 
     chk.passed = not chk.failures
     return chk
