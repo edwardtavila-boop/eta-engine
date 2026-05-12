@@ -430,6 +430,125 @@ def test_bracket_audit_accepts_current_manual_oco_ack(monkeypatch) -> None:
     assert report["operator_actions"] == []
 
 
+def test_bracket_audit_accepts_ibkr_open_order_oco_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "ibkr": {
+                    "open_positions": [
+                        {
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "broker_bracket_required": True,
+                        },
+                    ],
+                    "open_orders": [
+                        {
+                            "symbol": "MNQM6",
+                            "action": "SELL",
+                            "order_type": "LMT",
+                            "qty": 3,
+                            "parent_id": 1001,
+                            "status": "Submitted",
+                        },
+                        {
+                            "symbol": "MNQM6",
+                            "action": "SELL",
+                            "order_type": "STP",
+                            "qty": 3,
+                            "parent_id": 1001,
+                            "status": "Submitted",
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    assert report["summary"] == "READY_OPEN_EXPOSURE_BRACKETED"
+    assert report["ready_for_prop_dry_run"] is True
+    assert report["operator_action_required"] is False
+    assert report["position_summary"]["missing_bracket_count"] == 0
+    assert report["position_summary"]["broker_oco_verified_count"] == 1
+    assert report["position_summary"]["broker_oco_verified_symbols"] == ["MNQM6"]
+    assert report["broker_oco_verified_positions"][0]["coverage_status"] == "broker_oco_verified"
+    assert report["unprotected_positions"] == []
+    assert report["operator_actions"] == []
+
+
+def test_bracket_audit_keeps_incomplete_ibkr_open_order_coverage_blocked(monkeypatch) -> None:
+    monkeypatch.setattr(
+        audit,
+        "_adapter_support",
+        lambda: {
+            "ibkr_futures_server_oco": True,
+            "alpaca_equity_server_bracket": True,
+            "tradovate_order_payload_brackets": True,
+        },
+    )
+
+    report = audit.build_bracket_audit(
+        fleet={
+            "target_exit_summary": {
+                "status": "missing_brackets",
+                "broker_open_position_count": 1,
+                "broker_bracket_required_position_count": 1,
+                "broker_bracket_count": 0,
+                "missing_bracket_count": 1,
+                "supervisor_local_position_count": 0,
+            },
+            "live_broker_state": {
+                "ibkr": {
+                    "open_positions": [
+                        {
+                            "symbol": "MNQM6",
+                            "secType": "FUT",
+                            "position": 3,
+                            "broker_bracket_required": True,
+                        },
+                    ],
+                    "open_orders": [
+                        {
+                            "symbol": "MNQM6",
+                            "action": "SELL",
+                            "order_type": "STP",
+                            "qty": 3,
+                            "parent_id": 1001,
+                            "status": "Submitted",
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    assert report["summary"] == "BLOCKED_UNBRACKETED_EXPOSURE"
+    assert report["ready_for_prop_dry_run"] is False
+    assert report["position_summary"]["missing_bracket_count"] == 1
+    assert report["position_summary"]["broker_oco_verified_count"] == 0
+    assert report["position_summary"]["unprotected_symbols"] == ["MNQM6"]
+    assert report["primary_unprotected_position"]["coverage_status"] == "requires_manual_oco_verification"
+
+
 def test_bracket_audit_accepts_current_manual_oco_ack_ledger(monkeypatch) -> None:
     monkeypatch.setattr(
         audit,

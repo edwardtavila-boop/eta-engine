@@ -292,6 +292,26 @@ class TestDashboardAPI:
         assert "1 broker bracket-required" in summary["summary_line"]
         assert "1 missing bracket(s)" in summary["summary_line"]
 
+    def test_target_exit_summary_accepts_broker_open_order_verified_brackets(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        summary = mod._target_exit_summary(
+            [],
+            broker_open_position_count=2,
+            broker_bracket_required_position_count=2,
+            broker_open_order_verified_bracket_count=2,
+        )
+
+        assert summary["status"] == "watching"
+        assert summary["broker_open_position_count"] == 2
+        assert summary["broker_bracket_required_position_count"] == 2
+        assert summary["broker_open_order_verified_bracket_count"] == 2
+        assert summary["broker_bracket_count"] == 2
+        assert summary["broker_unbracketed_count"] == 0
+        assert summary["missing_bracket_count"] == 0
+        assert "2 broker bracket(s)" in summary["summary_line"]
+        assert "0 missing bracket(s)" in summary["summary_line"]
+
     def test_target_exit_summary_does_not_mark_broker_only_exposure_flat(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

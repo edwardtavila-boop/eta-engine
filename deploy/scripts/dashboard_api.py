@@ -4048,6 +4048,7 @@ def _target_exit_summary(
     *,
     broker_open_position_count: int | None = None,
     broker_bracket_required_position_count: int | None = None,
+    broker_open_order_verified_bracket_count: int | None = None,
     server_ts: float | None = None,
 ) -> dict:
     """Summarize open-position target/stop supervision for operator cards."""
@@ -4148,6 +4149,22 @@ def _target_exit_summary(
         0,
         effective_broker_open_count - broker_bracket_required_count,
     )
+    supervisor_reported_broker_bracket_count = broker_bracket_count
+    broker_open_order_verified_count = (
+        max(
+            0,
+            min(
+                int(broker_open_order_verified_bracket_count),
+                broker_bracket_required_count,
+            ),
+        )
+        if broker_open_order_verified_bracket_count is not None
+        else 0
+    )
+    broker_bracket_count = max(
+        broker_bracket_count,
+        broker_open_order_verified_count,
+    )
     broker_unbracketed_count = max(0, broker_bracket_required_count - broker_bracket_count)
     total_missing_bracket_count = missing_bracket_count + broker_unbracketed_count
     if touched_count > 0:
@@ -4217,6 +4234,8 @@ def _target_exit_summary(
         "watching_count": watching_count,
         "supervisor_watch_count": supervisor_watch_count,
         "broker_bracket_count": broker_bracket_count,
+        "supervisor_reported_broker_bracket_count": supervisor_reported_broker_bracket_count,
+        "broker_open_order_verified_bracket_count": broker_open_order_verified_count,
         "broker_unbracketed_count": broker_unbracketed_count,
         "missing_bracket_count": total_missing_bracket_count,
         "supervisor_missing_bracket_count": missing_bracket_count,
@@ -4660,6 +4679,9 @@ def bot_fleet_roster(
         }
     broker_open_position_count = _float_value(live_broker_state.get("open_position_count"))
     broker_bracket_required_position_count = _broker_bracket_required_position_count(live_broker_state)
+    broker_oco_evidence = _broker_oco_evidence_payload(live_broker_state)
+    if isinstance(live_broker_state, dict):
+        live_broker_state["broker_oco_evidence"] = broker_oco_evidence
     target_exit_summary = _target_exit_summary(
         rows,
         broker_open_position_count=(
@@ -4668,6 +4690,9 @@ def bot_fleet_roster(
             else None
         ),
         broker_bracket_required_position_count=broker_bracket_required_position_count,
+        broker_open_order_verified_bracket_count=int(
+            broker_oco_evidence.get("verified_count") or 0
+        ),
         server_ts=now_ts,
     )
     target_exit_summary["broker_position_scope"] = "all_broker_venues"
@@ -6390,6 +6415,39 @@ def _broker_bracket_required_position_count(live_broker_state: dict) -> int | No
     return sum(1 for position in positions if position.get("broker_bracket_required") is True)
 
 
+def _broker_oco_evidence_payload(live_broker_state: dict) -> dict:
+    """Build read-only broker OCO evidence from live positions and open orders."""
+    live_broker_state = live_broker_state if isinstance(live_broker_state, dict) else {}
+    positions = [
+        position
+        for position in _normalized_live_open_positions(live_broker_state)
+        if position.get("broker_bracket_required") is True
+    ]
+    ibkr_state = (
+        live_broker_state.get("ibkr")
+        if isinstance(live_broker_state.get("ibkr"), dict)
+        else {}
+    )
+    open_orders = ibkr_state.get("open_orders") if isinstance(ibkr_state, dict) else []
+    try:
+        from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
+
+        return broker_bracket_audit.build_broker_oco_evidence(
+            positions,
+            open_orders if isinstance(open_orders, list) else [],
+        )
+    except Exception as exc:  # noqa: BLE001 - status must fail soft.
+        return {
+            "kind": "eta_broker_oco_evidence",
+            "schema_version": 1,
+            "source": "broker_open_orders",
+            "error": str(exc),
+            "verified_count": 0,
+            "verified_symbols": [],
+            "positions": [],
+        }
+
+
 def _cached_live_broker_state_for_gateway_reconcile() -> dict:
     """Return cached IBKR live state for lightweight status-card reconciliation."""
     with _IBKR_PROBE_LOCK:
@@ -6428,6 +6486,9 @@ def _target_exit_summary_for_master_status() -> dict:
         }
 
     live_broker_state = _cached_live_broker_state_for_gateway_reconcile()
+    broker_oco_evidence = _broker_oco_evidence_payload(live_broker_state)
+    if isinstance(live_broker_state, dict):
+        live_broker_state["broker_oco_evidence"] = broker_oco_evidence
     exposure = _live_ibkr_exposure_for_gateway(live_broker_state)
     broker_open_count: int | None = None
     broker_bracket_required_count: int | None = None
@@ -6439,6 +6500,9 @@ def _target_exit_summary_for_master_status() -> dict:
         rows,
         broker_open_position_count=broker_open_count,
         broker_bracket_required_position_count=broker_bracket_required_count,
+        broker_open_order_verified_bracket_count=int(
+            broker_oco_evidence.get("verified_count") or 0
+        ),
         server_ts=now_ts,
     )
     summary["source"] = "supervisor_roster_cached_live_broker_state"
@@ -6607,7 +6671,10 @@ def _broker_bracket_audit_payload(
         from eta_engine.scripts import broker_bracket_audit  # noqa: PLC0415
 
         report = broker_bracket_audit.build_bracket_audit(
-            fleet={"target_exit_summary": target_exit_summary or {}},
+            fleet={
+                "target_exit_summary": target_exit_summary or {},
+                "live_broker_state": live_broker_state or {},
+            },
         )
         return _enrich_broker_bracket_audit_with_positions(
             report,
@@ -7328,6 +7395,44 @@ def _alpaca_per_bot_pnl_cached(*, today_start_iso: str) -> dict:
     return snap
 
 
+def _ibkr_open_order_snapshot(trade: object) -> dict:
+    """Return a sanitized read-only IBKR open-order row for OCO evidence."""
+    if isinstance(trade, dict):
+        return {
+            "symbol": trade.get("symbol") or trade.get("local_symbol") or trade.get("localSymbol"),
+            "local_symbol": trade.get("local_symbol") or trade.get("localSymbol"),
+            "sec_type": trade.get("sec_type") or trade.get("secType"),
+            "exchange": trade.get("exchange"),
+            "action": trade.get("action") or trade.get("side"),
+            "order_type": trade.get("order_type") or trade.get("orderType"),
+            "qty": _float_value(trade.get("qty") or trade.get("totalQuantity")),
+            "remaining": _float_value(trade.get("remaining")),
+            "status": trade.get("status") or trade.get("order_status"),
+            "parent_id": trade.get("parent_id") or trade.get("parentId"),
+            "oca_group": trade.get("oca_group") or trade.get("ocaGroup"),
+            "order_id": trade.get("order_id") or trade.get("orderId"),
+            "perm_id": trade.get("perm_id") or trade.get("permId"),
+        }
+    order = getattr(trade, "order", None)
+    contract = getattr(trade, "contract", None)
+    status = getattr(trade, "orderStatus", None)
+    return {
+        "symbol": getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None),
+        "local_symbol": getattr(contract, "localSymbol", None),
+        "sec_type": getattr(contract, "secType", None),
+        "exchange": getattr(contract, "exchange", None),
+        "action": getattr(order, "action", None),
+        "order_type": getattr(order, "orderType", None),
+        "qty": _float_value(getattr(order, "totalQuantity", None)),
+        "remaining": _float_value(getattr(status, "remaining", None)),
+        "status": getattr(status, "status", None),
+        "parent_id": getattr(order, "parentId", None),
+        "oca_group": getattr(order, "ocaGroup", None),
+        "order_id": getattr(order, "orderId", None),
+        "perm_id": getattr(order, "permId", None) or getattr(status, "permId", None),
+    }
+
+
 def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
     """Pull live IBKR positions and today's executions via ib_insync.
 
@@ -7433,6 +7538,18 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
                 snapshot["account_summary_realized_pnl"] = round(summary_tags["RealizedPnL"], 2)
             if "UnrealizedPnL" in summary_tags:
                 snapshot["account_summary_unrealized_pnl"] = round(summary_tags["UnrealizedPnL"], 2)
+            try:
+                open_trades = list(ib.reqAllOpenOrders() or []) if ib.isConnected() else []
+            except Exception:  # noqa: BLE001
+                try:
+                    open_trades = list(ib.openTrades() or []) if ib.isConnected() else []
+                except Exception:  # noqa: BLE001
+                    open_trades = []
+            snapshot["open_orders"] = [
+                _ibkr_open_order_snapshot(trade)
+                for trade in open_trades
+            ]
+            snapshot["open_order_count"] = len(snapshot["open_orders"])
             unreal = 0.0
             slim_positions: list[dict] = []
             for item in portfolio:

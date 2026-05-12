@@ -7,6 +7,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,12 @@ FUTURES_MULTIPLIERS = {
     "YM": 5.0,
     "ZN": 1000.0,
 }
+_OPEN_ORDER_DONE_STATUSES = {
+    "apicancelled",
+    "cancelled",
+    "filled",
+    "inactive",
+}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:  # noqa: ANN401
@@ -71,6 +78,210 @@ def _as_bool(value: Any) -> bool:  # noqa: ANN401
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y"}
     return bool(value)
+
+
+def _clean_symbol(value: object) -> str:
+    return str(value or "").strip().upper().replace("/", "").replace("-", "")
+
+
+def _open_order_symbol(order: dict[str, Any]) -> str:
+    contract = _as_dict(order.get("contract"))
+    for key in ("local_symbol", "localSymbol", "contract_symbol", "contractSymbol", "symbol"):
+        symbol = _clean_symbol(order.get(key))
+        if symbol:
+            return symbol
+    for key in ("local_symbol", "localSymbol", "symbol"):
+        symbol = _clean_symbol(contract.get(key))
+        if symbol:
+            return symbol
+    return ""
+
+
+def _open_order_action(order: dict[str, Any]) -> str:
+    return str(order.get("action") or order.get("side") or "").strip().upper()
+
+
+def _open_order_qty(order: dict[str, Any]) -> float:
+    for key in (
+        "remaining",
+        "remaining_qty",
+        "remainingQuantity",
+        "total_quantity",
+        "totalQuantity",
+        "qty",
+        "quantity",
+    ):
+        qty = _as_float(order.get(key))
+        if qty is not None:
+            return abs(qty)
+    return 0.0
+
+
+def _open_order_status(order: dict[str, Any]) -> str:
+    return str(order.get("status") or order.get("order_status") or "").strip()
+
+
+def _open_order_is_active(order: dict[str, Any]) -> bool:
+    status = _open_order_status(order).lower()
+    return status not in _OPEN_ORDER_DONE_STATUSES
+
+
+def _open_order_linkage_key(order: dict[str, Any]) -> str:
+    oca_group = str(order.get("oca_group") or order.get("ocaGroup") or "").strip()
+    if oca_group:
+        return f"oca:{oca_group}"
+    parent_id = _as_int(order.get("parent_id") or order.get("parentId"))
+    if parent_id > 0:
+        return f"parent:{parent_id}"
+    return ""
+
+
+def _open_order_leg_kind(order: dict[str, Any]) -> str:
+    order_type = str(
+        order.get("order_type")
+        or order.get("orderType")
+        or order.get("type")
+        or "",
+    ).strip().upper()
+    if "STP" in order_type or "STOP" in order_type or "TRAIL" in order_type:
+        return "stop"
+    if order_type in {"LMT", "LIMIT"} or "LIMIT" in order_type:
+        return "target"
+    return ""
+
+
+def _normalize_open_order(raw_order: object) -> dict[str, Any]:
+    order = _as_dict(raw_order)
+    if not order:
+        return {}
+    symbol = _open_order_symbol(order)
+    if not symbol:
+        return {}
+    normalized = {
+        "symbol": symbol,
+        "action": _open_order_action(order),
+        "order_type": str(order.get("order_type") or order.get("orderType") or "").strip().upper(),
+        "qty": _open_order_qty(order),
+        "status": _open_order_status(order),
+        "parent_id": _as_int(order.get("parent_id") or order.get("parentId")),
+        "oca_group": str(order.get("oca_group") or order.get("ocaGroup") or "").strip(),
+        "order_id": order.get("order_id") or order.get("orderId"),
+        "perm_id": order.get("perm_id") or order.get("permId"),
+    }
+    normalized["linkage_key"] = _open_order_linkage_key(normalized)
+    normalized["leg_kind"] = _open_order_leg_kind(normalized)
+    return normalized if _open_order_is_active(normalized) else {}
+
+
+def _protective_action_for_position(position: dict[str, Any]) -> str:
+    side = str(position.get("side") or "").strip().lower()
+    if side in {"long", "buy"}:
+        return "SELL"
+    if side in {"short", "sell"}:
+        return "BUY"
+    qty = _position_qty(position)
+    if qty is not None:
+        return "SELL" if qty > 0 else "BUY" if qty < 0 else ""
+    return ""
+
+
+def _open_orders_from_fleet(fleet: dict[str, Any]) -> list[Any]:
+    orders: list[Any] = []
+    for key in ("open_orders", "broker_open_orders"):
+        orders.extend(_as_list(fleet.get(key)))
+    live_broker_state = _as_dict(fleet.get("live_broker_state"))
+    for venue in ("ibkr", "tastytrade", "tasty"):
+        venue_state = _as_dict(live_broker_state.get(venue))
+        for key in ("open_orders", "open_trades"):
+            orders.extend(_as_list(venue_state.get(key)))
+    return orders
+
+
+def build_broker_oco_evidence(
+    positions: list[dict[str, Any]],
+    open_orders: list[Any],
+) -> dict[str, Any]:
+    """Conservatively prove broker-native OCO coverage from read-only open orders."""
+    normalized_orders = [
+        order for order in (_normalize_open_order(raw_order) for raw_order in open_orders) if order
+    ]
+    evidence_rows: list[dict[str, Any]] = []
+    for position in positions:
+        symbol = _position_symbol(position)
+        qty = _as_float(position.get("qty"))
+        if not symbol or qty is None or qty <= 0:
+            continue
+        protective_action = _protective_action_for_position(position)
+        if not protective_action:
+            continue
+        groups: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"stop_qty": 0.0, "target_qty": 0.0, "order_ids": []},
+        )
+        for order in normalized_orders:
+            if order.get("symbol") != symbol:
+                continue
+            if order.get("action") != protective_action:
+                continue
+            leg_kind = str(order.get("leg_kind") or "")
+            linkage_key = str(order.get("linkage_key") or "")
+            if leg_kind not in {"stop", "target"} or not linkage_key:
+                continue
+            group = groups[linkage_key]
+            if leg_kind == "stop":
+                group["stop_qty"] = float(group["stop_qty"]) + float(order.get("qty") or 0.0)
+            else:
+                group["target_qty"] = float(group["target_qty"]) + float(order.get("qty") or 0.0)
+            if order.get("order_id") is not None:
+                group["order_ids"].append(order.get("order_id"))
+        covering_groups = []
+        covered_qty = 0.0
+        for linkage_key, group in sorted(groups.items()):
+            stop_qty = float(group.get("stop_qty") or 0.0)
+            target_qty = float(group.get("target_qty") or 0.0)
+            group_covered_qty = min(stop_qty, target_qty)
+            if group_covered_qty <= 0:
+                continue
+            covered_qty += group_covered_qty
+            covering_groups.append(
+                {
+                    "linkage_key": linkage_key,
+                    "stop_qty": round(stop_qty, 8),
+                    "target_qty": round(target_qty, 8),
+                    "covered_qty": round(group_covered_qty, 8),
+                    "order_ids": group.get("order_ids") or [],
+                },
+            )
+        verified = covered_qty + 1e-9 >= qty
+        evidence_rows.append(
+            {
+                "venue": _position_venue(position),
+                "symbol": symbol,
+                "sec_type": str(position.get("sec_type") or "").strip().upper(),
+                "side": str(position.get("side") or "").strip().lower(),
+                "qty": qty,
+                "protective_action": protective_action,
+                "covered_qty": round(covered_qty, 8),
+                "coverage_status": "broker_oco_verified" if verified else "broker_oco_missing",
+                "covering_groups": covering_groups,
+            },
+        )
+    verified_symbols = sorted(
+        {
+            row["symbol"]
+            for row in evidence_rows
+            if row.get("coverage_status") == "broker_oco_verified"
+        },
+    )
+    return {
+        "kind": "eta_broker_oco_evidence",
+        "schema_version": 1,
+        "source": "broker_open_orders",
+        "open_order_count": len(normalized_orders),
+        "checked_position_count": len(evidence_rows),
+        "verified_count": len(verified_symbols),
+        "verified_symbols": verified_symbols,
+        "positions": evidence_rows,
+    }
 
 
 def _fetch_json(url: str, timeout_s: float = 10.0, attempts: int = 2) -> dict[str, Any]:
@@ -415,6 +626,38 @@ def _manual_ack_covers(
     )
 
 
+def _position_coverage_key(position: dict[str, Any]) -> tuple[str, str, str, float | None]:
+    return (
+        _position_venue(position),
+        _position_symbol(position),
+        str(position.get("sec_type") or "").strip().upper(),
+        position.get("qty"),
+    )
+
+
+def _broker_oco_evidence_for_position(
+    position: dict[str, Any],
+    evidence: dict[str, Any],
+) -> dict[str, Any]:
+    symbol = _position_symbol(position)
+    venue = _position_venue(position)
+    sec_type = str(position.get("sec_type") or "").strip().upper()
+    for row in _as_list(evidence.get("positions")):
+        item = _as_dict(row)
+        if str(item.get("coverage_status") or "") != "broker_oco_verified":
+            continue
+        if _clean_symbol(item.get("symbol")) != symbol:
+            continue
+        item_venue = str(item.get("venue") or "").strip().lower()
+        if item_venue and item_venue != venue:
+            continue
+        item_sec_type = str(item.get("sec_type") or "").strip().upper()
+        if item_sec_type and item_sec_type != sec_type:
+            continue
+        return item
+    return {}
+
+
 def _unprotected_positions(
     fleet: dict[str, Any],
     *,
@@ -549,51 +792,56 @@ def build_bracket_audit(
         fleet,
         missing_brackets=missing_brackets,
     )
+    broker_oco_evidence = build_broker_oco_evidence(
+        candidate_unprotected_positions,
+        _open_orders_from_fleet(fleet),
+    )
     manual_oco_verified_positions = [
         position
         for position in candidate_unprotected_positions
         if _manual_ack_covers(position, manual_ack)
     ]
-    if manual_oco_verified_positions:
-        verified_keys = {
-            (
-                _position_venue(position),
-                _position_symbol(position),
-                str(position.get("sec_type") or "").strip().upper(),
-                position.get("qty"),
-            )
-            for position in manual_oco_verified_positions
-        }
-        unprotected_positions = [
-            position
-            for position in candidate_unprotected_positions
-            if (
-                _position_venue(position),
-                _position_symbol(position),
-                str(position.get("sec_type") or "").strip().upper(),
-                position.get("qty"),
-            )
-            not in verified_keys
-        ]
-        missing_brackets = max(0, missing_brackets - len(manual_oco_verified_positions))
-    else:
-        unprotected_positions = candidate_unprotected_positions
+    manual_verified_keys = {_position_coverage_key(position) for position in manual_oco_verified_positions}
+    broker_oco_verified_positions: list[dict[str, Any]] = []
+    for position in candidate_unprotected_positions:
+        if _position_coverage_key(position) in manual_verified_keys:
+            continue
+        evidence = _broker_oco_evidence_for_position(position, broker_oco_evidence)
+        if not evidence:
+            continue
+        verified_position = dict(position)
+        verified_position["coverage_status"] = "broker_oco_verified"
+        verified_position["broker_oco_evidence"] = evidence
+        broker_oco_verified_positions.append(verified_position)
 
-    if manual_oco_verified_positions or missing_brackets != position_summary["missing_bracket_count"]:
-        position_summary = dict(position_summary)
-        position_summary["missing_bracket_count"] = missing_brackets
-        position_summary["manual_oco_verified_count"] = len(manual_oco_verified_positions)
-        position_summary["manual_oco_verified_symbols"] = sorted(
-            {
-                str(position.get("symbol") or "")
-                for position in manual_oco_verified_positions
-                if position.get("symbol")
-            },
-        )
-    else:
-        position_summary = dict(position_summary)
-        position_summary["manual_oco_verified_count"] = 0
-        position_summary["manual_oco_verified_symbols"] = []
+    verified_keys = manual_verified_keys | {
+        _position_coverage_key(position) for position in broker_oco_verified_positions
+    }
+    unprotected_positions = [
+        position
+        for position in candidate_unprotected_positions
+        if _position_coverage_key(position) not in verified_keys
+    ]
+    missing_brackets = max(0, missing_brackets - len(verified_keys))
+
+    position_summary = dict(position_summary)
+    position_summary["missing_bracket_count"] = missing_brackets
+    position_summary["manual_oco_verified_count"] = len(manual_oco_verified_positions)
+    position_summary["manual_oco_verified_symbols"] = sorted(
+        {
+            str(position.get("symbol") or "")
+            for position in manual_oco_verified_positions
+            if position.get("symbol")
+        },
+    )
+    position_summary["broker_oco_verified_count"] = len(broker_oco_verified_positions)
+    position_summary["broker_oco_verified_symbols"] = sorted(
+        {
+            str(position.get("symbol") or "")
+            for position in broker_oco_verified_positions
+            if position.get("symbol")
+        },
+    )
 
     if unprotected_positions:
         position_summary = dict(position_summary)
@@ -679,6 +927,8 @@ def build_bracket_audit(
                 },
             ),
         },
+        "broker_oco_evidence": broker_oco_evidence,
+        "broker_oco_verified_positions": broker_oco_verified_positions,
         "manual_oco_verified_positions": manual_oco_verified_positions,
         "unprotected_positions": unprotected_positions,
         "primary_unprotected_position": unprotected_positions[0] if unprotected_positions else None,
