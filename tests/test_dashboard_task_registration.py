@@ -9,6 +9,7 @@ PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
+COMMAND_CENTER_SERVICE_XML = ROOT / "deploy" / "FirmCommandCenter_canonical.xml"
 ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
 ROOT_RECONCILE_PLAN_SCRIPT = ROOT / "deploy" / "scripts" / "plan_vps_root_reconciliation.ps1"
 DIAG_COMPACT_SCRIPT = ROOT / "deploy" / "scripts" / "diag_compact.ps1"
@@ -77,6 +78,20 @@ def test_dashboard_api_task_runner_avoids_legacy_paths() -> None:
     assert "crypto_data" not in text
     assert "TheFirm" not in text
     assert "The_Firm" not in text
+
+
+def test_command_center_service_template_points_at_canonical_dashboard_api() -> None:
+    text = COMMAND_CENTER_SERVICE_XML.read_text(encoding="utf-8")
+
+    assert "eta_engine.deploy.scripts.dashboard_api:app" in text
+    assert "command_center.server.app:app" not in text
+    assert r"C:\EvolutionaryTradingAlgo" in text
+    assert r"firm_command_center" in text
+    assert r"\.venv\Scripts\python.exe" in text
+    assert r"C:\EvolutionaryTradingAlgo\var\eta_engine\state" in text
+    assert r"C:\EvolutionaryTradingAlgo\logs\eta_engine" in text
+    assert "<workingdirectory>C:\\EvolutionaryTradingAlgo</workingdirectory>" in text
+    assert "127.0.0.1 --port 8420" in text
 
 
 def test_proxy8421_task_registration_replaces_stale_workers() -> None:
