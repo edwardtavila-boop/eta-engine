@@ -177,8 +177,15 @@ def test_token_required_for_read_only_tool(
     patched_paths: dict[str, Path],
     mock_underlying: dict[str, Any],
 ) -> None:
-    """No ``_auth`` argument → envelope reports ``auth_failed``."""
-    result = _call("jarvis_fleet_status")
+    """Wrong ``_auth`` argument -> envelope reports ``auth_failed``.
+
+    NOTE (2026-05-12): policy relaxed - env-token presence is sufficient
+    auth for stdio MCP clients that don't pass arg-level auth on every
+    tool call (Hermes Agent, Claude Desktop, etc). Missing ``_auth`` is
+    now ACCEPTED when JARVIS_MCP_TOKEN env is set. A WRONG ``_auth``
+    value still fails - that's what this test now exercises.
+    """
+    result = _call("jarvis_fleet_status", {"_auth": "WRONG-TOKEN-VALUE"})
 
     assert result == {"ok": False, "data": None, "error": "auth_failed"}
     # And one audit row written with auth=failed
@@ -186,6 +193,36 @@ def test_token_required_for_read_only_tool(
     assert len(lines) == 1
     assert lines[0]["auth"] == "failed"
     assert lines[0]["tool"] == "jarvis_fleet_status"
+
+
+def test_missing_auth_uses_env_token_for_stdio_clients(
+    patched_paths: dict[str, Path],
+    mock_underlying: dict[str, Any],
+) -> None:
+    """Missing ``_auth`` is accepted when the MCP process has an env token."""
+    result = _call("jarvis_fleet_status")
+
+    assert result["ok"] is True
+    assert result["error"] is None
+    lines = _audit_lines(patched_paths["audit_log"])
+    assert lines[-1]["auth"] == "env"
+    assert lines[-1]["tool"] == "jarvis_fleet_status"
+
+
+def test_missing_env_token_fails_closed(
+    patched_paths: dict[str, Path],
+    mock_underlying: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No configured ``JARVIS_MCP_TOKEN`` rejects all tool calls."""
+    monkeypatch.delenv("JARVIS_MCP_TOKEN", raising=False)
+
+    result = _call("jarvis_fleet_status")
+
+    assert result == {"ok": False, "data": None, "error": "auth_no_token_configured"}
+    lines = _audit_lines(patched_paths["audit_log"])
+    assert lines[-1]["auth"] == "failed"
+    assert lines[-1]["result_status"] == "auth_no_token_configured"
 
 
 # ---------------------------------------------------------------------------

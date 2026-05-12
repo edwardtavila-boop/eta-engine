@@ -633,7 +633,29 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
 
     started = time.monotonic()
 
-    if not expected or auth != expected:
+    # Auth policy:
+    #   * No token configured at all (`JARVIS_MCP_TOKEN` env unset)
+    #       -> reject everything; operator explicitly opted out of running.
+    #   * Token is configured AND caller passed `_auth` -> match.
+    #   * Token is configured AND caller omitted `_auth` -> trust the
+    #     env-configured token. Stdio MCP clients (Hermes Agent, Claude
+    #     Desktop, etc.) typically don't pass arg-level auth on every
+    #     tool call; the server runs in-process for them and the env
+    #     itself is the auth. Audit-logged as `auth: env` so we can
+    #     distinguish the two paths.
+    if not expected:
+        _append_audit({
+            "ts": _now_iso(),
+            "tool": name,
+            "args": audit_args,
+            "auth": "failed",
+            "result_status": "auth_no_token_configured",
+            "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
+            "caller": _CALLER,
+        })
+        return {"ok": False, "data": None, "error": "auth_no_token_configured"}
+
+    if auth and auth != expected:
         _append_audit({
             "ts": _now_iso(),
             "tool": name,
@@ -645,13 +667,17 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
         })
         return {"ok": False, "data": None, "error": "auth_failed"}
 
+    # Either auth matched explicitly, or auth was omitted and env-token
+    # presence is sufficient.
+    _auth_mode = "ok" if auth else "env"
+
     handler = _HANDLERS.get(name)
     if handler is None:
         _append_audit({
             "ts": _now_iso(),
             "tool": name,
             "args": audit_args,
-            "auth": "ok",
+            "auth": _auth_mode,
             "result_status": "unknown_tool",
             "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
             "caller": _CALLER,
@@ -675,7 +701,7 @@ def dispatch_tool_call(name: str, args: dict[str, Any] | None) -> dict[str, Any]
         "ts": _now_iso(),
         "tool": name,
         "args": audit_args,
-        "auth": "ok",
+        "auth": _auth_mode,
         "result_status": result_status,
         "elapsed_ms": round((time.monotonic() - started) * 1000.0, 3),
         "caller": _CALLER,
