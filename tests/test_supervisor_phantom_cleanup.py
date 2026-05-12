@@ -13,6 +13,7 @@ phantom via ``_clean_phantom_open_positions``; this test asserts the
 three outcomes (cleared / kept / unreachable) plus the no-position
 short-circuit.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ def _make_supervisor(tmp_path, monkeypatch):
         JarvisStrategySupervisor,
         SupervisorConfig,
     )
+
     cfg = SupervisorConfig()
     cfg.mode = "paper_sim"
     cfg.data_feed = "mock"
@@ -51,6 +53,7 @@ def _attach_phantom(bot) -> None:
 
 def _make_bot(bot_id: str = "phantom_bot", symbol: str = "MNQ1"):
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
     bot = BotInstance(
         bot_id=bot_id,
         symbol=symbol,
@@ -63,7 +66,8 @@ def _make_bot(bot_id: str = "phantom_bot", symbol: str = "MNQ1"):
 
 
 def test_clean_phantom_clears_when_broker_reports_flat(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Broker returns 0 → phantom cleared, persisted JSON deleted, bot
     listed under 'cleared'."""
@@ -75,7 +79,9 @@ def test_clean_phantom_clears_when_broker_reports_flat(
     assert persisted_path.exists()
 
     monkeypatch.setattr(
-        sup._router, "_get_broker_position_qty", lambda _b: 0.0,
+        sup._router,
+        "_get_broker_position_qty",
+        lambda _b: 0.0,
     )
 
     result = sup._clean_phantom_open_positions()
@@ -88,14 +94,17 @@ def test_clean_phantom_clears_when_broker_reports_flat(
 
 
 def test_clean_phantom_keeps_when_broker_matches(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Broker returns matching qty → bot.open_position untouched."""
     sup = _make_supervisor(tmp_path, monkeypatch)
     bot = _make_bot()
     sup.bots = [bot]
     monkeypatch.setattr(
-        sup._router, "_get_broker_position_qty", lambda _b: 1.0,
+        sup._router,
+        "_get_broker_position_qty",
+        lambda _b: 1.0,
     )
 
     result = sup._clean_phantom_open_positions()
@@ -107,7 +116,8 @@ def test_clean_phantom_keeps_when_broker_matches(
 
 
 def test_clean_phantom_leaves_alone_when_broker_unreachable(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Broker returns None (unreachable) → DO NOT clear. We never
     delete state we can't verify is stale."""
@@ -115,7 +125,9 @@ def test_clean_phantom_leaves_alone_when_broker_unreachable(
     bot = _make_bot()
     sup.bots = [bot]
     monkeypatch.setattr(
-        sup._router, "_get_broker_position_qty", lambda _b: None,
+        sup._router,
+        "_get_broker_position_qty",
+        lambda _b: None,
     )
 
     result = sup._clean_phantom_open_positions()
@@ -126,7 +138,8 @@ def test_clean_phantom_leaves_alone_when_broker_unreachable(
 
 
 def test_clean_phantom_handles_broker_query_exception(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """A broker query that RAISES must not crash the reconcile pass —
     the bot is treated as 'unreachable' and left alone."""
@@ -147,11 +160,13 @@ def test_clean_phantom_handles_broker_query_exception(
 
 
 def test_clean_phantom_skips_bots_with_no_open_position(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Bots with bot.open_position=None must not even hit the broker
     query — the cleanup pass is for restored phantoms only."""
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
     sup = _make_supervisor(tmp_path, monkeypatch)
     bot = BotInstance(
         bot_id="no_position_bot",
@@ -177,18 +192,23 @@ def test_clean_phantom_skips_bots_with_no_open_position(
 
 
 def test_clean_phantom_mixed_fleet_partitions_correctly(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """A real reconcile sees a mix: one phantom (broker=0), one valid
     (broker matches), one no-position bot. All three classifications
     must coexist in a single pass without cross-contamination."""
     from eta_engine.scripts.jarvis_strategy_supervisor import BotInstance
+
     sup = _make_supervisor(tmp_path, monkeypatch)
     phantom = _make_bot(bot_id="phantom_bot", symbol="MNQ1")
     valid = _make_bot(bot_id="valid_bot", symbol="NQ1")
     idle = BotInstance(
-        bot_id="idle_bot", symbol="ES1",
-        strategy_kind="x", direction="long", cash=5000.0,
+        bot_id="idle_bot",
+        symbol="ES1",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
     )
     sup.bots = [phantom, valid, idle]
 

@@ -60,6 +60,7 @@ Usage:
     # Custom tick interval (default 60s)
     ETA_SUPERVISOR_TICK_S=10 python ...
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -109,8 +110,7 @@ logger = logging.getLogger("jarvis_strategy_supervisor")
 # we only mute the noisy INFOs. Override via env if needed:
 #   ETA_IBKR_LOG_LEVEL=INFO  → restore verbose
 _ib_log_level = os.getenv("ETA_IBKR_LOG_LEVEL", "WARNING").upper()
-for _ib_logger in ("ib_insync", "ib_insync.client", "ib_insync.wrapper",
-                   "ib_insync.ib", "eventkit"):
+for _ib_logger in ("ib_insync", "ib_insync.client", "ib_insync.wrapper", "ib_insync.ib", "eventkit"):
     logging.getLogger(_ib_logger).setLevel(_ib_log_level)
 
 
@@ -135,6 +135,7 @@ def _resolve_bot_routing(bot_id: str, symbol: str) -> tuple[str | None, str | No
             RoutingConfig,
             _asset_class_for_symbol,
         )
+
         cfg = RoutingConfig.load()
         venue = cfg.venue_for(bot_id, symbol=symbol)
         asset_class = _asset_class_for_symbol(symbol)
@@ -240,7 +241,6 @@ def _default_supervisor_state_dir() -> Path:
     return workspace_roots.ETA_JARVIS_SUPERVISOR_STATE_DIR
 
 
-
 @dataclass
 class SupervisorConfig:
     """Operator-tunable supervisor knobs (read from env)."""
@@ -274,9 +274,14 @@ class SupervisorConfig:
     # broker-router pending-file lane is an opt-in alternate path so one
     # signal_id is not submitted twice.
     paper_live_order_route: str = field(
-        default_factory=lambda: os.getenv(
-            "ETA_PAPER_LIVE_ORDER_ROUTE", "direct_ibkr",
-        ).strip().lower(),
+        default_factory=lambda: (
+            os.getenv(
+                "ETA_PAPER_LIVE_ORDER_ROUTE",
+                "direct_ibkr",
+            )
+            .strip()
+            .lower()
+        ),
     )
     # Broker-router order inbox. Keep pending order files in canonical
     # runtime state, not mixed into generated broker-fleet status reports.
@@ -284,11 +289,7 @@ class SupervisorConfig:
         default_factory=lambda: Path(
             os.getenv(
                 "ETA_BROKER_ROUTER_PENDING_DIR",
-                str(
-                    workspace_roots.ETA_RUNTIME_STATE_DIR
-                    / "router"
-                    / "pending"
-                ),
+                str(workspace_roots.ETA_RUNTIME_STATE_DIR / "router" / "pending"),
             ),
         ),
     )
@@ -306,7 +307,7 @@ class BotInstance:
     strategy_kind: str
     direction: str = "long"
     cash: float = 5000.0
-    open_position: dict | None = None        # {entry_price, qty, side, opened_at}
+    open_position: dict | None = None  # {entry_price, qty, side, opened_at}
     n_entries: int = 0
     n_exits: int = 0
     realized_pnl: float = 0.0
@@ -407,15 +408,15 @@ class MockDataFeed:
     """Synthetic bar feed -- random walk per symbol with sane defaults."""
 
     SYMBOL_DEFAULTS = {
-        "MNQ":  (21450.0, 0.002, 0.0001),
+        "MNQ": (21450.0, 0.002, 0.0001),
         "MNQ1": (21450.0, 0.002, 0.0001),
-        "NQ":   (21500.0, 0.004, 0.0002),
-        "NQ1":  (21500.0, 0.004, 0.0002),
-        "BTC":  (95000.0, 0.005, 0.0002),
-        "ETH":  (3500.0,  0.006, 0.0001),
-        "SOL":  (180.0,   0.010, 0.0002),
-        "MBT":  (95000.0, 0.005, 0.0001),
-        "MET":  (3500.0,  0.006, 0.0001),
+        "NQ": (21500.0, 0.004, 0.0002),
+        "NQ1": (21500.0, 0.004, 0.0002),
+        "BTC": (95000.0, 0.005, 0.0002),
+        "ETH": (3500.0, 0.006, 0.0001),
+        "SOL": (180.0, 0.010, 0.0002),
+        "MBT": (95000.0, 0.005, 0.0001),
+        "MET": (3500.0, 0.006, 0.0001),
     }
 
     def __init__(self, *, seed: int = 42) -> None:
@@ -426,10 +427,13 @@ class MockDataFeed:
         sym = symbol.upper().replace("USD", "").replace("USDT", "")
         if sym not in self._rngs:
             close, sigma, drift = self.SYMBOL_DEFAULTS.get(
-                sym, (100.0, 0.01, 0.0),
+                sym,
+                (100.0, 0.01, 0.0),
             )
             self._rngs[sym] = _BarRng(
-                last_close=close, sigma=sigma, drift=drift,
+                last_close=close,
+                sigma=sigma,
+                drift=drift,
                 rng=random.Random(self._seed + hash(sym) % 1000),
             )
         return self._rngs[sym]
@@ -496,7 +500,9 @@ def _get_or_create_live_ibkr_loop() -> asyncio.AbstractEventLoop:
                     new_loop.close()
 
         thread = threading.Thread(
-            target=_runner, name="live-ibkr-loop", daemon=True,
+            target=_runner,
+            name="live-ibkr-loop",
+            daemon=True,
         )
         thread.start()
         ready.wait(timeout=5)
@@ -506,7 +512,8 @@ def _get_or_create_live_ibkr_loop() -> asyncio.AbstractEventLoop:
 
 
 def _run_on_live_ibkr_loop[T](
-    coro: Coroutine[Any, Any, T], timeout: float = 30.0,
+    coro: Coroutine[Any, Any, T],
+    timeout: float = 30.0,
 ) -> T:
     """Run a coroutine on the dedicated live-IBKR loop, return its result."""
     loop = _get_or_create_live_ibkr_loop()
@@ -531,6 +538,7 @@ def _get_live_ibkr_venue() -> Any:  # noqa: ANN401 — LiveIbkrVenue not import-
     with _LIVE_IBKR_LOCK:
         if _LIVE_IBKR_VENUE is None:
             from eta_engine.venues.ibkr_live import LiveIbkrVenue
+
             _LIVE_IBKR_VENUE = LiveIbkrVenue()
         return _LIVE_IBKR_VENUE
 
@@ -538,13 +546,39 @@ def _get_live_ibkr_venue() -> Any:  # noqa: ANN401 — LiveIbkrVenue not import-
 # Symbol → instrument-class lookup. Used by sage cross-asset peer wiring
 # and the bracket-sizing path. Mirrors data_feeds._is_crypto / bracket_sizing's
 # _futures_set so all three modules agree on what's crypto vs futures.
-_CRYPTO_ROOTS = frozenset({
-    "BTC", "ETH", "SOL", "AVAX", "LINK", "DOGE", "MBT", "MET", "XRP",
-})
-_FUTURES_ROOTS = frozenset({
-    "MNQ", "NQ", "ES", "MES", "GC", "MGC", "CL", "MCL",
-    "NG", "ZN", "ZB", "6E", "M6E", "RTY", "M2K", "MYM",
-})
+_CRYPTO_ROOTS = frozenset(
+    {
+        "BTC",
+        "ETH",
+        "SOL",
+        "AVAX",
+        "LINK",
+        "DOGE",
+        "MBT",
+        "MET",
+        "XRP",
+    }
+)
+_FUTURES_ROOTS = frozenset(
+    {
+        "MNQ",
+        "NQ",
+        "ES",
+        "MES",
+        "GC",
+        "MGC",
+        "CL",
+        "MCL",
+        "NG",
+        "ZN",
+        "ZB",
+        "6E",
+        "M6E",
+        "RTY",
+        "M2K",
+        "MYM",
+    }
+)
 _PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 
 
@@ -556,16 +590,33 @@ _PAPER_LIVE_ALLOWED_SYMBOLS_ENV = "ETA_PAPER_LIVE_ALLOWED_SYMBOLS"
 # intervene; this dict catches that pathology after the budget cap.
 _MAX_QTY_PER_ORDER: dict[str, float] = {
     # Futures (integer contracts): generous-but-bounded
-    "MNQ": 5, "NQ": 2, "ES": 2, "MES": 5, "RTY": 3, "M2K": 5, "MYM": 5,
-    "MBT": 3, "MET": 3,
-    "CL": 3, "MCL": 5, "NG": 3,
-    "GC": 2, "MGC": 5,
-    "ZN": 3, "ZB": 3,
-    "6E": 3, "M6E": 5,
+    "MNQ": 5,
+    "NQ": 2,
+    "ES": 2,
+    "MES": 5,
+    "RTY": 3,
+    "M2K": 5,
+    "MYM": 5,
+    "MBT": 3,
+    "MET": 3,
+    "CL": 3,
+    "MCL": 5,
+    "NG": 3,
+    "GC": 2,
+    "MGC": 5,
+    "ZN": 3,
+    "ZB": 3,
+    "6E": 3,
+    "M6E": 5,
     # Crypto (fractional): cap at $5K notional-equivalent baseline
     # (exact value computed by venue from ref_price * qty downstream)
-    "BTC": 0.1, "ETH": 5.0, "SOL": 200.0, "XRP": 50_000.0,
-    "AVAX": 200.0, "LINK": 1000.0, "DOGE": 100_000.0,
+    "BTC": 0.1,
+    "ETH": 5.0,
+    "SOL": 200.0,
+    "XRP": 50_000.0,
+    "AVAX": 200.0,
+    "LINK": 1000.0,
+    "DOGE": 100_000.0,
 }
 _MAX_QTY_DEFAULT_FUTURES = 3
 _MAX_QTY_DEFAULT_CRYPTO = 0.5  # crypto base unit, conservative
@@ -601,6 +652,7 @@ def _round_to_tick(price: float, symbol: str) -> float:
     """
     try:
         from eta_engine.feeds.instrument_specs import get_spec
+
         spec = get_spec(symbol)
         tick = float(getattr(spec, "tick_size", 0) or 0)
         if tick > 0:
@@ -614,11 +666,7 @@ def _paper_live_allowed_symbols() -> frozenset[str] | None:
     raw = os.getenv(_PAPER_LIVE_ALLOWED_SYMBOLS_ENV, "").strip()
     if not raw:
         return None
-    allowed = frozenset(
-        item.upper().lstrip("/").strip()
-        for item in raw.replace(";", ",").split(",")
-        if item.strip()
-    )
+    allowed = frozenset(item.upper().lstrip("/").strip() for item in raw.replace(";", ",").split(",") if item.strip())
     return allowed or None
 
 
@@ -663,6 +711,7 @@ class ExecutionRouter:
         the same asset class (crypto / futures / other). Used by
         cap_qty_to_budget to enforce ETA_LIVE_*_FLEET_BUDGET_USD."""
         from eta_engine.scripts.bracket_sizing import _is_crypto, _is_futures
+
         same_class: Any
         if _is_crypto(symbol):
             same_class = _is_crypto
@@ -712,12 +761,12 @@ class ExecutionRouter:
                 # the hold decide. Missing routing context falls back to
                 # the legacy "block everything" behaviour.
                 resolved_venue, asset_class = _resolve_bot_routing(
-                    bot.bot_id, bot.symbol,
+                    bot.bot_id,
+                    bot.symbol,
                 )
                 if hold.blocks(venue=resolved_venue, asset_class=asset_class):
                     logger.warning(
-                        "%s entry SKIPPED: order-entry hold active "
-                        "scope=%s reason=%s venue=%s class=%s path=%s",
+                        "%s entry SKIPPED: order-entry hold active scope=%s reason=%s venue=%s class=%s path=%s",
                         bot.bot_id,
                         hold.scope,
                         hold.reason,
@@ -762,8 +811,24 @@ class ExecutionRouter:
         symbol_upper = bot.symbol.upper().lstrip("/")
         _symbol_root = symbol_upper.rstrip("0123456789")
         _futures_set = {
-            "MNQ", "NQ", "ES", "MES", "MBT", "MET", "NG", "CL", "GC",
-            "ZN", "ZB", "6E", "M6E", "MGC", "MCL", "RTY", "M2K", "MYM",
+            "MNQ",
+            "NQ",
+            "ES",
+            "MES",
+            "MBT",
+            "MET",
+            "NG",
+            "CL",
+            "GC",
+            "ZN",
+            "ZB",
+            "6E",
+            "M6E",
+            "MGC",
+            "MCL",
+            "RTY",
+            "M2K",
+            "MYM",
         }
         is_futures = _symbol_root in _futures_set
         # Round to instrument precision WITHOUT a floor-up. The earlier
@@ -774,10 +839,7 @@ class ExecutionRouter:
         # contract (or 0.001 crypto), skip the entry rather than
         # over-sizing into a margin call.
         if is_futures:
-            paper_floor_enabled = (
-                self.cfg.mode == "paper_live"
-                and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
-            )
+            paper_floor_enabled = self.cfg.mode == "paper_live" and float(os.getenv("ETA_PAPER_FUTURES_FLOOR", "1")) > 0
             # Let cap_qty_to_budget apply the explicit paper futures floor.
             qty = 1.0 if 0.0 < qty < 1.0 and paper_floor_enabled else float(int(qty))
         else:
@@ -786,7 +848,11 @@ class ExecutionRouter:
         if qty < _min_qty:
             logger.info(
                 "bot %s skipped: budget %.2f can't afford min lot (%s qty=%.6f < min=%.6f)",
-                bot.bot_id, bot.cash, bot.symbol, qty, _min_qty,
+                bot.bot_id,
+                bot.cash,
+                bot.symbol,
+                qty,
+                _min_qty,
             )
             return None
 
@@ -804,6 +870,7 @@ class ExecutionRouter:
         # the entry entirely.
         try:
             from eta_engine.scripts.bracket_sizing import cap_qty_to_budget
+
             fleet_notional = self._fleet_open_notional_for_symbol(bot.symbol)
             capped, _cap_reason = cap_qty_to_budget(
                 symbol=bot.symbol,
@@ -815,17 +882,26 @@ class ExecutionRouter:
             if _cap_reason != "ok":
                 logger.info(
                     "CAP %s %s req=%.6f → capped=%.6f (%s, fleet_notional=%.2f)",
-                    bot.bot_id, bot.symbol, qty, capped, _cap_reason, fleet_notional,
+                    bot.bot_id,
+                    bot.symbol,
+                    qty,
+                    capped,
+                    _cap_reason,
+                    fleet_notional,
                 )
             qty = capped
         except Exception as exc:  # noqa: BLE001 — fail closed, see comment above
             logger.critical(
-                "BUDGET CAP FAILED for %s symbol=%s requested_qty=%g: %s — "
-                "refusing entry (fail-closed)",
-                bot.bot_id, bot.symbol, qty, exc, exc_info=True,
+                "BUDGET CAP FAILED for %s symbol=%s requested_qty=%g: %s — refusing entry (fail-closed)",
+                bot.bot_id,
+                bot.symbol,
+                qty,
+                exc,
+                exc_info=True,
             )
             with contextlib.suppress(Exception):
                 from eta_engine.brain.jarvis_v3.policies._v3_events import emit_event
+
                 emit_event(
                     layer="risk",
                     event="budget_cap_failed",
@@ -845,7 +921,9 @@ class ExecutionRouter:
         if qty <= 0:
             logger.info(
                 "%s entry skipped: budget cap produced qty=0 (%s @ %.4f)",
-                bot.bot_id, bot.symbol, ref_price,
+                bot.bot_id,
+                bot.symbol,
+                ref_price,
             )
             return None
 
@@ -856,22 +934,17 @@ class ExecutionRouter:
         # oversized request. The per-symbol _MAX_QTY_PER_ORDER dict is
         # an ABSOLUTE clamp applied AFTER the budget cap — a separate
         # belt-and-braces layer.
-        sym_norm = (
-            bot.symbol.upper().lstrip("/")
-            .replace("USDT", "").replace("USD", "")
-            .rstrip("0123456789")
-        )
+        sym_norm = bot.symbol.upper().lstrip("/").replace("USDT", "").replace("USD", "").rstrip("0123456789")
         _hard_cap = _MAX_QTY_PER_ORDER.get(sym_norm)
         if _hard_cap is None:
-            _hard_cap = (
-                _MAX_QTY_DEFAULT_CRYPTO
-                if sym_norm in _CRYPTO_ROOTS
-                else _MAX_QTY_DEFAULT_FUTURES
-            )
+            _hard_cap = _MAX_QTY_DEFAULT_CRYPTO if sym_norm in _CRYPTO_ROOTS else _MAX_QTY_DEFAULT_FUTURES
         if qty > _hard_cap:
             logger.critical(
                 "HARD QTY CAP TRIPPED: bot=%s sym=%s requested=%g cap=%g",
-                bot.bot_id, bot.symbol, qty, _hard_cap,
+                bot.bot_id,
+                bot.symbol,
+                qty,
+                _hard_cap,
             )
             qty = _hard_cap
 
@@ -914,10 +987,14 @@ class ExecutionRouter:
             from eta_engine.scripts.bracket_sizing import (
                 lookup_bot_bracket_params as _lbp,
             )
+
             _sm, _tm = _lbp(bot.bot_id)
             _ps, _pt, _psrc = _cb(
-                side=side, entry_price=rec.fill_price, bars=bot.sage_bars,
-                stop_mult_override=_sm, target_mult_override=_tm,
+                side=side,
+                entry_price=rec.fill_price,
+                bars=bot.sage_bars,
+                stop_mult_override=_sm,
+                target_mult_override=_tm,
             )
             bot.open_position["bracket_stop"] = round(_round_to_tick(_ps, bot.symbol), 4)
             bot.open_position["bracket_target"] = round(_round_to_tick(_pt, bot.symbol), 4)
@@ -938,12 +1015,15 @@ class ExecutionRouter:
             if bot.bot_id not in self._paper_bracket_warned:
                 logger.warning(
                     "paper-bracket compute failed for %s (first occurrence): %s",
-                    bot.bot_id, _exc,
+                    bot.bot_id,
+                    _exc,
                 )
                 self._paper_bracket_warned.add(bot.bot_id)
             else:
                 logger.debug(
-                    "paper-bracket compute failed for %s: %s", bot.bot_id, _exc,
+                    "paper-bracket compute failed for %s: %s",
+                    bot.bot_id,
+                    _exc,
                 )
         bot.n_entries += 1
         bot.last_signal_at = rec.fill_ts
@@ -959,10 +1039,7 @@ class ExecutionRouter:
             supervisor's belief about open positions strictly bounded by
             broker-acknowledged fills.
             """
-            if (
-                bot.open_position is not None
-                and bot.open_position.get("signal_id") == rec.signal_id
-            ):
+            if bot.open_position is not None and bot.open_position.get("signal_id") == rec.signal_id:
                 bot.open_position = None
                 self._clear_persisted_open_position(bot)
             bot.n_entries = max(0, bot.n_entries - 1)
@@ -970,8 +1047,13 @@ class ExecutionRouter:
             logger.critical(
                 "BROKER REJECT %s: paper_live entry rolled back (reason=%s "
                 "symbol=%s side=%s qty=%.6f signal_id=%s consecutive_rejects=%d)",
-                bot.bot_id, reason, rec.symbol, rec.side, rec.qty,
-                rec.signal_id, bot.consecutive_broker_rejects,
+                bot.bot_id,
+                reason,
+                rec.symbol,
+                rec.side,
+                rec.qty,
+                rec.signal_id,
+                bot.consecutive_broker_rejects,
             )
 
         if self.cfg.mode == "paper_live":
@@ -1019,7 +1101,10 @@ class ExecutionRouter:
             if _is_crypto and not _crypto_live:
                 logger.info(
                     "CRYPTO PAPER %s %s %.6f @ %.4f (no broker route — set ETA_IBKR_CRYPTO=1 to go live)",
-                    rec.symbol, rec.side, rec.qty, rec.fill_price,
+                    rec.symbol,
+                    rec.side,
+                    rec.qty,
+                    rec.fill_price,
                 )
                 return rec
             # Also submit directly through LiveIbkrVenue (TWS API port 4002)
@@ -1029,6 +1114,7 @@ class ExecutionRouter:
                     lookup_bot_bracket_params,
                 )
                 from eta_engine.venues.base import OrderRequest, OrderType, Side
+
                 _venue = _get_live_ibkr_venue()
                 # ATR-based bracket if ≥15 bars in the bot's sage window,
                 # else fixed-percent fallback. ATR adapts stop width to
@@ -1040,7 +1126,9 @@ class ExecutionRouter:
                 _stop_mult, _target_mult = lookup_bot_bracket_params(bot.bot_id)
                 _ref = float(rec.fill_price) if rec.fill_price else float(bar.get("close", 0.0)) or 1.0
                 _stop, _target, _bracket_src = compute_bracket(
-                    side=rec.side, entry_price=_ref, bars=bot.sage_bars,
+                    side=rec.side,
+                    entry_price=_ref,
+                    bars=bot.sage_bars,
                     stop_mult_override=_stop_mult,
                     target_mult_override=_target_mult,
                 )
@@ -1052,21 +1140,30 @@ class ExecutionRouter:
                 _is_buy = rec.side.upper() == "BUY"
                 _bad = (
                     _ref <= 0
-                    or _stop <= 0 or _target <= 0
+                    or _stop <= 0
+                    or _target <= 0
                     or (_is_buy and not (_stop < _ref < _target))
                     or (not _is_buy and not (_target < _ref < _stop))
                 )
                 if _bad:
                     logger.warning(
-                        "%s skipped: insane bracket geometry "
-                        "(side=%s ref=%.4f stop=%.4f target=%.4f src=%s)",
-                        bot.bot_id, rec.side, _ref, _stop, _target, _bracket_src,
+                        "%s skipped: insane bracket geometry (side=%s ref=%.4f stop=%.4f target=%.4f src=%s)",
+                        bot.bot_id,
+                        rec.side,
+                        _ref,
+                        _stop,
+                        _target,
+                        _bracket_src,
                     )
                     _rollback_recorded_entry("invalid_bracket_geometry")
                     return None
                 logger.debug(
                     "bracket %s %s %s→%s (%s)",
-                    bot.bot_id, _ref, _stop, _target, _bracket_src,
+                    bot.bot_id,
+                    _ref,
+                    _stop,
+                    _target,
+                    _bracket_src,
                 )
                 _req = OrderRequest(
                     symbol=rec.symbol,
@@ -1102,7 +1199,9 @@ class ExecutionRouter:
                 )
                 logger.info(
                     "DIRECT ORDER %s %s %.6f → %s (ibkr_id=%s, reason=%s)",
-                    rec.symbol, rec.side, rec.qty,
+                    rec.symbol,
+                    rec.side,
+                    rec.qty,
                     _result.status.value,
                     _result.raw.get("ibkr_order_id", "?"),
                     _reason,
@@ -1118,10 +1217,7 @@ class ExecutionRouter:
                 # forces an immediate rollback so phantom positions
                 # cannot leak through.
                 _ok_statuses = {"OPEN", "PARTIAL", "FILLED"}
-                if (
-                    _result.status.value in _ok_statuses
-                    and bot.open_position is not None
-                ):
+                if _result.status.value in _ok_statuses and bot.open_position is not None:
                     bot.open_position["broker_bracket"] = True
                     bot.open_position["bracket_stop"] = round(_round_to_tick(_stop, rec.symbol), 4)
                     bot.open_position["bracket_target"] = round(_round_to_tick(_target, rec.symbol), 4)
@@ -1139,15 +1235,11 @@ class ExecutionRouter:
                     # have here.  Bracket EXITS (TARGET/STOP) still
                     # require a separate IBKR fill handler — see
                     # docs/L2_SUPERVISOR_WIRING.md step 4.
-                    if (
-                        _result.status.value == "FILLED"
-                        and float(getattr(_result, "filled_qty", 0) or 0) > 0
-                    ):
+                    if _result.status.value == "FILLED" and float(getattr(_result, "filled_qty", 0) or 0) > 0:
                         l2hooks.record_fill(
                             signal_id=rec.signal_id,
                             broker_exec_id=str(
-                                _result.raw.get("ibkr_order_id", "")
-                                or _result.order_id,
+                                _result.raw.get("ibkr_order_id", "") or _result.order_id,
                             ),
                             exit_reason="ENTRY",
                             side="LONG" if rec.side.upper() == "BUY" else "SHORT",
@@ -1200,12 +1292,7 @@ class ExecutionRouter:
         resolved_venue, asset_class = _resolve_bot_routing(bot.bot_id, bot.symbol)
 
         def _symbol_root(value: str) -> str:
-            return (
-                value.upper()
-                .replace("/", "")
-                .rstrip("0123456789")
-                .replace("USD", "")
-            )
+            return value.upper().replace("/", "").rstrip("0123456789").replace("USD", "")
 
         def _matches_symbol(broker_symbol: object) -> bool:
             p_sym = str(broker_symbol or "").upper()
@@ -1229,7 +1316,8 @@ class ExecutionRouter:
             except Exception as exc:  # noqa: BLE001 - broker query failed
                 logger.debug(
                     "_get_broker_position_qty Alpaca query failed for %s: %s",
-                    bot.bot_id, exc,
+                    bot.bot_id,
+                    exc,
                 )
                 return None
 
@@ -1240,9 +1328,13 @@ class ExecutionRouter:
 
         try:
             venue = _get_live_ibkr_venue()
-            broker_positions = _run_on_live_ibkr_loop(
-                venue.get_positions(), timeout=5.0,
-            ) or []
+            broker_positions = (
+                _run_on_live_ibkr_loop(
+                    venue.get_positions(),
+                    timeout=5.0,
+                )
+                or []
+            )
             # IBKR returns {"symbol": "MNQ", "position": signed_qty, ...}.
             # Match by stripped symbol root so MNQ1 in supervisor matches
             # MNQ at the broker.
@@ -1257,7 +1349,8 @@ class ExecutionRouter:
         except Exception as exc:  # noqa: BLE001 — fall through to Alpaca
             logger.debug(
                 "_get_broker_position_qty IBKR query failed for %s: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
 
         # Try Alpaca as a fallback. AlpacaVenue.get_positions() is async
@@ -1280,7 +1373,8 @@ class ExecutionRouter:
         except Exception as exc:  # noqa: BLE001 — broker query failed
             logger.debug(
                 "_get_broker_position_qty Alpaca query failed for %s: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
             return None
 
@@ -1323,16 +1417,17 @@ class ExecutionRouter:
         broker_qty = self._get_broker_position_qty(bot)
         if broker_qty is None:
             logger.info(
-                "submit_exit: broker qty unavailable for %s; using "
-                "supervisor qty=%.6f",
-                bot.bot_id, supervisor_qty,
+                "submit_exit: broker qty unavailable for %s; using supervisor qty=%.6f",
+                bot.bot_id,
+                supervisor_qty,
             )
             exit_qty = supervisor_qty
         elif broker_qty < supervisor_qty:
             logger.warning(
-                "QTY DIVERGENCE %s: supervisor believes %.6f, broker holds "
-                "%.6f — sizing exit against broker qty",
-                bot.bot_id, supervisor_qty, broker_qty,
+                "QTY DIVERGENCE %s: supervisor believes %.6f, broker holds %.6f — sizing exit against broker qty",
+                bot.bot_id,
+                supervisor_qty,
+                broker_qty,
             )
             exit_qty = broker_qty
         else:
@@ -1374,28 +1469,20 @@ class ExecutionRouter:
                 # below stop. SHORT-side stop is above entry, exit is a
                 # BUY — pay above stop. ``sign_slip_exit`` already encodes
                 # the side: SELL → -1 (below), BUY → +1 (above).
-                fill_price = stop_price + sign_slip_exit * (
-                    stop_price * adverse_bps / 10_000.0
-                )
+                fill_price = stop_price + sign_slip_exit * (stop_price * adverse_bps / 10_000.0)
             except (TypeError, ValueError):
-                fill_price = ref_close + sign_slip_exit * (
-                    ref_close * adverse_bps / 10_000.0
-                )
+                fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
         elif exit_reason == "paper_target" and pos.get("bracket_target") is not None:
             try:
                 # Take-profit limits fill AT the limit (best case) when
                 # the market trades through. No adverse slippage applied.
                 fill_price = float(pos["bracket_target"])
             except (TypeError, ValueError):
-                fill_price = ref_close + sign_slip_exit * (
-                    ref_close * adverse_bps / 10_000.0
-                )
+                fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
         else:
             # Default path (no bracket reason set, e.g. emergency exit,
             # legacy random/percent fallback): mid + adverse slippage.
-            fill_price = ref_close + sign_slip_exit * (
-                ref_close * adverse_bps / 10_000.0
-            )
+            fill_price = ref_close + sign_slip_exit * (ref_close * adverse_bps / 10_000.0)
         fill_price = _round_to_tick(fill_price, bot.symbol)
         # Realized P&L (paper) — multiply by instrument point_value so
         # futures contracts (MNQ=$2/pt, ES=$50/pt, GC=$100/pt, etc.) get
@@ -1409,6 +1496,7 @@ class ExecutionRouter:
         # ambiguity for the supervisor's auto routing.
         try:
             from eta_engine.feeds.instrument_specs import effective_point_value
+
             _pv = float(effective_point_value(bot.symbol, route="auto") or 1.0)
         except Exception as exc:  # noqa: BLE001
             # Surface the lookup failure so a registry/spec gap doesn't
@@ -1416,7 +1504,8 @@ class ExecutionRouter:
             # (e.g. MNQ booked at 1/2x of true PnL).
             logger.debug(
                 "point_value lookup failed for %s, defaulting to 1.0: %s",
-                bot.symbol, exc,
+                bot.symbol,
+                exc,
             )
             _pv = 1.0
         sign = 1.0 if pos["side"] == "BUY" else -1.0
@@ -1504,6 +1593,7 @@ class ExecutionRouter:
                 get_cross_bot_position_tracker,
                 normalize_root as _cbpt_normalize_root,
             )
+
             tracker = get_cross_bot_position_tracker()
             if tracker is not None:
                 tracker.record_exit(
@@ -1514,7 +1604,8 @@ class ExecutionRouter:
         except Exception as exc:  # noqa: BLE001 -- never block on tracker write
             logger.warning(
                 "cross_bot_tracker.record_exit(%s) failed: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
         bot.open_position = None
         self._clear_persisted_open_position(bot)
@@ -1556,7 +1647,8 @@ class ExecutionRouter:
         except Exception as exc:  # noqa: BLE001 — persistence is best-effort
             logger.warning(
                 "_persist_open_position(%s) failed: %s — bot state may not survive restart",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
 
     def _clear_persisted_open_position(self, bot: BotInstance) -> None:
@@ -1568,7 +1660,8 @@ class ExecutionRouter:
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "_clear_persisted_open_position(%s) failed: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
 
     def _load_persisted_open_positions(self) -> int:
@@ -1614,7 +1707,8 @@ class ExecutionRouter:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "_load_persisted_open_positions: failed to read %s: %s",
-                    path, exc,
+                    path,
+                    exc,
                 )
         return restored
 
@@ -1657,17 +1751,20 @@ class ExecutionRouter:
         try:
             f = self.bf_dir / f"{bot.bot_id}.pending_order.json"
             f.write_text(
-                json.dumps({
-                    "ts": rec.fill_ts,
-                    "signal_id": rec.signal_id,
-                    "side": rec.side,
-                    "qty": rec.qty,
-                    "symbol": rec.symbol,
-                    "limit_price": limit_price,
-                    "stop_price": stop_price,
-                    "target_price": target_price,
-                    "reduce_only": bool(reduce_only),
-                }, indent=2),
+                json.dumps(
+                    {
+                        "ts": rec.fill_ts,
+                        "signal_id": rec.signal_id,
+                        "side": rec.side,
+                        "qty": rec.qty,
+                        "symbol": rec.symbol,
+                        "limit_price": limit_price,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
+                        "reduce_only": bool(reduce_only),
+                    },
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
         except OSError as exc:
@@ -1807,10 +1904,12 @@ class JarvisStrategySupervisor:
         # default; composite is the recommended live setup (crypto via
         # Coinbase, futures via TWS, fallback yfinance).
         from eta_engine.scripts.data_feeds import make_data_feed
+
         self.feed = make_data_feed(self.cfg.data_feed)
         logger.info(
             "supervisor data feed: %s (%s)",
-            self.cfg.data_feed, type(self.feed).__name__,
+            self.cfg.data_feed,
+            type(self.feed).__name__,
         )
         self._jarvis_full = None
         self._memory = None
@@ -1881,6 +1980,7 @@ class JarvisStrategySupervisor:
             CrossBotPositionTracker,
             register_cross_bot_position_tracker,
         )
+
         self._cross_bot_tracker = CrossBotPositionTracker(
             state_path=self.cfg.state_dir / _CBPT_FILENAME,
         )
@@ -1930,24 +2030,19 @@ class JarvisStrategySupervisor:
             validate_registry_no_duplicates(raise_on_duplicate=True)
         except RuntimeError as exc:
             logger.error(
-                "supervisor REFUSING TO LOAD BOTS — duplicate-config "
-                "registry entries: %s", exc,
+                "supervisor REFUSING TO LOAD BOTS — duplicate-config registry entries: %s",
+                exc,
             )
             raise
         except TypeError:
             # Older registry without raise_on_duplicate kwarg — skip.
             logger.warning(
-                "validate_registry_no_duplicates lacks raise_on_duplicate; "
-                "skipping duplicate-config guard",
+                "validate_registry_no_duplicates lacks raise_on_duplicate; skipping duplicate-config guard",
             )
 
         # Filter to operator-pinned subset (if any)
-        pinned = {
-            x.strip() for x in self.cfg.bots_env.split(",") if x.strip()
-        }
-        exit_watch = {
-            x.strip() for x in self.cfg.exit_watch_bots_env.split(",") if x.strip()
-        }
+        pinned = {x.strip() for x in self.cfg.bots_env.split(",") if x.strip()}
+        exit_watch = {x.strip() for x in self.cfg.exit_watch_bots_env.split(",") if x.strip()}
 
         # Lazily import the session-gate wiring helpers. Importing
         # here (rather than at module top) keeps the supervisor's
@@ -1975,25 +2070,29 @@ class JarvisStrategySupervisor:
             extras = getattr(a, "extras", {}) or {}
             daily_cap = extract_daily_loss_limit_pct(extras, default=2.5)
             gate = build_session_gate(
-                symbol=symbol, extras=extras, calendar=events_calendar,
+                symbol=symbol,
+                extras=extras,
+                calendar=events_calendar,
             )
             session_state = BotSessionState(gate=gate)
-            self.bots.append(BotInstance(
-                bot_id=a.bot_id,
-                symbol=symbol,
-                strategy_kind=getattr(a, "strategy_kind", "unknown"),
-                direction=getattr(a, "default_direction", "long"),
-                cash=self.cfg.starting_cash_per_bot,
-                daily_loss_limit_pct=daily_cap,
-                session_state=session_state,
-                entry_enabled=entry_enabled,
-                entry_disabled_reason=(
-                    "exit_watch_only" if not entry_enabled else ""
-                ),
-            ))
+            self.bots.append(
+                BotInstance(
+                    bot_id=a.bot_id,
+                    symbol=symbol,
+                    strategy_kind=getattr(a, "strategy_kind", "unknown"),
+                    direction=getattr(a, "default_direction", "long"),
+                    cash=self.cfg.starting_cash_per_bot,
+                    daily_loss_limit_pct=daily_cap,
+                    session_state=session_state,
+                    entry_enabled=entry_enabled,
+                    entry_disabled_reason=("exit_watch_only" if not entry_enabled else ""),
+                )
+            )
         logger.info(
             "loaded %d bots (pinned filter: %s; exit-watch: %s)",
-            len(self.bots), pinned or "ALL", exit_watch or "NONE",
+            len(self.bots),
+            pinned or "ALL",
+            exit_watch or "NONE",
         )
         return len(self.bots)
 
@@ -2014,6 +2113,7 @@ class JarvisStrategySupervisor:
             return None
         try:
             from eta_engine.core.events_calendar import load_from_json
+
             cal = load_from_json(path)
         except Exception as exc:  # noqa: BLE001 — calendar is advisory
             logger.warning(
@@ -2024,7 +2124,8 @@ class JarvisStrategySupervisor:
         self._events_calendar = cal
         logger.info(
             "events_calendar loaded: path=%s events=%d",
-            path, len(getattr(cal, "events", []) or []),
+            path,
+            len(getattr(cal, "events", []) or []),
         )
         return cal
 
@@ -2055,9 +2156,7 @@ class JarvisStrategySupervisor:
             return True
 
         lane = str(
-            readiness.get("launch_lane")
-            or readiness.get("promotion_status")
-            or "not_approved",
+            readiness.get("launch_lane") or readiness.get("promotion_status") or "not_approved",
         )
         reason = f"strategy_readiness_block:{lane}"
         bot.last_aggregation_reject_reason = reason
@@ -2065,8 +2164,7 @@ class JarvisStrategySupervisor:
         key = (bot.bot_id, reason)
         if key not in self._strategy_readiness_block_logged:
             logger.warning(
-                "STRATEGY READINESS block %s: mode=%s %s=false lane=%s "
-                "next_action=%s",
+                "STRATEGY READINESS block %s: mode=%s %s=false lane=%s next_action=%s",
                 bot.bot_id,
                 mode,
                 field,
@@ -2089,14 +2187,17 @@ class JarvisStrategySupervisor:
             from eta_engine.brain.jarvis_v3.memory_hierarchy import (
                 HierarchicalMemory,
             )
+
             self._memory = HierarchicalMemory()
             admin = JarvisAdmin()
             intel = JarvisIntelligence(
-                admin=admin, memory=self._memory,
+                admin=admin,
+                memory=self._memory,
                 cfg=IntelligenceConfig(enable_intelligence=True),
             )
             self._jarvis_full = JarvisFull(
-                intelligence=intel, memory=self._memory,
+                intelligence=intel,
+                memory=self._memory,
             )
             logger.info("JarvisFull bootstrapped")
             return True
@@ -2144,7 +2245,8 @@ class JarvisStrategySupervisor:
                         details={
                             "feed": feed_name,
                             "symbol": sym,
-                            "ok": ok, "empty": empty,
+                            "ok": ok,
+                            "empty": empty,
                             "empty_rate": round(empty_rate, 4),
                             "threshold": threshold,
                         },
@@ -2171,7 +2273,10 @@ class JarvisStrategySupervisor:
         return self.cfg.state_dir / _SENT_SIGNALS_LOG_FILENAME
 
     def _record_sent_signal(
-        self, bot_id: str, signal_id: str, sent_at_iso: str,
+        self,
+        bot_id: str,
+        signal_id: str,
+        sent_at_iso: str,
     ) -> None:
         """Atomically append a single signal record to the JSONL ledger.
 
@@ -2197,9 +2302,9 @@ class JarvisStrategySupervisor:
                     existing = path.read_text(encoding="utf-8")
                 except OSError as exc:
                     logger.warning(
-                        "_record_sent_signal: read of %s failed (%s); "
-                        "continuing with append-only write",
-                        path, exc,
+                        "_record_sent_signal: read of %s failed (%s); continuing with append-only write",
+                        path,
+                        exc,
                     )
                     existing = ""
             new_payload = existing + (line + "\n")
@@ -2212,11 +2317,14 @@ class JarvisStrategySupervisor:
             # operator notices but the system keeps running.
             logger.warning(
                 "_record_sent_signal: failed to persist %s/%s: %s",
-                bot_id, signal_id, exc,
+                bot_id,
+                signal_id,
+                exc,
             )
 
     def _load_recent_sent_signals(
-        self, hours: int = _SENT_SIGNALS_DEDUP_HOURS,
+        self,
+        hours: int = _SENT_SIGNALS_DEDUP_HOURS,
     ) -> set[tuple[str, str]]:
         """Return (bot_id, signal_id) pairs sent in the last ``hours``.
 
@@ -2259,9 +2367,9 @@ class JarvisStrategySupervisor:
                     continue
         except OSError as exc:
             logger.warning(
-                "_load_recent_sent_signals: read of %s failed (%s); "
-                "starting with empty dedup set",
-                path, exc,
+                "_load_recent_sent_signals: read of %s failed (%s); starting with empty dedup set",
+                path,
+                exc,
             )
             return set()
         return out
@@ -2278,7 +2386,8 @@ class JarvisStrategySupervisor:
              whose mtime is AFTER the divergence-detection moment.
         """
         if os.environ.get(
-            "ETA_RECONCILE_DIVERGENCE_ACK", "",
+            "ETA_RECONCILE_DIVERGENCE_ACK",
+            "",
         ).strip().lower() in {"1", "true", "yes", "on"}:
             return True
         path = self.cfg.state_dir / "reconcile_divergence_acknowledged.txt"
@@ -2330,7 +2439,9 @@ class JarvisStrategySupervisor:
                     "REJECT STORM TRIP %s: %d consecutive broker rejects "
                     "(threshold=%d) — entries halted for this bot until "
                     "counter resets",
-                    bot.bot_id, rejects, threshold,
+                    bot.bot_id,
+                    rejects,
+                    threshold,
                 )
                 # Best-effort: record a non-latching FLATTEN_BOT verdict
                 # for telemetry. Per-bot trips do NOT flip the global
@@ -2345,8 +2456,7 @@ class JarvisStrategySupervisor:
                                 action=KillAction.FLATTEN_BOT,
                                 severity=KillSeverity.CRITICAL,
                                 reason=(
-                                    f"{bot.bot_id} has {rejects} consecutive "
-                                    f"broker rejects (threshold={threshold})"
+                                    f"{bot.bot_id} has {rejects} consecutive broker rejects (threshold={threshold})"
                                 ),
                                 scope=f"bot:{bot.bot_id}",
                                 evidence={
@@ -2360,6 +2470,7 @@ class JarvisStrategySupervisor:
                     from eta_engine.brain.jarvis_v3.policies._v3_events import (
                         emit_event,
                     )
+
                     emit_event(
                         layer="risk",
                         event="reject_storm_trip",
@@ -2439,15 +2550,14 @@ class JarvisStrategySupervisor:
             try:
                 venue = _get_live_ibkr_venue()
                 ibkr_positions = _run_on_live_ibkr_loop(
-                    venue.get_positions(), timeout=10.0,
+                    venue.get_positions(),
+                    timeout=10.0,
                 )
                 findings["brokers_queried"].append("ibkr")
                 for p in ibkr_positions or []:
                     sym_raw = str(p.get("symbol", "")).upper()
                     root = sym_raw.rstrip("0123456789").replace("USD", "")
-                    broker_by_root[root] = broker_by_root.get(root, 0.0) + float(
-                        p.get("position", 0) or 0
-                    )
+                    broker_by_root[root] = broker_by_root.get(root, 0.0) + float(p.get("position", 0) or 0)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("reconcile_with_broker: IBKR query failed: %s", exc)
                 findings["ibkr_error"] = str(exc)
@@ -2462,6 +2572,7 @@ class JarvisStrategySupervisor:
         if query_alpaca:
             try:
                 from eta_engine.venues.alpaca import AlpacaVenue
+
                 alpaca = AlpacaVenue()
                 try:
                     alpaca_positions = asyncio.run(alpaca.get_positions())
@@ -2470,7 +2581,8 @@ class JarvisStrategySupervisor:
                     # runner as a generic async runner — it just executes
                     # the coroutine and waits for the result.
                     alpaca_positions = _run_on_live_ibkr_loop(
-                        alpaca.get_positions(), timeout=10.0,
+                        alpaca.get_positions(),
+                        timeout=10.0,
                     )
                 findings["brokers_queried"].append("alpaca")
                 for p in alpaca_positions or []:
@@ -2528,25 +2640,29 @@ class JarvisStrategySupervisor:
             if diff <= tolerance:
                 findings["matched"] += 1
                 if diff > 1e-6:
-                    findings.setdefault("tolerated_deltas", []).append({
-                        "symbol": root,
-                        "broker_qty": b_qty,
-                        "supervisor_qty": s_qty,
-                        "delta": b_qty - s_qty,
-                        "tolerance": tolerance,
-                    })
+                    findings.setdefault("tolerated_deltas", []).append(
+                        {
+                            "symbol": root,
+                            "broker_qty": b_qty,
+                            "supervisor_qty": s_qty,
+                            "delta": b_qty - s_qty,
+                            "tolerance": tolerance,
+                        }
+                    )
                 continue
             if abs(s_qty) < 1e-6:
                 findings["broker_only"].append({"symbol": root, "broker_qty": b_qty})
             elif abs(b_qty) < 1e-6:
                 findings["supervisor_only"].append({"symbol": root, "supervisor_qty": s_qty})
             else:
-                findings["divergent"].append({
-                    "symbol": root,
-                    "broker_qty": b_qty,
-                    "supervisor_qty": s_qty,
-                    "delta": b_qty - s_qty,
-                })
+                findings["divergent"].append(
+                    {
+                        "symbol": root,
+                        "broker_qty": b_qty,
+                        "supervisor_qty": s_qty,
+                        "delta": b_qty - s_qty,
+                    }
+                )
 
         # Set the runtime divergence flag whenever the broker holds a
         # position the supervisor doesn't know about (broker_only) OR
@@ -2554,9 +2670,7 @@ class JarvisStrategySupervisor:
         # is NOT a hold-orders condition: that's just stale supervisor
         # state, not broker exposure the supervisor would layer on top
         # of.
-        has_broker_unknown = bool(
-            findings["broker_only"] or findings["divergent"]
-        )
+        has_broker_unknown = bool(findings["broker_only"] or findings["divergent"])
         if has_broker_unknown:
             self._reconcile_divergence_detected = True
             self._reconcile_divergence_at = datetime.now(UTC)
@@ -2564,12 +2678,14 @@ class JarvisStrategySupervisor:
                 "RECONCILE BROKER POSITIONS UNKNOWN TO SUPERVISOR — "
                 "halting new entries until operator clears: "
                 "broker_only=%s divergent=%s",
-                findings["broker_only"], findings["divergent"],
+                findings["broker_only"],
+                findings["divergent"],
             )
             with contextlib.suppress(Exception):
                 from eta_engine.brain.jarvis_v3.policies._v3_events import (
                     emit_event,
                 )
+
                 emit_event(
                     layer="ops",
                     event="reconcile_divergence_detected",
@@ -2584,12 +2700,15 @@ class JarvisStrategySupervisor:
         elif findings["broker_only"] or findings["supervisor_only"] or findings["divergent"]:
             logger.warning(
                 "RECONCILE divergence: broker_only=%s supervisor_only=%s divergent=%s",
-                findings["broker_only"], findings["supervisor_only"], findings["divergent"],
+                findings["broker_only"],
+                findings["supervisor_only"],
+                findings["divergent"],
             )
         else:
             logger.info(
                 "RECONCILE: supervisor + brokers agree on %d symbols (%s)",
-                findings["matched"], ",".join(findings["brokers_queried"]),
+                findings["matched"],
+                ",".join(findings["brokers_queried"]),
             )
 
         # Resync the cross-bot net-position tracker against broker
@@ -2603,10 +2722,7 @@ class JarvisStrategySupervisor:
             tracker = getattr(self, "_cross_bot_tracker", None)
             if tracker is not None and findings.get("brokers_queried"):
                 roots_to_resync = set(broker_by_root) | set(supervisor_by_root)
-                resync_map = {
-                    root: float(broker_by_root.get(root, 0.0))
-                    for root in roots_to_resync
-                }
+                resync_map = {root: float(broker_by_root.get(root, 0.0)) for root in roots_to_resync}
                 tracker.resync_from_broker(by_root=resync_map)
                 logger.info(
                     "cross_bot_tracker resynced from broker: %s",
@@ -2614,14 +2730,15 @@ class JarvisStrategySupervisor:
                 )
         except Exception as exc:  # noqa: BLE001 -- resync failure must not block reconcile
             logger.warning(
-                "cross_bot_tracker resync failed: %s -- tracker may "
-                "drift from broker until next reconcile", exc,
+                "cross_bot_tracker resync failed: %s -- tracker may drift from broker until next reconcile",
+                exc,
             )
 
         # Persist findings so the dashboard / red-team can see them
         with contextlib.suppress(OSError):
             (self.cfg.state_dir / "reconcile_last.json").write_text(
-                json.dumps(findings, indent=2, default=str), encoding="utf-8",
+                json.dumps(findings, indent=2, default=str),
+                encoding="utf-8",
             )
 
         # Drop phantom open_positions. ``_load_persisted_open_positions``
@@ -2669,9 +2786,9 @@ class JarvisStrategySupervisor:
                 broker_qty = self._router._get_broker_position_qty(bot)  # noqa: SLF001
             except Exception as exc:  # noqa: BLE001 — must not block reconcile
                 logger.warning(
-                    "phantom-clean: _get_broker_position_qty(%s) raised %s; "
-                    "leaving open_position as-is",
-                    bot.bot_id, exc,
+                    "phantom-clean: _get_broker_position_qty(%s) raised %s; leaving open_position as-is",
+                    bot.bot_id,
+                    exc,
                 )
                 unreachable.append(bot.bot_id)
                 continue
@@ -2680,8 +2797,7 @@ class JarvisStrategySupervisor:
                 continue
             if abs(float(broker_qty)) < 1e-6:
                 logger.critical(
-                    "PHANTOM open_position cleared for %s: persisted "
-                    "side=%s qty=%s entry=%s but broker reports flat",
+                    "PHANTOM open_position cleared for %s: persisted side=%s qty=%s entry=%s but broker reports flat",
                     bot.bot_id,
                     pos.get("side"),
                     pos.get("qty"),
@@ -2694,9 +2810,11 @@ class JarvisStrategySupervisor:
                 kept.append(bot.bot_id)
         if cleared:
             logger.info(
-                "phantom-clean summary: cleared=%d kept=%d unreachable=%d "
-                "(cleared_bots=%s)",
-                len(cleared), len(kept), len(unreachable), cleared,
+                "phantom-clean summary: cleared=%d kept=%d unreachable=%d (cleared_bots=%s)",
+                len(cleared),
+                len(kept),
+                len(unreachable),
+                cleared,
             )
         return {"cleared": cleared, "kept": kept, "unreachable": unreachable}
 
@@ -2740,7 +2858,8 @@ class JarvisStrategySupervisor:
             logger.critical(
                 "kill_switch_latch boot consult raised %s — refusing to start. "
                 "Investigate var/eta_engine/state/kill_switch_latch.json",
-                exc, exc_info=True,
+                exc,
+                exc_info=True,
             )
             return 3
         if not ok:
@@ -2764,9 +2883,9 @@ class JarvisStrategySupervisor:
         # the consult and _record_sent_signal for the append.
         self._sent_signals = self._load_recent_sent_signals()
         logger.info(
-            "supervisor remembers %d signals from the last %dh, "
-            "will not re-issue these",
-            len(self._sent_signals), _SENT_SIGNALS_DEDUP_HOURS,
+            "supervisor remembers %d signals from the last %dh, will not re-issue these",
+            len(self._sent_signals),
+            _SENT_SIGNALS_DEDUP_HOURS,
         )
 
         # Restart-safe open-position state: restore each bot's
@@ -2795,14 +2914,14 @@ class JarvisStrategySupervisor:
             restored_roots = self._cross_bot_tracker.load()
             if restored_roots:
                 logger.info(
-                    "supervisor restored cross-bot net-position book: "
-                    "%d root(s), snapshot=%s",
-                    restored_roots, self._cross_bot_tracker.snapshot(),
+                    "supervisor restored cross-bot net-position book: %d root(s), snapshot=%s",
+                    restored_roots,
+                    self._cross_bot_tracker.snapshot(),
                 )
         except Exception as exc:  # noqa: BLE001 -- load failure must not block startup; reconcile fixes drift
             logger.warning(
-                "cross_bot_tracker.load() failed (%s) -- starting from "
-                "zero net; broker reconcile will populate.", exc,
+                "cross_bot_tracker.load() failed (%s) -- starting from zero net; broker reconcile will populate.",
+                exc,
             )
 
         if not self.bootstrap_jarvis():
@@ -2818,10 +2937,12 @@ class JarvisStrategySupervisor:
             self.reconcile_with_broker()
 
         logger.info(
-            "supervisor running: %d bots, mode=%s, feed=%s, tick=%.0fs, "
-            "live_money=%s",
-            len(self.bots), self.cfg.mode, self.cfg.data_feed,
-            self.cfg.tick_s, self.cfg.live_money_enabled,
+            "supervisor running: %d bots, mode=%s, feed=%s, tick=%.0fs, live_money=%s",
+            len(self.bots),
+            self.cfg.mode,
+            self.cfg.data_feed,
+            self.cfg.tick_s,
+            self.cfg.live_money_enabled,
         )
 
         # Keep-alive thread: writes a separate {"keepalive_ts": ...}
@@ -2871,13 +2992,17 @@ class JarvisStrategySupervisor:
             # crashed mid-tick.
             with contextlib.suppress(Exception):
                 if crash_exc is not None and not isinstance(
-                    crash_exc, (KeyboardInterrupt, SystemExit),
+                    crash_exc,
+                    (KeyboardInterrupt, SystemExit),
                 ):
                     import traceback as _tb
+
                     last_line = ""
                     with contextlib.suppress(Exception):
                         tb_lines = _tb.format_exception(
-                            type(crash_exc), crash_exc, crash_exc.__traceback__,
+                            type(crash_exc),
+                            crash_exc,
+                            crash_exc.__traceback__,
                         )
                         last_line = (tb_lines[-1] if tb_lines else "").strip()
                     record_uptime_event(
@@ -2893,9 +3018,7 @@ class JarvisStrategySupervisor:
                     record_uptime_event(
                         component="supervisor",
                         event="stop",
-                        reason="sigterm_or_clean_exit"
-                        if crash_exc is None
-                        else type(crash_exc).__name__,
+                        reason="sigterm_or_clean_exit" if crash_exc is None else type(crash_exc).__name__,
                         extra={"tick_count": tick_count},
                     )
 
@@ -2923,7 +3046,9 @@ class JarvisStrategySupervisor:
                 self._tick_bot(bot, tick_count)
             except Exception as exc:  # noqa: BLE001 -- never break the loop
                 logger.exception(
-                    "tick_bot %s raised: %s", bot.bot_id, exc,
+                    "tick_bot %s raised: %s",
+                    bot.bot_id,
+                    exc,
                 )
         # L2 supercharge: persist supervisor's open-positions belief to
         # disk so l2_reconciliation (cron) can compare against broker
@@ -2941,8 +3066,7 @@ class JarvisStrategySupervisor:
                         "qty": int(abs(float(bot.open_position.get("qty", 0) or 0))),
                     }
                     for bot in self.bots
-                    if isinstance(bot.open_position, dict)
-                    and bot.open_position.get("qty")
+                    if isinstance(bot.open_position, dict) and bot.open_position.get("qty")
                 ],
             )
         except Exception as exc:  # noqa: BLE001 -- never break the loop
@@ -3063,10 +3187,7 @@ class JarvisStrategySupervisor:
         if now_utc >= until:
             cooldowns.pop(bot.bot_id, None)
             logged = getattr(self, "_stale_flatten_cooldown_logged", set())
-            self._stale_flatten_cooldown_logged = {
-                key for key in logged
-                if key[0] != bot.bot_id
-            }
+            self._stale_flatten_cooldown_logged = {key for key in logged if key[0] != bot.bot_id}
             return False
         remaining_s = max(0.0, (until - now_utc).total_seconds())
         reason = f"stale_force_flatten_cooldown:{remaining_s:.0f}s_remaining"
@@ -3104,10 +3225,7 @@ class JarvisStrategySupervisor:
         if not isinstance(pos, dict) or bool(pos.get("broker_bracket")):
             return False
         opened_at = self._parse_open_position_ts(
-            pos.get("last_ack_at")
-            or pos.get("opened_at")
-            or pos.get("entry_ts")
-            or pos.get("ts")
+            pos.get("last_ack_at") or pos.get("opened_at") or pos.get("entry_ts") or pos.get("ts")
         )
         if opened_at is None:
             return False
@@ -3159,10 +3277,7 @@ class JarvisStrategySupervisor:
         if bool(pos.get("broker_bracket")) or pos.get("stale_tighten_applied_at"):
             return
         opened_at = self._parse_open_position_ts(
-            pos.get("last_ack_at")
-            or pos.get("opened_at")
-            or pos.get("entry_ts")
-            or pos.get("ts")
+            pos.get("last_ack_at") or pos.get("opened_at") or pos.get("entry_ts") or pos.get("ts")
         )
         if opened_at is None:
             return
@@ -3205,8 +3320,7 @@ class JarvisStrategySupervisor:
         with contextlib.suppress(Exception):
             self._router._persist_open_position(bot)  # noqa: SLF001
         logger.warning(
-            "STALE TIGHTEN %s: age_s=%.0f tighten_after_s=%.0f side=%s "
-            "prev_stop=%s new_stop=%.4f factor=%.2f",
+            "STALE TIGHTEN %s: age_s=%.0f tighten_after_s=%.0f side=%s prev_stop=%s new_stop=%.4f factor=%.2f",
             bot.bot_id,
             age_s,
             tighten_after_s,
@@ -3237,6 +3351,7 @@ class JarvisStrategySupervisor:
         if JarvisStrategySupervisor._IS_REAL_BAR_FN is ...:
             try:
                 from eta_engine.scripts.data_feeds import _is_real_bar
+
                 JarvisStrategySupervisor._IS_REAL_BAR_FN = _is_real_bar
             except Exception as exc:  # noqa: BLE001
                 logger.debug("_is_real_bar unavailable: %s", exc)
@@ -3275,7 +3390,11 @@ class JarvisStrategySupervisor:
             self._maybe_exit(bot, bar)
 
     def _maybe_flatten_for_eod(
-        self, bot: BotInstance, bar: dict[str, Any], *, now: datetime,
+        self,
+        bot: BotInstance,
+        bar: dict[str, Any],
+        *,
+        now: datetime,
     ) -> None:
         """Force-flatten any open position when the SessionGate signals EoD.
 
@@ -3296,7 +3415,9 @@ class JarvisStrategySupervisor:
         pos["exit_reason"] = "eod_flatten"
         logger.warning(
             "EOD FLATTEN %s: %s — closing %s position",
-            bot.bot_id, reason, pos.get("side", "?"),
+            bot.bot_id,
+            reason,
+            pos.get("side", "?"),
         )
         rec = self._router.submit_exit(bot=bot, bar=bar)
         if rec is None:
@@ -3305,7 +3426,8 @@ class JarvisStrategySupervisor:
         # submit_exit so edge_tracker observes the original entry side
         # rather than the freshly-cleared position.
         self._propagate_close(
-            bot, rec,
+            bot,
+            rec,
             entry_snapshot=getattr(rec, "entry_snapshot", None),
         )
         # After a force-flatten, also re-evaluate the daily-loss cap
@@ -3314,7 +3436,10 @@ class JarvisStrategySupervisor:
         self._enforce_daily_loss_cap(bot, now=now)
 
     def _enforce_daily_loss_cap(
-        self, bot: BotInstance, *, now: datetime,
+        self,
+        bot: BotInstance,
+        *,
+        now: datetime,
     ) -> bool:
         """Update the bot's daily-loss state and return halted-or-not.
 
@@ -3329,6 +3454,7 @@ class JarvisStrategySupervisor:
         from eta_engine.scripts.supervisor_session_wiring import (
             enforce_daily_loss_cap,
         )
+
         starting_cash = float(self.cfg.starting_cash_per_bot or bot.cash or 0.0)
         halted, _loss_pct = enforce_daily_loss_cap(
             bot.session_state,
@@ -3343,7 +3469,9 @@ class JarvisStrategySupervisor:
                 logger.warning(
                     "DAILY LOSS HALT %s: realized_pnl=%.2f limit=%.2f%% "
                     "session=%s — entries blocked until next session",
-                    bot.bot_id, bot.realized_pnl, bot.daily_loss_limit_pct,
+                    bot.bot_id,
+                    bot.realized_pnl,
+                    bot.daily_loss_limit_pct,
                     bot.session_state.daily_session_date,
                 )
                 self._daily_halt_logged[key] = True
@@ -3360,22 +3488,22 @@ class JarvisStrategySupervisor:
         from eta_engine.scripts.supervisor_session_wiring import (
             evaluate_pre_entry_gate,
         )
+
         allowed, reason = evaluate_pre_entry_gate(bot.session_state, now=now)
         if not allowed:
             key = (bot.bot_id, reason)
             if not self._gate_block_logged.get(key):
                 logger.info(
                     "SESSION GATE block %s: reason=%s symbol=%s",
-                    bot.bot_id, reason, bot.symbol,
+                    bot.bot_id,
+                    reason,
+                    bot.symbol,
                 )
                 self._gate_block_logged[key] = True
             return
         # Clear the dedup cache for this bot when re-allowed so the
         # next future block emits a fresh log line.
-        self._gate_block_logged = {
-            k: v for k, v in self._gate_block_logged.items()
-            if k[0] != bot.bot_id
-        }
+        self._gate_block_logged = {k: v for k, v in self._gate_block_logged.items() if k[0] != bot.bot_id}
 
         # ── Per-bot daily-loss cap (registry: daily_loss_limit_pct) ───
         # Halts new entries when realized PnL since the session anchor
@@ -3471,14 +3599,17 @@ class JarvisStrategySupervisor:
             except Exception as exc:  # noqa: BLE001 — latch read must fail closed
                 logger.critical(
                     "kill_switch_latch read failed for %s — refusing entry: %s",
-                    bot.bot_id, exc,
+                    bot.bot_id,
+                    exc,
                 )
                 return
             if rec.is_tripped():
                 if not getattr(self, "_latch_warned_session", False):
                     logger.warning(
                         "KILL SWITCH LATCH TRIPPED — entries halted: scope=%s action=%s reason=%s",
-                        rec.scope, rec.action, rec.reason,
+                        rec.scope,
+                        rec.action,
+                        rec.reason,
                     )
                     self._latch_warned_session = True
                 return
@@ -3503,13 +3634,15 @@ class JarvisStrategySupervisor:
         except Exception as exc:  # noqa: BLE001 — gate failure must fail closed
             logger.critical(
                 "daily_loss_killswitch raised %s — refusing entry; investigate state files",
-                exc, exc_info=True,
+                exc,
+                exc_info=True,
             )
             return
         if tripped:
             if not getattr(self, "_killswitch_warned_today", False):
                 logger.warning(
-                    "DAILY KILL SWITCH TRIPPED — entries halted: %s", reason,
+                    "DAILY KILL SWITCH TRIPPED — entries halted: %s",
+                    reason,
                 )
                 self._killswitch_warned_today = True
                 # Emit a v3 event so Hermes pings the operator's phone.
@@ -3517,6 +3650,7 @@ class JarvisStrategySupervisor:
                     from eta_engine.brain.jarvis_v3.policies._v3_events import (
                         emit_event,
                     )
+
                     emit_event(
                         layer="ops",
                         event="daily_kill_switch_tripped",
@@ -3556,7 +3690,10 @@ class JarvisStrategySupervisor:
                 if _composite in {"long", "short"} and _composite != side:
                     logger.info(
                         "SAGE_FLIP %s registered=%s -> sage=%s (conv=%.2f)",
-                        bot.bot_id, side, _composite, sage_probe.conviction,
+                        bot.bot_id,
+                        side,
+                        _composite,
+                        sage_probe.conviction,
                     )
                     side = _composite
             sage_report = sage_probe
@@ -3596,7 +3733,9 @@ class JarvisStrategySupervisor:
             payload["sage_score"] = 0.5
 
         verdict = self._consult_jarvis(
-            bot=bot, signal_id=signal_id, action="ORDER_PLACE",
+            bot=bot,
+            signal_id=signal_id,
+            action="ORDER_PLACE",
             payload=payload,
             narrative=f"mock-entry {bot.bot_id} @ {bar['close']:.2f}",
         )
@@ -3633,14 +3772,19 @@ class JarvisStrategySupervisor:
         # rejection is recorded on the bot's heartbeat for operator
         # visibility. Env-flag: ETA_BOT_AGGREGATION_ENABLED (default ON).
         consolidation_reason = self._check_signal_aggregation(
-            bot=bot, side=order_side, bar=bar,
+            bot=bot,
+            side=order_side,
+            bar=bar,
         )
         if consolidation_reason:
             bot.last_aggregation_reject_reason = consolidation_reason
             bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
             logger.info(
                 "AGGREG %s suppressed entry: %s symbol=%s side=%s",
-                bot.bot_id, consolidation_reason, bot.symbol, order_side,
+                bot.bot_id,
+                consolidation_reason,
+                bot.symbol,
+                order_side,
             )
             return
 
@@ -3662,12 +3806,12 @@ class JarvisStrategySupervisor:
                 resolve_fleet_cap,
                 resolve_prop_sleeve_cap,
             )
+
             sym_root_for_cap = normalize_root(bot.symbol)
             est_qty = float(
                 _MAX_QTY_PER_ORDER.get(
                     sym_root_for_cap,
-                    _MAX_QTY_DEFAULT_FUTURES if sym_root_for_cap in _FUTURES_ROOTS
-                    else _MAX_QTY_DEFAULT_CRYPTO,
+                    _MAX_QTY_DEFAULT_FUTURES if sym_root_for_cap in _FUTURES_ROOTS else _MAX_QTY_DEFAULT_CRYPTO,
                 ),
             )
             self._cross_bot_tracker.assert_fleet_position_cap(
@@ -3684,21 +3828,28 @@ class JarvisStrategySupervisor:
             )
         except FleetPositionCapExceeded as exc:
             bot.last_aggregation_reject_reason = (
-                "fleet_position_cap: root=" + str(exc.root)
-                + " current=" + format(exc.current_net, "+g")
-                + " req=" + format(exc.requested_delta, "+g")
-                + " proposed=" + format(exc.proposed_total, "+g")
-                + " cap=" + format(exc.fleet_cap, "g")
+                "fleet_position_cap: root="
+                + str(exc.root)
+                + " current="
+                + format(exc.current_net, "+g")
+                + " req="
+                + format(exc.requested_delta, "+g")
+                + " proposed="
+                + format(exc.proposed_total, "+g")
+                + " cap="
+                + format(exc.fleet_cap, "g")
             )
             bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
             logger.warning(
                 "FLEET POSITION CAP %s blocked entry: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
             with contextlib.suppress(Exception):
                 from eta_engine.brain.jarvis_v3.policies._v3_events import (
                     emit_event,
                 )
+
                 emit_event(
                     layer="risk",
                     event="fleet_position_cap_blocked",
@@ -3718,12 +3869,18 @@ class JarvisStrategySupervisor:
             return
         except PropSleeveCapExceeded as exc:
             bot.last_aggregation_reject_reason = (
-                "prop_sleeve_cap:" + str(exc.sleeve)
-                + " root=" + str(exc.root)
-                + " current_equiv=" + format(exc.current_equiv, "+g")
-                + " req_equiv=" + format(exc.requested_equiv, "+g")
-                + " proposed_equiv=" + format(exc.proposed_equiv, "+g")
-                + " cap=" + format(exc.sleeve_cap, "g")
+                "prop_sleeve_cap:"
+                + str(exc.sleeve)
+                + " root="
+                + str(exc.root)
+                + " current_equiv="
+                + format(exc.current_equiv, "+g")
+                + " req_equiv="
+                + format(exc.requested_equiv, "+g")
+                + " proposed_equiv="
+                + format(exc.proposed_equiv, "+g")
+                + " cap="
+                + format(exc.sleeve_cap, "g")
             )
             bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
             logger.warning(
@@ -3735,6 +3892,7 @@ class JarvisStrategySupervisor:
                 from eta_engine.brain.jarvis_v3.policies._v3_events import (
                     emit_event,
                 )
+
                 emit_event(
                     layer="risk",
                     event="prop_sleeve_cap_blocked",
@@ -3755,7 +3913,10 @@ class JarvisStrategySupervisor:
             return
 
         rec = self._router.submit_entry(
-            bot=bot, signal_id=signal_id, side=order_side, bar=bar,
+            bot=bot,
+            signal_id=signal_id,
+            side=order_side,
+            bar=bar,
             size_mult=size_mult,
         )
         if rec:
@@ -3774,6 +3935,7 @@ class JarvisStrategySupervisor:
                 from eta_engine.safety.cross_bot_position_tracker import (
                     normalize_root as _cbpt_normalize_root,
                 )
+
                 self._cross_bot_tracker.record_entry(
                     symbol_root=_cbpt_normalize_root(rec.symbol),
                     side=rec.side,
@@ -3782,12 +3944,17 @@ class JarvisStrategySupervisor:
             except Exception as exc:  # noqa: BLE001 -- never block on tracker write
                 logger.warning(
                     "cross_bot_tracker.record_entry(%s) failed: %s",
-                    bot.bot_id, exc,
+                    bot.bot_id,
+                    exc,
                 )
             logger.info(
                 "ENTRY  %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f)",
-                bot.bot_id, order_side, rec.qty, rec.fill_price,
-                verdict.consolidated.final_verdict, size_mult,
+                bot.bot_id,
+                order_side,
+                rec.qty,
+                rec.fill_price,
+                verdict.consolidated.final_verdict,
+                size_mult,
             )
 
     # ── Trailing stop / partial profit / aggregation helpers ─────────
@@ -3814,7 +3981,9 @@ class JarvisStrategySupervisor:
             return default
 
     def _compute_realized_r(
-        self, pos: dict[str, Any], reference_price: float,
+        self,
+        pos: dict[str, Any],
+        reference_price: float,
     ) -> float | None:
         """Return current unrealized-R for an open position, or None.
 
@@ -3835,7 +4004,10 @@ class JarvisStrategySupervisor:
         return sign * (reference_price - entry) / risk_per_unit
 
     def _maybe_apply_trailing_stop(
-        self, bot: BotInstance, pos: dict[str, Any], bar: dict[str, Any],
+        self,
+        bot: BotInstance,
+        pos: dict[str, Any],
+        bar: dict[str, Any],
     ) -> None:
         """Move the bracket_stop to breakeven (or tighter) once price
         reaches the configured R-multiple in our favor.
@@ -3893,12 +4065,19 @@ class JarvisStrategySupervisor:
             self._router._persist_open_position(bot)  # noqa: SLF001
         logger.info(
             "TRAIL  %s side=%s prev_stop=%s new_stop=%.4f r=%.3f activate_r=%.2f",
-            bot.bot_id, pos.get("side"), prev_stop, new_stop,
-            unrealized_r, activate_r,
+            bot.bot_id,
+            pos.get("side"),
+            prev_stop,
+            new_stop,
+            unrealized_r,
+            activate_r,
         )
 
     def _maybe_take_partial_profit(
-        self, bot: BotInstance, pos: dict[str, Any], bar: dict[str, Any],
+        self,
+        bot: BotInstance,
+        pos: dict[str, Any],
+        bar: dict[str, Any],
     ) -> None:
         """Close ``ETA_PARTIAL_PROFIT_PCT`` of position at
         ``ETA_PARTIAL_PROFIT_R`` and let the remainder ride.
@@ -3956,7 +4135,8 @@ class JarvisStrategySupervisor:
         except Exception as exc:  # noqa: BLE001 — never break tick on partial
             logger.exception(
                 "partial-profit exit raised for %s: %s — restoring full qty",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
             pos["qty"] = original_qty
             return
@@ -3976,13 +4156,18 @@ class JarvisStrategySupervisor:
                 self._router._persist_open_position(bot)  # noqa: SLF001
             logger.info(
                 "PARTIAL %s %s closed=%.6f remaining=%.6f r=%.3f trigger_r=%.2f",
-                bot.bot_id, pos.get("side"), partial_qty, remaining_qty,
-                unrealized_r, trigger_r,
+                bot.bot_id,
+                pos.get("side"),
+                partial_qty,
+                remaining_qty,
+                unrealized_r,
+                trigger_r,
             )
             # Propagate the partial close so feedback layers (memory /
             # bandits / edge_tracker) see the realized-R contribution.
             self._propagate_close(
-                bot, rec,
+                bot,
+                rec,
                 entry_snapshot=getattr(rec, "entry_snapshot", None),
             )
         else:
@@ -4016,6 +4201,7 @@ class JarvisStrategySupervisor:
         direction = "BUY" if str(side).upper() in {"BUY", "LONG"} else "SELL"
         key = (str(bot.symbol), direction)
         import time as _time
+
         now_s = _time.time()
         entry = self._aggregation_cache.get(key)
         if entry is not None:
@@ -4035,10 +4221,7 @@ class JarvisStrategySupervisor:
         # Garbage-collect entries older than 4x the window to keep the
         # cache bounded across long-running supervisor sessions.
         cutoff = now_s - 4.0 * window_s
-        for stale_key in [
-            k for k, v in self._aggregation_cache.items()
-            if float(v.get("fired_at", 0.0)) < cutoff
-        ]:
+        for stale_key in [k for k, v in self._aggregation_cache.items() if float(v.get("fired_at", 0.0)) < cutoff]:
             self._aggregation_cache.pop(stale_key, None)
         return None
 
@@ -4103,9 +4286,10 @@ class JarvisStrategySupervisor:
             emergency_loss_pct = max(2.0 * stop_dist_pct, 0.04)
             if ret_pct < -emergency_loss_pct:
                 logger.warning(
-                    "EMERGENCY EXIT %s: loss=%.3f exceeds 2x bracket stop "
-                    "(%.3f) — broker bracket may be detached",
-                    bot.bot_id, ret_pct, stop_dist_pct,
+                    "EMERGENCY EXIT %s: loss=%.3f exceeds 2x bracket stop (%.3f) — broker bracket may be detached",
+                    bot.bot_id,
+                    ret_pct,
+                    stop_dist_pct,
                 )
                 rec = self._router.submit_exit(bot=bot, bar=bar)
                 if rec:
@@ -4113,7 +4297,8 @@ class JarvisStrategySupervisor:
                     # _propagate_close sees the original entry side/price
                     # rather than the cleared bot.open_position.
                     self._propagate_close(
-                        bot, rec,
+                        bot,
+                        rec,
                         entry_snapshot=getattr(rec, "entry_snapshot", None),
                     )
             return
@@ -4193,7 +4378,10 @@ class JarvisStrategySupervisor:
         if rec:
             logger.info(
                 "EXIT   %s %s %.4f @ %.4f (R=%.3f)",
-                bot.bot_id, rec.side, rec.qty, rec.fill_price,
+                bot.bot_id,
+                rec.side,
+                rec.qty,
+                rec.fill_price,
                 rec.realized_r or 0.0,
             )
             # Feedback loop: propagate to memory + bandits + calibrator.
@@ -4201,7 +4389,8 @@ class JarvisStrategySupervisor:
             # edge_tracker observation receives the original entry-side /
             # entry-price (before bot.open_position was cleared).
             self._propagate_close(
-                bot, rec,
+                bot,
+                rec,
                 entry_snapshot=getattr(rec, "entry_snapshot", None),
             )
 
@@ -4244,9 +4433,7 @@ class JarvisStrategySupervisor:
                     if not _peer.sage_bars or len(_peer.sage_bars) < 5:
                         continue
                     _closes = [
-                        float(b.get("close", 0))
-                        for b in list(_peer.sage_bars)[-30:]
-                        if b.get("close") is not None
+                        float(b.get("close", 0)) for b in list(_peer.sage_bars)[-30:] if b.get("close") is not None
                     ]
                     if len(_closes) < 5:
                         continue
@@ -4271,6 +4458,7 @@ class JarvisStrategySupervisor:
             report = consult_sage(ctx)
             with contextlib.suppress(Exception):
                 from eta_engine.brain.jarvis_v3.sage.last_report_cache import set_last
+
                 set_last(bot.symbol, side, report)
             return report
         except Exception as exc:  # noqa: BLE001
@@ -4306,19 +4494,16 @@ class JarvisStrategySupervisor:
         try:
             live_regime = self._load_live_regime()
             blocked = live_regime.get("block_strategies") or []
-            if (
-                isinstance(blocked, list)
-                and bot.strategy_kind
-                and bot.strategy_kind in blocked
-            ):
+            if isinstance(blocked, list) and bot.strategy_kind and bot.strategy_kind in blocked:
                 primary = live_regime.get("primary_regime") or "unknown"
                 logger.info(
                     "regime-block %s.%s: strategy_kind=%s blocked by regime=%s",
-                    bot.bot_id, action, bot.strategy_kind, primary,
+                    bot.bot_id,
+                    action,
+                    bot.strategy_kind,
+                    primary,
                 )
-                bot.last_jarvis_verdict_reason = (
-                    f"regime_block:{bot.strategy_kind}@{primary}"
-                )
+                bot.last_jarvis_verdict_reason = f"regime_block:{bot.strategy_kind}@{primary}"
                 return None
         except Exception:  # noqa: BLE001 -- regime feed must never block consults
             pass
@@ -4329,6 +4514,7 @@ class JarvisStrategySupervisor:
                 SubsystemId,
                 make_action_request,
             )
+
             atype = getattr(ActionType, action, ActionType.ORDER_PLACE)
 
             # Resolve the per-bot SubsystemId. The legacy lookup stripped
@@ -4376,16 +4562,9 @@ class JarvisStrategySupervisor:
                 # (GC1) that DataLibrary indexes.
                 elif "gold" in bot_lower or symbol_upper in ("GC", "GC1", "MGC", "MGC1"):
                     sub = SubsystemId.BOT_GC
-                elif (
-                    "crude" in bot_lower
-                    or "oil" in bot_lower
-                    or symbol_upper in ("CL", "CL1", "MCL", "MCL1")
-                ):
+                elif "crude" in bot_lower or "oil" in bot_lower or symbol_upper in ("CL", "CL1", "MCL", "MCL1"):
                     sub = SubsystemId.BOT_CL
-                elif (
-                    "euro" in bot_lower
-                    or symbol_upper in ("6E", "6E1", "M6E", "M6E1", "EURUSD", "EUR")
-                ):
+                elif "euro" in bot_lower or symbol_upper in ("6E", "6E1", "M6E", "M6E1", "EURUSD", "EUR"):
                     sub = SubsystemId.BOT_6E
                 # Phase-3 rates + energy (2026-05-03)
                 elif (
@@ -4418,14 +4597,18 @@ class JarvisStrategySupervisor:
             payload.setdefault("review_acknowledged", True)
 
             req = make_action_request(
-                subsystem=sub, action=atype,
-                rationale=narrative, **payload,
+                subsystem=sub,
+                action=atype,
+                rationale=narrative,
+                **payload,
             )
             req.request_id = signal_id
             ctx = self._build_synthetic_ctx(bot)
             verdict = self._jarvis_full.consult(
-                req=req, ctx=ctx,
-                current_narrative=narrative, bot_id=bot.bot_id,
+                req=req,
+                ctx=ctx,
+                current_narrative=narrative,
+                bot_id=bot.bot_id,
             )
             # consult() succeeded; clear any prior diagnostic reason
             # so a recovered bot doesn't keep showing a stale block tag
@@ -4436,9 +4619,7 @@ class JarvisStrategySupervisor:
             logger.warning("consult failed for %s: %s", bot.bot_id, exc)
             # Surface exception class so the heartbeat can be grepped
             # for the dominant failure mode without tailing logs.
-            bot.last_jarvis_verdict_reason = (
-                f"consult_exception:{type(exc).__name__}"
-            )
+            bot.last_jarvis_verdict_reason = f"consult_exception:{type(exc).__name__}"
             return None
 
     @staticmethod
@@ -4487,9 +4668,7 @@ class JarvisStrategySupervisor:
         # path silently never resolved, so block_strategies stayed []
         # forever and the regime gate was effectively dead. Two fallback
         # paths kept for backward compat with older deployments.
-        path = (
-            workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "regime_state.json"
-        )
+        path = workspace_roots.ETA_RUNTIME_STATE_DIR / "jarvis_intel" / "regime_state.json"
         if not path.exists():
             path = workspace_roots.ETA_RUNTIME_STATE_DIR / "regime_state.json"
         try:
@@ -4579,13 +4758,12 @@ class JarvisStrategySupervisor:
             return None
 
         # Aggregate per-bot risk into one fleet-level equity snapshot
-        total_equity = sum(
-            (b.cash + b.realized_pnl) for b in self.bots
-        ) or float(self.cfg.starting_cash_per_bot)
+        total_equity = sum((b.cash + b.realized_pnl) for b in self.bots) or float(self.cfg.starting_cash_per_bot)
         # Bound dd_pct to [0,1] -- pydantic validator rejects negatives
         # and values >1, both of which are possible in a wild bot run
         raw_dd = max(
-            0.0, -sum(b.realized_pnl for b in self.bots) / max(total_equity, 1.0),
+            0.0,
+            -sum(b.realized_pnl for b in self.bots) / max(total_equity, 1.0),
         )
         dd_pct = min(0.999, raw_dd)
         open_count = sum(1 for b in self.bots if b.open_position is not None)
@@ -4629,10 +4807,7 @@ class JarvisStrategySupervisor:
                 open_risk_r_total += 1.0
                 continue
             try:
-                _pv = (
-                    float(_eff_pv(_b.symbol, route="auto") or 1.0)
-                    if _eff_pv else 1.0
-                )
+                _pv = float(_eff_pv(_b.symbol, route="auto") or 1.0) if _eff_pv else 1.0
                 _risk_dollars = abs(float(_bs) - float(_entry)) * float(_qty) * _pv
                 _r_unit = max(float(_b.cash) * 0.01, 1e-9)
                 open_risk_r_total += _risk_dollars / _r_unit
@@ -4669,12 +4844,13 @@ class JarvisStrategySupervisor:
             from eta_engine.scripts.daily_loss_killswitch import (
                 is_killswitch_tripped,
             )
+
             _ks_tripped, _ = is_killswitch_tripped()
             kill_switch_active = bool(_ks_tripped)
         except Exception as exc:  # noqa: BLE001 — fail closed
             logger.debug(
-                "daily_loss_killswitch consult in JournalSnapshot failed; "
-                "assuming active=True: %s", exc,
+                "daily_loss_killswitch consult in JournalSnapshot failed; assuming active=True: %s",
+                exc,
             )
             kill_switch_active = True
         journal = JournalSnapshot(
@@ -4686,10 +4862,12 @@ class JarvisStrategySupervisor:
             correlations_alert=False,
         )
         return build_snapshot(
-            macro=macro, equity=equity, regime=regime, journal=journal,
+            macro=macro,
+            equity=equity,
+            regime=regime,
+            journal=journal,
             notes=[
-                f"supervisor synthetic ctx for {bot.bot_id} "
-                f"(symbol={bot.symbol}, dir={bot.direction})",
+                f"supervisor synthetic ctx for {bot.bot_id} (symbol={bot.symbol}, dir={bot.direction})",
             ],
         )
 
@@ -4724,6 +4902,7 @@ class JarvisStrategySupervisor:
             self._enforce_daily_loss_cap(bot, now=datetime.now(UTC))
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
+
             # Read live regime from regime_state.json so trade closes
             # carry the ACTUAL regime/macro_bias at close time. Every
             # close was previously labeled regime="neutral" regardless
@@ -4752,11 +4931,34 @@ class JarvisStrategySupervisor:
                 session_label = "close"
             else:
                 session_label = "overnight"
+            # Derive trade direction from the ACTUAL fill side, not from
+            # bot.direction. The BotInstance.direction dataclass field
+            # defaults to "long" at construction and is never updated
+            # per-trade, so every closed trade was being logged as
+            # direction="long" regardless of the real side. Across 43,450
+            # historical records, 100% had direction="long" while side
+            # showed 2,999 SELL / 1,861 BUY — confirmed the writer bug.
+            #
+            # Mapping: rec.side is "BUY"/"SELL" (broker convention);
+            # convert to "long"/"short" for the analytics layer that
+            # downstream regime stratification + audits expect.
+            _raw_side = (rec.side or "").upper()
+            if _raw_side == "BUY":
+                _trade_direction = "long"
+            elif _raw_side == "SELL":
+                _trade_direction = "short"
+            else:
+                # Empty/unknown side: fall back to the bot's default
+                # direction so we never emit a None.  This path only
+                # fires if the broker fill record was malformed.
+                _trade_direction = bot.direction
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
-                regime=regime_label, session=session_label, stress=0.4,
-                direction=bot.direction,
+                regime=regime_label,
+                session=session_label,
+                stress=0.4,
+                direction=_trade_direction,
                 action_taken="approve_full",
                 bot_id=bot.bot_id,
                 memory=self._memory,
@@ -4793,6 +4995,7 @@ class JarvisStrategySupervisor:
             from eta_engine.brain.jarvis_v3.sage.edge_tracker import (
                 default_tracker,
             )
+
             # The exit fill side is OPPOSITE the entry side; feedback loop
             # wants the ENTRY side (the trade's direction). Prefer the
             # snapshot captured by submit_exit; fall back to bot.open_position
@@ -4820,7 +5023,8 @@ class JarvisStrategySupervisor:
                 entry_price_for_ctx = float(rec.fill_price or 0)
             entry_dir = "long" if entry_side == "BUY" else "short"
             ctx = MarketContext(
-                bars=bars, side=entry_dir,
+                bars=bars,
+                side=entry_dir,
                 entry_price=entry_price_for_ctx,
                 symbol=bot.symbol,
                 instrument_class=_classify_symbol(bot.symbol),
@@ -4854,6 +5058,7 @@ class JarvisStrategySupervisor:
             # the very next consult for the same asset class.
             try:
                 from eta_engine.brain.jarvis_v3 import jarvis_conductor as _jc
+
                 _jc.observe_close(
                     asset_class=_classify_symbol(bot.symbol) or "default",
                     school_attribution=hot_attribution,
@@ -4862,12 +5067,14 @@ class JarvisStrategySupervisor:
             except Exception as exc:  # noqa: BLE001 — observability only
                 logger.debug(
                     "hot_learner.observe_close failed for %s: %s",
-                    bot.bot_id, exc,
+                    bot.bot_id,
+                    exc,
                 )
         except Exception as exc:  # noqa: BLE001 — observability only
             logger.debug(
                 "direct edge_tracker.observe failed for %s: %s",
-                bot.bot_id, exc,
+                bot.bot_id,
+                exc,
             )
 
     # ── Heartbeat ───────────────────────────────────────────
@@ -4932,7 +5139,8 @@ class JarvisStrategySupervisor:
                 "bots": bot_states,
             }
             (self.cfg.state_dir / "heartbeat.json").write_text(
-                json.dumps(payload, indent=2, default=str), encoding="utf-8",
+                json.dumps(payload, indent=2, default=str),
+                encoding="utf-8",
             )
         except (KeyboardInterrupt, SystemExit):
             # Operator-initiated shutdown — never swallow.
@@ -4941,13 +5149,16 @@ class JarvisStrategySupervisor:
             self._heartbeat_write_errors += 1
             logger.exception(
                 "heartbeat write failed (count=%d): %s",
-                self._heartbeat_write_errors, exc,
+                self._heartbeat_write_errors,
+                exc,
             )
             with contextlib.suppress(Exception):
                 self._record_heartbeat_write_error(exc, tick_count)
 
     def _record_heartbeat_write_error(
-        self, exc: BaseException, tick_count: int,
+        self,
+        exc: BaseException,
+        tick_count: int,
     ) -> None:
         """Append a structured record to the heartbeat-write error sidecar.
 
