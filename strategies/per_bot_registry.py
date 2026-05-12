@@ -228,6 +228,18 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             "sage_lookback_daily_bars": 200,
             "warmup_policy": {"promoted_on": "2026-04-30", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
                     "daily_loss_limit_pct": 4.0,
+            # CELLARED 2026-05-12: operator pivot to FUTURES ONLY fleet
+            # (IBKR/Tastytrade now, Tradovate within 48h).  Spot ETH on
+            # Alpaca/Coinbase paused indefinitely pending re-evaluation.
+            # Re-activate by clearing `deactivated` + `deactivated_on`.
+            "deactivated": True,
+            "deactivated_on": "2026-05-12",
+            "deactivated_reason": (
+                "Cellared 2026-05-12: operator pivot to futures-only fleet "
+                "(IBKR Pro + Tastytrade now, Tradovate within 48h).  Spot "
+                "ETH suspended.  ETH exposure available via CME micro-ether "
+                "futures (MET) which remains in production candidate set."
+            ),
 },
     ),
 
@@ -376,6 +388,20 @@ ASSIGNMENTS: tuple[StrategyAssignment, ...] = (
             # promote (lift mult to 1.0) or auto-retire (negative expR).
             "warmup_policy": {"promoted_on": "2026-05-06", "warmup_days": 30, "risk_multiplier_during_warmup": 0.5},
             "daily_loss_limit_pct": 4.0,
+            # CELLARED 2026-05-12: operator pivot to FUTURES ONLY fleet
+            # (IBKR/Tastytrade now, Tradovate within 48h).  Alpaca spot
+            # crypto suspended indefinitely.  SOL diversification will
+            # be re-considered later via the crypto-futures lane only.
+            # Re-activate by clearing `deactivated` + `deactivated_on`.
+            "deactivated": True,
+            "deactivated_on": "2026-05-12",
+            "deactivated_reason": (
+                "Cellared 2026-05-12: operator pivot to futures-only fleet "
+                "(IBKR Pro + Tastytrade now, Tradovate within 48h).  Alpaca "
+                "spot crypto (SOL/USD) paused indefinitely.  SOL exposure "
+                "deferred until/unless a CME micro-SOL futures contract "
+                "exists OR operator explicitly reactivates Alpaca."
+            ),
         },
     ),
 
