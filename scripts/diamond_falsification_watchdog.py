@@ -86,6 +86,37 @@ RETIREMENT_THRESHOLDS_USD: dict[str, float] = {
     "m2k_sweep_reclaim":  -800.0,
 }
 
+#: R-multiple retirement thresholds — complementary to USD basis.
+#:
+#: WHY this exists (wave-7 kaizen, 2026-05-12):
+#: The USD ledger has documented partial breakage: eur_sweep_reclaim is
+#: all-quarantined ($0 USD, +129R R-truth), and mnq/nq_futures_sage have
+#: pre-rollout records missing realized_pnl entirely ($0 USD, +0.85R/+0.82R
+#: R-truth). Classifying purely by USD gives misleading INCONCLUSIVE/
+#: CRITICAL flags for bots whose strategy edge is fine but whose dollar
+#: accounting hit a data quality issue.
+#:
+#: R-multiples are dimension-free and immune to position-sizing artifacts.
+#: The watchdog now classifies by BOTH bases and reports the worst of the
+#: two as the canonical verdict. If USD says CRITICAL but R says HEALTHY,
+#: the operator sees both and can investigate sizing vs strategy.
+#:
+#: Threshold setting — rough rule:
+#:   - Strong proven diamonds (>+30R lifetime):    -10R or -20R
+#:   - Marginal-large-sample (e.g. mnq/nq sage):    -1R
+#:   - Small-sample bots (n<20):                    -3R
+RETIREMENT_THRESHOLDS_R: dict[str, float] = {
+    "mnq_futures_sage":  -1.0,   # marginal edge; tight R-floor
+    "nq_futures_sage":   -1.0,
+    "cl_momentum":       -5.0,   # small-sample bleeders
+    "mcl_sweep_reclaim": -3.0,
+    "mgc_sweep_reclaim": -5.0,
+    "eur_sweep_reclaim": -10.0,  # strong proven diamond
+    "gc_momentum":       -3.0,   # small sample, generous
+    "cl_macro":          -2.0,
+    "m2k_sweep_reclaim": -20.0,  # strongest evidence in fleet
+}
+
 
 @dataclass
 class DiamondStatus:
@@ -95,7 +126,13 @@ class DiamondStatus:
     retirement_threshold: float | None = None
     buffer_usd: float | None = None
     buffer_pct_of_threshold: float | None = None
-    classification: str = "INCONCLUSIVE"
+    # ── Wave-7 R-multiple basis ───────────────────────────────────────
+    cumulative_r: float | None = None
+    retirement_threshold_r: float | None = None
+    buffer_r: float | None = None
+    classification_usd: str = "INCONCLUSIVE"
+    classification_r: str = "INCONCLUSIVE"
+    classification: str = "INCONCLUSIVE"  # worst-of-both (canonical)
     notes: list[str] = field(default_factory=list)
 
 
@@ -108,32 +145,73 @@ def _load_ledger() -> dict | None:
         return None
 
 
-def _classify(status: DiamondStatus) -> None:
-    """Classify based on buffer % of threshold magnitude."""
-    if status.buffer_usd is None or status.retirement_threshold is None:
-        status.classification = "INCONCLUSIVE"
-        return
-    threshold_mag = abs(status.retirement_threshold)
+def _classify_buffer(buffer: float | None, threshold: float | None) -> str:
+    """Map a (buffer, threshold) pair to a 4-band classification.
+
+    buffer = (current_metric - retirement_threshold).  Threshold is the
+    negative floor.  When buffer<=0 the bot is below or at its floor;
+    larger positive buffer = more headroom.
+    """
+    if buffer is None or threshold is None:
+        return "INCONCLUSIVE"
+    threshold_mag = abs(threshold)
     if threshold_mag == 0:
-        status.classification = "INCONCLUSIVE"
-        return
-    pct = status.buffer_usd / threshold_mag * 100.0
-    status.buffer_pct_of_threshold = round(pct, 1)
-    if status.buffer_usd <= 0:
-        status.classification = "CRITICAL"
-    elif pct < 20:
-        status.classification = "WARN"
-    elif pct < 50:
-        status.classification = "WATCH"
-    else:
-        status.classification = "HEALTHY"
+        return "INCONCLUSIVE"
+    if buffer <= 0:
+        return "CRITICAL"
+    pct = buffer / threshold_mag * 100.0
+    if pct < 20:
+        return "WARN"
+    if pct < 50:
+        return "WATCH"
+    return "HEALTHY"
+
+
+def _worst_of(usd_cls: str, r_cls: str) -> str:
+    """Return the more-conservative of two classifications.
+
+    Order from worst to best:  CRITICAL > WARN > WATCH > HEALTHY > INCONCLUSIVE.
+    INCONCLUSIVE is treated as "no evidence in this basis" — if the OTHER
+    basis has a verdict, that wins (e.g., USD=INCONCLUSIVE + R=HEALTHY =>
+    HEALTHY, not INCONCLUSIVE).
+    """
+    rank = {
+        "CRITICAL": 4,
+        "WARN": 3,
+        "WATCH": 2,
+        "HEALTHY": 1,
+        "INCONCLUSIVE": 0,
+    }
+    if usd_cls == "INCONCLUSIVE":
+        return r_cls
+    if r_cls == "INCONCLUSIVE":
+        return usd_cls
+    return max((usd_cls, r_cls), key=lambda c: rank.get(c, 0))
+
+
+def _classify(status: DiamondStatus) -> None:
+    """Compute the USD, R, and worst-of-both classifications."""
+    status.classification_usd = _classify_buffer(
+        status.buffer_usd, status.retirement_threshold,
+    )
+    status.classification_r = _classify_buffer(
+        status.buffer_r, status.retirement_threshold_r,
+    )
+    status.classification = _worst_of(
+        status.classification_usd, status.classification_r,
+    )
+    if status.buffer_usd is not None and status.retirement_threshold:
+        status.buffer_pct_of_threshold = round(
+            status.buffer_usd / abs(status.retirement_threshold) * 100.0, 1,
+        )
 
 
 def _evaluate(bot_id: str, ledger: dict | None) -> DiamondStatus:
     s = DiamondStatus(bot_id=bot_id)
     s.retirement_threshold = RETIREMENT_THRESHOLDS_USD.get(bot_id)
-    if s.retirement_threshold is None:
-        s.notes.append("no retirement threshold defined")
+    s.retirement_threshold_r = RETIREMENT_THRESHOLDS_R.get(bot_id)
+    if s.retirement_threshold is None and s.retirement_threshold_r is None:
+        s.notes.append("no retirement threshold defined (USD or R)")
         s.classification = "INCONCLUSIVE"
         return s
     if ledger is None:
@@ -143,6 +221,8 @@ def _evaluate(bot_id: str, ledger: dict | None) -> DiamondStatus:
     if rec is None:
         s.notes.append("bot not in ledger")
         return s
+
+    # ── Parse USD lifetime PnL ────────────────────────────────────────
     try:
         s.pnl_lifetime = float(rec.get("total_realized_pnl") or 0)
         # The closed_trade_ledger doesn't carry a 30-day window directly;
@@ -152,26 +232,40 @@ def _evaluate(bot_id: str, ledger: dict | None) -> DiamondStatus:
         s.pnl_recent_window = s.pnl_lifetime
     except (TypeError, ValueError) as exc:
         s.notes.append(f"pnl parse error: {exc}")
-        return s
-    # Detect scale-bug: realistic per-trade P&L magnitude on paper
-    # futures rarely exceeds a few hundred dollars per contract per
-    # trade.  $5,000+ per trade is the eur_sweep_reclaim signature
-    # (its ledger shows ~$75k/trade — a forex notional-vs-USD bug).
-    # Threshold set well above realistic max so we don't flag legit
-    # large-stop trades, but well below the scale-bug case.
+
+    # ── Parse cumulative R-multiple ───────────────────────────────────
+    try:
+        s.cumulative_r = float(rec.get("cumulative_r") or 0)
+    except (TypeError, ValueError) as exc:
+        s.notes.append(f"cumulative_r parse error: {exc}")
+
+    # Scale-bug detection (USD basis only — R-multiples are immune).
+    # If the USD basis looks scale-bugged, we silently mark USD as
+    # INCONCLUSIVE but keep the R-basis verdict.  Pre-wave-7 the entire
+    # bot was marked INCONCLUSIVE when USD was suspect; that hid bots
+    # whose strategy edge was actually fine but whose dollar tracking
+    # tripped on a data quality issue (eur_sweep_reclaim post-sanitizer).
     n_trades = int(rec.get("closed_trade_count") or 0)
-    if n_trades and abs(s.pnl_lifetime or 0) / max(n_trades, 1) > 5_000:
+    scale_bug_suspected = (
+        n_trades > 0
+        and s.pnl_lifetime is not None
+        and abs(s.pnl_lifetime) / max(n_trades, 1) > 5_000
+    )
+    if scale_bug_suspected:
         s.notes.append(
             "SCALE_BUG_SUSPECTED — avg per-trade exceeds $5,000; "
-            "ledger P&L not trustworthy; verdict reserved",
+            "USD verdict reserved; R-basis verdict still computed",
         )
-        s.classification = "INCONCLUSIVE"
-        return s
-    # Buffer = (pnl_recent_window - retirement_threshold)
-    # Positive buffer = we're ABOVE the floor (good)
-    s.buffer_usd = round(
-        (s.pnl_recent_window or 0) - s.retirement_threshold, 2,
-    )
+        # Don't compute USD buffer when scale-bugged; R basis carries us.
+    elif s.pnl_recent_window is not None and s.retirement_threshold is not None:
+        s.buffer_usd = round(
+            s.pnl_recent_window - s.retirement_threshold, 2,
+        )
+
+    # R-buffer always computed when R-threshold + cumulative_r are present.
+    if s.cumulative_r is not None and s.retirement_threshold_r is not None:
+        s.buffer_r = round(s.cumulative_r - s.retirement_threshold_r, 4)
+
     _classify(s)
     return s
 
@@ -187,7 +281,8 @@ def run_watchdog() -> dict:
         "ledger_present": ledger is not None,
         "n_diamonds": len(statuses),
         "classification_counts": counts,
-        "thresholds": RETIREMENT_THRESHOLDS_USD,
+        "thresholds_usd": RETIREMENT_THRESHOLDS_USD,
+        "thresholds_r": RETIREMENT_THRESHOLDS_R,
         "statuses": [asdict(s) for s in statuses],
     }
     try:
@@ -259,25 +354,41 @@ def _fire_alerts_for_critical(statuses: list[DiamondStatus]) -> None:
 
 
 def _print(report: dict) -> None:
-    print("=" * 100)
+    print("=" * 130)
     print(f" DIAMOND FALSIFICATION WATCHDOG — {report['ts']}")
-    print("=" * 100)
-    print(" Classification roll-up: " + ", ".join(
+    print("=" * 130)
+    print(" Classification roll-up (worst-of-USD+R): " + ", ".join(
         f"{k}={v}" for k, v in report["classification_counts"].items()))
     print()
-    print(f" {'bot':28s} {'class':12s} {'P&L (life)':>11s} {'threshold':>10s} "
-          f"{'buffer':>10s} {'buffer%':>8s}  notes")
-    print("-" * 120)
+    print(
+        f" {'bot':25s} {'class':9s} | "
+        f"{'usd_cls':10s} {'P&L':>10s} {'thr':>8s} {'buf':>9s} | "
+        f"{'r_cls':10s} {'cum_R':>8s} {'thr_R':>7s} {'buf_R':>8s} | "
+        f"notes",
+    )
+    print("-" * 130)
     for s in report["statuses"]:
+        usd_cls = s.get("classification_usd") or "—"
+        r_cls = s.get("classification_r") or "—"
         pnl = s.get("pnl_lifetime")
         th = s.get("retirement_threshold")
         b = s.get("buffer_usd")
-        pct = s.get("buffer_pct_of_threshold")
+        cum_r = s.get("cumulative_r")
+        th_r = s.get("retirement_threshold_r")
+        b_r = s.get("buffer_r")
         n = "; ".join(s.get("notes") or []) or ""
+        # Format USD values, blanking when None (scale-bug suspect)
+        pnl_s = f"{pnl:>10.0f}" if pnl is not None else f"{'—':>10s}"
+        th_s = f"{th:>8.0f}" if th is not None else f"{'—':>8s}"
+        b_s = f"{b:>9.0f}" if b is not None else f"{'—':>9s}"
+        cum_r_s = f"{cum_r:>+8.2f}" if cum_r is not None else f"{'—':>8s}"
+        th_r_s = f"{th_r:>+7.1f}" if th_r is not None else f"{'—':>7s}"
+        b_r_s = f"{b_r:>+8.2f}" if b_r is not None else f"{'—':>8s}"
         print(
-            f" {s['bot_id']:28s} {s['classification']:12s} "
-            f"{(pnl or 0):>11.2f} {(th or 0):>10.0f} "
-            f"{(b or 0):>10.2f} {(pct or 0):>7.1f}%  {n[:50]}",
+            f" {s['bot_id']:25s} {s['classification']:9s} | "
+            f"{usd_cls:10s} {pnl_s} {th_s} {b_s} | "
+            f"{r_cls:10s} {cum_r_s} {th_r_s} {b_r_s} | "
+            f"{n[:40]}",
         )
     print()
 
