@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="15">
+<title>ETA Diamond Factory</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e17;color:#c0caf5;font:13px/1.5 'Segoe UI',monospace;padding:16px}
+.header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1a1f2e;padding-bottom:12px;margin-bottom:12px}
+.header h1{font-size:20px;background:linear-gradient(90deg,#7aa2f7,#9ece6a);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.live-dot{width:10px;height:10px;background:#9ece6a;border-radius:50%;display:inline-block;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.metric{background:#1a1f2e;padding:12px;border-radius:8px;text-align:center;border:1px solid #242b3d}
+.metric .val{font-size:24px;font-weight:700}
+.metric .lbl{font-size:10px;color:#565f89;text-transform:uppercase;letter-spacing:1px}
+.green{color:#9ece6a}.red{color:#f7768e}.gold{color:#e0af68}.blue{color:#7aa2f7}.cyan{color:#7dcfff}
+.progress-bar{height:4px;background:#1a1f2e;border-radius:2px;margin:10px 0;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,#7aa2f7,#9ece6a);transition:width 1s}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th{background:#111520;padding:8px;text-align:left;color:#7aa2f7;font-size:11px;position:sticky;top:0}
+td{padding:7px 8px;border-bottom:1px solid #1a1f2e;font-size:12px}
+tr.running{background:#1a1f2e}tr.diamond td{background:#13241a}tr.losing td{background:#24131a}
+tr.timeout td{color:#565f89}tr.failed td{color:#f7768e}
+.pool-tag{font-size:10px;padding:2px 6px;border-radius:3px;background:#1a1f2e}
+.footer{font-size:10px;color:#565f89;margin-top:12px;text-align:right}
+.spark{display:inline-block;width:60px;height:16px;vertical-align:middle}
+</style></head><body>
+<div class=header>
+  <h1>DIAMOND FACTORY</h1>
+  <span><span class=live-dot></span> <span class=cyan id=elapsed>0:00</span></span>
+</div>
+<div class=metrics id=metrics></div>
+<div class=progress-bar><div class=progress-fill id=progress></div></div>
+<table><thead><tr>
+  <th>Bot</th><th>Pool</th><th>T</th><th>PnL</th><th>WR</th><th>RTH</th><th>OVN</th><th>Status</th>
+</tr></thead><tbody id=tbody></tbody></table>
+<div class=footer>ETA Diamond Factory | Auto-refresh 15s | <span id=ts></span></div>
+<script>
+async function load(){
+  try{
+    // Parse soak log via API
+    const r=await fetch('/api/soak/status');const d=await r.json();
+    const bots=d.bots||[];const summary=d.summary||{};
+    
+    // Metrics
+    document.getElementById('metrics').innerHTML=
+      '<div class=metric><div class="val gold">'+(summary.sessions||0)+'</div><div class=lbl>Sessions</div></div>'+
+      '<div class=metric><div class="val blue">'+(summary.done||0)+'/'+(summary.total||0)+'</div><div class=lbl>Completed</div></div>'+
+      '<div class=metric><div class="val '+(summary.fleet_pnl>0?'green':'red')+'">$'+(summary.fleet_pnl||0).toLocaleString()+'</div><div class=lbl>Fleet PnL</div></div>'+
+      '<div class=metric><div class="val cyan">'+(summary.diamonds||0)+'</div><div class=lbl>Diamonds</div></div>';
+    
+    // Progress bar
+    const pct=summary.total>0?(summary.done/summary.total*100):0;
+    document.getElementById('progress').style.width=pct+'%';
+    document.getElementById('elapsed').textContent=(summary.elapsed||'0:00');
+    
+    // Table
+    let rows='';
+    for(const b of bots){
+      const pnl=b.pnl_total||0;
+      const cls=pnl>500?'diamond':pnl>0?'running':pnl<0?'losing':'timeout';
+      const status=pnl>500?'\u{1F48E} DIAMOND':pnl>0?'\u{1F7E2} ACTIVE':pnl<0?'\u{1F534} LOSS':'\u{1F535} PENDING';
+      const poolTag='<span class=pool-tag>'+(b.pool||'?')+'</span>';
+      rows+='<tr class='+cls+'><td>'+b.bot_id+'</td><td>'+poolTag+'</td>'+
+        '<td>'+(b.trades||0)+'</td><td class="'+(pnl>0?'green':'red')+'">$'+pnl.toLocaleString()+'</td>'+
+        '<td>'+(b.win_rate||0).toFixed(0)+'%</td><td>'+(b.rth_trades||0)+'</td><td>'+(b.overnight_trades||0)+'</td>'+
+        '<td>'+status+'</td></tr>';
+    }
+    document.getElementById('tbody').innerHTML=rows;
+    document.getElementById('ts').textContent=new Date().toLocaleTimeString();
+  }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan=8>Connecting to diamond factory...</td></tr>';}
+}
+load();setInterval(load,15000);
+</script></body></html>
