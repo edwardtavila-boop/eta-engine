@@ -35,8 +35,30 @@ CRITICAL_SERVICES = (
     "FmStatusServer",
 )
 OPTIONAL_SERVICES = ("HermesJarvisTelegram",)
-REQUIRED_PORTS = (8420, 8422)
+REQUIRED_PORTS = (8000, 8420, 8421, 8422)
+BROKER_PORTS = (4002,)
+DASHBOARD_DURABLE_TASKS = (
+    "ETA-Dashboard-API",
+    "ETA-Proxy-8421",
+    "ETA-Dashboard-Proxy-Watchdog",
+)
+IBGATEWAY_TASKS = (
+    "ETA-IBGateway",
+    "ETA-IBGateway-Autostart",
+    "ETA-IBGateway-DailyRestart",
+    "ETA-IBGateway-RunNow",
+)
 ENDPOINTS = (
+    {
+        "name": "local_dashboard_api_diagnostics",
+        "url": "http://127.0.0.1:8000/api/dashboard/diagnostics",
+        "critical": True,
+    },
+    {
+        "name": "local_dashboard_proxy_diagnostics",
+        "url": "http://127.0.0.1:8421/api/dashboard/diagnostics",
+        "critical": True,
+    },
     {
         "name": "local_fm_status",
         "url": "http://127.0.0.1:8422/api/fm/status",
@@ -131,7 +153,7 @@ $results | ConvertTo-Json -Depth 4
 
 def collect_port_status() -> dict[int, dict[str, Any]]:
     """Collect required listener status for local control-plane ports."""
-    quoted = ", ".join(str(port) for port in REQUIRED_PORTS)
+    quoted = ", ".join(str(port) for port in tuple(REQUIRED_PORTS + BROKER_PORTS))
     command = f"""
 $ports = @({quoted})
 $results = foreach ($port in $ports) {{
@@ -161,6 +183,48 @@ $results | ConvertTo-Json -Depth 4
             "owners": _as_list(item.get("Owners")),
         }
     return ports
+
+
+def collect_task_status() -> dict[str, dict[str, Any]]:
+    """Collect expected scheduled-task status without modifying Task Scheduler."""
+    names = list(DASHBOARD_DURABLE_TASKS + IBGATEWAY_TASKS + ("ETA-Autopilot",))
+    quoted = ", ".join(f"'{name}'" for name in names)
+    command = f"""
+$names = @({quoted})
+$results = foreach ($name in $names) {{
+  $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+  if ($null -eq $task) {{
+    [pscustomobject]@{{TaskName=$name;State='Missing';LastTaskResult=$null;LastRunTime=$null;NextRunTime=$null}}
+  }} else {{
+    $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
+    [pscustomobject]@{{
+      TaskName=$task.TaskName
+      State=[string]$task.State
+      LastTaskResult=$info.LastTaskResult
+      LastRunTime=$info.LastRunTime
+      NextRunTime=$info.NextRunTime
+    }}
+  }}
+}}
+$results | ConvertTo-Json -Depth 4
+"""
+    payload = _run_powershell_json(command)
+    if isinstance(payload, dict) and "error" in payload:
+        return {name: {"task_name": name, "state": "Unknown", "error": payload["error"]} for name in names}
+    rows = payload if isinstance(payload, list) else [payload]
+    tasks: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = _as_dict(row)
+        name = str(item.get("TaskName") or "")
+        if name:
+            tasks[name] = {
+                "task_name": name,
+                "state": str(item.get("State") or "Unknown"),
+                "last_task_result": item.get("LastTaskResult"),
+                "last_run_time": item.get("LastRunTime"),
+                "next_run_time": item.get("NextRunTime"),
+            }
+    return tasks
 
 
 def _probe_endpoint(url: str, *, timeout_s: float = 8.0) -> dict[str, Any]:
@@ -251,6 +315,14 @@ def _missing_ports(ports: dict[int, dict[str, Any]]) -> list[int]:
     ]
 
 
+def _missing_dashboard_tasks(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    return [
+        name
+        for name in DASHBOARD_DURABLE_TASKS
+        if str(_as_dict(tasks.get(name)).get("state") or "").lower() == "missing"
+    ]
+
+
 def _critical_endpoint_failures(endpoints: dict[str, dict[str, Any]]) -> list[str]:
     failures: list[str] = []
     for endpoint in ENDPOINTS:
@@ -284,7 +356,8 @@ def _broker_gate_summary(broker_bracket_audit: dict[str, Any]) -> dict[str, Any]
     ready = bool(
         summary.get("ready_for_prop_dry_run")
         or broker_bracket_audit.get("ready_for_prop_dry_run")
-    ) and status in {"PASS", "READY"}
+        or status in {"READY_NO_OPEN_EXPOSURE"}
+    ) and status in {"PASS", "READY", "READY_NO_OPEN_EXPOSURE"}
     return {
         "status": status,
         "ready": ready,
@@ -317,6 +390,35 @@ def _promotion_gate_summary(promotion_audit: dict[str, Any]) -> dict[str, Any]:
     return {"status": status, "ready": ready}
 
 
+def _ibgateway_summary(
+    ibgateway_reauth: dict[str, Any] | None,
+    ports: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    if ibgateway_reauth is None:
+        return {
+            "status": "NOT_COLLECTED",
+            "ready": True,
+            "port": 4002,
+            "port_listening": bool(_as_dict(ports.get(4002)).get("listening")),
+            "reason": None,
+        }
+    status = str(
+        ibgateway_reauth.get("status")
+        or ibgateway_reauth.get("artifact_status")
+        or "UNKNOWN"
+    )
+    port_listening = bool(_as_dict(ports.get(4002)).get("listening"))
+    ready = status == "healthy" and port_listening
+    return {
+        "status": status,
+        "ready": ready,
+        "port": 4002,
+        "port_listening": port_listening,
+        "reason": ibgateway_reauth.get("reason"),
+        "checked_at": ibgateway_reauth.get("checked_at"),
+    }
+
+
 def _config_drift(service_config: dict[str, dict[str, Any]]) -> list[str]:
     return [
         name
@@ -333,16 +435,26 @@ def build_report(
     broker_bracket_audit: dict[str, Any],
     promotion_audit: dict[str, Any],
     service_config: dict[str, dict[str, Any]],
+    tasks: dict[str, dict[str, Any]] | None = None,
+    ibgateway_reauth: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the deterministic hardening report from collected inputs."""
+    tasks = tasks or {}
     service_down = _service_down(services)
     missing_ports = _missing_ports(ports)
+    missing_dashboard_tasks = _missing_dashboard_tasks(tasks)
     endpoint_failures = _critical_endpoint_failures(endpoints)
     drifted_configs = _config_drift(service_config)
     broker_gate = _broker_gate_summary(broker_bracket_audit)
     promotion_gate = _promotion_gate_summary(promotion_audit)
+    ibgateway_gate = _ibgateway_summary(ibgateway_reauth, ports)
     runtime_ready = not service_down and not missing_ports and not endpoint_failures
-    trading_gate_ready = bool(broker_gate["ready"] and promotion_gate["ready"])
+    dashboard_durable = not missing_dashboard_tasks
+    trading_gate_ready = bool(
+        broker_gate["ready"]
+        and promotion_gate["ready"]
+        and ibgateway_gate["ready"]
+    )
     next_actions: list[str] = []
 
     for name in service_down:
@@ -351,11 +463,31 @@ def build_report(
         next_actions.append(f"Restore listener on port {port}")
     for name in endpoint_failures:
         next_actions.append(f"Repair critical endpoint probe: {name}")
+    if missing_dashboard_tasks:
+        next_actions.append(
+            "Register durable dashboard self-heal scheduled tasks with elevation: "
+            + ", ".join(missing_dashboard_tasks)
+        )
     if drifted_configs:
         next_actions.append(
             "Run an elevated restart/install for drifted WinSW services: "
             + ", ".join(drifted_configs)
         )
+    if not ibgateway_gate["ready"]:
+        if ibgateway_gate["status"] == "missing_ibc_credentials":
+            next_actions.append(
+                "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 "
+                "-PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens"
+            )
+        elif not ibgateway_gate["port_listening"]:
+            next_actions.append(
+                "Keep IBKR unavailable until Gateway API port 4002 is listening "
+                "and ibgateway_reauth.json reports healthy"
+            )
+        else:
+            next_actions.append(
+                "Repair IBKR Gateway readiness state before any broker promotion"
+            )
     missing_symbols = ", ".join(broker_gate["missing_bracket_symbols"])
     if missing_symbols:
         next_actions.append(
@@ -376,6 +508,8 @@ def build_report(
         status = "RED_RUNTIME_DEGRADED"
     elif drifted_configs:
         status = "YELLOW_RESTART_REQUIRED"
+    elif not dashboard_durable and trading_gate_ready:
+        status = "YELLOW_DURABILITY_GAP"
     elif not trading_gate_ready:
         status = "YELLOW_SAFETY_BLOCKED"
     else:
@@ -388,6 +522,7 @@ def build_report(
         "summary": {
             "status": status,
             "runtime_ready": runtime_ready,
+            "dashboard_durable": dashboard_durable,
             "trading_gate_ready": trading_gate_ready,
             "promotion_allowed": promotion_allowed,
             "order_action_allowed": False,
@@ -408,6 +543,15 @@ def build_report(
                 "critical_failures": endpoint_failures,
                 "observed": endpoints,
             },
+            "tasks": {
+                "dashboard_durable": list(DASHBOARD_DURABLE_TASKS),
+                "ibgateway": list(IBGATEWAY_TASKS),
+                "missing_dashboard_durable": missing_dashboard_tasks,
+                "observed": tasks,
+            },
+        },
+        "broker_runtime": {
+            "ibgateway": ibgateway_gate,
         },
         "safety_gates": {
             "broker_brackets": broker_gate,
@@ -427,6 +571,8 @@ def collect_live_report() -> dict[str, Any]:
         broker_bracket_audit=_read_json(workspace_roots.ETA_BROKER_BRACKET_AUDIT_PATH),
         promotion_audit=_read_json(workspace_roots.ETA_PROP_STRATEGY_PROMOTION_AUDIT_PATH),
         service_config=collect_service_config_status(),
+        tasks=collect_task_status(),
+        ibgateway_reauth=_read_json(workspace_roots.ETA_RUNTIME_STATE_DIR / "ibgateway_reauth.json"),
     )
 
 
@@ -434,6 +580,7 @@ def _print_human(report: dict[str, Any]) -> None:
     summary = _as_dict(report.get("summary"))
     print(f"VPS ops hardening: {summary.get('status', 'UNKNOWN')}")
     print(f"Runtime ready: {summary.get('runtime_ready')}")
+    print(f"Dashboard durable: {summary.get('dashboard_durable')}")
     print(f"Trading gate ready: {summary.get('trading_gate_ready')}")
     print(f"Promotion allowed: {summary.get('promotion_allowed')}")
     print("Order action allowed: False")

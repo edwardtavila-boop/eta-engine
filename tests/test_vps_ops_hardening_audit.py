@@ -12,16 +12,28 @@ def _running_services() -> dict[str, dict[str, object]]:
 
 def _listening_ports() -> dict[int, dict[str, object]]:
     return {
+        8000: {"port": 8000, "listening": True, "owners": ["dashboard_api"]},
         8420: {"port": 8420, "listening": True, "owners": ["FirmCommandCenter"]},
+        8421: {"port": 8421, "listening": True, "owners": ["reverse_proxy_bridge"]},
         8422: {"port": 8422, "listening": True, "owners": ["FmStatusServer"]},
+        4002: {"port": 4002, "listening": True, "owners": ["IbcGateway"]},
     }
 
 
 def _healthy_endpoints() -> dict[str, dict[str, object]]:
     return {
+        "local_dashboard_api_diagnostics": {"ok": True, "status_code": 200},
+        "local_dashboard_proxy_diagnostics": {"ok": True, "status_code": 200},
         "local_fm_status": {"ok": True, "status_code": 200},
         "local_command_center_master": {"ok": True, "status_code": 200},
         "public_ops_bot_fleet": {"ok": True, "status_code": 200},
+    }
+
+
+def _healthy_tasks() -> dict[str, dict[str, object]]:
+    return {
+        name: {"task_name": name, "state": "Ready", "last_task_result": 0}
+        for name in audit.DASHBOARD_DURABLE_TASKS + audit.IBGATEWAY_TASKS
     }
 
 
@@ -136,3 +148,72 @@ def test_reads_existing_string_summary_artifact_shapes() -> None:
     assert report["safety_gates"]["broker_brackets"]["missing_bracket_count"] == 1
     assert report["safety_gates"]["promotion"]["status"] == "BLOCKED_PAPER_SOAK"
     assert any("MNQM6" in action for action in report["next_actions"])
+
+
+def test_ready_no_open_exposure_counts_as_bracket_ready() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={
+            "summary": "READY_NO_OPEN_EXPOSURE",
+            "ready_for_prop_dry_run": True,
+        },
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["safety_gates"]["broker_brackets"]["ready"] is True
+    assert report["summary"]["trading_gate_ready"] is True
+    assert report["summary"]["status"] == "GREEN_READY_FOR_SOAK"
+
+
+def test_dashboard_ports_live_but_durable_tasks_missing_is_yellow_gap() -> None:
+    report = audit.build_report(
+        services=_running_services(),
+        ports=_listening_ports(),
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks={
+            name: {"task_name": name, "state": "Missing"}
+            for name in audit.DASHBOARD_DURABLE_TASKS
+        },
+        ibgateway_reauth={"status": "healthy"},
+    )
+
+    assert report["summary"]["status"] == "YELLOW_DURABILITY_GAP"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["dashboard_durable"] is False
+    assert report["summary"]["promotion_allowed"] is False
+    assert "ETA-Dashboard-API" in report["runtime"]["tasks"]["missing_dashboard_durable"]
+    assert any("durable dashboard" in action for action in report["next_actions"])
+
+
+def test_missing_ibc_credentials_blocks_trading_gate_without_red_runtime() -> None:
+    ports = _listening_ports()
+    ports[4002] = {"port": 4002, "listening": False, "owners": []}
+
+    report = audit.build_report(
+        services=_running_services(),
+        ports=ports,
+        endpoints=_healthy_endpoints(),
+        broker_bracket_audit={"summary": {"status": "PASS", "ready_for_prop_dry_run": True}},
+        promotion_audit={"summary": {"status": "PASS", "ready_for_live": True}},
+        service_config={"fm_status_server": {"matches_expected": True}},
+        tasks=_healthy_tasks(),
+        ibgateway_reauth={
+            "status": "missing_ibc_credentials",
+            "reason": "IBC recovery task is configured, but usable credentials are missing.",
+        },
+    )
+
+    assert report["summary"]["status"] == "YELLOW_SAFETY_BLOCKED"
+    assert report["summary"]["runtime_ready"] is True
+    assert report["summary"]["trading_gate_ready"] is False
+    assert report["broker_runtime"]["ibgateway"]["status"] == "missing_ibc_credentials"
+    assert report["broker_runtime"]["ibgateway"]["port_listening"] is False
+    assert any("set_ibc_credentials.ps1" in action for action in report["next_actions"])
