@@ -350,6 +350,130 @@ def _call_kaizen_run(bootstraps: int) -> dict[str, Any]:
     return kaizen_loop.run_loop(bootstraps=bootstraps, apply_actions=False)
 
 
+def _call_topology() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import risk_topology
+    return risk_topology.build_topology()
+
+
+def _call_register_agent(
+    agent_id: str, role: str, version: str,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import agent_registry
+    return agent_registry.register_agent(agent_id, role, version)
+
+
+def _call_list_agents(only_alive: bool) -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import agent_registry
+    return agent_registry.list_agents(only_alive=only_alive)
+
+
+def _call_acquire_lock(
+    agent_id: str, resource: str, purpose: str, ttl_seconds: int,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import agent_registry
+    return agent_registry.acquire_lock(
+        agent_id=agent_id, resource=resource,
+        purpose=purpose, ttl_seconds=ttl_seconds,
+    )
+
+
+def _call_release_lock(agent_id: str, resource: str) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import agent_registry
+    return agent_registry.release_lock(agent_id=agent_id, resource=resource)
+
+
+def _call_causal_analyze(consult_id: str, perturbation_sigma: float) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import causal_attribution
+    return causal_attribution.analyze(consult_id, perturbation_sigma=perturbation_sigma).to_dict()
+
+
+def _call_consult_replay(
+    consult_id: str,
+    override_overrides: dict[str, Any] | None,
+    override_hot_weights: dict[str, float] | None,
+    override_school_inputs: dict[str, Any] | None,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import consult_replay
+    return consult_replay.replay(
+        consult_id,
+        override_overrides=override_overrides,
+        override_hot_weights=override_hot_weights,
+        override_school_inputs=override_school_inputs,
+    ).to_dict()
+
+
+def _call_counterfactual(
+    consult_id: str,
+    pin_size_modifier: float | None,
+    pin_school: str | None,
+    pin_weight: float | None,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import consult_replay
+    return consult_replay.counterfactual(
+        consult_id,
+        pin_size_modifier=pin_size_modifier,
+        pin_school=pin_school,
+        pin_weight=pin_weight,
+    ).to_dict()
+
+
+def _call_attribution_query(
+    slice_by: list[str], filter_arg: dict[str, Any],
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import attribution_cube
+    return attribution_cube.query(slice_by=slice_by, filter=filter_arg).to_dict()
+
+
+def _call_current_regime() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import regime_classifier
+    return regime_classifier.current_regime().to_dict()
+
+
+def _call_list_regime_packs() -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import regime_classifier
+    return regime_classifier.list_packs()
+
+
+def _call_apply_regime_pack(
+    name: str, ttl_minutes: int, bot_ids: list[str] | None,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import regime_classifier
+    return regime_classifier.apply_pack(
+        name=name, ttl_minutes=ttl_minutes, bot_ids=bot_ids,
+    )
+
+
+def _call_kelly_recommend(
+    lookback_days: int, kelly_fraction: float, drawdown_penalty: float,
+) -> list[dict[str, Any]]:
+    from eta_engine.brain.jarvis_v3 import kelly_optimizer
+    return kelly_optimizer.recommend_sizing(
+        lookback_days=lookback_days,
+        kelly_fraction=kelly_fraction,
+        drawdown_penalty=drawdown_penalty,
+    )
+
+
+def _call_zeus_snapshot(force_refresh: bool, trace_n: int) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import zeus
+    return zeus.snapshot(force_refresh=force_refresh, trace_n=trace_n).to_dict()
+
+
+def _call_cost_summary(since_days_ago: int) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import cost_tracker
+    return cost_tracker.estimate_spend(since_days_ago=since_days_ago).to_dict()
+
+
+def _call_cost_today() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import cost_tracker
+    return cost_tracker.today_spend()
+
+
+def _call_cost_anomaly(window_min: int) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import cost_tracker
+    return cost_tracker.anomaly_check(window_min=window_min)
+
+
 def _call_apply_size_modifier(
     bot_id: str, modifier: float, reason: str, ttl_minutes: int,
 ) -> dict[str, Any]:
@@ -708,6 +832,258 @@ def list_tools() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "jarvis_topology",
+            "description": (
+                "Node-link graph of the fleet for force-directed visualization "
+                "(Claw3D, D3, Cytoscape). Nodes are bots colored by tier and "
+                "sized by notional; links represent asset-class correlation. "
+                "Read-only — pulls from kaizen_latest.json."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_register_agent",
+            "description": (
+                "Register this agent with the inter-agent coordination bus (T14). "
+                "Used by multi-session Claude Code workflows to declare their "
+                "presence + role before claiming locks on destructive actions."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "agent_id": {"type": "string"},
+                    "role": {"type": "string"},
+                    "version": {"type": "string", "default": "1.0.0"},
+                },
+                "required": ["agent_id", "role"],
+            },
+        },
+        {
+            "name": "jarvis_list_agents",
+            "description": (
+                "List currently-online agents in the inter-agent bus. "
+                "Filters to live agents (heartbeat <10 min ago) by default."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "only_alive": {"type": "boolean", "default": True},
+                },
+            },
+        },
+        {
+            "name": "jarvis_acquire_lock",
+            "description": (
+                "Claim a coordination lock on a resource (e.g. bot_id, "
+                "'fleet_kill') before performing a conflicting destructive "
+                "action. Returns ACQUIRED, REACQUIRED, or LOCKED_BY_OTHER."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "agent_id": {"type": "string"},
+                    "resource": {"type": "string"},
+                    "purpose": {"type": "string"},
+                    "ttl_seconds": {"type": "integer", "default": 600},
+                },
+                "required": ["agent_id", "resource"],
+            },
+        },
+        {
+            "name": "jarvis_release_lock",
+            "description": (
+                "Voluntarily release a lock acquired via jarvis_acquire_lock. "
+                "Only the lock owner can release. Locks also auto-expire on TTL."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "agent_id": {"type": "string"},
+                    "resource": {"type": "string"},
+                },
+                "required": ["agent_id", "resource"],
+            },
+        },
+        {
+            "name": "jarvis_explain_consult_causal",
+            "description": (
+                "Causal/marginal-effect attribution for one consult (T6). "
+                "Returns per-school marginal_final_delta + is_decisive flag — "
+                "answers 'which schools' votes mattered most for this verdict'. "
+                "Requires the consult record to be schema v2 (school_inputs populated)."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "consult_id": {"type": "string"},
+                    "perturbation_sigma": {"type": "number", "default": 1.0},
+                },
+                "required": ["consult_id"],
+            },
+        },
+        {
+            "name": "jarvis_replay_consult",
+            "description": (
+                "Re-execute a past consult with optional hypothetical overrides (T7). "
+                "Without overrides this is a determinism check; with overrides "
+                "it answers 'what would have happened if X'. Requires v2 record."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "consult_id": {"type": "string"},
+                    "override_overrides": {"type": "object"},
+                    "override_hot_weights": {"type": "object"},
+                    "override_school_inputs": {"type": "object"},
+                },
+                "required": ["consult_id"],
+            },
+        },
+        {
+            "name": "jarvis_counterfactual",
+            "description": (
+                "Operator-friendly wrapper around jarvis_replay_consult. "
+                "Common patterns: pin_size_modifier alone for 'what if I trimmed', "
+                "OR (pin_school + pin_weight) for 'what if I weighted differently'."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "consult_id": {"type": "string"},
+                    "pin_size_modifier": {"type": "number"},
+                    "pin_school": {"type": "string"},
+                    "pin_weight": {"type": "number"},
+                },
+                "required": ["consult_id"],
+            },
+        },
+        {
+            "name": "jarvis_attribution_cube",
+            "description": (
+                "Performance attribution sliced by school/asset/hour/verdict/bot (T12). "
+                "Joins trace + trade_closes streams. Filters: asset, bot_id, school, "
+                "since_days_ago, hour_min, hour_max."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "slice_by": {"type": "array", "items": {"type": "string"}},
+                    "filter": {"type": "object"},
+                },
+            },
+        },
+        {
+            "name": "jarvis_current_regime",
+            "description": (
+                "Classify the current market regime from sentiment + drawdown signals (T8). "
+                "Returns regime label + confidence + recommended override pack."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_list_regime_packs",
+            "description": "List built-in override packs (T8). Operator-readable.",
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_apply_regime_pack",
+            "description": (
+                "Apply a named override pack's size_modifiers + school_weights "
+                "via the existing hermes_overrides surface (T8). Operator confirms."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "name": {"type": "string"},
+                    "ttl_minutes": {"type": "integer", "default": 240},
+                    "bot_ids": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "Required when the pack uses '*' size_modifier pattern.",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "jarvis_kelly_recommend",
+            "description": (
+                "Fractional-Kelly sizing recommendation per bot from recent trade closes (T13). "
+                "Returns per-bot recommended_size_modifier; operator confirms before applying."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "lookback_days": {"type": "integer", "default": 30},
+                    "kelly_fraction": {"type": "number", "default": 0.25},
+                    "drawdown_penalty": {"type": "number", "default": 0.15},
+                },
+            },
+        },
+        {
+            "name": "jarvis_cost_summary",
+            "description": (
+                "Hermes/DeepSeek LLM spend telemetry over a time window. "
+                "Returns total USD + breakdown by tool/skill/day. Uses flat-rate "
+                "estimates ($0.003/call by default; tunable via env vars)."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "since_days_ago": {"type": "integer", "default": 7},
+                },
+            },
+        },
+        {
+            "name": "jarvis_cost_today",
+            "description": "Today's running LLM spend (UTC midnight to now).",
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_cost_anomaly",
+            "description": (
+                "Detect runaway-spend anomalies (last N min vs 24h baseline). "
+                "Returns {anomaly: bool, multiplier, …}. anomaly=True when "
+                "recent rate ≥ 10× baseline — catches buggy scheduled tasks."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "window_min": {"type": "integer", "default": 60},
+                },
+            },
+        },
+        {
+            "name": "jarvis_zeus",
+            "description": (
+                "ZEUS SUPERCHARGE — unified brain snapshot. ONE call returns "
+                "fleet_status + topology + active overrides + current regime + "
+                "recent consults + top-5 Kelly recommendations + attribution "
+                "winners/losers + sentiment + wiring audit + upcoming events + "
+                "bots online. The operator's 'what's happening?' answer in one "
+                "envelope. 30-second cached. Pass force_refresh=true to rebuild."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "force_refresh": {"type": "boolean", "default": False},
+                    "trace_n": {"type": "integer", "default": 10},
+                },
+            },
+        },
     ]
 
 
@@ -951,6 +1327,208 @@ def _tool_active_overrides(_args: dict[str, Any]) -> dict[str, Any]:
     return _call_active_overrides()
 
 
+def _tool_topology(_args: dict[str, Any]) -> dict[str, Any]:
+    """Return the fleet topology graph (T17). Read-only."""
+    return _call_topology()
+
+
+def _tool_register_agent(args: dict[str, Any]) -> dict[str, Any]:
+    """Register this agent with the inter-agent bus (T14)."""
+    agent_id = str(args.get("agent_id", "") or "")
+    role = str(args.get("role", "") or "")
+    version = str(args.get("version", "1.0.0") or "1.0.0")
+    if not agent_id or not role:
+        return {"status": "REJECTED", "reason": "missing_agent_id_or_role"}
+    return _call_register_agent(agent_id, role, version)
+
+
+def _tool_list_agents(args: dict[str, Any]) -> list[dict[str, Any]]:
+    """List currently-online agents."""
+    only_alive = bool(args.get("only_alive", True))
+    return _call_list_agents(only_alive)
+
+
+def _tool_acquire_lock(args: dict[str, Any]) -> dict[str, Any]:
+    """Claim a coordination lock (T14)."""
+    agent_id = str(args.get("agent_id", "") or "")
+    resource = str(args.get("resource", "") or "")
+    purpose = str(args.get("purpose", "") or "")
+    try:
+        ttl_seconds = int(args.get("ttl_seconds", 600) or 600)
+    except (TypeError, ValueError):
+        ttl_seconds = 600
+    if ttl_seconds <= 0:
+        ttl_seconds = 600
+    if not agent_id or not resource:
+        return {"status": "REJECTED", "reason": "missing_agent_id_or_resource"}
+    return _call_acquire_lock(agent_id, resource, purpose, ttl_seconds)
+
+
+def _tool_release_lock(args: dict[str, Any]) -> dict[str, Any]:
+    """Release a coordination lock (T14)."""
+    agent_id = str(args.get("agent_id", "") or "")
+    resource = str(args.get("resource", "") or "")
+    if not agent_id or not resource:
+        return {"status": "REJECTED", "reason": "missing_agent_id_or_resource"}
+    return _call_release_lock(agent_id, resource)
+
+
+def _tool_explain_consult_causal(args: dict[str, Any]) -> dict[str, Any]:
+    """Causal/marginal-effect attribution for one consult (T6)."""
+    consult_id = str(args.get("consult_id", "") or "")
+    if not consult_id:
+        return {"error": "missing_consult_id", "consult_id": "", "decisive_schools": []}
+    try:
+        sigma = float(args.get("perturbation_sigma", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        sigma = 1.0
+    if sigma <= 0:
+        sigma = 1.0
+    return _call_causal_analyze(consult_id, sigma)
+
+
+def _tool_replay_consult(args: dict[str, Any]) -> dict[str, Any]:
+    """Re-execute a past consult with optional overrides (T7)."""
+    consult_id = str(args.get("consult_id", "") or "")
+    if not consult_id:
+        return {"error": "missing_consult_id", "consult_id": ""}
+    over_overrides = args.get("override_overrides")
+    over_hot = args.get("override_hot_weights")
+    over_inputs = args.get("override_school_inputs")
+    return _call_consult_replay(
+        consult_id=consult_id,
+        override_overrides=over_overrides if isinstance(over_overrides, dict) else None,
+        override_hot_weights=over_hot if isinstance(over_hot, dict) else None,
+        override_school_inputs=over_inputs if isinstance(over_inputs, dict) else None,
+    )
+
+
+def _tool_counterfactual(args: dict[str, Any]) -> dict[str, Any]:
+    """Operator-friendly counterfactual wrapper around replay (T7)."""
+    consult_id = str(args.get("consult_id", "") or "")
+    if not consult_id:
+        return {"error": "missing_consult_id", "consult_id": ""}
+    pin_sm = args.get("pin_size_modifier")
+    pin_school = args.get("pin_school")
+    pin_weight = args.get("pin_weight")
+    try:
+        pin_sm_val = float(pin_sm) if pin_sm is not None else None
+    except (TypeError, ValueError):
+        pin_sm_val = None
+    try:
+        pin_weight_val = float(pin_weight) if pin_weight is not None else None
+    except (TypeError, ValueError):
+        pin_weight_val = None
+    return _call_counterfactual(
+        consult_id=consult_id,
+        pin_size_modifier=pin_sm_val,
+        pin_school=str(pin_school) if pin_school else None,
+        pin_weight=pin_weight_val,
+    )
+
+
+def _tool_attribution_cube(args: dict[str, Any]) -> dict[str, Any]:
+    """Slice-and-aggregate trade attribution (T12)."""
+    slice_by = args.get("slice_by") or ["bot"]
+    if not isinstance(slice_by, list):
+        slice_by = ["bot"]
+    filter_arg = args.get("filter") or {}
+    if not isinstance(filter_arg, dict):
+        filter_arg = {}
+    return _call_attribution_query(
+        slice_by=[str(d) for d in slice_by],
+        filter_arg=filter_arg,
+    )
+
+
+def _tool_current_regime(_args: dict[str, Any]) -> dict[str, Any]:
+    """Classify the current market regime (T8)."""
+    return _call_current_regime()
+
+
+def _tool_list_regime_packs(_args: dict[str, Any]) -> list[dict[str, Any]]:
+    """List built-in regime override packs (T8)."""
+    return _call_list_regime_packs()
+
+
+def _tool_apply_regime_pack(args: dict[str, Any]) -> dict[str, Any]:
+    """Apply a named regime override pack (T8)."""
+    name = str(args.get("name", "") or "")
+    if not name:
+        return {"status": "REJECTED", "reason": "missing_pack_name"}
+    try:
+        ttl = int(args.get("ttl_minutes", 240) or 240)
+    except (TypeError, ValueError):
+        ttl = 240
+    if ttl <= 0:
+        ttl = 240
+    bot_ids_arg = args.get("bot_ids") or []
+    bot_ids: list[str] | None = (
+        [str(b) for b in bot_ids_arg] if isinstance(bot_ids_arg, list) else None
+    )
+    return _call_apply_regime_pack(name=name, ttl_minutes=ttl, bot_ids=bot_ids)
+
+
+def _tool_kelly_recommend(args: dict[str, Any]) -> list[dict[str, Any]]:
+    """Per-bot fractional-Kelly sizing recommendations (T13)."""
+    try:
+        lookback = int(args.get("lookback_days", 30) or 30)
+    except (TypeError, ValueError):
+        lookback = 30
+    if lookback <= 0:
+        lookback = 30
+    try:
+        kf = float(args.get("kelly_fraction", 0.25) or 0.25)
+    except (TypeError, ValueError):
+        kf = 0.25
+    try:
+        dp = float(args.get("drawdown_penalty", 0.15) or 0.15)
+    except (TypeError, ValueError):
+        dp = 0.15
+    return _call_kelly_recommend(
+        lookback_days=lookback, kelly_fraction=kf, drawdown_penalty=dp,
+    )
+
+
+def _tool_cost_summary(args: dict[str, Any]) -> dict[str, Any]:
+    """LLM spend telemetry summary."""
+    try:
+        days = int(args.get("since_days_ago", 7) or 7)
+    except (TypeError, ValueError):
+        days = 7
+    if days <= 0:
+        days = 7
+    return _call_cost_summary(days)
+
+
+def _tool_cost_today(_args: dict[str, Any]) -> dict[str, Any]:
+    """Today's running LLM spend."""
+    return _call_cost_today()
+
+
+def _tool_cost_anomaly(args: dict[str, Any]) -> dict[str, Any]:
+    """Detect runaway-spend anomalies."""
+    try:
+        window = int(args.get("window_min", 60) or 60)
+    except (TypeError, ValueError):
+        window = 60
+    if window <= 0:
+        window = 60
+    return _call_cost_anomaly(window)
+
+
+def _tool_zeus(args: dict[str, Any]) -> dict[str, Any]:
+    """ZEUS SUPERCHARGE — unified brain snapshot in one call."""
+    force = bool(args.get("force_refresh", False))
+    try:
+        trace_n = int(args.get("trace_n", 10) or 10)
+    except (TypeError, ValueError):
+        trace_n = 10
+    if trace_n <= 0:
+        trace_n = 10
+    return _call_zeus_snapshot(force_refresh=force, trace_n=trace_n)
+
+
 def _tool_clear_override(args: dict[str, Any]) -> dict[str, Any]:
     """Manual clear of one override before TTL — operator escape hatch.
 
@@ -1050,6 +1628,23 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "jarvis_pin_school_weight": _tool_pin_school_weight,
     "jarvis_active_overrides": _tool_active_overrides,
     "jarvis_clear_override": _tool_clear_override,
+    "jarvis_topology": _tool_topology,
+    "jarvis_register_agent": _tool_register_agent,
+    "jarvis_list_agents": _tool_list_agents,
+    "jarvis_acquire_lock": _tool_acquire_lock,
+    "jarvis_release_lock": _tool_release_lock,
+    "jarvis_explain_consult_causal": _tool_explain_consult_causal,
+    "jarvis_replay_consult": _tool_replay_consult,
+    "jarvis_counterfactual": _tool_counterfactual,
+    "jarvis_attribution_cube": _tool_attribution_cube,
+    "jarvis_current_regime": _tool_current_regime,
+    "jarvis_list_regime_packs": _tool_list_regime_packs,
+    "jarvis_apply_regime_pack": _tool_apply_regime_pack,
+    "jarvis_kelly_recommend": _tool_kelly_recommend,
+    "jarvis_cost_summary": _tool_cost_summary,
+    "jarvis_cost_today": _tool_cost_today,
+    "jarvis_cost_anomaly": _tool_cost_anomaly,
+    "jarvis_zeus": _tool_zeus,
 }
 
 

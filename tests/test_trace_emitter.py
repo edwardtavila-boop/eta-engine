@@ -273,6 +273,144 @@ def test_read_since_skips_malformed_but_advances(tmp_path: Path) -> None:
     assert next_offset == path.stat().st_size
 
 
+# ---------------------------------------------------------------------------
+# Schema v2 — T6/T7 prereq fields + helpers
+# ---------------------------------------------------------------------------
+
+
+def test_v1_record_has_schema_version_1_by_default() -> None:
+    """Legacy emitters that don't touch the v2 fields produce v1 records."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    rec = trace_emitter.TraceRecord(bot_id="b1", consult_id="c1")
+    assert rec.schema_version == 1
+    assert rec.school_inputs == {}
+    assert rec.portfolio_inputs == {}
+    assert rec.hot_weights_snapshot == {}
+    assert rec.overrides_snapshot == {}
+    assert rec.rng_master_seed is None
+
+
+def test_v2_record_round_trips_through_json(tmp_path: Path) -> None:
+    """A record with v2 fields populated survives emit + tail without loss."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    rec = trace_emitter.TraceRecord(
+        ts="2026-05-12T15:00:00+00:00",
+        bot_id="b1",
+        consult_id="c_v2",
+        action="ENTER",
+        verdict={"final_verdict": "PROCEED"},
+        schema_version=2,
+        school_inputs={
+            "momentum": {"score": 1.2, "size_modifier": 0.8, "rng_seed": 42},
+            "mean_revert": {"score": -0.5, "size_modifier": 0.0, "rng_seed": None},
+        },
+        portfolio_inputs={
+            "fleet_long_notional_by_asset": {"MNQ": 50000},
+            "portfolio_drawdown_today_r": -1.2,
+        },
+        hot_weights_snapshot={"momentum": 1.1, "mean_revert": 0.9},
+        overrides_snapshot={"size_modifier": 0.7},
+        rng_master_seed=12345,
+    )
+    trace_emitter.emit(rec, path=path)
+
+    out = trace_emitter.tail(n=1, path=path)
+    assert len(out) == 1
+    loaded = out[0]
+    assert loaded["schema_version"] == 2
+    assert loaded["school_inputs"]["momentum"]["score"] == 1.2
+    assert loaded["school_inputs"]["mean_revert"]["rng_seed"] is None
+    assert loaded["portfolio_inputs"]["portfolio_drawdown_today_r"] == -1.2
+    assert loaded["hot_weights_snapshot"] == {"momentum": 1.1, "mean_revert": 0.9}
+    assert loaded["overrides_snapshot"]["size_modifier"] == 0.7
+    assert loaded["rng_master_seed"] == 12345
+
+
+def test_is_v2_record_recognizes_dataclass_and_dict() -> None:
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    # Dataclass path
+    v1_rec = trace_emitter.TraceRecord(bot_id="b1")
+    v2_rec = trace_emitter.TraceRecord(bot_id="b2", schema_version=2)
+    assert trace_emitter.is_v2_record(v1_rec) is False
+    assert trace_emitter.is_v2_record(v2_rec) is True
+
+    # Dict path (what we get from reading JSONL)
+    assert trace_emitter.is_v2_record({"bot_id": "b"}) is False
+    assert trace_emitter.is_v2_record({"schema_version": 1}) is False
+    assert trace_emitter.is_v2_record({"schema_version": 2}) is True
+    assert trace_emitter.is_v2_record({"schema_version": 3}) is True  # future v3
+    # Bogus values fall back to v1
+    assert trace_emitter.is_v2_record({"schema_version": "not_a_number"}) is False
+    # Non-dict, non-dataclass
+    assert trace_emitter.is_v2_record(None) is False  # type: ignore[arg-type]
+    assert trace_emitter.is_v2_record("nope") is False  # type: ignore[arg-type]
+
+
+def test_extract_replay_inputs_returns_none_for_v1() -> None:
+    """Pre-v2 records lack the snapshot fields → return None so T6/T7 reject cleanly."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    v1_rec = trace_emitter.TraceRecord(bot_id="b1", consult_id="c1")
+    assert trace_emitter.extract_replay_inputs(v1_rec) is None
+    assert trace_emitter.extract_replay_inputs({"consult_id": "c", "schema_version": 1}) is None
+
+
+def test_extract_replay_inputs_packs_all_snapshot_fields() -> None:
+    """v2 record → dict with all 5 replay-input fields."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    v2_rec = trace_emitter.TraceRecord(
+        bot_id="b1",
+        consult_id="c2",
+        schema_version=2,
+        school_inputs={"momentum": {"score": 1.0}},
+        portfolio_inputs={"drawdown": 0.0},
+        hot_weights_snapshot={"momentum": 1.0},
+        overrides_snapshot={"size_modifier": None},
+        rng_master_seed=999,
+    )
+    out = trace_emitter.extract_replay_inputs(v2_rec)
+    assert out is not None
+    assert set(out.keys()) == {
+        "school_inputs",
+        "portfolio_inputs",
+        "hot_weights_snapshot",
+        "overrides_snapshot",
+        "rng_master_seed",
+    }
+    assert out["school_inputs"]["momentum"]["score"] == 1.0
+    assert out["rng_master_seed"] == 999
+
+
+def test_v1_jsonl_line_parses_into_v2_dataclass_safely(tmp_path: Path) -> None:
+    """A legacy v1 line (no schema_version key) round-trips through tail()
+    with the v2 fields appearing as empty dicts / None — no exception."""
+    from eta_engine.brain.jarvis_v3 import trace_emitter
+
+    path = tmp_path / "trace.jsonl"
+    # Hand-write a legacy v1 line (mimics records emitted before this PR).
+    legacy = (
+        '{"ts":"2026-04-01T00:00:00Z","bot_id":"legacy_bot",'
+        '"consult_id":"old1","action":"ENTER",'
+        '"verdict":{"final_verdict":"PROCEED"},"final_size":1.0}'
+    )
+    path.write_text(legacy + "\n", encoding="utf-8")
+
+    records = trace_emitter.tail(n=1, path=path)
+    assert len(records) == 1
+    legacy_rec = records[0]
+    # Legacy fields readable
+    assert legacy_rec["bot_id"] == "legacy_bot"
+    # Schema dispatch correctly identifies as v1
+    assert trace_emitter.is_v2_record(legacy_rec) is False
+    # extract_replay_inputs returns None
+    assert trace_emitter.extract_replay_inputs(legacy_rec) is None
+
+
 def test_read_since_respects_limit(tmp_path: Path) -> None:
     """limit caps one poll without skipping unreturned records."""
     from eta_engine.brain.jarvis_v3 import trace_emitter

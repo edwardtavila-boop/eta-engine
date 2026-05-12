@@ -37,6 +37,8 @@ from eta_engine.brain.jarvis_admin import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from eta_engine.brain.jarvis_context import JarvisContext
 
 logger = logging.getLogger(__name__)
@@ -80,7 +82,7 @@ def _prune_old(buffer: deque[float], window_s: float, now: float) -> None:
         buffer.popleft()
 
 
-def _resolve_class_and_side(req: ActionRequest, ctx: "JarvisContext") -> tuple[str, str]:
+def _resolve_class_and_side(req: ActionRequest, ctx: JarvisContext) -> tuple[str, str]:
     """Return (class, side) for v24 bookkeeping. Empty class disables throttle."""
     bot_id = ""
     try:
@@ -117,10 +119,10 @@ def _resolve_class_and_side(req: ActionRequest, ctx: "JarvisContext") -> tuple[s
 
 def evaluate_v24(
     req: ActionRequest,
-    ctx: "JarvisContext",
+    ctx: JarvisContext,
     *,
     base_resp: ActionResponse | None = None,
-    wrapped_evaluator=None,
+    wrapped_evaluator: Callable[[ActionRequest, JarvisContext], ActionResponse] | None = None,
 ) -> ActionResponse:
     """v24 layer. Wraps a base verdict (typically v23's) with concurrent-entry
     throttle.

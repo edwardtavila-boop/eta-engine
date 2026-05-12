@@ -563,13 +563,18 @@ def test_audit_log_rotation_failure_does_not_break_append(
     assert "after_rot_fail" in final_contents
 
 
-def test_tool_registry_has_all_16_tools() -> None:
-    """list_tools() exposes exactly the documented 16 tool names.
+def test_tool_registry_has_all_33_tools() -> None:
+    """list_tools() exposes exactly the documented 33 tool names.
 
     History:
       * 11 → 12 (2026-05-12): jarvis_subscribe_events (Track 1).
-      * 12 → 16 (2026-05-12): jarvis_set_size_modifier, jarvis_pin_school_weight,
-        jarvis_active_overrides, jarvis_clear_override (Track 2 write-back).
+      * 12 → 16 (2026-05-12): write-back tools (Track 2).
+      * 16 → 17 (2026-05-12): jarvis_topology (Track 17).
+      * 17 → 21 (2026-05-12): inter-agent bus (Track 14).
+      * 21 → 24 (2026-05-12): consult replay/debug (T6, T7).
+      * 24 → 29 (2026-05-12): attribution + regime + Kelly (T12, T8, T13).
+      * 29 → 30 (2026-05-12): jarvis_zeus (Zeus Supercharge).
+      * 30 → 33 (2026-05-12): cost_summary + cost_today + cost_anomaly.
     """
     from eta_engine.mcp_servers import jarvis_mcp_server
 
@@ -590,10 +595,27 @@ def test_tool_registry_has_all_16_tools() -> None:
         "jarvis_pin_school_weight",
         "jarvis_active_overrides",
         "jarvis_clear_override",
+        "jarvis_topology",
+        "jarvis_register_agent",
+        "jarvis_list_agents",
+        "jarvis_acquire_lock",
+        "jarvis_release_lock",
+        "jarvis_replay_consult",
+        "jarvis_explain_consult_causal",
+        "jarvis_counterfactual",
+        "jarvis_attribution_cube",
+        "jarvis_current_regime",
+        "jarvis_list_regime_packs",
+        "jarvis_apply_regime_pack",
+        "jarvis_kelly_recommend",
+        "jarvis_zeus",
+        "jarvis_cost_summary",
+        "jarvis_cost_today",
+        "jarvis_cost_anomaly",
     }
     declared = {t["name"] for t in jarvis_mcp_server.list_tools()}
     assert declared == expected, f"missing={expected - declared} extras={declared - expected}"
-    assert len(declared) == 16
+    assert len(declared) == 33
 
 
 # ---------------------------------------------------------------------------

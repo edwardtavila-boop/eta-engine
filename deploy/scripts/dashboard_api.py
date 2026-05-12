@@ -6496,7 +6496,7 @@ def _dashboard_focus_policy_payload() -> dict[str, object]:
         "focus_sleeves": sorted(_FOCUS_PORTFOLIO_SLEEVES),
         "cellar_sleeves": sorted(_CELLAR_PORTFOLIO_SLEEVES),
         "note": (
-            "Alpaca and spot strategies are paused in the cellar; main dashboard "
+            "Alpaca and spot strategies are on the backburner; main dashboard "
             "cards focus on regulated futures, CME crypto futures, and commodities."
         ),
     }
@@ -8049,7 +8049,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
 
 
 def _live_broker_state_payload() -> dict:
-    """Aggregate focus broker live state plus Alpaca/spot cellar evidence.
+    """Aggregate focus broker live state plus Alpaca/spot backburner evidence.
 
     Surfaces ``today_actual_fills``, ``today_realized_pnl``,
     ``total_unrealized_pnl`` derived from the brokers' own books — NOT
@@ -8059,8 +8059,8 @@ def _live_broker_state_payload() -> dict:
     today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
-    alpaca["policy_status"] = "paused_cellar"
-    alpaca["policy_reason"] = "Alpaca/spot paused by operator focus policy."
+    alpaca["policy_status"] = "paused_backburner"
+    alpaca["policy_reason"] = "Alpaca and spot are parked on the backburner by operator focus policy."
     ibkr = _ibkr_live_state_snapshot(today_start_utc=today_start_utc)
     # Per-bot Alpaca breakdown (added 2026-05-06). Wrapped to fail-soft.
     try:

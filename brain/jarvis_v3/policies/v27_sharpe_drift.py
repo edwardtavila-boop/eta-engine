@@ -38,6 +38,8 @@ from eta_engine.brain.jarvis_admin import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from eta_engine.brain.jarvis_context import JarvisContext
 
 logger = logging.getLogger(__name__)
@@ -161,10 +163,10 @@ def _is_drifted(state: dict, lab_exp_r: float) -> tuple[bool, float]:
 
 def evaluate_v27(
     req: ActionRequest,
-    ctx: "JarvisContext",
+    ctx: JarvisContext,
     *,
     base_resp: ActionResponse | None = None,
-    wrapped_evaluator=None,
+    wrapped_evaluator: Callable[[ActionRequest, JarvisContext], ActionResponse] | None = None,
 ) -> ActionResponse:
     """v27 layer. Downgrades size when live realized expectancy drifts from lab."""
     if base_resp is None:
@@ -231,7 +233,7 @@ def reset_cache() -> None:
     _HEARTBEAT_CACHE["loaded_at"] = 0.0
 
 
-def evaluate_advanced_stack(req: ActionRequest, ctx: "JarvisContext") -> ActionResponse:
+def evaluate_advanced_stack(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     """Run the full advanced stack: v23 → v24 → v25 → v26 → v27.
 
     Each layer wraps the prior. Single entrypoint for JarvisAdmin's

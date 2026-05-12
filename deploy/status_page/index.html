@@ -338,27 +338,10 @@ tr:hover td{background:rgba(100,215,255,.055)}
   <div class="card"><h3>Focus Bots</h3><div class="stat green" id="totalBots">—</div></div>
   <div class="card"><h3>Active</h3><div class="stat blue" id="activeBots">—</div><div class="sub" id="activeBotsSub">Runtime-active bots</div></div>
   <div class="card"><h3>Today PnL</h3><div class="stat dim" id="todayPnl">—</div><div class="sub" id="todayPnlSub"></div></div>
-  <div class="card"><h3 id="totalPnlLabel">Closed PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">selected-window closes pending</div></div>
-  <div class="card"><h3 id="cumulativeRLabel">Selected R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for selected-window realized-R outcomes</div></div>
-  <div class="card"><h3 id="totalTradesLabel">Selected Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
+  <div class="card"><h3 id="totalPnlLabel">Closed PnL</h3><div class="stat dim" id="totalPnl">—</div><div class="sub" id="totalPnlSub">window closes pending</div></div>
+  <div class="card"><h3 id="cumulativeRLabel">Window R</h3><div class="stat dim" id="cumulativeR">—</div><div class="sub" id="cumulativeRSub">waiting for realized-R outcomes</div></div>
+  <div class="card"><h3 id="totalTradesLabel">Window Trades</h3><div class="stat blue" id="totalTrades">—</div><div class="sub" id="totalTradesSub"></div></div>
   <div class="card"><h3>Win Rate</h3><div class="stat blue" id="winRate">—</div><div class="sub" id="winRateDetail"></div></div>
-  <div class="card pnl-window-card">
-    <h3>Closed PnL Window</h3>
-    <div class="range-controls" id="pnlWindowControls">
-      <button type="button" data-close-window="today">Today</button>
-      <button type="button" data-close-window="wtd">WTD</button>
-      <button type="button" class="active" data-close-window="mtd">MTD</button>
-      <button type="button" data-close-window="ytd">YTD</button>
-      <button type="button" data-close-window="all">All</button>
-    </div>
-    <div class="history-window-strip" id="pnlWindowStrip">
-      <button type="button" class="history-window-tile active" data-close-window="mtd">
-        <span>MTD PnL</span><strong>n/a</strong><small>waiting for close ledger</small>
-      </button>
-    </div>
-    <div class="history-subline"><span id="pnlHistoryLabel">selected-window Close History</span> <span id="pnlHistorySub">MTD closed outcomes; selected-window close history</span></div>
-    <canvas id="pnlChart"></canvas>
-  </div>
   <div class="card"><h3>Approved</h3><div class="stat green" id="approvedCount">—</div><div class="sub">APPROVED + CONDITIONAL verdicts</div></div>
   <div class="card"><h3>JARVIS Mode</h3><div class="stat yellow" id="jarvisMode">—</div></div>
   <div class="card"><h3>Admin AI</h3><div class="stat" id="adminAiStatus">-</div><div class="sub" id="adminAiSub">Jarvis/Hermes bridge</div></div>

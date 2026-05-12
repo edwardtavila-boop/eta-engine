@@ -42,6 +42,8 @@ from eta_engine.brain.jarvis_admin import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from eta_engine.brain.jarvis_context import JarvisContext
 
 logger = logging.getLogger(__name__)
@@ -207,10 +209,10 @@ def _is_execution_degraded(bot_state: dict) -> bool:
 
 def evaluate_v26(
     req: ActionRequest,
-    ctx: "JarvisContext",
+    ctx: JarvisContext,
     *,
     base_resp: ActionResponse | None = None,
-    wrapped_evaluator=None,
+    wrapped_evaluator: Callable[[ActionRequest, JarvisContext], ActionResponse] | None = None,
 ) -> ActionResponse:
     """v26 layer. Reduces size when bot's execution health is degraded."""
     if base_resp is None:
@@ -255,7 +257,7 @@ def evaluate_v26(
             pass
         return base_resp.model_copy(update={
             "verdict": Verdict.CONDITIONAL,
-            "reason": f"v26 execution-health degraded: signals firing without entries, size halved",
+            "reason": "v26 execution-health degraded: signals firing without entries, size halved",
             "reason_code": "v26_execution_degraded",
             "size_cap_mult": new_cap,
             "conditions": (base_resp.conditions or []) + [

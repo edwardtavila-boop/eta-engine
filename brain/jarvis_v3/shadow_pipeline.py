@@ -1,15 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +82,8 @@ class ShadowPipeline:
             window_size=20, reinstate_windows=3, win_rate_floor=0.52,
         )
         inst = cls(tracker=tracker)
-        try:
+        with contextlib.suppress(Exception):
             inst.wire_default_gate()
-        except Exception:
-            pass
         return inst
 
     def wire_default_gate(self) -> None:

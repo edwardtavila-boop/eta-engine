@@ -39,6 +39,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 DEFAULT_TRACE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_trace.jsonl")
 MAX_BYTES_PER_FILE = 10 * 1024 * 1024  # 10 MB
@@ -54,6 +55,20 @@ class TraceRecord:
 
     Every field has a safe default — partial records emit cleanly even when
     an upstream stream failed and its slice of the record is empty.
+
+    Schema versioning
+    -----------------
+    v1 (legacy): everything up to ``hermes_calls``.
+    v2 (2026-05-12, T6/T7 prereq): adds ``schema_version``,
+    ``school_inputs``, ``portfolio_inputs``, ``hot_weights_snapshot``,
+    ``overrides_snapshot``, ``rng_master_seed``. All new fields default
+    to empty/None so existing emit sites continue to produce v1-style
+    records without modification. Emit sites populate v2 fields
+    site-by-site over the migration window. Readers ignore unknown
+    fields (we use ``dict.get()`` everywhere), so v2 records remain
+    readable by v1-aware code with the new fields simply absent.
+
+    See ``docs/TRACE_SCHEMA_V2_DESIGN.md`` for the full migration plan.
     """
 
     ts: str = ""
@@ -75,6 +90,44 @@ class TraceRecord:
     # unreachable / backoff active / no site fired. Mirrors the field on
     # ConductorResult so the trace stream captures the full picture.
     hermes_calls: dict = field(default_factory=dict)
+
+    # ── v2 schema fields (T6/T7 prereq) — see TRACE_SCHEMA_V2_DESIGN.md ──
+    schema_version: int = 1
+    """v1 = legacy (everything above this field).
+    v2 = adds the replay-input snapshot fields below.
+    Emit sites set this to 2 when populating the v2 fields; v1 sites
+    leave the default. T6/T7 consumers dispatch on this."""
+
+    school_inputs: dict = field(default_factory=dict)
+    """Per-school RAW input snapshot keyed by school name.
+    Each value should be a dict with at least:
+        {"score": float, "size_modifier": float, "rationale": str,
+         "rng_seed": int | None}
+    Captures every school's vote BEFORE the consolidator merges them.
+    Required for T6 causal attribution (perturb one school, observe
+    verdict shift) and T7 deterministic replay."""
+
+    portfolio_inputs: dict = field(default_factory=dict)
+    """Snapshot of the PortfolioContext dict fed to
+    portfolio_brain.assess at consult time. Keys mirror PortfolioContext
+    fields: fleet_long_notional_by_asset, fleet_short_notional_by_asset,
+    recent_entries_by_asset, open_correlated_exposure,
+    portfolio_drawdown_today_r, fleet_kill_active. Required for T7."""
+
+    hot_weights_snapshot: dict = field(default_factory=dict)
+    """{school: weight} for this bot's asset_class at consult time.
+    Snapshot of hot_learner.current_weights() result. Required for
+    replay because hot_learner state drifts after the consult."""
+
+    overrides_snapshot: dict = field(default_factory=dict)
+    """{size_modifier: float | None, school_weights: {school: weight}}
+    for this bot/asset at consult time. Captures Hermes-pinned
+    overrides that were live. Required for replay because overrides
+    expire (TTL-bounded)."""
+
+    rng_master_seed: int | None = None
+    """The deterministic master seed used to re-create the consult's
+    randomness for replay. ``None`` when no stochastic schools fired."""
 
 
 def new_consult_id() -> str:
@@ -190,6 +243,70 @@ def tail(n: int = 20, path: Path | None = None) -> list[dict]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("trace_emitter.tail failed: %s", exc)
         return []
+
+
+# ---------------------------------------------------------------------------
+# v2 schema helpers — used by T6 (causal_attribution) and T7 (replay_engine)
+# ---------------------------------------------------------------------------
+
+
+def is_v2_record(rec: dict | TraceRecord) -> bool:
+    """True iff ``rec`` declares ``schema_version >= 2``.
+
+    Accepts either a parsed dict (what reads from JSONL produce) or a
+    live ``TraceRecord`` dataclass. Records emitted before the v2 schema
+    bump don't have the field and return ``False``.
+
+    Used by T6's ``causal_attribution.analyze`` and T7's
+    ``replay_engine.replay`` to dispatch between "this record has the
+    replay-input snapshot fields, use them" vs "this is a legacy record,
+    return a pre-v2 error envelope to the caller".
+    """
+    if isinstance(rec, TraceRecord):
+        return rec.schema_version >= 2
+    if isinstance(rec, dict):
+        try:
+            return int(rec.get("schema_version", 1)) >= 2
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def extract_replay_inputs(rec: dict | TraceRecord) -> dict[str, Any] | None:
+    """Pack the v2 replay-input fields into a single dict for T6/T7.
+
+    Returns ``None`` if ``rec`` is not v2. Otherwise returns:
+
+        {
+            "school_inputs": dict,
+            "portfolio_inputs": dict,
+            "hot_weights_snapshot": dict,
+            "overrides_snapshot": dict,
+            "rng_master_seed": int | None,
+        }
+
+    Caller treats ``None`` as the signal to return a "pre-v2 record"
+    error envelope. This helper exists so T6 and T7 don't both reach
+    into the record's fields by hand — keeps the schema dependency in
+    one place.
+    """
+    if not is_v2_record(rec):
+        return None
+
+    def _g(key: str, default: Any) -> Any:  # noqa: ANN401
+        if isinstance(rec, TraceRecord):
+            return getattr(rec, key, default)
+        if isinstance(rec, dict):
+            return rec.get(key, default)
+        return default
+
+    return {
+        "school_inputs": dict(_g("school_inputs", {})),
+        "portfolio_inputs": dict(_g("portfolio_inputs", {})),
+        "hot_weights_snapshot": dict(_g("hot_weights_snapshot", {})),
+        "overrides_snapshot": dict(_g("overrides_snapshot", {})),
+        "rng_master_seed": _g("rng_master_seed", None),
+    }
 
 
 def read_since(

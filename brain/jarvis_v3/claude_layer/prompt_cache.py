@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -276,7 +276,6 @@ class AnthropicClaudeClient:
         self.tracker = tracker
 
     def call(self, req: ClaudeCallRequest) -> ClaudeCallResult:
-        from anthropic import Anthropic
 
         now = datetime.now(UTC)
         hit = self.tracker.observe(req.prompt.prefix_hash, now=now)
@@ -294,7 +293,7 @@ class AnthropicClaudeClient:
             api_kwargs["system"] = system
 
         try:
-            resp: Any = getattr(self.sdk, "messages").create(**api_kwargs)
+            resp: Any = self.sdk.messages.create(**api_kwargs)
         except Exception:
             raise
 

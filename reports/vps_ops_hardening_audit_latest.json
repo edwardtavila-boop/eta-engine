@@ -1,0 +1,1488 @@
+{
+  "broker_runtime": {
+    "ibgateway": {
+      "checked_at": null,
+      "port": 4002,
+      "port_listening": false,
+      "ready": false,
+      "reason": "IBC recovery task is configured, but usable login/password credentials are missing.",
+      "status": "missing_ibc_credentials"
+    }
+  },
+  "generated_at_utc": "2026-05-12T21:38:51.317775+00:00",
+  "next_actions": [
+    "Run elevated dashboard durability repair: eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd (registers ETA-Dashboard-API, ETA-Proxy-8421, ETA-Dashboard-Proxy-Watchdog, ETA-OperatorQueueHeartbeat, ETA-PaperLiveTransitionCheck)",
+    "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens",
+    "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+  ],
+  "runtime": {
+    "endpoints": {
+      "critical_failures": [],
+      "observed": {
+        "local_command_center_master": {
+          "critical": false,
+          "ok": true,
+          "payload": {
+            "broker_bracket_audit": {
+              "adapter_support": {
+                "alpaca_equity_server_bracket": true,
+                "ibkr_futures_server_oco": true,
+                "tradovate_order_payload_brackets": true
+              },
+              "broker_oco_evidence": {
+                "checked_position_count": 0,
+                "kind": "eta_broker_oco_evidence",
+                "open_order_count": 0,
+                "positions": [],
+                "schema_version": 1,
+                "source": "broker_open_orders",
+                "verified_count": 0,
+                "verified_symbols": []
+              },
+              "broker_oco_verified_positions": [],
+              "fleet_truth_present": true,
+              "generated_at_utc": "2026-05-12T21:38:44.455721+00:00",
+              "kind": "eta_broker_bracket_audit",
+              "manual_oco_ack": {
+                "ack_count": 0,
+                "expires_at_utc": null,
+                "operator": null,
+                "present": false,
+                "symbol": null,
+                "symbols": [],
+                "venue": null,
+                "verified": false,
+                "verified_at_utc": null
+              },
+              "manual_oco_verified_positions": [],
+              "next_action": "Broker-native bracket/OCO audit is clear.",
+              "operator_action": "Broker-native bracket/OCO audit is clear.",
+              "operator_action_required": false,
+              "operator_actions": [],
+              "position_summary": {
+                "broker_bracket_count": 0,
+                "broker_bracket_required_position_count": 0,
+                "broker_oco_verified_count": 0,
+                "broker_oco_verified_symbols": [],
+                "broker_open_position_count": 0,
+                "manual_oco_verified_count": 0,
+                "manual_oco_verified_symbols": [],
+                "missing_bracket_count": 0,
+                "supervisor_local_position_count": 0
+              },
+              "primary_unprotected_position": null,
+              "ready_for_prop_dry_run": true,
+              "schema_version": 1,
+              "stale_position_status": "flat",
+              "summary": "READY_NO_OPEN_EXPOSURE",
+              "target_exit_status": "flat",
+              "unprotected_positions": []
+            },
+            "cc_proxy": "local",
+            "daily": {},
+            "generated_at": "2026-05-12T21:38:44.451370+00:00",
+            "mode": "autonomous",
+            "paper": {
+              "critical_ready": false,
+              "mode": "paper_sim",
+              "paper_ready_bots": 11,
+              "status": "blocked"
+            },
+            "paper_live": {
+              "cache_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\paper_live_transition_check.json",
+              "cache_status": "hit",
+              "critical_ready": false,
+              "effective_detail": "",
+              "effective_status": "blocked",
+              "gates": [
+                {
+                  "critical": true,
+                  "detail": "Keep supervisor in paper_sim until TWS/IB Gateway API 4002 is running and the watchdog confirms an API handshake.",
+                  "name": "tws_api_4002",
+                  "next_action": "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002",
+                  "passed": false
+                },
+                {
+                  "critical": true,
+                  "detail": "watchdog status is stale (71926s old; max 180s)",
+                  "name": "ibgateway_release_guard",
+                  "next_action": "python -m eta_engine.scripts.ibgateway_release_guard",
+                  "passed": false
+                },
+                {
+                  "critical": true,
+                  "detail": "Seed IBC credentials with .\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword, then rerun ibgateway_reauth_controller --execute.",
+                  "name": "op19_gateway_runtime",
+                  "next_action": ".\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword",
+                  "passed": false
+                },
+                {
+                  "critical": true,
+                  "detail": "11 bot(s) are paper-ready in the strategy readiness snapshot",
+                  "name": "paper_ready_bots",
+                  "next_action": "python -m eta_engine.scripts.paper_live_launch_check --json",
+                  "passed": true
+                }
+              ],
+              "generated_at": "2026-05-12T17:58:20.661606+00:00",
+              "held_by_bracket_audit": false,
+              "ibkr_surface_status": {
+                "generated_at": "2026-05-12T17:58:09.746998+00:00",
+                "notes": [
+                  "TWS/IB Gateway socket API on 4002 is the supervisor paper_live direct-order surface.",
+                  "Client Portal Gateway REST on 5000 is a separate sidecar surface for REST helpers and should not be used as the sole paper_live readiness signal."
+                ],
+                "paper_live_required_surface": "tws_api",
+                "safe_default_mode": "paper_sim",
+                "summary": {
+                  "client_portal_ready": false,
+                  "operator_action": "Keep supervisor in paper_sim until TWS/IB Gateway API 4002 is running and the watchdog confirms an API handshake.",
+                  "paper_live_ready": false
+                },
+                "surfaces": {
+                  "client_portal_rest": {
+                    "auth_status_url": "https://127.0.0.1:5000/v1/api/iserver/auth/status",
+                    "authenticated": null,
+                    "base_url": "https://127.0.0.1:5000",
+                    "default_port": 5000,
+                    "detail": "skipped",
+                    "http_reachable": false,
+                    "ready": false,
+                    "reauth_last_check": null,
+                    "reauth_last_error": null,
+                    "reauth_last_status": null,
+                    "required_for": [
+                      "Client Portal historical/data helpers",
+                      "Client Portal auth/status checks",
+                      "external watchdog REST flatten/global-cancel sidecars"
+                    ],
+                    "role": "Used by Client Portal REST data/readiness/flatten sidecars; not the supervisor's direct paper_live order route.",
+                    "status": "skipped",
+                    "surface": "client_portal_rest"
+                  },
+                  "tws_api": {
+                    "account_summary": null,
+                    "confidence": "socket_probe",
+                    "handshake_detail": "attempt 1 clientId=9011: ConnectionRefusedError([WinError 1225] The remote computer refused the network connection); attempt 2 clientId=9012: ConnectionRefusedError([WinError 1225] The remote computer refused the network connection)",
+                    "handshake_ok": false,
+                    "host": "127.0.0.1",
+                    "port": 4002,
+                    "ready": false,
+                    "required_for": [
+                      "paper_live supervisor direct order routing",
+                      "LiveIbkrVenue",
+                      "TWS/IB Gateway API clients"
+                    ],
+                    "role": "Required for jarvis_strategy_supervisor paper_live direct orders via ib_insync.",
+                    "status": "not_ready",
+                    "surface": "tws_api",
+                    "tcp_detail": "TimeoutError: timed out",
+                    "tcp_reachable": false,
+                    "watchdog_checked_at": "2026-05-11T21:59:23.226387+00:00",
+                    "watchdog_consecutive_failures": 5,
+                    "watchdog_healthy": false,
+                    "watchdog_last_healthy_at": null
+                  }
+                }
+              },
+              "launch_command": "",
+              "mode": "paper_sim",
+              "operator_queue_blocked_count": 4,
+              "operator_queue_first_blocker_op_id": "OP-19",
+              "operator_queue_first_launch_blocker_op_id": "OP-19",
+              "operator_queue_first_launch_next_action": ".\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword",
+              "operator_queue_first_next_action": ".\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword",
+              "operator_queue_launch_blocked_count": 2,
+              "operator_queue_warning_blocked_count": 2,
+              "paper_ready_bots": 11,
+              "raw_status": "blocked",
+              "release_guard": {
+                "action": "none",
+                "generated_at_utc": "2026-05-12T17:58:09.747014+00:00",
+                "hold": {
+                  "active": false,
+                  "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\order_entry_hold.json",
+                  "payload": {},
+                  "reason": "",
+                  "scope": "all",
+                  "source": "none"
+                },
+                "operator_action": "Complete IBKR Gateway login/2FA, then run tws_watchdog until it is freshly healthy.",
+                "operator_action_required": true,
+                "reason": "watchdog status is stale (71926s old; max 180s)",
+                "status": "blocked_watchdog_unhealthy",
+                "watchdog_age_s": 71926
+              },
+              "schema_version": 1,
+              "source": "paper_live_transition_check_cache",
+              "source_age_s": 13223.707,
+              "status": "blocked"
+            },
+            "runtime": {
+              "mode": "paper_sim",
+              "operator_queue_blocked_count": 4,
+              "operator_queue_launch_blocked_count": 2,
+              "paper_live_ready": false
+            },
+            "status": "live",
+            "systems": {
+              "broker": {
+                "active_blocker_count": 0,
+                "detail": "idle",
+                "raw_status": "idle",
+                "source": "broker_router",
+                "status": "GREEN",
+                "target_exit_card_status": "GREEN",
+                "target_exit_status": "flat"
+              },
+              "broker_bracket_audit": {
+                "broker_bracket_required_position_count": 0,
+                "broker_open_position_count": 0,
+                "detail": "Broker-native bracket/OCO audit is clear.",
+                "missing_bracket_count": 0,
+                "operator_action_count": 0,
+                "operator_action_labels": [],
+                "operator_action_required": false,
+                "order_action_count": 0,
+                "order_action_detail": "",
+                "order_action_label": "",
+                "primary_action_detail": "",
+                "primary_action_label": "",
+                "primary_sec_type": "",
+                "primary_symbol": "",
+                "primary_venue": "",
+                "prop_dry_run_blocked": false,
+                "raw_status": "READY_NO_OPEN_EXPOSURE",
+                "ready_for_prop_dry_run": true,
+                "source": "broker_bracket_audit",
+                "status": "GREEN",
+                "unprotected_symbols": []
+              },
+              "dashboard": {
+                "checked_at": "2026-05-12T21:38:44.451370+00:00",
+                "detail": "dashboard API answering local master status",
+                "source": "local",
+                "status": "GREEN"
+              },
+              "ibkr": {
+                "checked_at": "2026-05-12T20:03:51.650171+00:00",
+                "detail": "gateway process not running; attempt 1 clientId=9011: ConnectionRefusedError([WinError 1225] The remote computer refused the network connection); attempt 2 clientId=9012: ConnectionRefusedError([WinError 1225] The remote computer refused the network connection); gateway config verified; installer downloaded (NotSigned); installer action required; recovery: missing_ibc_credentials; operator action required",
+                "raw_status": "down",
+                "source": "broker_gateway",
+                "status": "RED"
+              },
+              "paper_live": {
+                "critical_ready": false,
+                "detail": "blocked",
+                "effective_detail": "",
+                "effective_status": "blocked",
+                "held_by_bracket_audit": false,
+                "operator_queue_blocked_count": 4,
+                "operator_queue_launch_blocked_count": 2,
+                "source": "paper_live_transition",
+                "status": "RED"
+              },
+              "target_exit": {
+                "detail": "flat; no open positions need target/stop supervision",
+                "force_flatten_due_count": 0,
+                "missing_bracket_count": 0,
+                "raw_status": "flat",
+                "source": "supervisor_roster_cached_live_broker_state",
+                "status": "GREEN"
+              },
+              "vps_root": {
+                "checked_at": "2026-05-12T21:38:44.451370+00:00",
+                "detail": "risk=low; cleanup_allowed=False; artifact_stale=True; snapshot_age=4695m; source_deleted=0; submodule_drift=0; dirty_companions=0; generated_untracked=0; status_rows=0; dormant_submodules=0",
+                "source": "vps_root_reconciliation",
+                "status": "YELLOW"
+              }
+            },
+            "target_exit": {
+              "broker_bracket_count": 0,
+              "broker_bracket_required_position_count": 0,
+              "broker_open_order_verified_bracket_count": 0,
+              "broker_open_position_count": 0,
+              "broker_open_position_count_observed": false,
+              "broker_position_source": "not_observed",
+              "broker_supervisor_managed_position_count": 0,
+              "broker_unbracketed_count": 0,
+              "missing_bracket_count": 0,
+              "nearest_stop": null,
+              "nearest_stop_bot": null,
+              "nearest_stop_distance_pct": null,
+              "nearest_stop_distance_points": null,
+              "nearest_target": null,
+              "nearest_target_bot": null,
+              "nearest_target_distance_pct": null,
+              "nearest_target_distance_points": null,
+              "open_position_count": 0,
+              "position_staleness": {
+                "force_flatten_due_count": 0,
+                "oldest_position": null,
+                "open_position_count": 0,
+                "policy": {
+                  "ack_ttl_sec": 1800.0,
+                  "max_age_sec": 7200.0,
+                  "tighten_after_sec": 3600.0
+                },
+                "require_ack_count": 0,
+                "status": "flat",
+                "tighten_stop_due_count": 0,
+                "tightened_watch_count": 0,
+                "unknown_age_count": 0,
+                "watchlist": []
+              },
+              "source": "supervisor_roster_cached_live_broker_state",
+              "stale_position_status": "flat",
+              "status": "flat",
+              "stop_touched_count": 0,
+              "summary_line": "flat; no open positions need target/stop supervision",
+              "supervisor_local_position_count": 0,
+              "supervisor_missing_bracket_count": 0,
+              "supervisor_reported_broker_bracket_count": 0,
+              "supervisor_watch_count": 0,
+              "target_touched_count": 0,
+              "watching_count": 0
+            },
+            "target_exit_summary": {
+              "broker_bracket_count": 0,
+              "broker_bracket_required_position_count": 0,
+              "broker_open_order_verified_bracket_count": 0,
+              "broker_open_position_count": 0,
+              "broker_open_position_count_observed": false,
+              "broker_position_source": "not_observed",
+              "broker_supervisor_managed_position_count": 0,
+              "broker_unbracketed_count": 0,
+              "missing_bracket_count": 0,
+              "nearest_stop": null,
+              "nearest_stop_bot": null,
+              "nearest_stop_distance_pct": null,
+              "nearest_stop_distance_points": null,
+              "nearest_target": null,
+              "nearest_target_bot": null,
+              "nearest_target_distance_pct": null,
+              "nearest_target_distance_points": null,
+              "open_position_count": 0,
+              "position_staleness": {
+                "force_flatten_due_count": 0,
+                "oldest_position": null,
+                "open_position_count": 0,
+                "policy": {
+                  "ack_ttl_sec": 1800.0,
+                  "max_age_sec": 7200.0,
+                  "tighten_after_sec": 3600.0
+                },
+                "require_ack_count": 0,
+                "status": "flat",
+                "tighten_stop_due_count": 0,
+                "tightened_watch_count": 0,
+                "unknown_age_count": 0,
+                "watchlist": []
+              },
+              "source": "supervisor_roster_cached_live_broker_state",
+              "stale_position_status": "flat",
+              "status": "flat",
+              "stop_touched_count": 0,
+              "summary_line": "flat; no open positions need target/stop supervision",
+              "supervisor_local_position_count": 0,
+              "supervisor_missing_bracket_count": 0,
+              "supervisor_reported_broker_bracket_count": 0,
+              "supervisor_watch_count": 0,
+              "target_touched_count": 0,
+              "watching_count": 0
+            },
+            "uptime": "connected",
+            "vps_root_reconciliation": {
+              "artifact_stale": true,
+              "cleanup_allowed": false,
+              "counts": {
+                "deleted_tracked": 0,
+                "dirty_companion_repos": 0,
+                "modified_tracked": 0,
+                "status": 0,
+                "submodule_drift": 0,
+                "untracked": 0
+              },
+              "destructive_actions_performed": false,
+              "inventory_age_s": 281721,
+              "inventory_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_root_dirty_inventory.json",
+              "inventory_updated_at": "2026-05-09T15:23:23.107938+00:00",
+              "plan_age_s": 281721,
+              "plan_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_root_reconciliation_plan.json",
+              "plan_status": "ok",
+              "plan_updated_at": "2026-05-09T15:23:23.224990+00:00",
+              "recommended_action": "Rerun the read-only inventory and live probes; no root cleanup is authorized by this plan.",
+              "risk_level": "low",
+              "source": "vps_root_reconciliation_plan",
+              "status": "stale",
+              "steps": [
+                {
+                  "action": "Keep root cleanup disabled; preserve the current VPS working tree until the operator approves a reconciliation plan.",
+                  "decision": "manual_review_required",
+                  "evidence": [
+                    "inventory=C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_root_dirty_inventory.json",
+                    "status_count=0"
+                  ],
+                  "id": "freeze-and-backup",
+                  "risk": "low",
+                  "title": "Keep root cleanup frozen pending review"
+                },
+                {
+                  "action": "No tracked source/governance deletions were found in the current inventory; continue with companion repo and generated-artifact review.",
+                  "decision": "clear",
+                  "evidence": [
+                    "source_or_governance_deleted=0"
+                  ],
+                  "id": "restore-source-governance",
+                  "risk": "low",
+                  "title": "Confirm no tracked source or governance deletions"
+                },
+                {
+                  "action": "No dirty companion worktrees or submodule drift were found in the current inventory.",
+                  "decision": "clear",
+                  "evidence": [
+                    "submodule_drift=0",
+                    "dirty_companion_repos=0"
+                  ],
+                  "id": "align-submodules",
+                  "risk": "low",
+                  "title": "Align companion repositories after source state is understood"
+                },
+                {
+                  "action": "No generated/local artifact cleanup is queued by the current inventory.",
+                  "decision": "clear",
+                  "evidence": [
+                    "generated_deleted=0",
+                    "generated_untracked=0",
+                    "local_backup_untracked=0",
+                    "local_diagnostic_untracked=0"
+                  ],
+                  "id": "classify-generated-artifacts",
+                  "risk": "low",
+                  "title": "Separate generated market/research artifacts from source"
+                },
+                {
+                  "action": "After any approved manual root work, rerun the dashboard sync, bot-fleet probe, master status probe, and read-only root inventory.",
+                  "decision": "verification_required",
+                  "evidence": [
+                    "dashboard_probe=/api/bot-fleet",
+                    "master_probe=/api/master/status"
+                  ],
+                  "id": "verify-after-reconciliation",
+                  "risk": "medium",
+                  "title": "Verify live ops after any approved reconciliation"
+                }
+              ],
+              "summary": {
+                "dirty_companion_repos": 0,
+                "generated_deleted": 0,
+                "generated_untracked": 0,
+                "local_backup_untracked": 0,
+                "local_diagnostic_untracked": 0,
+                "source_or_governance_deleted": 0,
+                "source_or_governance_untracked": 0,
+                "submodule_drift": 0,
+                "unknown_deleted": 0
+              }
+            }
+          },
+          "status_code": 200,
+          "url": "http://127.0.0.1:8420/api/master/status"
+        },
+        "local_dashboard_api_diagnostics": {
+          "critical": true,
+          "ok": true,
+          "payload": {
+            "api_build": {
+              "capabilities": [
+                "command_center_watchdog",
+                "eta_readiness_snapshot",
+                "ibkr_futures_avg_cost_normalized"
+              ],
+              "dashboard_version": "v1",
+              "name": "eta-command-center-v1",
+              "pid": 39588,
+              "python": "3.14.4",
+              "release_stage": "pre_beta",
+              "started_at": "2026-05-12T20:20:34.729555+00:00"
+            },
+            "beta_launched": false,
+            "bot_fleet": {
+              "active_bots": 0,
+              "bot_total": 11,
+              "confirmed_bots": 0,
+              "error": null,
+              "live_broker_probe_mode": "cached_diagnostics",
+              "running_bots": 0,
+              "runtime_active_bots": 0,
+              "source_of_truth": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state",
+              "staged_bots": 11,
+              "truth_status": "stale",
+              "truth_summary_line": "ETA roster has 11 bot row(s), but none have a fresh heartbeat."
+            },
+            "bot_strategy_readiness": {
+              "blocked_data": 0,
+              "can_live_any": false,
+              "error": null,
+              "launch_lanes": {
+                "cellar": 1,
+                "paper_soak": 11
+              },
+              "paper_ready": 11,
+              "status": "ready",
+              "top_action_count": 5
+            },
+            "cards": {
+              "dead_cards": [],
+              "stale_cards": [],
+              "summary": {
+                "client": 1,
+                "dead": 0,
+                "registered": 28,
+                "sse": 1,
+                "stale": 0,
+                "total": 30
+              }
+            },
+            "checks": {
+              "api_contract": true,
+              "auth_contract": true,
+              "bot_fleet_contract": true,
+              "bot_strategy_readiness_contract": true,
+              "card_contract": true,
+              "command_center_watchdog_contract": true,
+              "dashboard_proxy_watchdog_contract": true,
+              "equity_contract": true,
+              "eta_readiness_snapshot_contract": true,
+              "hardening_contract": true,
+              "operator_queue_contract": true,
+              "paper_live_transition_contract": true,
+              "vps_ops_hardening_contract": true
+            },
+            "command_center_watchdog": {
+              "action_count": 2,
+              "action_plan": [
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": ".\\scripts\\repair-public-tunnel-admin.cmd",
+                  "command_source": "computed",
+                  "instruction": "Run the launcher and approve the UAC prompt: .\\scripts\\repair-public-tunnel-admin.cmd. Replace the Cloudflare tunnel token at firm_command_center\\secrets\\cloudflare_tunnel_token.txt first; this replays the private VPS tunnel setup without printing the token.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "public_tunnel_token_rejected",
+                  "requires_elevation": true,
+                  "role": "primary",
+                  "run_context": "requires_elevated_shell",
+                  "step": "repair_public_tunnel_token"
+                },
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com",
+                  "command_source": "computed",
+                  "instruction": "Run the launcher and approve the UAC prompt: powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com. This registers Eta-CommandCenter-Doctor and starts a repair-capable doctor run.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "watchdog_missing",
+                  "requires_elevation": true,
+                  "role": "follow_up",
+                  "run_context": "requires_elevated_shell",
+                  "step": "register_watchdog"
+                }
+              ],
+              "age_s": 145329,
+              "can_launch_from_desktop": true,
+              "checked_at": "2026-05-11T05:16:28.8984217Z",
+              "failure_class": "healthy",
+              "failure_summary": {
+                "contract_findings": 0,
+                "endpoint_failures": 0,
+                "legacy_markers": 0,
+                "secret_markers": 0,
+                "total_findings": 7,
+                "transport_failures": 0,
+                "truncated": false,
+                "v1_contract_findings": 0
+              },
+              "follow_up_actions": [
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com",
+                  "instruction": "Run the launcher and approve the UAC prompt: powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com. This registers Eta-CommandCenter-Doctor and starts a repair-capable doctor run.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "watchdog_missing",
+                  "requires_elevation": true,
+                  "run_context": "requires_elevated_shell",
+                  "step": "register_watchdog"
+                }
+              ],
+              "follow_up_count": 1,
+              "fresh": false,
+              "healthy": false,
+              "instruction": "Run the launcher and approve the UAC prompt: .\\scripts\\repair-public-tunnel-admin.cmd. Replace the Cloudflare tunnel token at firm_command_center\\secrets\\cloudflare_tunnel_token.txt first; this replays the private VPS tunnel setup without printing the token.",
+              "launch_context": "interactive_uac_launcher",
+              "next_command": null,
+              "next_step": "none",
+              "operator_contract_state": "healthy",
+              "receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_doctor_latest.json",
+              "recommended_action": "none",
+              "repair_required": false,
+              "requires_elevation": false,
+              "status": "stale_receipt",
+              "status_receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_watchdog_status_latest.json",
+              "summary": "Command Center watchdog needs none: healthy.",
+              "watchdog_registered": false,
+              "watchdog_state": "missing"
+            },
+            "dashboard_proxy_watchdog": {
+              "action": "restarted",
+              "body_len": 159236,
+              "checked_age_s": 9,
+              "checked_at": "2026-05-12T21:38:28.838593+00:00",
+              "elapsed_ms": 33,
+              "fresh": true,
+              "heartbeat_age_s": 6,
+              "heartbeat_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\dashboard_proxy_watchdog_heartbeat.json",
+              "heartbeat_ts": "2026-05-12T21:38:31.896016+00:00",
+              "probe_healthy": false,
+              "probe_reason": "missing_expected_text",
+              "restart_ok": true,
+              "restart_reason": "schtasks_run_ok",
+              "status": "degraded",
+              "status_code": 200,
+              "summary": "restarted: missing_expected_text",
+              "task_name": "ETA-Proxy-8421"
+            },
+            "dashboard_version": "v1",
+            "equity": {
+              "error": null,
+              "point_count": 0,
+              "session_truth_status": "empty",
+              "source": "canonical_state_empty",
+              "source_age_s": null,
+              "today_pnl": null
+            },
+            "eta_readiness_snapshot": {
+              "age_s": 31564,
+              "blocked_count": 2,
+              "broker_missing_bracket_count": 0,
+              "broker_open_position_count": 0,
+              "check_count": 4,
+              "checked_at": "2026-05-12T12:52:33.7192139Z",
+              "closed_trade_count": 43827,
+              "cumulative_r": 18276.9562,
+              "fresh": false,
+              "healthy": false,
+              "next_actions": [
+                "Keep volume_profile_mnq in paper_soak until can_live_trade=true and the futures prop ladder clears; current blocker(s): prop readiness is BLOCKED, not READY_FOR_DRY_RUN; bot row is not can_live_trade.",
+                "Tradovate remains DORMANT by broker policy; do not seed or route Tradovate credentials until explicit code/docs reactivation. Active futures brokers: IBKR, TASTYTRADE. Current missing dormant venue secrets: BLUSKY_TRADOVATE_ACCOUNT_ID, BLUSKY_TRADOVATE_APP_ID, BLUSKY_TRADOVATE_APP_SECRET, BLUSKY_TRADOVATE_CID.",
+                "Broker-native bracket/OCO audit is clear.",
+                "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval",
+                "clear primary_ladder to PASS in futures_prop_ladder"
+              ],
+              "ok_count": 2,
+              "primary_action": "Keep volume_profile_mnq in paper_soak until can_live_trade=true and the futures prop ladder clears; current blocker(s): prop readiness is BLOCKED, not READY_FOR_DRY_RUN; bot row is not can_live_trade.",
+              "primary_blocker": "prop_live_readiness_gate",
+              "promotion_summary": "BLOCKED_PAPER_SOAK",
+              "prop_primary_bot": "volume_profile_mnq",
+              "public_fallback_active": false,
+              "public_fallback_blocked_count": 0,
+              "public_fallback_primary_action": "",
+              "public_fallback_reason": "",
+              "ready_for_prop_dry_run_review": false,
+              "required_evidence": [
+                "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval",
+                "clear primary_ladder to PASS in futures_prop_ladder",
+                "clear prop_readiness to PASS / READY_FOR_DRY_RUN",
+                "clear broker_native_brackets to PASS"
+              ],
+              "status": "stale_receipt",
+              "status_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\eta_readiness_snapshot_latest.json",
+              "summary": "BLOCKED",
+              "total_realized_pnl": 27144615.23,
+              "win_rate_pct": 29.4
+            },
+            "generated_at": "2026-05-12T21:38:38.527173+00:00",
+            "hardening": {
+              "age_s": 823,
+              "generated_at": "2026-05-12T21:24:54.783950+00:00",
+              "jarvis_hermes_admin_ai": {
+                "blocked": 0,
+                "next_actions": [
+                  "Jarvis/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate."
+                ],
+                "ready": true,
+                "status": "PASS",
+                "warned": 0
+              },
+              "next_actions": [
+                "Run elevated dashboard durability repair: eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd (registers ETA-Dashboard-API, ETA-Proxy-8421, ETA-Dashboard-Proxy-Watchdog, ETA-OperatorQueueHeartbeat, ETA-PaperLiveTransitionCheck)",
+                "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens",
+                "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+              ],
+              "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_ops_hardening_latest.json",
+              "ready": false,
+              "status": "YELLOW_SAFETY_BLOCKED",
+              "summary": {
+                "admin_ai_ready": true,
+                "admin_ai_status": "PASS",
+                "dashboard_durable": false,
+                "order_action_allowed": false,
+                "promotion_allowed": false,
+                "runtime_ready": true,
+                "trading_gate_ready": false
+              }
+            },
+            "operator_queue": {
+              "blocked": 3,
+              "cache_age_s": null,
+              "cache_stale": false,
+              "cache_status": "stale_fallback",
+              "error": null,
+              "launch_blocked": 1,
+              "observed": 11,
+              "source": "operator_action_queue",
+              "stale_cache_age_s": 11117,
+              "stale_cache_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\operator_queue_snapshot.json",
+              "top_blocker_op_id": "OP-19",
+              "top_blocker_title": "Install/configure canonical IB Gateway and recover TWS API 4002",
+              "top_launch_blocker_detail": "Seed IBC credentials with .\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword, then rerun ibgateway_reauth_controller --execute.",
+              "top_launch_blocker_op_id": "OP-19",
+              "unknown": 0
+            },
+            "operator_url": "https://ops.evolutionarytradingalgo.com",
+            "paper_live_transition": {
+              "broker_bracket_missing_count": 0,
+              "broker_bracket_primary_sec_type": "",
+              "broker_bracket_primary_symbol": "",
+              "broker_bracket_primary_venue": "",
+              "cache_stale": true,
+              "critical_ready": false,
+              "effective_detail": "",
+              "effective_status": "blocked",
+              "error": null,
+              "first_failed_gate": {
+                "detail": "Keep supervisor in paper_sim until TWS/IB Gateway API 4002 is running and the watchdog confirms an API handshake.",
+                "name": "tws_api_4002",
+                "next_action": "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+              },
+              "first_launch_blocker_op_id": "OP-19",
+              "first_launch_next_action": "Seed IBC credentials with .\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword, then rerun ibgateway_reauth_controller --execute.",
+              "held_by_bracket_audit": false,
+              "paper_ready_bots": 11,
+              "source_age_s": 13223.436,
+              "status": "blocked"
+            },
+            "paths": {
+              "log_dir": "C:\\EvolutionaryTradingAlgo\\logs\\eta_engine",
+              "repo_root": "C:\\EvolutionaryTradingAlgo\\eta_engine",
+              "runtime_state_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\runtime_state.json",
+              "state_dir": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state",
+              "workspace_root": "C:\\EvolutionaryTradingAlgo"
+            },
+            "release_stage": "pre_beta",
+            "required_data": [
+              "bot_fleet",
+              "fleet_equity",
+              "auth_session",
+              "source_freshness"
+            ],
+            "server_ts": 1778621918.5271733,
+            "service": {
+              "pid": 39588,
+              "status": "ok",
+              "uptime_s": 4683.798
+            },
+            "source_of_truth": "dashboard_diagnostics",
+            "vps_ops_hardening": {
+              "age_s": 823,
+              "generated_at": "2026-05-12T21:24:54.783950+00:00",
+              "jarvis_hermes_admin_ai": {
+                "blocked": 0,
+                "next_actions": [
+                  "Jarvis/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate."
+                ],
+                "ready": true,
+                "status": "PASS",
+                "warned": 0
+              },
+              "next_actions": [
+                "Run elevated dashboard durability repair: eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd (registers ETA-Dashboard-API, ETA-Proxy-8421, ETA-Dashboard-Proxy-Watchdog, ETA-OperatorQueueHeartbeat, ETA-PaperLiveTransitionCheck)",
+                "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens",
+                "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+              ],
+              "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_ops_hardening_latest.json",
+              "ready": false,
+              "status": "YELLOW_SAFETY_BLOCKED",
+              "summary": {
+                "admin_ai_ready": true,
+                "admin_ai_status": "PASS",
+                "dashboard_durable": false,
+                "order_action_allowed": false,
+                "promotion_allowed": false,
+                "runtime_ready": true,
+                "trading_gate_ready": false
+              }
+            }
+          },
+          "status_code": 200,
+          "url": "http://127.0.0.1:8000/api/dashboard/diagnostics"
+        },
+        "local_dashboard_proxy_diagnostics": {
+          "critical": true,
+          "ok": true,
+          "payload": {
+            "api_build": {
+              "capabilities": [
+                "command_center_watchdog",
+                "eta_readiness_snapshot",
+                "ibkr_futures_avg_cost_normalized"
+              ],
+              "dashboard_version": "v1",
+              "name": "eta-command-center-v1",
+              "pid": 39588,
+              "python": "3.14.4",
+              "release_stage": "pre_beta",
+              "started_at": "2026-05-12T20:20:34.729555+00:00"
+            },
+            "beta_launched": false,
+            "bot_fleet": {
+              "active_bots": 0,
+              "bot_total": 11,
+              "confirmed_bots": 0,
+              "error": null,
+              "live_broker_probe_mode": "cached_diagnostics",
+              "running_bots": 0,
+              "runtime_active_bots": 0,
+              "source_of_truth": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state",
+              "staged_bots": 11,
+              "truth_status": "stale",
+              "truth_summary_line": "ETA roster has 11 bot row(s), but none have a fresh heartbeat."
+            },
+            "bot_strategy_readiness": {
+              "blocked_data": 0,
+              "can_live_any": false,
+              "error": null,
+              "launch_lanes": {
+                "cellar": 1,
+                "paper_soak": 11
+              },
+              "paper_ready": 11,
+              "status": "ready",
+              "top_action_count": 5
+            },
+            "cards": {
+              "dead_cards": [],
+              "stale_cards": [],
+              "summary": {
+                "client": 1,
+                "dead": 0,
+                "registered": 28,
+                "sse": 1,
+                "stale": 0,
+                "total": 30
+              }
+            },
+            "checks": {
+              "api_contract": true,
+              "auth_contract": true,
+              "bot_fleet_contract": true,
+              "bot_strategy_readiness_contract": true,
+              "card_contract": true,
+              "command_center_watchdog_contract": true,
+              "dashboard_proxy_watchdog_contract": true,
+              "equity_contract": true,
+              "eta_readiness_snapshot_contract": true,
+              "hardening_contract": true,
+              "operator_queue_contract": true,
+              "paper_live_transition_contract": true,
+              "vps_ops_hardening_contract": true
+            },
+            "command_center_watchdog": {
+              "action_count": 2,
+              "action_plan": [
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": ".\\scripts\\repair-public-tunnel-admin.cmd",
+                  "command_source": "computed",
+                  "instruction": "Run the launcher and approve the UAC prompt: .\\scripts\\repair-public-tunnel-admin.cmd. Replace the Cloudflare tunnel token at firm_command_center\\secrets\\cloudflare_tunnel_token.txt first; this replays the private VPS tunnel setup without printing the token.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "public_tunnel_token_rejected",
+                  "requires_elevation": true,
+                  "role": "primary",
+                  "run_context": "requires_elevated_shell",
+                  "step": "repair_public_tunnel_token"
+                },
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com",
+                  "command_source": "computed",
+                  "instruction": "Run the launcher and approve the UAC prompt: powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com. This registers Eta-CommandCenter-Doctor and starts a repair-capable doctor run.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "watchdog_missing",
+                  "requires_elevation": true,
+                  "role": "follow_up",
+                  "run_context": "requires_elevated_shell",
+                  "step": "register_watchdog"
+                }
+              ],
+              "age_s": 145335,
+              "can_launch_from_desktop": true,
+              "checked_at": "2026-05-11T05:16:28.8984217Z",
+              "failure_class": "healthy",
+              "failure_summary": {
+                "contract_findings": 0,
+                "endpoint_failures": 0,
+                "legacy_markers": 0,
+                "secret_markers": 0,
+                "total_findings": 7,
+                "transport_failures": 0,
+                "truncated": false,
+                "v1_contract_findings": 0
+              },
+              "follow_up_actions": [
+                {
+                  "can_launch_from_desktop": true,
+                  "can_run_here": false,
+                  "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com",
+                  "instruction": "Run the launcher and approve the UAC prompt: powershell -ExecutionPolicy Bypass -File .\\scripts\\register-command-center-watchdog.ps1 -RunNow -PublicUrl https://ops.evolutionarytradingalgo.com. This registers Eta-CommandCenter-Doctor and starts a repair-capable doctor run.",
+                  "launch_context": "interactive_uac_launcher",
+                  "reason": "watchdog_missing",
+                  "requires_elevation": true,
+                  "run_context": "requires_elevated_shell",
+                  "step": "register_watchdog"
+                }
+              ],
+              "follow_up_count": 1,
+              "fresh": false,
+              "healthy": false,
+              "instruction": "Run the launcher and approve the UAC prompt: .\\scripts\\repair-public-tunnel-admin.cmd. Replace the Cloudflare tunnel token at firm_command_center\\secrets\\cloudflare_tunnel_token.txt first; this replays the private VPS tunnel setup without printing the token.",
+              "launch_context": "interactive_uac_launcher",
+              "next_command": null,
+              "next_step": "none",
+              "operator_contract_state": "healthy",
+              "receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_doctor_latest.json",
+              "recommended_action": "none",
+              "repair_required": false,
+              "requires_elevation": false,
+              "status": "stale_receipt",
+              "status_receipt_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\command_center_watchdog_status_latest.json",
+              "summary": "Command Center watchdog needs none: healthy.",
+              "watchdog_registered": false,
+              "watchdog_state": "missing"
+            },
+            "dashboard_proxy_watchdog": {
+              "action": "restarted",
+              "body_len": 159236,
+              "checked_age_s": 15,
+              "checked_at": "2026-05-12T21:38:28.838593+00:00",
+              "elapsed_ms": 33,
+              "fresh": true,
+              "heartbeat_age_s": 12,
+              "heartbeat_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\dashboard_proxy_watchdog_heartbeat.json",
+              "heartbeat_ts": "2026-05-12T21:38:31.896016+00:00",
+              "probe_healthy": false,
+              "probe_reason": "missing_expected_text",
+              "restart_ok": true,
+              "restart_reason": "schtasks_run_ok",
+              "status": "degraded",
+              "status_code": 200,
+              "summary": "restarted: missing_expected_text",
+              "task_name": "ETA-Proxy-8421"
+            },
+            "dashboard_version": "v1",
+            "equity": {
+              "error": null,
+              "point_count": 0,
+              "session_truth_status": "empty",
+              "source": "canonical_state_empty",
+              "source_age_s": null,
+              "today_pnl": null
+            },
+            "eta_readiness_snapshot": {
+              "age_s": 31570,
+              "blocked_count": 2,
+              "broker_missing_bracket_count": 0,
+              "broker_open_position_count": 0,
+              "check_count": 4,
+              "checked_at": "2026-05-12T12:52:33.7192139Z",
+              "closed_trade_count": 43827,
+              "cumulative_r": 18276.9562,
+              "fresh": false,
+              "healthy": false,
+              "next_actions": [
+                "Keep volume_profile_mnq in paper_soak until can_live_trade=true and the futures prop ladder clears; current blocker(s): prop readiness is BLOCKED, not READY_FOR_DRY_RUN; bot row is not can_live_trade.",
+                "Tradovate remains DORMANT by broker policy; do not seed or route Tradovate credentials until explicit code/docs reactivation. Active futures brokers: IBKR, TASTYTRADE. Current missing dormant venue secrets: BLUSKY_TRADOVATE_ACCOUNT_ID, BLUSKY_TRADOVATE_APP_ID, BLUSKY_TRADOVATE_APP_SECRET, BLUSKY_TRADOVATE_CID.",
+                "Broker-native bracket/OCO audit is clear.",
+                "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval",
+                "clear primary_ladder to PASS in futures_prop_ladder"
+              ],
+              "ok_count": 2,
+              "primary_action": "Keep volume_profile_mnq in paper_soak until can_live_trade=true and the futures prop ladder clears; current blocker(s): prop readiness is BLOCKED, not READY_FOR_DRY_RUN; bot row is not can_live_trade.",
+              "primary_blocker": "prop_live_readiness_gate",
+              "promotion_summary": "BLOCKED_PAPER_SOAK",
+              "prop_primary_bot": "volume_profile_mnq",
+              "public_fallback_active": false,
+              "public_fallback_blocked_count": 0,
+              "public_fallback_primary_action": "",
+              "public_fallback_reason": "",
+              "ready_for_prop_dry_run_review": false,
+              "required_evidence": [
+                "set volume_profile_mnq can_live_trade=true only after paper-soak promotion approval",
+                "clear primary_ladder to PASS in futures_prop_ladder",
+                "clear prop_readiness to PASS / READY_FOR_DRY_RUN",
+                "clear broker_native_brackets to PASS"
+              ],
+              "status": "stale_receipt",
+              "status_path": "C:\\EvolutionaryTradingAlgo\\var\\ops\\eta_readiness_snapshot_latest.json",
+              "summary": "BLOCKED",
+              "total_realized_pnl": 27144615.23,
+              "win_rate_pct": 29.4
+            },
+            "generated_at": "2026-05-12T21:38:44.102738+00:00",
+            "hardening": {
+              "age_s": 829,
+              "generated_at": "2026-05-12T21:24:54.783950+00:00",
+              "jarvis_hermes_admin_ai": {
+                "blocked": 0,
+                "next_actions": [
+                  "Jarvis/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate."
+                ],
+                "ready": true,
+                "status": "PASS",
+                "warned": 0
+              },
+              "next_actions": [
+                "Run elevated dashboard durability repair: eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd (registers ETA-Dashboard-API, ETA-Proxy-8421, ETA-Dashboard-Proxy-Watchdog, ETA-OperatorQueueHeartbeat, ETA-PaperLiveTransitionCheck)",
+                "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens",
+                "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+              ],
+              "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_ops_hardening_latest.json",
+              "ready": false,
+              "status": "YELLOW_SAFETY_BLOCKED",
+              "summary": {
+                "admin_ai_ready": true,
+                "admin_ai_status": "PASS",
+                "dashboard_durable": false,
+                "order_action_allowed": false,
+                "promotion_allowed": false,
+                "runtime_ready": true,
+                "trading_gate_ready": false
+              }
+            },
+            "operator_queue": {
+              "blocked": 3,
+              "cache_age_s": null,
+              "cache_stale": false,
+              "cache_status": "stale_fallback",
+              "error": null,
+              "launch_blocked": 1,
+              "observed": 11,
+              "source": "operator_action_queue",
+              "stale_cache_age_s": 11122,
+              "stale_cache_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\operator_queue_snapshot.json",
+              "top_blocker_op_id": "OP-19",
+              "top_blocker_title": "Install/configure canonical IB Gateway and recover TWS API 4002",
+              "top_launch_blocker_detail": "Seed IBC credentials with .\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword, then rerun ibgateway_reauth_controller --execute.",
+              "top_launch_blocker_op_id": "OP-19",
+              "unknown": 0
+            },
+            "operator_url": "https://ops.evolutionarytradingalgo.com",
+            "paper_live_transition": {
+              "broker_bracket_missing_count": 0,
+              "broker_bracket_primary_sec_type": "",
+              "broker_bracket_primary_symbol": "",
+              "broker_bracket_primary_venue": "",
+              "cache_stale": true,
+              "critical_ready": false,
+              "effective_detail": "",
+              "effective_status": "blocked",
+              "error": null,
+              "first_failed_gate": {
+                "detail": "Keep supervisor in paper_sim until TWS/IB Gateway API 4002 is running and the watchdog confirms an API handshake.",
+                "name": "tws_api_4002",
+                "next_action": "python -m eta_engine.scripts.tws_watchdog --host 127.0.0.1 --port 4002"
+              },
+              "first_launch_blocker_op_id": "OP-19",
+              "first_launch_next_action": "Seed IBC credentials with .\\eta_engine\\deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword, then rerun ibgateway_reauth_controller --execute.",
+              "held_by_bracket_audit": false,
+              "paper_ready_bots": 11,
+              "source_age_s": 13223.699,
+              "status": "blocked"
+            },
+            "paths": {
+              "log_dir": "C:\\EvolutionaryTradingAlgo\\logs\\eta_engine",
+              "repo_root": "C:\\EvolutionaryTradingAlgo\\eta_engine",
+              "runtime_state_path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\runtime_state.json",
+              "state_dir": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state",
+              "workspace_root": "C:\\EvolutionaryTradingAlgo"
+            },
+            "release_stage": "pre_beta",
+            "required_data": [
+              "bot_fleet",
+              "fleet_equity",
+              "auth_session",
+              "source_freshness"
+            ],
+            "server_ts": 1778621924.1027377,
+            "service": {
+              "pid": 39588,
+              "status": "ok",
+              "uptime_s": 4689.373
+            },
+            "source_of_truth": "dashboard_diagnostics",
+            "vps_ops_hardening": {
+              "age_s": 829,
+              "generated_at": "2026-05-12T21:24:54.783950+00:00",
+              "jarvis_hermes_admin_ai": {
+                "blocked": 0,
+                "next_actions": [
+                  "Jarvis/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate."
+                ],
+                "ready": true,
+                "status": "PASS",
+                "warned": 0
+              },
+              "next_actions": [
+                "Run elevated dashboard durability repair: eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd (registers ETA-Dashboard-API, ETA-Proxy-8421, ETA-Dashboard-Proxy-Watchdog, ETA-OperatorQueueHeartbeat, ETA-PaperLiveTransitionCheck)",
+                "Seed IBC credentials with deploy\\scripts\\set_ibc_credentials.ps1 -PromptForPassword; keep IBKR read-only until 127.0.0.1:4002 listens",
+                "Keep strategy lane in paper soak until prop promotion audit is PASS/READY"
+              ],
+              "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\vps_ops_hardening_latest.json",
+              "ready": false,
+              "status": "YELLOW_SAFETY_BLOCKED",
+              "summary": {
+                "admin_ai_ready": true,
+                "admin_ai_status": "PASS",
+                "dashboard_durable": false,
+                "order_action_allowed": false,
+                "promotion_allowed": false,
+                "runtime_ready": true,
+                "trading_gate_ready": false
+              }
+            }
+          },
+          "status_code": 200,
+          "url": "http://127.0.0.1:8421/api/dashboard/diagnostics"
+        },
+        "local_fm_status": {
+          "critical": true,
+          "ok": true,
+          "payload": {
+            "all_ready": true,
+            "generated_at": "2026-05-12T21:38:44.365478+00:00",
+            "health_snapshot": {
+              "path": "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\fm_health.json",
+              "payload": {
+                "all_ready": true,
+                "live": false,
+                "pass_count": 3,
+                "providers": [
+                  {
+                    "label": "DEEPSEEK (Worker Bee)",
+                    "message": "configured (skipped live call)",
+                    "name": "deepseek",
+                    "ok": true
+                  },
+                  {
+                    "label": "CLAUDE   (Lead Architect)",
+                    "message": "installed: C:\\Users\\edwar\\.local\\bin\\claude.EXE (skipped live call)",
+                    "name": "claude",
+                    "ok": true
+                  },
+                  {
+                    "label": "CODEX    (Systems Expert)",
+                    "message": "installed: C:\\Users\\edwar\\AppData\\Roaming\\npm\\codex.CMD (skipped live call)",
+                    "name": "codex",
+                    "ok": true
+                  }
+                ],
+                "total_count": 3,
+                "ts": "2026-05-11T05:47:31.773565+00:00"
+              },
+              "status": "present"
+            },
+            "live": false,
+            "mode": "force_multiplier",
+            "pass_count": 3,
+            "providers": {
+              "claude": {
+                "available": true,
+                "label": "CLAUDE   (Lead Architect)",
+                "message": "installed: C:\\Users\\edwar\\.local\\bin\\claude.EXE (skipped live call)"
+              },
+              "codex": {
+                "available": true,
+                "label": "CODEX    (Systems Expert)",
+                "message": "installed: C:\\Users\\edwar\\AppData\\Roaming\\npm\\codex.CMD (skipped live call)"
+              },
+              "deepseek": {
+                "available": true,
+                "label": "DEEPSEEK (Worker Bee)",
+                "message": "configured (skipped live call)"
+              }
+            },
+            "status": "ok",
+            "total_count": 3
+          },
+          "status_code": 200,
+          "url": "http://127.0.0.1:8422/api/fm/status"
+        },
+        "public_ops_bot_fleet": {
+          "critical": false,
+          "ok": true,
+          "payload": "{\"bots\":[{\"id\":\"mnq_futures_sage\",\"name\":\"mnq_futures_sage\",\"symbol\":\"MNQ1\",\"tier\":\"orb_sage_gated\",\"venue\":\"paper-sim\",\"status\":\"idle\",\"todays_pnl\":0.0,\"todays_pnl_source\":\"supervisor_heartbeat\",\"last_trade_ts\":null,\"last_trade_age_s\":null,\"last_trade_side\":null,\"last_trade_r\":null,\"last_trade_qty\":null,\"last_signal_ts\":null,\"last_signal_age_s\":null,\"last_signal_side\":null,\"last_activity_ts\":\"2026-05-12T21:37:44.423817+00:00\",\"last_activity_age_s\":61,\"last_activity_side\":null,\"last_activity_typ",
+          "status_code": 200,
+          "url": "https://ops.evolutionarytradingalgo.com/api/bot-fleet"
+        }
+      },
+      "schema_drift": []
+    },
+    "ports": {
+      "missing": [],
+      "observed": {
+        "4002": {
+          "listening": false,
+          "owners": [],
+          "port": 4002
+        },
+        "8000": {
+          "listening": true,
+          "owners": [
+            39588
+          ],
+          "port": 8000
+        },
+        "8420": {
+          "listening": true,
+          "owners": [
+            36336
+          ],
+          "port": 8420
+        },
+        "8421": {
+          "listening": true,
+          "owners": [
+            31468
+          ],
+          "port": 8421
+        },
+        "8422": {
+          "listening": true,
+          "owners": [
+            17164
+          ],
+          "port": 8422
+        }
+      },
+      "required": [
+        8000,
+        8420,
+        8421,
+        8422
+      ]
+    },
+    "services": {
+      "critical": [
+        "FirmCommandCenter",
+        "FirmCommandCenterEdge",
+        "FirmCommandCenterTunnel",
+        "FirmCore",
+        "FirmWatchdog",
+        "ETAJarvisSupervisor",
+        "FmStatusServer"
+      ],
+      "down": [],
+      "observed": {
+        "ETAJarvisSupervisor": {
+          "name": "ETAJarvisSupervisor",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FirmCommandCenter": {
+          "name": "FirmCommandCenter",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FirmCommandCenterEdge": {
+          "name": "FirmCommandCenterEdge",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FirmCommandCenterTunnel": {
+          "name": "FirmCommandCenterTunnel",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FirmCore": {
+          "name": "FirmCore",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FirmWatchdog": {
+          "name": "FirmWatchdog",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "FmStatusServer": {
+          "name": "FmStatusServer",
+          "start_type": "Automatic",
+          "status": "Running"
+        },
+        "HermesJarvisTelegram": {
+          "name": "HermesJarvisTelegram",
+          "start_type": "Automatic",
+          "status": "Running"
+        }
+      },
+      "optional": [
+        "HermesJarvisTelegram"
+      ]
+    },
+    "tasks": {
+      "dashboard_durable": [
+        "ETA-Dashboard-API",
+        "ETA-Proxy-8421",
+        "ETA-Dashboard-Proxy-Watchdog",
+        "ETA-OperatorQueueHeartbeat",
+        "ETA-PaperLiveTransitionCheck"
+      ],
+      "ibgateway": [
+        "ETA-IBGateway",
+        "ETA-IBGateway-Autostart",
+        "ETA-IBGateway-DailyRestart",
+        "ETA-IBGateway-RunNow"
+      ],
+      "missing_dashboard_durable": [
+        "ETA-Dashboard-API",
+        "ETA-Proxy-8421",
+        "ETA-Dashboard-Proxy-Watchdog",
+        "ETA-OperatorQueueHeartbeat",
+        "ETA-PaperLiveTransitionCheck"
+      ],
+      "observed": {
+        "ETA-Autopilot": {
+          "last_run_time": "/Date(1778621057000)/",
+          "last_task_result": 0,
+          "next_run_time": "/Date(1778621956000)/",
+          "state": "Ready",
+          "task_name": "ETA-Autopilot"
+        },
+        "ETA-Dashboard-API": {
+          "last_run_time": null,
+          "last_task_result": null,
+          "next_run_time": null,
+          "state": "Missing",
+          "task_name": "ETA-Dashboard-API"
+        },
+        "ETA-Dashboard-Proxy-Watchdog": {
+          "last_run_time": null,
+          "last_task_result": null,
+          "next_run_time": null,
+          "state": "Missing",
+          "task_name": "ETA-Dashboard-Proxy-Watchdog"
+        },
+        "ETA-IBGateway": {
+          "last_run_time": "/Date(1778092843000)/",
+          "last_task_result": 1,
+          "next_run_time": null,
+          "state": "Ready",
+          "task_name": "ETA-IBGateway"
+        },
+        "ETA-IBGateway-Autostart": {
+          "last_run_time": "/Date(943938000000)/",
+          "last_task_result": 267011,
+          "next_run_time": null,
+          "state": "Ready",
+          "task_name": "ETA-IBGateway-Autostart"
+        },
+        "ETA-IBGateway-DailyRestart": {
+          "last_run_time": "/Date(1778572801000)/",
+          "last_task_result": 1,
+          "next_run_time": "/Date(1778659200000)/",
+          "state": "Ready",
+          "task_name": "ETA-IBGateway-DailyRestart"
+        },
+        "ETA-IBGateway-RunNow": {
+          "last_run_time": "/Date(1778505538000)/",
+          "last_task_result": 4294967295,
+          "next_run_time": null,
+          "state": "Ready",
+          "task_name": "ETA-IBGateway-RunNow"
+        },
+        "ETA-OperatorQueueHeartbeat": {
+          "last_run_time": null,
+          "last_task_result": null,
+          "next_run_time": null,
+          "state": "Missing",
+          "task_name": "ETA-OperatorQueueHeartbeat"
+        },
+        "ETA-PaperLiveTransitionCheck": {
+          "last_run_time": null,
+          "last_task_result": null,
+          "next_run_time": null,
+          "state": "Missing",
+          "task_name": "ETA-PaperLiveTransitionCheck"
+        },
+        "ETA-Proxy-8421": {
+          "last_run_time": null,
+          "last_task_result": null,
+          "next_run_time": null,
+          "state": "Missing",
+          "task_name": "ETA-Proxy-8421"
+        }
+      }
+    }
+  },
+  "safety_gates": {
+    "broker_brackets": {
+      "missing_bracket_count": 0,
+      "missing_bracket_symbols": [],
+      "ready": true,
+      "status": "READY_NO_OPEN_EXPOSURE"
+    },
+    "jarvis_hermes_admin_ai": {
+      "admin_ai_ready": true,
+      "blocked": 0,
+      "checks": 8,
+      "live_money_gate_bypassed": false,
+      "next_actions": [
+        "Jarvis/Hermes admin-AI bridge passes static safety readiness; keep live-money gates separate."
+      ],
+      "order_action_allowed": false,
+      "pass": 8,
+      "ready": true,
+      "status": "PASS",
+      "warnings": 0
+    },
+    "promotion": {
+      "ready": false,
+      "status": "BLOCKED_PAPER_SOAK"
+    }
+  },
+  "schema_version": 1,
+  "service_config": {
+    "fm_status_server": {
+      "expected_arguments": "-m uvicorn eta_engine.deploy.fm_status_server:app --host 127.0.0.1 --port 8422 --proxy-headers --forwarded-allow-ips=127.0.0.1",
+      "expected_executable": "C:\\Python314\\python.exe",
+      "expected_xml": "C:\\EvolutionaryTradingAlgo\\eta_engine\\deploy\\FmStatusServer.xml",
+      "installed_arguments": "-m uvicorn eta_engine.deploy.fm_status_server:app --host 127.0.0.1 --port 8422 --proxy-headers --forwarded-allow-ips=127.0.0.1",
+      "installed_executable": "C:\\Python314\\python.exe",
+      "installed_xml": "C:\\EvolutionaryTradingAlgo\\firm_command_center\\services\\FmStatusServer.xml",
+      "matches_expected": true
+    }
+  },
+  "summary": {
+    "admin_ai_ready": true,
+    "admin_ai_status": "PASS",
+    "dashboard_durable": false,
+    "dashboard_schema_current": true,
+    "order_action_allowed": false,
+    "promotion_allowed": false,
+    "runtime_ready": true,
+    "status": "YELLOW_SAFETY_BLOCKED",
+    "trading_gate_ready": false
+  }
+}

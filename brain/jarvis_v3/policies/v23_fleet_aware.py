@@ -233,7 +233,7 @@ def _is_v23_enabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def evaluate_v23(req: ActionRequest, ctx: "JarvisContext") -> ActionResponse:
+def evaluate_v23(req: ActionRequest, ctx: JarvisContext) -> ActionResponse:
     """Fleet-aware policy. Wraps v17 (or v22 if its flag is set).
 
     Adds three concurrent layers ON TOP of the wrapped policy:
@@ -279,19 +279,21 @@ def evaluate_v23(req: ActionRequest, ctx: "JarvisContext") -> ActionResponse:
     block_regimes = assignment.get("block_regimes") or set()
     if block_regimes:
         active = _load_active_regime()
-        if active and active in block_regimes:
-            # Don't override KILL or operator-only denials; only veto
-            # when base verdict was approving or conditional.
-            if base_resp.verdict in (Verdict.APPROVED, Verdict.CONDITIONAL):
-                return base_resp.model_copy(update={
-                    "verdict": Verdict.DEFERRED,
-                    "reason": f"v23 regime-block: bot blocks regime '{active}'",
-                    "reason_code": "v23_regime_blocked",
-                    "conditions": (base_resp.conditions or []) + [
-                        f"blocked_regime={active}",
-                        f"block_regimes={sorted(block_regimes)}",
-                    ],
-                })
+        # Don't override KILL or operator-only denials; only veto
+        # when base verdict was approving or conditional.
+        if active and active in block_regimes and base_resp.verdict in (
+            Verdict.APPROVED,
+            Verdict.CONDITIONAL,
+        ):
+            return base_resp.model_copy(update={
+                "verdict": Verdict.DEFERRED,
+                "reason": f"v23 regime-block: bot blocks regime '{active}'",
+                "reason_code": "v23_regime_blocked",
+                "conditions": (base_resp.conditions or []) + [
+                    f"blocked_regime={active}",
+                    f"block_regimes={sorted(block_regimes)}",
+                ],
+            })
 
     # ---- Layer 2: class-derived overnight upgrade ----
     if (

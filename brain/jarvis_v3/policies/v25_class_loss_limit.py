@@ -36,6 +36,8 @@ from eta_engine.brain.jarvis_admin import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from eta_engine.brain.jarvis_context import JarvisContext
 
 logger = logging.getLogger(__name__)
@@ -150,10 +152,10 @@ def _resolve_class(req: ActionRequest) -> str:
 
 def evaluate_v25(
     req: ActionRequest,
-    ctx: "JarvisContext",
+    ctx: JarvisContext,
     *,
     base_resp: ActionResponse | None = None,
-    wrapped_evaluator=None,
+    wrapped_evaluator: Callable[[ActionRequest, JarvisContext], ActionResponse] | None = None,
 ) -> ActionResponse:
     """v25 layer. Freezes risk-adding actions when class daily loss > limit."""
     if base_resp is None:

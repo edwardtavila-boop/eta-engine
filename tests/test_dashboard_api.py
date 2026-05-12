@@ -4725,7 +4725,7 @@ class TestDashboardAPI:
         assert live["cellar_open_position_count"] == 2
         assert live["ibkr"]["today_realized_pnl"] == 10133.83
         assert live["alpaca"]["today_realized_pnl"] == -15.03
-        assert live["alpaca"]["policy_status"] == "paused_cellar"
+        assert live["alpaca"]["policy_status"] == "paused_backburner"
 
     def test_live_broker_state_uses_trade_close_ledger_for_win_rate_when_fills_lack_pnl(
         self,
