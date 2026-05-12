@@ -46,6 +46,22 @@ LEVERAGED_SYMBOLS = {"MBT", "MET"}
 # Secondary: spot crypto on Alpaca (smaller allocation)
 POOL_SPLIT = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}  # leveraged now in futures pool
 
+# DIAMOND BOTS — protected from auto-kill, always get minimum capital
+# These are proven profitable across multiple market regimes
+DIAMOND_BOTS: set[str] = {
+    "mnq_futures_sage",   # +$11,246 across 14 sessions (ROBUST)
+    "nq_futures_sage",    # +$2,557 across 7 sessions (ROBUST)
+    "cl_momentum",        # +$2,206 across 13 sessions (ROBUST)
+    "mcl_sweep_reclaim",  # +$2,197 across 13 sessions (ROBUST)
+    "mgc_sweep_reclaim",  # +$853 across 13 sessions (ROBUST)
+    "eur_sweep_reclaim",  # +$417 across 13 sessions (FRAGILE)
+    "gc_momentum",        # +$142 across 7 sessions (FRAGILE)
+    "cl_macro",           # +$1,248 across 7 sessions (confirmed edge)
+}
+
+# Minimum capital allocation for diamond bots (always active)
+DIAMOND_MIN_CAPITAL: float = 2000.0
+
 # Minimum sessions required for allocation
 MIN_SESSIONS = 2
 
@@ -112,9 +128,15 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
         }
 
         for bot_id, stats in pool_bots.items():
+            is_diamond = bot_id in DIAMOND_BOTS
             if stats["total_pnl"] > 0 and total_profitable_pnl > 0:
                 weight = stats["total_pnl"] / total_profitable_pnl
                 capital = pool_capital * weight
+                status = "active"
+            elif is_diamond:
+                # DIAMOND PROTECTION: always active with minimum capital
+                weight = 0.05  # minimum weight
+                capital = max(DIAMOND_MIN_CAPITAL, pool_capital * 0.05)
                 status = "active"
             else:
                 weight = 0.0

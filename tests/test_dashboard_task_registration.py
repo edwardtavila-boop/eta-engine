@@ -232,7 +232,16 @@ def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks()
     text = REPAIR_DASHBOARD_DURABILITY.read_text(encoding="utf-8")
 
     assert r"ETA_ROOT=C:\EvolutionaryTradingAlgo" in text
+    assert "SCRIPT_NAME=repair_dashboard_durability_admin.cmd" in text
     assert "net session" in text
+    assert "/DryRun" in text
+    assert "--dry-run" in text
+    assert "/NoElevate" in text
+    assert "--no-elevate" in text
+    assert "DRY RUN OK: dashboard durability repair prerequisites are present." in text
+    assert "Administrator rights are required to register ETA dashboard durability tasks." in text
+    assert "Safe preflight: %SCRIPT_NAME% /DryRun /NoElevate" in text
+    assert "Elevated repair: %SCRIPT_NAME%" in text
     assert "Start-Process" in text
     assert "-Verb RunAs" in text
     assert "register_dashboard_api_task.ps1" in text
@@ -241,6 +250,12 @@ def test_dashboard_durability_admin_launcher_repairs_dashboard_and_queue_tasks()
     assert "register_vps_ops_hardening_audit_task.ps1" in text
     assert "register_operator_queue_heartbeat_task.ps1" in text
     assert "register_paper_live_transition_check_task.ps1" in text
+    assert 'File "%REGISTER_DASHBOARD%" -DryRun' in text
+    assert 'File "%REGISTER_PROXY%" -WhatIf' in text
+    assert 'File "%REGISTER_WATCHDOG%" -WhatIf' in text
+    assert 'File "%REGISTER_AUDIT%" -DryRun' in text
+    assert 'File "%REGISTER_OPERATOR_QUEUE%" -DryRun' in text
+    assert 'File "%REGISTER_PAPER_LIVE%" -DryRun' in text
     assert "paper-live cache tasks only" in text
     assert "vps_ops_hardening_audit --json-out" in text
     assert "never places, cancels, flattens, or promotes orders" in text
