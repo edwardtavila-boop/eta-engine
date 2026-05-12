@@ -35,6 +35,7 @@ Run
 
     python -m eta_engine.scripts.diamond_preset_validator
 """
+
 from __future__ import annotations
 
 # ruff: noqa: ANN401, PLR2004
@@ -48,10 +49,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = ROOT.parent
-OUT_LATEST = (
-    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
-    / "diamond_preset_validation_latest.json"
-)
+OUT_LATEST = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_preset_validation_latest.json"
 
 
 @dataclass
@@ -89,8 +87,7 @@ def _check_mgc_sweep() -> PresetCheck:
         mgc_sweep_preset,
     )
 
-    chk = PresetCheck(preset_name="mgc_sweep_preset",
-                      bot_id="mgc_sweep_reclaim")
+    chk = PresetCheck(preset_name="mgc_sweep_preset", bot_id="mgc_sweep_reclaim")
     cfg = mgc_sweep_preset()
 
     # Wave-3 chisel params
@@ -109,8 +106,7 @@ def _check_mgc_sweep() -> PresetCheck:
 
     # Wave-4 rehaul features that survived wave-5
     if cfg.reclaim_confirm_bars != 2:
-        chk.failures.append(
-            f"reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 2")
+        chk.failures.append(f"reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 2")
     else:
         chk.asserts.append("reclaim_confirm_bars=2 (rehaul)")
     if not cfg.vol_adjusted_sizing:
@@ -122,8 +118,7 @@ def _check_mgc_sweep() -> PresetCheck:
     # See mgc_sweep_preset docstring for rationale chain.
     if cfg.excluded_hours_utc != ():
         chk.failures.append(
-            f"excluded_hours_utc {cfg.excluded_hours_utc} != () — "
-            "wave-5 reverted this; see preset docstring",
+            f"excluded_hours_utc {cfg.excluded_hours_utc} != () — wave-5 reverted this; see preset docstring",
         )
     else:
         chk.asserts.append("excluded_hours_utc=() (wave-5 revert)")
@@ -131,17 +126,20 @@ def _check_mgc_sweep() -> PresetCheck:
     # Functional smoke: session filter feature still works for OTHER bots
     # that might need it later (we only reverted mgc's specific value).
     import dataclasses
+
     test_cfg = dataclasses.replace(mgc_sweep_preset(), excluded_hours_utc=(22,))
     strat = SweepReclaimStrategy(test_cfg)
     excluded_bar = _MockBar(
-        open=100.0, high=100.5, low=99.5, close=100.2, volume=1000.0,
+        open=100.0,
+        high=100.5,
+        low=99.5,
+        close=100.2,
+        volume=1000.0,
         ts="2026-05-12T22:00:00+00:00",  # UTC 22 = excluded by override
     )
     out = strat.maybe_enter(excluded_bar, [], 100_000.0, None)
     if out is not None or strat._n_session_filter_rejects != 1:
-        chk.failures.append(
-            "session-filter feature broken — UTC-22 not rejected when "
-            "excluded_hours_utc=(22,)")
+        chk.failures.append("session-filter feature broken — UTC-22 not rejected when excluded_hours_utc=(22,)")
     else:
         chk.asserts.append("session-filter feature still wired (runtime)")
 
@@ -153,13 +151,12 @@ def _check_mcl_sweep() -> PresetCheck:
     """mcl_sweep_preset must NOT have wave-4 features (n=8 too small)."""
     from eta_engine.strategies.sweep_reclaim_strategy import mcl_sweep_preset
 
-    chk = PresetCheck(preset_name="mcl_sweep_preset",
-                      bot_id="mcl_sweep_reclaim")
+    chk = PresetCheck(preset_name="mcl_sweep_preset", bot_id="mcl_sweep_reclaim")
     cfg = mcl_sweep_preset()
     if cfg.reclaim_confirm_bars != 1:
         chk.failures.append(
-            f"reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 1 — "
-            "mcl should stay legacy until n>=40")
+            f"reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 1 — mcl should stay legacy until n>=40"
+        )
     else:
         chk.asserts.append("reclaim_confirm_bars=1 (legacy preserved)")
     if cfg.vol_adjusted_sizing:
@@ -168,8 +165,8 @@ def _check_mcl_sweep() -> PresetCheck:
         chk.asserts.append("vol_adjusted_sizing=False (legacy preserved)")
     if cfg.excluded_hours_utc != ():
         chk.failures.append(
-            f"excluded_hours_utc {cfg.excluded_hours_utc} non-empty — "
-            "no session evidence to support a filter yet")
+            f"excluded_hours_utc {cfg.excluded_hours_utc} non-empty — no session evidence to support a filter yet"
+        )
     else:
         chk.asserts.append("excluded_hours_utc=() (legacy preserved)")
     chk.passed = not chk.failures
@@ -186,34 +183,48 @@ def _check_momentum_adx() -> PresetCheck:
         gc_momentum_preset,
     )
 
-    chk = PresetCheck(preset_name="commodity_momentum_presets",
-                      bot_id="cl_momentum+gc_momentum")
+    chk = PresetCheck(preset_name="commodity_momentum_presets", bot_id="cl_momentum+gc_momentum")
 
-    for preset_name, cfg in (("gc_momentum_preset", gc_momentum_preset()),
-                               ("cl_momentum_preset", cl_momentum_preset())):
+    for preset_name, cfg in (
+        ("gc_momentum_preset", gc_momentum_preset()),
+        ("cl_momentum_preset", cl_momentum_preset()),
+    ):
         if cfg.adx_threshold < 10:
             chk.failures.append(
-                f"{preset_name}.adx_threshold={cfg.adx_threshold} < 10 — "
-                "too loose; would never block chop")
+                f"{preset_name}.adx_threshold={cfg.adx_threshold} < 10 — too loose; would never block chop"
+            )
         else:
-            chk.asserts.append(
-                f"{preset_name}.adx_threshold={cfg.adx_threshold}")
+            chk.asserts.append(f"{preset_name}.adx_threshold={cfg.adx_threshold}")
         if cfg.adx_period < 5:
-            chk.failures.append(
-                f"{preset_name}.adx_period={cfg.adx_period} too small")
+            chk.failures.append(f"{preset_name}.adx_period={cfg.adx_period} too small")
         else:
             chk.asserts.append(f"{preset_name}.adx_period={cfg.adx_period}")
+        # Wave-8 sizing kaizen: both bots cut from 0.005 to 0.0025 to match
+        # their per-trade USD risk to the watchdog's USD retirement floor
+        # (one stopout was breaching the floor under 0.005).
+        if cfg.risk_per_trade_pct > 0.003:
+            chk.failures.append(
+                f"{preset_name}.risk_per_trade_pct={cfg.risk_per_trade_pct} "
+                "above 0.003 — wave-8 kaizen halved this to 0.0025; "
+                "do not revert without a sizing rationale",
+            )
+        else:
+            chk.asserts.append(
+                f"{preset_name}.risk_per_trade_pct={cfg.risk_per_trade_pct} (wave-8 sizing)",
+            )
 
     # Functional: trailing stop must compute correctly on a momentum strat
     cfg = MomentumConfig(trailing_stop_atr_mult=1.0, rr_trail_trigger=1.0)
     strat = MomentumStrategy(cfg)
     trailing = strat.compute_trailing_stop(
-        side="BUY", entry_price=100.0, initial_stop=95.0,
-        current_price=106.0, atr=2.0,
+        side="BUY",
+        entry_price=100.0,
+        initial_stop=95.0,
+        current_price=106.0,
+        atr=2.0,
     )
     if trailing != 104.0:
-        chk.failures.append(
-            f"trailing_stop math broken: returned {trailing} not 104.0")
+        chk.failures.append(f"trailing_stop math broken: returned {trailing} not 104.0")
     else:
         chk.asserts.append("compute_trailing_stop produces correct LONG value")
     chk.passed = not chk.failures
@@ -228,12 +239,10 @@ def _check_oil_macro() -> PresetCheck:
         cl_macro_fade_preset,
     )
 
-    chk = PresetCheck(preset_name="cl_macro_fade_preset",
-                      bot_id="cl_macro")
+    chk = PresetCheck(preset_name="cl_macro_fade_preset", bot_id="cl_macro")
     cfg = cl_macro_fade_preset()
     if cfg.min_atr_usd < 0.10:
-        chk.failures.append(
-            f"min_atr_usd {cfg.min_atr_usd} too low — dead-tape gate weak")
+        chk.failures.append(f"min_atr_usd {cfg.min_atr_usd} too low — dead-tape gate weak")
     else:
         chk.asserts.append(f"min_atr_usd={cfg.min_atr_usd} (chisel)")
     if not cfg.enforce_session_gate:
@@ -241,12 +250,9 @@ def _check_oil_macro() -> PresetCheck:
     else:
         chk.asserts.append("enforce_session_gate=True (chisel)")
     if cfg.panic_day_min_per_30d < 1:
-        chk.failures.append(
-            f"panic_day_min_per_30d {cfg.panic_day_min_per_30d} — "
-            "falsification floor too low")
+        chk.failures.append(f"panic_day_min_per_30d {cfg.panic_day_min_per_30d} — falsification floor too low")
     else:
-        chk.asserts.append(
-            f"panic_day_min_per_30d={cfg.panic_day_min_per_30d} (chisel)")
+        chk.asserts.append(f"panic_day_min_per_30d={cfg.panic_day_min_per_30d} (chisel)")
 
     # Functional: strategy methods exist
     strat = OilMacroStrategy(cfg)
@@ -256,8 +262,8 @@ def _check_oil_macro() -> PresetCheck:
         # Empty panic_dates → falsification IS triggered (no panic days yet)
         if not strat.falsification_triggered():
             chk.failures.append(
-                "fresh strategy with empty panic_dates does NOT trigger "
-                "falsification — counter wired incorrectly")
+                "fresh strategy with empty panic_dates does NOT trigger falsification — counter wired incorrectly"
+            )
         else:
             chk.asserts.append(
                 "falsification_triggered() fires when panic_dates empty",
@@ -272,19 +278,17 @@ def _check_eur_sweep_preserved() -> PresetCheck:
     must NOT have accidentally modified it."""
     from eta_engine.strategies.sweep_reclaim_strategy import eur_sweep_preset
 
-    chk = PresetCheck(preset_name="eur_sweep_preset",
-                      bot_id="eur_sweep_reclaim")
+    chk = PresetCheck(preset_name="eur_sweep_preset", bot_id="eur_sweep_reclaim")
     cfg = eur_sweep_preset()
     # eur stays legacy on all wave-4 features
     if cfg.reclaim_confirm_bars != 1:
         chk.failures.append(
-            f"eur reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 1 — "
-            "do not modify the working diamond")
+            f"eur reclaim_confirm_bars {cfg.reclaim_confirm_bars} != 1 — do not modify the working diamond"
+        )
     else:
         chk.asserts.append("reclaim_confirm_bars=1 (eur preserved)")
     if cfg.vol_adjusted_sizing:
-        chk.failures.append(
-            "eur vol_adjusted_sizing ON — modifying working diamond")
+        chk.failures.append("eur vol_adjusted_sizing ON — modifying working diamond")
     else:
         chk.asserts.append("vol_adjusted_sizing=False (eur preserved)")
     chk.passed = not chk.failures
@@ -301,8 +305,7 @@ def _check_m2k_sweep_promoted() -> PresetCheck:
     )
     from eta_engine.strategies.sweep_reclaim_strategy import m2k_sweep_preset
 
-    chk = PresetCheck(preset_name="m2k_sweep_preset",
-                      bot_id="m2k_sweep_reclaim")
+    chk = PresetCheck(preset_name="m2k_sweep_preset", bot_id="m2k_sweep_reclaim")
 
     # Preset still callable, returns the expected dataclass shape
     cfg = m2k_sweep_preset()
@@ -310,7 +313,8 @@ def _check_m2k_sweep_promoted() -> PresetCheck:
         chk.failures.append(
             f"m2k atr_stop_mult {cfg.atr_stop_mult} != 1.5 — "
             "promotion baseline was generated by this exact config; "
-            "do not tune without a new wave-N rationale")
+            "do not tune without a new wave-N rationale"
+        )
     else:
         chk.asserts.append("atr_stop_mult=1.5 (baseline preserved)")
     if cfg.rr_target != 2.5:
@@ -327,8 +331,7 @@ def _check_m2k_sweep_promoted() -> PresetCheck:
         chk.asserts.append("m2k_sweep_reclaim in DIAMOND_BOTS (protected)")
     if "m2k_sweep_reclaim" not in RETIREMENT_THRESHOLDS_USD:
         chk.failures.append(
-            "m2k_sweep_reclaim has no RETIREMENT_THRESHOLDS_USD entry "
-            "— watchdog will mark INCONCLUSIVE forever",
+            "m2k_sweep_reclaim has no RETIREMENT_THRESHOLDS_USD entry — watchdog will mark INCONCLUSIVE forever",
         )
     else:
         thr = RETIREMENT_THRESHOLDS_USD["m2k_sweep_reclaim"]
@@ -366,8 +369,7 @@ def run() -> dict:
     }
     try:
         OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
-        OUT_LATEST.write_text(
-            json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        OUT_LATEST.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
     except OSError as exc:
         print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
     return summary
@@ -376,8 +378,7 @@ def run() -> dict:
 def _print(summary: dict) -> None:
     print("=" * 100)
     print(
-        f" DIAMOND PRESET VALIDATION  ({summary['ts']})  "
-        f"{summary['n_passed']}/{summary['n_checks']} passed",
+        f" DIAMOND PRESET VALIDATION  ({summary['ts']})  {summary['n_passed']}/{summary['n_checks']} passed",
     )
     print("=" * 100)
     for chk in summary["checks"]:
@@ -392,8 +393,7 @@ def _print(summary: dict) -> None:
         print("  ALL DIAMOND PRESETS VALIDATED")
     else:
         print(
-            f"  {summary['n_failed']} preset(s) failed validation — "
-            "review failures above before promoting to live",
+            f"  {summary['n_failed']} preset(s) failed validation — review failures above before promoting to live",
         )
     print()
 

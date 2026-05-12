@@ -8,6 +8,7 @@ Unlike sweep_reclaim (liquidity-sweep + reclaim), this strategy:
 
 Asset-specific presets below.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,12 +25,12 @@ class MomentumConfig:
     """Configuration for commodity momentum strategy."""
 
     # Momentum detection
-    roc_period: int = 20          # Rate of change lookback
-    roc_threshold: float = 0.5    # Min ROC z-score to enter
-    adx_period: int = 14          # ADX trend strength
-    adx_threshold: int = 25       # Min ADX for trending regime
-    ma_fast: int = 21             # Fast MA for trend detection
-    ma_slow: int = 50             # Slow MA for trend filter
+    roc_period: int = 20  # Rate of change lookback
+    roc_threshold: float = 0.5  # Min ROC z-score to enter
+    adx_period: int = 14  # ADX trend strength
+    adx_threshold: int = 25  # Min ADX for trending regime
+    ma_fast: int = 21  # Fast MA for trend detection
+    ma_slow: int = 50  # Slow MA for trend filter
 
     # Volume confirmation
     volume_z_lookback: int = 24
@@ -91,7 +92,11 @@ class MomentumStrategy:
         self._atr_history: list[float] = []
 
     def maybe_enter(
-        self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig,
+        self,
+        bar: BarData,
+        hist: list[BarData],
+        equity: float,
+        config: BacktestConfig,
     ) -> _Open | None:
         self._bars_seen += 1
 
@@ -125,8 +130,7 @@ class MomentumStrategy:
             self._atr_history.pop(0)
 
         # Vol-adjusted sizing (wave-4) — size DOWN in high-vol regimes
-        if (self.cfg.vol_adjusted_sizing
-                and len(self._atr_history) >= self.cfg.vol_baseline_window // 2):
+        if self.cfg.vol_adjusted_sizing and len(self._atr_history) >= self.cfg.vol_baseline_window // 2:
             sorted_atrs = sorted(self._atr_history)
             median_atr = sorted_atrs[len(sorted_atrs) // 2]
             if median_atr > 0:
@@ -153,6 +157,7 @@ class MomentumStrategy:
         self._trades_today += 1
 
         from eta_engine.backtest.engine import _Open
+
         # Carry trailing-stop config on the regime field so the
         # supervisor's exit loop can read it back when computing
         # the live trailing-stop level.  No new schema change needed.
@@ -163,9 +168,15 @@ class MomentumStrategy:
             else f"momentum_{side.lower()}"
         )
         return _Open(
-            entry_bar=bar, side=side, qty=qty,
-            entry_price=entry, stop=stop, target=target,
-            risk_usd=risk_usd, confluence=7.0, leverage=1.0,
+            entry_bar=bar,
+            side=side,
+            qty=qty,
+            entry_price=entry,
+            stop=stop,
+            target=target,
+            risk_usd=risk_usd,
+            confluence=7.0,
+            leverage=1.0,
             regime=regime,
         )
 
@@ -262,8 +273,7 @@ class MomentumStrategy:
                 self._minus_dm_window.pop(0)
             # Compute DX whenever we have a full window of TRs (uses
             # the SAME SMA of TR as our ATR calc — Wilder's ATR proxy).
-            if (len(self._plus_dm_window) >= self.cfg.adx_period
-                    and len(self._tr_window) >= self.cfg.adx_period):
+            if len(self._plus_dm_window) >= self.cfg.adx_period and len(self._tr_window) >= self.cfg.adx_period:
                 sum_plus_dm = sum(self._plus_dm_window)
                 sum_minus_dm = sum(self._minus_dm_window)
                 sum_tr = sum(self._tr_window)
@@ -350,38 +360,94 @@ def _stdev(values: list[float]) -> float:
 # Asset-class presets
 # ---------------------------------------------------------------------------
 
+
 def gc_momentum_preset() -> MomentumConfig:
-    """Gold (GC) 1h — macro trend follower. Wide stops for macro swings."""
+    """Gold (GC) 1h — macro trend follower. Wide stops for macro swings.
+
+    Wave-8 sizing kaizen (2026-05-12): risk_per_trade_pct cut 0.005 -> 0.0025
+    after the dual-basis watchdog showed gc_momentum was USD-CRITICAL but
+    R-HEALTHY. Per-trade USD risk on GC ($100/point) at the default 0.5%
+    risk + 3.5x ATR stop = ~$147/R, against a -$200 USD retirement floor —
+    a single stopped-out trade breached the threshold. Cut in half:
+      Pre:  $/R_avg=$147, threshold=-$200, n_stopouts_to_breach=1.4
+      Post: $/R_avg=~$74, threshold=-$200, n_stopouts_to_breach=2.7
+    The R-multiple edge (+0.24R cumulative on n=8 trades) is preserved —
+    only the USD scale of each trade is adjusted to give the operator
+    more room to evaluate strategy edge before the threshold trips."""
     return MomentumConfig(
-        roc_period=20, roc_threshold=0.2,  # Lowered from 0.4
-        adx_period=14, adx_threshold=20,    # Lowered from 25
-        ma_fast=21, ma_slow=50, volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=3.5, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=8,
-        max_trades_per_day=3, warmup_bars=72,
+        roc_period=20,
+        roc_threshold=0.2,  # Lowered from 0.4
+        adx_period=14,
+        adx_threshold=20,  # Lowered from 25
+        ma_fast=21,
+        ma_slow=50,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=3.5,
+        rr_target=3.0,
+        risk_per_trade_pct=0.0025,  # wave-8: halved from 0.005 (sizing kaizen)
+        min_bars_between_trades=8,
+        max_trades_per_day=3,
+        warmup_bars=72,
     )
 
 
 def cl_momentum_preset() -> MomentumConfig:
     """Crude oil (CL) 1h — momentum on inventory/supply shocks.
-    Wider stops didn't help — reverting to tighter, higher frequency."""
+    Wider stops didn't help — reverting to tighter, higher frequency.
+
+    Wave-8 sizing kaizen (2026-05-12): risk_per_trade_pct cut 0.005 -> 0.0025
+    after the dual-basis watchdog showed cl_momentum was USD-CRITICAL
+    (-$4,645) but R-HEALTHY (-1.71R cumulative on n=4). Per-trade USD risk
+    on CL ($1,000/point) at 0.5% risk + 2.5x ATR stop = ~$1,654/R, against
+    a -$1,500 USD retirement floor — a SINGLE stopped-out trade breached
+    the threshold. Cut in half so the risk envelope matches the floor:
+      Pre:  $/R_avg=$1,654, threshold=-$1,500, n_stopouts_to_breach=0.9
+      Post: $/R_avg=~$827, threshold=-$1,500, n_stopouts_to_breach=1.8
+    The R-multiple edge (-1.71R cumulative on small n=4) is unchanged;
+    this addresses the SIZING failure surfaced by wave-7 dual-basis
+    classification, not the strategy's R-edge.
+
+    NB: cl_momentum's R-cumulative is currently negative (-1.71R) but n=4
+    is too small to call the strategy itself broken. The 3-layer diamond
+    protection holds; the wave-8 sizing fix gives the strategy more room
+    to accumulate trades before the watchdog (or operator) makes a call."""
     return MomentumConfig(
-        roc_period=20, roc_threshold=0.3,
-        adx_period=14, adx_threshold=20,
-        ma_fast=21, ma_slow=50, volume_z_lookback=24, min_volume_z=0.2,
-        atr_period=14, atr_stop_mult=2.5, rr_target=3.0,
-        risk_per_trade_pct=0.005, min_bars_between_trades=6,
-        max_trades_per_day=4, warmup_bars=72,
+        roc_period=20,
+        roc_threshold=0.3,
+        adx_period=14,
+        adx_threshold=20,
+        ma_fast=21,
+        ma_slow=50,
+        volume_z_lookback=24,
+        min_volume_z=0.2,
+        atr_period=14,
+        atr_stop_mult=2.5,
+        rr_target=3.0,
+        risk_per_trade_pct=0.0025,  # wave-8: halved from 0.005 (sizing kaizen)
+        min_bars_between_trades=6,
+        max_trades_per_day=4,
+        warmup_bars=72,
     )
 
 
 def ng_momentum_preset() -> MomentumConfig:
     """Natural gas (NG) 1h — wild swings, widest stops."""
     return MomentumConfig(
-        roc_period=20, roc_threshold=0.3,
-        adx_period=14, adx_threshold=20,
-        ma_fast=21, ma_slow=50, volume_z_lookback=24, min_volume_z=0.5,
-        atr_period=14, atr_stop_mult=4.5, rr_target=3.5,
-        risk_per_trade_pct=0.005, min_bars_between_trades=12,
-        max_trades_per_day=2, warmup_bars=72,
+        roc_period=20,
+        roc_threshold=0.3,
+        adx_period=14,
+        adx_threshold=20,
+        ma_fast=21,
+        ma_slow=50,
+        volume_z_lookback=24,
+        min_volume_z=0.5,
+        atr_period=14,
+        atr_stop_mult=4.5,
+        rr_target=3.5,
+        risk_per_trade_pct=0.005,
+        min_bars_between_trades=12,
+        max_trades_per_day=2,
+        warmup_bars=72,
     )
