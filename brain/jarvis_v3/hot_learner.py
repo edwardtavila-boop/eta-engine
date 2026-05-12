@@ -179,16 +179,40 @@ def current_weights(asset: str) -> dict[str, float]:
 
     Schools that haven't been observed enough times for this asset are omitted.
     Returns an empty dict when no state exists or no school has crossed the gate.
+
+    Track 2 (write-back): After the EMA-learned weights are gathered, an
+    operator-pinned overlay from ``hermes_overrides`` is applied
+    multiplicatively. The overlay can BOOST or TRIM a school's weight
+    (clamped to [0.0, 2.0]) for a TTL-limited window. Schools that don't
+    appear in the EMA layer can still appear in the overlay output so
+    the operator can "seed" a school that hasn't crossed the obs gate.
     """
     state = _load()
     asset_weights = state.weight_mods.get(asset, {})
-    if not asset_weights:
-        return {}
-    out: dict[str, float] = {}
+    base: dict[str, float] = {}
     for school, weight in asset_weights.items():
         key = f"{asset}:{school}"
         if state.obs_count_by_school.get(key, 0) >= MIN_OBSERVATIONS_TO_ACT:
-            out[school] = weight
+            base[school] = weight
+
+    # Operator overlay (Track 2). Read MUST NOT break the consult.
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_overrides
+        overlay = hermes_overrides.get_school_weights(asset)
+    except Exception:  # noqa: BLE001
+        overlay = {}
+
+    if not overlay:
+        return base
+
+    out: dict[str, float] = dict(base)
+    for school, op_weight in overlay.items():
+        # Multiplicative when the EMA layer has a value; otherwise the
+        # overlay seeds the value at exactly op_weight (which is already
+        # clamped inside hermes_overrides.get_school_weights).
+        existing = out.get(school)
+        composed = (existing * op_weight) if existing is not None else op_weight
+        out[school] = _clamp(composed, CAP_LOW, CAP_HIGH)
     return out
 
 

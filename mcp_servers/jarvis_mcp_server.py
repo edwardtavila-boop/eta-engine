@@ -334,6 +334,47 @@ def _call_kaizen_run(bootstraps: int) -> dict[str, Any]:
     return kaizen_loop.run_loop(bootstraps=bootstraps, apply_actions=False)
 
 
+def _call_apply_size_modifier(
+    bot_id: str, modifier: float, reason: str, ttl_minutes: int,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    return hermes_overrides.apply_size_modifier(
+        bot_id=bot_id,
+        modifier=modifier,
+        reason=reason,
+        ttl_minutes=ttl_minutes,
+        source="hermes_mcp",
+    )
+
+
+def _call_apply_school_weight(
+    asset: str, school: str, weight: float, reason: str, ttl_minutes: int,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    return hermes_overrides.apply_school_weight(
+        asset=asset,
+        school=school,
+        weight=weight,
+        reason=reason,
+        ttl_minutes=ttl_minutes,
+        source="hermes_mcp",
+    )
+
+
+def _call_active_overrides() -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    return hermes_overrides.active_overrides_summary()
+
+
+def _call_clear_override(
+    bot_id: str | None, asset: str | None, school: str | None,
+) -> dict[str, Any]:
+    from eta_engine.brain.jarvis_v3 import hermes_overrides
+    return hermes_overrides.clear_override(
+        bot_id=bot_id, asset=asset, school=school,
+    )
+
+
 def _call_verdict_to_narrative(record: dict[str, Any]) -> str:
     """Best-effort narrative for a trace record.
 
@@ -586,6 +627,71 @@ def list_tools() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "jarvis_set_size_modifier",
+            "description": (
+                "Pin a multiplicative size modifier on a specific bot for a "
+                "TTL-limited window. Reads by portfolio_brain.assess apply this "
+                "AFTER the rule cascade. Clamped to [0.0, 1.0] so this "
+                "write-back path can only trim or pause size."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "bot_id": {"type": "string"},
+                    "modifier": {"type": "number"},
+                    "reason": {"type": "string"},
+                    "ttl_minutes": {"type": "integer", "default": 240},
+                },
+                "required": ["bot_id", "modifier", "reason"],
+            },
+        },
+        {
+            "name": "jarvis_pin_school_weight",
+            "description": (
+                "Pin a school-weight overlay for (asset, school) until TTL "
+                "expires. Multiplied with the EMA-learned weight inside "
+                "hot_learner.current_weights. Clamped to [0.0, 2.0]."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "asset": {"type": "string"},
+                    "school": {"type": "string"},
+                    "weight": {"type": "number"},
+                    "reason": {"type": "string"},
+                    "ttl_minutes": {"type": "integer", "default": 240},
+                },
+                "required": ["asset", "school", "weight", "reason"],
+            },
+        },
+        {
+            "name": "jarvis_active_overrides",
+            "description": (
+                "Compact snapshot of currently-active Hermes overrides "
+                "(size_modifiers + school_weights). Expired entries are "
+                "filtered out automatically."
+            ),
+            "inputSchema": {"type": "object", "properties": auth_field},
+        },
+        {
+            "name": "jarvis_clear_override",
+            "description": (
+                "Manually remove an active Hermes override before its TTL "
+                "expires. Pass either bot_id OR (asset AND school) — never both."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **auth_field,
+                    "bot_id": {"type": "string"},
+                    "asset": {"type": "string"},
+                    "school": {"type": "string"},
+                },
+            },
+        },
     ]
 
 
@@ -776,6 +882,72 @@ def _tool_kill_switch(args: dict[str, Any]) -> dict[str, Any]:
     return {"status": "APPLIED", "killed_at": killed_at, "scope": "all"}
 
 
+def _tool_set_size_modifier(args: dict[str, Any]) -> dict[str, Any]:
+    """Pin a size modifier on bot_id (Track 2 write-back).
+
+    Magnitude is clamped server-side (in hermes_overrides) but we also
+    reject obviously-wrong inputs (missing bot_id, NaN, negative TTL).
+    """
+    bot_id = str(args.get("bot_id", "") or "")
+    if not bot_id:
+        return {"status": "REJECTED", "reason": "missing_bot_id"}
+    try:
+        modifier = float(args.get("modifier"))
+    except (TypeError, ValueError):
+        return {"status": "REJECTED", "reason": "modifier_not_numeric"}
+    reason = str(args.get("reason", "") or "")
+    try:
+        ttl_minutes = int(args.get("ttl_minutes", 240) or 240)
+    except (TypeError, ValueError):
+        ttl_minutes = 240
+    if ttl_minutes <= 0:
+        ttl_minutes = 240
+    return _call_apply_size_modifier(
+        bot_id=bot_id, modifier=modifier, reason=reason, ttl_minutes=ttl_minutes,
+    )
+
+
+def _tool_pin_school_weight(args: dict[str, Any]) -> dict[str, Any]:
+    """Pin a school-weight overlay for (asset, school) (Track 2 write-back)."""
+    asset = str(args.get("asset", "") or "")
+    school = str(args.get("school", "") or "")
+    if not asset or not school:
+        return {"status": "REJECTED", "reason": "missing_asset_or_school"}
+    try:
+        weight = float(args.get("weight"))
+    except (TypeError, ValueError):
+        return {"status": "REJECTED", "reason": "weight_not_numeric"}
+    reason = str(args.get("reason", "") or "")
+    try:
+        ttl_minutes = int(args.get("ttl_minutes", 240) or 240)
+    except (TypeError, ValueError):
+        ttl_minutes = 240
+    if ttl_minutes <= 0:
+        ttl_minutes = 240
+    return _call_apply_school_weight(
+        asset=asset, school=school, weight=weight,
+        reason=reason, ttl_minutes=ttl_minutes,
+    )
+
+
+def _tool_active_overrides(_args: dict[str, Any]) -> dict[str, Any]:
+    """Compact snapshot of live Hermes overrides (filtered to non-expired)."""
+    return _call_active_overrides()
+
+
+def _tool_clear_override(args: dict[str, Any]) -> dict[str, Any]:
+    """Manual clear of one override before TTL — operator escape hatch.
+
+    Accepts either bot_id alone (clears size_modifier) or
+    (asset, school) pair (clears school_weight). Anything else returns
+    REJECTED.
+    """
+    bot_id = args.get("bot_id") or None
+    asset = args.get("asset") or None
+    school = args.get("school") or None
+    return _call_clear_override(bot_id=bot_id, asset=asset, school=school)
+
+
 def _tool_subscribe_events(args: dict[str, Any]) -> dict[str, Any]:
     """Poll one of the JARVIS event streams from ``since_offset`` onward.
 
@@ -858,6 +1030,10 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "jarvis_kill_switch": _tool_kill_switch,
     "jarvis_explain_verdict": _tool_explain_verdict,
     "jarvis_subscribe_events": _tool_subscribe_events,
+    "jarvis_set_size_modifier": _tool_set_size_modifier,
+    "jarvis_pin_school_weight": _tool_pin_school_weight,
+    "jarvis_active_overrides": _tool_active_overrides,
+    "jarvis_clear_override": _tool_clear_override,
 }
 
 

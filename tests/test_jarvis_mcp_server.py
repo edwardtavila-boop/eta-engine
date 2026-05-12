@@ -478,11 +478,13 @@ def test_handler_exception_returns_envelope_not_raise(
 # ---------------------------------------------------------------------------
 
 
-def test_tool_registry_has_all_12_tools() -> None:
-    """list_tools() exposes exactly the documented 12 tool names.
+def test_tool_registry_has_all_16_tools() -> None:
+    """list_tools() exposes exactly the documented 16 tool names.
 
-    Bumped 11 → 12 on 2026-05-12 when jarvis_subscribe_events was added
-    (Track 1: real-time event stream for Hermes Agent).
+    History:
+      * 11 → 12 (2026-05-12): jarvis_subscribe_events (Track 1).
+      * 12 → 16 (2026-05-12): jarvis_set_size_modifier, jarvis_pin_school_weight,
+        jarvis_active_overrides, jarvis_clear_override (Track 2 write-back).
     """
     from eta_engine.mcp_servers import jarvis_mcp_server
 
@@ -499,10 +501,14 @@ def test_tool_registry_has_all_12_tools() -> None:
         "jarvis_kill_switch",
         "jarvis_explain_verdict",
         "jarvis_subscribe_events",
+        "jarvis_set_size_modifier",
+        "jarvis_pin_school_weight",
+        "jarvis_active_overrides",
+        "jarvis_clear_override",
     }
     declared = {t["name"] for t in jarvis_mcp_server.list_tools()}
     assert declared == expected, f"missing={expected - declared} extras={declared - expected}"
-    assert len(declared) == 12
+    assert len(declared) == 16
 
 
 # ---------------------------------------------------------------------------
@@ -612,3 +618,90 @@ def test_subscribe_events_unknown_stream_returns_error_envelope(
     assert out["events"] == []
     assert "error" in out
     assert "unknown_stream" in out["error"]
+
+
+# ---------------------------------------------------------------------------
+# 14. Hermes override write-back tools
+# ---------------------------------------------------------------------------
+
+
+def test_size_modifier_tool_validates_and_dispatches(
+    patched_paths: dict[str, Path],
+    mock_underlying: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_set_size_modifier rejects bad input and dispatches valid pins."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_apply(
+        bot_id: str, modifier: float, reason: str, ttl_minutes: int,
+    ) -> dict[str, Any]:
+        calls.append(
+            {
+                "bot_id": bot_id,
+                "modifier": modifier,
+                "reason": reason,
+                "ttl_minutes": ttl_minutes,
+            },
+        )
+        return {"status": "APPLIED", "bot_id": bot_id, "modifier": modifier}
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_apply_size_modifier", fake_apply)
+
+    rejected = _call(
+        "jarvis_set_size_modifier",
+        {"_auth": "test-token", "modifier": 0.5, "reason": "missing bot"},
+    )
+    assert rejected["ok"] is True
+    assert rejected["data"]["status"] == "REJECTED"
+    assert rejected["data"]["reason"] == "missing_bot_id"
+
+    accepted = _call(
+        "jarvis_set_size_modifier",
+        {
+            "_auth": "test-token",
+            "bot_id": "mnq_floor",
+            "modifier": 0.3,
+            "reason": "drawdown response",
+            "ttl_minutes": 60,
+        },
+    )
+    assert accepted["ok"] is True
+    assert accepted["data"]["status"] == "APPLIED"
+    assert calls == [
+        {
+            "bot_id": "mnq_floor",
+            "modifier": 0.3,
+            "reason": "drawdown response",
+            "ttl_minutes": 60,
+        },
+    ]
+
+
+def test_clear_override_tool_dispatches_without_side_effects(
+    patched_paths: dict[str, Path],
+    mock_underlying: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jarvis_clear_override passes one operator clear request to the override API."""
+    from eta_engine.mcp_servers import jarvis_mcp_server
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_clear(
+        bot_id: str | None, asset: str | None, school: str | None,
+    ) -> dict[str, Any]:
+        calls.append({"bot_id": bot_id, "asset": asset, "school": school})
+        return {"status": "REMOVED", "kind": "size_modifier", "bot_id": bot_id}
+
+    monkeypatch.setattr(jarvis_mcp_server, "_call_clear_override", fake_clear)
+
+    result = _call(
+        "jarvis_clear_override",
+        {"_auth": "test-token", "bot_id": "mnq_floor"},
+    )
+    assert result["ok"] is True
+    assert result["data"]["status"] == "REMOVED"
+    assert calls == [{"bot_id": "mnq_floor", "asset": None, "school": None}]

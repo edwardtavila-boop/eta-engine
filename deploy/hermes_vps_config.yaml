@@ -2,21 +2,42 @@
 # Pinned to DeepSeek; exposes the JARVIS MCP server; opens a local API
 # on 127.0.0.1:8642 so the operator's Hermes-desktop GUI can connect
 # over an SSH tunnel.
+#
+# 2026-05-12 update: switched provider from "custom" to "deepseek" so
+# Hermes's credential pool routes deepseek-chat requests to the deepseek
+# credential, not the auto-detected OPENAI_API_KEY env var. Bumped
+# default model to deepseek-v4-pro (deepseek-chat was retired upstream).
+# Inline api_key removed — credential is registered via
+# `hermes auth add deepseek --api-key <literal>` and stored in
+# ~/.hermes/state.db. See deploy/hermes_vps_install.ps1 for the install
+# path that runs `hermes auth add` after copying the config.
 
 model:
-  default: "deepseek-chat"
-  provider: "custom"
+  default: "deepseek-v4-pro"
+  provider: "deepseek"
   base_url: "https://api.deepseek.com/v1"
-  # Inline key so the api_key resolution path doesn't depend on .env
-  # being readable by the spawned subprocess. Token also lives in
-  # DEEPSEEK_API_KEY env var as a fallback.
-  api_key: "${env:DEEPSEEK_API_KEY}"
+  # No inline api_key. The credential pool (hermes auth list) holds the
+  # literal value. Don't use `${env:DEEPSEEK_API_KEY}` template strings
+  # here — Hermes treats them as literal source identifiers, not as
+  # template variables to expand.
 
 # Auxiliary client (tool-call summaries, vision, compression).
 # Use main provider so we never auto-detect to Anthropic via env scan.
 auxiliary:
   provider: "main"
-  model: "deepseek-chat"
+  model: "deepseek-v4-pro"
+
+# Operator long-term memory (Track 3). holographic = local SQLite +
+# FTS5 search + trust scoring. No external API needed; stays on the VPS.
+# Hermes will auto-recall relevant facts before each turn and let the
+# operator save durable facts via the fact_store tool.
+memory:
+  provider: "holographic"
+plugins:
+  hermes-memory-store:
+    db_path: "C:\\EvolutionaryTradingAlgo\\var\\eta_engine\\state\\hermes_memory_store.db"
+    auto_extract: true
+    default_trust: 0.5
 
 # Local API server — desktop reaches it over SSH tunnel localhost:8642.
 platforms:
@@ -42,9 +63,12 @@ mcp_servers:
       PYTHONPATH: 'C:\EvolutionaryTradingAlgo'
     enabled: true
 
-# Scheduled tasks — Hermes's built-in cron. The morning_briefing fires
-# at 06:30 UTC (30 min after ETA-Kaizen-Loop) and pings the operator's
-# Telegram with the day's fleet summary.
+# Scheduled tasks — Hermes's built-in cron. morning_briefing fires at
+# 06:30 UTC (30 min after ETA-Kaizen-Loop) and pings the operator's
+# Telegram with the day's fleet summary. daily_review fires at 19:00
+# UTC on weekdays (3pm ET) and runs the jarvis-daily-review skill.
+# pre_event_scanner polls every 5 minutes for upcoming high-severity
+# econ events.
 scheduled_tasks:
   - name: morning_briefing
     cron: "30 6 * * *"
@@ -53,3 +77,18 @@ scheduled_tasks:
       Run jarvis_fleet_status and jarvis_wiring_audit. Render a 5-line
       morning briefing: today's expected risk, dark modules, top 3
       elite bots by Sharpe, any held RETIRE candidates.
+
+  - name: daily_review
+    cron: "0 19 * * 1-5"
+    delivery: telegram
+    prompt: |
+      Activate the jarvis-daily-review skill and run the end-of-session
+      review. Deliver the formatted brief verbatim.
+
+  - name: pre_event_scanner
+    cron: "*/5 * * * *"
+    delivery: telegram
+    prompt: |
+      Call jarvis_upcoming_events with horizon_min=30. If any event has
+      severity >= 2, activate jarvis-pre-event-prep and deliver the
+      brief. Otherwise reply "quiet" and suppress delivery.

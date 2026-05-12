@@ -1,0 +1,156 @@
+# ============================================================================
+# Hermes Multi-Channel Configuration Template (Track 5)
+# ----------------------------------------------------------------------------
+# Drop the platform blocks you want to enable into ~/.hermes/config.yaml
+# under the existing `platforms:` key, supply the relevant secrets in
+# ~/.hermes/.env (or hermes_secrets.bat), and restart the gateway.
+#
+# Every channel is OPT-IN. Hermes already runs api_server + the Telegram
+# delivery used by morning_briefing — you only need to add the channels
+# you actually want.
+#
+# Order in this file mirrors the operator-recommended onboarding order:
+#   1. Telegram (already on)
+#   2. Discord — easiest mobile inbound, free
+#   3. Slack — corporate / team setup
+#   4. iMessage (BlueBubbles) — Apple-only, needs Mac as bridge host
+#   5. Generic webhook — push to Claw3D / dashboards / other AI agents
+# ============================================================================
+
+platforms:
+
+  # --------------------------------------------------------------------------
+  # 1. Telegram (already enabled in production config — shown for reference)
+  # --------------------------------------------------------------------------
+  telegram:
+    enabled: true
+    # Token comes from ~/.hermes/.env: TELEGRAM_BOT_TOKEN=...
+    # Allowed chat IDs: TELEGRAM_ALLOWED_USERS=12345,67890
+    extra:
+      # Optional: set parse_mode to "MarkdownV2" if your briefings use
+      # markdown. Default plain text is safest if briefings include
+      # parens/asterisks the operator didn't intend as markdown.
+      parse_mode: "MarkdownV2"
+
+  # --------------------------------------------------------------------------
+  # 2. Discord — operator's preferred mobile-pocket UX
+  # --------------------------------------------------------------------------
+  # Setup steps:
+  #   a. Create a Discord application at https://discord.com/developers
+  #   b. Add a bot user, copy the bot token, set DISCORD_BOT_TOKEN env var.
+  #   c. Invite the bot to your private server with `bot` + `applications.commands`
+  #      scopes and "Send Messages" + "Read Message History" permissions.
+  #   d. Get the channel ID you want as the default target (right-click → Copy ID
+  #      in Discord with Developer Mode on).
+  discord:
+    enabled: false   # flip to true once DISCORD_BOT_TOKEN is set
+    extra:
+      # Token comes from ~/.hermes/.env: DISCORD_BOT_TOKEN=...
+      default_channel_id: "REPLACE_WITH_CHANNEL_ID"
+      command_sync_policy: "safe"   # safe | bulk | off
+      # Optional: restrict who can talk to the bot (Discord user IDs)
+      allowed_user_ids: []
+
+  # --------------------------------------------------------------------------
+  # 3. Slack — corporate/team setup. Best for shared-account ops with co-traders.
+  # --------------------------------------------------------------------------
+  # Setup steps:
+  #   a. Create a Slack app at https://api.slack.com/apps, "From scratch".
+  #   b. Enable Socket Mode (recommended — avoids needing a public URL).
+  #      Add an App-Level Token with `connections:write` scope.
+  #   c. OAuth & Permissions → Bot Token Scopes: chat:write, channels:history,
+  #      groups:history, im:history, mpim:history, app_mentions:read.
+  #   d. Install to workspace. Copy Bot Token (`xoxb-…`) → SLACK_BOT_TOKEN.
+  #      Copy App-Level Token (`xapp-…`) → SLACK_APP_TOKEN.
+  #   e. Invite the bot to the channel you want as default target.
+  slack:
+    enabled: false   # flip on after SLACK_BOT_TOKEN + SLACK_APP_TOKEN are set
+    extra:
+      # Tokens come from ~/.hermes/.env:
+      #   SLACK_BOT_TOKEN=xoxb-...
+      #   SLACK_APP_TOKEN=xapp-...
+      default_channel: "#trading-ops"
+
+  # --------------------------------------------------------------------------
+  # 4. iMessage via BlueBubbles — operator can text from iPhone
+  # --------------------------------------------------------------------------
+  # Setup steps:
+  #   a. Need a Mac in your house running BlueBubbles Server
+  #      (https://bluebubbles.app/server/). Mac forwards iMessage events.
+  #   b. Configure ngrok / tailscale / cloudflared so the Mac is reachable
+  #      from the VPS (or run BlueBubbles locally if Hermes runs on the Mac).
+  #   c. Copy the BlueBubbles API URL + password into ~/.hermes/.env:
+  #        BLUEBUBBLES_API_URL=https://<your-tunnel>.ngrok.io
+  #        BLUEBUBBLES_PASSWORD=...
+  bluebubbles:
+    enabled: false
+    extra:
+      # URL + password come from ~/.hermes/.env (see comment above).
+      default_chat_guid: "iMessage;-;+15551234567"   # operator's phone
+      poll_interval_seconds: 5
+
+  # --------------------------------------------------------------------------
+  # 5. Generic webhook — push to Claw3D / dashboards / inter-agent
+  # --------------------------------------------------------------------------
+  # The webhook adapter runs an inbound HTTP server on port 8644 by default
+  # to RECEIVE callbacks (GitHub, Stripe, monitoring tools). To OUTBOUND
+  # push to Claw3D you don't actually need this — use a `delivery: webhook`
+  # entry on a scheduled_task with `deliver_extra.url=https://...`.
+  #
+  # This block configures the inbound side, useful for:
+  #   * Receiving JARVIS supervisor health pings from the trading process
+  #   * Letting Claw3D POST navigation hints back to Hermes
+  #   * Inter-agent comms (another Claude Code session pinging Hermes)
+  webhook:
+    enabled: false   # flip on if you want INBOUND webhook capability
+    extra:
+      host: "127.0.0.1"
+      port: 8644
+      routes:
+        # Example: trading supervisor pushes alerts here
+        - name: "trading_alert"
+          events: ["alert", "kaizen_action"]
+          secret: "REPLACE_WITH_HMAC_SECRET"
+          prompt: "Trading alert received: {event}"
+          deliver: "telegram"
+          deliver_only: true   # bypass LLM — just relay
+
+
+# ============================================================================
+# Scheduled tasks — fan-out delivery
+# ============================================================================
+# Once multiple channels are enabled, you can fan out a single scheduled
+# task to several channels at once. Existing morning_briefing config:
+#
+#   scheduled_tasks:
+#     - name: morning_briefing
+#       cron: "30 6 * * *"
+#       delivery: telegram         <-- single channel
+#
+# Multi-channel form:
+#
+#   scheduled_tasks:
+#     - name: morning_briefing
+#       cron: "30 6 * * *"
+#       delivery: [telegram, discord, slack]
+#
+# And new scheduled tasks fed by the Track 4 skills:
+
+scheduled_tasks:
+  - name: daily_review
+    cron: "0 19 * * 1-5"   # 3pm ET on weekdays (19:00 UTC)
+    delivery: telegram
+    # Add discord, slack to delivery list once channels are enabled
+    prompt: |
+      Activate the jarvis-daily-review skill and run the end-of-session
+      review. Deliver the formatted brief verbatim.
+
+  - name: pre_event_scanner
+    cron: "*/5 * * * *"   # every 5 minutes
+    delivery: telegram
+    # Conditional: only fires if an event is within 30 min
+    prompt: |
+      Call jarvis_upcoming_events with horizon_min=30. If any event has
+      severity >= 2, activate jarvis-pre-event-prep and deliver the
+      brief. If no qualifying event, reply with the single word "quiet"
+      and do not deliver to any channel.

@@ -120,8 +120,29 @@ def assess(req: Any, ctx: PortfolioContext) -> PortfolioVerdict:  # noqa: ANN401
         modifier *= _CORRELATION_CLUSTER_MODIFIER
         notes.append("correlation_cluster_high")
 
-    # Rule 5: clamp.
+    # Rule 5: clamp (rule-based result).
     modifier = max(_MODIFIER_CAP_LOW, min(_MODIFIER_CAP_HIGH, modifier))
+
+    # Rule 6: operator override via Hermes (Track 2 write-back). Applied
+    # AFTER the rule cascade so the operator can intentionally trim BELOW
+    # what the cascade produced (e.g. "trim everything to 0.5x for the
+    # next session because I don't trust the regime"). Override has its
+    # own clamp inside hermes_overrides.get_size_modifier(). NEVER raises.
+    try:
+        from eta_engine.brain.jarvis_v3 import hermes_overrides
+        bot_id = getattr(req, "bot_id", "") or ""
+        op_override = hermes_overrides.get_size_modifier(bot_id) if bot_id else None
+        if op_override is not None:
+            # Multiplicative so it composes with the cascade. e.g. cascade
+            # said 1.0 and operator pinned 0.5 → 0.5 final. Cascade said
+            # 0.7 (drawdown-tightened) and operator pinned 0.5 → 0.35 final.
+            modifier = max(
+                _MODIFIER_CAP_LOW,
+                min(_MODIFIER_CAP_HIGH, modifier * op_override),
+            )
+            notes.append(f"hermes_size_override:{op_override:.2f}")
+    except Exception:  # noqa: BLE001 — override read MUST NOT break consult
+        pass
 
     return PortfolioVerdict(
         size_modifier=modifier,
