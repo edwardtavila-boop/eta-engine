@@ -70,6 +70,7 @@ Usage:
     # Custom tick interval (default 60s)
     ETA_SUPERVISOR_TICK_S=10 python ...
 """
+
 from __future__ import annotations
 
 import json
@@ -209,7 +210,7 @@ class BotInstance:
     strategy_kind: str
     direction: str = "long"
     cash: float = 5000.0
-    open_position: dict | None = None        # {entry_price, qty, side, opened_at}
+    open_position: dict | None = None  # {entry_price, qty, side, opened_at}
     n_entries: int = 0
     n_exits: int = 0
     realized_pnl: float = 0.0
@@ -257,12 +258,12 @@ class MockDataFeed:
     SYMBOL_DEFAULTS = {
         "MNQ": (21450.0, 0.002, 0.0001),
         "MNQ1": (21450.0, 0.002, 0.0001),
-        "NQ":  (21450.0, 0.002, 0.0001),
+        "NQ": (21450.0, 0.002, 0.0001),
         "NQ1": (21450.0, 0.002, 0.0001),
         "BTC": (95000.0, 0.005, 0.0002),
-        "ETH": (3500.0,  0.006, 0.0001),
-        "SOL": (180.0,   0.010, 0.0002),
-        "XRP": (1.20,    0.012, 0.0001),
+        "ETH": (3500.0, 0.006, 0.0001),
+        "SOL": (180.0, 0.010, 0.0002),
+        "XRP": (1.20, 0.012, 0.0001),
     }
 
     def __init__(self, *, seed: int = 42) -> None:
@@ -273,10 +274,13 @@ class MockDataFeed:
         sym = symbol.upper().replace("USD", "").replace("USDT", "")
         if sym not in self._rngs:
             close, sigma, drift = self.SYMBOL_DEFAULTS.get(
-                sym, (100.0, 0.01, 0.0),
+                sym,
+                (100.0, 0.01, 0.0),
             )
             self._rngs[sym] = _BarRng(
-                last_close=close, sigma=sigma, drift=drift,
+                last_close=close,
+                sigma=sigma,
+                drift=drift,
                 rng=random.Random(self._seed + hash(sym) % 1000),
             )
         return self._rngs[sym]
@@ -426,14 +430,17 @@ class ExecutionRouter:
         try:
             f = self.bf_dir / f"{bot.bot_id}.pending_order.json"
             f.write_text(
-                json.dumps({
-                    "ts": rec.fill_ts,
-                    "signal_id": rec.signal_id,
-                    "side": rec.side,
-                    "qty": rec.qty,
-                    "symbol": rec.symbol,
-                    "limit_price": rec.fill_price,
-                }, indent=2),
+                json.dumps(
+                    {
+                        "ts": rec.fill_ts,
+                        "signal_id": rec.signal_id,
+                        "side": rec.side,
+                        "qty": rec.qty,
+                        "symbol": rec.symbol,
+                        "limit_price": rec.fill_price,
+                    },
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
         except OSError as exc:
@@ -475,25 +482,26 @@ class JarvisStrategySupervisor:
             return 0
 
         # Filter to operator-pinned subset (if any)
-        pinned = {
-            x.strip() for x in self.cfg.bots_env.split(",") if x.strip()
-        }
+        pinned = {x.strip() for x in self.cfg.bots_env.split(",") if x.strip()}
 
         for a in ASSIGNMENTS:
             if pinned and a.bot_id not in pinned:
                 continue
             if not is_active(a):
                 continue
-            self.bots.append(BotInstance(
-                bot_id=a.bot_id,
-                symbol=getattr(a, "symbol", a.bot_id.upper()),
-                strategy_kind=getattr(a, "strategy_kind", "unknown"),
-                direction=getattr(a, "default_direction", "long"),
-                cash=self.cfg.starting_cash_per_bot,
-            ))
+            self.bots.append(
+                BotInstance(
+                    bot_id=a.bot_id,
+                    symbol=getattr(a, "symbol", a.bot_id.upper()),
+                    strategy_kind=getattr(a, "strategy_kind", "unknown"),
+                    direction=getattr(a, "default_direction", "long"),
+                    cash=self.cfg.starting_cash_per_bot,
+                )
+            )
         logger.info(
             "loaded %d bots (pinned filter: %s)",
-            len(self.bots), pinned or "ALL",
+            len(self.bots),
+            pinned or "ALL",
         )
         return len(self.bots)
 
@@ -510,14 +518,17 @@ class JarvisStrategySupervisor:
             from eta_engine.brain.jarvis_v3.memory_hierarchy import (
                 HierarchicalMemory,
             )
+
             self._memory = HierarchicalMemory()
             admin = JarvisAdmin()
             intel = JarvisIntelligence(
-                admin=admin, memory=self._memory,
+                admin=admin,
+                memory=self._memory,
                 cfg=IntelligenceConfig(enable_intelligence=True),
             )
             self._jarvis_full = JarvisFull(
-                intelligence=intel, memory=self._memory,
+                intelligence=intel,
+                memory=self._memory,
             )
             logger.info("JarvisFull bootstrapped")
             return True
@@ -541,10 +552,12 @@ class JarvisStrategySupervisor:
             return 2
 
         logger.info(
-            "supervisor running: %d bots, mode=%s, feed=%s, tick=%.0fs, "
-            "live_money=%s",
-            len(self.bots), self.cfg.mode, self.cfg.data_feed,
-            self.cfg.tick_s, self.cfg.live_money_enabled,
+            "supervisor running: %d bots, mode=%s, feed=%s, tick=%.0fs, live_money=%s",
+            len(self.bots),
+            self.cfg.mode,
+            self.cfg.data_feed,
+            self.cfg.tick_s,
+            self.cfg.live_money_enabled,
         )
 
         tick_count = 0
@@ -567,7 +580,9 @@ class JarvisStrategySupervisor:
                 self._tick_bot(bot, tick_count)
             except Exception as exc:  # noqa: BLE001 -- never break the loop
                 logger.exception(
-                    "tick_bot %s raised: %s", bot.bot_id, exc,
+                    "tick_bot %s raised: %s",
+                    bot.bot_id,
+                    exc,
                 )
 
     def _tick_bot(self, bot: BotInstance, tick_count: int) -> None:
@@ -633,7 +648,9 @@ class JarvisStrategySupervisor:
             payload["sage_score"] = 0.5
 
         verdict = self._consult_jarvis(
-            bot=bot, signal_id=signal_id, action="ORDER_PLACE",
+            bot=bot,
+            signal_id=signal_id,
+            action="ORDER_PLACE",
             payload=payload,
             narrative=f"mock-entry {bot.bot_id} @ {bar['close']:.2f}",
         )
@@ -646,14 +663,21 @@ class JarvisStrategySupervisor:
 
         side = "BUY" if bot.direction == "long" else "SELL"
         rec = self._router.submit_entry(
-            bot=bot, signal_id=signal_id, side=side, bar=bar,
+            bot=bot,
+            signal_id=signal_id,
+            side=side,
+            bar=bar,
             size_mult=size_mult,
         )
         if rec:
             logger.info(
                 "ENTRY  %s %s %.4f @ %.4f (verdict=%s size_mult=%.2f)",
-                bot.bot_id, side, rec.qty, rec.fill_price,
-                verdict.consolidated.final_verdict, size_mult,
+                bot.bot_id,
+                side,
+                rec.qty,
+                rec.fill_price,
+                verdict.consolidated.final_verdict,
+                size_mult,
             )
 
     def _maybe_exit(self, bot: BotInstance, bar: dict[str, Any]) -> None:
@@ -681,7 +705,10 @@ class JarvisStrategySupervisor:
         if rec:
             logger.info(
                 "EXIT   %s %s %.4f @ %.4f (R=%.3f)",
-                bot.bot_id, rec.side, rec.qty, rec.fill_price,
+                bot.bot_id,
+                rec.side,
+                rec.qty,
+                rec.fill_price,
                 rec.realized_r or 0.0,
             )
             # Feedback loop: propagate to memory + bandits + calibrator
@@ -690,7 +717,11 @@ class JarvisStrategySupervisor:
     # ── JARVIS consultation ─────────────────────────────────
 
     def _consult_sage_for_bot(
-        self, bot: BotInstance, bar: dict, side: str, entry_price: float,
+        self,
+        bot: BotInstance,
+        bar: dict,
+        side: str,
+        entry_price: float,
     ) -> Any | None:  # noqa: ANN401 — deprecated mirror; SageReport lives in scripts/ copy
         """Consult Sage schools with the bot's accumulated bar buffer.
 
@@ -702,6 +733,7 @@ class JarvisStrategySupervisor:
             return None
         try:
             from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
+
             ctx = MarketContext(
                 bars=bars,
                 side=side,
@@ -730,6 +762,7 @@ class JarvisStrategySupervisor:
                 SubsystemId,
                 make_action_request,
             )
+
             atype = getattr(ActionType, action, ActionType.ORDER_PLACE)
             sub = getattr(
                 SubsystemId,
@@ -737,14 +770,18 @@ class JarvisStrategySupervisor:
                 SubsystemId.BOT_MNQ,
             )
             req = make_action_request(
-                subsystem=sub, action=atype,
-                rationale=narrative, **payload,
+                subsystem=sub,
+                action=atype,
+                rationale=narrative,
+                **payload,
             )
             req.request_id = signal_id
             ctx = self._build_synthetic_ctx(bot)
             verdict = self._jarvis_full.consult(
-                req=req, ctx=ctx,
-                current_narrative=narrative, bot_id=bot.bot_id,
+                req=req,
+                ctx=ctx,
+                current_narrative=narrative,
+                bot_id=bot.bot_id,
             )
             return verdict
         except Exception as exc:  # noqa: BLE001
@@ -779,13 +816,12 @@ class JarvisStrategySupervisor:
             return None
 
         # Aggregate per-bot risk into one fleet-level equity snapshot
-        total_equity = sum(
-            (b.cash + b.realized_pnl) for b in self.bots
-        ) or float(self.cfg.starting_cash_per_bot)
+        total_equity = sum((b.cash + b.realized_pnl) for b in self.bots) or float(self.cfg.starting_cash_per_bot)
         # Bound dd_pct to [0,1] -- pydantic validator rejects negatives
         # and values >1, both of which are possible in a wild bot run
         raw_dd = max(
-            0.0, -sum(b.realized_pnl for b in self.bots) / max(total_equity, 1.0),
+            0.0,
+            -sum(b.realized_pnl for b in self.bots) / max(total_equity, 1.0),
         )
         dd_pct = min(0.999, raw_dd)
         open_count = sum(1 for b in self.bots if b.open_position is not None)
@@ -816,21 +852,37 @@ class JarvisStrategySupervisor:
             correlations_alert=False,
         )
         return build_snapshot(
-            macro=macro, equity=equity, regime=regime, journal=journal,
+            macro=macro,
+            equity=equity,
+            regime=regime,
+            journal=journal,
             notes=[
-                f"supervisor synthetic ctx for {bot.bot_id} "
-                f"(symbol={bot.symbol}, dir={bot.direction})",
+                f"supervisor synthetic ctx for {bot.bot_id} (symbol={bot.symbol}, dir={bot.direction})",
             ],
         )
 
     def _propagate_close(self, bot: BotInstance, rec: FillRecord) -> None:
         try:
             from eta_engine.brain.jarvis_v3.feedback_loop import close_trade
+
+            # Derive trade direction from rec.side, not bot.direction
+            # (see scripts/jarvis_strategy_supervisor.py for the writer-bug
+            # backstory — bot.direction is a default-"long" dataclass field
+            # never updated per-trade).
+            _raw_side = (getattr(rec, "side", "") or "").upper()
+            if _raw_side == "BUY":
+                _trade_direction = "long"
+            elif _raw_side == "SELL":
+                _trade_direction = "short"
+            else:
+                _trade_direction = bot.direction
             close_trade(
                 signal_id=rec.signal_id,
                 realized_r=rec.realized_r or 0.0,
-                regime="neutral", session="rth", stress=0.4,
-                direction=bot.direction,
+                regime="neutral",
+                session="rth",
+                stress=0.4,
+                direction=_trade_direction,
                 action_taken="approve_full",
                 bot_id=bot.bot_id,
                 memory=self._memory,
@@ -870,7 +922,8 @@ class JarvisStrategySupervisor:
                 "bots": bot_states,
             }
             (self.cfg.state_dir / "heartbeat.json").write_text(
-                json.dumps(payload, indent=2, default=str), encoding="utf-8",
+                json.dumps(payload, indent=2, default=str),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.warning("heartbeat write failed: %s", exc)
