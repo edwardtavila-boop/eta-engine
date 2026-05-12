@@ -11,13 +11,15 @@ Run from `C:\EvolutionaryTradingAlgo`:
 ```powershell
 python -m eta_engine.scripts.broker_bracket_audit --json
 python -m eta_engine.scripts.prop_strategy_promotion_audit --json
+python -m eta_engine.scripts.operator_queue_heartbeat --cached-readiness --changed-only
 python -m eta_engine.scripts.vps_ops_hardening_audit --json-out --json
 ```
 
-The canonical summary is written to:
+The canonical summaries are written to:
 
 ```text
 C:\EvolutionaryTradingAlgo\var\eta_engine\state\vps_ops_hardening_latest.json
+C:\EvolutionaryTradingAlgo\var\eta_engine\state\operator_queue_snapshot.json
 ```
 
 ## Scheduled refresh
@@ -26,7 +28,13 @@ Register the every-5-minute VPS audit task:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_vps_ops_hardening_audit_task.ps1 -Start
+powershell -ExecutionPolicy Bypass -File eta_engine\deploy\scripts\register_operator_queue_heartbeat_task.ps1 -Start
 ```
+
+`ETA-VpsOpsHardeningAudit` refreshes the safety-gate audit. `ETA-OperatorQueueHeartbeat`
+refreshes the read-only operator queue snapshot that dashboard diagnostics use
+for blocker counts and stale-state detection. It never submits, cancels,
+flattens, or promotes orders.
 
 The VPS bootstrap now registers the same task:
 
@@ -47,7 +55,7 @@ If the audit reports `promotion_allowed: false`, do not promote the strategy,
 do not route live prop orders, and do not override holds. Clear the listed
 `next_actions` first, then rerun the one-shot refresh.
 
-As of the latest hardening refresh on 2026-05-11, runtime was healthy but the
-trading lane stayed `YELLOW_SAFETY_BLOCKED` because broker-native bracket/OCO
-proof was missing for `MCLM6`, `MNQM6`, `MYMM6`, `NGM26`, and `NQM6`, and the
-primary strategy remained in paper soak.
+If the bracket audit reports `READY_NO_OPEN_EXPOSURE` but the dashboard still
+shows stale operator blockers, refresh `ETA-OperatorQueueHeartbeat` before
+debugging the UI. A stale queue snapshot is a truth-surface problem, not
+permission to bypass broker, paper-soak, or prop drawdown gates.
