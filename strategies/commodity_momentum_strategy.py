@@ -45,7 +45,22 @@ class MomentumConfig:
     min_bars_between_trades: int = 12
     max_trades_per_day: int = 3
     warmup_bars: int = 72
-    trailing_stop_atr_mult: float = 1.0  # Trail stop behind price at 1x ATR
+    # Trailing stop multiplier — 2026-05-12 wave-4: implementation
+    # landed (was dead code).  After price moves rr_trail_trigger * R
+    # in favor, the stop trails behind price at trailing_stop_atr_mult
+    # x ATR.  The supervisor exit-loop reads `trailing_stop` from
+    # bot.open_position to know where to exit.
+    trailing_stop_atr_mult: float = 1.0
+    rr_trail_trigger: float = 1.0  # Activate trailing after price moves 1R
+
+    # Vol-adjusted sizing — 2026-05-12 wave-4.  Same semantics as
+    # SweepReclaimConfig; disabled by default = legacy.
+    vol_adjusted_sizing: bool = False
+    vol_baseline_window: int = 96
+    vol_high_threshold: float = 1.5
+    vol_low_threshold: float = 0.7
+    vol_high_size_mult: float = 0.5
+    vol_low_size_mult: float = 1.0
 
 
 class MomentumStrategy:
@@ -72,6 +87,8 @@ class MomentumStrategy:
         self._dx_window: list[float] = []
         self._prev_high: float | None = None
         self._prev_low: float | None = None
+        # ATR history for vol-adjusted sizing (wave-4)
+        self._atr_history: list[float] = []
 
     def maybe_enter(
         self, bar: BarData, hist: list[BarData], equity: float, config: BacktestConfig,
@@ -102,6 +119,23 @@ class MomentumStrategy:
         stop_dist = atr * self.cfg.atr_stop_mult
         risk_usd = equity * self.cfg.risk_per_trade_pct
 
+        # Track ATR for vol-adjusted sizing baseline
+        self._atr_history.append(atr)
+        if len(self._atr_history) > self.cfg.vol_baseline_window:
+            self._atr_history.pop(0)
+
+        # Vol-adjusted sizing (wave-4) — size DOWN in high-vol regimes
+        if (self.cfg.vol_adjusted_sizing
+                and len(self._atr_history) >= self.cfg.vol_baseline_window // 2):
+            sorted_atrs = sorted(self._atr_history)
+            median_atr = sorted_atrs[len(sorted_atrs) // 2]
+            if median_atr > 0:
+                ratio = atr / median_atr
+                if ratio >= self.cfg.vol_high_threshold:
+                    risk_usd *= self.cfg.vol_high_size_mult
+                elif ratio <= self.cfg.vol_low_threshold:
+                    risk_usd *= self.cfg.vol_low_size_mult
+
         if side == "BUY":
             entry = bar.close
             stop = entry - stop_dist
@@ -119,12 +153,65 @@ class MomentumStrategy:
         self._trades_today += 1
 
         from eta_engine.backtest.engine import _Open
+        # Carry trailing-stop config on the regime field so the
+        # supervisor's exit loop can read it back when computing
+        # the live trailing-stop level.  No new schema change needed.
+        regime = (
+            f"momentum_{side.lower()}_trail{self.cfg.trailing_stop_atr_mult:.1f}"
+            f"x_after_{self.cfg.rr_trail_trigger:.1f}R"
+            if self.cfg.trailing_stop_atr_mult > 0
+            else f"momentum_{side.lower()}"
+        )
         return _Open(
             entry_bar=bar, side=side, qty=qty,
             entry_price=entry, stop=stop, target=target,
             risk_usd=risk_usd, confluence=7.0, leverage=1.0,
-            regime=f"momentum_{side.lower()}",
+            regime=regime,
         )
+
+    def compute_trailing_stop(
+        self,
+        side: str,
+        entry_price: float,
+        initial_stop: float,
+        current_price: float,
+        atr: float,
+    ) -> float | None:
+        """Compute the trailing-stop level for an open position.
+
+        Called by the supervisor's exit loop on each bar.  Returns
+        the new stop level (operator should ratchet — never widen
+        the stop) or None if trailing should not activate yet.
+
+        Activation:  price must move at least rr_trail_trigger * R
+                     in favor (where R = |entry - initial_stop|).
+        Trail level: entry_side - trailing_stop_atr_mult * ATR
+                     (one-sided: only ratchet in profit direction).
+
+        2026-05-12 wave-4: implements the previously-dead-code
+        trailing_stop_atr_mult parameter.  Standalone helper so the
+        supervisor's exit loop can drive it without re-entering the
+        strategy.  Pure function — easy to unit-test.
+        """
+        if self.cfg.trailing_stop_atr_mult <= 0 or atr <= 0:
+            return None
+        r_distance = abs(entry_price - initial_stop)
+        if r_distance <= 0:
+            return None
+        if side.upper() in ("BUY", "LONG"):
+            move_in_favor = current_price - entry_price
+            if move_in_favor < self.cfg.rr_trail_trigger * r_distance:
+                return None
+            new_stop = current_price - self.cfg.trailing_stop_atr_mult * atr
+            # Never widen — only ratchet up
+            return max(new_stop, initial_stop)
+        # SHORT
+        move_in_favor = entry_price - current_price
+        if move_in_favor < self.cfg.rr_trail_trigger * r_distance:
+            return None
+        new_stop = current_price + self.cfg.trailing_stop_atr_mult * atr
+        # Never widen — only ratchet down
+        return min(new_stop, initial_stop)
 
     def _update_indicators(self, bar: BarData, hist: list[BarData]) -> None:
         # ROC

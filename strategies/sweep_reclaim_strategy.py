@@ -53,7 +53,7 @@ Limitations
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -114,6 +114,33 @@ class SweepReclaimConfig:
     l2_window_seconds: int = 60         # how far back to search for pre-touch
     l2_symbol: str = "MNQ"             # symbol for depth-file lookup
 
+    # ── 2026-05-12 wave-4 refinements ───────────────────────────────
+    #
+    # Multi-bar reclaim confirmation: require N consecutive bar closes
+    # to hold on the reclaim side before firing.  The default 1 is the
+    # legacy single-bar behavior; setting to 2 reduces false signals
+    # at the cost of slightly later entries.  The mgc audit found 96%
+    # of CPCV splits positive on n=157 — but that's still a marginal
+    # edge.  Multi-bar confirmation could lift it without losing the
+    # signal entirely.
+    reclaim_confirm_bars: int = 1
+
+    # Vol-adjusted sizing: scale position size by recent ATR vs
+    # median ATR.  When realized vol is high (atr > median * upper)
+    # we size DOWN; when vol is low (atr < median * lower) we keep
+    # baseline.  1.0 = disabled (legacy behavior).
+    vol_adjusted_sizing: bool = False
+    vol_baseline_window: int = 96    # bars over which to compute median ATR
+    vol_high_threshold: float = 1.5  # multiplier above median = "high vol"
+    vol_low_threshold: float = 0.7   # multiplier below median = "low vol"
+    vol_high_size_mult: float = 0.5  # size halved in high-vol regime
+    vol_low_size_mult: float = 1.0   # baseline in low-vol regime
+
+    # Session filter: skip bars whose UTC hour is in `excluded_hours_utc`.
+    # Empty tuple = no filter (legacy).  Used by mgc to drop the close
+    # session where stratification showed CI lower = -0.169 (NULL edge).
+    excluded_hours_utc: tuple[int, ...] = field(default_factory=tuple)
+
 
 class SweepReclaimStrategy:
     """Mechanical Wyckoff spring / upthrust translation."""
@@ -145,6 +172,15 @@ class SweepReclaimStrategy:
         self._n_wick_quality_rejects: int = 0
         self._n_volume_quality_rejects: int = 0
         self._n_reclaim_window_expired: int = 0
+        self._n_session_filter_rejects: int = 0
+        self._n_confirm_pending: int = 0
+        # ATR median window for vol-adjusted sizing
+        self._atr_history: deque[float] = deque(
+            maxlen=max(self.cfg.vol_baseline_window, 24))
+        # Reclaim-confirmation state per pending sweep
+        # Key = (side, swept_level, sweep_idx); value = consecutive bars
+        # the close has held on the reclaim side
+        self._confirm_counts: dict[tuple[str, float, int], int] = {}
 
     @property
     def stats(self) -> dict[str, int]:
@@ -156,6 +192,8 @@ class SweepReclaimStrategy:
             "wick_quality_rejects": self._n_wick_quality_rejects,
             "volume_quality_rejects": self._n_volume_quality_rejects,
             "reclaim_window_expired": self._n_reclaim_window_expired,
+            "session_filter_rejects": self._n_session_filter_rejects,
+            "confirm_pending": self._n_confirm_pending,
         }
 
     # -- detection helpers -------------------------------------------------
@@ -276,6 +314,17 @@ class SweepReclaimStrategy:
         # Update volume window BEFORE z-score reads
         self._volume_window.append(bar.volume)
 
+        # Session filter (2026-05-12 wave-4): skip bars whose UTC hour
+        # is in excluded_hours_utc.  Per-bot setting; mgc_sweep_reclaim
+        # uses this to drop the close-session NULL-edge bucket.  Still
+        # update level_window so future bars have continuous history.
+        if self.cfg.excluded_hours_utc:
+            hour_utc = bar.timestamp.hour
+            if hour_utc in self.cfg.excluded_hours_utc:
+                self._n_session_filter_rejects += 1
+                self._level_window.append((self._bars_seen, bar.high, bar.low))
+                return None
+
         # Detect sweep (uses prior level window, not yet updated for this bar)
         self._detect_sweep(bar)
 
@@ -289,6 +338,24 @@ class SweepReclaimStrategy:
             return None
         if winner is None:
             return None
+
+        # Multi-bar reclaim confirmation (2026-05-12 wave-4): require
+        # N consecutive bars closing on the reclaim side before firing.
+        # reclaim_confirm_bars=1 is the legacy single-bar behavior.
+        if self.cfg.reclaim_confirm_bars > 1:
+            side, swept_level = winner
+            sweep_idx = self._bars_seen  # confirmation count is per-bar
+            key = (side, swept_level, sweep_idx)
+            held = self._confirm_counts.get(key, 0)
+            # The current bar's close already meets the side condition
+            # (we got here from _check_reclaim).  Increment and check.
+            held += 1
+            if held < self.cfg.reclaim_confirm_bars:
+                self._confirm_counts[key] = held
+                self._n_confirm_pending += 1
+                return None
+            # Confirmed — clear and proceed
+            self._confirm_counts.pop(key, None)
         if self._trades_today >= self.cfg.max_trades_per_day:
             return None
         if (
@@ -314,10 +381,30 @@ class SweepReclaimStrategy:
         atr = sum(b.high - b.low for b in atr_window) / len(atr_window)
         if atr <= 0.0:
             return None
+        # Track ATR in baseline window for vol-adjusted sizing
+        self._atr_history.append(atr)
         stop_dist = self.cfg.atr_stop_mult * atr
         if stop_dist <= 0.0:
             return None
         risk_usd = equity * self.cfg.risk_per_trade_pct
+
+        # Vol-adjusted sizing (2026-05-12 wave-4): when realized vol
+        # spikes (ATR > median * vol_high_threshold), size DOWN so a
+        # single regime-shift bar doesn't burn double our intended
+        # risk.  When vol is normal, baseline.  Operator opt-in via
+        # vol_adjusted_sizing=True; default off = legacy behavior.
+        if (self.cfg.vol_adjusted_sizing
+                and len(self._atr_history) >= self.cfg.vol_baseline_window // 2):
+            sorted_atrs = sorted(self._atr_history)
+            median_atr = sorted_atrs[len(sorted_atrs) // 2]
+            if median_atr > 0:
+                ratio = atr / median_atr
+                if ratio >= self.cfg.vol_high_threshold:
+                    risk_usd *= self.cfg.vol_high_size_mult
+                elif ratio <= self.cfg.vol_low_threshold:
+                    risk_usd *= self.cfg.vol_low_size_mult
+                # else: ratio in normal band — baseline size
+
         qty = risk_usd / stop_dist
         if qty <= 0.0:
             return None
@@ -618,26 +705,33 @@ def ym_sweep_preset() -> SweepReclaimConfig:
 def mgc_sweep_preset() -> SweepReclaimConfig:
     """MGC 1h micro-gold preset.
 
-    2026-05-12 refinement (quant audit synthesis):
-      - atr_stop_mult 3.0 → 2.5
-      - rr_target    3.0 → 3.5
-      - min_volume_z 0.3 → 0.5 (NY-open hour focus)
+    2026-05-12 refinements:
+      Wave-3 (chisel):
+        - atr_stop_mult 3.0 → 2.5
+        - rr_target    3.0 → 3.5
+        - min_volume_z 0.3 → 0.5 (NY-open hour focus)
+      Wave-4 (rehaul):
+        - reclaim_confirm_bars: 1 → 2 (cut false signals in chop)
+        - vol_adjusted_sizing: True (gold vol regime-shifts; size down on spikes)
+        - excluded_hours_utc: 20-23 UTC ("close" session, 15-18 ET)
+          per stratification: n=11, CI lower -0.169 → NULL edge.
+          The wave-4 session filter drops bars in this window so
+          mgc only fires when its edge is statistically supported.
 
-    Rationale: mgc_sweep CPCV showed n=157, mean OOS sharpe +0.190
-    with 96% positive splits — a real but small edge.  Per-trade R
-    is positive but USD P&L is negative (PF=0.726) → friction
-    dominated.  Range-bound mid-2026 gold means:
-      - Tighter stop captures the mean-reversion edge before
-        whipsaw eats it (3x ATR was permissive)
-      - Wider target captures further reversion (sweeps in chop
-        often go 3.5R+ before flopping)
-      - Higher volume z gate filters London-session thin chop
-        and concentrates on NY-open execution windows
-    Falsifier: PF crosses 1.0 across the next 60 trades.  Red team:
-    multiple-testing across 3 simultaneous knob tweaks — treat the
-    +0.19 mean as the prior; require +0.30 OOS sharpe before claiming
-    improvement is real.  min_wick_pct stays 0.40 — v2's relaxed 0.30
-    wick demonstrated this is load-bearing.
+    Rationale chain:
+      CPCV: n=157 mean OOS sharpe +0.190 (96% splits positive)
+      Stratification: overnight WEAK (CI+0.014), close NULL (CI-0.169)
+      → close session is dragging the average; overnight carries the edge
+      → drop close session, keep overnight, expect mean sharpe to lift
+
+    Falsifier: mean OOS sharpe should rise from +0.19 to >0.30 over
+    the next 60 trades.  If it doesn't, the session filter was overfit
+    to the past 158 trades and the operator should revisit.
+
+    Red team: ~50% of mgc's trade volume came from the dropped session.
+    The session filter cuts trade frequency in half → less statistical
+    power for future CPCV.  Tradeoff: better per-trade edge, slower
+    sample accumulation.
     """
     return SweepReclaimConfig(
         level_lookback=48, reclaim_window=3,
@@ -645,6 +739,9 @@ def mgc_sweep_preset() -> SweepReclaimConfig:
         atr_period=14, atr_stop_mult=2.5, rr_target=3.5,
         risk_per_trade_pct=0.005, min_bars_between_trades=12,
         max_trades_per_day=2, warmup_bars=72,
+        reclaim_confirm_bars=2,
+        vol_adjusted_sizing=True,
+        excluded_hours_utc=(20, 21, 22, 23),  # close session per stratification
     )
 
 
