@@ -465,8 +465,11 @@ def build_report(
         next_actions.append(f"Repair critical endpoint probe: {name}")
     if missing_dashboard_tasks:
         next_actions.append(
-            "Register durable dashboard self-heal scheduled tasks with elevation: "
+            "Run elevated dashboard durability repair: "
+            "eta_engine\\deploy\\scripts\\repair_dashboard_durability_admin.cmd "
+            "(registers "
             + ", ".join(missing_dashboard_tasks)
+            + ")"
         )
     if drifted_configs:
         next_actions.append(

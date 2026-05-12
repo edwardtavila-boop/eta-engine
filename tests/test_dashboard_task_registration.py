@@ -8,6 +8,7 @@ RUNNER = ROOT / "deploy" / "scripts" / "run_dashboard_api_task.cmd"
 PROXY_SCRIPT = ROOT / "deploy" / "scripts" / "register_proxy8421_bridge_task.ps1"
 PROXY_RUNNER = ROOT / "deploy" / "scripts" / "run_proxy8421_task.cmd"
 PROXY_WATCHDOG_SCRIPT = ROOT / "deploy" / "scripts" / "register_dashboard_proxy_watchdog_task.ps1"
+REPAIR_DASHBOARD_DURABILITY = ROOT / "deploy" / "scripts" / "repair_dashboard_durability_admin.cmd"
 DASHBOARD_SYNC_SCRIPT = ROOT / "deploy" / "scripts" / "sync_dashboard_api_live.ps1"
 COMMAND_CENTER_SERVICE_XML = ROOT / "deploy" / "FirmCommandCenter_canonical.xml"
 ROOT_DIRTY_INSPECT_SCRIPT = ROOT / "deploy" / "scripts" / "inspect_vps_root_dirty.ps1"
@@ -218,6 +219,34 @@ def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:
 
 def test_dashboard_proxy_watchdog_task_registration_avoids_legacy_paths() -> None:
     text = PROXY_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+
+    assert "OneDrive" not in text
+    assert "LOCALAPPDATA" not in text
+    assert "mnq_data" not in text
+    assert "crypto_data" not in text
+    assert "TheFirm" not in text
+    assert "The_Firm" not in text
+
+
+def test_dashboard_durability_admin_launcher_repairs_only_dashboard_tasks() -> None:
+    text = REPAIR_DASHBOARD_DURABILITY.read_text(encoding="utf-8")
+
+    assert r"ETA_ROOT=C:\EvolutionaryTradingAlgo" in text
+    assert "net session" in text
+    assert "Start-Process" in text
+    assert "-Verb RunAs" in text
+    assert "register_dashboard_api_task.ps1" in text
+    assert "register_proxy8421_bridge_task.ps1" in text
+    assert "register_dashboard_proxy_watchdog_task.ps1" in text
+    assert "register_vps_ops_hardening_audit_task.ps1" in text
+    assert "vps_ops_hardening_audit --json-out" in text
+    assert "never places, cancels, flattens, or promotes orders" in text
+    assert "set_ibc_credentials" not in text
+    assert "ibgateway_reauth_controller --execute" not in text
+
+
+def test_dashboard_durability_admin_launcher_avoids_legacy_paths() -> None:
+    text = REPAIR_DASHBOARD_DURABILITY.read_text(encoding="utf-8")
 
     assert "OneDrive" not in text
     assert "LOCALAPPDATA" not in text
