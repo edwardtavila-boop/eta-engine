@@ -17,6 +17,12 @@ FULL_DIAGNOSTICS_SCRIPT = ROOT / "deploy" / "scripts" / "full_diagnostics.ps1"
 VPS_BOOTSTRAP_SCRIPTS = (
     ROOT / "deploy" / "vps_bootstrap.ps1",
 )
+VPS_BOOTSTRAP_SERVICE_SCRIPTS = (
+    ROOT / "deploy" / "vps_bootstrap.ps1",
+    ROOT / "deploy" / "vps_bootstrap_ascii.ps1",
+    ROOT / "deploy" / "vps_bootstrap_clean.ps1",
+    ROOT / "deploy" / "vps_bootstrap_v2.ps1",
+)
 
 
 def test_dashboard_api_task_registration_is_canonical_and_logged() -> None:
@@ -179,6 +185,15 @@ def test_vps_bootstrap_summaries_name_active_dashboard_topology() -> None:
         assert "127.0.0.1:8421 -> 8000" in text
         assert "dashboard on port 8420" not in text
         assert "dashboard (127.0.0.1:8420)" not in text
+
+
+def test_vps_bootstrap_installs_canonical_command_center_service_template() -> None:
+    for path in VPS_BOOTSTRAP_SERVICE_SCRIPTS:
+        text = path.read_text(encoding="utf-8")
+        assert "FirmCommandCenter_canonical.xml" in text
+        assert 'Name="FirmCommandCenter"' in text
+        assert 'Xml="FirmCommandCenter.xml"' in text
+        assert "$svc.XmlPath" in text
 
 
 def test_dashboard_proxy_watchdog_task_registration_is_canonical() -> None:

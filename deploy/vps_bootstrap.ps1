@@ -190,7 +190,7 @@ if (-not $SkipWinSW) {
     $services = @(
         @{Name="FirmCore";                    Xml="FirmCore.xml";                    XmlPath="$fccServicesDir\FirmCore.xml"},
         @{Name="FirmWatchdog";                Xml="FirmWatchdog.xml";                XmlPath="$fccServicesDir\FirmWatchdog.xml"},
-        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml";           XmlPath="$fccServicesDir\FirmCommandCenter.xml"},
+        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml";           XmlPath="$EtaEngineDir\deploy\FirmCommandCenter_canonical.xml"},
         @{Name="FirmCommandCenterEdge";       Xml="FirmCommandCenterEdge.xml";       XmlPath="$fccServicesDir\FirmCommandCenterEdge.xml"},
         @{Name="FirmCommandCenterTunnel";     Xml="FirmCommandCenterTunnel.xml";     XmlPath="$fccServicesDir\FirmCommandCenterTunnel.xml"},
         @{Name="HermesJarvisTelegram";        Xml="HermesJarvisTelegram.xml";        XmlPath="$fccServicesDir\HermesJarvisTelegram.xml"},

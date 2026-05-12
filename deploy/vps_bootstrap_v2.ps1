@@ -184,7 +184,7 @@ if (-not $SkipWinSW) {
     $services = @(
         @{Name="FirmCore";                    Xml="FirmCore.xml"},
         @{Name="FirmWatchdog";                Xml="FirmWatchdog.xml"},
-        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml"},
+        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml";           XmlPath="$EtaEngineDir\deploy\FirmCommandCenter_canonical.xml"},
         @{Name="FirmCommandCenterEdge";       Xml="FirmCommandCenterEdge.xml"},
         @{Name="FirmCommandCenterTunnel";     Xml="FirmCommandCenterTunnel.xml"},
         @{Name="ETAJarvisSupervisor";         Xml="ETAJarvisSupervisor.xml"}
@@ -192,7 +192,7 @@ if (-not $SkipWinSW) {
 
     if (Test-Path $winswExe) {
         foreach ($svc in $services) {
-            $xmlPath = "$fccServicesDir\$($svc.Xml)"
+            $xmlPath = if ($svc.ContainsKey("XmlPath")) { $svc.XmlPath } else { "$fccServicesDir\$($svc.Xml)" }
             if (Test-Path $xmlPath) {
                 $svcDir = "$fccServicesDir\$($svc.Name)"
                 if (-not (Test-Path $svcDir)) { New-Item -ItemType Directory -Force -Path $svcDir | Out-Null }

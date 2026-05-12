@@ -50,7 +50,7 @@ $pwshPath = (Get-Command powershell -ErrorAction SilentlyContinue).Source
 if (-not $pwshPath) { $pwshPath = "powershell.exe" }
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  ETA VPS Bootstrap " Full Stack Registration" -ForegroundColor Cyan
+Write-Host "  ETA VPS Bootstrap -- Full Stack Registration" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host "Install root: $InstallRoot" -ForegroundColor Gray
 Write-Host "Python:       $pythonExe" -ForegroundColor Gray
@@ -63,20 +63,20 @@ Write-Host "=== Environment Validation ===" -ForegroundColor Green
 if (Test-Path $venvPython) {
     Write-Host "  eta_engine\.venv:     PRESENT ($(& $venvPython --version 2>&1))" -ForegroundColor Green
 } else {
-    Write-Host "  eta_engine\.venv:     MISSING " run: uv sync --locked in $EtaEngineDir" -ForegroundColor Yellow
+    Write-Host "  eta_engine\.venv:     MISSING -- run: uv sync --locked in $EtaEngineDir" -ForegroundColor Yellow
 }
 
 if (Test-Path $fccVenvPython) {
     Write-Host "  firm_command_center\.venv: PRESENT ($(& $fccVenvPython --version 2>&1))" -ForegroundColor Green
 } else {
-    Write-Host "  firm_command_center\.venv: MISSING " WinSW services will fail" -ForegroundColor Yellow
+    Write-Host "  firm_command_center\.venv: MISSING -- WinSW services will fail" -ForegroundColor Yellow
     Write-Host "    Create: cd $FirmDir && uv sync --locked" -ForegroundColor Gray
 }
 
 if (Test-Path $winswExe) {
     Write-Host "  winsw.exe:            PRESENT at $winswExe" -ForegroundColor Green
 } else {
-    Write-Host "  winsw.exe:            MISSING " WinSW services will fail" -ForegroundColor Yellow
+    Write-Host "  winsw.exe:            MISSING -- WinSW services will fail" -ForegroundColor Yellow
 }
 
 # "" Force Multiplier CLI checks """""""""""""""""""""""""""
@@ -100,7 +100,7 @@ if (-not $SkipForceMultiplier) {
     if ($codexCheck) {
         Write-Host "  Codex CLI:            npx available (Systems Expert)" -ForegroundColor Green
     } else {
-        Write-Host "  Codex CLI:            MISSING " install: npm install -g @openai/codex" -ForegroundColor Yellow
+        Write-Host "  Codex CLI:            MISSING -- install: npm install -g @openai/codex" -ForegroundColor Yellow
     }
 
     # Run Force Multiplier health probe if available
@@ -131,7 +131,7 @@ if (-not (Test-Path $secretsDir)) {
 
 function Test-SecretPopulated($path, $name) {
     if (-not (Test-Path $path)) {
-        Write-Host "  $name : MISSING " placeholder created" -ForegroundColor Yellow
+        Write-Host "  $name : MISSING -- placeholder created" -ForegroundColor Yellow
         if (-not $WhatIf) {
             Set-Content -Path $path -Value "# Place your $name here" -Encoding UTF8
         }
@@ -139,7 +139,7 @@ function Test-SecretPopulated($path, $name) {
     }
     $content = Get-Content $path -Raw -ErrorAction SilentlyContinue
     if (-not $content -or $content -match "^#\s*Place your") {
-        Write-Host "  $name : PLACEHOLDER " populate with real value" -ForegroundColor Yellow
+        Write-Host "  $name : PLACEHOLDER -- populate with real value" -ForegroundColor Yellow
         return $false
     }
     Write-Host "  $name : POPULATED" -ForegroundColor Green
@@ -152,7 +152,7 @@ if (-not (Test-SecretPopulated $chatFile "telegram_chat_id.txt")) { $secretsOk =
 
 if (-not (Test-Path $quantumCreds)) {
     $credsTemplate = '{"_comment":"Place D-Wave/IBM Quantum credentials here","dwave":{"token":"","solver":"Advantage_system4.1","region":"na-west-1"},"ibm":{"token":"","instance":"ibm-q/open/main","backend":"ibm_kyiv"},"budget":{"max_cost_per_job_usd":0.50,"max_cost_per_day_usd":5.00,"enable_cloud":false}}'
-    Write-Host "  quantum_creds.json:  MISSING " template created" -ForegroundColor Yellow
+    Write-Host "  quantum_creds.json:  MISSING -- template created" -ForegroundColor Yellow
     if (-not $WhatIf) {
         $credsTemplate | Out-File $quantumCreds -Encoding UTF8
     }
@@ -190,7 +190,7 @@ if (-not $SkipWinSW) {
     $services = @(
         @{Name="FirmCore";                    Xml="FirmCore.xml"},
         @{Name="FirmWatchdog";                Xml="FirmWatchdog.xml"},
-        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml"},
+        @{Name="FirmCommandCenter";           Xml="FirmCommandCenter.xml";           XmlPath="$EtaEngineDir\deploy\FirmCommandCenter_canonical.xml"},
         @{Name="FirmCommandCenterEdge";       Xml="FirmCommandCenterEdge.xml"},
         @{Name="FirmCommandCenterTunnel";     Xml="FirmCommandCenterTunnel.xml"},
         @{Name="ETAJarvisSupervisor";         Xml="ETAJarvisSupervisor.xml"}
@@ -198,7 +198,7 @@ if (-not $SkipWinSW) {
 
     if (Test-Path $winswExe) {
         foreach ($svc in $services) {
-            $xmlPath = "$fccServicesDir\$($svc.Xml)"
+            $xmlPath = if ($svc.ContainsKey("XmlPath")) { $svc.XmlPath } else { "$fccServicesDir\$($svc.Xml)" }
             if (Test-Path $xmlPath) {
                 $svcDir = "$fccServicesDir\$($svc.Name)"
                 if (-not (Test-Path $svcDir)) { New-Item -ItemType Directory -Force -Path $svcDir | Out-Null }
@@ -362,7 +362,7 @@ if (-not $SkipDeepSeekTick) {
             & $pwshPath -ExecutionPolicy Bypass -File "$FirmDir\..\..\scripts\Register-DeepSeekScheduledTasks.ps1"
         }
     } else {
-        Write-Host "  Register-DeepSeekScheduledTasks.ps1 not found " skipping" -ForegroundColor Yellow
+        Write-Host "  Register-DeepSeekScheduledTasks.ps1 not found -- skipping" -ForegroundColor Yellow
     }
 }
 
@@ -406,7 +406,7 @@ if (-not $SkipIbkrGateway) {
             Write-Host "  Registered: ETAIbkrGatewayWatchdog (every 5m, auto-start on boot)" -ForegroundColor Green
         }
     } else {
-        Write-Host "  register_ibkr_gateway_watchdog_task.ps1 not found " skipping" -ForegroundColor Yellow
+        Write-Host "  register_ibkr_gateway_watchdog_task.ps1 not found -- skipping" -ForegroundColor Yellow
     }
 }
 
@@ -427,9 +427,9 @@ if (-not $WhatIf) {
     if ($exitCode -eq 0) {
         Write-Host "Health: GREEN" -ForegroundColor Green
     } elseif ($exitCode -eq 1) {
-        Write-Host "Health: YELLOW " check action items above" -ForegroundColor Yellow
+        Write-Host "Health: YELLOW -- check action items above" -ForegroundColor Yellow
     } else {
-        Write-Host "Health: RED " critical issues detected" -ForegroundColor Red
+        Write-Host "Health: RED -- critical issues detected" -ForegroundColor Red
     }
 }
 
