@@ -67,6 +67,11 @@ _FIELDS: list[FieldSpec] = [
 
 _PROP_ACCOUNTS: dict[str, tuple[str, str, str]] = {
     "blusky_50k": ("BLUSKY_", "BLUSKY_TRADOVATE_ACCOUNT_ID", "BluSky"),
+    "blusky_launch_50k_phase1": (
+        "BLUSKY_LAUNCH_50K_",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_ACCOUNT_ID",
+        "BluSky Launch 50K Phase 1",
+    ),
     "mffu_50k": ("MFFU_", "MFFU_TRADOVATE_ACCOUNT_ID", "My Funded Futures"),
 }
 

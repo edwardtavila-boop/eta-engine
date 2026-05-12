@@ -105,6 +105,7 @@ _REQUIRED = [
 
 _PROP_ACCOUNT_PREFIXES = {
     "blusky_50k": "BLUSKY_",
+    "blusky_launch_50k_phase1": "BLUSKY_LAUNCH_50K_",
     "mffu_50k": "MFFU_",
 }
 

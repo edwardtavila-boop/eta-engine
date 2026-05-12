@@ -75,6 +75,9 @@ class PropRiskRule:
     liquidation_buffer_usd: float = 250.0
     max_order_risk_usd: float | None = None
     open_risk_usd: float = 0.0
+    daily_profit_usd: float = 0.0
+    consistency_profit_cap_usd: float | None = None
+    consistency_buffer_usd: float = 0.0
 
     @property
     def trailing_floor_usd(self) -> float:
@@ -112,6 +115,16 @@ class PropRiskRule:
         if self.max_order_risk_usd is not None:
             room = min(room, self.max_order_risk_usd)
         return room - self.open_risk_usd
+
+    @property
+    def consistency_room_usd(self) -> float | None:
+        if self.consistency_profit_cap_usd is None:
+            return None
+        return (
+            self.consistency_profit_cap_usd
+            - self.daily_profit_usd
+            - self.consistency_buffer_usd
+        )
 
 
 class PendingOrderLike(Protocol):
@@ -201,6 +214,13 @@ def evaluate_prop_order(
         )
 
     context = _rule_context(rule, risk_usd)
+    consistency_room = rule.consistency_room_usd
+    if consistency_room is not None and consistency_room <= 0.0:
+        return PropRiskVerdict(
+            allow=False,
+            reason="prop_consistency_profit_cap_reached",
+            context=context,
+        )
     if risk_usd > rule.usable_entry_room_usd:
         return PropRiskVerdict(
             allow=False,
@@ -279,6 +299,12 @@ def _rule_from_account(
     buffer_usd = _resolve_float(account, "liquidation_buffer_usd", env=env_map)
     max_order_risk = _resolve_float(account, "max_order_risk_usd", env=env_map)
     open_risk = _resolve_float(account, "open_risk_usd", env=env_map)
+    realized_pnl = _resolve_float(account, "daily_realized_pnl_usd", env=env_map)
+    daily_profit = _resolve_float(account, "daily_profit_usd", env=env_map)
+    if daily_profit is None:
+        daily_profit = max(0.0, realized_pnl or 0.0)
+    consistency_cap = _consistency_profit_cap(account, env=env_map)
+    consistency_buffer = _resolve_float(account, "consistency_buffer_usd", env=env_map)
 
     values = (
         starting_balance,
@@ -289,6 +315,8 @@ def _rule_from_account(
         daily_loss_used,
         buffer_usd if buffer_usd is not None else 250.0,
         open_risk if open_risk is not None else 0.0,
+        daily_profit,
+        consistency_buffer if consistency_buffer is not None else 0.0,
     )
     if not all(math.isfinite(v) for v in values):
         return None, ["non_finite_prop_risk_value"]
@@ -309,6 +337,12 @@ def _rule_from_account(
             liquidation_buffer_usd=buffer_usd if buffer_usd is not None else 250.0,
             max_order_risk_usd=max_order_risk,
             open_risk_usd=max(0.0, open_risk if open_risk is not None else 0.0),
+            daily_profit_usd=max(0.0, daily_profit),
+            consistency_profit_cap_usd=consistency_cap,
+            consistency_buffer_usd=max(
+                0.0,
+                consistency_buffer if consistency_buffer is not None else 0.0,
+            ),
         ),
         [],
     )
@@ -341,6 +375,28 @@ def _env_field_name(key: str) -> str:
     return f"{key}_env"
 
 
+def _consistency_profit_cap(
+    account: Mapping[str, object],
+    *,
+    env: Mapping[str, str],
+) -> float | None:
+    cap = _resolve_float(account, "consistency_profit_cap_usd", env=env)
+    if cap is not None:
+        return cap
+    target_profit = _resolve_float(account, "target_profit_usd", env=env)
+    pct = _resolve_float(
+        account,
+        "consistency_max_day_profit_pct_of_target",
+        env=env,
+    )
+    if target_profit is None or pct is None:
+        return None
+    pct_fraction = pct / 100.0 if pct > 1.0 else pct
+    if target_profit <= 0.0 or pct_fraction <= 0.0:
+        return None
+    return round(target_profit * pct_fraction, 2)
+
+
 def _rule_context(rule: PropRiskRule, risk_usd: float) -> dict[str, Any]:
     return {
         "alias": rule.alias,
@@ -359,6 +415,18 @@ def _rule_context(rule: PropRiskRule, risk_usd: float) -> dict[str, Any]:
         "open_risk_usd": round(rule.open_risk_usd, 2),
         "usable_entry_room_usd": round(rule.usable_entry_room_usd, 2),
         "liquidation_buffer_usd": round(rule.liquidation_buffer_usd, 2),
+        "daily_profit_usd": round(rule.daily_profit_usd, 2),
+        "consistency_profit_cap_usd": (
+            None
+            if rule.consistency_profit_cap_usd is None
+            else round(rule.consistency_profit_cap_usd, 2)
+        ),
+        "consistency_buffer_usd": round(rule.consistency_buffer_usd, 2),
+        "consistency_room_usd": (
+            None
+            if rule.consistency_room_usd is None
+            else round(rule.consistency_room_usd, 2)
+        ),
     }
 
 

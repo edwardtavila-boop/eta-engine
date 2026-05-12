@@ -9,12 +9,17 @@ environment: demo   # demo | live - keep demo until prop-account smoke passes
 # configs/bot_broker_routing.yaml prop_accounts and must be confirmed at sign-up.
 eta_eval:
   enabled: true
-  trailing_drawdown_usd: 2500
-  daily_loss_limit_usd: 1500
-  profit_target_usd: 2500
+  account_label: BSKELAUNCHEDWARD15586
+  account_size_usd: 50000
+  max_drawdown_floor_usd: 48000
+  trailing_drawdown_usd: 2000
+  daily_loss_limit_usd: 500
+  profit_target_usd: 3000
+  profit_target_balance_usd: 53000
   min_trading_days: 7
-  consistency_rule_pct: 30
-  notes: "10% bucket DD ($500) trips before most prop trailing thresholds"
+  consistency_rule_pct: 55
+  consistency_rule_basis: target_profit
+  notes: "Launch 50K Phase 1: preserve the $48K floor first; paper-soak with tiny MNQ risk before Tradovate cutover."
 
 # Auth - all 6 required for live/demo broker connectivity, read from env
 # or the configured secrets backend. Prop-specific lanes may use prefixed
@@ -55,8 +60,9 @@ sizing:
   mnq:
     contracts_per_entry: 1
     max_concurrent: 1
-    bucket_equity_usd: 5000
-    max_bucket_loss_usd: 500
+    bucket_equity_usd: 3000
+    max_bucket_loss_usd: 300
+    max_order_risk_usd: 100
   nq:
     contracts_per_entry: 1
     max_concurrent: 1

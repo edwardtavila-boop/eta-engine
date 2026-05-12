@@ -282,6 +282,57 @@ def test_authorize_prop_account_reads_prefixed_credentials(
     assert payload["cid"] == "222"
 
 
+def test_launch_50k_phase1_authorize_reads_account_scoped_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_secrets(
+        monkeypatch,
+        {
+            "BLUSKY_LAUNCH_50K_TRADOVATE_USERNAME": "launch@example.com",
+            "BLUSKY_LAUNCH_50K_TRADOVATE_PASSWORD": "phase1-pw",
+            "BLUSKY_LAUNCH_50K_TRADOVATE_APP_ID": "EtaEngine",
+            "BLUSKY_LAUNCH_50K_TRADOVATE_APP_SECRET": "phase1-sec",
+            "BLUSKY_LAUNCH_50K_TRADOVATE_CID": "333",
+        },
+    )
+    _patch_status_dir(monkeypatch, tmp_path)
+
+    real_init = TradovateVenue.__init__
+    captured_session: dict[str, _FakeSession] = {}
+
+    def wrapped_init(self: TradovateVenue, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)
+        sess = _FakeSession()
+        sess.enqueue(
+            200,
+            {
+                "accessToken": "LAUNCH-TOKEN-ABCDEF8888",
+                "mdAccessToken": "MD-TOKEN",
+                "expirationTime": "2099-01-01T00:00:00Z",
+            },
+        )
+        self._session = sess
+        captured_session["s"] = sess
+
+    monkeypatch.setattr(TradovateVenue, "__init__", wrapped_init)
+
+    rc, report = asyncio.run(
+        azt._run(demo=True, prop_account="blusky_launch_50k_phase1"),
+    )
+
+    assert rc == 0
+    assert report.result == "AUTHORIZED"
+    assert report.credential_scope == "blusky_launch_50k_phase1"
+    assert report.creds_present["BLUSKY_LAUNCH_50K_TRADOVATE_USERNAME"] is True
+
+    payload = json.loads(captured_session["s"].calls[0]["data"])
+    assert payload["name"] == "launch@example.com"
+    assert payload["password"] == "phase1-pw"
+    assert payload["sec"] == "phase1-sec"
+    assert payload["cid"] == "333"
+
+
 # --------------------------------------------------------------------------- #
 # FAILED path -- creds present, HTTP 401
 # --------------------------------------------------------------------------- #

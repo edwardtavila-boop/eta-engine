@@ -170,11 +170,11 @@ by the operator's funded path:
 2. Commodities: `mcl_sweep_reclaim`, `ng_sweep_reclaim`.
 3. Rates/FX futures: `eur_sweep_reclaim`.
 4. CME crypto futures: `mbt_funding_basis` and future MBT/MET candidates.
-5. Spot crypto: `sol_optimized` and any future Alpaca personal/crypto lanes.
+5. Spot crypto: paused/cellared until the futures-prop lane is stable.
 
 Broker focus follows the same logic: IBKR first, Tradovate DORMANT unless the
-dedicated prop-test process explicitly enables it, Tastytrade as futures
-fallback, and Alpaca last for spot crypto.
+dedicated prop-test process explicitly enables `blusky_launch_50k_phase1`,
+Tastytrade as futures fallback, and Alpaca/spot hidden in the cellar for now.
 
 ### Asset-class edge doctrine (DeepSeek/Codex alignment)
 

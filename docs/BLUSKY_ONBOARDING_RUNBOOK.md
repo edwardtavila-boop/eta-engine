@@ -112,9 +112,9 @@ support address (in the welcome email) the following:
 > Thanks,
 > Edward Avila
 
-While waiting on the reply the supervisor keeps running on IBKR
-paper + Alpaca paper exactly as today; nothing changes on the
-runtime side.
+While waiting on the reply the supervisor keeps running on IBKR/Tasty
+futures paper exactly as today; Alpaca/spot lanes stay cellared while
+we prepare the prop lane. Nothing changes on the runtime side.
 
 ### Path B — Personal Tradovate Live account ($1k of your own capital)
 
@@ -249,8 +249,21 @@ Add to `eta_engine/configs/bot_broker_routing.yaml`:
 bots:
   volume_profile_mnq:
     venue: tradovate
-    account_alias: blusky_launch_50k
+    account_alias: blusky_launch_50k_phase1
 ```
+
+The `blusky_launch_50k_phase1` profile is intentionally tighter than
+the firm limit while we gather soak data:
+
+- Account label: `BSKELAUNCHEDWARD15586`
+- Starting balance: `$50,000`
+- Drawdown floor: `$48,000` (`$2,000` total room)
+- Target balance: `$53,000` (`$3,000` profit target)
+- Internal daily loss cap: `$500`
+- Internal liquidation buffer: `$300`
+- Max new-order bracket risk: `$100`
+- Consistency guard: stop new entries when realized day profit is within
+  `$150` of `55%` of the `$3,000` target-profit day cap.
 
 Update `eta_engine/venues/router.py` (or equivalent) to remove
 `tradovate` from `DORMANT_BROKERS` for the `volume_profile_mnq`
@@ -317,7 +330,7 @@ After BluSky proves out (~Day 14-21), repeat Steps 1-5 for Elite
 Trader Funding. Use a SECOND set of Tradovate credentials (Elite's
 sub-account is separate from BluSky's). Update `bot_broker_routing.yaml`
 to use `routing: replicate` mode for `volume_profile_mnq`, listing
-both `blusky_launch_50k` and `elite_25k_static` as accounts.
+both `blusky_launch_50k_phase1` and `elite_25k_static` as accounts.
 
 ---
 
@@ -363,6 +376,9 @@ only). Add Elite when BluSky shows positive trajectory.
 - [x] BluSky welcome email received; credentials saved
 - [x] Logged into trader.tradovate.com as `BSKELAUNCHEDWARD15586`
       (eval sub-account, $50,000 demo equity confirmed)
+- [x] Portal rules encoded for Phase 1: `$48,000` max-drawdown floor,
+      `$53,000` target balance, `55%` consistency guard, and conservative
+      ETA paper-soak caps before any Tradovate route is activated
 - [x] Walked every Settings tab to confirm API registration UI is
       gated behind a `LIVE` account upgrade
 
@@ -385,5 +401,6 @@ only). Add Elite when BluSky shows positive trajectory.
 
 Total time once Path A reply arrives: **~30 minutes plus the time
 to open + fund the personal Tradovate Live account.** The supervisor
-keeps running on IBKR + Alpaca paper throughout; nothing changes on
-the runtime side until Step 5 lands.
+keeps running on IBKR/Tasty futures paper throughout, with Alpaca/spot
+lanes hidden in the cellar; nothing changes on the runtime side until
+Step 5 lands.

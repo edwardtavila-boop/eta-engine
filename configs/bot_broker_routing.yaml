@@ -6,7 +6,7 @@
 # Venue values:
 #   "ibkr"   -> LiveIbkrVenue   (PRIMARY active futures broker)
 #   "tasty"  -> TastytradeVenue (SECONDARY futures broker; cert sandbox lacks crypto)
-#   "alpaca" -> AlpacaVenue     (ACTIVE crypto-paper broker as of 2026-05-05)
+#   "alpaca" -> AlpacaVenue     (PAUSED/CELLARED spot-paper lane as of 2026-05-12)
 #
 # Workspace hard rule #2: Tradovate stays DORMANT unless the operator
 # explicitly reactivates it (ETA_TRADOVATE_ENABLED=1) AND updates
@@ -27,8 +27,9 @@ version: 2
 #
 # Schema v2 (2026-05-06):
 #   - `defaults` block: per-asset-class default venue. Used when a bot
-#     has no explicit override under `bots:`. Crypto -> alpaca, futures
-#     -> ibkr today. Equity is reserved for future support.
+#     has no explicit override under `bots:`. Futures -> ibkr today; spot
+#     crypto retains legacy Alpaca routing only for cellar/backward-compat
+#     audits until the operator reopens spot.
 #   - `failover` block: ordered fallback chains. The router tries the
 #     primary first, then walks the chain on a TRANSIENT failure
 #     (network/timeout) or when the primary's circuit is open. A
@@ -72,6 +73,31 @@ failover:
 # max_order_risk_usd conservative until the 7-day paper soak proves the
 # strategy can survive overnight unattended windows.
 prop_accounts:
+  blusky_launch_50k_phase1:
+    venue: tradovate
+    env: demo
+    account_label: BSKELAUNCHEDWARD15586
+    phase: launch_50k_phase1
+    account_id_env: BLUSKY_LAUNCH_50K_TRADOVATE_ACCOUNT_ID
+    creds_env_prefix: BLUSKY_LAUNCH_50K_
+    bot_policy: explicit_allow_after_paper_soak
+    starting_balance_usd: 50000
+    current_equity_env: BLUSKY_LAUNCH_50K_CURRENT_EQUITY_USD
+    peak_equity_env: BLUSKY_LAUNCH_50K_PEAK_EQUITY_USD
+    daily_loss_used_env: BLUSKY_LAUNCH_50K_DAILY_LOSS_USED_USD
+    daily_realized_pnl_env: BLUSKY_LAUNCH_50K_DAILY_REALIZED_PNL_USD
+    open_risk_env: BLUSKY_LAUNCH_50K_OPEN_RISK_USD
+    max_drawdown_floor_usd: 48000
+    trailing_drawdown_usd: 2000
+    target_balance_usd: 53000
+    target_profit_usd: 3000
+    daily_loss_limit_usd: 500
+    liquidation_buffer_usd: 300
+    max_order_risk_usd: 100
+    consistency_max_day_profit_pct_of_target: 55
+    consistency_buffer_usd: 150
+    paper_soak_days_required: 3
+    policy_source: BluSky Launch 50K Phase 1 portal snapshot 2026-05-12
   blusky_50k:
     venue: tradovate
     env: demo
@@ -145,6 +171,10 @@ default:
 bots:
   # Explicit per-bot overrides. Anything not listed inherits default.venue (ibkr).
   #
+  # 2026-05-12: spot/Alpaca lanes are cellared while the prop-fund futures
+  # lane is prepared. These legacy pins remain for audit/replay compatibility
+  # and must not be promoted without a paired operator reactivation.
+  #
   # 2026-05-05 (revised) — crypto routing flipped to Alpaca paper.
   # Reason: IBKR paper accounts cannot trade crypto (Paxos has no paper-trading
   # product). Tastytrade cert sandbox is wired up but the cert account doesn't
@@ -160,9 +190,9 @@ bots:
   # Prop-test activation example (leave commented until the prop account
   # credentials are present and ETA_TRADOVATE_ENABLED=1 is set in the
   # dedicated prop-test process):
-  # volume_profile_mnq: { venue: tradovate, account_alias: blusky_50k }
+  # volume_profile_mnq: { venue: tradovate, account_alias: blusky_launch_50k_phase1 }
 
-  # ── Crypto bots (Alpaca paper, account PA3HBV3PNWDN) ───────────────
+  # ── Crypto bots (Alpaca paper cellar, account PA3HBV3PNWDN) ─────────
   btc_optimized:        { venue: alpaca }
   btc_hybrid:           { venue: alpaca }
   btc_regime_trend_etf: { venue: alpaca }

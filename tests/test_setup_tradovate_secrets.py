@@ -65,6 +65,19 @@ def test_prop_account_fields_prefix_credentials_and_account_id() -> None:
     ]
 
 
+def test_launch_50k_phase1_fields_are_account_scoped() -> None:
+    fields = sts.fields_for_prop_account("blusky_launch_50k_phase1")
+
+    assert [field[0] for field in fields] == [
+        "BLUSKY_LAUNCH_50K_TRADOVATE_ACCOUNT_ID",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_USERNAME",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_PASSWORD",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_APP_ID",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_APP_SECRET",
+        "BLUSKY_LAUNCH_50K_TRADOVATE_CID",
+    ]
+
+
 def test_cmd_check_supports_prop_account_fields(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
