@@ -74,7 +74,7 @@ $settings = New-ScheduledTaskSettingsSet `
 function Register-DiamondTask {
     param(
         [string]$Name,
-        [string]$Args,
+        [string]$TaskArgs,
         [string]$Desc,
         [object]$Trigger
     )
@@ -86,7 +86,7 @@ function Register-DiamondTask {
     }
     $action = New-ScheduledTaskAction `
         -Execute $PythonPath `
-        -Argument $Args `
+        -Argument $TaskArgs `
         -WorkingDirectory $WorkspaceRoot
     Register-ScheduledTask -TaskName $Name `
         -Action $action `
@@ -114,7 +114,7 @@ $every15MinTasks = @(
 )
 
 foreach ($t in $every15MinTasks) {
-    Register-DiamondTask -Name $t.Name -Args $t.Args -Desc $t.Desc -Trigger $every15Trigger
+    Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $every15Trigger
 }
 
 # -- HOURLY CADENCE -- leaderboard + ops dashboard + feed sanity --
@@ -135,7 +135,7 @@ $hourlyTasks = @(
 )
 
 foreach ($t in $hourlyTasks) {
-    Register-DiamondTask -Name $t.Name -Args $t.Args -Desc $t.Desc -Trigger $hourlyTrigger
+    Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $hourlyTrigger
 }
 
 # -- DAILY CADENCE -- promotion + sizing + direction + demotion advisories --
@@ -157,7 +157,7 @@ $dailyTasks = @(
 )
 
 foreach ($t in $dailyTasks) {
-    Register-DiamondTask -Name $t.Name -Args $t.Args -Desc $t.Desc -Trigger $dailyTrigger
+    Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $dailyTrigger
 }
 
 Write-Host ""
