@@ -97,6 +97,15 @@ _SYMBOL_TO_PRODUCT = {
     "ETH": "ETH-USD",
     "SOL": "SOL-USD",
     "XRP": "XRP-USD",
+    # 2026-05-13: extended to all bot-base spot symbols so the data
+    # inventory's AVAX/DOGE/LINK rows can refresh. These bots are
+    # currently cellared (Alpaca closed per operator directive 2026-05-13)
+    # but the historical cache is still consumed by feature engineering
+    # and correlation calculations.
+    "AVAX": "AVAX-USD",
+    "DOGE": "DOGE-USD",
+    "LINK": "LINK-USD",
+    "ADA": "ADA-USD",
 }
 
 

@@ -60,7 +60,7 @@ def _append_sidecar(record: dict[str, Any]) -> None:
         pass
 
 
-def _verdict_summary(verdict: Any) -> dict[str, Any]:
+def _verdict_summary(verdict: object) -> dict[str, Any]:
     """Pull the parts of a JARVIS verdict that matter for an FM second-opinion.
 
     Defensive: returns a partial dict if any field is missing rather than
@@ -90,7 +90,7 @@ def _verdict_summary(verdict: Any) -> dict[str, Any]:
     return out
 
 
-def _bar_summary(bar: Any) -> dict[str, Any]:
+def _bar_summary(bar: object) -> dict[str, Any]:
     """Compact bar dict for the FM prompt. Tolerates dict or object shape."""
     if not bar:
         return {}
@@ -104,8 +104,8 @@ def sanity_check_conditional(
     bot_id: str,
     signal_id: str,
     side: str,
-    bar: Any,
-    verdict: Any,
+    bar: object,
+    verdict: object,
 ) -> bool:
     """Blocking sanity gate for CONDITIONAL verdicts.
 
@@ -189,7 +189,7 @@ def log_conviction_rationale(
     *,
     bot_id: str,
     signal_id: str,
-    verdict: Any,
+    verdict: object,
     confidence: float,
 ) -> None:
     """Advisory: one-sentence rationale on borderline-confidence verdicts.

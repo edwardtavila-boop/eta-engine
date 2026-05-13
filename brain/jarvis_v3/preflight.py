@@ -461,29 +461,60 @@ def check_telegram_inbound_running() -> PreflightCheck:
     name = "telegram_inbound_alive"
     offset_path = _VAR_ROOT / "telegram_inbound_offset.json"
     log_path = _VAR_ROOT / "telegram_inbound.log"
+    err_path = _VAR_ROOT / "telegram_inbound.err"
+    jsonl_path = _VAR_ROOT / "telegram_inbound.jsonl"
     extras: dict[str, Any] = {}
 
-    if not offset_path.exists() and not log_path.exists():
+    if (
+        not offset_path.exists()
+        and not log_path.exists()
+        and not err_path.exists()
+    ):
         return PreflightCheck(
             name=name,
             status="WARN",
             detail="no offset file or log — bot may not have started yet",
         )
-    # If the BOT LOG exists and was touched in the last 12 hours, assume alive.
-    log_age = _file_age_hours(log_path) if log_path.exists() else None
-    if log_age is not None:
-        extras["log_age_hours"] = round(log_age, 2)
-        if log_age > 12:
-            return PreflightCheck(
-                name=name,
-                status="WARN",
-                detail=f"inbound log not touched in {log_age:.1f}h",
-                extras=extras,
-            )
+    # 2026-05-13: use the FRESHEST of the bot's four state files. The
+    # bot writes to .log only on inbound messages (silent on quiet
+    # days), but .err captures every poll cycle's stderr — which keeps
+    # ticking even when nobody sends commands. The offset file ticks on
+    # every Telegram getUpdates call. Either one being fresh proves
+    # the bot is alive.
+    candidate_files = [
+        ("log", log_path),
+        ("err", err_path),
+        ("jsonl", jsonl_path),
+        ("offset", offset_path),
+    ]
+    ages: dict[str, float] = {}
+    for label, p in candidate_files:
+        if p.exists():
+            ages[label] = _file_age_hours(p)
+    if not ages:
+        return PreflightCheck(
+            name=name,
+            status="WARN",
+            detail="no inbound state files present — bot may not have started yet",
+        )
+    freshest_label = min(ages, key=lambda k: ages[k])
+    freshest_age = ages[freshest_label]
+    extras = {
+        "freshest_file": freshest_label,
+        "freshest_age_hours": round(freshest_age, 2),
+        "all_ages_hours": {k: round(v, 2) for k, v in ages.items()},
+    }
+    if freshest_age > 12:
+        return PreflightCheck(
+            name=name,
+            status="WARN",
+            detail=f"inbound state files all >12h old (freshest: {freshest_label} {freshest_age:.1f}h)",
+            extras=extras,
+        )
     return PreflightCheck(
         name=name,
         status="PASS",
-        detail="inbound bot evidence present",
+        detail=f"inbound bot alive (freshest: {freshest_label} {freshest_age:.1f}h)",
         extras=extras,
     )
 
@@ -604,7 +635,44 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
     if not _ANOMALY_HITS_LOG.exists():
         return PreflightCheck(name=name, status="PASS", detail="no anomaly log yet")
     cutoff = _now() - timedelta(hours=24)
+
+    # 2026-05-13: skip hits whose bot_id is currently deactivated.
+    # Anomaly_watcher itself now filters these at scan time, but the
+    # JSONL still contains stale entries from BEFORE the retirement
+    # (e.g. crude_compression's "7 losses in last 8 trades" was
+    # written hours before kaizen retired the bot). Reading those at
+    # face value blocks the preflight gate forever. Source of truth:
+    # the kaizen_overrides sidecar.
+    try:
+        from eta_engine.strategies.per_bot_registry import (  # noqa: PLC0415
+            get_for_bot,
+            kaizen_deactivation_record,
+        )
+        from eta_engine.strategies.per_bot_registry import (
+            is_active as _reg_is_active,
+        )
+
+        def _bot_is_active(bot_id: str) -> bool:
+            # Kaizen override is highest-priority signal — a deactivation
+            # record means "operator/loop has retired this", regardless
+            # of whether the registry still has an assignment.
+            if kaizen_deactivation_record(bot_id):
+                return False
+            assignment = get_for_bot(bot_id)
+            if assignment is None:
+                # Truly unknown bot — not in registry AND no kaizen
+                # record. Most likely a phantom/test bot whose name
+                # appears only in old anomaly history. Treat as inactive
+                # so its stale hits don't block the preflight gate.
+                return False
+            return _reg_is_active(assignment)
+
+    except ImportError:
+        def _bot_is_active(bot_id: str) -> bool:  # type: ignore[misc]
+            return True
+
     crits: list[dict[str, Any]] = []
+    skipped_deactivated = 0
     try:
         with _ANOMALY_HITS_LOG.open(encoding="utf-8") as fh:
             for raw in fh:
@@ -619,6 +687,10 @@ def check_no_open_critical_anomalies() -> PreflightCheck:
                     continue
                 ts = _parse_iso(rec.get("asof"))
                 if ts is None or ts < cutoff:
+                    continue
+                bot_id = str(rec.get("bot_id") or "")
+                if bot_id and not _bot_is_active(bot_id):
+                    skipped_deactivated += 1
                     continue
                 crits.append(rec)
     except OSError as exc:

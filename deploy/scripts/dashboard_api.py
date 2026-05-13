@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from zoneinfo import ZoneInfo
 
 import portalocker
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
@@ -56,6 +57,8 @@ _BOT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 CANONICAL_BOT_FLEET_TITLE = "Evolutionary Trading Algo // Bot Fleet Roster"
 DASHBOARD_VERSION = "v1"
 DASHBOARD_RELEASE_STAGE = "pre_beta"
+DASHBOARD_LOCAL_TIME_ZONE_NAME = "America/New_York"
+DASHBOARD_LOCAL_TIME_ZONE = ZoneInfo(DASHBOARD_LOCAL_TIME_ZONE_NAME)
 DASHBOARD_REQUIRED_DATA = (
     "bot_fleet",
     "fleet_equity",
@@ -6923,6 +6926,28 @@ def _normalize_close_history_count_alias(close_history: dict) -> dict:
     return out
 
 
+def _dashboard_local_window_starts_utc(now: datetime | None = None) -> dict[str, datetime]:
+    """Return dashboard reporting windows as UTC instants anchored to Atlanta time."""
+    ts = now or datetime.now(UTC)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    local_now = ts.astimezone(DASHBOARD_LOCAL_TIME_ZONE)
+    today_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start_local = today_start_local - timedelta(days=today_start_local.weekday())
+    month_start_local = today_start_local.replace(day=1)
+    year_start_local = today_start_local.replace(month=1, day=1)
+    return {
+        "today": today_start_local.astimezone(UTC),
+        "wtd": week_start_local.astimezone(UTC),
+        "mtd": month_start_local.astimezone(UTC),
+        "ytd": year_start_local.astimezone(UTC),
+    }
+
+
+def _dashboard_local_day_start_utc(now: datetime | None = None) -> datetime:
+    return _dashboard_local_window_starts_utc(now)["today"]
+
+
 def _close_history_windows(
     closes: list[dict],
     *,
@@ -6932,10 +6957,11 @@ def _close_history_windows(
     now = now or datetime.now(UTC)
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=today_start.weekday())
-    month_start = today_start.replace(day=1)
-    year_start = today_start.replace(month=1, day=1)
+    window_starts = _dashboard_local_window_starts_utc(now)
+    today_start = window_starts["today"]
+    week_start = window_starts["wtd"]
+    month_start = window_starts["mtd"]
+    year_start = window_starts["ytd"]
     windows = [
         ("today", "Today", today_start, 120),
         ("wtd", "WTD", week_start, 250),
@@ -6947,6 +6973,8 @@ def _close_history_windows(
         "source": "trade_close_ledger",
         "default_window": "mtd",
         "default_label": "MTD",
+        "timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+        "day_boundary": "local_midnight",
         "windows": {},
     }
     for key, label, since, row_limit in windows:
@@ -6962,6 +6990,8 @@ def _close_history_windows(
                 "since": since.isoformat() if since is not None else None,
                 "until": now.isoformat(),
                 "source": "trade_close_ledger",
+                "timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+                "day_boundary": "local_midnight",
             },
         )
         out["windows"][key] = summary
@@ -8901,7 +8931,8 @@ def _live_broker_state_payload() -> dict:
     from the supervisor decision journal. The supervisor counts continue
     to be served by ``/api/dashboard`` and ``/api/equity`` unchanged.
     """
-    today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    now_utc = datetime.now(UTC)
+    today_start_utc = _dashboard_local_day_start_utc(now_utc)
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     tradovate = _tradovate_dashboard_status_payload()
     alpaca = _alpaca_live_state_snapshot(today_start_iso=today_start_iso)
@@ -8937,15 +8968,15 @@ def _live_broker_state_payload() -> dict:
     all_trade_closes = _recent_trade_closes(limit=5000)
     recent_trade_closes = [row for row in all_trade_closes if not _trade_close_is_cellar(row)]
     cellar_trade_closes = [row for row in all_trade_closes if _trade_close_is_cellar(row)]
-    close_history = _close_history_windows(recent_trade_closes, now=datetime.now(UTC))
-    all_venue_close_history = _close_history_windows(all_trade_closes, now=datetime.now(UTC))
+    close_history = _close_history_windows(recent_trade_closes, now=now_utc)
+    all_venue_close_history = _close_history_windows(all_trade_closes, now=now_utc)
     close_outcomes_today = _closed_outcomes_from_trade_closes(
         recent_trade_closes,
         since=today_start_utc,
     )
     close_outcomes_30d = _closed_outcomes_from_trade_closes(
         recent_trade_closes,
-        since=datetime.now(UTC) - timedelta(days=30),
+        since=now_utc - timedelta(days=30),
     )
     if win_rate_today is None and close_outcomes_today["win_rate"] is not None:
         win_rate_today = _float_value(close_outcomes_today.get("win_rate"))
@@ -8961,7 +8992,7 @@ def _live_broker_state_payload() -> dict:
     try:
         wins = 0
         losses = 0
-        cutoff = datetime.now(UTC) - timedelta(days=30)
+        cutoff = now_utc - timedelta(days=30)
         for row in _recent_live_fill_rows():
             if _trade_close_is_cellar(row):
                 continue
@@ -8986,6 +9017,9 @@ def _live_broker_state_payload() -> dict:
     payload = {
         "server_ts": time.time(),
         "focus_policy": _dashboard_focus_policy_payload(),
+        "reporting_timezone": DASHBOARD_LOCAL_TIME_ZONE_NAME,
+        "today_start_utc": today_start_iso,
+        "today_day_boundary": "local_midnight",
         "today_actual_fills": today_actual_fills,
         "today_realized_pnl": today_realized_pnl,
         "broker_mtd_pnl": broker_mtd_pnl,
@@ -9091,7 +9125,7 @@ def live_per_bot_alpaca(response: Response) -> dict:
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    today_start_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = _dashboard_local_day_start_utc()
     today_start_iso = today_start_utc.isoformat().replace("+00:00", "Z")
     try:
         return _alpaca_per_bot_pnl_cached(today_start_iso=today_start_iso)

@@ -26,7 +26,7 @@ import argparse
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"invalid --since: {args.since}", file=sys.stderr)
             return 2
     else:
-        since = datetime.now(timezone.utc) - timedelta(hours=args.hours)
+        since = datetime.now(UTC) - timedelta(hours=args.hours)
 
     records = _load_window(args.log, since)
     summary = _summarize(records)

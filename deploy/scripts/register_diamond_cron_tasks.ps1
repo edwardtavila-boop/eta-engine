@@ -182,6 +182,9 @@ $dailyTasks = @(
     @{ Name = "ETA-Diamond-LivePaperDriftDaily"
         Args = "-m eta_engine.scripts.diamond_live_paper_drift"
         Desc = "Diamond: live-vs-paper drift detector (wave-25l). Joins live and paper trade-closes by signal_id; reports fill_price / pnl / R / qty drift. No-op until live trades land." }
+    @{ Name = "ETA-Diamond-QtyAsymmetryDaily"
+        Args = "-m eta_engine.scripts.diamond_qty_asymmetry_audit"
+        Desc = "Diamond: fractional-qty asymmetry detector (wave-25m). Flags bots where winners cluster at qty<1 and losers at qty=1 (signal-condition asymmetry that makes R-positive bots USD-negative)." }
 )
 
 foreach ($t in $dailyTasks) {

@@ -567,6 +567,42 @@ def scan(
         logger.warning("anomaly_watcher.scan read failed: %s", exc)
         return []
 
+    # 2026-05-13: skip deactivated bots — they shouldn't generate
+    # alerts based on their (frozen) historical trade history. Without
+    # this filter, kaizen-retired bots (crude_compression, eth_perp,
+    # ...) fire CRITICAL loss_rate hits over and over from the trades
+    # they made BEFORE retirement, blocking the preflight gate
+    # forever. The kaizen sidecar override is the source of truth.
+    try:
+        from eta_engine.strategies.per_bot_registry import (  # noqa: PLC0415
+            get_for_bot,
+            kaizen_deactivation_record,
+        )
+        from eta_engine.strategies.per_bot_registry import (
+            is_active as _is_active,
+        )
+
+        def _bot_is_active(bot_id: str) -> bool:
+            # Kaizen override is highest priority — operator/loop
+            # retired the bot, ignore historical trades regardless of
+            # whether the bot is still in the registry.
+            if kaizen_deactivation_record(bot_id):
+                return False
+            assignment = get_for_bot(bot_id)
+            if assignment is None:
+                # Unknown bot id — keep visible. Test fixtures use
+                # synthetic names ("bot_a") not in ASSIGNMENTS; dropping
+                # them would break the suite. Real-world phantom bots
+                # (e.g. m6e_vwap_mr) can be silenced via a kaizen
+                # override entry.
+                return True
+            return _is_active(assignment)
+
+    except ImportError:
+        # Fallback: per_bot_registry not importable here — pass-through
+        def _bot_is_active(bot_id: str) -> bool:  # type: ignore[misc]
+            return True
+
     by_bot: dict[str, list[tuple[float, str]]] = defaultdict(list)
     for rec in records:
         r = _extract_r(rec)
@@ -574,6 +610,8 @@ def scan(
             continue
         bot_id = str(rec.get("bot_id") or "")
         if not bot_id:
+            continue
+        if not _bot_is_active(bot_id):
             continue
         ts = str(rec.get("ts") or rec.get("closed_at") or "")
         by_bot[bot_id].append((r, ts))

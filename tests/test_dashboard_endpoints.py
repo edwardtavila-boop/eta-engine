@@ -459,3 +459,88 @@ def test_sage_modulation_toggle_post_requires_step_up(client, tmp_path, monkeypa
     r = client.post("/api/jarvis/sage_modulation_toggle", json={"enabled": True})
     # Without session: 401; without step-up: 403; both are "blocked"
     assert r.status_code in (401, 403)
+
+
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: Prop Firm Dashboard endpoints + Market Data Status
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_api_prop_accounts_returns_active_only_by_default(client) -> None:
+    """GET /api/prop/accounts returns only ACTIVE_ACCOUNTS by default."""
+    r = client.get("/api/prop/accounts")
+    assert r.status_code == 200
+    d = r.json()
+    aids = {a["account_id"] for a in d.get("accounts", [])}
+    assert aids == {"paper-test", "blusky-50K-launch"}
+    assert d.get("include_inactive") is False
+
+
+def test_api_prop_accounts_include_inactive(client) -> None:
+    """?include_inactive=true returns every REGISTRY entry."""
+    r = client.get("/api/prop/accounts?include_inactive=true")
+    assert r.status_code == 200
+    d = r.json()
+    aids = {a["account_id"] for a in d.get("accounts", [])}
+    # Must include the 4 dormant accounts plus the 2 active ones
+    assert {"apex-50K-eval", "apex-50K-funded", "topstep-50K", "etf-50K"}.issubset(aids)
+    assert "paper-test" in aids
+    assert "blusky-50K-launch" in aids
+    assert d.get("include_inactive") is True
+
+
+def test_api_prop_snapshot_returns_active_only_by_default(client) -> None:
+    """Default snapshot lists only ACTIVE_ACCOUNTS."""
+    r = client.get("/api/prop/snapshot")
+    assert r.status_code == 200
+    d = r.json()
+    aids = {a["rules"]["account_id"] for a in d.get("accounts", [])}
+    assert aids == {"paper-test", "blusky-50K-launch"}
+
+
+def test_api_prop_snapshot_one_known_account(client) -> None:
+    """Single-account snapshot returns the full breakdown."""
+    r = client.get("/api/prop/snapshot/blusky-50K-launch")
+    assert r.status_code == 200
+    d = r.json()
+    snap = d.get("snapshot")
+    assert snap is not None
+    assert snap["rules"]["account_id"] == "blusky-50K-launch"
+    assert snap["rules"]["starting_balance"] == 50_000.0
+    assert snap["rules"]["daily_loss_limit"] == 1_500.0
+    assert "severity" in snap
+
+
+def test_api_prop_snapshot_one_unknown_account(client) -> None:
+    """Unknown account_id returns an error payload, not a 500."""
+    r = client.get("/api/prop/snapshot/does-not-exist")
+    assert r.status_code == 200
+    d = r.json()
+    assert "error" in d
+    assert "unknown" in d["error"].lower()
+
+
+def test_api_data_status_shape(client) -> None:
+    """/api/data/status returns the expected schema regardless of inventory state."""
+    r = client.get("/api/data/status")
+    assert r.status_code == 200
+    d = r.json()
+    assert "asof" in d
+    assert "catalog" in d
+    assert "live_signals" in d
+    assert "capture_tasks" in d
+    assert d.get("schema_version") == 1
+    # capture_tasks is a list (may be empty if schtasks not available)
+    assert isinstance(d["capture_tasks"], list)
+
+
+def test_prop_page_html_renders(client) -> None:
+    """GET /prop returns HTML with the Market Data Pipeline section."""
+    r = client.get("/prop")
+    assert r.status_code == 200
+    assert "text/html" in r.headers.get("content-type", "")
+    body = r.text
+    # The HTML must reference the data status endpoint and the
+    # Market Data Pipeline section so an operator sees both panels.
+    assert "/api/prop/snapshot" in body
+    assert "Market Data Pipeline" in body or "/api/data/status" in body

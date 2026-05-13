@@ -84,7 +84,7 @@ tr:nth-child(even) td{background:rgba(255,255,255,.01)}
 @media(max-width:640px){.grid{grid-template-columns:1fr 1fr;padding:1rem}.header{padding:.75rem 1rem;flex-wrap:wrap}}
 @media(max-width:900px){.ops-truth-wrap{grid-template-columns:1fr;padding:0 1rem 1rem}}
 :root{--bg:#02050a;--card:rgba(9,15,24,.78);--border:rgba(137,170,199,.18);--green:#36f0a2;--red:#ff5b6e;--yellow:#ffd166;--blue:#64d7ff;--text:#edf7ff;--dim:#8294a7;--accent:#e6b85c;--glass:rgba(255,255,255,.045);--line:rgba(255,255,255,.075)}
-body{background:radial-gradient(circle at 18% 0%,rgba(100,215,255,.18),transparent 34%),radial-gradient(circle at 90% 12%,rgba(230,184,92,.12),transparent 28%),linear-gradient(145deg,#02050a,#07111c 45%,#02050a);font-family:"Aptos Display","Bahnschrift","Segoe UI",sans-serif;letter-spacing:.01em;overflow-x:hidden}
+body{background:radial-gradient(circle at 18% 0%,rgba(100,215,255,.18),transparent 34%),radial-gradient(circle at 88% 12%,rgba(230,184,92,.12),transparent 30%),linear-gradient(145deg,#02050a,#07111c 45%,#02050a);font-family:"Aptos Display","Bahnschrift","Segoe UI",sans-serif;letter-spacing:.01em;overflow-x:hidden;background-repeat:no-repeat}
 html{overflow-x:hidden}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 0 42%,rgba(255,255,255,.035) 43%,transparent 46% 100%),radial-gradient(circle at 50% -20%,rgba(255,255,255,.16),transparent 35%);mix-blend-mode:screen;animation:techPulse 18s ease-in-out infinite}
 body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:linear-gradient(rgba(100,215,255,.085) 1px,transparent 1px),linear-gradient(90deg,rgba(100,215,255,.085) 1px,transparent 1px),radial-gradient(circle at 50% 42%,rgba(100,215,255,.08),transparent 58%);background-size:52px 52px,52px 52px,auto;mask-image:radial-gradient(circle at 50% 36%,#000 28%,transparent 80%);opacity:.16;mix-blend-mode:screen;animation:gridFloat 32s ease-in-out infinite,techPulse 18s ease-in-out infinite}
@@ -147,6 +147,10 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .contribution-fill{height:100%;border-radius:999px;min-width:3px;background:linear-gradient(90deg,var(--blue),var(--green))}
 .contribution-fill.negative{background:linear-gradient(90deg,var(--red),#ff9f7a)}
 .contribution-value{text-align:right;font-variant-numeric:tabular-nums}
+.contribution-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.72rem}
+.contribution-lane{display:grid;gap:.48rem;min-width:0}
+.contribution-lane-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;color:#f5f9ff;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px}
+.contribution-lane-head span{color:var(--dim);font-size:.64rem;font-weight:600;text-transform:none;letter-spacing:.02em}
 .allocation-sections{display:grid;gap:1rem;padding:0 2rem 1.5rem}
 .allocation-group{border:1px solid var(--border);border-radius:20px;background:linear-gradient(145deg,rgba(12,19,30,.72),rgba(3,8,14,.76));padding:1rem}
 .allocation-group-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.8rem}
@@ -242,7 +246,8 @@ tr:hover td{background:rgba(100,215,255,.055)}
 @media(max-width:980px){.portfolio-command,.portfolio-analytics,.vps-root-detail-grid{grid-template-columns:1fr}.portfolio-command,.portfolio-analytics,.allocation-sections,.vps-root-detail-wrap{padding-left:1rem;padding-right:1rem}}
 @media(max-width:980px){.collapsible-section{margin-left:1rem;margin-right:1rem}.grid{grid-template-columns:repeat(auto-fit,minmax(136px,1fr));padding-left:1rem;padding-right:1rem}.portfolio-command{grid-template-columns:1fr}.portfolio-analytics{grid-template-columns:1fr}}
 @media(max-width:860px){.header{padding:.95rem 1rem;flex-direction:column;align-items:flex-start;gap:.75rem}.controls{width:100%;justify-content:stretch;gap:.55rem}.controls button{flex:1 1 0}.status-bar{padding:.72rem 1rem .42rem;flex-direction:column;align-items:flex-start;gap:.35rem}.ops-truth-wrap{grid-template-columns:1fr}.panel-head{flex-direction:column;align-items:flex-start}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.contribution-row{grid-template-columns:1fr;gap:.45rem}}
-@media(max-width:640px){.header{align-items:stretch}.header>div:first-child{width:100%;text-align:center}.header .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:.25rem;text-align:center}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:.55rem}.controls button{width:100%;max-width:none;min-width:0}.status-bar{padding:.72rem .9rem .45rem;align-items:center;justify-content:center;text-align:center}.status-bar>span{width:100%;max-width:100%;overflow-wrap:anywhere}.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto;min-width:0}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips,.truth-summary,.allocation-pills{gap:.35rem;justify-content:center}.hero-chip,.truth-chip,.allocation-pill{max-width:100%;padding:.4rem .58rem;font-size:.67rem;text-align:center;white-space:normal;justify-content:center}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:center}.hero-metric span,.hero-metric strong,.hero-metric small{white-space:normal;overflow-wrap:anywhere;text-align:center}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span,.close-row-title strong{min-width:0;white-space:normal;overflow-wrap:anywhere}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem;text-align:left}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
+@media(max-width:860px){.contribution-split{grid-template-columns:1fr}.contribution-lane-head{align-items:flex-start;flex-direction:column;gap:.16rem}}
+@media(max-width:640px){body{background:radial-gradient(ellipse 104vw 48vh at 50% -8%,rgba(100,215,255,.2),transparent 68%),radial-gradient(ellipse 92vw 42vh at 78% 10%,rgba(230,184,92,.14),transparent 72%),linear-gradient(155deg,#02050a,#07111c 46%,#02050a);background-size:100vw 100dvh,100vw 100dvh,auto;background-position:center top,center top,center top;background-attachment:scroll}body:before,body:after{left:0;right:0;width:100vw;max-width:100vw;overflow:hidden}body:after{inset:0;background-size:38px 38px,38px 38px,auto;mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.82) 48%,transparent 96%);animation:techPulse 18s ease-in-out infinite}.portfolio-hero:after,.premium-panel:after{inset:auto 0 -36% 0;height:140px}.header{align-items:stretch}.header>div:first-child{width:100%;text-align:center}.header .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:.25rem;text-align:center}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:.55rem}.controls button{width:100%;max-width:none;min-width:0}.status-bar{padding:.72rem .9rem .45rem;align-items:center;justify-content:center;text-align:center}.status-bar>span{width:100%;max-width:100%;overflow-wrap:anywhere}.portfolio-command{gap:.78rem;padding:1rem .9rem .45rem;justify-items:center}.portfolio-hero,.premium-panel,.collapsible-section,.card,.wide-card{width:100%;max-width:100%;margin-left:auto;margin-right:auto;min-width:0}.portfolio-hero{padding:1rem .95rem .95rem;text-align:center}.portfolio-hero h2{font-size:clamp(1.22rem,7vw,1.72rem)}.portfolio-narrative{font-size:.79rem;line-height:1.48}.hero-chips,.truth-summary,.allocation-pills{gap:.35rem;justify-content:center}.hero-chip,.truth-chip,.allocation-pill{max-width:100%;padding:.4rem .58rem;font-size:.67rem;text-align:center;white-space:normal;justify-content:center}.hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.hero-metric{padding:.54rem;text-align:center}.hero-metric span,.hero-metric strong,.hero-metric small{white-space:normal;overflow-wrap:anywhere;text-align:center}.portfolio-orb{padding:.92rem .82rem 1rem;align-items:center}.orb-ring{width:min(188px,66vw);margin-inline:auto}.orb-sub{font-size:.64rem;max-width:146px}.orb-allocation-pills{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%}.ops-truth-wrap,.position-list,.router-tape,.close-history-list,.truth-summary,.hero-metrics,.grid{width:100%;max-width:100%;min-width:0}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;padding:.8rem .9rem 1.1rem}.card{padding:.85rem}.position-card,.tape-row,.close-row{width:100%;max-width:100%;min-width:0}.position-head,.tape-head,.allocation-group-head,.vps-root-step-top,.close-history-heading,.close-row-top{flex-direction:column;align-items:flex-start}.position-meta,.tape-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.position-meta span,.tape-meta span,.close-row-meta span,.close-row-title strong{min-width:0;white-space:normal;overflow-wrap:anywhere}.close-row-pnl{text-align:left}.table-wrap{padding:0 .9rem 1.2rem;max-width:100%}.collapsible-section{margin:0 .9rem .9rem;max-width:calc(100vw - 1.8rem)}.collapsible-summary{display:block;position:relative;padding:.9rem 3rem .85rem .95rem;text-align:left}.collapsible-summary small{display:block;margin:.25rem 0 0}.collapsible-summary:after{position:absolute;top:.8rem;right:.95rem}}
 @media(max-width:420px){.hero-metrics{grid-template-columns:1fr}.orb-ring{width:min(184px,74vw)}.status-bar{font-size:.72rem}.controls{grid-template-columns:1fr}.controls button{min-height:38px}.position-meta,.tape-meta{grid-template-columns:1fr}.close-row-meta{display:grid;grid-template-columns:1fr;gap:.18rem}}
 @media (prefers-reduced-motion:reduce){.card,.portfolio-hero,.premium-panel,.orb-ring,.orb-ring::before,.orb-inner{animation:none;transition:none;transform:none}}
 </style>
@@ -251,7 +256,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 <div class="header">
   <div>
     <h1>Evolutionary Trading Algo</h1>
-    <div class="meta">ETA Ops | All times ET | <a href="/track-record">Track Record</a></div>
+    <div class="meta">ETA Ops | All times Atlanta / ET | <a href="/track-record">Track Record</a></div>
   </div>
   <div class="controls" id="quickControls">
     <button onclick="toggleRefresh()" id="btnRefresh">Auto-Refresh: ON</button>
@@ -324,9 +329,9 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="panel-head">
       <div>
         <h3>PnL Map</h3>
-        <div class="panel-kicker" id="contributionSub">Open risk + closed edge</div>
+        <div class="panel-kicker" id="contributionSub">Daily strategy winners/losers</div>
       </div>
-      <div class="truth-chip" id="contributionSource">broker first</div>
+      <div class="truth-chip" id="contributionSource">daily close ledger</div>
     </div>
     <div class="contribution-graph" id="pnlContributionGraph">
       <div class="empty-panel">Loading PnL map...</div>
@@ -438,7 +443,7 @@ const VPS_ROOT_RECONCILIATION_API = '/api/vps/root-reconciliation';
 const FLEET_EQUITY_API = '/api/fleet-equity?range=all&normalize=1&since_days=7';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
 const DASHBOARD_TIME_ZONE = 'America/New_York';
-const DASHBOARD_TIME_ZONE_LABEL = 'ET';
+const DASHBOARD_TIME_ZONE_LABEL = 'Atlanta ET';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
 const DASHBOARD_DIAGNOSTICS_TIMEOUT_MS = 10000;
@@ -719,7 +724,7 @@ function formatMoneyOrUnavailable(value, digits = 2) {
 
 function easternDateParts(value) {
   if (!value) return null;
-  const d = value instanceof Date ? value : new Date(value);
+  const d = parseDashboardDate(value);
   if (Number.isNaN(d.getTime())) return null;
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: DASHBOARD_TIME_ZONE,
@@ -740,6 +745,18 @@ function easternDateParts(value) {
     minute: pick('minute'),
     second: pick('second')
   };
+}
+
+function parseDashboardDate(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value < 1000000000000 ? value * 1000 : value);
+  }
+  const text = String(value || '').trim();
+  if (!text) return new Date(NaN);
+  const normalized = text.includes(' ') ? text.replace(' ', 'T') : text;
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  return new Date(hasZone ? normalized : normalized + 'Z');
 }
 
 function formatIsoDate(value) {
@@ -1190,6 +1207,11 @@ function formatTimeCompact(value) {
   return `${Number(parts.month)}/${Number(parts.day)} ${parts.hour}:${parts.minute} ${DASHBOARD_TIME_ZONE_LABEL}`;
 }
 
+function formatActivityTime(value) {
+  const formatted = formatTimeCompact(value);
+  return formatted === 'n/a' ? compactText(value || '--', 32) : formatted;
+}
+
 function futuresMultiplier(symbol) {
   const s = String(symbol || '').toUpperCase();
   if (s.startsWith('6E')) return 125000;
@@ -1568,6 +1590,28 @@ function brokerContributionRows(liveBroker) {
   return rows;
 }
 
+function closeHistoryContributionRows(closeHistory) {
+  const rows = Array.isArray(closeHistory?.rows) ? closeHistory.rows : [];
+  return rows.map((row) => {
+    const pnl = finiteNumber(row?.realized_pnl ?? row?.pnl);
+    if (pnl == null) return null;
+    const symbol = String(row?.symbol || '').trim();
+    const botId = String(row?.bot_id || row?.botId || row?.strategy_id || row?.strategy || '').trim();
+    const label = botId || symbol || 'daily close';
+    return {
+      label,
+      symbol,
+      botId,
+      type: 'daily_close_realized',
+      closeCount: 1,
+      sub: `${symbol || 'symbol'} realized close`,
+      bucket: assetBucket(symbol),
+      pnl,
+      value: Math.abs(pnl)
+    };
+  }).filter(Boolean);
+}
+
 function portfolioContributionRows(portfolioSummary) {
   const contributors = Array.isArray(portfolioSummary?.pnl_contributors)
     ? portfolioSummary.pnl_contributors
@@ -1701,11 +1745,73 @@ function pickTopImpactRows(rows, limit = 5) {
     .slice(0, limit);
 }
 
-function renderContributionGraph(bots, liveBroker, portfolioSummary) {
+function pickWinnerLoserRows(rows, limit = 5) {
+  const ranked = Array.isArray(rows) ? rows.slice() : [];
+  return {
+    winners: ranked
+      .filter(row => row.pnl > 0)
+      .sort((a, b) => (b.pnl - a.pnl) || (b.value - a.value) || (a.label > b.label ? 1 : -1))
+      .slice(0, limit),
+    losers: ranked
+      .filter(row => row.pnl < 0)
+      .sort((a, b) => (a.pnl - b.pnl) || (b.value - a.value) || (a.label > b.label ? 1 : -1))
+      .slice(0, limit)
+  };
+}
+
+function contributionRowHtml(row, maxAbs) {
+  const width = Math.max(4, Math.round(((row.value || Math.abs(row.pnl)) / Math.max(1, maxAbs)) * 100));
+  const klass = row.pnl < 0 ? 'negative' : '';
+  const valueClass = row.pnl < 0 ? 'red' : row.pnl > 0 ? 'green' : 'dim';
+  const rowClass = row.pnl < 0 ? 'negative' : row.pnl > 0 ? 'positive' : '';
+  return `<div class="contribution-row ${rowClass}">
+    <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} | ${esc(row.sub)}</span></div>
+    <div class="contribution-track"><div class="contribution-fill ${klass}" style="width:${width}%"></div></div>
+    <div class="contribution-value ${valueClass}">${esc(formatMoney(row.pnl, 2))}</div>
+  </div>`;
+}
+
+function contributionLaneHtml(title, rows, emptyText, maxAbs) {
+  const countText = rows.length ? `${rows.length} ${rows.length === 1 ? 'strategy' : 'strategies'}` : 'no rows';
+  return `<section class="contribution-lane">
+    <div class="contribution-lane-head"><strong>${esc(title)}</strong><span>${esc(countText)}</span></div>
+    ${rows.length ? rows.map(row => contributionRowHtml(row, maxAbs)).join('') : `<div class="empty-panel">${esc(emptyText)}</div>`}
+  </section>`;
+}
+
+function renderDailyContributionGraph(el, source, sub, dailyRows, closeHistory) {
+  const split = pickWinnerLoserRows(dailyRows, 5);
+  const displayRows = [...split.winners, ...split.losers];
+  if (source) source.textContent = closeHistory?.source || 'daily close ledger';
+  if (sub) {
+    const count = Number(closeHistory?.count ?? dailyRows.length) || dailyRows.length;
+    const label = closeHistory?.label || 'Today';
+    sub.textContent = `${label} strategy PnL | top 5 winners and top 5 losers | ${count} close${count === 1 ? '' : 's'}`;
+  }
+  if (!displayRows.length) {
+    el.innerHTML = '<div class="empty-panel">No daily strategy PnL impact yet. The map will populate after today&#39;s close outcomes land.</div>';
+    return true;
+  }
+  const maxAbs = Math.max(1, ...displayRows.map(row => row.value || Math.abs(row.pnl)));
+  el.innerHTML = `<div class="contribution-split">
+    ${contributionLaneHtml('Daily Winners', split.winners, 'No winning daily closes yet.', maxAbs)}
+    ${contributionLaneHtml('Daily Losers', split.losers, 'No losing daily closes yet.', maxAbs)}
+  </div>`;
+  return true;
+}
+
+function renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseHistory) {
   const el = document.getElementById('pnlContributionGraph');
   const source = document.getElementById('contributionSource');
   const sub = document.getElementById('contributionSub');
   if (!el) return;
+
+  const dailyRows = aggregateContributionRows(closeHistoryContributionRows(todayCloseHistory));
+  if (dailyRows.length || String(todayCloseHistory?.window || '').toLowerCase() === 'today') {
+    renderDailyContributionGraph(el, source, sub, dailyRows, todayCloseHistory);
+    return;
+  }
+
   let rows = portfolioContributionRows(portfolioSummary);
   let sourceLabelText = 'portfolio API';
   if (!rows.length) {
@@ -1720,24 +1826,14 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary) {
   const topRows = pickTopImpactRows(rankedRows, 5);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
-    ? `Top ${topRows.length} distinct winners and losers by PnL impact`
-      : 'Waiting for book, fills, or PnL';
+    ? `Daily close history pending | showing ${topRows.length} portfolio impact rows`
+    : 'Waiting for daily closes, book, fills, or PnL';
   if (!topRows.length) {
     el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';
     return;
   }
   const maxAbs = Math.max(1, ...topRows.map(row => row.value || Math.abs(row.pnl)));
-  el.innerHTML = topRows.map(row => {
-    const width = Math.max(4, Math.round(((row.value || Math.abs(row.pnl)) / maxAbs) * 100));
-    const klass = row.pnl < 0 ? 'negative' : '';
-    const valueClass = row.pnl < 0 ? 'red' : row.pnl > 0 ? 'green' : 'dim';
-    const rowClass = row.pnl < 0 ? 'negative' : row.pnl > 0 ? 'positive' : '';
-    return `<div class="contribution-row ${rowClass}">
-      <div class="contribution-name"><strong>${esc(row.label)}</strong><span>${esc(row.bucket)} | ${esc(row.sub)}</span></div>
-      <div class="contribution-track"><div class="contribution-fill ${klass}" style="width:${width}%"></div></div>
-      <div class="contribution-value ${valueClass}">${esc(formatMoney(row.pnl, 2))}</div>
-    </div>`;
-  }).join('');
+  el.innerHTML = topRows.map(row => contributionRowHtml(row, maxAbs)).join('');
 }
 
 function allocationBuckets(bots, liveBroker, portfolioSummary) {
@@ -2473,7 +2569,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
   renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive || {}, diagnostics || {}, todayCloseHistory);
-  renderContributionGraph(bots, liveBroker, portfolioSummary);
+  renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseHistory);
   renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
   renderVpsRootReview(vpsRootPlan);
@@ -2582,9 +2678,9 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     .filter(b => !b.last_trade_ts && b.last_signal_ts)
     .sort((a,b) => String(b.last_signal_ts).localeCompare(String(a.last_signal_ts)))[0];
   document.getElementById('lastTradeText').textContent = lastTrade
-    ? 'Last Trade: ' + lastTrade.last_trade_ts.replace('T',' ').substring(0,19)
+    ? 'Last Trade: ' + formatActivityTime(lastTrade.last_trade_ts)
     : lastSignal
-      ? 'Latest Signal: ' + String(lastSignal.last_signal_ts).replace('T',' ').substring(0,19)
+      ? 'Latest Signal: ' + formatActivityTime(lastSignal.last_signal_ts)
       : 'No executed trades yet';
 
   const cadence = d.signal_cadence || summary.signal_cadence || {};
@@ -3153,7 +3249,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       : (v === 'DENIED' || v === 'KILL' || v === 'REDUCE') ? 'badge-deny'
       : 'badge-idle';
     const activity = activityForBot(b);
-    const activityText = activity ? activity.type + ' ' + String(activity.ts).replace('T',' ').substring(0,19) + (activity.side ? ' ' + activity.side : '') : '--';
+    const activityText = activity ? activity.type + ' ' + formatActivityTime(activity.ts) + (activity.side ? ' ' + activity.side : '') : '--';
     const position = positionForBot(b);
     const protection = protectionForBot(b);
     html += '<tr>' +

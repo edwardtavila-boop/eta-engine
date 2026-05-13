@@ -90,6 +90,12 @@ _YF_SYMBOL: dict[str, str] = {
     "MET": "ETH=F",  # Micro Ether (CME)
     # Index futures (extended)
     "YM": "YM=F",  # Mini Dow ($5)
+    # Micro Dow ($0.50 / point). Active bot mym_sweep_reclaim trades this
+    # contract; without MYM in the whitelist the data inventory shows
+    # MYM1/5m + MYM1/1h as STALE indefinitely. yfinance has no separate
+    # MYM=F ticker — the YM=F parent gives the same OHLC since the micro
+    # is just a smaller-multiplier version of the same underlying.
+    "MYM": "YM=F",
     "M2K": "M2K=F",  # Micro Russell 2000
 }
 

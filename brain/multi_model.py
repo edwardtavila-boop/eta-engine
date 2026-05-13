@@ -117,7 +117,7 @@ import threading as _threading  # noqa: E402
 import time as _time  # noqa: E402
 from collections import OrderedDict as _OrderedDict  # noqa: E402
 
-_FM_CACHE: "_OrderedDict[str, tuple[float, MultiModelResponse]]" = _OrderedDict()
+_FM_CACHE: _OrderedDict[str, tuple[float, MultiModelResponse]] = _OrderedDict()
 _FM_CACHE_LOCK = _threading.Lock()
 _FM_CACHE_HITS = 0
 _FM_CACHE_MISSES = 0
@@ -154,12 +154,12 @@ def _fm_cache_negative_ttl_seconds() -> float:
 
 
 def _fm_cache_key(
-    category: "TaskCategory",
+    category: TaskCategory,
     system_prompt: str,
     user_message: str,
     max_tokens: int,
     temperature: float,
-    force_provider: "ForceProvider | None",
+    force_provider: ForceProvider | None,
 ) -> str:
     payload = "\x1f".join(
         (
@@ -174,7 +174,7 @@ def _fm_cache_key(
     return _hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
-def _fm_cache_get(key: str) -> "MultiModelResponse | None":
+def _fm_cache_get(key: str) -> MultiModelResponse | None:
     """Return cached response if present and within TTL.
 
     Two TTLs apply: positive (full TTL, default 300s) for non-empty
@@ -207,7 +207,7 @@ def _fm_cache_get(key: str) -> "MultiModelResponse | None":
         return response
 
 
-def _fm_cache_put(key: str, response: "MultiModelResponse") -> None:
+def _fm_cache_put(key: str, response: MultiModelResponse) -> None:
     cap = _fm_cache_max()
     if cap <= 0:
         return
@@ -278,7 +278,7 @@ def _fm_breaker_check_then_record(cost_usd: float) -> bool:
             _FM_BREAKER_TRIPPED = False
             _FM_BREAKER_TRIP_LOGGED = False
         _FM_SPEND_TODAY_USD += float(cost_usd or 0.0)
-        if cap > 0 and _FM_SPEND_TODAY_USD >= cap:
+        if cap > 0 and cap <= _FM_SPEND_TODAY_USD:
             _FM_BREAKER_TRIPPED = True
             if not _FM_BREAKER_TRIP_LOGGED:
                 logger.warning(

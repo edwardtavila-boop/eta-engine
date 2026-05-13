@@ -457,6 +457,40 @@ class TestStatusPage:
         assert "document.hidden" in panels
         assert "cache: 'no-store'" in auth
 
+    def test_status_page_mobile_background_and_atlanta_time_contract(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "All times Atlanta / ET" in html
+        assert "const DASHBOARD_TIME_ZONE = 'America/New_York'" in html
+        assert "const DASHBOARD_TIME_ZONE_LABEL = 'Atlanta ET'" in html
+        assert "function parseDashboardDate" in html
+        assert "formatActivityTime(lastTrade.last_trade_ts)" in html
+        assert "formatActivityTime(lastSignal.last_signal_ts)" in html
+        assert "formatActivityTime(activity.ts)" in html
+        assert ".replace('T',' ').substring(0,19)" not in html
+
+        # Phone view gets a centered, viewport-sized background so the right
+        # glow/grid does not crop against the edge of narrow devices.
+        assert "@media(max-width:640px){body{background:" in html
+        assert "background-size:100vw 100dvh,100vw 100dvh,auto" in html
+        assert "body:before,body:after{left:0;right:0;width:100vw;max-width:100vw" in html
+        assert "body:after{inset:0;background-size:38px 38px,38px 38px,auto" in html
+
+    def test_status_page_pnl_map_uses_daily_strategy_winner_loser_lanes(self):
+        root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
+        html = (root / "index.html").read_text(encoding="utf-8")
+
+        assert "Daily strategy winners/losers" in html
+        assert "function closeHistoryContributionRows" in html
+        assert "type: 'daily_close_realized'" in html
+        assert "function pickWinnerLoserRows" in html
+        assert "Daily Winners" in html
+        assert "Daily Losers" in html
+        assert "top 5 winners and top 5 losers" in html
+        assert "renderContributionGraph(bots, liveBroker, portfolioSummary, todayCloseHistory)" in html
+        assert "Daily close history pending | showing" in html
+
     def test_status_page_uses_position_exposure_close_evidence(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
         html = (root / "index.html").read_text(encoding="utf-8")

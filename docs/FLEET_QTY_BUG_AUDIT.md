@@ -1,0 +1,154 @@
+# Fleet-Wide Fractional-Qty Bug Audit
+
+**Date:** 2026-05-13 (wave-25m)
+**Trigger:** mes_sweep_reclaim_v2 R-vs-USD forensic (see MES_V2_SIZING_FORENSIC.md)
+**Audit method:** scan every bot's trade-close stream for the
+"winners cluster at qty<1, losers cluster at qty=1" pattern
+
+---
+
+## Critical headline
+
+**`mnq_futures_sage` — the operator's only currently-PROP_READY bot —
+has the bug.** Promoting it to `EVAL_LIVE` on Monday would bleed the
+eval account in USD even though the R-metric is strongly positive.
+
+| Bot | n | WR @ qty=1 | WR @ qty<1 | Δ | cum_R | cum_USD |
+|---|---|---|---|---|---|---|
+| **mnq_futures_sage** | 218 | 16.7% | **100.0%** | **+83pp** | +273.8R | **−$510** |
+| **mnq_anchor_sweep** | 74 | 5.6% | **94.4%** | **+89pp** | +2.5R | **−$953** |
+| mes_sweep_reclaim_v2 | 416 | (per the earlier forensic) | | | +136R | −$406 |
+
+The two newly-flagged bots both show the same signature:
+**winning trades are almost exclusively at fractional qty, losing
+trades are exclusively at full qty.** The R-metric is dimensionless
+and looks profitable; the USD-metric is brutal.
+
+---
+
+## Implications for Monday
+
+1. **DO NOT promote mnq_futures_sage to `EVAL_LIVE`.** It is the
+   only bot the leaderboard currently designates PROP_READY (n=109,
+   +1.26R avg in the leaderboard window — but the wider 218-trade
+   window shows the qty bug clearly). The leaderboard's R-edge
+   designation is honest; the bot's USD edge is negative due to the
+   sizing bug.
+
+2. **The wave-25 risk gate would NOT fully protect** the operator
+   if mnq_futures_sage were promoted. The gate checks:
+   - lifecycle (would let EVAL_LIVE through)
+   - prop guard signal (currently OK)
+   - prospective_loss_usd $250 default
+   The actual losing trades on this bot averaged -$23 USD each, so
+   the gate would NOT flag them as soft-DD breaches. The trades would
+   reach the live broker, fail to fill (qty=0.5 invalid for MNQ as
+   well — micro futures = integer increments only), and the strategy
+   would degrade silently into "tries to enter but broker rejects."
+
+3. **`mnq_anchor_sweep` and `mes_sweep_reclaim_v2` ALSO affected.**
+   Both stay `EVAL_PAPER` by default per wave-25 conservative posture,
+   so neither will live-trade Monday. Keep them paper until fixed.
+
+4. **Other bots have weaker signals but should not be promoted
+   without re-audit:** the audit only flagged bots with ≥10pp delta
+   in win rate between qty bands. Bots with mixed qty patterns and
+   no clear bug signature (e.g. `nq_futures_sage` cum_R=−5.2, just
+   losing) need separate review.
+
+---
+
+## Root cause (same as mes_v2)
+
+The sizing formula is roughly:
+
+```
+qty = risk_per_trade_pct × equity / (stop_distance_ticks × $-per-tick)
+```
+
+Wider stops produce smaller (potentially fractional) qty AND higher
+hit rates because the price has more room before the stop triggers.
+Tighter stops produce larger qty AND lower hit rates. Per-trade R is
+positive on average; per-trade USD asymmetry causes the aggregate
+divergence.
+
+The fact that this hits `mnq_futures_sage` (a Sage family bot, NOT
+sweep_reclaim) suggests the formula is shared across multiple
+strategy families. The fix needs to apply at the supervisor /
+order-routing layer, not just the strategy layer.
+
+---
+
+## Recommended fixes (any one suffices)
+
+### Fix A — Integer-only qty at the supervisor layer
+
+In `jarvis_strategy_supervisor._maybe_enter`, just before the broker
+submit, enforce:
+
+```python
+qty = max(1, math.floor(qty))
+```
+
+This is a one-line patch that catches every strategy regardless of
+family. Always rounds DOWN so risk is always ≤ configured, never
+exceeded. The wave-25 risk gate already runs before this point, so
+the operator's safety contract is preserved.
+
+### Fix B — Veto fractional-qty signals
+
+If `math.floor(qty) < 1`, refuse the trade entirely:
+
+```python
+if qty < 1:
+    bot.last_aggregation_reject_reason = "qty_below_min: micro futures require integer qty"
+    return
+```
+
+Conservative — drops the small-qty signals that would have won. But
+removes the asymmetry by eliminating the qty<1 path.
+
+### Fix C — Constant-USD risk (recommended for future)
+
+Larger redesign: replace `risk_per_trade_pct` with a USD target.
+Always size qty=1; adjust the stop distance to fit the USD risk.
+
+---
+
+## Action items before Monday
+
+- [ ] **OPERATOR: do NOT run `manage_lifecycle set mnq_futures_sage
+      EVAL_LIVE`** until the qty bug is patched.
+- [ ] **OPERATOR: decide between:**
+  - **(a) Patch the supervisor with Fix A or B** (one-line change,
+      can ship today), then launch Monday
+  - **(b) Delay launch** until the bug is properly investigated
+  - **(c) Find a different bot** that doesn't show the qty asymmetry
+      (currently NONE qualifies — all PROP_READY-tier bots either
+      have the bug or insufficient data)
+- [ ] If patching, run the full pytest sweep + smoke test on VPS to
+      confirm no regressions.
+
+---
+
+## Reproduction
+
+The audit was generated by a one-shot script (`_audit_qty_bug.py`,
+not committed) that read both trade_closes streams, grouped by
+bot_id, and computed per-bot win-rate at qty=1 vs qty<1 with a
++10pp delta threshold for the "BUG" flag. The full table is in
+the wave-25m commit message and in the audit log
+(`logs/eta_engine/qty_bug_audit_20260513.log`).
+
+---
+
+## Cross-reference
+
+- `docs/MES_V2_SIZING_FORENSIC.md` — original wave-25l investigation
+- `eta_engine/strategies/sweep_reclaim_strategy.py` — sweep_reclaim
+  family sizing logic
+- `eta_engine/scripts/jarvis_strategy_supervisor.py` — supervisor's
+  `_maybe_enter` where the qty is computed and submitted to broker
+- `docs/WAVE25_PROP_LAUNCH_OPS.md` — wave-25 risk gate that runs
+  before this point but doesn't catch the qty issue specifically
+- `docs/PROP_FUND_ROLLBACK_RUNBOOK.md` — what to do if it bleeds anyway

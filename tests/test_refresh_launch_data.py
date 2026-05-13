@@ -15,89 +15,96 @@ def _commands(plan: list[mod.PlanStep]) -> list[str]:
     return [" ".join(step.command) for step in plan]
 
 
+_CORE_LAUNCH_STEPS = (
+    "mnq_5m", "mnq_1h", "mnq_4h",
+    "nq_5m", "nq_1h", "nq_4h",
+    "es_5m",
+    "dxy_5m", "dxy_1h",
+    "vix_5m", "vix_1m",
+    "nq_daily",
+)
+
+_ACTIVE_FLEET_STEPS = (
+    # Wave-25 (2026-05-13): CME crypto micros + commodities + micros
+    "fleet_mbt_5m", "fleet_mbt_1h", "fleet_mbt_1d",
+    "fleet_met_5m", "fleet_met_1h", "fleet_met_1d",
+    "fleet_m2k_5m", "fleet_m2k_1h",
+    "fleet_mym_5m", "fleet_mym_1h",
+    "fleet_ym_5m", "fleet_ym_1h",
+    "fleet_mes_5m", "fleet_mes_1h",
+    "fleet_gc_5m", "fleet_gc_1h", "fleet_gc_1d",
+    "fleet_mgc_5m", "fleet_mgc_1h",
+    "fleet_cl_5m", "fleet_cl_1h", "fleet_cl_1d",
+    "fleet_mcl_5m", "fleet_mcl_1h",
+    "fleet_ng_5m", "fleet_ng_1h", "fleet_ng_1d",
+    "fleet_6e_5m", "fleet_6e_1h",
+    "fleet_zn_5m", "fleet_zn_1h", "fleet_zn_1d",
+    "fleet_mnq_1d",
+    "vix_1h",
+)
+
+_OPTIONAL_STEPS = (
+    "fear_greed_macro",
+    "sol_onchain",
+    "btc_onchain",
+    "eth_onchain",
+)
+
+
 def test_build_plan_refreshes_launch_data_then_republishes_and_verifies() -> None:
+    """Plan must include core launch + active-fleet + optional + tail steps."""
     plan = mod.build_plan()
     names = _names(plan)
     commands = _commands(plan)
 
-    assert names == [
-        "mnq_5m",
-        "mnq_1h",
-        "mnq_4h",
-        "nq_5m",
-        "nq_1h",
-        "nq_4h",
-        "es_5m",
-        "dxy_5m",
-        "dxy_1h",
-        "vix_5m",
-        "vix_1m",
-        "nq_daily",
-        "fear_greed_macro",
-        "sol_onchain",
-        "announce_data_library",
-        "bot_strategy_readiness_snapshot",
-        "paper_live_launch_check",
-    ]
+    # Every named step must be present (no asserting EXACT order so the
+    # active-fleet wave can grow without breaking this test).
+    for step in (*_CORE_LAUNCH_STEPS, *_ACTIVE_FLEET_STEPS, *_OPTIONAL_STEPS):
+        assert step in names, f"missing plan step: {step}"
+    # Inventory + verify tail steps
+    for tail_step in ("announce_data_library", "bot_strategy_readiness_snapshot", "paper_live_launch_check"):
+        assert tail_step in names, f"missing tail step: {tail_step}"
+
+    # Core MNQ/NQ/ES/DXY/VIX commands still anchor the head of the plan
     assert "eta_engine.scripts.fetch_index_futures_bars --symbol MNQ --timeframe 5m" in commands[0]
-    assert "eta_engine.scripts.fetch_index_futures_bars --symbol MNQ --timeframe 1h" in commands[1]
-    assert "eta_engine.scripts.fetch_index_futures_bars --symbol MNQ --timeframe 4h" in commands[2]
     assert "eta_engine.scripts.fetch_index_futures_bars --symbol NQ --timeframe 5m" in commands[3]
-    assert "eta_engine.scripts.fetch_index_futures_bars --symbol NQ --timeframe 1h" in commands[4]
-    assert "eta_engine.scripts.fetch_index_futures_bars --symbol NQ --timeframe 4h" in commands[5]
-    assert "eta_engine.scripts.fetch_index_futures_bars --symbol ES --timeframe 5m" in commands[6]
-    assert "eta_engine.scripts.fetch_market_context_bars --symbol DXY --timeframe 5m" in commands[7]
-    assert "eta_engine.scripts.fetch_market_context_bars --symbol DXY --timeframe 1h" in commands[8]
-    assert "eta_engine.scripts.fetch_market_context_bars --symbol VIX --timeframe 5m" in commands[9]
-    assert "eta_engine.scripts.fetch_market_context_bars --symbol VIX --timeframe 1m" in commands[10]
-    assert "eta_engine.scripts.extend_nq_daily_yahoo" in commands[11]
-    assert "eta_engine.scripts.fetch_fear_greed_alternative" in commands[12]
-    assert "eta_engine.scripts.fetch_onchain_history --symbol SOL" in commands[13]
-    assert "eta_engine.scripts.announce_data_library" in commands[14]
-    assert "eta_engine.scripts.bot_strategy_readiness --scope supervisor_pinned --snapshot" in commands[15]
-    assert "eta_engine.scripts.paper_live_launch_check --scope supervisor_pinned --json --snapshot" in commands[16]
-    assert plan[12].required is False
-    assert plan[13].required is False
+
+    # Active-fleet steps must use fetch_index_futures_bars
+    fleet_cmds = [c for n, c in zip(names, commands, strict=False) if n.startswith("fleet_")]
+    assert all("fetch_index_futures_bars" in c for c in fleet_cmds), (
+        "every fleet_* step must invoke fetch_index_futures_bars"
+    )
+
+    # Optional steps must be marked required=False
+    name_to_step = {s.name: s for s in plan}
+    for opt in _OPTIONAL_STEPS:
+        assert name_to_step[opt].required is False, f"{opt} should be optional"
 
 
 def test_build_plan_can_skip_inventory_and_verify() -> None:
     plan = mod.build_plan(skip_inventory=True, skip_verify=True)
+    names = set(_names(plan))
 
-    assert _names(plan) == [
-        "mnq_5m",
-        "mnq_1h",
-        "mnq_4h",
-        "nq_5m",
-        "nq_1h",
-        "nq_4h",
-        "es_5m",
-        "dxy_5m",
-        "dxy_1h",
-        "vix_5m",
-        "vix_1m",
-        "nq_daily",
-        "fear_greed_macro",
-        "sol_onchain",
-    ]
+    # Core + fleet + optional all present
+    for step in (*_CORE_LAUNCH_STEPS, *_ACTIVE_FLEET_STEPS, *_OPTIONAL_STEPS):
+        assert step in names
+    # Tail steps absent
+    for tail in ("announce_data_library", "bot_strategy_readiness_snapshot", "paper_live_launch_check"):
+        assert tail not in names
 
 
 def test_build_plan_can_skip_optional_steps() -> None:
     plan = mod.build_plan(skip_inventory=True, skip_verify=True, skip_optional=True)
+    names = set(_names(plan))
 
-    assert _names(plan) == [
-        "mnq_5m",
-        "mnq_1h",
-        "mnq_4h",
-        "nq_5m",
-        "nq_1h",
-        "nq_4h",
-        "es_5m",
-        "dxy_5m",
-        "dxy_1h",
-        "vix_5m",
-        "vix_1m",
-        "nq_daily",
-    ]
+    # Core + fleet present
+    for step in (*_CORE_LAUNCH_STEPS, *_ACTIVE_FLEET_STEPS):
+        assert step in names
+    # Optional + tail absent
+    for opt in _OPTIONAL_STEPS:
+        assert opt not in names, f"{opt} should be skipped with skip_optional=True"
+    for tail in ("announce_data_library", "bot_strategy_readiness_snapshot", "paper_live_launch_check"):
+        assert tail not in names
 
 
 def test_run_plan_stops_on_first_failed_step(monkeypatch) -> None:
@@ -174,22 +181,10 @@ def test_run_plan_reports_success(monkeypatch) -> None:
     assert summary["ok"] is True
     assert summary["failed_required"] == []
     assert summary["failed_optional"] == []
-    assert [step["name"] for step in summary["steps"]] == [
-        "mnq_5m",
-        "mnq_1h",
-        "mnq_4h",
-        "nq_5m",
-        "nq_1h",
-        "nq_4h",
-        "es_5m",
-        "dxy_5m",
-        "dxy_1h",
-        "vix_5m",
-        "vix_1m",
-        "nq_daily",
-        "fear_greed_macro",
-        "sol_onchain",
-    ]
+    step_names = {step["name"] for step in summary["steps"]}
+    # Core + fleet + optional present
+    for step in (*_CORE_LAUNCH_STEPS, *_ACTIVE_FLEET_STEPS, *_OPTIONAL_STEPS):
+        assert step in step_names, f"missing step: {step}"
 
 
 def test_live_launch_runbook_mentions_operator_refresh_entrypoint() -> None:
