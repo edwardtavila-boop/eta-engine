@@ -715,6 +715,96 @@ def dispatch_command(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_HERMES_EXE = r"C:\Users\Administrator\.hermes\hermes-agent\.venv\Scripts\hermes.exe"
+_HERMES_TIMEOUT_S = 90
+
+
+def _ask_hermes(prompt: str) -> str:
+    """Route a free-text operator message to Hermes Agent for a natural reply.
+
+    Spawns ``hermes chat -q "<prompt>" -Q --source tool`` in a subprocess,
+    captures stdout, returns the formatted reply for Telegram. Hook auto-accept
+    is a separate explicit opt-in because this path is reachable from a phone.
+
+    Why subprocess instead of the 8642 HTTP API: the gateway requires bearer
+    auth that's harder to manage from the inbound bot. The CLI is the same
+    binary the operator already uses; one-shot mode (-q + -Q) gives a clean
+    string back without the chat banner.
+
+    Truncation: Telegram reply cap is 4000 chars; we cap subprocess output
+    at 3500 chars and let the send_reply truncate the rest. Multi-step tool
+    use can produce LONG outputs — we want Hermes to summarize but if it
+    doesn't, we still send something.
+
+    NEVER raises. On any failure (subprocess crash, timeout, missing exe)
+    returns a polite error string so the operator gets a Telegram reply.
+    """
+    import subprocess  # local import — only used on free-text path
+
+    if not prompt or not prompt.strip():
+        return "_empty message_"
+    hermes_exe = os.environ.get("ETA_HERMES_CLI", _HERMES_EXE).strip()
+    if not os.path.exists(hermes_exe):
+        return f"_hermes CLI not found at_ `{hermes_exe}` — try `/help` for slash commands"
+    safe_prompt = (
+        "You are Hermes replying to the allowlisted ETA operator via Telegram. "
+        "Default to read-only diagnostics and concise guidance. Do not place "
+        "orders, flatten positions, start live trading, edit secrets, bypass "
+        "readiness gates, bypass prop drawdown controls, or run destructive "
+        "commands from this free-text channel. If the operator asks for one of "
+        "those actions, explain the explicit approval or slash-command path "
+        "required instead.\n\n"
+        f"Operator message: {prompt.strip()}"
+    )
+    cmd = [
+        hermes_exe,
+        "chat",
+        "-q",
+        safe_prompt,
+        "-Q",  # quiet: no banner / spinner / tool previews
+        "--source",
+        "tool",  # tag as third-party so it doesn't litter session lists
+    ]
+    if _env_truthy("ETA_TELEGRAM_HERMES_ACCEPT_HOOKS"):
+        cmd.append("--accept-hooks")
+    try:
+        proc = subprocess.run(  # noqa: S603 — fixed argv, no shell
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_HERMES_TIMEOUT_S,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        return f"_hermes took too long to respond (>{_HERMES_TIMEOUT_S}s)._  Try a shorter prompt or use a `/command`."
+    except FileNotFoundError as exc:
+        return f"_hermes binary missing_: `{exc}`"
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("hermes subprocess crashed: %s", exc)
+        return f"_hermes invocation failed_: `{str(exc)[:200]}`"
+
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        logger.warning(
+            "hermes returned rc=%s stderr=%s",
+            proc.returncode,
+            stderr[:200],
+        )
+        return f"_hermes exit {proc.returncode}_: `{stderr[:200] or '(no stderr)'}`"
+
+    out = (proc.stdout or "").strip()
+    if not out:
+        return "_hermes returned empty output._  Try rephrasing."
+    if len(out) > 3500:
+        out = out[:3500].rstrip() + "\n\n_…(truncated)_"
+    return out
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _is_allowed(chat_id: int, allowed: set[int]) -> bool:
     if not allowed:
         # No allowlist configured — treat as locked-down (fail closed)
@@ -762,7 +852,17 @@ def process_update(update: dict[str, Any], allowed: set[int]) -> dict[str, Any] 
         record["command"] = cmd_token
         reply = dispatch_command(text)
     else:
-        reply = "_I only handle slash commands right now._  Try `/help` for the list."
+        # Free-text Hermes routing is powerful enough to deserve an explicit
+        # operator opt-in. Slash commands remain the fail-closed default.
+        if not _env_truthy("ETA_TELEGRAM_HERMES_FREE_TEXT"):
+            record["command"] = "<free_text_blocked>"
+            reply = (
+                "_I only handle slash commands right now._  Try `/help` for the list. "
+                "Set `ETA_TELEGRAM_HERMES_FREE_TEXT=1` to enable read-only Hermes replies."
+            )
+        else:
+            record["command"] = "<free_text>"
+            reply = _ask_hermes(text)
 
     record["reply_preview"] = reply[:200]
     send_reply(chat_id, reply, reply_to_message_id=msg.get("message_id"))

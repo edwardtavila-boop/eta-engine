@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 # ---------------------------------------------------------------------------
 # Command parsing & dispatch
@@ -130,13 +129,20 @@ def test_process_update_accepts_allowlisted_chat(
     assert "/pnl" in sent[0][1]
 
 
-def test_process_update_responds_to_free_text_with_hint(
+def test_process_update_blocks_free_text_unless_enabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Free-text stays fail-closed unless the Hermes bridge is opted in."""
     from eta_engine.scripts import telegram_inbound_bot
 
+    monkeypatch.delenv("ETA_TELEGRAM_HERMES_FREE_TEXT", raising=False)
     monkeypatch.setattr(telegram_inbound_bot, "_LOG_PATH", tmp_path / "audit.jsonl")
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "_ask_hermes",
+        lambda prompt: pytest.fail("_ask_hermes should not run while disabled"),
+    )
 
     sent: list[str] = []
     monkeypatch.setattr(
@@ -154,9 +160,191 @@ def test_process_update_responds_to_free_text_with_hint(
             "text": "how is the fleet doing?",
         },
     }
-    telegram_inbound_bot.process_update(update, allowed={1})
+    record = telegram_inbound_bot.process_update(update, allowed={1})
     assert len(sent) == 1
     assert "/help" in sent[0]
+    assert "ETA_TELEGRAM_HERMES_FREE_TEXT" in sent[0]
+    assert record["command"] == "<free_text_blocked>"
+
+
+def test_process_update_routes_free_text_to_hermes_when_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Free-text messages route to Hermes via _ask_hermes for a natural reply."""
+    from eta_engine.scripts import telegram_inbound_bot
+
+    monkeypatch.setenv("ETA_TELEGRAM_HERMES_FREE_TEXT", "1")
+    monkeypatch.setattr(telegram_inbound_bot, "_LOG_PATH", tmp_path / "audit.jsonl")
+
+    captured: list[str] = []
+
+    def fake_ask_hermes(prompt: str) -> str:
+        captured.append(prompt)
+        return "Fleet up +2.5R today, all bots within prop limits."
+
+    monkeypatch.setattr(telegram_inbound_bot, "_ask_hermes", fake_ask_hermes)
+
+    sent: list[str] = []
+    monkeypatch.setattr(
+        telegram_inbound_bot,
+        "send_reply",
+        lambda chat_id, text, **kw: sent.append(text) or {"ok": True},
+    )
+
+    update = {
+        "update_id": 100,
+        "message": {
+            "message_id": 1,
+            "chat": {"id": 1},
+            "from": {"username": "edward"},
+            "text": "how is the fleet doing?",
+        },
+    }
+    record = telegram_inbound_bot.process_update(update, allowed={1})
+    assert len(sent) == 1
+    assert "Fleet up +2.5R" in sent[0]
+    assert captured == ["how is the fleet doing?"]
+    assert record["command"] == "<free_text>"
+
+
+def test_ask_hermes_handles_missing_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the hermes exe is missing, return a polite error not a crash."""
+    from eta_engine.scripts import telegram_inbound_bot
+
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_EXE", "Z:/no/such/hermes.exe")
+    reply = telegram_inbound_bot._ask_hermes("hi")
+    assert "not found" in reply.lower()
+
+
+def test_ask_hermes_handles_empty_input() -> None:
+    from eta_engine.scripts import telegram_inbound_bot
+
+    reply = telegram_inbound_bot._ask_hermes("   ")
+    assert "empty" in reply.lower()
+
+
+def test_ask_hermes_wraps_prompt_with_safety_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("ETA_HERMES_CLI", str(fake_exe))
+    monkeypatch.delenv("ETA_TELEGRAM_HERMES_ACCEPT_HOOKS", raising=False)
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stdout="safe reply", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    reply = telegram_inbound_bot._ask_hermes("can you flatten everything?")
+
+    assert reply == "safe reply"
+    cmd = captured["cmd"]
+    assert "--accept-hooks" not in cmd
+    prompt = cmd[cmd.index("-q") + 1]
+    assert "Do not place orders" in prompt
+    assert "flatten positions" in prompt
+    assert "Operator message: can you flatten everything?" in prompt
+
+
+def test_ask_hermes_accept_hooks_requires_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setenv("ETA_HERMES_CLI", str(fake_exe))
+    monkeypatch.setenv("ETA_TELEGRAM_HERMES_ACCEPT_HOOKS", "1")
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    assert telegram_inbound_bot._ask_hermes("status") == "ok"
+    assert "--accept-hooks" in captured["cmd"]
+
+
+def test_ask_hermes_handles_subprocess_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Subprocess timeout returns a polite message, never raises."""
+    import subprocess
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    # Point _HERMES_EXE at an existing file so the missing-binary check passes
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_EXE", str(fake_exe))
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="hermes", timeout=90)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    reply = telegram_inbound_bot._ask_hermes("anything")
+    assert "took too long" in reply.lower() or "timeout" in reply.lower()
+
+
+def test_ask_hermes_handles_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Non-zero exit code surfaces stderr instead of crashing."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_EXE", str(fake_exe))
+
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=3, stdout="", stderr="oh no")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    reply = telegram_inbound_bot._ask_hermes("anything")
+    assert "exit 3" in reply
+    assert "oh no" in reply
+
+
+def test_ask_hermes_truncates_oversize_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Output > 3500 chars gets truncated with a tag."""
+    from types import SimpleNamespace
+
+    from eta_engine.scripts import telegram_inbound_bot
+
+    fake_exe = tmp_path / "hermes.exe"
+    fake_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(telegram_inbound_bot, "_HERMES_EXE", str(fake_exe))
+
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout="x" * 5000, stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    reply = telegram_inbound_bot._ask_hermes("anything")
+    assert len(reply) < 4000
+    assert "truncated" in reply.lower()
 
 
 # ---------------------------------------------------------------------------
