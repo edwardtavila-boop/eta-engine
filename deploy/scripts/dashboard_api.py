@@ -8034,6 +8034,73 @@ def _live_fill_paths() -> list[tuple[Path, str]]:
     return out
 
 
+def _router_fill_results_rows() -> list[dict]:
+    """Scan broker_router fill_results/ directory for completed fills.
+
+    Wave-25c rev7 (2026-05-13): the broker_router writes one JSON file
+    per submission outcome under ``state/router/fill_results/``. The
+    legacy ledger scanner only looks for jsonl files, so today's
+    paper-live submissions never surfaced in the dashboard's
+    ``supervisor.live`` block. This helper flattens each fill_result
+    file into the same normalized row shape and stamps source=
+    ``broker_router`` so the rest of the pipeline picks it up.
+
+    Only files with a positive filled_qty are returned — rejection
+    rows (qty=0, reason="rounds to zero" etc) are excluded so the
+    live-fills counter only reflects real fills, not rejections.
+    """
+    state = _state_dir()
+    result_dir = state / "router" / "fill_results"
+    if not result_dir.is_dir():
+        return []
+    rows: list[dict] = []
+    for path in sorted(result_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+        try:
+            filled_qty = float(result.get("filled_qty") or 0)
+        except (TypeError, ValueError):
+            filled_qty = 0.0
+        if filled_qty <= 0:
+            continue
+        try:
+            avg_price = float(result.get("avg_price") or 0)
+        except (TypeError, ValueError):
+            avg_price = 0.0
+        ts_value = (
+            result.get("filled_at")
+            or result.get("ts")
+            or payload.get("ts")
+            or datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+        )
+        flattened = {
+            "ts": ts_value,
+            "status": "FILLED",
+            "bot": str(payload.get("bot_id") or request.get("bot_id") or ""),
+            "symbol": str(request.get("symbol") or ""),
+            "side": str(request.get("side") or ""),
+            "qty": filled_qty,
+            "price": avg_price,
+            "order_id": str(request.get("client_order_id") or result.get("order_id") or ""),
+            "source": "broker_router",
+            "source_path": str(path),
+        }
+        normalized = _normalize_live_fill_row(
+            flattened,
+            source="broker_router",
+            source_path=str(path),
+        )
+        if normalized is not None:
+            rows.append(normalized)
+    return rows
+
+
 def _normalize_live_fill_row(row: dict, *, source: str, source_path: str | None = None) -> dict | None:
     if not isinstance(row, dict):
         return None
@@ -8133,6 +8200,29 @@ def _recent_live_fill_rows(*, bot: str | None = None, limit: int | None = None) 
                 continue
             seen.add(key)
             rows.append(normalized)
+    # Wave-25c rev7: pull in broker_router/fill_results/*.json fills so
+    # the supervisor.live block reflects current paper-live execution
+    # via the broker_router instead of only the legacy supervisor
+    # journal (which stopped being the source of truth after the
+    # paper_live routing fix).
+    for normalized in _router_fill_results_rows():
+        row_bot = str(normalized.get("bot") or "")
+        if bot and row_bot != bot:
+            continue
+        key = (
+            normalized.get("ts"),
+            normalized.get("source"),
+            normalized.get("exec_id") or normalized.get("execution_id"),
+            normalized.get("order_id"),
+            normalized.get("bot"),
+            normalized.get("side"),
+            normalized.get("qty"),
+            normalized.get("price"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(normalized)
     for normalized in _ibkr_execution_rows():
         row_bot = str(normalized.get("bot") or "")
         if bot and row_bot != bot:
