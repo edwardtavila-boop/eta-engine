@@ -4,6 +4,18 @@
 50K Tradovate eval ($59). This runbook covers every step from BluSky
 welcome-email arrival to first live order in BluSky's funded account.
 
+> **STRATEGY TARGET CORRECTION (2026-05-13):** The `volume_profile_mnq`
+> strategy referenced in earlier revisions of this runbook is **NOT** in
+> the current diamond fleet (wave-25). Recent paper data shows it has
+> n=66 trades and avg_r = -0.006 (no edge). The actual prop-launch
+> universe is now the 14-bot diamond fleet, of which only
+> `mnq_futures_sage` currently designates as PROP_READY (n=109,
+> avg_r=1.26 — note: includes records with phantom-R values fixed by
+> commit b0c11b2 on 2026-05-13; honest avg_r will settle ~0.4–0.6 as
+> clean post-fix trades accumulate). Launch is **NO_GO** until ≥2 bots
+> qualify (R1 gate). Realistic launch date slipped to ~2026-06-01.
+> See memory `project_wave25_launch_state.md` for full status.
+
 > **DORMANCY NOTE:** Tradovate remains in `DORMANT_BROKERS` per the
 > 2026-04-24 broker dormancy mandate. This runbook describes the
 > un-dormancy procedure for the prop-funded futures lane. Activation
@@ -243,13 +255,19 @@ Add to `eta_engine/configs/bot_broker_routing.yaml`:
 ```yaml
 # ── Prop-firm funded lanes (BluSky / Elite via Tradovate) ─────────
 # Un-dormancy 2026-05-XX: operator-purchased BluSky Launch 50K eval.
-# volume_profile_mnq (strict-gate pass) routes to Tradovate
-# specifically for the BluSky funded lane. All other futures bots
-# stay on IBKR paper.
+# Route the current PROP_READY designations (per wave-25 diamond
+# leaderboard) to Tradovate for the BluSky funded lane. All other
+# futures bots stay on IBKR paper.
+# As of 2026-05-13 the only PROP_READY designation is
+# `mnq_futures_sage`; R1 launch gate requires ≥2, so wait for a
+# second diamond to qualify before activating this section.
 bots:
-  volume_profile_mnq:
+  mnq_futures_sage:
     venue: tradovate
     account_alias: blusky_launch_50k_phase1
+  # second_prop_ready_bot:   # add when leaderboard designates one
+  #   venue: tradovate
+  #   account_alias: blusky_launch_50k_phase1
 ```
 
 The `blusky_launch_50k_phase1` profile is intentionally tighter than
