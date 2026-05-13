@@ -103,9 +103,12 @@ function Register-DiamondTask {
 }
 
 # -- 15-MIN CADENCE -- the ledger refresh that feeds every other audit --
+# Windows Task Scheduler rejects RepetitionDuration > 31 days; use 365 days
+# and rely on the operator to re-run this script annually (or wire into
+# the existing yearly maintenance pass).
 $every15Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes 15) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)
+    -RepetitionDuration (New-TimeSpan -Days 365)
 
 $every15MinTasks = @(
     @{ Name = "ETA-Diamond-LedgerEvery15Min"
@@ -120,7 +123,7 @@ foreach ($t in $every15MinTasks) {
 # -- HOURLY CADENCE -- leaderboard + ops dashboard + feed sanity --
 $hourlyTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Hours 1) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)
+    -RepetitionDuration (New-TimeSpan -Days 365)
 
 $hourlyTasks = @(
     @{ Name = "ETA-Diamond-LeaderboardHourly"
