@@ -221,7 +221,24 @@ def load_close_records(
 
 def _normalize_close(row: dict[str, Any]) -> dict[str, Any]:
     extra = _as_dict(row.get("extra"))
-    realized_r = _as_float(row.get("realized_r"))
+    # Tick-leak guard (2026-05-13): the ledger report is consumed by
+    # bot_scoreboard, dashboard surfaces, and operator daily-debrief
+    # rollups. Sanitize here so all downstream readers of the
+    # normalized rows see consistent, leak-free R values. The original
+    # bot-written value is preserved in `realized_r_raw` for forensics.
+    from eta_engine.brain.jarvis_v3 import trade_close_sanitizer  # noqa: PLC0415
+
+    raw_r = _as_float(row.get("realized_r"))
+    status, sanitized = trade_close_sanitizer.classify(row)
+    if status == "suspect":
+        # Bogus value, no recovery — set R to 0 so cumulative_r and
+        # win_rate aren't poisoned. The forensic raw value is preserved
+        # via realized_r_raw + realized_r_sanitized marker.
+        realized_r = 0.0
+    elif status in {"clean", "recovered"} and sanitized is not None:
+        realized_r = float(sanitized)
+    else:  # status == "none"
+        realized_r = raw_r
     realized_pnl = _as_float(row.get("realized_pnl", extra.get("realized_pnl")))
     return {
         "ts": row.get("ts") or extra.get("close_ts") or "",
@@ -234,6 +251,8 @@ def _normalize_close(row: dict[str, Any]) -> dict[str, Any]:
         "fill_price": _as_float(extra.get("fill_price")),
         "realized_pnl": round(realized_pnl, 4),
         "realized_r": round(realized_r, 4),
+        "realized_r_raw": round(raw_r, 4) if status in {"suspect", "recovered"} else None,
+        "realized_r_sanitized": status in {"suspect", "recovered"},
         "regime": row.get("regime") or "",
         "session": row.get("session") or "",
         "action_taken": row.get("action_taken") or "",

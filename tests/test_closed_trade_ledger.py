@@ -158,3 +158,94 @@ def test_operator_filter_includes_canonical_untagged_rows(tmp_path: Path) -> Non
     assert report["closed_trade_count"] == 2
     assert report["total_realized_pnl"] == 30.0
     assert report["data_sources_filter"] == ["live", "live_unverified", "paper"]
+
+
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: ledger sanitizer integration — normalized rows must
+# carry a clean realized_r and the cumulative_r aggregate must not
+# include tick-leak phantom R.
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_normalize_close_zeroes_tick_leak() -> None:
+    """A row with bogus realized_r=69 and no recovery fields gets
+    realized_r=0 in the normalized output; raw value is preserved
+    in realized_r_raw for forensics."""
+    row = {
+        "ts": "2026-05-12T14:00:00+00:00",
+        "bot_id": "mnq_futures_sage",
+        "realized_r": 69.0,
+        "extra": {"symbol": "MNQ1"},
+    }
+    normalized = ledger._normalize_close(row)
+    assert normalized["realized_r"] == 0.0
+    assert normalized["realized_r_raw"] == 69.0
+    assert normalized["realized_r_sanitized"] is True
+
+
+def test_normalize_close_recovers_from_extra_pnl() -> None:
+    """A row with bogus realized_r=32661 but a clean
+    extra.realized_pnl + symbol on MNQ recovers to pnl/$-per-R."""
+    row = {
+        "ts": "2026-05-12T14:00:00+00:00",
+        "bot_id": "ym_sweep_reclaim",
+        "realized_r": 32661.0,
+        "extra": {"realized_pnl": 10.0, "symbol": "MNQ1"},
+    }
+    normalized = ledger._normalize_close(row)
+    # MNQ: dollar_per_R=20, so recovered r = 10/20 = 0.5
+    assert normalized["realized_r"] == 0.5
+    assert normalized["realized_r_raw"] == 32661.0
+    assert normalized["realized_r_sanitized"] is True
+
+
+def test_normalize_close_passes_clean_r_unchanged() -> None:
+    """Clean R values pass through untouched and forensic markers are
+    None / False — no extra noise on normal rows."""
+    row = {
+        "ts": "2026-05-12T14:00:00+00:00",
+        "bot_id": "btc_optimized",
+        "realized_r": 1.5,
+        "extra": {"realized_pnl": 100.0, "symbol": "BTC"},
+    }
+    normalized = ledger._normalize_close(row)
+    assert normalized["realized_r"] == 1.5
+    assert normalized["realized_r_raw"] is None
+    assert normalized["realized_r_sanitized"] is False
+
+
+def test_ledger_cumulative_r_excludes_tick_leak(tmp_path: Path) -> None:
+    """End-to-end: a ledger with 1 clean trade and 1 tick-leak record
+    reports cumulative_r = clean only, not clean + 69."""
+    source = tmp_path / "trade_closes.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "ts": "2026-05-09T00:00:00+00:00",
+                "signal_id": "s1",
+                "bot_id": "mnq_futures_sage",
+                "data_source": "paper",
+                "realized_r": 1.0,
+                "extra": {"realized_pnl": 20, "symbol": "MNQ1"},
+            },
+            {
+                "ts": "2026-05-09T00:05:00+00:00",
+                "signal_id": "s2",
+                "bot_id": "mnq_futures_sage",
+                "data_source": "paper",
+                # Tick-leak: 69 ticks recorded as R
+                "realized_r": 69.0,
+                "extra": {"symbol": "MNQ1"},
+            },
+        ],
+    )
+    report = ledger.build_ledger_report(
+        source_paths=[source],
+        data_sources=ledger.DEFAULT_OPERATOR_DATA_SOURCES,
+    )
+    # cumulative_r = 1.0 (clean) + 0.0 (leak zeroed)
+    assert report["cumulative_r"] == 1.0
+    # Trade count still includes both (we keep the row for forensics
+    # in the ledger; it just doesn't contribute to cumulative_r)
+    assert report["closed_trade_count"] == 2
