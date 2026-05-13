@@ -28,6 +28,8 @@ class BotAllocation:
     win_rate: float
     sessions: int
     status: str  # "active", "paused", "no_data"
+    # Wave-18: tier metadata for prop-fund routing
+    tier: str = "TIER_CANDIDATE"  # TIER_PROP_READY / TIER_DIAMOND / TIER_CANDIDATE
 
 
 @dataclass
@@ -118,6 +120,47 @@ MIN_SESSIONS = 2
 # Path to allocation state
 ALLOCATION_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\capital_allocation.json")
 
+# ────────────────────────────────────────────────────────────────────
+# Wave-18: TIER SYSTEM
+# ────────────────────────────────────────────────────────────────────
+# Diamonds are no longer a flat set — they have tiers that determine
+# CAPITAL ROUTING and FAILURE-MODE RESPONSE.
+#
+#   TIER_PROP_READY  — top 3 by leaderboard composite score; earn real
+#                       prop-fund capital allocation.  Eligibility is
+#                       data-driven and recomputed each leaderboard run.
+#   TIER_DIAMOND     — full diamond fleet with 3-layer protection.
+#                       Receive DIAMOND_MIN_CAPITAL floor regardless of
+#                       short-term P&L.  Paper-soak data accumulation.
+#   TIER_CANDIDATE   — bots not yet diamonds but tracked by the
+#                       promotion gate.  No capital floor; receive
+#                       performance-weighted allocation only.
+#
+# The tier is computed dynamically from:
+#   - DIAMOND_BOTS membership (TIER_DIAMOND if member)
+#   - Leaderboard snapshot's prop_ready_bots set (TIER_PROP_READY upgrade)
+#   - Otherwise TIER_CANDIDATE
+#
+# A bot can be TIER_PROP_READY AND TIER_DIAMOND simultaneously
+# (PROP_READY is a SUPERSET of DIAMOND for eligible bots).
+
+TIER_PROP_READY = "TIER_PROP_READY"
+TIER_DIAMOND = "TIER_DIAMOND"
+TIER_CANDIDATE = "TIER_CANDIDATE"
+
+#: How much real capital each PROP_READY bot gets routed through IBKR.
+#: This is a STARTING DEFAULT — operator overrides via the prop-fund
+#: control surface once live data warrants scaling up.  Conservative
+#: until the bots have proven themselves on real fills.
+PROP_READY_CAPITAL_PER_BOT: float = 2500.0
+
+#: Leaderboard receipt path.  capital_allocator reads this to know
+#: which bots earned PROP_READY status in the most recent run.
+LEADERBOARD_PATH = Path(
+    r"C:\EvolutionaryTradingAlgo\var\eta_engine\state"
+    r"\diamond_leaderboard_latest.json",
+)
+
 
 def classify_pool(bot_id: str) -> str:
     """Classify a bot into spot, futures, or leveraged pool by its ID."""
@@ -135,6 +178,49 @@ def classify_pool(bot_id: str) -> str:
         return "spot"
     # Everything else is futures
     return "futures"
+
+
+def load_prop_ready_bots(
+    leaderboard_path: Path = LEADERBOARD_PATH,
+) -> frozenset[str]:
+    """Read the most recent leaderboard receipt and return the set of
+    bots currently designated PROP_READY.
+
+    Returns frozenset() if the receipt is missing or malformed (so the
+    allocator never crashes — it just degrades to no-PROP_READY routing
+    instead of mis-allocating real capital).
+    """
+    if not leaderboard_path.exists():
+        return frozenset()
+    try:
+        data = json.loads(leaderboard_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+    bots = data.get("prop_ready_bots") or []
+    if not isinstance(bots, list):
+        return frozenset()
+    return frozenset(str(b) for b in bots if b)
+
+
+def get_bot_tier(
+    bot_id: str,
+    prop_ready: frozenset[str] | None = None,
+) -> str:
+    """Return the canonical tier for a bot.
+
+    Order of preference: PROP_READY > DIAMOND > CANDIDATE.
+
+    PROP_READY membership is read from the leaderboard receipt
+    (load_prop_ready_bots) — caller can pre-fetch to avoid re-reading
+    the receipt across many lookups.
+    """
+    if prop_ready is None:
+        prop_ready = load_prop_ready_bots()
+    if bot_id in prop_ready:
+        return TIER_PROP_READY
+    if bot_id in DIAMOND_BOTS:
+        return TIER_DIAMOND
+    return TIER_CANDIDATE
 
 
 def is_ibkr_futures_eligible(bot_id: str) -> bool:
@@ -199,11 +285,31 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
             "bots": {},
         }
 
+        # Wave-18: pre-fetch PROP_READY set once per allocation pass
+        prop_ready = load_prop_ready_bots()
+
         for bot_id, stats in pool_bots.items():
             is_diamond = bot_id in DIAMOND_BOTS
+            is_prop_ready = bot_id in prop_ready
+            tier = get_bot_tier(bot_id, prop_ready=prop_ready)
+
+            # Wave-18: PROP_READY tier gets a FLOOR of PROP_READY_CAPITAL_PER_BOT
+            # ON TOP of any performance-weighted allocation. This is how the
+            # elite-3 earn real-capital routing once the operator's prop-fund
+            # wiring reads the bot_allocations.tier field.
             if stats["total_pnl"] > 0 and total_profitable_pnl > 0:
                 weight = stats["total_pnl"] / total_profitable_pnl
                 capital = pool_capital * weight
+                if is_prop_ready:
+                    capital = max(capital, PROP_READY_CAPITAL_PER_BOT)
+                status = "active"
+            elif is_prop_ready:
+                # PROP_READY ALWAYS-FLOOR (even on -PnL paper window):
+                # the leaderboard's eligibility gate (n>=100, avg_r>=+0.20,
+                # watchdog non-CRITICAL, sizing non-BREACHED) is more
+                # discriminating than total_pnl > 0 — trust it.
+                weight = max(0.05, PROP_READY_CAPITAL_PER_BOT / pool_capital)
+                capital = PROP_READY_CAPITAL_PER_BOT
                 status = "active"
             elif is_diamond:
                 # DIAMOND PROTECTION: always active with minimum capital
@@ -226,6 +332,9 @@ def compute_allocations(ledger_path: Path, total_capital: float = 100_000.0) -> 
                 sessions=stats["sessions"],
                 status=status,
             )
+            # Wave-18: attach tier metadata so the prop-fund routing
+            # layer can pick PROP_READY allocations vs DIAMOND vs CANDIDATE.
+            ba.tier = tier  # type: ignore[attr-defined]
             allocation.bots[bot_id] = ba
             pool_data["bots"][bot_id] = {
                 "weight": weight,
