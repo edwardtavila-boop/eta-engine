@@ -2,7 +2,7 @@
 # ===========================================================================
 # Register the wave-13 through wave-19 diamond program scheduled tasks on
 # the VPS. Closes the operator-ask #2 ("VPS closed_trade_ledger cron")
-# from the post-wave-19 punch list — the watchdog finally has data to
+# from the post-wave-19 punch list -- the watchdog finally has data to
 # classify, and the leaderboard finally populates PROP_READY_BOTS so the
 # capital_allocator can route real-fund tier capital to the elite-3.
 #
@@ -102,7 +102,7 @@ function Register-DiamondTask {
     }
 }
 
-# ── 15-MIN CADENCE — the ledger refresh that feeds every other audit ──
+# -- 15-MIN CADENCE -- the ledger refresh that feeds every other audit --
 $every15Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes 15) `
     -RepetitionDuration ([TimeSpan]::MaxValue)
@@ -117,7 +117,7 @@ foreach ($t in $every15MinTasks) {
     Register-DiamondTask -Name $t.Name -Args $t.Args -Desc $t.Desc -Trigger $every15Trigger
 }
 
-# ── HOURLY CADENCE — leaderboard + ops dashboard + feed sanity ──
+# -- HOURLY CADENCE -- leaderboard + ops dashboard + feed sanity --
 $hourlyTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Hours 1) `
     -RepetitionDuration ([TimeSpan]::MaxValue)
@@ -138,7 +138,7 @@ foreach ($t in $hourlyTasks) {
     Register-DiamondTask -Name $t.Name -Args $t.Args -Desc $t.Desc -Trigger $hourlyTrigger
 }
 
-# ── DAILY CADENCE — promotion + sizing + direction + demotion advisories ──
+# -- DAILY CADENCE -- promotion + sizing + direction + demotion advisories --
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At "11:00 AM"
 
 $dailyTasks = @(
@@ -153,7 +153,7 @@ $dailyTasks = @(
         Desc = "Diamond: per-side R-edge analyzer (SYMMETRIC/LONG_DOMINANT/SHORT_DOMINANT/...)" }
     @{ Name = "ETA-Diamond-DemotionGateDaily"
         Args = "-m eta_engine.scripts.diamond_demotion_gate"
-        Desc = "Diamond: KEEP/WATCH/DEMOTE_CANDIDATE recommendation (advisory only — never auto-mutates DIAMOND_BOTS)" }
+        Desc = "Diamond: KEEP/WATCH/DEMOTE_CANDIDATE recommendation (advisory only -- never auto-mutates DIAMOND_BOTS)" }
 )
 
 foreach ($t in $dailyTasks) {
