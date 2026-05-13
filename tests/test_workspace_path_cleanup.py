@@ -420,8 +420,13 @@ def test_workspace_roots_helper_docstring_avoids_legacy_external_paths() -> None
 
 def test_regime_gated_default_entry_path_passes_regime_provider() -> None:
     text = _read("eta_engine/scripts/run_btc_regime_gated_walk_forward.py")
-    assert "provider,\n        args.etf_path" not in text
-    assert "provider, regime_provider, args.etf_path" in text
+    # Anchor with the open-paren so we don't false-match the suffix of
+    # ``regime_provider,\n        args.etf_path`` (which legitimately
+    # passes regime_provider on its own line just before etf_path).
+    assert "(\n        provider,\n        args.etf_path" not in text
+    # The factory must receive provider, regime_provider, etf_path
+    # (in that order — multi-line call).
+    assert "provider,\n        regime_provider,\n        args.etf_path" in text
 
 
 def test_b_class_state_writers_use_canonical_var_state_path() -> None:
@@ -436,8 +441,10 @@ def test_b_class_state_writers_use_canonical_var_state_path() -> None:
     # legacy in-repo path kept only as a labelled fallback.
     dashboard_api = _read("eta_engine/deploy/scripts/dashboard_api.py")
     assert '_DEFAULT_STATE = _WORKSPACE_ROOT / "var" / "eta_engine" / "state"' in dashboard_api
-    assert '_LEGACY_STATE  = _REPO_ROOT / "state"' in dashboard_api
-    assert '_DEFAULT_LOG   = _WORKSPACE_ROOT / "logs" / "eta_engine"' in dashboard_api
+    # ruff/black collapsed the column-alignment to single space — keep the
+    # contract on the assignment shape rather than the visual column.
+    assert '_LEGACY_STATE = _REPO_ROOT / "state"' in dashboard_api
+    assert '_DEFAULT_LOG = _WORKSPACE_ROOT / "logs" / "eta_engine"' in dashboard_api
     # The AppData-Local fallback was a separate hard-rule violation;
     # ensure the policy_diff endpoint no longer falls back to it.
     assert "AppData/Local/eta_engine" not in dashboard_api
