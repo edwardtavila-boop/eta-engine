@@ -1131,14 +1131,17 @@ function renderBracketActionStrip(d) {
       ?? missing > 0
   );
   const actions = brokerBracketActionLabels(bracketAudit, summary);
-  if (!propDryRunBlocked && missing <= 0 && !actions.length) {
+  const unprotectedSymbols = Array.isArray(summary.broker_bracket_unprotected_symbols)
+    ? summary.broker_bracket_unprotected_symbols
+    : [];
+  const hasConcreteBrokerGap = missing > 0
+    || Boolean(primary?.symbol)
+    || unprotectedSymbols.length > 0;
+  if (!hasConcreteBrokerGap) {
     el.className = 'bracket-action-strip';
     el.innerHTML = '';
     return;
   }
-  const unprotectedSymbols = Array.isArray(summary.broker_bracket_unprotected_symbols)
-    ? summary.broker_bracket_unprotected_symbols
-    : [];
   const primaryText = bracketPrimaryExposureText(primary)
     || unprotectedSymbols.join(', ')
     || 'unprotected exposure';
@@ -2744,7 +2747,8 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       145
     );
   }
-  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, closeHistory);
+  const opsCloseHistory = closeEvidenceSummary(liveBroker, portfolioSummary, 'today', d);
+  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, opsCloseHistory);
 
   const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
   const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
