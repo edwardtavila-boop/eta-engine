@@ -811,6 +811,62 @@ def test_realized_r_uses_bracket_distance_denominator(tmp_path) -> None:
     )
 
 
+def test_realized_r_immune_to_stale_tighten(tmp_path) -> None:
+    """Root-cause regression test (2026-05-13): when ``_stale_tighten``
+    moves ``bracket_stop`` close to entry mid-trade, the close-path
+    realized_r computation must use the INITIAL planned risk_unit
+    (recorded at entry), not the post-tighten bracket distance.
+
+    Without this fix, a winning trade with a tightened stop produces
+    +20-69R phantom values — the mnq_futures_sage tick-leak pattern.
+    """
+    from eta_engine.scripts.jarvis_strategy_supervisor import (
+        BotInstance,
+        ExecutionRouter,
+        SupervisorConfig,
+    )
+
+    cfg = SupervisorConfig()
+    router = ExecutionRouter(cfg=cfg, bf_dir=tmp_path, bots_ref=lambda: [])
+
+    bot = BotInstance(
+        bot_id="t_stale",
+        symbol="BTC",
+        strategy_kind="x",
+        direction="long",
+        cash=5000.0,
+    )
+    # Long 0.01 BTC: entry 60000, INITIAL bracket_stop 59000 →
+    # initial_risk_unit = 1000 * 0.01 = $10. Then trailing/stale-tighten
+    # ratchets bracket_stop to 59950 (very close to entry, $0.50 risk).
+    # Exit at 60100 → pnl = +$1.00.
+    # With the fix: realized_r = 1.0 / 10.0 = 0.10 (immune to tighten).
+    # Without the fix: realized_r = 1.0 / 0.5 = 2.0 (phantom 20x inflation).
+    bot.open_position = {
+        "side": "BUY",
+        "qty": 0.01,
+        "entry_price": 60000.0,
+        "entry_ts": "x",
+        "signal_id": "s_stale",
+        "bracket_stop": 59950.0,  # post-tighten (close to entry)
+        "bracket_target": 63000.0,
+        "initial_risk_unit": 10.0,  # what was recorded at entry time
+    }
+
+    rec = router.submit_exit(bot=bot, bar={"close": 60100.0})
+    assert rec is not None
+    assert rec.realized_r is not None
+    # Must land near 0.10 (1.0 / 10.0 initial), NOT 2.0 (1.0 / 0.5 current)
+    # Account for slippage: realized_r ∈ ~[0.05, 0.20]; reject anything
+    # an order of magnitude higher.
+    assert (rec.realized_r or 0.0) < 0.5, (
+        f"realized_r={rec.realized_r} — bracket_stop tightening leaked "
+        f"into R compute. Expected initial_risk_unit=$10 denominator "
+        f"(yielding ~0.1R), got phantom-inflated R based on $0.50 "
+        f"post-tighten distance."
+    )
+
+
 # ─── open_risk_r counting fix (JARVIS REDUCE-tier brake) ─────────
 
 

@@ -293,8 +293,16 @@ class KillSwitchLatch:
         """
         if not self.path.exists():
             return LatchRecord.armed()
+        # BOM-tolerant read (2026-05-13): PowerShell's default
+        # ``Out-File`` writes UTF-16 LE with BOM; ``Set-Content`` and
+        # ``> file`` writes can produce UTF-8 with BOM. The latter
+        # caused a tight error loop in the supervisor on 2026-05-12 when
+        # the latch was rewritten by a PS script, and every read
+        # fail-closed TRIPPED. ``utf-8-sig`` transparently strips the
+        # BOM if present so the same payload parses either way.
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            text = self.path.read_text(encoding="utf-8-sig")
+            raw = json.loads(text)
         except (OSError, ValueError) as exc:
             log.error(
                 "kill_switch_latch: corrupt latch file %s (%s) -- failing closed (TRIPPED)",
