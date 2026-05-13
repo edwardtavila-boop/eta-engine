@@ -152,6 +152,70 @@ def build_plan(
             [py, "-m", "eta_engine.scripts.extend_nq_daily_yahoo"],
         ),
     ]
+    # 2026-05-13: wave-25 active-fleet expansion. Every symbol an
+    # active bot trades gets a refresh entry so the inventory stays
+    # at 81/81 OK without manual ops. Daily bars added so the inventory
+    # doesn't show STALE for MNQ1/D, CL1/D, etc.
+    _active_fleet_symbols = [
+        # CME crypto micros (operator's active crypto path via IBKR; the
+        # Tradovate lane remains DORMANT per the broker-dormancy mandate
+        # — see configs/bot_broker_routing.yaml Appendix A).
+        ("MBT", "5m", "60d"),
+        ("MBT", "1h", "730d"),
+        ("MBT", "1d", "max"),
+        ("MET", "5m", "60d"),
+        ("MET", "1h", "730d"),
+        ("MET", "1d", "max"),
+        # Equity-index micros
+        ("M2K", "5m", "60d"),
+        ("M2K", "1h", "730d"),
+        ("MYM", "5m", "60d"),
+        ("MYM", "1h", "730d"),
+        ("YM", "5m", "60d"),
+        ("YM", "1h", "730d"),
+        ("MES", "5m", "60d"),  # MES included even though base ES is in main plan
+        ("MES", "1h", "730d"),
+        # Commodities + metals
+        ("GC", "5m", "60d"),
+        ("GC", "1h", "730d"),
+        ("GC", "1d", "max"),
+        ("MGC", "5m", "60d"),
+        ("MGC", "1h", "730d"),
+        ("CL", "5m", "60d"),
+        ("CL", "1h", "730d"),
+        ("CL", "1d", "max"),
+        ("MCL", "5m", "60d"),
+        ("MCL", "1h", "730d"),
+        ("NG", "5m", "60d"),
+        ("NG", "1h", "730d"),
+        ("NG", "1d", "max"),
+        # FX + rates
+        ("6E", "5m", "60d"),
+        ("6E", "1h", "730d"),
+        ("ZN", "5m", "60d"),
+        ("ZN", "1h", "730d"),
+        ("ZN", "1d", "max"),
+        # MNQ daily
+        ("MNQ", "1d", "max"),
+    ]
+    for sym, tf, period in _active_fleet_symbols:
+        plan.append(
+            PlanStep(
+                f"fleet_{sym.lower()}_{tf}",
+                [
+                    py, "-m", "eta_engine.scripts.fetch_index_futures_bars",
+                    "--symbol", sym, "--timeframe", tf, "--period", period,
+                ],
+            )
+        )
+    # VIX 1h (correlation requirement)
+    plan.append(
+        PlanStep(
+            "vix_1h",
+            [py, "-m", "eta_engine.scripts.fetch_market_context_bars", "--symbol", "VIX", "--timeframe", "1h"],
+        )
+    )
+
     if not skip_optional:
         plan.extend(
             [
@@ -163,6 +227,18 @@ def build_plan(
                 PlanStep(
                     "sol_onchain",
                     [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "SOL"],
+                    required=False,
+                ),
+                # Onchain BTC + ETH (Defillama + blockchain.info free APIs).
+                # Optional because failures shouldn't block the launch gate.
+                PlanStep(
+                    "btc_onchain",
+                    [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "BTC", "--days", "720"],
+                    required=False,
+                ),
+                PlanStep(
+                    "eth_onchain",
+                    [py, "-m", "eta_engine.scripts.fetch_onchain_history", "--symbol", "ETH", "--days", "720"],
                     required=False,
                 ),
             ]
