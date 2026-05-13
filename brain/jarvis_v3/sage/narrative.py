@@ -109,6 +109,17 @@ def _llm_narrative(report: SageReport, *, symbol: str = "") -> str:
     from eta_engine.brain.model_policy import TaskCategory
     from eta_engine.brain.multi_model import route_and_execute
 
+    # Wave-25c hotfix (2026-05-13): when per_school is empty (no
+    # school verdicts contributed to the report), the prompt below
+    # produces "Per-school verdicts:\n" followed by nothing. DeepSeek
+    # consistently returns an empty completion on these
+    # content-starved prompts, triggering the "empty response,
+    # falling back to template" log spam. Skip the FM call entirely
+    # and return the template directly — the template path already
+    # handles the empty case correctly.
+    if not report.per_school:
+        return _template_narrative(report, symbol=symbol)
+
     school_lines = "\n".join(
         f"  - {name}: bias={v.bias.value}, conviction={v.conviction:.2f}, rationale={v.rationale}"
         for name, v in report.per_school.items()

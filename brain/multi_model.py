@@ -303,7 +303,15 @@ def route_and_execute(
             chain_id=chain_id,
         )
     )
-    if cache_key:
+    # Wave-25c hotfix (2026-05-13): never cache empty responses. The
+    # initial cache implementation stored ANY MultiModelResponse,
+    # including the empty-string completions DeepSeek occasionally
+    # returns on certain narrative prompts. That turned the cache into
+    # an amplifier for the pre-existing llm_narrative "empty response,
+    # falling back to template" path — every identical retry within
+    # the 300s TTL hit the cached empty and immediately fell back.
+    # Now we only cache responses with non-empty text content.
+    if cache_key and (response.text or "").strip():
         _fm_cache_put(cache_key, response)
     return response
 
