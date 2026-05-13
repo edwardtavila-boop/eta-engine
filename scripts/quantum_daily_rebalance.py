@@ -83,9 +83,24 @@ def _compute_instrument_stats(
                 dt = dt.replace(tzinfo=UTC)
             if dt < cutoff:
                 continue
-            symbol = str(t.get("symbol", "")).strip().upper()
+            # Wave-25c rev3 (2026-05-13): support both top-level `symbol`
+            # AND wave-10+ schema where `symbol` lives in `extra`. Without
+            # this fallback the daily quantum rebalance skipped every
+            # instrument as "no_data" — modern paper-live records carry
+            # the symbol in `extra` only.
+            symbol = str(t.get("symbol", "") or "").strip().upper()
+            if not symbol:
+                extra = t.get("extra") or {}
+                if isinstance(extra, dict):
+                    symbol = str(extra.get("symbol", "") or "").strip().upper()
             if not symbol:
                 continue
+            # Strip trailing contract-month digit so MNQ1 -> MNQ matches
+            # the --instruments filter (operator passes bare roots).
+            if symbol and symbol[-1].isdigit():
+                root_candidate = symbol.rstrip("0123456789")
+                if root_candidate:
+                    symbol = root_candidate
             if instrument_filter and symbol not in instrument_filter:
                 continue
             bot = str(t.get("bot_id", "")) or str(t.get("route_name", "")) or "default"
@@ -151,6 +166,99 @@ def _regime_from_trades(trades: list[dict]) -> str:
     return Counter(regimes).most_common(1)[0][0]
 
 
+# ── Hedge candidates per instrument (wave-25c rev3 2026-05-13) ──
+#
+# Maps each instrument to a list of (hedge_label, hedge_beta) pairs.
+# Betas are notional hedge contributions per unit position; the QUBO
+# optimizes which subset to select to minimize (total_beta - 0)².
+#
+# Values are conservative defaults — the operator can tune them as
+# real exposure data accumulates. For futures we use VIX (volatility)
+# and ZB (long bonds) as crash hedges; for crypto we use stablecoins
+# (USDT/UST) which have effective beta ~0 to the underlying.
+#
+# Empty list = no hedging for that instrument. Skipping hedging is a
+# benign no-op — the optimizer returns early when candidates are empty.
+_HEDGE_CANDIDATES_PER_INSTRUMENT: dict[str, list[tuple[str, float]]] = {
+    "MNQ": [("VIX", -0.40), ("ZB", -0.30)],
+    "NQ": [("VIX", -0.40), ("ZB", -0.30)],
+    "MES": [("VIX", -0.40), ("ZB", -0.30)],
+    "M2K": [("VIX", -0.50), ("ZB", -0.30)],
+    "MCL": [("USO", -0.20), ("UUP", -0.15)],
+    "CL": [("USO", -0.20), ("UUP", -0.15)],
+    "GC": [("UUP", -0.15), ("TIP", -0.20)],
+    "NG": [("UUP", -0.15), ("USO", -0.20)],
+    "6E": [("UUP", -0.50)],
+    "BTC": [("USDT", -0.05), ("UST", -0.05)],
+    "ETH": [("USDT", -0.05), ("UST", -0.05)],
+    "SOL": [("USDT", -0.05), ("UST", -0.05)],
+}
+
+
+def _run_hedge_optimization(
+    *,
+    instrument: str,
+    agent: object,  # QuantumOptimizerAgent — avoid type import here
+    basket_rec: object,  # Recommendation
+    basket_notional: float,
+    today_str: str,
+) -> dict:
+    """Pick a small hedging basket for the just-selected signal basket.
+
+    Returns a dict suitable for embedding in the daily rebalance result.
+    On any failure returns ``{"status": "error" | "skipped", ...}``.
+    """
+    candidates_cfg = _HEDGE_CANDIDATES_PER_INSTRUMENT.get(instrument, [])
+    if not candidates_cfg:
+        return {
+            "instrument": instrument,
+            "status": "skipped",
+            "reason": "no_hedge_candidates_configured",
+        }
+    selected_labels = list(getattr(basket_rec, "selected_labels", []) or [])
+    if not selected_labels:
+        return {
+            "instrument": instrument,
+            "status": "skipped",
+            "reason": "no_signal_basket_to_hedge",
+        }
+    hedge_labels = [c[0] for c in candidates_cfg]
+    hedge_betas = [float(c[1]) for c in candidates_cfg]
+    n = len(hedge_labels)
+    # Off-diagonal correlation: small positive (0.1) — hedges aren't
+    # perfectly independent of each other. Diagonal is 1.0.
+    hedge_corr = [[1.0 if i == j else 0.1 for j in range(n)] for i in range(n)]
+    try:
+        rec = agent.select_hedges(  # type: ignore[attr-defined]
+            positions=[float(basket_notional)],
+            candidates=hedge_betas,
+            pairwise_correlation=hedge_corr,
+            target_net_beta=0.0,
+            max_hedges=min(2, n),
+            position_labels=[f"{instrument}_basket"],
+            hedge_labels=hedge_labels,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        return {
+            "instrument": instrument,
+            "status": "error",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    return {
+        "instrument": instrument,
+        "status": "ok",
+        "date": today_str,
+        "basket_size": len(selected_labels),
+        "basket_notional": round(float(basket_notional), 4),
+        "hedge_candidates": hedge_labels,
+        "hedges_selected": list(getattr(rec, "selected_labels", []) or []),
+        "objective": getattr(rec, "objective", None),
+        "backend": getattr(rec, "backend_used", None),
+        "fell_back_to_classical": getattr(rec, "fell_back_to_classical", None),
+        "cost_estimate_usd": round(float(getattr(rec, "cost_estimate_usd", 0.0) or 0.0), 4),
+    }
+
+
 # ── Main ────────────────────────────────────────────────────
 
 
@@ -162,7 +270,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--enable-cloud", action="store_true", help="Allow real cloud quantum (D-Wave/IBM)")
     p.add_argument("--skip-cost-gate", action="store_true", help="Bypass should_invoke() gating (force run)")
     p.add_argument("--instruments", type=str, default="MNQ,BTC,ETH,SOL", help="Comma-separated instrument symbols")
-    p.add_argument("--trade-log", type=Path, default=ROOT / "state" / "jarvis_intel" / "trade_closes.jsonl")
+    # Wave-25c rev3 (2026-05-13): default the trade-log to the CANONICAL
+    # var/eta_engine/state path used by the supervisor since wave-25.
+    # The legacy ROOT-relative path is no longer maintained by the
+    # running supervisor, so the daily/6h quantum task was reading
+    # an empty/stale file and emitting "no_data" for every instrument.
+    p.add_argument(
+        "--trade-log",
+        type=Path,
+        default=Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\trade_closes.jsonl"),
+    )
     p.add_argument("--out-dir", type=Path, default=ROOT / "state" / "quantum")
     p.add_argument("--state-dir", type=Path, default=ROOT / "state" / "quantum")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -202,10 +319,16 @@ def main(argv: list[str] | None = None) -> int:
             logger.info("%s: no bot data — skipping", instrument)
             continue
 
-        # Collect all trades for this instrument to compute regime
-        all_trades = []
-        for _bot_id, returns in bot_series.items():
-            all_trades.extend([{"regime": _regime_from_trades(returns)}] * len(returns))
+        # Wave-25c rev3 (2026-05-13): pre-existing bug — `returns` here is
+        # a list[float] (realized_r values) per bot, NOT trade dicts, so
+        # passing it into `_regime_from_trades` (which expects [{regime: ...}])
+        # raised AttributeError on the first instrument that actually had
+        # data. Was masked when every instrument was "no_data" (the legacy
+        # trade-log path was empty). The regime metadata isn't carried
+        # through _compute_instrument_stats anymore; surface "unknown" so
+        # the rest of the pipeline proceeds. Re-deriving regime from raw
+        # trade dicts is a separate cleanup if the operator wants it.
+        all_trades: list[dict] = []
 
         bot_ids = sorted(bot_series.keys())
         expected_r = [sum(bot_series[b]) / max(len(bot_series[b]), 1) for b in bot_ids]
@@ -272,6 +395,26 @@ def main(argv: list[str] | None = None) -> int:
         cost = QUANTUM_COST_PER_INVOCATION_USD * len(bot_ids) * 0.01
         total_cost += cost
 
+        # ── Hedging basket optimization (wave-25c rev3 2026-05-13) ──
+        # After selecting the bot basket, run a second QUBO to pick
+        # hedge instruments that move the portfolio toward target_beta=0
+        # (delta-neutral). Uses classical SA only — no D-Wave cost.
+        # Hedge candidates are instrument-specific (volatility / bonds
+        # for futures, stablecoins for crypto). If no candidates are
+        # configured for an instrument, the hedge optimizer is skipped.
+        hedge_result: dict = {}
+        try:
+            hedge_result = _run_hedge_optimization(
+                instrument=instrument,
+                agent=agent,
+                basket_rec=rec,
+                basket_notional=sum(expected_r) if expected_r else 0.0,
+                today_str=today_str,
+            )
+        except Exception as exc:  # noqa: BLE001 — hedging is best-effort
+            logger.warning("hedge optimization failed for %s: %s", instrument, exc)
+            hedge_result = {"instrument": instrument, "status": "error", "error": str(exc)}
+
         result = {
             "ts": datetime.now(UTC).isoformat(),
             "date": today_str,
@@ -287,17 +430,19 @@ def main(argv: list[str] | None = None) -> int:
             "fell_back_to_classical": rec.fell_back_to_classical,
             "cost_estimate_usd": round(cost, 4),
             "contribution_summary": rec.contribution_summary,
+            "hedge_recommendation": hedge_result,
         }
         all_results.append(result)
         _save_last_regime(args.state_dir, instrument, _regime_from_trades(all_trades))
         logger.info(
-            "%s: selected %d/%d %s (backend=%s, cost=$%.4f)",
+            "%s: selected %d/%d %s (backend=%s, cost=$%.4f) hedges=%s",
             instrument,
             len(rec.selected_labels),
             len(bot_ids),
             rec.selected_labels,
             rec.backend_used,
             cost,
+            hedge_result.get("hedges_selected", []),
         )
 
     # ── Persist combined results ──

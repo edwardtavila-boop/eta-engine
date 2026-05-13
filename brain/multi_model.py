@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from eta_engine.brain.cli_provider import (
@@ -230,6 +231,88 @@ def fm_cache_stats() -> dict[str, int]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Daily-spend circuit breaker (wave-25c rev3 2026-05-13)
+# ---------------------------------------------------------------------------
+# Hard cap on cumulative FM cost per UTC day. When tripped, route_and_execute
+# returns an empty MultiModelResponse so callers hit their template fallback
+# path. Prevents a runaway integration or stuck loop from blowing the daily
+# DeepSeek budget. Disable via ETA_FM_DAILY_CAP_USD=0. Default $5/day = ~10x
+# observed paper-soak rate.
+
+_FM_SPEND_LOCK = _threading.Lock()
+_FM_SPEND_DATE: str = ""
+_FM_SPEND_TODAY_USD: float = 0.0
+_FM_BREAKER_TRIPPED: bool = False
+_FM_BREAKER_TRIP_LOGGED: bool = False
+
+
+def _fm_daily_cap_usd() -> float:
+    """Per-UTC-day cumulative cost ceiling. 0 disables the breaker."""
+    try:
+        return float(os.environ.get("ETA_FM_DAILY_CAP_USD", "5.0"))
+    except ValueError:
+        return 5.0
+
+
+def _fm_today_key() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")
+
+
+def _fm_breaker_check_then_record(cost_usd: float) -> bool:
+    """Update the day's running total and decide whether the breaker is open.
+
+    Returns True if the call should be ALLOWED, False if the breaker is
+    tripped (caller should short-circuit to template). The cost_usd
+    argument is the SPENT cost of the call that just completed. Pre-call
+    checks read the running total without recording.
+    """
+    global _FM_SPEND_DATE, _FM_SPEND_TODAY_USD, _FM_BREAKER_TRIPPED, _FM_BREAKER_TRIP_LOGGED
+    cap = _fm_daily_cap_usd()
+    today = _fm_today_key()
+    with _FM_SPEND_LOCK:
+        if today != _FM_SPEND_DATE:
+            # New UTC day — reset rolling counters
+            _FM_SPEND_DATE = today
+            _FM_SPEND_TODAY_USD = 0.0
+            _FM_BREAKER_TRIPPED = False
+            _FM_BREAKER_TRIP_LOGGED = False
+        _FM_SPEND_TODAY_USD += float(cost_usd or 0.0)
+        if cap > 0 and _FM_SPEND_TODAY_USD >= cap:
+            _FM_BREAKER_TRIPPED = True
+            if not _FM_BREAKER_TRIP_LOGGED:
+                logger.warning(
+                    "FM daily-cap breaker TRIPPED: spent $%.4f >= $%.2f cap; "
+                    "subsequent calls will return empty MultiModelResponse "
+                    "(callers fall back to template).",
+                    _FM_SPEND_TODAY_USD,
+                    cap,
+                )
+                _FM_BREAKER_TRIP_LOGGED = True
+        return not _FM_BREAKER_TRIPPED
+
+
+def _fm_breaker_open() -> bool:
+    """Pre-call check: True if the breaker is currently tripped."""
+    today = _fm_today_key()
+    with _FM_SPEND_LOCK:
+        if today != _FM_SPEND_DATE:
+            # New day — implicit reset on next record
+            return False
+        return _FM_BREAKER_TRIPPED
+
+
+def fm_breaker_stats() -> dict[str, Any]:
+    """Operator-readable breaker state — surfaced via supervisor heartbeat."""
+    with _FM_SPEND_LOCK:
+        return {
+            "date": _FM_SPEND_DATE,
+            "spent_today_usd": round(_FM_SPEND_TODAY_USD, 4),
+            "cap_usd": round(_fm_daily_cap_usd(), 2),
+            "tripped": _FM_BREAKER_TRIPPED,
+        }
+
+
 def route_and_execute(
     *,
     category: TaskCategory,
@@ -287,6 +370,22 @@ def route_and_execute(
         if cached is not None:
             return cached
 
+    # Wave-25c rev3 (2026-05-13): daily-spend circuit breaker. If the
+    # cumulative cost this UTC day has exceeded ETA_FM_DAILY_CAP_USD
+    # (default $5/day), short-circuit by returning an empty response so
+    # callers fall through to their template path. Pre-call check is a
+    # cheap lock + flag read; the cost record happens after the call
+    # completes via _fm_breaker_check_then_record.
+    if _fm_breaker_open():
+        return MultiModelResponse(
+            text="",
+            provider=force_provider or force_provider_for(category),
+            model="",
+            fallback_used=True,
+            fallback_reason="fm_daily_cap_breaker_tripped",
+            category=category,
+        )
+
     selection = select_model(category)
     preferred = force_provider or force_provider_for(category)
 
@@ -326,6 +425,9 @@ def route_and_execute(
             chain_id=chain_id,
         )
     )
+    # Wave-25c rev3: record actual cost against the daily-spend breaker.
+    # If this call pushes us over the cap, subsequent calls short-circuit.
+    _fm_breaker_check_then_record(response.cost_usd)
     if cache_key:
         _fm_cache_put(cache_key, response)
     return response

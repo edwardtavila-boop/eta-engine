@@ -2047,6 +2047,9 @@ class JarvisStrategySupervisor:
         # Same shape, scoped to "halted by daily loss cap" so we log
         # once per (bot, session_date).
         self._daily_halt_logged: dict[tuple[str, str], bool] = {}
+        # Fleet-state JSON path — written after every tick so portfolio_brain
+        # has current notional exposure even when fleet_allocator is unavailable.
+        self._FLEET_STATE_PATH = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\fleet_state.json")
         self._strategy_readiness_mtime_ns: int | None = None
         self._strategy_readiness_by_bot: dict[str, dict[str, Any]] = {}
         self._strategy_readiness_block_logged: set[tuple[str, str]] = set()
@@ -3779,6 +3782,8 @@ class JarvisStrategySupervisor:
             payload["sage_composite_bias"] = sage_report.composite_bias.value
         else:
             payload["sage_score"] = 0.5
+            if bot.sage_bars:
+                payload["sage_bars"] = list(bot.sage_bars)
 
         verdict = self._consult_jarvis(
             bot=bot,
@@ -4622,7 +4627,7 @@ class JarvisStrategySupervisor:
         # engages on the same tick the first proper bracket gets computed,
         # halving the cold-start window where every entry uses fallback
         # geometry without sage modulation.
-        if len(bars) < 15:
+        if not bars:
             return None
         try:
             from eta_engine.brain.jarvis_v3.sage import MarketContext, consult_sage
@@ -5305,9 +5310,54 @@ class JarvisStrategySupervisor:
                 exc,
             )
 
+    # ── Fleet State Persistence ──────────────────────────────
+
+    def _write_fleet_state(self) -> None:
+        """Aggregate open positions from self.bots and write fleet_state.json.
+
+        Called from _write_heartbeat (every tick) so portfolio_brain
+        always has current notional exposure. Best-effort, never raises.
+        """
+        try:
+            long_by_asset: dict[str, float] = {}
+            short_by_asset: dict[str, float] = {}
+            for bot in self.bots:
+                pos = bot.open_position
+                if pos is None:
+                    continue
+                asset = bot.symbol.upper()
+                try:
+                    qty = float(pos.get("qty", 0) or 0)
+                    entry_price = float(pos.get("entry_price", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+                notional = abs(qty) * entry_price
+                side = str(pos.get("side", "")).upper()
+                if side == "BUY":
+                    long_by_asset[asset] = long_by_asset.get(asset, 0.0) + notional
+                else:
+                    short_by_asset[asset] = short_by_asset.get(asset, 0.0) + notional
+            data = {
+                "asof": datetime.now(UTC).isoformat(),
+                "long_notional_by_asset": long_by_asset,
+                "short_notional_by_asset": short_by_asset,
+                "n_bots_with_positions": sum(
+                    1 for b in self.bots if b.open_position is not None
+                ),
+            }
+            self._FLEET_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self._FLEET_STATE_PATH.write_text(
+                json.dumps(data, indent=2, default=str), encoding="utf-8"
+            )
+        except Exception as exc:
+            logger.warning("fleet_state.json write failed: %s", exc)
+
     # ── Heartbeat ───────────────────────────────────────────
 
     def _write_heartbeat(self, tick_count: int) -> None:
+        # Write fleet_state.json before the heartbeat so portfolio_brain
+        # always sees current exposure.
+        self._write_fleet_state()
         # The heartbeat path MUST NEVER crash the supervisor. A bad bot
         # whose ``to_state`` raises, a malformed strategy-readiness
         # snapshot, an unexpected feed_health serialization failure —
@@ -5354,12 +5404,30 @@ class JarvisStrategySupervisor:
             # Hermes / dashboard / red-team can subscribe to the
             # jarvis_v3_events.jsonl stream for live alerting.
             self._emit_feed_health_alerts(feed_health)
+            # Wave-25c rev2/rev3 (2026-05-13): surface FM cache hit rate
+            # AND daily-spend breaker state so the operator can see at a
+            # glance whether the LRU cache is paying off and whether the
+            # daily-cap circuit breaker is close to tripping. Both calls
+            # are cheap (just dict reads behind locks). Caught in
+            # suppress so future refactors of multi_model can never
+            # break the heartbeat write.
+            fm_cache: dict = {}
+            fm_breaker: dict = {}
+            with contextlib.suppress(Exception):
+                from eta_engine.brain.multi_model import (  # noqa: PLC0415
+                    fm_breaker_stats,
+                    fm_cache_stats,
+                )
+                fm_cache = fm_cache_stats()
+                fm_breaker = fm_breaker_stats()
             payload = {
                 "ts": datetime.now(UTC).isoformat(),
                 "tick_count": tick_count,
                 "mode": self.cfg.mode,
                 "feed": self.cfg.data_feed,
                 "feed_health": feed_health,
+                "fm_cache": fm_cache,
+                "fm_breaker": fm_breaker,
                 "order_entry_hold": load_order_entry_hold().to_dict(),
                 "live_money_enabled": self.cfg.live_money_enabled,
                 "n_bots": len(self.bots),
