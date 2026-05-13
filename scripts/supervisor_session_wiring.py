@@ -169,13 +169,24 @@ def build_session_gate(
         return None
     is_crypto = bool(flags.get("is_crypto"))
 
+    # 2026-05-13: CME crypto FUTURES (MBT, MET) trade 23/5 — they do NOT
+    # follow the 08:30-15:00 CT equity-index RTH window even though
+    # is_crypto is False in their edge_config (they ARE futures, just on
+    # a different schedule). Pre-fix, MBT/MET bots were blocked all day
+    # with reason=outside_rth or reason=eod_cutoff, which is why the
+    # crypto-futures fleet stopped producing trades on 2026-05-04 even
+    # though verdicts kept firing.
+    sym_upper = (symbol or "").upper()
+    is_cme_crypto_future = sym_upper.startswith(("MBT", "MET"))
+
     if is_crypto:
-        # Crypto bots trade 24/7. We still build a gate so the news
-        # blackout fires (CPI / FOMC affect crypto via cross-correlation
-        # with risk assets). Use UTC with a full-day window and put the
-        # EoD cutoff at the very end so should_flatten_eod never fires
-        # spuriously — crypto bots flatten on PnL/trailing logic, not
-        # a wall-clock cutoff.
+        # Spot crypto (BTC/ETH/SOL on Alpaca — currently CELLARED per
+        # 2026-05-13 operator directive, but the gate config remains
+        # correct for future re-opening). 24/7 trading; news blackout
+        # still fires because CPI/FOMC affect crypto via cross-asset
+        # correlation. EoD cutoff at end-of-day so should_flatten_eod
+        # never fires spuriously — spot crypto exits on PnL/trailing
+        # logic, not wall-clock.
         cfg = SessionGateConfig(
             timezone_name="UTC",
             rth_start_local=time(0, 0),
@@ -183,16 +194,34 @@ def build_session_gate(
             eod_cutoff_local=time(23, 59, 59),
             block_entries_during_news=True,
         )
+    elif is_cme_crypto_future:
+        # CME crypto micros (MBT, MET) — the operator's active crypto
+        # lane via IBKR. Tradovate stays DORMANT until explicit operator
+        # reactivation. CME quotes these 23 hours/day
+        # Sunday 17:00 - Friday 16:00 CT with a 1-hour daily halt at
+        # 16:00-17:00 CT. Within a single calendar day a simple
+        # "00:00 to 23:59" window approximates that without requiring
+        # cross-midnight wrap-around in _within_window. The 1-hour
+        # daily halt is handled at the broker layer (no fills during
+        # halt = no harm). EoD cutoff sits at end-of-day so daily-PNL
+        # flatten doesn't fire pre-emptively.
+        cfg = SessionGateConfig(
+            timezone_name="America/Chicago",
+            rth_start_local=time(0, 0),
+            rth_end_local=time(23, 59, 59),
+            eod_cutoff_local=time(23, 59, 59),
+            block_entries_during_news=True,
+        )
     else:
-        # Futures bots: default CME RTH (08:30-15:00 CT) with 15:59
-        # cutoff. Note the cutoff sits OUTSIDE the RTH window in the
-        # default config, so "outside_rth" wins over "eod_cutoff" for
-        # late bars; that's deliberate and matches the existing
-        # session_gate test suite. We extend the RTH end to 16:00 CT
-        # so the 15:59 cutoff has a chance to be the dominant reason
-        # for the final minute of the session — operators reviewing
-        # logs can distinguish "supervisor refused at the cutoff"
-        # from "we missed the close entirely".
+        # Equity-index + commodity futures (MNQ, ES, NQ, GC, CL, etc.):
+        # default CME RTH (08:30-15:00 CT) with 15:59 cutoff. Note the
+        # cutoff sits OUTSIDE the RTH window in the default config, so
+        # "outside_rth" wins over "eod_cutoff" for late bars; that's
+        # deliberate and matches the existing session_gate test suite.
+        # We extend the RTH end to 16:00 CT so the 15:59 cutoff has a
+        # chance to be the dominant reason for the final minute of the
+        # session — operators reviewing logs can distinguish "supervisor
+        # refused at the cutoff" from "we missed the close entirely".
         cfg = SessionGateConfig(
             timezone_name="America/Chicago",
             rth_start_local=time(8, 30),

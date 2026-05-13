@@ -1,9 +1,20 @@
 """Capital Allocation Engine — futures-first pool system with performance-weighted sizing.
 
-Pools:
-  FUTURES (100%): MNQ, NQ, MES, GC, CL, NG, ZN, EUR, MBT, MET via IBKR
-  SPOT (0%):       BTC, ETH, SOL bots via Alpaca until capital expands
-  LEVERAGED (0%):  retired sleeve; CME micro crypto futures live in FUTURES
+Pools (operator directive 2026-05-13):
+  FUTURES   (100%): MNQ, NQ, MES, GC, CL, NG, ZN, EUR via IBKR — primary fleet.
+                    *Crypto exposure*: CME micro crypto futures (MBT, MET) routed
+                    through IBKR. NOT Alpaca spot — Alpaca lane is CLOSED.
+                    Prop-firm crypto routes through Tradovate-when-enabled,
+                    behind ETA_TRADOVATE_ENABLED=1 + per-account credentials.
+  SPOT      (0%):   CLOSED per operator directive. BTC/ETH/SOL bots remain in
+                    the registry with extras.deactivated=True as audit anchors;
+                    re-opening requires both the venue layer AND the registry
+                    flag to be flipped together.
+  LEVERAGED (0%):   retired sleeve; CME micro crypto futures live in FUTURES.
+
+POOL_SPLIT defaults to {futures: 1.0, spot: 0.0, leveraged: 0.0}. Env override
+via ETA_POOL_*_FRAC is available for forward flexibility but should NOT be
+used to re-open spot without also re-opening the Alpaca venue lane.
 
 Within each pool, capital is allocated by multi-session performance:
   - Positive PnL across sessions → weighted higher

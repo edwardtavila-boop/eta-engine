@@ -194,6 +194,20 @@ except (TypeError, ValueError):
 PAPER_TEST_ACCOUNT_ID = "paper-test"
 PAPER_TEST_CAP_USD = _paper_test_cap
 
+# Accounts visible on the operator-facing dashboard. The REGISTRY below
+# keeps every prop-firm rule profile we've ever supported, so that
+# reintroducing one (signing the contract, depositing the eval fee) is
+# a single-line change to ACTIVE_ACCOUNTS — no re-typing rule sets.
+#
+# When apex/topstep/etf get reactivated (operator decision: signing a
+# new account or moving a paper-soaked bot to evaluation), add the
+# account_id here and the /prop dashboard picks them up immediately.
+ACTIVE_ACCOUNTS: frozenset[str] = frozenset({
+    "paper-test",          # research portfolio (unconstrained, $250K notional)
+    "blusky-50K-launch",   # only live prop firm we're targeting for 5/15 cutover
+})
+
+
 REGISTRY: dict[str, PropFirmRules] = {
     PAPER_TEST_ACCOUNT_ID: PropFirmRules(
         firm="paper-test",
@@ -278,14 +292,37 @@ REGISTRY: dict[str, PropFirmRules] = {
 }
 
 
-def list_known_accounts() -> list[str]:
-    """Return all registered account IDs."""
-    return sorted(REGISTRY.keys())
+def list_known_accounts(*, include_inactive: bool = False) -> list[str]:
+    """Return registered account IDs.
+
+    By default, returns only accounts in ``ACTIVE_ACCOUNTS`` (the
+    operator-facing dashboard subset). Pass ``include_inactive=True``
+    to get every account in REGISTRY — useful for ops/admin tools that
+    need to know about every rule profile, even retired ones.
+    """
+    if include_inactive:
+        return sorted(REGISTRY.keys())
+    return sorted(a for a in REGISTRY if a in ACTIVE_ACCOUNTS)
 
 
 def get_rules(account_id: str) -> PropFirmRules | None:
-    """Look up rules by account_id; returns None if not registered."""
+    """Look up rules by account_id; returns None if not registered.
+
+    Returns rules for ANY registered account regardless of active state
+    — callers that need active-only filtering should check
+    ``account_id in ACTIVE_ACCOUNTS`` separately.
+    """
     return REGISTRY.get(account_id)
+
+
+def is_account_active(account_id: str) -> bool:
+    """Return True iff this account is in the dashboard-visible subset.
+
+    Inactive accounts still have rule profiles available via
+    ``get_rules()`` so the operator can reintroduce them by adding to
+    ``ACTIVE_ACCOUNTS`` — no code re-write needed.
+    """
+    return account_id in ACTIVE_ACCOUNTS
 
 
 # ---------------------------------------------------------------------------
@@ -708,11 +745,21 @@ def aggregate_status(
     *,
     trade_closes_path: Path | None = None,
     asof: datetime | None = None,
+    include_inactive: bool = False,
 ) -> list[AccountSnapshot]:
-    """Return snapshots for every registered account, sorted by severity desc."""
+    """Return snapshots for the dashboard-visible accounts (sorted by severity desc).
+
+    By default, only accounts in ``ACTIVE_ACCOUNTS`` are included so
+    the /prop dashboard stays focused on the paper-test research
+    portfolio plus the live prop firm we're targeting. Pass
+    ``include_inactive=True`` for ops/admin views that need every
+    snapshot in REGISTRY (e.g. comparing rule profiles before signing
+    a new account).
+    """
     sev_order = {"blown": 0, "critical": 1, "warn": 2, "ok": 3}
     snaps: list[AccountSnapshot] = []
-    for account_id in REGISTRY:
+    targets = REGISTRY.keys() if include_inactive else (a for a in REGISTRY if a in ACTIVE_ACCOUNTS)
+    for account_id in targets:
         snap = snapshot_one(account_id, trade_closes_path=trade_closes_path, asof=asof)
         if snap is not None:
             snaps.append(snap)

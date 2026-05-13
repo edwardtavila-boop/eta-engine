@@ -137,6 +137,55 @@ class TestBuildSessionGate:
         # 24/7 window: cutoff sentinel at 23:59:59 — never fires in practice
         assert gate.config.eod_cutoff_local == time(23, 59, 59)
 
+    def test_cme_crypto_future_uses_23h_window(self) -> None:
+        """CME micro crypto futures (MBT/MET) trade 23/5 — they must NOT
+        get the equity-index RTH (08:30-15:00 CT) window which would
+        block them all day. Regression test for the 2026-05-04 silence:
+        verdicts kept firing for mbt_funding_basis but no trades executed
+        because the session gate blocked with reason=outside_rth.
+
+        See operator brief 2026-05-13: "crypto pipeline operating via
+        IBKR + Tradovate + prop firms" — MBT/MET are the active path.
+        """
+        for symbol in ("MBT", "MBT1", "MET", "MET1"):
+            gate = build_session_gate(symbol=symbol, extras=_futures_extras_with_gate())
+            assert gate is not None, f"gate not built for {symbol}"
+            assert gate.config.timezone_name == "America/Chicago"
+            # Must be wide enough that 08:00 CT (1 PM ET, pre-RTH for
+            # equity indices) is NOT outside the window.
+            assert gate.config.rth_start_local == time(0, 0), (
+                f"{symbol} would be blocked outside_rth — regression"
+            )
+            # EoD cutoff must NOT fire mid-day for MBT/MET — it's
+            # equity-index RTH that has the 15:59 cutoff, not CME crypto.
+            assert gate.config.eod_cutoff_local == time(23, 59, 59), (
+                f"{symbol} would be blocked eod_cutoff during normal "
+                f"23/5 hours — regression"
+            )
+
+    def test_cme_crypto_future_allows_overnight_entry(self) -> None:
+        """End-to-end: a 04:00 CT entry attempt on MBT must be allowed
+        (this is the exact hour mbt_funding_basis was blocked on 5/10)."""
+        gate = build_session_gate(symbol="MBT1", extras=_futures_extras_with_gate())
+        state = BotSessionState(gate=gate)
+        ok, reason = evaluate_pre_entry_gate(
+            state,
+            now=_ct_to_utc(2026, 5, 15, 4, 0),  # 04:00 CT = pre-equity-RTH
+        )
+        assert ok is True, f"MBT blocked at 04:00 CT with reason={reason}"
+
+    def test_equity_index_future_still_blocked_outside_rth(self) -> None:
+        """Sanity: the MBT/MET widening must NOT bleed into MNQ/ES/NQ.
+        Those continue to honor the 08:30-15:00 CT RTH window."""
+        gate = build_session_gate(symbol="MNQ", extras=_futures_extras_with_gate())
+        state = BotSessionState(gate=gate)
+        ok, reason = evaluate_pre_entry_gate(
+            state,
+            now=_ct_to_utc(2026, 5, 15, 4, 0),
+        )
+        assert ok is False
+        assert reason == "outside_rth"
+
 
 # ----------------------------------------------------------------------- #
 # evaluate_pre_entry_gate / should_flatten_now: state=None and gate=None paths

@@ -14,14 +14,22 @@ import pytest
 
 
 def test_registry_contains_known_firms() -> None:
+    """Every prop-firm rule profile we've ever supported must remain
+    in REGISTRY — that way reintroducing one (signing the contract,
+    moving a bot to evaluation) is a single ACTIVE_ACCOUNTS edit, not
+    a re-typing of the rule set."""
     from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
 
-    accounts = g.list_known_accounts()
-    assert "blusky-50K-launch" in accounts
-    assert "apex-50K-eval" in accounts
-    assert "apex-50K-funded" in accounts
-    assert "topstep-50K" in accounts
-    assert "etf-50K" in accounts
+    # REGISTRY keeps ALL accounts regardless of active state
+    assert "blusky-50K-launch" in g.REGISTRY
+    assert "apex-50K-eval" in g.REGISTRY
+    assert "apex-50K-funded" in g.REGISTRY
+    assert "topstep-50K" in g.REGISTRY
+    assert "etf-50K" in g.REGISTRY
+    # list_known_accounts(include_inactive=True) surfaces them all
+    accounts = g.list_known_accounts(include_inactive=True)
+    for aid in ("blusky-50K-launch", "apex-50K-eval", "apex-50K-funded", "topstep-50K", "etf-50K"):
+        assert aid in accounts
 
 
 def test_blusky_rules_match_known_policy() -> None:
@@ -352,9 +360,14 @@ def test_evaluate_consistency_rule_applies_to_profit_distribution() -> None:
 
 
 def test_aggregate_status_returns_all_registered(tmp_path: Path) -> None:
+    """aggregate_status(include_inactive=True) returns a snapshot for
+    every REGISTRY account, not just ACTIVE_ACCOUNTS."""
     from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
 
-    snaps = g.aggregate_status(trade_closes_path=tmp_path / "empty.jsonl")
+    snaps = g.aggregate_status(
+        trade_closes_path=tmp_path / "empty.jsonl",
+        include_inactive=True,
+    )
     assert len(snaps) == len(g.REGISTRY)
 
 
@@ -462,6 +475,80 @@ def test_paper_test_virtual_account_registered() -> None:
     assert r.profit_target is None
     assert r.starting_balance >= 50_000.0  # at least as large as a prop firm
     assert r.automation_allowed is True
+
+
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: ACTIVE_ACCOUNTS dashboard filter
+#
+# Operator brief: hide apex-50K-eval/funded, etf-50K, topstep-50K until
+# they're reintroduced into the mix with live or evaluation accounts.
+# The dashboard only shows paper-test + blusky-50K-launch by default.
+# Inactive rule profiles stay in REGISTRY so reintroducing one is a
+# single-line ACTIVE_ACCOUNTS edit, not a re-typing of the rule set.
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_active_accounts_set_pinned() -> None:
+    """ACTIVE_ACCOUNTS contains exactly the two operator-visible
+    accounts. Any change is a deliberate revision — fail loudly so a
+    silent edit can't accidentally hide BluSky or unhide a dormant
+    Apex/Topstep before the operator decides."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    assert frozenset({"paper-test", "blusky-50K-launch"}) == g.ACTIVE_ACCOUNTS, (
+        f"ACTIVE_ACCOUNTS drifted: {sorted(g.ACTIVE_ACCOUNTS)}"
+    )
+
+
+def test_list_known_accounts_filters_to_active_by_default() -> None:
+    """Default list_known_accounts() returns only ACTIVE_ACCOUNTS.
+    include_inactive=True returns every REGISTRY key."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    active = g.list_known_accounts()
+    assert set(active) == g.ACTIVE_ACCOUNTS
+    all_accts = g.list_known_accounts(include_inactive=True)
+    assert set(all_accts) == set(g.REGISTRY.keys())
+    # All inactive accounts are present in the include_inactive list
+    for inactive in {"apex-50K-eval", "apex-50K-funded", "etf-50K", "topstep-50K"}:
+        assert inactive in all_accts
+
+
+def test_is_account_active_check() -> None:
+    """is_account_active returns True only for ACTIVE_ACCOUNTS."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    assert g.is_account_active("paper-test") is True
+    assert g.is_account_active("blusky-50K-launch") is True
+    assert g.is_account_active("apex-50K-eval") is False
+    assert g.is_account_active("topstep-50K") is False
+    assert g.is_account_active("nonexistent") is False
+
+
+def test_get_rules_still_works_for_inactive() -> None:
+    """get_rules returns the rule set for any registered account,
+    including inactive ones. This is the path operators use to preview
+    a rule profile before reintroducing the account."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    apex = g.get_rules("apex-50K-eval")
+    assert apex is not None
+    assert apex.firm == "apex"
+    assert apex.starting_balance == 50_000.0
+
+
+def test_aggregate_status_default_excludes_inactive(tmp_path: Path) -> None:
+    """aggregate_status() default returns only ACTIVE_ACCOUNTS snapshots."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(path, [])
+    snaps = g.aggregate_status(trade_closes_path=path)
+    aids = {s.rules.account_id for s in snaps}
+    assert aids == g.ACTIVE_ACCOUNTS
+    snaps_all = g.aggregate_status(trade_closes_path=path, include_inactive=True)
+    aids_all = {s.rules.account_id for s in snaps_all}
+    assert aids_all == set(g.REGISTRY.keys())
 
 
 def test_paper_test_catches_untagged_paper_trades(tmp_path: Path) -> None:

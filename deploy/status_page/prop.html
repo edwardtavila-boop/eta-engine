@@ -88,7 +88,31 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
 </div>
 <div class="container">
   <div id="accounts" class="account-grid"></div>
+  <h2 style="margin: 2rem 0 1rem; font-size: 1rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1.5px;">Market Data Pipeline</h2>
+  <div id="data-status" class="data-status"></div>
 </div>
+<style>
+.data-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1.5rem;margin-bottom:2rem}
+.data-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.25rem}
+.data-card h3{font-size:.7rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:.85rem}
+.data-card .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1rem}
+.data-card .sm{background:var(--bg);border-radius:6px;padding:.5rem .75rem;text-align:center}
+.data-card .sm .label{font-size:.55rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.data-card .sm .value{font-size:1.1rem;font-weight:700;margin-top:.2rem}
+.data-card table{width:100%;font-size:.7rem;border-collapse:collapse}
+.data-card td,.data-card th{padding:.35rem .5rem;text-align:left;border-bottom:1px solid var(--border)}
+.data-card th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:.6rem;letter-spacing:.5px}
+.data-card .live{color:var(--green)}
+.data-card .stale-row{color:var(--yellow)}
+.data-card .missing-row{color:var(--red)}
+.data-card .task-row{display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border);font-size:.75rem}
+.data-card .task-row:last-child{border-bottom:none}
+.data-card .task-row .name{color:var(--text)}
+.data-card .task-row .status-ok{color:var(--green)}
+.data-card .task-row .status-warn{color:var(--yellow)}
+.data-card .task-row .status-err{color:var(--red)}
+.empty-cell{color:var(--dim);font-style:italic}
+</style>
 <div class="footer">
   ETA Prop Firm Dashboard · auto-refresh every 10 seconds · data via <code>/api/prop/snapshot</code>
 </div>
@@ -261,6 +285,112 @@ function render_account(snap) {
     </div>`;
 }
 
+function render_data_status(ds) {
+  if (!ds) return `<div class="data-card"><h3>Loading…</h3></div>`;
+  const cat = ds.catalog || {};
+  const cat_summary = cat.summary || {};
+  const by_status = cat_summary.by_status || {};
+  const live = ds.live_signals || {};
+  const tasks = ds.capture_tasks || [];
+
+  // Catalog card
+  const catalog_html = `
+    <div class="data-card">
+      <h3>Data Catalog (historical bars)</h3>
+      <div class="summary-grid">
+        <div class="sm"><div class="label">Datasets</div><div class="value">${cat.n_datasets ?? "—"}</div></div>
+        <div class="sm"><div class="label">Stale</div><div class="value yellow">${by_status.STALE ?? 0}</div></div>
+        <div class="sm"><div class="label">Missing</div><div class="value red">${by_status.MISSING ?? 0}</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Symbol</th><th>TF</th><th>Status</th><th>End</th><th>Rows</th></tr></thead>
+        <tbody>
+          ${(cat.active_symbol_rows || []).slice(0, 18).map(r => {
+            const status_cls = r.status === "FRESH" ? "live" :
+              (r.status === "STALE" ? "stale-row" :
+              (r.status === "MISSING" ? "missing-row" : ""));
+            return `<tr class="${status_cls}">
+              <td>${r.symbol}</td>
+              <td>${r.timeframe}</td>
+              <td>${r.status}</td>
+              <td>${r.end ? String(r.end).slice(0, 16) : "—"}</td>
+              <td>${r.rows ?? "—"}</td>
+            </tr>`;
+          }).join("") || `<tr><td colspan="5" class="empty-cell">No active-symbol rows in catalog</td></tr>`}
+        </tbody>
+      </table>
+      <div style="margin-top:.75rem;font-size:.7rem;color:var(--dim)">
+        Last inventory: ${cat.ts ? String(cat.ts).slice(0, 19) : "—"}
+      </div>
+    </div>
+  `;
+
+  // Live signals card — proves the in-memory IBKR feed IS working
+  // even when the historical catalog is stale.
+  const sig_total = live.n_verdicts_total ?? 0;
+  const sig_table = (live.per_subsystem || []).slice(0, 12).map(s =>
+    `<tr>
+      <td>${s.subsystem}</td>
+      <td>${s.n_verdicts_6h.toLocaleString()}</td>
+      <td>${s.most_recent_ts ? String(s.most_recent_ts).slice(11, 19) : "—"}</td>
+    </tr>`
+  ).join("");
+  const live_html = `
+    <div class="data-card">
+      <h3>Live Signal Activity (last 6h)</h3>
+      <div class="summary-grid">
+        <div class="sm"><div class="label">Verdicts</div><div class="value ${sig_total > 0 ? "green" : "red"}">${sig_total.toLocaleString()}</div></div>
+        <div class="sm"><div class="label">Subsystems</div><div class="value">${(live.per_subsystem || []).length}</div></div>
+        <div class="sm"><div class="label">Window</div><div class="value">${live.window_hours || 6}h</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Subsystem</th><th>Verdicts</th><th>Most recent</th></tr></thead>
+        <tbody>${sig_table || `<tr><td colspan="3" class="empty-cell">No live verdicts in window</td></tr>`}</tbody>
+      </table>
+      <div style="margin-top:.75rem;font-size:.7rem;color:var(--dim)">
+        Non-zero counts confirm IBKR live bars are reaching the supervisor.
+      </div>
+    </div>
+  `;
+
+  // Capture tasks card
+  const tasks_html = `
+    <div class="data-card">
+      <h3>Capture Tasks (scheduled)</h3>
+      ${tasks.map(t => {
+        const status_class = !t.exists ? "status-err" :
+          (t.status === "Running" ? "status-ok" :
+          (t.status === "Ready" ? "status-ok" : "status-warn"));
+        const result = t.last_result || "—";
+        const result_is_ok = result === "0" || result === "267011";
+        return `<div class="task-row">
+          <div>
+            <div class="name">${t.name}</div>
+            <div style="font-size:.65rem;color:var(--dim)">last: ${t.last_run || "—"} · next: ${t.next_run || "—"}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="${status_class}">${t.status || t.error || "—"}</div>
+            <div style="font-size:.65rem;color:${result_is_ok && result !== "267011" ? "var(--green)" : "var(--yellow)"}">rc=${result}</div>
+          </div>
+        </div>`;
+      }).join("") || `<div class="empty-cell">No capture tasks found</div>`}
+    </div>
+  `;
+
+  return catalog_html + live_html + tasks_html;
+}
+
+async function refresh_data_status() {
+  try {
+    const res = await fetch("/api/data/status");
+    const ds = await res.json();
+    document.getElementById("data-status").innerHTML = render_data_status(ds);
+  } catch (err) {
+    document.getElementById("data-status").innerHTML =
+      `<div class="data-card"><h3>Error</h3><div class="red">${err.message}</div></div>`;
+  }
+}
+
 async function refresh() {
   try {
     const res = await fetch("/api/prop/snapshot");
@@ -281,7 +411,9 @@ async function refresh() {
 }
 
 refresh();
+refresh_data_status();
 setInterval(refresh, 10000);
+setInterval(refresh_data_status, 30000);
 </script>
 </body>
 </html>

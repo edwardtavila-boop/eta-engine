@@ -23,8 +23,8 @@ import json
 import os
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 TEST_BOT_IDS = frozenset(
     {
@@ -58,14 +58,13 @@ def main() -> int:
         return 2
 
     if args.backup is None:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         backup = src.with_name(src.name + f".preBackfill.{ts}.bak")
     else:
         backup = Path(args.backup)
 
-    if not args.dry_run:
-        if not backup.exists():
-            shutil.copy2(src, backup)
+    if not args.dry_run and not backup.exists():
+        shutil.copy2(src, backup)
 
     tmp = src.with_name(src.name + ".backfill.tmp")
 

@@ -3399,8 +3399,14 @@ def prop_page() -> HTMLResponse:
 
 
 @app.get("/api/prop/snapshot")
-def api_prop_snapshot_all() -> dict:
-    """Return snapshots for all registered prop accounts.
+def api_prop_snapshot_all(include_inactive: bool = False) -> dict:
+    """Return snapshots for prop accounts visible on the operator dashboard.
+
+    By default returns only ``ACTIVE_ACCOUNTS`` (paper-test +
+    blusky-50K-launch). Pass ``?include_inactive=true`` to see every
+    registered account — useful for ops audits and for previewing what
+    the dashboard would look like once a dormant account gets
+    reintroduced.
 
     Each snapshot includes the rule set, computed state (day PnL,
     high-water mark, open contracts), and headroom values for every
@@ -3411,11 +3417,12 @@ def api_prop_snapshot_all() -> dict:
         from eta_engine.brain.jarvis_v3 import prop_firm_guardrails
     except ImportError as exc:
         return {"error": f"prop_firm_guardrails import failed: {exc}", "accounts": []}
-    snaps = prop_firm_guardrails.aggregate_status()
+    snaps = prop_firm_guardrails.aggregate_status(include_inactive=include_inactive)
     return {
         "asof": datetime.now(UTC).isoformat(),
         "accounts": [s.to_dict() for s in snaps],
         "n_accounts": len(snaps),
+        "include_inactive": include_inactive,
         "schema_version": 1,
     }
 
@@ -3439,15 +3446,196 @@ def api_prop_snapshot_one(account_id: str) -> dict:
     }
 
 
+@app.get("/api/data/status")
+def api_data_status() -> dict:
+    """Snapshot of the market data pipeline: catalog freshness, live signal
+    coverage, capture task health.
+
+    Three slices:
+      1. ``catalog`` — read from var/eta_engine/state/data_inventory.json,
+         counts STALE / FRESH / MISSING per requirement.
+      2. ``live_signals`` — last-6h verdicts.jsonl per subsystem; non-zero
+         means the supervisor IS receiving bars for that bot/symbol via the
+         in-memory feed, regardless of whether the historical file cache is
+         stale.
+      3. ``capture_tasks`` — scheduled-task health (last result, next run).
+
+    This is the operator-facing answer to "is market data flowing?" — the
+    catalog and the live signals can diverge (historical files stale but
+    live IBKR feed working), and the dashboard makes that distinction
+    explicit so the operator doesn't have to grep two files.
+    """
+    out: dict = {
+        "asof": datetime.now(UTC).isoformat(),
+        "catalog": {},
+        "live_signals": {},
+        "capture_tasks": [],
+        "schema_version": 1,
+    }
+
+    # 1. Catalog
+    catalog_path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\data_inventory.json")
+    if catalog_path.exists():
+        try:
+            inv = json.loads(catalog_path.read_text(encoding="utf-8"))
+            by_dataset = inv.get("by_dataset") or {}
+            summary = inv.get("summary") or {}
+            # Build per-symbol freshness table for the active fleet symbols
+            active_symbols = {
+                "MNQ1", "M2K1", "MYM1", "MES1", "NQ1",
+                "GC", "MGC", "CL", "MCL", "NG",
+                "6E1", "EUR", "ZN",
+                "MBT1", "MET1",
+            }
+            per_symbol_rows = []
+            for key in sorted(by_dataset.keys()):
+                # keys look like "bars:MNQ1/5m" — extract symbol
+                if ":" not in key:
+                    continue
+                kind, rest = key.split(":", 1)
+                if kind != "bars":
+                    continue
+                if "/" not in rest:
+                    continue
+                sym, tf = rest.split("/", 1)
+                if sym not in active_symbols:
+                    continue
+                v = by_dataset.get(key) or {}
+                if not isinstance(v, dict):
+                    continue
+                per_symbol_rows.append({
+                    "key": key,
+                    "symbol": sym,
+                    "timeframe": tf,
+                    "status": v.get("status", "?"),
+                    "end": v.get("end"),
+                    "rows": v.get("rows"),
+                    "path": v.get("path", ""),
+                })
+            out["catalog"] = {
+                "ts": inv.get("ts"),
+                "schema_version": inv.get("schema_version"),
+                "summary": summary,
+                "n_datasets": len(by_dataset),
+                "active_symbol_rows": per_symbol_rows,
+            }
+        except (OSError, ValueError) as exc:
+            out["catalog"] = {"error": f"inventory read failed: {exc}"}
+    else:
+        out["catalog"] = {"error": "no data_inventory.json on disk"}
+
+    # 2. Live signals (last 6h verdicts per subsystem)
+    verdicts_path = Path(r"C:\EvolutionaryTradingAlgo\var\eta_engine\state\jarvis_intel\verdicts.jsonl")
+    if verdicts_path.exists():
+        try:
+            from collections import defaultdict
+            from datetime import timedelta as _td
+            cutoff = datetime.now(UTC) - _td(hours=6)
+            per_subsys: dict[str, int] = defaultdict(int)
+            most_recent_ts: dict[str, str] = {}
+            with verdicts_path.open(encoding="utf-8") as fh:
+                for raw in fh:
+                    if not raw.strip():
+                        continue
+                    try:
+                        rec = json.loads(raw)
+                    except Exception:
+                        continue
+                    ts_str = str(rec.get("ts", ""))
+                    try:
+                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    except Exception:
+                        continue
+                    if ts < cutoff:
+                        continue
+                    subsys = rec.get("subsystem", "?")
+                    per_subsys[subsys] += 1
+                    if ts_str > most_recent_ts.get(subsys, ""):
+                        most_recent_ts[subsys] = ts_str
+            out["live_signals"] = {
+                "window_hours": 6,
+                "n_verdicts_total": sum(per_subsys.values()),
+                "per_subsystem": [
+                    {
+                        "subsystem": s,
+                        "n_verdicts_6h": n,
+                        "most_recent_ts": most_recent_ts.get(s, ""),
+                    }
+                    for s, n in sorted(per_subsys.items(), key=lambda x: x[1], reverse=True)
+                ],
+            }
+        except OSError as exc:
+            out["live_signals"] = {"error": f"verdicts read failed: {exc}"}
+    else:
+        out["live_signals"] = {"error": "no verdicts.jsonl on disk"}
+
+    # 3. Capture tasks — query schtasks for the data feeds
+    out["capture_tasks"] = _data_capture_task_status()
+
+    return out
+
+
+def _data_capture_task_status() -> list[dict]:
+    """Return Windows scheduled-task state for the data-capture tasks
+    (ETA-CaptureDepth, ETA-CaptureTicks, ETA-Data-Inventory,
+    VpsIbkrBbo1mCapture). Lazy import so a non-Windows test harness
+    doesn't import subprocess at module load."""
+    import subprocess  # noqa: PLC0415
+    targets = (
+        "ETA-CaptureDepth",
+        "ETA-CaptureTicks",
+        "ETA-Data-Inventory",
+        "VpsIbkrBbo1mCapture",
+    )
+    out: list[dict] = []
+    for name in targets:
+        row: dict = {"name": name, "exists": False}
+        try:
+            proc = subprocess.run(
+                ["schtasks", "/query", "/tn", name, "/v", "/fo", "list"],
+                check=False, capture_output=True, text=True, timeout=10,
+            )
+            if proc.returncode != 0:
+                row["error"] = "task not found"
+                out.append(row)
+                continue
+            row["exists"] = True
+            for line in proc.stdout.splitlines():
+                if ":" not in line:
+                    continue
+                k, _, v = line.partition(":")
+                k = k.strip()
+                v = v.strip()
+                if k == "Status":
+                    row["status"] = v
+                elif k == "Last Run Time":
+                    row["last_run"] = v
+                elif k == "Last Result":
+                    row["last_result"] = v
+                elif k == "Next Run Time":
+                    row["next_run"] = v
+        except Exception as exc:  # noqa: BLE001
+            row["error"] = str(exc)
+        out.append(row)
+    return out
+
+
 @app.get("/api/prop/accounts")
-def api_prop_accounts() -> dict:
-    """Return the list of registered account_ids + their firms."""
+def api_prop_accounts(include_inactive: bool = False) -> dict:
+    """Return registered account_ids + their firms.
+
+    Honors ``ACTIVE_ACCOUNTS`` by default — the 4 dormant Apex/Topstep/
+    ETF accounts stay hidden until the operator reintroduces them by
+    editing the ``ACTIVE_ACCOUNTS`` set in
+    ``prop_firm_guardrails.py``. Pass ``?include_inactive=true`` to
+    surface every registered rule profile.
+    """
     try:
         from eta_engine.brain.jarvis_v3 import prop_firm_guardrails
     except ImportError as exc:
         return {"error": f"prop_firm_guardrails import failed: {exc}", "accounts": []}
     accts = []
-    for aid in prop_firm_guardrails.list_known_accounts():
+    for aid in prop_firm_guardrails.list_known_accounts(include_inactive=include_inactive):
         rules = prop_firm_guardrails.REGISTRY.get(aid)
         if rules is None:
             continue
@@ -3460,11 +3648,13 @@ def api_prop_accounts() -> dict:
             "trailing_drawdown": rules.trailing_drawdown,
             "profit_target": rules.profit_target,
             "automation_allowed": rules.automation_allowed,
+            "active": prop_firm_guardrails.is_account_active(aid),
         })
     return {
         "asof": datetime.now(UTC).isoformat(),
         "accounts": accts,
         "n_accounts": len(accts),
+        "include_inactive": include_inactive,
     }
 
 

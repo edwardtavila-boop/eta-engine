@@ -3,10 +3,27 @@
 #
 # Maps bot_id -> {venue, normalized_symbol}.
 # Bot IDs are extracted from filename: <bot_id>.pending_order.json
+#
+# ── 2026-05-13 operator directive: CME-FUTURES-CRYPTO LANE ONLY ──
+# Alpaca spot crypto stays CLOSED until further notice. The active
+# crypto pipeline is CME micro-crypto FUTURES (MBT/MET) routed through:
+#   * IBKR primary  — every MBT/MET signal lands here under the default
+#                     symbol_overrides at the bottom of this file.
+#   * Tradovate     — second-stage routing for prop-firm accounts
+#                     (BluSky 50K, MFFU 50K). Stays DORMANT at the
+#                     venue layer until ETA_TRADOVATE_ENABLED=1 AND
+#                     the per-account credentials are populated in env.
+# Spot crypto bots (BTC/ETH/SOL) remain pinned to alpaca purely as a
+# replay/audit anchor — their bot assignments carry extras.deactivated
+# = True so they don't actually consume signals.  Do not promote a
+# spot-crypto bot back into the active fleet without re-opening the
+# venue at the routing layer AND clearing the deactivated flag.
+#
 # Venue values:
-#   "ibkr"   -> LiveIbkrVenue   (PRIMARY active futures broker)
-#   "tasty"  -> TastytradeVenue (SECONDARY futures broker; cert sandbox lacks crypto)
-#   "alpaca" -> AlpacaVenue     (PAUSED/CELLARED spot-paper lane as of 2026-05-12)
+#   "ibkr"      -> LiveIbkrVenue        (PRIMARY active futures broker)
+#   "tasty"     -> TastytradeVenue      (SECONDARY futures broker; cert sandbox lacks crypto)
+#   "tradovate" -> TradovateVenue       (DORMANT; prop-firm path, gated by ETA_TRADOVATE_ENABLED)
+#   "alpaca"    -> AlpacaVenue          (CLOSED; spot-paper replay anchor only)
 #
 # Workspace hard rule #2: Tradovate stays DORMANT unless the operator
 # explicitly reactivates it (ETA_TRADOVATE_ENABLED=1) AND updates
@@ -51,14 +68,26 @@ version: 2
 
 defaults:
   futures: ibkr
+  # Spot crypto is CLOSED per 2026-05-13 operator directive. CME crypto
+  # MICRO FUTURES (MBT/MET) handle all crypto exposure via the futures
+  # default above. The `alpaca` entry remains for back-compat with the
+  # explicit per-bot pins below (BTC/ETH/SOL spot bots that we keep
+  # in the registry for replay) but no NEW classifier-driven crypto
+  # routing happens here — every active crypto-exposure bot lists its
+  # symbol in symbol_overrides below and uses futures default.
   crypto: alpaca
   # equity: alpaca   # reserved — flip on when equity routing lands
 
 failover:
-  # Crypto: alpaca primary, tasty becomes a real fallback once tasty
-  # cert/live crypto enablement lands (api.support email pending).
+  # Crypto failover chain (only triggers for the legacy spot pins).
+  # No-op while spot crypto is closed; left in place so re-opening
+  # spot doesn't require a chain redefinition.
   crypto: [alpaca, tastytrade]
-  # Futures: ibkr primary, tasty as the secondary FCM.
+  # Futures: ibkr primary, tasty as the secondary FCM. This is the
+  # path MBT/MET signals travel — IBKR first, tastytrade if IBKR's
+  # circuit is open. tastytrade cert lacks CME crypto micros today
+  # so failover would route to a deterministic reject, which the
+  # operator wants surfaced rather than silently swallowed.
   futures: [ibkr, tastytrade]
 
 # Approved 2026-05-08 prop-test account aliases. These do not route
