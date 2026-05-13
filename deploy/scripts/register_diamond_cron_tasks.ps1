@@ -179,10 +179,30 @@ $dailyTasks = @(
     @{ Name = "ETA-Diamond-DemotionGateDaily"
         Args = "-m eta_engine.scripts.diamond_demotion_gate"
         Desc = "Diamond: KEEP/WATCH/DEMOTE_CANDIDATE recommendation (advisory only -- never auto-mutates DIAMOND_BOTS)" }
+    @{ Name = "ETA-Diamond-LivePaperDriftDaily"
+        Args = "-m eta_engine.scripts.diamond_live_paper_drift"
+        Desc = "Diamond: live-vs-paper drift detector (wave-25l). Joins live and paper trade-closes by signal_id; reports fill_price / pnl / R / qty drift. No-op until live trades land." }
 )
 
 foreach ($t in $dailyTasks) {
     Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $dailyTrigger
+}
+
+# -- ONE-SHOT CADENCE -- Monday first-light check (09:25 ET = 13:25 UTC; DST aware)
+# This task fires once at 09:25 ET on the next occurrence of that wallclock.
+# The trigger is "Daily at 09:25 ET, RTH-day-only via embedded date filter".
+# Operator can manually re-arm via Start-ScheduledTask -TaskName <name> for
+# subsequent prop-launch mornings.
+$firstLightTrigger = New-ScheduledTaskTrigger -Daily -At "9:25 AM"
+
+$oneShotTasks = @(
+    @{ Name = "ETA-Diamond-FirstLightCheck"
+        Args = "-m eta_engine.scripts.monday_first_light_check"
+        Desc = "Diamond: 09:25 ET first-light verification (wave-25l). Five checks (supervisor / drawdown / lifecycle / alerts / gate activity); pushes GO/HOLD/NO_GO Telegram message." }
+)
+
+foreach ($t in $oneShotTasks) {
+    Register-DiamondTask -Name $t.Name -TaskArgs $t.Args -Desc $t.Desc -Trigger $firstLightTrigger
 }
 
 Write-Host ""
