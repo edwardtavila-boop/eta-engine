@@ -744,6 +744,13 @@ function formatIsoDate(value) {
   return parts ? `${parts.year}-${parts.month}-${parts.day}` : '';
 }
 
+function formatCalendarDate(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  return formatIsoDate(value);
+}
+
 function brokerHasPnlTruth(liveBroker) {
   return finiteNumber(liveBroker?.today_realized_pnl) != null
     || finiteNumber(liveBroker?.total_unrealized_pnl) != null;
@@ -776,7 +783,7 @@ function brokerMtdSourceLabel(liveBroker = null) {
 function brokerMtdEvidence(liveBroker = null) {
   const value = finiteNumber(liveBroker?.broker_mtd_pnl ?? liveBroker?.ibkr?.account_mtd_pnl);
   const returnPct = finiteNumber(liveBroker?.broker_mtd_return_pct ?? liveBroker?.ibkr?.account_mtd_return_pct);
-  const baselineDate = formatIsoDate(liveBroker?.ibkr?.account_mtd_baseline_set_at);
+  const baselineDate = formatCalendarDate(liveBroker?.ibkr?.account_mtd_baseline_set_at);
   const rawSource = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
   const error = String(liveBroker?.ibkr?.account_mtd_error || '').trim();
   if (value == null) {

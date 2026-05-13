@@ -45,6 +45,10 @@ LEGACY_RELATIVES = (
     ("legacy_runtime_supervisor", Path("supervisor") / "heartbeat.json"),
     ("legacy_eta_supervisor", Path("state") / "supervisor" / "heartbeat.json"),
 )
+MOCK_RELATIVES = (
+    ("mock_runtime_supervisor", Path("jarvis_intel") / "supervisor_mock" / "heartbeat.json"),
+    ("mock_runtime_supervisor_keepalive", Path("jarvis_intel") / "supervisor_mock" / "heartbeat_keepalive.json"),
+)
 
 
 @dataclass
@@ -184,6 +188,10 @@ def _candidate_paths(*, state_root: Path, eta_engine_root: Path) -> list[tuple[s
     ]
 
 
+def _mock_candidate_paths(*, state_root: Path) -> list[tuple[str, Path]]:
+    return [(label, state_root / relative) for label, relative in MOCK_RELATIVES]
+
+
 def inspect_keepalive(
     path: Path,
     *,
@@ -268,10 +276,17 @@ def build_supervisor_heartbeat_report(
         inspect_heartbeat_candidate(label, path, now=now, threshold_minutes=threshold_minutes)
         for label, path in _candidate_paths(state_root=state_root, eta_engine_root=eta_engine_root)
     ]
+    mock_candidates = [
+        inspect_heartbeat_candidate(label, path, now=now, threshold_minutes=threshold_minutes)
+        for label, path in _mock_candidate_paths(state_root=state_root)
+    ]
     canonical = candidates[0]
     legacy_candidates = candidates[1:]
     existing = [candidate for candidate in candidates if candidate.age_seconds is not None]
     latest = min(existing, key=lambda candidate: candidate.age_seconds) if existing else None
+    fresh_mock = [
+        candidate for candidate in mock_candidates if candidate.exists and candidate.readable and candidate.fresh
+    ]
 
     keepalive_path = state_root / KEEPALIVE_RELATIVE
     keepalive = inspect_keepalive(
@@ -391,6 +406,15 @@ def build_supervisor_heartbeat_report(
             "docs/SUPERVISOR_HEARTBEAT_RUNBOOK.md 'Boot-refusal pattern'."
         )
 
+    if fresh_mock and not healthy:
+        warnings.append(
+            "A mock supervisor heartbeat is fresh, but mock state does not satisfy live supervisor readiness."
+        )
+        action_items.append(
+            "Keep supervisor_mock isolated from live readiness; "
+            "start ETA-Jarvis-Strategy-Supervisor for canonical health."
+        )
+
     return {
         "ts": now.isoformat(),
         "healthy": healthy,
@@ -406,6 +430,7 @@ def build_supervisor_heartbeat_report(
         "warnings": warnings,
         "action_items": action_items,
         "candidates": [candidate.to_dict() for candidate in candidates],
+        "mock_candidates": [candidate.to_dict() for candidate in mock_candidates],
         "keepalive": keepalive,
     }
 

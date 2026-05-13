@@ -212,6 +212,9 @@ def _check_supervisor_heartbeat() -> HealthComponent:
     age_text = "unknown" if age is None else f"{float(age):.1f}s"
     diagnosis = str(report.get("diagnosis", "unknown"))
     detail = f"{diagnosis}; canonical age {age_text}"
+    action_items = report.get("action_items") if isinstance(report.get("action_items"), list) else []
+    if action_items:
+        detail = f"{detail}; action: {str(action_items[0])}"
     if report.get("healthy"):
         return HealthComponent("supervisor_heartbeat", True, "healthy", detail, 1.0)
     status = str(report.get("status", "critical"))
