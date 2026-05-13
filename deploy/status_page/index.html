@@ -1181,19 +1181,56 @@ function formatTimeShort(value) {
   return parts ? `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${DASHBOARD_TIME_ZONE_LABEL}` : 'n/a';
 }
 
+function formatTimeCompact(value) {
+  const parts = easternDateParts(value);
+  if (!parts) return 'n/a';
+  return `${Number(parts.month)}/${Number(parts.day)} ${parts.hour}:${parts.minute} ${DASHBOARD_TIME_ZONE_LABEL}`;
+}
+
 function futuresMultiplier(symbol) {
   const s = String(symbol || '').toUpperCase();
+  if (s.startsWith('6E')) return 125000;
+  if (s.startsWith('MBT')) return 0.1;
+  if (s.startsWith('MET')) return 0.1;
   if (s.startsWith('MNQ')) return 2;
   if (s.startsWith('NQ')) return 20;
   if (s.startsWith('MES')) return 5;
   if (s.startsWith('ES')) return 50;
   if (s.startsWith('M2K')) return 5;
   if (s.startsWith('RTY')) return 50;
+  if (s.startsWith('MYM')) return 0.5;
+  if (s.startsWith('YM')) return 5;
   if (s.startsWith('MGC')) return 10;
   if (s.startsWith('GC')) return 100;
   if (s.startsWith('MCL')) return 100;
   if (s.startsWith('CL')) return 1000;
+  if (s.startsWith('NG')) return 10000;
+  if (s.startsWith('ZN')) return 1000;
   return 1;
+}
+
+function closeTradeDirection(row) {
+  const raw = String(row?.closed_side || row?.direction || row?.side || '').trim().toLowerCase();
+  if (raw.includes('long') || raw === 'buy') return 'long';
+  if (raw.includes('short') || raw === 'sell') return 'short';
+  return raw || 'n/a';
+}
+
+function closeTradePrices(row) {
+  const close = finiteNumber(row?.exit_price ?? row?.close_price ?? row?.fill_price ?? row?.price);
+  let open = finiteNumber(row?.entry_price ?? row?.open_price ?? row?.avg_entry_price);
+  if (open == null) {
+    const pnl = finiteNumber(row?.realized_pnl);
+    const qty = Math.abs(finiteNumber(row?.qty) ?? 0);
+    const mult = finiteNumber(row?.contract_multiplier ?? row?.multiplier) ?? futuresMultiplier(row?.symbol);
+    const direction = closeTradeDirection(row);
+    if (close != null && pnl != null && qty > 0 && mult > 0) {
+      const points = pnl / (qty * mult);
+      if (direction === 'long') open = close - points;
+      if (direction === 'short') open = close + points;
+    }
+  }
+  return {open, close};
 }
 
 function normalizeAvgCost(symbol, avgCost, marketPrice) {
@@ -1319,6 +1356,8 @@ function renderRecentCloses(closes, label = 'selected window', totalCount = null
       const realizedClass = realized == null ? 'dim' : realized >= 0 ? 'green' : 'red';
       const outcomeClass = realized == null ? '' : realized >= 0 ? 'win' : 'loss';
       const rText = c.realized_r == null ? 'R n/a' : Number(c.realized_r).toFixed(2) + 'R';
+      const prices = closeTradePrices(c);
+      const direction = closeTradeDirection(c);
       return `<article class="close-row ${outcomeClass}">
         <div class="close-row-top">
           <div class="close-row-title">
@@ -1332,10 +1371,11 @@ function renderRecentCloses(closes, label = 'selected window', totalCount = null
           </div>
         </div>
         <div class="close-row-meta">
-          <span>side <strong>${esc(c.side || 'n/a')}</strong></span>
+          <span>trade <strong>${esc(direction.toUpperCase())}</strong></span>
           <span>qty <strong>${esc(formatQty(c.qty))}</strong></span>
-          <span>fill <strong>${esc(formatMoney(c.fill_price, 2))}</strong></span>
-          <span>time <strong>${esc(formatTimeShort(c.close_ts || c.ts))}</strong></span>
+          <span>open <strong>${esc(formatMoney(prices.open, 2))}</strong></span>
+          <span>close <strong>${esc(formatMoney(prices.close, 2))}</strong></span>
+          <span>time <strong>${esc(formatTimeCompact(c.close_ts || c.closed_at || c.ts))}</strong></span>
         </div>
       </article>`;
     }).join('')}</div>
