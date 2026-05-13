@@ -126,6 +126,89 @@ def _check_drawdown_guard() -> dict:
     }
 
 
+def _check_launch_candidates() -> dict:
+    """Scan every diamond bot for the launch-candidate profile.
+
+    A bot is a defensible launch candidate when it meets ALL of:
+      * n_trades >= 50 (sample sufficient)
+      * cum_USD > 0 (real-money outcome profitable)
+      * cum_R > 0 (R-edge backs up the USD)
+      * win_rate >= 50%
+      * NOT flagged ASYMMETRY_BUG by the qty audit (if available)
+
+    Returns counts + the candidate list so the action-builder can
+    surface "no candidates yet — don't launch" as a priority item.
+    """
+    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+        DIAMOND_BOTS,
+    )
+    from eta_engine.scripts.closed_trade_ledger import (  # noqa: PLC0415
+        DEFAULT_PRODUCTION_DATA_SOURCES,
+        load_close_records,
+    )
+
+    # Optional: read qty-asymmetry audit to mark BAD bots
+    qa_path = WORKSPACE_ROOT / "var" / "eta_engine" / "state" / "diamond_qty_asymmetry_latest.json"
+    asymmetric: set[str] = set()
+    if qa_path.exists():
+        try:
+            d = json.loads(qa_path.read_text(encoding="utf-8"))
+            asymmetric = {b for b in d.get("flagged_bots") or []}
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    candidates: list[dict] = []
+    rejected: list[dict] = []
+    for bot_id in sorted(DIAMOND_BOTS):
+        rows = load_close_records(
+            bot_filter=bot_id,
+            data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        )
+        n = len(rows)
+        if n < 5:
+            continue
+        cum_r = sum(float(r.get("realized_r", 0) or 0) for r in rows)
+        wins = sum(1 for r in rows if float(r.get("realized_r", 0) or 0) > 0)
+        wr = wins / n * 100 if n else 0
+        pnls = []
+        for r in rows:
+            extra = r.get("extra") or {}
+            usd = r.get("realized_pnl")
+            if usd is None and isinstance(extra, dict):
+                usd = extra.get("realized_pnl")
+            try:
+                if usd is not None:
+                    pnls.append(float(usd))
+            except (TypeError, ValueError):
+                pass
+        cum_usd = sum(pnls) if pnls else None
+        is_asym = bot_id in asymmetric
+        is_candidate = (
+            n >= 50
+            and (cum_usd or 0) > 0
+            and cum_r > 0
+            and wr >= 50.0
+            and not is_asym
+        )
+        record = {
+            "bot_id": bot_id,
+            "n": n,
+            "wr": round(wr, 1),
+            "cum_r": round(cum_r, 2),
+            "cum_usd": round(cum_usd, 2) if cum_usd is not None else None,
+            "asymmetry_flagged": is_asym,
+        }
+        if is_candidate:
+            candidates.append(record)
+        else:
+            rejected.append(record)
+    return {
+        "n_candidates": len(candidates),
+        "candidates": candidates,
+        "rejected_top5": sorted(rejected, key=lambda r: -(r["n"]))[:5],
+    }
+
+
 def _check_supervisor() -> dict:
     """Supervisor process health: heartbeat freshness + tick + mode + n_bots.
 
@@ -168,9 +251,29 @@ def _build_action_list(
     channels: dict,
     drawdown: dict,
     supervisor: dict | None = None,
+    candidates: dict | None = None,
 ) -> list[str]:
     """Translate HOLD / NO_GO sections into operator-actionable steps."""
     actions: list[str] = []
+
+    # Launch-candidate scan — if no bot meets the safety profile, that's the
+    # #1 reason not to launch live. Surface this prominently.
+    if candidates is not None:
+        n = candidates.get("n_candidates", 0)
+        if n == 0:
+            top5 = candidates.get("rejected_top5", [])
+            top5_summary = ", ".join(
+                f"{r['bot_id']}(n={r['n']},USD={r.get('cum_usd')})"
+                for r in top5[:3]
+            )
+            actions.append(
+                "NO LAUNCH-CANDIDATE BOT exists yet. Profile required: "
+                "n>=50 trades, cum_USD>0, cum_R>0, win_rate>=50%, NOT flagged "
+                "ASYMMETRY_BUG. "
+                f"Top-N rejected: {top5_summary}. "
+                "Do not promote any bot to EVAL_LIVE until at least one "
+                "meets the profile. See docs/LAUNCH_CANDIDATE_SCAN_*.md.",
+            )
 
     # Supervisor health — front of queue if hung/missing
     if supervisor is not None:
@@ -280,6 +383,30 @@ def _print_human(report: dict) -> None:
             f"live_money={supervisor.get('live_money_enabled')}",
         )
 
+    # Launch candidates
+    candidates = report.get("launch_candidates", {})
+    _print_section_header("Launch candidates (n>=50, cum_USD>0, cum_R>0, WR>=50%, !ASYM)")
+    n_c = candidates.get("n_candidates", 0)
+    if n_c == 0:
+        print("  ZERO candidates — system says DO NOT LAUNCH live yet")
+        top5 = candidates.get("rejected_top5", [])
+        if top5:
+            print(f"  Top {len(top5)} rejected (most data):")
+            for r in top5:
+                usd = f"${r.get('cum_usd'):+.0f}" if r.get("cum_usd") is not None else "n/a"
+                asym = " ASYM" if r.get("asymmetry_flagged") else ""
+                print(
+                    f"    {r['bot_id']:<28} n={r['n']:>4} WR={r['wr']:>4.1f}% "
+                    f"cum_R={r['cum_r']:>+7.1f} cum_USD={usd}{asym}",
+                )
+    else:
+        print(f"  {n_c} candidate(s) meet the profile:")
+        for c in candidates.get("candidates", []):
+            print(
+                f"    {c['bot_id']:<28} n={c['n']:>4} WR={c['wr']:>4.1f}% "
+                f"cum_R={c['cum_r']:>+7.1f} cum_USD=${c['cum_usd']:+.2f}",
+            )
+
     # Drawdown guard
     _print_section_header("Drawdown guard")
     if drawdown.get("missing"):
@@ -360,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
     channels = _check_alert_channels()
     drawdown = _check_drawdown_guard()
     supervisor = _check_supervisor()
+    candidates = _check_launch_candidates()
     actions = _build_action_list(
         dryrun,
         lifecycle,
@@ -367,6 +495,7 @@ def main(argv: list[str] | None = None) -> int:
         channels,
         drawdown,
         supervisor=supervisor,
+        candidates=candidates,
     )
 
     report = {
@@ -377,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
         "alert_channels": channels,
         "drawdown_guard": drawdown,
         "supervisor": supervisor,
+        "launch_candidates": candidates,
         "actions": actions,
     }
 
