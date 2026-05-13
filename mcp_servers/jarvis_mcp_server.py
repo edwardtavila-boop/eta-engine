@@ -821,7 +821,7 @@ def list_tools() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     **auth_field,
-                    "bootstraps": {"type": "integer", "default": 200},
+                    "bootstraps": {"type": "integer", "default": 1000},
                 },
             },
         },
@@ -1452,7 +1452,12 @@ def _tool_upcoming_events(args: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _tool_kaizen_run(args: dict[str, Any]) -> dict[str, Any]:
-    bootstraps = int(args.get("bootstraps", 200))
+    # Wave-25b (2026-05-13): operator-mandated 1000-fold pressurization
+    # for every kaizen pass. Was 200; bumped per "1000 fold make sure
+    # all strategies have received the same treatment depth" directive.
+    # 1000 bootstraps brings the MC verdict (ROBUST/FRAGILE/LUCKY/DEAD)
+    # to the precision the diamond promotion gate was designed around.
+    bootstraps = int(args.get("bootstraps", 1000))
     return _call_kaizen_run(bootstraps)
 
 
