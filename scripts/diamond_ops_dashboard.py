@@ -88,6 +88,8 @@ class DiamondSynthesis:
     direction_verdict: str | None = None
     direction_long_avg_r: float | None = None
     direction_short_avg_r: float | None = None
+    feed_sanity_verdict: str | None = None
+    feed_sanity_flags: list[str] = field(default_factory=list)
     priority: str = "P4_INSUFFICIENT_DATA"
     recommended_action: str = ""
     notes: list[str] = field(default_factory=list)
@@ -141,6 +143,13 @@ def _run_direction_stratify() -> dict[str, dict[str, Any]]:
     return {s["bot_id"]: s for s in summary.get("statuses", [])}
 
 
+def _run_feed_sanity() -> dict[str, dict[str, Any]]:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
+    from eta_engine.scripts import diamond_feed_sanity_audit as fs  # noqa: PLC0415
+    summary = _safe_run("feed_sanity", fs.run)
+    return {s["bot_id"]: s for s in summary.get("scorecards", [])}
+
+
 # ────────────────────────────────────────────────────────────────────
 # Synthesis
 # ────────────────────────────────────────────────────────────────────
@@ -163,6 +172,7 @@ def _synthesize(
     sizing: dict[str, Any] | None,
     watchdog: dict[str, Any] | None,
     direction: dict[str, Any] | None,
+    feed_sanity: dict[str, Any] | None = None,
 ) -> DiamondSynthesis:
     syn = DiamondSynthesis(bot_id=bot_id, enrolled=enrolled)
 
@@ -188,12 +198,29 @@ def _synthesize(
         syn.watchdog_classification_r = watchdog.get("classification_r")
     if promotion is not None:
         syn.promotion_verdict = promotion.get("verdict")
+    if feed_sanity is not None:
+        syn.feed_sanity_verdict = feed_sanity.get("verdict")
+        syn.feed_sanity_flags = list(feed_sanity.get("flags") or [])
 
     # ── Compute priority and action ──────────────────────────────────
     cls = syn.watchdog_classification or "INCONCLUSIVE"
     sz = syn.sizing_verdict or "INSUFFICIENT_DATA"
+    fs = syn.feed_sanity_verdict or "INSUFFICIENT_DATA"
 
-    if cls == "CRITICAL" or sz == "SIZING_BREACHED":
+    if fs == "FLAGGED" and any(
+        "STUCK_PRICE" in f or "ZERO_PNL_ACTIVITY" in f
+        for f in syn.feed_sanity_flags
+    ):
+        # Wave-17: feed-sanity FLAGGED with stuck-price or zero-PnL is a
+        # data-quality emergency — the bot's USD verdicts can't be trusted
+        # at all until the feed is fixed.
+        syn.priority = "P0_CRITICAL"
+        flag_summary = "; ".join(syn.feed_sanity_flags)
+        syn.recommended_action = (
+            f"feed sanity FLAGGED ({flag_summary}) — broken data feed "
+            "or writer; ops fix needed before USD verdicts are meaningful"
+        )
+    elif cls == "CRITICAL" or sz == "SIZING_BREACHED":
         syn.priority = "P0_CRITICAL"
         actions = []
         if cls == "CRITICAL":
@@ -288,6 +315,7 @@ def run() -> dict[str, Any]:
     sizing = _run_sizing_audit()
     watch = _run_watchdog()
     direction = _run_direction_stratify()
+    feed = _run_feed_sanity()
 
     syntheses: list[DiamondSynthesis] = []
     for bot_id in sorted(DIAMOND_BOTS):
@@ -298,6 +326,7 @@ def run() -> dict[str, Any]:
             sizing=sizing.get(bot_id),
             watchdog=watch.get(bot_id),
             direction=direction.get(bot_id),
+            feed_sanity=feed.get(bot_id),
         )
         syntheses.append(syn)
 

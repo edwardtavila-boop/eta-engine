@@ -1,0 +1,346 @@
+"""
+EVOLUTIONARY TRADING ALGO  //  scripts.diamond_feed_sanity_audit
+==================================================================
+Per-diamond data-feed sanity audit.
+
+Why this exists (wave-17 kaizen)
+--------------------------------
+The MBT family (mbt_sweep_reclaim, mbt_overnight_gap, mbt_rth_orb,
+mbt_funding_basis) was discovered to have fill_price=5.0 and
+realized_pnl=0 across 374 trades. Real Bitcoin futures should fill at
+50k+; 5.00 is a placeholder value indicating a missing or mis-routed
+market data subscription on IBKR.
+
+This audit catches that class of bug at the FEED layer, BEFORE the
+broken data pollutes the diamond fleet's trade ledger and BEFORE the
+operator promotes a bot whose strategy edge cannot be evaluated in
+USD terms.
+
+Important context
+-----------------
+The fleet uses SCALED fill prices on most instruments (likely a
+dev/paper-feed normalization). Absolute price ranges aren't reliable
+verdicts because most fills are scaled — we'd flag the entire fleet
+on absolute checks. The real signals are:
+
+  1. STUCK_PRICE       — fill_price has near-zero variance (placeholder
+                         feed returning the same value every trade)
+  2. ZERO_PNL_ACTIVITY — n>=10 closed trades but realized_pnl=0 across
+                         ALL of them (broken writer or feed)
+  3. MISSING_PNL_FIELD — extra.realized_pnl absent from majority of
+                         records (writer regression)
+  4. MISSING_SIDE_FIELD — extra.side absent from majority (wave-10
+                         direction-derivation will misclassify)
+
+R-multiples remain trustworthy regardless of price scaling (entry +
+stop both scale by the same factor, so the ratio is invariant). The
+strategy-edge evaluation continues to use R-basis. This audit gates
+USD-basis trustworthiness, NOT R-basis.
+
+Verdicts
+--------
+  CLEAN              — no data-quality flags
+  FLAGGED            — at least one flag
+  INSUFFICIENT_DATA  — fewer than SAMPLE_THRESHOLD records
+
+Output
+------
+- stdout: per-diamond verdict report
+- var/eta_engine/state/diamond_feed_sanity_audit_latest.json
+- exit 2 if any diamond is FLAGGED
+
+Run
+---
+::
+
+    python -m eta_engine.scripts.diamond_feed_sanity_audit
+    python -m eta_engine.scripts.diamond_feed_sanity_audit --json
+"""
+from __future__ import annotations
+
+# ruff: noqa: PLR2004
+import argparse
+import json
+import sys
+from collections import defaultdict
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = ROOT.parent
+TRADE_CLOSES_CANONICAL = (
+    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+    / "jarvis_intel" / "trade_closes.jsonl"
+)
+TRADE_CLOSES_LEGACY = (
+    WORKSPACE_ROOT / "eta_engine" / "state"  # HISTORICAL-PATH-OK
+    / "jarvis_intel" / "trade_closes.jsonl"
+)
+OUT_LATEST = (
+    WORKSPACE_ROOT / "var" / "eta_engine" / "state"
+    / "diamond_feed_sanity_audit_latest.json"
+)
+
+#: Below this trade count, we don't have enough samples to detect
+#: a pattern. Below SAMPLE_THRESHOLD records the verdict is INSUFFICIENT_DATA.
+SAMPLE_THRESHOLD = 10
+
+#: STUCK_PRICE detection: if (max - min) / median < this fraction,
+#: the fill_price feed is essentially returning the same value across
+#: trades. Real markets move enough that even minute-bar fills should
+#: span at least a few percent over hundreds of trades.
+STUCK_PRICE_RANGE_FRACTION = 0.02  # < 2% range across all trades = stuck
+
+
+@dataclass
+class FeedSanityScorecard:
+    bot_id: str
+    n_records: int = 0
+    n_with_fill_price: int = 0
+    n_with_pnl: int = 0
+    n_with_side: int = 0
+    n_zero_pnl: int = 0
+    fill_price_min: float | None = None
+    fill_price_max: float | None = None
+    fill_price_median: float | None = None
+    fill_price_range_fraction: float | None = None
+    verdict: str = "INSUFFICIENT_DATA"
+    flags: list[str] = field(default_factory=list)
+    rationale: str = ""
+
+
+# ────────────────────────────────────────────────────────────────────
+# IO + helpers
+# ────────────────────────────────────────────────────────────────────
+
+
+def _read_trades_dual_source() -> list[dict[str, Any]]:
+    """Same dual-source dedup pattern as the other diamond audits."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for path in (TRADE_CLOSES_CANONICAL, TRADE_CLOSES_LEGACY):
+        if not path.exists():
+            continue
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                key = "|".join([
+                    str(rec.get("signal_id") or ""),
+                    str(rec.get("bot_id") or ""),
+                    str(rec.get("ts") or ""),
+                    str(rec.get("realized_r") or ""),
+                ])
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(rec)
+    return out
+
+
+def _score_bot(bot_id: str, trades: list[dict[str, Any]]) -> FeedSanityScorecard:
+    sc = FeedSanityScorecard(bot_id=bot_id, n_records=len(trades))
+
+    fill_prices: list[float] = []
+    for t in trades:
+        extra = t.get("extra") or {}
+        if not isinstance(extra, dict):
+            continue
+        fp = extra.get("fill_price")
+        if fp is not None:
+            try:
+                fill_prices.append(float(fp))
+                sc.n_with_fill_price += 1
+            except (TypeError, ValueError):
+                pass
+        pnl = extra.get("realized_pnl")
+        if pnl is not None:
+            sc.n_with_pnl += 1
+            try:
+                if float(pnl) == 0:
+                    sc.n_zero_pnl += 1
+            except (TypeError, ValueError):
+                pass
+        if extra.get("side"):
+            sc.n_with_side += 1
+
+    if fill_prices:
+        sc.fill_price_min = round(min(fill_prices), 4)
+        sc.fill_price_max = round(max(fill_prices), 4)
+        sorted_fps = sorted(fill_prices)
+        sc.fill_price_median = round(
+            sorted_fps[len(sorted_fps) // 2], 4,
+        )
+        # Range fraction: (max - min) / median.  A real market shows
+        # at least a few percent of variation across hundreds of trades;
+        # a stuck/placeholder feed shows zero or tiny variation.
+        if sc.fill_price_median and sc.fill_price_median != 0:
+            sc.fill_price_range_fraction = round(
+                (sc.fill_price_max - sc.fill_price_min) / sc.fill_price_median, 4,
+            )
+
+    if sc.n_records < SAMPLE_THRESHOLD:
+        sc.verdict = "INSUFFICIENT_DATA"
+        sc.rationale = (
+            f"only {sc.n_records} records (need >= {SAMPLE_THRESHOLD})"
+        )
+        return sc
+
+    # ── Apply checks ──────────────────────────────────────────────────
+    flags: list[str] = []
+
+    # STUCK_PRICE: fill_price has near-zero variance across trades
+    # (placeholder feed returning the same value every trade)
+    if (
+        sc.fill_price_range_fraction is not None
+        and sc.n_with_fill_price >= SAMPLE_THRESHOLD
+        and sc.fill_price_range_fraction < STUCK_PRICE_RANGE_FRACTION
+    ):
+        flags.append(
+            f"STUCK_PRICE (fill_price range = "
+            f"{sc.fill_price_range_fraction * 100:.2f}% of median "
+            f"across {sc.n_with_fill_price} records — feed appears "
+            "placeholder/static)",
+        )
+
+    # ZERO_PNL_ACTIVITY: ALL records have zero PnL despite trading
+    if sc.n_with_pnl >= SAMPLE_THRESHOLD and sc.n_zero_pnl == sc.n_with_pnl:
+        flags.append(
+            f"ZERO_PNL_ACTIVITY ({sc.n_with_pnl} closed trades, "
+            "all realized_pnl=0 — broken writer or zero price action)",
+        )
+
+    # MISSING_PNL_FIELD: majority lack the field entirely
+    if sc.n_with_pnl < sc.n_records / 2:
+        flags.append(
+            f"MISSING_PNL_FIELD ({sc.n_with_pnl}/{sc.n_records} "
+            "records have extra.realized_pnl)",
+        )
+
+    # MISSING_SIDE_FIELD: writer skipping side field
+    if sc.n_with_side < sc.n_records / 2:
+        flags.append(
+            f"MISSING_SIDE_FIELD ({sc.n_with_side}/{sc.n_records} "
+            "records have extra.side — wave-10 direction derivation will misfire)",
+        )
+
+    sc.flags = flags
+    sc.verdict = "FLAGGED" if flags else "CLEAN"
+    sc.rationale = "; ".join(flags) if flags else (
+        f"all checks pass — {sc.n_records} records, "
+        f"fill_price ${sc.fill_price_min}-${sc.fill_price_max} "
+        f"(range {sc.fill_price_range_fraction:.2%} of median), "
+        f"{sc.n_zero_pnl}/{sc.n_with_pnl} zero-PnL"
+    )
+    return sc
+
+
+# ────────────────────────────────────────────────────────────────────
+# Runner
+# ────────────────────────────────────────────────────────────────────
+
+
+def run() -> dict[str, Any]:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
+    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+        DIAMOND_BOTS,
+    )
+
+    trades = _read_trades_dual_source()
+    by_bot: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for t in trades:
+        bid = t.get("bot_id")
+        if bid in DIAMOND_BOTS:
+            by_bot[bid].append(t)
+
+    # Also include MBT family bots (they're not in DIAMOND_BOTS but
+    # they're the prime example of feed-sanity issues — we want them
+    # in the report so the operator can see when the data catches up).
+    extra_targets = {
+        "mbt_sweep_reclaim", "mbt_overnight_gap",
+        "mbt_rth_orb", "mbt_funding_basis",
+    }
+    for t in trades:
+        bid = t.get("bot_id")
+        if bid in extra_targets:
+            by_bot[bid].append(t)
+
+    scorecards: list[FeedSanityScorecard] = [
+        _score_bot(bot_id, by_bot.get(bot_id, []))
+        for bot_id in sorted(by_bot)
+    ]
+
+    counts: dict[str, int] = defaultdict(int)
+    for sc in scorecards:
+        counts[sc.verdict] += 1
+
+    summary = {
+        "ts": datetime.now(UTC).isoformat(),
+        "n_audited": len(scorecards),
+        "verdict_counts": dict(counts),
+        "sample_threshold": SAMPLE_THRESHOLD,
+        "stuck_price_range_fraction": STUCK_PRICE_RANGE_FRACTION,
+        "scorecards": [asdict(sc) for sc in scorecards],
+    }
+    try:
+        OUT_LATEST.parent.mkdir(parents=True, exist_ok=True)
+        OUT_LATEST.write_text(
+            json.dumps(summary, indent=2, default=str), encoding="utf-8",
+        )
+    except OSError as exc:
+        print(f"WARN: write_latest failed: {exc}", file=sys.stderr)
+    return summary
+
+
+def _print(summary: dict[str, Any]) -> None:
+    print("=" * 130)
+    print(
+        f" DIAMOND FEED SANITY AUDIT  ({summary['ts']})  "
+        + ", ".join(
+            f"{k}={v}" for k, v in summary["verdict_counts"].items()
+        ),
+    )
+    print("=" * 130)
+    print(
+        f" {'bot':25s} {'verdict':18s} {'n':>5s}  "
+        f"{'fill_price_range':>22s}  rationale",
+    )
+    print("-" * 130)
+    for sc in summary["scorecards"]:
+        fp_min = sc.get("fill_price_min")
+        fp_max = sc.get("fill_price_max")
+        fp_s = (
+            f"${fp_min:>8.2f}..${fp_max:<8.2f}"
+            if fp_min is not None and fp_max is not None
+            else f"{'—':>22s}"
+        )
+        print(
+            f" {sc['bot_id']:25s} {sc['verdict']:18s} "
+            f"{sc['n_records']:>5d}  {fp_s}  {sc['rationale'][:60]}",
+        )
+        if sc.get("flags"):
+            for f in sc["flags"]:
+                print(f"     ↳ {f}")
+    print()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+    summary = run()
+    if args.json:
+        print(json.dumps(summary, indent=2, default=str))
+    else:
+        _print(summary)
+    if summary["verdict_counts"].get("FLAGGED", 0) > 0:
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
