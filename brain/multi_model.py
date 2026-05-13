@@ -140,6 +140,18 @@ def _fm_cache_max() -> int:
         return 256
 
 
+def _fm_cache_negative_ttl_seconds() -> float:
+    """Shorter TTL for empty/negative responses. DeepSeek occasionally returns
+    empty completions on certain narrative prompts; caching the empty result
+    for a short window avoids re-paying the same FM cost while still allowing
+    a retry sooner than the positive-TTL window. Default 60s.
+    """
+    try:
+        return float(os.environ.get("ETA_FM_CACHE_NEGATIVE_TTL_SECONDS", "60"))
+    except ValueError:
+        return 60.0
+
+
 def _fm_cache_key(
     category: "TaskCategory",
     system_prompt: str,
@@ -162,9 +174,18 @@ def _fm_cache_key(
 
 
 def _fm_cache_get(key: str) -> "MultiModelResponse | None":
+    """Return cached response if present and within TTL.
+
+    Two TTLs apply: positive (full TTL, default 300s) for non-empty
+    responses, and negative (shorter, default 60s) for empty completions.
+    The shorter negative TTL keeps DeepSeek empty-response prompts from
+    re-burning FM cost every tick while still allowing a retry sooner
+    than the positive window.
+    """
     global _FM_CACHE_HITS, _FM_CACHE_MISSES
-    ttl = _fm_cache_ttl_seconds()
-    if ttl <= 0:
+    pos_ttl = _fm_cache_ttl_seconds()
+    neg_ttl = _fm_cache_negative_ttl_seconds()
+    if pos_ttl <= 0 and neg_ttl <= 0:
         _FM_CACHE_MISSES += 1
         return None
     now = _time.time()
@@ -174,7 +195,9 @@ def _fm_cache_get(key: str) -> "MultiModelResponse | None":
             _FM_CACHE_MISSES += 1
             return None
         ts, response = entry
-        if now - ts > ttl:
+        is_empty = not bool((response.text or "").strip())
+        applicable_ttl = neg_ttl if is_empty else pos_ttl
+        if applicable_ttl <= 0 or (now - ts) > applicable_ttl:
             _FM_CACHE.pop(key, None)
             _FM_CACHE_MISSES += 1
             return None
@@ -303,15 +326,7 @@ def route_and_execute(
             chain_id=chain_id,
         )
     )
-    # Wave-25c hotfix (2026-05-13): never cache empty responses. The
-    # initial cache implementation stored ANY MultiModelResponse,
-    # including the empty-string completions DeepSeek occasionally
-    # returns on certain narrative prompts. That turned the cache into
-    # an amplifier for the pre-existing llm_narrative "empty response,
-    # falling back to template" path — every identical retry within
-    # the 300s TTL hit the cached empty and immediately fell back.
-    # Now we only cache responses with non-empty text content.
-    if cache_key and (response.text or "").strip():
+    if cache_key:
         _fm_cache_put(cache_key, response)
     return response
 
