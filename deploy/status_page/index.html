@@ -126,6 +126,8 @@ body:after{content:"";position:fixed;inset:-8%;pointer-events:none;background:li
 .orb-label{font-size:.62rem;text-transform:uppercase;letter-spacing:2.2px;color:#91aac4;margin-bottom:.15rem}
 .orb-value{font-size:1.64rem;font-weight:800;color:#fff;margin:.16rem 0;text-shadow:0 0 20px rgba(100,215,255,.15)}
 .orb-sub{font-size:.67rem;color:#9fb1c5;max-width:158px;line-height:1.34}
+.orb-win-rate{display:inline-flex;align-items:center;justify-content:center;margin-top:.42rem;padding:.22rem .48rem;border:1px solid rgba(54,240,162,.22);border-radius:999px;background:rgba(54,240,162,.08);color:#dffdf1;font-size:.62rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.orb-win-rate.pending{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#8fa3b8}
 .orb-allocation-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.42rem;width:min(250px,100%);margin-top:.45rem}
 .allocation-pill{display:flex;align-items:center;justify-content:center;min-width:0;text-align:center}
 .allocation-pill .allocation-dot{display:inline-block;width:.5rem;height:.5rem;border-radius:999px;margin-right:.35rem;box-shadow:0 0 12px currentColor;vertical-align:-.05rem}
@@ -286,6 +288,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
           <div class="orb-label">Futures Net</div>
           <div class="orb-value" id="portfolioNetOrb">--</div>
           <div class="orb-sub" id="portfolioNetOrbSub">realized | open</div>
+          <div class="orb-win-rate pending" id="portfolioWinRateOrb">Today WR pending</div>
         </div>
       </div>
     </div>
@@ -1783,7 +1786,7 @@ function allocationBuckets(bots, liveBroker, portfolioSummary) {
   });
 }
 
-function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive, diagnostics) {
+function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive, diagnostics, todayCloseHistory) {
   const brokerPositions = buildBrokerPositions(liveBroker);
   const active = bots.filter(isRuntimeActiveBot).length;
   const realized = finiteNumber(liveBroker?.today_realized_pnl);
@@ -1810,6 +1813,7 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
   const sessionSourceText = brokerSessionSourceLabel(liveBroker);
   const orb = document.getElementById('portfolioNetOrb');
   const orbSub = document.getElementById('portfolioNetOrbSub');
+  const orbWinRate = document.getElementById('portfolioWinRateOrb');
   const narrative = document.getElementById('portfolioNarrative');
   const chips = document.getElementById('portfolioHeroChips');
   const heroMetrics = document.getElementById('portfolioHeroMetrics');
@@ -1819,6 +1823,19 @@ function renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, today
     orb.className = 'orb-value ' + (net > 0 ? 'green' : net < 0 ? 'red' : '');
   }
   if (orbSub) orbSub.textContent = `${formatMoneyOrUnavailable(realized, 2)} realized | ${formatMoneyOrUnavailable(unrealized, 2)} open`;
+  if (orbWinRate) {
+    const brokerTodayWr = finiteNumber(liveBroker?.win_rate_today);
+    const todayWr = finiteNumber(todayCloseHistory?.winRatePct)
+      ?? (brokerTodayWr == null ? null : brokerTodayWr * 100);
+    const todayCloses = Number(todayCloseHistory?.evaluated || todayCloseHistory?.count || liveBroker?.closed_outcome_count_today || 0);
+    if (todayWr != null && todayCloses > 0) {
+      orbWinRate.textContent = `Today WR ${todayWr.toFixed(1)}% | ${todayCloses} close${todayCloses === 1 ? '' : 's'}`;
+      orbWinRate.className = 'orb-win-rate ' + (todayWr >= 50 ? 'green' : todayWr >= 25 ? '' : 'red');
+    } else {
+      orbWinRate.textContent = 'Today WR pending';
+      orbWinRate.className = 'orb-win-rate pending';
+    }
+  }
   if (narrative) {
     const isMobileNarrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
     const truth = d.truth_summary_line || summary.truth_summary_line || 'truth syncing';
@@ -2424,6 +2441,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
     selectedCloseHistoryWindow = liveBroker?.position_exposure?.close_history?.default_window || rootCloseHistory.default_window;
   }
   const closeHistory = closeEvidenceSummary(liveBroker, portfolioSummary, selectedCloseHistoryWindow, d);
+  const todayCloseHistory = closeEvidenceSummary(liveBroker, portfolioSummary, 'today', d);
   if (closeHistory.window && closeHistory.window !== selectedCloseHistoryWindow) {
     selectedCloseHistoryWindow = closeHistory.window;
   }
@@ -2454,7 +2472,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
   pnlEl.textContent = '$' + todaysPnl.toFixed(0);
   pnlEl.className = 'stat ' + (todaysPnl > 0 ? 'green' : todaysPnl < 0 ? 'red' : 'dim');
   document.getElementById('todayPnlSub').textContent = todayPnlSub;
-  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive || {}, diagnostics || {});
+  renderPortfolioCommand(bots, hiddenCount, liveBroker, summary, d, todaysPnl, portfolioSummary, brokerMtd, paperLive || {}, diagnostics || {}, todayCloseHistory);
   renderContributionGraph(bots, liveBroker, portfolioSummary);
   renderAllocationPillsAndSections(bots, liveBroker, portfolioSummary);
   const vpsRootPlan = vpsRoot || d.vps_root_reconciliation || {};
@@ -2787,8 +2805,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
       145
     );
   }
-  const opsCloseHistory = closeEvidenceSummary(liveBroker, portfolioSummary, 'today', d);
-  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, opsCloseHistory);
+  renderOpsTruthSections({...d, bots}, liveBroker, brokerRouter, todayCloseHistory);
 
   const exitWatch = d.target_exit_summary || summary.target_exit_summary || {};
   const stalePositions = exitWatch.position_staleness && typeof exitWatch.position_staleness === 'object'
