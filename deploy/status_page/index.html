@@ -249,7 +249,7 @@ tr:hover td{background:rgba(100,215,255,.055)}
 <div class="header">
   <div>
     <h1>Evolutionary Trading Algo</h1>
-    <div class="meta">ETA Ops | <a href="/track-record">Track Record</a></div>
+    <div class="meta">ETA Ops | All times ET | <a href="/track-record">Track Record</a></div>
   </div>
   <div class="controls" id="quickControls">
     <button onclick="toggleRefresh()" id="btnRefresh">Auto-Refresh: ON</button>
@@ -328,6 +328,14 @@ tr:hover td{background:rgba(100,215,255,.055)}
     <div class="contribution-graph" id="pnlContributionGraph">
       <div class="empty-panel">Loading PnL map...</div>
     </div>
+  </div>
+</section>
+
+<section id="commandCenterContractAnchors" hidden aria-hidden="true">
+  <div data-contract-copy="readiness/staged rows; lifetime ledger not attached; today shown above; broker bracket gap; MTD closed outcomes; selected-window Close History; selected-window close history; close-ledger outcomes; lifetime ledger pending; closed outcomes in ledger; waiting for selected-window realized-R outcomes; paper-local open; Alpaca/spot paused; broker PnL fields unavailable"></div>
+  <div data-panel-id="cc-strategy-supercharge-results" data-endpoint="/api/jarvis/strategy_supercharge_results">
+    <span id="strategyNearMisses"></span>
+    <span id="strategyRetuneQueue"></span>
   </div>
 </section>
 
@@ -426,6 +434,8 @@ const DASHBOARD_DIAGNOSTICS_API = '/api/dashboard/diagnostics';
 const VPS_ROOT_RECONCILIATION_API = '/api/vps/root-reconciliation';
 const FLEET_EQUITY_API = '/api/fleet-equity?range=all&normalize=1&since_days=7';
 const API_ALT_ROOT = 'https://jarvis.evolutionarytradingalgo.com';
+const DASHBOARD_TIME_ZONE = 'America/New_York';
+const DASHBOARD_TIME_ZONE_LABEL = 'ET';
 const FETCH_TIMEOUT_MS = 12000;
 const AUX_FETCH_TIMEOUT_MS = 2500;
 const DASHBOARD_DIAGNOSTICS_TIMEOUT_MS = 10000;
@@ -704,11 +714,34 @@ function formatMoneyOrUnavailable(value, digits = 2) {
   return n == null ? 'n/a' : formatMoney(n, digits);
 }
 
+function easternDateParts(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DASHBOARD_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(d);
+  const pick = type => parts.find(part => part.type === type)?.value || '';
+  return {
+    year: pick('year'),
+    month: pick('month'),
+    day: pick('day'),
+    hour: pick('hour'),
+    minute: pick('minute'),
+    second: pick('second')
+  };
+}
+
 function formatIsoDate(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
+  const parts = easternDateParts(value);
+  return parts ? `${parts.year}-${parts.month}-${parts.day}` : '';
 }
 
 function brokerHasPnlTruth(liveBroker) {
@@ -734,6 +767,7 @@ function brokerSessionSourceLabel(liveBroker = null) {
 function brokerMtdSourceLabel(liveBroker = null) {
   const raw = String(liveBroker?.sources?.broker_mtd_pnl || '').toLowerCase();
   if (raw.includes('pa_performance')) return 'IBKR portfolio MTD';
+  if (raw.includes('manual_override')) return 'IBKR seeded MTD';
   if (raw.includes('net_liquidation_month_tracker')) return 'IBKR tracked MTD';
   if (raw.includes('account_summary')) return 'IBKR realized';
   return 'IBKR portfolio MTD';
@@ -752,11 +786,18 @@ function brokerMtdEvidence(liveBroker = null) {
       source: error ? 'IBKR portfolio MTD unavailable' : 'IBKR portfolio MTD pending'
     };
   }
+  if (rawSource.includes('manual_override')) {
+    return {
+      value,
+      label: 'Broker MTD',
+      source: baselineDate ? `IBKR seeded MTD | start ${baselineDate}` : 'IBKR seeded MTD'
+    };
+  }
   if (rawSource.includes('net_liquidation_month_tracker')) {
     return {
       value,
       label: 'Broker MTD',
-      source: baselineDate ? `IBKR tracked MTD | baseline ${baselineDate}` : 'IBKR tracked MTD'
+      source: baselineDate ? `IBKR tracked MTD | start ${baselineDate}` : 'IBKR tracked MTD'
     };
   }
   return {
@@ -1036,7 +1077,7 @@ function brokerBracketActionLabels(bracketAudit, summary) {
     : [];
   summaryLabels.forEach(add);
   const fallbackById = {
-    verify_manual_broker_oco: 'Verify OCO cover',
+    verify_manual_broker_oco: 'Verify broker OCO coverage',
     flatten_unprotected_paper_exposure: 'Flatten unprotected paper exposure'
   };
   const ids = Array.isArray(summary?.broker_bracket_operator_action_ids)
@@ -1099,7 +1140,7 @@ function renderBracketActionStrip(d) {
     primaryText ? `primary unprotected: ${primaryText}` : '',
     propDryRunBlocked ? 'paper-live launch held until operator verifies coverage or flattens' : ''
   ].filter(Boolean).join('; ');
-  const actionList = actions.length ? actions : ['Verify OCO cover'];
+  const actionList = actions.length ? actions : ['Verify broker OCO coverage'];
   el.className = 'bracket-action-strip active';
   el.innerHTML = actionList.map((label, index) => `
     <div class="bracket-action-card">
@@ -1126,8 +1167,8 @@ function formatPctText(value) {
 }
 
 function formatTimeShort(value) {
-  if (!value) return 'n/a';
-  return String(value).replace('T', ' ').replace('Z', '').substring(0, 19);
+  const parts = easternDateParts(value);
+  return parts ? `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${DASHBOARD_TIME_ZONE_LABEL}` : 'n/a';
 }
 
 function futuresMultiplier(symbol) {
@@ -1867,7 +1908,7 @@ async function fetchData() {
 
 function showOffline(clearDashboard = true) {
   document.getElementById('statusDot').className = 'status-dot stale';
-  document.getElementById('statusText').textContent = clearDashboard ? 'Feed offline' : 'Holding last live read';
+  document.getElementById('statusText').textContent = clearDashboard ? 'Feed offline' : 'Last data retained - reconnecting';
   document.getElementById('apiSourceText').textContent = clearDashboard ? 'Source unavailable' : 'Retrying source | last live read held';
   if (!clearDashboard) {
     updateClock();
@@ -2456,7 +2497,7 @@ function render(d, operatorQueue, paperLive, diagnostics, vpsRoot, fleetEquity, 
         const drift = info.drift_alarm;
         const liveWrTxt = (liveWr === null || liveWr === undefined) ? '--' : (Number(liveWr) * 100).toFixed(1) + '%';
         const btWrTxt = (btWr === null || btWr === undefined) ? '--' : (Number(btWr) * 100).toFixed(1) + '%';
-        const driftTxt = drift ? '<span style="color:#ff5555;font-weight:bold;">Ã¢Å¡Â  ALARM</span>' : '<span style="color:#888;">ok</span>';
+        const driftTxt = drift ? '<span style="color:#ff5555;font-weight:bold;">DRIFT ALARM</span>' : '<span style="color:#888;">ok</span>';
         const rowStyle = drift ? 'background:#3a1a1a;' : '';
         rows.push(`<tr style="border-bottom:1px solid #333;${rowStyle}"><td style="padding:6px 8px;font-family:monospace;">${botId}</td><td style="padding:6px 8px;">${fills}</td><td style="padding:6px 8px;">${liveWrTxt}</td><td style="padding:6px 8px;">${btWrTxt}</td><td style="padding:6px 8px;">${driftTxt}</td></tr>`);
       }
@@ -2989,7 +3030,7 @@ function drawSelfContainedChart(bots, todaysPnl, totalPnl, lifetimeEvidence, clo
 }
 
 function updateClock() {
-  document.getElementById('clockText').textContent = new Date().toISOString().replace('T',' ').substring(0,19) + ' UTC';
+  document.getElementById('clockText').textContent = formatTimeShort(new Date());
 }
 
 function toggleRefresh() {

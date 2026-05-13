@@ -15,6 +15,11 @@ if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python.exe"
 if not exist "%ETA_LOG_DIR%" mkdir "%ETA_LOG_DIR%"
 cd /d "%ETA_ENGINE%"
 
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$port=8421; Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction Stop } catch {} }" ^
+    1>> "%ETA_LOG_DIR%\proxy_8421.stdout.log" ^
+    2>> "%ETA_LOG_DIR%\proxy_8421.stderr.log"
+
 "%PYTHON_EXE%" deploy\scripts\reverse_proxy_bridge.py ^
     --listen-host "%ETA_PROXY_HOST%" ^
     --listen-port "%ETA_PROXY_PORT%" ^

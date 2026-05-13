@@ -16,6 +16,11 @@ if not exist "%ETA_STATE_DIR%" mkdir "%ETA_STATE_DIR%"
 if not exist "%ETA_LOG_DIR%" mkdir "%ETA_LOG_DIR%"
 cd /d "%ETA_ENGINE%"
 
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$port=8000; Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction Stop } catch {} }" ^
+    1>> "%ETA_LOG_DIR%\dashboard_api.stdout.log" ^
+    2>> "%ETA_LOG_DIR%\dashboard_api.stderr.log"
+
 "%PYTHON_EXE%" -m uvicorn deploy.scripts.dashboard_api:app ^
     --host "%ETA_DASHBOARD_HOST%" ^
     --port "%ETA_DASHBOARD_PORT%" ^

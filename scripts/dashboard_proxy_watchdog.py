@@ -36,7 +36,7 @@ from eta_engine.scripts.uptime_events import record_uptime_event  # noqa: E402
 logger = logging.getLogger("dashboard_proxy_watchdog")
 
 DEFAULT_URL = os.getenv("ETA_DASHBOARD_PROXY_URL", "http://127.0.0.1:8421/")
-DEFAULT_EXPECT_TEXT = os.getenv("ETA_DASHBOARD_PROXY_EXPECT_TEXT", "Portfolio Command")
+DEFAULT_EXPECT_TEXT = os.getenv("ETA_DASHBOARD_PROXY_EXPECT_TEXT", "Command Center")
 DEFAULT_TIMEOUT_S = float(os.getenv("ETA_DASHBOARD_PROXY_TIMEOUT_S", "5"))
 DEFAULT_TASK_NAME = os.getenv("ETA_DASHBOARD_PROXY_TASK_NAME", "ETA-Proxy-8421")
 DEFAULT_INTERVAL_S = float(os.getenv("ETA_DASHBOARD_PROXY_WATCHDOG_INTERVAL_S", "60"))

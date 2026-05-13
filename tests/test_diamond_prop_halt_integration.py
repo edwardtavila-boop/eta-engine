@@ -299,42 +299,23 @@ def test_supervisor_imports_prop_guard_helpers() -> None:
     """Wave-23: the supervisor's entry hot path imports the three
     prop-guard helpers. Regex-checked so the integration can't
     silently regress during refactors."""
-    p = (
-        Path(__file__).resolve().parents[1]
-        / "scripts" / "jarvis_strategy_supervisor.py"
-    )
+    p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    assert "should_block_prop_entry" in text, (
-        "supervisor missing should_block_prop_entry — wave-23 not wired"
-    )
-    assert "prop_entry_size_multiplier" in text, (
-        "supervisor missing prop_entry_size_multiplier — wave-23 not wired"
-    )
+    assert "should_block_prop_entry" in text, "supervisor missing should_block_prop_entry — wave-23 not wired"
+    assert "prop_entry_size_multiplier" in text, "supervisor missing prop_entry_size_multiplier — wave-23 not wired"
 
 
 def test_supervisor_blocks_entry_on_HALT_signal() -> None:
     """The supervisor calls should_block_prop_entry and returns early."""
-    p = (
-        Path(__file__).resolve().parents[1]
-        / "scripts" / "jarvis_strategy_supervisor.py"
-    )
+    p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    assert "if should_block_prop_entry(bot.bot_id):" in text, (
-        "supervisor missing the should_block_prop_entry check"
-    )
-    assert "prop_guard_halt:" in text, (
-        "supervisor missing the prop_guard_halt rejection reason"
-    )
+    assert "if should_block_prop_entry(bot.bot_id):" in text, "supervisor missing the should_block_prop_entry check"
+    assert "prop_guard_halt:" in text, "supervisor missing the prop_guard_halt rejection reason"
 
 
 def test_supervisor_applies_watch_size_multiplier() -> None:
     """The supervisor multiplies size_mult by prop_entry_size_multiplier
     so WATCH halves the position and HALT zeros it."""
-    p = (
-        Path(__file__).resolve().parents[1]
-        / "scripts" / "jarvis_strategy_supervisor.py"
-    )
+    p = Path(__file__).resolve().parents[1] / "scripts" / "jarvis_strategy_supervisor.py"
     text = p.read_text(encoding="utf-8")
-    assert "size_mult *= prop_mult" in text, (
-        "supervisor missing the WATCH-mode size_mult multiplication"
-    )
+    assert "size_mult *= prop_mult" in text, "supervisor missing the WATCH-mode size_mult multiplication"

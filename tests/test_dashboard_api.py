@@ -4702,6 +4702,58 @@ class TestDashboardAPI:
         assert month_state["last_net_liquidation"] == 101250.5
         assert month_state["last_seen_at"] == "2026-05-12T15:00:00+00:00"
 
+    def test_ibkr_net_liq_mtd_tracker_honors_manual_month_override(self, tmp_path, monkeypatch):
+        import importlib
+
+        monkeypatch.setenv("ETA_STATE_DIR", str(tmp_path / "state"))
+        override_path = tmp_path / "state" / "broker_mtd" / "ibkr_net_liq_month_overrides.json"
+        override_path.parent.mkdir(parents=True, exist_ok=True)
+        override_path.write_text(
+            "\ufeff"
+            + json.dumps(
+                {
+                    "schema_version": 1,
+                    "accounts": {
+                        "DU7770001": {
+                            "2026-05": {
+                                "baseline_net_liquidation": 100000.0,
+                                "baseline_set_at": "2026-05-01T00:00:00+00:00",
+                                "source": "manual_override",
+                                "note": "operator seeded May 1 paper baseline",
+                            }
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        importlib.reload(mod)
+        snapshot = mod._ibkr_net_liquidation_mtd_snapshot(
+            account_id="DU7770001",
+            net_liquidation=101_250.5,
+            checked_at="2026-05-12T15:00:00+00:00",
+            now_utc=datetime(2026, 5, 12, 15, 0, tzinfo=UTC),
+        )
+
+        assert snapshot["ready"] is True
+        assert snapshot["source"] == "ibkr_net_liquidation_month_manual_override"
+        assert snapshot["mtd_pnl"] == 1250.5
+        assert snapshot["start_nav"] == 100000.0
+        assert snapshot["baseline_set_at"] == "2026-05-01T00:00:00+00:00"
+        assert snapshot["baseline_origin"] == "manual_override"
+        assert snapshot["baseline_note"] == "operator seeded May 1 paper baseline"
+        assert snapshot["baseline_initialized"] is False
+
+        tracker_path = tmp_path / "state" / "broker_mtd" / "ibkr_net_liq_month_tracker.json"
+        payload = json.loads(tracker_path.read_text(encoding="utf-8"))
+        month_state = payload["accounts"]["DU7770001"]["2026-05"]
+        assert month_state["baseline_origin"] == "manual_override"
+        assert month_state["baseline_set_at"] == "2026-05-01T00:00:00+00:00"
+        assert month_state["baseline_note"] == "operator seeded May 1 paper baseline"
+
     def test_closed_outcomes_from_alpaca_filled_order_pairs(self):
         import eta_engine.deploy.scripts.dashboard_api as mod
 

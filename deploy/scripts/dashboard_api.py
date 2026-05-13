@@ -6060,6 +6060,11 @@ def _ibkr_mtd_tracker_state_path() -> Path:
     return _state_dir() / "broker_mtd" / "ibkr_net_liq_month_tracker.json"
 
 
+def _ibkr_mtd_override_state_path() -> Path:
+    """Canonical state file for operator-seeded IBKR month-baseline overrides."""
+    return _state_dir() / "broker_mtd" / "ibkr_net_liq_month_overrides.json"
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     """Atomically write ``payload`` to ``path`` using a temp file + replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -6082,6 +6087,40 @@ def _utc_month_key(now_utc: datetime | None = None) -> str:
     """Return the current UTC month key as ``YYYY-MM``."""
     ts = now_utc.astimezone(UTC) if now_utc is not None else datetime.now(UTC)
     return ts.strftime("%Y-%m")
+
+
+def _ibkr_mtd_manual_override(account_id: str, month_key: str) -> dict[str, Any]:
+    """Return an operator-seeded IBKR MTD baseline override when present."""
+    override_path = _ibkr_mtd_override_state_path()
+    if not override_path.exists():
+        return {}
+    try:
+        loaded = json.loads(override_path.read_text(encoding="utf-8").lstrip("\ufeff"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    accounts = loaded.get("accounts")
+    if not isinstance(accounts, dict):
+        return {}
+    for account_key in (account_id, "*", "default"):
+        account_state = accounts.get(account_key)
+        if not isinstance(account_state, dict):
+            continue
+        month_state = account_state.get(month_key)
+        if not isinstance(month_state, dict):
+            continue
+        baseline_net_liq = _float_value(month_state.get("baseline_net_liquidation"))
+        if baseline_net_liq is None:
+            continue
+        baseline_set_at = str(month_state.get("baseline_set_at") or f"{month_key}-01T00:00:00+00:00").strip()
+        return {
+            "baseline_net_liquidation": round(float(baseline_net_liq), 2),
+            "baseline_set_at": baseline_set_at,
+            "source": str(month_state.get("source") or "manual_override").strip() or "manual_override",
+            "note": str(month_state.get("note") or "").strip(),
+        }
+    return {}
 
 
 def _ibkr_net_liquidation_mtd_snapshot(
@@ -6125,6 +6164,7 @@ def _ibkr_net_liquidation_mtd_snapshot(
     tracker_path = _ibkr_mtd_tracker_state_path()
     tracker_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = tracker_path.with_suffix(".lock")
+    manual_override = _ibkr_mtd_manual_override(account_text, month_key)
 
     with portalocker.Lock(str(lock_path), mode="a", timeout=5, flags=portalocker.LOCK_EX):
         tracker_state: dict[str, Any] = {}
@@ -6148,17 +6188,37 @@ def _ibkr_net_liquidation_mtd_snapshot(
 
         baseline_net_liq = _float_value(month_state.get("baseline_net_liquidation"))
         baseline_set_at = str(month_state.get("baseline_set_at") or "").strip()
+        baseline_origin = str(month_state.get("baseline_origin") or "").strip().lower()
+        baseline_note = str(month_state.get("baseline_note") or "").strip()
         baseline_initialized = baseline_net_liq is None
-        if baseline_net_liq is None:
-            baseline_net_liq = current_net_liq
-        if not baseline_set_at:
-            baseline_set_at = checked_iso
+        manual_baseline_net_liq = _float_value(manual_override.get("baseline_net_liquidation"))
+        if manual_baseline_net_liq is not None:
+            baseline_net_liq = round(float(manual_baseline_net_liq), 2)
+            baseline_set_at = str(
+                manual_override.get("baseline_set_at") or baseline_set_at or f"{month_key}-01T00:00:00+00:00"
+            ).strip()
+            baseline_origin = "manual_override"
+            baseline_note = str(manual_override.get("note") or baseline_note).strip()
+            baseline_initialized = False
+        elif baseline_origin == "manual_override" and baseline_net_liq is not None:
+            if not baseline_set_at:
+                baseline_set_at = f"{month_key}-01T00:00:00+00:00"
+            baseline_initialized = False
+        else:
+            if baseline_net_liq is None:
+                baseline_net_liq = current_net_liq
+            if not baseline_set_at:
+                baseline_set_at = checked_iso
+            baseline_origin = "tracker"
+            baseline_note = ""
 
         month_state.update(
             {
                 "month": month_key,
                 "baseline_net_liquidation": round(float(baseline_net_liq), 2),
                 "baseline_set_at": baseline_set_at,
+                "baseline_origin": baseline_origin,
+                "baseline_note": baseline_note,
                 "last_net_liquidation": current_net_liq,
                 "last_seen_at": checked_iso,
             }
@@ -6174,15 +6234,21 @@ def _ibkr_net_liquidation_mtd_snapshot(
             "ready": True,
             "month": month_key,
             "source": (
-                "ibkr_net_liquidation_month_tracker_bootstrap"
-                if baseline_initialized
-                else "ibkr_net_liquidation_month_tracker"
+                "ibkr_net_liquidation_month_manual_override"
+                if baseline_origin == "manual_override"
+                else (
+                    "ibkr_net_liquidation_month_tracker_bootstrap"
+                    if baseline_initialized
+                    else "ibkr_net_liquidation_month_tracker"
+                )
             ),
             "mtd_pnl": mtd_pnl,
             "start_nav": baseline_net_liq,
             "end_nav": current_net_liq,
             "baseline_set_at": baseline_set_at,
             "baseline_initialized": baseline_initialized,
+            "baseline_origin": baseline_origin,
+            "baseline_note": baseline_note,
         }
     )
     if baseline_net_liq not in {0.0, -0.0}:
@@ -6783,6 +6849,124 @@ def _trade_close_is_cellar(row: dict) -> bool:
     return _portfolio_symbol_is_cellar(_trade_close_symbol(row))
 
 
+def _contributor_pnl_value(row: dict[str, Any]) -> float | None:
+    """Return the signed PnL field from a raw contributor row."""
+    return _float_value(
+        row.get("pnl")
+        if row.get("pnl") is not None
+        else row.get("unrealized_pnl")
+        if row.get("unrealized_pnl") is not None
+        else row.get("realized_pnl")
+        if row.get("realized_pnl") is not None
+        else row.get("today_pnl"),
+    )
+
+
+def _aggregate_portfolio_contributors(contributors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse raw contributor rows into distinct strategy/ticker impacts."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in contributors:
+        if not isinstance(row, dict):
+            continue
+        bot_id = str(row.get("bot_id") or "").strip()
+        symbol = str(row.get("symbol") or "").strip()
+        symbol_root = str(row.get("symbol_root") or _portfolio_symbol_root(symbol) or "").strip()
+        key_value = bot_id or symbol_root or symbol
+        if not key_value:
+            continue
+        aggregation = "strategy" if bot_id else "ticker"
+        group_key = f"{aggregation}:{key_value.lower()}"
+        pnl = _contributor_pnl_value(row)
+        exposure = abs(
+            _float_value(row.get("market_value"))
+            or _float_value(row.get("exposure"))
+            or _float_value(row.get("notional"))
+            or 0.0
+        )
+        source_type = str(row.get("type") or "").strip().lower()
+        venue = str(row.get("venue") or "").strip().lower()
+        ownership_status = str(row.get("ownership_status") or "").strip()
+
+        bucket = grouped.setdefault(
+            group_key,
+            {
+                "type": "aggregated_contributor",
+                "aggregation": aggregation,
+                "aggregation_key": key_value,
+                "bot_id": bot_id or None,
+                "symbol": symbol or None,
+                "symbol_root": symbol_root or None,
+                "sleeve": str(row.get("sleeve") or _portfolio_sleeve_for_symbol(symbol) or "other"),
+                "ownership_status": ownership_status,
+                "venues": set(),
+                "sources": set(),
+                "pnl": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "market_value": 0.0,
+                "close_count": 0,
+                "open_count": 0,
+            },
+        )
+        if bot_id and not bucket.get("bot_id"):
+            bucket["bot_id"] = bot_id
+        if symbol and not bucket.get("symbol"):
+            bucket["symbol"] = symbol
+        if symbol_root and not bucket.get("symbol_root"):
+            bucket["symbol_root"] = symbol_root
+        if venue:
+            bucket["venues"].add(venue)
+        if row.get("source"):
+            bucket["sources"].add(str(row.get("source")))
+        if ownership_status:
+            existing_ownership = str(bucket.get("ownership_status") or "").strip()
+            if not existing_ownership or existing_ownership == "managed_symbol":
+                bucket["ownership_status"] = ownership_status
+        if pnl is not None:
+            bucket["pnl"] += float(pnl)
+            if source_type == "recent_close_realized":
+                bucket["realized_pnl"] += float(pnl)
+            else:
+                bucket["unrealized_pnl"] += float(pnl)
+        if exposure:
+            bucket["market_value"] += float(exposure)
+        if source_type == "recent_close_realized":
+            bucket["close_count"] += 1
+        else:
+            bucket["open_count"] += 1
+
+    out: list[dict[str, Any]] = []
+    for bucket in grouped.values():
+        venues = sorted(bucket.pop("venues"))
+        sources = sorted(bucket.pop("sources"))
+        total_pnl = round(float(bucket.get("pnl") or 0.0), 2)
+        realized_pnl = round(float(bucket.get("realized_pnl") or 0.0), 2)
+        unrealized_pnl = round(float(bucket.get("unrealized_pnl") or 0.0), 2)
+        market_value = round(float(bucket.get("market_value") or 0.0), 2)
+        out.append(
+            {
+                **bucket,
+                "venue": venues[0] if len(venues) == 1 else ("multi" if venues else ""),
+                "source": sources[0] if len(sources) == 1 else ("multiple_sources" if sources else ""),
+                "venues": venues,
+                "sources": sources,
+                "pnl": total_pnl,
+                "realized_pnl": realized_pnl if bucket["close_count"] else None,
+                "unrealized_pnl": unrealized_pnl if bucket["open_count"] else None,
+                "market_value": market_value if market_value else None,
+                "impact_value": round(abs(total_pnl), 2),
+            }
+        )
+    out.sort(
+        key=lambda row: (
+            -abs(float(row.get("pnl") or 0.0)),
+            -abs(float(row.get("market_value") or 0.0)),
+            str(row.get("bot_id") or row.get("symbol") or row.get("aggregation_key") or ""),
+        ),
+    )
+    return out
+
+
 def _portfolio_summary_payload(
     rows: list[dict],
     live_broker_state: dict,
@@ -6891,12 +7075,7 @@ def _portfolio_summary_payload(
                 "source": "live_broker_state.position_exposure",
             }
         )
-    contributors.sort(
-        key=lambda row: abs(
-            float(row.get("unrealized_pnl") or row.get("realized_pnl") or 0.0),
-        ),
-        reverse=True,
-    )
+    contributors = _aggregate_portfolio_contributors(contributors)
     focus_exposure = sum(
         abs(_float_value(pos.get("market_value")) or 0.0)
         for pos in exposure.get("open_positions") or []
@@ -7758,6 +7937,46 @@ _IBKR_PROBE_CACHE: dict = {"snapshot": None, "ts": 0.0}
 _IBKR_PROBE_CACHE_TTL_S = float(os.environ.get("ETA_DASHBOARD_IBKR_CACHE_TTL_S", "60"))
 _IBKR_PROBE_LOCK = threading.Lock()
 
+
+def _dashboard_ibkr_client_id_candidates() -> list[int]:
+    """Return deterministic IBKR client-id candidates for the dashboard probe.
+
+    Older builds picked a random 8xx client id on each probe. That made stale
+    dashboard workers spray the gateway with many different client sessions,
+    which is exactly how we ended up with repeated "client id already in use"
+    churn on the VPS. Prefer a small deterministic lane, with an env override
+    when the operator needs a specific id.
+    """
+    explicit = str(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID", "") or "").strip()
+    if explicit:
+        with contextlib.suppress(ValueError):
+            return [int(explicit)]
+
+    try:
+        base = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID_BASE", "1842"))
+    except ValueError:
+        base = 1842
+    try:
+        span = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID_SPAN", "2"))
+    except ValueError:
+        span = 2
+    span = max(1, min(span, 8))
+    offset = os.getpid() % span
+    return [base + ((offset + idx) % span) for idx in range(span)]
+
+
+def _ibkr_client_id_retryable_error(exc: BaseException) -> bool:
+    """Return True when another client-id candidate should be tried."""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        "client id already in use" in text
+        or ("clientid" in text and "already in use" in text)
+        or "error 326" in text
+        or ("peer closed connection" in text and "already in use" in text)
+        or type(exc).__name__ == "TimeoutError"
+    )
+
+
 # Cache for per-bot Alpaca PnL probe. Same TTL pattern as IBKR.
 # Keyed dict: {"snapshot": {bot_id: {...}}, "ts": float}.
 _ALPACA_PER_BOT_CACHE: dict = {"snapshot": None, "ts": 0.0}
@@ -8117,6 +8336,8 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
         "account_mtd_error": "",
         "account_mtd_baseline_net_liquidation": None,
         "account_mtd_baseline_set_at": "",
+        "account_mtd_baseline_origin": "",
+        "account_mtd_baseline_note": "",
         "account_mtd_baseline_initialized": False,
         "account_summary_tags": {},
         "checked_utc": datetime.now(UTC).isoformat(),
@@ -8145,16 +8366,36 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
         port = int(os.environ.get("ETA_IBKR_PORT", "4002"))
     except ValueError:
         port = 4002
-    # Pick a transient client_id well outside the supervisor's range.
-    client_id = int(os.environ.get("ETA_DASHBOARD_IBKR_CLIENT_ID", str(secrets.randbelow(100) + 800)))
+    # Use a small deterministic client-id lane so stale workers don't spray
+    # IB Gateway with random dashboard sessions on every probe.
+    client_id_candidates = _dashboard_ibkr_client_id_candidates()
+    client_id = client_id_candidates[0]
     # 5s wasn't enough under load — IBG is slow to handshake when the
     # supervisor is also pumping market data. Bump to 12s; the dashboard
     # endpoint only takes that hit when the gateway is actually slow.
     connect_timeout = float(os.environ.get("ETA_DASHBOARD_IBKR_TIMEOUT_S", "12"))
-    ib = IB()
+    ib = None
     try:
+        last_connect_exc: Exception | None = None
+        for idx, candidate_client_id in enumerate(client_id_candidates):
+            client_id = candidate_client_id
+            ib = IB()
+            try:
+                loop.run_until_complete(ib.connectAsync(host, port, clientId=client_id, timeout=connect_timeout))
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_connect_exc = exc
+                with contextlib.suppress(Exception):
+                    if ib.isConnected():
+                        ib.disconnect()
+                if idx < (len(client_id_candidates) - 1) and _ibkr_client_id_retryable_error(exc):
+                    continue
+                raise
+        else:
+            if last_connect_exc is not None:
+                raise last_connect_exc
+
         try:
-            loop.run_until_complete(ib.connectAsync(host, port, clientId=client_id, timeout=connect_timeout))
             try:
                 portfolio = list(ib.portfolio()) if ib.isConnected() else []
             except Exception:  # noqa: BLE001
@@ -8217,6 +8458,8 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
             if baseline_net_liq is not None:
                 snapshot["account_mtd_baseline_net_liquidation"] = round(baseline_net_liq, 2)
             snapshot["account_mtd_baseline_set_at"] = str(mtd_snapshot.get("baseline_set_at") or "")
+            snapshot["account_mtd_baseline_origin"] = str(mtd_snapshot.get("baseline_origin") or "")
+            snapshot["account_mtd_baseline_note"] = str(mtd_snapshot.get("baseline_note") or "")
             snapshot["account_mtd_baseline_initialized"] = bool(mtd_snapshot.get("baseline_initialized"))
             try:
                 open_trades = list(ib.reqAllOpenOrders() or []) if ib.isConnected() else []
@@ -8271,7 +8514,7 @@ def _ibkr_live_state_snapshot(*, today_start_utc: datetime) -> dict:
             snapshot["ready"] = True
         finally:
             with contextlib.suppress(Exception):
-                if ib.isConnected():
+                if ib is not None and ib.isConnected():
                     ib.disconnect()
             with contextlib.suppress(Exception):
                 loop.close()

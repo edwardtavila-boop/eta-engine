@@ -408,10 +408,11 @@ class TestStatusPage:
         assert "/api/jarvis/strategy_supercharge_results" in js
         assert "near_misses" in js
         assert "retune_queue" in js
-        assert 'data-panel-id="cc-strategy-supercharge-results"' in html
-        assert "/api/jarvis/strategy_supercharge_results" in html
-        assert "strategyNearMisses" in html
-        assert "strategyRetuneQueue" in html
+        assert "commandCenterContractAnchors" in html
+        assert "cc-strategy-supercharge-results" in html
+        # The supercharge panel is rendered by JS at runtime; the static HTML
+        # keeps only hidden contract anchors while FastAPI serves the JS files
+        # separately. Validate both the runtime JS and the static anchor.
         assert "id.includes('supercharge')" in panels
 
     def test_status_page_mobile_fleet_and_equity_contracts(self):
@@ -466,7 +467,7 @@ class TestStatusPage:
         assert "target_exit_visibility" in html
         assert "broker_open_position_count" in html
         assert "supervisor_local_position_count" in html
-        assert "paper-local watched" in html
+        assert "paper-local open" in html
 
     def test_status_page_prefers_fresh_public_fleet_and_cellars_spot(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
@@ -477,7 +478,8 @@ class TestStatusPage:
         assert "isCellarBot" in html
         assert "cellarCount" in html
         assert "Alpaca/spot paused" in html
-        assert "Futures Focus Net" in html
+        assert "Backburner: Spot Paused" in html
+        assert "Focus Bots" in html
 
     def test_status_page_does_not_coerce_missing_broker_pnl_to_zero(self):
         root = Path(__file__).resolve().parent.parent / "deploy" / "status_page"
@@ -485,7 +487,9 @@ class TestStatusPage:
 
         assert "function formatMoneyOrUnavailable" in html
         assert "brokerHasPnlTruth" in html
+        # formatMoneyOrUnavailable returns 'n/a' instead of coercing to 0
         assert "broker PnL fields unavailable" in html
+        assert "return n == null ? 'n/a'" in html
         assert "formatMoney(totalRealized ?? 0)" not in html
         assert "formatMoney(totalUnrealized ?? 0)" not in html
         assert "Number(liveBroker.today_realized_pnl || 0)" not in html

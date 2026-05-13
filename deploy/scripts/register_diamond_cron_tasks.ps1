@@ -127,6 +127,9 @@ $every15MinTasks = @(
     @{ Name = "ETA-Diamond-LaunchReadinessEvery15Min"
         Args = "-m eta_engine.scripts.diamond_prop_launch_readiness"
         Desc = "Diamond: pre-launch GO/HOLD/NO_GO gate for 2026-05-18 prop-fund cutover (aggregates 7 readiness checks)" }
+    @{ Name = "ETA-Diamond-PropAlertDispatcherEvery15Min"
+        Args = "-m eta_engine.scripts.diamond_prop_alert_dispatcher"
+        Desc = "Diamond: push HALT/WATCH alerts to Telegram/Discord/generic webhook (cursor-based dedup; 15-min cadence -- worst-case lag from HALT to push <30min)" }
 )
 
 foreach ($t in $every15MinTasks) {
