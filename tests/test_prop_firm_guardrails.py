@@ -435,6 +435,106 @@ def test_snapshot_severity_critical_at_95pct_daily_loss(tmp_path: Path) -> None:
     assert snap.severity == "critical"
 
 
+# ────────────────────────────────────────────────────────────────────
+# 2026-05-13: paper-test virtual account (research portfolio split)
+#
+# The operator's 5/15 cutover plan separates two portfolios:
+#   * paper-test — unconstrained research portfolio (no breach rules)
+#   * blusky-50K-launch / apex-* / etc — real prop firm accounts (strict)
+#
+# The bot fleet has historically written paper trades to a single
+# trade_closes.jsonl with NO account_id field. paper-test inherits those
+# untagged records as a catch-all so the dashboard shows real paper P&L.
+# Real prop accounts NEVER inherit untagged trades.
+# ────────────────────────────────────────────────────────────────────
+
+
+def test_paper_test_virtual_account_registered() -> None:
+    """paper-test must be in REGISTRY as an unconstrained research portfolio."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    assert "paper-test" in g.REGISTRY
+    r = g.REGISTRY["paper-test"]
+    assert r.firm == "paper-test"
+    # No breach rules — strategies must be free to stretch
+    assert r.daily_loss_limit is None
+    assert r.trailing_drawdown is None
+    assert r.profit_target is None
+    assert r.starting_balance >= 50_000.0  # at least as large as a prop firm
+    assert r.automation_allowed is True
+
+
+def test_paper_test_catches_untagged_paper_trades(tmp_path: Path) -> None:
+    """Untagged trades must roll into the paper-test snapshot, NOT into
+    any real prop firm account. This protects the operator from a stale
+    untagged record showing up as a blusky-50K daily loss breach."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            # Untagged paper trade (the legacy shape)
+            {
+                "ts": _ts(2),
+                "realized_pnl_usd": 50.0,
+                "extra": {"realized_pnl": 50.0, "symbol": "MNQ1"},
+            },
+            # Untagged paper trade
+            {
+                "ts": _ts(1),
+                "realized_pnl_usd": -25.0,
+                "extra": {"realized_pnl": -25.0, "symbol": "MNQ1"},
+            },
+            # Explicitly tagged to BluSky — must NOT show in paper-test
+            {
+                "ts": _ts(0.5),
+                "account_id": "blusky-50K-launch",
+                "realized_pnl_usd": 100.0,
+                "extra": {"realized_pnl": 100.0, "symbol": "MNQ1"},
+            },
+        ],
+    )
+    # Paper-test sees the 2 untagged
+    snap_paper = g.snapshot_one("paper-test", trade_closes_path=path)
+    assert snap_paper is not None
+    assert snap_paper.state.day_pnl_usd == pytest.approx(25.0)  # 50 - 25
+    # BluSky sees only the 1 tagged
+    snap_blusky = g.snapshot_one("blusky-50K-launch", trade_closes_path=path)
+    assert snap_blusky is not None
+    assert snap_blusky.state.day_pnl_usd == pytest.approx(100.0)
+
+
+def test_real_prop_account_does_not_inherit_untagged(tmp_path: Path) -> None:
+    """A real prop firm account snapshot must compute ZERO state from
+    untagged trades. Without this guard, a single stale untagged record
+    could trigger a fake breach alert on a real account."""
+    from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g
+
+    path = tmp_path / "tc.jsonl"
+    _write_trades(
+        path,
+        [
+            # Big "loss" untagged — must NOT count against BluSky
+            {
+                "ts": _ts(1),
+                "realized_pnl_usd": -3000.0,  # would breach BluSky's $1500 daily cap
+                "extra": {"realized_pnl": -3000.0, "symbol": "MNQ1"},
+            },
+        ],
+    )
+    snap = g.snapshot_one("blusky-50K-launch", trade_closes_path=path)
+    assert snap is not None
+    assert snap.state.day_pnl_usd == 0.0
+    assert snap.severity != "blown"
+    # paper-test sees the loss
+    paper = g.snapshot_one("paper-test", trade_closes_path=path)
+    assert paper is not None
+    assert paper.state.day_pnl_usd == pytest.approx(-3000.0)
+    # paper-test never blows because it has no breach rules
+    assert paper.severity == "ok"
+
+
 def test_snapshot_progress_to_target(tmp_path: Path) -> None:
     """Profit-to-target tracking for eval accounts."""
     from eta_engine.brain.jarvis_v3 import prop_firm_guardrails as g

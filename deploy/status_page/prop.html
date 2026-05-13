@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ETA | Prop Firm Dashboard</title>
+<style>
+:root{--bg:#060912;--card:#0d1117;--border:#1a2332;--green:#00e676;--red:#ff1744;--yellow:#ffc400;--blue:#40c4ff;--text:#c9d1d9;--dim:#6e7681;--accent:#7c3aed;--purple:#a855f7;--orange:#ff9100}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif}
+.header{background:linear-gradient(180deg,var(--card),var(--bg));border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:1.25rem;background:linear-gradient(90deg,var(--purple),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .meta{font-size:.75rem;color:var(--dim)}
+.header .meta a{color:var(--blue);text-decoration:none}
+.header .meta a:hover{text-decoration:underline}
+.nav{display:flex;gap:1rem;font-size:.85rem;padding:.75rem 2rem;background:var(--card);border-bottom:1px solid var(--border)}
+.nav a{color:var(--dim);text-decoration:none;padding:.25rem .75rem;border-radius:4px}
+.nav a:hover{background:var(--bg);color:var(--text)}
+.nav a.active{color:var(--purple);background:var(--bg)}
+.container{padding:1.5rem 2rem;max-width:1600px;margin:0 auto}
+.account-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:1.5rem}
+.account-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.5rem;position:relative}
+.account-card.sev-ok{border-color:var(--border)}
+.account-card.sev-warn{border-color:var(--yellow);box-shadow:0 0 12px rgba(255,196,0,.15)}
+.account-card.sev-critical{border-color:var(--orange);box-shadow:0 0 16px rgba(255,145,0,.25)}
+.account-card.sev-blown{border-color:var(--red);box-shadow:0 0 24px rgba(255,23,68,.35)}
+.account-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+.account-head h2{font-size:1.1rem;font-weight:700}
+.account-head .firm-badge{display:inline-block;font-size:.65rem;padding:.2rem .6rem;border-radius:10px;background:var(--bg);color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-right:.5rem}
+.account-head .sev-badge{display:inline-block;font-size:.7rem;padding:.3rem .8rem;border-radius:6px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.sev-badge.ok{background:rgba(0,230,118,.15);color:var(--green)}
+.sev-badge.warn{background:rgba(255,196,0,.15);color:var(--yellow)}
+.sev-badge.critical{background:rgba(255,145,0,.18);color:var(--orange)}
+.sev-badge.blown{background:rgba(255,23,68,.2);color:var(--red)}
+.account-head .right{text-align:right}
+.account-head .id-line{font-size:.7rem;color:var(--dim);margin-top:.25rem;font-family:'Courier New',monospace}
+.balance-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem}
+.metric{background:var(--bg);border-radius:8px;padding:.85rem 1rem}
+.metric .label{font-size:.6rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:.3rem}
+.metric .value{font-size:1.4rem;font-weight:700}
+.metric .sub{font-size:.7rem;color:var(--dim);margin-top:.15rem}
+.metric.compact .value{font-size:1.15rem}
+.rule-row{margin-bottom:1rem}
+.rule-row:last-child{margin-bottom:0}
+.rule-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem}
+.rule-head .rule-label{font-size:.75rem;color:var(--text);font-weight:600}
+.rule-head .rule-value{font-size:.85rem;font-weight:700}
+.bar-track{height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.bar-fill.green{background:linear-gradient(90deg,var(--green),#00c853)}
+.bar-fill.yellow{background:linear-gradient(90deg,var(--yellow),#ff9100)}
+.bar-fill.red{background:linear-gradient(90deg,var(--red),#c62828)}
+.bar-fill.blue{background:linear-gradient(90deg,var(--blue),#1976d2)}
+.bar-fill.purple{background:linear-gradient(90deg,var(--purple),#7c3aed)}
+.bar-sub{font-size:.65rem;color:var(--dim);margin-top:.25rem;font-family:'Courier New',monospace}
+.blockers{margin-top:1rem;padding:.85rem 1rem;background:rgba(255,23,68,.08);border-radius:8px;border-left:3px solid var(--red)}
+.blockers .label{font-size:.65rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);margin-bottom:.4rem}
+.blockers ul{list-style:none;font-size:.8rem}
+.blockers li{margin-bottom:.25rem;padding-left:1rem;position:relative}
+.blockers li::before{content:"⚠";position:absolute;left:0;color:var(--red)}
+.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}.blue{color:var(--blue)}.dim{color:var(--dim)}.orange{color:var(--orange)}.purple{color:var(--purple)}
+.footer{text-align:center;padding:2rem;color:var(--dim);font-size:.75rem}
+.refresh-status{display:inline-block;margin-left:1rem;font-size:.7rem;color:var(--dim)}
+.refresh-status.live::before{content:"●";color:var(--green);margin-right:.4rem;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.empty-state{text-align:center;padding:3rem;background:var(--card);border-radius:12px;color:var(--dim)}
+.rules-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)}
+.rules-grid .item{font-size:.7rem}
+.rules-grid .item .k{color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.rules-grid .item .v{color:var(--text);font-weight:600;margin-top:.15rem}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Prop Firm Dashboard</h1>
+  <div class="meta">
+    <span id="asof">—</span>
+    <span class="refresh-status live">live · 10s</span>
+    · <a href="/">main</a>
+    · <a href="/scorecard">scorecard</a>
+  </div>
+</div>
+<div class="nav">
+  <a href="/">Main Dashboard</a>
+  <a href="/prop" class="active">Prop Firm</a>
+  <a href="/scorecard">Scorecard</a>
+  <a href="/api/prop/snapshot" target="_blank">Raw JSON</a>
+</div>
+<div class="container">
+  <div id="accounts" class="account-grid"></div>
+</div>
+<div class="footer">
+  ETA Prop Firm Dashboard · auto-refresh every 10 seconds · data via <code>/api/prop/snapshot</code>
+</div>
+<script>
+const fmt_usd = (v, signed) => {
+  if (v === null || v === undefined) return "—";
+  const n = Number(v);
+  const sign = (signed && n > 0) ? "+" : "";
+  return sign + "$" + n.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+};
+const fmt_pct = (v) => {
+  if (v === null || v === undefined) return "—";
+  return (Number(v) * 100).toFixed(1) + "%";
+};
+const fmt_int = (v) => (v === null || v === undefined) ? "—" : Number(v).toLocaleString();
+
+function bar_color(pct_used) {
+  if (pct_used === null || pct_used === undefined) return "blue";
+  const p = Number(pct_used);
+  if (p >= 0.9) return "red";
+  if (p >= 0.7) return "yellow";
+  return "green";
+}
+
+function profit_bar_color(pct) {
+  if (pct === null || pct === undefined) return "blue";
+  const p = Number(pct);
+  if (p >= 1.0) return "green";
+  if (p >= 0.5) return "purple";
+  return "blue";
+}
+
+function render_account(snap) {
+  const rules = snap.rules;
+  const state = snap.state;
+  const severity = snap.severity || "ok";
+
+  // Build the breach-rule rows (daily loss, trailing DD, profit target)
+  const rule_rows = [];
+
+  if (rules.daily_loss_limit !== null && rules.daily_loss_limit !== undefined) {
+    const limit = Number(rules.daily_loss_limit);
+    const used_pct = Number(snap.daily_loss_pct_used || 0);
+    const used_usd = limit * used_pct;
+    const remaining = Number(snap.daily_loss_remaining || 0);
+    rule_rows.push(`
+      <div class="rule-row">
+        <div class="rule-head">
+          <span class="rule-label">Daily Loss Limit</span>
+          <span class="rule-value ${bar_color(used_pct)}">${fmt_usd(used_usd)} / ${fmt_usd(limit)}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${bar_color(used_pct)}" style="width: ${Math.min(100, used_pct * 100).toFixed(1)}%"></div>
+        </div>
+        <div class="bar-sub">${fmt_pct(used_pct)} used · ${fmt_usd(remaining)} remaining today</div>
+      </div>`);
+  }
+
+  if (rules.trailing_drawdown !== null && rules.trailing_drawdown !== undefined) {
+    const limit = Number(rules.trailing_drawdown);
+    const remaining = Number(snap.trailing_dd_remaining || 0);
+    const used = limit - remaining;
+    const used_pct = limit > 0 ? used / limit : 0;
+    rule_rows.push(`
+      <div class="rule-row">
+        <div class="rule-head">
+          <span class="rule-label">Trailing Drawdown</span>
+          <span class="rule-value ${bar_color(used_pct)}">${fmt_usd(used)} / ${fmt_usd(limit)}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${bar_color(used_pct)}" style="width: ${Math.min(100, used_pct * 100).toFixed(1)}%"></div>
+        </div>
+        <div class="bar-sub">${fmt_pct(used_pct)} used · ${fmt_usd(remaining)} headroom</div>
+      </div>`);
+  }
+
+  if (rules.profit_target !== null && rules.profit_target !== undefined) {
+    const target = Number(rules.profit_target);
+    const pct_to = Number(snap.pct_to_target || 0);
+    const earned = target * pct_to;
+    const need = Number(snap.profit_to_target || target);
+    rule_rows.push(`
+      <div class="rule-row">
+        <div class="rule-head">
+          <span class="rule-label">Profit Target</span>
+          <span class="rule-value ${profit_bar_color(pct_to)}">${fmt_usd(earned, true)} / ${fmt_usd(target)}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${profit_bar_color(pct_to)}" style="width: ${Math.min(100, pct_to * 100).toFixed(1)}%"></div>
+        </div>
+        <div class="bar-sub">${fmt_pct(pct_to)} of target · ${fmt_usd(need)} to go</div>
+      </div>`);
+  }
+
+  // Blockers panel (only if non-empty)
+  const blockers_html = (snap.blockers && snap.blockers.length > 0)
+    ? `<div class="blockers">
+         <div class="label">Active Blockers</div>
+         <ul>${snap.blockers.map(b => `<li>${b}</li>`).join("")}</ul>
+       </div>`
+    : "";
+
+  // PnL colors
+  const day_pnl = Number(state.day_pnl_usd || 0);
+  const day_pnl_class = day_pnl > 0 ? "green" : (day_pnl < 0 ? "red" : "dim");
+  const total_pnl = Number(state.current_balance) - Number(state.starting_balance);
+  const total_pnl_class = total_pnl > 0 ? "green" : (total_pnl < 0 ? "red" : "dim");
+
+  return `
+    <div class="account-card sev-${severity}">
+      <div class="account-head">
+        <div>
+          <h2>
+            <span class="firm-badge">${rules.firm} ${rules.size}</span>
+          </h2>
+          <div class="id-line">${rules.account_id}</div>
+        </div>
+        <div class="right">
+          <span class="sev-badge ${severity}">${severity}</span>
+        </div>
+      </div>
+
+      <div class="balance-row">
+        <div class="metric">
+          <div class="label">Day PnL</div>
+          <div class="value ${day_pnl_class}">${fmt_usd(day_pnl, true)}</div>
+          <div class="sub">${fmt_int(state.n_trades_today)} trades today</div>
+        </div>
+        <div class="metric">
+          <div class="label">Balance</div>
+          <div class="value">${fmt_usd(state.current_balance)}</div>
+          <div class="sub ${total_pnl_class}">${fmt_usd(total_pnl, true)} since start</div>
+        </div>
+        <div class="metric">
+          <div class="label">Peak HWM</div>
+          <div class="value">${fmt_usd(state.peak_balance)}</div>
+          <div class="sub">${fmt_int(state.open_contracts)} open contracts</div>
+        </div>
+      </div>
+
+      ${rule_rows.join("")}
+      ${blockers_html}
+
+      <div class="rules-grid">
+        <div class="item">
+          <div class="k">Start Balance</div>
+          <div class="v">${fmt_usd(rules.starting_balance)}</div>
+        </div>
+        <div class="item">
+          <div class="k">Max Contracts</div>
+          <div class="v">${rules.max_contracts ?? "—"}</div>
+        </div>
+        <div class="item">
+          <div class="k">RTH Only</div>
+          <div class="v ${rules.rth_only ? "yellow" : "green"}">${rules.rth_only ? "Yes" : "No"}</div>
+        </div>
+        <div class="item">
+          <div class="k">Automation</div>
+          <div class="v ${rules.automation_allowed ? "green" : "red"}">${rules.automation_allowed ? "Allowed" : "Blocked"}</div>
+        </div>
+        <div class="item">
+          <div class="k">Consistency Rule</div>
+          <div class="v">${rules.consistency_rule_pct ? fmt_pct(rules.consistency_rule_pct) : "—"}</div>
+        </div>
+        <div class="item">
+          <div class="k">Today (UTC)</div>
+          <div class="v">${state.today_date || "—"}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/prop/snapshot");
+    const data = await res.json();
+    document.getElementById("asof").textContent = data.asof
+      ? "as of " + new Date(data.asof).toLocaleTimeString()
+      : "—";
+    const container = document.getElementById("accounts");
+    if (!data.accounts || data.accounts.length === 0) {
+      container.innerHTML = `<div class="empty-state">No prop firm accounts registered. See <code>prop_firm_guardrails.REGISTRY</code> in the engine.</div>`;
+      return;
+    }
+    container.innerHTML = data.accounts.map(render_account).join("");
+  } catch (err) {
+    document.getElementById("accounts").innerHTML =
+      `<div class="empty-state red">Error loading snapshot: ${err.message}</div>`;
+  }
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

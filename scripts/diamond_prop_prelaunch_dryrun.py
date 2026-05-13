@@ -218,7 +218,13 @@ def _check_freshness() -> SectionResult:
 
 
 def _check_supervisor_wiring() -> SectionResult:
-    """Regex-check the supervisor has the wave-23 prop-guard integration."""
+    """Regex-check the supervisor's prop-fund entry gate is fully wired.
+
+    Wave-25e consolidated waves 22 + 25 into one unified gate region.
+    The HALT check is now inside ``resolve_execution_target`` (called
+    from the supervisor) instead of inline ``should_block_prop_entry``.
+    The reject reason is also unified under the ``gate_reject:`` prefix.
+    """
     p = ROOT / "scripts" / "jarvis_strategy_supervisor.py"
     if not p.exists():
         return SectionResult(
@@ -228,9 +234,13 @@ def _check_supervisor_wiring() -> SectionResult:
         )
     text = p.read_text(encoding="utf-8")
     required = [
-        "should_block_prop_entry",
+        # Wave-22 helpers still imported (WATCH size halving)
         "prop_entry_size_multiplier",
-        "prop_guard_halt:",
+        # Wave-25 composite gate
+        "resolve_execution_target",
+        # Wave-25 unified reject prefix
+        "gate_reject:",
+        # WATCH-mode size halving still in place
         "size_mult *= prop_mult",
     ]
     missing = [r for r in required if r not in text]
@@ -238,12 +248,12 @@ def _check_supervisor_wiring() -> SectionResult:
         return SectionResult(
             "supervisor_wiring",
             "NO_GO",
-            rationale=(f"supervisor missing wave-23 patterns: {missing}"),
+            rationale=(f"supervisor missing wave-22/25 patterns: {missing}"),
         )
     return SectionResult(
         "supervisor_wiring",
         "GO",
-        rationale="all 4 wave-23 prop-guard patterns present",
+        rationale="wave-25e unified prop-fund entry gate fully wired",
     )
 
 
@@ -359,6 +369,68 @@ def _check_feed_sanity(prop_ready: list[str]) -> SectionResult:
     )
 
 
+def _check_wave25_lifecycle() -> SectionResult:
+    """Wave-25 per-bot lifecycle state.
+
+    The operator must explicitly opt at least one bot into ``EVAL_LIVE``
+    before the supervisor will route signals to the live broker.
+    Defaults to ``EVAL_PAPER`` everywhere (conservative).
+
+    Verdicts:
+      * GO   — at least one bot in EVAL_LIVE or FUNDED_LIVE
+      * HOLD — every bot is EVAL_PAPER (paper-only fleet; no live)
+      * HOLD — every bot is RETIRED (nothing trading at all)
+    """
+    sys.path.insert(0, str(ROOT.parent))
+    from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+        DIAMOND_BOTS,
+        LIFECYCLE_EVAL_LIVE,
+        LIFECYCLE_EVAL_PAPER,
+        LIFECYCLE_FUNDED_LIVE,
+        LIFECYCLE_RETIRED,
+        get_bot_lifecycle,
+    )
+
+    counts = {
+        LIFECYCLE_EVAL_LIVE: 0,
+        LIFECYCLE_EVAL_PAPER: 0,
+        LIFECYCLE_FUNDED_LIVE: 0,
+        LIFECYCLE_RETIRED: 0,
+    }
+    live_bots: list[str] = []
+    for bot_id in sorted(DIAMOND_BOTS):
+        state = get_bot_lifecycle(bot_id)
+        counts[state] = counts.get(state, 0) + 1
+        if state in {LIFECYCLE_EVAL_LIVE, LIFECYCLE_FUNDED_LIVE}:
+            live_bots.append(bot_id)
+
+    detail = {"counts": counts, "live_bots": live_bots}
+    if live_bots:
+        return SectionResult(
+            "wave25_lifecycle",
+            "GO",
+            rationale=f"{len(live_bots)} bot(s) opted into live execution: {live_bots}",
+            detail=detail,
+        )
+    if counts[LIFECYCLE_RETIRED] == len(DIAMOND_BOTS):
+        return SectionResult(
+            "wave25_lifecycle",
+            "HOLD",
+            rationale="every bot is RETIRED — nothing will trade",
+            detail=detail,
+        )
+    return SectionResult(
+        "wave25_lifecycle",
+        "HOLD",
+        rationale=(
+            "no bot opted into live execution; fleet is paper-only. "
+            "Use `python -m eta_engine.scripts.manage_lifecycle set "
+            "<bot_id> EVAL_LIVE` to promote."
+        ),
+        detail=detail,
+    )
+
+
 def _check_watchdog(prop_ready: list[str]) -> SectionResult:
     rec = _load_json(STATE_DIR / "diamond_watchdog_latest.json")
     if not rec or not prop_ready:
@@ -412,6 +484,7 @@ def run() -> dict[str, Any]:
         _check_freshness(),
         _check_supervisor_wiring(),
         _check_alert_channels(),
+        _check_wave25_lifecycle(),
         _check_prop_ready_bots(),
         _check_sizing(prop_ready),
         _check_feed_sanity(prop_ready),

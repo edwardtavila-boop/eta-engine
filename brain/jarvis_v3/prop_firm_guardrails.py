@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -176,7 +177,39 @@ class GuardrailVerdict:
 #   Apex: TOS restricts automation on FUNDED accounts (eval ok)
 #   Topstep: TOS restricts automation (we don't actively run there)
 #   ETF: allows full automation
+# Paper-test fleet baseline: the operator-facing "research portfolio" used
+# for strategy soaks and crypto experimentation. NOT a prop firm — has no
+# daily-loss/trailing-DD/profit-target rules — so bots routed here can
+# stretch position sizes that would breach a prop-firm cap. Capital is
+# notional, so the operator can iterate on strategy ideas without the
+# 50K-prop-firm sizing ceiling artificially limiting performance.
+#
+try:
+    _paper_test_cap = float(os.environ.get("ETA_PAPER_TEST_CAP_USD", "250000"))
+    if _paper_test_cap < 50_000:
+        _paper_test_cap = 50_000.0
+except (TypeError, ValueError):
+    _paper_test_cap = 250_000.0
+
+PAPER_TEST_ACCOUNT_ID = "paper-test"
+PAPER_TEST_CAP_USD = _paper_test_cap
+
 REGISTRY: dict[str, PropFirmRules] = {
+    PAPER_TEST_ACCOUNT_ID: PropFirmRules(
+        firm="paper-test",
+        size=f"{int(_paper_test_cap / 1000)}K",
+        account_id=PAPER_TEST_ACCOUNT_ID,
+        starting_balance=_paper_test_cap,
+        # No breach rules — research portfolio is unconstrained so
+        # strategies can show their real edge during paper soak.
+        daily_loss_limit=None,
+        trailing_drawdown=None,
+        profit_target=None,
+        consistency_rule_pct=None,
+        max_contracts=None,
+        rth_only=False,
+        automation_allowed=True,
+    ),
     "blusky-50K-launch": PropFirmRules(
         firm="blusky",
         size="50K",
@@ -300,23 +333,41 @@ def _read_trades_for_account(
                             rec = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if str(rec.get("account_id") or "") != account_id:
-                            continue
-                        out.append(rec)
+                        rec_acct = str(rec.get("account_id") or "")
+                        # paper-test catches untagged trades — see below.
+                        if rec_acct == account_id or (account_id == PAPER_TEST_ACCOUNT_ID and rec_acct == ""):
+                            out.append(rec)
             except OSError as exc:
                 logger.warning("prop_firm_guardrails read failed (%s): %s", path, exc)
         return out
 
     from eta_engine.scripts.closed_trade_ledger import (
-        DEFAULT_PRODUCTION_DATA_SOURCES,
+        DEFAULT_OPERATOR_DATA_SOURCES,
         load_close_records,
     )
 
     rows = load_close_records(
         source_paths=[_TRADE_CLOSES, _LEGACY_TRADE_CLOSES],
-        data_sources=DEFAULT_PRODUCTION_DATA_SOURCES,
+        data_sources=DEFAULT_OPERATOR_DATA_SOURCES,
     )
-    return [r for r in rows if str(r.get("account_id") or "") == account_id]
+    # Routing rule:
+    #   * Explicit tag wins: rec.account_id == account_id always matches.
+    #   * Paper-test catch-all: when the caller asks for "paper-test", we
+    #     also include records with NO account_id tag (the historical
+    #     paper-fleet shape). This keeps the paper-test snapshot useful
+    #     until every writer has been migrated to explicit tagging.
+    #   * Real prop-firm accounts (blusky/apex/etc.) only match explicit
+    #     tags — they NEVER inherit untagged paper trades, so the
+    #     guardrails stay correct for the live cutover.
+    return [
+        r
+        for r in rows
+        if str(r.get("account_id") or "") == account_id
+        or (
+            account_id == PAPER_TEST_ACCOUNT_ID
+            and str(r.get("account_id") or "") == ""
+        )
+    ]
 
 
 def _trade_pnl_usd(rec: dict[str, Any]) -> float:

@@ -3342,6 +3342,7 @@ def auth_step_up(
 
 _STATUS_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "index.html"
 _SCORECARD_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "scorecard.html"
+_PROP_PAGE = Path(__file__).resolve().parent.parent / "status_page" / "prop.html"
 _SERVICE_WORKER_CLEANUP_JS = """
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
@@ -3375,6 +3376,96 @@ def scorecard_page() -> HTMLResponse:
     if _SCORECARD_PAGE.exists():
         return HTMLResponse(_SCORECARD_PAGE.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Scorecard</h1><p>Scorecard page not bundled.</p>")
+
+
+@app.get("/prop", response_class=HTMLResponse)
+def prop_page() -> HTMLResponse:
+    """Serve the prop-firm-account dashboard.
+
+    Operator-facing view of every registered prop account (BluSky,
+    Apex, Topstep, etc.) with daily-loss headroom, trailing-DD
+    headroom, profit-target progress, and recent trade activity.
+    Distinct from the main dashboard, which mixes paper-testing
+    and prop-routed trades.
+    """
+    if _PROP_PAGE.exists():
+        return HTMLResponse(
+            _PROP_PAGE.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
+    return HTMLResponse(
+        "<h1>Prop Firm Dashboard</h1><p>Page not bundled. See /api/prop/snapshot for raw JSON.</p>",
+    )
+
+
+@app.get("/api/prop/snapshot")
+def api_prop_snapshot_all() -> dict:
+    """Return snapshots for all registered prop accounts.
+
+    Each snapshot includes the rule set, computed state (day PnL,
+    high-water mark, open contracts), and headroom values for every
+    breach rule. Sorted by severity descending so the most-stressed
+    account shows first.
+    """
+    try:
+        from eta_engine.brain.jarvis_v3 import prop_firm_guardrails
+    except ImportError as exc:
+        return {"error": f"prop_firm_guardrails import failed: {exc}", "accounts": []}
+    snaps = prop_firm_guardrails.aggregate_status()
+    return {
+        "asof": datetime.now(UTC).isoformat(),
+        "accounts": [s.to_dict() for s in snaps],
+        "n_accounts": len(snaps),
+        "schema_version": 1,
+    }
+
+
+@app.get("/api/prop/snapshot/{account_id}")
+def api_prop_snapshot_one(account_id: str) -> dict:
+    """Return a single account's snapshot, or 404-ish ``{error}``
+    payload if the account_id is not in the registry.
+    """
+    try:
+        from eta_engine.brain.jarvis_v3 import prop_firm_guardrails
+    except ImportError as exc:
+        return {"error": f"prop_firm_guardrails import failed: {exc}"}
+    snap = prop_firm_guardrails.snapshot_one(account_id)
+    if snap is None:
+        return {"error": f"unknown account_id: {account_id}", "account_id": account_id}
+    return {
+        "asof": datetime.now(UTC).isoformat(),
+        "snapshot": snap.to_dict(),
+        "schema_version": 1,
+    }
+
+
+@app.get("/api/prop/accounts")
+def api_prop_accounts() -> dict:
+    """Return the list of registered account_ids + their firms."""
+    try:
+        from eta_engine.brain.jarvis_v3 import prop_firm_guardrails
+    except ImportError as exc:
+        return {"error": f"prop_firm_guardrails import failed: {exc}", "accounts": []}
+    accts = []
+    for aid in prop_firm_guardrails.list_known_accounts():
+        rules = prop_firm_guardrails.REGISTRY.get(aid)
+        if rules is None:
+            continue
+        accts.append({
+            "account_id": aid,
+            "firm": rules.firm,
+            "size": rules.size,
+            "starting_balance": rules.starting_balance,
+            "daily_loss_limit": rules.daily_loss_limit,
+            "trailing_drawdown": rules.trailing_drawdown,
+            "profit_target": rules.profit_target,
+            "automation_allowed": rules.automation_allowed,
+        })
+    return {
+        "asof": datetime.now(UTC).isoformat(),
+        "accounts": accts,
+        "n_accounts": len(accts),
+    }
 
 
 @app.get("/favicon.ico", response_model=None)

@@ -12,6 +12,7 @@ Within each pool, capital is allocated by multi-session performance:
 """
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -46,10 +47,42 @@ SPOT_SYMBOLS = {"BTC", "ETH", "SOL", "ADA", "AVAX", "LINK", "DOGE"}
 FUTURES_SYMBOLS = {"MNQ", "MNQ1", "NQ", "NQ1", "MES", "M2K", "GC", "CL", "NG", "ZN", "6E", "EUR"}
 LEVERAGED_SYMBOLS = {"MBT", "MET"}
 
-# Pool allocations — PROD FUND FOCUS
-# Primary: futures/commodities on IBKR ($50k prop fund account)
-# Secondary: spot crypto on Alpaca (smaller allocation)
-POOL_SPLIT = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}  # leveraged now in futures pool
+# Pool allocations.
+#
+# Defaults (2026-05-13): futures-only. The operator explicitly cellared
+# Alpaca/spot while the fleet prepares for futures, crypto futures, and
+# commodity prop-firm work. Spot can be re-enabled later through the env
+# override below without changing code.
+#
+# Env override for live tuning without a code change:
+#   ETA_POOL_FUTURES_FRAC
+#   ETA_POOL_SPOT_FRAC
+#   ETA_POOL_LEVERAGED_FRAC
+# All three must sum to 1.0 ± 0.001. Invalid env values silently fall back
+# to the hard-coded defaults.
+
+
+def _resolve_pool_split() -> dict[str, float]:
+    """Read env-overridden pool fractions, validate, fall back to defaults."""
+    defaults = {"futures": 1.0, "spot": 0.0, "leveraged": 0.0}
+    try:
+        out = {
+            "futures": float(os.environ.get("ETA_POOL_FUTURES_FRAC", defaults["futures"])),
+            "spot": float(os.environ.get("ETA_POOL_SPOT_FRAC", defaults["spot"])),
+            "leveraged": float(os.environ.get("ETA_POOL_LEVERAGED_FRAC", defaults["leveraged"])),
+        }
+    except (TypeError, ValueError):
+        return defaults
+    # Validate: every fraction must be in [0,1] AND they must sum to 1.0
+    if any(v < 0 or v > 1 for v in out.values()):
+        return defaults
+    total = sum(out.values())
+    if abs(total - 1.0) > 0.001:
+        return defaults
+    return out
+
+
+POOL_SPLIT = _resolve_pool_split()
 
 # DIAMOND BOTS — protected from auto-kill, always get minimum capital.
 #

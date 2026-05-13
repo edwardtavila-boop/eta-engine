@@ -14,7 +14,8 @@ welcome-email arrival to first live order in BluSky's funded account.
 > commit b0c11b2 on 2026-05-13; honest avg_r will settle ~0.4–0.6 as
 > clean post-fix trades accumulate). Launch is **NO_GO** until ≥2 bots
 > qualify (R1 gate). Realistic launch date slipped to ~2026-06-01.
-> See memory `project_wave25_launch_state.md` for full status.
+> Use the latest prop dashboard and diamond readiness artifacts for
+> current status.
 
 > **DORMANCY NOTE:** Tradovate remains in `DORMANT_BROKERS` per the
 > 2026-04-24 broker dormancy mandate. This runbook describes the
