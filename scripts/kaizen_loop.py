@@ -371,6 +371,52 @@ def _apply_kaizen_deactivation(bot_id: str, action_record: dict[str, Any]) -> No
         logger.warning("kaizen override write failed for %s: %s", bot_id, exc)
 
 
+def _self_heal_diamond_overrides() -> int:
+    """Remove any stale DIAMOND_BOTS entries from kaizen_overrides.json.
+
+    The Layer 2 protection in run_loop (lines 411-421) prevents NEW
+    diamond entries from being written. This helper cleans up LEGACY
+    entries that pre-date the protection — e.g., those written by the
+    Hermes MCP bridge before Layer 2 went live. The supervisor's
+    is_active() Layer 3 protection masks these at read time, but
+    leaving them in the file is misleading to operators reviewing
+    the overrides JSON directly.
+
+    Returns the number of stale diamond entries removed.
+    """
+    try:
+        from eta_engine.feeds.capital_allocator import DIAMOND_BOTS  # noqa: PLC0415
+    except ImportError:
+        return 0
+    try:
+        data = _load_overrides()
+    except Exception:  # noqa: BLE001
+        return 0
+    deactivated = data.get("deactivated") or {}
+    if not isinstance(deactivated, dict):
+        return 0
+    stale_diamonds = [b for b in deactivated if b in DIAMOND_BOTS]
+    if not stale_diamonds:
+        return 0
+    for b in stale_diamonds:
+        del deactivated[b]
+    data["deactivated"] = deactivated
+    try:
+        _OVERRIDES_PATH.write_text(
+            json.dumps(data, indent=2, default=str),
+            encoding="utf-8",
+        )
+        logger.info(
+            "self_heal: removed %d stale diamond overrides: %s",
+            len(stale_diamonds),
+            stale_diamonds,
+        )
+    except OSError as exc:
+        logger.warning("self_heal_diamond_overrides write failed: %s", exc)
+        return 0
+    return len(stale_diamonds)
+
+
 def run_loop(
     *,
     since_iso: str | None = None,
@@ -379,6 +425,10 @@ def run_loop(
 ) -> dict[str, Any]:
     """Execute one kaizen loop iteration; return the structured report."""
     started_at = datetime.now(UTC).isoformat()
+    # Wave-25c rev4 (2026-05-13): self-heal step. Strips any stale
+    # diamond entries from the overrides file before computing the
+    # action queue. Idempotent + safe — no-op if the file is clean.
+    self_healed = _self_heal_diamond_overrides()
     elite = _run_elite_scoreboard(since_iso)
     mc = _run_monte_carlo(since_iso, bootstraps)
     edge = _read_edge_tracker_snapshot()
