@@ -3759,6 +3759,50 @@ class JarvisStrategySupervisor:
         except Exception:  # noqa: BLE001
             pass
 
+        # ── Wave-22: prop-fund drawdown guard ───────────────────────────
+        # For PROP_READY bots (the elite-3 running on the live prop account),
+        # consult the prop_halt_active.flag / prop_watch_active.flag files
+        # written by diamond_prop_drawdown_guard every 15 min.
+        #
+        #   HALT  -> skip entry entirely (consistency / DD breach)
+        #   WATCH -> halve size_mult so the supervisor de-risks before HALT
+        #   OK    -> no change
+        #
+        # Non-prop-ready bots are unaffected (multiplier always 1.0).
+        try:
+            from eta_engine.feeds.capital_allocator import (  # noqa: PLC0415
+                get_prop_guard_signal,
+                prop_entry_size_multiplier,
+                should_block_prop_entry,
+            )
+
+            if should_block_prop_entry(bot.bot_id):
+                bot.last_aggregation_reject_reason = (
+                    "prop_guard_halt: drawdown / consistency rule breached; see diamond_prop_drawdown_guard_latest.json"
+                )
+                bot.last_aggregation_reject_at = datetime.now(UTC).isoformat()
+                logger.warning(
+                    "PROP GUARD HALT %s (signal=%s) blocked entry — "
+                    "supervisor refusing prop entries until guard clears",
+                    bot.bot_id,
+                    get_prop_guard_signal(),
+                )
+                return
+            prop_mult = prop_entry_size_multiplier(bot.bot_id)
+            if prop_mult < 1.0:
+                # WATCH mode: halve the size
+                size_mult *= prop_mult
+                if size_mult <= 0:
+                    return
+        except Exception:  # noqa: BLE001
+            # Defensive: never let the prop guard import/lookup crash an
+            # entry — the worst case is a missed safety check, but a
+            # crashed supervisor is worse. Log + continue.
+            logger.exception(
+                "prop_guard check failed for %s; proceeding without it",
+                bot.bot_id,
+            )
+
         # Order side derived from the (possibly Sage-flipped) `side`
         # variable established above, NOT from bot.direction. Locking the
         # broker side to the registered direction would defeat the whole

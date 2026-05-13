@@ -1,4 +1,5 @@
 """Tests for the wave-21 prop-fund launch readiness gate."""
+
 # ruff: noqa: N802, PLR2004, SLF001
 from __future__ import annotations
 
@@ -62,8 +63,7 @@ def test_R3_FEED_SANITY_NO_GO_when_prop_ready_bot_flagged() -> None:
 
     feed = {
         "scorecards": [
-            {"bot_id": "m2k_sweep_reclaim", "verdict": "FLAGGED",
-             "flags": ["STUCK_PRICE"]},
+            {"bot_id": "m2k_sweep_reclaim", "verdict": "FLAGGED", "flags": ["STUCK_PRICE"]},
             {"bot_id": "other", "verdict": "CLEAN"},
         ],
     }
@@ -77,8 +77,7 @@ def test_R3_FEED_SANITY_GO_when_non_prop_ready_flagged() -> None:
 
     feed = {
         "scorecards": [
-            {"bot_id": "mbt_sweep_reclaim", "verdict": "FLAGGED",
-             "flags": ["STUCK_PRICE"]},  # NOT in PROP_READY
+            {"bot_id": "mbt_sweep_reclaim", "verdict": "FLAGGED", "flags": ["STUCK_PRICE"]},  # NOT in PROP_READY
             {"bot_id": "m2k_sweep_reclaim", "verdict": "CLEAN"},
         ],
     }
@@ -192,8 +191,7 @@ def test_aggregate_GO_when_all_pass() -> None:
 # ────────────────────────────────────────────────────────────────────
 
 
-def test_run_computes_days_until_launch(tmp_path: Path,
-                                          monkeypatch: object) -> None:
+def test_run_computes_days_until_launch(tmp_path: Path, monkeypatch: object) -> None:
     """The receipt carries the days-until-launch countdown."""
     from datetime import date, timedelta
 

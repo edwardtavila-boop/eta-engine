@@ -258,7 +258,9 @@ def _evaluate(bot_id: str, ledger: dict | None) -> DiamondStatus:
 
     # ── Parse cumulative R-multiple ───────────────────────────────────
     try:
-        s.cumulative_r = float(rec.get("cumulative_r") or 0)
+        cumulative_r = rec.get("cumulative_r")
+        if cumulative_r not in (None, ""):
+            s.cumulative_r = float(cumulative_r)
     except (TypeError, ValueError) as exc:
         s.notes.append(f"cumulative_r parse error: {exc}")
 

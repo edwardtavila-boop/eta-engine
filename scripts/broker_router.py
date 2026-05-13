@@ -801,8 +801,22 @@ def parse_pending_file(path: Path) -> PendingOrder:
 # a generic "rejected order_id=N". The intake normalizer strips that bad
 # suffix so the rest of the pipeline only sees clean roots.
 _FUTURES_ROOTS_TO_NORMALIZE = (
-    "MNQ", "MES", "MGC", "MCL", "M6E", "MYM", "MBT",
-    "NQ", "ES", "GC", "CL", "6E", "SI", "NG", "ZB", "ZN",
+    "MNQ",
+    "MES",
+    "MGC",
+    "MCL",
+    "M6E",
+    "MYM",
+    "MBT",
+    "NQ",
+    "ES",
+    "GC",
+    "CL",
+    "6E",
+    "SI",
+    "NG",
+    "ZB",
+    "ZN",
 )
 
 
@@ -824,7 +838,7 @@ def _normalize_futures_symbol(symbol: str) -> str:
         return symbol
     for root in _FUTURES_ROOTS_TO_NORMALIZE:
         if symbol.startswith(root):
-            rest = symbol[len(root):]
+            rest = symbol[len(root) :]
             if len(rest) == 1 and rest.isdigit():
                 return root
     return symbol

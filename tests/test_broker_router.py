@@ -303,9 +303,7 @@ class TestParsePendingFile:
         assert order.symbol == "MNQ"
         assert order.limit_price == 25_000.0
 
-    def test_parse_pending_file_strips_bad_single_digit_suffix(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_strips_bad_single_digit_suffix(self, tmp_path: Path) -> None:
         """REGRESSION: bots have emitted MNQ1/MES1/MCL1 which IBKR rejects.
 
         The parse_pending_file layer normalizes a recognized futures root
@@ -327,18 +325,14 @@ class TestParsePendingFile:
             order = broker_router.parse_pending_file(path)
             assert order.symbol == expected, f"{bad} -> {order.symbol}, expected {expected}"
 
-    def test_parse_pending_file_preserves_valid_contract_codes(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_preserves_valid_contract_codes(self, tmp_path: Path) -> None:
         """Real IBKR contract codes (letter+year) must NOT be stripped."""
         for good in ["MNQM6", "MNQH7", "MESZ6", "ESH7"]:
             path = _write_pending(tmp_path, bot_id=f"b_{good}", symbol=good)
             order = broker_router.parse_pending_file(path)
             assert order.symbol == good, f"{good} got mangled to {order.symbol}"
 
-    def test_parse_pending_file_preserves_crypto_and_unrelated_symbols(
-        self, tmp_path: Path
-    ) -> None:
+    def test_parse_pending_file_preserves_crypto_and_unrelated_symbols(self, tmp_path: Path) -> None:
         """Crypto/unknown symbols don't match the normalizer and stay untouched."""
         for sym in ["BTC", "SOL", "ETH", "SOL1", "XYZ1"]:
             path = _write_pending(tmp_path, bot_id=f"b_{sym}", symbol=sym)
