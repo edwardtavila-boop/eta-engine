@@ -1354,18 +1354,23 @@ function renderOpsTruthSections(d, liveBroker, brokerRouter, closeHistory) {
   const totalRealized = finiteNumber(liveBroker?.today_realized_pnl);
   const totalUnrealized = finiteNumber(liveBroker?.total_unrealized_pnl);
   const fillsToday = finiteNumber(liveBroker?.today_actual_fills);
+  const closeCount = Number(closeHistory?.count ?? exposure.recent_close_count ?? 0) || 0;
+  const closeRealized = finiteNumber(closeHistory?.realizedPnl);
+  const closeLabel = String(closeHistory?.label || selectedCloseHistoryWindow || 'mtd').toUpperCase();
   const opsTruthSummary = document.getElementById('opsTruthSummaryLine');
   if (opsTruthSummary) {
     const rowGapText = brokerRowsUnavailable > 0 ? ` | ${brokerRowsUnavailable} row gap` : '';
-    opsTruthSummary.textContent = `${brokerOpenCountTruth} open | ${fillsToday ?? 0} fills | ${formatMoneyOrUnavailable(totalUnrealized)} unrealized${rowGapText}`;
+    const realizedText = closeRealized == null ? 'close PnL n/a' : `${formatMoney(closeRealized, 2)} ${closeLabel} close PnL`;
+    opsTruthSummary.textContent = `${brokerOpenCountTruth} open | ${closeCount} ${closeLabel} closes | ${realizedText}${rowGapText}`;
   }
   positionSummary.innerHTML = [
     `<span class="truth-chip"><strong>${brokerOpenCountTruth}</strong> broker open</span>`,
     `<span class="truth-chip"><strong>${supervisorPositions.length}</strong> supervisor open</span>`,
-    `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> fills</span>`,
-    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> realized</span>`,
+    `<span class="truth-chip"><strong>${fillsToday ?? 0}</strong> broker fills today</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalRealized)}</strong> session realized</span>`,
+    `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(closeRealized)}</strong> ${esc(closeLabel)} close PnL</span>`,
     `<span class="truth-chip"><strong>${formatMoneyOrUnavailable(totalUnrealized)}</strong> unrealized</span>`,
-    `<span class="truth-chip"><strong>${Number(closeHistory?.count ?? exposure.recent_close_count ?? 0)}</strong> closes</span>`,
+    `<span class="truth-chip"><strong>${closeCount}</strong> ${esc(closeLabel)} closes</span>`,
     brokerRowsUnavailable > 0 ? `<span class="truth-chip"><strong>${brokerRowsUnavailable}</strong> rows missing</span>` : '',
     `<span class="truth-chip"><strong>${esc(target_exit_visibility.status || 'unknown')}</strong> exits</span>`
   ].filter(Boolean).join('');
@@ -1478,6 +1483,10 @@ function brokerContributionRows(liveBroker) {
       if (pnl == null && finiteNumber(p.market_value) == null) continue;
       rows.push({
         label: p.symbol || p.bot_id || 'open position',
+        symbol: p.symbol || '',
+        botId: p.bot_id || '',
+        type: 'open_position_unrealized',
+        openCount: 1,
         sub: `${p.venue || 'broker'} open exposure`,
         bucket: assetBucket(p.symbol),
         pnl: pnl || 0,
@@ -1492,6 +1501,10 @@ function brokerContributionRows(liveBroker) {
       if (pnl == null) continue;
       rows.push({
         label: c.bot_id || c.symbol || 'closed trade',
+        symbol: c.symbol || '',
+        botId: c.bot_id || '',
+        type: 'recent_close_realized',
+        closeCount: 1,
         sub: `${c.symbol || 'symbol'} realized close`,
         bucket: assetBucket(c.symbol),
         pnl,
@@ -1508,7 +1521,7 @@ function portfolioContributionRows(portfolioSummary) {
     : [];
   return contributors.map((row) => {
     const pnl = finiteNumber(
-      row.unrealized_pnl ?? row.realized_pnl ?? row.pnl ?? row.today_pnl
+      row.pnl ?? row.unrealized_pnl ?? row.realized_pnl ?? row.today_pnl
     );
     const exposure = finiteNumber(row.market_value ?? row.exposure ?? row.notional);
     if (pnl == null && exposure == null) return null;
@@ -1519,10 +1532,15 @@ function portfolioContributionRows(portfolioSummary) {
         : '';
     return {
       label: row.symbol || row.bot_id || row.name || 'portfolio contributor',
+      symbol: row.symbol || '',
+      botId: row.bot_id || '',
+      type: row.type || '',
+      closeCount: Number(row.close_count || 0),
+      openCount: Number(row.open_count || 0),
       sub: `${row.venue || row.source || 'portfolio'} ${ownership ? '| ' + ownership + ' | ' : ''}${exposure == null ? 'PnL' : 'exposure ' + formatMoney(exposure, 0)}`,
       bucket: sleeveLabel(row.sleeve || row.bucket || assetBucket(row.symbol)),
       pnl: pnl || 0,
-      value: Math.abs(pnl || 0) || Math.abs(exposure || 0),
+      value: Math.abs(finiteNumber(row.impact_value) ?? pnl ?? 0) || Math.abs(exposure || 0),
       exposure
     };
   }).filter(Boolean);
@@ -1532,12 +1550,74 @@ function botContributionRows(bots) {
   return bots
     .map(bot => ({
       label: bot.id || bot.name || bot.symbol || 'bot',
+      symbol: bot.symbol || '',
+      botId: bot.id || bot.name || '',
+      type: 'bot_today_pnl',
       sub: `${bot.symbol || 'symbol'} ${bot.tier || bot.strategy || ''}`.trim(),
       bucket: botSleeveLabel(bot),
       pnl: finiteNumber(bot.todays_pnl) || 0,
       value: Math.abs(finiteNumber(bot.todays_pnl) || 0)
     }))
     .filter(row => row.value > 0);
+}
+
+function aggregateContributionRows(rows) {
+  const grouped = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row) continue;
+    const botId = String(row.botId || row.bot_id || '').trim();
+    const symbol = String(row.symbol || '').trim();
+    const baseLabel = String(row.label || '').trim();
+    const label = botId || symbol || baseLabel || 'contributor';
+    const key = botId
+      ? `strategy:${botId.toLowerCase()}`
+      : symbol
+        ? `ticker:${symbol.toLowerCase()}`
+        : `label:${label.toLowerCase()}`;
+    const pnl = finiteNumber(row.pnl) || 0;
+    const exposure = Math.abs(finiteNumber(row.exposure ?? row.market_value ?? row.value) || 0);
+    const bucket = String(row.bucket || assetBucket(symbol || label) || 'other');
+    const closeCount = Number(row.closeCount ?? row.close_count ?? (String(row.type || '').includes('close') ? 1 : 0)) || 0;
+    const openCount = Number(row.openCount ?? row.open_count ?? (String(row.type || '').includes('open') ? 1 : 0)) || 0;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label,
+        symbol,
+        bucket,
+        pnl: 0,
+        exposure: 0,
+        closeCount: 0,
+        openCount: 0
+      });
+    }
+    const group = grouped.get(key);
+    group.pnl += pnl;
+    group.exposure += exposure;
+    group.closeCount += closeCount;
+    group.openCount += openCount;
+    if (!group.symbol && symbol) group.symbol = symbol;
+    if (!group.bucket && bucket) group.bucket = bucket;
+  }
+  return Array.from(grouped.values())
+    .map((row) => {
+      const extra = row.symbol && row.symbol !== row.label ? row.symbol : '';
+      const detailParts = [row.bucket];
+      if (extra) detailParts.push(extra);
+      if (row.closeCount > 0) detailParts.push(`${row.closeCount} close${row.closeCount === 1 ? '' : 's'}`);
+      if (row.openCount > 0) detailParts.push(`${row.openCount} open row${row.openCount === 1 ? '' : 's'}`);
+      if (row.closeCount === 0 && row.openCount === 0 && row.exposure > 0) detailParts.push(`exposure ${formatMoney(row.exposure, 0)}`);
+      const pnl = Number(row.pnl.toFixed(2));
+      return {
+        label: row.label,
+        symbol: row.symbol,
+        bucket: row.bucket,
+        pnl,
+        value: Math.abs(pnl),
+        sub: detailParts.filter(Boolean).join(' | ')
+      };
+    })
+    .filter((row) => row.value > 0)
+    .sort((a, b) => (b.value - a.value) || (a.label > b.label ? 1 : -1));
 }
 
 function renderContributionGraph(bots, liveBroker, portfolioSummary) {
@@ -1552,11 +1632,11 @@ function renderContributionGraph(bots, liveBroker, portfolioSummary) {
     rows = botContributionRows(bots);
     sourceLabelText = 'bot PnL fallback';
   }
-  rows.sort((a, b) => (b.value || Math.abs(b.pnl)) - (a.value || Math.abs(a.pnl)));
-  const topRows = rows.slice(0, 8);
+  const rankedRows = aggregateContributionRows(rows);
+  const topRows = rankedRows.slice(0, 5);
   if (source) source.textContent = sourceLabelText;
   if (sub) sub.textContent = topRows.length
-    ? `${topRows.length} live contributors ranked by absolute PnL impact`
+    ? `Top ${topRows.length} distinct strategies/tickers by absolute PnL impact`
       : 'Waiting for book, fills, or PnL';
   if (!topRows.length) {
     el.innerHTML = '<div class="empty-panel">No PnL contribution yet. The graph will populate from broker exposure first, then bot PnL fallback.</div>';

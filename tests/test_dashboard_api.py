@@ -3454,6 +3454,74 @@ class TestDashboardAPI:
         assert mod._portfolio_sleeve_for_symbol("METK6") == "crypto_futures"
         assert mod._portfolio_sleeve_for_symbol("ETHUSD") == "crypto"
 
+    def test_aggregate_portfolio_contributors_rolls_up_repeated_strategies_and_tickers(self):
+        import eta_engine.deploy.scripts.dashboard_api as mod
+
+        contributors = [
+            {
+                "type": "recent_close_realized",
+                "bot_id": "propagate_bot",
+                "symbol": "MNQ",
+                "sleeve": "equity_index_futures",
+                "realized_pnl": 1783.0,
+                "source": "live_broker_state.position_exposure",
+            },
+            {
+                "type": "recent_close_realized",
+                "bot_id": "propagate_bot",
+                "symbol": "MNQ",
+                "sleeve": "equity_index_futures",
+                "realized_pnl": 1783.0,
+                "source": "live_broker_state.position_exposure",
+            },
+            {
+                "type": "recent_close_realized",
+                "bot_id": "t1",
+                "symbol": "BTC",
+                "sleeve": "crypto",
+                "realized_pnl": 1.5,
+                "source": "live_broker_state.position_exposure",
+            },
+            {
+                "type": "open_position_unrealized",
+                "venue": "ibkr",
+                "symbol": "MNQM6",
+                "symbol_root": "MNQ",
+                "sleeve": "equity_index_futures",
+                "market_value": 29000.0,
+                "unrealized_pnl": -45.0,
+                "source": "live_broker_state.position_exposure",
+            },
+            {
+                "type": "open_position_unrealized",
+                "venue": "ibkr",
+                "symbol": "MNQU6",
+                "symbol_root": "MNQ",
+                "sleeve": "equity_index_futures",
+                "market_value": 29500.0,
+                "unrealized_pnl": -55.0,
+                "source": "live_broker_state.position_exposure",
+            },
+        ]
+
+        rolled = mod._aggregate_portfolio_contributors(contributors)
+        keyed = {f"{row['aggregation']}:{row['aggregation_key']}": row for row in rolled}
+
+        assert keyed["strategy:propagate_bot"]["pnl"] == 3566.0
+        assert keyed["strategy:propagate_bot"]["realized_pnl"] == 3566.0
+        assert keyed["strategy:propagate_bot"]["close_count"] == 2
+        assert keyed["strategy:propagate_bot"]["symbol"] == "MNQ"
+
+        assert keyed["strategy:t1"]["pnl"] == 1.5
+        assert keyed["strategy:t1"]["close_count"] == 1
+        assert keyed["strategy:t1"]["symbol"] == "BTC"
+
+        assert keyed["ticker:MNQ"]["pnl"] == -100.0
+        assert keyed["ticker:MNQ"]["unrealized_pnl"] == -100.0
+        assert keyed["ticker:MNQ"]["open_count"] == 2
+        assert keyed["ticker:MNQ"]["market_value"] == 58500.0
+        assert keyed["ticker:MNQ"]["venue"] == "ibkr"
+
     def test_bot_fleet_includes_supervisor_bots(self, app_client, tmp_path, monkeypatch):
         """Supervisor heartbeat bots appear in /api/bot-fleet even when state/bots/ is empty."""
         import json
